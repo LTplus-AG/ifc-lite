@@ -38,6 +38,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
 
 /**
  * What the PR description may claim before the siblings compete for the rest.
@@ -498,7 +499,6 @@ export const SHALLOW_CHECKOUT_REMEDY =
   'fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge. REMEDY: set ' +
   'fetch-depth: 0.';
 
-
 export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = process.cwd(), exec = execFileSync } = {}) {
   const changed = input.files.map((f) => f.path);
   const changedBases = new Set(changed.map((p) => p.split('/').pop()));
@@ -596,7 +596,7 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
     const id = `${h.path}:${h.line}`;
     if (seenSite.has(id)) continue;
     seenSite.add(id);
-    const cost = Buffer.byteLength(h.text, 'utf8') + 120;
+    const cost = Buffer.byteLength(renderSiblingRow(h), 'utf8') + SIBLING_ROW_JOIN_MARGIN;
     if (cost > budget || siblings.length >= 40) { truncated.push('sibling excerpts'); break; }
     budget -= cost;
     siblings.push(h);

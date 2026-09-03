@@ -20,6 +20,7 @@ import { buildPrompt } from './run-reviewer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
+import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
   const patch = [
@@ -655,5 +656,119 @@ test('THE OTHER DIRECTION: an inflated envelope must not starve the pack', () =>
     packBudgetFor(40_000, envelope),
     MAX_PACK_BYTES,
     'a 40 KB diff on a 12-file PR must still receive the FULL pack',
+  );
+});
+
+/**
+ * #3732: a sibling row's rendered key is uncharged, so the pack overruns its
+ * budget.
+ *
+ * `buildPack` used to charge a sibling row as `Buffer.byteLength(h.text,
+ * 'utf8') + 120` -- a flat overhead that never included `h.key`, even though
+ * `run-reviewer.mjs` renders `JSON.stringify(h.key)` into the prompt for every
+ * row. `h.key` is unbounded: `searchKeys`'s identifier branch
+ * (`/[A-Za-z_$][A-Za-z0-9_$]{4,}/g`) has no upper length bound (only the
+ * quoted-string branch is capped, at 60 chars), so a long token -- a base64
+ * constant, a minified bundle line -- becomes an arbitrarily long key.
+ * `rank()`'s length bonus (`Math.min(30, h.key.length * 2)`) saturates at 30,
+ * but a cap on the score a key EARNS is not a cap on the bytes it COSTS once
+ * rendered.
+ */
+function longKeyFixture(n) {
+  // One file per key so `searchKeys`'s own 12-per-file cap cannot suppress the
+  // fixture, and MAX_SEARCH_KEYS (150) is never approached at n <= 40.
+  const files = Array.from({ length: n }, (_, i) => {
+    const key = `overlongIdentifierToken${i}` + 'Z'.repeat(4_000);
+    return { path: `packages/a/f${i}.ts`, patch: `@@ -1,1 +1,2 @@\n-  const ${key} = 1;\n+  const ${key} = 2;\n`, key };
+  });
+  const grepOut = (args) => {
+    const key = args[args.length - 2]; // `git grep -n --fixed-strings --no-color -I -e <key> <ref>`
+    const file = files.find((f) => f.key === key);
+    return file ? `HEAD:packages/z/sibling-${file.path.split('/').pop()}:1:  use(${file.key});` : '';
+  };
+  return buildPack(
+    { headSha: 'a'.repeat(40), files: files.map(({ key: _k, ...f }) => f) },
+    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? grepOut(args) : '') },
+  );
+}
+
+test('the undercharge, reproduced: one long key alone outweighs the old flat overhead', () => {
+  const pack = longKeyFixture(1);
+  assert.equal(pack.siblings.length, 1, 'fixture: exactly one candidate site');
+  const h = pack.siblings[0];
+  const renderedBytes = Buffer.byteLength(renderSiblingRow(h), 'utf8');
+  const oldCharge = Buffer.byteLength(h.text, 'utf8') + 120; // the pre-fix formula, restated here on purpose
+  assert.ok(h.key.length > 4_000, `fixture key is ${h.key.length} bytes, expected > 4,000`);
+  assert.ok(
+    renderedBytes > oldCharge + 3_000,
+    `rendered row is ${renderedBytes} bytes against an old charge of ${oldCharge} -- the key alone was ` +
+      `${renderedBytes - oldCharge} bytes uncharged`,
+  );
+});
+
+test('THE FIX: the assembled pack never exceeds the budget it was charged against, even with long keys', () => {
+  // 40 candidates is `siblings.length >= 40`'s own cap, so every one of them
+  // fitting under the OLD formula (h.text is capped at 120 bytes by
+  // `parseGrep`'s `.slice(0, 120)`, so 40 * (120 + 120) = 9,600 bytes -- trivial
+  // against MAX_PACK_BYTES) is expected and proves nothing. What proves the fix
+  // is that the RENDERED bytes -- the ones `run-reviewer.mjs` actually puts on
+  // the wire, key included -- stay inside the budget `buildPack` was handed.
+  const pack = longKeyFixture(40);
+  assert.ok(pack.siblings.length > 0, 'fixture: at least one site retrieved');
+  const rendered = pack.siblings.map((h) => renderSiblingRow(h)).join('\n\n');
+  const renderedBytes = Buffer.byteLength(rendered, 'utf8');
+  const availableBudget = packBudgetFor(
+    0,
+    promptEnvelopeBytes({ files: Array.from({ length: 40 }, (_, i) => ({ path: `packages/a/f${i}.ts` })) }),
+  );
+  assert.ok(
+    renderedBytes <= availableBudget,
+    `siblings alone render to ${renderedBytes} bytes, over the ${availableBudget}-byte budget they were charged against`,
+  );
+});
+
+test('CONTROL: an ordinary key is not charged MORE than it was before the fix', () => {
+  // Undercharging is the defect (item under test above); the failure mode a
+  // control guards against is the opposite one -- a fix that OVERcharges every
+  // row, say by adding `h.key.length * 50` unconditionally, would shrink every
+  // pack and degrade ordinary reviews even though no row was ever underbilled.
+  // The old flat `+ 120` already covered a typical short path, line and key
+  // generously (it has to, since it charges nothing for any of them), so the
+  // correct, itemized charge for an ORDINARY row is expected to come in AT OR
+  // BELOW the old flat one -- only a long key should ever push it higher.
+  const one = { path: 'packages/a/one.ts', patch: '@@ -1,1 +1,2 @@\n+  const cacheEntry = 1;\n' };
+  const site = 'HEAD:packages/z/sibling.ts:42:  const x = cacheEntry(y);';
+  const pack = buildPack(
+    { headSha: 'a'.repeat(40), files: [one] },
+    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? site : '') },
+  );
+  assert.equal(pack.siblings.length, 1);
+  const h = pack.siblings[0];
+  assert.ok(h.key.length < 20, `fixture: expected an ordinary short key, got ${h.key.length} bytes`);
+  const newCharge = Buffer.byteLength(renderSiblingRow(h), 'utf8') + SIBLING_ROW_JOIN_MARGIN;
+  const oldCharge = Buffer.byteLength(h.text, 'utf8') + 120;
+  assert.ok(
+    newCharge <= oldCharge,
+    `an ordinary row's charge grew from ${oldCharge} to ${newCharge} bytes -- the fix must not inflate the ` +
+      'cost of a ROUTINE row, only correct the undercharge on an oversized one',
+  );
+});
+
+test('a normal sibling still renders the same content it always did', () => {
+  const one = { path: 'packages/a/one.ts', patch: '@@ -1,1 +1,2 @@\n+  const missingLanes = 1;\n' };
+  const site = 'HEAD:packages/z/sibling.ts:7:  const rows = missingLanes(input);';
+  const pack = buildPack(
+    { headSha: 'a'.repeat(40), files: [one] },
+    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? site : '') },
+  );
+  assert.equal(pack.siblings.length, 1);
+  const h = pack.siblings[0];
+  assert.equal(h.key, 'missingLanes');
+  assert.equal(h.path, 'packages/z/sibling.ts');
+  assert.equal(h.line, 7);
+  assert.equal(h.text, 'const rows = missingLanes(input);');
+  assert.equal(
+    renderSiblingRow(h),
+    '--- SIBLING: packages/z/sibling.ts:7 (key "missingLanes")\nconst rows = missingLanes(input);',
   );
 });

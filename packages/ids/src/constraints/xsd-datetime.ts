@@ -14,10 +14,16 @@
  * for these types encodes every one of those bounds except day-in-month, which
  * it states as an assertion because no regex can express it.
  *
- * Two call sites decide the same question — the coherence audit's
- * `xs:restriction @base` check and the facets' strict-cast gate — so the
- * calendar lives here once instead of in a regex table per caller.
+ * Three places decide the same question — the coherence audit's
+ * `xs:restriction @base` check, the facets' strict-cast gate, and (through the
+ * first) the `info/date` conformance check in `audit/xsd/index.ts` — so the
+ * calendar lives here once instead of in a regex table per caller. Two files
+ * import this module; the third consumer arrives through
+ * `isValidLexicalForXsType`, which is why the count is not the import count.
  */
+
+/** Hour 24 is end-of-day, so any fractional seconds on it must be zero. */
+const ALL_ZERO_FRACTION = /^0+$/;
 
 /** The XSD bases whose value space this module decides. */
 export type XsdDateTimeBase = 'xs:date' | 'xs:dateTime' | 'xs:time';
@@ -35,10 +41,20 @@ export function isXsdDateTimeBase(base: string): base is XsdDateTimeBase {
 
 /**
  * Lexical shapes, deliberately no wider than the regexes they replace: a
- * four-digit unsigned year, so the XSD forms for years before 1 CE and after
- * 9999 stay rejected as they already were. Every quantifier has a fixed
- * length except the fractional second, which is followed only by characters
- * it cannot match, so no input backtracks (#3113).
+ * four-digit unsigned year, so the SIGNED spelling for years before 1 CE
+ * (`-2024-…`) and the five-digit spelling after 9999 (`10000-…`) stay rejected
+ * exactly as they already were. Every quantifier has a fixed length except the
+ * fractional second, which is followed only by characters it cannot match, so
+ * no input backtracks (#3113).
+ *
+ * NOT rejected, and this is a PRE-EXISTING gap rather than something this
+ * module introduces or fixes: year `0000`. `ids.xsd` is XSD 1.0, which
+ * prohibits `0000` outright, and libxml2 duly rejects `0000-01-01`; the old
+ * regex accepted it and so does this, because `\d{4}` matches. Measured by
+ * differential against libxml2 over 11,261 values: 366 disagreements, ALL of
+ * them year 0000, every one of them accepted by the old regex too. Widening
+ * the year rule is a separate change with its own upstream-parity question, so
+ * it is named here rather than folded into a calendar fix.
  */
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})(Z|[+-]\d{2}:\d{2})?$/;
 const DATE_TIME_RE =
@@ -73,7 +89,7 @@ function isClockTime(
     return (
       minute === 0 &&
       second === 0 &&
-      (fraction === undefined || /^0+$/.test(fraction))
+      (fraction === undefined || ALL_ZERO_FRACTION.test(fraction))
     );
   }
   return hour <= 23 && minute <= 59 && second <= 59;

@@ -252,14 +252,6 @@ const SCHEMA_VIOLATIONS: ReadonlyArray<{
     break: (s) => s.replace('<date>2026-01-31</date>', '<date>31/01/2026</date>'),
   },
   {
-    // The lexical shape is right and the calendar is not: February 30th. The
-    // shape-only regex this check used to end at accepted it, so `info/date`
-    // gained a validator that could not fail on a real date (#3721).
-    what: '<date> is lexically an xs:date but not a calendar date',
-    rule: 'info/date is typed xs:date, whose value space is a calendar',
-    break: (s) => s.replace('<date>2026-01-31</date>', '<date>2026-02-30</date>'),
-  },
-  {
     what: 'dataType is not upper-case',
     rule: 'property/@dataType is ids:upperCaseName, pattern [A-Z]+',
     break: (s) => s.replace('dataType="IFCIDENTIFIER"', 'dataType="IfcIdentifier"'),
@@ -501,6 +493,17 @@ describe('divergence between auditIDSDocument and ids.xsd', () => {
       'info/date that is not an xs:date',
       `<?xml version="1.0" encoding="utf-8"?>
 <ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"><info><title>T</title><date>31/01/2026</date></info><specifications>${spec(TRIVIAL_REQUIREMENT)}</specifications></ids>`,
+    ],
+    [
+      // The shape is a valid xs:date and the calendar is not: February 30th.
+      // This is the #3721 regression guard, and it belongs HERE rather than in
+      // SCHEMA_VIOLATIONS, whose only assertion is that xmllint rejects the
+      // document -- which is true with the whole fix reverted. The pair below
+      // is what binds it to our code: the schema must reject it, and the audit
+      // must not be the one that misses it.
+      'info/date is lexically an xs:date but not a calendar date',
+      `<?xml version="1.0" encoding="utf-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"><info><title>T</title><date>2026-02-30</date></info><specifications>${spec(TRIVIAL_REQUIREMENT)}</specifications></ids>`,
     ],
     [
       'info/author that is not an e-mail address',

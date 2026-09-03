@@ -37,6 +37,7 @@ import {
   allowlistDigest,
   allowlistDigests,
   allowlistScope,
+  countLines,
   parseAllowlist,
 } from './lib/module-size-ratchet.mjs';
 
@@ -716,4 +717,188 @@ test('a scoped regenerate that leaves the gate red exits 1 and names the sweep',
   assert.equal(code, 1, out);
   assert.match(out, /the gate is STILL RED for\s+files outside this change's scope/);
   assert.match(out, /--all --allow-raise/);
+});
+
+// ---------------------------------------------------------------------------
+// The gate measures ITSELF and rewrites itself in the same run (#3727, #3693).
+// `--update` planned against the pre-rewrite size, so a sweep that changed the
+// SCOPE COUNT moved the digest block's line count after the row for
+// scripts/check-module-size.mjs had already been written. It reported success
+// and exited 0; the next plain run measured the real file and failed. Green
+// locally, red in CI, no local reproduction, on the one gate whose whole job is
+// to stop that shape.
+//
+// Both cases assert the SAME property from two failure modes, and the property
+// is idempotence: whatever --update writes, the very next plain run must be
+// green with zero contributor action in between.
+// ---------------------------------------------------------------------------
+
+/**
+ * A stand-in for the gate's own source: `lines` long, carrying a pin block with
+ * `scopes` entries. The committed one is never written by a test.
+ */
+function selfStandIn(dir, lines, scopes) {
+  const head = [
+    '// stand-in for scripts/check-module-size.mjs',
+    'const ALLOWLIST_DIGESTS = {',
+    ...scopes.map((s) => `  '${s}': '1',`),
+    '};',
+  ];
+  mkdirSync(join(dir, 'scripts'), { recursive: true });
+  const path = join(dir, 'scripts', 'check-module-size.mjs');
+  writeFileSync(path, `${head.join('\n')}\n${source(lines - head.length)}`);
+  return path;
+}
+
+/** The gate's own count, so an assertion cannot measure by a rule the gate does not use. */
+function selfLines(path) {
+  return countLines(readFileSync(path, 'utf8'));
+}
+
+/**
+ * The digest block the run WROTE into the stand-in, read back off disk and
+ * parsed with a spelling of its own -- not `renderPinBlock` run backwards, and
+ * not recomputed from the allowlist. Recomputing is what makes an idempotence
+ * check tautological: the pin would then be derived from the same rows it is
+ * supposed to be checked against, so a block that disagreed with them could not
+ * show up. This reads what a contributor's next run reads.
+ */
+function pinnedDigests(dir) {
+  const text = readFileSync(join(dir, 'scripts', 'check-module-size.mjs'), 'utf8');
+  const block = /^const ALLOWLIST_DIGESTS = \{$([\s\S]*?)^\};$/m.exec(text);
+  assert.ok(block, 'the run must leave a digest block behind');
+  const out = {};
+  for (const [, scope, digest] of block[1].matchAll(/^ {2}'(.+)': '(\d+)',$/gm)) out[scope] = digest;
+  return out;
+}
+
+/**
+ * The plain gate, run against what the update left on disk: its allowlist AND
+ * the pin it wrote. Both halves have to agree or this run fails, which is the
+ * whole property -- `--update` then a plain run, green, with nothing done in
+ * between.
+ */
+function rerunPlain(dir, allowlistPath) {
+  return run(dir, null, { allowlistPath, digest: pinnedDigests(dir) });
+}
+
+test('--update settles its OWN row when a new scope grows its digest block (#3727)', () => {
+  // The self file is allowlisted at its exact size, so the extra pin line takes
+  // it one past its own budget. The row written must be the post-rewrite count.
+  const { dir, git } = gitTree({ 'packages/a/big.ts': 500 });
+  const self = selfStandIn(dir, 450, ['packages/a', 'scripts']);
+  // COMMITTED, so it is not in the change's diff and the scoped run would leave
+  // it alone -- which is the point. The only thing that puts it back in scope is
+  // this run's own rewrite of it. An untracked stand-in is already in `changed`
+  // and makes that half of the fix untestable here.
+  git('add', '--', 'scripts/check-module-size.mjs');
+  git('commit', '-qm', 'pin');
+  const before = `${HEADER}   500 packages/a/big.ts\n   450 scripts/check-module-size.mjs\n`;
+  // A file in a NEW scope: that is what makes the block gain a line.
+  writeSource(dir, 'apps/b/new_god.tsx', 401);
+
+  const upd = run(dir, before, { extra: ['--update', '--allow-raise'] });
+  assert.equal(upd.code, 0, upd.out);
+  assert.equal(selfLines(self), 451, 'the rewrite grew the file');
+  assert.match(
+    readFileSync(upd.allowlistPath, 'utf8'),
+    /^\s+451 scripts\/check-module-size\.mjs$/m,
+    'the row must record the size the run produced, not the one it started from',
+  );
+  assert.match(upd.out, /RAISED:\s+scripts\/check-module-size\.mjs: 451 lines, budget 450/);
+
+  const after = rerunPlain(dir, upd.allowlistPath);
+  assert.equal(after.code, 0, after.out);
+  assert.match(after.out, /0 new over 400/);
+});
+
+test('--update settles its own row when the rewrite pushes it OVER the limit (#3693)', () => {
+  // The other failure mode, and it is not the same one: here the self file has
+  // no row at all (it sits exactly at the limit), so the extra pin line makes it
+  // a NEW OFFENDER rather than a grown one. A fix that only re-measured rows
+  // already in the allowlist would still leave this red.
+  //
+  // It also settles at 402, not 401, and that is the case a single recount
+  // misses: the first pin line comes from `apps/b`, which takes the file to 401
+  // and therefore EARNS IT A ROW — and that row creates the `scripts` scope,
+  // which is a second pin line. Only a fixed point converges here.
+  const { dir } = gitTree({ 'packages/a/big.ts': 500 });
+  const self = selfStandIn(dir, 400, ['packages/a']);
+  const before = `${HEADER}   500 packages/a/big.ts\n`;
+  writeSource(dir, 'apps/b/new_god.tsx', 401);
+
+  const upd = run(dir, before, { extra: ['--update', '--allow-raise'] });
+  assert.equal(upd.code, 0, upd.out);
+  assert.equal(selfLines(self), 402);
+  assert.match(readFileSync(upd.allowlistPath, 'utf8'), /^\s+402 scripts\/check-module-size\.mjs$/m);
+  assert.match(upd.out, /ADDED:\s+scripts\/check-module-size\.mjs: 402 lines \(new exemption\)/);
+
+  const after = rerunPlain(dir, upd.allowlistPath);
+  assert.equal(after.code, 0, after.out);
+  assert.match(after.out, /0 new over 400/);
+});
+
+test('settling its own row does not annex any OTHER out-of-scope row', () => {
+  // The counterweight to the two above: --update reaches its own file because
+  // the run itself wrote that file, and for no other reason. A row with real
+  // headroom that this change never touched keeps its committed budget
+  // (#3398 — `--update` has annexed unrelated rows before).
+  const { dir } = gitTree({ 'packages/a/big.ts': 500, 'packages/b/slack.ts': 450 });
+  selfStandIn(dir, 450, ['packages/a', 'packages/b', 'scripts']);
+  const before =
+    `${HEADER}   500 packages/a/big.ts\n   460 packages/b/slack.ts\n` +
+    `   450 scripts/check-module-size.mjs\n`;
+  writeSource(dir, 'apps/b/new_god.tsx', 401);
+
+  const upd = run(dir, before, { extra: ['--update', '--allow-raise'] });
+  assert.equal(upd.code, 0, upd.out);
+  assert.match(
+    readFileSync(upd.allowlistPath, 'utf8'),
+    /^\s+460 packages\/b\/slack\.ts$/m,
+    'the untouched row keeps its committed budget, headroom and all',
+  );
+  assert.doesNotMatch(upd.out, /slack\.ts/);
+});
+
+test('the post-write check reads the tree the run PRODUCED, not the one it measured', () => {
+  // The other half of the same staleness, and it fails the opposite way: a
+  // sweep that REMOVES scopes shrinks the digest block, so the self file ends
+  // the run smaller than it started. Here it lands back under the limit and
+  // rightly loses its row -- but the starting measurement still says 403, and a
+  // post-write check reading that would report the gate STILL RED and exit 1
+  // over a file that is 399 lines on disk. A false red on a correct write is
+  // the same lie as the false green above, pointed the other way.
+  const dir = tree({ 'packages/a/big.ts': 500 });
+  const self = selfStandIn(dir, 403, ['packages/a', 'packages/c', 'packages/d', 'packages/e', 'scripts']);
+  const before =
+    `${HEADER}   500 packages/a/big.ts\n   450 packages/c/gone.ts\n   450 packages/d/gone.ts\n` +
+    `   450 packages/e/gone.ts\n   403 scripts/check-module-size.mjs\n`;
+
+  const upd = run(dir, before, { extra: ['--update', '--all'] });
+  assert.equal(upd.code, 0, upd.out);
+  assert.equal(selfLines(self), 399, 'the rewrite shrank the file');
+  assert.doesNotMatch(readFileSync(upd.allowlistPath, 'utf8'), /check-module-size\.mjs/);
+
+  const after = rerunPlain(dir, upd.allowlistPath);
+  assert.equal(after.code, 0, after.out);
+});
+
+test('a REFUSED update leaves the pinned file byte-for-byte untouched', () => {
+  // settleUpdate settles in memory precisely so that the refusal at the
+  // --allow-raise gate can still leave the tree alone. The existing refusal
+  // cases assert the ALLOWLIST is unchanged; nothing asserted the file the run
+  // also rewrites, so a version that re-pinned before checking the gate would
+  // have printed "Nothing was written" over a file it had just written.
+  const { dir } = gitTree({ 'packages/a/big.ts': 500 });
+  const self = selfStandIn(dir, 450, ['packages/a', 'scripts']);
+  const untouched = readFileSync(self, 'utf8');
+  const before = `${HEADER}   500 packages/a/big.ts\n   450 scripts/check-module-size.mjs\n`;
+  writeSource(dir, 'apps/b/new_god.tsx', 401);
+
+  // No --allow-raise: the new scope's row is an ADD, so the run must refuse.
+  const { code, out, allowlistPath } = run(dir, before, { extra: ['--update'] });
+  assert.equal(code, 1, out);
+  assert.match(out, /Nothing was written/);
+  assert.equal(readFileSync(self, 'utf8'), untouched, 'the pin block must not have moved');
+  assert.equal(readFileSync(allowlistPath, 'utf8'), before);
 });

@@ -151,7 +151,13 @@ self.onmessage = function(e) {
         else if (c2 === 0x0A) { line++; pos++; }
         else break;
       }
-      if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) break; }
+      // skipTriviaAt returning -1 is the same "no terminator, nothing left
+      // to scan" shape as the record-body loop below: a leading unterminated
+      // comment (or a stray unclosed quote) before the '=' leaves nothing
+      // to resync to. This top-level break skips past that loop's own
+      // malformedRecords++, so it must count itself. Mirrors tokenizer.ts's
+      // matching fix in scanEntitiesFast.
+      if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) { malformedRecords++; break; } }
 
       // Check for '='
       if (pos >= len || buf[pos] !== 0x3D) continue;
@@ -179,7 +185,7 @@ self.onmessage = function(e) {
         else if (c3 === 0x0A) { line++; pos++; }
         else break;
       }
-      if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) break; }
+      if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) { malformedRecords++; break; } }
 
       // Read type name
       var typeStart = pos;
@@ -229,7 +235,7 @@ self.onmessage = function(e) {
         else if (c5 === 0x0A) { line++; pos++; }
         else break;
       }
-      if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) break; }
+      if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) { malformedRecords++; break; } }
 
       // Check for '('
       if (pos >= len || buf[pos] !== 0x28) continue;

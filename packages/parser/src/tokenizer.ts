@@ -31,8 +31,9 @@ export class StepTokenizer {
    *  (express-id.ts, #3395). Reset per scan; the caller reports it. */
   get oversizedIdCount(): number { return this.oversizedIds; }
 
-  /** Records that `scanEntitiesFast` hit an unclosed `'` string and stopped
-   *  scanning there (see that loop). Reset per scan; the caller reports it. */
+  /** Records that `scanEntitiesFast` hit an unclosed `'` string or block
+   *  comment and stopped scanning there (see that loop). Reset per scan; the
+   *  caller reports it. */
   get malformedRecordCount(): number { return this.malformedRecords; }
 
   /**
@@ -120,11 +121,19 @@ export class StepTokenizer {
         // `#1 /* was #7 */ =` is a declaration. The inline loop above stays
         // for the common case; this runs only once a comment actually opens,
         // and skipTrivia (step-lexing) then takes the whole run of both.
+        //
+        // `t.stop` here means the SAME "no terminator, nothing to resync to"
+        // shape as the record-body branches below: an unclosed `/* ... */`
+        // (or, in principle, `'`) before the `=`, before the type name, or
+        // before the `(` leaves nothing left to scan. It used to `return`
+        // uncounted, so a leading unterminated comment silently ended the
+        // scan with malformedRecordCount still 0 -- the exact defect this
+        // file otherwise reports.
         if (opensComment(buf, pos, len)) {
           const t = skipTrivia(buf, pos, len);
           line += t.lines;
           pos = t.next;
-          if (t.stop) return;
+          if (t.stop) { this.malformedRecords++; return; }
         }
 
         // Check for '='
@@ -154,7 +163,7 @@ export class StepTokenizer {
           const t = skipTrivia(buf, pos, len);
           line += t.lines;
           pos = t.next;
-          if (t.stop) return;
+          if (t.stop) { this.malformedRecords++; return; }
         }
 
         // Read type name (inline)
@@ -214,7 +223,7 @@ export class StepTokenizer {
           const t = skipTrivia(buf, pos, len);
           line += t.lines;
           pos = t.next;
-          if (t.stop) return;
+          if (t.stop) { this.malformedRecords++; return; }
         }
 
         // Check for '('

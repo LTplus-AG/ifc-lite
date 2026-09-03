@@ -109,3 +109,32 @@ describe('scanIfcEntities: unterminated comment inside a record', () => {
     expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('1 record'))).toBe(true);
   });
 });
+
+describe('scanIfcEntities: unterminated comment before the record body opens', () => {
+  it('reports malformedRecordCount and a diagnostic for a leading unterminated comment', async () => {
+    // A comment before '=', the type name, or '(' is valid ISO 10303-21 --
+    // but if it never closes, the record has no body to fall back on for a
+    // resync point. This exercises the earlier of the two "no terminator"
+    // shapes: skipTrivia's t.stop return, which used to skip the count
+    // entirely (see tokenizer.test.ts for the isolated repro).
+    const buffer = ifcBuffer([
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);",
+      '#2 /* never closes',
+    ]);
+
+    const diagnostics: string[] = [];
+    const result = await scanIfcEntities(buffer, {
+      disableWorkerScan: true,
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.malformedRecordCount).toBe(1);
+    expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
+    expect(diagnostics.some((m) => m.includes('stopped early') && m.includes('1 record'))).toBe(true);
+    // The message must not claim the construct was a string literal when it
+    // was actually a comment -- the whole point of #3695's remaining
+    // review finding.
+    expect(diagnostics.some((m) => m.includes('string literal or comment'))).toBe(true);
+  });
+});

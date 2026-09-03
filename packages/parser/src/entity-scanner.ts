@@ -192,15 +192,21 @@ export async function scanIfcEntities(
 
   // Worse than the oversized-id case: this is not "one record the caller
   // will not find", it is "scanning stopped here" — an unterminated string
-  // literal leaves no reliable resume point, so every entity after it,
-  // however well-formed, is also missing from this scan's result. Before
-  // this diagnostic existed, that stop was entirely silent: fewer entities
-  // came back, and nothing said the file might be incomplete.
+  // literal or comment leaves no reliable resume point, so every entity
+  // after it, however well-formed, is also missing from this scan's result.
+  // Before this diagnostic existed, that stop was entirely silent: fewer
+  // entities came back, and nothing said the file might be incomplete.
+  //
+  // Deliberately generic ("string literal or comment"), not per-kind: the
+  // scanners collapse both into one malformedRecordCount, so a message
+  // naming only one construct would misdescribe the other every time it
+  // fires (an unclosed `/* ... */` was reported here as a string literal
+  // until this wording changed).
   if (malformedRecordCount > 0) {
     const message =
-      `scan: stopped early — ${malformedRecordCount} record(s) had a string literal that never ` +
-      `closed before end of input, so scanning could not continue past the first one; the ` +
-      `entities returned may be an incomplete view of this file`;
+      `scan: stopped early — ${malformedRecordCount} record(s) had a string literal or comment ` +
+      `that never closed before end of input, so scanning could not continue past the first ` +
+      `one; the entities returned may be an incomplete view of this file`;
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
   } else if (preScanCountUnreported && scanPath === 'pre-scanned') {

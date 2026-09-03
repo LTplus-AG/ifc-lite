@@ -96,4 +96,22 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(refs.map((r) => r.expressId)).toEqual([]);
     expect(tokenizer.malformedRecordCount).toBe(1);
   });
+
+  it('reports malformedRecordCount for an unterminated comment before the record body opens', () => {
+    // `#1 /* was #7 */ =` is valid -- a comment is allowed wherever
+    // whitespace is, per skipTrivia's callers above. But if that comment
+    // never closes, `#1` has neither an '=' nor a body to scan, and the
+    // scanner's own resync point (skip-to-';') is never reached. Before this
+    // fix, `skipTrivia`'s `t.stop` branches (there are three: before '=',
+    // before the type name, before '(') `return`ed uncounted, so this shape
+    // silently ended the scan with malformedRecordCount still 0 -- the same
+    // defect class the record-body branches above were fixed for, just one
+    // step earlier in the same entity.
+    const text = "#1 /* never closes\n#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);";
+    const buffer = new TextEncoder().encode(text);
+    const tokenizer = new StepTokenizer(buffer);
+    const refs = Array.from(tokenizer.scanEntitiesFast());
+    expect(refs.map((r) => r.expressId)).toEqual([]);
+    expect(tokenizer.malformedRecordCount).toBe(1);
+  });
 });

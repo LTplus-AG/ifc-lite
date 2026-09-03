@@ -95,4 +95,17 @@ describe('scan-worker-source WORKER_CODE: unterminated string literal', () => {
     expect(result.count).toBe(0);
     expect(result.malformedRecords).toBe(1);
   });
+
+  it('reports malformedRecords for an unterminated comment before the record body opens', () => {
+    // The three `opensCommentAt` checks before '=', the type name, and '('
+    // each `break` out of the top-level scan loop directly on an
+    // unterminated comment -- not the record-body loop the previous test
+    // covers, so they never reached that loop's own `malformedRecords++`.
+    // Same fix as tokenizer.ts's matching skipTrivia branches.
+    const text = "#1 /* never closes\n#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);";
+
+    const result = runWorkerCode(text);
+    expect(result.count).toBe(0);
+    expect(result.malformedRecords).toBe(1);
+  });
 });

@@ -37,7 +37,7 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createEffectiveEntityCheck, createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -84,6 +84,15 @@ export class HeadlessLikeBackend implements BimBackend {
    * MCP site accepts a basename, and the tools address models by id.
    */
   private readonly acceptedModelIds: readonly string[];
+  /**
+   * The same reference check `bim.mutate.*` is gated on, exposed because the
+   * mutation TOOLS do not go through `bim.mutate.*`: they write into
+   * `getMutationView()` directly, so without this they took `express_id` on
+   * faith and answered "Queued" for an id the export then dropped (#3764).
+   *
+   * Returns `null` for a writable reference, otherwise the reason.
+   */
+  readonly checkEntityRef: EntityRefCheck;
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
 
@@ -105,19 +114,17 @@ export class HeadlessLikeBackend implements BimBackend {
       flyTo() {}, setSection() {}, getSection() { return null; },
       setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
     };
-    this.mutate = createHeadlessMutateAdapter(
-      () => this.getOrCreateMutationView(),
-      createEffectiveEntityCheck({
-        acceptedModelIds: this.acceptedModelIds,
-        // Both halves of the source index, the union every other "is it in
-        // the source model" site takes: on a huge file the parser keeps
-        // property atoms out of `byId` and in `deferredEntityIndex`, and they
-        // are exported like any other entity.
-        hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
-          || this.dataStore.deferredEntityIndex?.has(id) === true,
-        overlay: () => this.mutationView,
-      }),
-    );
+    this.checkEntityRef = createEffectiveEntityCheck({
+      acceptedModelIds: this.acceptedModelIds,
+      // Both halves of the source index, the union every other "is it in the
+      // source model" site takes: on a huge file the parser keeps property
+      // atoms out of `byId` and in `deferredEntityIndex`, and they are
+      // exported like any other entity.
+      hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
+        || this.dataStore.deferredEntityIndex?.has(id) === true,
+      overlay: () => this.mutationView,
+    });
+    this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView(), this.checkEntityRef);
     // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
     // against the shared StoreEditor, so the new entities land in the overlay
     // this backend's export adapter already reads.

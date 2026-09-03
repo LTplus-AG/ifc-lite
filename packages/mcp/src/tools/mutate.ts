@@ -54,6 +54,33 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
   throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide global_id or express_id.' });
 }
 
+/**
+ * The same id, checked against the model before anything is written to it.
+ *
+ * The write tools below do not go through `bim.mutate.*` — they reach
+ * `backend.getMutationView()` directly — so the guard that refuses a phantom
+ * write on the SDK path did not cover them. `entity_set_property` with an
+ * express id nothing holds created the overlay entry, answered "Queued", and
+ * was then dropped by the exporter (which only visits entities the effective
+ * model holds) with no diagnostic anywhere in the round trip (#3764).
+ *
+ * `entity_create` and `entity_delete` are deliberately not routed through
+ * this: create has no id to check yet, and delete already reports whether it
+ * removed anything.
+ */
+function resolveWritableExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
+  const expressId = resolveExpressId(m, input);
+  const reason = m.backend.checkEntityRef({ modelId: m.id, expressId });
+  if (reason !== null) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.ENTITY_NOT_FOUND,
+      message: `Cannot write to #${expressId} in model '${m.id}': ${reason}`,
+      details: { expressId, modelId: m.id },
+    });
+  }
+  return expressId;
+}
+
 /** Shared with `bim.mutate.setProperty`, so the two paths cannot classify differently. */
 const detectValueType = propertyValueTypeOf;
 
@@ -88,7 +115,7 @@ const entitySetProperty: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
-    const expressId = resolveExpressId(m, input);
+    const expressId = resolveWritableExpressId(m, input);
     const mutation = applySetProperty({ m, backend }, {
       expressId,
       pset: input.pset as string,
@@ -123,7 +150,7 @@ const entityDeleteProperty: Tool = {
     backend.ensureEditor();
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
-    const expressId = resolveExpressId(m, input);
+    const expressId = resolveWritableExpressId(m, input);
     const result = view.deleteProperty(expressId, input.pset as string, input.name as string);
     return okResult(
       result ? 'Property delete queued.' : 'Property was not present; no-op.',
@@ -154,7 +181,7 @@ const entitySetAttribute: Tool = {
     backend.ensureEditor();
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
-    const expressId = resolveExpressId(m, input);
+    const expressId = resolveWritableExpressId(m, input);
     const attribute = input.attribute as string;
     // Capture the value as it stood right before this write so the mutation
     // record's `oldValue` is the true prior value — `mutation_undo` (and any

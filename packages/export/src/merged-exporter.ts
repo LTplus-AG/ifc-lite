@@ -29,7 +29,7 @@ import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
 import { StepExporter } from './step-exporter.js';
 import { rescaleEntityLengths, computeNormalizeFactor } from './unit-normalize.js';
-import { groupSubContextsByKey, planInfrastructureUnify } from './merged-subcontext.js';
+import { planInfrastructureUnify, resolvePrimaryContextState, type PrimaryContextState } from './merged-context.js';
 import { remapEntityText } from './merged-remap.js';
 import {
   extractGlobalIdFast,
@@ -97,8 +97,8 @@ interface MergeSetup {
   firstModelOffset: number;
   /** Infrastructure entities (units, contexts) of the primary model. */
   firstModelInfraMap: Map<string, number[]>;
-  /** Primary model's subcontexts grouped by matching key — see `merged-subcontext.ts`. */
-  firstModelSubContextsByKey: Map<string, number[]>;
+  /** Primary model's subcontexts-by-key and context WCS frame — see `merged-context.ts`. */
+  firstModelContext: PrimaryContextState;
   /** IfcProject express ids of the primary model. */
   firstProjectIds: number[];
   /** Spatial lookup built from the primary model. */
@@ -873,7 +873,7 @@ export class MergedExporter {
       modelOffsets,
       firstModelOffset: modelOffsets.get(firstModel.id)!,
       firstModelInfraMap,
-      firstModelSubContextsByKey: groupSubContextsByKey(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? []),
+      firstModelContext: resolvePrimaryContextState(firstModel.dataStore, firstModelInfraMap.get('IFCGEOMETRICREPRESENTATIONSUBCONTEXT') ?? [], primaryScale),
       firstProjectIds: this.findEntitiesByType(firstModel.dataStore, 'IFCPROJECT'),
       spatialLookup: this.buildSpatialLookup(firstModel.dataStore),
       primaryScale,
@@ -1096,8 +1096,8 @@ export class MergedExporter {
         }
       }
 
-      // Remap and skip duplicate infrastructure (units, contexts) — subcontexts kind-matched, see merged-subcontext.ts.
-      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelSubContextsByKey, setup.firstModelOffset, sharedRemap, skipEntityIds);
+      // Remap and skip duplicate infrastructure (units, contexts) — WCS-gated; scale choice documented on planInfrastructureUnify (merged-context.ts).
+      planInfrastructureUnify(model.dataStore, this.findInfrastructureEntities(model.dataStore), setup.firstModelInfraMap, setup.firstModelContext, setup.firstModelOffset, setup.assumeShared ? setup.primaryScale : this.resolveUnitScale(model), sharedRemap, skipEntityIds);
 
       // Unify spatial hierarchy: match Site, Building, Storey to first model.
       // Under normalize, this model's raw elevations are in its own unit, so the

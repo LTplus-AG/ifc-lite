@@ -8,6 +8,7 @@ import {
   relationshipGraphFromColumns,
   relationshipGraphToColumns,
 } from './relationship-graph.js';
+import { flattenRelationshipEdges } from './relationship-graph-helpers.js';
 import { RelationshipType } from './types.js';
 
 function buildSampleGraph() {
@@ -296,5 +297,32 @@ describe('buildCSR determinism and edge presence', () => {
     expect(g.forward.getEdges(200)).toHaveLength(3);
     expect(g.forward.getTargets(200, RelationshipType.ContainsElements)).toEqual([301, 302]);
     expect(g.inverse.getTargets(301, RelationshipType.ContainsElements).sort()).toEqual([200, 201]);
+  });
+});
+
+describe('flattenRelationshipEdges', () => {
+  // The Parquet and DuckDB exporters both walk the raw CSR columns instead
+  // of `getEdges()` for throughput, and both share this helper so they
+  // can't independently forget the shadowed-id case (#3782 review): one row
+  // per `IfcRel*` STEP record, not one row per deduped edge.
+  it('emits one row per shadowed IfcRel id, not just the survivor', () => {
+    const builder = new RelationshipGraphBuilder();
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5001);
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5002); // redundant IfcRel
+    builder.addEdge(200, 301, RelationshipType.ContainsElements, 5003); // and a third
+    builder.addEdge(200, 302, RelationshipType.ContainsElements, 6001); // an untouched edge
+    const g = builder.build();
+
+    const rows = flattenRelationshipEdges(g.forward);
+    expect(rows).toHaveLength(4);
+    expect(rows.filter((r) => r.sourceId === 200 && r.targetId === 301).map((r) => r.relationshipId).sort())
+      .toEqual([5001, 5002, 5003]);
+    expect(rows.filter((r) => r.sourceId === 200 && r.targetId === 302).map((r) => r.relationshipId))
+      .toEqual([6001]);
+  });
+
+  it('returns nothing for an empty graph', () => {
+    const empty = new RelationshipGraphBuilder().build();
+    expect(flattenRelationshipEdges(empty.forward)).toEqual([]);
   });
 });

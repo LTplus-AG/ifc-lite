@@ -8,6 +8,7 @@
  */
 
 import { RelationshipType } from './types.js';
+import { binarySearchU32, buildShadowedColumns } from './relationship-graph-helpers.js';
 
 export interface Edge {
   target: number;
@@ -19,8 +20,8 @@ export interface Edge {
    * dedupe in `RelationshipGraphBuilder.addEdge` (#3760). A consumer that
    * needs to know whether the *connection* still exists after a delete —
    * not just whether `relationshipId` was deleted — must check these too:
-   * the edge survives as long as any one of `relationshipId` or
-   * `shadowedRelationshipIds` still exists.
+   * use `edgeSurvives` (`relationship-graph-helpers.js`) rather than
+   * testing `relationshipId` alone.
    */
   shadowedRelationshipIds?: number[];
 }
@@ -31,8 +32,19 @@ export interface RelationshipEdges {
   edgeTargets: Uint32Array;
   edgeTypes: Uint16Array;
   edgeRelIds: Uint32Array;
-  /** Sparse, index-aligned with the arrays above; see `Edge.shadowedRelationshipIds`. */
-  edgeShadowedRelIds: (number[] | undefined)[];
+  /**
+   * Sparse "shadowed" ids collapsed by the (source, target, type) dedupe
+   * (#3760/#3782): three small, Transferable typed arrays rather than one
+   * `(number[] | undefined)[]` slot per edge — the dense shape
+   * structured-clones (not transfers) across the worker boundary, measured
+   * +1.2s/+190MB on a 12M-edge model for a field that's empty almost
+   * everywhere. `shadowedEdgeIndex[g]` (ascending) names the edge whose ids
+   * live at `shadowedRelIds[shadowedGroupOffsets[g]..shadowedGroupOffsets[g+1])`.
+   * Absent together when nothing was collapsed — read via `?.`.
+   */
+  shadowedEdgeIndex?: Uint32Array;
+  shadowedGroupOffsets?: Uint32Array;
+  shadowedRelIds?: Uint32Array;
 
   getEdges(entityId: number, type?: RelationshipType): Edge[];
   getTargets(entityId: number, type?: RelationshipType): number[];
@@ -52,6 +64,8 @@ export interface RelationshipInfo {
   relationshipId: number;
   type: RelationshipType;
   typeName: string;
+  /** See `Edge.shadowedRelationshipIds`. */
+  shadowedRelationshipIds?: number[];
 }
 
 /**
@@ -68,8 +82,14 @@ export class RelationshipGraphBuilder {
   private _targets: number[] = [];
   private _types: number[] = [];
   private _relIds: number[] = [];
-  /** Sparse, index-aligned with `_relIds`; see `Edge.shadowedRelationshipIds`. */
-  private _shadowedRelIds: (number[] | undefined)[] = [];
+  /**
+   * Extra `IfcRel*` ids collapsed into an already-recorded edge, keyed by
+   * that edge's index in `_sources`/`_targets`/`_types`/`_relIds`. Sparse —
+   * only entities with an actual duplicate get an entry — rather than a
+   * slot per edge, so a builder that never sees a duplicate pays nothing
+   * for this beyond one empty `Map`.
+   */
+  private _shadowedRelIds = new Map<number, number[]>();
 
   /**
    * Edges already recorded, keyed by source, then by `target * TYPE_SPAN + type`,
@@ -85,8 +105,8 @@ export class RelationshipGraphBuilder {
    * Adds one edge, folding a repeat of a `(source, target, type)` triple
    * already present into the surviving edge instead of dropping it outright.
    * The first instance's express id becomes `relationshipId`; later repeats
-   * are kept in `shadowedRelationshipIds` so deleting one of several
-   * `IfcRel*` instances that named the same pair doesn't make the connection
+   * are kept in `_shadowedRelIds` so deleting one of several `IfcRel*`
+   * instances that named the same pair doesn't make the connection
    * disappear while a sibling instance still exists (#3782 review).
    */
   addEdge(source: number, target: number, type: RelationshipType, relId: number): void {
@@ -99,10 +119,10 @@ export class RelationshipGraphBuilder {
     const key = target * TYPE_SPAN + type;
     const existingIndex = seenForSource.get(key);
     if (existingIndex !== undefined) {
-      let shadowed = this._shadowedRelIds[existingIndex];
+      let shadowed = this._shadowedRelIds.get(existingIndex);
       if (shadowed === undefined) {
         shadowed = [];
-        this._shadowedRelIds[existingIndex] = shadowed;
+        this._shadowedRelIds.set(existingIndex, shadowed);
       }
       shadowed.push(relId);
       return;
@@ -113,7 +133,6 @@ export class RelationshipGraphBuilder {
     this._targets.push(target);
     this._types.push(type);
     this._relIds.push(relId);
-    this._shadowedRelIds.push(undefined);
   }
 
   build(): RelationshipGraph {
@@ -135,8 +154,10 @@ export interface RelationshipEdgesColumns {
   edgeTargets: Uint32Array;
   edgeTypes: Uint16Array;
   edgeRelIds: Uint32Array;
-  /** Sparse, index-aligned with the arrays above; see `Edge.shadowedRelationshipIds`. */
-  edgeShadowedRelIds: (number[] | undefined)[];
+  /** See `RelationshipEdges.shadowedEdgeIndex` et al. */
+  shadowedEdgeIndex?: Uint32Array;
+  shadowedGroupOffsets?: Uint32Array;
+  shadowedRelIds?: Uint32Array;
 }
 
 /**
@@ -155,7 +176,9 @@ export interface RelationshipGraphColumns {
  *
  * Exported because the graph can be reconstructed from raw edge arrays
  * (e.g. when merging or rebuilding a graph) without going through the
- * `RelationshipGraphBuilder` mutation API.
+ * `RelationshipGraphBuilder` mutation API. `shadowedRelIds` maps a
+ * pre-scatter edge index (in `keys`/`values`/`types`/`relIds`) to the extra
+ * `IfcRel*` ids collapsed into it; pass an empty `Map` when none.
  */
 export function buildCSR(
   n: number,
@@ -163,7 +186,7 @@ export function buildCSR(
   values: number[] | Uint32Array,
   types: number[] | Uint16Array,
   relIds: number[] | Uint32Array,
-  shadowedRelIds?: (number[] | undefined)[],
+  shadowedRelIds: Map<number, number[]>,
 ): RelationshipEdges {
   if (n === 0) return emptyRelationshipEdges();
 
@@ -189,9 +212,13 @@ export function buildCSR(
   const edgeTargets = new Uint32Array(n);
   const edgeTypes = new Uint16Array(n);
   const edgeRelIds = new Uint32Array(n);
-  const edgeShadowedRelIds: (number[] | undefined)[] = new Array(n);
   const writePos = new Map<number, number>();
   for (const [k, o] of offsets) writePos.set(k, o);
+
+  // Collected in scatter (final-position) order below, then sorted — cheap
+  // since this list is expected to stay tiny (rare duplicates) regardless
+  // of how large `n` gets.
+  const shadowedPairs: Array<[position: number, ids: number[]]> = [];
 
   for (let i = 0; i < n; i++) {
     const k = keys[i];
@@ -199,11 +226,16 @@ export function buildCSR(
     edgeTargets[pos] = values[i];
     edgeTypes[pos] = types[i];
     edgeRelIds[pos] = relIds[i];
-    edgeShadowedRelIds[pos] = shadowedRelIds?.[i];
+    const shadow = shadowedRelIds.get(i);
+    if (shadow !== undefined) shadowedPairs.push([pos, shadow]);
     writePos.set(k, pos + 1);
   }
 
-  return relationshipEdgesFromColumns({ offsets, counts, edgeTargets, edgeTypes, edgeRelIds, edgeShadowedRelIds });
+  const columns: RelationshipEdgesColumns = { offsets, counts, edgeTargets, edgeTypes, edgeRelIds };
+  const shadowed = buildShadowedColumns(shadowedPairs);
+  if (shadowed) Object.assign(columns, shadowed);
+
+  return relationshipEdgesFromColumns(columns);
 }
 
 function emptyRelationshipEdges(): RelationshipEdges {
@@ -213,7 +245,6 @@ function emptyRelationshipEdges(): RelationshipEdges {
     edgeTargets: new Uint32Array(0),
     edgeTypes: new Uint16Array(0),
     edgeRelIds: new Uint32Array(0),
-    edgeShadowedRelIds: [],
   });
 }
 
@@ -223,7 +254,7 @@ function emptyRelationshipEdges(): RelationshipEdges {
  * the parser-worker transport layer.
  */
 export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns): RelationshipEdges {
-  const { offsets, counts, edgeTargets, edgeTypes, edgeRelIds, edgeShadowedRelIds } = columns;
+  const { offsets, counts, edgeTargets, edgeTypes, edgeRelIds, shadowedEdgeIndex, shadowedGroupOffsets, shadowedRelIds } = columns;
 
   const edges: RelationshipEdges = {
     offsets,
@@ -231,7 +262,6 @@ export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns):
     edgeTargets,
     edgeTypes,
     edgeRelIds,
-    edgeShadowedRelIds,
 
     getEdges(entityId: number, type?: RelationshipType): Edge[] {
       const o = offsets.get(entityId);
@@ -240,13 +270,15 @@ export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns):
       const out: Edge[] = [];
       for (let i = o; i < o + c; i++) {
         if (type === undefined || edgeTypes[i] === type) {
-          const shadowed = edgeShadowedRelIds[i];
-          out.push({
-            target: edgeTargets[i],
-            type: edgeTypes[i],
-            relationshipId: edgeRelIds[i],
-            ...(shadowed !== undefined ? { shadowedRelationshipIds: shadowed } : {}),
-          });
+          const edge: Edge = { target: edgeTargets[i], type: edgeTypes[i], relationshipId: edgeRelIds[i] };
+          if (shadowedEdgeIndex !== undefined && shadowedGroupOffsets !== undefined && shadowedRelIds !== undefined) {
+            const g = binarySearchU32(shadowedEdgeIndex, i);
+            if (g !== -1) {
+              // A fresh array, not a view into the shared buffer.
+              edge.shadowedRelationshipIds = Array.from(shadowedRelIds.subarray(shadowedGroupOffsets[g], shadowedGroupOffsets[g + 1]));
+            }
+          }
+          out.push(edge);
         }
       }
       return out;
@@ -260,6 +292,7 @@ export function relationshipEdgesFromColumns(columns: RelationshipEdgesColumns):
       return offsets.has(entityId);
     },
   };
+  if (shadowedEdgeIndex !== undefined) Object.assign(edges, { shadowedEdgeIndex, shadowedGroupOffsets, shadowedRelIds });
   return edges;
 }
 
@@ -291,11 +324,11 @@ export function relationshipGraphFromEdges(
     getRelationshipsBetween: (sourceId, targetId) => {
       return forward.getEdges(sourceId)
         .filter((edge: Edge) => edge.target === targetId)
-        .map((edge: Edge) => ({
-          relationshipId: edge.relationshipId,
-          type: edge.type,
-          typeName: RelationshipTypeToString(edge.type),
-        }));
+        .map((edge: Edge): RelationshipInfo => {
+          const info: RelationshipInfo = { relationshipId: edge.relationshipId, type: edge.type, typeName: RelationshipTypeToString(edge.type) };
+          if (edge.shadowedRelationshipIds !== undefined) info.shadowedRelationshipIds = edge.shadowedRelationshipIds;
+          return info;
+        });
     },
   };
 }
@@ -317,23 +350,24 @@ export function relationshipGraphFromColumns(columns: RelationshipGraphColumns):
  * detach from the source when used in a `postMessage` transfer list.
  */
 export function relationshipGraphToColumns(graph: RelationshipGraph): RelationshipGraphColumns {
+  const toColumns = (edges: RelationshipEdges): RelationshipEdgesColumns => {
+    const columns: RelationshipEdgesColumns = {
+      offsets: edges.offsets,
+      counts: edges.counts,
+      edgeTargets: edges.edgeTargets,
+      edgeTypes: edges.edgeTypes,
+      edgeRelIds: edges.edgeRelIds,
+    };
+    if (edges.shadowedEdgeIndex !== undefined) {
+      columns.shadowedEdgeIndex = edges.shadowedEdgeIndex;
+      columns.shadowedGroupOffsets = edges.shadowedGroupOffsets;
+      columns.shadowedRelIds = edges.shadowedRelIds;
+    }
+    return columns;
+  };
   return {
-    forward: {
-      offsets: graph.forward.offsets,
-      counts: graph.forward.counts,
-      edgeTargets: graph.forward.edgeTargets,
-      edgeTypes: graph.forward.edgeTypes,
-      edgeRelIds: graph.forward.edgeRelIds,
-      edgeShadowedRelIds: graph.forward.edgeShadowedRelIds,
-    },
-    inverse: {
-      offsets: graph.inverse.offsets,
-      counts: graph.inverse.counts,
-      edgeTargets: graph.inverse.edgeTargets,
-      edgeTypes: graph.inverse.edgeTypes,
-      edgeRelIds: graph.inverse.edgeRelIds,
-      edgeShadowedRelIds: graph.inverse.edgeShadowedRelIds,
-    },
+    forward: toColumns(graph.forward),
+    inverse: toColumns(graph.inverse),
   };
 }
 

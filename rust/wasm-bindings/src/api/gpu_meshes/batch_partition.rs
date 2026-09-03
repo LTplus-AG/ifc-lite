@@ -91,8 +91,16 @@ pub(super) fn rejected_to_flat(flat_indices: &[usize], materialized: usize) -> V
 /// [`INSTANCE_MIN_OCCURRENCES`] is passed as `min_group`, so the collator never
 /// re-flattens a group that already cleared the count gate; its own safety nets
 /// still can (a singular placement, a shape mismatch, or since #3666 a failed
-/// reconstruction). Returns the shard bytes and the sorted materialized indices
-/// the caller must draw flat.
+/// reconstruction). Returns the shard bytes, the sorted materialized indices the
+/// caller must draw flat, and `Collated::dropped_placeholders`.
+///
+/// That last one is not a diagnostic here, it is arithmetic the caller owes the
+/// viewer. A dropped placeholder is a pose-only occurrence that reaches NEITHER
+/// the shard nor the flat collection: its group had no invertible template
+/// placement, so there is no `rel` to place it with and no geometry of its own
+/// to draw. This is the only call site that feeds pose-only refs at all, so it
+/// is the only one that can subtract them from the occurrence count it
+/// reports.
 ///
 /// `rtc` must be the model's post-RTC reduction (the same offset the other
 /// `collate_*` call site passes), or a rotated occurrence's relative transform
@@ -101,12 +109,13 @@ pub(super) fn encode_shard_routing_refusals_back(
     refs: &[ifc_lite_geometry::InstanceMeshRef],
     materialized: usize,
     rtc: [f64; 3],
-) -> (Vec<u8>, Vec<usize>) {
+) -> (Vec<u8>, Vec<usize>, usize) {
     let mut collated =
         ifc_lite_geometry::collate_refs(refs, INSTANCE_MIN_OCCURRENCES as usize, rtc);
     let rejected = rejected_to_flat(&collated.flat_indices, materialized);
+    let dropped = collated.dropped_placeholders;
     collated.flat_indices.clear();
-    (ifc_lite_geometry::encode_refs(refs, &collated), rejected)
+    (ifc_lite_geometry::encode_refs(refs, &collated), rejected, dropped)
 }
 
 /// May this mesh ride the instanced shard at all?

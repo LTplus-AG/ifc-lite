@@ -381,3 +381,94 @@ fn an_empty_wire_decodes_to_an_empty_map() {
         "ids with no colour bytes at all yield nothing, not black"
     );
 }
+
+/// The occurrence count handed to the viewer must equal the instances actually
+/// in the shard.
+///
+/// Three things leave `refs` on the way to the shard, and the count has to
+/// follow all three. Members the collator refuses are taken back for the flat
+/// collection (`rejected`), and that was subtracted. But a pose-only #1623
+/// placeholder whose group has no invertible template placement reaches NEITHER
+/// side: there is no `rel` to place it with and no geometry of its own to draw.
+/// That one was not subtracted, so a batch containing such a group reported more
+/// occurrences than it drew, and this partition is the only caller that feeds
+/// pose-only refs at all.
+#[test]
+fn the_reported_occurrence_count_equals_what_reaches_the_shard() {
+    use ifc_lite_geometry::{InstanceMeshRef, InstanceMeta};
+
+    // A shareable group at exactly the gate: same geometry, same placement, so
+    // every pairing reconstructs exactly and the group is instanced. The shared
+    // `meta` helper's transform is all zeros, which is SINGULAR and would be
+    // refused for that reason instead -- the placement has to be a real one.
+    let identity = InstanceMeta {
+        transform: {
+            let mut m = [0.0f64; 16];
+            for k in 0..4 {
+                m[k * 4 + k] = 1.0;
+            }
+            m
+        },
+        ..meta(1, true)
+    };
+    let good: Vec<MeshData> = (0..INSTANCE_MIN_OCCURRENCES)
+        .map(|_| plain_mesh().with_instance(Some(identity.clone())))
+        .collect();
+    // A group whose template placement is SINGULAR (a rank-deficient linear
+    // part), so nothing in it can be placed, plus one pose-only placeholder.
+    let singular = InstanceMeta {
+        transform: {
+            let mut m = [0.0f64; 16];
+            m[15] = 1.0;
+            m
+        },
+        ..meta(2, true)
+    };
+    let broken = plain_mesh().with_instance(Some(singular));
+    let placeholder_meta = meta(2, true);
+
+    let mut refs: Vec<InstanceMeshRef> = good
+        .iter()
+        .chain(std::iter::once(&broken))
+        .map(|m: &MeshData| InstanceMeshRef {
+            positions: &m.positions,
+            normals: &m.normals,
+            indices: &m.indices,
+            origin: m.origin,
+            instance_meta: m.instance.as_ref(),
+            entity_id: m.express_id,
+            color: m.color,
+            item_id: m.geometry_item_id,
+        })
+        .collect();
+    let materialized = refs.len();
+    refs.push(InstanceMeshRef {
+        positions: &[],
+        normals: &[],
+        indices: &[],
+        origin: [0.0; 3],
+        instance_meta: Some(&placeholder_meta),
+        entity_id: 99,
+        color: [0.0; 4],
+        item_id: None,
+    });
+
+    let (shard, rejected, dropped) =
+        encode_shard_routing_refusals_back(&refs, materialized, [0.0; 3]);
+    assert_eq!(rejected, vec![materialized - 1], "the unplaceable member draws flat");
+    assert_eq!(dropped, 1, "its placeholder reaches neither side");
+
+    let shipped = ifc_lite_geometry::decode_instanced(&shard).expect("decodes").instances.len();
+    assert_eq!(
+        shipped, INSTANCE_MIN_OCCURRENCES as usize,
+        "only the shareable group rides the shard"
+    );
+    assert_eq!(
+        refs.len() - dropped - rejected.len(),
+        shipped,
+        "the reported occurrence count must equal the shard's instances"
+    );
+    // The arithmetic that omitted `dropped` overreports on exactly this fixture,
+    // which is what makes the subtraction load-bearing rather than defensive.
+    assert_ne!(refs.len() - rejected.len(), shipped);
+}

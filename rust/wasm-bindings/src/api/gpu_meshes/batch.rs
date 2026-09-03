@@ -926,11 +926,12 @@ impl IfcAPI {
             });
         }
         let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
-        let (shard, rejected) = encode_shard_routing_refusals_back(&refs, instanced.len(), rtc);
+        let (shard, rejected, dropped) =
+            encode_shard_routing_refusals_back(&refs, instanced.len(), rtc);
         drop(refs);
-        // A member handed back is one fewer shard instance and one more flat mesh.
-        let instanced_occurrences =
-            instanced_occurrences - take_back_rejected(instanced, &rejected, &mut mesh_collection);
+        // Handed back = drawn flat; DROPPED = drawn nowhere. Both leave the count.
+        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection);
+        let instanced_occurrences = instanced_occurrences - dropped - taken;
         mesh_collection.set_diagnostics(csg_diag);
         PartitionedBatch {
             meshes: Some(mesh_collection),

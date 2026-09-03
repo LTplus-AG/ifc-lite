@@ -400,7 +400,6 @@ test('regenerating the real allowlist reproduces it byte for byte', () => {
 test('the committed gate runs green against the real repo', () => {
   // With no flags: the real tree, the real allowlist.
   // If this is red, either a module grew or a new god file has no row.
-  // moving the pin.
   const res = spawnSync(process.execPath, [CHECKER], { encoding: 'utf8', cwd: ROOT });
   const out = `${res.stdout}${res.stderr}`;
   assert.equal(res.status, 0, out);
@@ -626,9 +625,11 @@ test('a scoped regenerate that leaves the gate red exits 1 and names the sweep',
 // scope count moved its line count after its row had been written. Removing the
 // pin removes the rewrite, so those cases can no longer be built -- they needed
 // a stand-in file with a pin block in it, and there is no pin to put in one.
-// `settleUpdate` is still wired in the checker and still covered directly by
-// scripts/lib/module-size-self-pin.test.mjs; the property those cases asserted
-// end-to-end -- what --update writes, the next plain run accepts, with nothing
-// done in between -- is asserted above by 'what --update writes is what the
-// gate then accepts' and by the scoped --update cases.
+// The settle step went with the pin (scripts/lib/module-size-self-pin.mjs is
+// deleted in the same change): with no self-rewrite there is no fixed point to
+// reach, and `--update` plans against a measurement the write cannot invalidate.
+// The property those cases asserted end-to-end -- what --update writes, the next
+// plain run accepts, with nothing done in between -- is asserted above by 'what
+// --update writes is what the gate then accepts' and by the scoped --update
+// cases.
 // ---------------------------------------------------------------------------

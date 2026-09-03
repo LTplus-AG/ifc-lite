@@ -46,6 +46,13 @@
  * #3712/#3735) and three separate branch conflicts in one evening. The two
  * teeth above are unchanged and still the only things that fail the gate; the
  * allowlist row diff is still visible in every PR, exactly as it was before.
+ * THE RUST TWIN STILL HAS ITS PIN (`ALLOWLIST_DIGESTS` in
+ * rust/processing/tests/module_size_ratchet.rs), so the two gates deliberately
+ * disagree for now: its table is 6 entries against 38 here and its allowlist is
+ * a fraction of the size, so it has not shown the contention #3745 measured on
+ * this side. Retiring it is a separate, deferred change, not an oversight in
+ * this one -- a reader landing in that header first should not conclude this
+ * one is stale.
  *
  * WIRED INTO CI in the node-tests job of .github/workflows/test.yml, next to
  * the other source-shape gates. The initial allowlist grandfathers 312 files
@@ -119,17 +126,19 @@
  * that shows up in the shell history and in the allowlist's own row diff.
  * `check-unused-locals.mjs --update` has no such safeguard.
  *
- * `--update` SETTLES ITS OWN ROW BEFORE WRITING IT (#3727, #3693,
- * `lib/module-size-self-pin.mjs`). This script is one of the measured files, so
- * a run that also rewrites it would otherwise record the pre-rewrite count,
- * report success and exit 0, and the next plain run would measure the real file
- * and fail. That is what the digest block used to do: it was one line per
+ * `--update` NO LONGER MEASURES A FILE IT ALSO WRITES, which is what #3727 and
+ * #3693 were about. The digest block lived in THIS file and was one line per
  * scope, so a sweep that added or removed a scope moved this file's length
- * AFTER its row had been written. With the pin gone (#3745, above) `--update`
- * writes nothing into this file, so `settleUpdate` finds no drift and settles on
- * its first pass. It stays wired because it is the general guard for a run that
- * rewrites a file it measured, and it is what keeps the post-write check
- * reading the tree the run PRODUCED rather than the one it started from.
+ * after its own row had been written: the run recorded the pre-rewrite count,
+ * reported success and exited 0, and the next plain run measured the real file
+ * and failed. `lib/module-size-self-pin.mjs` existed to settle that loop to a
+ * fixed point. Removing the pin (#3745, above) removes the loop instead: the
+ * only file `--update` writes is the allowlist, a `.txt` that `SOURCE_RE` never
+ * matches, so the measurement the run starts from IS the tree it leaves behind
+ * and the settle step had nothing left to settle. The self-pin module went with
+ * it. If anything here ever becomes self-rewriting again, that fixed point has
+ * to come back with it -- `git log scripts/lib/module-size-self-pin.mjs` is
+ * where it is.
  *
  * `--update` IS SCOPED to the files your change touched (#3398), derived from
  * `git diff` against the merge base with main plus anything untracked. It used
@@ -163,9 +172,9 @@ import {
   parseAllowlist,
   evaluate,
   staleRows,
+  planUpdate,
   renderAllowlist,
 } from './lib/module-size-ratchet.mjs';
-import { readSelfPin, settleUpdate } from './lib/module-size-self-pin.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS_DIR, '..');
@@ -422,20 +431,7 @@ if (args.update) {
   }
   console.log(scopeNote);
 
-  // This script IS one of the measured files, so if a run ever rewrites it the
-  // rows and its own size determine each other. Settle that before writing
-  // anything (lib/module-size-self-pin.mjs). Since #3745 removed the digest pin
-  // there is nothing here for a run to rewrite, so this settles on pass 1 and
-  // `settled.plan`/`settled.files` are the plain measurement -- which is what
-  // the post-write check below reads.
-  const self = readSelfPin(args.root);
-  let settled;
-  try {
-    settled = settleUpdate({ files, allowlist, changed, self });
-  } catch (err) {
-    fail(`${err.message}\n\nNothing was written.`);
-  }
-  const { next, raised, added, lowered, removed } = settled.plan;
+  const { next, raised, added, lowered, removed } = planUpdate(files, allowlist, changed);
 
   const loosening = [...raised, ...added];
   if (loosening.length > 0 && !args.allowRaise) {
@@ -480,11 +476,12 @@ if (args.update) {
   // docstring admitted this in prose and the code did not act on it, which is
   // the same shape as the header claim this whole issue is about.
   //
-  // `settled.files` carries the count of the exact text written above, so it IS
-  // the tree on disk and a second walk would re-derive the same answer. The
-  // measurement this run STARTED from would not: that is how the check could
-  // confirm a baseline the same run had broken (#3727).
-  const after = evaluate(settled.files, next);
+  // `files` is still the right measurement to check against: the one write above
+  // is the allowlist, whose `.txt` path `SOURCE_RE` never matches, so nothing in
+  // the measured population moved and a second walk would re-derive the same
+  // answer. That was NOT true while this file carried the digest pin, which is
+  // how the check could confirm a baseline the same run had broken (#3727).
+  const after = evaluate(files, next);
   if (after.newOffenders.length > 0 || after.grew.length > 0) {
     console.error(`
 check-module-size: the allowlist was rewritten, but the gate is STILL RED for

@@ -349,7 +349,7 @@
    957 scripts/check-issue-queue.mjs
    448 scripts/check-legacy-entity-coverage.mjs
   1145 scripts/check-loader-hook-specifier-match.mjs
-   557 scripts/check-module-size.mjs
+   554 scripts/check-module-size.mjs
    951 scripts/check-pr-review-signal.mjs
    771 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs

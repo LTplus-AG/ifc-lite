@@ -137,6 +137,12 @@ export function settleUpdate({ files, allowlist, changed, self, render = renderP
   throw new Error(
     `${SELF_REL} never settled: rewriting its digest block keeps changing its own line count ` +
       `(last ${drift}) after ${MAX_SETTLE_PASSES} passes, so any row written for it would already ` +
-      `be stale. This is a defect in the gate, not in your change.`,
+      `be stale. This is a defect in the gate, not in your change.\n\n` +
+      `REMEDY: the renderer that writes the digest block has to reach a fixed point — one line ` +
+      `per scope, so a scope count that changes the block's length must not in turn change the ` +
+      `scope count. Restore a renderer with that property (git history for ` +
+      `\`allowlistDigests\`/\`repin\` is the place to look), then re-run \`--update\`. Until then ` +
+      `the allowlist can still be edited by hand: the row for ${SELF_REL} must equal that file's ` +
+      `line count AFTER its digest block is written.`,
   );
 }

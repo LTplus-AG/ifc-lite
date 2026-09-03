@@ -338,35 +338,50 @@ pub fn collate_refs_verified_in(
                 template_index: t_idx,
                 occurrences,
             });
-        } else {
-            // A #1623 Phase 3 don't-bake placeholder (empty geometry) carries
-            // no geometry of its own — its only geometry was the template this
-            // group just failed to verify against, and `drawable` filters it
-            // back out here. Unlike a materialized member (which still draws
-            // flat on its own baked vertices), a failed placeholder has NO
-            // fallback: it is dropped from the export entirely, invisible,
-            // with nothing on the path erroring, warning, or logging — the
-            // exact silent-loss shape #3666 itself was, just for a different
-            // reason (an unverifiable group instead of an unverified one).
-            let dropped_placeholders =
-                members.iter().filter(|&&i| meshes[i].positions.is_empty()).count();
-            if dropped_placeholders > 0 {
-                crate::diag::diag_warn!(
-                    { rep_identity = rep, dropped_placeholders,
-                      "instancing: rep_identity group failed reconstruction verification; \
-                       dropping don't-bake placeholder occurrence(s) with no fallback geometry" }
-                    else {
-                        #[cfg(any(debug_assertions, test))]
-                        eprintln!(
-                            "[instancing] rep_identity {rep} failed verification: dropping \
-                             {dropped_placeholders} don't-bake placeholder occurrence(s) \
-                             (no fallback geometry)"
-                        );
-                    }
-                );
-            }
-            out.flat_indices.extend(drawable(members));
+            continue;
         }
+
+        // The group is not trustworthy, so no MATERIALIZED member is instanced —
+        // each draws itself, flat. But a #1623 Phase 3 don't-bake placeholder
+        // (empty geometry, placement only) has nothing of its own to draw: the
+        // template IS its geometry. Routing the whole group through `drawable`
+        // dropped those placeholders entirely — neither instanced nor drawn, the
+        // occurrence gone from the output with nothing reporting it.
+        //
+        // A placeholder is also not what failed: with no baked vertices it can
+        // never be verified in either direction, and the template is the only
+        // geometry it could ever be drawn with (before this check existed, that
+        // is exactly what it got). So keep the template and its placeholders
+        // instanced, and flatten only the members that can stand alone.
+        let pose_only: Vec<usize> = members
+            .iter()
+            .copied()
+            .filter(|&i| meshes[i].positions.is_empty())
+            .collect();
+        if pose_only.is_empty() {
+            out.flat_indices.extend(drawable(members));
+            continue;
+        }
+        // The template rides along as its own occurrence (identity `rel`, exactly
+        // as on the success path) rather than going flat, so its geometry is
+        // uploaded once and drawn once.
+        let kept: Vec<InstanceOccurrence> = std::iter::once(t_idx)
+            .chain(pose_only)
+            .map(|i| InstanceOccurrence {
+                mesh_index: i,
+                transform: mat4_to_row_major_f32(
+                    &(to_post_rtc(compose_world(meshes[i].instance_meta.unwrap()), rtc)
+                        * m_ref_inv),
+                ),
+            })
+            .collect();
+        out.templates.push(InstanceTemplate {
+            rep_identity: rep,
+            template_index: t_idx,
+            occurrences: kept,
+        });
+        out.flat_indices
+            .extend(drawable(members).into_iter().filter(|&i| i != t_idx));
     }
     out
 }

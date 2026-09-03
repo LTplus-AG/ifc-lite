@@ -32,7 +32,10 @@
 //! verifies it against that occurrence's own baked vertices before trusting
 //! the group, falling the WHOLE group back to the flat path on any failure
 //! (a mis-grouped occurrence means the template pairing is in doubt, not
-//! just the one member that happened to fail first).
+//! just the one member that happened to fail first). The one exception is a
+//! #1623 don't-bake placeholder: it has no geometry of its own, so flat is not
+//! a place it can go — it stays instanced against the template (with the
+//! template itself) rather than disappearing from the output entirely.
 //!
 //! ## Instanced wire format ("IFNS")
 //!

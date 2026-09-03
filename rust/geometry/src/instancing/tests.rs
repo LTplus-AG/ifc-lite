@@ -1735,3 +1735,82 @@ fn a_singular_verify_basis_rejects_instead_of_comparing_unconjugated() {
     );
     assert_eq!(rejected.flat_indices, vec![0, 1], "both members still drawn, flat");
 }
+
+#[test]
+fn a_failing_group_still_places_its_pose_only_placeholders() {
+    // #1623 Phase 3 don't-bake placeholders carry a placement and NO geometry:
+    // the shared template IS their geometry. When some OTHER member of their
+    // group failed the #3666 reconstruction check, the whole group went through
+    // `drawable(members)` — which filters empty meshes out — so those
+    // placeholders were neither instanced NOR drawn. The occurrence vanished
+    // from the output with nothing reporting it.
+    //
+    // A placeholder's own placement is not what failed (it has no baked vertices
+    // to disagree with, so it can never be verified either way), and the template
+    // is the only geometry it can ever be drawn with. Keep it instanced against
+    // the template; drop only the materialized members, which CAN draw flat.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let p2 = Matrix4::new_translation(&nalgebra::Vector3::new(-4.0, 0.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 7272,
+        instanceable: true,
+    };
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+    let template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    let colliding = mesh_from(baked(&CANON_COLLIDING, &p2), meta(&p2));
+    let placeholder_meta = meta(&p1);
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        InstanceMeshRef {
+            positions: &[],
+            normals: &[],
+            indices: &[],
+            origin: [0.0; 3],
+            instance_meta: Some(&placeholder_meta),
+            entity_id: 1,
+            color: [0.0; 4],
+            item_id: None,
+        },
+        InstanceMeshRef::from_mesh(&colliding),
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+
+    // The colliding materialized member is NOT instanced — it draws flat.
+    assert_eq!(collated.flat_indices, vec![2], "only the materialized collision falls flat");
+    // ...and the placeholder is still placed against the template.
+    assert_eq!(collated.templates.len(), 1, "the template survives for its placeholders");
+    let tmpl = &collated.templates[0];
+    assert_eq!(tmpl.template_index, 0);
+    let placed: Vec<usize> = tmpl.occurrences.iter().map(|o| o.mesh_index).collect();
+    assert_eq!(placed, vec![0, 1], "template + placeholder, not the collision");
+    // Every input occurrence is represented exactly once.
+    let mut seen: Vec<usize> = collated.flat_indices.clone();
+    seen.extend(placed);
+    seen.sort_unstable();
+    assert_eq!(seen, vec![0, 1, 2], "no occurrence silently disappears");
+
+    // The placeholder's transform must be the same `rel` the success path
+    // computes: it maps the template's baked world vertices onto p1's pose.
+    let rel = Matrix4::from_row_slice(&tmpl.occurrences[1].transform.map(|v| v as f64));
+    let expected = baked(&CANON, &p1);
+    for v in 0..CANON.len() / 3 {
+        let w = rel
+            * nalgebra::Vector4::new(
+                template.positions[v * 3] as f64,
+                template.positions[v * 3 + 1] as f64,
+                template.positions[v * 3 + 2] as f64,
+                1.0,
+            );
+        for (k, got) in [w.x / w.w, w.y / w.w, w.z / w.w].into_iter().enumerate() {
+            assert!(
+                (got - expected[v * 3 + k] as f64).abs() < 1e-6,
+                "placeholder occurrence {v} axis {k} placed at {got}"
+            );
+        }
+    }
+}

@@ -33,53 +33,65 @@ const RUNTIME_METHOD_DOCS: Record<string, string> = {
   on: 'Subscribe to an event, e.g. bim.on("selection:changed", handler)',
 };
 
+type MethodSignature = { paramNames?: string[]; tsReturn: string };
+
 /**
  * Parameter names and return types for `BimContext` / `QueryBuilder` methods,
  * transcribed from their own signatures in `packages/sdk/src/context.ts` and
  * `packages/sdk/src/namespaces/query.ts` (#3763 follow-up).
  *
+ * Keyed per class, not by bare method name: `BimContext` and `QueryBuilder`
+ * are reflected separately in `withRuntimeQueryShape`, and a future method
+ * that shares a name across both classes (their param/return shapes need not
+ * match) would otherwise read the wrong entry silently.
+ *
  * `describe()` used to spread the sandbox bridge's own `paramNames`/`tsReturn`
- * onto these methods. The bridge runs a whole query synchronously and returns
- * plain data (`bim.query.byType(...): BimEntity[]`, `entity(modelId, expressId)`),
+ * onto these methods, with the bridge as a fallback when a method had no
+ * entry here. The bridge runs a whole query synchronously and returns plain
+ * data (`bim.query.byType(...): BimEntity[]`, `entity(modelId, expressId)`),
  * which is not the shape the CLI's raw `BimContext`/`QueryBuilder` have
- * (`byType(...types): this`, `entity(ref: EntityRef)`) — copying it produced a
- * schema entry an agent could follow into a TypeError or a chain that stops
- * one link early.
+ * (`byType(...types): this`, `entity(ref: EntityRef)`) — falling back to it
+ * produced a schema entry an agent could follow into a TypeError or a chain
+ * that stops one link early. `describe()` now throws instead of falling back,
+ * so a new runtime method with no entry here fails the dump loudly (and
+ * `schema.runtime-shape.test.ts` with it) rather than shipping mislabelled.
  */
-const RUNTIME_METHOD_SIGNATURES: Record<string, { paramNames?: string[]; tsReturn: string }> = {
-  // BimContext
-  query: { tsReturn: 'QueryBuilder' },
-  matchingActiveFilter: { tsReturn: 'EntityData[] | null' },
-  entity: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
-  attributes: { paramNames: ['ref'], tsReturn: 'EntityAttributeData[]' },
-  properties: { paramNames: ['ref'], tsReturn: 'PropertySetData[]' },
-  quantities: { paramNames: ['ref'], tsReturn: 'QuantitySetData[]' },
-  classifications: { paramNames: ['ref'], tsReturn: 'ClassificationData[]' },
-  materials: { paramNames: ['ref'], tsReturn: 'MaterialData | null' },
-  typeProperties: { paramNames: ['ref'], tsReturn: 'TypePropertiesData | null' },
-  documents: { paramNames: ['ref'], tsReturn: 'DocumentData[]' },
-  relationships: { paramNames: ['ref'], tsReturn: 'EntityRelationshipsData' },
-  property: { paramNames: ['ref', 'psetName', 'propName'], tsReturn: 'string | number | boolean | null' },
-  quantity: { paramNames: ['ref', 'qsetNameOrQuantityName', 'quantityName?'], tsReturn: 'number | null' },
-  related: { paramNames: ['ref', 'relType', 'direction'], tsReturn: 'EntityData[]' },
-  containedIn: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
-  contains: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
-  decomposedBy: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
-  decomposes: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
-  storey: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
-  path: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
-  storeys: { tsReturn: 'EntityData[]' },
-  on: { paramNames: ['event', 'handler'], tsReturn: 'void' },
-  // QueryBuilder
-  model: { paramNames: ['modelId'], tsReturn: 'this' },
-  byType: { paramNames: ['...types'], tsReturn: 'this' },
-  where: { paramNames: ['psetName', 'propName', 'operator?', 'value?'], tsReturn: 'this' },
-  limit: { paramNames: ['n'], tsReturn: 'this' },
-  offset: { paramNames: ['n'], tsReturn: 'this' },
-  toArray: { tsReturn: 'EntityData[]' },
-  first: { tsReturn: 'EntityData | null' },
-  count: { tsReturn: 'number' },
-  refs: { tsReturn: 'EntityRef[]' },
+const RUNTIME_METHOD_SIGNATURES: { bim: Record<string, MethodSignature>; query: Record<string, MethodSignature> } = {
+  bim: {
+    query: { tsReturn: 'QueryBuilder' },
+    matchingActiveFilter: { tsReturn: 'EntityData[] | null' },
+    entity: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+    attributes: { paramNames: ['ref'], tsReturn: 'EntityAttributeData[]' },
+    properties: { paramNames: ['ref'], tsReturn: 'PropertySetData[]' },
+    quantities: { paramNames: ['ref'], tsReturn: 'QuantitySetData[]' },
+    classifications: { paramNames: ['ref'], tsReturn: 'ClassificationData[]' },
+    materials: { paramNames: ['ref'], tsReturn: 'MaterialData | null' },
+    typeProperties: { paramNames: ['ref'], tsReturn: 'TypePropertiesData | null' },
+    documents: { paramNames: ['ref'], tsReturn: 'DocumentData[]' },
+    relationships: { paramNames: ['ref'], tsReturn: 'EntityRelationshipsData' },
+    property: { paramNames: ['ref', 'psetName', 'propName'], tsReturn: 'string | number | boolean | null' },
+    quantity: { paramNames: ['ref', 'qsetNameOrQuantityName', 'quantityName?'], tsReturn: 'number | null' },
+    related: { paramNames: ['ref', 'relType', 'direction'], tsReturn: 'EntityData[]' },
+    containedIn: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+    contains: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
+    decomposedBy: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+    decomposes: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
+    storey: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+    path: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
+    storeys: { tsReturn: 'EntityData[]' },
+    on: { paramNames: ['event', 'handler'], tsReturn: 'void' },
+  },
+  query: {
+    model: { paramNames: ['modelId'], tsReturn: 'this' },
+    byType: { paramNames: ['...types'], tsReturn: 'this' },
+    where: { paramNames: ['psetName', 'propName', 'operator?', 'value?'], tsReturn: 'this' },
+    limit: { paramNames: ['n'], tsReturn: 'this' },
+    offset: { paramNames: ['n'], tsReturn: 'this' },
+    toArray: { tsReturn: 'EntityData[]' },
+    first: { tsReturn: 'EntityData | null' },
+    count: { tsReturn: 'number' },
+    refs: { tsReturn: 'EntityRef[]' },
+  },
 };
 
 /**
@@ -134,15 +146,26 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
     (bridgeQuery?.methods ?? []).map((m: any) => [m.name, m]),
   );
 
-  const describe = (name: string) => {
+  const describe = (proto: 'bim' | 'query') => (name: string) => {
     const fromBridge = bridgeMethods.get(name);
-    const signature = RUNTIME_METHOD_SIGNATURES[name];
+    const signature = RUNTIME_METHOD_SIGNATURES[proto][name];
+    if (!signature) {
+      // A method exists on the runtime prototype but nobody transcribed its
+      // signature into RUNTIME_METHOD_SIGNATURES — fail loudly rather than
+      // fall back to the bridge's (differently shaped) entry, so a new
+      // BimContext/QueryBuilder method cannot ship mislabelled (#3763 follow-up).
+      throw new Error(
+        `RUNTIME_METHOD_SIGNATURES.${proto} has no entry for '${name}' — add its ` +
+          `paramNames/tsReturn, transcribed from packages/sdk/src/context.ts or ` +
+          `packages/sdk/src/namespaces/query.ts.`,
+      );
+    }
     return {
-      ...(fromBridge ?? {}),
-      name,
       doc: RUNTIME_METHOD_DOCS[name] ?? fromBridge?.doc ?? name,
-      paramNames: signature?.paramNames,
-      tsReturn: signature?.tsReturn ?? fromBridge?.tsReturn,
+      name,
+      paramNames: signature.paramNames,
+      tsReturn: signature.tsReturn,
+      llmSemantics: fromBridge?.llmSemantics,
     };
   };
 
@@ -155,12 +178,12 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
     {
       name: 'bim',
       doc: 'Top-level methods on the `bim` object (call as bim.<method>(...))',
-      methods: prototypeMethods(BimContext.prototype, bimInstance).map(describe),
+      methods: prototypeMethods(BimContext.prototype, bimInstance).map(describe('bim')),
     },
     {
       name: 'query',
       doc: 'Query builder chain — start it with bim.query()',
-      methods: prototypeMethods(QueryBuilder.prototype).map(describe),
+      methods: prototypeMethods(QueryBuilder.prototype).map(describe('query')),
     },
     ...schemas.filter((ns) => ns?.name !== 'query'),
   ];

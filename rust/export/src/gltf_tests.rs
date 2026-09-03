@@ -2130,3 +2130,138 @@ fn the_streamed_mesh_plan_stays_small() {
         "the per-mesh plan grew; see the rep side table in plan_bounded_glb"
     );
 }
+
+/// Two occurrences of one representation on a GEOREFERENCED model, the second
+/// rotated 90 degrees about Z relative to the first.
+///
+/// `build_gltf` passes `rtc = [0,0,0]` to the collator, so the `rel` the #3666
+/// reconstruction check sees is PRE-RTC, while the baked positions it compares
+/// against are POST-RTC (and Y-up). The residual left by that mismatch is
+/// `(R_rel - I) * rtc` — zero for a translated-only sibling, but hundreds of
+/// kilometres for a rotated one at national-grid magnitude. A `verify_basis` of
+/// `S_YUP` alone does not account for it, so the check rejected every rotated
+/// group on a georeferenced model and the geometry fell back to flat (no
+/// instancing at all). The basis has to be `S_YUP · T(-rtc_zup)`, which is
+/// exactly the conjugation the shipped node matrix applies.
+#[test]
+fn a_georeferenced_rotated_sibling_still_instances() {
+    use ifc_lite_geometry::Vector3;
+
+    let rtc = [2_600_000.0f64, 1_200_000.0, 400.0];
+    // Canonical tetra in source coords (>= 3 vertices, so `view_ok` passes).
+    const CANON: [f64; 12] = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5];
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3];
+
+    // Two PRE-RTC world placements at georeferenced magnitude; B is rotated 90
+    // degrees about Z, which is what makes `(R_rel - I) * rtc` non-zero.
+    let place = |offset: [f64; 3], rot: f64| {
+        Matrix4::new_translation(&Vector3::new(
+            rtc[0] + offset[0],
+            rtc[1] + offset[1],
+            rtc[2] + offset[2],
+        )) * Matrix4::from_euler_angles(0.0, 0.0, rot)
+    };
+    let m_a = place([10.0, 5.0, 1.0], 0.0);
+    let m_b = place([-6.0, 4.0, 2.0], std::f64::consts::FRAC_PI_2);
+
+    let row_major = |m: &Matrix4<f64>| {
+        let mut out = [0.0f64; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                out[r * 4 + c] = m[(r, c)];
+            }
+        }
+        out
+    };
+    // Bake exactly like the pipeline: world = M * canon, minus the RTC offset,
+    // then Z-up -> Y-up (`(x, y, z) -> (x, z, -y)`, what `frame::to_yup_in_place`
+    // applies to every visible mesh BEFORE `build_gltf` sees it).
+    let bake_yup = |m: &Matrix4<f64>| {
+        let mut out = Vec::with_capacity(CANON.len());
+        for v in CANON.chunks_exact(3) {
+            let w = [
+                m[(0, 0)] * v[0] + m[(0, 1)] * v[1] + m[(0, 2)] * v[2] + m[(0, 3)],
+                m[(1, 0)] * v[0] + m[(1, 1)] * v[1] + m[(1, 2)] * v[2] + m[(1, 3)],
+                m[(2, 0)] * v[0] + m[(2, 1)] * v[1] + m[(2, 2)] * v[2] + m[(2, 3)],
+            ];
+            let (x, y, z) = (w[0] - rtc[0], w[1] - rtc[1], w[2] - rtc[2]);
+            out.push(x as f32);
+            out.push(z as f32);
+            out.push(-y as f32);
+        }
+        out
+    };
+    let pos_a = bake_yup(&m_a);
+    let pos_b = bake_yup(&m_b);
+    let normals = vec![0.0f32; CANON.len()];
+
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: row_major(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 90_909,
+        instanceable: true,
+    };
+    let (meta_a, meta_b) = (meta(&m_a), meta(&m_b));
+    fn view<'a>(
+        id: u32,
+        positions: &'a [f32],
+        normals: &'a [f32],
+        indices: &'a [u32],
+        im: &'a InstanceMeta,
+    ) -> MeshView<'a> {
+        MeshView {
+            express_id: id,
+            ifc_type: "IfcWall",
+            global_id: None,
+            positions,
+            normals,
+            indices,
+            color: [0.5, 0.5, 0.5, 1.0],
+            origin: [0.0, 0.0, 0.0],
+            instance: Some(im),
+        }
+    }
+    let views = vec![
+        view(1, &pos_a, &normals, &indices, &meta_a),
+        view(2, &pos_b, &normals, &indices, &meta_b),
+    ];
+
+    let mut ch = Chunker::new(12, usize::MAX, None);
+    let (gltf, _stats) =
+        build_gltf(&views, false, None, true, false, rtc, None, false, &mut ch);
+
+    assert_eq!(
+        gltf.meshes.len(),
+        1,
+        "a rotated sibling on a georeferenced model must still share ONE template mesh"
+    );
+    let placed: Vec<[f32; 16]> = gltf.nodes.iter().filter_map(|n| n.matrix).collect();
+    assert_eq!(placed.len(), 2, "both occurrences placed by a node matrix");
+
+    // Placement check that does not need `scene_center`: the DIFFERENCE between
+    // the two occurrence nodes applied to the shared template geometry must equal
+    // the difference between the two occurrences' own baked Y-up vertices.
+    let apply = |m: &[f32; 16], p: [f64; 3]| {
+        // glTF node matrices are column-major.
+        [
+            m[0] as f64 * p[0] + m[4] as f64 * p[1] + m[8] as f64 * p[2] + m[12] as f64,
+            m[1] as f64 * p[0] + m[5] as f64 * p[1] + m[9] as f64 * p[2] + m[13] as f64,
+            m[2] as f64 * p[0] + m[6] as f64 * p[1] + m[10] as f64 * p[2] + m[14] as f64,
+        ]
+    };
+    for v in 0..pos_a.len() / 3 {
+        let p = [pos_a[v * 3] as f64, pos_a[v * 3 + 1] as f64, pos_a[v * 3 + 2] as f64];
+        let d0 = apply(&placed[0], p);
+        let d1 = apply(&placed[1], p);
+        for k in 0..3 {
+            let expected = (pos_b[v * 3 + k] - pos_a[v * 3 + k]) as f64;
+            let got = d1[k] - d0[k];
+            assert!(
+                (got - expected).abs() < 1e-3,
+                "occurrence node placement off by {} on axis {k}",
+                got - expected
+            );
+        }
+    }
+}

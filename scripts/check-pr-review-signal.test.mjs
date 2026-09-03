@@ -490,6 +490,36 @@ test('the gate workflow carries NO `paths:` filter, so its own config cannot dod
   assert.match(own, /types:\s*\[[^\]]*edited/, 'it must fire on `edited`, which is the retarget event');
 });
 
+test('test.yml fires on `edited` too, so a retargeted PR gets the lanes this gate requires', () => {
+  // #3772. This gate DERIVES its required lane set from test.yml, so a lane
+  // this file can require but that workflow cannot be triggered to produce is a
+  // permanently-absent check, not a failing one -- #3695/#3699/#3701 sat that
+  // way after being retargeted onto `main`, because `branches: [main]` dropped
+  // the pre-retarget `synchronize` and `edited` (the retarget event) was not a
+  // triggering type. Pinned here rather than left to review: the omission is
+  // invisible in the workflow file, which reads as complete without it.
+  const testYml = readFileSync(TEST_YML, 'utf8');
+  const on = /\non:\n([\s\S]*?)\n\S/.exec(testYml)?.[1] ?? '';
+  const types = /^\s{4}types:\s*\[([^\]]*)\]/m.exec(on);
+  assert.ok(types, 'test.yml must declare explicit `pull_request` activity types');
+  const declared = types[1].split(',').map((t) => t.trim());
+  for (const t of ['opened', 'synchronize', 'reopened', 'edited']) {
+    assert.ok(declared.includes(t), `test.yml must fire on \`${t}\`; declared: ${declared.join(', ')}`);
+  }
+  // The skip-gate that was NOT taken, pinned so it cannot be added back as an
+  // "optimization": `skipped` is a PASS in the aggregate at the foot of
+  // test.yml and in GitHub's required-check evaluation, so skipping the jobs on
+  // a non-retarget `edited` would let a description edit turn a red PR green.
+  const code = testYml
+    .split('\n')
+    .filter((l) => !/^\s*#/.test(l))
+    .join('\n');
+  assert.ok(
+    !/github\.event\.changes\.base/.test(code),
+    'no job may gate on `github.event.changes.base`: the skipped run would report as a pass',
+  );
+});
+
 
 // ------------------------------------------------------------- severity knob
 

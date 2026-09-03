@@ -5,7 +5,35 @@
 name: Test
 
 on:
+  # `edited` IS THE RETARGET EVENT, and without it a PR moved onto `main` gets
+  # NO lanes at all (#3772). The default activity types are
+  # opened/synchronize/reopened; changing a PR's base fires `edited` and nothing
+  # else. Measured on #3695/#3699/#3701: each merged `main` into its branch
+  # while still based on a feature branch -- that `synchronize` was dropped by
+  # `branches: [main]` below -- and was then retargeted, which fired only
+  # `edited`. #3699 had ZERO `Test` runs in its life. All 16 required lanes sat
+  # absent, which reads identically to "passed" on the PR surface.
+  #
+  # NO `github.event.changes.base` GATE, and that omission is the considered
+  # half of this fix rather than the lazy one. Gating the jobs so a title/body
+  # edit skips them would make every such edit publish a full set of SKIPPED
+  # check runs -- and `skipped` counts as a pass BOTH in the `test` aggregate at
+  # the foot of this file (`case "$r" in success|skipped) ;;`) and in GitHub's
+  # required-status-check evaluation, which takes the LATEST run per check name.
+  # A red PR would go green on a typo fix in its description. That is the exact
+  # absence-reads-as-success class this trigger is being widened to close.
+  #
+  # THE PRICE, STATED: every title or body edit now costs a second full 16-lane
+  # run of a head that already has a verdict -- routine on the changesets
+  # release PR, which rewrites its body after every merge. What it does NOT
+  # cost is the run already in flight; see `cancel-in-progress` below, which
+  # declines to cancel for `edited` alone.
+  #
+  # NO `ready_for_review` EITHER, and for the plainer reason: nothing in this
+  # workflow gates on `draft`, so every job already runs on a draft PR. Adding
+  # the type would buy a second run of a head that has already been judged.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     branches: [main]
   # Post-merge guard. Two PRs can each be green against their own base and be
   # broken as a pair on main: #2551 removed a helper from
@@ -27,8 +55,21 @@ concurrency:
   # run for a frontend-breaking second merge, and its path filters would then
   # skip the Node lane — leaving exactly the broken state this guard exists to
   # catch unchecked. A per-commit group means no merge can displace another.
+  #
+  # AN `edited` RUN NEVER CANCELS (#3772). With `edited` now a trigger and the
+  # PR group keyed on the ref, an unconditional `cancel-in-progress` would let a
+  # description edit kill a 16-lane run mid-flight and start it again from
+  # scratch -- and the changesets release PR rewrites its own body after every
+  # merge to main, so this is routine, not hypothetical. The group stays keyed
+  # on the REF rather than on `head.sha`, which is the other way to stop the
+  # cancellation: a per-SHA group would put a superseded run in its own group
+  # where nothing can reach it, so a stale-head run would survive the
+  # `synchronize` that obsoleted it and publish its verdict afterwards. Keeping
+  # the ref group means a real push still cancels; only the no-op event
+  # declines to. The `edited` run itself queues behind the in-flight one and is
+  # evicted if a push arrives first, which is the right outcome.
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pull_request' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'edited' }}
 
 permissions:
   contents: read

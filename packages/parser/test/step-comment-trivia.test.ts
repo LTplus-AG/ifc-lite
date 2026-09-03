@@ -130,8 +130,19 @@ describe.each(scanners)('$name: a comment is trivia inside a record too', ({ run
 
     // Composition, direction one: a comment opener inside a string literal is
     // ordinary text. Skipping the literal first is what keeps it that way.
+    //
+    // The fixture deliberately carries an *unterminated* `/*` opener with no
+    // closing `*/` anywhere in the record: `'rev /* pending note'` never closes the
+    // comment it would open under the wrong precedence. A scanner that checked
+    // for a comment opener before finishing the string literal would treat the
+    // record as carrying an unterminated comment and refuse it (the same
+    // "no record" answer the unterminated-comment case above gives), so this
+    // fixture fails loudly under the wrong precedence instead of happening to
+    // still parse. A record that closes its `/*` before the string's closing
+    // quote (e.g. `'rev /* pending */ note'`) would parse under either
+    // precedence and so would not tell the two apart.
     it('treats a comment opener inside a string literal as literal text', () => {
-        const record = "#4=IFCWALL('rev /* pending */ note',$);";
+        const record = "#4=IFCWALL('rev /* pending note',$);";
         expect(run(file(record))).toEqual([
             { expressId: 4, type: 'IFCWALL', text: spanOf(record, closer) },
         ]);
@@ -168,6 +179,18 @@ describe.each(scanners)('$name: a comment is trivia inside a record too', ({ run
     it('still ignores a record that is entirely inside a comment', () => {
         const records = run(file("/* #9=IFCWALL('x',$); */", "#10=IFCSLAB('b',$);"));
         expect(records.map((r) => r.expressId)).toEqual([10]);
+    });
+
+    // An unterminated comment leaves the record with no terminator, so the
+    // record is refused and the scan ends -- the same answer Rust's
+    // EntityScanner gives on the same input (scanner_tests.rs,
+    // unterminated_comment_inside_a_record_ends_the_scan). Inventing an end
+    // (e.g. treating end-of-buffer as a silent close) would let the scan carry
+    // on past a truncated record and either yield a wrong span for it or
+    // resynchronize on whatever bytes happen to follow.
+    it('an unterminated comment inside a record ends the scan', () => {
+        const records = run(file("#20=IFCWALL('a', /* never closes $);"));
+        expect(records).toEqual([]);
     });
 
     it('parses a comment-free file identically', () => {

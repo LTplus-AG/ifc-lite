@@ -371,6 +371,20 @@ fn has_non_null_attribute_dollar_inside_a_comment_is_comment_text() {
     assert!(scanner.has_non_null_attribute(0, content.len(), 0));
 }
 
+/// Discriminating sibling of the fixture above (#3734): the real attribute 0
+/// here IS `$`, so a scanner that failed to skip the comment and read its
+/// literal `$` as the attribute value would answer `true`. Both fixtures
+/// exercise a comment ahead of attribute 0 with a `$` inside it, but only
+/// this one is false if the comment is not skipped, so the pair together
+/// catches both a scanner that ignores comments and one that reads their
+/// content.
+#[test]
+fn has_non_null_attribute_dollar_inside_a_comment_before_a_real_null_attribute() {
+    let content = "#1=IFCWALL(/* was $ */ $);";
+    let scanner = EntityScanner::new(content);
+    assert!(!scanner.has_non_null_attribute(0, content.len(), 0));
+}
+
 #[test]
 fn has_non_null_attribute_comment_free_records_unchanged() {
     let content = "#1=IFCWALL('a',$,5);";

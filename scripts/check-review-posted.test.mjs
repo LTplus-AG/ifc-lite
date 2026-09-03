@@ -116,6 +116,59 @@ test('a marker carrying `omitted=N` parses, passes, and NAMES the partial (#3679
   assert.match(r.out, /NOT reviewed/);
 });
 
+test('a PARTIAL head reports covered=false, so the stand-down cannot cover the omitted files', () => {
+  // The gate prints "N file(s) ... NOT reviewed" and then hands the workflow a
+  // `covered` value that grants `llm-reviewed` and stands CodeRabbit down. With
+  // `covered=true` here the omitted files would get no model review AND no
+  // CodeRabbit review, on the very head the gate just said nothing vouches for.
+  // Same reasoning that already sets covered=false for `nothing-to-review`.
+  // Raised by CodeRabbit on PR #3688.
+  const outPath = join(TMP, `ghout-partial-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-partial-${seq}.json`);
+  writeFileSync(outPath, '');
+  writeFileSync(
+    payloadPath,
+    JSON.stringify({
+      headRepo: SAME_REPO,
+      ...comments([REVIEWER, `Partial.\n<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=3 -->`]),
+    }),
+  );
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
+  );
+  // NOT a red: a degraded review is an uncovered head, not a failing lane.
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  assert.match(readFileSync(outPath, 'utf8'), /covered=false/, 'nothing read the omitted files');
+  assert.match(`${r.stdout}${r.stderr}`, /COVERED=FALSE/);
+  // The partial class names a remedy, and the remedy does not contradict it.
+  assert.match(`${r.stdout}${r.stderr}`, /REMEDY: split the PR/);
+});
+
+test('the anti-vacuity pair: the SAME marker without `omitted` reports covered=true', () => {
+  // Without this, the test above would pass just as well if `covered` were false
+  // for every clean verdict -- i.e. with the stand-down mechanism entirely dead.
+  const outPath = join(TMP, `ghout-partial-ctl-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-partial-ctl-${seq}.json`);
+  writeFileSync(outPath, '');
+  writeFileSync(
+    payloadPath,
+    JSON.stringify({
+      headRepo: SAME_REPO,
+      ...comments([REVIEWER, `Full.\n<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=0 -->`]),
+    }),
+  );
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
+  );
+  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+  assert.match(readFileSync(outPath, 'utf8'), /covered=true/);
+  assert.doesNotMatch(`${r.stdout}${r.stderr}`, /PARTIAL:/);
+});
+
 test('a marker WITHOUT `omitted` prints no partial line', () => {
   // The partial note must fire only when the marker claims an omission; on
   // every full review it would be noise that trains readers to ignore it.

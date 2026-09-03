@@ -341,8 +341,10 @@ export function normaliseComments(payload) {
  * @returns {{ ok: boolean, covered: boolean, verdict: string, lines: string[] }}
  *   `ok` is "should this check go red"; `covered` is "has this head been
  *   REVIEWED", which is what the workflow turns into the `llm-reviewed` label
- *   and what CodeRabbit reads to stand down. They differ on exactly one verdict:
- *   `nothing-to-review` is ok and NOT covered, because nothing read the diff.
+ *   and what CodeRabbit reads to stand down. They differ on two shapes, both ok
+ *   and both NOT covered: `nothing-to-review`, because nothing read the diff at
+ *   all, and any marker carrying `omitted>0` (#3679), because nothing read the
+ *   omitted files.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -482,6 +484,9 @@ export function evaluate({ comments, cfg, headSha }) {
       `   ⚠️ PARTIAL: ${match.omitted} changed file(s) were too large to fit the model prompt and were ` +
         'NOT reviewed (#3679). The review comment names them; the verdict above covers only the files ' +
         'that were sent.',
+      '   COVERED=FALSE, therefore: nothing vouches for the omitted files, so CodeRabbit must NOT',
+      '   stand down on this head either.',
+      '   REMEDY: split the PR so every changed file fits the prompt, or review the named files by hand.',
     );
   }
   // `ok` AND `covered` ARE DIFFERENT QUESTIONS, and conflating them was a hole.
@@ -490,7 +495,19 @@ export function evaluate({ comments, cfg, headSha }) {
   // what `.coderabbit.yaml` reads to stand down. A `nothing-to-review` head has
   // NOT been reviewed -- the model never ran -- so standing CodeRabbit down on it
   // would leave the PR reviewed by NOBODY. Raised by CodeRabbit on PR #3587.
-  return { ok: true, covered: match.verdict !== 'nothing-to-review', verdict: 'REVIEW_POSTED', lines };
+  //
+  // A PARTIAL head (#3679) fails the same question for the same reason. The
+  // degraded lane reviewed the files that fit and said so; the omitted ones were
+  // read by nothing. Granting `llm-reviewed` there would stand CodeRabbit down on
+  // exactly the files this gate has just announced nobody vouches for -- the gate
+  // contradicting itself in the same breath. `ok` stays true: a degraded review is
+  // not a red, it is an uncovered head. Raised by CodeRabbit on PR #3688.
+  return {
+    ok: true,
+    covered: match.verdict !== 'nothing-to-review' && match.omitted === 0,
+    verdict: 'REVIEW_POSTED',
+    lines,
+  };
 }
 
 /**

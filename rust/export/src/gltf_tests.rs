@@ -2374,3 +2374,32 @@ fn a_mixed_group_instances_its_exact_members_and_flattens_the_rigid_one() {
         "all three occurrences are still drawn"
     );
 }
+
+/// The #3666 gap between the two GLB assemblers is reported at the seam, not
+/// only in a comment inside the bounded one.
+///
+/// The in-memory path verifies every exact-tier pairing by reconstruction, so a
+/// `rep_identity` collision falls back to flat. The bounded path holds a plan
+/// and no geometry, so it cannot run that check and ships every group it shares
+/// on the vertex/index-count guard alone - which a same-shaped colliding pair
+/// passes. A caller choosing between the two paths can now read that off
+/// `GltfStats` instead of the source.
+#[test]
+fn the_bounded_path_reports_the_groups_it_could_not_verify() {
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
+    let opts = GltfOptions::default();
+    let (_, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
+    // Guard the skip above: a fixture-less run must not report this as a pass.
+    assert!(mem_stats.meshes > 0, "fixture produced no geometry");
+    let (_, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+    assert_eq!(
+        mem_stats.unverified_instance_groups, 0,
+        "the in-memory path verifies every group it instances"
+    );
+    assert!(
+        stream_stats.unverified_instance_groups > 0,
+        "duplex has shared rep groups, and the bounded path instances them unverified"
+    );
+    // 79 groups on duplex at the time of writing; the assertion is on the
+    // direction, not the number, which moves with the model and the collator.
+}

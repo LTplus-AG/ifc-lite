@@ -193,6 +193,20 @@ pub struct GltfStats {
     pub vertices: usize,
     pub triangles: usize,
     pub materials: usize,
+    /// Rep-identity groups that were instanced WITHOUT the #3666 reconstruction
+    /// check: the shared template's geometry is substituted at each occurrence's
+    /// pose on the strength of the identity hash alone, which a merged
+    /// multi-model file has been measured to collide (the occurrence still
+    /// renders, up to 2m from where it belongs).
+    ///
+    /// Always 0 from the in-memory assembler, which verifies every exact-tier
+    /// pairing. Non-zero only from [`export_glb_streaming_bounded`], which holds
+    /// a PLAN and not geometry (`retain_emitted_meshes: false` is the whole
+    /// reason it bounds memory), so it has no occurrence vertices to compare and
+    /// cannot run the check as written. That gap was a comment inside the
+    /// bounded assembler and invisible to its callers; this is it at the seam,
+    /// where a caller choosing between the two paths can read it.
+    pub unverified_instance_groups: usize,
 }
 
 // ── glTF 2.0 JSON schema (subset) ──────────────────────────────────────────
@@ -1127,7 +1141,7 @@ fn build_gltf(
     let mut nodes: Vec<Node> = Vec::new();
     let mut element_node_indices: Vec<u32> = Vec::new();
 
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
 
     // ── Pass 1.5: collate by representation identity ────────────────────────────
     // Group occurrences that share a representation (IfcMappedItem / repeated
@@ -1773,7 +1787,7 @@ fn export_gltf_streaming_impl(
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
     let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, chunk_cap, Some(&mut adapt));
 
@@ -2025,6 +2039,15 @@ pub struct GlbSizeProjection {
 ///   cannot fold into a rotating placement without breaking `Matrix4.decompose`.
 /// - content-hash dedup is kept (the hash is computed batch-locally on pass 1).
 /// - the model is meshed twice (the price of bounded memory).
+/// - **the #3666 reconstruction check does not run here.** The in-memory
+///   assembler reconstructs each exact-tier occurrence from its template and
+///   relative transform and compares it against that occurrence's own baked
+///   vertices, so a `rep_identity` COLLISION between unrelated geometry falls
+///   back to flat. This path holds a plan, not geometry, so it has no
+///   occurrence vertices to compare; its guard remains vertex/index counts,
+///   which a same-shaped colliding pair passes. The returned
+///   [`GltfStats::unverified_instance_groups`] counts the groups shipped on
+///   that weaker guard (always 0 from the in-memory path).
 ///
 /// Supports both the f32 and the `KHR_mesh_quantization` layouts; the quantized
 /// accessor min/max come from the local bbox in closed form (the quantize map is
@@ -2441,10 +2464,13 @@ fn plan_bounded_glb(
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
     // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
     // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
     // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
+    // Every group this path instances is instanced unverified; see the field's
+    // docs and the KNOWN GAP note above `refused`.
+    stats.unverified_instance_groups = rep_groups.len();
     let mut shared_cache: FxHashMap<u128, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
     let quantize = opts.quantize;

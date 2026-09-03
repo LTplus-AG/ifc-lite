@@ -48,6 +48,10 @@
  *
  *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->
  *
+ *     An optional trailing ` omitted=<n>` (present only when n > 0) records how
+ *     many changed files were too large to fit the model prompt and were NOT
+ *     reviewed (#3679). The verdict then covers only the files that were.
+ *
  * THE CONTRACT THIS IMPLIES, and it is the load-bearing half: THE REVIEWER MUST
  * POST ON EVERY RUN, INCLUDING WHEN IT FINDS NOTHING. A reviewer that stays
  * silent when clean makes "reviewed and found nothing" byte-identical to "never
@@ -141,7 +145,7 @@ const PER_PAGE = 100;
  * both ends and tolerant of surrounding whitespace only -- a loose pattern here
  * would let a contributor hand-write a passing marker into a PR comment.
  */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)\s*-->/;
+export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)(?:\s+omitted=(\d+))?\s*-->/;
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -334,11 +338,25 @@ export function normaliseComments(payload) {
  * The verdict. `ok` is true only when an expected author posted a well-formed
  * marker naming exactly `headSha`.
  *
- * @returns {{ ok: boolean, covered: boolean, verdict: string, lines: string[] }}
- *   `ok` is "should this check go red"; `covered` is "has this head been
- *   REVIEWED", which is what the workflow turns into the `llm-reviewed` label
- *   and what CodeRabbit reads to stand down. They differ on exactly one verdict:
- *   `nothing-to-review` is ok and NOT covered, because nothing read the diff.
+ * @returns {{ ok: boolean, full: boolean, verdict: string, lines: string[] }}
+ *   TWO QUESTIONS, and each has exactly one consumer.
+ *
+ *   `ok` is "should this check go red" -- the exit code, modulated by `mode`.
+ *   `main()` also writes it out as the `covered=` step output claude-review.yml
+ *   dedups on (`steps.dedup.outputs.covered`, which gates every later step in
+ *   that job): a verdict this function reaches at all -- red or green -- means a
+ *   marker naming this head exists and the lane has run, so `covered` is `ok`
+ *   itself, not a field this function needs to compute separately. There USED
+ *   TO be a third, `covered`, returned alongside `ok` and always equal to it at
+ *   every one of this function's five return sites -- one field asserting what
+ *   the other already said.
+ *
+ *   `full` is "was the WHOLE diff reviewed", and it is the stand-down decision:
+ *   review-posted.yml turns it into the `llm-reviewed` label, which is what
+ *   .coderabbit.yaml reads to stay off the PR. It is false on two shapes that
+ *   are nonetheless `ok`: `nothing-to-review`, because nothing read the diff at
+ *   all, and any marker carrying `omitted>0` (#3679), because nothing read the
+ *   omitted files.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -360,14 +378,14 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low ' +
         '`num_turns` and attach it to the upstream issue rather than re-running indefinitely.',
     );
-    return { ok: false, covered: false, verdict: 'NOT_POSTED', lines };
+    return { ok: false, full: false, verdict: 'NOT_POSTED', lines };
   }
 
   const markers = [];
   let sawUnparseable = false;
   for (const c of mine) {
     const m = MARKER_RE.exec(c.body);
-    if (m) markers.push({ sha: m[1], verdict: m[2], count: Number(m[3]) });
+    if (m) markers.push({ sha: m[1], verdict: m[2], count: Number(m[3]), omitted: m[4] ? Number(m[4]) : 0 });
     // Only an ATTEMPTED marker counts as malformed: an HTML comment carrying the
     // token but not parsing. A prose mention of the token is not a broken marker
     // writer, and the two have different remedies -- "fix the writer" versus
@@ -386,10 +404,11 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: ' +
         (sawUnparseable
           ? 'fix the reviewer\'s marker writer; the expected form is ' +
-            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->`.'
+            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n>' +
+            '[ omitted=<n>] -->`.'
           : 're-run the review job.'),
     );
-    return { ok: false, covered: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
+    return { ok: false, full: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
   }
 
   const match = markers.find((m) => m.sha === headSha);
@@ -404,7 +423,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   timestamp: this gate reads no timestamp at all, so it does not claim one.)',
       '   REMEDY: re-run the review job against the current head.',
     );
-    return { ok: false, covered: false, verdict: 'STALE_REVIEW', lines };
+    return { ok: false, full: false, verdict: 'STALE_REVIEW', lines };
   }
 
   // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
@@ -450,32 +469,62 @@ export function evaluate({ comments, cfg, headSha }) {
         '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; ' +
           'attach it to claude-code-action#1679 rather than re-running indefinitely.',
       );
-      return { ok: false, covered: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
+      return { ok: false, full: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
     }
   }
 
   lines.push(
     match.verdict === 'nothing-to-review'
       ? `✅ REVIEW_POSTED: the reviewer reached ${headSha.slice(0, 9)} and reported NOTHING TO REVIEW — ` +
-        'every changed path is excluded (lockfiles, generated code, snapshots, fixtures, build output). ' +
-        'That is a decision the lane made and POSTED, not a statement that the diff was read and is fine. ' +
-        'The distinction is the point: a `clean` marker here would certify these PRs as reviewed, and an ' +
-        'exclusion-list bug would then do it silently for every PR it swallowed.'
+        'the comment itself says why (every changed path excluded, or no part of the diff fitting the ' +
+        'model prompt). That is a decision the lane made and POSTED, not a statement that the diff was ' +
+        'read and is fine. The distinction is the point: a `clean` marker here would certify these PRs ' +
+        'as reviewed, and an exclusion-list bug would then do it silently for every PR it swallowed.'
       : `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
         `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
     match.verdict === 'nothing-to-review'
-      ? '   COVERED=FALSE, though: nobody read this diff, so CodeRabbit must NOT stand down on it.'
+      ? '   FULL=FALSE, though: nobody read this diff, so CodeRabbit must NOT stand down on it.'
       : '   This proves a review REACHED the pull request for this exact commit.',
     '   It proves nothing about whether the review was any good; precision is a separate',
     '   instrument.',
   );
-  // `ok` AND `covered` ARE DIFFERENT QUESTIONS, and conflating them was a hole.
-  // `ok` is "should this check go red"; `covered` is "has this head been REVIEWED",
-  // which is what `review-posted.yml` turns into the `llm-reviewed` label and
-  // what `.coderabbit.yaml` reads to stand down. A `nothing-to-review` head has
-  // NOT been reviewed -- the model never ran -- so standing CodeRabbit down on it
-  // would leave the PR reviewed by NOBODY. Raised by CodeRabbit on PR #3587.
-  return { ok: true, covered: match.verdict !== 'nothing-to-review', verdict: 'REVIEW_POSTED', lines };
+  // ABSENCE STAYS VISIBLE AT THIS SURFACE TOO. The marker's `omitted` count is
+  // how a degraded review (#3679) says which part of the diff nothing vouches
+  // for; swallowing it here would let a partial review read as a full one.
+  if (match.omitted > 0) {
+    lines.push(
+      `   ⚠️ PARTIAL: ${match.omitted} changed file(s) were NOT shown to the reviewer -- too large to ` +
+        'fit the model prompt, or too large for GitHub to return a patch for (#3679). The review comment ' +
+        'names them; the verdict above covers only the files that were sent.',
+      '   FULL=FALSE, therefore: nothing vouches for the omitted files, so CodeRabbit must NOT stand',
+      '   down on this head. COVERED stays true, so re-triggering the lane will NOT re-review the',
+      '   files that were sent and post their findings twice.',
+      '   REMEDY: split the PR so every changed file fits the prompt, or review the named files by hand.',
+    );
+  }
+  // A marker naming this head EXISTS, so `ok` is true here whatever the verdict
+  // says: the lane has run and, via `main()`'s `covered=${ok}`, must not run
+  // again on the same SHA.
+  //
+  // `full` is the other question. A `nothing-to-review` head was never READ --
+  // the model never ran -- so standing CodeRabbit down on it would leave the PR
+  // reviewed by NOBODY (raised by CodeRabbit on PR #3587). A PARTIAL head
+  // (#3679) fails it for the same reason on the omitted slice: granting
+  // `llm-reviewed` would stand CodeRabbit down on exactly the files this gate
+  // has just announced nobody vouches for, the gate contradicting itself in the
+  // same breath. Raised by CodeRabbit on PR #3688.
+  //
+  // BOTH STAY `ok`, and that is the correction to the first attempt at this.
+  // Making a partial head's dedup key false fixed the stand-down and broke the
+  // dedup: claude-review.yml gates its whole job on that output, so every
+  // re-trigger of a partial head would re-run the model over the files that DID
+  // fit and post their inline comments again.
+  return {
+    ok: true,
+    full: match.verdict !== 'nothing-to-review' && match.omitted === 0,
+    verdict: 'REVIEW_POSTED',
+    lines,
+  };
 }
 
 /**
@@ -696,7 +745,7 @@ function main() {
   if (waited > 0) console.log(`Waited ${waited}s for a verdict to appear.`);
   console.log('');
 
-  const { ok, covered, lines } = result;
+  const { ok, full, lines } = result;
 
   // THE EXEMPTION IS RESOLVED BEFORE THE VERDICT IS PRINTED, so a remedy that
   // cannot work is never shown. The failing verdicts end in
@@ -720,13 +769,25 @@ function main() {
     console.log(l);
   }
 
-  // `covered` is the VERDICT, independent of the exit code, and the two differ on
-  // purpose in advisory mode: there, a failing verdict still exits 0, and a caller
-  // that inferred coverage from the exit code would mark an unreviewed PR as
-  // covered. Anything downstream that acts on "was this reviewed" -- the
-  // CodeRabbit stand-down label, above all -- must read THIS, never `$?`.
+  // BOTH ARE VERDICTS, independent of the exit code, and that independence is
+  // the point: in advisory mode a failing verdict still exits 0, so a caller
+  // inferring either value from `$?` would treat an unreviewed PR as reviewed.
+  // Anything downstream must read THESE, never the exit code.
+  //
+  // `covered` is claude-review.yml's dedup key: true means "a verdict exists for
+  // this head, do not run the model again" -- which is exactly what `ok` means
+  // by the time this function reaches a verdict at all, so it is written
+  // straight from `ok` rather than carried as its own field on `result` (it
+  // used to be, always equal to `ok` at every one of `evaluate`'s five return
+  // sites). `full` is review-posted.yml's stand-down key: true means "the whole
+  // diff was reviewed, CodeRabbit may stay off". They are written as two lines
+  // because they are two questions; a single value answering both got one of
+  // them wrong in each direction (#3679, #3688).
   if (process.env.GITHUB_OUTPUT) {
-    appendFileSync(process.env.GITHUB_OUTPUT, `covered=${covered ? 'true' : 'false'}\n`);
+    appendFileSync(
+      process.env.GITHUB_OUTPUT,
+      `covered=${ok ? 'true' : 'false'}\nfull=${full ? 'true' : 'false'}\n`,
+    );
   }
 
   // FORK PRs ARE NEVER ENFORCED, in either mode, and the reason is the same one
@@ -785,7 +846,7 @@ if (isMainEntry(import.meta.url)) {
       // a stale stand-down, which is what STALE_REVIEW exists to prevent.
       if (process.env.GITHUB_OUTPUT) {
         try {
-          appendFileSync(process.env.GITHUB_OUTPUT, 'covered=false\n');
+          appendFileSync(process.env.GITHUB_OUTPUT, 'covered=false\nfull=false\n');
         } catch {
           // The refusal above is the finding; failing to annotate it is not worth
           // masking it with a second error.

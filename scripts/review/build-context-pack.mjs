@@ -39,6 +39,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
+import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
 
 /**
  * What the PR description may claim before the siblings compete for the rest.
@@ -95,7 +96,7 @@ export const MAX_PACK_BYTES = 160_000;
 export const MAX_PROMPT_BYTES = 390_000;
 
 /**
- * The FLAT part of the prompt's structure: the rubric (~10.6 KB), the section
+ * The FLAT part of the prompt's structure: the rubric (~12.5 KB), the section
  * prose and the fence markers. Per-item costs are charged separately -- a
  * `--- FILE:` header per changed file, and an unreviewable row at its own,
  * higher rate, because one costs nearly twice a file header.
@@ -112,50 +113,68 @@ export const MAX_PROMPT_BYTES = 390_000;
  */
 export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
 
-/**
- * The FIXED part of a changed-file row. `buildPrompt` renders
- * `--- FILE: <path>\n` plus the join, measured at exactly 13 + the path's own
- * bytes; 16 is that with a little margin.
- *
- * PATH BYTES ARE CHARGED SEPARATELY, and a flat 70 here was a real defect, not a
- * rounding choice. 70 covers a path of 57 bytes; this repository has 1,476 of
- * 6,590 tracked paths longer than that, up to 188. Beyond 57 the envelope was
- * undercharged, `packBudgetFor` handed back room that does not exist, and the
- * pack spent it in real bytes -- measured, 1,000 files with 110-byte paths on a
- * 248 KB diff produced a 381,865-byte prompt diff-only (under the ceiling) and
- * 430,410 with the pack, over by 40,410. That is the pack making a passing
- * prompt fail, which is the one thing it must never do.
- */
-export const PROMPT_FILE_ROW_FIXED = 16;
-
-/**
- * The FIXED part of an unreviewable row: one JSON line naming the path and the
- * reason. Measured at ~15 plus both strings' own bytes; 20 is that with margin.
- * Same reasoning as the file row -- the variable parts are charged as themselves.
- */
-export const PROMPT_UNREVIEWABLE_ROW_FIXED = 20;
-
-/**
- * The FIXED part of a roster row. `buildPrompt` renders the canonical
- * `files_reviewed` list as `  <JSON path>\n` per file, so every changed file's
- * path is spent TWICE -- once in its `--- FILE:` header and once here. The
- * variable part is charged as `JSON.stringify` of the path, which is what the
- * roster actually emits, escaping included; 6 covers the indent, the join and
- * margin.
- */
-export const PROMPT_ROSTER_ROW_FIXED = 6;
-
 /** What the prompt spends on structure, before any diff or pack content. */
 export function promptEnvelopeBytes(input) {
-  const bytes = (v) => Buffer.byteLength(String(v ?? ''), 'utf8');
+  // CHARGED AS RENDERED, not as stored, and by the SAME functions `buildPrompt`
+  // emits -- so this cannot drift from the prompt the way a hand-modelled
+  // constant can. It did drift: the previous version charged an unreviewable
+  // row's path and reason at RAW bytes while `unreviewableRow` renders both
+  // through `promptSafePath`, which JSON-escapes them. A path with a quote, a
+  // backslash or a control character therefore cost more than it was charged --
+  // the identical undercharge class that let a 600-file diff be declared to fit
+  // and then assemble 8,476 bytes over the ceiling. Only the fixed-part margin
+  // was hiding it here.
+  //
+  // The per-row charges themselves live in run-reviewer.mjs next to the
+  // renderers, which is where the join-byte arithmetic is documented.
+  //
+  // The row loops below charge exactly. What is left is the handful of bytes
+  // that scale with NEITHER row bytes nor row count directly: the item COUNTS
+  // `buildPrompt` renders into its section headers, which cost one more byte
+  // each time the count crosses a power of ten. Measured: 101 files vs 1 file
+  // costs exactly 2 more such bytes.
+  //
+  // Charged as the digits themselves rather than as a flat cushion. A constant
+  // would be invisible to the test that pins this ('promptEnvelopeBytes AGREES
+  // with what buildPrompt actually renders'), because that test compares a GROWN
+  // input against a BARE one -- anything genuinely fixed cancels on both sides,
+  // so only a term that GROWS is under test at all. The old fixed-part constants
+  // hid this in their margin; charging the real renderers removed that cushion,
+  // which is what surfaced it.
+  //
+  // Doubled: the count appears in more than one section header, and over-
+  // reserving a few bytes is free while under-reserving is the whole defect.
+  const countDigits = (n) => 2 * Buffer.byteLength(String(n), 'utf8');
   let total = PROMPT_BASE_OVERHEAD_BYTES;
   for (const f of input?.files ?? []) {
-    total += PROMPT_FILE_ROW_FIXED + bytes(f?.path);
-    total += PROMPT_ROSTER_ROW_FIXED + bytes(JSON.stringify(String(f?.path ?? '')));
+    const path = String(f?.path ?? '');
+    total += keptRowCharge(path);
   }
-  for (const u of input?.unreviewable ?? []) {
-    total += PROMPT_UNREVIEWABLE_ROW_FIXED + bytes(u?.path) + bytes(u?.reason);
+  const unreviewable = input?.unreviewable ?? [];
+  if (unreviewable.length > 0) {
+    // A CONDITIONAL SECTION PREAMBLE, and the reason the row charges alone were
+    // not enough. `buildPrompt` emits the unreviewable section's heading and
+    // explanatory line only when the list is non-empty, so unlike the files
+    // section its fixed cost does not sit inside PROMPT_BASE_OVERHEAD_BYTES for
+    // every prompt -- it appears exactly when this branch does.
+    //
+    // Measured against the real `buildPrompt`: 1 row costs 134 bytes, 2 cost
+    // 180, 3 cost 226. That is 46 per row and an 88-byte preamble. Charged at
+    // 128 rather than 88 because over-reserving a few dozen bytes is free and
+    // under-reserving is the entire defect this function exists to prevent.
+    total += 128;
+    for (const u of unreviewable) total += unreviewableRowCharge(u);
   }
+  // Only for sections that actually render, because an empty input must charge
+  // exactly PROMPT_BASE_OVERHEAD_BYTES and a test pins that.
+  //
+  // NOT because a zero-file prompt renders no count -- it does render one
+  // ("EXACTLY these 0 path(s)"), verified by running buildPrompt. That single
+  // uncharged byte only arises on an input `buildInput` already refuses with
+  // NO_FILES. The contract is right; an earlier version of this comment gave
+  // the wrong reason for it.
+  if ((input?.files ?? []).length > 0) total += countDigits(input.files.length);
+  if (unreviewable.length > 0) total += countDigits(unreviewable.length);
   return total;
 }
 

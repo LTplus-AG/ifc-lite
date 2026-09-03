@@ -202,6 +202,26 @@ jobs:
               echo "skip=true" >> "$GITHUB_OUTPUT"
               exit 0
             fi
+            # THE REASON TRAVELS TO THE COMMENT. Without it the marker's body
+            # asserts the exclusion-list cause, which is right for NO_FILES and
+            # false for NOTHING_FITS -- it would describe half a megabyte of real
+            # source as generated content.
+            
+            # NOTHING_FITS IS A SKIP FOR THE SAME REASON NO_FILES IS: no re-run
+            # can clear it. One file's patch is bigger than the whole prompt, or
+            # the paths alone fill it, and both are properties of the PR rather
+            # than of this run. Failing here left a red whose only remedy is
+            # splitting the PR while the review-posted gate said "re-run the
+            # review job" -- a remedy that contradicts the finding, which this
+            # repository treats as a defect in its own right. Posting the marker
+            # instead leaves the head COVERED for dedup and NOT full, so
+            # CodeRabbit reviews the PR rather than standing down on it.
+            if grep -q '^❌ NOTHING_FITS:' "$RUNNER_TEMP/build.log"; then
+              echo "::notice::No part of this diff fits the model prompt; posting a nothing-to-review marker."
+              grep '^❌ NOTHING_FITS:' "$RUNNER_TEMP/build.log" | head -1 > "$RUNNER_TEMP/skip-reason.txt"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             exit "$rc"
           fi
 
@@ -397,6 +417,7 @@ jobs:
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
             --nothing-to-review \
+            --reason "$(cat "$RUNNER_TEMP/skip-reason.txt" 2>/dev/null || true)" \
             --author github-actions \
             --config "${{ steps.basecfg.outputs.path }}"
 

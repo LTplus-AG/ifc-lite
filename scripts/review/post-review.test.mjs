@@ -41,7 +41,23 @@ const SCRIPT = join(HERE, 'post-review.mjs');
 // The rest of this file drives the script as a SUBPROCESS, which is right for the
 // GitHub-facing behaviour. The posting cap is a pure function of the findings
 // file, so it is exercised directly.
-import { readFindings, MAX_POSTED_FINDINGS, summaryBody, readJudgedAway, readCappedCount, marker } from './post-review.mjs';
+import {
+  readFindings,
+  readFindingsDoc,
+  MAX_POSTED_FINDINGS,
+  summaryBody,
+  readJudgedAway,
+  readCappedCount,
+  marker,
+} from './post-review.mjs';
+
+/**
+ * `readFindings` takes the PARSED document now, not a path: findings.json is
+ * read and parsed once per run by `readFindingsDoc` and handed to all four
+ * readers. This keeps each test writing a real file, so the parse is still
+ * exercised, without repeating the two-call shape at every site.
+ */
+const readFindingsFile = (path) => readFindings(readFindingsDoc(path), path);
 const GATE = join(HERE, '..', 'check-review-posted.mjs');
 const SHIPPED_CFG = join(HERE, '..', 'review-posted.config.json');
 const SHIPPED = JSON.parse(readFileSync(SHIPPED_CFG, 'utf8'));
@@ -903,6 +919,23 @@ test('it is NOT a `clean` marker, and that is the whole point', () => {
   assert.match(bodies, /The reviewer was NOT run/);
 });
 
+test('a `--reason` carrying the bare marker TOKEN outside any comment is defanged too', () => {
+  // The private `defangMarkerText` this used to run through only escaped a
+  // literal `<!--`; it left the bare `ifc-lite-review` token untouched in
+  // ordinary text. `sanitizeBody` (imported from validate-findings.mjs, the
+  // same sanitiser every finding body goes through) breaks that token
+  // EVERYWHERE, not only inside a comment -- because this lane's own source
+  // carries the token, so a build-input message that happens to quote it
+  // would otherwise reach the comment body unbroken. Discriminating: this
+  // input has no `<!--` at all, so the old defang would have left it
+  // byte-identical.
+  const r = runNothingToReview({ args: ['--reason', 'no reviewable files (ifc-lite-review excluded all of them)'] });
+  assert.equal(r.code, 0, r.out);
+  const body = allBodies(r.state);
+  assert.doesNotMatch(body, /ifc-lite-review excluded/, 'the bare token must be broken, not passed through verbatim');
+  assert.match(body, /excluded all of them/, 'the rest of the reason text must still reach the comment');
+});
+
 test('a marker for a DEAD head is not written on this path either', () => {
   // Same rule as the review path: a marker for a superseded head is one the gate
   // calls STALE_REVIEW, and no re-run of this commit could clear it.
@@ -1030,7 +1063,7 @@ test('more findings than the cap are trimmed to the cap', () => {
     body: `body ${i}`,
   }));
   writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: many }));
-  const got = readFindings(p);
+  const got = readFindingsFile(p);
   assert.equal(got.length, MAX_POSTED_FINDINGS);
   assert.match(got[0].body, /body 0/, 'the first ones, in the order given');
 });
@@ -1047,7 +1080,7 @@ test('THE BYPASS PATH: an UNJUDGED file straight from the validator is still cap
     body: `body ${i}`,
   }));
   writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: twelve, counts: { valid: 12 } }));
-  assert.equal(readFindings(p).length, MAX_POSTED_FINDINGS);
+  assert.equal(readFindingsFile(p).length, MAX_POSTED_FINDINGS);
 });
 
 test('at or under the cap nothing is trimmed', () => {
@@ -1059,7 +1092,7 @@ test('at or under the cap nothing is trimmed', () => {
     body: `body ${i}`,
   }));
   writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: few }));
-  assert.equal(readFindings(p).length, MAX_POSTED_FINDINGS);
+  assert.equal(readFindingsFile(p).length, MAX_POSTED_FINDINGS);
 });
 
 test('a review the judge emptied does NOT read as a review that found nothing', () => {
@@ -1075,13 +1108,14 @@ test('a review the judge emptied does NOT read as a review that found nothing', 
   assert.match(judged, /ifc-lite-review sha=/, 'the marker must still be written');
 });
 
-test('readJudgedAway returns 0 for anything unreadable, and never throws', () => {
+test('readJudgedAway returns 0 for any document that does not say, and never throws', () => {
   // It decorates a message. A malformed count must never be why a review fails
-  // to post -- that would trade a cosmetic line for a missing marker.
-  const bad = join(TMP, 'judged-bad.json');
-  writeFileSync(bad, 'not json at all');
-  assert.equal(readJudgedAway(bad), 0);
-  assert.equal(readJudgedAway(join(TMP, 'does-not-exist.json')), 0);
+  // to post -- that would trade a cosmetic line for a missing marker. It takes
+  // the parsed document now (#3688): the file is read once per run, so "could
+  // not re-read it" is a failure that no longer exists rather than one handled.
+  assert.equal(readJudgedAway(null), 0);
+  assert.equal(readJudgedAway(undefined), 0);
+  assert.equal(readJudgedAway([]), 0, 'a bare array carries no counts');
 
   // `judged: true` REQUIRED, and this test asserted the opposite by omission.
   // `counts.dropped` means "the judge rejected these" in judged.json and
@@ -1089,13 +1123,27 @@ test('readJudgedAway returns 0 for anything unreadable, and never throws', () =>
   // workflow's crash backstop copies verbatim. Without the flag the poster told
   // the author N findings were "dropped as too vague" about findings that had
   // actually quoted a line not in the diff.
-  const good = join(TMP, 'judged-good.json');
-  writeFileSync(good, JSON.stringify({ judged: true, findings: [], counts: { dropped: 3 } }));
-  assert.equal(readJudgedAway(good), 3);
+  assert.equal(readJudgedAway({ judged: true, findings: [], counts: { dropped: 3 } }), 3);
+  assert.equal(
+    readJudgedAway({ findings: [], counts: { dropped: 3 } }),
+    0,
+    "the validator's own drops are not judge drops",
+  );
+});
 
-  const unjudged = join(TMP, 'judged-fallback.json');
-  writeFileSync(unjudged, JSON.stringify({ findings: [], counts: { dropped: 3 } }));
-  assert.equal(readJudgedAway(unjudged), 0, 'the validator\'s own drops are not judge drops');
+test('readFindingsDoc owns the diagnosis for an unreadable or unparseable file', () => {
+  // The four readers each carried their own answer to "what if this file is
+  // bad", and one of them threw a message about a race that could only happen
+  // BECAUSE it re-read. One read, one diagnosis (#3688).
+  const bad = join(TMP, 'doc-bad.json');
+  writeFileSync(bad, 'not json at all');
+  assert.throws(() => readFindingsDoc(bad), /is not valid JSON/);
+  assert.throws(() => readFindingsDoc(join(TMP, 'does-not-exist.json')), /is missing/);
+  // The happy path, so the two assertions above cannot both be passing on a
+  // function that throws unconditionally.
+  const good = join(TMP, 'doc-good.json');
+  writeFileSync(good, JSON.stringify({ findings: [], omitted: ['a.ts'] }));
+  assert.deepEqual(readFindingsDoc(good), { findings: [], omitted: ['a.ts'] });
 });
 
 test('the VERIFIED SIBLING reaches the PR comment', () => {
@@ -1115,7 +1163,7 @@ test('the VERIFIED SIBLING reaches the PR comment', () => {
       sibling: { path: 'packages/cache/src/sections/properties.ts', line: 88, quote: 'x' },
     }],
   }));
-  const got = readFindings(p);
+  const got = readFindingsFile(p);
   assert.match(got[0].body, /packages\/cache\/src\/sections\/properties\.ts:88/, 'the twin must be named');
   assert.match(got[0].body, /this PR does not change/);
 });
@@ -1126,7 +1174,7 @@ test('a finding with no sibling gains no stray sentence', () => {
     verdict: 'findings',
     findings: [{ path: 'packages/a/f.ts', line: 1, quote: 'q', body: 'A plain finding.' }],
   }));
-  assert.doesNotMatch(readFindings(p)[0].body, /same shape is at/);
+  assert.doesNotMatch(readFindingsFile(p)[0].body, /same shape is at/);
 });
 
 test('the cap disclosure quotes the CONSTANT, not the word five', () => {
@@ -1145,11 +1193,298 @@ test('the cap disclosure quotes the CONSTANT, not the word five', () => {
 });
 
 test('readCappedCount counts what the cap withheld, and never throws', () => {
-  const p = join(TMP, 'capcount.json');
-  writeFileSync(p, JSON.stringify({ findings: Array.from({ length: 9 }, () => ({})) }));
-  assert.equal(readCappedCount(p, 5), 4);
-  assert.equal(readCappedCount(p, 9), 0, 'nothing withheld when all were shown');
-  assert.equal(readCappedCount(join(TMP, 'no-such-file.json'), 5), 0);
-  writeFileSync(join(TMP, 'capbad.json'), 'not json');
-  assert.equal(readCappedCount(join(TMP, 'capbad.json'), 5), 0);
+  const doc = { findings: Array.from({ length: 9 }, () => ({})) };
+  assert.equal(readCappedCount(doc, 5), 4);
+  assert.equal(readCappedCount(doc, 9), 0, 'nothing withheld when all were shown');
+  // Shapes that carry no total, which is what "unreadable" collapses to now
+  // that the file is parsed once upstream (#3688).
+  assert.equal(readCappedCount(null, 5), 0);
+  assert.equal(readCappedCount({ findings: 'not an array' }, 5), 0);
+  // A bare array is the other accepted spelling and must still count.
+  assert.equal(readCappedCount(Array.from({ length: 9 }, () => ({})), 5), 4);
 });
+
+// ====================================== the partial-review disclosure (#3679)
+
+test('PARTIAL CLEAN: the marker carries omitted=N and the REAL gate reads posted AND partial', () => {
+  // The #3679 contract end to end: a review that could not read the whole diff
+  // must end with a marker that says so -- never a silent clean and never an
+  // unclearable red. `omitted` is what validate-findings copies out of the
+  // degraded review-input; the gate below is the REAL gate over exactly what
+  // this run posted.
+  const r = runPoster({
+    findingsRaw: JSON.stringify({ findings: [], omitted: ['packages/a/big.ts', 'packages/b/huge.ts'] }),
+  });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.state.issueComments.length, 1);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=2 -->`));
+  assert.match(body, /PARTIAL REVIEW: 2 changed file/);
+  assert.match(body, /packages\/a\/big\.ts/);
+  assert.match(body, /packages\/b\/huge\.ts/);
+  assert.match(body, /Nothing vouches for those files/);
+  assert.doesNotMatch(body, /Reviewed this diff and found nothing to flag/, 'the full-review sentence would be a lie here');
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /REVIEW_POSTED/);
+  assert.match(g.out, /PARTIAL: 2 changed file\(s\)/);
+});
+
+test('PARTIAL FINDINGS: the disclosure and the findings coexist on one marker', () => {
+  const r = runPoster({
+    findingsRaw: JSON.stringify({ findings: [finding(1)], omitted: ['packages/a/big.ts'] }),
+  });
+  assert.equal(r.code, 0, r.out);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=findings count=1 omitted=1 -->`));
+  assert.match(body, /PARTIAL REVIEW: 1 changed file/);
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /findings verdict.*with 1 finding/);
+  assert.match(g.out, /PARTIAL: 1 changed file\(s\)/);
+});
+
+test('a FULL review still writes the marker BYTE-IDENTICAL to before #3679', () => {
+  // Backwards compatibility is a property, not a hope: `omitted=` appears only
+  // on a partial review, so every marker written for a fully-reviewed head
+  // parses under the gate exactly as it always has -- including gates checked
+  // out from branches that predate this change.
+  const r = runPoster({ findings: [] });
+  assert.equal(r.code, 0, r.out);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->`));
+  assert.doesNotMatch(body, /omitted=/);
+  assert.doesNotMatch(body, /PARTIAL/);
+});
+
+test('FAIL: a malformed `omitted` refuses with NO marker rather than defaulting to a full review', () => {
+  // Defaulting would post a marker byte-identical to a full review's over a
+  // review that was partial -- absence reading as success, in the one field
+  // whose whole job is to keep absence visible.
+  for (const omitted of ['nope', [''], [42], {}]) {
+    const r = runPoster({ findingsRaw: JSON.stringify({ findings: [], omitted }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /BAD_FINDINGS/);
+    assertNoMarker(r.state, 'a refused omitted list must leave the PR marker-less');
+  }
+});
+
+test('FAIL: an undefanged `omitted` entry refuses -- the sanitiser lives upstream and is REQUIRED', () => {
+  // validate-findings defangs these paths before writing them. An entry that
+  // still carries `<!--` or the marker token means the two files drifted, and
+  // rendering it would hand a PR-chosen file path our posting identity.
+  for (const evil of ['a<!--b.ts', `x-ifc-lite-review-y.ts`]) {
+    const r = runPoster({ findingsRaw: JSON.stringify({ findings: [], omitted: [evil] }) });
+    assert.equal(r.code, 1, r.out);
+    assert.match(r.out, /BAD_FINDINGS/);
+    assertNoMarker(r.state, 'a forged omitted entry must never reach the PR');
+  }
+});
+
+test('a LONG omitted list is capped in prose but exact in the marker', () => {
+  const omitted = Array.from({ length: 25 }, (_, i) => `packages/a/f${i}.ts`);
+  const r = runPoster({ findingsRaw: JSON.stringify({ findings: [], omitted }) });
+  assert.equal(r.code, 0, r.out);
+  const body = r.state.issueComments[0].body;
+  assert.match(body, /omitted=25 -->/);
+  assert.match(body, /and 5 more/);
+  const g = runGate(r.state);
+  assert.equal(g.code, 0, g.out);
+  assert.match(g.out, /PARTIAL: 25 changed file\(s\)/);
+});
+
+test('an omitted PATH containing a backtick cannot close its code span early (#3688 review)', () => {
+  // A git path may contain a backtick. The omitted list renders each path as a
+  // Markdown inline code span, and a single-backtick pair lets the path close
+  // the span at ITS backtick -- spilling the rest of the path (and anything an
+  // author put after it) into the surrounding comment as live Markdown. The
+  // fix is CommonMark's: fence with a run longer than the longest run in the
+  // content, padded with one space each side.
+  //
+  // Decoded by the module-level `firstCodeSpan` (hoisted, defined below). This
+  // file used to carry a SECOND, local decoder here whose close rule was
+  // `run.length >= fence.length`. That is not CommonMark: a span closes only on
+  // a run of EXACTLY the fence length, so the local one called a 2-run inside a
+  // 1-fence "closed early" when a real renderer would not. Two oracles for one
+  // format drift apart silently, and a wrong oracle can just as easily
+  // manufacture a failure as hide one. One decoder, and it is the correct one.
+
+  for (const evil of ['packages/a/we`ird.ts', 'packages/a/tw``o.ts', 'packages/a/ends`', '`starts/a.ts']) {
+    const body = summaryBody({ sha: SHA, findings: [], count: 0, omitted: [evil] });
+    const line = body.split('\n').find((l) => l.startsWith('- '));
+    assert.match(line, /^- /, 'the omitted entry must render as a bullet');
+    // Equality IS the early-close check: a span that closed at the path's own
+    // backtick decodes to a prefix, not to `evil`.
+    assert.equal(
+      firstCodeSpan(line.slice(2)),
+      evil,
+      `the whole path must survive as ONE code span: ${line}`,
+    );
+  }
+
+  // The plain path keeps its plain single-backtick rendering: no fence inflation
+  // on the common case, which every existing fixture in this file relies on.
+  const plain = summaryBody({ sha: SHA, findings: [], count: 0, omitted: ['packages/a/plain.ts'] });
+  assert.match(plain, /^- `packages\/a\/plain\.ts`$/m);
+});
+
+// ============================== UNTRUSTED TEXT IN A CODE SPAN, at every site
+//
+// #3688 fixed ONE site: the omitted-path list. `inlineCode` existed from that
+// commit, but the two sites that render DIFF-DERIVED paths still used a bare
+// `` `${p}` `` -- the summary index (every findings run) and the sibling
+// sentence. That split left the RARE path fixed and the COMMON one broken,
+// which reads as fixed to the next person who greps and finds `inlineCode`.
+//
+// A git path may legally contain a backtick. Rendered into a one-backtick
+// span, the path's own backtick CLOSES the span and the tail spills into the
+// comment as live Markdown.
+
+/**
+ * Decode the first inline code span on a line the way CommonMark does: a span
+ * opened by a run of N backticks closes at the next run of EXACTLY N, and the
+ * renderer strips one space of padding at each end. Returns null when the span
+ * never closes. Deliberately NOT the production helper -- an oracle that
+ * shares the code under test cannot fail.
+ */
+function firstCodeSpan(line) {
+  const open = /`+/.exec(line);
+  if (open === null) return null;
+  const fence = open[0];
+  const rest = line.slice(open.index + fence.length);
+  const close = new RegExp(`(?<!\`)${fence}(?!\`)`).exec(rest);
+  if (close === null) return null;
+  let inner = rest.slice(0, close.index);
+  if (inner.startsWith(' ') && inner.endsWith(' ') && inner.trim() !== '') inner = inner.slice(1, -1);
+  return inner;
+}
+
+// Mutation-tested: with `inlineCode` reverted at both sites, every case fails
+// EXCEPT the double-backtick pair -- and that exception is correct rather than
+// a dud assertion. CommonMark closes a span only on a run of EQUAL length, so
+// a ``-run cannot close a `-fence and that input was never broken. It stays as
+// a boundary case, but it is NOT evidence the fix works; the mid-path,
+// trailing and leading cases are. (Stated as the exception and its reason
+// rather than as a ratio: a count goes stale the moment a row is added, and a
+// stale count still reads as evidence.)
+// The fence widens ONLY when the text needs it, and nothing here re-asserts
+// that: an always-pad mutant is already caught by three existing tests --
+// 'the summary carries a numbered index', the #3688 omitted-path test, and the
+// posted-body fixture -- verified by running that mutant. A fourth assertion
+// would have been a duplicate wearing a new name.
+const EVIL = [
+  ['a backtick mid-path', 'packages/a/we`ird.ts'],
+  ['a double-backtick run', 'packages/a/we``ird.ts'],
+  ['a trailing backtick', 'packages/a/weird.ts`'],
+  ['a leading backtick', '`packages/a/weird.ts'],
+];
+
+// `indexLine` is reached through `summaryBody`, which is exported and pure, so
+// these decode its return value directly. The four SIBLING cases below must
+// stay on `readFindings` because that is where the sibling sentence is built.
+// ONE end-to-end case follows the loop: enough to prove an evil path survives
+// argv -> readFindings -> post, without paying a ~190 ms spawn per input for a
+// defect that lives in a pure function.
+const indexEntry = (body) => body.split('\n').find((l) => /^1\. /.test(l.trim()));
+
+for (const [label, evilPath] of EVIL) {
+  test(`the SUMMARY INDEX keeps a whole path in one span: ${label}`, () => {
+    const body = summaryBody({
+      sha: SHA,
+      findings: [{ path: evilPath, line: 11, body: 'Body.' }],
+      count: 1,
+    });
+    const line = indexEntry(body);
+    assert.ok(line, 'the numbered index entry must exist');
+    assert.equal(
+      firstCodeSpan(line),
+      `${evilPath}:11`,
+      'the whole path:line must survive as ONE code span',
+    );
+  });
+
+  test(`the SIBLING sentence keeps a whole path in one span: ${label}`, () => {
+    const p = join(TMP, `evil-sibling-${(seq += 1)}.json`);
+    writeFileSync(p, JSON.stringify({
+      verdict: 'findings',
+      findings: [{
+        path: 'packages/data/src/property-table.ts',
+        line: 12,
+        quote: 'const key = psetName;',
+        body: 'Body.',
+        sibling: { path: evilPath, line: 88, quote: 'x' },
+      }],
+    }));
+    const sentence = readFindingsFile(p)[0].body
+      .split('\n')
+      .find((l) => l.includes('The same shape is at'));
+    assert.ok(sentence, 'the sibling sentence must exist');
+    assert.equal(
+      firstCodeSpan(sentence),
+      `${evilPath}:88`,
+      'the whole sibling path:line must survive as ONE code span',
+    );
+  });
+}
+
+test('END TO END: an evil path survives argv -> readFindings -> the posted comment', () => {
+  // The loop above proves the RENDERING. This proves the evil path actually
+  // reaches that renderer through the real CLI, the real findings file and the
+  // fake-`gh` world -- the one thing an in-process call to `summaryBody`
+  // cannot tell you. One spawn buys it; four more would re-buy the same thing.
+  const evilPath = 'packages/a/we`ird.ts';
+  const r = runPoster({ findings: [{ path: evilPath, line: 11, body: 'Body.' }] });
+  assert.equal(r.code, 0, r.out);
+  const line = indexEntry(r.state.issueComments[0].body);
+  assert.ok(line, 'the numbered index entry must exist');
+  assert.equal(firstCodeSpan(line), `${evilPath}:11`);
+});
+
+const FORGED = `src/x<!-- ifc-lite-review sha=${'0'.repeat(40)} verdict=clean count=0 -->.ts`;
+
+const findingsFile = (finding) => {
+  const p = join(TMP, `marker-${(seq += 1)}.json`);
+  writeFileSync(p, JSON.stringify({ verdict: 'findings', findings: [finding] }));
+  return p;
+};
+
+test('a finding PATH that could open a marker is REFUSED', () => {
+  // `indexLine` renders `f.path` raw onto the issue comment that also carries the
+  // review marker, and check-review-posted runs MARKER_RE over the RAW body
+  // taking the FIRST match -- so a filename's marker sorts ahead of the genuine
+  // one. Reproduced before the guard: first match `verdict=clean` while the real
+  // `verdict=findings` marker sat in the same comment. Red gate under a green
+  // poster, since the poster's read-back is `.includes(want)`.
+  //
+  // REFUSED rather than sanitised: `path` is the finding's anchor and must
+  // round-trip verbatim as the API `path=` parameter and the dedupe fingerprint.
+  assert.throws(
+    () => readFindingsFile(findingsFile({ path: FORGED, line: 1, body: 'B', quote: 'x' })),
+    /containing an HTML comment opener/,
+  );
+});
+
+test('a SIBLING path that could open a marker is DROPPED, not refused', () => {
+  // The sibling sentence is decoration on a finding that is otherwise fine.
+  // Refusing the whole review over it would trade a cosmetic loss for the very
+  // unclearable red the guard exists to avoid.
+  const got = readFindingsFile(findingsFile({
+    path: 'src/ok.ts', line: 1, body: 'B', quote: 'x',
+    sibling: { path: FORGED, line: 2, quote: 'y' },
+  }));
+  assert.equal(got.length, 1, 'the finding itself must survive');
+  assert.doesNotMatch(got[0].body, /The same shape is at/, 'the sibling sentence must be dropped');
+  assert.doesNotMatch(got[0].body, /<!-- ifc-lite-review/, 'no marker opener may reach the body');
+});
+
+for (const legal of ['docs/ifc-lite-review-lane.md', 'docs/IFC-LITE-REVIEW.md']) {
+  test(`a LEGAL filename carrying the bare token is not refused: ${legal}`, () => {
+    // The regression that matters most here. An earlier guard also matched
+    // `ifc-lite-review`, so this legal path aborted the poster before it wrote
+    // any marker -- and no marker means the gate says NOT_POSTED and tells you
+    // to re-run, which fails identically forever. MARKER_RE requires a literal
+    // `<!--`, so the bare token forges nothing and must pass.
+    const got = readFindingsFile(findingsFile({ path: legal, line: 1, body: 'B', quote: 'x' }));
+    assert.equal(got[0].path, legal, 'the path must survive verbatim');
+  });
+}

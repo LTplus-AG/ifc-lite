@@ -102,7 +102,88 @@ const inline = (...cs) => ({
   })),
 });
 
+/** A degraded-review marker (#3679): `omitted=<n>` on an otherwise clean verdict. */
+const partialMarker = (n) => `Partial.\n<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=${n} -->`;
+
+/**
+ * Run the gate with a GITHUB_OUTPUT file and return what it WROTE there as well
+ * as what it printed. `covered` and `full` exist only on that surface -- the
+ * workflows read them and nothing else does -- so a test that reads only stdout
+ * cannot see the values the whole mechanism turns on.
+ */
+function runOut(payload, extra = [...ENFORCING], sha = SHA) {
+  const ghPath = join(TMP, `ghout-${(seq += 1)}.txt`);
+  const payloadPath = join(TMP, `p-out-${seq}.json`);
+  writeFileSync(ghPath, '');
+  writeFileSync(payloadPath, JSON.stringify({ headRepo: SAME_REPO, ...payload }));
+  const r = spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', sha, '--repo', SAME_REPO, '--state-file', payloadPath, ...extra],
+    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: ghPath } },
+  );
+  return { code: r.status, out: `${r.stdout}${r.stderr}`, gh: readFileSync(ghPath, 'utf8') };
+}
+
 // ============================================================ the core verdicts
+
+test('a marker carrying `omitted=N` parses, passes, and NAMES the partial (#3679)', () => {
+  // A degraded review posts `omitted=<n>` so a partial review can never read as
+  // a full one at this surface. Parsing it here is backward-compatible on
+  // purpose: the field is optional in MARKER_RE, so every pre-#3679 marker
+  // still parses (the test above this one is that proof).
+  const r = run(comments([REVIEWER, `Partial.\n<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=3 -->`]));
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /REVIEW_POSTED/);
+  assert.match(r.out, /PARTIAL: 3 changed file\(s\)/);
+  assert.match(r.out, /NOT shown to the reviewer/);
+});
+
+test('a PARTIAL head reports full=false, so the stand-down cannot cover the omitted files', () => {
+  // The gate prints "N file(s) ... NOT reviewed" and then hands the workflow the
+  // value review-posted.yml turns into `llm-reviewed`, which is what CodeRabbit
+  // reads to stay off the PR. With `full=true` here the omitted files would get
+  // no model review AND no CodeRabbit review, on the very head the gate just
+  // said nothing vouches for. Same reasoning that already sets full=false for
+  // `nothing-to-review`. Raised by CodeRabbit on PR #3688.
+  const out = runOut(comments([REVIEWER, partialMarker(3)]));
+  // NOT a red: a degraded review is a partly-uncovered head, not a failing lane.
+  assert.equal(out.code, 0, out.out);
+  assert.match(out.gh, /full=false/, 'nothing read the omitted files');
+  assert.match(out.out, /FULL=FALSE/);
+  // The partial class names a remedy, and the remedy does not contradict it.
+  assert.match(out.out, /REMEDY: split the PR/);
+});
+
+test('a PARTIAL head still reports covered=true, or every re-trigger re-reviews it', () => {
+  // `covered` is claude-review.yml's DEDUP key: `steps.dedup.outputs.covered`
+  // gates every later step of that job, so covered=false means the next
+  // synchronize/re-run event re-runs the model over the files that DID fit and
+  // posts their inline comments a second time. The first attempt at the test
+  // above asserted covered=false and bought the stand-down fix with duplicate
+  // reviews. The two questions are two outputs.
+  const out = runOut(comments([REVIEWER, partialMarker(3)]));
+  assert.equal(out.code, 0, out.out);
+  assert.match(out.gh, /covered=true/, 'a verdict exists for this head');
+  assert.match(out.out, /COVERED stays true/);
+});
+
+test('the anti-vacuity pair: the SAME marker without `omitted` reports full=true', () => {
+  // Without this, the tests above would pass just as well if `full` were false
+  // for every verdict -- i.e. with the stand-down mechanism entirely dead.
+  const out = runOut(comments([REVIEWER, `Full.\n<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 omitted=0 -->`]));
+  assert.equal(out.code, 0, out.out);
+  assert.match(out.gh, /full=true/);
+  assert.match(out.gh, /covered=true/);
+  assert.doesNotMatch(out.out, /PARTIAL:/);
+});
+
+test('a marker WITHOUT `omitted` prints no partial line', () => {
+  // The partial note must fire only when the marker claims an omission; on
+  // every full review it would be noise that trains readers to ignore it.
+  const r = run(comments([REVIEWER, `Full.\n${marker(SHA)}`]));
+  assert.equal(r.code, 0, r.out);
+  assert.doesNotMatch(r.out, /PARTIAL:/);
+});
 
 test('PASS: the expected reviewer posted a marker naming this head', () => {
   const r = run(comments([REVIEWER, `Looks fine.\n${marker(SHA)}`]));
@@ -581,42 +662,35 @@ test('FAIL CLOSED: an unreadable head repository REFUSES rather than guessing ei
 
 // ================================ `covered` is not the same question as `ok`
 
-test('nothing-to-review PASSES but reports covered=FALSE, so CodeRabbit does not stand down', () => {
-  // The hole this closes: `review-posted.yml` turns `covered` into the
-  // `llm-reviewed` label, and `.coderabbit.yaml` skips labelled PRs. A
-  // nothing-to-review head was never READ by anything, so claiming coverage
-  // would stand CodeRabbit down too and leave the PR reviewed by NOBODY.
-  const outPath = join(TMP, `ghout-ntr-${(seq += 1)}.txt`);
-  const payloadPath = join(TMP, `p-ntr-${seq}.json`);
-  writeFileSync(outPath, '');
-  writeFileSync(
-    payloadPath,
-    JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(SHA, 'nothing-to-review', 0)]) }),
-  );
-  const r = spawnSync(
-    process.execPath,
-    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
-    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
-  );
-  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-  assert.match(readFileSync(outPath, 'utf8'), /covered=false/, 'nobody read this diff');
-  assert.match(`${r.stdout}${r.stderr}`, /COVERED=FALSE/);
+test('nothing-to-review PASSES but reports full=FALSE, so CodeRabbit does not stand down', () => {
+  // A `nothing-to-review` head is a decision the lane POSTED, not a diff that was
+  // read: `ok` is true and the marker is genuine, but nothing vouches for the
+  // content. Granting the stand-down label here would leave the PR reviewed by
+  // NOBODY. `covered` is still true -- a verdict exists, so the lane must not
+  // re-run the model on this head. Raised by CodeRabbit on PR #3587.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'nothing-to-review', 0)]));
+  assert.equal(out.code, 0, out.out);
+  assert.match(out.gh, /full=false/, 'nobody read this diff');
+  assert.match(out.gh, /covered=true/, 'but a verdict exists, so dedup holds');
+  assert.match(out.out, /FULL=FALSE/);
 });
 
-test('a REAL clean review reports covered=true, or the stand-down never happens at all', () => {
-  // The anti-vacuity pair: if `covered` were false for everything, the test above
+test('a REAL clean review reports full=true, or the stand-down never happens at all', () => {
+  // The anti-vacuity pair: if `full` were false for everything, the test above
   // would pass while the whole stand-down mechanism was dead.
-  const outPath = join(TMP, `ghout-clean-${(seq += 1)}.txt`);
-  const payloadPath = join(TMP, `p-clean-${seq}.json`);
-  writeFileSync(outPath, '');
-  writeFileSync(payloadPath, JSON.stringify({ headRepo: SAME_REPO, ...comments([REVIEWER, marker(SHA)]) }));
-  const r = spawnSync(
-    process.execPath,
-    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--state-file', payloadPath, ...ENFORCING],
-    { encoding: 'utf8', env: { ...process.env, GITHUB_OUTPUT: outPath } },
-  );
-  assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
-  assert.match(readFileSync(outPath, 'utf8'), /covered=true/);
+  const out = runOut(comments([REVIEWER, marker(SHA)]));
+  assert.equal(out.code, 0, out.out);
+  assert.match(out.gh, /full=true/);
+});
+
+test('a head with NO marker reports covered=false, or the lane would never review it', () => {
+  // The other end of the dedup key. `covered` is what claude-review.yml skips
+  // on, so if it were true for an unreviewed head the model would never run at
+  // all -- the failure the workflow comment at claude-review.yml:101-104 names.
+  const out = runOut(comments([REVIEWER, 'Just a comment, no marker.']));
+  assert.equal(out.code, 1, out.out);
+  assert.match(out.gh, /covered=false/);
+  assert.match(out.gh, /full=false/);
 });
 
 test('the fork comparison is CASE-INSENSITIVE, or enforcement is off for everyone', () => {
@@ -961,6 +1035,39 @@ test('an EXEMPT run prints ONE remedy, not two that contradict each other', () =
   const real = run({ headRepo: SAME_REPO, draft: false, issueComments: [], reviewComments: [], reviews: [] });
   assert.equal(real.code, 1);
   assert.match(real.out, /REMEDY: re-run the review job/);
+});
+
+test('THE TWO OUTPUTS GO TO THE TWO CONSUMERS: `covered` dedups, `full` stands CodeRabbit down', () => {
+  // The wiring this gate's whole contract rests on, and it was held together by
+  // prose. A first attempt at the partial-review fix made `covered` false for a
+  // degraded head, which fixed the stand-down and silently broke the dedup:
+  // claude-review.yml gates EVERY step of its job on `steps.dedup.outputs.covered`,
+  // so a partial head would have been re-reviewed on each re-trigger and posted
+  // its inline comments again. Nothing failed. This is that test.
+  const labels = readFileSync(join(HERE, '..', '.github/workflows/review-posted.yml'), 'utf8');
+  const lane = readFileSync(join(HERE, '..', '.github/workflows/claude-review.yml'), 'utf8');
+
+  // The label workflow reads `full` and NOTHING reads `covered` there: the
+  // stand-down is a claim about the WHOLE diff.
+  assert.match(labels, /steps\.gate\.outputs\.full == 'true'/, 'the label is not gated on `full`');
+  assert.match(labels, /steps\.gate\.outputs\.full == 'false'/, 'the clear step is not gated on `full`');
+  assert.equal(
+    [...labels.matchAll(/steps\.gate\.outputs\.covered/g)].length,
+    0,
+    'review-posted.yml reads `covered`, which is the dedup key, not the coverage claim',
+  );
+
+  // The review lane dedups on `covered` and never on `full`: a partial head has
+  // been reviewed once and must not be reviewed again.
+  assert.ok(
+    [...lane.matchAll(/steps\.dedup\.outputs\.covered/g)].length > 0,
+    'claude-review.yml does not dedup on `covered`',
+  );
+  assert.equal(
+    [...lane.matchAll(/steps\.dedup\.outputs\.full/g)].length,
+    0,
+    'claude-review.yml dedups on `full`, so every degraded head would be re-reviewed',
+  );
 });
 
 test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config that reads it agree', () => {

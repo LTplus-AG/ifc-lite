@@ -327,12 +327,13 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
   // Measured, not derived. The arithmetic version asserted
   // `maxDiff + packBudgetFor(maxDiff) <= MAX_PROMPT_BYTES`, true by construction
   // of packBudgetFor and never touching buildPrompt -- so it could not see that
-  // the rubric (~10.6 KB), a header per file, fences and prose were uncounted.
+  // the rubric (~12.5 KB), a header per file, fences and prose were uncounted.
   //
-  // Scoped to diffs that fit, deliberately. MAX_PATCH_BYTES (600 KB) is larger
-  // than this ceiling, so a maximal diff overruns it whatever the pack does.
-  // That is pre-existing -- the lane sent diffs that size long before a pack
-  // existed -- and the pack's contract is only that it never makes things worse.
+  // Scoped to diffs that fit, deliberately. A diff too large for the ceiling no
+  // longer reaches buildPrompt whole -- build-review-input degrades it, keeping
+  // the largest files that fit and recording the rest (#3679) -- and that path
+  // has its own measured test in build-review-input.test.mjs. The pack's
+  // contract here is only that it never makes a fitting diff overrun.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
   // A THOUSAND, not four hundred. At 400 the envelope reserve stops being
   // load-bearing -- the budget re-hits the MAX_PACK_BYTES clamp and the prompt
@@ -372,11 +373,11 @@ test('THE REAL PROMPT stays under the ceiling whenever the DIFF alone does', () 
 });
 
 test('THE BASE ENVELOPE RESERVE is load-bearing too, on a FEW-file diff', () => {
-  // The 1,000-file case above guards PROMPT_FILE_ROW_FIXED, because the per-file
+  // The 1,000-file case above guards the per-file row charge, because the per-file
   // term dominates there -- and it leaves PROMPT_BASE_OVERHEAD_BYTES free to be
   // zeroed with the suite green. The base only bites when there are few headers
   // and the diff is near the ceiling, so that is what this builds: the rubric is
-  // ~10.6 KB of the reserve, and it is present on every single review.
+  // ~12.5 KB of the reserve, and it is present on every single review.
   const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
   const fileCount = 10;
   const diffTarget = 350_000;
@@ -427,8 +428,9 @@ test('when the diff ALONE exceeds the ceiling the pack ADDS NOTHING to the promp
   assert.equal(pack.fileEvidence.length, 0);
   assert.equal(pack.body, null, 'not even the description, once the diff is already over');
 
-  // The prompt is over the ceiling either way -- that is the pre-existing patch
-  // cap, filed as #3679 -- but the pack must not be what put it there.
+  // An input this oversized can no longer come out of buildInput -- it degrades
+  // to the files that fit (#3679) -- but buildPrompt is callable without it, so
+  // the pack's own contract still holds: it must not be what put a prompt over.
   const bare = Buffer.byteLength(buildPrompt(rubric, input), 'utf8');
   const full = Buffer.byteLength(buildPrompt(rubric, withPack), 'utf8');
   assert.ok(full - bare < 200, `the pack added ${full - bare} bytes to an already-oversized prompt`);
@@ -661,10 +663,12 @@ test('promptEnvelopeBytes scales with PATH LENGTH, not just row count', () => {
 
 test('THE OTHER DIRECTION: an inflated envelope must not starve the pack', () => {
   // A threshold has two directions and the suite probed one. Every guard here
-  // asserts the envelope is charged ENOUGH; inflating a constant -- say
-  // PROMPT_UNREVIEWABLE_ROW_FIXED to a billion -- silently drove the budget to
-  // zero for any PR with unreviewable files, which is the inert-pack failure this
-  // whole branch exists to prevent, and it passed every test.
+  // asserts the envelope is charged ENOUGH; inflating the unreviewable row's
+  // charge to a billion silently drove the budget to zero for any PR with
+  // unreviewable files, which is the inert-pack failure this whole branch exists
+  // to prevent, and it passed every test. (That charge was a named constant when
+  // this was written; it is now derived from `unreviewableRow`, but the two
+  // directions and this test's job are unchanged.)
   //
   // So: an ordinary PR must still get a real pack. This is deliberately loose --
   // it is a floor against absurdity, not a tuning knob.
@@ -886,5 +890,53 @@ test('a long sibling PATH must be charged too, not just a long key -- text-only 
   assert.ok(
     renderedBytes <= availableBudget,
     `siblings alone render to ${renderedBytes} bytes, over the ${availableBudget}-byte budget they were charged against`,
+  );
+});
+
+test('the envelope charges an ESCAPED path as rendered, not as stored', () => {
+  // The regression that the agreement test above CANNOT see. Its fixture paths
+  // (`vendor/generated/.../thing-0.ts`) need no JSON escaping, so charging the
+  // raw bytes and charging the rendered bytes give the identical number and the
+  // defect is invisible. Mutation-checked: restoring the raw charge leaves that
+  // test green.
+  //
+  // `unreviewableRow` renders path and reason through `promptSafePath`, which
+  // JSON-escapes. A path containing a quote, a backslash or a control character
+  // therefore COSTS more than a raw charge reserves -- the same undercharge
+  // class that let a 600-file diff be declared to fit and then assemble 8,476
+  // bytes over the ceiling.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  // MANY escapes, deliberately. A handful would be absorbed by any fixed-part
+  // margin in a wrong charge, leaving the test unable to fail -- which is
+  // exactly what the first version of it did. Each `"` costs one extra byte
+  // rendered, so 60 of them put the escaping delta well past any plausible
+  // constant.
+  const nasty = {
+    path: `src/${'q"'.repeat(60)}.ts`,
+    reason: `no patch returned ${'"'.repeat(60)}`,
+  };
+  const input = {
+    headSha: 'a'.repeat(40),
+    files: [{ path: 'packages/p/f.ts', patch: '@@\n+x\n' }],
+    unreviewable: [nasty],
+  };
+  const without = { ...input, unreviewable: [] };
+
+  const actual =
+    Buffer.byteLength(buildPrompt(rubric, input), 'utf8')
+    - Buffer.byteLength(buildPrompt(rubric, without), 'utf8');
+  const charged = promptEnvelopeBytes(input) - promptEnvelopeBytes(without);
+
+  // The charge must still be an UPPER bound once escaping enters the picture.
+  assert.ok(
+    charged >= actual,
+    `an escaped path costs ${actual} rendered bytes but was charged ${charged}`,
+  );
+
+  // And the escaping must actually be exercised, or this test is the same
+  // no-pressure fixture as the one above wearing a different name.
+  assert.ok(
+    Buffer.byteLength(JSON.stringify(nasty.path), 'utf8') > Buffer.byteLength(nasty.path, 'utf8') + 2,
+    'the fixture path must genuinely require escaping',
   );
 });

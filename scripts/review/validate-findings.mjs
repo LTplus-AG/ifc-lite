@@ -148,12 +148,17 @@
  */
 
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 // quotableLines/quoteAppearsIn/lineIsAdded/addedLinesMatching moved to
 // ./quote-line-coupling.mjs (module-size budget). Imported (not `export ...
 // from`) because this file also calls them itself, and re-exported below so
 // every existing import of them from this file keeps working unchanged.
 import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from './quote-line-coupling.mjs';
+// One constant, imported rather than re-spelled: a reworded copy here would
+// stop matching the rows build-review-input writes, and the partial-review
+// marker would silently claim a full review (#3679).
+import { isUnread } from './build-review-input.mjs';
 
 /**
  * The terminal sentinel the prompt requires as the LAST field. Its whole job is to
@@ -243,7 +248,19 @@ const MAX_CLASS_CHARS = 60;
  * gate ignored it.
  */
 const MARKER_TOKEN_RE = /ifc-lite-review/gi;
-const DEFANGED_TOKEN = 'ifc-lite‑review';
+/**
+ * A REPLACER, not a fixed string, and that is the correction. The pattern is
+ * case-INSENSITIVE while the replacement was a lowercase literal, so defanging
+ * REWROTE the text it was defanging: `docs/IFC-Lite-Review-Lane.md` came out as
+ * `docs/ifc-lite‑review-Lane.md`, a name that exists nowhere. That is the same
+ * class as the 60-char `class` cap this file already records for rewriting real
+ * paths into names that exist nowhere, arriving by a different door -- and it
+ * lands on an advisory list whose whole job is naming files a human then reads.
+ *
+ * Swaps the SECOND ASCII hyphen of whatever was matched for U+2011 and touches
+ * nothing else, so case survives.
+ */
+const defangToken = (match) => `${match.slice(0, 8)}\u2011${match.slice(9)}`;
 
 /** Whole HTML comments, non-greedy, including multi-line ones. */
 const HTML_COMMENT_RE = /<!--[\s\S]*?-->/g;
@@ -527,15 +544,39 @@ export { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching };
  * @param {unknown} text
  */
 export function sanitizeBody(text) {
-  let out = String(text ?? '')
-    .replace(HTML_COMMENT_RE, '')
-    .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
-    .replace(MARKER_TOKEN_RE, DEFANGED_TOKEN)
-    .replace(/@(?=[A-Za-z0-9])/g, '@​');
+  let out = defangDangerous(text);
   if (out.length > MAX_BODY_CHARS) {
     out = out.slice(0, MAX_BODY_CHARS - TRUNCATION_NOTE.length) + TRUNCATION_NOTE;
   }
   return out;
+}
+
+/**
+ * THE FOUR DEFANGING STEPS, in one place. `sanitizeBody` and `defangInline` each
+ * carried a verbatim copy of the chain, so the numbered contract on
+ * `sanitizeBody` described one of them and was true of the other only by
+ * inspection -- two copies held together by prose. Steps 1-4 of that list ARE
+ * this function; each caller owns only what it adds afterwards.
+ *
+ * @param {unknown} text
+ */
+function defangDangerous(text) {
+  return String(text ?? '')
+    .replace(HTML_COMMENT_RE, '')
+    .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
+    .replace(MARKER_TOKEN_RE, defangToken)
+    .replace(/@(?=[A-Za-z0-9])/g, '@​');
+}
+
+/**
+ * The defanging every model-or-PR-controlled short string gets before a poster
+ * may render it, plus the whitespace collapse a one-line field needs. Length
+ * policy is NOT here -- it belongs to the caller, because a `class` label and a
+ * file path have opposite needs (a label is a tag to cap hard; a path is an
+ * identity to keep whole).
+ */
+function defangInline(text) {
+  return defangDangerous(text).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -546,14 +587,58 @@ export function sanitizeBody(text) {
  * @param {unknown} text
  */
 export function sanitizeLabel(text) {
-  const out = String(text ?? '')
-    .replace(HTML_COMMENT_RE, '')
-    .replace(DANGLING_COMMENT_OPEN_RE, '<!‑-')
-    .replace(MARKER_TOKEN_RE, DEFANGED_TOKEN)
-    .replace(/@(?=[A-Za-z0-9])/g, '@​')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return out.slice(0, MAX_CLASS_CHARS);
+  return defangInline(text).slice(0, MAX_CLASS_CHARS);
+}
+
+/**
+ * A file path budget. Borrowing `class`'s 60-char cap here truncated
+ * `.../property/property-table.tsx` to a name that exists nowhere, and let two
+ * sibling files render as the SAME string -- 1,251 of 6,633 tracked paths
+ * exceed 60 chars. The longest tracked path is 188 bytes, so at 500 the cap is
+ * unreachable for any real path and exists only against a hostile one padding
+ * the posted summary.
+ */
+const MAX_PATH_CHARS = 500;
+
+/**
+ * A path a poster will render: defanged like a label, but kept WHOLE -- its
+ * entire job is naming a real file the reviewer never read. If a hostile path
+ * does exceed the cap, the truncation says so and stays unambiguous: the tail
+ * carries the cut length and a digest of the full sanitised string, so
+ * TRUNCATION cannot collapse two paths the way the 60-char slice made
+ * `property-table.tsx` and `property-header.tsx` collapse into one.
+ *
+ * That is the whole guarantee, and it is narrower than "distinct paths always
+ * render distinctly". DEFANGING is lossy and runs BEFORE the digest, so paths
+ * differing only in what defanging removes still collide -- measured, all legal
+ * git paths: `dir/a<!--x-->b.ts` vs `dir/ab.ts`; two spaces vs one; a tab vs a
+ * space; a leading space vs none; and `ifc-lite-review.ts` vs its U+2011
+ * non-breaking-hyphen lookalike -- IN ANY CASE now, not only in lowercase. The
+ * replacement used to be a fixed lowercase string, which spared the uppercase
+ * pair by rewriting its case; that was a worse bug than the collision it
+ * avoided, so `defangToken` preserves the match and the pair collides like every
+ * other. Sub-cap paths get no digest at all, so nothing disambiguates them. A
+ * reader can therefore still see `omitted=2` above two identical-looking
+ * entries.
+ *
+ * Accepted rather than fixed: defanging is load-bearing (it is what stops a
+ * path forging a marker) and it must stay lossy to do that job. The cost is
+ * cosmetic -- a duplicate-looking line in an advisory list.
+ *
+ * Digesting the RAW path instead would in fact disambiguate these, and safely:
+ * a sha256 hex digest is `[0-9a-f]` only, so it cannot reproduce `<!--`, the
+ * marker token or an @-mention. An earlier version of this comment claimed
+ * otherwise and was simply wrong. The real cost is that it would hang a digest
+ * suffix on EVERY row to disambiguate a case nobody has hit, which is a poor
+ * trade for an advisory list.
+ *
+ * @param {unknown} text
+ */
+export function sanitizePath(text) {
+  const out = defangInline(text);
+  if (out.length <= MAX_PATH_CHARS) return out;
+  const digest = createHash('sha256').update(out).digest('hex').slice(0, 12);
+  return `${out.slice(0, MAX_PATH_CHARS)} [truncated: ${out.length} chars, sha256 ${digest}]`;
 }
 
 /**
@@ -896,6 +981,46 @@ export function validate({ response, input, onWarn = null }) {
   };
 }
 
+/**
+ * The paths the reviewer NEVER SAW THE CONTENT OF, ready for a posted comment
+ * body. Both ways that happens count: dropped to fit the model prompt (#3679),
+ * and refused a patch by GitHub for being too large.
+ *
+ * IT USED TO BE ONLY THE FIRST, matched by `reason === OMITTED_FOR_PROMPT_REASON`
+ * inline, HERE, while build-review-input.mjs's own PARTIAL REVIEW log matched
+ * a DIFFERENT inline predicate over the same rows. A PR whose one unreviewable
+ * file was one GitHub declined to send therefore produced a marker
+ * byte-identical to a full review's, and CodeRabbit stood down on it -- the
+ * absence-reads-as-success shape one layer below where #3679 put the
+ * disclosure. Both call sites now share `isUnread`, exported from
+ * build-review-input.mjs next to the `kind` field it reads, so the log line
+ * and the posted marker cannot drift apart the way two independently spelled
+ * copies did.
+ *
+ * A deletion or a pure rename is NOT counted: there was no changed content for
+ * the reviewer to read, so nothing is being withheld and disclosing it would
+ * train readers to ignore the warning.
+ *
+ * Sanitised HERE, because this file is the boundary between model-or-PR
+ * controlled bytes and the poster: a git path may contain any byte but NUL and
+ * `/`, including `-->` and the literal marker token, and an unsanitised path in
+ * the summary would be a marker-forgery channel opened by the very feature
+ * whose job is to keep absence visible. `sanitizePath` defangs the token and
+ * strips HTML comments but keeps the path WHOLE (`sanitizeLabel`'s 60-char
+ * `class` cap stood here once and rewrote real paths into names that exist
+ * nowhere -- and collapsed sibling files into one string); a path that
+ * sanitises to nothing still has to appear, so it is named as unprintable
+ * rather than dropped.
+ *
+ * @param {{path: string, reason?: string}[]} unreviewable
+ * @returns {string[]}
+ */
+export function omittedForPromptPaths(unreviewable) {
+  return unreviewable
+    .filter(isUnread)
+    .map((u) => sanitizePath(u.path) || '(a path that sanitised to nothing)');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.raw) throw new ValidateFindingsError('NO_RAW', 'Pass `--raw <path>`, the model\'s raw output.');
@@ -916,6 +1041,11 @@ function main() {
     headSha: input.headSha,
     verdict: result.verdict,
     findings: result.findings,
+    // What the review DID NOT read, dropped upstream to fit the model prompt
+    // (#3679). Carried here because findings.json is the only artefact the
+    // poster sees: without this row the marker for a partial review would be
+    // byte-identical to a full one.
+    omitted: omittedForPromptPaths(input.unreviewable),
     counts: result.counts,
     warnings: result.warnings,
   };
@@ -938,6 +1068,12 @@ function main() {
     '   This proves the model READ the diff and that each surviving finding is ANCHORED to it. It ' +
       'proves nothing about whether the findings are CORRECT.',
   );
+  if (doc.omitted.length > 0) {
+    console.log(
+      `   PARTIAL: ${doc.omitted.length} file(s) were dropped upstream to fit the model prompt and were ` +
+        'NOT reviewed; the poster will say so on the PR.',
+    );
+  }
   process.exit(0);
 }
 

@@ -143,9 +143,34 @@ export function promptSafePath(path) {
   return JSON.stringify(String(path)).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
 }
 
+/**
+ * THE THREE PER-ROW RENDERINGS AND THE THREE PER-ROW CHARGES, together because
+ * they are the same fact twice: `promptEnvelopeBytes` (build-context-pack) and
+ * `fitFilesToPrompt` (build-review-input) budget a row by measuring the exact
+ * string `buildPrompt` will emit for it, so neither can drift from the prompt.
+ * A hand-written constant modelling these did drift -- it charged a kept file's
+ * path ONCE while `fileHeader` plus `rosterRow` spend it TWICE, and 600 kept
+ * files with 188-byte paths pushed a "fits" verdict 8,476 bytes over
+ * MAX_PROMPT_BYTES. Both callers then re-spelled the arithmetic themselves,
+ * which is the same split one module further out; it lives here so that
+ * changing how a row renders changes what it costs, by construction.
+ *
+ * THE JOIN BYTES ARE PART OF THE ROW: file sections join on `\n\n`, the roster
+ * and the unreviewable list on `\n`. Charged per row rather than per gap, which
+ * over-reserves by one joiner per section -- conservative by bytes, not
+ * kilobytes.
+ */
+export const fileHeader = (path) => `--- FILE: ${path}\n`;
+export const rosterRow = (path) => `  ${promptSafePath(path)}`;
+export const unreviewableRow = (u) => `  - ${promptSafePath(u.path)} (${promptSafePath(u.reason ?? 'unknown')})`;
+const rowBytes = (str) => Buffer.byteLength(str, 'utf8');
+export const keptRowCharge = (path) => rowBytes(fileHeader(path)) + 2 + rowBytes(rosterRow(path)) + 1;
+export const unreviewableRowCharge = (u) => rowBytes(unreviewableRow(u)) + 1;
+
+/** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
 export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote: see retry-prompt.mjs
   const files = input.files
-    .map((f) => `--- FILE: ${f.path}\n${f.patch}`)
+    .map((f) => `${fileHeader(f.path)}${f.patch}`)
     .join('\n\n');
   // JSON.stringify'd, because a path is PR-controlled bytes. Git permits any byte
   // but NUL and `/` in a path, newlines included, so an interpolated filename
@@ -153,7 +178,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
   // premise is that PR-controlled bytes never leave the fence.
   const unreviewable = (input.unreviewable ?? []).length
     ? `\nFiles in this PR you were NOT shown (do not comment on them, do not report them clean):\n` +
-      input.unreviewable.map((u) => `  - ${promptSafePath(u.path)} (${promptSafePath(u.reason ?? 'unknown')})`).join('\n')
+      input.unreviewable.map(unreviewableRow).join('\n')
     : '';
 
   // THE CANONICAL `files_reviewed` LIST, handed over verbatim. Asking the model
@@ -169,7 +194,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
   const roster =
     `\nYour \`files_reviewed\` array must contain EXACTLY these ${input.files.length} path(s), ` +
     'verbatim -- nothing added, nothing dropped:\n' +
-    input.files.map((f) => `  ${promptSafePath(f.path)}`).join('\n');
+    input.files.map((f) => rosterRow(f.path)).join('\n');
 
   // THE CONTEXT PACK, fenced with the diff because it is the same trust class.
   // Base-tree excerpts are merged, reviewed text and lower risk than the head,

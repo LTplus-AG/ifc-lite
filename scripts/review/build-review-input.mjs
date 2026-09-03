@@ -58,11 +58,22 @@
  *                     of nothing is not a clean review, and the caller must
  *                     decide, not this script.
  *                     REMEDY: nothing to do; the lane should skip this PR.
- *   REVIEW_TOO_LARGE  Total patch text over the cap.
- *                     REMEDY: split the PR. Not chunked on purpose -- measured
- *                     here, 0 of 90 sampled PRs come near the cap, so chunking
- *                     would be machinery for a case that does not occur, and
- *                     silently reviewing half a diff is worse than refusing.
+ *   REVIEW_TOO_LARGE  Total patch text over MAX_PATCH_BYTES.
+ *                     REMEDY: split the PR. Below the cap the lane DEGRADES
+ *                     instead (see the omission note above `fitFilesToPrompt`):
+ *                     it reviews the largest files that fit the prompt and
+ *                     records the rest as unreviewable, so a near-cap PR gets a
+ *                     partial review with a marker instead of a MODEL_ERROR red
+ *                     that no re-run can clear (#3679).
+ *   NOTHING_FITS      Nothing at all fits the model prompt: one file's patch is
+ *                     bigger than the whole prompt, or the paths alone fill it.
+ *                     A SKIP, not a failure, and that is the distinction from
+ *                     REVIEW_TOO_LARGE: no re-run can clear it, so failing the
+ *                     job here would leave a red that only splitting the PR
+ *                     removes while the gate tells you to re-run. The lane
+ *                     posts `nothing-to-review` instead, which leaves the head
+ *                     covered for dedup and NOT full, so CodeRabbit still reads
+ *                     the PR. Same handling as NO_FILES, same reason.
  *   GH_*              Propagated from lib/gh.mjs. All fail closed.
  *
  * STATED HOLES:
@@ -79,7 +90,20 @@
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
-import { buildPack, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY } from './build-context-pack.mjs';
+import {
+  buildPack,
+  retrievalFailed,
+  retrievalFailedMessage,
+  SHALLOW_CHECKOUT_REMEDY,
+  MAX_PROMPT_BYTES,
+  PROMPT_BASE_OVERHEAD_BYTES,
+} from './build-context-pack.mjs';
+// The renderers, not a byte model OF the renderers. fitFilesToPrompt charges
+// each row by measuring the exact strings buildPrompt will emit, because two
+// copies held together by prose drifted once already: a constant that charged
+// a kept file's path once, where the prompt spends it twice, declared a
+// 600-file long-path diff "fits" 8,476 bytes over the ceiling.
+import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -88,8 +112,75 @@ import { gh, GhError } from '../lib/gh.mjs';
 // comment says was moved rather than fixed.
 import { pageAll } from '../check-review-posted.mjs';
 
-/** 600 KB of patch text. The largest PR observed on this repo is ~427 KB. */
+/**
+ * 600 KB of patch text; the largest PR observed on this repo is ~427 KB. This is
+ * the REFUSAL bound, not the review bound: a diff under it that still cannot fit
+ * the model prompt (MAX_PROMPT_BYTES is smaller than this, measured at ~1.95
+ * bytes per token -- #3679) is DEGRADED by `fitFilesToPrompt` below rather than
+ * refused. Do not lower this to "fix" a prompt overrun: that makes the lane
+ * refuse PRs it used to review, the trade already made and reverted once here.
+ *
+ * "DEGRADED, NEVER REFUSED" IS NOT TRUE OF EVERY SUB-CAP DIFF, and this said it
+ * was. Degrading means reviewing the files that fit; a PR whose ONE file is
+ * 500 KB has no such subset, because a 500 KB patch does not fit a 390,000-byte
+ * prompt however the budget is arithmetic'd. No raise to this constant changes
+ * that -- MAX_PROMPT_BYTES is the binding number. What the lane owes that PR is
+ * an honest posted marker rather than a red, which is what NOTHING_FITS is for.
+ */
 export const MAX_PATCH_BYTES = 600 * 1024;
+
+/**
+ * The reason string on an unreviewable row for a file DROPPED to fit the model
+ * prompt. A constant, compared with `===` downstream: validate-findings copies
+ * exactly these rows into findings.json so the posted marker can say the review
+ * was partial. A reworded copy would silently vanish from the marker, which is
+ * the absence-reads-as-success shape one layer down.
+ *
+ * Length no longer needs policing. Every unreviewable row is charged at the
+ * bytes `unreviewableRow` actually renders, so a longer reason costs more AND
+ * is charged more. It used to be a fixed constant plus the raw strings, which
+ * a reason past its measured worst case would have quietly broken; that
+ * constant is gone.
+ */
+export const OMITTED_FOR_PROMPT_REASON = 'omitted: too large to fit the model prompt with the rest of this diff';
+
+/**
+ * WHAT AN UNREVIEWABLE ROW MEANS, as a field rather than as English. The row's
+ * `reason` is for a human; this is what code is allowed to branch on.
+ *
+ * `no-content` -- there was nothing for the reviewer to read: a deletion, or a
+ * pure rename. Nothing is being withheld, so nothing needs disclosing.
+ *
+ * `unread` -- there WAS content and the reviewer did not see it: GitHub called
+ * the file too large to send a patch for, or the diff was degraded to fit the
+ * model prompt. Every one of these must reach the marker's `omitted=<n>`.
+ *
+ * The distinction used to be made by matching `reason === OMITTED_FOR_PROMPT_REASON`
+ * downstream, which counted the prompt-dropped rows and silently missed the
+ * too-large ones: a PR whose only unreviewable file was one GitHub refused to
+ * send got a marker byte-identical to a full review's. Absence reading as
+ * success, one layer down from where #3679 fixed it.
+ */
+export const UNREVIEWABLE_NO_CONTENT = 'no-content';
+export const UNREVIEWABLE_UNREAD = 'unread';
+
+/**
+ * The ONE predicate for "the reviewer never saw this file's content", shared by
+ * every caller that has to count or disclose these rows. Two call sites used to
+ * spell this differently -- this script's own PARTIAL REVIEW log matched
+ * `reason === OMITTED_FOR_PROMPT_REASON` while validate-findings.mjs's marker
+ * count matched `kind === UNREVIEWABLE_UNREAD` -- and a log line and a posted
+ * marker disagreeing about the same run is exactly the kind of drift a reader
+ * cannot detect by eye. `kind` is authoritative when present; the reason-string
+ * fallback is for an input built before the field existed, where the
+ * prompt-dropped rows were the only ones ever counted anyway, so it reproduces
+ * the old behaviour exactly rather than guessing at the new one.
+ *
+ * @param {{reason?: string, kind?: string}} u
+ */
+export function isUnread(u) {
+  return u?.kind ? u.kind === UNREVIEWABLE_UNREAD : u?.reason === OMITTED_FOR_PROMPT_REASON;
+}
 
 const PER_PAGE = 100;
 const MAX_PAGES = 10;
@@ -113,7 +204,7 @@ export const EXCLUDED = [
   // for attention, and here for attribution.
   /(^|\/)eval-cases\//,
   /(^|\/)pkg\//,
-  /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm)$/i,
+  /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm|ico|parquet|bcf|woff|gif|webp)$/i,
   /(^|\/)dist\//,
   /(^|\/)api-surface\.json$/,
 ];
@@ -249,13 +340,111 @@ export function addedLineRanges(patch) {
 }
 
 /**
+ * Which candidate files fit the model prompt, and which must be dropped.
+ *
+ * WHY THIS EXISTS (#3679). MAX_PATCH_BYTES (600 KB) is larger than the prompt
+ * the model actually accepts: source code meters at ~1.95 bytes per token, so a
+ * near-cap diff alone is ~300k input tokens. PR #3668's own review passed at a
+ * 421,355-byte prompt and failed MODEL_ERROR at 580,241 bytes -- and
+ * run-reviewer has NO path from MODEL_ERROR to a marker, so the job went red
+ * with nothing posted and nothing any re-run could clear. Refusing instead
+ * (lowering the cap) is the same trade already made and reverted once here.
+ * So the lane DEGRADES: it reviews the largest files that fit and RECORDS the
+ * rest, and the recorded rows travel all the way to the posted marker.
+ *
+ * LARGEST FIRST, because the largest files carry the most changed lines: for a
+ * fixed byte budget that ordering maximises how much of the diff is actually
+ * read. Greedy, so a file too big for the remaining room does not block a
+ * smaller one behind it. Ties break on path so two runs of one head agree.
+ *
+ * THE CHARGE IS MEASURED, PER ROLE, AND EACH CANDIDATE PAYS THE ROLE IT ENDS
+ * UP IN. A candidate is either KEPT (a `--- FILE:` header plus a roster row --
+ * its path spent TWICE) or OMITTED (one unreviewable row -- its path once, plus
+ * the reason). Which costs more depends on the path's length against the
+ * reason's, so neither role dominates. A hand-written constant stood here and
+ * drifted: it charged every row at the unreviewable rate, which undercharges a
+ * kept file once its path outgrows the reason, and 600 candidates with 188-byte
+ * paths were declared to fit 8,476 bytes over MAX_PROMPT_BYTES -- measured
+ * through buildInput -> buildPack -> buildPrompt with the shipped rubric.
+ *
+ * ITS REPLACEMENT CHARGED max(kept, omitted) TO EVERY CANDIDATE UP FRONT, which
+ * is safe by bytes and wrong by outcome: a role a file does not end up in is
+ * still billed for. On a wide PR that is the dominant term. Measured on this
+ * branch: 2,000 files whose patches total 26 KB -- nothing close to any limit --
+ * drove the budget negative and threw REVIEW_TOO_LARGE saying "no single file's
+ * patch fits the model prompt", which was false about all 2,000 of them.
+ *
+ * SO THE FIT IS A FIXED POINT, reached in one pass rather than iterated. Start
+ * from "every candidate omitted" and admit files largest-first; admitting one
+ * SWAPS its omitted row for its kept rows, so it costs its patch bytes plus
+ * `keptRowCharge - unreviewableRowCharge` -- a swing that is positive for a long
+ * path and NEGATIVE for a short one. The swings are additive, so the running
+ * total is exact for whatever set comes out; there is no second pass to do.
+ *
+ * Rows unreviewable for OTHER reasons never move, so they pay exactly their own
+ * rendering. The pack needs no reservation: packBudgetFor already yields to the
+ * diff and reaches zero exactly on the PRs this function bites on.
+ *
+ * THE BUDGET IS SHORT BY THE UNREVIEWABLE SECTION'S PREAMBLE (128 bytes) AND
+ * `promptEnvelopeBytes`'s `countDigits` terms (a handful). Latent, and named
+ * rather than left to be discovered: both are absorbed by the margin inside
+ * PROMPT_BASE_OVERHEAD_BYTES, which is 24,000 against a measured envelope well
+ * under it. Deriving the budget from `promptEnvelopeBytes` directly would close
+ * the gap, but that function charges a SETTLED input and this one is choosing
+ * what the input will be -- it would have to be re-evaluated per candidate, so
+ * it is a real change rather than a substitution.
+ *
+ * @param {{path: string, patch: string}[]} candidates
+ * @param {{path: string}[]} unreviewable rows already recorded for other reasons
+ * @returns {{ kept: typeof candidates, omitted: typeof candidates, budget: number }}
+ */
+export function fitFilesToPrompt(candidates, unreviewable) {
+  // Charged by run-reviewer's own per-row charges, which sit next to the
+  // renderers they measure. Re-spelling the arithmetic here is how the two
+  // copies would drift apart.
+  const omittedCharge = (path) => unreviewableRowCharge({ path, reason: OMITTED_FOR_PROMPT_REASON });
+  let base = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
+  for (const u of unreviewable) base -= unreviewableRowCharge(u);
+
+  const sized = candidates.map((c) => ({
+    c,
+    bytes: Buffer.byteLength(c.patch, 'utf8'),
+    // What admitting this file costs on top of its patch: it stops paying for an
+    // unreviewable row and starts paying for a header plus a roster row.
+    swing: keptRowCharge(c.path) - omittedCharge(c.path),
+  }));
+  // THE FLOOR IS "EVERYTHING OMITTED", which is the one arrangement that is
+  // always available, so this is what the budget is measured against.
+  const budget = sized.reduce((n, s) => n - omittedCharge(s.c.path), base);
+
+  const bySize = [...sized].sort((a, b) => b.bytes - a.bytes || a.c.path.localeCompare(b.c.path));
+  const keep = new Set();
+  let spent = 0;
+  for (const s of bySize) {
+    const cost = s.bytes + s.swing;
+    if (spent + cost <= budget) {
+      keep.add(s.c.path);
+      spent += cost;
+    }
+  }
+  return {
+    kept: candidates.filter((c) => keep.has(c.path)),
+    omitted: candidates.filter((c) => !keep.has(c.path)),
+    // WHY NOTHING FIT, when nothing did. The two causes need different words and
+    // one of them used to be printed for both: a patch bigger than the whole
+    // prompt is not the same failure as a file list whose ROWS alone exhaust it.
+    budget,
+  };
+}
+
+/**
  * Pure over an already-fetched file list, so every branch is reachable in tests
  * without a network.
  *
  * @returns {{ headSha: string, files: object[], unreviewable: string[], excluded: string[] }}
  */
 export function buildInput(fileRows, headSha) {
-  const files = [];
+  const candidates = [];
   const unreviewable = [];
   const excluded = [];
   let bytes = 0;
@@ -269,30 +458,66 @@ export function buildInput(fileRows, headSha) {
     }
     if (row?.status === 'removed') {
       // No new-file content to anchor a comment to.
-      unreviewable.push({ path, reason: 'deleted' });
+      unreviewable.push({ path, reason: 'deleted', kind: UNREVIEWABLE_NO_CONTENT });
       continue;
     }
     if (typeof row?.patch !== 'string' || row.patch === '') {
       // GitHub omits `patch` on very large files. Recorded, never silently
       // dropped: a file the reviewer was not shown must not be reportable as
       // clean, and the reader has to be able to see which those were.
-      unreviewable.push({ path, reason: 'no patch returned (too large, or a pure rename)' });
+      //
+      // `status === 'renamed'` used to be the whole test for "no content
+      // changed", which is wrong: GitHub sets `status: 'renamed'` on a rename
+      // PLUS an edit too, and that row can be just as oversized as a modified
+      // file's -- its patch was declined for the same reason, not because the
+      // rename carried no content. `changes` (GitHub's additions+deletions
+      // count for the row) is what actually says whether anything changed;
+      // `status` only says whether the path moved. A pure rename has
+      // `changes === 0`. A rename-plus-edit does not, and its missing patch is
+      // an OMISSION the marker must disclose exactly like a too-large modified
+      // file's.
+      //
+      // GitHub also omits `patch` for binary content, `changes` included --
+      // and the extension list above cannot enumerate every binary format a
+      // repo will ever add, so `changes === 0` is the general discriminator: a
+      // row with nothing to diff was never withheld from the reviewer, whether
+      // that is because it renamed cleanly or because it has no textual form.
+      //
+      // `changes === 0` is checked with STRICT equality on purpose: a row
+      // whose `changes` field is missing entirely (never sent by GitHub's real
+      // API, but seen in older fixtures here) falls through to the UNREAD
+      // branch rather than being read as "no changes" -- silence about the
+      // count is not the same claim as a counted zero, and defaulting it to
+      // zero would misclassify exactly the too-large row this branch exists
+      // to catch.
+      const renamed = row?.status === 'renamed';
+      const noContent = row?.changes === 0;
+      unreviewable.push(
+        noContent
+          ? {
+              path,
+              reason: renamed ? 'a pure rename: no content changed' : 'binary or no textual change',
+              kind: UNREVIEWABLE_NO_CONTENT,
+            }
+          : { path, reason: 'no patch returned (too large)', kind: UNREVIEWABLE_UNREAD },
+      );
       continue;
     }
     bytes += Buffer.byteLength(row.patch, 'utf8');
     if (bytes > MAX_PATCH_BYTES) {
       throw new BuildInputError(
         'REVIEW_TOO_LARGE',
-        `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Not chunked on purpose: 0 of ` +
-          '90 sampled PRs on this repository come near this, so chunking would be machinery for a ' +
-          'case that does not occur, and reviewing half a diff silently is worse than refusing. ' +
-          'REMEDY: split the PR.',
+        `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Below this cap the lane degrades ` +
+          'to reviewing whatever the largest-first fit keeps within the model prompt and names the ' +
+          'rest in the omitted list; past it there is no such guarantee left to make -- a diff this ' +
+          'size has no evenly-sized-file assumption to fall back on, so no fixed fraction of it can be ' +
+          'promised read. REMEDY: split the PR.',
       );
     }
-    files.push({ path, patch: row.patch, addedLineRanges: addedLineRanges(row.patch) });
+    candidates.push({ path, patch: row.patch });
   }
 
-  if (files.length === 0) {
+  if (candidates.length === 0) {
     throw new BuildInputError(
       'NO_FILES',
       'No reviewable files after exclusions. A review of nothing is not a clean review, so this ' +
@@ -300,6 +525,38 @@ export function buildInput(fileRows, headSha) {
         'REMEDY: the lane should skip this PR; nothing here needs fixing.',
     );
   }
+
+  const { kept, omitted, budget } = fitFilesToPrompt(candidates, unreviewable);
+  if (kept.length === 0) {
+    // NAME THE CAUSE THAT ACTUALLY BIT. One message covered both and was false
+    // about one of them: 2,000 files totalling 26 KB of patch were refused with
+    // "no single file's patch fits", which was wrong about every one of them.
+    // The two failures have different remedies, so telling them apart is not
+    // cosmetic.
+    const smallest = Math.min(...candidates.map((c) => Buffer.byteLength(c.patch, 'utf8')));
+    const why =
+      budget <= 0
+        ? `Listing this PR's ${candidates.length} changed file(s) fills the ${MAX_PROMPT_BYTES}-byte model ` +
+          'prompt before a single patch is added, so there is no room to review any of them. It is the ' +
+          'FILE COUNT, not the diff: the paths alone do not fit.'
+        : `No single file's patch fits the ${budget} bytes left of the ${MAX_PROMPT_BYTES}-byte model ` +
+          `prompt; the smallest of the ${candidates.length} is ${smallest} bytes.`;
+    throw new BuildInputError(
+      'NOTHING_FITS',
+      `${why} There is nothing to degrade to: a review that read none of the diff would be a clean ` +
+        'verdict it never earned, so the lane posts a `nothing-to-review` marker instead of a review. ' +
+        'That leaves the head covered for dedup and NOT full, so CodeRabbit still reads the PR, rather ' +
+        'than red for a re-run that would fail identically. REMEDY: split the PR.',
+    );
+  }
+  // RECORDED, NEVER SILENTLY DROPPED -- the same rule as the no-patch rows
+  // above, and the reason is a CONSTANT so downstream can tell "dropped to fit
+  // the prompt" from "GitHub sent no patch" and put it in the marker.
+  for (const o of omitted) {
+    unreviewable.push({ path: o.path, reason: OMITTED_FOR_PROMPT_REASON, kind: UNREVIEWABLE_UNREAD });
+  }
+
+  const files = kept.map(({ path, patch }) => ({ path, patch, addedLineRanges: addedLineRanges(patch) }));
   return { headSha, files, unreviewable, excluded };
 }
 
@@ -350,6 +607,15 @@ function main() {
   }
 
   const input = buildInput(rows, args.sha);
+  const omittedRows = input.unreviewable.filter(isUnread);
+  if (omittedRows.length > 0) {
+    console.log(
+      `::warning::review-input: PARTIAL REVIEW -- ${omittedRows.length} file(s) were not shown to the ` +
+        'reviewer, dropped to fit the model prompt (#3679) or refused a patch by GitHub for being too ' +
+        'large. They are recorded as unreviewable and the posted marker will name them; nothing ' +
+        'vouches for those files.',
+    );
+  }
   // THE CONTEXT PACK. Built here, in the harness, never by the model.
   //
   // Optional: without --base the lane behaves exactly as it did before, which

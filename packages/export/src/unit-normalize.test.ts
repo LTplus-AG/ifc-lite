@@ -81,6 +81,20 @@ describe('scaleTypedMeasures', () => {
     expect(scaleTypedMeasures('(IFCLENGTHMEASURE(1000.),IFCLENGTHMEASURE(2000.))', 0.001, 1, 1))
       .toBe('(IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.))');
   });
+
+  // #3789: the keyword and its '(' may be separated by a STEP writer's line
+  // wrap, the TS sibling of the Rust tokenizer's #3205 fix.
+  it('scales a measure wrapped across whitespace before its "("', () => {
+    expect(scaleTypedMeasures('IFCLENGTHMEASURE\r\n(100.)', 0.001, 1, 1))
+      .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('two-way rule: does not treat a keyword followed by non-whitespace junk as a measure', () => {
+    // 'X' between the keyword and '(' is neither whitespace nor part of the
+    // keyword itself, so this must be left completely untouched.
+    const input = 'IFCLENGTHMEASUREX(100.)';
+    expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);
+  });
 });
 
 describe('getEntityLengthPlan (schema-derived)', () => {

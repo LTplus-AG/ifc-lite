@@ -137,15 +137,19 @@ export function serializeStepToken(value: IfcAttributeValue): string {
 
 /**
  * Coarse classifier for "is this token safe to inline-edit?" Lists
- * (`(...)`) and typed values (`IFCLABEL(...)`) are display-only —
+ * (`(...)`) and typed values (`IFCLABEL(...)`, including one wrapped
+ * across whitespace before its `(` — see the same adjacency fix in
+ * entity-extractor.ts, #3205's Rust counterpart) are display-only —
  * the row UI hides the pen icon for them and tells the user to
- * reach for the script panel.
+ * reach for the script panel. Without `\s*` here, a wrapped typed
+ * value read as editable and a no-op edit wrote back a quoted string
+ * literal with an embedded newline instead of leaving it untouched.
  */
 export function isInlineEditableToken(token: string): boolean {
   const t = token.trim();
   if (!t) return true;
   if (t.startsWith('(')) return false;
-  if (/^[A-Z][A-Z0-9_]*\(/i.test(t)) return false;
+  if (/^[A-Z][A-Z0-9_]*\s*\(/i.test(t)) return false;
   return true;
 }
 

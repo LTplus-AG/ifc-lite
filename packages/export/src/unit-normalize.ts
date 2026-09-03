@@ -226,9 +226,15 @@ export function scaleNumberLiterals(text: string, factor: number): string {
  * captured before the keyword and restored, so a keyword can never be matched as
  * the suffix of a longer identifier — without a lookbehind, which some engines
  * (older Safari) reject at construction time and would break importing this module.
+ *
+ * `\s*` between the keyword and `(` mirrors the entity/typed-value adjacency
+ * fix (packages/parser's entity-extractor, #3205's Rust counterpart): a STEP
+ * writer's line wrap can land there, and without it the wrapped literal was
+ * skipped by this rewriter, leaving the normalized file's other measures
+ * scaled but this one still in the source unit.
  */
 const TYPED_MEASURE_RE =
-  /('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)\(([^)]*)\)/gi;
+  /('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)\s*\(([^)]*)\)/gi;
 
 export function scaleTypedMeasures(
   text: string,

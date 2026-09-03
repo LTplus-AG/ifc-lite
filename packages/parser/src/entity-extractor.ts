@@ -73,7 +73,12 @@ export class EntityExtractor {
       // source lines still match — `.` stops at the first newline and made
       // extractEntity return null for ANY multi-line STEP record (lost
       // storey/covering names + the on-demand attribute fallback).
-      const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\(([\s\S]*)\)/);
+      // `\s*` between the type name and `(` mirrors the Rust tokenizer's
+      // `ws` before its typed-value/entity paren (#3205): a STEP writer's
+      // line wrap can land exactly there (e.g. `IFCSURFACESTYLERENDERING\r\n(#4,0.)`),
+      // and without it this regex returned null, silently hiding the
+      // entity from every downstream extractor keyed on extractEntity.
+      const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\s*\(([\s\S]*)\)/);
       if (!match) return null;
 
       // `\d+` guarantees this is not NaN, but not that the id fits the 32-bit
@@ -212,7 +217,12 @@ export class EntityExtractor {
     // e.g. an IFCLABEL/IFCTEXT string an authoring tool broke across physical
     // lines — is still unwrapped. Without it the match fails and the raw
     // `IFCLABEL('...')` literal (mis-typed as a plain string) leaks to callers.
-    const typedValueMatch = value.match(/^([A-Z][A-Z0-9_]*)\((.+)\)$/is);
+    // `\s*` between the type name and `(` handles the same wrap landing
+    // there instead of inside the value (e.g. `IFCPOSITIVELENGTHMEASURE\r\n(1.)`);
+    // without it this fell through to the plain-string branch below, and a
+    // downstream conversion-unit reader (unit-extractor.ts) then defaulted an
+    // unreadable ValueComponent to conversionValue 1.0 instead of the real one.
+    const typedValueMatch = value.match(/^([A-Z][A-Z0-9_]*)\s*\((.+)\)$/is);
     if (typedValueMatch) {
       const typeName = typedValueMatch[1];
       const innerValue = typedValueMatch[2].trim();

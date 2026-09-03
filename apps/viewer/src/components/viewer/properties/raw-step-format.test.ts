@@ -154,6 +154,21 @@ describe('isInlineEditableToken', () => {
     assert.strictEqual(isInlineEditableToken('.T.'), true);
     assert.strictEqual(isInlineEditableToken("'hello'"), true);
   });
+
+  // #3789: a typed value wrapped across whitespace before its "(" (the TS
+  // sibling of the Rust tokenizer's #3205 fix) must still be classified as
+  // not-editable — otherwise a no-op edit writes back a quoted literal with
+  // an embedded newline.
+  it('treats a typed-value token wrapped across a CRLF before "(" as not editable', () => {
+    assert.strictEqual(isInlineEditableToken("IFCLABEL\r\n('x')"), false);
+  });
+
+  it('two-way rule: a plain identifier followed by non-"(" text stays editable', () => {
+    // 'IFCLABEL' alone, or trailed by anything other than whitespace-then-'(',
+    // is not a typed value and must remain inline-editable.
+    assert.strictEqual(isInlineEditableToken('IFCLABEL'), true);
+    assert.strictEqual(isInlineEditableToken('IFCLABEL x'), true);
+  });
 });
 
 describe('parseRawStepInput', () => {

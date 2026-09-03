@@ -307,11 +307,12 @@ jobs:
       # line anchoring, the cap, and the sanitisation that stops a steered model
       # laundering a forged marker through our own trusted identity.
       #
-      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED OR RESPONSE_TRUNCATED (#3652,
-      # #3777). Every other reason here (SCHEMA_INVALID, VALIDATION_EMPTY, ...)
-      # reflects the prompt or the harness, not a fixable shape of model output,
-      # and re-running the model would not change the answer -- those still fail
-      # this step outright, exactly as before. The retryable set is pinned in
+      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, OR
+      # VALIDATION_EMPTY (#3652, #3777, #3775). Every other reason here
+      # (SCHEMA_INVALID, VERDICT_CONTRADICTS_FINDINGS, ...) reflects the prompt
+      # or the harness, not a fixable shape of model output, and re-running the
+      # model would not change the answer -- those still fail this step
+      # outright, exactly as before. The retryable set is pinned in
       # scripts/review/retry-prompt.mjs's RETRYABLE_VALIDATION_REASONS, and
       # run-reviewer.test.mjs asserts this grep matches exactly that set.
       #
@@ -335,6 +336,17 @@ jobs:
       # finish within budget, same as #3652 gives it a second attempt to pick a
       # provable quote.
       #
+      # VALIDATION_EMPTY (#3775): `verdict: "findings"` and every individual
+      # finding was dropped (each drop is its own loud `DROPPED findings[i]: ...`
+      # warning naming the reason -- an unreviewed file, an off-by-one line, an
+      # empty body after sanitising). Measured non-deterministic on one
+      # unchanged commit reviewed three times in a row (336, then 290+143, then
+      # 210 dropped, before a real finding finally posted), so this is the same
+      # "bad response this time" shape as RESPONSE_TRUNCATED, not a verdict
+      # about the code. The refusal to downgrade to clean or pass through empty
+      # is UNCHANGED: if the retry also drops everything, this still fails
+      # loudly -- nothing here relaxes that throw.
+      #
       # Either way, if the retry also fails, this step fails exactly as it
       # always has; nothing here can turn a failure into a clean or findings
       # verdict.
@@ -357,7 +369,7 @@ jobs:
             --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
           rc=${PIPESTATUS[0]}
 
-          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
+          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED|VALIDATION_EMPTY):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
           if [ "$rc" -ne 0 ] && [ -n "$retry_reason" ]; then
             echo "::notice::${retry_reason} on the first attempt; retrying once."
             node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \

@@ -984,16 +984,26 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
 });
 
-test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED} (#3777)', () => {
-  // Mutation-tested shape: this must fail if the set grows to include a third
-  // reason (e.g. someone adding VALIDATION_EMPTY or a genuine
-  // VERDICT_CONTRADICTS_FINDINGS "papers over a real failure with a retry"),
-  // and must fail if it shrinks to just one. Exact-set comparison, not a
-  // subset/superset check either direction, per this repo's own
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY} (#3777, #3775)', () => {
+  // Mutation-tested shape: this must fail if the set grows to include a fourth
+  // reason (e.g. a genuine VERDICT_CONTRADICTS_FINDINGS "papers over a real
+  // failure with a retry"), and must fail if it shrinks. Exact-set comparison,
+  // not a subset/superset check either direction, per this repo's own
   // substring/subset false-pass lesson.
+  //
+  // VALIDATION_EMPTY belongs here (#3775) even though every finding was
+  // individually dropped with its own loud DROPPED warning: that per-finding
+  // drop already exists and is already loud, so this is not a case of
+  // silently loosening what gets dropped. VALIDATION_EMPTY fires only when
+  // ALL of them were dropped, measured non-deterministic (the same unchanged
+  // commit, reviewed three times, dropped a different count each time before
+  // finally posting a real finding) -- the same "bad response this time"
+  // shape as RESPONSE_TRUNCATED, not a verdict about the code. The throw
+  // itself is unchanged: a retry that also drops everything still fails
+  // loudly, never downgrades to clean, never passes through empty.
   assert.deepEqual(
     [...RETRYABLE_VALIDATION_REASONS].sort(),
-    ['PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED'],
+    ['PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
   );
   // Every retryable reason must be a real one -- catches a typo'd string that
   // would silently never match anything real REASONS raises.
@@ -1012,7 +1022,7 @@ test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TR
   }
   assert.ok(!RETRYABLE_VALIDATION_REASONS.has('VERDICT_CONTRADICTS_FINDINGS'), 'a contradicted verdict is a real failure, never retried');
   assert.ok(!RETRYABLE_VALIDATION_REASONS.has('SCHEMA_INVALID'), 'malformed output is a prompt/harness problem, never retried');
-  assert.ok(!RETRYABLE_VALIDATION_REASONS.has('VALIDATION_EMPTY'), 'an empty validated set is a prompt/harness problem, never retried');
+  assert.ok(RETRYABLE_VALIDATION_REASONS.has('VALIDATION_EMPTY'), 'every finding dropped is transient and IS retried (#3775)');
 });
 
 test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VALIDATION_REASONS names', () => {

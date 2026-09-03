@@ -385,6 +385,18 @@ test('buildPrompt: retryReason RESPONSE_TRUNCATED gets truthful wording, never t
   assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
 });
 
+test('buildPrompt: retryReason VALIDATION_EMPTY gets truthful wording, never proof-of-work or truncation text (#3775)', () => {
+  const p = buildPrompt('R', INPUT, { retryNote: '❌ VALIDATION_EMPTY: The model reported 1 finding(s) and NONE survived validation.', retryReason: 'VALIDATION_EMPTY' });
+  assert.match(p, /## This is a RETRY/);
+  assert.match(p, /Every finding in your previous answer was dropped/);
+  assert.match(p, /report `verdict: "clean"`/);
+  // Must NOT claim a proof-of-work failure or a truncation -- both would be
+  // false: nothing was quoted wrong, and nothing was cut off mid-answer.
+  assert.doesNotMatch(p, /failed proof-of-work/);
+  assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
+  assert.doesNotMatch(p, /terminal sentinel/);
+});
+
 test('buildPrompt: retryReason PROOF_OF_WORK_FAILED (explicit) matches the unchanged #3652 text', () => {
   const explicit = buildPrompt('R', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.', retryReason: 'PROOF_OF_WORK_FAILED' });
   const implicit = buildPrompt('R', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.' });

@@ -352,6 +352,7 @@ export function collectTransferables(payload: DataStoreTransport): Transferable[
   for (const arr of [
     payload.quantities.entityId,
     payload.quantities.qsetName,
+    payload.quantities.qsetGlobalId,
     payload.quantities.quantityName,
     payload.quantities.quantityType,
     payload.quantities.value,

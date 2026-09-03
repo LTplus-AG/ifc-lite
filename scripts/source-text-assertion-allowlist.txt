@@ -74,3 +74,47 @@ scripts/review/lane-canary.test.mjs  # 7 hits
 scripts/review/post-review.test.mjs  # 60 hits
 scripts/review/run-reviewer.test.mjs  # 3 hits
 scripts/review/validate-findings.test.mjs  # 46 hits
+
+# --- Added by #3754, when SOURCE_LITERAL finally included `mjs` ---
+# The scanner had walked scripts/ since #3639 and READ_NAMES/taint tracking
+# never depended on an extension, but namesASourceFile's literal allowlist did
+# -- ts/tsx/mts/rs/css/scss, no mjs -- so every one of these files, which is
+# entirely `.mjs`, failed that half of the gate and was invisible regardless of
+# which read idiom it used. A planted `readFileSync(new URL('./x.mjs',
+# import.meta.url), 'utf8'))` followed by `assert.match(...)` reported "0 new".
+#
+# NOT historical debt in the sense #3639's rows were: these files were already
+# being scanned, just never opened, so the debt is exactly as old as each file.
+# Grandfathered here so the widened literal set can land without converting
+# nine files in the same commit; the ceiling moved 22 -> 31 to match.
+#
+# Two shapes, both genuinely blocked today:
+#   - check-issue-queue, check-pr-review-signal and check-review-posted: the
+#     taint set is flat and unscoped (deliberately, see
+#     source-text-assertion-detect.mjs), and a config object read once at
+#     module scope (SHIPPED, the workflow text) shares a parameter name --
+#     `payload`, `r`, `wf` -- with an unrelated spawnSync() result destructured
+#     the same way `packages/data/scripts/generate-ifc-schema.test.ts` already
+#     is: `{ code: r.status, output: \`${r.stdout}${r.stderr}\` }`. The
+#     predicates that fire are on that behavioural output, not on the file
+#     text the taint traces back to.
+#   - check-agents-md-size, check-rust-semver, release-crates-order,
+#     release-tag-commit, release-version-changed and sync-versions: genuinely
+#     read Cargo.toml / Cargo.lock / a workflow YAML / a budgets file and
+#     assert on the text with a regex, the shape this gate exists to flag --
+#     several already carry `@source-text-assertion-ok` siblings for the same
+#     reasoning as scripts/review/run-judge.test.mjs ("a missing YAML key or
+#     CLI flag has no behaviour to assert on"). Converting these to per-line
+#     markers or a behavioural harness is real work, tracked as follow-up, not
+#     done in the commit that first makes the gate able to see them.
+#
+# Each row carries its hit count at the time of widening, same caveat as above.
+scripts/check-agents-md-size.test.mjs  # 6 hits
+scripts/check-issue-queue.test.mjs  # 70 hits
+scripts/check-pr-review-signal.test.mjs  # 109 hits
+scripts/check-review-posted.test.mjs  # 13 hits
+scripts/check-rust-semver.test.mjs  # 11 hits
+scripts/release-crates-order.test.mjs  # 12 hits
+scripts/release-tag-commit.test.mjs  # 8 hits
+scripts/release-version-changed.test.mjs  # 6 hits
+scripts/sync-versions.test.mjs  # 15 hits

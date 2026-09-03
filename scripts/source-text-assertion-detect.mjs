@@ -144,6 +144,7 @@
  */
 
 import ts from 'typescript';
+import { isModuleSpecifierLiteral } from './source-text-assertion-module-specifier.mjs';
 
 /**
  * The taint source: a disk read, however the call is qualified. This used to be
@@ -156,14 +157,13 @@ const READ_NAMES = new Set(['readFileSync', 'readFile']);
 /**
  * Names a SOURCE file as a literal. Fixture formats (.ifc, .json, .csv, …) are
  * deliberately absent: reading a fixture and asserting on it is a normal test.
+ * `mjs` joined the list for #3754 -- `scripts/` is 271 `.mjs` files against 5
+ * `.ts`, so this half of the pairing rule never matched what it read.
  *
- * Applied to string and template-literal CONTENT from the tree, so a `.ts`
- * filename that appears only in prose cannot satisfy it. That used to need a
- * comment-stripping pass, and it was load-bearing rather than tidy: three
- * unrelated tests mention a `.ts` filename in a comment while reading a wasm
- * binary or a JSON manifest, and matching those flagged all three.
+ * Applied to string/template-literal CONTENT, not PROSE -- load-bearing:
+ * three tests once got flagged by a `.ts` filename in a comment.
  */
-const SOURCE_LITERAL = /^[^'"`\n]*\.(ts|tsx|mts|rs|css|scss)$/;
+const SOURCE_LITERAL = /^[^'"`\n]*\.(ts|tsx|mts|mjs|rs|css|scss)$/;
 
 /**
  * Text predicates. `test` and `exec` are here because this repo already writes
@@ -592,7 +592,7 @@ function namesASourceFile(sourceFile) {
   walk(sourceFile, (n) => {
     if (found) return;
     if (ts.isStringLiteralLike(n)) {
-      if (SOURCE_LITERAL.test(n.text)) found = true;
+      if (!isModuleSpecifierLiteral(n) && SOURCE_LITERAL.test(n.text)) found = true;
       return;
     }
     // A template with substitutions has no single `.text`; each literal span is

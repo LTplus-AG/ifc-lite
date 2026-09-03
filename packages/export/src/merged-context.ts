@@ -36,7 +36,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { asSourceBytes } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
-import { planSubContextUnify } from './merged-subcontext.js';
+import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {
@@ -155,6 +155,30 @@ export function resolveModelContextWcs(dataStore: IfcDataStore, lengthUnitScale:
 }
 
 /**
+ * The primary model's context state {@link planInfrastructureUnify} matches
+ * every later model against: its subcontexts grouped by kind key
+ * (`merged-subcontext.ts`) and its top-level context's WCS frame, resolved at
+ * the PRIMARY scale. Computed once per merge via
+ * {@link resolvePrimaryContextState}, not per model.
+ */
+export interface PrimaryContextState {
+  subContextsByKey: Map<string, number[]>;
+  contextWcs: WcsSignature | null;
+}
+
+/** Build the {@link PrimaryContextState} for the primary model. */
+export function resolvePrimaryContextState(
+  dataStore: IfcDataStore,
+  subContextIds: number[],
+  primaryScale: number,
+): PrimaryContextState {
+  return {
+    subContextsByKey: groupSubContextsByKey(dataStore, subContextIds),
+    contextWcs: resolveModelContextWcs(dataStore, primaryScale),
+  };
+}
+
+/**
  * True when two resolved WCS frames are the same within tolerance, OR
  * either is null (unresolvable — permissive: never block a merge on a
  * context shape this reader couldn't fully parse).
@@ -188,14 +212,22 @@ function wcsSignaturesCompatible(a: WcsSignature | null, b: WcsSignature | null)
  * from `ParentContext`, so when the parent root's frame disagrees, retaining
  * the parent means every child must be retained too, not just remapped in
  * isolation. Mutates `sharedRemap`/`skipEntityIds`.
+ *
+ * `lengthUnitScale` is the scale THIS model's raw WCS coordinates resolve
+ * under. Under assume-shared the caller asserts raw coordinates are already
+ * in the primary's unit, and they are copied verbatim — so the caller must
+ * pass the PRIMARY scale (matching how {@link PrimaryContextState.contextWcs}
+ * was computed), not the model's own declared unit, or two frames that agree
+ * raw-value-for-raw-value can compare unequal (and vice versa: differing raw
+ * origins can collide once scaled). Under auto/normalize the caller passes
+ * the model's own declared scale, comparing true metric frames.
  */
 export function planInfrastructureUnify(
   dataStore: IfcDataStore,
   modelInfra: ReadonlyMap<string, number[]>,
   firstModelInfraMap: ReadonlyMap<string, number[]>,
-  firstModelSubContextsByKey: ReadonlyMap<string, number[]>,
+  firstModelContext: PrimaryContextState,
   firstModelOffset: number,
-  firstModelContextWcs: WcsSignature | null,
   lengthUnitScale: number,
   sharedRemap: Map<number, number>,
   skipEntityIds: Set<number>,
@@ -203,7 +235,7 @@ export function planInfrastructureUnify(
   // Computed once, up front — not per type in the loop below — so its result
   // does not depend on `IFCGEOMETRICREPRESENTATIONCONTEXT` iterating before
   // `IFCGEOMETRICREPRESENTATIONSUBCONTEXT` in `firstModelInfraMap`.
-  const contextsCompatible = wcsSignaturesCompatible(firstModelContextWcs,
+  const contextsCompatible = wcsSignaturesCompatible(firstModelContext.contextWcs,
     resolveModelContextWcs(dataStore, lengthUnitScale));
   // Only the model's FIRST top-level context is (positionally) unified below;
   // any later sibling context — a model with both a 'Model' and a 'Plan'
@@ -229,7 +261,7 @@ export function planInfrastructureUnify(
         return parentId === null || parentId === unifiedContextId;
       });
       if (childIds.length > 0) {
-        planSubContextUnify(dataStore, childIds, firstModelSubContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
+        planSubContextUnify(dataStore, childIds, firstModelContext.subContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
       }
       continue;
     }

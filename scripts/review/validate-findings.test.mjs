@@ -46,6 +46,7 @@ import {
   REASONS,
   validate,
   siblingVerifies,
+  DROPPED_LOG_PREFIX,
 } from './validate-findings.mjs';
 import { addedLineRanges, OMITTED_FOR_PROMPT_REASON } from './build-review-input.mjs';
 // #3652: the retry prompt this file's own tests exercise below.
@@ -1663,4 +1664,27 @@ test('a forged newline in `riskiest_change.path` cannot manufacture one either',
   const lines = r.out.split('\n');
   assert.deepEqual(lines.filter((l) => l.startsWith('❌ VALIDATION_EMPTY:')), []);
   assert.equal(lines.filter((l) => l.startsWith('❌ PROOF_OF_WORK_FAILED:')).length, 1, r.out);
+});
+
+test('THE WIRING: the DROPPED prefix the workflow greps is the one the validator emits', () => {
+  // claude-review.yml copies the DROPPED warnings into the posted marker body
+  // with `grep '^⚠️  DROPPED'`. That prefix is assembled from TWO files -- the
+  // `⚠️  ` comes from validate-findings.mjs's warning sink, the `DROPPED` from
+  // finding-schema.mjs's per-finding `drop()` -- and nothing coupled either half
+  // to the YAML. Reword any of the three and the marker silently carries an
+  // EMPTY reason: the run still posts, the body just stops saying why, which is
+  // the absence-reads-as-success shape one layer along.
+  const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  // @source-text-assertion-ok the grep is bash in YAML; there is no runtime signal for which prefix it matches
+  const m = wf.match(/grep '\^(⚠️ {2}DROPPED)'/);
+  assert.ok(m, 'the workflow must collect the DROPPED warnings by that prefix');
+  assert.equal(m[1], DROPPED_LOG_PREFIX, 'the workflow grep and the emitter must name the same prefix');
+
+  // AND THE VALIDATOR REALLY EMITS IT. Pinning the constant against the YAML
+  // alone would pass with the sink emitting something else entirely.
+  const r = run(response({ verdict: 'findings', findings: [finding({ path: 'never/sent.ts' })] }));
+  assert.equal(r.code, 1, r.out);
+  const dropped = r.out.split('\n').filter((l) => l.startsWith(DROPPED_LOG_PREFIX));
+  assert.equal(dropped.length, 1, r.out);
+  assert.match(dropped[0], /never\/sent\.ts/);
 });

@@ -165,7 +165,7 @@ import { readText, stripFence, parseRaw, readInput } from './lib/review-input-re
 // ... from`) because main() below calls `validate` and `omittedForPromptPaths`
 // itself, and re-exported so every existing import of these four names from
 // this file keeps working unchanged.
-import { SENTINEL, MAX_FINDINGS, validate, omittedForPromptPaths } from './lib/finding-schema.mjs';
+import { SENTINEL, MAX_FINDINGS, validate, omittedForPromptPaths, DROPPED_LABEL } from './lib/finding-schema.mjs';
 // MAX_BODY_CHARS/sanitizeBody/sanitizeLabel/sanitizePath moved to
 // ./lib/finding-sanitizers.mjs (module-size budget, #3795). Re-exported below.
 import { MAX_BODY_CHARS, sanitizeBody, sanitizeLabel, sanitizePath } from './lib/finding-sanitizers.mjs';
@@ -238,6 +238,19 @@ export { SENTINEL, MAX_FINDINGS, validate, omittedForPromptPaths };
 export { MAX_BODY_CHARS, sanitizeBody, sanitizeLabel, sanitizePath };
 export { siblingVerifies };
 
+/**
+ * The warning sink's own prefix, and the whole line-start claude-review.yml
+ * greps for when it copies the drop reasons onto the pull request.
+ *
+ * COMPOSED, not spelled a second time: `DROPPED_LOG_PREFIX` is exactly what this
+ * file prints in front of what `finding-schema.mjs` writes, so the constant
+ * cannot describe a line the code does not emit. A test pins it against the YAML
+ * grep AND against a real CLI run, because pinning it against the YAML alone
+ * would pass with the sink emitting something else entirely.
+ */
+const WARN_PREFIX = '\u26a0\ufe0f  ';
+export const DROPPED_LOG_PREFIX = `${WARN_PREFIX}${DROPPED_LABEL}`;
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.raw) throw new ValidateFindingsError('NO_RAW', 'Pass `--raw <path>`, the model\'s raw output.');
@@ -252,7 +265,7 @@ function main() {
 
   const input = readInput(args.input);
   const response = parseRaw(readText(args.raw, 'raw'));
-  const result = validate({ response, input, onWarn: (w) => console.log(`⚠️  ${w}`) });
+  const result = validate({ response, input, onWarn: (w) => console.log(`${WARN_PREFIX}${w}`) });
 
   const doc = {
     headSha: input.headSha,

@@ -131,17 +131,24 @@ export function unescapeXml(str: string): string {
  */
 export function parseLabels(topicContent: string): string[] {
   const labels: string[] = [];
+  // One emptiness rule for both shapes, so `<Labels><Label></Label></Labels>`
+  // and `<Labels></Labels>` agree. The 3.0 branch used to push
+  // decodeXmlCharData's '' straight through while the 2.1 branch skipped it,
+  // so only the 3.0 shape produced a phantom empty label. Whitespace-only
+  // content is NOT empty and is kept: markup.xsd types both elements as
+  // xs:string (whiteSpace=preserve), so '   ' is a legal value, and that is
+  // what the 2.1 path has always returned.
+  const push = (raw: string): void => {
+    const text = decodeXmlCharData(raw);
+    if (text !== null && text.length > 0) labels.push(text);
+  };
   for (const block of topicContent.matchAll(/<Labels>([\s\S]*?)<\/Labels>/g)) {
     const inner = block[1];
     const nested = [...inner.matchAll(/<Label>([\s\S]*?)<\/Label>/g)];
     if (nested.length > 0) {
-      for (const label of nested) {
-        const text = decodeXmlCharData(label[1]);
-        if (text !== null) labels.push(text);
-      }
+      for (const label of nested) push(label[1]);
     } else {
-      const text = decodeXmlCharData(inner);
-      if (text !== null && text.length > 0) labels.push(text);
+      push(inner);
     }
   }
   return labels;

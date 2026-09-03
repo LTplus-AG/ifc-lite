@@ -434,6 +434,56 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       const topic = Array.from(project.topics.values())[0];
       expect(topic.labels).toEqual(['Cost < Budget', 'Structural']);
     });
+
+    it('drops an empty nested <Label> the same way the 2.1 shape drops an empty <Labels>', async () => {
+      // The two shapes must agree on what counts as "no label at all". The
+      // 2.1 branch has always skipped an empty element (upstream's regex was
+      // `<Labels>([^<]+)</Labels>`, whose `+` cannot match ''), but the 3.0
+      // nested branch pushed decodeXmlCharData's '' straight through -- so
+      // `<Labels><Label></Label></Labels>` produced a phantom '' label that
+      // the equivalent 2.1 markup does not. A whitespace-only label is a
+      // different case and stays: markup.xsd types both as xs:string, whose
+      // whiteSpace facet is `preserve`, so '   ' is a legal string value and
+      // upstream's 2.1 path has always kept it.
+      const markup = (version: string, body: string) =>
+        [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          `  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">`,
+          `    <Title>${version} empty labels</Title>`,
+          body,
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n');
+
+      const read = async (version: string, body: string) => {
+        const zip = new JSZip();
+        zip.file(
+          'bcf.version',
+          `<?xml version="1.0"?><Version VersionId="${version}"></Version>`,
+        );
+        zip.file('topic-1/markup.bcf', markup(version, body));
+        const project = await readBCF(await zip.generateAsync({ type: 'arraybuffer' }));
+        return Array.from(project.topics.values())[0].labels;
+      };
+
+      // 3.0 nested shape: the empty <Label> contributes nothing, the
+      // whitespace-only one survives, and a real label still reads.
+      expect(
+        await read(
+          '3.0',
+          '    <Labels><Label></Label><Label>   </Label><Label>Structural</Label></Labels>',
+        ),
+      ).toEqual(['   ', 'Structural']);
+
+      // 2.1 direct-text shape, same three cases: identical answer.
+      expect(
+        await read(
+          '2.1',
+          '    <Labels></Labels><Labels>   </Labels><Labels>Structural</Labels>',
+        ),
+      ).toEqual(['   ', 'Structural']);
+    });
   });
 
   describe('resource caps (zip-bomb guard)', () => {

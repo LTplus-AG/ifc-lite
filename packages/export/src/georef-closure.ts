@@ -77,10 +77,18 @@ export function collectGeoreferencingEntities(
     const entityRef = entityIndex.byId.get(expressId);
     if (!entityRef) continue;
 
-    // Check if any referenced ID (SourceCRS, i.e. the geometric
-    // representation context) is already in the closure.
-    const refs = refsOf(expressId, entityRef);
-    if (refs.some((id) => closure.has(id))) {
+    // Check SourceCRS specifically — the geometric representation context
+    // IfcMapConversion converts — not "any referenced id". SourceCRS is
+    // IfcMapConversion's first attribute, so among the referenced ids other
+    // than the entity's own (the byte scan yields the record's own "#N="
+    // label first, since `ref.byteOffset` starts there, not after it), it is
+    // the first one. Checking "any ref" instead let a closure that already
+    // contained IfcProjectedCRS (TargetCRS) — reachable some other way, with
+    // the context never in the closure — wrongly rescue IfcMapConversion,
+    // and the forward walk below then pulled the context in too.
+    const refs = refsOf(expressId, entityRef).filter((id) => id !== expressId);
+    const sourceCrs = refs[0];
+    if (sourceCrs !== undefined && closure.has(sourceCrs)) {
       closure.add(expressId);
       queue.push(expressId);
     }

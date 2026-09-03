@@ -74,6 +74,16 @@ export interface FlatProfiles {
   extrusionDir: Float32Array;
   /** Extrusion depth in metres, one per entry. */
   extrusionDepth: Float32Array;
+  /**
+   * Express IDs of elements that had an extrudable representation but whose
+   * profile could not be built, so they are MISSING from every array above.
+   * Not a filtered-out class (openings, non-extruded types) — those never
+   * reach the collection at all. See `ProfileCollection.skippedExpressIds`
+   * (`extract_profiles_with_diagnostics` on the Rust side): without this, a
+   * dropped element was invisible outside a `debug_geometry`/`observability`
+   * build, and the shipped wasm build enables neither.
+   */
+  skippedExpressIds: Uint32Array;
 }
 
 /** Floats per entry in {@link FlatProfiles.transform}. */
@@ -96,6 +106,7 @@ export function createEmptyFlatProfiles(): FlatProfiles {
     transform: new Float32Array(0),
     extrusionDir: new Float32Array(0),
     extrusionDepth: new Float32Array(0),
+    skippedExpressIds: new Uint32Array(0),
   };
 }
 
@@ -185,5 +196,7 @@ export function collectFlatProfiles(collection: ProfileCollection): FlatProfiles
     transform: Float32Array.from(transform),
     extrusionDir: Float32Array.from(extrusionDir),
     extrusionDepth: Float32Array.from(extrusionDepth),
+    // A plain typed-array getter, not a per-entry handle: no `.free()` needed.
+    skippedExpressIds: Uint32Array.from(collection.skippedExpressIds),
   };
 }

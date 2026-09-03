@@ -17,7 +17,7 @@
  * `rust/export/examples/dump_rooted_type_sweep.rs` +
  * a one-off script) against the exhaustive type sweep, then checked against
  * the Rust classifier — not hand-derived from reading either implementation.
- * Testing `isRootedType` (the real merged-exporter.ts call site) against a
+ * Testing `isRootedType` (the real merged-guid.ts call site) against a
  * fixture generated from `getInheritanceChainAcrossSchemas` directly is not
  * circular: `isRootedType` is a thin wrapper around that same function today,
  * but the test exercises the actual production entry point, so a future
@@ -37,7 +37,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { isRootedType } from './merged-exporter.js';
+import { isRootedType } from './merged-guid.js';
 
 interface SweepCase {
   type: string;

@@ -13,30 +13,17 @@
  */
 
 import type { PropertySetData, QueryFilter } from '@ifc-lite/sdk';
-import { findAllPropertiesInSets } from '@ifc-lite/query';
+import { findAllPropertiesInSets, compareFilterValue, type FilterComparisonOp } from '@ifc-lite/query';
 
-function normalizeBoolean(value: unknown): unknown {
-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
-  return value;
-}
-
+// compareFilterValue is the same comparison the viewer SDK adapter, CLI
+// --where flag, and MCP backend use for their QueryBackendMethods `where`,
+// so this can't drift from their boolean-normalization/case-insensitive
+// -`contains` semantics.
 export function matchesPropertyFilter(props: PropertySetData[], filter: QueryFilter): boolean {
   const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
   if (matchingProps.length === 0) return false;
   if (filter.operator === 'exists') return true;
-  const f = normalizeBoolean(filter.value);
-  return matchingProps.some((prop) => {
-    const v = normalizeBoolean(prop.value);
-    switch (filter.operator) {
-      case '=': return String(v) === String(f);
-      case '!=': return String(v) !== String(f);
-      case '>': return Number(v) > Number(f);
-      case '<': return Number(v) < Number(f);
-      case '>=': return Number(v) >= Number(f);
-      case '<=': return Number(v) <= Number(f);
-      case 'contains': return String(v).toLowerCase().includes(String(f).toLowerCase());
-      default: return false;
-    }
-  });
+  return matchingProps.some((prop) =>
+    compareFilterValue(prop.value, filter.operator as FilterComparisonOp, filter.value)
+  );
 }

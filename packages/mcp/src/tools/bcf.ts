@@ -59,8 +59,17 @@ const bcfTopicList: Tool = {
   handler(input, ctx) {
     const project = getProject(ctx.registry);
     const filter = input.status as string | undefined;
+    // Case-insensitive: BCF status strings are conventionally Title Case
+    // ('Open', 'In Progress', 'Closed'), but an agent has no way to know
+    // the exact casing a topic was created with. An exact `===` match here
+    // (the previous behaviour) silently returned an empty list for a
+    // differently-cased filter — indistinguishable from "no matching
+    // topics" — instead of the topics that actually matched. Mirrors the
+    // case-insensitive statusFilter already used for BCF markers in
+    // `@ifc-lite/bcf`'s `computeMarkers3D`.
+    const filterLower = filter?.toLowerCase();
     const topics = Array.from(project.topics.values())
-      .filter((t) => !filter || t.topicStatus === filter)
+      .filter((t) => !filterLower || (t.topicStatus ?? '').toLowerCase() === filterLower)
       .map((t) => ({ guid: t.guid, title: t.title, status: t.topicStatus, type: t.topicType, priority: t.priority, comments: t.comments.length }));
     return okResult(`${topics.length} topic(s).`, { count: topics.length, topics });
   },

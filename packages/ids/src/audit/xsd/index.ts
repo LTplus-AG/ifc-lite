@@ -21,6 +21,12 @@ import type {
   IFCVersion,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
+import { isValidLexicalForXsType } from '../coherence/index.js';
+
+// info/author's element declaration is an inline restriction of xs:string,
+// not the named ids:upperCaseName/ids:relations types — so it has no home in
+// the shared XS_VALUE_REGEX table and is checked directly here.
+const INFO_AUTHOR_PATTERN = /^[^@]+@[^.]+\..+$/;
 
 const ALLOWED_IFC_VERSIONS: ReadonlyArray<IFCVersion> = [
   'IFC2X3',
@@ -100,6 +106,36 @@ export function runXsdAudit(doc: IDSDocument): IDSAuditIssue[] {
       code: 'E_XSD_REQUIRED_ATTR',
       message: 'IDS document is missing a non-empty <info><title> element',
       path: 'info.title',
+    });
+  }
+  if (doc.info.author && !INFO_AUTHOR_PATTERN.test(doc.info.author)) {
+    // info/author's inline restriction: pattern value="[^@]+@[^\.]+\..+".
+    issues.push({
+      severity: 'error',
+      code: 'E_XSD_PATTERN',
+      message: `info/author "${doc.info.author}" is not an e-mail address`,
+      path: 'info.author',
+      detail: { value: doc.info.author },
+    });
+  }
+  if (doc.info.date && !isValidLexicalForXsType(doc.info.date, 'xs:date')) {
+    // info/date is typed xs:date (CCYY-MM-DD, optional timezone).
+    issues.push({
+      severity: 'error',
+      code: 'E_XSD_PATTERN',
+      message: `info/date "${doc.info.date}" is not a valid xs:date`,
+      path: 'info.date',
+      detail: { value: doc.info.date },
+    });
+  }
+  if (doc.specifications.length === 0) {
+    // ids:specificationsType requires at least one <specification>
+    // (minOccurs="1").
+    issues.push({
+      severity: 'error',
+      code: 'E_XSD_STRUCTURE',
+      message: '<specifications> must contain at least one <specification>',
+      path: 'specifications',
     });
   }
   doc.specifications.forEach((spec, i) => auditSpecification(spec, i, issues));
@@ -236,10 +272,40 @@ function auditFacet(
       // schema audit pass — leave it alone here.
       break;
     case 'classification':
-    case 'material':
-      // Both facets allow all-optional fields per the XSD; no required
-      // attributes to check here.
+      // `ids:classificationType` sequence is `value (0..1), system (1..1)` —
+      // `<system>` is the only required child.
+      checkConstraintRequired(
+        facet.system,
+        `${path}.system`,
+        'classification.system',
+        issues,
+        facet.type
+      );
       break;
+    case 'material':
+      // Allows all-optional fields per the XSD; no required attributes to
+      // check here.
+      break;
+  }
+
+  if (facet.type === 'property' && facet.dataType?.type === 'simpleValue') {
+    // `property/@dataType` is `ids:upperCaseName`, a restriction of
+    // `xs:normalizedString` with `<xs:pattern value="[A-Z]+"/>` — letters
+    // only, all upper-case. `findDataType` in the IFC-schema pass matches
+    // case-insensitively on purpose (it identifies *which* IFC type was
+    // meant, typo-tolerantly); this check is the separate XSD-conformance
+    // question of whether the literal attribute value is even well-formed.
+    const dt = facet.dataType.value ?? '';
+    if (dt !== '' && !/^[A-Z]+$/.test(dt)) {
+      issues.push({
+        severity: 'error',
+        code: 'E_XSD_PATTERN',
+        message: `dataType "${dt}" does not match ids:upperCaseName ([A-Z]+) — must be all upper-case letters`,
+        path: `${path}.dataType`,
+        facetType: facet.type,
+        detail: { value: dt },
+      });
+    }
   }
 }
 

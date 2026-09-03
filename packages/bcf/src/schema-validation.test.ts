@@ -247,6 +247,17 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
         ]);
       });
 
+      it('emits a schema-valid project.bcfp', async () => {
+        const entries = await writeAndUnzip(maximalProject(version));
+        const { valid, messages } = await validate(
+          version,
+          'project.xsd',
+          entries.get('project.bcfp')!
+        );
+        expect(messages).toEqual([]);
+        expect(valid).toBe(true);
+      });
+
       it('emits a schema-valid bcf.version', async () => {
         const entries = await writeAndUnzip(maximalProject(version));
         const { valid, messages } = await validate(
@@ -282,51 +293,37 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
     });
   }
 
-  it('emits a schema-valid project.bcfp for BCF 3.0', async () => {
-    const entries = await writeAndUnzip(maximalProject('3.0'));
-    const { valid, messages } = await validate(
-      '3.0',
-      'project.xsd',
-      entries.get('project.bcfp')!
-    );
-    expect(messages).toEqual([]);
-    expect(valid).toBe(true);
+  /**
+   * The 2.1 half of this used to be pinned as a KNOWN GAP: `<ExtensionSchema>`
+   * (an `xs:anyURI`, required by 2.1's `project.xsd` because it carries no
+   * `minOccurs`) was not emitted at all, so every 2.1 archive this package
+   * writes — which is every archive `createBCFProject` produces, and so
+   * everything the viewer, `@ifc-lite/cli` and `@ifc-lite/mcp` write — shipped
+   * a `project.bcfp` that failed validation with "Element 'ProjectExtension':
+   * Missing child element(s). Expected is ( ExtensionSchema )". It is now
+   * emitted empty; see `writeProjectFile` for why empty rather than a name.
+   *
+   * This asserts the shape, not just validity, so a future writer cannot make
+   * the file validate by dropping `<Project>` instead (2.1 marks `<Project>`
+   * `minOccurs="0"`, so a file with only `<ExtensionSchema>` also validates).
+   */
+  it('emits the 2.1-required <ExtensionSchema>, empty, after <Project>', async () => {
+    const entries = await writeAndUnzip(maximalProject('2.1'));
+    const bcfp = entries.get('project.bcfp')!;
+    expect(bcfp).toContain('<Project ProjectId="');
+    expect(bcfp).toContain('<ExtensionSchema/>');
+    expect(bcfp.indexOf('</Project>')).toBeLessThan(bcfp.indexOf('<ExtensionSchema/>'));
   });
 
   /**
-   * KNOWN GAP, deliberately left unfixed — this test pins it rather than hides it.
-   *
-   * BCF 2.1's `project.xsd` declares `<ExtensionSchema>` (an `xs:anyURI`) as a
-   * REQUIRED child of `<ProjectExtension>`, and we do not emit it. Every 2.1
-   * archive ifc-lite writes with a project id or name — which is every archive
-   * `createBCFProject` produces, and so everything `@ifc-lite/cli` and
-   * `@ifc-lite/mcp` write — carries a `project.bcfp` that fails 2.1 validation.
-   *
-   * The fix is not contained and is a maintainer's call, not this test's:
-   * `<ExtensionSchema>` names an `extensions.xsd` that has to exist in the
-   * archive, and a conformant BCF 2.1 `extensions.xsd` is an `xs:redefine` of
-   * `markup.xsd` — so emitting one honestly means shipping buildingSMART's
-   * `markup.xsd` inside our archives, which is a licensing and packaging
-   * decision. Emitting the reference without the file would trade a schema
-   * error for a dangling one. Note also that `BCFProject.extensions` is
-   * currently dropped on write entirely, which is the same gap seen from the
-   * data side.
-   *
-   * This asserts the EXACT error, not merely "invalid": if the gap is fixed,
-   * this test goes red and must be deleted; if a DIFFERENT error appears, this
-   * test goes red too. It never passes for the wrong reason.
+   * The control, running the rule the other way: 3.0's `project.xsd` has no
+   * `ProjectExtension`/`ExtensionSchema` concept at all — `<ProjectInfo>` is
+   * exactly one `<Project>` — so emitting the 2.1 element there would trade
+   * one violation for another.
    */
-  it('BCF 2.1 project.bcfp omits the schema-required <ExtensionSchema> (known gap)', async () => {
-    const entries = await writeAndUnzip(maximalProject('2.1'));
-    const { valid, messages } = await validate(
-      '2.1',
-      'project.xsd',
-      entries.get('project.bcfp')!
-    );
-    expect(valid).toBe(false);
-    expect(messages).toEqual([
-      "Schemas validity error : Element 'ProjectExtension': Missing child element(s). Expected is ( ExtensionSchema ).",
-    ]);
+  it('does not emit <ExtensionSchema> for BCF 3.0, whose schema has no such element', async () => {
+    const entries = await writeAndUnzip(maximalProject('3.0'));
+    expect(entries.get('project.bcfp')!).not.toContain('ExtensionSchema');
   });
 });
 

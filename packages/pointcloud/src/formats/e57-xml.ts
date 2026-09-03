@@ -81,7 +81,12 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
     }
     const fileOffsetAttr = points.attrs.get('fileOffset');
     const recordCountAttr = points.attrs.get('recordCount');
-    if (!fileOffsetAttr || !recordCountAttr) continue;
+    // Blank/whitespace-only must behave like absent: `!fileOffsetAttr`
+    // alone lets a whitespace-only string (truthy) through to `Number(...)`
+    // below, where `Number(' ')` is 0 — a value that then passes the
+    // finite/non-negative guard and decodes the scan from logical offset 0
+    // (the file header) instead of being skipped (#3714).
+    if (!fileOffsetAttr?.trim() || !recordCountAttr?.trim()) continue;
     // Reject NaN / negative parses up front. Without this guard a
     // malformed XML attribute (e.g. fileOffset="-1" or
     // recordCount="bogus") would flow into decodeE57Scan and either
@@ -106,17 +111,28 @@ export function parseE57Xml(xmlText: string): Data3DEntry[] {
         fields.push({
           name: f.name,
           kind: 'ScaledInteger',
-          scale: Number(f.attrs.get('scale') ?? '1'),
-          offset: Number(f.attrs.get('offset') ?? '0'),
-          minimum: Number(f.attrs.get('minimum') ?? '0'),
-          maximum: Number(f.attrs.get('maximum') ?? '0'),
+          // scale/offset genuinely ARE optional per the E57 spec (ASTM
+          // E2807 §6.3.4), with spec-defined defaults of 1.0 / 0.0 —
+          // defaulting them here is correct, not a guess.
+          scale: parseOptionalAttr(f.attrs.get('scale'), 1),
+          offset: parseOptionalAttr(f.attrs.get('offset'), 0),
+          // minimum/maximum have NO spec default: the bitpack codec
+          // (§6.3.4) uses the declared range to determine bitsPerRecord
+          // for the whole field, and the ScaledInteger decode formula
+          // uses `minimum` directly. Leave undefined when absent or
+          // unparseable — decode-time refuses rather than guessing 0,
+          // which would silently shift/mis-scale every decoded value.
+          minimum: parseRequiredAttr(f.attrs.get('minimum')),
+          maximum: parseRequiredAttr(f.attrs.get('maximum')),
         });
       } else if (type === 'Integer') {
         fields.push({
           name: f.name,
           kind: 'Integer',
-          minimum: Number(f.attrs.get('minimum') ?? '0'),
-          maximum: Number(f.attrs.get('maximum') ?? '0'),
+          // Same requiredness as ScaledInteger's minimum/maximum above —
+          // Integer is also bitpack-coded from its declared range.
+          minimum: parseRequiredAttr(f.attrs.get('minimum')),
+          maximum: parseRequiredAttr(f.attrs.get('maximum')),
         });
       }
       // Other types (e.g. String) ignored — never carry point data.
@@ -159,4 +175,28 @@ function parsePoseElement(poseEl: ReturnType<typeof childByName>): E57Pose | nul
 
 export function findField(proto: PrototypeField[], name: string): PrototypeField | undefined {
   return proto.find((p) => p.name === name);
+}
+
+/** Parse an attribute that has a spec-defined default when absent/unparseable. */
+function parseOptionalAttr(raw: string | undefined, fallback: number): number {
+  // Blank/whitespace-only must behave like absent: Number('') === 0, so a
+  // bare Number() would silently turn `scale=""` into 0 instead of the
+  // spec default.
+  if (raw === undefined || raw.trim() === '') return fallback;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * Parse an attribute the E57 spec requires (no valid default). Returns
+ * `undefined` when absent or unparseable — callers must refuse to decode
+ * with an undefined value rather than substitute one; see
+ * `requireRange` in e57-decode.ts.
+ */
+function parseRequiredAttr(raw: string | undefined): number | undefined {
+  // Blank/whitespace-only must behave like absent: Number('') === 0, which
+  // would pass `requireRange` as an invented minimum/maximum of 0.
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : undefined;
 }

@@ -26,7 +26,7 @@ import { aroundDestructiveLoad } from '../bridge/cameraIntent.js';
 import { mountBridgeLifecycle, unmountBridgeLifecycle } from '../bridge/lifecycle.js';
 import { useEmbedBridgeEvents } from './useEmbedBridgeEvents.js';
 import { useEmbedPostLoad } from './useEmbedPostLoad.js';
-import { useEmbedUrlParams, toHiddenTypeSet } from './useEmbedUrlParams.js';
+import { useEmbedUrlParams, useHostHiddenIfcTypes } from './useEmbedUrlParams.js';
 import { useEmbedRuntimeOverlays } from './useEmbedRuntimeOverlays.js';
 import type { MeshData, CoordinateInfo } from '@ifc-lite/geometry';
 
@@ -255,10 +255,9 @@ export function EmbedViewer() {
   // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
   // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
   // toggle but a case-folded membership test merged into that same filter pass.
-  // Then type visibility, plus the host's ?hideTypes=: ARBITRARY IFC class
-  // names (the SDK ships `hideTypes?: string[]`), so not a `typeVisibility`
-  // toggle but a case-folded membership test merged into that same filter pass.
-  const hiddenTypes = useMemo(() => toHiddenTypeSet(hideTypes), [hideTypes]);
+  // The hook also publishes the set to the store, the only route to the 2D
+  // overlay, which is not a mesh and so is unreachable from here (#2934).
+  const hiddenTypes = useHostHiddenIfcTypes(hideTypes);
   const { geometry: filteredGeometry, contentVersion } = useModelViewGeometry(
     mergedGeometryResult,
     hiddenTypes,

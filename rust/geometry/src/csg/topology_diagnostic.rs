@@ -66,4 +66,45 @@ impl ClippingProcessor {
             );
         }
     }
+
+    /// #3440 step 2: the feature-gated accept/reject signal `record_topology_tear`
+    /// (above) deliberately withholds. Same predicate, same call-site
+    /// discipline (the mesh the op is about to RETURN, never an intermediate),
+    /// but on a torn mesh this records the dedicated
+    /// [`BoolFailureReason::OpenTopologyRejected`] and returns `true` so the
+    /// caller discards the kernel result and falls back exactly like an
+    /// existing `KernelOutputInvalid` — the four call sites already have that
+    /// fallback wired (`host_mesh.clone()` / `Mesh::new()` / the plain merge),
+    /// this just adds one more condition that reaches it.
+    ///
+    /// Gated behind the crate's own `csg_topology_gate` feature — NOT
+    /// `debug_geometry` / `csg_capture` / `observability`. Those three are
+    /// already live in production (the native server enables `observability`
+    /// via `ifc-lite-processing`; see `geometry/Cargo.toml`), so wiring a
+    /// behaviour change through any of them would flip real hosts today. This
+    /// feature is enabled by nothing downstream — no crate in the workspace
+    /// turns it on — so it exists solely for `cargo test/build --features
+    /// csg_topology_gate` runs the census/CI can opt into deliberately.
+    ///
+    /// Off the default build path ENTIRELY, not merely a runtime flag checked
+    /// after the kernel work: the `#[cfg(not(...))]` twin below is the only
+    /// body compiled in without the feature, and it never touches `mesh` —
+    /// zero cost, not "flag checked, still computed".
+    #[cfg(feature = "csg_topology_gate")]
+    pub(crate) fn topology_gate_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
+        if mesh.is_empty() || directed_closed(mesh) || closed_or_hairline(mesh) {
+            return false;
+        }
+        self.record_failure(op, BoolFailureReason::OpenTopologyRejected);
+        true
+    }
+
+    /// Default-build twin of the above: always `false`, no closure predicate
+    /// ever runs. See that function's doc for why this is a SEPARATE `cfg`
+    /// body rather than one function with an internal `if cfg!(...)`.
+    #[cfg(not(feature = "csg_topology_gate"))]
+    #[inline(always)]
+    pub(crate) fn topology_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
+        false
+    }
 }

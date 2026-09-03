@@ -421,19 +421,44 @@ fn color_key(c: [f32; 4]) -> (i32, i32, i32, i32) {
     (r(c[0]), r(c[1]), r(c[2]), r(c[3]))
 }
 
+/// IEC 61966-2-1 sRGB electro-optical transfer function (decode): maps a
+/// gamma-encoded channel in `[0, 1]` to linear light. `IfcColourRgb` components
+/// are authored the way every BIM tool's colour picker works — a perceptual
+/// (sRGB) swatch, the same convention IfcOpenShell/BlenderBIM follow when
+/// building a renderer's albedo input — while glTF's `baseColorFactor` and
+/// `emissiveFactor` are defined in LINEAR space (glTF 2.0 spec, "Reference
+/// Material"). Copying the sRGB value straight into `baseColorFactor` skips
+/// this decode and renders every colour too bright/washed out in any
+/// spec-compliant consumer (Blender, three.js, Cesium — the whole point of
+/// exporting glTF for tools outside this repo). Metallic/roughness factors are
+/// NOT colour and must never go through this — only RGB channels that end up
+/// as a `*Factor` colour do.
+fn srgb_to_linear(c: f32) -> f32 {
+    let c = c.clamp(0.0, 1.0);
+    if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+}
+
 /// One material for a mesh colour: the single source of the lit / unlit / emissive
 /// rules, shared by every assembler so the paths cannot drift. `emissive` takes
 /// precedence over `unlit` because the KHR_materials_unlit spec mandates
 /// `emissiveFactor = 0`, making the two mutually exclusive; never emit a
 /// spec-violating material that declares unlit AND a non-zero emissiveFactor (#1427).
 fn make_material(color: [f32; 4], lit: bool, emissive: bool) -> Material {
+    // Alpha is opacity, not a gamma-encoded light quantity — never run it through
+    // the sRGB transfer function; only R/G/B convert.
+    let linear_rgb = [
+        srgb_to_linear(color[0]),
+        srgb_to_linear(color[1]),
+        srgb_to_linear(color[2]),
+        color[3],
+    ];
     Material {
         pbr: Pbr {
-            base_color_factor: color,
+            base_color_factor: linear_rgb,
             metallic_factor: 0.0,
             roughness_factor: 1.0,
         },
-        emissive_factor: emissive.then_some([color[0], color[1], color[2]]),
+        emissive_factor: emissive.then_some([linear_rgb[0], linear_rgb[1], linear_rgb[2]]),
         extensions: if lit || emissive {
             None
         } else {

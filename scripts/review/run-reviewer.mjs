@@ -292,7 +292,21 @@ export function checkToken(raw) {
   };
 }
 
-export function runReviewer({ prompt, model, spawn, token = null }) {
+/**
+ * How this lane actually invokes the CLI. It lived as an anonymous lambda inside
+ * `main` below, which meant the second CLI that needed it -- the judge -- could
+ * not import it and silently ran with `spawn === undefined`: `spawn is not a
+ * function`, swallowed by the judge's fail-soft catch, exit 0, every review
+ * posted unjudged while the log said the judge had run. Exported so there is one
+ * definition and the maxBuffer cannot drift between two callers.
+ *
+ * It is also the DEFAULT below, because the failure it caused was invisible
+ * exactly because the parameter was optional and every test injected a fake.
+ */
+export const realSpawn = (cmd, a, stdin, env) =>
+  spawnSync(cmd, a, { input: stdin, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env });
+
+export function runReviewer({ prompt, model, spawn = realSpawn, token = null }) {
   const args = [
     '-p',
     '--output-format', 'json',
@@ -486,8 +500,7 @@ function main() {
     prompt,
     model: args.model,
     tokens,
-    spawn: (cmd, a, stdin, env) =>
-      spawnSync(cmd, a, { input: stdin, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, env }),
+    spawn: realSpawn,
   });
 
   writeFileSync(args.out, text);

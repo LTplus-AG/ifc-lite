@@ -65,7 +65,7 @@ reviews:
 
     # THE STAND-DOWN, and the direction of the signal is the whole design.
     #
-    # `!claude-reviewed` is a NEGATIVE match: CodeRabbit skips any PR carrying
+    # `!llm-reviewed` is a NEGATIVE match: CodeRabbit skips any PR carrying
     # that label. It preserves this account's scarce Fair Usage allowance -- both
     # identities on this repo sit at the 1-2 reviews/hour floor permanently, so
     # roughly 444 of 1,200 monthly PRs is the ceiling whatever is paid -- for the
@@ -90,7 +90,7 @@ reviews:
     # reviews line by line anyway. The Claude lane still reviews them.
     #
     # THIS IS THE OPPOSITE OF THE RULE IT REPLACES, and the difference is what
-    # the label depends on. `!claude-reviewed` skipped a PR because the OTHER
+    # the label depends on. `!llm-reviewed` skipped a PR because the OTHER
     # REVIEWER had an opinion about it, and measured on live traffic that
     # forfeited the allowance rather than moving it: 21 PRs skipped on a `clean`
     # verdict whose total findings were zero. `!low-risk` skips a PR because of
@@ -108,7 +108,7 @@ reviews:
     # diff is fine, so CodeRabbit could skip it and save quota. Measured on live
     # traffic the day it went on:
     #
-    #   21 open PRs carried `claude-reviewed`, so CodeRabbit skipped them.
+    #   21 open PRs carried `llm-reviewed`, so CodeRabbit skipped them.
     #   The lane's verdict on all 21: `clean`. Total findings it produced: ZERO.
     #   On six PRs where both reviewers ran, CodeRabbit produced ELEVEN findings
     #   and the lane produced none -- including one Major defect that reopened a
@@ -132,7 +132,7 @@ reviews:
     # `count=` field is the measurement, and it currently reads 0 everywhere.
     #
     # labels:
-    #   - '!claude-reviewed'
+    #   - '!llm-reviewed'
     # NO `ignore_usernames`, DELIBERATELY. Excluding dependabot was tried and
     # reverted: it saves ~21 PRs/month of allowance and buys a silent blind spot.
     # An ignored author gets no CodeRabbit CONTEXT at all, and nothing detects

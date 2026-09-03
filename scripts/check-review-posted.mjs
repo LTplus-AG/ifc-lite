@@ -325,7 +325,7 @@ export function normaliseComments(payload) {
  *
  * @returns {{ ok: boolean, covered: boolean, verdict: string, lines: string[] }}
  *   `ok` is "should this check go red"; `covered` is "has this head been
- *   REVIEWED", which is what the workflow turns into the `claude-reviewed` label
+ *   REVIEWED", which is what the workflow turns into the `llm-reviewed` label
  *   and what CodeRabbit reads to stand down. They differ on exactly one verdict:
  *   `nothing-to-review` is ok and NOT covered, because nothing read the diff.
  */
@@ -448,7 +448,7 @@ export function evaluate({ comments, cfg, headSha }) {
   );
   // `ok` AND `covered` ARE DIFFERENT QUESTIONS, and conflating them was a hole.
   // `ok` is "should this check go red"; `covered` is "has this head been REVIEWED",
-  // which is what `review-posted.yml` turns into the `claude-reviewed` label and
+  // which is what `review-posted.yml` turns into the `llm-reviewed` label and
   // what `.coderabbit.yaml` reads to stand down. A `nothing-to-review` head has
   // NOT been reviewed -- the model never ran -- so standing CodeRabbit down on it
   // would leave the PR reviewed by NOBODY. Raised by CodeRabbit on PR #3587.

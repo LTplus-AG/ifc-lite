@@ -7,8 +7,8 @@ import assert from 'node:assert';
 
 import type { ProfileCollection } from '@ifc-lite/wasm';
 import type { ProfileEntry } from '@ifc-lite/drawing-2d';
-import { collectFlatProfiles } from './profiles-flat.js';
-import { buildProfileEntries } from './profile-entries.js';
+import { collectFlatProfiles, createEmptyFlatProfiles } from './profiles-flat.js';
+import { buildProfileEntries, warnAboutSkippedProfiles } from './profile-entries.js';
 
 /**
  * Equivalence anchor for moving the construction-projection extraction into
@@ -80,10 +80,14 @@ function entry(fields: {
   };
 }
 
-function makeCollection(entries: (FakeEntry | undefined)[]): ProfileCollection {
+function makeCollection(
+  entries: (FakeEntry | undefined)[],
+  skippedExpressIds: number[] = [],
+): ProfileCollection {
   return {
     length: entries.length,
     get: (i: number) => entries[i],
+    skippedExpressIds: Uint32Array.from(skippedExpressIds),
   } as unknown as ProfileCollection;
 }
 
@@ -291,5 +295,42 @@ describe('buildProfileEntries (#2183)', () => {
   it('rebuilds nothing from an empty flatten', () => {
     const flat = collectFlatProfiles(makeCollection([]));
     assert.deepStrictEqual(buildProfileEntries(flat, SHIFT, 0), []);
+  });
+});
+
+/**
+ * The production-reaching counterpart of a Rust-side `diag_debug!` drop: a
+ * `diag_debug!` legacy leg is gated `#[cfg(feature = "debug_geometry")]`,
+ * which the shipped wasm build never enables, so without this call an element
+ * dropped from `extract_profiles` was silently missing from the generated
+ * drawing with no signal at all.
+ */
+describe('warnAboutSkippedProfiles', () => {
+  it('warns with the dropped express ids when the extraction skipped elements', () => {
+    const calls: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => calls.push(args);
+    try {
+      const flat = collectFlatProfiles(makeCollection([], [42, 7]));
+      warnAboutSkippedProfiles(flat);
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.strictEqual(calls.length, 1);
+    assert.match(String(calls[0][0]), /2 element\(s\) could not be projected/);
+    assert.deepStrictEqual(calls[0][1], [42, 7]);
+  });
+
+  it('is a no-op — the control — when nothing was skipped', () => {
+    const calls: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => calls.push(args);
+    try {
+      warnAboutSkippedProfiles(createEmptyFlatProfiles());
+      warnAboutSkippedProfiles(collectFlatProfiles(makeCollection([])));
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.deepStrictEqual(calls, [], 'a clean extraction must not warn');
   });
 });

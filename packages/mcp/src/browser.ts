@@ -34,6 +34,12 @@
 
 export { HeadlessLikeBackend, expandTypes, isProductType } from './headless-backend.js';
 export { InMemoryModelRegistry } from './context.js';
+// Blank/whitespace-only name handling (a present-but-blank
+// IFCBUILDINGSTOREY/IFCMATERIAL Name should fall through to the caller's
+// own placeholder the same way a null/undefined one does): shared with
+// every other MCP call site with the same shape, node-free so it belongs
+// on this browser-safe entrypoint too.
+export { isBlank, firstNonBlank } from './material-naming.js';
 export type {
   LoadedModel,
   ModelRegistry,

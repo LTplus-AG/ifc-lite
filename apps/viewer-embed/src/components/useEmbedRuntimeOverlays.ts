@@ -15,7 +15,7 @@
  * nothing" shape #2934 found for the URL params themselves.
  *
  * `hideAxis`/`hideScale` are used as `ViewportOverlays` props; `hideTypes` is
- * fed into `toHiddenTypeSet` — see EmbedViewer.tsx.
+ * fed into `useHostHiddenIfcTypes` — see EmbedViewer.tsx.
  */
 
 import { useState } from 'react';

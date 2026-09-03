@@ -18,7 +18,8 @@ import type { MeshData } from '@ifc-lite/geometry';
 import { geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import { isMeshVisibleInViewMode, meshClassIsPlaced } from '@/lib/type-view-visibility';
 import type { TypeVisibility } from '@/store/types';
-import { isTypeHidden } from './useEmbedUrlParams.js';
+import { isTypeVisible } from '@/store/typeVisibilityFilter';
+import { isIfcTypeHiddenByHost } from '@/lib/host-hidden-ifc-types.js';
 
 interface GeometryResultLike {
   meshes?: MeshData[];
@@ -42,7 +43,7 @@ export interface ModelViewGeometry {
 
 export function useModelViewGeometry(
   merged: GeometryResultLike | null | undefined,
-  hiddenTypes: Set<string> | null,
+  hiddenTypes: ReadonlySet<string> | null,
   typeVisibility: TypeVisibility,
 ): ModelViewGeometry {
   // One scan, two consumers. `selectModelMeshes` would compute exactly this
@@ -64,23 +65,22 @@ export function useModelViewGeometry(
     let meshes = merged.meshes.filter((m) =>
       isMeshVisibleInViewMode(geometryClassOf(m), 'model', hasPlacedGeometry),
     );
-    meshes = meshes.filter((mesh) => {
-      if (isTypeHidden(mesh.ifcType, hiddenTypes)) return false;
-      if (mesh.ifcType === 'IfcSpace' && !typeVisibility.spaces) return false;
-      if (mesh.ifcType === 'IfcOpeningElement' && !typeVisibility.openings) return false;
-      if (mesh.ifcType === 'IfcSite' && !typeVisibility.site) return false;
-      return true;
-    });
+    // The toggle half goes through `isTypeVisible`, the store's single source of
+    // truth for the class -> toggle mapping. A private copy here named three of
+    // the seven mapped classes, so IfcSpatialZone, IfcVirtualElement,
+    // IfcGeographicElement and 3D IfcAnnotation solids ignored their toggles.
+    meshes = meshes.filter(
+      (mesh) => !isIfcTypeHiddenByHost(mesh.ifcType, hiddenTypes) && isTypeVisible(mesh.ifcType, typeVisibility),
+    );
 
-    return meshes.map((mesh) => {
-      if (mesh.ifcType === 'IfcSpace' || mesh.ifcType === 'IfcOpeningElement') {
-        return {
-          ...mesh,
-          color: [mesh.color[0], mesh.color[1], mesh.color[2], Math.min(mesh.color[3] * 0.3, 0.3)] as [number, number, number, number],
-        };
-      }
-      return mesh;
-    });
+    // Mesh alpha flows through unchanged. The embed used to re-multiply IfcSpace
+    // and IfcOpeningElement down to `min(alpha * 0.3, 0.3)` here; the full viewer
+    // dropped exactly that under #677 because it stomped lens and property-set
+    // colour rules even when the caller had explicitly chosen alpha 1.0. Defaults
+    // still come from styling.rs, which already assigns IfcSpace 0.3 and
+    // IfcOpeningElement 0.4, so the translucency survives without being applied
+    // twice.
+    return meshes;
   }, [merged, typeVisibility, hiddenTypes, hasPlacedGeometry]);
 
   return { geometry, contentVersion };

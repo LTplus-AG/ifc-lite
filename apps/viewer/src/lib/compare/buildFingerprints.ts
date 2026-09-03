@@ -66,6 +66,8 @@ import {
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   quantitySiScale,
+  roundToScale,
+  scaledPropertyValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
 import { lensMaterialNames } from '../lens-material-names.js';
@@ -191,7 +193,7 @@ export async function buildEntityFingerprints(
   // alignment is a caller whose model was never re-baked, and defaulting to
   // "believe them" keeps the flag a statement about the one case that needs it.
   const volumesTrusted = model.geometryVolumesTrusted !== false;
-  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale
+  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
 
   // local express id → first geometry hash seen for it (may be undefined when
   // hashing was disabled or the WASM build predates it — data diff still works)
@@ -354,7 +356,7 @@ function buildDataInput(
   store: IfcDataStore,
   localId: number,
   ifcType: string,
-  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
+  units: ProjectUnits, // scales Qto_ quantities and measure properties to base SI
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, localId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -381,7 +383,7 @@ function buildDataInput(
       name: set.name,
       properties: set.properties
         .filter((property) => !isGeometricDataName(property.name))
-        .map((property) => ({ name: property.name, value: property.value })),
+        .map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, units) })),
     }))
     .filter((set) => set.properties.length > 0);
 
@@ -399,8 +401,8 @@ function buildDataInput(
       name: set.name,
       quantities: set.quantities
         .filter((quantity) => !isGeometricDataName(quantity.name))
-        // Scaled to base SI, then rounded (`quantitySiScale`/`roundQuantity`).
-        .map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
+        // Scaled to base SI, then rounded (`quantitySiScale`/`roundToScale`).
+        .map((quantity) => ({ name: quantity.name, value: roundToScale(quantity.value * quantitySiScale(quantity, units)) })),
     }))
     .filter((set) => set.quantities.length > 0);
 
@@ -437,9 +439,3 @@ function buildDataInput(
   };
 }
 
-/** Round a geometry-derived quantity to the compare panel's display precision
- *  (4 dp) so re-exporting a model with sub-tolerance float jitter doesn't flip
- *  the data hash on an otherwise-identical element. */
-function roundQuantity(value: number): number {
-  return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
-}

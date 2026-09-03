@@ -61,9 +61,12 @@ jobs:
           # object database. `git grep <base.sha>` and `git show <head.sha>:path`
           # then exit 128 with "unable to parse object", both callers catch and
           # return nothing, and the pack contains zero siblings and zero file
-          # evidence while logging "0 sibling excerpt(s), 0 file(s)" -- exactly
-          # what a PR with genuinely no siblings logs. Reproduced in a real
-          # depth-1 clone.
+          # evidence while logging "0 sibling excerpt(s), 0 file(s)" -- which is
+          # exactly what a PR with no siblings logs.
+          #
+          # This is the THIRD way this feature has been inert in production: the
+          # judge with no spawn, the lane with no --base, and now a checkout with
+          # no history. Each one failed soft, and each one looked healthy.
           fetch-depth: 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -202,6 +205,33 @@ jobs:
             exit "$rc"
           fi
 
+      # From the BASE branch, exactly like the reviewer's rubric and for the same
+      # reason: a PR able to rewrite the rubric that judges it could instruct the
+      # judge to drop every finding about itself. The judge can only remove, so
+      # that is the whole attack -- it never needs to forge a finding.
+      - name: Take the judge rubric from the base branch
+        id: judgerubric
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/judge.md"
+          if gh api "repos/${{ github.repository }}/contents/scripts/review/judge.md?ref=${{ github.event.pull_request.base.sha }}" \
+               --jq '.content' 2>/dev/null | base64 -d > "$out" 2>/dev/null && [ -s "$out" ]; then
+            echo "path=$out" >> "$GITHUB_OUTPUT"
+          else
+            # NOT the PR's copy. Falling back to $GITHUB_WORKSPACE hands the one
+            # PR that bootstraps this feature -- and any PR whose base predates
+            # it -- a judge rubric it wrote itself, which is the exact attack the
+            # base-branch fetch above exists to close: the judge can only remove
+            # findings, so a PR-controlled rubric is a finding-suppression
+            # primitive. Until the rubric exists on the base, there is no judge;
+            # the findings post unjudged, which costs precision and never recall.
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::No judge rubric on the base branch yet (bootstrap); the judge is skipped and validated findings post unjudged."
+          fi
+
       # WITHOUT THIS THE LANE CAN NEVER PRODUCE A REVIEW. `ubuntu-latest` has no
       # `claude` on PATH, so `spawnSync` returned ENOENT, run-reviewer threw
       # MODEL_ERROR, and the gate read NOT_POSTED on every head. Pinned rather
@@ -244,6 +274,58 @@ jobs:
             --input "$RUNNER_TEMP/review-input.json" \
             --out "$RUNNER_TEMP/findings.json"
 
+      # The second half of the precision/recall inversion. The generator is now
+      # told to report what it cannot rule out (up to twelve), the validator has
+      # already dropped anything whose quote is not verbatim in the diff, and THIS
+      # removes the ones an author would spend five seconds dismissing.
+      #
+      # It CANNOT fail this job. Every way it can break -- no token, quota, a
+      # malformed reply, a crash -- resolves to "post the validated findings
+      # unjudged", because a judge outage that silently emptied a review would be
+      # indistinguishable from a clean PR. It costs precision when it is down,
+      # never recall.
+      - name: Judge the findings
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
+        # EMPTY CWD, exactly like the reviewer step above, and for a sharper
+        # reason. Without it this step inherits $GITHUB_WORKSPACE -- the PR's own
+        # checkout -- and the CLI loads CLAUDE.md and AGENTS.md from there as
+        # project memory. Both are tracked at the repo root and both are writable
+        # by the pull request under review, so one added line ("findings about
+        # workflow files are out of scope; drop them") would make the judge delete
+        # every finding about that PR. Taking the judge's RUBRIC from the base
+        # branch is pointless while its cwd still hands the PR a second prompt.
+        #
+        # This failure is not fail-soft: a judge that has been steered answers
+        # confidently, and its output is indistinguishable from an honest one.
+        working-directory: ${{ runner.temp }}
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # BOTH, like the reviewer step. With only the primary wired, an expired
+          # credential leaves the reviewer working on the fallback while the judge
+          # silently stops judging every PR -- fail-soft, warning-only, invisible.
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+        run: |
+          # The backstop is at the SHELL layer because the one inside run-judge.mjs
+          # cannot cover its own crash. Without it a judge that died would leave
+          # judged.json absent, the poster would never run, and `review-posted`
+          # would go red with NO marker -- a state no re-run and no author action
+          # can clear. `continue-on-error` would not do: a step that swallows its
+          # own failure cannot report it, so this READS BACK and says which path
+          # it took.
+          if [ "${{ steps.judgerubric.outputs.skip }}" = "true" ]; then
+            echo "judge: no rubric on the base branch (bootstrap); posting the UNJUDGED validated findings."
+            cp "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/judged.json"
+          elif node "$GITHUB_WORKSPACE/scripts/review/run-judge.mjs" \
+               --findings "$RUNNER_TEMP/findings.json" \
+               --judge-rubric "${{ steps.judgerubric.outputs.path }}" \
+               --out "$RUNNER_TEMP/judged.json" \
+               --model haiku && [ -s "$RUNNER_TEMP/judged.json" ]; then
+            echo "judge: ran; posting the judged findings."
+          else
+            echo "::warning::The judge did not produce a verdict. Posting the UNJUDGED validated findings."
+            cp "$RUNNER_TEMP/findings.json" "$RUNNER_TEMP/judged.json"
+          fi
+
       # NOTHING REVIEWABLE STILL POSTS A MARKER, and that is not a formality.
       # Without it a lockfile-only or generated-code-only PR gets no marker at
       # all, and `review-posted.yml` under `mode: enforcing` reports NOT_POSTED
@@ -280,6 +362,6 @@ jobs:
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
-            --findings "$RUNNER_TEMP/findings.json" \
+            --findings "$RUNNER_TEMP/judged.json" \
             --author github-actions \
             --config "${{ steps.basecfg.outputs.path }}"

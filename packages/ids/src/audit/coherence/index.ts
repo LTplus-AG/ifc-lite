@@ -15,12 +15,12 @@ import type {
   IDSConstraint,
   IDSDocument,
   IDSFacet,
-  IDSRequirement,
   IDSSpecification,
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
 import { XSD_NUMERIC_SPECIALS } from '../../constraints/xsd-cast.js';
 import { compileXsdRegex } from './regex.js';
+import { auditRequirementCardinality } from './cardinality.js';
 
 export function runCoherenceAudit(doc: IDSDocument): IDSAuditIssue[] {
   const issues: IDSAuditIssue[] = [];
@@ -100,129 +100,6 @@ function auditSpec(
       issues
     );
   });
-}
-
-/**
- * Cardinality coherence on a requirement facet (Report 202 upstream).
- *
- * Per upstream IDS-Audit-tool:
- *  - `cardinality="optional"` on a `<property>` requires `@dataType`.
- *  - `cardinality="prohibited"` on a `<property>` is incompatible with
- *    `@dataType` (the property must not exist at all).
- *  - `cardinality="optional"` on `<material>`, `<classification>` and
- *    `<partOf>` requires a value/system/entity to be specified — an
- *    `optional` facet without a constraint is meaningless.
- */
-function auditRequirementCardinality(
-  req: IDSRequirement,
-  path: string,
-  issues: IDSAuditIssue[]
-): void {
-  // The XSD `conditionalCardinality` / `simpleCardinality` enums are
-  // case-sensitive lowercase: `required`, `optional`, `prohibited`. The
-  // parser preserves the raw value when it didn't match exactly so we
-  // can flag mistakes here (`Required`, `Invalid`, empty string, …)
-  // rather than silently defaulting to `required`.
-  if (req.cardinalityRaw !== undefined) {
-    issues.push({
-      severity: 'error',
-      code: 'E_CARDINALITY_INVALID',
-      message: `@cardinality="${req.cardinalityRaw}" is not a valid value; expected one of {required, optional, prohibited}`,
-      path: `${path}.cardinality`,
-      facetType: req.facet.type,
-      detail: { value: req.cardinalityRaw },
-    });
-  }
-  switch (req.facet.type) {
-    case 'property': {
-      const hasDataType = req.facet.dataType !== undefined;
-      if (req.optionality === 'optional' && !hasDataType) {
-        issues.push({
-          severity: 'error',
-          code: 'E_CARDINALITY_INVALID',
-          message:
-            'optional <property> requirement requires @dataType to be specified',
-          path: `${path}.cardinality`,
-          facetType: 'property',
-        });
-      }
-      if (req.optionality === 'prohibited' && hasDataType) {
-        issues.push({
-          severity: 'error',
-          code: 'E_CARDINALITY_INVALID',
-          message:
-            'prohibited <property> requirement is incompatible with @dataType',
-          path: `${path}.cardinality`,
-          facetType: 'property',
-        });
-      }
-      break;
-    }
-    case 'material': {
-      if (req.optionality === 'optional') {
-        const hasValue =
-          req.facet.value !== undefined && !isEmptyConstraint(req.facet.value);
-        if (!hasValue) {
-          issues.push({
-            severity: 'error',
-            code: 'E_CARDINALITY_INVALID',
-            message:
-              'optional <material> requirement must specify a non-empty <value> constraint',
-            path: `${path}.cardinality`,
-            facetType: 'material',
-          });
-        }
-      }
-      break;
-    }
-    case 'classification': {
-      if (req.optionality === 'optional') {
-        const hasSystem =
-          req.facet.system !== undefined &&
-          !isEmptyConstraint(req.facet.system);
-        const hasValue =
-          req.facet.value !== undefined && !isEmptyConstraint(req.facet.value);
-        if (!hasSystem && !hasValue) {
-          issues.push({
-            severity: 'error',
-            code: 'E_CARDINALITY_INVALID',
-            message:
-              'optional <classification> requirement must specify <system> or <value>',
-            path: `${path}.cardinality`,
-            facetType: 'classification',
-          });
-        }
-      }
-      break;
-    }
-    case 'attribute':
-    case 'entity':
-    case 'partOf':
-      // Attribute/entity/partOf carry their own intrinsic content;
-      // cardinality on them is just required/optional/prohibited.
-      break;
-  }
-}
-
-function isEmptyConstraint(c: import('../../types.js').IDSConstraint): boolean {
-  switch (c.type) {
-    case 'simpleValue':
-      return c.value === '' || c.value == null;
-    case 'enumeration':
-      return c.values.length === 0;
-    case 'pattern':
-      return c.pattern === '';
-    case 'bounds':
-      return (
-        c.minInclusive === undefined &&
-        c.maxInclusive === undefined &&
-        c.minExclusive === undefined &&
-        c.maxExclusive === undefined &&
-        c.length === undefined &&
-        c.minLength === undefined &&
-        c.maxLength === undefined
-      );
-  }
 }
 
 function auditFacetConstraints(
@@ -453,7 +330,7 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
   'xs:duration': /^[-+]?P(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/,
 };
 
-function isValidLexicalForXsType(value: string, base: string): boolean {
+export function isValidLexicalForXsType(value: string, base: string): boolean {
   const rx = XS_VALUE_REGEX[base];
   if (!rx) return true; // base we don't recognise → don't fabricate errors
   if (base === 'xs:double' || base === 'xs:float' || base === 'xs:decimal') {

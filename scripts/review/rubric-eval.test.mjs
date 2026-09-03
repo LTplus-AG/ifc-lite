@@ -365,8 +365,9 @@ test('ONLY findings that survive validation are scored, and a FENCED response is
 
   assert.equal(r.status, 0, said);
   // Exactly one finding survived, it was the real one, and it was RECOGNISED.
-  assert.match(said, /RECALL of known findings: 1\/1/, said);
-  assert.match(said, /EXTRA findings[^:]*: 0/, said);
+  assert.match(said, /VALIDATED recall before judge\/cap: 1\/1/, said);
+  assert.match(said, /POSTED recall after judge\/cap: 1\/1/, said);
+  assert.match(said, /extra findings[^:]*: 0/i, said);
   // The drop names the FABRICATED quote, not merely the word DROPPED, which the
   // whole-output echo on the failure path also satisfies.
   assert.match(said, /DROPPED[\s\S]*this line is nowhere in the diff/, said);
@@ -408,7 +409,7 @@ test('#3829: a retryable validation failure gets exactly the production correcti
   assert.equal(r.status, 0, said);
   assert.equal(readFileSync(reviewer.count, 'utf8'), '2', 'one initial call plus one bounded retry');
   assert.match(said, /corrective retry ran once/, said);
-  assert.match(said, /RECALL of known findings: 1\/1/, said);
+  assert.match(said, /POSTED recall after judge\/cap: 1\/1/, said);
 });
 
 test('an EMPTY response is a HARD ERROR, because the real chain cannot produce one', (t) => {
@@ -426,7 +427,7 @@ test('an EMPTY response is a HARD ERROR, because the real chain cannot produce o
 
   assert.notEqual(r.status, 0, `an empty response must not produce a score:\n${said}`);
   assert.match(said, /RAW_EMPTY/, said);
-  assert.doesNotMatch(said, /RECALL of known findings/, 'no recall number may be printed from a run that produced nothing');
+  assert.doesNotMatch(said, /POSTED recall after judge\/cap/, 'no recall number may be printed from a run that produced nothing');
 });
 
 test('a VALIDATION failure on the harness\'s own input is a HARD ERROR', (t) => {
@@ -447,7 +448,7 @@ test('a VALIDATION failure on the harness\'s own input is a HARD ERROR', (t) => 
 
   assert.notEqual(r.status, 0, `an INPUT_INVALID refusal must stop the run:\n${said}`);
   assert.match(said, /INPUT_INVALID/, said);
-  assert.doesNotMatch(said, /RECALL of known findings/, 'no recall number may be printed from a run that did not happen');
+  assert.doesNotMatch(said, /POSTED recall after judge\/cap/, 'no recall number may be printed from a run that did not happen');
 });
 
 test('a finding that only PARAPHRASES THE PR BODY does not score as recall', () => {

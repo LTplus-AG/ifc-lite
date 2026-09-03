@@ -1075,16 +1075,6 @@ fn quaternion_from_column_major(m: &[f64; 16]) -> [f32; 4] {
     [(x / n) as f32, (y / n) as f32, (z / n) as f32, (w / n) as f32]
 }
 
-/// `T(-t)` as a 4x4 — the RTC half of the `verify_basis` conjugation below.
-fn neg_translation_row_major(t: [f64; 3]) -> Matrix4<f64> {
-    Matrix4::from_row_slice(&[
-        1.0, 0.0, 0.0, -t[0], //
-        0.0, 1.0, 0.0, -t[1], //
-        0.0, 0.0, 1.0, -t[2], //
-        0.0, 0.0, 0.0, 1.0,
-    ])
-}
-
 #[allow(clippy::too_many_arguments)]
 fn build_gltf(
     views: &[MeshView],
@@ -1187,8 +1177,7 @@ fn build_gltf(
     //    rejected every rotated group on a georeferenced model.
     // Without both terms the check reads a frame mismatch as a #3666 collision and
     // drops the whole group to flat.
-    let verify_basis =
-        Matrix4::from_row_slice(&matrix::S_YUP) * neg_translation_row_major(rtc_zup);
+    let verify_basis = Matrix4::from_row_slice(&matrix::verify_basis_yup(rtc_zup));
     let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&verify_basis));
 
     // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.

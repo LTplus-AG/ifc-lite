@@ -37,7 +37,7 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { createEffectiveEntityExists, createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -99,7 +99,11 @@ export class HeadlessLikeBackend implements BimBackend {
     };
     this.mutate = createHeadlessMutateAdapter(
       () => this.getOrCreateMutationView(),
-      expressId => this.dataStore.entityIndex.byId.has(expressId),
+      createEffectiveEntityExists({
+        acceptsModelId: id => id === this.modelId || id === this.modelName,
+        hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id),
+        overlay: () => this.mutationView,
+      }),
     );
     // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
     // against the shared StoreEditor, so the new entities land in the overlay

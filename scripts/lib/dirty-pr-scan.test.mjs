@@ -433,6 +433,24 @@ test('pullRequestBaseBranches: reads a block list', () => {
   );
 });
 
+test('pullRequestBaseBranches: a comment between block-list items does not truncate the list', () => {
+  // Before this, the item loop broke on the first non-item line, so a comment
+  // (or blank line) between entries silently dropped every branch after it --
+  // and a PR based on a dropped branch would be handed the retarget remedy for
+  // a filter that actually allows it.
+  assert.deepEqual(
+    pullRequestBaseBranches('on:\n  pull_request:\n    branches:\n      - main\n      # release lane\n      - release\njobs:\n'),
+    ['main', 'release'],
+  );
+});
+
+test('pullRequestBaseBranches: a blank line between block-list items does not truncate the list', () => {
+  assert.deepEqual(
+    pullRequestBaseBranches('on:\n  pull_request:\n    branches:\n      - main\n\n      - release\njobs:\n'),
+    ['main', 'release'],
+  );
+});
+
 test('pullRequestBaseBranches: refuses a glob it cannot evaluate rather than guessing', () => {
   assert.throws(() => pullRequestBaseBranches('on:\n  pull_request:\n    branches: [main, "releases/**"]\n'), (err) => {
     assert.equal(err.reason, 'UNSUPPORTED_BRANCH_PATTERN');

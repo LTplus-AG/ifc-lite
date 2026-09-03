@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,7 +25,13 @@ let seq = 0;
 function run(prs, { workflow = workflowFixture(), extra = [] } = {}) {
   const path = join(TMP, `state-${(seq += 1)}.json`);
   writeFileSync(path, JSON.stringify(prs));
-  const r = spawnSync(process.execPath, [GATE, '--workflow', workflow, '--state-file', path, ...extra], { encoding: 'utf8' });
+  // GITHUB_STEP_SUMMARY is blanked so a gate spawned under a real CI job does
+  // not append fixture findings to that job's actual step summary; the gate
+  // treats '' as "no summary file".
+  const r = spawnSync(process.execPath, [GATE, '--workflow', workflow, '--state-file', path, ...extra], {
+    encoding: 'utf8',
+    env: { ...process.env, GITHUB_STEP_SUMMARY: '' },
+  });
   return { code: r.status, output: `${r.stdout}${r.stderr}` };
 }
 
@@ -97,6 +103,24 @@ test('zero open PRs passes trivially', () => {
   const { code, output } = run([]);
   assert.equal(code, 0, output);
   assert.match(output, /Scanned 0 open PR/);
+});
+
+test('the harness does not leak fixture findings into the ambient GITHUB_STEP_SUMMARY', () => {
+  // The gate defaults its summary file from GITHUB_STEP_SUMMARY, so a `run()`
+  // that inherits the ambient environment appends every fixture's fake
+  // findings to the REAL step summary of whatever CI job runs this test file.
+  const summary = join(TMP, `ambient-summary-${(seq += 1)}.md`);
+  writeFileSync(summary, '');
+  const prev = process.env.GITHUB_STEP_SUMMARY;
+  process.env.GITHUB_STEP_SUMMARY = summary;
+  try {
+    const { code } = run([]);
+    assert.equal(code, 0);
+  } finally {
+    if (prev === undefined) delete process.env.GITHUB_STEP_SUMMARY;
+    else process.env.GITHUB_STEP_SUMMARY = prev;
+  }
+  assert.equal(readFileSync(summary, 'utf8'), '');
 });
 
 test('fails closed rather than silently passing when the state file is not an array', () => {

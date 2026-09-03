@@ -80,6 +80,9 @@ export function pullRequestBaseBranches(text) {
     if (/^\s*branches:\s*(#.*)?$/.test(line)) {
       const items = [];
       for (i += 1; i < lines.length; i += 1) {
+        // Blank and comment lines are legal between YAML sequence items and do
+        // not end the list; breaking on them silently truncates it.
+        if (lines[i].trim() === '' || /^\s*#/.test(lines[i])) continue;
         const item = /^\s*-\s*(.+?)\s*$/.exec(lines[i]);
         if (!item) break;
         items.push(stripQuotes(item[1]));

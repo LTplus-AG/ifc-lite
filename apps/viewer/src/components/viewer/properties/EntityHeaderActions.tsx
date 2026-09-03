@@ -18,7 +18,7 @@
  * surroundings.
  */
 
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { Focus, EyeOff, Eye, Ghost } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -33,7 +33,6 @@ export function EntityHeaderActions() {
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const restoreVisibilityState = useViewerStore((s) => s.restoreVisibilityState);
-  const clearGhost = useViewerStore((s) => s.clearGhost);
 
   // The fade outlives this component: PropertiesPanel renders nothing without a
   // selection, so deselecting leaves the whole model translucent with its only
@@ -47,16 +46,39 @@ export function EntityHeaderActions() {
   // presentation. Recording it per render had the mirror-image bug: with the
   // fade on A and the selection moved to B, cleanup compared B against A's set,
   // matched nothing, and left the model faded forever.
-  const ownedGhost = useRef<ReadonlySet<number> | null>(null);
-  useEffect(() => () => {
-    const owned = ownedGhost.current;
-    if (!owned) return;
-    // Identity, not contents: if anything replaced the channel since, it is
-    // theirs to clear.
-    if (useViewerStore.getState().ghostExceptEntities === owned) {
-      useViewerStore.getState().clearGhost();
+  //
+  // The claim carries the isolation as it was BEFORE the fade, because entering
+  // may widen it to admit the selection (below) and leaving has to give the user
+  // back the isolation they had, not the widened one.
+  const owned = useRef<{ ghost: ReadonlySet<number>; priorIsolation: Set<number> | null } | null>(null);
+
+  // `explicit` separates the two ways the fade ends. A user clicking a toggle that
+  // renders as ON is asking for the channel to clear, whoever installed it, so the
+  // click path always clears. Unmount is implicit and silent, so it only touches a
+  // fade this control installed -- that is the case where clearing someone else's
+  // presentation would be invisible and wrong.
+  const releaseGhost = useCallback((explicit: boolean) => {
+    const claim = owned.current;
+    const s = useViewerStore.getState();
+    // Identity, not contents: anything that replaced the channel since is theirs,
+    // and its prior isolation is not ours to restore.
+    const ours = claim !== null && s.ghostExceptEntities === claim.ghost;
+    owned.current = null;
+    if (ours) {
+      // Give back the isolation as it was BEFORE the fade widened it.
+      s.restoreVisibilityState({
+        isolated: claim.priorIsolation,
+        ghostExcept: null,
+        hidden: s.hiddenEntities,
+      });
+    } else if (explicit && s.ghostExceptEntities !== null) {
+      // Not ours, but the user asked. clearGhost preserves isolation, and we have
+      // no prior isolation to restore because we never widened one.
+      s.clearGhost();
     }
   }, []);
+
+  useEffect(() => () => releaseGhost(false), [releaseGhost]);
 
   const isGhosted = selectedEntityId != null &&
     ghostExceptEntities !== null &&
@@ -93,8 +115,7 @@ export function EntityHeaderActions() {
               if (isGhosted) {
                 // clearGhost, not setGhostExceptEntities(null): it preserves
                 // isolation, which the setter clears.
-                ownedGhost.current = null;
-                clearGhost();
+                releaseGhost(true);
               } else {
                 // Not setGhostExceptEntities: that clears isolatedEntities
                 // unconditionally and nothing captured it, so isolating a zone
@@ -117,9 +138,11 @@ export function EntityHeaderActions() {
                   ghostExcept: new Set([selectedEntityId]),
                   hidden: hiddenEntities,
                 });
-                // Read the identity BACK: restoreVisibilityState copies the set
-                // it is given, so the object handed in is not the one installed.
-                ownedGhost.current = useViewerStore.getState().ghostExceptEntities;
+                // Read the ghost identity BACK: restoreVisibilityState copies the
+                // set it is given, so the object handed in is not the one
+                // installed. Keep the ORIGINAL isolation, not the widened one.
+                const installed = useViewerStore.getState().ghostExceptEntities;
+                if (installed) owned.current = { ghost: installed, priorIsolation: isolatedEntities };
                 cameraCallbacks.frameSelection?.();
               }
             }}

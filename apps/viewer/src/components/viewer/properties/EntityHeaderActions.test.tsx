@@ -187,6 +187,29 @@ describe('EntityHeaderActions — "Show in context"', () => {
     assert.strictEqual(useViewerStore.getState().ghostExceptEntities, foreign);
   });
 
+  // Kills the mutation "leave the widened isolation in place". Admitting the
+  // selection is a TEMPORARY widening for the duration of the context view; if
+  // leaving keeps it, the user's isolation silently gains an entity they never
+  // added. Codex asked for exactly this: retain enough prior state to restore
+  // the original isolation when the context view ends.
+  it('narrows the isolation back when the context view ends', () => {
+    resetStore();
+    const original = new Set([OTHER]);
+    useViewerStore.setState({ selectedEntityId: SELECTED, isolatedEntities: original });
+
+    const container = render(<EntityHeaderActions />);
+    const ghostButton = Array.from(container.querySelectorAll('button'))[1];
+
+    click(ghostButton);
+    assert.ok(useViewerStore.getState().isolatedEntities?.has(SELECTED), 'widened while shown');
+
+    click(ghostButton);
+    const after = useViewerStore.getState().isolatedEntities;
+    assert.ok(after?.has(OTHER), 'the original isolation comes back');
+    assert.ok(!after?.has(SELECTED), 'the temporary admission must not persist');
+    assert.strictEqual(useViewerStore.getState().ghostExceptEntities, null);
+  });
+
   // CodeRabbit on #3737 reported the mirror-image bug: recording ownership on
   // every render meant that with the fade on A and the selection moved to B,
   // cleanup compared B against A's set and left the model faded forever.

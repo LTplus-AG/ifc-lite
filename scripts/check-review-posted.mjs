@@ -338,29 +338,25 @@ export function normaliseComments(payload) {
  * The verdict. `ok` is true only when an expected author posted a well-formed
  * marker naming exactly `headSha`.
  *
- * @returns {{ ok: boolean, covered: boolean, full: boolean, verdict: string, lines: string[] }}
- *   THREE QUESTIONS, and each has exactly one consumer.
+ * @returns {{ ok: boolean, full: boolean, verdict: string, lines: string[] }}
+ *   TWO QUESTIONS, and each has exactly one consumer.
  *
  *   `ok` is "should this check go red" -- the exit code, modulated by `mode`.
- *
- *   `covered` is "does a verdict already exist for this head", and it is a
- *   DEDUP key: claude-review.yml runs this gate first and skips the whole model
- *   review when it reads true (claude-review.yml, `steps.dedup.outputs.covered`,
- *   which gates every later step in that job). Anything that makes it false
- *   makes the lane RE-REVIEW the head on the next trigger and post its inline
- *   comments a second time.
+ *   `main()` also writes it out as the `covered=` step output claude-review.yml
+ *   dedups on (`steps.dedup.outputs.covered`, which gates every later step in
+ *   that job): a verdict this function reaches at all -- red or green -- means a
+ *   marker naming this head exists and the lane has run, so `covered` is `ok`
+ *   itself, not a field this function needs to compute separately. There USED
+ *   TO be a third, `covered`, returned alongside `ok` and always equal to it at
+ *   every one of this function's five return sites -- one field asserting what
+ *   the other already said.
  *
  *   `full` is "was the WHOLE diff reviewed", and it is the stand-down decision:
  *   review-posted.yml turns it into the `llm-reviewed` label, which is what
  *   .coderabbit.yaml reads to stay off the PR. It is false on two shapes that
- *   are nonetheless `ok` and `covered`: `nothing-to-review`, because nothing
- *   read the diff at all, and any marker carrying `omitted>0` (#3679), because
- *   nothing read the omitted files.
- *
- *   THE TWO WERE ONE FIELD and that conflated a dedup key with a coverage
- *   claim. Splitting them the other way is just as broken in the other
- *   direction: a partial head with `covered=false` re-runs the model on every
- *   re-trigger and duplicates every inline comment it already posted.
+ *   are nonetheless `ok`: `nothing-to-review`, because nothing read the diff at
+ *   all, and any marker carrying `omitted>0` (#3679), because nothing read the
+ *   omitted files.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -382,7 +378,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low ' +
         '`num_turns` and attach it to the upstream issue rather than re-running indefinitely.',
     );
-    return { ok: false, covered: false, full: false, verdict: 'NOT_POSTED', lines };
+    return { ok: false, full: false, verdict: 'NOT_POSTED', lines };
   }
 
   const markers = [];
@@ -412,7 +408,7 @@ export function evaluate({ comments, cfg, headSha }) {
             '[ omitted=<n>] -->`.'
           : 're-run the review job.'),
     );
-    return { ok: false, covered: false, full: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
+    return { ok: false, full: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
   }
 
   const match = markers.find((m) => m.sha === headSha);
@@ -427,7 +423,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   timestamp: this gate reads no timestamp at all, so it does not claim one.)',
       '   REMEDY: re-run the review job against the current head.',
     );
-    return { ok: false, covered: false, full: false, verdict: 'STALE_REVIEW', lines };
+    return { ok: false, full: false, verdict: 'STALE_REVIEW', lines };
   }
 
   // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
@@ -473,7 +469,7 @@ export function evaluate({ comments, cfg, headSha }) {
         '   REMEDY: re-run the review job. If it recurs, the run log will show `Posted 0/N`; ' +
           'attach it to claude-code-action#1679 rather than re-running indefinitely.',
       );
-      return { ok: false, covered: false, full: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
+      return { ok: false, full: false, verdict: 'FINDINGS_NOT_POSTED', escapeHatch: null, lines };
     }
   }
 
@@ -506,8 +502,9 @@ export function evaluate({ comments, cfg, headSha }) {
       '   REMEDY: split the PR so every changed file fits the prompt, or review the named files by hand.',
     );
   }
-  // A marker naming this head EXISTS, so `covered` is true here whatever the
-  // verdict says: the lane has run and must not run again on the same SHA.
+  // A marker naming this head EXISTS, so `ok` is true here whatever the verdict
+  // says: the lane has run and, via `main()`'s `covered=${ok}`, must not run
+  // again on the same SHA.
   //
   // `full` is the other question. A `nothing-to-review` head was never READ --
   // the model never ran -- so standing CodeRabbit down on it would leave the PR
@@ -517,14 +514,13 @@ export function evaluate({ comments, cfg, headSha }) {
   // has just announced nobody vouches for, the gate contradicting itself in the
   // same breath. Raised by CodeRabbit on PR #3688.
   //
-  // BOTH STAY `covered`, and that is the correction to the first attempt at
-  // this. Making a partial head uncovered fixed the stand-down and broke the
-  // dedup: claude-review.yml gates its whole job on this value, so every
+  // BOTH STAY `ok`, and that is the correction to the first attempt at this.
+  // Making a partial head's dedup key false fixed the stand-down and broke the
+  // dedup: claude-review.yml gates its whole job on that output, so every
   // re-trigger of a partial head would re-run the model over the files that DID
   // fit and post their inline comments again.
   return {
     ok: true,
-    covered: true,
     full: match.verdict !== 'nothing-to-review' && match.omitted === 0,
     verdict: 'REVIEW_POSTED',
     lines,
@@ -749,7 +745,7 @@ function main() {
   if (waited > 0) console.log(`Waited ${waited}s for a verdict to appear.`);
   console.log('');
 
-  const { ok, covered, full, lines } = result;
+  const { ok, full, lines } = result;
 
   // THE EXEMPTION IS RESOLVED BEFORE THE VERDICT IS PRINTED, so a remedy that
   // cannot work is never shown. The failing verdicts end in
@@ -779,14 +775,18 @@ function main() {
   // Anything downstream must read THESE, never the exit code.
   //
   // `covered` is claude-review.yml's dedup key: true means "a verdict exists for
-  // this head, do not run the model again". `full` is review-posted.yml's
-  // stand-down key: true means "the whole diff was reviewed, CodeRabbit may stay
-  // off". They are written as two lines because they are two questions; a single
-  // value answering both got one of them wrong in each direction (#3679, #3688).
+  // this head, do not run the model again" -- which is exactly what `ok` means
+  // by the time this function reaches a verdict at all, so it is written
+  // straight from `ok` rather than carried as its own field on `result` (it
+  // used to be, always equal to `ok` at every one of `evaluate`'s five return
+  // sites). `full` is review-posted.yml's stand-down key: true means "the whole
+  // diff was reviewed, CodeRabbit may stay off". They are written as two lines
+  // because they are two questions; a single value answering both got one of
+  // them wrong in each direction (#3679, #3688).
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `covered=${covered ? 'true' : 'false'}\nfull=${full ? 'true' : 'false'}\n`,
+      `covered=${ok ? 'true' : 'false'}\nfull=${full ? 'true' : 'false'}\n`,
     );
   }
 

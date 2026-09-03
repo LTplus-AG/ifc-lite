@@ -158,7 +158,7 @@ import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from '
 // One constant, imported rather than re-spelled: a reworded copy here would
 // stop matching the rows build-review-input writes, and the partial-review
 // marker would silently claim a full review (#3679).
-import { OMITTED_FOR_PROMPT_REASON, UNREVIEWABLE_UNREAD } from './build-review-input.mjs';
+import { isUnread } from './build-review-input.mjs';
 
 /**
  * The terminal sentinel the prompt requires as the LAST field. Its whole job is to
@@ -986,14 +986,16 @@ export function validate({ response, input, onWarn = null }) {
  * body. Both ways that happens count: dropped to fit the model prompt (#3679),
  * and refused a patch by GitHub for being too large.
  *
- * IT USED TO BE ONLY THE FIRST, matched by `reason === OMITTED_FOR_PROMPT_REASON`.
- * A PR whose one unreviewable file was one GitHub declined to send therefore
- * produced a marker byte-identical to a full review's, and CodeRabbit stood down
- * on it -- the absence-reads-as-success shape one layer below where #3679 put
- * the disclosure. Branching on a `kind` field rather than on a reason string is
- * what makes the two cases distinguishable at all: the old single reason string
- * said "too large, or a pure rename", which are opposite answers to "was
- * anything withheld".
+ * IT USED TO BE ONLY THE FIRST, matched by `reason === OMITTED_FOR_PROMPT_REASON`
+ * inline, HERE, while build-review-input.mjs's own PARTIAL REVIEW log matched
+ * a DIFFERENT inline predicate over the same rows. A PR whose one unreviewable
+ * file was one GitHub declined to send therefore produced a marker
+ * byte-identical to a full review's, and CodeRabbit stood down on it -- the
+ * absence-reads-as-success shape one layer below where #3679 put the
+ * disclosure. Both call sites now share `isUnread`, exported from
+ * build-review-input.mjs next to the `kind` field it reads, so the log line
+ * and the posted marker cannot drift apart the way two independently spelled
+ * copies did.
  *
  * A deletion or a pure rename is NOT counted: there was no changed content for
  * the reviewer to read, so nothing is being withheld and disclosing it would
@@ -1015,13 +1017,7 @@ export function validate({ response, input, onWarn = null }) {
  */
 export function omittedForPromptPaths(unreviewable) {
   return unreviewable
-    .filter((u) =>
-      // `kind` is authoritative when present. The reason-string fallback is for
-      // an input built before the field existed, where the prompt-dropped rows
-      // are the only ones that were ever counted anyway -- it reproduces the old
-      // behaviour exactly rather than guessing at the new one.
-      u?.kind ? u.kind === UNREVIEWABLE_UNREAD : u?.reason === OMITTED_FOR_PROMPT_REASON,
-    )
+    .filter(isUnread)
     .map((u) => sanitizePath(u.path) || '(a path that sanitised to nothing)');
 }
 

@@ -163,6 +163,7 @@ import { ReviewProvenanceError, wroteAtCommit } from '../lib/review-provenance.m
 // re-spelled. Two copies held together only by prose is how the poster and the
 // gate would come to disagree about who "we" are, or about where a page ends.
 import { MARKER_RE, pageAll, normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
+import { sanitizeBody } from './validate-findings.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(HERE, '..', 'review-posted.config.json');
@@ -510,19 +511,6 @@ function omittedSection(omitted) {
  * clear, on a class that recurs (PR #3558, a Cargo.lock-only dependabot bump),
  * with a printed remedy -- "re-run the review job" -- that cannot work.
  */
-/**
- * Neutralise the ONE thing a `--reason` string can do to this comment: open an
- * HTML comment. The reason interpolates a build-input message that carries a
- * PR-chosen file path, and this body also carries the review marker, which
- * check-review-posted finds with the FIRST `MARKER_RE.exec` over the raw body.
- * A path able to write `<!--` could therefore forge a marker that sorts ahead of
- * the genuine one -- the same attack `assertFindings` refuses a finding path for.
- * Refusing is wrong HERE, though: this is the path that exists so a PR the lane
- * cannot review still gets a marker, so it must not be the path that throws.
- * Defanged, not rejected.
- */
-const defangMarkerText = (text) => text.replace(/<!--/g, '<\u2011!--');
-
 export function nothingToReviewBody(sha, why = null) {
   const short = sha.slice(0, 9);
   return [
@@ -536,7 +524,7 @@ export function nothingToReviewBody(sha, why = null) {
     // source as generated content. A marker whose text is wrong about its own
     // cause is the shape this lane keeps finding in other people's gates.
     why
-      ? defangMarkerText(String(why))
+      ? sanitizeBody(String(why))
       : 'Every changed path in this diff is excluded from review: lockfiles, generated\n' +
         'code, snapshots, fixtures and build output.',
     '',

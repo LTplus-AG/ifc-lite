@@ -919,6 +919,23 @@ test('it is NOT a `clean` marker, and that is the whole point', () => {
   assert.match(bodies, /The reviewer was NOT run/);
 });
 
+test('a `--reason` carrying the bare marker TOKEN outside any comment is defanged too', () => {
+  // The private `defangMarkerText` this used to run through only escaped a
+  // literal `<!--`; it left the bare `ifc-lite-review` token untouched in
+  // ordinary text. `sanitizeBody` (imported from validate-findings.mjs, the
+  // same sanitiser every finding body goes through) breaks that token
+  // EVERYWHERE, not only inside a comment -- because this lane's own source
+  // carries the token, so a build-input message that happens to quote it
+  // would otherwise reach the comment body unbroken. Discriminating: this
+  // input has no `<!--` at all, so the old defang would have left it
+  // byte-identical.
+  const r = runNothingToReview({ args: ['--reason', 'no reviewable files (ifc-lite-review excluded all of them)'] });
+  assert.equal(r.code, 0, r.out);
+  const body = allBodies(r.state);
+  assert.doesNotMatch(body, /ifc-lite-review excluded/, 'the bare token must be broken, not passed through verbatim');
+  assert.match(body, /excluded all of them/, 'the rest of the reason text must still reach the comment');
+});
+
 test('a marker for a DEAD head is not written on this path either', () => {
   // Same rule as the review path: a marker for a superseded head is one the gate
   // calls STALE_REVIEW, and no re-run of this commit could clear it.

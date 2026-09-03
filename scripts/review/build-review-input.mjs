@@ -164,6 +164,24 @@ export const OMITTED_FOR_PROMPT_REASON = 'omitted: too large to fit the model pr
 export const UNREVIEWABLE_NO_CONTENT = 'no-content';
 export const UNREVIEWABLE_UNREAD = 'unread';
 
+/**
+ * The ONE predicate for "the reviewer never saw this file's content", shared by
+ * every caller that has to count or disclose these rows. Two call sites used to
+ * spell this differently -- this script's own PARTIAL REVIEW log matched
+ * `reason === OMITTED_FOR_PROMPT_REASON` while validate-findings.mjs's marker
+ * count matched `kind === UNREVIEWABLE_UNREAD` -- and a log line and a posted
+ * marker disagreeing about the same run is exactly the kind of drift a reader
+ * cannot detect by eye. `kind` is authoritative when present; the reason-string
+ * fallback is for an input built before the field existed, where the
+ * prompt-dropped rows were the only ones ever counted anyway, so it reproduces
+ * the old behaviour exactly rather than guessing at the new one.
+ *
+ * @param {{reason?: string, kind?: string}} u
+ */
+export function isUnread(u) {
+  return u?.kind ? u.kind === UNREVIEWABLE_UNREAD : u?.reason === OMITTED_FOR_PROMPT_REASON;
+}
+
 const PER_PAGE = 100;
 const MAX_PAGES = 10;
 
@@ -186,7 +204,7 @@ export const EXCLUDED = [
   // for attention, and here for attribution.
   /(^|\/)eval-cases\//,
   /(^|\/)pkg\//,
-  /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm)$/i,
+  /\.(ifc|ifcx|glb|gltf|png|jpg|jpeg|svg|pdf|zip|wasm|ico|parquet|bcf|woff|gif|webp)$/i,
   /(^|\/)dist\//,
   /(^|\/)api-surface\.json$/,
 ];
@@ -363,11 +381,6 @@ export function addedLineRanges(patch) {
  * path and NEGATIVE for a short one. The swings are additive, so the running
  * total is exact for whatever set comes out; there is no second pass to do.
  *
- * LARGEST FIRST, because the largest files carry the most changed lines: for a
- * fixed byte budget that ordering maximises how much of the diff is actually
- * read. Greedy, so a file too big for the remaining room does not block a
- * smaller one behind it. Ties break on path so two runs of one head agree.
- *
  * Rows unreviewable for OTHER reasons never move, so they pay exactly their own
  * rendering. The pack needs no reservation: packBudgetFor already yields to the
  * diff and reaches zero exactly on the PRs this function bites on.
@@ -383,7 +396,7 @@ export function addedLineRanges(patch) {
  *
  * @param {{path: string, patch: string}[]} candidates
  * @param {{path: string}[]} unreviewable rows already recorded for other reasons
- * @returns {{ kept: typeof candidates, omitted: typeof candidates }}
+ * @returns {{ kept: typeof candidates, omitted: typeof candidates, budget: number }}
  */
 export function fitFilesToPrompt(candidates, unreviewable) {
   // Charged by run-reviewer's own per-row charges, which sit next to the
@@ -453,16 +466,39 @@ export function buildInput(fileRows, headSha) {
       // dropped: a file the reviewer was not shown must not be reportable as
       // clean, and the reader has to be able to see which those were.
       //
-      // A PURE RENAME AND A TOO-LARGE FILE ARE NOT THE SAME ROW, and one reason
-      // string covered both. A rename with no patch has no changed content, so
-      // nothing was withheld from the reviewer; a file GitHub called too large
-      // has content the reviewer never saw. Only the second is an OMISSION the
-      // marker must disclose, and `status` is what tells them apart -- the
-      // reason string never could.
+      // `status === 'renamed'` used to be the whole test for "no content
+      // changed", which is wrong: GitHub sets `status: 'renamed'` on a rename
+      // PLUS an edit too, and that row can be just as oversized as a modified
+      // file's -- its patch was declined for the same reason, not because the
+      // rename carried no content. `changes` (GitHub's additions+deletions
+      // count for the row) is what actually says whether anything changed;
+      // `status` only says whether the path moved. A pure rename has
+      // `changes === 0`. A rename-plus-edit does not, and its missing patch is
+      // an OMISSION the marker must disclose exactly like a too-large modified
+      // file's.
+      //
+      // GitHub also omits `patch` for binary content, `changes` included --
+      // and the extension list above cannot enumerate every binary format a
+      // repo will ever add, so `changes === 0` is the general discriminator: a
+      // row with nothing to diff was never withheld from the reviewer, whether
+      // that is because it renamed cleanly or because it has no textual form.
+      //
+      // `changes === 0` is checked with STRICT equality on purpose: a row
+      // whose `changes` field is missing entirely (never sent by GitHub's real
+      // API, but seen in older fixtures here) falls through to the UNREAD
+      // branch rather than being read as "no changes" -- silence about the
+      // count is not the same claim as a counted zero, and defaulting it to
+      // zero would misclassify exactly the too-large row this branch exists
+      // to catch.
       const renamed = row?.status === 'renamed';
+      const noContent = row?.changes === 0;
       unreviewable.push(
-        renamed
-          ? { path, reason: 'a pure rename: no content changed', kind: UNREVIEWABLE_NO_CONTENT }
+        noContent
+          ? {
+              path,
+              reason: renamed ? 'a pure rename: no content changed' : 'binary or no textual change',
+              kind: UNREVIEWABLE_NO_CONTENT,
+            }
           : { path, reason: 'no patch returned (too large)', kind: UNREVIEWABLE_UNREAD },
       );
       continue;
@@ -472,9 +508,10 @@ export function buildInput(fileRows, headSha) {
       throw new BuildInputError(
         'REVIEW_TOO_LARGE',
         `Patch text exceeds ${MAX_PATCH_BYTES} bytes at \`${path}\`. Below this cap the lane degrades ` +
-          'to reviewing the largest files that fit the model prompt and marks the rest omitted; past ' +
-          'it, less than ~60% of the diff could be read, and a review that thin would mislead more ' +
-          'than it helps. REMEDY: split the PR.',
+          'to reviewing whatever the largest-first fit keeps within the model prompt and names the ' +
+          'rest in the omitted list; past it there is no such guarantee left to make -- a diff this ' +
+          'size has no evenly-sized-file assumption to fall back on, so no fixed fraction of it can be ' +
+          'promised read. REMEDY: split the PR.',
       );
     }
     candidates.push({ path, patch: row.patch });
@@ -570,12 +607,13 @@ function main() {
   }
 
   const input = buildInput(rows, args.sha);
-  const omittedRows = input.unreviewable.filter((u) => u.reason === OMITTED_FOR_PROMPT_REASON);
+  const omittedRows = input.unreviewable.filter(isUnread);
   if (omittedRows.length > 0) {
     console.log(
-      `::warning::review-input: PARTIAL REVIEW -- ${omittedRows.length} file(s) dropped to fit the ` +
-        'model prompt (#3679). They are recorded as unreviewable and the posted marker will name them; ' +
-        'nothing vouches for those files.',
+      `::warning::review-input: PARTIAL REVIEW -- ${omittedRows.length} file(s) were not shown to the ` +
+        'reviewer, dropped to fit the model prompt (#3679) or refused a patch by GitHub for being too ' +
+        'large. They are recorded as unreviewable and the posted marker will name them; nothing ' +
+        'vouches for those files.',
     );
   }
   // THE CONTEXT PACK. Built here, in the harness, never by the model.

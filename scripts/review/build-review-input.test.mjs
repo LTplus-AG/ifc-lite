@@ -88,6 +88,12 @@ test('generated and vendored paths are excluded', () => {
   }
 });
 
+test('binary extensions GitHub sends no patch for are excluded, not left to fall through as unread', () => {
+  for (const p of ['apps/viewer/public/favicon.ico', 'data/warehouse/export.parquet', 'fixtures-out/topic.bcf', 'apps/viewer/public/fonts/Inter.woff', 'docs/demo.gif', 'apps/viewer/public/hero.webp']) {
+    assert.equal(isExcluded(p), true, `${p} should be excluded`);
+  }
+});
+
 test('real source is NOT excluded', () => {
   for (const p of ['packages/export/src/step.ts', 'rust/geometry/src/lib.rs', 'scripts/check-x.mjs']) {
     assert.equal(isExcluded(p), false, `${p} must be reviewed`);
@@ -116,6 +122,61 @@ test('a file with no patch is recorded as unreviewable, never silently absent', 
   assert.match(r.out, /NOT shown to the reviewer/);
 });
 
+test('a PURE rename (changes: 0) is no-content, never counted as omitted', () => {
+  const r = run([
+    { filename: 'src/a.ts', status: 'modified', patch: '@@ -1,1 +1,2 @@\n a\n+b' },
+    { filename: 'src/moved.ts', status: 'renamed', changes: 0 },
+  ]);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.result.unreviewable[0], {
+    path: 'src/moved.ts',
+    reason: 'a pure rename: no content changed',
+    kind: 'no-content',
+  });
+  // Nothing was withheld, so the PARTIAL REVIEW warning must not fire over it
+  // (the row still appears in the unconditional "not shown" listing below,
+  // same as a deletion would -- that listing is not the omission disclosure).
+  assert.doesNotMatch(r.out, /::warning::.*PARTIAL REVIEW/);
+});
+
+test('a RENAME-PLUS-EDIT (changes > 0, no patch) is UNREAD, not a pure rename', () => {
+  // `status === 'renamed'` used to be the whole test for "no content changed",
+  // which misclassified this row: GitHub set `status: 'renamed'` because the
+  // path moved, but the file also has real content the reviewer never saw
+  // (GitHub declined the patch the same way it would for a too-large modified
+  // file). Read as a pure rename, this row silently never reached `omitted=`.
+  const r = run([
+    { filename: 'src/a.ts', status: 'modified', patch: '@@ -1,1 +1,2 @@\n a\n+b' },
+    { filename: 'src/moved-and-edited.ts', status: 'renamed', changes: 4000 },
+  ]);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.result.unreviewable[0], {
+    path: 'src/moved-and-edited.ts',
+    reason: 'no patch returned (too large)',
+    kind: 'unread',
+  });
+  assert.match(r.out, /::warning::.*PARTIAL REVIEW/);
+});
+
+test('a BINARY file (changes: 0, no patch, not renamed) is no-content, not falsely UNREAD', () => {
+  // Every non-renamed no-patch row used to be classified `unread` -- "too
+  // large" -- but GitHub also omits `patch` for binary content whose extension
+  // is not on the exclusion list. A small binary produced a false PARTIAL
+  // warning and cleared `llm-reviewed`, even though nothing was ever withheld:
+  // there was no text to show.
+  const r = run([
+    { filename: 'src/a.ts', status: 'modified', patch: '@@ -1,1 +1,2 @@\n a\n+b' },
+    { filename: 'assets/logo.avif', status: 'modified', changes: 0 },
+  ]);
+  assert.equal(r.code, 0, r.out);
+  assert.deepEqual(r.result.unreviewable[0], {
+    path: 'assets/logo.avif',
+    reason: 'binary or no textual change',
+    kind: 'no-content',
+  });
+  assert.doesNotMatch(r.out, /::warning::.*PARTIAL REVIEW/);
+});
+
 test('a deleted file is unreviewable, not a phantom clean file', () => {
   const r = run([
     { filename: 'src/a.ts', status: 'modified', patch: '@@ -1,1 +1,2 @@\n a\n+b' },
@@ -141,6 +202,14 @@ test('REVIEW_TOO_LARGE refuses rather than reviewing a prefix', () => {
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /REVIEW_TOO_LARGE/);
   assert.match(r.out, /split the PR/);
+  // A percentage claim ("~60% of the diff could be read") only holds for
+  // evenly sized files; it is not true in general and was never measured for
+  // this cap. The message now states what IS guaranteed instead: below the
+  // cap the largest-first fit keeps whatever fits, and the omitted list names
+  // the rest.
+  assert.doesNotMatch(r.out, /%/, 'no percentage claim');
+  assert.match(r.out, /largest-first fit keeps/);
+  assert.match(r.out, /omitted list/);
 });
 
 test('a bad --sha is refused', () => {
@@ -552,6 +621,25 @@ test('the PROCESS says PARTIAL loudly and keeps the emitted shape stable', () =>
   // Same top-level shape as a full review: downstream readers (validate-findings
   // readInput, the eval) must not need a second schema for the degraded case.
   assert.deepEqual(Object.keys(r.result).sort(), ['excluded', 'files', 'headSha', 'unreviewable']);
+});
+
+test('the PARTIAL REVIEW log and the marker omitted-count agree on a GitHub-too-large row', () => {
+  // The log used to match `reason === OMITTED_FOR_PROMPT_REASON` while the
+  // marker (via `omittedForPromptPaths`) matched `kind === UNREVIEWABLE_UNREAD`
+  // -- two independently spelled predicates over the same rows. A file GitHub
+  // itself refused a patch for (never touched by `fitFilesToPrompt`, so its
+  // reason is 'no patch returned (too large)', not OMITTED_FOR_PROMPT_REASON)
+  // used to be silent in this log while still reaching the marker's
+  // `omitted=` count downstream -- log and marker disagreeing about the same
+  // run. Both now read `isUnread`, so this row is disclosed in both places.
+  const r = run([
+    { filename: 'src/a.ts', status: 'modified', patch: '@@ -1,1 +1,2 @@\n a\n+b' },
+    { filename: 'src/huge.ts', status: 'modified', changes: 99999 },
+  ]);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.result.unreviewable[0].reason, 'no patch returned (too large)');
+  assert.equal(r.result.unreviewable[0].kind, 'unread');
+  assert.match(r.out, /::warning::.*PARTIAL REVIEW -- 1 file/, 'the log must count this row too');
 });
 
 test('an omitted path with QUOTES or BACKSLASHES is charged as RENDERED', () => {

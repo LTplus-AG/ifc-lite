@@ -1041,13 +1041,46 @@ impl GeometryRouter {
                 }
                 continue;
             }
-            if let Some(processor) = self.processors.get(&sub_item.ifc_type) {
-                if let Ok(mut sub_mesh) =
-                    processor.process(&sub_item, decoder, &self.schema, self.tessellation_quality)
-                {
-                    sub_mesh.validate_indices();
-                    self.scale_mesh(&mut sub_mesh);
-                    mesh.merge(&sub_mesh);
+            match self.processors.get(&sub_item.ifc_type) {
+                Some(processor) => match processor.process(
+                    &sub_item,
+                    decoder,
+                    &self.schema,
+                    self.tessellation_quality,
+                ) {
+                    Ok(mut sub_mesh) => {
+                        sub_mesh.validate_indices();
+                        self.scale_mesh(&mut sub_mesh);
+                        mesh.merge(&sub_mesh);
+                    }
+                    Err(_e) => {
+                        self.record_unsupported_item(sub_item.ifc_type);
+                        crate::diag::diag_debug!(
+                            { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
+                              error = %_e, "skipping unsupported mapped-source item" }
+                            else {
+                                #[cfg(debug_assertions)]
+                                eprintln!(
+                                    "[ifc-lite] Skipping unsupported mapped-source item #{} ({:?}): {}",
+                                    sub_item.id, sub_item.ifc_type, _e
+                                );
+                            }
+                        );
+                    }
+                },
+                None => {
+                    self.record_unsupported_item(sub_item.ifc_type);
+                    crate::diag::diag_debug!(
+                        { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
+                          "skipping unsupported mapped-source item (no processor)" }
+                        else {
+                            #[cfg(debug_assertions)]
+                            eprintln!(
+                                "[ifc-lite] Skipping unsupported mapped-source item #{} ({:?}): no processor",
+                                sub_item.id, sub_item.ifc_type
+                            );
+                        }
+                    );
                 }
             }
         }

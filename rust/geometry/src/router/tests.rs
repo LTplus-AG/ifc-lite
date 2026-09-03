@@ -636,3 +636,64 @@ fn unsupported_body_item_is_dropped_and_counted_not_silent() {
         "the drop must be attributable, not merely silent: {unsupported:?}"
     );
 }
+
+/// RED (pre-fix): the SAME unsupported-item drop as
+/// `unsupported_body_item_is_dropped_and_counted_not_silent`, but reached
+/// through `process_mapped_item_cached_inner`'s own item loop rather than
+/// `collect_submeshes_from_item_inner`'s — a wall whose entire Body is an
+/// `IfcMappedItem` over a source containing a SUPPORTED `IfcExtrudedAreaSolid`
+/// alongside an unsupported `IfcGeometricSet`. That sibling loop had zero
+/// signal on a `None` processor or an `Err` (not even the `debug_assertions`
+/// eprintln the other two sites had before this fix), so the drop was
+/// invisible via `process_element` too. GREEN (post-fix): only the genuinely
+/// unsupported item is counted — the solid still meshes normally and is NOT
+/// recorded as dropped (a reporter that fires for every item, supported or
+/// not, is exactly as wrong as one that fires for none).
+#[test]
+fn unsupported_mapped_source_item_is_dropped_and_counted_not_silent() {
+    let content = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCAXIS2PLACEMENT2D(#1,$);
+#3=IFCRECTANGLEPROFILEDEF(.AREA.,'P',#2,1000.,1000.);
+#4=IFCDIRECTION((0.,0.,1.));
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCEXTRUDEDAREASOLID(#3,#6,#4,1000.);
+#8=IFCGEOMETRICSET(());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('guid',$,$,$,$,$,#14,$);
+"#;
+    let mut decoder = EntityDecoder::new(content);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(15).unwrap();
+
+    let mesh = router
+        .process_element(&wall, &mut decoder)
+        .expect("router walks the mapped representation without erroring the whole element");
+    assert!(
+        !mesh.positions.is_empty(),
+        "the supported solid in the mapped source must still mesh normally (behavior unchanged)"
+    );
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.get("IfcGeometricSet"),
+        Some(&1),
+        "the drop must be attributable through the mapped-item path too, not merely silent: {unsupported:?}"
+    );
+    assert_eq!(
+        unsupported.get("IfcExtrudedAreaSolid"),
+        None,
+        "the supported solid must NOT be recorded as dropped: {unsupported:?}"
+    );
+    assert_eq!(
+        unsupported.values().sum::<u64>(),
+        1,
+        "exactly one item was unsupported — a reporter firing for supported items too is as wrong as one firing for none: {unsupported:?}"
+    );
+}

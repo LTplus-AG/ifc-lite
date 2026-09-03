@@ -14,6 +14,24 @@
  * Resolution lives in GraphQL `reviewThreads.isResolved` and nowhere else, so
  * this module is the one GraphQL call in the lane.
  *
+ * WHO IS TRUSTED BY THIS, STATED RATHER THAN IMPLIED. Resolving a review thread
+ * on GitHub needs write access to the repository -- and a pull request AUTHOR has
+ * it on their own PR. So "this thread is resolved" means "someone who can merge
+ * chose to withdraw this finding", not "someone independent agreed it was wrong".
+ * A PR author can therefore clear the lane's own findings off their head.
+ *
+ * That is DELIBERATE, and it is not a new grant. Before #3768 the only way to
+ * stop a finding contradicting a clean run was to DELETE the inline comment,
+ * which needs the same write access and additionally destroys the audit trail.
+ * This moves the same authority onto an action that leaves the finding, the
+ * thread and the timestamp visible to a reviewer. The trust level is unchanged;
+ * what changed is that exercising it stops erasing the evidence.
+ *
+ * What this must NOT be read as: a resolved thread is not a second opinion, and
+ * nothing downstream should treat `verdict=clean` over resolved threads as
+ * stronger than it is. The marker records the count; who resolved what is in the
+ * thread history, where a human can see it.
+ *
  * IT FAILS CLOSED, AND THE DIRECTION MATTERS. A thread this cannot account for
  * -- the page cap was hit, a shape changed, `gh` failed -- is simply ABSENT from
  * the returned set, so its comments count as UNRESOLVED and keep blocking a
@@ -74,8 +92,15 @@ query($owner: String!, $name: String!, $pr: Int!, $cursor: String) {
 export function resolvedCommentIds(repo, pr, { ghClient = gh, maxPages = MAX_THREAD_PAGES } = {}) {
   const ids = new Set();
   const warnings = [];
-  const [owner, name] = String(repo).split('/');
-  if (!owner || !name) {
+  // EXACTLY TWO SEGMENTS, both non-empty. Destructuring the first two of a
+  // `split('/')` silently DROPS the rest, so `a/b/c` would have been read as the
+  // repository `a/b` -- a confident answer about a different pull request. That
+  // is still fail-closed (no ids come back), but fail-closed about the WRONG
+  // input, which is worse than refusing: it cannot be told from a repository that
+  // genuinely has no resolved threads.
+  const segments = String(repo).split('/');
+  const [owner, name] = segments;
+  if (segments.length !== 2 || !owner || !name) {
     return { ids, warnings: [`\`${repo}\` is not \`owner/name\`, so no thread could be read.`], complete: false };
   }
 
@@ -88,15 +113,21 @@ export function resolvedCommentIds(repo, pr, { ghClient = gh, maxPages = MAX_THR
         [
           'api',
           'graphql',
+          // `-f` FOR EVERY `String` VARIABLE, `-F` only for the one Int. `gh api
+          // graphql -F` PARSES its value, so a digits-only cursor -- GitHub's
+          // cursors are opaque base64 and can be all digits -- would be sent as an
+          // Int against a `String!` variable. GraphQL rejects that, the walk stops
+          // after page one, and every thread on the pages it never read counts as
+          // unresolved: fail-closed, but for a reason nobody would find.
           '-f',
           `query=${RESOLVED_THREADS_QUERY}`,
-          '-F',
+          '-f',
           `owner=${owner}`,
-          '-F',
+          '-f',
           `name=${name}`,
           '-F',
           `pr=${Number(pr)}`,
-          ...(cursor === null ? [] : ['-F', `cursor=${cursor}`]),
+          ...(cursor === null ? [] : ['-f', `cursor=${cursor}`]),
         ],
         `resolved review threads on #${pr}`,
       );

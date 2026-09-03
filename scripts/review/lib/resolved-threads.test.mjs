@@ -128,3 +128,43 @@ test('a cursor-less next page stops the walk instead of refetching page 1 foreve
   assert.equal(complete, false);
   assert.match(warnings[0], /gave no cursor/);
 });
+
+test('String variables are sent with -f, so a numeric-looking cursor stays a string', () => {
+  // `gh api graphql -F` PARSES its value: a digits-only cursor would be sent as
+  // an Int against a `String` variable, GraphQL would reject the query, and the
+  // walk would stop after page one -- reporting `complete: false` and silently
+  // treating every thread on the later pages as unresolved. `-f` sends the raw
+  // string. `pr` is the one genuine Int, so it keeps `-F`.
+  const seen = [];
+  const pages = [page([thread(true, [1])], true, '123456'), page([thread(true, [2])], false, null)];
+  const { ids, complete } = resolvedCommentIds('acme/widgets', 42, {
+    ghClient: (args) => { seen.push(args); return pages.shift(); },
+  });
+  assert.deepEqual([...ids].sort(), [1, 2]);
+  assert.equal(complete, true);
+
+  const flagFor = (args, key) => args[args.findIndex((a) => String(a).startsWith(`${key}=`)) - 1];
+  assert.equal(flagFor(seen[0], 'owner'), '-f');
+  assert.equal(flagFor(seen[0], 'name'), '-f');
+  assert.equal(flagFor(seen[0], 'query'), '-f');
+  assert.equal(flagFor(seen[0], 'pr'), '-F', 'the PR number is the one real Int');
+  assert.equal(flagFor(seen[1], 'cursor'), '-f', 'a digits-only cursor must not be sent as an Int');
+  assert.ok(seen[1].includes('cursor=123456'));
+});
+
+test('a repo with MORE than two segments is refused, not silently truncated', () => {
+  // `split('/')` yields the first two and drops the rest, so `a/b/c` would have
+  // been read as `a/b` -- a different repository, answered confidently. The
+  // failure it produces is fail-closed (no ids), but it is fail-closed about the
+  // WRONG pull request, which is worse than refusing.
+  let called = false;
+  for (const bad of ['a/b/c', 'owner/name/', '/owner/name', 'a//b']) {
+    const { ids, warnings, complete } = resolvedCommentIds(bad, 7, {
+      ghClient: () => { called = true; return page([]); },
+    });
+    assert.equal(ids.size, 0, bad);
+    assert.equal(complete, false, bad);
+    assert.match(warnings[0], /is not `owner\/name`/, bad);
+  }
+  assert.equal(called, false, 'and gh is never invoked for any of them');
+});

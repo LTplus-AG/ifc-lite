@@ -9,6 +9,7 @@ mod caching;
 mod rep_filter;
 mod content_hash;
 mod diagnostics;
+mod diagnostics_recording;
 mod instancing;
 mod layers;
 mod mapped_item;

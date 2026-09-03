@@ -178,15 +178,6 @@
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
-# -10: #3821 replaced the second, hand-maintained copy of the BoolFailureReason
-# label match with a call to BoolFailureReason::label(), and put the new
-# processor-failure sweep in the diagnostics/processor_failures.rs sibling;
-# that paid for count_attributed_products and the reworked take_csg_failures
-# doc, and the id-0 bucket rules moved on to diagnostics/attribution.rs.
-# The baseline moved under this PR: #3863 grew the file to 595 without moving
-# the row, and #3881 re-measured the row to match. Measured after the rebase
-# onto that: 595 -> 585.
-     585 rust/geometry/src/router/diagnostics.rs
 # +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
 # a file-supplied reference, so one self-referential entity aborted the process
 # (stack overflow = abort in Rust, not a catchable panic). The walk is now

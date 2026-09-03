@@ -463,6 +463,35 @@ describe('StepExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // The fourth route by which a line vanishes under visibleOnly is not a
+  // dangling reference at all: IfcMapConversion.SourceCRS points AT the
+  // representation context and nothing points back, so the forward closure
+  // simply never reaches it. This pins step-collection.ts's wiring of
+  // collectGeoreferencingEntities — the unit tests in georef-closure.test.ts
+  // stay green with that call-site deleted, this one does not.
+  it('retains IFCMAPCONVERSION and IFCPROJECTEDCRS in a visibleOnly export of a georeferenced model', () => {
+    const dataStore = buildMockDataStore([
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('1ys5Xwuxz8gPJk6N$NGhA1',$,'P',$,$,$,$,(#4),$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA2',$,'Wall',$,$,$,$,$);"],
+      [3, 'IFCWALL', "#3=IFCWALL('1ys5Xwuxz8gPJk6N$NGhA3',$,'HiddenWall',$,$,$,$,$);"],
+      [4, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);"],
+      [5, 'IFCMAPCONVERSION', '#5=IFCMAPCONVERSION(#4,#6,160000.,450000.,0.,$,$,$);'],
+      [6, 'IFCPROJECTEDCRS', "#6=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);"],
+    ]);
+
+    const result = new StepExporter(dataStore, liveView(dataStore)).export({
+      schema: 'IFC4',
+      visibleOnly: true,
+      hiddenEntityIds: new Set([3]),
+    });
+    const content = decode(result.content);
+
+    expect(content).toContain('#5=IFCMAPCONVERSION');
+    expect(content).toContain('#6=IFCPROJECTEDCRS');
+    expect(content).not.toContain('HiddenWall');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   // #2548: the closure-walk fix that stops a HIDDEN product's pset from
   // riding along on the relationship that named it (see
   // `visible-only-dangling-refs.test.ts`) has to recognise a DELETED subject

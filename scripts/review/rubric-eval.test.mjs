@@ -299,6 +299,22 @@ writeFileSync(out, ${JSON.stringify(body)});
   return p;
 }
 
+function sequentialReviewer(dir, bodies) {
+  const p = join(dir, 'sequential-reviewer.mjs');
+  const count = join(dir, 'reviewer-count');
+  writeFileSync(p, `import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+const countPath = ${JSON.stringify(count)};
+const calls = existsSync(countPath) ? Number(readFileSync(countPath, 'utf8')) : 0;
+const bodies = ${JSON.stringify(bodies)};
+const out = process.argv[process.argv.indexOf('--out') + 1];
+if (calls >= bodies.length) process.exit(91);
+if (calls > 0 && (!process.argv.includes('--retry-note') || !process.argv.includes('--retry-reason'))) process.exit(92);
+writeFileSync(out, bodies[calls]);
+writeFileSync(countPath, String(calls + 1));
+`);
+  return { path: p, count };
+}
+
 const runHarness = (dir, reviewer) => spawnSync(
   process.execPath,
   // `--no-judge`, or this unit test SPAWNS THE REAL MODEL. spawnSync inherits
@@ -355,16 +371,37 @@ test('a response where NOTHING survives scores ZERO and the eval CARRIES ON', (t
   // Aborting here threw away every other case and reported a broken instrument.
   const dir = tmpCase(t);
   evalCase(dir, { expected: [{ path: 'src/f.ts', what: 'Number(raw) returns NaN and the comparison falls through, closing the session' }] });
-  const reviewer = stubReviewer(dir, fenced([
+  const bad = fenced([
     { path: 'src/f.ts', line: 3, quote: '  not in the diff at all', body: 'x', class: 'numeric-bound' },
-  ]));
-  const r = runHarness(dir, reviewer);
+  ]);
+  const reviewer = sequentialReviewer(dir, [bad, bad]);
+  const r = runHarness(dir, reviewer.path);
   const said = `${r.stdout}${r.stderr}`;
 
   assert.equal(r.status, 0, `the eval must finish and report a score:\n${said}`);
+  assert.equal(readFileSync(reviewer.count, 'utf8'), '2', 'a failed retry must not loop');
   assert.match(said, /VALIDATION_EMPTY/, said);
   assert.match(said, /scored ZERO/, said);
   assert.match(said, /PRODUCED NO USABLE REVIEW/, 'the recall line must say how many cases produced nothing');
+});
+
+test('#3829: a retryable validation failure gets exactly the production corrective retry', (t) => {
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [{ path: 'src/f.ts', what: 'Number(raw) returns NaN and the comparison falls through, closing the session' }] });
+  const first = fenced([
+    { path: 'src/f.ts', line: 2, quote: '  if (n > 0) return n;', body: 'Number(raw) returns NaN, so the comparison falls through and closes the session.', class: 'numeric-bound' },
+  ]);
+  const corrected = fenced([
+    { path: 'src/f.ts', line: 3, quote: '  if (n > 0) return n;', body: 'Number(raw) returns NaN, so the comparison falls through and closes the session.', class: 'numeric-bound' },
+  ]);
+  const reviewer = sequentialReviewer(dir, [first, corrected]);
+  const r = runHarness(dir, reviewer.path);
+  const said = `${r.stdout}${r.stderr}`;
+
+  assert.equal(r.status, 0, said);
+  assert.equal(readFileSync(reviewer.count, 'utf8'), '2', 'one initial call plus one bounded retry');
+  assert.match(said, /corrective retry ran once/, said);
+  assert.match(said, /RECALL of known findings: 1\/1/, said);
 });
 
 test('an EMPTY response is a HARD ERROR, because the real chain cannot produce one', (t) => {

@@ -46,7 +46,10 @@ describe('geometry (World Coordinate) column/condition (#3671)', () => {
   ]);
 
   it('resolves the X axis by default', () => {
-    const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: 'X' }]), createProvider(positions));
+    // Empty axis, not 'X': this is the default branch in getWorldCoordinateValue.
+    // With 'X' the explicit case answers and an implementation that defaulted to
+    // Y would still pass, so the test would not name the mutation it kills.
+    const result = executeList(walls([{ id: 'g', source: 'geometry', propertyName: '' }]), createProvider(positions));
     expect(result.rows.find(r => r.entityId === 1)!.values[0]).toBe(100.5);
   });
 

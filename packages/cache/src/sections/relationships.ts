@@ -139,7 +139,7 @@ export function readRelationships(reader: BufferReader, version: number): Relati
 }
 
 /**
- * Fail fast on a corrupt shadowed-rel-ids trailer (v17+, #3782), the same
+ * Fail fast on a corrupt shadowed-rel-ids trailer (v18+, #3782), the same
  * way the (offset, count) guard above does for the base edge arrays:
  * `readUint32Array` only bounds-checks against the buffer's remaining
  * bytes, it says nothing about whether the VALUES it read are internally

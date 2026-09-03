@@ -2,6 +2,8 @@
 
 Binary cache format for IFClite. Caches the parsed data store and geometry in a compact binary format so a previously-loaded IFC reopens in milliseconds instead of re-running the full parse + tessellation pipeline. Content-addressable (xxHash64 of the source IFC), so cache invalidation is automatic.
 
+**Properties and quantities are not part of that speedup.** `BinaryCacheWriter.write` serializes whatever the data store's property/quantity tables already hold. A STEP-parsed store resolves properties lazily on demand and never populates those tables, so a cache written straight from a STEP parse round-trips with EMPTY property/quantity tables — a cache-restored model queries properties exactly as slow as a fresh parse (see `docs/guide/querying.md`). If your application needs fast repeat property queries too, retain the source buffer alongside the cache entry and re-attach on-demand extraction on read, the way the viewer's cache hook does.
+
 ## Installation
 
 ```bash
@@ -15,8 +17,7 @@ import {
   xxhash64Hex,
   BinaryCacheReader,
   BinaryCacheWriter,
-  SchemaVersion,
-  type CacheDataStore,
+  toCacheDataStore,
 } from '@ifc-lite/cache';
 import { IfcParser } from '@ifc-lite/parser';
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -44,26 +45,11 @@ async function loadWithCache(file: File) {
   const dataStore = await new IfcParser().parseColumnar(ifcBuffer);
   const geometry = await new GeometryProcessor().process(new Uint8Array(ifcBuffer));
 
-  // The writer takes the cache-format view of the parsed store.
-  const cacheDataStore: CacheDataStore = {
-    schema:
-      dataStore.schemaVersion === 'IFC4'
-        ? SchemaVersion.IFC4
-        : dataStore.schemaVersion === 'IFC4X3'
-          ? SchemaVersion.IFC4X3
-          : SchemaVersion.IFC2X3,
-    entityCount: dataStore.entityCount,
-    strings: dataStore.strings,
-    entities: dataStore.entities,
-    properties: dataStore.properties,
-    quantities: dataStore.quantities,
-    relationships: dataStore.relationships,
-    spatialHierarchy: dataStore.spatialHierarchy,
-    entityIndex: dataStore.entityIndex,
-  };
-
   const writer = new BinaryCacheWriter();
-  const cacheBuffer = await writer.write(cacheDataStore, geometry, ifcBuffer, {
+  // toCacheDataStore adapts the parser's IfcDataStore (string `schemaVersion`)
+  // to the CacheDataStore shape write() requires (numeric `schema` enum) —
+  // see the note above about what it does and does not carry over.
+  const cacheBuffer = await writer.write(toCacheDataStore(dataStore), geometry, ifcBuffer, {
     includeGeometry: true,
   });
   await myStorage.put(cacheKey, cacheBuffer);

@@ -47,6 +47,7 @@ import {
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
+import { hasNoRenderableTarget } from '@/lib/isolation/resolveIsolationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
@@ -1011,17 +1012,29 @@ export function Viewport({
       // never touches aggregation.
       const resolveRenderableIds = (
         ids: readonly number[],
+        // Named so the warning below points at the entry point the user
+        // pressed: Frame and a highlight isolate share this one resolution.
+        caller: 'resolveHighlightIds' | 'frameSelection',
         boundsOf: (id: number) => BoundingBox3D | null = createRenderableBoundsLookup(),
       ): number[] => {
         const geom = geometryRef.current;
         if (!geom) return [];
         const hasGeometry = (id: number) => boundsOf(id) !== null;
-        return expandToGeometryBearingIds(ids, hasGeometry, {
+        const resolved = expandToGeometryBearingIds(ids, hasGeometry, {
           resolve: resolveEntityRef,
           relationshipsFor: relationshipsForModel,
           toGlobalId: (modelId, expressId) =>
             toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId),
         });
+        // Nothing in the RESOLVED set renders + streaming finished = a blank
+        // isolate. Counting `resolved` misses it: the #3426 fallback carries
+        // every aggregated part forward, so the set is non-empty and mesh-less.
+        // The streaming gate keeps the ordinary "hasn't arrived yet" silent.
+        const streaming = isGeometryLoadStreaming(useViewerStore.getState());
+        if (hasNoRenderableTarget(ids, resolved, hasGeometry) && !streaming) {
+          console.warn(`[Viewport] ${caller}: nothing renderable for`, ids);
+        }
+        return resolved;
       };
 
       // Register camera callbacks for ViewCube and other controls
@@ -1130,7 +1143,7 @@ export function Viewport({
           // frameSelection moved the camera to an assembly that stayed
           // unhighlighted, because the renderer highlights `selectedEntityIds`
           // directly and that set still held the geometry-less assembly id.
-          const framedIds = resolveRenderableIds(ids, boundsOf);
+          const framedIds = resolveRenderableIds(ids, 'frameSelection', boundsOf);
           for (const id of framedIds) {
             const b = boundsOf(id);
             if (!b) continue;
@@ -1164,7 +1177,7 @@ export function Viewport({
         // to the right place while nothing lit up. Returns `[]`, not the
         // input, for an id with neither geometry nor renderable parts, so a
         // caller can fall back to its own default.
-        resolveHighlightIds: (ids) => resolveRenderableIds(ids),
+        resolveHighlightIds: (ids) => resolveRenderableIds(ids, 'resolveHighlightIds'),
         frameEntities: (ids: number[]) => {
           // Frame an explicit id set. Ids are federated GLOBAL ids — the same
           // id space the scene meshes carry (single model: global === express).

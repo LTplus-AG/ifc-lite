@@ -220,19 +220,21 @@ function conversionFactorScale(
 
 /**
  * Resolve the file's declared units from `IFCPROJECT → IFCUNITASSIGNMENT`.
- * Never throws: an absent/malformed assignment yields an empty {@link ProjectUnits}
- * (all measures then fall back to their SI default symbols).
+ * `projectId` defaults to the file's first IFCPROJECT (pass explicitly,
+ * from `resolveOwningIfcProjectId`, for an entity owning a later one). Never
+ * throws: an absent/malformed assignment yields an empty {@link ProjectUnits}.
  */
 export function extractProjectUnits(
   source: Uint8Array | IfcSourceBytes,
   entityIndex: EntityIndexLike,
+  projectId?: number,
 ): ProjectUnits {
   const byType = new Map<string, ResolvedUnit>();
   let monetary: ResolvedUnit | null = null;
 
-  const projectIds = entityIndex.byType.get('IFCPROJECT') ?? [];
-  if (projectIds.length === 0) return new ProjectUnits(byType, monetary);
-  const projectRef = entityIndex.byId.get(projectIds[0]);
+  const resolvedId = projectId ?? entityIndex.byType.get('IFCPROJECT')?.[0];
+  if (resolvedId === undefined) return new ProjectUnits(byType, monetary);
+  const projectRef = entityIndex.byId.get(resolvedId);
   if (!projectRef) return new ProjectUnits(byType, monetary);
 
   const extractor = new EntityExtractor(source);

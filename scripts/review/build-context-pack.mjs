@@ -38,6 +38,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
 
 /**
  * What the PR description may claim before the siblings compete for the rest.
@@ -271,15 +272,20 @@ export function fileEvidence(patch, content) {
  * lower-risk half of an already-fenced input.
  */
 
+// Caps a key at MAX_KEY_LENGTH with an explicit `…` marker (#3732 item 2): a
+// base64/hash constant was otherwise an arbitrarily long key. siblingSites
+// strips the marker before grepping, so the kept prefix still matches.
+export const MAX_KEY_LENGTH = 60;
+const capKey = (t) => (t.length <= MAX_KEY_LENGTH ? t : `${t.slice(0, MAX_KEY_LENGTH - 1)}…`);
+
 /** Identifiers and literals worth searching for. Longer is more distinctive. */
 export function searchKeys(patch, { path = '', max = 12 } = {}) {
   // PROSE EATS THE BUDGET. The first version took the first ten tokens of five
   // or more characters, and on two real cases every one of them came from the
   // MPL licence header -- "Source, subject, terms, Mozilla, Public, License" --
-  // or from changeset markdown. The identifiers that actually find the sibling
-  // (`missingLanes`, `siScale`, `baseColorFactor`) never got a slot.
-  //
-  // So: markdown carries no implementation, and a key has to LOOK like code.
+  // or from changeset markdown, so the identifiers that actually find the
+  // sibling (`missingLanes`, `siScale`, `baseColorFactor`) never got a slot.
+  // Markdown carries no implementation, so a key has to LOOK like code.
   if (/\.(md|txt|snap|lock)$/.test(path)) return [];
 
   const isIdentifier = (t) =>
@@ -302,7 +308,7 @@ export function searchKeys(patch, { path = '', max = 12 } = {}) {
     // pack with sites that share a dependency rather than an implementation --
     // measured: it took all four top slots and pushed the real sibling out.
     if (/^\s*(import|export)\s|require\(/.test(body)) continue;
-    for (const m of body.matchAll(/[A-Za-z_$][A-Za-z0-9_$]{4,}/g)) bucket.push(m[0]);
+    for (const m of body.matchAll(/[A-Za-z_$][A-Za-z0-9_$]{4,}/g)) bucket.push(capKey(m[0]));
     for (const m of body.matchAll(/'([^'\n]{6,60})'|"([^"\n]{6,60})"/g)) bucket.push(m[1] ?? m[2]);
   }
 
@@ -373,9 +379,10 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
   //
   // The no-checkout property holds for both: `git show <sha>:<path>` and
   // `git grep <sha>` read the object database either way.
+  const searchKey = key.length === MAX_KEY_LENGTH && /^[A-Za-z_$][A-Za-z0-9_$]*…$/.test(key) ? key.slice(0, -1) : key; // strip only a key shaped exactly like capKey output; other keys reach grep intact
   let out;
   try {
-    out = exec('git', ['grep', '-n', '--fixed-strings', '--no-color', '-I', '-e', key, ref],
+    out = exec('git', ['grep', '-n', '--fixed-strings', '--no-color', '-I', '-e', searchKey, ref],
       { cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
   } catch {
     return [];                       // exit 1 means no matches, which is normal
@@ -498,7 +505,6 @@ export const SHALLOW_CHECKOUT_REMEDY =
   'fetch-depth: 1, and a pull_request event fetches only refs/pull/N/merge. REMEDY: set ' +
   'fetch-depth: 0.';
 
-
 export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = process.cwd(), exec = execFileSync } = {}) {
   const changed = input.files.map((f) => f.path);
   const changedBases = new Set(changed.map((p) => p.split('/').pop()));
@@ -558,19 +564,13 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
     for (const h of hits) candidates.push({ ...h, key });
   }
   // Three signals, learned from the five real second-site cases rather than
-  // guessed. Ranked by how much each one moved the measurement:
-  //
-  //   same BASENAME in another package  glb.ts -> glb.ts, a copied module
-  //   same DIRECTORY                    scripts/lib/dirty-pr-scan.mjs ->
-  //                                     scripts/lib/pr-review-signal.mjs, and
-  //                                     measure-unit-scale.ts ->
-  //                                     quantity-collect.ts. Neighbours in a
-  //                                     directory are the same layer, and a
-  //                                     duplicated implementation usually lives
-  //                                     one file over rather than one package over
-  //   a LONG key                        `getForEntity` and `missingLanes` are
-  //                                     claims about a specific function; a
-  //                                     five-character token is not
+  // guessed, ranked by how much each one moved the measurement: same BASENAME
+  // in another package (glb.ts -> glb.ts, a copied module); same DIRECTORY
+  // (scripts/lib/dirty-pr-scan.mjs -> scripts/lib/pr-review-signal.mjs, and
+  // measure-unit-scale.ts -> quantity-collect.ts -- neighbours in a directory
+  // are the same layer, and a duplicated implementation usually lives one file
+  // over rather than one package over); a LONG key (`getForEntity` and
+  // `missingLanes` are claims about a specific function -- capped, see capKey).
   const changedDirs = new Set(changed.map((p) => p.slice(0, p.lastIndexOf('/'))));
   const rank = (h) => {
     const base = h.path.split('/').pop();
@@ -596,7 +596,7 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
     const id = `${h.path}:${h.line}`;
     if (seenSite.has(id)) continue;
     seenSite.add(id);
-    const cost = Buffer.byteLength(h.text, 'utf8') + 120;
+    const cost = Buffer.byteLength(renderSiblingRow(h), 'utf8') + SIBLING_ROW_JOIN_MARGIN;
     if (cost > budget || siblings.length >= 40) { truncated.push('sibling excerpts'); break; }
     budget -= cost;
     siblings.push(h);

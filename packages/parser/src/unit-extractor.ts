@@ -12,7 +12,9 @@
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
-import { RelationshipType } from '@ifc-lite/data';
+import { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
+
+export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 
 /**
  * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
@@ -109,28 +111,37 @@ function warnUnknownUnit(entityIndex: object, reason: string): void {
  *
  * @param source - The IFC file bytes, either raw or behind {@link IfcSourceBytes}
  * @param entityIndex - Entity index with byId and byType maps
+ * @param projectId - Optional express id of the specific `IFCPROJECT` to read
+ *   units from. Most files declare exactly one, so the default (the file's
+ *   first `IFCPROJECT`) is correct for the overwhelmingly common case; pass
+ *   this explicitly when resolving units for an entity that may belong to a
+ *   later `IFCPROJECT` in a multi-project (federated-merge, see #1332) file
+ *   — see {@link resolveOwningIfcProjectId}.
  * @returns Scale factor to apply to length values (e.g., 0.001 for millimeters)
  */
 export function extractLengthUnitScale(
   source: Uint8Array | IfcSourceBytes,
-  entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> }
+  entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
+  projectId?: number
 ): number {
   // Find IFCPROJECT
   const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
-  if (projectIds.length === 0) {
+  const resolvedProjectId = projectId ?? projectIds[0];
+  if (resolvedProjectId === undefined) {
     warnUnknownUnit(entityIndex, 'No IFCPROJECT found');
     return 1.0;
   }
 
-  return extractLengthUnitScaleForProjectId(projectIds[0], source, entityIndex);
+  return extractLengthUnitScaleForProjectId(resolvedProjectId, source, entityIndex);
 }
 
 /**
  * Same resolution as {@link extractLengthUnitScale}, but for an EXPLICIT
  * `IFCPROJECT` id rather than always the first one found. Factored out so
- * {@link resolveEntityLengthUnitScale} can resolve the scale of a specific
- * project in a multi-project file (a {@link MergedExporter} federated
- * output — see that module) without duplicating the unit-chain walk.
+ * {@link resolveEntityLengthUnitScale} and other {@link resolveOwningIfcProjectId}
+ * callers can resolve the scale of a specific project in a multi-project
+ * file (a {@link MergedExporter} federated output — see that module)
+ * without duplicating the unit-chain walk.
  */
 function extractLengthUnitScaleForProjectId(
   projectId: number,
@@ -321,16 +332,6 @@ function extractLengthUnitScaleForProjectId(
   return 1.0;
 }
 
-/** Minimal relationship-graph surface {@link resolveEntityLengthUnitScale} needs. */
-interface RelatedLookup {
-  getRelated(entityId: number, relType: RelationshipType, direction: 'forward' | 'inverse'): number[];
-}
-
-/** Bound on the spatial-containment walk in {@link resolveEntityLengthUnitScale}
- *  (element → storey → building → site → project is 4 hops; double it for an
- *  unusually deep IfcSpatialZone/IfcSpace nesting, never for a real cycle). */
-const MAX_PROJECT_WALK_HOPS = 8;
-
 /**
  * Resolve the length unit scale that applies to ONE entity, correctly for a
  * multi-`IfcProject` file (a {@link MergedExporter} `unitReconciliation: 'auto'`
@@ -340,22 +341,16 @@ const MAX_PROJECT_WALK_HOPS = 8;
  *
  * {@link extractLengthUnitScale} (and the `dataStore.lengthUnitScale` it feeds)
  * answers for the FIRST `IfcProject` only. That is exactly right for the
- * overwhelmingly common single-project file (this function's fast path below
- * returns the identical value), but silently wrong for a federated entity that
- * belongs to a LATER project: e.g. a material layer's `LayerThickness` is a
- * raw literal in ITS OWN project's unit, and scaling it by the first project's
- * factor corrupts the value by whatever ratio separates the two units (a
- * millimetre federated model read back with the metres factor turns a 300 mm
- * layer into a fabricated "300 m" one).
+ * overwhelmingly common single-project file, but silently wrong for a
+ * federated entity that belongs to a LATER project: e.g. a material layer's
+ * `LayerThickness` is a raw literal in ITS OWN project's unit, and scaling it
+ * by the first project's factor corrupts the value by whatever ratio
+ * separates the two units (a millimetre federated model read back with the
+ * metres factor turns a 300 mm layer into a fabricated "300 m" one).
  *
- * Multi-project resolution walks the entity's spatial containment UP the real
- * `IfcRelContainedInSpatialStructure` / `IfcRelAggregates` chain (never an
- * id-ordering guess, which a federated file's per-model id-contiguous blocks
- * would tempt but not guarantee) to find its owning `IfcProject`, then answers
- * for THAT project. Falls back to the first project's scale when the entity
- * (a resource-level entity like `IfcMaterial`, unreachable from any element)
- * has no discoverable containment path, or the walk does not land on a project
- * within {@link MAX_PROJECT_WALK_HOPS} — the same safe-miss direction
+ * Resolves the entity's owning project via {@link resolveOwningIfcProjectId} and
+ * reads that project's units, falling back to the first project's scale when
+ * the walk can't place the entity — the same safe-miss direction
  * {@link extractLengthUnitScale} already documents for every other ambiguous
  * case.
  */
@@ -365,36 +360,6 @@ export function resolveEntityLengthUnitScale(
   relationships: RelatedLookup,
   expressId: number,
 ): number {
-  const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
-  if (projectIds.length <= 1) {
-    // Fast path, and the common case: identical to extractLengthUnitScale.
-    return extractLengthUnitScale(source, entityIndex);
-  }
-
-  const projectIdSet = new Set(projectIds);
-  let current = expressId;
-  for (let hop = 0; hop < MAX_PROJECT_WALK_HOPS; hop++) {
-    if (projectIdSet.has(current)) {
-      return extractLengthUnitScaleForProjectId(current, source, entityIndex);
-    }
-    // An element's container (IfcRelContainedInSpatialStructure, inverse), a
-    // spatial node's decomposition parent (IfcRelAggregates, inverse), or —
-    // for a TYPE object (an `IfcWallType` carries its own material/pset
-    // assignments but is never itself spatially contained) — one of the
-    // occurrences it defines (IfcRelDefinesByType, forward: RelatingType →
-    // RelatedObjects), so the walk continues from a concrete occurrence.
-    // Containment first since it is the one-hop case for the common "element
-    // straight into its storey" shape.
-    const container = relationships.getRelated(current, RelationshipType.ContainsElements, 'inverse');
-    const parent = container.length > 0 ? container
-      : relationships.getRelated(current, RelationshipType.Aggregates, 'inverse');
-    const next = parent.length > 0 ? parent
-      : relationships.getRelated(current, RelationshipType.DefinesByType, 'forward');
-    if (next.length === 0) break;
-    current = next[0];
-  }
-
-  // No discoverable containment path to any project — fall back to the first
-  // project's scale (the pre-existing, documented-safe default).
-  return extractLengthUnitScale(source, entityIndex);
+  const ownerId = resolveOwningIfcProjectId(entityIndex, relationships, expressId);
+  return extractLengthUnitScale(source, entityIndex, ownerId);
 }

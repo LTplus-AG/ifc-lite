@@ -119,8 +119,20 @@ export function opensLiteralOrComment(buf: Uint8Array, pos: number, len: number)
 // ASCII whitespace per ISO 10303-21. Not /\s/: that also matches U+00A0 and the
 // other Unicode space separators, which the byte scanners and the Rust half do
 // not treat as whitespace.
+//
+// The full six-byte set (space, tab, LF, CR, form feed 0x0c, vertical tab
+// 0x0b) matches `isAsciiSpace` below, which this file's header-string scanner
+// already used for the same six bytes -- and matches `is_step_space` in
+// `rust/export/src/source_header.rs`, which spells the set out for the same
+// reason this one now does: a stdlib "ASCII whitespace" helper is not
+// trustworthy here. Rust's `u8::is_ascii_whitespace` follows the WhatWG
+// definition and excludes vertical tab, so reaching for it on either side
+// reintroduces the exact FF/VT divergence issue #3733 reported (dropped
+// entity on a leading form feed) rather than closing it.
 function isSpaceByte(b: number): boolean {
-  return b === 0x20 || b === 0x09 || b === 0x0d || b === NEWLINE;
+  return (
+    b === 0x20 || b === 0x09 || b === 0x0d || b === NEWLINE || b === 0x0c || b === 0x0b
+  );
 }
 
 // Skip STEP trivia from `pos`: whitespace, comments, and any run of the two.

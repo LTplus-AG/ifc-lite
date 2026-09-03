@@ -495,6 +495,17 @@ describe('divergence between auditIDSDocument and ids.xsd', () => {
 <ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"><info><title>T</title><date>31/01/2026</date></info><specifications>${spec(TRIVIAL_REQUIREMENT)}</specifications></ids>`,
     ],
     [
+      // The shape is a valid xs:date and the calendar is not: February 30th.
+      // This is the #3721 regression guard, and it belongs HERE rather than in
+      // SCHEMA_VIOLATIONS, whose only assertion is that xmllint rejects the
+      // document -- which is true with the whole fix reverted. The pair below
+      // is what binds it to our code: the schema must reject it, and the audit
+      // must not be the one that misses it.
+      'info/date is lexically an xs:date but not a calendar date',
+      `<?xml version="1.0" encoding="utf-8"?>
+<ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"><info><title>T</title><date>2026-02-30</date></info><specifications>${spec(TRIVIAL_REQUIREMENT)}</specifications></ids>`,
+    ],
+    [
       'info/author that is not an e-mail address',
       `<?xml version="1.0" encoding="utf-8"?>
 <ids xmlns="http://standards.buildingsmart.org/IDS" xmlns:xs="http://www.w3.org/2001/XMLSchema"><info><title>T</title><author>nobody</author></info><specifications>${spec(TRIVIAL_REQUIREMENT)}</specifications></ids>`,

@@ -46,6 +46,8 @@ import {
   siblingVerifies,
 } from './validate-findings.mjs';
 import { addedLineRanges } from './build-review-input.mjs';
+// #3652: the retry prompt this file's own tests exercise below.
+import { buildPrompt } from './run-reviewer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -1007,6 +1009,149 @@ test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () 
     riskiest_change: { path: 'src/a.ts', quoted_line: 'const shortEnough = 2;' },
   };
   assert.doesNotThrow(() => validate({ response: shorter, input }));
+});
+
+// ============================== #3652: PERMANENCE, and the retry that fixes it
+//
+// checkProofOfWork ITSELF IS UNCHANGED by #3652 -- still verbatim, still an
+// 8-character floor. Three attempts to widen it (short-line acceptance in
+// #3690, prefix acceptance measured above) were each shown guessable and
+// reverted or never landed. What #3652 actually reported was that a model
+// gets exactly ONE chance to nominate a quotable line, and a re-run of the
+// SAME prompt reliably repeats the SAME bad choice -- so the fix here is
+// `run-reviewer.mjs`'s retry block (`buildPrompt`'s `retryNote` option) and
+// `claude-review.yml`'s one-retry-on-this-reason step, not a looser check.
+// These tests prove the check still rejects every one of the three measured
+// shapes, and that recovery comes from a corrected SECOND answer -- never
+// from the check accepting the bad one.
+
+const PATH_C = 'crates/geo/src/wall.rs';
+
+test('RED, shape 1 (already covered above): a truncated long line is refused, unchanged', () => {
+  // Restated here as a named member of the three-shape set the issue measured,
+  // not a new assertion -- the fixture and behaviour are the ones proven above.
+  const patch = ['@@ -1,2 +1,3 @@', ' fn before() {}', '+const shortEnough = 2;', `+${'x'.repeat(200)};`].join('\n');
+  const input = { headSha: SHA, files: new Map([[PATH_C, { path: PATH_C, patch, addedLineRanges: [[2, 3]] }]]), unreviewable: [] };
+  const res = response({
+    files_reviewed: [PATH_C],
+    riskiest_change: { path: PATH_C, quoted_line: `${'x'.repeat(200)}`.slice(0, 120) },
+  });
+  assert.throws(() => validate({ response: res, input }), (e) => e.reason === 'PROOF_OF_WORK_FAILED');
+});
+
+test('RED, shape 2: a statement rustfmt wrapped across two lines, quoted back as one merged line', () => {
+  // rustfmt wraps a call whose arguments do not fit on one line; the model
+  // reads the two ADDED lines as a single logical statement and quotes the
+  // merged form. Neither line, nor a trimmed-and-joined concatenation with the
+  // real spacing, equals what the model wrote -- so it fails today, exactly
+  // like the other two shapes, and this test pins that it keeps failing.
+  const patch = [
+    '@@ -10,2 +10,4 @@',
+    ' fn compute() {',
+    '+    let value = compute_something(',
+    '+        first_arg, second_arg, third_arg,',
+    '+    );',
+    ' }',
+  ].join('\n');
+  const input = { headSha: SHA, files: new Map([[PATH_C, { path: PATH_C, patch, addedLineRanges: [[2, 4]] }]]), unreviewable: [] };
+  const res = response({
+    files_reviewed: [PATH_C],
+    riskiest_change: {
+      path: PATH_C,
+      // The MERGED form the model produced: normalised spacing, the trailing
+      // comma dropped -- neither line of the real patch, verbatim or joined.
+      quoted_line: 'let value = compute_something(first_arg, second_arg, third_arg);',
+    },
+  });
+  assert.throws(() => validate({ response: res, input }), (e) => e.reason === 'PROOF_OF_WORK_FAILED');
+});
+
+test('RED, shape 3: a `//!` doc-comment quoted without its marker', () => {
+  // The model quotes the doc-comment's CONTENT, dropping the `//! ` syntax --
+  // truthful about what the line says, not verbatim about what the line IS.
+  // `quotableLines` strips only the diff marker (`+`/`-`/` `), never a comment
+  // marker, so this still fails today.
+  const patch = ['@@ -1,1 +1,2 @@', ' fn before() {}', '+//! Handles the georeferenced wall placement path.'].join('\n');
+  const input = { headSha: SHA, files: new Map([[PATH_C, { path: PATH_C, patch, addedLineRanges: [[2, 2]] }]]), unreviewable: [] };
+  const res = response({
+    files_reviewed: [PATH_C],
+    riskiest_change: { path: PATH_C, quoted_line: 'Handles the georeferenced wall placement path.' },
+  });
+  assert.throws(() => validate({ response: res, input }), (e) => e.reason === 'PROOF_OF_WORK_FAILED');
+});
+
+test('GREEN: the retry prompt fences the failure and asks for a DIFFERENT real line', () => {
+  const p = buildPrompt('RUBRIC', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.' });
+  assert.match(p, /## This is a RETRY/);
+  // The diff is always fenced, so a prompt-wide fence match proves nothing
+  // about the retry note. Isolate the retry section and require the failure
+  // text to sit INSIDE its own opener/closer pair.
+  const retry = p.slice(p.indexOf('## This is a RETRY'));
+  const fenced = /<<<UNTRUSTED-DIFF-([0-9a-f]{18})\n([\s\S]*?)\nUNTRUSTED-DIFF-\1>>>/.exec(retry);
+  assert.ok(fenced, 'the retry section carries its own nonce fence');
+  assert.match(fenced[2], /PROOF_OF_WORK_FAILED: quote a WHOLE line\./, 'the prior failure text is inside the retry fence, not trusted');
+  assert.match(retry, /Nominate a DIFFERENT real line/);
+  // No retryNote (the normal, non-retry call): no retry section at all.
+  const first = buildPrompt('RUBRIC', INPUT);
+  assert.doesNotMatch(first, /## This is a RETRY/);
+});
+
+test('GREEN: a corrected SECOND answer -- a different, real, short line -- passes', () => {
+  // Simulates what claude-review.yml's retry step does: the first answer fails
+  // on the merged-statement shape above; the model is shown that failure and,
+  // on retry, nominates a DIFFERENT real line it can reproduce whole.
+  const patch = [
+    '@@ -10,2 +10,4 @@',
+    ' fn compute() {',
+    '+    let value = compute_something(',
+    '+        first_arg, second_arg, third_arg,',
+    '+    );',
+    ' }',
+  ].join('\n');
+  const input = { headSha: SHA, files: new Map([[PATH_C, { path: PATH_C, patch, addedLineRanges: [[2, 4]] }]]), unreviewable: [] };
+  const firstAttempt = response({
+    files_reviewed: [PATH_C],
+    riskiest_change: { path: PATH_C, quoted_line: 'let value = compute_something(first_arg, second_arg, third_arg);' },
+  });
+  let firstErr;
+  assert.throws(() => validate({ response: firstAttempt, input }), (e) => { firstErr = e; return e.reason === 'PROOF_OF_WORK_FAILED'; });
+
+  // The retry prompt is built from that real failure (proves the workflow's
+  // failure-text hand-off is real content, not a placeholder). `buildPrompt`
+  // takes the array-shaped review-input.json form -- `input.files` above is a
+  // Map, which is what `validate` consumes; this is the same conversion the
+  // workflow's own review-input.json always was.
+  const promptInput = { headSha: input.headSha, files: [...input.files.values()], unreviewable: input.unreviewable };
+  const retryPrompt = buildPrompt('RUBRIC', promptInput, { retryNote: firstErr.message });
+  assert.match(retryPrompt, /## This is a RETRY/);
+
+  // ...and the SECOND answer, nominating one of the real added lines instead
+  // of the merged form, passes the SAME unchanged check.
+  const secondAttempt = {
+    ...firstAttempt,
+    riskiest_change: { path: PATH_C, quoted_line: 'let value = compute_something(' },
+  };
+  assert.doesNotThrow(() => validate({ response: secondAttempt, input }));
+});
+
+test('CONTROL: a FABRICATED quote still fails on the retry too -- recovery never bypasses the check', () => {
+  // The non-negotiable control. A model that invents a quote on its first
+  // attempt and invents a DIFFERENT one on its retry must still be refused:
+  // the retry buys another chance to tell the truth, not a second roll of the
+  // dice against a check that might wave a lie through.
+  const patch = ['@@ -1,1 +1,2 @@', ' fn before() {}', '+let real_line = 1;'].join('\n');
+  const input = { headSha: SHA, files: new Map([[PATH_C, { path: PATH_C, patch, addedLineRanges: [[2, 2]] }]]), unreviewable: [] };
+  const invented1 = response({
+    files_reviewed: [PATH_C],
+    riskiest_change: { path: PATH_C, quoted_line: 'this line was never in the diff at all' },
+  });
+  assert.throws(() => validate({ response: invented1, input }), (e) => e.reason === 'PROOF_OF_WORK_FAILED');
+
+  const invented2 = {
+    ...invented1,
+    riskiest_change: { path: PATH_C, quoted_line: 'nor was this one, a second fabrication on retry' },
+  };
+  assert.throws(() => validate({ response: invented2, input }), (e) => e.reason === 'PROOF_OF_WORK_FAILED');
 });
 
 // ==================================== the sibling: verified, and CARRIED THROUGH

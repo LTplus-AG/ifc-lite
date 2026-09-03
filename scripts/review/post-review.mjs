@@ -90,11 +90,16 @@
  *                       POST reported success and the comments are not there.
  *                       REMEDY: re-run. If it recurs, attach the log to
  *                       claude-code-action#1679 rather than re-running forever.
- *   CLEAN_CONTRADICTED  A clean verdict while our own inline findings are
- *                       anchored to this exact head. One of the two runs is
- *                       wrong and a `verdict=clean` marker would bury it.
- *                       REMEDY: re-run the review; if the findings are genuinely
- *                       withdrawn, delete those inline comments first.
+ *   (CLEAN_CONTRADICTED  REMOVED. It threw when this run found nothing while our
+ *                       own findings stood on the same head, and its remedy was
+ *                       "re-run" -- which reproduced the state exactly, so the
+ *                       lane failed forever until a human deleted a comment.
+ *                       Measured on #3669: three consecutive runs, no path out.
+ *                       The standing findings now simply STAND: the marker says
+ *                       `findings` with the confirmed count and the summary
+ *                       states the disagreement. Withdrawal is still possible
+ *                       and still needs a human, but it is no longer the ONLY
+ *                       way out of a red lane.)
  *   SUMMARY_POST_FAILED The marker comment POST/PATCH returned no id.
  *                       REMEDY: check that the posting workflow has write access
  *                       to the pull request, then re-run.
@@ -444,8 +449,8 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
   const short = sha.slice(0, 9);
   const n = findings.length;
   if (count === 0) {
-    // Reachable only when `n` is 0 as well: the caller refuses CLEAN_CONTRADICTED
-    // before it gets here, and `count >= n` is enforced one step earlier.
+    // Reachable only when `n` is 0 as well: `count >= n` is enforced one step
+    // earlier, and the `n === 0 && count > 0` case is handled by the branch below.
     // A REVIEW JUDGED TO NOTHING IS NOT A REVIEW THAT FOUND NOTHING. The judge
     // can reject every validated finding, and without this line the only record
     // that they ever existed is a runner log that expires -- while the PR shows
@@ -469,6 +474,26 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0 }
       '',
       // No thumbs-down footer here on purpose: see STATED HOLES 6.
       marker(sha, 'clean', 0),
+    ].join('\n');
+  }
+  if (n === 0) {
+    // `count > 0` with `n === 0`: this run found nothing while earlier findings
+    // stand on the same commit. Without this branch the generic form below
+    // renders "0 findings" as a heading over "1 inline comment confirmed" -- a
+    // body contradicting itself in two consecutive lines. Say the state instead.
+    return [
+      `### Claude review - ${count} standing finding${count === 1 ? '' : 's'} for \`${short}\``,
+      '',
+      `This run reviewed the diff and found nothing to flag, but ${count} inline ` +
+        `comment${count === 1 ? '' : 's'} from an earlier run ${count === 1 ? 'is' : 'are'} still ` +
+        'anchored to this commit and nobody has withdrawn them.',
+      '',
+      'They stand. Two runs disagreed about the same code, and this note records that rather than ' +
+        'resolving it by fiat: the marker below says `findings`, so nothing reads this as a pass. ' +
+        'If the earlier findings are wrong, delete those inline comments and re-run; the verdict ' +
+        'becomes `clean` on its own once they are gone.',
+      '',
+      marker(sha, 'findings', count),
     ].join('\n');
   }
   return [
@@ -799,13 +824,17 @@ function main() {
         'attach the log to anthropics/claude-code-action#1679 rather than re-running indefinitely.',
     );
   }
+  // This run found nothing while our own findings stand on this commit. They
+  // STAND: marker `findings`, summary states the disagreement, exit 0. A
+  // disagreement between two runs is a fact to record, not a failure to post.
+  // Withdrawal still needs a human but is no longer the only way out of a red
+  // lane. Why this replaced a throw: see CLEAN_CONTRADICTED in the header.
   if (findings.length === 0 && confirmed > 0) {
-    throw new PostReviewError(
-      'CLEAN_CONTRADICTED',
-      `This run found nothing, yet ${confirmed} inline finding(s) from \`${author}\` are anchored to ` +
-        `${args.sha.slice(0, 9)}. One of the two runs is wrong about the same commit, and a ` +
-        '`verdict=clean` marker would bury the disagreement under a pass. REMEDY: re-run the review; if ' +
-        'those findings are genuinely withdrawn, delete the inline comments first.',
+    console.log(
+      `CONTRADICTED: this run found nothing, yet ${confirmed} inline finding(s) from ` +
+        `\`${author}\` are anchored to ${args.sha.slice(0, 9)}. Those findings STAND: the marker ` +
+        'records `findings`, not `clean`, so the gate does not read this as a pass. If they are ' +
+        'genuinely withdrawn, delete the inline comments and re-run.',
     );
   }
 

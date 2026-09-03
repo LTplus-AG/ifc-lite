@@ -18,7 +18,7 @@
  * FILTERED mesh list (`ViewportContainer.tsx`'s `filteredGeometry`), and
  * `TYPE_VISIBILITY_SEMANTIC_DEFAULTS` ships `spaces`, `spatialZones`,
  * `openings` and `virtualElements` OFF (`store/constants.ts`). So `[]` is what
- * the resolver answers for THREE different situations that it cannot tell
+ * the resolver answers for FOUR different situations that it cannot tell
  * apart from the outside:
  *
  *   - the ids are hidden by a type toggle right now (an `IfcSpace` at the
@@ -26,9 +26,11 @@
  *   - their meshes have not streamed in yet (`filteredGeometry` is non-null
  *     from the FIRST batch and grows incrementally, so a mesh that has not
  *     arrived reads exactly like one that does not exist);
- *   - they are genuinely geometry-less with no renderable aggregated part.
+ *   - they are geometry-less but have `IfcRelAggregates` parts that will
+ *     render (an `IfcElementAssembly` and the like);
+ *   - they are genuinely geometry-less with no aggregated part at all.
  *
- * Only the third deserves "do nothing". Treating all three that way makes an
+ * Only the last deserves "do nothing". Treating all four that way makes an
  * IDS/lens/SDK/embed isolate of a hidden-type set a silent no-op, which is why
  * `PropertiesPanel.tsx`'s zone isolate (#1075) and `SearchModal.filter.tsx`'s
  * "Isolate in 3D" (#2660) both keep the raw ids on an empty resolve — the
@@ -38,13 +40,19 @@
  * starts showing the right thing as soon as the toggle flips or the batch
  * lands.
  *
- * The residual gap, stated rather than papered over: for the third situation
- * this still isolates a set with no mesh in it and the viewport goes blank
- * (#3426). Closing that needs a resolver that can see UNFILTERED geometry and
- * so can say "geometry is in and nothing here renders" as a fact distinct from
- * `[]`; that is Viewport/ViewportContainer plumbing, not a policy this
- * function can infer. What is fixed here is #3338: an assembly whose parts DO
- * render now contributes those parts in every channel that routes through here.
+ * The third situation is handled one level down, in
+ * `expandToGeometryBearingIds` (`utils/aggregation.ts`), which
+ * `resolveHighlightIds` (`Viewport.tsx`) is built on: it expands a
+ * geometry-less id to its aggregated parts, falling back to ALL of them when
+ * none of them currently render (#3426). This module just receives a
+ * non-empty `resolved` for that case and unions it in as it does for any
+ * ordinary element.
+ *
+ * The fourth has nothing to expand to, so it stays a blank isolate: this
+ * module unions in the bare raw id and no mesh ever matches it. That case is
+ * invisible from here — this function only ever sees ids, never the model
+ * graph — so the signal for it lives in `resolveRenderableIds`
+ * (`Viewport.tsx`), which warns once streaming has finished.
  */
 export function resolveIsolationIds(
   resolver: ((ids: number[]) => number[]) | undefined,
@@ -52,4 +60,29 @@ export function resolveIsolationIds(
 ): number[] {
   const resolved = resolver?.([...rawIds]) ?? [];
   return [...new Set([...resolved, ...rawIds])];
+}
+
+/**
+ * Whether an isolate/highlight request resolved to a set with nothing that can
+ * render right now. This is the condition `resolveRenderableIds`
+ * (`Viewport.tsx`) warns on once geometry streaming has finished, i.e. the
+ * fourth situation above plus its post-#3426 sibling.
+ *
+ * `resolved.length === 0` is NOT that condition any more. Since #3426 the
+ * resolver falls back to ALL of a geometry-less id's aggregated parts, so a
+ * NON-empty `resolved` can still be entirely mesh-less — an assembly whose
+ * parts never render is exactly the blank viewport the warning exists to
+ * surface, and counting the result would step straight past it. Renderability
+ * has to be asked per resolved id instead.
+ *
+ * An empty request is not a defect, so it never warns. The caller owns the
+ * streaming gate: mid-stream, "nothing renders yet" is the expected state.
+ */
+export function hasNoRenderableTarget(
+  requested: readonly number[],
+  resolved: readonly number[],
+  hasGeometry: (id: number) => boolean,
+): boolean {
+  if (requested.length === 0) return false;
+  return !resolved.some(hasGeometry);
 }

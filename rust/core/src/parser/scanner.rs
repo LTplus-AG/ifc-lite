@@ -226,10 +226,15 @@ impl<'a> EntityScanner<'a> {
 
             // Find end of type name (at '(', whitespace, or a comment opener:
             // `IFCWALL/* n */(…)` is legal and its type name is IFCWALL).
+            //
+            // `super::lexical::is_step_space`, not `u8::is_ascii_whitespace`:
+            // the latter excludes vertical tab (see that function's doc
+            // comment), which would leave `IFCWALL\x0B(` reading a type name
+            // of "IFCWALL\x0B" instead of "IFCWALL".
             let mut type_end = type_start;
             while type_end < line_end {
                 let b = self.bytes[type_end];
-                if b == b'(' || b.is_ascii_whitespace() {
+                if b == b'(' || super::lexical::is_step_space(b) {
                     break;
                 }
                 if b == b'/' && self.bytes.get(type_end + 1) == Some(&b'*') {

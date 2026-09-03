@@ -25,7 +25,9 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo, GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumBridge } from '@/lib/geo/cesium-bridge';
 import { attachTileSuccessRetraction, classifyTileProviderError, toUrlTemplateProviderOptions } from '@/lib/geo/custom-basemap';
+import { tilesetLoadErrorMessage } from '@/lib/geo/custom-3dtiles';
 import { loadCesium } from './cesium/cesium-module';
+import { addDataSourceLayer } from './cesium/addDataSourceLayer';
 import { useCesiumBridge } from './cesium/useCesiumBridge';
 import { useCesiumModel } from './cesium/useCesiumModel';
 import { useCesiumSolar } from './cesium/useCesiumSolar';
@@ -86,6 +88,10 @@ export function CesiumOverlay({
   // Null unless the custom source is actually selected, so editing the tile URL
   // while another basemap is showing does not tear down and rebuild the viewer.
   const customBasemap = dataSource === 'custom' ? storedCustomBasemap : null;
+  const storedCustomTilesetUrl = useViewerStore((s) => s.cesiumCustomTilesetUrl);
+  // Same reasoning as `customBasemap`: null unless this source is actually
+  // selected, so editing the URL elsewhere does not tear down the viewer.
+  const customTilesetUrl = dataSource === 'custom-3dtiles' ? storedCustomTilesetUrl : null;
   const ionToken = useViewerStore((s) => s.cesiumIonToken);
   const terrainEnabled = useViewerStore((s) => s.cesiumTerrainEnabled);
   const terrainClipY = useViewerStore((s) => s.cesiumTerrainClipY);
@@ -266,6 +272,45 @@ export function CesiumOverlay({
               if (!cancelled) setBasemapWarning('That tile URL could not be used as a basemap.');
             }
           }
+        } else if (dataSource === 'custom-3dtiles') {
+          // User-supplied 3D Tiles tileset (#3607) — e.g. Dutch 3D BAG/PDOK
+          // data. Cesium's own loader handles both 3D Tiles 1.0 (B3DM) and
+          // 1.1 (glTF) content, so there is no version branch here. Globe
+          // stays visible (RECEIVE_ONLY shadows), same as OSM Buildings: an
+          // arbitrary building-massing tileset — the common case for this
+          // format — has no ground of its own, unlike Google Photorealistic.
+          scene.globe.show = true;
+          scene.globe.shadows = Cesium.ShadowMode.RECEIVE_ONLY;
+          if (!customTilesetUrl) {
+            // Reachable only if the picker and the stored URL disagree; the
+            // globe would otherwise come up blank with no explanation.
+            setBasemapWarning('No custom 3D Tiles URL is configured. Add one in Sun & Sky > Base map.');
+          } else {
+            try {
+              const tileset = await Cesium.Cesium3DTileset.fromUrl(customTilesetUrl);
+              // `!cancelled`: a bad host can take a while to fail (or a slow
+              // one to succeed), and the user may have switched sources by
+              // then — same guard as the custom XYZ basemap above.
+              if (!cancelled) {
+                viewer.scene.primitives.add(tileset);
+                tilesetRef.current = tileset;
+              } else {
+                // `fromUrl` already resolved a real tileset by the time the
+                // effect was cancelled -- it is never added to any scene's
+                // primitives, so nothing else will ever call `.destroy()` on
+                // it. Cesium3DTileset's own docs are explicit that this is
+                // required "for the explicit release of WebGL resources,
+                // instead of relying on the garbage collector"; skipping it
+                // here leaked the tileset's in-flight requests and any
+                // resources already allocated for its root tile on every
+                // source switch made before a slow custom URL resolved.
+                tileset.destroy();
+              }
+            } catch (e) {
+              console.warn('[CesiumOverlay] Custom 3D Tiles URL failed to load:', customTilesetUrl, e);
+              if (!cancelled) setBasemapWarning(tilesetLoadErrorMessage(e));
+            }
+          }
         } else if (dataSource === 'osm-buildings') {
           // OSM massing context: keep the globe with the satellite base map —
           // the extruded buildings sit ON TOP of the imagery, and the globe
@@ -296,8 +341,12 @@ export function CesiumOverlay({
           } catch { /* terrain unavailable */ }
         }
 
-        // Add data source layer
-        tilesetRef.current = await addDataSourceLayer(Cesium, viewer, dataSource, ionToken);
+        // Add data source layer. custom-3dtiles is handled inline above (it
+        // needs `customTilesetUrl` and warns instead of failing silently);
+        // this helper only owns the three built-in tileset sources.
+        if (dataSource !== 'custom-3dtiles') {
+          tilesetRef.current = await addDataSourceLayer(Cesium, viewer, dataSource, ionToken);
+        }
 
         if (cancelled) { viewer.destroy(); return; }
 
@@ -335,7 +384,7 @@ export function CesiumOverlay({
       setStatus('idle');
       setBasemapWarning(null);
     };
-  }, [cesiumEnabled, ionToken, terrainEnabled, dataSource, customBasemap]);
+  }, [cesiumEnabled, ionToken, terrainEnabled, dataSource, customBasemap, customTilesetUrl]);
 
   // ─── Coordinate bridge: georeference to a place on the globe ────────────
   // After the viewer effect (it needs a live viewer for terrain sampling) and
@@ -435,53 +484,4 @@ export function CesiumOverlay({
       )}
     </>
   );
-}
-
-/**
- * Add the selected 3D context layer to the Cesium viewer. Returns the created
- * tileset so callers can toggle its shadow casting/receiving for solar
- * studies (`null` if none could be created).
- */
-async function addDataSourceLayer(
-  Cesium: typeof import('cesium'),
-  viewer: InstanceType<typeof import('cesium').Viewer>,
-  dataSource: string,
-  ionToken: string,
-): Promise<InstanceType<typeof import('cesium').Cesium3DTileset> | null> {
-  try {
-    switch (dataSource) {
-      case 'osm-map':
-      case 'custom': {
-        // Flat imagery bases: the imagery layer is the whole context (added in
-        // Effect 1). There is no 3D tileset to place — return null so solar
-        // shadows fall on the globe alone.
-        return null;
-      }
-      case 'osm-buildings': {
-        // OpenStreetMap Buildings — flat-shaded extruded footprints, the grey
-        // massing context used for sun-path / overshadowing studies.
-        const tileset = await Cesium.createOsmBuildingsAsync();
-        viewer.scene.primitives.add(tileset);
-        return tileset;
-      }
-      case 'google-photorealistic':
-      default: {
-        try {
-          const tileset = await Cesium.createGooglePhotorealistic3DTileset();
-          viewer.scene.primitives.add(tileset);
-          return tileset;
-        } catch {
-          if (ionToken) {
-            const tileset = await Cesium.Cesium3DTileset.fromIonAssetId(2275207);
-            viewer.scene.primitives.add(tileset);
-            return tileset;
-          }
-          return null;
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[CesiumOverlay] Failed to add data source:', dataSource, err);
-    return null;
-  }
 }

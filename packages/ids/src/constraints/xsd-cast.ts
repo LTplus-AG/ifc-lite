@@ -12,13 +12,24 @@
  * GENERATED REGEXES (`ids-lib.codegen/XmlSchema_XsTypesGenerator.cs`), and its
  * xs:double pattern is neither .NET nor XSD. It takes `+INF` (an XSD 1.1
  * spelling) while rejecting bare `INF` (the 1.0 one), and rejects `Infinity`
- * (the .NET one). Parity with upstream is the contract, so that is what these
- * arms implement. An IDS literal must cast successfully under at least one
- * of the slot's declared XSD types — `xs:integer` rejects `42.0`,
+ * (the .NET one). Parity with upstream is the contract for the NUMERIC arms,
+ * where that pattern is the only statement of what upstream accepts, so that
+ * is what they implement. An IDS literal must cast successfully under at least
+ * one of the slot's declared XSD types — `xs:integer` rejects `42.0`,
  * `xs:double` accepts either, etc.
+ *
+ * Parity is not a licence to accept a value XSD excludes. The date family
+ * rejects the calendar-invalid values (`2023-02-29`) a shape-only regex takes,
+ * the same call this file already makes for the digitless doubles (#3336,
+ * #3721).
  */
 
 import { isWhollyNumeric } from '@ifc-lite/encoding';
+
+import {
+  isValidXsdDateTimeLiteral,
+  isXsdDateTimeBase,
+} from './xsd-datetime.js';
 
 /**
  * The specials upstream's xs:double pattern accepts, spelled exactly as it
@@ -32,9 +43,6 @@ import { isWhollyNumeric } from '@ifc-lite/encoding';
 export const XSD_NUMERIC_SPECIALS = new Set(['NaN', '+INF', '-INF']);
 
 const INTEGER_RE = /^[+-]?\d+$/;
-const DATE_RE = /^\d{4}-\d{2}-\d{2}(Z|[+-]\d{2}:\d{2})?$/;
-const DATETIME_RE =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$/;
 const DURATION_RE =
   /^-?P(?:\d+Y)?(?:\d+M)?(?:\d+D)?(?:T(?:\d+H)?(?:\d+M)?(?:\d+(?:\.\d+)?S)?)?$/;
 
@@ -53,6 +61,12 @@ export function literalCastsUnderAnyType(
 }
 
 export function literalCastsUnder(value: string, xsdType: string): boolean {
+  // Ahead of the switch so coverage of the date family is the shared guard's
+  // answer, not a list of case labels. `xs:date` and `xs:dateTime` had labels
+  // and `xs:time` did not, so every literal cast under an
+  // `["xs:dateTime","xs:time"]` slot (`IfcTimeSeries.StartTime`) satisfied the
+  // gate through `xs:time`'s permissive default (#3721).
+  if (isXsdDateTimeBase(xsdType)) return isValidXsdDateTimeLiteral(value, xsdType);
   switch (xsdType) {
     case 'xs:integer':
       return INTEGER_RE.test(value);
@@ -74,10 +88,6 @@ export function literalCastsUnder(value: string, xsdType: string): boolean {
       return isWhollyNumeric(value) || XSD_NUMERIC_SPECIALS.has(value);
     case 'xs:boolean':
       return value === 'true' || value === 'false';
-    case 'xs:date':
-      return DATE_RE.test(value);
-    case 'xs:dateTime':
-      return DATETIME_RE.test(value);
     case 'xs:duration':
       return DURATION_RE.test(value);
     case 'xs:string':

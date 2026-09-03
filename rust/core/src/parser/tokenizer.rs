@@ -157,18 +157,30 @@ fn derived(input: &[u8]) -> IResult<&[u8], Token<'_>> {
 const MAX_NESTING_DEPTH: u32 = 256;
 
 /// Parse typed value: IFCPARAMETERVALUE(0.), IFCBOOLEAN(.T.)
+///
+/// The type name and its `(` are usually adjacent, but a STEP writer's line
+/// wrap can land exactly between them - measured on a real file where 39 of
+/// 175 `IFCSURFACESTYLERENDERING` entities wrap as `…MEASURE\r\n(1.)`. Without
+/// `ws` here, `char('(')` sees `\r` and the whole entity fails to parse, which
+/// silently dropped it from every full-file walk (`decode_at_uncached` returns
+/// `Err`, and every caller's `let Ok(..) = .. else { continue }` skips it) -
+/// the entity was never malformed, just wrapped where the parser assumed it
+/// never would be.
 fn typed_value_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
     map(
         pair(
             // Type name (all caps with optional numbers/underscores)
             take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_'),
             // Arguments
-            delimited(
-                char('('),
-                separated_list0(delimited(ws, char(','), ws), move |i| {
-                    token_at_depth(i, depth)
-                }),
-                char(')'),
+            preceded(
+                ws,
+                delimited(
+                    char('('),
+                    separated_list0(delimited(ws, char(','), ws), move |i| {
+                        token_at_depth(i, depth)
+                    }),
+                    char(')'),
+                ),
             ),
         ),
         |(type_name, args)| Token::TypedValue(type_name, args),

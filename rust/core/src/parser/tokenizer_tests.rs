@@ -241,3 +241,44 @@ fn comment_free_entity_decodes_unchanged() {
     assert_eq!(ifc_type, IfcType::IfcWall);
     assert_eq!(args.len(), 8);
 }
+
+/// A typed value's `(` may be separated from its type name by whitespace,
+/// including a CRLF line wrap - not just adjacent as in `IFCBOOLEAN(.T.)`.
+#[test]
+fn test_typed_value_tolerates_crlf_before_paren() {
+    let result = typed_value_at_depth(b"IFCPOSITIVELENGTHMEASURE\r\n(1.);", 0);
+    assert!(result.is_ok(), "Failed to parse: {:?}", result);
+    let (rest, token) = result.unwrap();
+    assert_eq!(rest, b";");
+    match token {
+        Token::TypedValue(type_name, args) => {
+            assert_eq!(type_name, b"IFCPOSITIVELENGTHMEASURE");
+            assert_eq!(args, vec![Token::Float(1.0)]);
+        }
+        _ => panic!("Expected TypedValue token"),
+    }
+}
+
+/// Synthetic reproduction of the Allplan/Allright IFC2X3 export pattern
+/// that motivated this fix: `IFCSURFACESTYLERENDERING` line-wraps with
+/// `\r\n` right between a typed value's type name and its `(`. Before the
+/// fix, `char('(')` saw `\r` and the whole entity failed to parse - which
+/// every full-file walk treats as a silent skip, not a decode error the
+/// caller sees.
+#[test]
+fn test_parse_entity_typed_value_wrapped_with_crlf() {
+    let input = "#42=IFCSURFACESTYLERENDERING($,IFCPOSITIVELENGTHMEASURE\r\n(1.),$,$,$,$,$,$,.NOTDEFINED.);";
+    let result = parse_entity(input);
+    assert!(result.is_ok(), "Failed to parse: {:?}", result);
+    let (id, ifc_type, args) = result.unwrap();
+    assert_eq!(id, 42);
+    assert_eq!(ifc_type, IfcType::IfcSurfaceStyleRendering);
+    assert_eq!(args.len(), 9);
+    match &args[1] {
+        Token::TypedValue(type_name, inner) => {
+            assert_eq!(*type_name, b"IFCPOSITIVELENGTHMEASURE");
+            assert_eq!(*inner, vec![Token::Float(1.0)]);
+        }
+        other => panic!("Expected TypedValue token, got {:?}", other),
+    }
+}

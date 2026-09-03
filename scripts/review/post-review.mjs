@@ -316,7 +316,7 @@ function main() {
   // module-size budget, #3795): posts every not-yet-present finding, then
   // reads the surface back and confirms what is on the pull request. Throws
   // READBACK_SHORT with no marker written -- see that function's own comment.
-  const { posted, skipped, confirmed } = postFindingsAndConfirm({
+  const { posted, skipped, confirmed, standing, resolutionIncomplete } = postFindingsAndConfirm({
     repo: args.repo,
     pr: args.pr,
     sha: args.sha,
@@ -329,17 +329,17 @@ function main() {
   // disagreement between two runs is a fact to record, not a failure to post.
   // Withdrawal still needs a human but is no longer the only way out of a red
   // lane. Why this replaced a throw: see CLEAN_CONTRADICTED in the header.
-  if (findings.length === 0 && confirmed > 0) {
+  if (findings.length === 0 && standing > 0) {
     console.log(
-      `CONTRADICTED: this run found nothing, yet ${confirmed} inline finding(s) from ` +
+      `CONTRADICTED: this run found nothing, yet ${standing} unresolved inline finding(s) from ` +
         `\`${author}\` are anchored to ${args.sha.slice(0, 9)}. Those findings STAND: the marker ` +
         'records `findings`, not `clean`, so the gate does not read this as a pass. If they are ' +
-        'genuinely withdrawn, delete the inline comments and re-run.',
+        'genuinely withdrawn, RESOLVE their review threads and re-run (#3768).',
     );
   }
 
   // ------------------------------------------------------------------ STEP 4+5
-  const verdict = confirmed === 0 ? 'clean' : 'findings';
+  const verdict = standing === 0 ? 'clean' : 'findings';
   upsertAndVerify({
     repo: args.repo,
     pr: args.pr,
@@ -348,23 +348,24 @@ function main() {
     body: summaryBody({
       sha: args.sha,
       findings,
-      count: confirmed,
+      count: standing,
+      resolutionIncomplete,
       judgedAway: readJudgedAway(doc),
       capped: readCappedCount(doc, findings.length),
       omitted,
     }),
-    want: marker(args.sha, verdict, confirmed, omitted.length),
+    want: marker(args.sha, verdict, standing, omitted.length),
   });
 
   console.log(`Head: ${args.sha.slice(0, 9)}`);
   console.log(`Findings: ${findings.length} (posted ${posted}, already present ${skipped})`);
-  console.log(`Confirmed on this head: ${confirmed}`);
+  console.log(`Confirmed on this head: ${confirmed}${standing === confirmed ? '' : ` (${standing} unresolved)`}`);
   if (omitted.length > 0) {
     console.log(`PARTIAL: ${omitted.length} file(s) were never sent to the reviewer; the marker says so.`);
   }
   console.log('');
   console.log(
-    `✅ REVIEW_POSTED: wrote a ${verdict} marker for ${args.sha.slice(0, 9)} with count=${confirmed}, AFTER ` +
+    `✅ REVIEW_POSTED: wrote a ${verdict} marker for ${args.sha.slice(0, 9)} with count=${standing}, AFTER ` +
       'reading every finding back from the pull request.',
   );
   console.log('   The count is what GitHub handed back, never what the model claimed.');

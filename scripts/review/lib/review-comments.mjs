@@ -19,6 +19,7 @@ import { MARKER_RE, pageAll, normaliseLogin } from '../../check-review-posted.mj
 import { PostReviewError } from './post-review-error.mjs';
 import { marker, fingerprint } from './review-findings.mjs';
 import { nothingToReviewBody } from './review-summary.mjs';
+import { resolvedCommentIds } from './resolved-threads.mjs';
 
 /**
  * Walk one comment surface to exhaustion within a REAL page bound.
@@ -244,7 +245,12 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
  * deliberately STRONGER than "what this run sent" -- see the caller's own
  * comment on that choice.
  *
- * @returns {{ posted: number, skipped: number, confirmed: number }}
+ * @returns {{ posted: number, skipped: number, confirmed: number, standing: number,
+ *   resolutionIncomplete: boolean }}
+ *   `confirmed` is every finding of ours anchored to this head. `standing` is
+ *   the subset a reader should still act on: it drops the ones whose review
+ *   thread someone RESOLVED, which is the only question REST cannot answer
+ *   (#3768).
  */
 export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
   const before = fetchSurface(repo, pr, `pulls/${pr}/comments`);
@@ -263,7 +269,8 @@ export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
   }
 
   const after = fetchSurface(repo, pr, `pulls/${pr}/comments`);
-  const confirmed = confirmedOnHead(after, author, sha).length;
+  const confirmedRows = confirmedOnHead(after, author, sha);
+  const confirmed = confirmedRows.length;
 
   if (confirmed < findings.length) {
     throw new PostReviewError(
@@ -275,5 +282,43 @@ export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
         'attach the log to anthropics/claude-code-action#1679 rather than re-running indefinitely.',
     );
   }
-  return { posted, skipped, confirmed };
+
+  // WITHDRAWAL, THE ONE QUESTION REST CANNOT ANSWER (#3768). `commit_id`
+  // relocates onto every later head (#3729), and REST exposes no resolution
+  // state at all, so a PR that ever received a finding could never carry a
+  // `clean` marker again: RESOLVING the thread -- the intended, non-destructive
+  // act -- changed nothing a REST reader could see, and deleting the comment,
+  // which destroys the audit trail, was the only way out.
+  //
+  // CONSULTED ON EVERY RUN, not only on a clean one. Scoping it to the clean
+  // branch would keep this REST-only at the cost of a wrong count everywhere
+  // else: a run finding one new thing over two RESOLVED old findings would write
+  // `count=3` and tell the reader three comments stand when two were withdrawn.
+  //
+  // A RE-REPORTED FINDING COUNTS EVEN IF ITS THREAD IS RESOLVED. Its comment is
+  // deduped rather than re-posted, so excluding it would report fewer standing
+  // findings than this run actually produced. That is also what keeps
+  // `standing >= findings.length`: every finding here has a confirmed row
+  // carrying its fingerprint, by the READBACK_SHORT check just above.
+  //
+  // Fails CLOSED: a thread this cannot account for stays unresolved and keeps
+  // counting, so a GraphQL failure can only make the count too HIGH, never too
+  // low. Safe, and invisible -- so the caller discloses it.
+  let standing = confirmed;
+  let resolutionIncomplete = false;
+  if (confirmed > 0) {
+    const { ids, warnings, complete } = resolvedCommentIds(repo, pr);
+    resolutionIncomplete = !complete;
+    for (const w of warnings) console.log(`WARN: ${w} Findings it could not account for still stand.`);
+    const reReported = new Set(findings.map((f) => fingerprint(f.path, f.line, f.body)));
+    standing = confirmedRows.filter(
+      (r) => !ids.has(Number(r?.id)) || reReported.has(fingerprint(r.path, r.line, String(r.body ?? ''))),
+    ).length;
+    if (standing < confirmed) {
+      console.log(
+        `RESOLVED: ${confirmed - standing} of ${confirmed} standing finding(s) sit on a resolved review thread.`,
+      );
+    }
+  }
+  return { posted, skipped, confirmed, standing, resolutionIncomplete };
 }

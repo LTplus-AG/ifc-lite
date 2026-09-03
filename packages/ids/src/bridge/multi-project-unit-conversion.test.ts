@@ -29,9 +29,9 @@ import { createDataAccessor } from './index.js';
 
 // Two IFCPROJECTs, each with its OWN IFCUNITASSIGNMENT:
 //  - Project 1 (first in the file): LENGTHUNIT = millimetres.
-//  - Project 2 (second in the file): LENGTHUNIT = metres, and owns Wall #20
-//    via IFCSITE #18 -> IFCRELAGGREGATES #19 -> IFCRELCONTAINEDINSPATIALSTRUCTURE #21.
-// Wall #20's Pset_WallCommon.Width is authored as 0.4 (already metres, per
+//  - Project 2 (second in the file): LENGTHUNIT = metres, and owns Wall #19
+//    via IFCSITE #17 -> IFCRELAGGREGATES #18 -> IFCRELCONTAINEDINSPATIALSTRUCTURE #20.
+// Wall #19's Pset_WallCommon.Width is authored as 0.4 (already metres, per
 // its OWN project's unit) — the correct base-SI IDS-facing value is 0.4.
 // Reading it with project 1's millimetre scale (0.001) instead gives 0.0004.
 //

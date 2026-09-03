@@ -20,13 +20,6 @@ export interface RelatedLookup {
   getRelated(entityId: number, relType: RelationshipType, direction: 'forward' | 'inverse'): number[];
 }
 
-/** Upper bound on the containment walk in {@link resolveOwningIfcProjectId}, so a
- *  malformed file with a containment cycle that the visited-set guard doesn't
- *  catch on its first pass still terminates. Real spatial hierarchies (site →
- *  building → storey → element, occasionally one assembly level deeper) never
- *  come close to this depth. */
-const MAX_OWNING_PROJECT_WALK_STEPS = 64;
-
 /**
  * Resolve the express id of the `IFCPROJECT` that owns `expressId`, for files
  * that legitimately contain more than one `IFCPROJECT` — the shape
@@ -72,7 +65,10 @@ export function resolveOwningIfcProjectId(
   const visited = new Set<number>();
   let current: number | undefined = expressId;
 
-  for (let step = 0; current !== undefined && step < MAX_OWNING_PROJECT_WALK_STEPS; step++) {
+  // Terminates on any input: each pass either returns or adds `current` to
+  // `visited`, and the next pass returns on a revisit — so a malformed file's
+  // containment cycle ends the walk instead of spinning.
+  while (current !== undefined) {
     if (projectIdSet.has(current)) return current;
     if (visited.has(current)) return undefined; // containment cycle
     visited.add(current);

@@ -415,3 +415,48 @@
         );
     }
 
+
+    /// `Path::exists` answers false for a stat that FAILED, so a
+    /// permission-denied index root would read as "absent" and let a
+    /// `NotFound` walk error be classified as a healthy empty cache -- the
+    /// one verdict that lets a broken store report zero entries. `try_exists`
+    /// separates "not there" from "could not tell"; only the first is benign.
+    ///
+    /// Unix-only, and it needs a non-root user: mode bits do not stop root,
+    /// so the test says so and stops rather than asserting something the
+    /// environment cannot produce.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_walk_error_is_not_benign_when_the_index_root_cannot_be_stat_ed() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let (cache, dir) = fresh_cache("classify-unstattable-root").await;
+        cache.set_bytes("k", b"v").await.unwrap();
+
+        // Drop +x on the cache directory: stat of anything INSIDE it now
+        // fails with EACCES, while the directory itself still stats fine.
+        let original = std::fs::metadata(&dir).unwrap().permissions();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let stat_fails = index_root(&dir).try_exists().is_err();
+        if !stat_fails {
+            std::fs::set_permissions(&dir, original).unwrap();
+            eprintln!("skipping: this environment stats through a 0o000 directory (running as root?)");
+            return;
+        }
+
+        let verdict = classify_index_walk_error(
+            &dir,
+            cacache::Error::IoError(
+                std::io::Error::new(std::io::ErrorKind::NotFound, "not found"),
+                "Error while walking cache index directory".to_string(),
+            ),
+        );
+
+        std::fs::set_permissions(&dir, original).unwrap();
+
+        assert!(
+            verdict.is_some(),
+            "a NotFound must NOT be called an empty cache when the index root cannot be stat'ed"
+        );
+    }

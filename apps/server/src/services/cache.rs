@@ -79,14 +79,36 @@ fn index_root(cache_dir: &std::path::Path) -> PathBuf {
 /// walking".
 fn classify_index_walk_error(cache_dir: &std::path::Path, err: cacache::Error) -> Option<ApiError> {
     if let cacache::Error::IoError(ref io, _) = err {
-        // Both stat calls answer false on a permission error, and both land
-        // on the safe side for that: an index root we cannot stat reads as
-        // PRESENT (so a mid-walk error propagates) and a cache dir we cannot
-        // stat reads as ABSENT (so an unreadable store propagates).
-        if io.kind() == std::io::ErrorKind::NotFound
-            && cache_dir.is_dir()
-            && !index_root(cache_dir).exists()
-        {
+        if io.kind() != std::io::ErrorKind::NotFound {
+            return Some(ApiError::Cache(err.to_string()));
+        }
+        // `Path::exists`/`is_dir` answer FALSE for a stat that failed, which
+        // is the wrong answer in the direction that matters: a permission
+        // error on the index root would read as "absent" and license the
+        // benign verdict. `try_exists` separates "it is not there" from "I
+        // could not tell", and only the former may be called empty.
+        let index_root_absent = match index_root(cache_dir).try_exists() {
+            Ok(present) => !present,
+            // Could not tell. Never benign -- report the walk error, and say
+            // why the classification could not be made.
+            Err(stat_err) => {
+                return Some(ApiError::Cache(format!(
+                    "{err} (could not stat the cache index root: {stat_err})"
+                )))
+            }
+        };
+        // Same rule for the cache directory: a stat that fails is not
+        // evidence that it is there, and only a directory we positively
+        // found may be called a healthy empty cache.
+        let cache_dir_present = match cache_dir.try_exists() {
+            Ok(present) => present,
+            Err(stat_err) => {
+                return Some(ApiError::Cache(format!(
+                    "{err} (could not stat the cache directory: {stat_err})"
+                )))
+            }
+        };
+        if cache_dir_present && index_root_absent {
             return None;
         }
     }
@@ -289,7 +311,16 @@ impl DiskCache {
             // propagates, and the only "empty" this accepts is an index root
             // that does not exist at all -- checked once, before walking,
             // rather than inferred from an error mid-walk.
-            if index_root(&cache_dir).exists() {
+            // `try_exists`, never `exists`: the latter answers false for a
+            // stat that FAILED, so a permission error on the index root
+            // would skip this walk, leave `still_referenced` empty, and send
+            // every integrity in `removed_integrities` to the unlink loop
+            // below with no reference check at all. "I could not tell" must
+            // abort the pass, not silently authorise it.
+            if index_root(&cache_dir)
+                .try_exists()
+                .map_err(|e| ApiError::Cache(format!("could not stat the cache index root: {e}")))?
+            {
                 for entry in cacache::list_sync(&cache_dir) {
                     let meta = entry.map_err(|e| ApiError::Cache(e.to_string()))?;
                     if (meta.key == exact_phase2 || meta.key.starts_with(&prefix_phase2))

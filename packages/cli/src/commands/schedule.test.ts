@@ -749,6 +749,20 @@ describe('resolvePreset (declared type + columns)', () => {
     expect(err).toContain('door');
     expect(err).toContain('material-takeoff');
   });
+
+  /**
+   * Bug: `SCHEDULE_PRESETS[name.toLowerCase()]` is a plain object property
+   * lookup, so a name that collides with a property every object inherits
+   * from `Object.prototype` (`constructor`, `toString`, `hasOwnProperty`,
+   * ...) resolves to that inherited function instead of failing the `!preset`
+   * check (a function value is truthy) — --preset constructor would silently
+   * "succeed" with a bogus, non-SchedulePreset value instead of the fatal()
+   * every other unknown name gets.
+   */
+  it('--preset constructor (an inherited Object.prototype property) is fatal, not a silent Function lookup', () => {
+    const err = expectFatal(() => resolvePreset('constructor'));
+    expect(err).toContain('Unknown --preset "constructor"');
+  });
 });
 
 /** Run `scheduleCommand` against a temp fixture and capture its stdout. */

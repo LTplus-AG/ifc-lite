@@ -60,13 +60,20 @@ export const SCHEDULE_PRESETS: Record<string, SchedulePreset> = {
 /**
  * Look up a preset by name (case-insensitive). An unknown name is a
  * `fatal(...)` that lists the valid preset names.
+ *
+ * `Object.hasOwn` guards a plain-object-property lookup against a name that
+ * collides with something every object inherits from `Object.prototype`
+ * (`constructor`, `toString`, `hasOwnProperty`, ...) — a bare
+ * `SCHEDULE_PRESETS[name]` would resolve `--preset constructor` to the
+ * inherited `Function` value instead of failing, since a function is truthy
+ * and a plain `!preset` check never catches it.
  */
 export function resolvePreset(name: string): SchedulePreset {
-  const preset = SCHEDULE_PRESETS[name.toLowerCase()];
-  if (!preset) {
+  const key = name.toLowerCase();
+  if (!Object.hasOwn(SCHEDULE_PRESETS, key)) {
     fatal(
       `Unknown --preset "${name}". Valid presets: ${Object.keys(SCHEDULE_PRESETS).join(', ')}.`,
     );
   }
-  return preset;
+  return SCHEDULE_PRESETS[key];
 }

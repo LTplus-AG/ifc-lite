@@ -383,7 +383,7 @@ ifc-lite schedule tests/models/ara3d/AC20-FZK-Haus.ifc --spec door-schedule.json
 | `--subtotals <spec>` | `"count \| sum:Header \| avg:Header \| min:Header \| max:Header, ..."` — a subtotal row after each group plus a grand total (grand total only, without `--group-by`) |
 | `--preset <name>` | `door \| window \| space \| wall \| material-takeoff` — default `--type`/`--columns` (and a default sort/group for `space`/`material-takeoff`); an explicit flag overrides the preset's corresponding default |
 | `--format <fmt>` | `csv` (default), `json`, `md`, or `html` |
-| `--spec <file.json>` | Load a reusable schedule definition (`type`/`columns`/`where`/`sort`/`groupBy`/`subtotals`/`format`, plus an optional `preset` to start from); same override priority as `--preset` |
+| `--spec <file.json>` | Load a reusable schedule definition (`type`/`columns`/`where`/`sort`/`groupBy`/`subtotals`/`format`, plus an optional `preset` to start from); beats a `--preset` default, but an explicit flag still beats both |
 | `--save <file.json>` | Write the schedule definition this invocation resolved to (after any `--preset`/`--spec` defaults are folded in), so it's self-contained and reloadable with `--spec` alone |
 
 A missing value is an empty CSV/Markdown cell or a JSON `null`. CSV/Markdown/HTML cells are escaped for their format (RFC-4180 CSV escaping with a formula-injection guard, `|`/backslash/newline escaping for Markdown, full HTML-entity escaping for HTML), since model text is untrusted.

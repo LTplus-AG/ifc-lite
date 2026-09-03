@@ -71,7 +71,7 @@ const HELP = `
               [--group-by "Header,..."]  contiguous groups, ordered by group key (asc, or --sort's dir)
               [--subtotals "count|sum:H|avg:H|min:H|max:H,..."]  subtotal row per group + grand total
                  (without --group-by: grand total only; CSV/md label the group column, JSON marks __row)
-              [--spec spec.json]  load a saved schedule definition (--preset-like priority)
+              [--spec spec.json]  load a saved schedule definition (beats --preset; an explicit flag beats both)
               [--save spec.json]  persist this invocation's resolved definition for --spec reuse
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type

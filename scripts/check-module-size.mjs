@@ -215,7 +215,7 @@ const SOURCE_RE = /\.(ts|tsx|mts|cts|mjs|cjs)$/;
  * moves if anything else touched the allowlist first.
  */
 const ALLOWLIST_DIGESTS = {
-  'apps/viewer': '3084272275768153260',
+  'apps/viewer': '14836735350698650008',
   'apps/viewer-embed': '12728481182599147886',
   'packages/bcf': '10369893299996048894',
   'packages/cache': '14926850005686407910',
@@ -229,7 +229,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/data': '7334937001846380278',
   'packages/diff': '935169126877539347',
   'packages/drawing-2d': '1202507408514109964',
-  'packages/export': '8294779133777308773',
+  'packages/export': '6651271583538625536',
   'packages/extensions': '8156044843525017433',
   'packages/geometry': '12847835029883478945',
   'packages/ids': '9562546445799669442',
@@ -252,7 +252,7 @@ const ALLOWLIST_DIGESTS = {
   'packages/source-dalux': '11927553717016520308',
   'packages/source-dropbox': '13897585807232807340',
   'packages/viewer': '17290688824834287099',
-  'scripts': '4386814201325981117',
+  'scripts': '10576945509463692918',
 };
 
 function parseArgs(argv) {

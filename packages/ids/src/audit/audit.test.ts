@@ -676,6 +676,28 @@ describe('auditIDSDocument — review feedback fixes', () => {
     expect(codes(r.issues)).toContain('E_CARDINALITY_INVALID');
   });
 
+  it('reports only {required, prohibited} for an invalid <partOf> @cardinality', async () => {
+    // <partOf> is ids:simpleCardinality; the generic invalid-value message
+    // must not advertise "optional" as valid for this facet.
+    const xml = wrap(`<specification name="X" ifcVersion="IFC4">
+      <applicability>
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <partOf cardinality="Invalid">
+          <entity><name><simpleValue>IFCBUILDINGSTOREY</simpleValue></name></entity>
+        </partOf>
+      </requirements>
+    </specification>`);
+    const r = await auditIDSDocument(xml);
+    const issue = r.issues.find(
+      (i) => i.code === 'E_CARDINALITY_INVALID' && i.facetType === 'partOf'
+    );
+    expect(issue).toBeDefined();
+    expect(issue!.message).toContain('{required, prohibited}');
+    expect(issue!.message).not.toContain('optional');
+  });
+
   it('audits every declared @ifcVersion, not just the first', async () => {
     // IfcRoad is IFC4X3-only. A spec declaring both IFC4X3 and IFC4
     // must fail because the reference is invalid in IFC4 — the older

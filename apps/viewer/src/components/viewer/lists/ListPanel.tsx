@@ -45,6 +45,7 @@ import { mergeResultColumns } from '@/lib/lists/merge-result-columns';
 import { extractProjectUnits, ProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import { useRenderFrameOffsets } from '@/hooks/useRenderFrameOffsets';
 import { makeWorldPositionGetter } from '@/lib/geo/entity-world-position';
+import { zoneVolumeSiScale } from '@/lib/units/zone-volume-scale';
 import { ListBuilder } from './ListBuilder';
 import { ListResultsTable } from './ListResultsTable';
 
@@ -97,8 +98,7 @@ export function ListPanel({ onClose }: ListPanelProps) {
   const volumeScaleByModelId = useMemo(() => {
     const map = new Map<string, number>();
     const scaleOf = (store: IfcDataStore) => (store.source.length > 0
-      ? extractProjectUnits(store.source, store.entityIndex).resolvedForUnitType('VOLUMEUNIT')?.siScale ?? 1
-      : 1);
+      ? zoneVolumeSiScale(extractProjectUnits(store.source, store.entityIndex)) : 1);
     if (models.size > 0) {
       for (const [modelId, model] of models) {
         if (!model.ifcDataStore) continue;

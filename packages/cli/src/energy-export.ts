@@ -53,6 +53,7 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { GeometryProcessor } from '@ifc-lite/geometry';
+import { logger } from './logger.js';
 
 /** Human-readable format name, used only to keep error messages format-specific. */
 type EnergyFormat = 'HBJSON' | 'DFJSON';
@@ -111,13 +112,24 @@ export async function exportHbjson(
   baseName: string,
 ): Promise<string> {
   return runEnergyExport(store, mutationView, 'HBJSON', (processor, bytes) => {
-    const result = processor.exportHbjson(bytes, baseName);
+    const result = processor.exportHbjsonWithStats(bytes, baseName);
     if (result === null) {
       throw new Error('Geometry engine unavailable for HBJSON export.');
     }
+    const { content, stats } = result;
+    // A "successful" export can still silently drop `IfcSpace` volumes with malformed
+    // footprints / holes / non-extrusion profiles (#1908 follow-up); surface that instead
+    // of letting a truncated-but-valid HBJSON file pass as complete. Only warn when
+    // something was actually dropped — a clean model must produce no extra output.
+    if (stats.skipped > 0) {
+      logger.warn(
+        `HBJSON export: ${stats.skipped} of ${stats.spaces} IfcSpace skipped as degenerate ` +
+          `(malformed footprint / holes / non-extrusion); ${stats.rooms} rooms written.`,
+      );
+    }
     // The lens contract carries a string; HBJSON payloads are far below the
     // V8 string ceiling, so decoding here is safe.
-    return new TextDecoder().decode(result);
+    return new TextDecoder().decode(content);
   });
 }
 

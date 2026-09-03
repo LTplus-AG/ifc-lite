@@ -14,6 +14,7 @@ use smallvec::SmallVec;
 use std::cell::RefCell;
 
 mod consolidate;
+mod degenerate_check;
 mod normals;
 mod plane_eps;
 mod topology_diagnostic;
@@ -282,7 +283,11 @@ impl ClippingProcessor {
     /// record is appended to the processor's failure log (drainable via
     /// [`Self::take_failures`]). An empty host returns an empty mesh without
     /// recording a failure (it's a fast path, not a fallback). The accept path
-    /// also runs `record_topology_tear` (#3440): diagnostic only, never gates.
+    /// also runs `record_topology_tear` (#3440 step 1): diagnostic only, never
+    /// gates, in every build. `topology_gate_reject` (#3440 step 2) runs the
+    /// same closure predicate but, ONLY when the crate is built with the
+    /// `csg_topology_gate` feature (off by default; no downstream crate turns
+    /// it on), rejects a torn result the same way `KernelOutputInvalid` does.
     pub fn subtract_mesh(&self, host_mesh: &Mesh, opening_mesh: &Mesh) -> Result<Mesh> {
         record_csg_op(0, host_mesh.triangle_count(), opening_mesh.triangle_count());
         if host_mesh.is_empty() {
@@ -330,6 +335,9 @@ impl ClippingProcessor {
         let result = Self::consolidate_coplanar(raw);
         if !result.is_empty() && !self.validate_mesh(&result) {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
+            return Ok(host_mesh.clone());
+        }
+        if self.topology_gate_reject(BoolOp::Difference, &result) {
             return Ok(host_mesh.clone());
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
@@ -405,6 +413,9 @@ impl ClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
                 return Ok(host_mesh.clone());
             }
+            if self.topology_gate_reject(BoolOp::Difference, &next) {
+                return Ok(host_mesh.clone());
+            }
             result = next;
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
@@ -429,69 +440,10 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Intersection, BoolFailureReason::KernelOutputInvalid);
             return Ok(Mesh::new());
         }
+        if self.topology_gate_reject(BoolOp::Intersection, &result) {
+            return Ok(Mesh::new());
+        }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Intersection, m))
-    }
-
-    /// Heuristic: does this look like a botched CSG difference?
-    ///
-    /// Kernel-neutral check used by the boolean processor (e.g. the
-    /// polygonal-bounded half-space clip) to fall back to a robust
-    /// unbounded plane clip when a difference result looks collapsed
-    /// relative to its host. Historically this caught a Linux-specific
-    /// Manifold pathology where a wall body clipped by an
-    /// `IfcPolygonalBoundedHalfSpace` prism collapsed to a near-empty
-    /// result (1 triangle from a 12-triangle host box).
-    ///
-    /// Rules:
-    ///  * An empty result is a legit outcome (cutter contains host) —
-    ///    NOT degenerate.
-    ///  * A closed-volume result needs at least 4 triangles. Anything
-    ///    below that is structurally broken.
-    ///  * For hosts with >= 12 triangles (typical IFC solid input), the
-    ///    output should retain at least 25 % of the host's triangle
-    ///    count when the cutter is partial.
-    pub(crate) fn difference_result_looks_degenerate(host: &Mesh, result: &Mesh) -> bool {
-        let result_tris = result.indices.len() / 3;
-        if result_tris == 0 {
-            return false;
-        }
-        if result_tris < 4 {
-            return true;
-        }
-        let host_tris = host.indices.len() / 3;
-        if host_tris >= 12 && result_tris * 4 < host_tris {
-            return true;
-        }
-
-        // "Wrong piece" check: a difference result MUST be a subset of the
-        // host volume, so the result's bounding box has to sit inside the
-        // host's. When a malformed cutter (typical: IfcFacetedBrep with
-        // inward-pointing face normals) inverts the kernel's
-        // inside/outside test, Manifold returns the CUTTER mesh instead —
-        // which lives partially or wholly outside the host bbox. House.ifc
-        // wall #3448 (a 7 m extrusion clipped by a gable-shaped brep)
-        // rendered as the gable triangle alone before this guard.
-        let (host_min, host_max) = host.bounds();
-        let (res_min, res_max) = result.bounds();
-        // 1 % of the host's edge **per axis** — using a single tolerance
-        // derived from the longest dimension lets thin walls/plates pass
-        // a wrong-piece check on Y/Z that they shouldn't (CodeRabbit
-        // review on PR #861). With per-axis slack, a 5 m × 0.4 m × 7 m
-        // wall gets ±5 cm tolerance on X, ±4 mm on Y, ±7 cm on Z — so a
-        // result that pokes >4 mm past the wall's thickness face is
-        // correctly flagged even though it's well within 1 % of the X
-        // span.
-        let slack = (host_max - host_min).abs() * 0.01;
-        if res_min.x + slack.x < host_min.x
-            || res_min.y + slack.y < host_min.y
-            || res_min.z + slack.z < host_min.z
-            || res_max.x > host_max.x + slack.x
-            || res_max.y > host_max.y + slack.y
-            || res_max.z > host_max.z + slack.z
-        {
-            return true;
-        }
-        false
     }
 
     /// Validate mesh for common issues

@@ -17,6 +17,8 @@ import {
   computeGrossFloorArea,
   computeMaterialSummary,
   computeValidation,
+  computeStoreyNames,
+  computeBuildingName,
   sumQuantity,
 } from './stats-aggregation.js';
 
@@ -33,11 +35,11 @@ export async function statsCommand(args: string[]): Promise<void> {
 
   // Storeys
   const storeys = bim.storeys();
-  const storeyNames = storeys.map((s: any) => s.name).filter(Boolean);
+  const storeyNames = computeStoreyNames(storeys);
 
   // Building name
   const buildings = bim.query().byType('IfcBuilding').toArray();
-  const buildingName = buildings[0]?.name ?? '(unnamed)';
+  const buildingName = computeBuildingName(buildings);
 
   // Element counts by type
   const ELEMENT_TYPES = [

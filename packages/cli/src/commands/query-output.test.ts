@@ -16,6 +16,7 @@ import {
   outputAggregation,
   outputGroupBy,
   outputEntities,
+  computeUniqueValues,
 } from './query-output.js';
 
 interface FakeEntity {
@@ -278,6 +279,99 @@ describe('outputGroupBy', () => {
     json.spy.mockRestore();
     const parsed = JSON.parse(json.chunks.join(''));
     expect(Object.keys(parsed)).toHaveLength(1);
+  });
+
+  /**
+   * Regression: a present-but-blank storey Name (`IFCBUILDINGSTOREY('...','',...)`)
+   * was chained with `storey?.name ?? '(no storey)'`, which only falls
+   * through on null/undefined. A blank name short-circuited the chain and
+   * was emitted verbatim as an empty-string JSON key instead of falling
+   * through to the "(no storey)" placeholder. Kills reverting the fix back
+   * to a bare `??`.
+   */
+  it('falls a blank storey Name through to "(no storey)", not an empty-string key', () => {
+    const blankStoreyBim = fakeBim({ storeys: { 1: { name: '' }, 2: { name: '   ' } } });
+    const json = captureStdout();
+    outputGroupBy(
+      [{ ref: 1, type: 'IfcWall' }, { ref: 2, type: 'IfcWall' }] as FakeEntity[],
+      'storey',
+      undefined,
+      blankStoreyBim,
+      true,
+    );
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).not.toContain('');
+    expect(parsed['(no storey)']?.count).toBe(2);
+  });
+
+  /** Control: a genuine storey Name is still returned unchanged. */
+  it('groups by a genuine storey Name unchanged', () => {
+    const namedStoreyBim = fakeBim({ storeys: { 1: { name: 'Level 1' } } });
+    const json = captureStdout();
+    outputGroupBy([{ ref: 1, type: 'IfcWall' }] as FakeEntity[], 'storey', undefined, namedStoreyBim, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).toEqual(['Level 1']);
+  });
+
+  /**
+   * Regression: same defect on the material chain
+   * (`mat?.materials?.[0] ?? mat?.name ?? '(no material)'`) — a blank
+   * `materials[0]` short-circuited to an empty-string key.
+   */
+  it('falls a blank material name through to "(no material)", not an empty-string key', () => {
+    const blankMatBim = fakeBim({ materials: { 1: { materials: [''] } } });
+    const json = captureStdout();
+    outputGroupBy([{ ref: 1, type: 'IfcWall' }] as FakeEntity[], 'material', undefined, blankMatBim, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).not.toContain('');
+    expect(parsed['(no material)']?.count).toBe(1);
+  });
+});
+
+describe('computeUniqueValues', () => {
+  /**
+   * Regression: `--unique storey` chained `storey?.name ?? '(no storey)'`,
+   * only falling through on null/undefined. A blank/whitespace-only storey
+   * Name short-circuited the chain and produced a blank-label distinct
+   * value instead of the "(no storey)" placeholder.
+   */
+  it('falls a blank/whitespace storey Name through to "(no storey)"', () => {
+    const bim = fakeBim({ storeys: { 1: { name: '' }, 2: { name: '   ' } } });
+    const counts = computeUniqueValues([{ ref: 1 }, { ref: 2 }] as FakeEntity[], 'storey', bim);
+    expect(counts.has('')).toBe(false);
+    expect(counts.has('   ')).toBe(false);
+    expect(counts.get('(no storey)')).toBe(2);
+  });
+
+  it('a genuine storey Name is returned unchanged', () => {
+    const bim = fakeBim({ storeys: { 1: { name: 'Level 1' } } });
+    const counts = computeUniqueValues([{ ref: 1 }] as FakeEntity[], 'storey', bim);
+    expect(counts.get('Level 1')).toBe(1);
+  });
+
+  /** Same defect on the material chain. */
+  it('falls a blank/whitespace material name through to "(no material)"', () => {
+    const bim = fakeBim({ materials: { 1: { materials: [''] }, 2: { name: '   ' } } });
+    const counts = computeUniqueValues([{ ref: 1 }, { ref: 2 }] as FakeEntity[], 'material', bim);
+    expect(counts.has('')).toBe(false);
+    expect(counts.has('   ')).toBe(false);
+    expect(counts.get('(no material)')).toBe(2);
+  });
+
+  it('a genuine material name is returned unchanged', () => {
+    const bim = fakeBim({ materials: { 1: { materials: ['Concrete'] } } });
+    const counts = computeUniqueValues([{ ref: 1 }] as FakeEntity[], 'material', bim);
+    expect(counts.get('Concrete')).toBe(1);
+  });
+
+  /** Control: a truly absent storey/material still gets the placeholder. */
+  it('a truly absent storey still yields "(no storey)" (control)', () => {
+    const bim = fakeBim();
+    const counts = computeUniqueValues([{ ref: 1 }] as FakeEntity[], 'storey', bim);
+    expect(counts.get('(no storey)')).toBe(1);
   });
 });
 

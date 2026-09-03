@@ -11,9 +11,9 @@
         "seed": 20260724,
         "family": "office",
         "entityCount": 548,
-        "fileSize": 28008,
+        "fileSize": 28208,
         "storeyCount": 1,
-        "sha256": "7fdb6b6032c6333baf071d6bb5d37a308b53debffdc4fad36d70119cea3f450e",
+        "sha256": "0754b4686d5f77a6fb7bac98e0bff9d12d1b038b765b6922a2b7f9289c262877",
         "groundTruthTotals": {
           "slabCount": 1,
           "slabGrossArea": 214.212816,
@@ -79,7 +79,7 @@
         "spotlight": {
           "seed": 20260725,
           "family": "office",
-          "sha256": "6f3865669ffdde9fcb339d731c3f1c713842c1bd8351d20e1fe3eb0863a70f9e",
+          "sha256": "da572549bf32d4615ab528f321632b09f6af9fbc773e009e4f68d2b6bf9e8dbc",
           "plantedDefects": [
             {
               "type": "duplicate-globalid",

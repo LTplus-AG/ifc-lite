@@ -19,7 +19,67 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const createHeadlessContext = vi.hoisted(() => vi.fn());
 vi.mock('../loader.js', () => ({ createHeadlessContext }));
 
-const { askCommand } = await import('./ask.js');
+const { askCommand, RECIPES } = await import('./ask.js');
+
+function recipe(name: string) {
+  const r = RECIPES.find((r) => r.name === name);
+  if (!r) throw new Error(`recipe not found: ${name}`);
+  return r;
+}
+
+describe('ask recipes — blank/whitespace name falls through to "(unnamed)"', () => {
+  /**
+   * Regression: a present-but-blank/whitespace `IfcBuilding.Name` was
+   * chained with `buildings[0]?.name ?? '(unnamed)'`, which only falls
+   * through on null/undefined, so the `answer:` string rendered
+   * `Building: ` (or `Building:    `) instead of `Building: (unnamed)`.
+   */
+  it('building-name: blank Name falls through to "(unnamed)"', () => {
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ name: '' }] }) }) };
+    const result = recipe('building-name').execute(bim, {});
+    expect(result.answer).toBe('Building: (unnamed)');
+    expect(result.name).toBe('(unnamed)');
+  });
+
+  it('building-name: whitespace-only Name falls through to "(unnamed)"', () => {
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ name: '   ' }] }) }) };
+    const result = recipe('building-name').execute(bim, {});
+    expect(result.answer).toBe('Building: (unnamed)');
+  });
+
+  it('building-name: a genuine name is returned unchanged (control)', () => {
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ name: 'Main Building' }] }) }) };
+    const result = recipe('building-name').execute(bim, {});
+    expect(result.answer).toBe('Building: Main Building');
+  });
+
+  it('tallest-storey: blank storey Name falls through to "(unnamed)"', () => {
+    const bim = { storeys: () => [{ ref: 1, name: '' }], contains: () => [{}, {}] };
+    const result = recipe('tallest-storey').execute(bim, {});
+    expect(result.answer).toBe('Largest storey: (unnamed) with 2 elements');
+    expect(result.storey).toBe('(unnamed)');
+  });
+
+  it('tallest-storey: a genuine storey Name is returned unchanged (control)', () => {
+    const bim = { storeys: () => [{ ref: 1, name: 'Level 1' }], contains: () => [{}] };
+    const result = recipe('tallest-storey').execute(bim, {});
+    expect(result.storey).toBe('Level 1');
+  });
+
+  it('largest-element: blank element Name falls through to "(unnamed)" in the answer', () => {
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ ref: 1, name: '', globalId: 'G1' }] }) }), quantities: () => [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossSideArea', value: 5 }] }] };
+    const result = recipe('largest-element').execute(bim, {}, ['largest wall', 'wall'] as unknown as RegExpMatchArray);
+    expect(result.answer).toContain('"(unnamed)"');
+    expect(result.answer).not.toContain('""');
+  });
+
+  it('smallest-element: blank element Name falls through to "(unnamed)" in the answer', () => {
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ ref: 1, name: '', globalId: 'G1' }] }) }), quantities: () => [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossSideArea', value: 5 }] }] };
+    const result = recipe('smallest-element').execute(bim, {}, ['smallest wall', 'wall'] as unknown as RegExpMatchArray);
+    expect(result.answer).toContain('"(unnamed)"');
+    expect(result.answer).not.toContain('""');
+  });
+});
 
 describe('askCommand when the matched recipe throws', () => {
   let stdout: string;

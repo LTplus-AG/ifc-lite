@@ -5,11 +5,10 @@
 /**
  * E57 binary-section decoder for a single Data3D scan.
  *
- * Walks DataPackets at `entry.binaryFileOffset` (in the LOGICAL
- * post-CRC view) and decodes per-record bytestreams as Float32 /
- * Float64 / Integer / ScaledInteger columns. ScaledInteger is a
- * bit-packed integer with a per-field scale + offset (E57 spec
- * §6.3.4) — common in Faro / Trimble / Leica exports.
+ * Walks DataPackets at `entry.binaryFileOffset` (in the LOGICAL post-CRC
+ * view) and decodes per-record bytestreams as Float32 / Float64 / Integer /
+ * ScaledInteger columns. ScaledInteger is a bit-packed integer with a
+ * per-field scale + offset (E57 spec §6.3.4) — common in Faro / Trimble / Leica exports.
  */
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
@@ -392,8 +391,7 @@ function writeColorChannel(
     // Pick element width from the declared range. E57 producers use
     // either u8 (0..255 — most common) or u16 (0..65535). Both
     // appear in real files; assuming u8 distorts u16-encoded colors.
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 255;
+    const { min, max } = requireRange(field, 'colour');
     const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
     const widest = Math.max(Math.abs(min), Math.abs(max));
@@ -412,8 +410,7 @@ function writeColorChannel(
     // still apply per spec but for colour they always normalise to
     // the declared range, so we just remap [minimum, maximum] → [0, 1]
     // like Integer colour does.
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 1;
+    const { min, max } = requireRange(field, 'colour');
     const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
     const bitsPerRecord = scaledIntegerBitsPerRecord(field);
@@ -463,7 +460,7 @@ function readCartesianStream(
   // ScaledInteger: stream stores `raw_int = (value - minimum)` as
   // an unsigned bit-pack; decoded float = (raw_int + minimum) * scale + offset.
   const bitsPerRecord = scaledIntegerBitsPerRecord(field);
-  const minimum = field.minimum ?? 0;
+  const { min: minimum } = requireRange(field, 'cartesian');
   const scale = field.scale ?? 1;
   const offset = field.offset ?? 0;
   const startBit = start * 8;
@@ -495,8 +492,7 @@ function readIntensityStream(
     return;
   }
   if (field.kind === 'Integer') {
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 65535;
+    const { min, max } = requireRange(field, 'intensity');
     const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
     const widest = Math.max(Math.abs(min), Math.abs(max));
@@ -514,8 +510,7 @@ function readIntensityStream(
   }
   // ScaledInteger intensity: range-remap from the bit-pack walk.
   const bitsPerRecord = scaledIntegerBitsPerRecord(field);
-  const minimum = field.minimum ?? 0;
-  const maximum = field.maximum ?? minimum;
+  const { min: minimum, max: maximum } = requireRange(field, 'intensity');
   const span = maximum - minimum;
   const inv = span > 0 ? 1 / span : 1;
   const startBit = start * 8;
@@ -525,14 +520,21 @@ function readIntensityStream(
   }
 }
 
+/** minimum/maximum have no valid default (E57 spec §6.3.4) — refuse rather than guessing 0. */
+function requireRange(field: PrototypeField, context: string): { min: number; max: number } {
+  if (field.minimum === undefined || field.maximum === undefined) {
+    throw new Error(`E57: ${field.kind} field "${field.name}" (${context}) is missing minimum/maximum — required by the E57 spec (ASTM E2807 §6.3.4)`);
+  }
+  return { min: field.minimum, max: field.maximum };
+}
+
 /**
  * E57 §6.3.4: bitsPerRecord = ceil(log2(maximum - minimum + 1)).
  * Caps at 53 bits (Number-precision limit). Real exporters top out
  * around 32 bits.
  */
 function scaledIntegerBitsPerRecord(field: PrototypeField): number {
-  const min = field.minimum ?? 0;
-  const max = field.maximum ?? min;
+  const { min, max } = requireRange(field, 'ScaledInteger bit-width');
   const span = Math.max(0, max - min);
   if (span === 0) return 1;
   const bits = Math.ceil(Math.log2(span + 1));
@@ -555,8 +557,7 @@ function floatOrSiPointCapacity(field: PrototypeField, lengthBytes: number): num
     return Math.floor((lengthBytes * 8) / bits);
   }
   // Integer: same width selection as writeColorChannel.
-  const min = field.minimum ?? 0;
-  const max = field.maximum ?? 255;
+  const { min, max } = requireRange(field, 'Integer capacity');
   const widest = Math.max(Math.abs(min), Math.abs(max));
   const byteSize = widest > 255 ? 2 : 1;
   return Math.floor(lengthBytes / byteSize);
@@ -619,8 +620,7 @@ function readClassificationStream(
   take: number,
 ): void {
   if (field.kind === 'Integer') {
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 255;
+    const { min, max } = requireRange(field, 'classification');
     const widest = Math.max(Math.abs(min), Math.abs(max));
     const stride = widest > 255 ? 2 : 1;
     const signed = min < 0;
@@ -641,7 +641,7 @@ function readClassificationStream(
   // some exporters declare a scale anyway. Reader the raw bits and
   // ignore scale/offset (no real meaning for class IDs).
   const bitsPerRecord = scaledIntegerBitsPerRecord(field);
-  const minimum = field.minimum ?? 0;
+  const { min: minimum } = requireRange(field, 'classification');
   const startBit = start * 8;
   for (let i = 0; i < take; i++) {
     const raw = readBitsLE(bytes, startBit + i * bitsPerRecord, bitsPerRecord);

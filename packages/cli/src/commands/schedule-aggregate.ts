@@ -8,9 +8,14 @@
  * `--subtotals <agg>[, ...]` where agg is `count | sum:<Header> | avg:<Header> |
  * min:<Header> | max:<Header>`. Every `<Header>` must be a declared `--columns`
  * header, else a `fatal(...)`. Numeric aggregation reuses the shared
- * `aggregateFinite` from `query-aggregation.ts` (the `Number.isFinite`-guarded
- * reduction behind `query`'s `--sum/--avg/--min/--max`), so an `Infinity` value
- * cannot poison a subtotal and the two commands cannot drift.
+ * `aggregateFinite` from `query-aggregation.ts` — the same reducer behind
+ * `query --group-by`'s `--sum/--avg/--min/--max` aggregation mode, so the two
+ * cannot drift from each other (this is `query --group-by`'s aggregation, NOT
+ * the flat, ungrouped `query --sum/--avg/--min/--max`, which never calls
+ * `aggregateFinite` at all — see the doc comment on `aggregateFinite` itself
+ * for the full picture, including why a non-finite value cannot poison a
+ * subtotal here even though it happens via `cellToNumber` filtering it out
+ * before `aggregateFinite` is called, not via `aggregateFinite`'s own guard).
  *
  * With `--group-by`, a subtotal row follows each contiguous group and a grand
  * total closes the schedule. Without `--group-by`, only the grand total is

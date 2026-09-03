@@ -329,6 +329,47 @@ describe('outputGroupBy', () => {
     expect(Object.keys(parsed)).not.toContain('');
     expect(parsed['(no material)']?.count).toBe(1);
   });
+
+  /**
+   * Pins the ACTUAL non-finite-value behaviour of --group-by's
+   * avg/min/max aggregation (aggMode), which routes through
+   * getQuantityValue -> aggregateFinite. getQuantityValue itself already
+   * substitutes 0 for a non-finite quantity value BEFORE aggregateFinite
+   * ever sees it (query-aggregation.ts), so aggregateFinite's own
+   * `!Number.isFinite(v)) continue` guard never actually fires on this
+   * path — the group's avg/min/max is computed over the SUBSTITUTED 0,
+   * not with the poisoned entity excluded. (Compare this to what a
+   * genuinely `aggregateFinite`-protected avg/min/max would report if the
+   * poisoned entity were dropped instead of zeroed: avg 7.5, min 5,
+   * max 10 — not what this test observes.) See the corrected comments on
+   * `query-aggregation.ts`/`schedule-aggregate.ts` and the changeset for
+   * what is and is not actually guarded by aggregateFinite.
+   */
+  it('avg/min/max on a poisoned (Infinity) quantity value: getQuantityValue already zeroed it before aggregateFinite runs', () => {
+    const bimWithInfinity = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 10 }] }],
+        2: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: Infinity }] }],
+        3: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const wallEntities = [{ ref: 1, type: 'IfcWall' }, { ref: 2, type: 'IfcWall' }, { ref: 3, type: 'IfcWall' }] as FakeEntity[];
+
+    const avgJson = captureStdout();
+    outputGroupBy(wallEntities, 'type', 'NetVolume', bimWithInfinity, true, undefined, 'avg');
+    avgJson.spy.mockRestore();
+    expect(JSON.parse(avgJson.chunks.join(''))['IfcWall'].NetVolume).toBe(5); // (10 + 0 + 5) / 3
+
+    const minJson = captureStdout();
+    outputGroupBy(wallEntities, 'type', 'NetVolume', bimWithInfinity, true, undefined, 'min');
+    minJson.spy.mockRestore();
+    expect(JSON.parse(minJson.chunks.join(''))['IfcWall'].NetVolume).toBe(0); // the substituted 0, not 5
+
+    const maxJson = captureStdout();
+    outputGroupBy(wallEntities, 'type', 'NetVolume', bimWithInfinity, true, undefined, 'max');
+    maxJson.spy.mockRestore();
+    expect(JSON.parse(maxJson.chunks.join(''))['IfcWall'].NetVolume).toBe(10);
+  });
 });
 
 describe('computeUniqueValues', () => {

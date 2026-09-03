@@ -82,7 +82,7 @@ export function getQuantityValue(bim: any, ref: any, quantityName: string): numb
   return null;
 }
 
-/** The numeric reductions `--sum/--avg/--min/--max` (and the schedule subtotals) share. */
+/** The numeric reductions `query --group-by`'s aggregation mode and `schedule --subtotals` share. */
 export type NumericAggMode = 'sum' | 'avg' | 'min' | 'max';
 
 /**
@@ -92,8 +92,22 @@ export type NumericAggMode = 'sum' | 'avg' | 'min' | 'max';
  * finite value was seen (an empty list, or one that is all non-finite), which
  * the caller renders as a blank cell / `null` rather than a fabricated `0`.
  *
- * This is the single numeric core behind both `query`'s `--sum/--avg/--min/--max`
- * group aggregation and `schedule`'s `--subtotals`, so the two cannot drift.
+ * This is the single numeric core `query --group-by`'s aggregation mode
+ * (`outputGroupBy` in `query-output.ts`) and `schedule --subtotals`
+ * (`schedule-aggregate.ts`) share, so the two cannot drift from each other.
+ *
+ * It is NOT what protects the flat, ungrouped `query --sum/--avg/--min/--max`
+ * (`outputSum`/`outputAggregation`) from a poisoned value — those read
+ * straight from `getQuantityValue`, which already substitutes `0` for a
+ * non-finite value at the source, before this function (or its caller) ever
+ * sees it. `outputGroupBy` calls `getQuantityValue` too, so by the time its
+ * values reach `aggregateFinite` here they have ALREADY been zeroed, not
+ * dropped. `schedule-aggregate.ts`'s `computeValues` pre-filters the same
+ * way with its own `cellToNumber` (also `Number.isFinite`-guarded) before
+ * ever building the array passed in here. In both of today's call sites
+ * this function's own `!Number.isFinite(v)` guard is consequently
+ * unreachable in practice — a defence in depth, exercised directly by this
+ * function's own unit tests, not currently by either caller's inputs.
  */
 export function aggregateFinite(values: number[], mode: NumericAggMode): number | null {
   let sum = 0;

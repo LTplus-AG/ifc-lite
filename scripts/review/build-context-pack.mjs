@@ -379,7 +379,7 @@ export function siblingSites(key, changedPaths, ref, { cwd = process.cwd(), exec
   //
   // The no-checkout property holds for both: `git show <sha>:<path>` and
   // `git grep <sha>` read the object database either way.
-  const searchKey = key.endsWith('…') ? key.slice(0, -1) : key; // capKey's marker is display-only
+  const searchKey = key.length === MAX_KEY_LENGTH && /^[A-Za-z_$][A-Za-z0-9_$]*…$/.test(key) ? key.slice(0, -1) : key; // strip only a key shaped exactly like capKey output; other keys reach grep intact
   let out;
   try {
     out = exec('git', ['grep', '-n', '--fixed-strings', '--no-color', '-I', '-e', searchKey, ref],

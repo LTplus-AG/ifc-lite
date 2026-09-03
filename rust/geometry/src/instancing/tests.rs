@@ -1873,7 +1873,7 @@ fn a_far_template_and_a_near_sibling_still_instance() {
     assert_eq!(
         collate_instances(&near_first, 2, [0.0, 0.0, 0.0]).templates.len(),
         1,
-        "verification is order-dependent"
+        "the same pair must verify whichever member collation picked as template"
     );
 }
 

@@ -2389,8 +2389,13 @@ fn the_bounded_path_reports_the_groups_it_could_not_verify() {
     let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
     let opts = GltfOptions::default();
     let (_, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
-    // Guard the skip above: a fixture-less run must not report this as a pass.
-    assert!(mem_stats.meshes > 0, "fixture produced no geometry");
+    // Catches a fixture that is PRESENT but yields no geometry, which would make
+    // both counts trivially 0 and the assertions below vacuous. It does not close
+    // the skip above -- that `return` has already happened -- and it is not meant
+    // to: the house convention for a missing fixture is the skip, closed in CI by
+    // `IFC_LITE_REQUIRE_FIXTURES=1`, which makes `fixture_opt` panic instead (see
+    // `test_support`). Every other duplex test here relies on the same thing.
+    assert!(mem_stats.meshes > 0, "fixture present but produced no geometry");
     let (_, stream_stats) = export_glb_streaming_bounded(&content, &opts);
     assert_eq!(
         mem_stats.unverified_instance_groups, 0,

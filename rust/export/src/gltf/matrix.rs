@@ -190,6 +190,20 @@ pub(super) fn occurrence_node_matrix_composed(
     // assembler applied). `B · rel · B⁻¹` with `B = S_YUP · T(-rtc)`, which is
     // the same `B` the instancing verifier is handed as its `verify_basis` —
     // shared through [`verify_basis_yup`] so the two cannot drift apart.
+    //
+    // This is NOT bit-identical to computing the two conjugations separately
+    // (`S · (T(-rtc) · rel · T(rtc)) · S⁻¹`), and the earlier claim that it was
+    // is wrong. Folding `S` in is exact — `S_YUP` is a signed permutation, so
+    // multiplying by it only moves and negates entries — but folding the
+    // TRANSLATIONS re-associates real additions, and f64 addition is not
+    // associative: a reviewer measured a max delta of 9.3e-10 m across 20,000
+    // georeferenced cases. That is harmless HERE for two independent reasons,
+    // both worth stating because neither is obvious: the result is cast to f32
+    // below (a ~1e-9 m difference at building scale is far under one f32 ULP, so
+    // the emitted bytes are unchanged), and the collator tolerance this basis
+    // feeds floors at 1e-6 m, a thousand times wider. Anything that changes
+    // either — an f64 node matrix, a tighter tolerance — makes the delta visible
+    // and this note is the warning.
     let rel_yup = mat4_mul(
         &mat4_mul(&verify_basis_yup(rtc_zup), &rel_pre),
         &mat4_mul(&mat4_translation(rtc_zup), &S_YUP_INV),

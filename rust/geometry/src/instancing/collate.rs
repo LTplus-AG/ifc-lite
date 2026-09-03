@@ -156,33 +156,33 @@ pub fn collate_refs_verified_in(
     rtc: [f64; 3],
     verify_basis: Option<&Matrix4<f64>>,
 ) -> Collated {
-    let verify_conjugate = verify_basis.and_then(|s| {
-        let inv = s.try_inverse();
-        if inv.is_none() {
-            // A singular `verify_basis` silently falls through to `None` below —
-            // the SAME conjugation-free comparison used when the caller passes no
-            // basis at all, which the module docs call out as the
-            // maximally-rejecting mode (a native-frame `rel` compared against a
-            // converted-frame vertex reads as a collision on nearly every
-            // rotated group). A caller-supplied basis is expected to always be
-            // invertible (a change of basis, e.g. `S_YUP` or `S_YUP · T(-rtc)`),
-            // so a singular one signals a caller bug — surface it instead of
-            // quietly degrading every group in the model with nothing on the
-            // path erroring, warning, or logging (the exact failure mode #3666
-            // itself was: a wrong result with no signal).
-            crate::diag::diag_warn!(
-                { "instancing: verify_basis is singular; falling back to no basis (every rotated group will read as a collision)" }
-                else {
-                    #[cfg(any(debug_assertions, test))]
-                    eprintln!(
-                        "[instancing] verify_basis is singular; falling back to no basis \
-                         (every rotated group will read as a rep_identity collision)"
-                    );
-                }
-            );
-        }
-        inv.map(|s_inv| (*s, s_inv))
-    });
+    // A `verify_basis` that cannot be inverted has no conjugation `S · rel · S⁻¹`.
+    // This once degraded to `None` — "no basis given" — which compares an
+    // UNCONJUGATED `rel` against baked vertices the caller has just said are in a
+    // DIFFERENT frame: the one comparison known to be wrong, reported as verified.
+    // A singular basis is a caller bug, so reject outright: nothing is instanced
+    // and every drawable mesh still draws, flat. That costs sharing (loud, and
+    // visible in the export's size) rather than shipping a mis-grouped occurrence
+    // (silent, and wrong on screen).
+    let verify_conjugate = match verify_basis {
+        None => None,
+        Some(s) => match s.try_inverse() {
+            Some(s_inv) => Some((*s, s_inv)),
+            None => {
+                crate::diag::diag_warn!(
+                    { "instancing: verify_basis is singular; refusing the whole collation (nothing instanced, every drawable mesh still drawn flat)" }
+                    else {
+                        #[cfg(any(debug_assertions, test))]
+                        eprintln!(
+                            "[instancing] verify_basis is singular; refusing the whole \
+                             collation (nothing instanced, every drawable mesh drawn flat)"
+                        );
+                    }
+                );
+                return all_drawable_flat(meshes);
+            }
+        },
+    };
     // First-seen order keeps output deterministic regardless of hash iteration.
     let mut order: Vec<u128> = Vec::new();
     let mut groups: FxHashMap<u128, Vec<usize>> = FxHashMap::default();
@@ -389,3 +389,16 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize, rtc: [f64; 3]) -> Co
 // the module-size ratchet budget pushed it out once #3666's inline pairing
 // check landed here; it belongs next to that check's shared math anyway.
 pub use super::verify::verify_recomposition;
+
+/// Every mesh that carries geometry, rendered flat: the whole-input fallback when
+/// collation is refused before any group is examined. Empty (pose-only) members
+/// are omitted because they have nothing to draw on their own; they exist only as
+/// occurrences of a template, and this result has none.
+fn all_drawable_flat(meshes: &[InstanceMeshRef]) -> Collated {
+    Collated {
+        flat_indices: (0..meshes.len())
+            .filter(|&i| !meshes[i].positions.is_empty())
+            .collect(),
+        ..Collated::default()
+    }
+}

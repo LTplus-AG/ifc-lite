@@ -1694,3 +1694,44 @@ fn one_rigid_member_does_not_disable_verification_for_the_others() {
     );
     assert_eq!(collated.flat_indices.len(), 3, "the whole group falls back flat");
 }
+
+#[test]
+fn a_singular_verify_basis_rejects_instead_of_comparing_unconjugated() {
+    // `verify_basis` is inverted to build the conjugation `S · rel · S⁻¹`. A
+    // singular basis has no inverse, and the code silently degraded to "no
+    // basis given" — comparing an UNCONJUGATED `rel` against baked vertices the
+    // caller just said are in another frame. That is the one comparison known
+    // to be wrong, and it reports "verified". A basis that cannot be inverted
+    // is a caller bug, so nothing is instanced: every drawable member goes flat.
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 6161,
+        instanceable: true,
+    };
+    // Baked in the NATIVE frame, so this pairing verifies with no basis at all —
+    // whatever the singular basis does, it is not masking a genuine collision.
+    let meshes = [
+        mesh_from(baked(&CANON, &occ_a), meta(&occ_a)),
+        mesh_from(baked(&CANON, &occ_b), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    assert_eq!(
+        collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None).templates.len(),
+        1,
+        "control: with no basis this pairing verifies and instances"
+    );
+
+    let singular = Matrix4::zeros();
+    let rejected = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
+    assert_eq!(
+        rejected.templates.len(),
+        0,
+        "a singular verify_basis must reject, not silently compare unconjugated"
+    );
+    assert_eq!(rejected.flat_indices, vec![0, 1], "both members still drawn, flat");
+}

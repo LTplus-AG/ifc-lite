@@ -333,8 +333,11 @@ export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
     resolutionIncomplete = !complete;
     for (const w of warnings) console.log(`WARN: ${w} Findings it could not account for still stand.`);
     const reReported = new Set(findings.map((f) => fingerprint(f.path, f.line, f.body)));
+    // STRING COMPARISON on both sides. The GraphQL id is a `BigInt` serialised
+    // as a string and the REST id is a JSON number past 2^31; coercing either to
+    // the other's type is where a comparison silently stops matching.
     standing = confirmedRows.filter(
-      (r) => !ids.has(Number(r?.id)) || reReported.has(fingerprint(r.path, r.line, String(r.body ?? ''))),
+      (r) => !ids.has(String(r?.id)) || reReported.has(fingerprint(r.path, r.line, String(r.body ?? ''))),
     ).length;
     if (standing < confirmed) {
       console.log(

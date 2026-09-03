@@ -72,7 +72,7 @@ query($owner: String!, $name: String!, $pr: Int!, $cursor: String) {
           isResolved
           comments(first: ${PAGE_SIZE}) {
             pageInfo { hasNextPage }
-            nodes { databaseId }
+            nodes { fullDatabaseId }
           }
         }
       }
@@ -87,7 +87,9 @@ query($owner: String!, $name: String!, $pr: Int!, $cursor: String) {
  * @param {string|number} pr
  * @param {{ghClient?: Function, maxPages?: number}} [opts] `ghClient` takes the
  *   same `(args, what)` as lib/gh.mjs's `gh` and returns parsed JSON.
- * @returns {{ids: Set<number>, warnings: string[], complete: boolean}}
+ * @returns {{ids: Set<string>, warnings: string[], complete: boolean}}
+ *   The ids are STRINGS (`fullDatabaseId`, a GraphQL `BigInt`), so a caller
+ *   holding a REST `id` must stringify it before asking the set.
  */
 export function resolvedCommentIds(repo, pr, { ghClient = gh, maxPages = MAX_THREAD_PAGES } = {}) {
   const ids = new Set();
@@ -152,7 +154,18 @@ export function resolvedCommentIds(repo, pr, { ghClient = gh, maxPages = MAX_THR
       if (t?.isResolved !== true) continue;
       const cs = t?.comments;
       for (const c of Array.isArray(cs?.nodes) ? cs.nodes : []) {
-        if (Number.isInteger(c?.databaseId)) ids.add(c.databaseId);
+        // `fullDatabaseId`, NOT `databaseId`, AND KEPT AS A STRING. GraphQL's
+        // `databaseId` is an `Int`, which is signed 32-bit; GitHub's review
+        // comment ids passed 2^31 long ago (the two measured on PR #3595 are
+        // already 3.9 billion), so asking for it would return null or blow the
+        // field on every real comment -- the walk would error, go incomplete, and
+        // this path could never clear a single finding. `fullDatabaseId` is a
+        // `BigInt`, which GraphQL serialises as a STRING, and a string is also
+        // past the range where `Number` silently loses precision. So the id stays
+        // a string end to end and the caller compares it to a stringified REST
+        // id; nothing here rounds.
+        const id = c?.fullDatabaseId;
+        if (typeof id === 'string' && /^\d+$/.test(id)) ids.add(id);
       }
       // A resolved thread longer than one page: the comments we did not see stay
       // out of the set, so they keep blocking. Said out loud rather than left as

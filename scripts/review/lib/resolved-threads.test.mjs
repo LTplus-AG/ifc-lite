@@ -16,7 +16,7 @@ import { resolvedCommentIds, RESOLVED_THREADS_QUERY } from './resolved-threads.m
 
 const thread = (isResolved, ids, hasNextPage = false) => ({
   isResolved,
-  comments: { pageInfo: { hasNextPage }, nodes: ids.map((databaseId) => ({ databaseId })) },
+  comments: { pageInfo: { hasNextPage }, nodes: ids.map((fullDatabaseId) => ({ fullDatabaseId: String(fullDatabaseId) })) },
 });
 
 const page = (nodes, hasNextPage = false, endCursor = null) => ({
@@ -27,7 +27,7 @@ test('only RESOLVED threads contribute their comment ids', () => {
   const { ids, warnings, complete } = resolvedCommentIds('o/n', 7, {
     ghClient: () => page([thread(true, [1, 2]), thread(false, [3]), thread(null, [4])]),
   });
-  assert.deepEqual([...ids].sort(), [1, 2]);
+  assert.deepEqual([...ids].sort(), ['1', '2']);
   assert.deepEqual(warnings, []);
   assert.equal(complete, true);
 });
@@ -54,7 +54,7 @@ test('it pages, carrying the cursor forward', () => {
       return pages.shift();
     },
   });
-  assert.deepEqual([...ids].sort(), [1, 2]);
+  assert.deepEqual([...ids].sort(), ['1', '2']);
   assert.deepEqual(cursors, [null, 'cursor=CUR1']);
   assert.equal(complete, true);
 });
@@ -89,7 +89,7 @@ test('the page cap stops the walk and says so, leaving the unseen threads blocki
     maxPages: 2,
     ghClient: () => page([thread(true, [9])], true, 'MORE'),
   });
-  assert.deepEqual([...ids], [9], 'what WAS read still counts');
+  assert.deepEqual([...ids], ['9'], 'what WAS read still counts');
   assert.equal(complete, false);
   assert.match(warnings[0], /Walked 2 page\(s\).*still more/);
 });
@@ -98,7 +98,7 @@ test('a resolved thread longer than one page keeps its unread comments blocking'
   const { ids, warnings } = resolvedCommentIds('o/n', 7, {
     ghClient: () => page([thread(true, [1], true)]),
   });
-  assert.deepEqual([...ids], [1]);
+  assert.deepEqual([...ids], ['1']);
   assert.match(warnings[0], /more than 100 comments/);
 });
 
@@ -112,12 +112,6 @@ test('a repo that is not `owner/name` reads nothing and never calls gh', () => {
   assert.match(warnings[0], /is not `owner\/name`/);
 });
 
-test('a non-integer databaseId is dropped rather than poisoning the set', () => {
-  const { ids } = resolvedCommentIds('o/n', 7, {
-    ghClient: () => page([thread(true, [1]), { isResolved: true, comments: { pageInfo: {}, nodes: [{ databaseId: 'x' }, {}] } }]),
-  });
-  assert.deepEqual([...ids], [1]);
-});
 
 test('a cursor-less next page stops the walk instead of refetching page 1 forever', () => {
   let calls = 0;
@@ -140,7 +134,7 @@ test('String variables are sent with -f, so a numeric-looking cursor stays a str
   const { ids, complete } = resolvedCommentIds('acme/widgets', 42, {
     ghClient: (args) => { seen.push(args); return pages.shift(); },
   });
-  assert.deepEqual([...ids].sort(), [1, 2]);
+  assert.deepEqual([...ids].sort(), ['1', '2']);
   assert.equal(complete, true);
 
   const flagFor = (args, key) => args[args.findIndex((a) => String(a).startsWith(`${key}=`)) - 1];
@@ -167,4 +161,41 @@ test('a repo with MORE than two segments is refused, not silently truncated', ()
     assert.match(warnings[0], /is not `owner\/name`/, bad);
   }
   assert.equal(called, false, 'and gh is never invoked for any of them');
+});
+
+test('ids come from fullDatabaseId, as STRINGS, so a comment id over 2^31 still resolves', () => {
+  // GraphQL `databaseId` is an `Int`, which is signed 32-bit. GitHub's review
+  // comment ids passed 2^31 long ago (the ids measured on PR #3595 are already
+  // 3.9 billion), so every real id would either come back null or blow the field
+  // -- the walk would report an error, go incomplete, and the resolved-thread
+  // path could never clear a single finding. `fullDatabaseId` is a `BigInt`,
+  // which GraphQL serialises as a STRING, so the whole path compares strings.
+  const big = '3911321175';
+  const { ids, warnings, complete } = resolvedCommentIds('o/n', 7, {
+    ghClient: () => ({
+      data: { repository: { pullRequest: { reviewThreads: {
+        pageInfo: { hasNextPage: false, endCursor: null },
+        nodes: [{ isResolved: true, comments: { pageInfo: { hasNextPage: false }, nodes: [{ fullDatabaseId: big }] } }],
+      } } } },
+    }),
+  });
+  assert.deepEqual([...ids], [big]);
+  assert.deepEqual(warnings, []);
+  assert.equal(complete, true);
+  assert.ok(Number(big) > 2 ** 31, 'the fixture must actually exceed the Int range it is about');
+});
+
+test('the query asks for fullDatabaseId, not the 32-bit databaseId', () => {
+  assert.match(RESOLVED_THREADS_QUERY, /fullDatabaseId/);
+  assert.doesNotMatch(RESOLVED_THREADS_QUERY, /\bdatabaseId\b(?!\w)/, 'the Int field must not be requested at all');
+});
+
+test('a non-digit fullDatabaseId is dropped rather than poisoning the set', () => {
+  const { ids } = resolvedCommentIds('o/n', 7, {
+    ghClient: () => page([
+      thread(true, ['1']),
+      { isResolved: true, comments: { pageInfo: {}, nodes: [{ fullDatabaseId: 'not-an-id' }, { fullDatabaseId: null }, {}] } },
+    ]),
+  });
+  assert.deepEqual([...ids], ['1']);
 });

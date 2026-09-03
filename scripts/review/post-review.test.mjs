@@ -109,7 +109,9 @@ if (argv[1] === 'graphql') {
   const resolved = new Set(st.resolvedCommentIds || []);
   const nodes = (st.reviewComments || []).map((c) => ({
     isResolved: resolved.has(c.id),
-    comments: { pageInfo: { hasNextPage: false }, nodes: [{ databaseId: c.id }] },
+    // fullDatabaseId is a GraphQL BigInt and comes back as a STRING. A fake that
+    // returned a number would let a Number/String mix-up pass here and fail live.
+    comments: { pageInfo: { hasNextPage: false }, nodes: [{ fullDatabaseId: String(c.id) }] },
   }));
   save();
   process.stdout.write(JSON.stringify({

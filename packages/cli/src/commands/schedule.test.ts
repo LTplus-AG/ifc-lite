@@ -622,12 +622,71 @@ const IFC_MATERIAL = [
   '',
 ].join('\n');
 
+// A wall associated through an IfcMaterialLayerSet (no top-level LayerSetName)
+// whose sole layer names the real material — the normal IfcWall shape, and
+// the default association `--preset material-takeoff` schedules. `Material`
+// resolving only `materials[0]`/`.name` (the pre-fix behaviour) finds neither
+// field on a layer set and returns null for every wall, collapsing the
+// preset's `--group-by Material` into one unlabelled group.
+const IFC_MATERIAL_LAYERSET = [
+  'ISO-10303-21;',
+  'HEADER;',
+  "FILE_DESCRIPTION((''),'2;1');",
+  "FILE_NAME('m2.ifc','2026-01-01T00:00:00',(''),(''),'','','');",
+  "FILE_SCHEMA(('IFC4'));",
+  'ENDSEC;',
+  'DATA;',
+  '#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);',
+  "#10=IFCWALL('0Wall_L_00000000000001',#1,'Wall L',$,$,$,$,$);",
+  "#50=IFCMATERIAL('Concrete Layer',$,$);",
+  '#51=IFCMATERIALLAYER(#50,0.2,$,$,$,$,$);',
+  '#52=IFCMATERIALLAYERSET((#51),$,$);',
+  "#53=IFCRELASSOCIATESMATERIAL('0Rel_L_00000000000001',#1,$,$,(#10),#52);",
+  // A second wall whose layer set's sole layer material Name is
+  // whitespace-only — must fall through to the placeholder, not be
+  // returned verbatim (the blank/whitespace family of defects, #3714).
+  "#60=IFCWALL('0Wall_W_00000000000001',#1,'Wall W',$,$,$,$,$);",
+  "#70=IFCMATERIAL('   ',$,$);",
+  '#71=IFCMATERIALLAYER(#70,0.1,$,$,$,$,$);',
+  '#72=IFCMATERIALLAYERSET((#71),$,$);',
+  "#73=IFCRELASSOCIATESMATERIAL('0Rel_W_00000000000001',#1,$,$,(#60),#72);",
+  'ENDSEC;',
+  'END-ISO-10303-21;',
+  '',
+].join('\n');
+
 describe('Material pseudo-column', () => {
   it('resolves an element’s associated material name via bim.materials', async () => {
     const { bim } = await makeBim(IFC_MATERIAL);
     const walls = bim.query().byType('IfcWall').toArray();
     expect(walls).toHaveLength(1);
     expect(resolveScheduleValue(walls[0], 'Material', bim)).toBe('Concrete');
+  });
+
+  it('falls through layers/profiles/constituents to the leaf material name (MaterialLayerSet, no top-level LayerSetName)', async () => {
+    const { bim } = await makeBim(IFC_MATERIAL_LAYERSET);
+    const walls = bim.query().byType('IfcWall').toArray();
+    const wallL = walls.find((w: any) => w.name === 'Wall L');
+    expect(resolveScheduleValue(wallL, 'Material', bim)).toBe('Concrete Layer');
+  });
+
+  it('groups a whitespace-only layer material name as "(no material)", like `query --group-by material`', async () => {
+    const { bim } = await makeBim(IFC_MATERIAL_LAYERSET);
+    const walls = bim.query().byType('IfcWall').toArray();
+    const wallW = walls.find((w: any) => w.name === 'Wall W');
+    expect(resolveScheduleValue(wallW, 'Material', bim)).toBe('(no material)');
+  });
+
+  it('material-takeoff preset groups a MaterialLayerSet wall under its real material, not a collapsed blank group', async () => {
+    const columns = [{ header: 'Material', path: 'Material' }, { header: 'NetVolume', path: 'Qto_WallBaseQuantities.NetVolume' }];
+    const { bim } = await makeBim(IFC_MATERIAL_LAYERSET);
+    const walls = bim.query().byType('IfcWall').toArray();
+    const rows = scheduleRows(bim, columns, walls);
+    const groupKeys = parseGroupBySpec('Material', columns);
+    const ordered = orderRows(rows, [], groupKeys);
+    const materials = ordered.map(r => r[0]);
+    // Two distinct real materials, not one shared `null`/blank bucket.
+    expect(new Set(materials)).toEqual(new Set(['Concrete Layer', '(no material)']));
   });
 });
 

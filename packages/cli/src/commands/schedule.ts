@@ -46,7 +46,7 @@
  */
 
 import { createHeadlessContext } from '../loader.js';
-import { getFlag, fatal, printJson } from '../output.js';
+import { getFlag, fatal, printJson, firstNonBlank, isBlank } from '../output.js';
 import { normalizeTypeName, parseWhereFilter, applyWhereFilter } from './query.js';
 import { resolveColumnValue } from './export.js';
 import { parseColumnSpec } from './schedule-columns.js';
@@ -80,18 +80,43 @@ type ScheduleFormat = (typeof FORMATS)[number];
  */
 export function resolveScheduleValue(entity: any, path: string, bim: any): unknown {
   // `Material` is a pseudo-column: resolve the element's associated material
-  // name through the shared material accessor the `stats` command uses, rather
-  // than a native attribute or a same-named property set member. `materials`
-  // yields either a MaterialData whose `materials[]` list carries the leaf
-  // names, or a single-material `name` — mirror the stats resolution order.
+  // name through the same fallback chain `packages/mcp/src/material-naming.ts`
+  // `materialFallbackName` applies (duplicated locally the same way
+  // `firstNonBlank`/`isBlank` already are in `output.ts` — a cross-package
+  // import would widen `@ifc-lite/mcp`'s public surface for one helper). A
+  // plain `.name`/`.materials[0]` pair (the pre-fix behaviour) only covers a
+  // bare `IfcMaterial` or `IfcMaterialList`: the normal `IfcWall` shape is a
+  // `MaterialLayerSet` with no top-level `LayerSetName`, whose real name
+  // lives on `layers[]`/`profiles[]`/`constituents[]` — reading only
+  // `.name`/`.materials[0]` returns `null` for every such wall, and
+  // `--preset material-takeoff`'s default `--group-by Material` collapses
+  // them into one unlabelled group instead of one group per real material.
+  // A whitespace-only leaf name falls through the same way (#3714's family),
+  // and a fully blank result renders `(no material)` — the same placeholder
+  // `query --group-by material` uses — rather than a silent empty cell, so a
+  // group-by/subtotal on `Material` buckets blank elements together under a
+  // readable label instead of splitting on `null` vs `''` vs whitespace.
   if (path === 'Material') {
     const mat = bim.materials(entity.ref) as
-      | { name?: string; materials?: Array<string | { name?: string }> }
+      | {
+          name?: string;
+          materials?: Array<{ name?: string }>;
+          layers?: Array<{ materialName?: string }>;
+          profiles?: Array<{ materialName?: string }>;
+          constituents?: Array<{ materialName?: string }>;
+        }
       | null
       | undefined;
-    const first = mat?.materials?.[0];
-    const firstName = typeof first === 'string' ? first : first?.name;
-    return firstName ?? mat?.name ?? null;
+    if (!mat) return '(no material)';
+    return (
+      firstNonBlank(
+        mat.name,
+        mat.materials?.[0]?.name,
+        mat.layers?.find(l => !isBlank(l.materialName))?.materialName,
+        mat.profiles?.find(p => !isBlank(p.materialName))?.materialName,
+        mat.constituents?.find(c => !isBlank(c.materialName))?.materialName,
+      ) ?? '(no material)'
+    );
   }
 
   const viaColumn = resolveColumnValue(entity, path, bim);

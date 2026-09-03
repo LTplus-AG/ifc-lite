@@ -503,6 +503,16 @@ describe('scheduleCommand --preset (end to end)', () => {
     expect(lines[0]).toBe('X');
     expect(lines).toContain('Door A');
   });
+
+  it('explicit --type overrides the preset type default (explicit flag wins)', async () => {
+    // door preset selects IfcDoor; an explicit --type IfcWall must schedule the
+    // wall instead — proving the flag, not the preset default, decides --type.
+    const out = await runSchedule(IFC, ['--preset', 'door', '--type', 'IfcWall']);
+    const lines = out.trimEnd().split('\n');
+    expect(lines[0]).toBe('Mark,Name,FireRating,IsExternal,Width,Height');
+    expect(lines).toContain(',Wall C,,,,');
+    expect(lines).not.toContain('D-01,Door A,,true,,');
+  });
 });
 
 // A wall carrying an associated IfcMaterial, to prove the `Material`
@@ -694,6 +704,24 @@ describe('--spec / --save', () => {
 
     const out = await runSchedule(IFC, ['--spec', specPath, '--columns', 'X=Name']);
     expect(out.trimEnd().split('\n')[0]).toBe('X');
+  });
+
+  it('an explicit --sort overrides the spec sort field (explicit flag wins)', async () => {
+    // Ascending 'Name' puts "Door A" before 'Door, "B"' (space < comma); an
+    // explicit --sort Name:desc must flip that, proving the flag — not the
+    // spec's own sort default — decides ordering.
+    const dir = mkdtempSync(join(tmpdir(), 'sched-spec-'));
+    const specPath = join(dir, 'door-sort.json');
+    await saveScheduleSpec(specPath, { type: 'IfcDoor', columns: 'Name=Name', sort: 'Name:asc' });
+
+    const ascOut = await runSchedule(IFC, ['--spec', specPath]);
+    const ascLines = ascOut.trimEnd().split('\n');
+    expect(ascLines[1]).toBe('Door A');
+
+    const descOut = await runSchedule(IFC, ['--spec', specPath, '--sort', 'Name:desc']);
+    const descLines = descOut.trimEnd().split('\n');
+    expect(descLines[1]).toContain('B');
+    expect(descLines[1]).not.toBe('Door A');
   });
 
   it('loadScheduleSpec round-trips every field saveScheduleSpec writes', async () => {

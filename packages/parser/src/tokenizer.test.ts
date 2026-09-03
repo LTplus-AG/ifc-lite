@@ -137,3 +137,36 @@ describe('StepTokenizer.scanEntitiesFast', () => {
     expect(tokenizer.malformedRecordCount).toBe(0);
   });
 });
+
+describe('StepTokenizer.scanEntities (balanced-parenthesis path)', () => {
+  it('does not report malformedRecordCount when the LAST record is refused for an oversized express id (round 3)', () => {
+    // #4294967297 is refused (#3395) after the '=' check passes, so
+    // BalancedEntityScan resumes right past the '=' and walks
+    // "IFCWALL(#1,#2);..." byte by byte. The '#1' and '#2' reference tokens
+    // inside that abandoned record's own argument list each look like a
+    // fresh declaration start, with buffer still left after the mismatch
+    // that ends each one. Before this fix, declOpen stayed armed on that
+    // non-EOF mismatch with nothing later to clear it, so a file whose scan
+    // ran cleanly to the end still reported 1.
+    const text =
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);\n" +
+      '#4294967297=IFCWALL(#1,#2);\n';
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+
+    const refs = Array.from(tokenizer.scanEntities());
+
+    expect(tokenizer.oversizedIdCount).toBe(1);
+    expect(tokenizer.malformedRecordCount).toBe(0);
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+  });
+
+  it('control: a declaration genuinely cut off at EOF still reports malformedRecordCount 1', () => {
+    const text = "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);\n#2=IFCWA";
+    const tokenizer = new StepTokenizer(new TextEncoder().encode(text));
+
+    const refs = Array.from(tokenizer.scanEntities());
+
+    expect(tokenizer.malformedRecordCount).toBe(1);
+    expect(refs.map((r) => r.expressId)).toEqual([1]);
+  });
+});

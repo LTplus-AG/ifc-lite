@@ -88,11 +88,17 @@ export class StepTokenizer {
     // Set on the way to the single post-loop check at the bottom of this
     // function, not counted at each site: `stopped` for an unclosed string or
     // comment that ran the scan to end of buffer with nothing left to find,
-    // `declOpen` while a `#id=TYPE(` header is incomplete (cleared once its
-    // '(' is found; re-armed by the next '#'). Per-site increments used to
-    // miss whole shapes -- a leading unterminated comment before '=', or a
-    // declaration cut off before its own '(' -- because each site only knew
-    // about its own exit, never the scan's final state.
+    // `declOpen` while a `#id=TYPE(` header is incomplete. `declOpen` stays
+    // armed ONLY when the reason for abandoning is running out of buffer
+    // (`pos >= len`); a mismatch with buffer still left (bad byte, oversized
+    // id) clears it, because the scan resumes byte-by-byte from wherever it
+    // gave up, and a `#ref` token inside the abandoned record's own argument
+    // list reads as a fresh, equally incomplete attempt -- one that must not
+    // report "cut off" just because nothing later happens to clear it.
+    // Per-site increments used to miss whole shapes -- a leading unterminated
+    // comment before '=', or a declaration cut off before its own '(' --
+    // because each site only knew about its own exit, never the scan's final
+    // state.
     let stopped = false;
     let declOpen = false;
 
@@ -144,8 +150,12 @@ export class StepTokenizer {
           if (t.stop) { stopped = true; break; }
         }
 
-        // Check for '='
-        if (pos >= len || buf[pos] !== EQUALS) continue;
+        // Check for '='. A byte that is not '=' with buffer left to scan is
+        // not a truncation -- clear declOpen so a reference token inside a
+        // LATER abandoned record's argument list (see the oversized-id note
+        // below) cannot leave it stuck armed with nothing left to clear it.
+        if (pos >= len) continue;
+        if (buf[pos] !== EQUALS) { declOpen = false; continue; }
         pos++;
 
         // Storage contract, not just overflow: see express-id.ts (#3395).
@@ -176,9 +186,11 @@ export class StepTokenizer {
           if (t.stop) { stopped = true; break; }
         }
 
-        // Read type name (inline)
+        // Read type name (inline). Must start A-Z; a bad start byte with
+        // buffer left clears declOpen for the same reason as the '=' check.
         const typeStart = pos;
-        if (pos >= len || buf[pos] < 0x41 || buf[pos] > 0x5A) continue; // Must start A-Z
+        if (pos >= len) continue;
+        if (buf[pos] < 0x41 || buf[pos] > 0x5A) { declOpen = false; continue; }
 
         while (pos < len) {
           const c = buf[pos];
@@ -236,8 +248,9 @@ export class StepTokenizer {
           if (t.stop) { stopped = true; break; }
         }
 
-        // Check for '('
-        if (pos >= len || buf[pos] !== LPAREN) continue;
+        // Check for '('. Same EOF-vs-mismatch split as '=' and the type name.
+        if (pos >= len) continue;
+        if (buf[pos] !== LPAREN) { declOpen = false; continue; }
         declOpen = false; // Header complete: '(' found.
 
         // FAST: Skip to semicolon (handling strings)

@@ -103,7 +103,13 @@ self.onmessage = function(e) {
   // Set on the way to that post-loop check, not counted at each site:
   // 'stopped' for an unclosed string or comment that ran to end of buffer
   // with nothing left to find, 'declOpen' while a #id=TYPE( header is
-  // incomplete (cleared once its '(' is found; re-armed by the next '#').
+  // incomplete. 'declOpen' stays armed ONLY when the reason for abandoning
+  // is running out of buffer (pos >= len); a mismatch with buffer still
+  // left (bad byte, oversized id) clears it, because the scan resumes
+  // byte-by-byte from wherever it gave up, and a #ref token inside the
+  // abandoned record's own argument list reads as a fresh, equally
+  // incomplete attempt that must not report "cut off" just because
+  // nothing later happens to clear it.
   var stopped = false;
   var declOpen = false;
 
@@ -162,8 +168,12 @@ self.onmessage = function(e) {
       }
       if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) { stopped = true; break; } }
 
-      // Check for '='
-      if (pos >= len || buf[pos] !== 0x3D) continue;
+      // Check for '='. A byte that is not '=' with buffer left to scan is
+      // not a truncation -- clear declOpen so a reference token inside a
+      // LATER abandoned record's argument list (see the oversized-id note
+      // below) cannot leave it stuck armed with nothing left to clear it.
+      if (pos >= len) continue;
+      if (buf[pos] !== 0x3D) { declOpen = false; continue; }
       pos++;
 
       // Express-id bound, identical to StepTokenizer.scanEntitiesFast -- this
@@ -190,9 +200,11 @@ self.onmessage = function(e) {
       }
       if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) { stopped = true; break; } }
 
-      // Read type name
+      // Read type name. Must start A-Z; a bad start byte with buffer left
+      // clears declOpen for the same reason as the '=' check.
       var typeStart = pos;
-      if (pos >= len || buf[pos] < 0x41 || buf[pos] > 0x5A) continue;
+      if (pos >= len) continue;
+      if (buf[pos] < 0x41 || buf[pos] > 0x5A) { declOpen = false; continue; }
 
       while (pos < len) {
         var c4 = buf[pos];
@@ -240,8 +252,9 @@ self.onmessage = function(e) {
       }
       if (opensCommentAt(pos)) { pos = skipTriviaAt(pos); if (pos < 0) { stopped = true; break; } }
 
-      // Check for '('
-      if (pos >= len || buf[pos] !== 0x28) continue;
+      // Check for '('. Same EOF-vs-mismatch split as '=' and the type name.
+      if (pos >= len) continue;
+      if (buf[pos] !== 0x28) { declOpen = false; continue; }
       declOpen = false; // Header complete: '(' found.
 
       // Skip to semicolon (handling strings)

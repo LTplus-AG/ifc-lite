@@ -204,3 +204,49 @@ describe('scanIfcEntities: shapes the per-site increments missed (round 2)', () 
     expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
   });
 });
+
+describe('scanIfcEntities: declOpen false positive from a reference inside an abandoned record (round 3)', () => {
+  it('does not report malformedRecordCount when the LAST record is refused for an oversized express id', async () => {
+    // #4294967297 is refused (#3395) after the '=' check passes, so the scan
+    // resumes right past the '=' and walks "IFCWALL(#1,#2);..." byte by
+    // byte. The '#1' and '#2' reference tokens inside that abandoned
+    // record's own argument list each look like a fresh declaration start:
+    // digits, then a byte that is not '=', with the rest of the buffer
+    // (",#2)" / ")") still ahead of them. Before this fix, declOpen stayed
+    // armed on that non-EOF mismatch and never got a later chance to clear,
+    // so a file whose scan ran cleanly to the very end still reported
+    // "stopped early" -- see the isolated repro in tokenizer.test.ts.
+    const text =
+      "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);\n" +
+      '#4294967297=IFCWALL(#1,#2);\n';
+    const buffer = new TextEncoder().encode(text).buffer;
+
+    const diagnostics: string[] = [];
+    const result = await scanIfcEntities(buffer, {
+      disableWorkerScan: true,
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.oversizedIdCount).toBe(1);
+    expect(result.malformedRecordCount).toBe(0);
+    expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
+    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
+  });
+
+  it('control: a declaration genuinely cut off at EOF still reports malformedRecordCount 1', async () => {
+    // Same shape of input (a well-formed record, then a second one that
+    // never completes), but this time the second one is cut off by real
+    // end-of-buffer rather than abandoned mid-file for a non-EOF reason --
+    // the fix above must not have swallowed this together with the false
+    // positive.
+    const text = "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);\n#2=IFCWA";
+    const buffer = new TextEncoder().encode(text).buffer;
+
+    const result = await scanIfcEntities(buffer, { disableWorkerScan: true });
+
+    expect(result.scanPath).toBe('tokenizer');
+    expect(result.malformedRecordCount).toBe(1);
+    expect(result.entityRefs.map((r) => r.expressId)).toEqual([1]);
+  });
+});

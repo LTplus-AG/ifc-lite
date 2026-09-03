@@ -68,7 +68,12 @@ export class BalancedEntityScan {
     // Set on the way to the single post-loop check below: `stopped` for an
     // unclosed string or comment that ran the scan to end of buffer with
     // nothing left to find, `declOpen` while a `#id=TYPE(` header is
-    // incomplete (cleared once its '(' is found; re-armed by the next '#').
+    // incomplete. `declOpen` stays armed ONLY when the reason for abandoning
+    // is running out of buffer; a mismatch with buffer still left clears it,
+    // because the scan resumes byte-by-byte from wherever it gave up, and a
+    // `#ref` token inside the abandoned record's own argument list reads as
+    // a fresh, equally incomplete attempt that must not report "cut off"
+    // just because nothing later happens to clear it.
     let stopped = false;
     let declOpen = false;
 
@@ -90,8 +95,17 @@ export class BalancedEntityScan {
         // whitespace is allowed, so `#1 /* was #7 */ =` is a declaration.
         if (this.skipTrivia()) { stopped = true; break; }
 
-        // Check for '=' (assignment)
-        if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x3D) {
+        // Check for '=' (assignment). Not a truncation when buffer is still
+        // left to scan -- clear declOpen so a reference token inside a LATER
+        // abandoned record's argument list (walked byte-by-byte once this
+        // one is given up on) cannot leave it stuck armed with nothing left
+        // to clear it.
+        if (this.position >= this.buffer.length) {
+          this.position++;
+          continue;
+        }
+        if (this.buffer[this.position] !== 0x3D) {
+          declOpen = false;
           this.position++;
           continue;
         }
@@ -99,17 +113,26 @@ export class BalancedEntityScan {
 
         if (this.skipTrivia()) { stopped = true; break; }
 
-        // Read type name
+        // Read type name. `readTypeName` returns null both on EOF and on a
+        // bad start byte, and leaves `position` untouched either way, so
+        // check `position` here to tell the two apart the same way the '='
+        // and '(' checks do.
         const type = this.readTypeName();
         if (!type) {
+          if (this.position < this.buffer.length) declOpen = false;
           this.position++;
           continue;
         }
 
         if (this.skipTrivia()) { stopped = true; break; }
 
-        // Check for '(' (start of parameters)
-        if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x28) {
+        // Check for '(' (start of parameters). Same EOF-vs-mismatch split.
+        if (this.position >= this.buffer.length) {
+          this.position++;
+          continue;
+        }
+        if (this.buffer[this.position] !== 0x28) {
+          declOpen = false;
           this.position++;
           continue;
         }

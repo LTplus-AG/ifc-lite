@@ -252,6 +252,14 @@ const SCHEMA_VIOLATIONS: ReadonlyArray<{
     break: (s) => s.replace('<date>2026-01-31</date>', '<date>31/01/2026</date>'),
   },
   {
+    // The lexical shape is right and the calendar is not: February 30th. The
+    // shape-only regex this check used to end at accepted it, so `info/date`
+    // gained a validator that could not fail on a real date (#3721).
+    what: '<date> is lexically an xs:date but not a calendar date',
+    rule: 'info/date is typed xs:date, whose value space is a calendar',
+    break: (s) => s.replace('<date>2026-01-31</date>', '<date>2026-02-30</date>'),
+  },
+  {
     what: 'dataType is not upper-case',
     rule: 'property/@dataType is ids:upperCaseName, pattern [A-Z]+',
     break: (s) => s.replace('dataType="IFCIDENTIFIER"', 'dataType="IfcIdentifier"'),

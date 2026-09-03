@@ -73,9 +73,10 @@ describe('writeHeader', () => {
     // change, 14 -> 15 with the Entities `rawTypeName` column, 15 -> 16 with
     // the #2985 IFNS v2 shards (a shared key would let a pre-#2985 bundle
     // throw away every instanced occurrence), 16 -> 17 with the QuantityTable
-    // `qsetGlobalId` column; update this literal only alongside a types.ts
-    // ledger entry.
-    expect(view.getUint16(4, true)).toBe(17);
+    // `qsetGlobalId` column, 17 -> 18 with the Relationships section's
+    // shadowed-rel-ids trailer (#3782); update this literal only alongside a
+    // types.ts ledger entry.
+    expect(view.getUint16(4, true)).toBe(18);
   });
 
   it('writes each section-table entry field at its documented byte offset within the 16-byte entry', () => {

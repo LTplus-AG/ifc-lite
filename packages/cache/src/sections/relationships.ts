@@ -7,8 +7,9 @@
  */
 
 import type { RelationshipGraph, Edge, RelationshipInfo } from '@ifc-lite/data';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, binarySearchU32 } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
+import { FORMAT_VERSION } from '../types.js';
 
 /**
  * Write RelationshipGraph to buffer
@@ -19,6 +20,19 @@ import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
  *   - edgeTargets: Uint32Array[edgeCount]
  *   - edgeTypes: Uint16Array[edgeCount]
  *   - edgeRelIds: Uint32Array[edgeCount]
+ *   - shadowedGroupCount: uint32 (v18+, #3782: edges collapsed from more
+ *     than one IfcRel* instance — see RelationshipGraphBuilder.addEdge)
+ *   - shadowedEdgeIndex: Uint32Array[shadowedGroupCount]
+ *   - shadowedGroupOffsets: Uint32Array[shadowedGroupCount + 1]
+ *   - shadowedIdCount: uint32
+ *   - shadowedRelIds: Uint32Array[shadowedIdCount]
+ *
+ * A v17 reader stops after edgeRelIds — the trailing shadow section is new
+ * bytes it never asks for, and the section table's own size field bounds
+ * how far a stray future read could reach. A v18+ reader given a v17
+ * section (should one ever reach it — the cache LOOKUP key embeds
+ * FORMAT_VERSION, so normal load paths never do) must not attempt the
+ * shadow read at all; see the `version` parameter on `readRelationships`.
  */
 export function writeRelationships(writer: BufferWriter, graph: RelationshipGraph): void {
   // Write forward edges
@@ -36,6 +50,9 @@ function writeEdges(
     edgeTargets: Uint32Array;
     edgeTypes: Uint16Array;
     edgeRelIds: Uint32Array;
+    shadowedEdgeIndex?: Uint32Array;
+    shadowedGroupOffsets?: Uint32Array;
+    shadowedRelIds?: Uint32Array;
   }
 ): void {
   // Write node mappings
@@ -56,14 +73,29 @@ function writeEdges(
   writer.writeTypedArray(edges.edgeTargets);
   writer.writeTypedArray(edges.edgeTypes);
   writer.writeTypedArray(edges.edgeRelIds);
+
+  // Shadowed rel ids: sparse (absent whenever no edge in this half collapsed
+  // more than one IfcRel* instance), so this costs 4 bytes on the
+  // overwhelming majority of graphs.
+  const shadowedEdgeIndex = edges.shadowedEdgeIndex ?? new Uint32Array(0);
+  const shadowedGroupOffsets = edges.shadowedGroupOffsets ?? new Uint32Array([0]);
+  const shadowedRelIds = edges.shadowedRelIds ?? new Uint32Array(0);
+  writer.writeUint32(shadowedEdgeIndex.length);
+  writer.writeTypedArray(shadowedEdgeIndex);
+  writer.writeTypedArray(shadowedGroupOffsets);
+  writer.writeUint32(shadowedRelIds.length);
+  writer.writeTypedArray(shadowedRelIds);
 }
 
 /**
- * Read RelationshipGraph from buffer
+ * Read RelationshipGraph from buffer. `version` is the cache header's
+ * FORMAT_VERSION — v17 sections have no shadow-id trailer (see
+ * `writeEdges`'s doc comment); pass the header's actual version so a v17
+ * section isn't misread as a v18+ one.
  */
-export function readRelationships(reader: BufferReader): RelationshipGraph {
-  const forward = readEdges(reader);
-  const inverse = readEdges(reader);
+export function readRelationships(reader: BufferReader, version: number = FORMAT_VERSION): RelationshipGraph {
+  const forward = readEdges(reader, version);
+  const inverse = readEdges(reader, version);
 
   return {
     forward,
@@ -85,21 +117,30 @@ export function readRelationships(reader: BufferReader): RelationshipGraph {
       const edges = forward.getEdges(sourceId);
       return edges
         .filter((e: Edge) => e.target === targetId)
-        .map((e: Edge) => ({
-          relationshipId: e.relationshipId,
-          type: e.type,
-          typeName: relationshipTypeToString(e.type),
-        }));
+        .map((e: Edge): RelationshipInfo => {
+          const info: RelationshipInfo = {
+            relationshipId: e.relationshipId,
+            type: e.type,
+            typeName: relationshipTypeToString(e.type),
+          };
+          if (e.shadowedRelationshipIds !== undefined) {
+            info.shadowedRelationshipIds = e.shadowedRelationshipIds;
+          }
+          return info;
+        });
     },
   };
 }
 
-function readEdges(reader: BufferReader): {
+function readEdges(reader: BufferReader, version: number): {
   offsets: Map<number, number>;
   counts: Map<number, number>;
   edgeTargets: Uint32Array;
   edgeTypes: Uint16Array;
   edgeRelIds: Uint32Array;
+  shadowedEdgeIndex?: Uint32Array;
+  shadowedGroupOffsets?: Uint32Array;
+  shadowedRelIds?: Uint32Array;
   getEdges(entityId: number, type?: RelationshipType): Edge[];
   getTargets(entityId: number, type?: RelationshipType): number[];
   hasAnyEdges(entityId: number): boolean;
@@ -142,31 +183,54 @@ function readEdges(reader: BufferReader): {
     }
   }
 
-  return {
+  let shadowedEdgeIndex: Uint32Array | undefined;
+  let shadowedGroupOffsets: Uint32Array | undefined;
+  let shadowedRelIds: Uint32Array | undefined;
+  if (version >= 18) {
+    const shadowedGroupCount = reader.readUint32();
+    shadowedEdgeIndex = reader.readUint32Array(shadowedGroupCount);
+    shadowedGroupOffsets = reader.readUint32Array(shadowedGroupCount + 1);
+    const shadowedIdCount = reader.readUint32();
+    shadowedRelIds = reader.readUint32Array(shadowedIdCount);
+  }
+
+  const edges = {
     offsets,
     counts,
     edgeTargets,
     edgeTypes,
     edgeRelIds,
+    shadowedEdgeIndex,
+    shadowedGroupOffsets,
+    shadowedRelIds,
 
     getEdges(entityId: number, type?: RelationshipType): Edge[] {
       const offset = offsets.get(entityId);
       if (offset === undefined) return [];
 
       const count = counts.get(entityId)!;
-      const edges: Edge[] = [];
+      const result: Edge[] = [];
 
       for (let i = offset; i < offset + count; i++) {
         if (type === undefined || edgeTypes[i] === type) {
-          edges.push({
+          const edge: Edge = {
             target: edgeTargets[i],
             type: edgeTypes[i],
             relationshipId: edgeRelIds[i],
-          });
+          };
+          if (shadowedEdgeIndex && shadowedGroupOffsets && shadowedRelIds) {
+            const g = binarySearchU32(shadowedEdgeIndex, i);
+            if (g !== -1) {
+              edge.shadowedRelationshipIds = Array.from(
+                shadowedRelIds.subarray(shadowedGroupOffsets[g], shadowedGroupOffsets[g + 1]),
+              );
+            }
+          }
+          result.push(edge);
         }
       }
 
-      return edges;
+      return result;
     },
 
     getTargets(entityId: number, type?: RelationshipType): number[] {
@@ -176,6 +240,16 @@ function readEdges(reader: BufferReader): {
     hasAnyEdges(entityId: number): boolean {
       return offsets.has(entityId);
     },
+  };
+
+  // `shadowedEdgeIndex`/etc. are `undefined` (not present) on a pre-#3782
+  // cache read (version < 18) — matches `RelationshipEdges`'s optional
+  // fields exactly, so `edges` above satisfies the interface either way
+  // without a cast.
+  return edges as typeof edges & {
+    shadowedEdgeIndex?: Uint32Array;
+    shadowedGroupOffsets?: Uint32Array;
+    shadowedRelIds?: Uint32Array;
   };
 }
 

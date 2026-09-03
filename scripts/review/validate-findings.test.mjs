@@ -49,6 +49,7 @@ import {
 import { addedLineRanges, OMITTED_FOR_PROMPT_REASON } from './build-review-input.mjs';
 // #3652: the retry prompt this file's own tests exercise below.
 import { buildPrompt } from './run-reviewer.mjs';
+import { RETRYABLE_VALIDATION_REASONS } from './retry-prompt.mjs'; // #3777
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -981,6 +982,63 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
 
   const phantom = [...REASONS].filter((r) => !seen.has(r));
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
+});
+
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED} (#3777)', () => {
+  // Mutation-tested shape: this must fail if the set grows to include a third
+  // reason (e.g. someone adding VALIDATION_EMPTY or a genuine
+  // VERDICT_CONTRADICTS_FINDINGS "papers over a real failure with a retry"),
+  // and must fail if it shrinks to just one. Exact-set comparison, not a
+  // subset/superset check either direction, per this repo's own
+  // substring/subset false-pass lesson.
+  assert.deepEqual(
+    [...RETRYABLE_VALIDATION_REASONS].sort(),
+    ['PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED'],
+  );
+  // Every retryable reason must be a real one -- catches a typo'd string that
+  // would silently never match anything real REASONS raises.
+  for (const r of RETRYABLE_VALIDATION_REASONS) {
+    assert.ok(REASONS.has(r), `${r} is retryable but is not in REASONS`);
+  }
+  // The control: every OTHER real reason must be explicitly non-retryable,
+  // including the shape closest to a real finding -- a verdict that
+  // contradicts its own findings must never get a second, quieter attempt.
+  for (const r of REASONS) {
+    if (RETRYABLE_VALIDATION_REASONS.has(r)) continue;
+    assert.ok(
+      !RETRYABLE_VALIDATION_REASONS.has(r),
+      `${r} must not be retried -- it reflects the prompt/input/harness, not a fixable model-output shape`,
+    );
+  }
+  assert.ok(!RETRYABLE_VALIDATION_REASONS.has('VERDICT_CONTRADICTS_FINDINGS'), 'a contradicted verdict is a real failure, never retried');
+  assert.ok(!RETRYABLE_VALIDATION_REASONS.has('SCHEMA_INVALID'), 'malformed output is a prompt/harness problem, never retried');
+  assert.ok(!RETRYABLE_VALIDATION_REASONS.has('VALIDATION_EMPTY'), 'an empty validated set is a prompt/harness problem, never retried');
+});
+
+test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VALIDATION_REASONS names', () => {
+  // The dispatch itself is bash in the workflow (validate-findings.mjs stays
+  // pure/offline by design, so it cannot invoke run-reviewer.mjs itself), so
+  // this cannot behaviourally exercise the retry -- only pin the workflow's
+  // grep pattern against the same source of truth the prompt-building side
+  // uses, so the two cannot silently drift apart.
+  const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const step = wf.split('- name: Validate the findings')[1];
+  assert.ok(step, 'the validate step must exist');
+  const m = step.match(/grep -oE '\^❌ \(([A-Z_|]+)\):'/); // @source-text-assertion-ok the retry trigger is bash in YAML; there is no runtime signal for which reasons it matches
+  assert.ok(m, 'the retry-reason grep must be present');
+  const wired = new Set(m[1].split('|'));
+  assert.deepEqual(wired, RETRYABLE_VALIDATION_REASONS, 'the workflow grep must match exactly the retryable set, no more and no fewer');
+
+  // Bounded to ONE retry: an `if`, never a loop construct, around the retry
+  // block -- guards against someone turning this into an unbounded/`while`
+  // retry that could hammer the model on a truly permanent failure.
+  const retryBlock = step.slice(step.indexOf('retry_reason='), step.indexOf('exit "$rc"'));
+  assert.doesNotMatch(retryBlock, /\bwhile\b|\buntil\b|\bfor\b/, 'the retry must be a single bounded attempt, never a loop');
+  // Exactly one nested reviewer invocation and one nested validator
+  // invocation inside the retry branch -- two of either would mean it retries
+  // more than once.
+  assert.equal((retryBlock.match(/run-reviewer\.mjs/g) || []).length, 1, 'exactly one retried reviewer call');
+  assert.equal((retryBlock.match(/validate-findings\.mjs/g) || []).length, 1, 'exactly one retried validator call');
 });
 
 test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () => {

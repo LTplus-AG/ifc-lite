@@ -110,10 +110,17 @@ pub struct StepStats {
     /// Non-zero means an edit the caller asked for is not in the output, and
     /// the caller is the only one who can say what to do about it.
     pub copies_refused: usize,
+    /// `#<digits>` references above `u32::MAX` refused (issue #3421) while
+    /// resolving a filtered export's reference closure. The referenced record
+    /// could never itself be a real entity, so this excludes nothing
+    /// reachable — it only says the source has an id ifc-lite can't hold (#3752).
+    pub refused_refs: usize,
 }
 
 use crate::schema_detect::detect_schema;
-use crate::step_text::{apply_attr_mutations, escape, merge_edits, refs_in_line, renumber};
+use crate::step_text::{
+    apply_attr_mutations, escape, merge_edits, refs_in_line_counted, renumber,
+};
 
 /// Export the parsed model in `content` as a STEP/IFC string.
 pub fn export_step(content: &[u8], opts: &StepOptions) -> String {
@@ -186,6 +193,7 @@ fn emit<W: std::io::Write>(
     }
 
     // 2. Resolve the included set + forward reference closure.
+    let mut refused_refs = 0usize;
     let included: HashSet<u32> = match &opts.included {
         None => order.iter().copied().collect(),
         Some(roots) => {
@@ -198,7 +206,7 @@ fn emit<W: std::io::Write>(
                 }
                 if let Some(&(s, e)) = line_of.get(&id) {
                     refs.clear();
-                    refs_in_line(&content[s..e], &mut refs);
+                    refs_in_line_counted(&content[s..e], &mut refs, &mut refused_refs);
                     for &r in &refs {
                         if !keep.contains(&r) {
                             stack.push(r);
@@ -329,7 +337,7 @@ fn emit<W: std::io::Write>(
         // duplicate real records.
         let Some(mut next) = next_id else {
             out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
-            return Ok(StepStats { total: order.len(), written, copies_refused });
+            return Ok(StepStats { total: order.len(), written, copies_refused, refused_refs });
         };
         for ((express_id, pset_name), props) in &groups {
             // One property set costs one id per property plus one for the set
@@ -379,7 +387,7 @@ fn emit<W: std::io::Write>(
 
     out.write_all(b"ENDSEC;\nEND-ISO-10303-21;\n")?;
 
-    Ok(StepStats { total: order.len(), written, copies_refused })
+    Ok(StepStats { total: order.len(), written, copies_refused, refused_refs })
 }
 
 #[cfg(test)]

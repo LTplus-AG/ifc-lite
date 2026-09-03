@@ -51,15 +51,18 @@ fn item_signature_refuses_an_oversized_child_ref_instead_of_aliasing_it_onto_a_r
 
     let mut decoder = EntityDecoder::new(content);
     let mut memo = FxHashMap::default();
-    let oversized_ref_sig = item_signature(&mut decoder, 2, &mut memo);
+    let mut refused = 0usize;
+    let oversized_ref_sig = item_signature(&mut decoder, 2, &mut memo, &mut refused);
 
     let mut decoder = EntityDecoder::new(content);
     let mut memo = FxHashMap::default();
-    let missing_ref_sig = item_signature(&mut decoder, 3, &mut memo);
+    let mut refused2 = 0usize;
+    let missing_ref_sig = item_signature(&mut decoder, 3, &mut memo, &mut refused2);
 
     let mut decoder = EntityDecoder::new(content);
     let mut memo = FxHashMap::default();
-    let real_ref_sig = item_signature(&mut decoder, 4, &mut memo);
+    let mut refused3 = 0usize;
+    let real_ref_sig = item_signature(&mut decoder, 4, &mut memo, &mut refused3);
 
     assert_eq!(
         oversized_ref_sig, missing_ref_sig,
@@ -68,5 +71,90 @@ fn item_signature_refuses_an_oversized_child_ref_instead_of_aliasing_it_onto_a_r
     assert_ne!(
         oversized_ref_sig, real_ref_sig,
         "an oversized child ref must NEVER hash like the real entity #1 it would wrap onto"
+    );
+}
+
+/// RED for issue #3752: refusing an oversized reference used to leave no
+/// trace anywhere. `item_signature` must count it into its `refused` output
+/// param so a caller (`GeometryRouter::take_content_hash_oversized_ref_drops`)
+/// can report it — see [`super::sig_entity`]'s doc.
+#[test]
+fn item_signature_counts_an_oversized_child_ref_as_refused() {
+    let content = b"#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+                     #2=IFCEXTRUDEDAREASOLID(#4294967297);\n";
+    let mut decoder = EntityDecoder::new(content);
+    let mut memo = FxHashMap::default();
+    let mut refused = 0usize;
+    item_signature(&mut decoder, 2, &mut memo, &mut refused);
+    assert_eq!(
+        refused, 1,
+        "an oversized child ref must be counted, not silently dropped (#3752)"
+    );
+}
+
+/// Control: an ordinary child ref reports zero refusals.
+#[test]
+fn item_signature_reports_no_refusals_for_an_ordinary_ref() {
+    let content = b"#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+                     #2=IFCEXTRUDEDAREASOLID(#1);\n";
+    let mut decoder = EntityDecoder::new(content);
+    let mut memo = FxHashMap::default();
+    let mut refused = 0usize;
+    item_signature(&mut decoder, 2, &mut memo, &mut refused);
+    assert_eq!(refused, 0, "an ordinary reference must not be counted as refused");
+}
+
+/// Boundary: a child ref at exactly `u32::MAX` parses and is not counted.
+#[test]
+fn item_signature_reports_no_refusals_for_a_ref_at_exactly_u32_max() {
+    let content = b"#4294967295=IFCCARTESIANPOINT((0.,0.,0.));\n\
+                     #2=IFCEXTRUDEDAREASOLID(#4294967295);\n";
+    let mut decoder = EntityDecoder::new(content);
+    let mut memo = FxHashMap::default();
+    let mut refused = 0usize;
+    item_signature(&mut decoder, 2, &mut memo, &mut refused);
+    assert_eq!(refused, 0, "a ref at exactly u32::MAX must not be counted as refused");
+}
+
+/// RED for issue #3752, exercised through the real router entry point
+/// (`GeometryRouter::geometry_routing_key`, not `item_signature` directly):
+/// an oversized child ref hit while computing an element's routing key must
+/// reach `GeometryRouter::take_content_hash_oversized_ref_drops`, and a
+/// second drain must return zero — proving the counter is a real accumulator
+/// that resets, not a value the accessor recomputes or discards.
+#[test]
+fn geometry_routing_key_feeds_take_content_hash_oversized_ref_drops() {
+    use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+
+    // #2's representation item has one child ref above `u32::MAX` (#3421).
+    let content = b"#2=IFCEXTRUDEDAREASOLID(#4294967297);\n";
+    let mut decoder = EntityDecoder::new(content);
+    let element = DecodedEntity::new(
+        1,
+        IfcType::IfcWall,
+        vec![
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::Null,
+            AttributeValue::EntityRef(2), // index 6: representation
+        ],
+    );
+
+    let router = crate::GeometryRouter::new();
+    let key = router.geometry_routing_key(&element, &mut decoder);
+    assert!(key.is_some(), "an element with a representation must still get a routing key");
+
+    assert_eq!(
+        router.take_content_hash_oversized_ref_drops(),
+        1,
+        "the oversized child ref hit while routing must be counted (#3752)"
+    );
+    assert_eq!(
+        router.take_content_hash_oversized_ref_drops(),
+        0,
+        "a second drain must return zero — the counter resets, it isn't recomputed"
     );
 }

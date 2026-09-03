@@ -111,7 +111,12 @@ fn plan_container_drops(models: &[MergedModel], ctx: &DropCtx) -> DropPlan {
 
     for (i, model) in models.iter().enumerate() {
         let index = ModelIndex::build(model.content);
-        let included = resolve_included(&index, &model.included);
+        // `None`: this pre-pass recomputes the SAME reachable set the emit
+        // loop in `mod.rs` computes for real (same rule, one home, per the
+        // comment below) and that loop's own `resolve_included` call already
+        // counts refusals into `MergedStats.warnings`. Counting here too
+        // would report the same oversized reference twice.
+        let included = resolve_included(&index, &model.included, None);
         // Stop where the emit loop will stop. A model past the EXPRESS-id cut is
         // never written, so counting its content here would keep a container
         // nothing in the output actually fills — and report it as surviving.

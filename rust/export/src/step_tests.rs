@@ -8,7 +8,7 @@
 use super::*;
 // Exercised directly here; `step.rs` reaches it through `step_cow`.
 use crate::step_json::export_step_json;
-use crate::step_text::substitute_ref_in_attr;
+use crate::step_text::{refs_in_line, substitute_ref_in_attr};
 
 /// Count `#id=` entity lines in a STEP DATA section + grab the FILE_SCHEMA label.
 fn parse_back(step: &str) -> (usize, HashSet<u32>, String) {

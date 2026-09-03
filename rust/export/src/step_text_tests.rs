@@ -215,3 +215,67 @@ fn refs_in_line_refuses_a_ref_above_u32_max_instead_of_wrapping_onto_a_real_enti
         "an oversized ref must be dropped, never aliased onto id 0 or 1 (id 1 here is the record's own leading id, not an alias)"
     );
 }
+
+/// RED for issue #3752: `refs_in_line` silently dropped an oversized ref with
+/// no trace. `refs_in_line_counted` must count exactly the two refused refs
+/// from the fixture above (`#4294967296` and `#4294967297`), not the two
+/// accepted ones (`#1`, `#42`).
+#[test]
+fn refs_in_line_counted_counts_the_refused_refs_not_the_accepted_ones() {
+    let mut out = Vec::new();
+    let mut refused = 0usize;
+    refs_in_line_counted(b"#1=IFCWALL(#4294967296,#4294967297,#42);", &mut out, &mut refused);
+    assert_eq!(out, vec![1, 42]);
+    assert_eq!(refused, 2, "both oversized refs must be counted (#3752)");
+}
+
+/// Control: an ordinary line reports zero refusals.
+#[test]
+fn refs_in_line_counted_reports_no_refusals_for_an_ordinary_line() {
+    let mut out = Vec::new();
+    let mut refused = 0usize;
+    refs_in_line_counted(b"#1=IFCWALL(#42,#137924);", &mut out, &mut refused);
+    assert_eq!(refused, 0, "an ordinary line must not be counted as refused");
+}
+
+/// Boundary: a ref at exactly `u32::MAX` is not counted as refused.
+#[test]
+fn refs_in_line_counted_reports_no_refusals_at_exactly_u32_max() {
+    let mut out = Vec::new();
+    let mut refused = 0usize;
+    refs_in_line_counted(b"#1=IFCWALL(#4294967295);", &mut out, &mut refused);
+    assert_eq!(refused, 0, "a ref at exactly u32::MAX must not be counted as refused");
+}
+
+/// End-to-end RED for issue #3752, through the real `export_step_with_stats`
+/// entry point: a filtered export (`opts.included`) whose root references an
+/// oversized id must surface it in `StepStats.refused_refs`, not just drop it
+/// from the reference closure with no trace.
+#[test]
+fn export_step_with_stats_reports_refused_refs_in_a_filtered_export() {
+    use crate::step::{export_step_with_stats, StepOptions};
+
+    let source = b"ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION((''),'2;1');\nFILE_NAME('','',(''),(''),'','','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+                   #1=IFCWALL('g',$,$,$,$,#4294967297,$,$,$);\n\
+                   #2=IFCWALL('g2',$,$,$,$,#42,$,$,$);\n\
+                   #42=IFCLOCALPLACEMENT($,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+
+    let (_step, stats) = export_step_with_stats(
+        source,
+        &StepOptions { included: Some(vec![1]), ..StepOptions::default() },
+    );
+    assert_eq!(
+        stats.refused_refs, 1,
+        "the oversized reference on #1 must be counted, not silently dropped (#3752)"
+    );
+
+    // Control: the same shape rooted at #2 (an ordinary reference) reports zero.
+    let (_step, control_stats) = export_step_with_stats(
+        source,
+        &StepOptions { included: Some(vec![2]), ..StepOptions::default() },
+    );
+    assert_eq!(
+        control_stats.refused_refs, 0,
+        "an ordinary reference must not be counted as refused"
+    );
+}

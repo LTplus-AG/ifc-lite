@@ -236,8 +236,22 @@ pub(super) fn faceted_brep_face_count(decoder: &mut EntityDecoder, brep_id: u32)
 /// solids, the representation context) are visited once; it keys on entity ids,
 /// so it must belong to ONE model (the `GeometryRouter` owns one per loaded
 /// file).
-pub fn item_signature(decoder: &mut EntityDecoder, root_id: u32, memo: &mut FxHashMap<u32, u128>) -> u128 {
-    sig_entity(decoder, root_id, memo, 0)
+/// `refused` accumulates one count per `#<digits>` child reference this walk
+/// could not parse because it exceeded `u32::MAX` (issue #3421/#3752) — the
+/// caller (a [`super::GeometryRouter`] method) folds it into
+/// [`super::GeometryRouter::take_content_hash_oversized_ref_drops`] so a
+/// maintainer can tell "this model has an unrepresentable reference" apart
+/// from "this subtree happens to hash like a genuinely missing one". The
+/// refusal itself is harmless to the DEDUP KEY (folded as the same fixed
+/// sentinel an unresolvable reference already uses, so renumbering-invariance
+/// holds), it is only the diagnostic that was missing.
+pub fn item_signature(
+    decoder: &mut EntityDecoder,
+    root_id: u32,
+    memo: &mut FxHashMap<u32, u128>,
+    refused: &mut usize,
+) -> u128 {
+    sig_entity(decoder, root_id, memo, 0, refused)
 }
 
 /// Combine the pure structural item hash with the router parameters that change
@@ -255,7 +269,13 @@ pub fn key_with_params(structural: u128, quality_index: u8, unit_scale: f64, rtc
     fold(s, rtc.2.to_bits())
 }
 
-fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u128>, depth: u32) -> u128 {
+fn sig_entity(
+    decoder: &mut EntityDecoder,
+    id: u32,
+    memo: &mut FxHashMap<u32, u128>,
+    depth: u32,
+    refused: &mut usize,
+) -> u128 {
     if let Some(&s) = memo.get(&id) {
         return s;
     }
@@ -295,7 +315,7 @@ fn sig_entity(decoder: &mut EntityDecoder, id: u32, memo: &mut FxHashMap<u32, u1
             return s;
         }
     };
-    let acc = sig_walk_bytes(decoder, &raw, memo, depth);
+    let acc = sig_walk_bytes(decoder, &raw, memo, depth, refused);
     memo.insert(id, acc);
     acc
 }
@@ -310,6 +330,7 @@ fn sig_walk_bytes(
     bytes: &[u8],
     memo: &mut FxHashMap<u32, u128>,
     depth: u32,
+    refused: &mut usize,
 ) -> u128 {
     let len = bytes.len();
     // Skip a leading `#<id>=` (only when the `=` precedes the first `(`).
@@ -352,13 +373,17 @@ fn sig_walk_bytes(
                 j += 1;
             }
             let child = match parse_express_id(&bytes[i + 1..j]) {
-                Some(rid) => sig_entity(decoder, rid, memo, depth + 1),
+                Some(rid) => sig_entity(decoder, rid, memo, depth + 1, refused),
                 // A ref above `u32::MAX` refuses rather than wrapping onto a
                 // real low-numbered entity (issue #3421) — treated the same
                 // as an unresolvable reference: the fixed sentinel above,
                 // not the id, so structurally identical-but-renumbered files
-                // still collide.
-                None => fold(0, 0x00BA_D0BA_D0BA_D000),
+                // still collide. Counted (issue #3752): the hash stays
+                // correct, but a refusal here used to leave no trace at all.
+                None => {
+                    *refused += 1;
+                    fold(0, 0x00BA_D0BA_D0BA_D000)
+                }
             };
             acc = fold(fold(fold(acc, 1), child as u64), (child >> 64) as u64);
             i = j;

@@ -121,21 +121,18 @@ pub(super) fn process_entity_job(
     // Shared sink for per-job router CSG diagnostics (parity with the wasm
     // path's `drain_and_log_csg_diagnostics`).
     csg_failure_collector: &std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
-    // Shared sinks for opening classification + per-host opening diagnostics, drained
-    // from this job's router so the native pass aggregates the full GeometryDiagnostics.
+    // Shared sinks for opening classification + per-host diagnostics (aggregated GeometryDiagnostics).
     classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
     host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
     rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
-    // Shared tally of degenerate-backstop triangle drops (see
-    // `element::build_mesh_data`); relaxed atomic, added to only when non-zero.
+    // Shared tally of degenerate-backstop triangle drops (`element::build_mesh_data`).
     backstop_collector: &std::sync::atomic::AtomicU64,
-    // Model-wide content-dedup cache shared by every per-job router so identical
-    // geometry is meshed once across the rayon pool (#1109 follow-up).
+    // Content-hash refs refused above u32::MAX (#3421/#3752), request-local.
+    oversized_ref_drop_collector: &std::sync::atomic::AtomicU64,
+    // Model-wide content-dedup cache shared by every per-job router (#1109).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
-    // Model-wide IfcMappedItem source cache shared by every per-job router so a
-    // RepresentationMap source shared across owning elements is meshed once
-    // model-wide instead of once per element (a fresh router is built per element,
-    // so its RefCell cache only dedups within one element) — #1623.
+    // Model-wide IfcMappedItem source cache so a RepresentationMap source shared
+    // across owning elements is meshed once model-wide, not once per element — #1623.
     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
     // #1623 Phase 2: don't-bake plan (Some only when enabled) armed on this job's
     // router, + the shared sink for its emitted don't-bake occurrences.
@@ -328,6 +325,9 @@ pub(super) fn process_entity_job(
             acc.extend(host_diags);
         }
     }
+    // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
+    let oversized_refs = local_router.take_content_hash_oversized_ref_drops() as u64;
+    oversized_ref_drop_collector.fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
     // Drain this job's router rect_fast counters into the request-local collector
     // (process-global counters are gone — see GeometryRouter::record_rect_fast).
     let rf = local_router.take_rect_fast_stats();

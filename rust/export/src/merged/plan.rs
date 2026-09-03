@@ -14,7 +14,7 @@ use super::spatial::{
 };
 use super::units::units_compatible;
 use super::MergedModel;
-use crate::step_text::refs_in_line;
+use crate::step_text::{refs_in_line, refs_in_line_counted};
 
 /// Entity types forming shared infrastructure — the first instance of each is
 /// unified across compatible models (later duplicates dropped + redirected).
@@ -92,9 +92,37 @@ impl<'a> ModelIndex<'a> {
 /// Resolve the visible id set for a model: `None` ⇒ every entity; otherwise the
 /// forward-reference closure of `roots` (so a filtered export never dangles a
 /// `#ref`), mirroring `export_step_with_stats`.
-pub fn resolve_included(index: &ModelIndex, roots: &Option<Vec<u32>>) -> HashSet<u32> {
+///
+/// `refused`, when given, accumulates every `#<digits>` reference this walk
+/// discarded for exceeding `u32::MAX` (issue #3421), so a caller can surface
+/// it — see [`crate::step_text::refs_in_line_counted`]'s doc for why this
+/// does not exclude anything reachable that would otherwise have been
+/// included. `None` when a caller only needs the included set itself (e.g. a
+/// pre-pass whose own scan of this model is not the one that gets reported).
+pub fn resolve_included(
+    index: &ModelIndex,
+    roots: &Option<Vec<u32>>,
+    mut refused: Option<&mut usize>,
+) -> HashSet<u32> {
     match roots {
-        None => index.order.iter().copied().collect(),
+        None => {
+            // Every id is included regardless, so this is purely a counting
+            // pass: it must not touch `keep`/`stack`, only `refused`, or an
+            // unfiltered model's oversized references would go unreported
+            // (CodeRabbit, PR #3766) — the `Some(roots)` arm below already
+            // counts as it walks the closure; here nothing walks anything, so
+            // the count has to come from a dedicated scan of every line.
+            if let Some(refused) = refused.as_deref_mut() {
+                let mut refs = Vec::new();
+                for &id in &index.order {
+                    if let Some(bytes) = index.line_bytes(id) {
+                        refs.clear();
+                        refs_in_line_counted(bytes, &mut refs, refused);
+                    }
+                }
+            }
+            index.order.iter().copied().collect()
+        }
         Some(roots) => {
             let mut keep: HashSet<u32> = HashSet::new();
             let mut stack: Vec<u32> = roots.clone();
@@ -105,7 +133,10 @@ pub fn resolve_included(index: &ModelIndex, roots: &Option<Vec<u32>>) -> HashSet
                 }
                 if let Some(bytes) = index.line_bytes(id) {
                     refs.clear();
-                    refs_in_line(bytes, &mut refs);
+                    match refused.as_deref_mut() {
+                        Some(refused) => refs_in_line_counted(bytes, &mut refs, refused),
+                        None => refs_in_line(bytes, &mut refs),
+                    }
                     for &r in &refs {
                         if !keep.contains(&r) {
                             stack.push(r);

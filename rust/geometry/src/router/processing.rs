@@ -770,7 +770,8 @@ impl GeometryRouter {
         }
         let structural = {
             let mut memo = self.content_sig_memo.borrow_mut();
-            super::content_hash::item_signature(decoder, item.id, &mut memo)
+            let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
+            super::content_hash::item_signature(decoder, item.id, &mut memo, &mut refused)
         };
         Some(super::content_hash::key_with_params(
             structural,
@@ -1140,6 +1141,11 @@ impl GeometryRouter {
         self.scale_mesh(&mut mesh);
         self.apply_placement(element, decoder, &mut mesh)?;
         Ok(Some(mesh))
+    }
+
+    /// Drain refs the content-hash walk refused above `u32::MAX` (#3421/#3752).
+    pub fn take_content_hash_oversized_ref_drops(&self) -> usize {
+        std::mem::take(&mut *self.content_hash_oversized_ref_drops.borrow_mut())
     }
 }
 

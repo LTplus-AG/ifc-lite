@@ -439,6 +439,9 @@ pub struct GeometryDiagnostics {
     pub rect_fast: RectFastSummary,
     /// Bounded top-N worst-failing hosts (opt-in per-product detail).
     pub worst_hosts: Vec<WorstHost>,
+    /// Refs the content-hash pass refused (`u32::MAX`, #3421/#3752). Additive.
+    #[serde(default)]
+    pub oversized_ref_drops: u64,
 }
 
 impl Default for GeometryDiagnostics {
@@ -453,6 +456,7 @@ impl Default for GeometryDiagnostics {
             silent_no_ops: 0,
             rect_fast: RectFastSummary::default(),
             worst_hosts: Vec::new(),
+            oversized_ref_drops: 0,
         }
     }
 }
@@ -474,6 +478,7 @@ impl GeometryDiagnostics {
             && self.classification.total == 0
             && self.silent_no_ops == 0
             && self.rect_fast.fired == 0
+            && self.oversized_ref_drops == 0
     }
 }
 
@@ -487,6 +492,7 @@ pub fn aggregate_diagnostics(
     host_diags: &FxHashMap<u32, HostOpeningDiagnostic>,
     rect_fast: crate::rect_fast::RectFastStats,
     worst_hosts_limit: usize,
+    oversized_ref_drops: u64,
 ) -> GeometryDiagnostics {
     let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
     let products_with_failures = csg_failures.len() as u64;
@@ -571,6 +577,7 @@ pub fn aggregate_diagnostics(
             defer_too_many_openings: rect_fast.defer_too_many_openings,
         },
         worst_hosts,
+        oversized_ref_drops,
     }
 }
 

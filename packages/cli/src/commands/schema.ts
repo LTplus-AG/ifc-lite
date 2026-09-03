@@ -9,7 +9,82 @@
  * Useful for LLM tools to discover available commands and methods.
  */
 
+import { BimContext, QueryBuilder } from '@ifc-lite/sdk';
 import { printJson, hasFlag } from '../output.js';
+
+/**
+ * Doc strings for the `BimContext` / `QueryBuilder` methods that
+ * `NAMESPACE_SCHEMAS` does not name (#3763). Only prose lives here — the
+ * method LIST itself is reflected off the runtime classes below, so a method
+ * added or removed upstream changes the dump without an edit here, and
+ * `schema.runtime-shape.test.ts` fails if the two ever disagree.
+ */
+const RUNTIME_METHOD_DOCS: Record<string, string> = {
+  query: 'Start a query chain: bim.query().byType(...).toArray()',
+  model: 'Restrict the chain to one model',
+  byType: "Filter by IFC type e.g. 'IfcWall'",
+  where: 'Filter by a property-set value',
+  limit: 'Cap the number of results',
+  offset: 'Skip the first n results',
+  toArray: 'Run the chain and return the entities',
+  first: 'Run the chain and return the first entity, or null',
+  count: 'Run the chain and return the number of matches',
+  refs: 'Run the chain and return entity refs only',
+};
+
+/** Own value-function property names on a prototype, minus the constructor. */
+function prototypeMethods(proto: object): string[] {
+  return Object.getOwnPropertyNames(proto).filter((name) => {
+    if (name === 'constructor') return false;
+    return typeof Object.getOwnPropertyDescriptor(proto, name)?.value === 'function';
+  });
+}
+
+/**
+ * Replace the sandbox bridge's flat `query` namespace with the two shapes the
+ * CLI's `bim` object actually has.
+ *
+ * `NAMESPACE_SCHEMAS` describes the browser sandbox bridge, where
+ * `bim.query.properties(ref)` is a real method. `ifc-lite run` / `ifc-lite eval`
+ * hand scripts a raw `BimContext` instead: `query()` starts a builder and
+ * `properties`, `quantities`, `relationships` and ~19 siblings sit at the top
+ * level of `bim`. Emitting the bridge shape here made every `bim.query.X(...)`
+ * call an agent copied out of `ifc-lite schema` throw a TypeError (#3763).
+ *
+ * Method lists are reflected off `BimContext.prototype` and
+ * `QueryBuilder.prototype` — the objects `run`/`eval` construct — rather than
+ * transcribed, so this cannot drift from the runtime. Docs and parameter names
+ * are carried over from the bridge schema by name where it has them.
+ */
+function withRuntimeQueryShape(schemas: any[]): any[] {
+  const bridgeQuery = schemas.find((ns) => ns?.name === 'query');
+  const bridgeMethods = new Map<string, any>(
+    (bridgeQuery?.methods ?? []).map((m: any) => [m.name, m]),
+  );
+
+  const describe = (name: string) => {
+    const fromBridge = bridgeMethods.get(name);
+    return {
+      ...(fromBridge ?? {}),
+      name,
+      doc: RUNTIME_METHOD_DOCS[name] ?? fromBridge?.doc ?? name,
+    };
+  };
+
+  return [
+    {
+      name: 'bim',
+      doc: 'Top-level methods on the `bim` object (call as bim.<method>(...))',
+      methods: prototypeMethods(BimContext.prototype).map(describe),
+    },
+    {
+      name: 'query',
+      doc: 'Query builder chain — start it with bim.query()',
+      methods: prototypeMethods(QueryBuilder.prototype).map(describe),
+    },
+    ...schemas.filter((ns) => ns?.name !== 'query'),
+  ];
+}
 
 export async function schemaCommand(args: string[]): Promise<void> {
   const compact = hasFlag(args, '--compact');
@@ -49,7 +124,7 @@ export async function schemaCommand(args: string[]): Promise<void> {
     process.exitCode = 1;
   }
 
-  const output = schemas.map(ns => ({
+  const output = withRuntimeQueryShape(schemas).map(ns => ({
     namespace: ns.name,
     description: ns.doc,
     methods: ns.methods.map((m: any) => {
@@ -80,22 +155,10 @@ function getStaticSchema(): any[] {
         { name: 'activeId', doc: 'Get active model ID' },
       ],
     },
-    {
-      name: 'query', doc: 'Query entities',
-      methods: [
-        { name: 'all', doc: 'Get all entities' },
-        { name: 'byType', doc: 'Filter by IFC type', paramNames: ['...types'] },
-        { name: 'entity', doc: 'Get single entity', paramNames: ['modelId', 'expressId'] },
-        { name: 'attributes', doc: 'Entity IFC attributes', paramNames: ['entity'] },
-        { name: 'properties', doc: 'Property sets', paramNames: ['entity'] },
-        { name: 'quantities', doc: 'Quantity sets', paramNames: ['entity'] },
-        { name: 'classifications', doc: 'Classification references', paramNames: ['entity'] },
-        { name: 'materials', doc: 'Material assignments', paramNames: ['entity'] },
-        { name: 'typeProperties', doc: 'Type-level properties', paramNames: ['entity'] },
-        { name: 'documents', doc: 'Linked documents', paramNames: ['entity'] },
-        { name: 'relationships', doc: 'Structural relationships', paramNames: ['entity'] },
-      ],
-    },
+    // No `query` entry: `withRuntimeQueryShape` reflects the `bim` root and
+    // the query-builder chain off the SDK classes, on the fallback path too,
+    // so a hand-written copy here could only rot (and the one that used to
+    // live here documented the sandbox bridge's `bim.query.*`, #3763).
     {
       name: 'export', doc: 'Multi-format export',
       methods: [

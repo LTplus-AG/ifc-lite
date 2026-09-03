@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 import { buildPrompt } from './run-reviewer.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
+import { searchKeys, hunkLines, fileEvidence, MAX_WHOLE_FILE_LINES, buildPack, truncateUtf8, BODY_RESERVE_BYTES, MAX_PACK_BYTES, MAX_SEARCH_KEYS, MAX_KEY_LENGTH, packBudgetFor, MAX_PROMPT_BYTES, retrievalFailed, retrievalFailedMessage, SHALLOW_CHECKOUT_REMEDY, PROMPT_BASE_OVERHEAD_BYTES, promptEnvelopeBytes } from './build-context-pack.mjs';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
 
 test('search keys come from REMOVED lines first, because the sibling still has them', () => {
@@ -57,6 +57,30 @@ test('PROSE MUST NOT EAT THE KEY BUDGET', () => {
 test('markdown yields no keys at all: a changeset is not an implementation', () => {
   const md = ['@@ -1,2 +1,3 @@', "+Both tools now share a materialDisplayName helper."].join('\n');
   assert.deepEqual(searchKeys(md, { path: '.changeset/x.md' }), []);
+});
+
+test('#3732 item 2: an over-length identifier is capped at MAX_KEY_LENGTH with an explicit marker', () => {
+  // The quoted-string branch was already capped at 60 (excluded outright, not
+  // truncated); the identifier branch had no bound, so a base64/hash constant
+  // in a diff became an arbitrarily long key. capKey truncates it instead of
+  // silently dropping it -- the marker makes the cut visible in output.
+  const longToken = 'overlongIdentifierToken' + 'Z'.repeat(4_000);
+  const patch = ['@@ -1,1 +1,2 @@', `-  const ${longToken} = 1;`, `+  const ${longToken} = 2;`].join('\n');
+  const [key] = searchKeys(patch, { path: 'a.ts' });
+  assert.equal(key.length, MAX_KEY_LENGTH, `capped key must be exactly MAX_KEY_LENGTH (${MAX_KEY_LENGTH}) bytes`);
+  assert.ok(key.endsWith('…'), 'a capped key must carry an explicit truncation marker, not cut silently');
+  assert.equal(key.slice(0, -1), longToken.slice(0, MAX_KEY_LENGTH - 1), 'the kept prefix must be a true prefix of the real token');
+});
+
+test('CONTROL: an ordinary identifier is unaffected by the cap', () => {
+  const patch = ['@@ -1,1 +1,2 @@', '-  const missingLanes = 1;', '+  const missingLanes = 2;'].join('\n');
+  const [key] = searchKeys(patch, { path: 'a.ts' });
+  assert.equal(key, 'missingLanes', 'a normal-length key must render unchanged, no marker appended');
+});
+
+test("rank()'s length bonus (Math.min(30, key.length * 2)) already saturates below MAX_KEY_LENGTH, so capping the key cannot reduce anyone's reward and cannot let one grow further", () => {
+  assert.equal(Math.min(30, MAX_KEY_LENGTH * 2), 30, 'a key at the cap must score the same bonus as any longer one would have');
+  assert.equal(Math.min(30, 15 * 2), 30, 'saturation begins at 15 chars, well inside the 60-char cap');
 });
 
 test('a long file is windowed around its hunks, not truncated from the top', () => {
@@ -667,39 +691,22 @@ test('THE OTHER DIRECTION: an inflated envelope must not starve the pack', () =>
  * `buildPack` used to charge a sibling row as `Buffer.byteLength(h.text,
  * 'utf8') + 120` -- a flat overhead that never included `h.key`, even though
  * `run-reviewer.mjs` renders `JSON.stringify(h.key)` into the prompt for every
- * row. `h.key` is unbounded: `searchKeys`'s identifier branch
- * (`/[A-Za-z_$][A-Za-z0-9_$]{4,}/g`) has no upper length bound (only the
- * quoted-string branch is capped, at 60 chars), so a long token -- a base64
- * constant, a minified bundle line -- becomes an arbitrarily long key.
- * `rank()`'s length bonus (`Math.min(30, h.key.length * 2)`) saturates at 30,
- * but a cap on the score a key EARNS is not a cap on the bytes it COSTS once
- * rendered.
+ * row (item 1, fixed via `renderSiblingRow`/`SIBLING_ROW_JOIN_MARGIN`, tested
+ * directly below with a key length no upstream cap constrains). Before item 2
+ * (`capKey`, see the `MAX_KEY_LENGTH` tests further down), `h.key` itself was
+ * also unbounded -- `searchKeys`'s identifier branch had no upper length
+ * bound -- so a long token could ALSO win `rank()`'s length bonus without
+ * being any more distinctive. This fixture now produces the post-cap `h.key`
+ * every real pack does; it demonstrates the charge/budget invariant holds at
+ * that (now bounded) realistic maximum, not the pre-#3732 multi-KB one.
  */
-function longKeyFixture(n) {
-  // One file per key so `searchKeys`'s own 12-per-file cap cannot suppress the
-  // fixture, and MAX_SEARCH_KEYS (150) is never approached at n <= 40.
-  const files = Array.from({ length: n }, (_, i) => {
-    const key = `overlongIdentifierToken${i}` + 'Z'.repeat(4_000);
-    return { path: `packages/a/f${i}.ts`, patch: `@@ -1,1 +1,2 @@\n-  const ${key} = 1;\n+  const ${key} = 2;\n`, key };
-  });
-  const grepOut = (args) => {
-    const key = args[args.length - 2]; // `git grep -n --fixed-strings --no-color -I -e <key> <ref>`
-    const file = files.find((f) => f.key === key);
-    return file ? `HEAD:packages/z/sibling-${file.path.split('/').pop()}:1:  use(${file.key});` : '';
-  };
-  return buildPack(
-    { headSha: 'a'.repeat(40), files: files.map(({ key: _k, ...f }) => f) },
-    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? grepOut(args) : '') },
-  );
-}
-
-test('the undercharge, reproduced: one long key alone outweighs the old flat overhead', () => {
-  const pack = longKeyFixture(1);
-  assert.equal(pack.siblings.length, 1, 'fixture: exactly one candidate site');
-  const h = pack.siblings[0];
+test('the charging formula: renderSiblingRow bytes are what gets charged, at ANY key length', () => {
+  // Bypasses searchKeys/capKey on purpose: item 1's charge/render agreement
+  // must hold independent of whatever length policy the retrieval side
+  // enforces, defense-in-depth against the two ever drifting apart again.
+  const h = { path: 'packages/z/sibling.ts', line: 42, key: 'x'.repeat(5_000), text: '  use(x);' };
   const renderedBytes = Buffer.byteLength(renderSiblingRow(h), 'utf8');
   const oldCharge = Buffer.byteLength(h.text, 'utf8') + 120; // the pre-fix formula, restated here on purpose
-  assert.ok(h.key.length > 4_000, `fixture key is ${h.key.length} bytes, expected > 4,000`);
   assert.ok(
     renderedBytes > oldCharge + 3_000,
     `rendered row is ${renderedBytes} bytes against an old charge of ${oldCharge} -- the key alone was ` +
@@ -707,15 +714,41 @@ test('the undercharge, reproduced: one long key alone outweighs the old flat ove
   );
 });
 
-test('THE FIX: the assembled pack never exceeds the budget it was charged against, even with long keys', () => {
-  // 40 candidates is `siblings.length >= 40`'s own cap, so every one of them
-  // fitting under the OLD formula (h.text is capped at 120 bytes by
-  // `parseGrep`'s `.slice(0, 120)`, so 40 * (120 + 120) = 9,600 bytes -- trivial
-  // against MAX_PACK_BYTES) is expected and proves nothing. What proves the fix
-  // is that the RENDERED bytes -- the ones `run-reviewer.mjs` actually puts on
+function longKeyFixture(n) {
+  // One file per key so `searchKeys`'s own 12-per-file cap cannot suppress the
+  // fixture, and MAX_SEARCH_KEYS (150) is never approached at n <= 40. The raw
+  // token is well past MAX_KEY_LENGTH so every key here exercises `capKey`'s
+  // truncation branch; `cappedKey` mirrors that truncation so the grep mock
+  // matches on the SAME key `buildPack` actually searches and renders with.
+  const files = Array.from({ length: n }, (_, i) => {
+    const rawKey = `overlongIdentifierToken${i}` + 'Z'.repeat(4_000);
+    const cappedKey = `${rawKey.slice(0, MAX_KEY_LENGTH - 1)}…`;
+    return {
+      path: `packages/a/f${i}.ts`,
+      patch: `@@ -1,1 +1,2 @@\n-  const ${rawKey} = 1;\n+  const ${rawKey} = 2;\n`,
+      cappedKey,
+    };
+  });
+  const grepOut = (args) => {
+    const key = args[args.length - 2]; // `git grep -n --fixed-strings --no-color -I -e <key> <ref>`
+    const file = files.find((f) => f.cappedKey === key);
+    return file ? `HEAD:packages/z/sibling-${file.path.split('/').pop()}:1:  use(${file.cappedKey});` : '';
+  };
+  return buildPack(
+    { headSha: 'a'.repeat(40), files: files.map(({ cappedKey: _k, ...f }) => f) },
+    { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? grepOut(args) : '') },
+  );
+}
+
+test('THE FIX: the assembled pack never exceeds the budget it was charged against, even with capped long keys', () => {
+  // 40 candidates is `siblings.length >= 40`'s own cap. What proves the fix is
+  // that the RENDERED bytes -- the ones `run-reviewer.mjs` actually puts on
   // the wire, key included -- stay inside the budget `buildPack` was handed.
   const pack = longKeyFixture(40);
   assert.ok(pack.siblings.length > 0, 'fixture: at least one site retrieved');
+  for (const h of pack.siblings) {
+    assert.ok(h.key.length <= MAX_KEY_LENGTH, `every h.key must be capKey'd, got ${h.key.length} bytes`);
+  }
   const rendered = pack.siblings.map((h) => renderSiblingRow(h)).join('\n\n');
   const renderedBytes = Buffer.byteLength(rendered, 'utf8');
   const availableBudget = packBudgetFor(

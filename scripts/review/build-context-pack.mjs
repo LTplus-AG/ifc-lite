@@ -272,15 +272,21 @@ export function fileEvidence(patch, content) {
  * lower-risk half of an already-fenced input.
  */
 
+// Caps a key at MAX_KEY_LENGTH with an explicit `…` marker (#3732 item 2): a
+// base64/hash constant was otherwise an arbitrarily long key. A truncated
+// key still MATCHES via siblingSites's fixed-string grep -- the kept prefix
+// recurs wherever the real, longer token does.
+export const MAX_KEY_LENGTH = 60;
+const capKey = (t) => (t.length <= MAX_KEY_LENGTH ? t : `${t.slice(0, MAX_KEY_LENGTH - 1)}…`);
+
 /** Identifiers and literals worth searching for. Longer is more distinctive. */
 export function searchKeys(patch, { path = '', max = 12 } = {}) {
   // PROSE EATS THE BUDGET. The first version took the first ten tokens of five
   // or more characters, and on two real cases every one of them came from the
   // MPL licence header -- "Source, subject, terms, Mozilla, Public, License" --
-  // or from changeset markdown. The identifiers that actually find the sibling
-  // (`missingLanes`, `siScale`, `baseColorFactor`) never got a slot.
-  //
-  // So: markdown carries no implementation, and a key has to LOOK like code.
+  // or from changeset markdown, so the identifiers that actually find the
+  // sibling (`missingLanes`, `siScale`, `baseColorFactor`) never got a slot.
+  // Markdown carries no implementation, so a key has to LOOK like code.
   if (/\.(md|txt|snap|lock)$/.test(path)) return [];
 
   const isIdentifier = (t) =>
@@ -303,7 +309,7 @@ export function searchKeys(patch, { path = '', max = 12 } = {}) {
     // pack with sites that share a dependency rather than an implementation --
     // measured: it took all four top slots and pushed the real sibling out.
     if (/^\s*(import|export)\s|require\(/.test(body)) continue;
-    for (const m of body.matchAll(/[A-Za-z_$][A-Za-z0-9_$]{4,}/g)) bucket.push(m[0]);
+    for (const m of body.matchAll(/[A-Za-z_$][A-Za-z0-9_$]{4,}/g)) bucket.push(capKey(m[0]));
     for (const m of body.matchAll(/'([^'\n]{6,60})'|"([^"\n]{6,60})"/g)) bucket.push(m[1] ?? m[2]);
   }
 
@@ -558,19 +564,13 @@ export function buildPack(input, { baseRef, body = null, patchBytes = 0, cwd = p
     for (const h of hits) candidates.push({ ...h, key });
   }
   // Three signals, learned from the five real second-site cases rather than
-  // guessed. Ranked by how much each one moved the measurement:
-  //
-  //   same BASENAME in another package  glb.ts -> glb.ts, a copied module
-  //   same DIRECTORY                    scripts/lib/dirty-pr-scan.mjs ->
-  //                                     scripts/lib/pr-review-signal.mjs, and
-  //                                     measure-unit-scale.ts ->
-  //                                     quantity-collect.ts. Neighbours in a
-  //                                     directory are the same layer, and a
-  //                                     duplicated implementation usually lives
-  //                                     one file over rather than one package over
-  //   a LONG key                        `getForEntity` and `missingLanes` are
-  //                                     claims about a specific function; a
-  //                                     five-character token is not
+  // guessed, ranked by how much each one moved the measurement: same BASENAME
+  // in another package (glb.ts -> glb.ts, a copied module); same DIRECTORY
+  // (scripts/lib/dirty-pr-scan.mjs -> scripts/lib/pr-review-signal.mjs, and
+  // measure-unit-scale.ts -> quantity-collect.ts -- neighbours in a directory
+  // are the same layer, and a duplicated implementation usually lives one file
+  // over rather than one package over); a LONG key (`getForEntity` and
+  // `missingLanes` are claims about a specific function -- capped, see capKey).
   const changedDirs = new Set(changed.map((p) => p.slice(0, p.lastIndexOf('/'))));
   const rank = (h) => {
     const base = h.path.split('/').pop();

@@ -1111,4 +1111,107 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.documentReferences?.[0]?.isExternal).toBe(true);
     });
   });
+
+  describe('xs:boolean whiteSpace=collapse (padded attribute values)', () => {
+    // xs:boolean carries whiteSpace=collapse, so a padded " true " / " 1 "
+    // is lexically valid and MUST read as true. Every comparison against the
+    // literal 'true'/'1' silently read such a value as false. One test per
+    // untrimmed site: header <File>, <BimSnippet>, <DocumentReference>,
+    // <ViewSetupHints> (DefaultVisibility already had the trim and a test).
+    async function readArchive(files: Record<string, string>) {
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="2.1"></Version>');
+      for (const [name, content] of Object.entries(files)) zip.file(name, content);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+      return readBCF(buffer);
+    }
+
+    it('reads a padded header <File isExternal=" true "> as true', async () => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Header>',
+          '    <File isExternal=" true ">',
+          '      <Filename>model.ifc</Filename>',
+          '    </File>',
+          '  </Header>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.header?.[0]?.isExternal).toBe(true);
+    });
+
+    it('reads a padded <BimSnippet isExternal=" 1 "> as true', async () => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          '    <BimSnippet SnippetType="JSON" isExternal=" 1 ">',
+          '      <Reference>https://example.com/snippet.json</Reference>',
+          '      <ReferenceSchema>https://example.com/schema.json</ReferenceSchema>',
+          '    </BimSnippet>',
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.bimSnippet?.isExternal).toBe(true);
+    });
+
+    it('reads a padded <DocumentReference isExternal=" true "> as true', async () => {
+      const project = await readArchive({
+        'topic-1/markup.bcf': [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+          '    <Title>t</Title>',
+          '    <DocumentReference Guid="doc-1" isExternal=" true ">',
+          '      <ReferencedDocument>https://example.com/spec.pdf</ReferencedDocument>',
+          '    </DocumentReference>',
+          '  </Topic>',
+          '</Markup>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.documentReferences?.[0]?.isExternal).toBe(true);
+    });
+
+    it('reads a padded <ViewSetupHints SpacesVisible=" 1 "> as true', async () => {
+      const topicGuid = 'a1111111-1111-1111-1111-111111111111';
+      const vpGuid = 'a2222222-2222-2222-2222-222222222222';
+      const project = await readArchive({
+        [`${topicGuid}/markup.bcf`]: [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          '<Markup>',
+          `  <Topic Guid="${topicGuid}" TopicType="Issue" TopicStatus="Open">`,
+          '    <Title>t</Title>',
+          '  </Topic>',
+          `  <Viewpoints Guid="${vpGuid}">`,
+          '    <Viewpoint>viewpoint.bcfv</Viewpoint>',
+          '  </Viewpoints>',
+          '</Markup>',
+        ].join('\n'),
+        [`${topicGuid}/viewpoint.bcfv`]: [
+          '<?xml version="1.0" encoding="UTF-8"?>',
+          `<VisualizationInfo Guid="${vpGuid}">`,
+          '  <Components>',
+          '    <ViewSetupHints SpacesVisible=" 1 " OpeningsVisible="false"/>',
+          '    <Visibility DefaultVisibility="true"/>',
+          '  </Components>',
+          '</VisualizationInfo>',
+        ].join('\n'),
+      });
+      const topic = Array.from(project.topics.values())[0];
+      const hints = topic.viewpoints[0].components?.visibility?.viewSetupHints;
+      expect(hints?.spacesVisible).toBe(true);
+      expect(hints?.openingsVisible).toBe(false);
+    });
+  });
 });

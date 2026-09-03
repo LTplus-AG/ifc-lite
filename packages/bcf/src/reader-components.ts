@@ -262,7 +262,9 @@ function parseViewSetupHints(content: string): BCFViewSetupHints | undefined {
 
   const attrs = match[1];
   const flag = (name: string): boolean | undefined => {
-    const raw = attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+    // Trimmed for xs:boolean whiteSpace=collapse (" 1 " is true), the same
+    // way parseVisibility's DefaultVisibility read is.
+    const raw = attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1].trim();
     if (raw === undefined) return undefined;
     return raw === 'true' || raw === '1';
   };

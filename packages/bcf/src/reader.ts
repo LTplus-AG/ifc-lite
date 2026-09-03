@@ -426,7 +426,8 @@ function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
     const ifcSpatial = attrs.match(/IfcSpatialStructureElement="([^"]*)"/)?.[1];
     // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal`; accept either casing
     // (and the xs:boolean `1`/`0` forms a foreign tool may emit).
-    const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
+    // Trimmed: xs:boolean has whiteSpace=collapse, so " true " reads true.
+    const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1].trim();
 
     files.push({
       ifcProject: ifcProject || undefined,
@@ -477,7 +478,7 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
   // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
   // casing so a spec-correct 3.0 file's flag isn't silently read as false, and
   // the xs:boolean `1`/`0` forms alongside `true`/`false`.
-  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
+  const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1].trim();
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
@@ -510,7 +511,8 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
   for (const match of matches) {
     const guidMatch = match[0].match(/Guid="([^"]+)"/);
     // xs:boolean's lexical space is {true, false, 1, 0}; see isExternal above.
-    const isExternalMatch = match[0].match(/\bisExternal="([^"]+)"/);
+    // Trimmed because xs:boolean has whiteSpace=collapse: " true " is true.
+    const isExternalRaw = match[0].match(/\bisExternal="([^"]+)"/)?.[1].trim();
     const referencedDoc = extractElement(match[1], 'ReferencedDocument');
     const documentGuid = extractElement(match[1], 'DocumentGuid');
     const url = extractElement(match[1], 'Url');
@@ -519,7 +521,7 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
     if (referencedDoc || documentGuid || url) {
       refs.push({
         guid: guidMatch?.[1],
-        isExternal: isExternalMatch ? isExternalMatch[1] === 'true' || isExternalMatch[1] === '1' : undefined,
+        isExternal: isExternalRaw === undefined ? undefined : isExternalRaw === 'true' || isExternalRaw === '1',
         referencedDocument: referencedDoc,
         documentGuid,
         url,

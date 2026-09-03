@@ -286,16 +286,14 @@ pub(super) fn drain_and_log_csg_diagnostics(
     // never fires on a clean load.
     let total_unsupported_items: u64 = unsupported_items.values().sum();
     if total_unsupported_items > 0 {
-        let mut breakdown: Vec<(&String, &u64)> = unsupported_items.iter().collect();
-        breakdown.sort_by(|a, b| b.1.cmp(a.1));
-        let breakdown: Vec<String> =
-            breakdown.iter().map(|(ty, count)| format!("{ty}={count}")).collect();
+        // Shared with the native tracing warning so the two surfaces cannot drift.
+        let breakdown = ifc_lite_geometry::format_unsupported_breakdown(&unsupported_items);
         web_sys::console::warn_1(
             &format!(
                 "[IFC-LITE] {total_unsupported_items} representation item(s) dropped \
                  (unsupported type or failed geometry) — these elements are missing or \
                  incomplete: {}",
-                breakdown.join(", "),
+                breakdown,
             )
             .into(),
         );

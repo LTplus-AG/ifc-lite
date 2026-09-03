@@ -24,9 +24,10 @@ pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
-    aggregate_diagnostics, count_attributed_products, ClassificationStats, ClassificationSummary,
-    GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
-    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+    aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
+    ClassificationStats, ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic,
+    OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary, WorstHost,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
 pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};

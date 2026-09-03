@@ -30,10 +30,8 @@ pub(super) fn warn_if_dropped(unsupported_items: &FxHashMap<String, u64>) {
         return;
     }
     let total: u64 = unsupported_items.values().sum();
-    let mut breakdown: Vec<(&String, &u64)> = unsupported_items.iter().collect();
-    breakdown.sort_by(|a, b| b.1.cmp(a.1));
-    let breakdown =
-        breakdown.iter().map(|(ty, count)| format!("{ty}={count}")).collect::<Vec<_>>().join(" ");
+    // Shared with the wasm console warning so the two surfaces cannot drift.
+    let breakdown = ifc_lite_geometry::format_unsupported_breakdown(unsupported_items);
     tracing::warn!(
         total_unsupported_items = total,
         %breakdown,

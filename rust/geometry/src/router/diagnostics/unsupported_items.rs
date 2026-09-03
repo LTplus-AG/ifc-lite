@@ -30,8 +30,25 @@ impl GeometryRouter {
     }
 }
 
+/// The human-facing `type=count` breakdown, count-desc then name, as one line.
+///
+/// Shared so the wasm console warning and the native `tracing::warn!` cannot
+/// drift: they previously each re-derived this and had already diverged on the
+/// separator (comma vs space). Both also sorted on count alone, which leaves
+/// ties ordered by `FxHashMap` iteration — so two runs over the same model could
+/// print different strings. [`summarize`] breaks ties by name, so this is stable.
+/// The per-surface prefix text stays at the call site; only the list is shared.
+pub fn format_unsupported_breakdown(items: &FxHashMap<String, u64>) -> String {
+    let (_total, by_type) = summarize(items);
+    by_type
+        .iter()
+        .map(|rc| format!("{}={}", rc.reason, rc.count))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 /// Fold a drained unsupported-item map into `(total, by_type sorted desc)`.
-pub(super) fn summarize(items: &FxHashMap<String, u64>) -> (u64, Vec<ReasonCount>) {
+pub fn summarize(items: &FxHashMap<String, u64>) -> (u64, Vec<ReasonCount>) {
     let total = items.values().sum();
     let mut by_type: Vec<ReasonCount> = items
         .iter()

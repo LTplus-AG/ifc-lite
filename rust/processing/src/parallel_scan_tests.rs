@@ -473,41 +473,13 @@ fn malformed_record_truncates_and_is_reported_at_every_chunk_count() {
     );
 }
 
-/// The same fixture, but reported through [`ifc_lite_core::set_report_sink`]
-/// — the stitched flag must actually reach the diagnostic, not just the
-/// return value `with_chunks_counted` hands back for tests to inspect.
-#[test]
-fn malformed_record_reaches_the_report_sink_through_the_parallel_path() {
-    use std::sync::{Mutex, OnceLock};
-
-    static CAPTURED: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
-    fn capture(message: &str) {
-        CAPTURED
-            .get_or_init(|| Mutex::new(Vec::new()))
-            .lock()
-            .unwrap()
-            .push(message.to_string());
-    }
-    // `set_report_sink` is first-wins process-global — installing it here is
-    // only safe/meaningful if no other test in this binary raced it in
-    // first; skip rather than false-fail if that happens.
-    if !ifc_lite_core::set_report_sink(capture) {
-        eprintln!("skipping: another test already installed the report sink");
-        return;
-    }
-
-    let (content, _last_good_id, _malformed_id) = malformed_record_fixture();
-    let bytes = content.as_bytes();
-    let (_index, _refused, malformed) = with_chunks_counted(bytes, 8);
-    assert!(malformed, "fixture must trigger the stitched malformed flag");
-    ifc_lite_core::report_malformed_records(malformed);
-
-    let messages = CAPTURED.get().unwrap().lock().unwrap();
-    assert!(
-        messages.iter().any(|m| m.contains("stopped early")),
-        "the malformed-record report must have reached the installed sink: {messages:?}"
-    );
-}
+// The stitched malformed flag reaching the installed report sink THROUGH
+// `native::build`'s own call site (not a test calling `report_malformed_records`
+// on `with_chunks_counted`'s return value, which proves only that the flag is
+// computed, not that anything wires it to the sink in production) is pinned
+// in the integration test `rust/processing/tests/issue_3395_oversized_id_report.rs`
+// — it owns the report sink for its process, and needs a fixture over
+// `PARALLEL_MIN_BYTES` to reach `native::build`'s fork/join path at all.
 
 /// Fixture leg: byte-identical over real models when present. Sweeps chunk
 /// counts AND checks the public `build_entity_index_parallel` (thread-count

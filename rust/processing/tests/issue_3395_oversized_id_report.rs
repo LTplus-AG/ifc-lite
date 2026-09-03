@@ -24,6 +24,14 @@
 //! browser's pre-scanned load can only report what that function hands back:
 //! the parser worker receives narrowed `Uint32Array` columns and cannot
 //! recount a record that is not in them.
+//!
+//! #3695's malformed-record stop is pinned here too, on a fixture over
+//! `PARALLEL_MIN_BYTES` (8 MiB): only that size drives `build_entity_index_parallel`
+//! through `native::build`'s fork/join/stitch path, where the actual
+//! `report_malformed_records` call site lives. A unit test that calls
+//! `report_malformed_records` itself, on a `with_chunks_counted` return
+//! value, proves the flag is computed correctly but not that anything wires
+//! it to the sink in production.
 
 use std::sync::Mutex;
 
@@ -76,6 +84,27 @@ fn clean_file_with_oversized_shaped_string(pad_records: u32, repeats: usize) -> 
     }
     content.push_str("ENDSEC;\n");
     (content, inside_the_string)
+}
+
+/// A clean file over `PARALLEL_MIN_BYTES` (8 MiB) whose last record never
+/// closes its `'` string. Returns the bytes and the id of the last
+/// well-formed record before the stop.
+///
+/// `pad_records` must be large enough to clear 8 MiB on its own so the
+/// malformed record's chunk is reached by the fork/join path, not just the
+/// serial fallback `native::build` takes under the threshold.
+fn fixture_with_malformed_record_over_parallel_threshold(pad_records: u32) -> (String, u32) {
+    let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    for id in 1..=pad_records {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    let malformed_id = pad_records + 1;
+    content.push_str(&format!("#{malformed_id}=IFCWALL('never closes,$,$,$,$,$,$,$);\n"));
+    // A few records after the stop, to prove they are gone, not merely unread.
+    for id in malformed_id + 1..=malformed_id + 5 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    (content, pad_records)
 }
 
 /// The shard primitive the browser's SAB-backed pre-scanned load runs must
@@ -262,6 +291,45 @@ fn parallel_index_and_processor_scan_report_the_refusal() {
     assert!(
         reports[0].contains("skipped 1 record"),
         "and it must name the one real refusal: {}",
+        reports[0]
+    );
+
+    // ── The malformed-record stop (#3695), through the parallel path ──
+    // Over PARALLEL_MIN_BYTES so `native::build` actually forks/joins and
+    // stitches the chunks, rather than taking the `n <= 1` serial shortcut
+    // (which shares the sink but not `native::build`'s own report call).
+    // This is the only test in the workspace that drives
+    // `report_malformed_records` THROUGH `native.rs`'s call site rather than
+    // calling it directly: deleting that line must turn this assertion red.
+    let (malformed_big, last_good_id) =
+        fixture_with_malformed_record_over_parallel_threshold(210_000);
+    assert!(
+        malformed_big.len() > 8 * 1024 * 1024,
+        "fixture must clear PARALLEL_MIN_BYTES, got {} bytes",
+        malformed_big.len()
+    );
+    let index = ifc_lite_processing::build_entity_index_parallel(&malformed_big);
+    assert!(
+        index.contains_key(&last_good_id),
+        "the record before the malformed one must survive"
+    );
+    assert!(
+        !index.contains_key(&(last_good_id + 1)),
+        "the malformed record itself must not appear"
+    );
+    assert!(
+        !index.contains_key(&(last_good_id + 2)),
+        "every record after the malformed one must be gone too"
+    );
+    let reports = drain();
+    assert_eq!(
+        reports.len(),
+        1,
+        "exactly one report for the malformed stop, got {reports:?}"
+    );
+    assert!(
+        reports[0].contains("stopped early"),
+        "the report must name the malformed-record stop: {}",
         reports[0]
     );
 }

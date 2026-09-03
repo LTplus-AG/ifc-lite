@@ -77,21 +77,13 @@ export class HeadlessLikeBackend implements BimBackend {
   private dataStore: IfcDataStore;
   private modelName: string;
   private modelId: string;
-  /**
-   * Every spelling of the one model this backend answers for. One list, so the
-   * schedule assert, the `bim.mutate.*` guard and `bim.store.addEntity` cannot
-   * give different answers (#3764). The file name is NOT one of them: no other
-   * MCP site accepts a basename, and the tools address models by id.
-   */
+  /** Every model id this backend answers for, so the schedule assert, the
+   *  `bim.mutate.*` guard and `bim.store.addEntity` cannot differ (#3764). The
+   *  file basename is NOT one: no other MCP site accepts one. */
   private readonly acceptedModelIds: readonly string[];
-  /**
-   * The same reference check `bim.mutate.*` is gated on, exposed because the
-   * mutation TOOLS do not go through `bim.mutate.*`: they write into
-   * `getMutationView()` directly, so without this they took `express_id` on
-   * faith and answered "Queued" for an id the export then dropped (#3764).
-   *
-   * Returns `null` for a writable reference, otherwise the reason.
-   */
+  /** The reference check `bim.mutate.*` is gated on (`null` when writable,
+   *  else the reason), exposed because the mutation TOOLS write into
+   *  `getMutationView()` directly and need the same gate (#3764). */
   readonly checkEntityRef: EntityRefCheck;
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
@@ -117,9 +109,8 @@ export class HeadlessLikeBackend implements BimBackend {
     this.checkEntityRef = createEffectiveEntityCheck({
       acceptedModelIds: this.acceptedModelIds,
       // Both halves of the source index, the union every other "is it in the
-      // source model" site takes: on a huge file the parser keeps property
-      // atoms out of `byId` and in `deferredEntityIndex`, and they are
-      // exported like any other entity.
+      // source model" site takes: `deferPropertyAtomIndex` keeps property atoms
+      // out of `byId`, and they are exported like any other entity.
       hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
         || this.dataStore.deferredEntityIndex?.has(id) === true,
       overlay: () => this.mutationView,
@@ -262,10 +253,9 @@ export class HeadlessLikeBackend implements BimBackend {
     const get = () => this.getOrCreateStoreEditor();
     return {
       addEntity: (modelId, def) => {
-        // The ref this returns carries `modelId`, and `bim.mutate.*` refuses a
-        // ref whose model id this backend does not answer for. Echoing the
-        // caller's id back would mint a ref the very next write rejects, with
-        // the entity already created, so an unknown id is refused here (#3764).
+        // The ref carries `modelId`, and `bim.mutate.*` refuses one this
+        // backend does not answer for: echoing the caller's id back would mint
+        // a ref the next write rejects, entity already created (#3764).
         this.assertKnownModelId(modelId);
         const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
         return { modelId, expressId: ref.expressId };

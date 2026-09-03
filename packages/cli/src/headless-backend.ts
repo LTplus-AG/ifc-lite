@@ -163,14 +163,10 @@ export class HeadlessBackend implements BimBackend {
 
   private dataStore: IfcDataStore;
   private modelName: string;
-  /**
-   * Every spelling of the one model this backend answers for, written once.
-   *
-   * The schedule assert, the `bim.mutate.*` guard and the `bim.store.add*`
-   * ref-minting sites all have to give the SAME answer: a ref minted under an
-   * id the write guard then refuses is worse than either rule alone, because
-   * the entity is already created by the time the caller finds out (#3764).
-   */
+  /** Every spelling of the one model this backend answers for, written once:
+   *  the schedule assert, the `bim.mutate.*` guard and the `bim.store.add*`
+   *  ref-minting sites all have to give the SAME answer, or a ref is minted
+   *  under an id the very next write refuses (#3764). */
   private readonly acceptedModelIds: readonly string[];
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
@@ -499,9 +495,8 @@ export class HeadlessBackend implements BimBackend {
       createEffectiveEntityCheck({
         acceptedModelIds: this.acceptedModelIds,
         // Both halves of the source index, the union every other "is it in
-        // the source model" site takes: on a huge file the parser keeps
-        // property atoms out of `byId` and in `deferredEntityIndex`, and they
-        // are exported like any other entity.
+        // the source model" site takes: `deferPropertyAtomIndex` keeps property
+        // atoms out of `byId`, and they are exported like any other entity.
         hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
           || this.dataStore.deferredEntityIndex?.has(id) === true,
         overlay: () => this.mutationView,
@@ -539,10 +534,9 @@ export class HeadlessBackend implements BimBackend {
     const get = () => this.getOrCreateStoreEditor();
     const dataStore = () => this.dataStore;
     // Every `add*` mints an `EntityRef` carrying the model id it was called
-    // with, and `bim.mutate.*` refuses a ref whose model id this backend does
-    // not answer for. Checking here rather than echoing the caller's id back is
-    // what keeps the two from disagreeing: an unknown id is refused before the
-    // entity exists, instead of handing back a ref the next call rejects.
+    // with, and `bim.mutate.*` refuses one this backend does not answer for.
+    // Checking here, before the entity exists, is what keeps the two from
+    // disagreeing: no ref is handed back that the next call rejects.
     const assertModel = (modelId: string) => this.assertKnownModelId(modelId);
     return {
       addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {

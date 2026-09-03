@@ -18,6 +18,7 @@
 
 import { createHeadlessContext } from '../loader.js';
 import { printJson, fatal, hasFlag, firstNonBlank } from '../output.js';
+import { filterBuildingElements } from './stats-aggregation.js';
 
 interface Recipe {
   name: string;
@@ -169,7 +170,7 @@ export const RECIPES: Recipe[] = [
     description: 'Sum volumes across all elements',
     execute: (bim) => {
       let total = 0;
-      for (const e of bim.query().toArray()) {
+      for (const e of filterBuildingElements<any>(bim.query().toArray())) {
         total += getQuantity(bim, e.ref, ['GrossVolume', 'NetVolume']);
       }
       return { answer: `${round(total)} m3 total volume`, value: round(total), unit: 'm3' };
@@ -338,7 +339,7 @@ export const RECIPES: Recipe[] = [
         ? ['GrossSideArea', 'NetSideArea']
         : ['GrossArea', 'NetArea', 'Area', 'GrossSideArea'];
 
-      const entities = bim.query().byType(ifcType).toArray();
+      const entities = filterBuildingElements<any>(bim.query().byType(ifcType).toArray());
       let maxEntity: any = null;
       let maxValue = 0;
       for (const e of entities) {
@@ -375,7 +376,7 @@ export const RECIPES: Recipe[] = [
         ? ['GrossSideArea', 'NetSideArea']
         : ['GrossArea', 'NetArea', 'Area', 'GrossSideArea'];
 
-      const entities = bim.query().byType(ifcType).toArray();
+      const entities = filterBuildingElements<any>(bim.query().byType(ifcType).toArray());
       let minEntity: any = null;
       let minValue = Infinity;
       for (const e of entities) {

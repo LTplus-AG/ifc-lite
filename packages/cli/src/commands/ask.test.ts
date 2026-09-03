@@ -67,17 +67,74 @@ describe('ask recipes — blank/whitespace name falls through to "(unnamed)"', (
   });
 
   it('largest-element: blank element Name falls through to "(unnamed)" in the answer', () => {
-    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ ref: 1, name: '', globalId: 'G1' }] }) }), quantities: () => [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossSideArea', value: 5 }] }] };
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ ref: 1, type: 'IfcWall', name: '', globalId: 'G1' }] }) }), quantities: () => [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossSideArea', value: 5 }] }] };
     const result = recipe('largest-element').execute(bim, {}, ['largest wall', 'wall'] as unknown as RegExpMatchArray);
     expect(result.answer).toContain('"(unnamed)"');
     expect(result.answer).not.toContain('""');
   });
 
   it('smallest-element: blank element Name falls through to "(unnamed)" in the answer', () => {
-    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ ref: 1, name: '', globalId: 'G1' }] }) }), quantities: () => [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossSideArea', value: 5 }] }] };
+    const bim = { query: () => ({ byType: () => ({ toArray: () => [{ ref: 1, type: 'IfcWall', name: '', globalId: 'G1' }] }) }), quantities: () => [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossSideArea', value: 5 }] }] };
     const result = recipe('smallest-element').execute(bim, {}, ['smallest wall', 'wall'] as unknown as RegExpMatchArray);
     expect(result.answer).toContain('"(unnamed)"');
     expect(result.answer).not.toContain('""');
+  });
+});
+
+describe('ask recipes — volume answers are scoped to building elements', () => {
+  /**
+   * `ask` answers about building elements the way `stats` does. An
+   * IfcSpace or IfcAnnotation can carry a GrossVolume/NetVolume quantity
+   * (spaces routinely do, for room-volume reporting) but is not a building
+   * element, so it must not be summed into "total volume", "largest X" or
+   * "smallest X" answers.
+   */
+  it('total-volume: an IfcSpace volume is excluded from the sum', () => {
+    const bim = {
+      query: () => ({
+        toArray: () => [
+          { ref: 1, type: 'IfcWall', name: 'Wall 1' },
+          { ref: 2, type: 'IfcSpace', name: 'Room 1' },
+        ],
+      }),
+      quantities: (ref: number) =>
+        ref === 1
+          ? [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', value: 10 }] }]
+          : [{ name: 'Qto_SpaceBaseQuantities', quantities: [{ name: 'GrossVolume', value: 1000 }] }],
+    };
+    const result = recipe('total-volume').execute(bim, {});
+    expect(result.value).toBe(10);
+  });
+
+  it('total-volume: an IfcAnnotation volume is excluded from the sum', () => {
+    const bim = {
+      query: () => ({
+        toArray: () => [
+          { ref: 1, type: 'IfcWall', name: 'Wall 1' },
+          { ref: 2, type: 'IfcAnnotation', name: 'Note' },
+        ],
+      }),
+      quantities: (ref: number) =>
+        ref === 1
+          ? [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', value: 10 }] }]
+          : [{ name: 'Qto_Whatever', quantities: [{ name: 'GrossVolume', value: 1000 }] }],
+    };
+    const result = recipe('total-volume').execute(bim, {});
+    expect(result.value).toBe(10);
+  });
+
+  it('total-volume: building-element volumes are still summed (control)', () => {
+    const bim = {
+      query: () => ({
+        toArray: () => [
+          { ref: 1, type: 'IfcWall', name: 'Wall 1' },
+          { ref: 2, type: 'IfcSlab', name: 'Slab 1' },
+        ],
+      }),
+      quantities: () => [{ name: 'Qto_BaseQuantities', quantities: [{ name: 'GrossVolume', value: 5 }] }],
+    };
+    const result = recipe('total-volume').execute(bim, {});
+    expect(result.value).toBe(10);
   });
 });
 

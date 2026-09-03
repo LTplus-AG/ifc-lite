@@ -27,6 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { useSelectAssembly } from './properties/useSelectAssembly';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -152,7 +153,6 @@ export function PropertiesPanel() {
   // Relationship navigation: select a related entity (e.g. an IfcZone) to show
   // its attributes, or isolate a group's members in 3D (#1075).
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
-  const setSelectedEntityId = useViewerStore((s) => s.setSelectedEntityId);
   const setSelectedEntityIds = useViewerStore((s) => s.setSelectedEntityIds);
   const isolateEntities = useViewerStore((s) => s.isolateEntities);
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
@@ -761,21 +761,7 @@ export function PropertiesPanel() {
     }
   }, [selectedEntity, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
 
-  // Issue #3620: select the parent IfcElementAssembly from the badge below.
-  // NOT `handleSelectRelatedEntity` above -- that leaves `selectedEntityId`
-  // (the globalId this panel's own render gate requires) at whatever
-  // `setSelectedEntityIds([])` derives, which is null, so its target never
-  // becomes visible in THIS panel. `setSelectedEntityId` is the field every
-  // 3D-pick and search entry point sets first for exactly that reason.
-  const handleSelectAssembly = useCallback((expressId: number) => {
-    if (!selectedEntity) return;
-    setSelectedEntityIds([]);
-    setSelectedEntityId(toGlobalIdFromModels(models, selectedEntity.modelId, expressId));
-    setSelectedEntity({ modelId: selectedEntity.modelId, expressId });
-    if (cameraCallbacks.frameSelection) {
-      window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
-    }
-  }, [selectedEntity, models, setSelectedEntity, setSelectedEntityId, setSelectedEntityIds, cameraCallbacks]);
+  const handleSelectAssembly = useSelectAssembly();
 
   // Isolate + select all member objects of a group/zone (the IfcSpace /
   // IfcSpatialZone in an IfcZone — e.g. one dwelling, house number or fire

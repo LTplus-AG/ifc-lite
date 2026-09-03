@@ -139,6 +139,43 @@ describe('Properties panel -- "Part of Assembly" (#3620)', () => {
     assert.ok(container.textContent?.includes('IfcElementAssembly'), 'panel should show the assembly\'s IfcClass');
   });
 
+  // Kills the mutation `setSelectedEntityIds([...renderableParts, globalId])`
+  // -> `setSelectedEntityIds([])`. An IfcElementAssembly owns no mesh and the
+  // renderer highlights by direct mesh-id match, so clearing the part's
+  // highlight and selecting the bare assembly id lit nothing at all -- the
+  // camera framed the truss while the model went dark.
+  it('highlights the assembly\'s renderable parts, assembly id last so it stays primary', async () => {
+    await seed(60);
+    const partIds = [60 + ID_OFFSET, 61 + ID_OFFSET];
+    useViewerStore.setState({
+      cameraCallbacks: { resolveHighlightIds: () => partIds },
+    } as never);
+
+    const container = render(<PropertiesPanel />);
+    click(assemblyBadge(container)!);
+
+    const ids = [...useViewerStore.getState().selectedEntityIds];
+    assert.deepEqual(ids, [...partIds, 50 + ID_OFFSET],
+      'renderable parts must be highlighted, with the assembly id LAST (#1133)');
+  });
+
+  // Kills the mutation "drop the selectedEntitiesSet clear". Four consumers
+  // (MeasureQuantities, basketVisibleSet, useBCF, the LLM context builder)
+  // prefer that set over selectedEntity, so a stale one left standing makes
+  // them report the entities selected BEFORE this click.
+  it('clears a stale model-aware multi-selection', async () => {
+    await seed(60);
+    useViewerStore.setState({
+      selectedEntitiesSet: new Set([`${MODEL_ID}:60`, `${MODEL_ID}:61`]),
+    } as never);
+
+    const container = render(<PropertiesPanel />);
+    click(assemblyBadge(container)!);
+
+    assert.equal(useViewerStore.getState().selectedEntitiesSet.size, 0,
+      'the multi-select channel must not keep reporting the pre-click entities');
+  });
+
   it('control: an ordinary element in no assembly shows no badge, selection unaffected', async () => {
     await seed(42); // Wall A -- not in any IfcRelAggregates
     const container = render(<PropertiesPanel />);

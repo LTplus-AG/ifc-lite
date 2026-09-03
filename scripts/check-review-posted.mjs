@@ -105,6 +105,8 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 import { gh, GhError } from './lib/gh.mjs';
 // ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
 import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
+import { droppedVerdict, shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
+import { MARKER_RE, MARKER_SHAPE } from './lib/review-marker.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -140,12 +142,8 @@ const COMMENT_KEYS = ['issueComments', 'reviewComments', 'reviews'];
 const MAX_PAGES = 10;
 const PER_PAGE = 100;
 
-/**
- * The marker the reviewer writes at the END of a successful post. Anchored at
- * both ends and tolerant of surrounding whitespace only -- a loose pattern here
- * would let a contributor hand-write a passing marker into a PR comment.
- */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review|dropped)\s+count=(\d+)(?:\s+omitted=(\d+))?\s*-->/;
+export { shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
+export { MARKER_RE } from './lib/review-marker.mjs';
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -357,12 +355,7 @@ export function normaliseComments(payload) {
  *   are nonetheless `ok`: `nothing-to-review`, because nothing read the diff at
  *   all, and any marker carrying `omitted>0` (#3679), because nothing read the
  *   omitted files.
- *
- *   `dropped` is the one verdict where `ok` is FALSE. It says the reviewer ran,
- *   was retried, and every finding it produced was refused -- so nothing was
- *   posted, and treating it as covered would seal the head against ever being
- *   reviewed. It is also `terminal`: the lane job that wrote it has exited, so
- *   the poll below must not wait for a verdict that is never coming.
+
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -409,9 +402,7 @@ export function evaluate({ comments, cfg, headSha }) {
       '   Treated as absence rather than as a pass, on purpose.',
       '   REMEDY: ' +
         (sawUnparseable
-          ? 'fix the reviewer\'s marker writer; the expected form is ' +
-            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review|dropped count=<n>' +
-            '[ omitted=<n>] -->`.'
+          ? `fix the reviewer's marker writer; the expected form is ${MARKER_SHAPE}.`
           : 're-run the review job.'),
     );
     return { ok: false, full: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
@@ -432,37 +423,8 @@ export function evaluate({ comments, cfg, headSha }) {
     return { ok: false, full: false, verdict: 'STALE_REVIEW', lines };
   }
 
-  // `dropped` IS THE ONE VERDICT THAT IS NOT `ok` (#3775). Every other marker
-  // means the lane reached a conclusion about this head, so `covered` (which
-  // `main()` writes as `ok`) is true and claude-review.yml skips the head. This
-  // one means the opposite: the reviewer ran, was retried once, and NONE of its
-  // findings survived validation -- so nothing was posted and nothing vouches for
-  // the diff. Marking it covered would SEAL the head: the first all-dropped run
-  // would be the last, and a harness regression dropping every finding on every
-  // PR would go quiet instead of red.
-  //
-  // So it fails, and the failure is CLEARABLE, which is the difference from an
-  // unclearable red: the marker records what happened for a reader, the head
-  // stays uncovered, and the next run reviews it again for real.
-  if (match.verdict === 'dropped') {
-    lines.push(
-      `❌ FINDINGS_ALL_DROPPED: the reviewer reached ${headSha.slice(0, 9)} and every finding it ` +
-        'produced was refused by validation, so nothing was posted.',
-      '   The marker records that outcome so the run is not invisible; it is NOT a verdict on the',
-      '   diff. Nothing here was reviewed to a posted conclusion, so `full` and `covered` are both',
-      '   false: CodeRabbit must not stand down, and the lane is free to review this head again.',
-      '   The marker comment names which findings were dropped and why.',
-      '   REMEDY: re-run the review job. The lane already retries this once on its own, so a',
-      '   marker you can see means the retry was refused too -- if it recurs on the same head,',
-      '   read the named reasons rather than re-running indefinitely.',
-    );
-    // TERMINAL. Not `ok`, and yet there is nothing to wait for: the lane job that
-    // wrote this marker has EXITED, so no later read of this head can find
-    // anything else. Without the flag the poll waits on `!ok` alone and sits out
-    // its whole budget -- ~25 minutes and ~200 API calls against a 1,000/hour
-    // token shared with three other jobs -- to print a verdict the first read had.
-    return { ok: false, full: false, terminal: true, verdict: 'FINDINGS_ALL_DROPPED', escapeHatch: null, lines };
-  }
+  // #3775, and the one verdict that is not `ok`. See lib/review-dropped-verdict.mjs.
+  if (match.verdict === 'dropped') return droppedVerdict(headSha);
 
   // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
   // findings never reached the PR is precisely the shape #1679 describes: the
@@ -551,10 +513,6 @@ export function evaluate({ comments, cfg, headSha }) {
   // `llm-reviewed` would stand CodeRabbit down on exactly the files this gate
   // has just announced nobody vouches for, the gate contradicting itself in the
   // same breath. Raised by CodeRabbit on PR #3688.
-  //
-  // `dropped` is the one verdict that does NOT reach here -- it returns above,
-  // not `ok` -- because nothing was posted for it to re-post, so the argument
-  // below does not apply to it.
   //
   // BOTH STAY `ok`, and that is the correction to the first attempt at this.
   // Making a partial head's dedup key false fixed the stand-down and broke the
@@ -696,25 +654,6 @@ function prExemption(repo, pr, override) {
     exempt: headRepo.toLowerCase() !== repo.toLowerCase(),
     why: 'FORK',
   };
-}
-
-/**
- * Is another read of this head worth making?
- *
- * NOT simply `!ok`. Most failing verdicts describe an ABSENCE -- no marker yet,
- * findings not visible yet -- and the whole reason this loop exists is that the
- * reviewer takes minutes and no event re-fires this gate when its comment lands.
- * `FINDINGS_ALL_DROPPED` is the opposite shape: the lane reached a conclusion,
- * wrote it, and exited. Waiting on it spends the entire budget to reprint a
- * verdict the first read already had.
- *
- * A separate predicate rather than a longer `while`, because the loop cannot be
- * driven from a test without a network and this decision can.
- *
- * @param {{ok: boolean, terminal?: boolean}} result
- */
-export function shouldKeepPolling(result) {
-  return !result.ok && result.terminal !== true;
 }
 
 function main() {

@@ -56,7 +56,8 @@ jobs:
   review-posted:
     name: Review posted
     runs-on: ubuntu-latest
-    # ABOVE the gate's poll budget (1500s), deliberately, so a run that exhausts
+    # ABOVE the gate's poll budget (REVIEW_POSTED_POLL_SECONDS in
+    # scripts/review-lane-budget.mjs), deliberately, so a run that exhausts
     # the budget still gets to PRINT its verdict rather than being killed
     # mid-wait with no output and no `covered` value. The sibling gate states the
     # same rule at pr-review-signal.yml (a job cap comfortably over its own poll

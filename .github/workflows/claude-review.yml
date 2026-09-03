@@ -73,19 +73,13 @@ jobs:
         with:
           node-version: 22
 
-      # The runner has no repository checkout before actions/checkout.  Verify
-      # the shared producer/consumer invariant from the same PR ref whose lane
-      # it governs, before asking the reviewer to start its twenty-minute run.
-      - name: Verify review-lane time budget
-        run: node --input-type=module --eval 'import { assertReviewLaneBudget } from "./scripts/review-lane-budget.mjs"; assertReviewLaneBudget();'
-
       # NO SETTLE SLEEP. Correctness is already owned three times over:
       # `cancel-in-progress` allows one live run per PR, the head check below
       # exits a superseded run, and post-review re-reads the head immediately
       # before posting. A sleep would buy only occasional model-quota insurance,
       # and it is charged three ways -- runner minutes, time-to-green, and three
-      # EXTRA poll work on the sibling gate while this lane naps, against a
-      # repository-wide 1,000/hour API budget.
+      # EXTRA poll ticks on the sibling gate, which polls every 30s while this
+      # lane naps, against a repository-wide 1,000/hour API budget.
       #
       # If the head moved, the newer event owns it. Exit rather
       # than review a dead commit: a marker for a superseded head is one the gate

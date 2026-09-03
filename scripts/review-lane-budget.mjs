@@ -6,9 +6,15 @@
  * The Claude lane may run for twenty minutes. The review-posted gate must wait
  * longer than that, and its job must leave enough time to print a verdict.
  *
- * Keep this as executable policy rather than a test that inspects workflow
- * text: workflow layout is an implementation detail, while these are the
- * behaviour limits the two lanes promise one another.
+ * These are the behaviour limits the two lanes promise one another, kept as
+ * executable policy so the gate can DERIVE its `--timeout-seconds` from them.
+ *
+ * The two `timeout-minutes:` values are still copies, unavoidably: GitHub
+ * evaluates them before any step runs, so no workflow can read this module for
+ * them. `THE COPIES`, in scripts/check-review-posted.test.mjs, parses both out
+ * of the YAML and fails when either drifts from the constant here. That test is
+ * load-bearing -- deleting it silently reopens the 600s-vs-1200s race this
+ * module exists to close.
  */
 export const REVIEW_LANE_TIMEOUT_SECONDS = 20 * 60;
 export const REVIEW_POSTED_POLL_SECONDS = 25 * 60;

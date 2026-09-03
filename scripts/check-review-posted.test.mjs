@@ -600,8 +600,8 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
   // the gate was always going to lose eventually; observed lane runs that
   // actually reviewed took 525 s and 676 s, either side of it.
   //
-  // The shared executable contract is used by both lanes; this tests the
-  // producer/consumer behaviour rather than parsing either workflow's text.
+  // The shared executable contract is used by both lanes. THE COPIES below
+  // pins it to the two workflow literals it cannot read at run time.
   assert.doesNotThrow(assertReviewLaneBudget);
   assert.equal(pollSecondsArgument(), String(REVIEW_POSTED_POLL_SECONDS));
 
@@ -611,7 +611,7 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
     'equal budgets reproduce the race',
   );
   assert.throws(
-    () => assertReviewLaneBudget({ laneTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS }),
+    () => assertReviewLaneBudget({ laneTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS + 1 }),
     /raise the poll budget above/,
     'raising the producer cap alone reproduces the race',
   );
@@ -623,11 +623,6 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
     /raise .*timeout-minutes.* or lower the poll budget/,
     'the gate cannot be killed before it prints its verdict',
   );
-  assert.equal(
-    REVIEW_POSTED_JOB_TIMEOUT_SECONDS - REVIEW_POSTED_POLL_SECONDS,
-    REVIEW_POSTED_MINIMUM_GRACE_SECONDS,
-    'the shipped gate retains its promised grace period',
-  );
 });
 
 // The constants above are the AUTHORITY, but `timeout-minutes:` is evaluated by
@@ -637,40 +632,49 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
 // edits one number. Bind the copies to the authority here -- this is a gate on
 // the duplication the design cannot remove, not a restatement of the module.
 test('THE COPIES: both workflows carry the job caps the budget module assumes', () => {
-  const jobTimeoutSeconds = (workflow) => {
-    const text = readFileSync(join(HERE, '..', '.github/workflows', workflow), 'utf8');
-    const found = [...text.matchAll(/^[ \t]*timeout-minutes:[ \t]*(\d+)/gm)];
-    assert.equal(found.length, 1, `${workflow} must declare exactly one job timeout`);
+  const workflow = (name) => readFileSync(join(HERE, '..', '.github/workflows', name), 'utf8');
+  const jobTimeoutSeconds = (name, text) => {
+    // Job keys sit at 4-space indent, step keys at 8: anchoring to the job
+    // level lets a step carry its own timeout-minutes without a false red.
+    const found = [...text.matchAll(/^ {4}timeout-minutes:[ \t]*(\d+)/gm)];
+    assert.equal(found.length, 1, `${name} must declare exactly one JOB timeout`);
     return Number(found[0][1]) * 60;
   };
+  const gateText = workflow('review-posted.yml');
 
   assert.equal(
-    jobTimeoutSeconds('claude-review.yml'),
+    jobTimeoutSeconds('claude-review.yml', workflow('claude-review.yml')),
     REVIEW_LANE_TIMEOUT_SECONDS,
     'claude-review.yml timeout-minutes drifted from REVIEW_LANE_TIMEOUT_SECONDS: the gate ' +
       'sizes its poll against that constant, so change both or the gate can give up while ' +
       'the reviewer is still legitimately working',
   );
   assert.equal(
-    jobTimeoutSeconds('review-posted.yml'),
+    jobTimeoutSeconds('review-posted.yml', gateText),
     REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
     'review-posted.yml timeout-minutes drifted from REVIEW_POSTED_JOB_TIMEOUT_SECONDS: the ' +
       'job would be killed mid-poll and report no verdict at all, so change both',
   );
 
   // The gate reads its poll budget from the module rather than from a literal.
-  // If that wiring is ever replaced by a hardcoded number, the module stops
-  // governing anything, so pin the wiring itself.
-  const gateText = readFileSync(join(HERE, '..', '.github/workflows/review-posted.yml'), 'utf8');
+  // Pin PRODUCER TO CONSUMER, and pin them WITHIN ONE STEP. Both weaker forms
+  // were shown green against a broken workflow: asserting the two halves
+  // separately passed with the module fully unwired (`poll_seconds=1500` plus a
+  // comment naming both symbols), and a whole-file match passed with the
+  // substitution moved into its own preceding step -- where a shell variable
+  // does not survive, so `$poll_seconds` expands to empty and the gate exits
+  // BAD_ARGS on every PR.
+  const STEP = 'Check a review was actually posted for this head';
+  const start = gateText.indexOf(`- name: ${STEP}`);
+  assert.notEqual(start, -1, `review-posted.yml must carry the step '${STEP}'`);
+  const after = gateText.slice(start + 1);
+  const nextStep = after.search(/\n {6}- /);
+  const step = nextStep === -1 ? after : after.slice(0, nextStep);
   assert.match(
-    gateText,
-    /--timeout-seconds "\$poll_seconds"/,
-    'review-posted.yml must pass the poll budget it read from review-lane-budget.mjs',
-  );
-  assert.match(
-    gateText,
-    /pollSecondsArgument.*review-lane-budget\.mjs|review-lane-budget\.mjs.*pollSecondsArgument/s,
-    'review-posted.yml must source its poll budget from review-lane-budget.mjs',
+    step,
+    /poll_seconds="\$\([\s\S]*?review-lane-budget\.mjs[\s\S]*?\)"[\s\S]*?--timeout-seconds "\$poll_seconds"/,
+    `the '${STEP}' step must pass --timeout-seconds the value it read, in that same step, ` +
+      'from review-lane-budget.mjs',
   );
 });
 

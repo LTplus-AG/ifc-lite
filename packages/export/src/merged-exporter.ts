@@ -18,7 +18,12 @@ import {
 } from '@ifc-lite/parser';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
-import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities, filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
+import {
+  collectReferencedEntityIds,
+  getVisibleEntityIds,
+  collectStyleEntities,
+  filterHiddenRefsFromRelationshipLine,
+} from './reference-collector.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';

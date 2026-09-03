@@ -131,9 +131,10 @@ export function makeWorldPositionGetter(
   // worse still, because `resolveSourceSet` filters the full candidate set.
   const byId = new Map<number, GeometryResult['meshes'][number][]>();
   for (const mesh of geoResult?.meshes ?? []) {
-    const bucket = byId.get(mesh.expressId);
+    const id = mesh.expressId;
+    const bucket = byId.get(id);
     if (bucket) bucket.push(mesh);
-    else byId.set(mesh.expressId, [mesh]);
+    else byId.set(id, [mesh]);
   }
 
   // The INDEX is cached; the computed centre deliberately is not. Moving an

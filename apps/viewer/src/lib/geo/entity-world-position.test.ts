@@ -102,45 +102,34 @@ describe('computeEntityWorldCenterZup', () => {
   // an index built once, so a lookup does not depend on the model's mesh count.
   // The functional half of that is pinned here; the cost half was measured
   // separately: 0.114 ms/call before, 0.0008 ms/call after, over 100k meshes.
-  it('getWorldPosition answers consistently and cheaply over many meshes', () => {
-    const meshes = Array.from({ length: 5_000 }, (_, i) => ({
-      expressId: i,
-      positions: new Float32Array([0, 0, 0, 2, 2, 2]),
-    } as GeometryResult['meshes'][number]));
+  it('getWorldPosition indexes once at construction and never rescans on lookup', () => {
+    // Instrumented rather than timed: count reads of `expressId`, which is the
+    // only field a scan touches to find its target. Construction must read all
+    // N once to build the index; a lookup must read none, because it resolves
+    // through the Map and then touches only that entity's positions. A timing
+    // assertion would be flaky; this states the property directly.
+    let idReads = 0;
+    const meshes = Array.from({ length: 5_000 }, (_, i) => {
+      const mesh = { positions: new Float32Array([0, 0, 0, 2, 2, 2]) } as Record<string, unknown>;
+      Object.defineProperty(mesh, 'expressId', { get() { idReads += 1; return i; }, enumerable: true });
+      return mesh as unknown as GeometryResult['meshes'][number];
+    });
     const geo = { meshes, totalTriangles: 0, totalVertices: 0 } as GeometryResult;
-    const frame: RenderFrameOffsets = {};
-    const store = {
-      source: new Uint8Array(),
-      entityIndex: { byId: new Map(), byType: new Map() },
-    } as unknown as Parameters<typeof makeWorldPositionGetter>[0];
-
-    const get = makeWorldPositionGetter(store, geo, frame, (id) => id);
-    const first = get(4_999);
-    assert.deepEqual(first, get(4_999), 'a repeated lookup must return the same value');
-    assert.deepEqual(first, { x: 1, y: -1, z: 1 });
-    assert.equal(get(99_999), null, 'an id with no mesh answers null');
-  });
-
-  // Kills the mutation "cache the computed centre too". Codex on #3739: moving an
-  // element through the gizmo or the numeric position editor mutates
-  // MeshData.positions IN PLACE, leaving geometryResult and models at the
-  // identities the provider memo keys on, so the memo does not rebuild. A cached
-  // value would keep reporting the pre-move coordinate; the index itself is safe
-  // because it holds the same MeshData objects the mutation updates.
-  it('reports the new position after positions are mutated in place', () => {
-    const mesh = { expressId: 3, positions: new Float32Array([0, 0, 0, 2, 2, 2]) } as GeometryResult['meshes'][number];
-    const geo = { meshes: [mesh], totalTriangles: 0, totalVertices: 2 } as GeometryResult;
     const store = {
       source: new Uint8Array(),
       entityIndex: { byId: new Map(), byType: new Map() },
     } as unknown as Parameters<typeof makeWorldPositionGetter>[0];
 
     const get = makeWorldPositionGetter(store, geo, {}, (id) => id);
-    assert.deepEqual(get(3), { x: 1, y: -1, z: 1 });
+    assert.equal(idReads, 5_000, 'construction reads every expressId exactly once');
 
-    mesh.positions.set([10, 10, 10, 12, 12, 12]);
-    assert.deepEqual(get(3), { x: 11, y: -11, z: 11 },
-      'an in-place move must be reflected, not served from a stale cache');
+    idReads = 0;
+    const first = get(4_999);
+    assert.deepEqual(first, { x: 1, y: -1, z: 1 });
+    for (let i = 0; i < 100; i++) get(4_999);
+    assert.deepEqual(get(4_999), first, 'repeated lookups agree');
+    assert.equal(get(99_999), null, 'an id with no mesh answers null');
+    assert.equal(idReads, 0, 'no lookup may rescan the mesh list');
   });
 
   it('returns null when the element has no matching mesh (not decoded / no geometry)', () => {

@@ -754,6 +754,17 @@ test('sanitising is idempotent and leaves ordinary prose alone', () => {
   assert.equal(sanitizeLabel('  correctness   bug '), 'correctness bug');
 });
 
+test('sanitizeLabel caps at 60 chars, unlike sanitizePath which keeps a path whole', () => {
+  // sanitizePath has its own dedicated coverage for the opposite policy (kept
+  // WHOLE up to 500 chars, with a disambiguating digest past that); this is
+  // sanitizeLabel's own cap, previously asserted nowhere -- raising MAX_CLASS_CHARS
+  // from 60 to 61 left the whole suite green.
+  const label = 'x'.repeat(80);
+  const out = sanitizeLabel(label);
+  assert.equal(out.length, 60, `got length ${out.length}`);
+  assert.equal(out, 'x'.repeat(60));
+});
+
 // ===================================================== broken invocation / input
 
 test('an unknown flag that exists on Object.prototype is refused', () => {

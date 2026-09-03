@@ -145,13 +145,13 @@ describe('expandToGeometryBearingIds', () => {
         : { modelId: 'A', expressId: globalId },
     relationshipsFor: (modelId) =>
       modelId === 'A'
-        ? makeRelationships({ 10: [11, 12], 20: [21, 22] })
+        ? makeRelationships({ 10: [11, 12], 20: [21, 22], 30: [31, 32] })
         : modelId === 'B'
           ? makeRelationships({ 10: [11] })
           : undefined,
     toGlobalId: (modelId, expressId) => (modelId === 'B' ? expressId + 1000 : expressId),
   };
-  const meshed = new Set([11, 12, 14, 1011]);
+  const meshed = new Set([11, 12, 14, 1011, 31]);
   const hasGeometry = (id: number) => meshed.has(id);
 
   it('expands a geometry-less assembly into its meshed parts', () => {
@@ -197,6 +197,20 @@ describe('expandToGeometryBearingIds', () => {
   // to; there is nothing here to expand id 13 into.
   it('control: an entity with no aggregated descendants at all is still dropped', () => {
     assert.deepStrictEqual(expandToGeometryBearingIds([13], hasGeometry, access), []);
+  });
+
+  // Two-way control on the #3426 fallback itself: it must fire ONLY when
+  // NONE of an assembly's parts currently render, not whenever any part is
+  // unmeshed. Assembly 30 has two parts (31 meshed, 32 not) -- if the
+  // fallback fired on ANY partial gap instead of gating on `foundGeometry`,
+  // this would (wrongly) also pull in 32. A mutation that always appends the
+  // full descendant set regardless of `foundGeometry` passes every OTHER
+  // case in this file untouched (`push`'s dedup absorbs the redundant add
+  // when the full set and the meshed subset are identical), so this is the
+  // one case that actually distinguishes "gated on foundGeometry" from
+  // "always expand".
+  it('does NOT fall back to the unmeshed sibling when at least one part already renders', () => {
+    assert.deepStrictEqual(expandToGeometryBearingIds([30], hasGeometry, access), [31]);
   });
 
   // frameSelection and resolveHighlightIds live in a useImperativeHandle

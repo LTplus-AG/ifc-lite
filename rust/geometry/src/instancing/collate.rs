@@ -73,6 +73,17 @@ pub struct Collated {
     /// here — an occurrence going missing must not look like an occurrence that
     /// was never fed in. Zero on every ordinary model.
     pub dropped_placeholders: usize,
+    /// Groups the #3666 reconstruction (or same-shape) check refused, so their
+    /// materialized members sit in `flat_indices` instead of sharing a template.
+    ///
+    /// The refusal is not free where the caller has no flat path of its own:
+    /// `encode_refs` emits every `flat_indices` entry as a ONE-INSTANCE template,
+    /// so a refused group of N becomes N singleton templates in an IFNS shard —
+    /// O(unique-geometry) per-frame draws, which is the orbit-FPS regression the
+    /// WASM viewer's occurrence-count gate exists to prevent. A caller that HAS a
+    /// flat path should route these members to it (the WASM batch partition
+    /// does), and this count is how the case is observable at all.
+    pub verification_rejections: usize,
 }
 
 impl Collated {
@@ -260,6 +271,7 @@ pub fn collate_refs_verified_in(
         // because placing anything against untrustworthy geometry is the thing
         // being prevented.
         if !template.positions.iter().all(|p| p.is_finite()) {
+            out.verification_rejections += 1;
             fall_back(&mut out, meshes, rep, members, t_idx, None, rtc);
             continue;
         }
@@ -369,6 +381,7 @@ pub fn collate_refs_verified_in(
             continue;
         }
 
+        out.verification_rejections += 1;
         fall_back(&mut out, meshes, rep, members, t_idx, Some(&m_ref_inv), rtc);
     }
     out

@@ -15,6 +15,7 @@
 //! ineligible has nothing to instance against), and two copies is how they stop
 //! agreeing.
 
+use crate::zero_copy::{MeshCollection, MeshDataJs};
 use ifc_lite_processing::MeshData;
 use rustc_hash::FxHashMap;
 
@@ -51,6 +52,55 @@ const _: () = assert!(
     INSTANCE_MIN_OCCURRENCES >= 2,
     "a gate below 2 instances singletons: O(unique-geometry) draws per frame in place of the flat path's few consolidated ones"
 );
+
+/// Which of the collator's `flat_indices` are MATERIALIZED members that must go
+/// back to the flat `MeshCollection` instead of riding the shard.
+///
+/// `encode_refs` emits every `flat_indices` entry as a ONE-INSTANCE template. So
+/// once the #3666 reconstruction check started refusing groups, a refused group
+/// of N arrived in the shard as N singleton templates: O(unique-geometry) draws
+/// per frame in place of the flat path's few consolidated ones, which is exactly
+/// the orbit-FPS regression [`INSTANCE_MIN_OCCURRENCES`] exists to prevent -
+/// reintroduced through a different door, and by a safety check rather than by a
+/// tuning mistake. This path HAS a flat collection, so refused members belong in
+/// it.
+///
+/// `refs` is the materialized meshes first, then the pose-only #1623 don't-bake
+/// placeholders, so an index below `materialized` addresses a mesh that can be
+/// drawn flat. A placeholder never appears in `flat_indices` (it has no geometry
+/// to draw), but the bound is asserted rather than assumed.
+/// Returned SORTED: `flat_indices` is built per group in first-seen group order,
+/// not in mesh order, so the caller cannot binary-search it as it comes.
+pub(super) fn rejected_to_flat(flat_indices: &[usize], materialized: usize) -> Vec<usize> {
+    let mut out: Vec<usize> =
+        flat_indices.iter().copied().filter(|&i| i < materialized).collect();
+    out.sort_unstable();
+    out
+}
+
+/// Encode the instanced shard, handing the refused members BACK to the caller
+/// for its flat collection instead of letting them ride as singleton templates.
+///
+/// [`INSTANCE_MIN_OCCURRENCES`] is passed as `min_group`, so the collator never
+/// re-flattens a group that already cleared the count gate; its own safety nets
+/// still can (a singular placement, a shape mismatch, or since #3666 a failed
+/// reconstruction). Returns the shard bytes and the sorted materialized indices
+/// the caller must draw flat.
+///
+/// `rtc` must be the model's post-RTC reduction (the same offset the other
+/// `collate_*` call site passes), or a rotated occurrence's relative transform
+/// flies out to twice the georeference offset.
+pub(super) fn encode_shard_routing_refusals_back(
+    refs: &[ifc_lite_geometry::InstanceMeshRef],
+    materialized: usize,
+    rtc: [f64; 3],
+) -> (Vec<u8>, Vec<usize>) {
+    let mut collated =
+        ifc_lite_geometry::collate_refs(refs, INSTANCE_MIN_OCCURRENCES as usize, rtc);
+    let rejected = rejected_to_flat(&collated.flat_indices, materialized);
+    collated.flat_indices.clear();
+    (ifc_lite_geometry::encode_refs(refs, &collated), rejected)
+}
 
 /// May this mesh ride the instanced shard at all?
 ///
@@ -123,3 +173,20 @@ pub(super) fn style_colors_from_wire(
 #[cfg(test)]
 #[path = "batch_partition_tests.rs"]
 mod tests;
+
+/// Move the refused members into the flat collection, returning how many.
+///
+/// `rejected` is sorted (see [`rejected_to_flat`]), so membership is a binary
+/// search rather than a set allocation on a path that runs per batch.
+pub(super) fn take_back_rejected(
+    instanced: Vec<MeshData>,
+    rejected: &[usize],
+    collection: &mut MeshCollection,
+) -> usize {
+    for (i, mesh_data) in instanced.into_iter().enumerate() {
+        if rejected.binary_search(&i).is_ok() {
+            collection.add(MeshDataJs::from_mesh_data(mesh_data));
+        }
+    }
+    rejected.len()
+}

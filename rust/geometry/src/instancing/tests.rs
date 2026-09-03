@@ -415,6 +415,10 @@ fn same_count_rep_identity_collision_falls_back_to_flat() {
         "a same-count content collision must NOT form a template"
     );
     assert_eq!(collated.flat_indices.len(), 2, "the whole colliding group falls back flat, not just one member");
+    // The refusal is reported. It is not free: a caller with no flat path of
+    // its own (the IFNS encoder) turns each refused member into a ONE-INSTANCE
+    // template, which is the orbit-FPS shape the viewer's count gate prevents.
+    assert_eq!(collated.verification_rejections, 1, "the refused group is counted");
 }
 
 #[test]
@@ -1997,4 +2001,44 @@ fn a_non_finite_template_is_never_substituted_into_its_occurrences() {
         collated.dropped_placeholders, 2,
         "the placeholders it could not be trusted to supply are reported"
     );
+}
+
+#[test]
+fn a_refused_group_encodes_as_singleton_templates() {
+    // Pins the COST of a refusal for a caller with no flat path of its own:
+    // `encode_refs` emits every `flat_indices` entry as a ONE-INSTANCE template,
+    // so a refused group of N arrives in the shard as N singleton templates —
+    // O(unique-geometry) draws per frame, the orbit-FPS shape the WASM viewer's
+    // occurrence-count gate exists to prevent. The viewer's batch partition
+    // therefore routes refused members back to its flat MeshCollection
+    // (`rejected_to_flat`) instead of handing them to the encoder; this test is
+    // what makes that necessary rather than defensive.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = |rep| InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: rep,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &p), meta(606)),
+        mesh_from(baked(&CANON_COLLIDING, &p), meta(606)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.verification_rejections, 1);
+    assert_eq!(collated.flat_indices, vec![0, 1]);
+
+    let dec = decode_instanced(&encode_refs(&refs, &collated)).expect("decodes");
+    assert_eq!(dec.templates.len(), 2, "each refused member became its own template");
+    assert_eq!(dec.instances.len(), 2, "one instance each: no sharing at all");
+
+    // Clearing `flat_indices` (what the viewer does after taking them back) leaves
+    // a shard with nothing in it, which is the point: those meshes are drawn by
+    // the consolidated flat path instead.
+    let mut routed = collated;
+    routed.flat_indices.clear();
+    let dec = decode_instanced(&encode_refs(&refs, &routed)).expect("decodes");
+    assert_eq!(dec.templates.len(), 0);
 }

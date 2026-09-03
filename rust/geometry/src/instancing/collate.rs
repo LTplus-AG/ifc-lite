@@ -304,7 +304,15 @@ pub fn collate_refs_verified_in(
             // vertices before trusting the pairing. Scoped to the exact tier
             // (rigid-tier members can legitimately carry a different raw
             // vertex count than the template by design — see module docs).
-            if !pose_only && !member_is_rigid {
+            //
+            // Skip the template's own iteration (`i == t_idx`): `m_k` is
+            // `compose_world` of the SAME `instance_meta` that produced
+            // `m_ref`, so `rel = m_ref * m_ref_inv` is the template
+            // reconstructing itself under (its own) identity — a check that
+            // is trivially true by construction, not a guard against
+            // anything. Every other member still verifies against the
+            // template as before.
+            if !pose_only && !member_is_rigid && i != t_idx {
                 let verify_rel =
                     verify_conjugate.as_ref().map_or(rel, |(s, s_inv)| s * rel * s_inv);
                 if !verify_pairing(

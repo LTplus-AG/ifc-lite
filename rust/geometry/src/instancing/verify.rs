@@ -74,6 +74,33 @@ fn tolerance(mag: f64) -> f64 {
     (mag * ULP_FACTOR).max(ABS_FLOOR_M)
 }
 
+/// Reconstructed world-space error of vertex `v`: applies `rel` to the
+/// template's own baked world vertex (`template_origin + template_positions[v]`)
+/// and returns its distance from the occurrence's own baked world vertex
+/// (`target_origin + target_positions[v]`). This is the one reconstruction
+/// kernel both [`verify_pairing`] (the inline pass/fail gate) and
+/// [`verify_recomposition`] (the out-of-band diagnostic max-error scan) run —
+/// same math, different verdicts drawn from it — so a frame or precision fix
+/// here reaches both instead of needing to be made twice.
+fn reconstructed_vertex_error(
+    template_origin: [f64; 3],
+    template_positions: &[f32],
+    target_origin: [f64; 3],
+    target_positions: &[f32],
+    rel: &Matrix4<f64>,
+    v: usize,
+) -> f64 {
+    let tx = template_origin[0] + template_positions[v * 3] as f64;
+    let ty = template_origin[1] + template_positions[v * 3 + 1] as f64;
+    let tz = template_origin[2] + template_positions[v * 3 + 2] as f64;
+    let w = rel * Vector4::new(tx, ty, tz, 1.0);
+    let (rx, ry, rz) = (w.x / w.w, w.y / w.w, w.z / w.w);
+    let gx = target_origin[0] + target_positions[v * 3] as f64;
+    let gy = target_origin[1] + target_positions[v * 3 + 1] as f64;
+    let gz = target_origin[2] + target_positions[v * 3 + 2] as f64;
+    ((rx - gx).powi(2) + (ry - gy).powi(2) + (rz - gz).powi(2)).sqrt()
+}
+
 /// Verify a candidate template<->occurrence pairing: applying `rel` to every
 /// one of the template's own baked world vertices
 /// (`template_origin + template_positions`) must reproduce the occurrence's
@@ -93,15 +120,14 @@ pub(super) fn verify_pairing(
         return false;
     }
     for v in 0..n {
-        let tx = template_origin[0] + template_positions[v * 3] as f64;
-        let ty = template_origin[1] + template_positions[v * 3 + 1] as f64;
-        let tz = template_origin[2] + template_positions[v * 3 + 2] as f64;
-        let w = rel * Vector4::new(tx, ty, tz, 1.0);
-        let (rx, ry, rz) = (w.x / w.w, w.y / w.w, w.z / w.w);
-        let gx = target_origin[0] + target_positions[v * 3] as f64;
-        let gy = target_origin[1] + target_positions[v * 3 + 1] as f64;
-        let gz = target_origin[2] + target_positions[v * 3 + 2] as f64;
-        let err = ((rx - gx).powi(2) + (ry - gy).powi(2) + (rz - gz).powi(2)).sqrt();
+        let err = reconstructed_vertex_error(
+            template_origin,
+            template_positions,
+            target_origin,
+            target_positions,
+            rel,
+            v,
+        );
         // Scale by the STORED (origin-relative) position, not the absolute
         // world coordinate (target_origin + position): the f32 quantization
         // this tolerance accounts for lives in the stored position, and for
@@ -115,8 +141,7 @@ pub(super) fn verify_pairing(
         let mag = (target_positions[v * 3] as f64)
             .abs()
             .max((target_positions[v * 3 + 1] as f64).abs())
-            .max((target_positions[v * 3 + 2] as f64).abs())
-            .max(1.0);
+            .max((target_positions[v * 3 + 2] as f64).abs());
         // `err.is_nan()` must be checked explicitly: `err > tolerance(mag)`
         // is false whenever `err` is NaN (a NaN transform or position
         // propagates through the matrix multiply and subtraction into a NaN
@@ -134,9 +159,9 @@ pub(super) fn verify_pairing(
 /// world geometry, versus the occurrence's own baked world geometry. The
 /// template-relative transform operates on world coords, so each mesh's `origin`
 /// is folded in. Used by tests + as a runtime diagnostic — [`verify_pairing`]
-/// above is the same computation run inline, per candidate group, so a
-/// production caller never has to run this after the fact to find out its
-/// `Collated` shipped a mis-grouped occurrence.
+/// above runs the same [`reconstructed_vertex_error`] kernel inline, per
+/// candidate group, so a production caller never has to run this after the
+/// fact to find out its `Collated` shipped a mis-grouped occurrence.
 pub fn verify_recomposition(meshes: &[Mesh], collated: &Collated) -> f64 {
     let mut max_err = 0.0f64;
     for tmpl in &collated.templates {
@@ -155,17 +180,14 @@ pub fn verify_recomposition(meshes: &[Mesh], collated: &Collated) -> f64 {
                 continue;
             }
             for v in 0..n {
-                // Template world vertex = template.origin + position.
-                let tx = template.origin[0] + template.positions[v * 3] as f64;
-                let ty = template.origin[1] + template.positions[v * 3 + 1] as f64;
-                let tz = template.origin[2] + template.positions[v * 3 + 2] as f64;
-                let w = rel * nalgebra::Vector4::new(tx, ty, tz, 1.0);
-                let (rx, ry, rz) = (w.x / w.w, w.y / w.w, w.z / w.w);
-                // Target world vertex.
-                let gx = target.origin[0] + target.positions[v * 3] as f64;
-                let gy = target.origin[1] + target.positions[v * 3 + 1] as f64;
-                let gz = target.origin[2] + target.positions[v * 3 + 2] as f64;
-                let err = ((rx - gx).powi(2) + (ry - gy).powi(2) + (rz - gz).powi(2)).sqrt();
+                let err = reconstructed_vertex_error(
+                    template.origin,
+                    &template.positions,
+                    target.origin,
+                    &target.positions,
+                    &rel,
+                    v,
+                );
                 if err > max_err {
                     max_err = err;
                 }

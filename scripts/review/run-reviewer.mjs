@@ -73,6 +73,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+import { renderSiblingRow } from './sibling-row.mjs';
 
 export class RunReviewerError extends Error {
   constructor(reason, message) {
@@ -171,7 +172,6 @@ export function buildPrompt(rubric, input) {
     input.files.map((f) => `  ${promptSafePath(f.path)}`).join('\n');
 
   // THE CONTEXT PACK, fenced with the diff because it is the same trust class.
-  //
   // Base-tree excerpts are merged, reviewed text and lower risk than the head,
   // but they are fenced identically: the fence costs nothing and a carve-out is
   // a thing to get wrong later. Nothing here was fetched by the model -- the
@@ -190,7 +190,7 @@ export function buildPrompt(rubric, input) {
       '',
       fenceUntrusted(
         pack.siblings
-          .map((s2) => `--- SIBLING: ${s2.path}:${s2.line} (key ${JSON.stringify(s2.key)})\n${s2.text}`)
+          .map((s2) => renderSiblingRow(s2))
           .join('\n\n'),
       ),
     );

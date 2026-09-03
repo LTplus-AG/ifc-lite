@@ -1869,3 +1869,89 @@ fn a_far_template_and_a_near_sibling_still_instance() {
         "verification is order-dependent"
     );
 }
+
+/// A #1623 Phase 3 don't-bake placeholder: placement only, no geometry.
+fn placeholder_ref(meta: &InstanceMeta, entity_id: u32) -> InstanceMeshRef<'_> {
+    InstanceMeshRef {
+        positions: &[],
+        normals: &[],
+        indices: &[],
+        origin: [0.0; 3],
+        instance_meta: Some(meta),
+        entity_id,
+        color: [0.0; 4],
+        item_id: None,
+    }
+}
+
+#[test]
+fn a_below_min_group_group_still_places_its_placeholders() {
+    // Every refusal path has to preserve pose-only placeholders, not just the
+    // verification failure: they carry no geometry, so `drawable()` filters them
+    // out and the occurrence is gone. `min_group` is a sharing THRESHOLD (below
+    // it, sharing is not worth a template), not a licence to drop geometry, so a
+    // group whose placeholders would otherwise vanish is instanced regardless.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9191,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    let placeholder_meta = meta(&p1);
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&placeholder_meta, 1),
+    ];
+    // Two members, min_group 3: below the threshold.
+    let collated = collate_refs(&refs, 3, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.templates.len(), 1, "the placeholder still needs its template");
+    assert_eq!(
+        collated.templates[0].occurrences.iter().map(|o| o.mesh_index).collect::<Vec<_>>(),
+        vec![0, 1],
+    );
+    assert_eq!(collated.flat_indices, Vec::<usize>::new());
+    assert_eq!(collated.dropped_placeholders, 0);
+}
+
+#[test]
+fn a_singular_template_placement_counts_the_placeholders_it_cannot_place() {
+    // The one refusal that genuinely CANNOT place a placeholder: with no
+    // invertible template placement there is no `rel` to compute. The
+    // placeholders are lost either way — but they are counted, so "the
+    // occurrence is not in the output" is answerable from the result instead of
+    // being indistinguishable from "there was no such occurrence".
+    let singular = {
+        // A rank-deficient linear part: no inverse, so no `rel` for anyone.
+        let mut m = [0.0f64; 16];
+        m[15] = 1.0;
+        m
+    };
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let p2 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 5.0));
+    let meta = |t: [f64; 16]| InstanceMeta {
+        transform: t,
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9292,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &Matrix4::identity()), meta(singular));
+    let sibling = mesh_from(baked(&CANON, &p2), meta(mat_rm(&p2)));
+    let placeholder_meta = meta(mat_rm(&p1));
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&placeholder_meta, 1),
+        InstanceMeshRef::from_mesh(&sibling),
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.templates.len(), 0, "no invertible template placement");
+    assert_eq!(collated.flat_indices, vec![0, 2], "both materialized members still draw");
+    assert_eq!(
+        collated.dropped_placeholders, 1,
+        "the placeholder that could not be placed is reported, not silently gone"
+    );
+}

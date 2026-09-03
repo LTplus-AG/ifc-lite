@@ -65,6 +65,14 @@ pub struct Collated {
     /// Indices of input meshes rendered without instancing (non-instanceable,
     /// singleton groups, or groups that failed the geometry-shape guard).
     pub flat_indices: Vec<usize>,
+    /// Pose-only (#1623 don't-bake) occurrences that appear in NEITHER
+    /// `templates` nor `flat_indices`: they carry no geometry of their own, so
+    /// the flat path is not somewhere they can go, and their group had no
+    /// invertible template placement to instance them against. Nothing else in
+    /// this result records that they existed, which is exactly why the count is
+    /// here — an occurrence going missing must not look like an occurrence that
+    /// was never fed in. Zero on every ordinary model.
+    pub dropped_placeholders: usize,
 }
 
 impl Collated {
@@ -214,29 +222,12 @@ pub fn collate_refs_verified_in(
         }
     }
 
-    // Route only DRAWABLE members flat: an empty don't-bake placeholder carries no
-    // geometry, so it can never render flat — the caller (the wasm don't-bake
-    // finalize) recovers such occurrences flat itself before collation, so a group
-    // it feeds here always has a materialized template and passes the count gate.
-    // Filtering defends against ever silently emitting an empty flat singleton.
-    let drawable = |members: &[usize]| -> Vec<usize> {
-        members
-            .iter()
-            .copied()
-            .filter(|&i| !meshes[i].positions.is_empty())
-            .collect::<Vec<_>>()
-    };
-
     let mut out = Collated {
         flat_indices: flat,
         ..Collated::default()
     };
     for rep in order {
         let members = &groups[&rep];
-        if members.len() < min_group.max(1) {
-            out.flat_indices.extend(drawable(members));
-            continue;
-        }
         // Template = the first NON-EMPTY (materialized) member. Empty members are
         // don't-bake placeholders whose geometry IS this template.
         let Some(t_idx) = members
@@ -246,15 +237,28 @@ pub fn collate_refs_verified_in(
         else {
             // All-empty group: no template geometry to draw against. Unreachable by
             // the caller contract (a materialized template always accompanies its
-            // occurrences); drop rather than emit empty singletons that draw nothing.
+            // occurrences); there is nothing to emit, so report the loss instead of
+            // emitting empty singletons that draw nothing.
+            out.dropped_placeholders += members.len();
             continue;
         };
         let template = &meshes[t_idx];
         // Compose in the post-RTC frame so the georeferenced offset cancels
         // exactly regardless of each occurrence's rotation (see fn docs).
         let m_ref = to_post_rtc(compose_world(template.instance_meta.unwrap()), rtc);
-        let Some(m_ref_inv) = m_ref.try_inverse() else {
-            out.flat_indices.extend(drawable(members));
+        // Computed BEFORE the threshold check: every refusal below needs it to
+        // place the group's pose-only placeholders (see `fall_back`).
+        let m_ref_inv = m_ref.try_inverse();
+
+        if members.len() < min_group.max(1) {
+            fall_back(&mut out, meshes, rep, members, t_idx, m_ref_inv.as_ref(), rtc);
+            continue;
+        }
+        let Some(m_ref_inv) = m_ref_inv else {
+            // A singular template placement is the one refusal that genuinely
+            // cannot place a placeholder: there is no `rel` to compute for
+            // anyone. `fall_back` counts what it has to drop.
+            fall_back(&mut out, meshes, rep, members, t_idx, None, rtc);
             continue;
         };
 
@@ -352,47 +356,7 @@ pub fn collate_refs_verified_in(
             continue;
         }
 
-        // The group is not trustworthy, so no MATERIALIZED member is instanced —
-        // each draws itself, flat. But a #1623 Phase 3 don't-bake placeholder
-        // (empty geometry, placement only) has nothing of its own to draw: the
-        // template IS its geometry. Routing the whole group through `drawable`
-        // dropped those placeholders entirely — neither instanced nor drawn, the
-        // occurrence gone from the output with nothing reporting it.
-        //
-        // A placeholder is also not what failed: with no baked vertices it can
-        // never be verified in either direction, and the template is the only
-        // geometry it could ever be drawn with (before this check existed, that
-        // is exactly what it got). So keep the template and its placeholders
-        // instanced, and flatten only the members that can stand alone.
-        let pose_only: Vec<usize> = members
-            .iter()
-            .copied()
-            .filter(|&i| meshes[i].positions.is_empty())
-            .collect();
-        if pose_only.is_empty() {
-            out.flat_indices.extend(drawable(members));
-            continue;
-        }
-        // The template rides along as its own occurrence (identity `rel`, exactly
-        // as on the success path) rather than going flat, so its geometry is
-        // uploaded once and drawn once.
-        let kept: Vec<InstanceOccurrence> = std::iter::once(t_idx)
-            .chain(pose_only)
-            .map(|i| InstanceOccurrence {
-                mesh_index: i,
-                transform: mat4_to_row_major_f32(
-                    &(to_post_rtc(compose_world(meshes[i].instance_meta.unwrap()), rtc)
-                        * m_ref_inv),
-                ),
-            })
-            .collect();
-        out.templates.push(InstanceTemplate {
-            rep_identity: rep,
-            template_index: t_idx,
-            occurrences: kept,
-        });
-        out.flat_indices
-            .extend(drawable(members).into_iter().filter(|&i| i != t_idx));
+        fall_back(&mut out, meshes, rep, members, t_idx, Some(&m_ref_inv), rtc);
     }
     out
 }
@@ -415,6 +379,61 @@ pub fn collate_instances(meshes: &[Mesh], min_group: usize, rtc: [f64; 3]) -> Co
 // the module-size ratchet budget pushed it out once #3666's inline pairing
 // check landed here; it belongs next to that check's shared math anyway.
 pub use super::verify::verify_recomposition;
+
+/// What a group that will NOT be instanced as a whole leaves behind.
+///
+/// Every materialized member draws itself, flat. But a #1623 Phase 3 don't-bake
+/// placeholder (empty geometry, placement only) has nothing of its own to draw:
+/// the template IS its geometry. Routing the whole group flat dropped those
+/// placeholders entirely — neither instanced nor drawn, the occurrence gone from
+/// the output with nothing reporting it.
+///
+/// A placeholder is also never the member that failed: with no baked vertices it
+/// can never be verified in either direction, and the template is the only
+/// geometry it could ever be drawn with (before the #3666 check existed, that is
+/// exactly what it got). So when `place_with` (the template's inverse placement)
+/// exists, the template and its placeholders stay instanced and only the
+/// stand-alone members are flattened. When it does not, nothing can be placed,
+/// and the placeholders are counted rather than quietly discarded.
+fn fall_back(
+    out: &mut Collated,
+    meshes: &[InstanceMeshRef],
+    rep: u128,
+    members: &[usize],
+    t_idx: usize,
+    place_with: Option<&Matrix4<f64>>,
+    rtc: [f64; 3],
+) {
+    let pose_only: Vec<usize> = members
+        .iter()
+        .copied()
+        .filter(|&i| meshes[i].positions.is_empty())
+        .collect();
+    let materialized = || members.iter().copied().filter(|&i| !meshes[i].positions.is_empty());
+    let Some(m_ref_inv) = place_with.filter(|_| !pose_only.is_empty()) else {
+        out.dropped_placeholders += pose_only.len();
+        out.flat_indices.extend(materialized());
+        return;
+    };
+    // The template rides along as its own occurrence (identity `rel`, exactly as
+    // on the success path) rather than going flat, so its geometry is uploaded
+    // once and drawn once.
+    let kept: Vec<InstanceOccurrence> = std::iter::once(t_idx)
+        .chain(pose_only)
+        .map(|i| InstanceOccurrence {
+            mesh_index: i,
+            transform: mat4_to_row_major_f32(
+                &(to_post_rtc(compose_world(meshes[i].instance_meta.unwrap()), rtc) * m_ref_inv),
+            ),
+        })
+        .collect();
+    out.templates.push(InstanceTemplate {
+        rep_identity: rep,
+        template_index: t_idx,
+        occurrences: kept,
+    });
+    out.flat_indices.extend(materialized().filter(|&i| i != t_idx));
+}
 
 /// Every mesh that carries geometry, rendered flat: the whole-input fallback when
 /// collation is refused before any group is examined. Empty (pose-only) members

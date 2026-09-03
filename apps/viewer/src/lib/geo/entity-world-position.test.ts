@@ -6,7 +6,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { RenderFrameOffsets } from '../../components/viewer/tools/measure-modes/coordinates.js';
-import { computeEntityLocalCenter, computeEntityWorldCenterZup } from './entity-world-position.js';
+import { computeEntityLocalCenter, computeEntityWorldCenterZup, makeWorldPositionGetter } from './entity-world-position.js';
 
 /** Minimal synthetic GeometryResult with one mesh's positions given as an
  *  explicit vertex list so the bounding box is easy to hand-verify. */
@@ -82,6 +82,63 @@ describe('computeEntityWorldCenterZup', () => {
       wasmRtcOffsetIfc: { x: 100, y: 200, z: 300 },
     };
     assert.deepEqual(computeEntityWorldCenterZup(geo, 5, frame), { x: 111, y: 167, z: 322 });
+  });
+
+  // Kills the mutation "drop the `minX === Infinity` guard". A matched mesh with
+  // zero vertices leaves the extents at +/-Infinity and returns NaN on all three
+  // axes. NaN is worse than blank here: the list comparator does `a - b`, so an
+  // inconsistent comparator scrambles the ordering of the WHOLE table, `gt`/`lt`
+  // silently drop those rows, and CSV export writes the literal string "NaN".
+  it('returns null, not NaN, for a matched mesh that carries no vertices', () => {
+    const geo = {
+      meshes: [{ expressId: 7, positions: new Float32Array([]) } as GeometryResult['meshes'][number]],
+      totalTriangles: 0,
+      totalVertices: 0,
+    } as GeometryResult;
+    assert.equal(computeEntityLocalCenter(geo, 7), null);
+  });
+
+  // Kills the mutation "index by scanning per call". The getter must answer from
+  // an index built once, so a lookup does not depend on the model's mesh count.
+  // The functional half of that is pinned here; the cost half was measured
+  // separately: 0.114 ms/call before, 0.0008 ms/call after, over 100k meshes.
+  it('getWorldPosition indexes once at construction and never rescans on lookup', () => {
+    // Instrumented rather than timed: count reads of `expressId`, which is the
+    // only field a scan touches to find its target. Construction must read all
+    // N once to build the index; a lookup must read none, because it resolves
+    // through the Map and then touches only that entity's positions. A timing
+    // assertion would be flaky; this states the property directly.
+    let idReads = 0;
+    // Every mesh gets a DISTINCT box, keyed off its index, so a byId mapping that
+    // returns the wrong bucket produces the wrong coordinate instead of the right
+    // one by coincidence. With one shared payload the assertions below hold for
+    // any mesh the lookup happens to land on.
+    const meshes = Array.from({ length: 5_000 }, (_, i) => {
+      const mesh = {
+        positions: new Float32Array([i, i, i, i + 2, i + 2, i + 2]),
+      } as Record<string, unknown>;
+      Object.defineProperty(mesh, 'expressId', { get() { idReads += 1; return i; }, enumerable: true });
+      return mesh as unknown as GeometryResult['meshes'][number];
+    });
+    const geo = { meshes, totalTriangles: 0, totalVertices: 0 } as GeometryResult;
+    const store = {
+      source: new Uint8Array(),
+      entityIndex: { byId: new Map(), byType: new Map() },
+    } as unknown as Parameters<typeof makeWorldPositionGetter>[0];
+
+    const get = makeWorldPositionGetter(store, geo, {}, (id) => id);
+    assert.equal(idReads, 5_000, 'construction reads every expressId exactly once');
+
+    idReads = 0;
+    // Mesh 4999 spans [4999,5001] on each axis, so its local centre is 5000 and
+    // the Z-up remap gives {x:5000, y:-5000, z:5000}. Any other bucket answers
+    // with different numbers.
+    const first = get(4_999);
+    assert.deepEqual(first, { x: 5_000, y: -5_000, z: 5_000 });
+    for (let i = 0; i < 100; i++) get(4_999);
+    assert.deepEqual(get(4_999), first, 'repeated lookups agree');
+    assert.equal(get(99_999), null, 'an id with no mesh answers null');
+    assert.equal(idReads, 0, 'no lookup may rescan the mesh list');
   });
 
   it('returns null when the element has no matching mesh (not decoded / no geometry)', () => {

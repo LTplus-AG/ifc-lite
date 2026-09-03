@@ -101,12 +101,11 @@ export interface Skip {
   lines: number;
   // True when scanning must stop: an unterminated comment or string literal
   // runs to EOF, so there is nothing left to find. Matches the Rust scanner
-  // returning None.
+  // returning None. Which lexical form it was is not tracked here — every
+  // caller (entity-scanner.ts included) reports `stop` with a single generic
+  // "record had a string literal or comment that never closed" message, so
+  // there is nothing downstream that reads a per-kind distinction.
   stop: boolean;
-  // Which lexical form was unterminated, when `stop` is true. Lets a caller
-  // that wants to report this (entity-scanner.ts) say what actually broke,
-  // rather than a generic "scan stopped early".
-  unterminated?: 'string' | 'comment';
 }
 
 // Skip a string literal or a comment starting at `pos`. Callers test
@@ -116,13 +115,13 @@ export function skipLexical(buf: Uint8Array, pos: number, len: number): Skip {
   if (buf[pos] === QUOTE) {
     const next = skipStringLiteral(buf, pos, len);
     if (next < 0) {
-      return { next: len, lines: countNewlines(buf, pos, len), stop: true, unterminated: 'string' };
+      return { next: len, lines: countNewlines(buf, pos, len), stop: true };
     }
     return { next, lines: countNewlines(buf, pos, next), stop: false };
   }
   const next = skipComment(buf, pos, len);
   if (next < 0) {
-    return { next: len, lines: countNewlines(buf, pos, len), stop: true, unterminated: 'comment' };
+    return { next: len, lines: countNewlines(buf, pos, len), stop: true };
   }
   return { next, lines: countNewlines(buf, pos, next), stop: false };
 }

@@ -162,6 +162,7 @@ test('no body means no reservation, so siblings and evidence get the whole pack'
   // description, which would shrink every pack to pay for an absent section.
   const withNone = packUnderPressure(null);
   assert.equal(withNone.body, null);
+  // @source-text-assertion-ok asserts on the pack's own truncation list, a runtime value, not on any file's text
   assert.ok(!withNone.truncated.includes('PR description'));
 });
 

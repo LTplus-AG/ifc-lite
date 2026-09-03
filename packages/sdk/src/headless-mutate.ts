@@ -38,6 +38,11 @@ export function propertyValueTypeOf(value: unknown): PropertyValueType {
 /**
  * Build a `MutateBackendMethods` over a lazily-created mutation view.
  *
+ * `entityExists` answers whether an express id is in the model, so `setProperty`
+ * can refuse a phantom write. It is a required parameter rather than an
+ * optional one: a backend that forgot to pass it would otherwise go back to
+ * accepting phantom writes with nothing to say it had.
+ *
  * `getView` is a thunk rather than a view because both backends create the
  * overlay on first write: it carries the on-demand property and quantity
  * extractors that give the overlay a base to merge against, and building it
@@ -52,9 +57,21 @@ export function propertyValueTypeOf(value: unknown): PropertyValueType {
  */
 export function createHeadlessMutateAdapter(
   getView: () => MutablePropertyView,
+  entityExists: (expressId: number) => boolean,
 ): MutateBackendMethods {
   return {
     setProperty(ref: EntityRef, psetName: string, propName: string, value: string | number | boolean): void {
+      // A write to an id the model does not hold used to be accepted in
+      // silence: `MutablePropertyView` created an overlay pset for it, the
+      // query overlay echoed that pset back as if the edit had landed, and the
+      // exporter — which only ever visits entities the store knows — dropped it
+      // with no diagnostic. Nowhere in that round trip could the caller see the
+      // mistake, so the write site is where it has to be reported (#3764).
+      if (!entityExists(ref.expressId)) {
+        throw new Error(
+          `setProperty: no entity #${ref.expressId} in model '${ref.modelId}' — the write would be silently dropped on export`,
+        );
+      }
       getView().setProperty(ref.expressId, psetName, propName, value, propertyValueTypeOf(value));
     },
     setAttribute(ref: EntityRef, attrName: string, value: string): void {

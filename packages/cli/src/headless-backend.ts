@@ -466,7 +466,10 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createMutateAdapter(): MutateBackendMethods {
-    return createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+    return createHeadlessMutateAdapter(
+      () => this.getOrCreateMutationView(),
+      expressId => this.dataStore.entityIndex.byId.has(expressId),
+    );
   }
 
   /**

@@ -33,7 +33,10 @@ describe('createHeadlessMutateAdapter', () => {
 
   it('forwards each call to the view with the expressId and a classified type', () => {
     const view = fakeView();
-    const mutate = createHeadlessMutateAdapter(() => view as unknown as MutablePropertyView);
+    const mutate = createHeadlessMutateAdapter(
+      () => view as unknown as MutablePropertyView,
+      id => id === 42,
+    );
     const ref = { modelId: 'default', expressId: 42 };
 
     mutate.setProperty(ref, 'Pset_FireRating', 'FireCompartmentation', true);
@@ -49,7 +52,7 @@ describe('createHeadlessMutateAdapter', () => {
 
   it('does not build the view until something is written', () => {
     const getView = vi.fn(() => fakeView() as unknown as MutablePropertyView);
-    const mutate = createHeadlessMutateAdapter(getView);
+    const mutate = createHeadlessMutateAdapter(getView, () => true);
 
     mutate.batchBegin('label');
     mutate.batchEnd('label');
@@ -59,5 +62,21 @@ describe('createHeadlessMutateAdapter', () => {
 
     mutate.setAttribute({ modelId: 'default', expressId: 1 }, 'Name', 'x');
     expect(getView).toHaveBeenCalledTimes(1);
+  });
+  // #3760's sibling: a write to an id that is not in the model used to be
+  // accepted, echoed back by `bim.properties()`, and then silently dropped by
+  // the exporter — the caller had no point in the round trip where the mistake
+  // showed up.
+  it('throws on setProperty for an entity that is not in the model', () => {
+    const view = fakeView();
+    const mutate = createHeadlessMutateAdapter(
+      () => view as unknown as MutablePropertyView,
+      id => id === 42,
+    );
+
+    expect(() => mutate.setProperty(
+      { modelId: 'default', expressId: 999999 }, 'Pset_Bogus', 'Foo', 'bar',
+    )).toThrow(/999999/);
+    expect(view.setProperty).not.toHaveBeenCalled();
   });
 });

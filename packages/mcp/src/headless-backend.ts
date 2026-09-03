@@ -97,7 +97,10 @@ export class HeadlessLikeBackend implements BimBackend {
       flyTo() {}, setSection() {}, getSection() { return null; },
       setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
     };
-    this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+    this.mutate = createHeadlessMutateAdapter(
+      () => this.getOrCreateMutationView(),
+      expressId => this.dataStore.entityIndex.byId.has(expressId),
+    );
     // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
     // against the shared StoreEditor, so the new entities land in the overlay
     // this backend's export adapter already reads.

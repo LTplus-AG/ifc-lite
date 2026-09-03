@@ -523,7 +523,7 @@ export const SETTLE_HOLD_SECONDS = 60;
  */
 function laneSignature(lanes) {
   return lanes
-    .map((l) => `${String(l.name ?? '')} ${String(l.state ?? '').toLowerCase()}`)
+    .map((l) => `${String(l.name ?? '')}\x00${String(l.state ?? '').toLowerCase()}`)
     .sort()
     .join('');
 }

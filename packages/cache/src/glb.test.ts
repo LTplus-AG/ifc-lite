@@ -151,22 +151,47 @@ function buildGLB(materials: Array<[number, number, number, number]>): Uint8Arra
 describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip', () => {
   // Regression for #688: GLB importer hardcoded grey, silently dropping the
   // exporter's per-mesh material colours on re-import.
-  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color', () => {
-    const colors: Array<[number, number, number, number]> = [
-      [0.8, 0.2, 0.2, 1.0],
-      [0.1, 0.6, 0.3, 0.5],
-      [0.0, 0.0, 1.0, 1.0],
+  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color (linear → sRGB)', () => {
+    // glTF baseColorFactor is linear-light; the mesh colour pipeline is sRGB, so
+    // the reader encodes R/G/B back to sRGB (inverse of the exporter's
+    // srgb_to_linear) and leaves alpha untouched.
+    //
+    // Expected sRGB values are IEC 61966-2-1 constants computed independently
+    // (12.92·l for l ≤ 0.0031308, else 1.055·l^(1/2.4) − 0.055) — NOT via the
+    // linearToSrgb helper the reader itself calls, so the oracle cannot share
+    // a defect with the code under test.
+    const cases: Array<{
+      linear: [number, number, number, number];
+      srgb: [number, number, number];
+    }> = [
+      { linear: [0.8, 0.2, 0.2, 1.0], srgb: [0.906332, 0.484529, 0.484529] },
+      { linear: [0.1, 0.6, 0.3, 0.5], srgb: [0.34919, 0.797738, 0.583831] },
+      { linear: [0.0, 0.0, 1.0, 1.0], srgb: [0.0, 0.0, 1.0] },
     ];
-    const meshes = loadGLBToMeshData(buildGLB(colors));
+    const meshes = loadGLBToMeshData(buildGLB(cases.map((c) => c.linear)));
     expect(meshes).toHaveLength(3);
-    for (let i = 0; i < colors.length; i++) {
-      const expected = colors[i];
+    for (let i = 0; i < cases.length; i++) {
+      const { linear, srgb } = cases[i];
       const actual = meshes[i].color;
-      expect(actual[0]).toBeCloseTo(expected[0]);
-      expect(actual[1]).toBeCloseTo(expected[1]);
-      expect(actual[2]).toBeCloseTo(expected[2]);
-      expect(actual[3]).toBeCloseTo(expected[3]);
+      expect(actual[0]).toBeCloseTo(srgb[0], 4);
+      expect(actual[1]).toBeCloseTo(srgb[1], 4);
+      expect(actual[2]).toBeCloseTo(srgb[2], 4);
+      expect(actual[3]).toBeCloseTo(linear[3]); // alpha is not colour-managed
     }
+  });
+
+  it('decodes a known linear baseColorFactor to its sRGB value (0.2140 → ~0.5), alpha unchanged', () => {
+    // A mid-grey sRGB 0.5 decodes to linear ≈ 0.2140; the writer stores that in
+    // baseColorFactor, and the reader must return it to ~0.5. On the pre-fix
+    // reader (raw passthrough) color[0] would be 0.2140, not ~0.5 — RED before,
+    // GREEN after.
+    const meshes = loadGLBToMeshData(buildGLB([[0.2140, 0.2140, 0.2140, 0.5]]));
+    expect(meshes).toHaveLength(1);
+    const c = meshes[0].color;
+    expect(c[0]).toBeCloseTo(0.5, 3);
+    expect(c[1]).toBeCloseTo(0.5, 3);
+    expect(c[2]).toBeCloseTo(0.5, 3);
+    expect(c[3]).toBe(0.5); // alpha passes through untouched
   });
 
   it('falls back to default grey when a primitive has no material', () => {
@@ -357,8 +382,10 @@ describe('parseGLB — SharedArrayBuffer-backed input', () => {
     shared.set(glb);
     const meshes = loadGLBToMeshData(shared);
     expect(meshes).toHaveLength(1);
-    expect(meshes[0].color[0]).toBeCloseTo(0.2);
-    expect(meshes[0].color[2]).toBeCloseTo(0.6);
+    // Independent IEC 61966-2-1 constants (not linearToSrgb — see the
+    // colour round-trip test above): sRGB(0.2) = 0.484529, sRGB(0.6) = 0.797738.
+    expect(meshes[0].color[0]).toBeCloseTo(0.484529, 4);
+    expect(meshes[0].color[2]).toBeCloseTo(0.797738, 4);
   });
 });
 

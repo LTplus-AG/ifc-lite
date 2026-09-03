@@ -37,6 +37,7 @@
  */
 
 import type { SymbolicRepresentationCollection } from '@ifc-lite/wasm';
+import { isOverlayOwnerType } from './overlay-channels.js';
 
 /**
  * Which owner types survive the flatten.
@@ -188,14 +189,10 @@ export function createEmptyFlatSymbolic(): FlatSymbolic {
   };
 }
 
-/** The only two owner types the annotation overlay renders (issue #862). */
-function isOverlayType(ifcType: string): boolean {
-  return ifcType === 'IfcAnnotation' || ifcType === 'IfcGridAxis';
-}
-
-/** Keep-predicate for a {@link SymbolicFilterMode}. */
+/** Keep-predicate for a {@link SymbolicFilterMode}. The owner types the
+ *  overlay renders are defined once, in `overlay-channels.ts`. */
 function keepPredicate(mode: SymbolicFilterMode): (ifcType: string) => boolean {
-  return mode === 'all' ? () => true : isOverlayType;
+  return mode === 'all' ? () => true : isOverlayOwnerType;
 }
 
 /** Intern an IFC type name into the shared table, returning its index. */

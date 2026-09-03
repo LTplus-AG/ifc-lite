@@ -150,11 +150,64 @@ const GROUP_MODEL = step(`
 #77= IFCWALL('${guid('WD2')}',$,'D2',$,$,#40,$,'tD2',$);
 `);
 
+// -- Fixture 4: count_entities/materials_list group_by material -----------
+//
+// #72's material resolves to an `IfcMaterialList` (two named materials, no
+// list-level Name — MaterialData carries the names under `.materials[]`,
+// not `.name`) and #73's to a plain `IfcMaterial` (name at the top level).
+// A consumer that only reads `mat?.name` sees #72 as materialless.
+const MATERIAL_MODEL = step(`
+#41= IFCBUILDINGSTOREY('${guid('STOR')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);
+#72= IFCWALL('${guid('WALL')}',$,'Listed Wall',$,$,#40,$,'tagL',$);
+#73= IFCWALL('${guid('WALP')}',$,'Plain Wall',$,$,#40,$,'tagP',$);
+#80= IFCMATERIAL('Steel',$,$);
+#81= IFCMATERIAL('Concrete',$,$);
+#82= IFCMATERIALLIST((#80,#81));
+#83= IFCMATERIAL('Timber',$,$);
+#90= IFCRELASSOCIATESMATERIAL('${guid('RAM1')}',$,$,$,(#72),#82);
+#91= IFCRELASSOCIATESMATERIAL('${guid('RAM2')}',$,$,$,(#73),#83);
+`);
+
+// -- Fixture 5: materials_list — blank/whitespace-only material names -----
+//
+// Regression coverage for #3515's own bug: `materialFallbackName` chains
+// candidates with `??`, which only falls through on null/undefined. A
+// present-but-blank `Name` (`IFCMATERIAL('',$,$)`) or a whitespace-only one
+// short-circuits the chain and is returned verbatim instead of falling
+// through to the next candidate / the caller's `(unnamed)` placeholder.
+//
+// #172 -> IfcMaterialList([blank material]): the only candidate is blank.
+// #173 -> IfcMaterialList([whitespace-only material]): only candidate is
+//   whitespace, a real shape per issue #3714 (E57 whitespace-only attrs).
+// #174 -> IfcMaterialList([genuine name]): must still return unchanged.
+// #175 -> IfcMaterialList(()): empty list — control, already correct on
+//   main; must not regress to something other than the caller's fallback.
+const MATERIAL_BLANK_MODEL = step(`
+#141= IFCBUILDINGSTOREY('${guid('STRB')}',$,'L01',$,$,#40,$,$,.ELEMENT.,0.);
+#172= IFCWALL('${guid('WBLK')}',$,'Blank Wall',$,$,#40,$,'tagBlank',$);
+#173= IFCWALL('${guid('WWSP')}',$,'Whitespace Wall',$,$,#40,$,'tagWs',$);
+#174= IFCWALL('${guid('WGEN')}',$,'Genuine Wall',$,$,#40,$,'tagGen',$);
+#175= IFCWALL('${guid('WEMP')}',$,'Empty List Wall',$,$,#40,$,'tagEmpty',$);
+#180= IFCMATERIAL('',$,$);
+#181= IFCMATERIAL('   ',$,$);
+#182= IFCMATERIAL('Concrete',$,$);
+#190= IFCMATERIALLIST((#180));
+#191= IFCMATERIALLIST((#181));
+#192= IFCMATERIALLIST((#182));
+#193= IFCMATERIALLIST(());
+#200= IFCRELASSOCIATESMATERIAL('${guid('RAM3')}',$,$,$,(#172),#190);
+#201= IFCRELASSOCIATESMATERIAL('${guid('RAM4')}',$,$,$,(#173),#191);
+#202= IFCRELASSOCIATESMATERIAL('${guid('RAM5')}',$,$,$,(#174),#192);
+#203= IFCRELASSOCIATESMATERIAL('${guid('RAM6')}',$,$,$,(#175),#193);
+`);
+
 beforeAll(async () => {
   tmp = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-query-'));
   await load('shape', SHAPE_MODEL);
   await load('many', MANY_MODEL);
   await load('group', GROUP_MODEL);
+  await load('material', MATERIAL_MODEL);
+  await load('materialBlank', MATERIAL_BLANK_MODEL);
 }, 60_000);
 
 afterAll(async () => {
@@ -287,6 +340,68 @@ describe('count_entities → group_by sort', () => {
     const out = await call('count_entities', { model_id: 'group', type: 'IfcWall', group_by: 'storey' });
     const structured = out.structuredContent as { total: number };
     expect(structured.total).toBe(8);
+  });
+});
+
+describe('count_entities → group_by material', () => {
+  it('groups an IfcMaterialList entity under its material names, not "(no material)"', async () => {
+    const out = await call('count_entities', { model_id: 'material', type: 'IfcWall', group_by: 'material' });
+    const groups = (out.structuredContent as { groups: Array<{ key: string; count: number }> }).groups;
+    const keys = groups.map((g) => g.key);
+    expect(keys).not.toContain('(no material)');
+    expect(keys).toContain('Timber');
+    // The list-material wall must land under one of its real material names,
+    // not be silently dropped into the "no material" bucket.
+    expect(keys.some((k) => k === 'Steel' || k === 'Concrete')).toBe(true);
+  });
+});
+
+describe('materials_list', () => {
+  it('reports the IfcMaterialList wall under a real material name, not "(unnamed)"', async () => {
+    const out = await call('materials_list', { model_id: 'material' });
+    const materials = (out.structuredContent as { materials: Array<{ name: string; count: number }> }).materials;
+    const names = materials.map((m) => m.name);
+    expect(names).not.toContain('(unnamed)');
+    expect(names).toContain('Timber');
+    expect(names.some((n) => n === 'Steel' || n === 'Concrete')).toBe(true);
+  });
+});
+
+describe('materials_list → blank/whitespace material names (regression: #3515 blank fallthrough)', () => {
+  it('a blank Name ("") falls through to "(unnamed)", not an empty-string entry', async () => {
+    const out = await call('materials_list', { model_id: 'materialBlank' });
+    const materials = (out.structuredContent as { materials: Array<{ name: string; count: number }> }).materials;
+    const names = materials.map((m) => m.name);
+    expect(names).not.toContain('');
+  });
+
+  it('a whitespace-only Name ("   ") falls through to "(unnamed)", not a whitespace entry', async () => {
+    const out = await call('materials_list', { model_id: 'materialBlank' });
+    const materials = (out.structuredContent as { materials: Array<{ name: string; count: number }> }).materials;
+    const names = materials.map((m) => m.name);
+    expect(names).not.toContain('   ');
+  });
+
+  it('a genuine name is still returned unchanged', async () => {
+    const out = await call('materials_list', { model_id: 'materialBlank' });
+    const materials = (out.structuredContent as { materials: Array<{ name: string; count: number }> }).materials;
+    const names = materials.map((m) => m.name);
+    expect(names).toContain('Concrete');
+  });
+
+  it('an empty IfcMaterialList still yields "(unnamed)" (control — already correct on main)', async () => {
+    const out = await call('materials_list', { model_id: 'materialBlank' });
+    const materials = (out.structuredContent as { materials: Array<{ name: string; count: number }> }).materials;
+    const unnamedCount = materials.find((m) => m.name === '(unnamed)')?.count ?? 0;
+    // Blank, whitespace, and truly-empty-list walls all collapse into the
+    // same "(unnamed)" bucket: 3 of the 4 fixture walls.
+    expect(unnamedCount).toBe(3);
+  });
+
+  it('the text summary never renders a blank bullet line', async () => {
+    const out = await call('materials_list', { model_id: 'materialBlank' });
+    const summary = text(out);
+    expect(summary).not.toMatch(/•\s*—/);
   });
 });
 

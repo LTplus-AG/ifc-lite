@@ -10,6 +10,7 @@
 import type { StringTable } from './string-table.js';
 import { PropertyValueType } from './types.js';
 import type { StringTable as StringTableType } from './string-table.js';
+import { groupPropertySetsByInstance } from './group-property-sets.js';
 
 export interface PropertySet {
   name: string;
@@ -218,22 +219,15 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:
 
     getForEntity: (id) => {
       const rowIndices = entityIndex.get(id) || [];
-      const psets = new Map<string, PropertySet>();
-      for (const idx of rowIndices) {
-        const psetNameStr = strings.get(psetName[idx]);
-        const psetGlobalIdStr = strings.get(psetGlobalId[idx]);
-        if (!psets.has(psetNameStr)) {
-          psets.set(psetNameStr, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });
-        }
-        const pset = psets.get(psetNameStr)!;
-        const propNameStr = strings.get(propName[idx]);
-        pset.properties.push({
-          name: propNameStr,
-          type: propType[idx],
-          value: getPropertyValue(table, idx, strings),
-        });
-      }
-      return Array.from(psets.values());
+      return groupPropertySetsByInstance(
+        rowIndices,
+        psetName,
+        psetGlobalId,
+        propName,
+        propType,
+        strings,
+        (idx) => getPropertyValue(table, idx, strings),
+      );
     },
 
     getPropertyValue: (id, pset, prop) => {

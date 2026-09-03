@@ -81,14 +81,66 @@
  * clean when scripts/ was brought in, so nothing is hidden today -- but it is
  * the same shape of hole, and `tools/**` would also need a row in the frontend
  * CI path filter before a gate there could run.
+ *
+ * IDENTITY, NOT JUST COUNT (#3664): ALLOWLIST_CEILING is a count, and a count
+ * cannot tell "one row removed, a different row added" apart from "nothing
+ * changed" -- both leave allowlist.size exactly where it was. A commit that
+ * deletes file A's row and adds file B's row in the same change satisfies
+ * every check above (B is allowlisted before the "new file" scan runs, A's
+ * removal keeps staleAllowlistEntries empty, and the size still equals the
+ * ceiling), so B is grandfathered without the ceiling ever moving -- the
+ * exact #2531 hole the ceiling was built to close, reopened one level up.
+ *
+ * The fix compares the CURRENT allowlist against the allowlist at this
+ * branch's merge base with origin/main (falling back to local main), the same
+ * derivation scripts/check-module-size.mjs uses for its own scoping. A path in
+ * the current set that the base set did not have is a NEW exemption, full
+ * stop -- identity is the file's path in the allowlist, the same key every
+ * other check in this file already uses to correlate a row with a file.
+ *
+ * A new exemption is only accepted if ALLOWLIST_CEILING rose by at least as
+ * many entries as are new, relative to what the constant read at the base
+ * commit. That reuses the exact-size-match rule below rather than fighting
+ * it: that rule already forces `ceiling(current) - ceiling(base)` to equal
+ * `new.length - removed.length` whenever both commits were themselves
+ * passing, so the only way to satisfy both a same-size swap's arithmetic
+ * (new=1, removed=1, forced ceiling delta 0) and this rule (delta >= 1) is to
+ * not do the swap in one change. Splitting it into a removal (ceiling down)
+ * and, separately, an addition (ceiling up, with its own review and reason)
+ * is not a workaround -- it is the fix: each genuinely new exemption gets its
+ * own reviewable ceiling-raise line instead of hiding behind a coincidental
+ * offset.
+ *
+ * MIGRATION: none. No row in the allowlist needs a new field -- the identity
+ * key is derived entirely from git history, not stored in the file, so every
+ * existing row is already correctly "identified" by the base revision it was
+ * already sitting in.
+ *
+ * DEGRADATION: a merge base is not always resolvable (a shallow local clone,
+ * a worktree with no `origin` remote). When it is not, this check prints a
+ * WARNING and falls back to the count-only checks above -- it does not error
+ * and does not skip silently, because a gate that no-ops when it cannot find
+ * a base is the failure mode this repo keeps hitting.
  */
 
 import { readdirSync, readFileSync, existsSync, statSync } from 'node:fs';
 import { join, dirname, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { analyze } from './source-text-assertion-detect.mjs';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
+// --root overrides the scanned tree; only the test harness passes it, to point
+// this UNMODIFIED script at a synthetic git repository. Production CI and
+// local runs take the default -- the real repo root -- exactly as before.
+function parseArgs(argv) {
+  const out = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--root') out.root = argv[++i];
+  }
+  return out;
+}
+const args = parseArgs(process.argv.slice(2));
+const ROOT = args.root ? join(args.root) : join(dirname(fileURLToPath(import.meta.url)), '..');
 // TWO independent barriers hid the same tree, and fixing either alone changes
 // nothing: `scripts/` was never walked, AND `.mjs` was not a test extension.
 // Adding the extension first made this guard report the newly-allowlisted files
@@ -175,14 +227,52 @@ function walk(dir, found = []) {
   return found;
 }
 
-function loadAllowlist() {
-  if (!existsSync(ALLOWLIST_PATH)) return new Set();
+function parseAllowlistText(text) {
   return new Set(
-    readFileSync(ALLOWLIST_PATH, 'utf8')
+    text
       .split('\n')
       .map((line) => line.replace(/#.*$/, '').trim())
       .filter(Boolean)
   );
+}
+
+function loadAllowlist() {
+  if (!existsSync(ALLOWLIST_PATH)) return new Set();
+  return parseAllowlistText(readFileSync(ALLOWLIST_PATH, 'utf8'));
+}
+
+/**
+ * This worktree's merge base with origin/main, falling back to local main --
+ * identical derivation to scripts/check-module-size.mjs's `changedFiles()`,
+ * reused rather than reinvented so the two gates degrade the same way under
+ * the same shallow-clone and no-remote conditions.
+ *
+ * Returns `{ ref, sha }` or `null` if neither ref has a merge base with HEAD
+ * (no `origin` remote, or a clone too shallow to share history).
+ */
+function resolveBase(root) {
+  const git = (...argv) => spawnSync('git', ['-C', root, ...argv], { encoding: 'utf8' });
+  for (const ref of ['origin/main', 'main']) {
+    const merged = git('merge-base', ref, 'HEAD');
+    const sha = merged.stdout.trim();
+    if (merged.status === 0 && sha !== '') {
+      if (ref !== 'origin/main') {
+        console.warn(
+          `check-source-text-assertions: WARNING -- no merge base with origin/main; fell back ` +
+            `to local '${ref}' (${sha.slice(0, 9)}) for the allowlist identity check. If that ` +
+            `ref is stale, a swapped-in violation could go undetected this run.`
+        );
+      }
+      return { ref, sha };
+    }
+  }
+  return null;
+}
+
+/** `git show <sha>:<relPath>` from `root`, or `null` if the blob is unreadable. */
+function readBlobAt(root, sha, relPath) {
+  const res = spawnSync('git', ['-C', root, 'show', `${sha}:${relPath}`], { encoding: 'utf8' });
+  return res.status === 0 ? res.stdout : null;
 }
 
 const allowlist = loadAllowlist();
@@ -293,11 +383,64 @@ ratcheting.
 `);
 }
 
+// Identity check (#3664): a count cannot tell a swap from an untouched file.
+// Compare the current allowlist against the one at this branch's merge base
+// -- any path present now that was absent there is a NEW exemption, whether
+// or not it was offset by a removal elsewhere in the same change.
+let identitySuffix = '';
+const base = resolveBase(ROOT);
+if (base === null) {
+  console.warn(
+    'check-source-text-assertions: WARNING -- could not resolve a merge base with ' +
+      "origin/main or main; the allowlist identity check is SKIPPED this run. A same-size " +
+      'swap (one entry removed, a different one added) would not be caught. Fetch ' +
+      'origin/main and re-run for full coverage.'
+  );
+} else {
+  const baseAllowlistText = readBlobAt(ROOT, base.sha, 'scripts/source-text-assertion-allowlist.txt');
+  const baseGateText = readBlobAt(ROOT, base.sha, 'scripts/check-source-text-assertions.mjs');
+  if (baseAllowlistText === null || baseGateText === null) {
+    console.warn(
+      `check-source-text-assertions: WARNING -- could not read the allowlist or this gate at ` +
+        `${base.ref} (${base.sha.slice(0, 9)}); the identity check is SKIPPED this run.`
+    );
+  } else {
+    const baseAllowlist = parseAllowlistText(baseAllowlistText);
+    const baseCeilingMatch = baseGateText.match(/const ALLOWLIST_CEILING = (\d+);/);
+    const newEntries = [...allowlist].filter((p) => !baseAllowlist.has(p)).sort();
+    if (newEntries.length > 0) {
+      const baseCeiling = baseCeilingMatch ? Number(baseCeilingMatch[1]) : null;
+      const ceilingRaise = baseCeiling === null ? -Infinity : ALLOWLIST_CEILING - baseCeiling;
+      if (ceilingRaise < newEntries.length) {
+        failed = true;
+        console.error(
+          `\nNew allowlist entries not present at the merge base (${base.ref} @ ${base.sha.slice(0, 9)}):\n`
+        );
+        for (const entry of newEntries) console.error(`  ${entry}`);
+        console.error(`
+An entry that was not in the allowlist at the merge base is a NEW exemption
+from this gate, even when another row was removed in the same change and the
+total count did not move. Counting only the size lets a swap grandfather a
+brand-new violation invisibly (#3664).
+
+Land the removal and the addition as separate changes: lower ALLOWLIST_CEILING
+when you remove a row, and raise it -- by itself, with its own reason --
+when you add one. A change that does both at once cannot pass this check by
+construction, because the ceiling cannot simultaneously satisfy "must equal
+the new total exactly" and "must have room for ${newEntries.length} new
+${newEntries.length === 1 ? 'entry' : 'entries'}" unless nothing was removed alongside it.
+`);
+      }
+    }
+    identitySuffix = `, identity-checked vs ${base.ref} (${base.sha.slice(0, 9)})`;
+  }
+}
+
 if (failed) process.exit(1);
 
 for (const site of markedSites) {
   console.log(`  marked @source-text-assertion-ok: ${site}`);
 }
 console.log(
-  `check-source-text-assertions: OK (${allowlist.size} allowlisted, ${markedSites.length} marked, 0 new)`
+  `check-source-text-assertions: OK (${allowlist.size} allowlisted, ${markedSites.length} marked, 0 new)${identitySuffix}`
 );

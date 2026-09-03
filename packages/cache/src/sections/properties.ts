@@ -6,8 +6,8 @@
  * PropertyTable serialization
  */
 
-import type { PropertyTable, PropertySet, PropertyValue, StringTable } from '@ifc-lite/data';
-import { comparePropertyValues, PropertyValueType } from '@ifc-lite/data';
+import type { PropertyTable, PropertyValue, StringTable } from '@ifc-lite/data';
+import { comparePropertyValues, groupPropertySetsByInstance, PropertyValueType } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
 
 /**
@@ -154,31 +154,15 @@ export function readProperties(reader: BufferReader, strings: StringTable): Prop
 
     getForEntity: (id) => {
       const rowIndices = entityIndex.get(id) || [];
-      const psets = new Map<string, PropertySet>();
-
-      for (const idx of rowIndices) {
-        const psetNameStr = strings.get(psetName[idx]);
-        const psetGlobalIdStr = strings.get(psetGlobalId[idx]);
-
-        if (!psets.has(psetNameStr)) {
-          psets.set(psetNameStr, {
-            name: psetNameStr,
-            globalId: psetGlobalIdStr,
-            properties: [],
-          });
-        }
-
-        const pset = psets.get(psetNameStr)!;
-        const propNameStr = strings.get(propName[idx]);
-
-        pset.properties.push({
-          name: propNameStr,
-          type: propType[idx],
-          value: getPropertyValue(idx),
-        });
-      }
-
-      return Array.from(psets.values());
+      return groupPropertySetsByInstance(
+        rowIndices,
+        psetName,
+        psetGlobalId,
+        propName,
+        propType,
+        strings,
+        (idx) => getPropertyValue(idx),
+      );
     },
 
     getPropertyValue: (id, pset, prop) => {

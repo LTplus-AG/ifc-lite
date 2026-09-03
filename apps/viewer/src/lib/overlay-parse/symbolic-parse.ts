@@ -31,6 +31,7 @@ import {
   createEmptyFlatSymbolic,
   type FlatSymbolic,
 } from './symbolic-flat.js';
+import { isGridChannelOwnerType } from './overlay-channels.js';
 import {
   circleToSegments,
   createEmptyParseResult,
@@ -176,7 +177,7 @@ export function buildParseResult(
     // Issue #862: IfcGridAxis primitives land in a parallel bucket
     // collection so the renderer can section-clip + visibility-toggle
     // them independently of IfcAnnotation (text/dimension symbols).
-    const storeyMap = ifcType === 'IfcGridAxis' ? result.gridByStorey : result.byStorey;
+    const storeyMap = isGridChannelOwnerType(ifcType) ? result.gridByStorey : result.byStorey;
     let bucket = storeyMap.get(key);
     if (!bucket) {
       bucket = {
@@ -197,7 +198,7 @@ export function buildParseResult(
     const ifcType = typeNames[flat.polyType[i]];
     const expressId = flat.polyOwner[i];
     const bucket = ensureBucket(expressId, flat.polyWorldY[i], ifcType);
-    const looseTarget = ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+    const looseTarget = isGridChannelOwnerType(ifcType) ? result.gridLoose : result.loose;
     const out = bucket ? bucket.lines : looseTarget;
     // The points are consumed synchronously here (not stored), so a subarray
     // view over the shared buffer is enough — no copy needed.
@@ -211,7 +212,7 @@ export function buildParseResult(
     const ifcType = typeNames[flat.circleType[i]];
     const expressId = flat.circleOwner[i];
     const bucket = ensureBucket(expressId, flat.circleWorldY[i], ifcType);
-    const looseTarget = ifcType === 'IfcGridAxis' ? result.gridLoose : result.loose;
+    const looseTarget = isGridChannelOwnerType(ifcType) ? result.gridLoose : result.loose;
     const out = bucket ? bucket.lines : looseTarget;
     circleToSegments(
       flat.circleCenterX[i],
@@ -254,7 +255,7 @@ export function buildParseResult(
     // a little air between rows so descenders don't kiss the next cap.
     const lineSpacing = perLineHeight * 1.2;
     const bucket = ensureBucket(expressId, flat.textWorldY[i], ifcType);
-    const looseTextTarget = ifcType === 'IfcGridAxis' ? result.gridLooseTexts : result.looseTexts;
+    const looseTextTarget = isGridChannelOwnerType(ifcType) ? result.gridLooseTexts : result.looseTexts;
     // All annotation text — grid bubbles, dimension callouts, leader labels —
     // billboards to the camera so it stays legible in any view orientation
     // (top-down, eye-level, oblique). The shader rebuilds the quad in the
@@ -321,7 +322,7 @@ export function buildParseResult(
         : undefined,
     };
     const bucket = ensureBucket(expressId, flat.fillWorldY[i], ifcType);
-    const looseFillTarget = ifcType === 'IfcGridAxis' ? result.gridLooseFills : result.looseFills;
+    const looseFillTarget = isGridChannelOwnerType(ifcType) ? result.gridLooseFills : result.looseFills;
     (bucket ? bucket.fills : looseFillTarget).push(f2d);
   }
 

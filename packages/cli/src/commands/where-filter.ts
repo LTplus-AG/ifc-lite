@@ -8,7 +8,13 @@
  * rest of that file is the command's flag handling and output shaping.
  */
 
-import { findAllPropertiesInSets, findAllQuantitiesInSets } from '@ifc-lite/query';
+import {
+  findAllPropertiesInSets,
+  findAllQuantitiesInSets,
+  compareFilterValue,
+  normalizeBooleanValue,
+  type FilterComparisonOp,
+} from '@ifc-lite/query';
 import { fatal } from '../output.js';
 
 /**
@@ -83,24 +89,13 @@ export function applyWhereFilter(entities: any[], parsed: ReturnType<typeof pars
   });
 }
 
+// Delegates to @ifc-lite/query's shared compareFilterValue/normalizeBooleanValue
+// (the same comparison the viewer SDK adapter, CLI HeadlessBackend, and MCP
+// backend use for their QueryBackendMethods `where`), so `--where` can't drift
+// from `bim.query().where(...)` semantics again.
 export function compareValues(actual: any, operator: string, expected: string | undefined): boolean {
   if (expected === undefined) return actual != null;
-  const normActual = normalizeBooleanValue(actual);
-  const normExpected = normalizeBooleanValue(expected);
-  switch (operator) {
-    case '=': return String(normActual) === String(normExpected);
-    case '!=': return String(normActual) !== String(normExpected);
-    case '>': return Number(normActual) > Number(normExpected);
-    case '<': return Number(normActual) < Number(normExpected);
-    case '>=': return Number(normActual) >= Number(normExpected);
-    case '<=': return Number(normActual) <= Number(normExpected);
-    case 'contains': return String(normActual).toLowerCase().includes(String(normExpected).toLowerCase());
-    default: return false;
-  }
+  return compareFilterValue(actual, operator as FilterComparisonOp, expected);
 }
 
-export function normalizeBooleanValue(value: unknown): unknown {
-  if (value === true || value === '.T.' || value === 'true' || value === 'TRUE') return 'true';
-  if (value === false || value === '.F.' || value === 'false' || value === 'FALSE') return 'false';
-  return value;
-}
+export { normalizeBooleanValue };

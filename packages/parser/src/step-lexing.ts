@@ -47,21 +47,6 @@ export function opensComment(buf: Uint8Array, pos: number, len: number): boolean
 // string literal. Callers skip literals with skipStringLiteral first, which is
 // what keeps a /* inside a HEADER description from opening a comment.
 //
-// Known, shared with the Rust EntityScanner, and deliberately NOT fixed here:
-// ISO 10303-21 allows a comment anywhere whitespace is allowed, and none of the
-// scanners treat one as trivia *within* a record. Two shapes, both pre-existing
-// and both unchanged by this file:
-//
-//   #1 /* note */ = IFCWALL();        header: fails the '=' check, no record
-//   #1=IFCWALL('a', /* n; */ $);      body: ends early at the ';' in the comment
-//
-// That is true of scanEntities, of scanEntitiesFast, of the worker scanner, and
-// of the Rust side, whose next_entity wants '=' straight after the digits and
-// whose find_entity_end jumps to the next quote or semicolon with memchr2.
-// Correcting it on the TypeScript side alone would put the JS fallback and the
-// wasm scan at odds on well-formed files, so it wants one change across all
-// four loops rather than a partial one here. Separate defect.
-//
 // The literal skip above is a smaller version of the same tension and is worth
 // naming rather than hiding. Rust has no literal skip outside a record, so on a
 // malformed file carrying an unpaired quote in DATA the two now disagree: this
@@ -131,6 +116,51 @@ export function opensLiteralOrComment(buf: Uint8Array, pos: number, len: number)
   return buf[pos] === QUOTE || opensComment(buf, pos, len);
 }
 
+// ASCII whitespace per ISO 10303-21. Not /\s/: that also matches U+00A0 and the
+// other Unicode space separators, which the byte scanners and the Rust half do
+// not treat as whitespace.
+function isSpaceByte(b: number): boolean {
+  return b === 0x20 || b === 0x09 || b === 0x0d || b === NEWLINE;
+}
+
+// Skip STEP trivia from `pos`: whitespace, comments, and any run of the two.
+//
+// ISO 10303-21 allows a comment ANYWHERE whitespace is allowed, which includes
+// inside a record -- between an instance name and its '=', between the '=' and
+// the type name, and between the type name and its '('. A scanner that skips
+// only whitespace at those points reads `#1 /* was #7 */ = IFCWALL(...)` as no
+// record at all. This is the one home for that rule on the byte side; the
+// matching Rust half is `skip_step_trivia` in rust/core/src/parser/lexical.rs
+// and the two are changed together.
+//
+// Callers hold to the composition order the rest of this file uses: a string
+// literal is consumed whole first, so a '/*' inside one is text; a comment is
+// consumed whole here, so a quote inside one is text and cannot open a literal.
+//
+// `stop` is true when a comment opens and never closes. Everything from there
+// to end of input is inside it, so there is nothing left to find -- the same
+// answer `skipLexical` gives, and the same answer Rust's `skip_step_comment`
+// gives by refusing.
+export function skipTrivia(buf: Uint8Array, pos: number, len: number): Skip {
+  let p = pos;
+  let lines = 0;
+
+  for (;;) {
+    while (p < len && isSpaceByte(buf[p])) {
+      if (buf[p] === NEWLINE) lines++;
+      p++;
+    }
+    if (!opensComment(buf, p, len)) return { next: p, lines, stop: false };
+
+    const end = skipComment(buf, p, len);
+    if (end < 0) {
+      return { next: len, lines: lines + countNewlines(buf, p, len), stop: true };
+    }
+    lines += countNewlines(buf, p, end);
+    p = end;
+  }
+}
+
 // Newlines in [from, to), so a skipped region does not desync line numbers.
 export function countNewlines(buf: Uint8Array, from: number, to: number): number {
   let n = 0;
@@ -150,6 +180,12 @@ export function countNewlines(buf: Uint8Array, from: number, to: number): number
 // Sharing that helper is what keeps the escape rule in one place: an
 // open-coded `inString` flag here would be a second copy of it, free to drift
 // from the one every other scanner in this file uses.
+//
+// A comment is jumped over for the same reason, in the same order: the literal
+// test comes first, so a '/*' inside a value is text; the comment is then taken
+// whole, so a '(' or a quote inside it is text. Without that, the comment in
+// `#1=IFCWALL('a', /* see IFCWALL( */ $);` opened a paren depth that never
+// closed and the record came back with length 0.
 export function findEntityLength(buf: Uint8Array, pos: number, startOffset: number): number {
   const len = buf.length;
   let depth = 0;
@@ -161,6 +197,12 @@ export function findEntityLength(buf: Uint8Array, pos: number, startOffset: numb
       // Returns `len` on an unterminated literal, which ends the loop with no
       // balancing ')' found -- the same 0 the open-coded version returned.
       pos = skipStringLiteral(buf, pos, len);
+    } else if (opensComment(buf, pos, len)) {
+      const end = skipComment(buf, pos, len);
+      // Unterminated: the rest of the input is inside the comment, so no
+      // balancing ')' can follow. Same 0 as running off the end.
+      if (end < 0) return 0;
+      pos = end;
     } else if (char === LPAREN) {
       depth++;
       pos++;

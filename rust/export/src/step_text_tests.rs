@@ -181,3 +181,37 @@ fn property_synthesis_round_trips_apostrophe_and_backslash_per_spec() {
         "raw written bytes {raw_quoted_body:?} must spec-un-escape back to the original"
     );
 }
+
+/// Control: an ordinary express id is collected unchanged (issue #3421).
+/// `refs_in_line` collects every `#<digits>` in the line, including the
+/// record's own leading `#<id>=` — callers are expected to filter that
+/// themselves, the same as `parse_express_id`'s contract upstream.
+#[test]
+fn refs_in_line_collects_an_ordinary_ref() {
+    let mut out = Vec::new();
+    refs_in_line(b"#1=IFCWALL(#42,#137924);", &mut out);
+    assert_eq!(out, vec![1, 42, 137924]);
+}
+
+/// Boundary: a ref at exactly `u32::MAX` is not refused (issue #3421).
+#[test]
+fn refs_in_line_accepts_a_ref_at_exactly_u32_max() {
+    let mut out = Vec::new();
+    refs_in_line(b"#1=IFCWALL(#4294967295);", &mut out);
+    assert_eq!(out, vec![1, u32::MAX]);
+}
+
+/// RED for issue #3421: a ref one past `u32::MAX` used to wrap
+/// (`4294967296` accumulated onto `0`, and `4294967297` onto `1`) and bind to
+/// a real low-numbered entity instead of refusing. It must now be dropped
+/// from the reference list rather than aliased onto id 0 or 1.
+#[test]
+fn refs_in_line_refuses_a_ref_above_u32_max_instead_of_wrapping_onto_a_real_entity() {
+    let mut out = Vec::new();
+    refs_in_line(b"#1=IFCWALL(#4294967296,#4294967297,#42);", &mut out);
+    assert_eq!(
+        out,
+        vec![1, 42],
+        "an oversized ref must be dropped, never aliased onto id 0 or 1 (id 1 here is the record's own leading id, not an alias)"
+    );
+}

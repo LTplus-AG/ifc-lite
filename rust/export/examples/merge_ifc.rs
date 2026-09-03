@@ -9,24 +9,28 @@
 //! the webview JS `MergedExporter`.
 //!
 //!     cargo run --release -p ifc-lite-export --example merge_ifc -- \
-//!         [--assume-shared] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>
+//!         [--assume-shared] [--drop-empty-containers] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>
 //!
 //! The last path is the output. `--assume-shared` treats every model as sharing
 //! the first model's unit (skips the compatibility check).
+//! `--drop-empty-containers` leaves out spatial containers the merge finds
+//! holding nothing (issue #3643).
 
 use std::collections::HashMap;
 use std::time::Instant;
 
+use ifc_lite_core::express_id::parse_express_id;
 use ifc_lite_export::{export_merged_models, MergedModel, MergedOptions, UnitReconciliation};
 
 fn main() {
     let mut args: Vec<String> = std::env::args().skip(1).collect();
     let assume_shared = args.iter().any(|a| a == "--assume-shared");
-    args.retain(|a| a != "--assume-shared");
+    let drop_empty_containers = args.iter().any(|a| a == "--drop-empty-containers");
+    args.retain(|a| a != "--assume-shared" && a != "--drop-empty-containers");
 
     if args.len() < 3 {
         eprintln!(
-            "usage: merge_ifc [--assume-shared] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>\n\
+            "usage: merge_ifc [--assume-shared] [--drop-empty-containers] <a.ifc> <b.ifc> [more.ifc ...] <out.ifc>\n\
              (need at least two input files plus an output path)"
         );
         std::process::exit(2);
@@ -66,6 +70,7 @@ fn main() {
         } else {
             UnitReconciliation::Auto
         },
+        drop_empty_containers,
         ..Default::default()
     };
 
@@ -86,6 +91,7 @@ fn main() {
     println!("entities written    : {}", stats.written);
     println!("IfcProject count    : {projects}");
     println!("federated models    : {}", stats.federated_model_count);
+    println!("empty containers dropped: {}", stats.dropped_container_count);
     println!("unit_rescale_required: {}", stats.unit_rescale_required);
     for w in &stats.warnings {
         println!("warning             : {w}");
@@ -141,11 +147,20 @@ fn self_check(step: &str) -> (usize, usize, usize) {
             *guid_counts.entry(g).or_default() += 1;
         }
         // Count references to ids that were never written.
-        for r in refs_in(line) {
+        let (refs, past_bound) = refs_in(line);
+        for r in refs {
             if !ids.contains(&r) {
                 dangling += 1;
             }
         }
+        // A run past u32::MAX is dangling BY CONSTRUCTION: no id column can hold
+        // it, so no line can ever have been written under it. It has to be added
+        // here rather than dropped, because `rewrite_refs` emits such a run into
+        // the merged output verbatim (#3421) — dropping it would make the one
+        // reference class that is guaranteed dangling the one class this verdict
+        // cannot see, and the example would exit 0 on the file that proves the
+        // bug.
+        dangling += past_bound;
     }
 
     let dup_guids = guid_counts.values().filter(|&&c| c > 1).count();
@@ -169,11 +184,20 @@ fn type_token(line: &str) -> Option<String> {
     Some(rest[..end].trim().to_ascii_uppercase())
 }
 
-/// Every `#N` reference in a line, ignoring the leading id and quoted strings.
-fn refs_in(line: &str) -> Vec<u32> {
+/// Every `#N` reference in a line, ignoring the leading id and quoted strings,
+/// plus a count of the runs that named an id too large to be one.
+///
+/// The digit run goes to the workspace's one express-id home (#3421) rather
+/// than a hand-rolled accumulator: this one used plain `*`/`+`, which panics on
+/// overflow in a debug build and wraps onto a real low-numbered entity in a
+/// release one. A run past `u32::MAX` is not returned as an id, because there
+/// is no id to return — but it is COUNTED, so the caller can still say it saw
+/// one. Returning only the ids would trade a wrong answer for a silent one.
+fn refs_in(line: &str) -> (Vec<u32>, usize) {
     let after_eq = line.find('=').map(|e| &line[e..]).unwrap_or(line);
     let bytes = after_eq.as_bytes();
     let mut out = Vec::new();
+    let mut past_bound = 0usize;
     let mut i = 0;
     let mut in_str = false;
     while i < bytes.len() {
@@ -182,20 +206,19 @@ fn refs_in(line: &str) -> Vec<u32> {
             in_str = !in_str;
         } else if !in_str && c == b'#' {
             let mut j = i + 1;
-            let mut n = 0u32;
-            let mut any = false;
             while j < bytes.len() && bytes[j].is_ascii_digit() {
-                n = n * 10 + (bytes[j] - b'0') as u32;
                 j += 1;
-                any = true;
             }
-            if any {
-                out.push(n);
+            if j > i + 1 {
+                match parse_express_id(&bytes[i + 1..j]) {
+                    Some(n) => out.push(n),
+                    None => past_bound += 1,
+                }
                 i = j;
                 continue;
             }
         }
         i += 1;
     }
-    out
+    (out, past_bound)
 }

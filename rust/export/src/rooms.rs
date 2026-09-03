@@ -245,3 +245,68 @@ fn dedupe_colliding(rooms: Vec<Room>) -> (Vec<Room>, usize) {
     let out = rooms.into_iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, r)| r).collect();
     (out, dropped)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Column-major 4x4 (`xf`'s `c(row, col) = t[col*4+row]`) that maps a local 2D profile
+    // point `(px, py)` to the renderer Y-up world point `(px, 0, -py)` — i.e. a flat
+    // horizontal footprint whose local (px, py) becomes world (X, Z) once `zup` converts
+    // it to Honeybee Z-up `(px, py, 0)`. Paired with `extrusion_dir = [0, 1, 0]` (Y-up
+    // "up", `zup`'d to world `+Z`), this reproduces a real horizontal IfcSpace footprint
+    // extruded vertically — an all-identity transform instead leaves the profile's local
+    // Y axis mapped onto world Z, i.e. coplanar with the extrusion, so no test fixture may
+    // use plain identity here.
+    const FLAT_FOOTPRINT_TRANSFORM: [f32; 16] =
+        [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0];
+
+    fn space(express_id: u32, outer_points: Vec<f32>) -> ExtractedProfile {
+        ExtractedProfile {
+            express_id,
+            ifc_type: "IfcSpace".to_string(),
+            outer_points,
+            hole_counts: Vec::new(),
+            hole_points: Vec::new(),
+            transform: FLAT_FOOTPRINT_TRANSFORM,
+            extrusion_dir: [0.0, 1.0, 0.0], // Y-up "up" (becomes Z-up after conversion)
+            extrusion_depth: 3.0,
+            model_index: 0,
+        }
+    }
+
+    /// A well-formed 4x4m square footprint alongside a degenerate 2-point "footprint"
+    /// (malformed/collapsed profile, <3 points): `build_rooms` must skip only the
+    /// degenerate one and still emit the good room — this is the coverage contract
+    /// `HbjsonStats.skipped` exists to report (see `export_hbjson_with_stats`).
+    #[test]
+    fn build_rooms_skips_degenerate_profile_but_keeps_good_one() {
+        let good = space(1, vec![0.0, 0.0, 4.0, 0.0, 4.0, 4.0, 0.0, 4.0]);
+        let degenerate = space(2, vec![0.0, 0.0, 1.0, 1.0]); // only 2 points, <3 required
+        let profiles = vec![good, degenerate];
+
+        let (rooms, _origin, skipped) = build_rooms(&profiles, 0.01);
+
+        assert_eq!(skipped, 1, "expected exactly the 2-point profile to be skipped");
+        assert_eq!(rooms.len(), 1, "the well-formed square should still export");
+    }
+
+    /// `HbjsonStats` must round-trip through `serde_json` (it crosses the wasm boundary
+    /// via `serde_wasm_bindgen::to_value`, which relies on `Serialize`).
+    #[test]
+    fn hbjson_stats_serializes_camel_case() {
+        let stats = crate::HbjsonStats {
+            spaces: 2,
+            rooms: 1,
+            skipped: 1,
+            apertures: 0,
+            doors: 0,
+            shades: 0,
+            constructions: 0,
+            interior_adjacencies: 0,
+        };
+        let json = serde_json::to_string(&stats).expect("HbjsonStats serializes");
+        assert!(json.contains("\"interiorAdjacencies\""), "expected camelCase field, got {json}");
+        assert!(json.contains("\"skipped\":1"));
+    }
+}

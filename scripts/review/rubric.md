@@ -36,8 +36,12 @@ costs the person reading it:
   and discount every finding you make after that. This is the worst outcome
   available to you, and it is worse than saying nothing at all.
 
-**When you are not sure, say nothing. An empty findings list is a fully
-successful review**, and it is the expected outcome on most pull requests.
+**When you are not sure, say it with its evidence and let the judge decide.**
+An empty findings list is a legitimate answer, but it is no longer the expected
+one: measured over 46 real pull requests this lane returned it 45 times, while
+careful review of the same PRs found merge-blocking defects in a quarter of
+them. If you cannot rule something out, quote the lines and name the input that
+would fail.
 
 ## Never comment on these
 
@@ -124,9 +128,18 @@ only when you can point at the added lines and name the failing input.
   Your quote is checked mechanically against the patch you were given, and a
   finding whose quote does not appear is discarded as fabricated. This is not a
   formality; it is how a review that did not actually happen gets caught.
-- **At most five findings.** If the same defect class appears at several sites,
-  report it **once** and list the other sites inside that one finding. Five
-  separate comments about one class is one comment.
+- **Up to twelve findings, and a filter runs after you.** A separate judge
+  drops the vague ones before anything is posted, and a mechanical validator has
+  already thrown out anything whose quote is not verbatim in the diff. So you are
+  not the last line of defence against a bad comment, and you should not behave
+  as though you were: report what you cannot rule out, with its evidence.
+  Silence is the expensive answer here. Roughly 1,200 pull requests a month
+  arrive from an assistant-driven contributor, most merge on this lane's verdict
+  alone, and twelve merge-blocking defects passed about ninety deterministic
+  gates in a single day.
+- If the same defect class appears at several sites, report it **once** and list
+  the other sites inside that one finding. Five separate comments about one
+  class is one comment.
 - **Name the failing input or the concrete bad outcome.** Not a general concern.
   "This is fragile" is not a finding; "`parse('')` returns `0`, and the caller at
   line 44 treats `0` as a valid id" is.
@@ -157,7 +170,8 @@ commentary before or after:
     { "path": "<path>", "line": <a line number inside an added range>,
       "quote": "<verbatim line from that file's patch>",
       "body": "<one or two sentences>",
-      "class": "<one of the class names above>" }
+      "class": "<one of the class names above>",
+      "sibling": <OPTIONAL, see below> }
   ],
   "end": "ifc-lite-review-v1"
 }
@@ -196,3 +210,21 @@ review config-only or docs-only changes at all, and those go to CodeRabbit or to
 nobody. `end` must be the
 last key and must be exactly `ifc-lite-review-v1`; without it the response is
 treated as truncated.
+
+## `sibling`, and when to leave it out
+
+**OMIT `sibling` entirely unless you are pointing at one of the sibling excerpts
+you were given.** It is the only optional field in that object.
+
+Include it only to say "the same defect, or its unfixed twin, is at this other
+place", and only when that place appears verbatim in the sibling excerpts above.
+The harness checks it: an excerpt from that path within three lines of the number
+you give must actually be in what you were shown, and if you supply a `quote` it
+must appear in that excerpt.
+
+**A sibling you cannot point to costs you the whole finding, not just the field.**
+An unverifiable sibling drops the finding it is attached to, and a review whose
+findings are all dropped fails the job with no verdict posted at all. On a pull
+request that adds only new files there are usually no sibling excerpts, so there
+is nothing you could legitimately name: leave the field out and report the
+finding on its own evidence.

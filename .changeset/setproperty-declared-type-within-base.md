@@ -1,0 +1,7 @@
+---
+'@ifc-lite/export': patch
+---
+
+`setProperty(…, PropertyValueType.Text)` on a property whose source line declares `IFCLABEL` now exports `IFCTEXT` instead of silently re-declaring `IFCLABEL`. `IfcLabel` → `IfcText` (a value outgrowing 255 characters) and `IfcLabel` → `IfcIdentifier` are ordinary corrections, and neither was expressible: the declared-type gate added in #2482 compares the source token's EXPRESS base against the effective `PropertyValueType`, and since all three collapse to `STRING` the source token always won — so the caller's type was accepted, recorded on the mutation, and then discarded in the exported bytes. A downstream IDS `property` facet with `dataType="IFCTEXT"` could not be satisfied by any sequence of operations.
+
+The gate now distinguishes a `PropertyValueType` that NAMES an `IfcValue` member from one that is merely a shape. `Label`, `Identifier` and `Text` name exactly one member each and no extraction path produces them (the parser collapses every string token to `String` and keeps the token in `dataType`), so one of those can only have come from a caller who asked for it, and it outranks the source token. Shapes keep #2482's precedence unchanged — which is what stops a value-only edit, where the UI passes `String`, from rewriting an untouched neighbouring `IFCTEXT` as `IFCLABEL` when the property set is regenerated. Numeric types are unaffected: `Real` names neither `IfcLengthMeasure` nor `IfcReal`, so the source token still wins there.

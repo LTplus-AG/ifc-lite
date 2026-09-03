@@ -783,6 +783,7 @@ The merger unifies spatial hierarchy (sites, buildings, storeys) by name and ele
 | `--merge-sites <mode>` | IfcSite matching across models: `single` (unify iff each model has exactly one site, Name ignored) or `by-name` (Name match only, no single-instance fallback). Omitted: Name match, else single-instance fallback |
 | `--merge-buildings <mode>` | Same modes as `--merge-sites`, applied to IfcBuilding |
 | `--merge-storeys <mode>` | IfcBuildingStorey matching: `by-name`, `by-elevation`, or `by-name-then-elevation` (default) |
+| `--drop-empty-containers` | Leave out spatial containers (site, building, storey, space) the merge finds holding nothing — the "Merge Projects" recipe step matching alone does not cover. Off by default |
 | `--out <file>` | Output file (required) |
 | `--json` | Output merge stats as JSON |
 

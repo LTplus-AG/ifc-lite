@@ -22,6 +22,7 @@ import {
   type ParseResult,
 } from '../lib/overlay-parse/symbolic-parse.js';
 import { getWholeSourceForWorker, parseSymbolicFlat } from '../lib/overlay-parse/index.js';
+import { OVERLAY_OWNER_TYPE_NAMES } from '../lib/overlay-parse/overlay-channels.js';
 import { totalYupOffset } from '../lib/geo/ifc-origin.js';
 
 /**
@@ -64,14 +65,17 @@ async function parseAnnotations(
   elevationRebase: ElevationRebase,
 ): Promise<ParseResult> {
   const source = store.source;
-  // Skip the full-source WASM scan only when the model has neither IfcAnnotation
-  // nor IfcGridAxis — this parse path ALSO feeds the grid buckets (gridByStorey /
-  // gridLoose*), so gating on IfcAnnotation alone would drop grid-only models.
+  // Skip the full-source WASM scan only when the model has none of the classes
+  // `overlay-channels.ts` lists — this parse path ALSO feeds the grid buckets
+  // (gridByStorey / gridLoose*), so gating on the annotation channel's classes
+  // alone would drop grid-only models. Reading the table rather than naming the
+  // classes here is what stops a third owner class being added to the overlay
+  // and silently leaving this short-circuit behind.
   // The scan copies the entire IFC source into the WASM heap on the main thread,
   // so skipping it when there is nothing to find still matters.
   //
-  if (source && source.byteLength > 0 && !hasEntityType(store, 'IfcAnnotation', 'IfcGridAxis')) {
-    if (debugEnabled()) console.log('[annotations] skip: no IfcAnnotation/IfcGridAxis entities');
+  if (source && source.byteLength > 0 && !hasEntityType(store, ...OVERLAY_OWNER_TYPE_NAMES)) {
+    if (debugEnabled()) console.log(`[annotations] skip: no ${OVERLAY_OWNER_TYPE_NAMES.join('/')} entities`);
     return createEmptyParseResult();
   }
   if (!source || source.byteLength === 0) {

@@ -70,6 +70,10 @@ export async function mergeCommand(args: string[]): Promise<void> {
     fatal(`--merge-storeys must be one of: ${STOREY_MODES.join(', ')}`);
   }
 
+  // Leave out spatial containers the merge finds holding nothing — the step of
+  // the "Merge Projects" recipe the matching flags above do not cover (#3643).
+  const dropEmptyContainers = hasFlag(args, '--drop-empty-containers');
+
   // Collect all positional args as input files
   const files: string[] = [];
   for (let i = 0; i < args.length; i++) {
@@ -107,6 +111,7 @@ export async function mergeCommand(args: string[]): Promise<void> {
     mergeSites: mergeSitesFlag,
     mergeBuildings: mergeBuildingsFlag,
     mergeStoreys: mergeStoreysFlag,
+    dropEmptyContainers,
   });
 
   await writeFile(outPath, result.content, 'utf-8');
@@ -119,12 +124,16 @@ export async function mergeCommand(args: string[]): Promise<void> {
       fileSize: result.stats.fileSize,
       federatedModelCount: result.stats.federatedModelCount,
       normalizedModelCount: result.stats.normalizedModelCount,
+      droppedContainerCount: result.stats.droppedContainerCount,
       warnings: result.stats.warnings,
     });
   } else {
     process.stderr.write(`Merged ${result.stats.modelCount} models → ${outPath} (${result.stats.totalEntityCount} entities)\n`);
     if (result.stats.normalizedModelCount > 0) {
       process.stderr.write(`Normalized ${result.stats.normalizedModelCount} model(s) into the first file's unit\n`);
+    }
+    if (result.stats.droppedContainerCount > 0) {
+      process.stderr.write(`Dropped ${result.stats.droppedContainerCount} empty spatial container(s)\n`);
     }
     for (const warning of result.stats.warnings) {
       process.stderr.write(`Warning: ${warning}\n`);

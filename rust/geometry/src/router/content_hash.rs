@@ -28,7 +28,7 @@
 //! identical keys.
 
 use crate::geom_hash::mix64;
-use ifc_lite_core::EntityDecoder;
+use ifc_lite_core::{express_id::parse_express_id, EntityDecoder};
 use rustc_hash::FxHashMap;
 
 /// Defensive recursion bound. IFC geometry is a DAG (item → solids → profiles →
@@ -128,13 +128,14 @@ fn parse_first_ref(bytes: &[u8]) -> Option<u32> {
     }
     i += 1; // skip '#'
     let start = i;
-    let mut id = 0u32;
     while i < len && bytes[i].is_ascii_digit() {
-        id = id.wrapping_mul(10).wrapping_add((bytes[i] - b'0') as u32);
         i += 1;
     }
     if i > start {
-        Some(id)
+        // A ref above `u32::MAX` refuses (`None`) rather than wrapping onto a
+        // real low-numbered entity — the same policy `parse_express_id`
+        // establishes for every other reference reader (issue #3421).
+        parse_express_id(&bytes[start..i])
     } else {
         None
     }
@@ -347,12 +348,18 @@ fn sig_walk_bytes(
         if c == b'#' && i + 1 < len && bytes[i + 1].is_ascii_digit() {
             acc = fold_bytes(acc, &bytes[lit_start..i]);
             let mut j = i + 1;
-            let mut rid = 0u32;
             while j < len && bytes[j].is_ascii_digit() {
-                rid = rid.wrapping_mul(10).wrapping_add((bytes[j] - b'0') as u32);
                 j += 1;
             }
-            let child = sig_entity(decoder, rid, memo, depth + 1);
+            let child = match parse_express_id(&bytes[i + 1..j]) {
+                Some(rid) => sig_entity(decoder, rid, memo, depth + 1),
+                // A ref above `u32::MAX` refuses rather than wrapping onto a
+                // real low-numbered entity (issue #3421) — treated the same
+                // as an unresolvable reference: the fixed sentinel above,
+                // not the id, so structurally identical-but-renumbered files
+                // still collide.
+                None => fold(0, 0x00BA_D0BA_D0BA_D000),
+            };
             acc = fold(fold(fold(acc, 1), child as u64), (child >> 64) as u64);
             i = j;
             lit_start = i;
@@ -362,3 +369,7 @@ fn sig_walk_bytes(
     }
     fold_bytes(acc, &bytes[lit_start..len])
 }
+
+#[cfg(test)]
+#[path = "content_hash_tests.rs"]
+mod tests;

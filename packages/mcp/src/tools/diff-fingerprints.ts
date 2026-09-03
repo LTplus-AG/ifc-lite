@@ -105,6 +105,8 @@ import {
   getAttributeNamesAcrossSchemas,
   getInheritanceChainAcrossSchemas,
   quantitySiScale,
+  roundToScale,
+  scaledPropertyValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
 import { classificationLabel } from './diff-classification-label.js';
@@ -207,7 +209,7 @@ export function buildModelFingerprints(
   // One extractor for the whole model: the source read below only fires for
   // the (small) set of object types the EntityTable declines to hold.
   const extractor = new EntityExtractor(store.source);
-  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale
+  const units = extractProjectUnits(store.source, store.entityIndex); // for quantitySiScale/scaledPropertyValue
 
   for (const [typeKey, ids] of store.entityIndex.byType) {
     // Classified once per type rather than once per entity — the geometry
@@ -293,7 +295,7 @@ export function buildModelFingerprints(
 function createdFingerprint(
   entity: CreatedEntity,
   overlay: PendingOverlay,
-  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
+  units: ProjectUnits, // scales Qto_ quantities and measure-typed Pset properties to base SI
 ): EntityFingerprint<DiffRef> | null {
   const type = classifyType(entity.ifcType);
   if (type.role === 'dependent') return null;
@@ -306,13 +308,13 @@ function createdFingerprint(
     tag: type.typeObject ? override(edited.get('Tag'), undefined) : undefined,
     propertySets: overlay.propertySets(entity.expressId).map((set) => ({
       name: set.name,
-      properties: set.properties.map((property) => ({ name: property.name, value: property.value })),
+      properties: set.properties.map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, units) })),
     })),
     quantitySets: overlay.quantitySets(entity.expressId).map((set) => ({
       name: set.name,
       quantities: set.quantities.map((quantity) => ({
         name: quantity.name,
-        value: roundQuantity(quantity.value * quantitySiScale(quantity, units)),
+        value: roundToScale(quantity.value * quantitySiScale(quantity, units)),
       })),
     })),
     typeAssignments: [],
@@ -360,7 +362,7 @@ function buildDataInput(
   /** Set when the session has queued edits; its reads are base-merged, so it
    *  replaces the store read rather than being layered on top of it. */
   overlay: PendingOverlay | null | undefined,
-  units: ProjectUnits, // scales Qto_ Length/Area/Volume values to base SI
+  units: ProjectUnits, // scales Qto_ quantities and measure-typed Pset properties to base SI
 ): DataFingerprintInput {
   const predefinedType = extractAllEntityAttributes(store, expressId).find(
     (attribute) => attribute.name === 'PredefinedType',
@@ -381,7 +383,7 @@ function buildDataInput(
     : extractPropertiesOnDemand(store, expressId)
   ).map((set) => ({
     name: set.name,
-    properties: set.properties.map((property) => ({ name: property.name, value: property.value })),
+    properties: set.properties.map((property) => ({ name: property.name, value: scaledPropertyValue(property.value, property.dataType, units) })),
   }));
 
   const quantitySets = (overlay
@@ -391,7 +393,7 @@ function buildDataInput(
     name: set.name,
     // Scaled to base SI, then rounded — both stored and overlaid values, a
     // queued edit being authored in the project unit same as a parsed one.
-    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundQuantity(quantity.value * quantitySiScale(quantity, units)) })),
+    quantities: set.quantities.map((quantity) => ({ name: quantity.name, value: roundToScale(quantity.value * quantitySiScale(quantity, units)) })),
   }));
 
   const typeAssignments = store.relationships
@@ -425,9 +427,6 @@ function buildDataInput(
   };
 }
 
-function roundQuantity(value: number): number {
-  return Number.isFinite(value) ? Math.round(value * 1e4) / 1e4 : value;
-}
 
 /**
  * One named attribute, read positionally through the **cross-schema** attribute

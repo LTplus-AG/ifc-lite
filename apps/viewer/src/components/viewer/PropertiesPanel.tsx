@@ -6,9 +6,6 @@ import { useMemo, useState, useCallback, useEffect } from 'react';
 import {
   Copy,
   Check,
-  Focus,
-  EyeOff,
-  Eye,
   Building2,
   Layers,
   Layers2,
@@ -16,7 +13,6 @@ import {
   Calculator,
   Tag,
   MousePointer2,
-  ArrowUpDown,
   PenLine,
   Crosshair,
   Box,
@@ -31,6 +27,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useViewerStore } from '@/store';
+import { useSelectAssembly } from './properties/useSelectAssembly';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { configureMutationView } from '@/utils/configureMutationView';
@@ -57,11 +54,14 @@ import { ScheduleCard } from './properties/ScheduleCard';
 import { TaskEditCard } from './properties/TaskEditCard';
 import { DocumentCard } from './properties/DocumentCard';
 import { RelationshipsCard } from './properties/RelationshipsCard';
+import { SpatialLocationBadge } from './properties/SpatialLocationBadge';
+import { AssemblyBadge } from './properties/AssemblyBadge';
 import type { PropertySet, QuantitySet } from './properties/encodingUtils';
 import { BsddCard } from './properties/BsddCard';
 import { GeoreferencingPanel } from './properties/GeoreferencingPanel';
 import { RawStepCard } from './properties/RawStepCard';
 import { UnitDisplayControl } from './properties/UnitDisplayControl';
+import { EntityHeaderActions } from './properties/EntityHeaderActions';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { isMaterialDefinitionType } from '@/utils/materialDefinitionTypes';
 
@@ -150,8 +150,6 @@ export function PropertiesPanel() {
   const zoneAssignments = useViewerStore((s) => s.zoneAssignments);
   const selectedModelId = useViewerStore((s) => s.selectedModelId);
   const cameraCallbacks = useViewerStore((s) => s.cameraCallbacks);
-  const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
-  const isEntityVisible = useViewerStore((s) => s.isEntityVisible);
   // Relationship navigation: select a related entity (e.g. an IfcZone) to show
   // its attributes, or isolate a group's members in 3D (#1075).
   const setSelectedEntity = useViewerStore((s) => s.setSelectedEntity);
@@ -451,6 +449,16 @@ export function PropertiesPanel() {
     if (!originalExpressId || !modelQuery) return null;
     return modelQuery.entity(originalExpressId);
   }, [selectedEntity, modelQuery]);
+
+  // Issue #3620: the selected element gives no indication it is a member of
+  // an IfcElementAssembly, nor a way to select that assembly. `decomposedBy`
+  // walks the IfcRelAggregates edge to the parent; gate on the parent's type
+  // so a plain spatial/aggregation parent that isn't an assembly stays quiet.
+  const assemblyParent = useMemo(() => {
+    const parent = entityNode?.decomposedBy();
+    if (!parent || parent.type !== 'IfcElementAssembly') return null;
+    return { expressId: parent.expressId, name: parent.name || undefined };
+  }, [entityNode]);
 
   // Overlay-only entity record (duplicates, scripted adds). Carries
   // the type + positional attributes the StoreEditor recorded — used
@@ -752,6 +760,8 @@ export function PropertiesPanel() {
       window.setTimeout(() => cameraCallbacks.frameSelection?.(), 50);
     }
   }, [selectedEntity, setSelectedEntity, setSelectedEntityIds, cameraCallbacks]);
+
+  const handleSelectAssembly = useSelectAssembly();
 
   // Isolate + select all member objects of a group/zone (the IfcSpace /
   // IfcSpatialZone in an IfcZone — e.g. one dwelling, house number or fire
@@ -1320,46 +1330,7 @@ export function PropertiesPanel() {
             )}
           </div>
           <div className="flex gap-1 shrink-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                  onClick={() => {
-                    if (selectedEntityId && cameraCallbacks.frameSelection) {
-                      cameraCallbacks.frameSelection();
-                    }
-                  }}
-                >
-                  <Focus className="h-3.5 w-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Zoom to</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  className="rounded-none hover:bg-zinc-200 dark:hover:bg-zinc-700"
-                  onClick={() => {
-                    if (selectedEntityId) {
-                      toggleEntityVisibility(selectedEntityId);
-                    }
-                  }}
-                >
-                  {selectedEntityId && isEntityVisible(selectedEntityId) ? (
-                    <EyeOff className="h-3.5 w-3.5" />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {selectedEntityId && isEntityVisible(selectedEntityId) ? 'Hide' : 'Show'}
-              </TooltipContent>
-            </Tooltip>
+            <EntityHeaderActions />
             {/* Display-unit converter (issue #1573 proposal 2) — covers both
                 the Properties and Quantities tabs below, so it lives in the
                 shared header rather than inside either TabsContent. */}
@@ -1397,40 +1368,10 @@ export function PropertiesPanel() {
         )}
 
         {/* Spatial Location */}
-        {renderedSpatialInfo && (
-          <div className="flex items-center gap-2 text-xs border border-emerald-500/30 bg-emerald-50/50 dark:bg-emerald-900/10 px-2 py-1.5 text-emerald-800 dark:text-emerald-400 min-w-0">
-            <Layers className="h-3.5 w-3.5 shrink-0" />
-            <span className="font-bold uppercase tracking-wide truncate min-w-0 flex-1">{renderedSpatialInfo.storeyName}</span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {renderedSpatialInfo.elevation !== undefined && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="text-emerald-600/70 dark:text-emerald-500/70 font-mono whitespace-nowrap">
-                      {renderedSpatialInfo.elevation >= 0 ? '+' : ''}{renderedSpatialInfo.elevation.toFixed(2)}m
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Elevation: {renderedSpatialInfo.elevation >= 0 ? '+' : ''}{renderedSpatialInfo.elevation.toFixed(2)}m from ground</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-              {renderedSpatialInfo.height !== undefined && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="flex items-center gap-1 text-emerald-500/60 dark:text-emerald-400/60 font-mono text-[10px] whitespace-nowrap">
-                      <ArrowUpDown className="h-2.5 w-2.5 shrink-0" />
-                      <span className="hidden sm:inline">{renderedSpatialInfo.height.toFixed(2)}m</span>
-                      <span className="sm:hidden">{renderedSpatialInfo.height.toFixed(1)}m</span>
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs">Height: {renderedSpatialInfo.height.toFixed(2)}m to next storey</p>
-                  </TooltipContent>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        )}
+        <SpatialLocationBadge spatialInfo={renderedSpatialInfo} />
+
+        {/* Part of Assembly (#3620) */}
+        <AssemblyBadge assembly={assemblyParent} onSelect={handleSelectAssembly} />
 
         {/* World coordinates + Georeferencing — single consolidated section */}
         {(entityCoordinates || renderedGeoref || editMode) && (

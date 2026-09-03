@@ -23,6 +23,8 @@ import {
   computeWindowWallRatio,
   computeGrossFloorArea,
   computeMaterialSummary,
+  computeStoreyNames,
+  computeBuildingName,
   computeValidation,
   type QuantitySet,
   type PropertySet,
@@ -245,6 +247,58 @@ describe('computeMaterialSummary', () => {
     const bim = fakeBim({}, {}, { 1: null, 2: { name: 'Wood' } });
     const summary = computeMaterialSummary(bim, [{ ref: 1 }, { ref: 2 }], n => n);
     expect(summary).toEqual([{ name: 'Wood', count: 1, volume: 0 }]);
+  });
+
+  /**
+   * Regression: `firstName ?? mat?.name` followed by `if (!matName)
+   * continue;` skips a plain empty-string name (falsy) but a
+   * whitespace-only name (`IFCMATERIAL('   ',$,$)`) is truthy and used
+   * verbatim as the Map key — a blank-looking row in the material
+   * schedule instead of being skipped like a genuinely absent material.
+   */
+  it('a whitespace-only material name is skipped, not counted under a whitespace key', () => {
+    const bim = fakeBim({}, {}, { 1: { name: '   ' }, 2: { name: 'Wood' } });
+    const summary = computeMaterialSummary(bim, [{ ref: 1 }, { ref: 2 }], n => n);
+    expect(summary).toEqual([{ name: 'Wood', count: 1, volume: 0 }]);
+  });
+});
+
+describe('computeStoreyNames', () => {
+  /**
+   * Regression: `storeys.map(s => s.name).filter(Boolean)` drops a plain
+   * empty-string Name (falsy) but keeps a whitespace-only one
+   * (`IFCBUILDINGSTOREY('...','   ',...)`, truthy) as a blank-looking
+   * entry in the storey list.
+   */
+  it('drops blank and whitespace-only storey names, keeps genuine ones', () => {
+    expect(computeStoreyNames([{ name: '' }, { name: '   ' }, { name: 'Level 1' }])).toEqual(['Level 1']);
+  });
+
+  it('returns an empty array when every storey is unnamed (control)', () => {
+    expect(computeStoreyNames([{ name: '' }, { name: undefined }])).toEqual([]);
+  });
+});
+
+describe('computeBuildingName', () => {
+  /**
+   * Regression: `buildings[0]?.name ?? '(unnamed)'` only falls through on
+   * null/undefined; a present-but-blank/whitespace-only `IfcBuilding.Name`
+   * was returned verbatim instead of the "(unnamed)" placeholder.
+   */
+  it('falls a blank building Name through to "(unnamed)"', () => {
+    expect(computeBuildingName([{ name: '' }])).toBe('(unnamed)');
+  });
+
+  it('falls a whitespace-only building Name through to "(unnamed)"', () => {
+    expect(computeBuildingName([{ name: '   ' }])).toBe('(unnamed)');
+  });
+
+  it('returns a genuine building Name unchanged (control)', () => {
+    expect(computeBuildingName([{ name: 'Main Building' }])).toBe('Main Building');
+  });
+
+  it('returns "(unnamed)" when there is no building at all (control)', () => {
+    expect(computeBuildingName([])).toBe('(unnamed)');
   });
 });
 

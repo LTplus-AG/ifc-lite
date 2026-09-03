@@ -300,6 +300,9 @@ impl GeometryRouter {
                 crate::diagnostics::BoolFailureReason::DifferenceEmptiedHost => {
                     "DifferenceEmptiedHost"
                 }
+                crate::diagnostics::BoolFailureReason::OpenTopologyRejected => {
+                    "OpenTopologyRejected"
+                }
             };
             entry.first_failure_label = Some(label.to_string());
         }

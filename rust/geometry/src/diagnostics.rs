@@ -119,6 +119,17 @@ pub enum BoolFailureReason {
     /// viewers do in practice) and records this so the loss surfaces in
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
+    /// #3440 step 2: the kernel result passed `validate_mesh` (finite,
+    /// in-bounds) but failed the directed-edge closure audit
+    /// (`topology_gate_reject` — same predicate `KernelError`'s step-1
+    /// informational record already checks) and was REJECTED rather than
+    /// merely flagged. Only ever constructed when this crate is built with
+    /// the `csg_topology_gate` feature, which is off by default and enabled
+    /// by nothing downstream — so this variant exists in every build (a
+    /// stable thing for consumers to match on, per the crate's convention for
+    /// its other rarely-emitted variants above) but is only ever actually
+    /// recorded in a `--features csg_topology_gate` build.
+    OpenTopologyRejected,
 }
 
 impl BoolFailureReason {
@@ -141,6 +152,7 @@ impl BoolFailureReason {
             BoolFailureReason::ManifoldOutputDegenerate { .. } => "ManifoldOutputDegenerate",
             BoolFailureReason::KernelError(_) => "KernelError",
             BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
+            BoolFailureReason::OpenTopologyRejected => "OpenTopologyRejected",
         }
     }
 }
@@ -181,6 +193,9 @@ impl fmt::Display for BoolFailureReason {
                 "Manifold difference returned implausibly small result ({result_tris} triangles from {host_tris}-triangle host) — fell back to BSP"
             ),
             BoolFailureReason::KernelError(msg) => write!(f, "kernel error: {msg}"),
+            BoolFailureReason::OpenTopologyRejected => f.write_str(
+                "CSG kernel output passed validate_mesh but failed the closure audit; rejected under csg_topology_gate (#3440)",
+            ),
         }
     }
 }

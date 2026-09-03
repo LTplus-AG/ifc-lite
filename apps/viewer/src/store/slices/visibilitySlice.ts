@@ -52,6 +52,12 @@ export interface VisibilitySlice {
   /** Class-level filter (from Class tab type-group clicks) — independent of isolatedEntities */
   classFilter: { ids: Set<number>; label: string } | null;
   typeVisibility: TypeVisibility;
+  /** IFC class names the EMBEDDING HOST hid (the embed's `hideTypes`), folded
+   *  by `lib/host-hidden-ifc-types.ts`; `null` in the full viewer, which has no
+   *  host. Distinct from the user's own `typeVisibility` toggles; both apply.
+   *  Unlike a mesh filter this also reaches the symbolic 2D overlay, which is
+   *  not a mesh (#2934). */
+  hostHiddenIfcTypes: ReadonlySet<string> | null;
   /** 3D view mode for the Model/Types switch (#957 follow-up). 'model' shows
    *  placed occurrences (default); 'types' shows the type-library shapes. */
   typeViewMode: TypeViewMode;
@@ -160,6 +166,8 @@ export interface VisibilitySlice {
   clearModelVisibility: (modelId: string) => void;
   /** Show all entities across all models */
   showAllInAllModels: () => void;
+  /** Set the embedding host's class hide list. Embed only. */
+  setHostHiddenIfcTypes: (hidden: ReadonlySet<string> | null) => void;
 }
 
 export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], VisibilitySlice> = (set, get) => ({
@@ -171,6 +179,8 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
   // Read persisted toggles fresh so the user's choices survive reloads.
   typeVisibility: getPersistedTypeVisibility(),
   typeViewMode: getPersistedTypeViewMode(),
+  // Host config, not user or model state: only an embedding page sets it.
+  hostHiddenIfcTypes: null,
   // Derived from geometry at load time — no model is open yet, so default false.
   hasTypeGeometry: false,
 
@@ -363,6 +373,8 @@ export const createVisibilitySlice: StateCreator<VisibilitySlice, [], [], Visibi
     }
     return { typeVisibility: { ...TYPE_VISIBILITY_SEMANTIC_DEFAULTS } };
   }),
+
+  setHostHiddenIfcTypes: (hidden) => set(() => ({ hostHiddenIfcTypes: hidden })),
 
   setTypeViewMode: (mode) => set(() => {
     if (typeof window !== 'undefined') {

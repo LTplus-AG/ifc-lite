@@ -1,8 +1,9 @@
-# Module-size ratchet allowlist for TypeScript (see scripts/check-module-size.mjs).
-# The TS twin of rust/processing/tests/module_size_allowlist.txt.
+# Module-size ratchet allowlist for TypeScript and Node scripts
+# (see scripts/check-module-size.mjs).
+# The non-Rust twin of rust/processing/tests/module_size_allowlist.txt.
 #
-# Non-generated, non-test .ts/.tsx files currently over the ~400-line house
-# rule (AGENTS.md). Each line is '<budget> <path>'; the budget is the line
+# Non-generated, non-test .ts/.tsx/.mts/.cts/.mjs/.cjs files currently over the
+# ~400-line house rule (AGENTS.md). Each line is '<budget> <path>'; the budget is the line
 # count at the moment it was recorded. The gate fails if any of these grows
 # PAST its budget, or if a NEW file crosses 400 without an entry.
 #
@@ -31,7 +32,7 @@
 # sharded per packages/<name>, apps/<name> and rust/<crate>, so an edit here
 # moves ONE of its entries. Two PRs in different scopes then merge cleanly
 # unless their entries sit on ADJACENT lines, which git cannot auto-merge.
-   522 apps/viewer-embed/src/bridge/handler.ts
+   524 apps/viewer-embed/src/bridge/handler.ts
    481 apps/viewer/src/components/extensions/ExtensionsPanel.tsx
    431 apps/viewer/src/components/extensions/FlavorDialog.tsx
    428 apps/viewer/src/components/extensions/widget/WidgetRenderer.tsx
@@ -80,7 +81,7 @@
    886 apps/viewer/src/components/viewer/properties/LocationMap.tsx
    417 apps/viewer/src/components/viewer/properties/MaterialTotalsPanel.tsx
    510 apps/viewer/src/components/viewer/properties/TaskEditCard.tsx
-  2205 apps/viewer/src/components/viewer/PropertiesPanel.tsx
+  2146 apps/viewer/src/components/viewer/PropertiesPanel.tsx
   1731 apps/viewer/src/components/viewer/PropertyEditor.tsx
    542 apps/viewer/src/components/viewer/schedule/AnimationSettingsPopover.tsx
    426 apps/viewer/src/components/viewer/schedule/GanttToolbar.tsx
@@ -127,7 +128,7 @@
   2247 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
-   493 apps/viewer/src/hooks/useSymbolicAnnotations.ts
+   496 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    629 apps/viewer/src/lib/analytics-scrub.ts
    651 apps/viewer/src/lib/clash/persistence.ts
    427 apps/viewer/src/lib/collab/geometry-sync.ts
@@ -146,7 +147,7 @@
   1141 apps/viewer/src/lib/llm/script-preflight.ts
    410 apps/viewer/src/lib/llm/stream-client.ts
    809 apps/viewer/src/lib/llm/system-prompt.ts
-   406 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
+   403 apps/viewer/src/lib/overlay-parse/symbolic-flat.ts
    491 apps/viewer/src/lib/scripts/templates/create-building.ts
    663 apps/viewer/src/lib/search/filter-evaluate.ts
    450 apps/viewer/src/lib/search/tier1-index.ts
@@ -175,7 +176,7 @@
    574 apps/viewer/src/store/slices/sectionSlice.ts
    571 apps/viewer/src/store/slices/sheetSlice.ts
    414 apps/viewer/src/store/slices/uiSlice.ts
-   485 apps/viewer/src/store/slices/visibilitySlice.ts
+   497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
    662 apps/viewer/src/utils/serverDataModel.ts
@@ -241,7 +242,7 @@
    808 packages/drawing-2d/src/types.ts
    592 packages/export/src/effective-index.ts
    888 packages/export/src/ifc5-exporter.ts
-  1667 packages/export/src/merged-exporter.ts
+  1578 packages/export/src/merged-exporter.ts
    639 packages/export/src/parquet-exporter.ts
   1062 packages/export/src/reference-collector.ts
    524 packages/export/src/schema-converter.ts
@@ -336,3 +337,60 @@
    432 packages/source-dropbox/src/provider.ts
    415 packages/viewer/src/server.ts
   1486 packages/viewer/src/viewer-html.ts
+   501 scripts/check-agents-md-size.mjs
+   680 scripts/check-changeset-bump.mjs
+   523 scripts/check-ci-path-coverage.mjs
+   574 scripts/check-collab-room-model-target.mjs
+   529 scripts/check-generated.mjs
+   430 scripts/check-git-lfs.mjs
+   598 scripts/check-isolate-expansion-routing.mjs
+   957 scripts/check-issue-queue.mjs
+   448 scripts/check-legacy-entity-coverage.mjs
+  1145 scripts/check-loader-hook-specifier-match.mjs
+   694 scripts/check-module-size.mjs
+   951 scripts/check-pr-review-signal.mjs
+   771 scripts/check-review-posted.mjs
+   446 scripts/check-source-text-assertions.mjs
+   423 scripts/check-test-glob-coverage.mjs
+   612 scripts/check-test-revert-oracle.mjs
+   703 scripts/check-test-wiring.mjs
+   488 scripts/check-wasm-disposal.mjs
+   506 scripts/generate-bim-globals.mjs
+   423 scripts/generate-epsg-index.ts
+   403 scripts/lib/ci-path-coverage.mjs
+   472 scripts/lib/pr-green-sweep.mjs
+  1077 scripts/lib/pr-review-signal.mjs
+   443 scripts/lib/prepass-class-boundary.mjs
+   734 scripts/lib/refwalk-classify.mjs
+   518 scripts/lib/revert-oracle.mjs
+   494 scripts/lib/rust-source-text-detect.mjs
+  1165 scripts/lib/vitest-timeout-audit.mjs
+  1304 scripts/moonshot/b45-m1-midterm/run.mjs
+   422 scripts/moonshot/b51-real-merge-traces/identifier-guard.mjs
+   617 scripts/moonshot/b51-real-merge-traces/run.mjs
+   790 scripts/moonshot/b52-foreign-ifc/build-scorecard.mjs
+   605 scripts/moonshot/b55-scan-to-parametric/extract-rooms.mjs
+   889 scripts/moonshot/ci/assert-b35-golden.mjs
+   402 scripts/moonshot/ci/b55-pipeline-regression.mjs
+  1363 scripts/moonshot/ci/check-report-numerals.mjs
+   408 scripts/moonshot/diff-spike/trajectory.mjs
+   511 scripts/moonshot/g0-certificate-demo.mjs
+   533 scripts/moonshot/g1-memoized-recompute.mjs
+   465 scripts/moonshot/g2-footprint-tightness.mjs
+   515 scripts/moonshot/g2-merge-soundness.mjs
+   807 scripts/moonshot/gpu-predicates/b25-page-main.mjs
+   626 scripts/moonshot/gpu-predicates/harness.mjs
+   415 scripts/moonshot/m5-constrained-decoding/dsl.mjs
+   621 scripts/moonshot/m5-constrained-decoding/run-tier2.mjs
+   980 scripts/moonshot/m5-constrained-decoding/tasks-tier2.mjs
+   661 scripts/review/build-context-pack.mjs
+   413 scripts/review/build-review-input.mjs
+   851 scripts/review/post-review.mjs
+   443 scripts/review/rubric-eval.mjs
+   526 scripts/review/run-reviewer.mjs
+   985 scripts/review/validate-findings.mjs
+   688 scripts/source-text-assertion-detect.mjs
+   504 scripts/test-geometry-regression.mjs
+  2196 scripts/test-wasm-contract.mjs
+   678 scripts/typecheck-tests.mjs
+   467 scripts/xmatch/score.mjs

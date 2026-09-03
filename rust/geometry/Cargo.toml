@@ -39,6 +39,17 @@ triangulation-alt = ["dep:earcut"]
 # this crate's `cfg(test)` tree. `ifc-lite-processing` enables it as a
 # dev-dependency. Never enabled in a shipping build.
 test-support = []
+# #3440 step 2: turns `csg/mod.rs`'s four boolean-op accept paths' informational
+# open-topology check (step 1, always on) into a REJECT — a torn kernel result
+# falls back exactly like an existing `KernelOutputInvalid`. Off by default and
+# enabled by NOTHING downstream (no other crate in this workspace turns it on,
+# unlike `observability`, which the native server does enable) — deliberately
+# so this stays a `cargo test/build --features csg_topology_gate` opt-in for
+# CI/census measurement, not a change to what any shipping build accepts. The
+# repo's own watertightness census reports a nonzero count of currently-torn
+# hosts on the un-gated default (see issue #3440's measurements), so enabling
+# this by default today would reject geometry that currently renders.
+csg_topology_gate = []
 
 [dependencies]
 

@@ -123,33 +123,3 @@ export function planSubContextUnify(
     skipEntityIds.add(id);
   }
 }
-
-/**
- * Plan the whole shared-infrastructure dedup for one model — `MergedExporter`
- * delegates its entire "remap and skip duplicate infrastructure" step here so
- * the kind-vs-position distinction lives in one place. Every
- * {@link SHARED_INFRASTRUCTURE_TYPES}-listed type is unified by position
- * EXCEPT `IFCGEOMETRICREPRESENTATIONSUBCONTEXT`, which goes through
- * {@link planSubContextUnify} instead (key-matched). Mutates
- * `sharedRemap`/`skipEntityIds`.
- */
-export function planInfrastructureUnify(
-  dataStore: IfcDataStore,
-  modelInfra: ReadonlyMap<string, number[]>,
-  firstModelInfraMap: ReadonlyMap<string, number[]>,
-  firstModelSubContextsByKey: ReadonlyMap<string, number[]>,
-  firstModelOffset: number,
-  sharedRemap: Map<number, number>,
-  skipEntityIds: Set<number>,
-): void {
-  for (const [type, firstIds] of firstModelInfraMap) {
-    const thisIds = modelInfra.get(type);
-    if (!thisIds || firstIds.length === 0 || thisIds.length === 0) continue;
-    if (type === 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT') {
-      planSubContextUnify(dataStore, thisIds, firstModelSubContextsByKey, firstModelOffset, sharedRemap, skipEntityIds);
-      continue;
-    }
-    sharedRemap.set(thisIds[0], firstIds[0] + firstModelOffset);
-    skipEntityIds.add(thisIds[0]);
-  }
-}

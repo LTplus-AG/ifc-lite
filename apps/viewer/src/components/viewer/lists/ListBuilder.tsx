@@ -141,6 +141,7 @@ const COMMON_COLUMNS: CommonColumn[] = [
   { id: 'col-site', source: 'spatial', propertyName: 'Site', label: 'Site' },
   { id: 'col-project', source: 'spatial', propertyName: 'Project', label: 'Project' },
   { id: 'col-model', source: 'model', propertyName: 'Model', label: 'Model' },
+  ...(['X', 'Y', 'Z'] as const).map((axis): CommonColumn => ({ id: `col-world-${axis.toLowerCase()}`, source: 'geometry', propertyName: axis, label: `World ${axis}` })),
 ];
 
 /** Union the per-provider complete-discovery results into one column set. */
@@ -708,11 +709,10 @@ const SOURCE_TAG: Record<ColumnDefinition['source'], string> = {
   spatial: 'storey',
   model: 'model',
   zone: 'zone',
+  geometry: 'world',
 };
 
-/** A `spatial` column's tag reflects its level (storey / building / site /
- *  project); a `zone` column's tag reflects its display mode (zone /
- *  straddles); everything else uses the flat per-source tag. */
+/** `spatial`/`zone` tags reflect level/mode; everything else uses the flat per-source tag. */
 function colSourceTag(col: ColumnDefinition): string {
   if (col.source === 'spatial') return (col.propertyName || 'Storey').toLowerCase();
   if (col.source === 'zone') return (col.propertyName || 'Zone').toLowerCase();

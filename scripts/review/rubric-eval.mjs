@@ -42,6 +42,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
+import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CASE_DIR = join(HERE, 'eval-cases');
@@ -113,6 +114,16 @@ export function validatorReason(said) {
  *
  * @returns {{ hit: boolean, by: string|null }}
  */
+/**
+ * Judge output the eval echoes. `JUDGE[: ]` and not `JUDGE (DROPPED|...)`,
+ * because a judge that ran and removed nothing prints only `JUDGE: n in, n out`
+ * -- under the narrower pattern a clean judging produced no output at all and the
+ * log could not answer whether judging happened. Exported so its test cannot
+ * quietly hold a second copy: the first version of that test inlined the regex,
+ * so reverting this line failed nothing.
+ */
+export const JUDGE_LOG_RE = /JUDGE[: ]|CAPPED/;
+
 export function matches(expected, findings, body = null) {
   const sameFile = findings.filter((f) => f.path === expected.path);
   if (sameFile.length === 0) return { hit: false, by: null };
@@ -220,6 +231,7 @@ function main() {
   };
   const rubric = arg('--rubric', join(HERE, 'rubric.md'));
   const model = process.env.EVAL_MODEL || 'sonnet';
+  const noJudge = process.argv.includes('--no-judge');
   const tmp = mkdtempSync(join(tmpdir(), 'rubric-eval-'));
   // Removed on SUCCESS only. It holds each case's raw reviewer output and
   // validated findings, which is exactly what you need when a case fails --
@@ -353,10 +365,59 @@ function main() {
       // missed it" from "the pipeline discarded it".
       const lost = said.split('\n').filter((l) => /DROPPED|CAPPED/.test(l));
       if (lost.length) console.log(lost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
-      const parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
+      // THE JUDGE RUNS HERE FOR THE SAME REASON THE VALIDATOR DOES: the lane posts
+      // judged findings, so scoring unjudged ones measures a pipeline that does not
+      // exist. It matters more than the validator did, because the judge is the half
+      // of the inversion that can LOWER recall -- if it is eating real findings, this
+      // is the only place that shows up before a human's PR does. `--no-judge` scores
+      // the generator alone, which is how you tell "the reviewer missed it" from "the
+      // judge threw it away".
+      let parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
+      // Nothing to judge costs no process. `judge()` short-circuits on an empty
+      // list anyway, so this only saves a node start -- but four of the fixtures
+      // expect zero findings and more come back clean in practice.
+      if (!noJudge && parsed.findings?.length > 0) {
+        const judgedPath = join(tmp, `${f}.judged.json`);
+        const j = spawnSync(
+          process.execPath,
+          [join(HERE, 'run-judge.mjs'), '--findings', findingsPath,
+           '--judge-rubric', join(HERE, 'judge.md'), '--out', judgedPath, '--model', 'haiku'],
+          { encoding: 'utf8' },
+        );
+        const jsaid = `${j.stdout || ''}${j.stderr || ''}`.trim();
+        // `JUDGE:` IS IN THE FILTER, and leaving it out made the instrument
+        // unreadable. A judge that ran and dropped nothing prints only
+        // `JUDGE: n in, n out`, which the old pattern did not match -- so a clean
+        // judging produced NO output at all, and a whole CI eval could not answer
+        // "did the judge run". I read one such log as evidence the judge had eaten
+        // a finding, when it had run and removed nothing. The instrument has to
+        // say what it did, including when it did nothing.
+        const jlost = jsaid.split('\n').filter((l) => JUDGE_LOG_RE.test(l));
+        if (jlost.length) console.log(jlost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
+        // READ THE RECORD, DO NOT INFER FROM THE EXIT CODE. Every likely judge
+        // failure -- no credential, quota drained, CLI missing -- is caught inside
+        // run-judge.mjs and exits 0, so a status check could never fire for any of
+        // them: the loud warning was structurally unreachable while the quiet
+        // stdout line said the opposite. `judged` is written by the thing that
+        // knows.
+        if (j.status === 0) parsed = JSON.parse(readFileSync(judgedPath, 'utf8'));
+        if (j.status !== 0 || parsed.judged !== true) {
+          console.log(`  ${f}: THE JUDGE DID NOT RUN. Scoring unjudged findings; this is not a Stage 3 number.`);
+        }
+      }
+      // CAPPED LIKE THE POSTER, for the same reason the judge runs here at all: the
+      // lane posts five, and scoring twelve credits the reviewer for findings no
+      // author ever sees. `validate-findings` states outright that the order is the
+      // model's, not a severity ranking, so a defect matched at position nine counts
+      // as recall of something production drops.
+      const all = parsed.findings ?? [];
+      const posted = all.slice(0, MAX_POSTED_FINDINGS);
+      if (all.length > posted.length) {
+        console.log(`  ${f}: ${all.length - posted.length} finding(s) beyond the posting cap are not scored.`);
+      }
       // Same rule as the failure record above: the exclusion is keyed to what
       // the reviewer RECEIVED, `c.input.contextPack?.body`, never the fixture.
-      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: parsed.findings ?? [] });
+      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted });
     }
 
     const s = score(results);

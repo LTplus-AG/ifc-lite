@@ -41,7 +41,10 @@ function rotationColumns(rows: number[][]): Record<string, Float32Array> {
 }
 
 /** Two instances sharing one triangle template: (0,0,0),(1,0,0),(1,1,0). */
-function fixture(extraInstanceCols: Record<string, ArrayLike<number>>) {
+function fixture(
+  extraInstanceCols: Record<string, ArrayLike<number>>,
+  wireVersion: 2 | 3 = 3
+) {
   return {
     instanceArrow: table({
       entity_id: new Uint32Array([10, 11]),
@@ -70,6 +73,7 @@ function fixture(extraInstanceCols: Record<string, ArrayLike<number>>) {
     indexArrow: table({ i: new Uint32Array([0, 1, 2]) }),
     hasNormals: false,
     vertexMultiplier: 10000,
+    wireVersion,
   };
 }
 
@@ -90,9 +94,30 @@ describe('buildMeshesFromOptimizedTables rotation (#3575)', () => {
   });
 
   it('is a no-op (identity) when rot columns are absent — pre-#3575 payloads unaffected', () => {
-    const meshes = buildMeshesFromOptimizedTables(fixture({}));
+    // Absent rotation columns are only benign on a v2 payload, where they
+    // never existed — not on v3, which guarantees them (see the next test).
+    const meshes = buildMeshesFromOptimizedTables(fixture({}, 2));
     expect(Array.from(meshes[0].positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0]);
     expect(Array.from(meshes[1].positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0]);
+  });
+
+  it('throws on a v3 payload missing its rot0..rot8 columns instead of silently decoding identity', () => {
+    // Format v3 defines rot0..rot8 as present whenever the server ran the
+    // rotation-aware path (see optimized_wire_version in parquet_optimized_instancing.rs).
+    // A v3 payload with the columns missing/short is truncated wire data, not
+    // an older format — decoding it as identity would place a genuinely
+    // rotated occurrence at the wrong orientation with no signal why.
+    expect(() => buildMeshesFromOptimizedTables(fixture({}, 3))).toThrow(
+      /format version 3 requires rot0\.\.rot8/
+    );
+  });
+
+  it('a version-3 payload that DOES carry rot0..rot8 still decodes normally', () => {
+    const meshes = buildMeshesFromOptimizedTables(
+      fixture(rotationColumns([IDENTITY, CYCLE_XYZ]), 3)
+    );
+    expect(Array.from(meshes[0].positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0]);
+    expect(Array.from(meshes[1].positions)).toEqual([0, 0, 0, 0, 1, 0, 0, 1, 1]);
   });
 
   it('readRotationColumns rejects a short (non-parallel) column set', () => {

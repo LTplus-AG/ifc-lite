@@ -244,6 +244,7 @@ function optimizedFixture(extra: Record<string, ArrayLike<number>> = {}) {
     indexArrow: table({ i: new Uint32Array([0, 1, 2]) }),
     hasNormals: false,
     vertexMultiplier: 10000,
+    wireVersion: 2 as const,
   };
 }
 

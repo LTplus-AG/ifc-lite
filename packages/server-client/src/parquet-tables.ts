@@ -230,6 +230,7 @@ export interface OptimizedTables {
   hasNormals: boolean;
   /** Quantization divisor: metres = quantized / vertexMultiplier. */
   vertexMultiplier: number;
+  wireVersion: 2 | 3;
 }
 
 /**
@@ -317,8 +318,7 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const cols = meshColumns(instanceArrow, instanceCount);
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
-  // Per-instance rotation (#3575); `undefined` decodes every row as identity.
-  const rotationCols = readRotationColumns(instanceArrow, instanceCount);
+  const rotationCols = readRotationColumns(instanceArrow, instanceCount, tables.wireVersion); // #3575
 
   // Additive per-instance origin/geometry_class columns (issue #1841): consume
   // only when present AND parallel to the instance rows.

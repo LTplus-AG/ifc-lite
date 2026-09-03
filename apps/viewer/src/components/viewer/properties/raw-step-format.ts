@@ -23,7 +23,24 @@
 
 import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 import type { IfcAttributeValue } from '@ifc-lite/mutations';
-import { asSourceBytes, type IfcSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes, STEP_TRIVIA, type IfcSourceBytes } from '@ifc-lite/parser';
+
+/**
+ * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
+ * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
+ * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
+ * a wrapped record's tokens are silently unreadable here, and the Raw STEP
+ * properties panel loses its token list for exactly the entities #3789
+ * describes.
+ */
+const RAW_ENTITY_RE = new RegExp(`^#\\d+\\s*=\\s*[A-Z0-9_]+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`, 'i');
+
+/**
+ * A typed-value token's leading `TYPE(` — used by {@link isInlineEditableToken}
+ * to classify a token as display-only. Same trivia tolerance as
+ * {@link RAW_ENTITY_RE}.
+ */
+const TYPED_VALUE_HEAD_RE = new RegExp(`^[A-Z][A-Z0-9_]*${STEP_TRIVIA}\\(`, 'i');
 
 /**
  * Tokenize the inside of a STEP entity body (`,`-separated arguments)
@@ -94,7 +111,7 @@ export function extractRawStepTokens(
   const text = asSourceBytes(buffer).decodeUtf8(byteOffset, byteOffset + byteLength);
   // Match #N=TYPE( ... ) — the trailing `;` is optional in case the
   // ref slice doesn't include it.
-  const match = text.match(/^#\d+\s*=\s*[A-Z0-9_]+\(([\s\S]*)\)\s*;?\s*$/i);
+  const match = text.match(RAW_ENTITY_RE);
   if (!match) return null;
   return splitTopLevelArgs(match[1]);
 }
@@ -138,18 +155,19 @@ export function serializeStepToken(value: IfcAttributeValue): string {
 /**
  * Coarse classifier for "is this token safe to inline-edit?" Lists
  * (`(...)`) and typed values (`IFCLABEL(...)`, including one wrapped
- * across whitespace before its `(` — see the same adjacency fix in
- * entity-extractor.ts, #3205's Rust counterpart) are display-only —
- * the row UI hides the pen icon for them and tells the user to
- * reach for the script panel. Without `\s*` here, a wrapped typed
- * value read as editable and a no-op edit wrote back a quoted string
- * literal with an embedded newline instead of leaving it untouched.
+ * across whitespace OR a `/* ... *​/` comment before its `(` — see the
+ * same adjacency fix in entity-extractor.ts, #3205's Rust counterpart)
+ * are display-only — the row UI hides the pen icon for them and tells
+ * the user to reach for the script panel. Without that trivia tolerance
+ * here, a wrapped typed value read as editable and a no-op edit wrote
+ * back a quoted string literal with an embedded newline instead of
+ * leaving it untouched.
  */
 export function isInlineEditableToken(token: string): boolean {
   const t = token.trim();
   if (!t) return true;
   if (t.startsWith('(')) return false;
-  if (/^[A-Z][A-Z0-9_]*\s*\(/i.test(t)) return false;
+  if (TYPED_VALUE_HEAD_RE.test(t)) return false;
   return true;
 }
 

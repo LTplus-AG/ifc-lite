@@ -54,7 +54,7 @@
  *   length/area/volume measure, so they are excluded automatically.
  */
 
-import { getAllAttributesForEntity } from '@ifc-lite/parser';
+import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
@@ -227,14 +227,18 @@ export function scaleNumberLiterals(text: string, factor: number): string {
  * the suffix of a longer identifier — without a lookbehind, which some engines
  * (older Safari) reject at construction time and would break importing this module.
  *
- * `\s*` between the keyword and `(` mirrors the entity/typed-value adjacency
- * fix (packages/parser's entity-extractor, #3205's Rust counterpart): a STEP
- * writer's line wrap can land there, and without it the wrapped literal was
- * skipped by this rewriter, leaving the normalized file's other measures
- * scaled but this one still in the source unit.
+ * Trivia (whitespace and/or a `/* ... *​/` comment) between the keyword and
+ * `(` mirrors the entity/typed-value adjacency fix (packages/parser's
+ * entity-extractor, #3205's Rust counterpart, #3789 for the comment case): a
+ * STEP writer's line wrap or an inline comment can land there, and without
+ * tolerating it the wrapped literal was skipped by this rewriter, leaving
+ * the normalized file's other measures scaled but this one still in the
+ * source unit.
  */
-const TYPED_MEASURE_RE =
-  /('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)\s*\(([^)]*)\)/gi;
+const TYPED_MEASURE_RE = new RegExp(
+  `('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)${STEP_TRIVIA}\\(([^)]*)\\)`,
+  'gi',
+);
 
 export function scaleTypedMeasures(
   text: string,

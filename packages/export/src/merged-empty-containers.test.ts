@@ -182,4 +182,65 @@ describe('MergedExporter dropEmptyContainers', () => {
     expect(content).toContain('=IFCPROPERTYSET(');
     expect(danglingRefs(content)).toEqual([]);
   });
+
+  // #3789 follow-up: `topLevelAttrs`'s record regex required its type name
+  // immediately adjacent to '(' (no `\s*`, unlike the sibling fix this issue
+  // made to entity-extractor.ts). Its two callers react to a parse failure
+  // differently: `recordBlocks` treats it conservatively (every container the
+  // unparseable line names is BLOCKED from dropping, masking the bug for a
+  // relationship that names a container which should survive). `recordEdges`
+  // has no such fallback -- a wrapped or commented IfcRelAggregates line
+  // silently contributes no edge, so a storey it aggregates that would
+  // otherwise be legitimately empty stays un-droppable, because the same line
+  // also trips the `recordBlocks` fallback that blocks it. Net effect: before
+  // this fix, a storey whose ONLY defining relationship line is wrapped or
+  // commented can never be dropped, even when #3643 says it should be.
+  it('drops an otherwise-empty storey whose aggregation line is wrapped across a CRLF', () => {
+    const model = buildModel('m0', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p')}',$,'P',$,$,$,$,$,$);`],
+      [2, 'IFCBUILDING', `#2=IFCBUILDING('${guid('b')}',$,'Building',$,$,$,$,$,$,$,$,$);`],
+      [3, 'IFCBUILDINGSTOREY', `#3=IFCBUILDINGSTOREY('${guid('g')}',$,'Empty level',$,$,$,$,$,$,0.);`],
+      [4, 'IFCBUILDINGSTOREY', `#4=IFCBUILDINGSTOREY('${guid('h')}',$,'Occupied level',$,$,$,$,$,$,3.);`],
+      [5, 'IFCWALL', `#5=IFCWALL('${guid('w')}',$,'Wall',$,$,$,$,$,$);`],
+      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('a')}',$,$,$,#1,(#2));`],
+      // The empty storey's aggregation is wrapped -- the one under test.
+      [7, 'IFCRELAGGREGATES', `#7=IFCRELAGGREGATES\r\n('${guid('c')}',$,$,$,#2,(#3));`],
+      [8, 'IFCRELAGGREGATES', `#8=IFCRELAGGREGATES('${guid('d')}',$,$,$,#2,(#4));`],
+      [9, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', `#9=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('e')}',$,$,$,(#5),#4);`],
+    ]);
+    const merged = new MergedExporter([model] as MergeModelInput[])
+      .export({ ...OPTIONS, dropEmptyContainers: true });
+    const content = decode(merged.content);
+
+    expect(merged.stats.droppedContainerCount).toBe(1);
+    expect(content).not.toContain("'Empty level'");
+    expect(content).toContain("'Occupied level'");
+    expect(content).toContain('=IFCBUILDING(');
+    expect(danglingRefs(content)).toEqual([]);
+  });
+
+  it('drops an otherwise-empty storey whose aggregation line carries a comment before its "("', () => {
+    const model = buildModel('m0', [
+      [1, 'IFCPROJECT', `#1=IFCPROJECT('${guid('p')}',$,'P',$,$,$,$,$,$);`],
+      [2, 'IFCBUILDING', `#2=IFCBUILDING('${guid('b')}',$,'Building',$,$,$,$,$,$,$,$,$);`],
+      [3, 'IFCBUILDINGSTOREY', `#3=IFCBUILDINGSTOREY('${guid('g')}',$,'Empty level',$,$,$,$,$,$,0.);`],
+      [4, 'IFCBUILDINGSTOREY', `#4=IFCBUILDINGSTOREY('${guid('h')}',$,'Occupied level',$,$,$,$,$,$,3.);`],
+      [5, 'IFCWALL', `#5=IFCWALL('${guid('w')}',$,'Wall',$,$,$,$,$,$);`],
+      [6, 'IFCRELAGGREGATES', `#6=IFCRELAGGREGATES('${guid('a')}',$,$,$,#1,(#2));`],
+      // The empty storey's aggregation carries a comment before its "(" -- the
+      // one under test.
+      [7, 'IFCRELAGGREGATES', `#7=IFCRELAGGREGATES/* c */('${guid('c')}',$,$,$,#2,(#3));`],
+      [8, 'IFCRELAGGREGATES', `#8=IFCRELAGGREGATES('${guid('d')}',$,$,$,#2,(#4));`],
+      [9, 'IFCRELCONTAINEDINSPATIALSTRUCTURE', `#9=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid('e')}',$,$,$,(#5),#4);`],
+    ]);
+    const merged = new MergedExporter([model] as MergeModelInput[])
+      .export({ ...OPTIONS, dropEmptyContainers: true });
+    const content = decode(merged.content);
+
+    expect(merged.stats.droppedContainerCount).toBe(1);
+    expect(content).not.toContain("'Empty level'");
+    expect(content).toContain("'Occupied level'");
+    expect(content).toContain('=IFCBUILDING(');
+    expect(danglingRefs(content)).toEqual([]);
+  });
 });

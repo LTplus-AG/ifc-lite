@@ -3660,6 +3660,7 @@
     "RelationshipExtractor: class",
     "ResolvedUnit: interface",
     "SCHEMA_REGISTRY: const",
+    "STEP_TRIVIA: const",
     "ScheduleExtraction: interface",
     "ScheduleSequenceInfo: interface",
     "ScheduleTaskInfo: interface",

@@ -95,6 +95,29 @@ describe('scaleTypedMeasures', () => {
     const input = 'IFCLENGTHMEASUREX(100.)';
     expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);
   });
+
+  // TS/Rust parity (#3789 follow-up): ISO 10303-21 permits a comment anywhere
+  // whitespace is legal, including between the keyword and its '('. Rust's
+  // tokenizer already skips it there; this rewriter did not, so a comment in
+  // that position left the measure unscaled while every sibling measure on
+  // the same line was rescaled -- an inconsistent, mixed-unit normalized file.
+  it('scales a measure separated from its "(" by a block comment', () => {
+    // Mirrors the whitespace case above: the rewriter drops whatever sat
+    // between the keyword and '(' (whitespace or a comment) rather than
+    // preserving it -- it is rebuilding the token, not patching a slice.
+    expect(scaleTypedMeasures('IFCLENGTHMEASURE/* mm */(100.)', 0.001, 1, 1))
+      .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('a comment containing "(" or ";" does not derail the parse (control)', () => {
+    expect(scaleTypedMeasures('IFCLENGTHMEASURE/* has ( and ; inside */(100.)', 0.001, 1, 1))
+      .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('two-way rule: an unterminated comment before "(" is not treated as trivia', () => {
+    const input = 'IFCLENGTHMEASURE/* never closes (100.)';
+    expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);
+  });
 });
 
 describe('getEntityLengthPlan (schema-derived)', () => {

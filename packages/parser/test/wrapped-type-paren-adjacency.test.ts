@@ -120,3 +120,78 @@ describe('parseAttributeValue (via extractEntity): typed value wrapped across wh
         expect(Array.isArray(attr)).toBe(false);
     });
 });
+
+/**
+ * ISO 10303-21 permits a comment `/* ... *​/` anywhere whitespace is legal,
+ * including between a type name and its `(`. Rust's tokenizer already skips
+ * such comments there (`skip_step_trivia` in
+ * `rust/core/src/parser/lexical.rs`); the `\s*` this PR's initial commit
+ * added to the two regexes above does not, so `#5=IFCWALL/* c *​/(#4,0.);`
+ * parsed on the Rust side and returned null here — the same
+ * entity-invisible failure mode the PR exists to close, on byte-identical
+ * input. Closed by widening both regexes to a shared `STEP_TRIVIA` pattern
+ * (`step-trivia.ts`) that also skips a non-nesting block comment.
+ */
+describe('extractEntity / parseAttributeValue: a comment between the type name and "(" (TS/Rust parity)', () => {
+    it('parses an entity whose type name is separated from "(" by a block comment', () => {
+        const ifc = `#5=IFCWALL/* c */(#4,0.);`;
+        const { source, entityRefs } = scan(ifc);
+        const ref = entityRefs.find(r => r.expressId === 5);
+        expect(ref).toBeDefined();
+
+        const entity = new EntityExtractor(source).extractEntity(ref!);
+        expect(entity).not.toBeNull();
+        expect(entity!.type.toUpperCase()).toBe('IFCWALL');
+        expect(entity!.attributes.length).toBe(2);
+    });
+
+    it('reads a typed-value attribute whose "(" follows a block comment as a TypedValue, not a raw string', () => {
+        const ifc = `#42=IFCSURFACESTYLERENDERING($,IFCPOSITIVELENGTHMEASURE/* mm */(1.),$,$,$,$,$,$,.NOTDEFINED.);`;
+        const { source, entityRefs } = scan(ifc);
+        const ref = entityRefs.find(r => r.expressId === 42);
+        expect(ref).toBeDefined();
+
+        const entity = new EntityExtractor(source).extractEntity(ref!);
+        expect(entity).not.toBeNull();
+        const attr = entity!.attributes[1];
+        expect(Array.isArray(attr)).toBe(true);
+        expect((attr as [string, unknown])[0]).toBe('IFCPOSITIVELENGTHMEASURE');
+        expect((attr as [string, unknown])[1]).toBe(1);
+    });
+
+    it('a comment containing "(" or ";" does not derail the parse (control)', () => {
+        const ifc = `#5=IFCWALL/* has ( and ; inside */(#4,0.);`;
+        const { source, entityRefs } = scan(ifc);
+        const ref = entityRefs.find(r => r.expressId === 5);
+        expect(ref).toBeDefined();
+
+        const entity = new EntityExtractor(source).extractEntity(ref!);
+        expect(entity).not.toBeNull();
+        expect(entity!.attributes.length).toBe(2);
+    });
+
+    it('still tolerates a comment combined with ordinary whitespace on both sides (control)', () => {
+        const ifc = `#5=IFCWALL  /* c */  (#4,0.);`;
+        const { source, entityRefs } = scan(ifc);
+        const ref = entityRefs.find(r => r.expressId === 5);
+        expect(ref).toBeDefined();
+
+        const entity = new EntityExtractor(source).extractEntity(ref!);
+        expect(entity).not.toBeNull();
+    });
+
+    it('an unterminated comment does not match (two-way rule)', () => {
+        // A comment that never closes is not trivia at all; the whole line is
+        // unparseable and extractEntity must not paper over it.
+        const ifc = `#5=IFCWALL/* never closes (#4,0.);`;
+        const { source, entityRefs } = scan(ifc);
+        const ref = entityRefs.find(r => r.expressId === 5);
+        // The tokenizer's own scan may or may not find a boundary here; when
+        // it does, extraction over the malformed text must still fail rather
+        // than silently accept it.
+        if (ref) {
+            const entity = new EntityExtractor(source).extractEntity(ref);
+            expect(entity).toBeNull();
+        }
+    });
+});

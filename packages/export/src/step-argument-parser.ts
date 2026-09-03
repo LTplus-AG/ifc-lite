@@ -2,6 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { STEP_TRIVIA } from '@ifc-lite/parser';
+
+/**
+ * `#N=CLASS(...)` record prefix, with STEP trivia (whitespace and/or a
+ * `/* ... *​/` comment, #3789) tolerated between the type name and its `(`
+ * — same adjacency fix as `entity-extractor.ts`'s `extractEntity`, applied
+ * here because `replaceStepArgument`'s caller degrades on `null` (a lost
+ * repoint, see below), the same failure class. Compiled once since
+ * `replaceStepArgument` runs per rewritten line.
+ */
+const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
+
 /**
  * The STEP argument parser and rewriter: reading a record's top-level argument
  * list out of its text, and writing one slot back.
@@ -108,7 +120,7 @@ export function replaceStepArgument(
   attrIndex: number,
   replacement: string,
 ): string | null {
-  const match = entityText.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
+  const match = entityText.match(RECORD_PREFIX_RE);
   if (!match) return null;
 
   const [, prefix, attrsText, suffix] = match;

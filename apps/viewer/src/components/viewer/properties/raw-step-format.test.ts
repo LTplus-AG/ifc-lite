@@ -67,6 +67,38 @@ describe('extractRawStepTokens', () => {
     const tokens = extractRawStepTokens(buf, prefix.length, entity.length);
     assert.deepStrictEqual(tokens, ["'x'"]);
   });
+
+  // #3789 follow-up: this regex's own `\s*` already tolerated whitespace
+  // between the type name and "(" (the PR's stated fix), but not a
+  // `/* ... */` comment there -- legal anywhere whitespace is per ISO
+  // 10303-21. Without tolerating it, a wrapped-with-a-comment entity
+  // silently lost its Raw STEP token list.
+  it('tokenizes an entity body wrapped across a CRLF before "("', () => {
+    const text = "#42=IFCWALL\r\n('abc',#1);";
+    const buf = bytesOf(text);
+    const tokens = extractRawStepTokens(buf, 0, text.length);
+    assert.deepStrictEqual(tokens, ["'abc'", '#1']);
+  });
+
+  it('tokenizes an entity body separated from "(" by a block comment', () => {
+    const text = "#42=IFCWALL/* c */('abc',#1);";
+    const buf = bytesOf(text);
+    const tokens = extractRawStepTokens(buf, 0, text.length);
+    assert.deepStrictEqual(tokens, ["'abc'", '#1']);
+  });
+
+  it('a comment containing "(" or ";" does not derail the parse (control)', () => {
+    const text = "#42=IFCWALL/* has ( and ; inside */('abc',#1);";
+    const buf = bytesOf(text);
+    const tokens = extractRawStepTokens(buf, 0, text.length);
+    assert.deepStrictEqual(tokens, ["'abc'", '#1']);
+  });
+
+  it('two-way rule: an unterminated comment before "(" does not match', () => {
+    const text = "#42=IFCWALL/* never closes ('abc',#1);";
+    const buf = bytesOf(text);
+    assert.strictEqual(extractRawStepTokens(buf, 0, text.length), null);
+  });
 });
 
 describe('serializeStepToken', () => {
@@ -161,6 +193,23 @@ describe('isInlineEditableToken', () => {
   // an embedded newline.
   it('treats a typed-value token wrapped across a CRLF before "(" as not editable', () => {
     assert.strictEqual(isInlineEditableToken("IFCLABEL\r\n('x')"), false);
+  });
+
+  // #3789 follow-up: a `/* ... */` comment is legal anywhere whitespace is
+  // (ISO 10303-21), but this classifier's `\s*` (the PR's stated fix) did
+  // not tolerate one. Without that, a typed value separated from its "("
+  // only by a comment read as editable, reintroducing the same no-op-edit
+  // corruption the PR's CRLF fix closed.
+  it('treats a typed-value token separated from "(" by a block comment as not editable', () => {
+    assert.strictEqual(isInlineEditableToken("IFCLABEL/* c */('x')"), false);
+  });
+
+  it('a comment containing "(" or ";" does not derail the classification (control)', () => {
+    assert.strictEqual(isInlineEditableToken("IFCLABEL/* has ( and ; inside */('x')"), false);
+  });
+
+  it('two-way rule: an unterminated comment before "(" does not match (stays editable)', () => {
+    assert.strictEqual(isInlineEditableToken("IFCLABEL/* never closes ('x')"), true);
   });
 
   it('two-way rule: a plain identifier followed by non-"(" text stays editable', () => {

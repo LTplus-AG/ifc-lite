@@ -25,8 +25,18 @@
  */
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
-import { asSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelArgs } from './step-argument-parser.js';
+
+/**
+ * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
+ * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
+ * same adjacency fix as `entity-extractor.ts`'s `extractEntity`. Without it
+ * a wrapped line's arguments are unreadable here (`topLevelAttrs` returns
+ * `null`), which the caller treats as "can't safely rewrite" and blocks the
+ * empty-container drop for that entity.
+ */
+const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
 import type { CompleteEntityIndex } from './entity-iteration.js';
 
 /**
@@ -286,7 +296,7 @@ function lineOf(view: EmptyContainerModelView, localId: number): string {
 
 /** Top-level arguments of a `#id=TYPE(…);` line, or `null` when unparseable. */
 function topLevelAttrs(line: string): string[] | null {
-  const match = line.match(/^#\d+\s*=\s*\w+\(([\s\S]*)\)\s*;?\s*$/);
+  const match = line.match(RECORD_RE);
   if (!match) return null;
   return splitTopLevelArgs(match[1]).map(arg => arg.trim());
 }

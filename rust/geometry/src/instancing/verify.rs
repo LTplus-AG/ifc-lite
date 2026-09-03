@@ -244,6 +244,38 @@ mod tests {
     }
 
     #[test]
+    fn a_non_finite_transform_is_rejected() {
+        // A NaN anywhere in `rel` (or in either position buffer) makes every
+        // reconstructed coordinate NaN, so `err` is NaN — and NaN LOSES every
+        // comparison, so a plain `err > tolerance(mag)` was false and the
+        // pairing passed verification. The check must fail CLOSED: a group it
+        // cannot evaluate is not a group it has verified.
+        let positions: [f32; 6] = [0.0, 0.0, 0.0, 1.0, 2.0, 3.0];
+        let mut rel = Matrix4::identity();
+        rel[(0, 3)] = f64::NAN;
+        assert!(
+            !verify_pairing([0.0; 3], &positions, [0.0; 3], &positions, &rel),
+            "a NaN transform must not pass verification"
+        );
+    }
+
+    #[test]
+    fn a_non_finite_position_is_rejected() {
+        let template: [f32; 3] = [0.0, 0.0, 0.0];
+        let target: [f32; 3] = [f32::NAN, 0.0, 0.0];
+        assert!(
+            !verify_pairing(
+                [0.0; 3],
+                &template,
+                [0.0; 3],
+                &target,
+                &Matrix4::identity()
+            ),
+            "a NaN baked position must not pass verification"
+        );
+    }
+
+    #[test]
     fn a_translated_target_fails_identity_rel() {
         let template: [f32; 3] = [0.0, 0.0, 0.0];
         // Same vertex COUNT, but genuinely different geometry (as a hash

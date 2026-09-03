@@ -43,6 +43,9 @@
  */
 
 import { classifyReviewState } from './coderabbit-review-state.mjs';
+import { countRollup } from './pr-green-sweep-rollup.mjs';
+
+export { countRollup } from './pr-green-sweep-rollup.mjs';
 
 export const DEFAULT_REPO = 'LTplus-AG/ifc-lite';
 
@@ -191,68 +194,6 @@ export function disqualify(row, repo = DEFAULT_REPO) {
  */
 export function severityOf(row, repo = DEFAULT_REPO) {
   return disqualify(row, repo)?.severity ?? SEVERITY.GREEN;
-}
-
-/**
- * Drop a stale duplicate check row before counting.
- *
- * GitHub does not remove the check runs of a cancelled workflow run: when a
- * push (or a superseding `pull_request` event under `concurrency`) cancels an
- * in-flight run, that run's check runs stay attached to the head commit
- * alongside the fresh ones under the same lane name. `statusCheckRollup` then
- * carries two rows for one lane, and counting both charges the PR with the
- * cancelled one even though every live lane is green (#3792).
- *
- * Only rows that share an identifying name are deduped -- a row with neither
- * `name` nor `context` (the CheckRun/StatusContext key fields) is never
- * merged with anything, so an ungrouped duplicate cannot be silently dropped
- * by a key that does not actually identify the lane. Among rows sharing a
- * name, the newest `startedAt` wins, matching how GitHub's own
- * required-status-check evaluation resolves duplicates.
- */
-function dedupeByName(rollup) {
-  const named = [];
-  const unnamed = [];
-  const newestByName = new Map();
-  for (const check of rollup) {
-    const key = check?.name ?? check?.context ?? null;
-    if (key == null) {
-      unnamed.push(check);
-      continue;
-    }
-    const startedAt = typeof check?.startedAt === 'string' ? Date.parse(check.startedAt) : NaN;
-    const prior = newestByName.get(key);
-    if (!prior || !Number.isFinite(prior.startedAt) || (Number.isFinite(startedAt) && startedAt >= prior.startedAt)) {
-      newestByName.set(key, { check, startedAt });
-    }
-  }
-  for (const { check } of newestByName.values()) named.push(check);
-  return [...named, ...unnamed];
-}
-
-/**
- * Count a `statusCheckRollup` into pass/fail/pending.
- *
- * An EMPTY rollup counts to all zeros, which is why the caller must never read
- * `fail === 0` as green on its own -- `runCount` is the signal that separates
- * "nothing failed" from "nothing ran".
- */
-export function countRollup(rollup) {
-  let fail = 0;
-  let pending = 0;
-  let pass = 0;
-  for (const check of dedupeByName(rollup ?? [])) {
-    const status = String(check?.status ?? '').toUpperCase();
-    if (status && status !== 'COMPLETED') {
-      pending += 1;
-      continue;
-    }
-    const verdict = String(check?.conclusion ?? check?.state ?? '').toUpperCase();
-    if (verdict === 'SUCCESS' || verdict === 'NEUTRAL' || verdict === 'SKIPPED') pass += 1;
-    else if (verdict === '' || verdict === 'PENDING' || verdict === 'EXPECTED') pending += 1;
-    else fail += 1;
-  }
-  return { fail, pending, pass };
 }
 
 /** The later of two ISO-8601 instants, ignoring absent/unparseable ones. */

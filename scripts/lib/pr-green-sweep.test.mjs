@@ -222,6 +222,63 @@ test('duplicate check rows without a usable name fall back to counting every row
   assert.deepEqual(counts, { fail: 1, pending: 0, pass: 1 });
 });
 
+// --- #3797: dedupe must not hide a real failure -----------------------------
+
+test('a FAILURE with a null startedAt (cancelled while still queued) beats a stale same-named SUCCESS, either array order', () => {
+  // GitHub emits startedAt: null for a job cancelled before it started -- the
+  // exact scenario #3792/#3797 target. An unknown timestamp must not be
+  // treated as "definitely older": that let a live FAILURE be silently
+  // overwritten by an unrelated stale SUCCESS. Refs #3797.
+  const live = { name: 'Deploy', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: null };
+  const stale = { name: 'Deploy', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: '2026-09-03T18:00:00Z' };
+  assert.deepEqual(countRollup([live, stale]), { fail: 1, pending: 0, pass: 0 }, 'live, stale order');
+  assert.deepEqual(countRollup([stale, live]), { fail: 1, pending: 0, pass: 0 }, 'stale, live order');
+});
+
+test('two FAILUREs with no parseable startedAt on either side both stay counted, either array order', () => {
+  // Neither row's timestamp is usable, so supersession cannot be established
+  // at all -- both are failing, so the count must not depend on which one the
+  // dedupe map happens to keep.
+  const a = { name: 'Deploy', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: null };
+  const b = { name: 'Deploy', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: 'not-a-date' };
+  assert.deepEqual(countRollup([a, b]), { fail: 1, pending: 0, pass: 0 }, 'a, b order');
+  assert.deepEqual(countRollup([b, a]), { fail: 1, pending: 0, pass: 0 }, 'b, a order');
+});
+
+test('a CheckRun `name` never collides with an unrelated StatusContext `context` sharing the same string, either array order', () => {
+  // `name` (CheckRun) and `context` (StatusContext) are different namespaces.
+  // An older genuinely-failing CheckRun("Deploy") must not be masked by a
+  // newer, unrelated StatusContext also called "Deploy". Refs #3797.
+  const checkRunFailure = {
+    name: 'Deploy',
+    status: 'COMPLETED',
+    conclusion: 'FAILURE',
+    startedAt: '2026-09-03T18:00:00Z',
+  };
+  const statusContextSuccess = { context: 'Deploy', state: 'SUCCESS', startedAt: '2026-09-03T18:05:00Z' };
+  assert.deepEqual(
+    countRollup([checkRunFailure, statusContextSuccess]),
+    { fail: 1, pending: 0, pass: 1 },
+    'CheckRun, StatusContext order',
+  );
+  assert.deepEqual(
+    countRollup([statusContextSuccess, checkRunFailure]),
+    { fail: 1, pending: 0, pass: 1 },
+    'StatusContext, CheckRun order',
+  );
+});
+
+test('an exact startedAt tie between a SUCCESS and a CANCELLED keeps the failure visible, either array order', () => {
+  // Second-granularity timestamps make a genuine tie plausible. The tie-break
+  // must not be "whichever the array lists last" (>=) -- on a tie, supersession
+  // is not established, so the failing row must win regardless of order.
+  const same = '2026-09-03T18:00:00Z';
+  const success = { name: 'Deploy', status: 'COMPLETED', conclusion: 'SUCCESS', startedAt: same };
+  const cancelled = { name: 'Deploy', status: 'COMPLETED', conclusion: 'CANCELLED', startedAt: same };
+  assert.deepEqual(countRollup([success, cancelled]), { fail: 1, pending: 0, pass: 0 }, 'success, cancelled order');
+  assert.deepEqual(countRollup([cancelled, success]), { fail: 1, pending: 0, pass: 0 }, 'cancelled, success order');
+});
+
 // --- the three refuse-to-pass-vacuously paths --------------------------------
 
 /** A `gh` stub that answers each call from a table keyed by a substring. */

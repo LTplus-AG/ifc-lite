@@ -48,6 +48,13 @@ pub(super) const INSTANCE_MIN_OCCURRENCES: u32 = 8;
 /// fail when the suite runs -- clippy rejects it as `assertions_on_constants`,
 /// correctly. Placed HERE rather than in the cfg(test) sibling so it gates
 /// every build including the shipped wasm, not only the ones that compile tests.
+///
+/// What this still guarantees, now that the collator's `fall_back` can emit a
+/// template for a group BELOW `min_group`: that template always carries the
+/// group's own occurrence plus at least one #1623 don't-bake placeholder, so it
+/// is never a singleton. The count gate can be undershot by a pose-only group
+/// that would otherwise lose geometry entirely; it cannot be undershot down to
+/// one instance, which is the case this assertion is about.
 const _: () = assert!(
     INSTANCE_MIN_OCCURRENCES >= 2,
     "a gate below 2 instances singletons: O(unique-geometry) draws per frame in place of the flat path's few consolidated ones"
@@ -174,7 +181,15 @@ pub(super) fn style_colors_from_wire(
 #[path = "batch_partition_tests.rs"]
 mod tests;
 
-/// Move the refused members into the flat collection, returning how many.
+/// Move the refused members into the flat collection, returning how many were
+/// ACTUALLY pushed.
+///
+/// Not `rejected.len()`: the caller subtracts this from the occurrence count it
+/// reports to the viewer, so returning an index count that the loop did not
+/// reach (a `rejected` entry at or past `instanced.len()`, which
+/// [`rejected_to_flat`]'s bound is supposed to make impossible) would undercount
+/// the shard's instances while the mesh stayed in it. Counting the pushes makes
+/// the returned number a fact about what happened rather than about the input.
 ///
 /// `rejected` is sorted (see [`rejected_to_flat`]), so membership is a binary
 /// search rather than a set allocation on a path that runs per batch.
@@ -183,10 +198,12 @@ pub(super) fn take_back_rejected(
     rejected: &[usize],
     collection: &mut MeshCollection,
 ) -> usize {
+    let mut pushed = 0;
     for (i, mesh_data) in instanced.into_iter().enumerate() {
         if rejected.binary_search(&i).is_ok() {
             collection.add(MeshDataJs::from_mesh_data(mesh_data));
+            pushed += 1;
         }
     }
-    rejected.len()
+    pushed
 }

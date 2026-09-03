@@ -214,6 +214,22 @@ test('#3792: status contexts dedupe by context while distinct lane names remain 
   assert.deepEqual(countRollup(rows), { fail: 0, pending: 0, pass: 2 });
 });
 
+test('#3817: a CheckRun and a same-named StatusContext are distinct lanes, not one group', () => {
+  // A CheckRun called "Deploy" and an unrelated legacy StatusContext whose
+  // context also reads "Deploy" must never dedupe against each other just
+  // because their label strings match -- they are different reporting
+  // systems. Grouping by bare name/context alone would let the newer
+  // StatusContext "supersede" the older CheckRun's real failure.
+  const rows = [
+    { __typename: 'CheckRun', name: 'Deploy', status: 'COMPLETED', conclusion: 'FAILURE', startedAt: '2026-09-03T09:00:00Z' },
+    { __typename: 'StatusContext', context: 'Deploy', state: 'SUCCESS', startedAt: '2026-09-03T10:00:00Z' },
+  ];
+  assert.equal(currentRollupChecks(rows).length, 2);
+  assert.deepEqual(countRollup(rows), { fail: 1, pending: 0, pass: 1 });
+  // Order must not matter.
+  assert.deepEqual(countRollup([...rows].reverse()), { fail: 1, pending: 0, pass: 1 });
+});
+
 // --- the three refuse-to-pass-vacuously paths --------------------------------
 
 /** A `gh` stub that answers each call from a table keyed by a substring. */

@@ -12,6 +12,11 @@
  * Unknown rows stay visible and ties stay together, preserving the sweep's
  * fail-closed direction instead of guessing which ambiguous row superseded
  * which.
+ *
+ * A CheckRun and a StatusContext are different reporting systems (the newer
+ * Checks API vs. the legacy Commit Status API) and must never dedupe against
+ * each other just because their label strings happen to match (#3817) --
+ * the group key is namespaced by `__typename`, not the bare name/context.
  */
 export function currentRollupChecks(rollup) {
   const unnamed = [];
@@ -22,9 +27,10 @@ export function currentRollupChecks(rollup) {
       unnamed.push(check);
       continue;
     }
-    const group = groups.get(name) ?? [];
+    const key = `${check?.__typename ?? ''}:${name}`;
+    const group = groups.get(key) ?? [];
     group.push(check);
-    groups.set(name, group);
+    groups.set(key, group);
   }
 
   const current = [...unnamed];

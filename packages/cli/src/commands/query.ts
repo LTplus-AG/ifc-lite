@@ -13,6 +13,7 @@
 import { createHeadlessContext } from '../loader.js';
 import { printJson, getFlag, hasFlag, fatal, validateLimit } from '../output.js';
 import { STANDARD_QTO_MAP, sortEntities } from './query-aggregation.js';
+import { resolveStoreyIds } from './query-storey.js';
 import { VALID_GROUP_BY_KEYS, outputCount, outputSum, outputAggregation, outputGroupBy, outputEntities, computeUniqueValues } from './query-output.js';
 import { applyWhereFilter, parseWhereFilter, compareValues, normalizeBooleanValue } from './where-filter.js';
 
@@ -297,20 +298,10 @@ export async function queryCommand(args: string[]): Promise<void> {
     q = q.byType(...types);
   }
 
-  // --storey filter: restrict to entities in a specific storey
+  // --storey filter: restrict to entities in a specific storey (or storeys
+  // sharing a Name — see resolveStoreyIds).
   if (storeyFilter) {
-    const storeys = bim.storeys();
-    const matchedStorey = storeys.find((s: any) =>
-      s.name === storeyFilter ||
-      s.name.toLowerCase().includes(storeyFilter.toLowerCase()) ||
-      String(s.ref.expressId) === storeyFilter
-    );
-    if (!matchedStorey) {
-      const names = storeys.map((s: any) => s.name).filter(Boolean).join(', ');
-      fatal(`Storey "${storeyFilter}" not found. Available: ${names || '(none)'}`);
-    }
-    const contained = bim.contains(matchedStorey.ref);
-    const storeyIds = new Set(contained.map((e: any) => e.ref.expressId));
+    const storeyIds = resolveStoreyIds(bim, storeyFilter);
     // Post-filter: only keep entities that are in this storey
     const baseEntities = q.toArray();
     let storeyEntities = baseEntities.filter((e: any) => storeyIds.has(e.ref.expressId));

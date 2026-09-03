@@ -120,6 +120,28 @@ describe('the mutation tools over an express id the model does not hold', () => 
     expect(result.structuredContent?.message).toMatch(/999999.*'m'/);
   });
 
+  it('entity_delete refuses it instead of reporting a no-op delete', async () => {
+    // Same phantom-write class from the other end: a delete of an id nothing
+    // holds answered `okResult` with `deleted: false`, so `mutation_batch`
+    // counted the step as succeeded and the summary read "Batch 1/1 succeeded".
+    await session();
+    const result = await call('entity_delete', { express_id: PHANTOM });
+
+    expect(result.isError).toBe(true);
+    expect(result.structuredContent?.message).toMatch(/999999.*'m'/);
+  });
+
+  it('mutation_batch reports a failing entity_delete step as failed', async () => {
+    await session();
+    const result = await call('mutation_batch', {
+      operations: [{ tool: 'entity_delete', args: { express_id: PHANTOM } }],
+    });
+
+    const steps = (result.structuredContent as { results: Array<{ ok: boolean }> }).results;
+    expect(steps[0].ok).toBe(false);
+    expect(result.content?.[0]).toMatchObject({ text: 'Batch 0/1 succeeded.' });
+  });
+
   it('mutation_batch reports the failing step instead of counting it as applied', async () => {
     await session();
     const result = await call('mutation_batch', {

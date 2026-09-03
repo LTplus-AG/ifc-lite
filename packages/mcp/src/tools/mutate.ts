@@ -64,9 +64,8 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
  * was then dropped by the exporter (which only visits entities the effective
  * model holds) with no diagnostic anywhere in the round trip (#3764).
  *
- * `entity_create` and `entity_delete` are deliberately not routed through
- * this: create has no id to check yet, and delete already reports whether it
- * removed anything.
+ * `entity_create` is the one write tool not routed through this: it has no id
+ * to check yet.
  */
 function resolveWritableExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
   const expressId = resolveExpressId(m, input);
@@ -240,9 +239,14 @@ const entityDelete: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
-    const editor = backend.ensureEditor();
-    const expressId = resolveExpressId(m, input);
-    const removed = editor.removeEntity(expressId);
+    // Checked like the write tools, and for the same reason: a delete of an id
+    // the model does not hold used to answer `okResult` with `deleted: false`,
+    // which `mutation_batch` counts as a succeeded step. "Batch 1/1 succeeded"
+    // for an operation that did nothing is the phantom write from the other
+    // end. `deleted: false` still stands for the one case that is genuinely a
+    // no-op rather than a mistake: an id this session already removed.
+    const expressId = resolveWritableExpressId(m, input);
+    const removed = backend.ensureEditor().removeEntity(expressId);
     return okResult(removed ? 'Entity deleted.' : 'Entity not found / already gone.', { expressId, deleted: removed });
   },
 };

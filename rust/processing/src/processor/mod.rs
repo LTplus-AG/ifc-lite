@@ -1168,25 +1168,30 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // CSG-diagnostics sink shared across all per-job routers (drained after
     // the loop into ProcessingStats + one tracing summary).
-    let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
-        std::sync::Mutex::new(FxHashMap::default());
+    let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> = std::sync::Mutex::new(FxHashMap::default());
     // Opening-classification + per-host opening diagnostics sinks, drained from each
-    // fresh per-job router and merged here (not inside `produce_element_meshes`,
-    // which the WASM batch path also shares and drains from its own warm router).
+    // fresh per-job router and merged here, so the native pass builds the SAME
+    // `GeometryDiagnostics` the WASM batch path produces. Drained from the local
+    // router, NOT inside `produce_element_meshes`: the WASM batch path shares that
+    // function and drains from its own warm router at batch end — draining there
+    // would empty it.
     let classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats> =
         std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
     let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
         std::sync::Mutex::new(FxHashMap::default());
-    // rect_fast engagement is drained per-job router (request-local), isolating
-    // this pass's `rectFast` from any concurrent geometry pass.
+    // rect_fast engagement, drained per-job so this pass's `rectFast` is isolated from
+    // a concurrent pass instead of reading process-global counters.
     let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
         std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
-    // Dropped representation items by IFC type (request-local, like the other
-    // sinks); non-empty means the router refused geometry it could not build.
+    // Dropped representation items by IFC type: no processor for the type, or the
+    // processor errored (request-local, like the other sinks). Non-empty means the
+    // model has elements whose geometry the router refused to build.
     let unsupported_item_collector: std::sync::Mutex<FxHashMap<String, u64>> =
         std::sync::Mutex::new(FxHashMap::default());
-    // Degenerate-backstop drop tally (request-local, like the other sinks);
-    // non-zero means the f32-collapse safety net engaged for this model.
+    // Degenerate-backstop drop tally, summed from each element's
+    // `ProducedElementMeshes::degenerate_triangles_dropped` (request-local, like the
+    // other sinks). Non-zero means `element::build_mesh_data`'s f32-collapse safety
+    // net engaged for this model.
     let backstop_collector = std::sync::atomic::AtomicU64::new(0);
     let oversized_ref_drop_collector = std::sync::atomic::AtomicU64::new(0); // #3421/#3752
 
@@ -1572,9 +1577,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         let host_diags = host_diag_collector
             .into_inner()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let rect_fast = rect_fast_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let rect_fast = rect_fast_collector.into_inner().unwrap_or_else(|p| p.into_inner());
         let unsupported_items = unsupported_item_collector.into_inner().unwrap_or_else(|p| p.into_inner());
         unsupported_items::warn_if_dropped(&unsupported_items);
         let diag = ifc_lite_geometry::aggregate_diagnostics(

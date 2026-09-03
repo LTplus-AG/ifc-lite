@@ -119,13 +119,18 @@
  *      ANCHORED to it. It proves nothing about whether the findings are CORRECT.
  *      A model can quote a real line and say something false about it. Precision
  *      is a separate instrument and this is not it.
- *   2. `line` and `quote` are checked INDEPENDENTLY: the quote must appear
- *      somewhere in the file's patch, and the line must fall in one of that file's
- *      added ranges, but nothing here proves the quote is ON that line. A finding
- *      can therefore land on the wrong line of the right file. Closing it means
- *      mapping hunk headers to new-file line numbers; it is deliberately not done
- *      here because a wrong-line comment is visible and recoverable, while the
- *      three failures above are silent.
+ *   2. CLOSED (#3658). `line` and `quote` used to be checked INDEPENDENTLY: the
+ *      quote had to appear somewhere in the file's patch, and the line had to
+ *      fall in one of that file's added ranges, but nothing compared the two --
+ *      so a finding quoting one added line and anchored at a different added
+ *      line passed and posted on the wrong line. `addedLinesMatching` below now
+ *      requires the quote to be the TEXT of the added line AT `f.line`,
+ *      trimmed the way `newFileLines` trims a context line. A mismatch is
+ *      DROPPED, not corrected to the line the quote actually sits on: a comment
+ *      moved to a line the model never named is a second guess this file has no
+ *      basis for, and a dropped finding is loud (a DROPPED warning naming both
+ *      the claimed line and, when found, the line the quote actually matches)
+ *      where a silently-relocated one would not be.
  *   3. A response with prose BEFORE the fence, or two fenced blocks, is
  *      RAW_UNPARSEABLE rather than repaired. That is the intended direction: a
  *      repair pass is where a validator starts inventing the thing it validates.
@@ -144,6 +149,11 @@
 
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
+// quotableLines/quoteAppearsIn/lineIsAdded/addedLinesMatching moved to
+// ./quote-line-coupling.mjs (module-size budget). Imported (not `export ...
+// from`) because this file also calls them itself, and re-exported below so
+// every existing import of them from this file keeps working unchanged.
+import { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching } from './quote-line-coupling.mjs';
 
 /**
  * The terminal sentinel the prompt requires as the LAST field. Its whole job is to
@@ -474,54 +484,7 @@ export function readInput(path) {
   return { headSha: cfg.headSha, files, unreviewable, contextPack: cfg.contextPack ?? null };
 }
 
-/**
- * The lines of a unified diff a quote may legitimately come from, each with its
- * diff marker removed and trimmed.
- *
- * NOT `patch.includes(quote)`. That accepts a fragment spanning a line boundary,
- * a substring of a longer identifier, and -- the one that matters -- the text of
- * the hunk header or the `+++ b/path` line, none of which require having read any
- * code. Whole-line equality after trimming is both stricter (no fragments) and
- * more forgiving where it should be (trailing whitespace and the diff marker do
- * not decide whether a quote counts).
- *
- * @param {string} patch
- * @returns {string[]}
- */
-export function quotableLines(patch) {
-  const out = [];
-  for (const line of String(patch).split(/\r?\n/)) {
-    // Hunk headers, file headers and the no-newline note are diff METADATA. A
-    // model that quotes one has demonstrated nothing about the code.
-    if (line.startsWith('@@') || line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('\\')) {
-      continue;
-    }
-    const marker = line[0];
-    const body = marker === '+' || marker === '-' || marker === ' ' ? line.slice(1) : line;
-    const trimmed = body.trim();
-    if (trimmed !== '') out.push(trimmed);
-  }
-  return out;
-}
-
-/**
- * Does `quote` name a whole line of `patch`, and is it long enough to be evidence?
- *
- * @param {string} patch
- * @param {string} quote
- * @param {number} minChars
- */
-export function quoteAppearsIn(patch, quote, minChars) {
-  const needle = String(quote).trim();
-  if (needle.length < minChars) return false;
-  return quotableLines(patch).includes(needle);
-}
-
-/** @param {number} line @param {[number, number][]} ranges */
-export function lineIsAdded(line, ranges) {
-  if (!Number.isInteger(line) || line < 1) return false;
-  return ranges.some(([start, end]) => line >= start && line <= end);
-}
+export { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching };
 
 /**
  * THE SECURITY BOUNDARY. Everything the model controls that can reach a posted
@@ -769,10 +732,10 @@ function validateFindings({ response, input, warn }) {
       drop(`\`${f.path}\` was never sent to the model, so this finding is about code we did not review.`);
       continue;
     }
-    if (typeof f.quote !== 'string' || !quoteAppearsIn(file.patch, f.quote, MIN_FINDING_QUOTE_CHARS)) {
+    if (typeof f.quote !== 'string' || f.quote.trim().length < MIN_FINDING_QUOTE_CHARS) {
       drop(
-        `\`quote\` is not a line of \`${f.path}\`'s patch (or is under ${MIN_FINDING_QUOTE_CHARS} ` +
-          `characters): ${JSON.stringify(String(f.quote).slice(0, 120))}.`,
+        `\`quote\` is missing or under ${MIN_FINDING_QUOTE_CHARS} characters, which would not be ` +
+          `evidence of anything: ${JSON.stringify(String(f.quote).slice(0, 120))}.`,
       );
       continue;
     }
@@ -781,6 +744,25 @@ function validateFindings({ response, input, warn }) {
         `\`line\` ${JSON.stringify(f.line)} is not inside an added range of \`${f.path}\` ` +
           `(${JSON.stringify(file.addedLineRanges)}). Commenting there would annotate code this PR ` +
           'did not touch.',
+      );
+      continue;
+    }
+    // THE COUPLING CHECK (#3658). `quote` and `line` used to be validated
+    // independently, so a real quote anchored at the wrong added line passed
+    // both checks and posted on the wrong line. Requiring the quote to BE the
+    // text at that exact line closes it. On a mismatch, name where the quote
+    // WAS found (if anywhere) so the drop is diagnosable rather than a bare
+    // refusal -- this is the loud failure direction: the finding is dropped,
+    // never silently re-anchored to a line the model did not name.
+    const matches = addedLinesMatching(file.patch, f.quote);
+    if (!matches.includes(f.line)) {
+      drop(
+        matches.length > 0
+          ? `\`quote\` is not the text at \`line\` ${f.line} of \`${f.path}\` -- it IS the text of added ` +
+            `line(s) ${matches.join(', ')} instead. Posting at ${f.line} would anchor a real finding to ` +
+            'the wrong line, which is worse than not posting it.'
+          : `\`quote\` is not the text of any added line of \`${f.path}\`: ` +
+            `${JSON.stringify(f.quote.slice(0, 120))}.`,
       );
       continue;
     }

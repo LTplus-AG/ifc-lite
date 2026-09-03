@@ -216,6 +216,18 @@ export const relationshipWithheldWarning = (expressId: number, type: string): st
   `Relationship #${expressId} (${type}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted). Anything else that relationship associated is no longer associated in the output.`;
 
 /**
+ * Same withholding, for a rescued `IFCSTYLEDITEM` / `IFCSTYLEDREPRESENTATION`
+ * / `IFCPRESENTATIONLAYERASSIGNMENT` / `IFCPRESENTATIONLAYERWITHSTYLE`
+ * (`style-closure.ts`'s `collectStyleEntities`) rather than an `IFCREL*`
+ * line — a distinct message rather than reusing {@link relationshipWithheldWarning}
+ * verbatim because that one says "Relationship", which these are not; the
+ * dangling-ref shape it withholds against is identical (a single-valued
+ * attribute, e.g. `IfcStyledItem.Item`, naming an entity this export omits).
+ */
+export const styleEntityWithheldWarning = (expressId: number, type: string): string =>
+  `Entity #${expressId} (${type}) was withheld from the export: it names at least one entity that has no line in this export, in a slot with no spelling for an omitted reference (a single-valued attribute, or a set whose every member is omitted).`;
+
+/**
  * What `step-attribute-mutations.ts`'s `applySourceLineMutations` produced: the rewritten
  * line, plus which edit kinds that rewrite actually delivered. The delivery
  * half is {@link SourceLineDelivery} rather than three loose booleans so that

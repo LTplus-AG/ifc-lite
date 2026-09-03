@@ -6,9 +6,9 @@ import { describe, it, expect } from 'vitest';
 import {
   PRODUCT_TYPES,
   collectReferencedEntityIds,
-  collectStyleEntities,
   getVisibleEntityIds,
 } from './reference-collector.js';
+import { collectStyleEntities } from './style-closure.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import {
@@ -780,5 +780,94 @@ describe('collectStyleEntities rescues IFCPRESENTATIONLAYERASSIGNMENT', () => {
     collectStyleEntities(closure, source, { byId, byType });
 
     expect(closure.has(20)).toBe(false);
+  });
+
+  // RED (PR #3698 follow-up): the "control" case above only covers a layer
+  // assignment naming EITHER an included item OR only excluded ones — never
+  // one spanning BOTH, which is the realistic shape (one CAD layer naming
+  // every wall's shape representation). `#20` is rescued correctly — #10 is
+  // visible — but the pre-fix forward walk pulled in #99 unconditionally too,
+  // because #99 exists in `entityIndex` and nothing checked whether it was
+  // ever independently visible.
+  it('does not resurrect an excluded item a rescued layer assignment ALSO names, alongside a visible one (#3698 follow-up)', () => {
+    const entries: Array<[number, string, string]> = [
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#11));"],
+      [11, 'IFCEXTRUDEDAREASOLID', '#11=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      // #99 is a real entity (exists in entityIndex) but was never reached by
+      // the main closure walk — the shape representation of a HIDDEN wall.
+      [99, 'IFCSHAPEREPRESENTATION', "#99=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#98));"],
+      [98, 'IFCEXTRUDEDAREASOLID', '#98=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      [20, 'IFCPRESENTATIONLAYERASSIGNMENT', "#20=IFCPRESENTATIONLAYERASSIGNMENT('Layer_Walls',$,(#10,#99),$);"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+    const closure = new Set([10, 11]);
+
+    collectStyleEntities(closure, source, { byId, byType });
+
+    // GREEN: rescued via the visible member.
+    expect(closure.has(20)).toBe(true);
+    // RED before the fix: closure ended up [10, 11, 20, 99] — the hidden
+    // wall's own shape representation, and transitively its solid, riding
+    // in on the unconditional forward walk from #20.
+    expect(closure.has(99)).toBe(false);
+    expect(closure.has(98)).toBe(false);
+  });
+
+  // The task that motivated this fix flags IFCSTYLEDITEM/IFCSTYLEDREPRESENTATION
+  // as sharing the SAME unguarded-forward-walk root cause (it predates #3698,
+  // which only made it practically triggerable via layer assignments). Verify
+  // rather than assume: an IFCSTYLEDREPRESENTATION.Items list can itself mix a
+  // styled item over VISIBLE geometry with one over geometry belonging to a
+  // HIDDEN product — schema allows an arbitrary IfcStyledItem per product to
+  // be gathered under one shared IfcStyledRepresentation.
+  it('does not resurrect a hidden product’s styled item via a shared IFCSTYLEDREPRESENTATION', () => {
+    const entries: Array<[number, string, string]> = [
+      // Visible geometry + its styled item.
+      [10, 'IFCEXTRUDEDAREASOLID', '#10=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      [30, 'IFCSTYLEDITEM', '#30=IFCSTYLEDITEM(#10,$,$);'],
+      // Hidden product's OWN geometry + its OWN styled item — never reached
+      // by the main closure walk (#99 is not in `closure` below).
+      [99, 'IFCEXTRUDEDAREASOLID', '#99=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      [31, 'IFCSTYLEDITEM', '#31=IFCSTYLEDITEM(#99,$,$);'],
+      // One shared IFCSTYLEDREPRESENTATION gathering both styled items —
+      // analogous to one CAD layer naming both walls' geometry.
+      [50, 'IFCSTYLEDREPRESENTATION', "#50=IFCSTYLEDREPRESENTATION(#1,'Style','Style',(#30,#31));"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+    const closure = new Set([10]);
+
+    collectStyleEntities(closure, source, { byId, byType });
+
+    // GREEN: rescued via the visible styled item.
+    expect(closure.has(30)).toBe(true);
+    expect(closure.has(50)).toBe(true);
+    // The hidden product's OWN styled item (and, transitively, ITS geometry)
+    // must stay out — it is reachable from #50 only alongside #30, the same
+    // shape as the layer-assignment case above.
+    expect(closure.has(31)).toBe(false);
+    expect(closure.has(99)).toBe(false);
+  });
+
+  // `excludeIds` is threaded through independently of the geometry-type
+  // guard above (matching `collectGeoreferencingEntities`'s shape) — this
+  // pins that it does real work of its own, for a referenced id the
+  // geometry-type check alone would not catch (a non-geometry-classified
+  // type, e.g. a directly-excluded id that is not representation geometry).
+  it('honours excludeIds directly in the forward walk, independent of the geometry-type guard', () => {
+    const entries: Array<[number, string, string]> = [
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION(#1,'Body','SweptSolid',(#11));"],
+      [11, 'IFCEXTRUDEDAREASOLID', '#11=IFCEXTRUDEDAREASOLID(#12,#13,#14,3.);'],
+      // #77 is NOT geometry-classified (IFCPROPERTYSET), so the geometry-type
+      // guard alone would happily add it — only `excludeIds` stops it here.
+      [77, 'IFCPROPERTYSET', "#77=IFCPROPERTYSET('g',$,'P',$,());"],
+      [20, 'IFCPRESENTATIONLAYERASSIGNMENT', "#20=IFCPRESENTATIONLAYERASSIGNMENT('Layer_Walls',$,(#10,#77),$);"],
+    ];
+    const { source, byId, byType } = buildIndex(entries);
+    const closure = new Set([10, 11]);
+
+    collectStyleEntities(closure, source, { byId, byType }, new Set([77]));
+
+    expect(closure.has(20)).toBe(true);
+    expect(closure.has(77)).toBe(false);
   });
 });

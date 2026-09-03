@@ -62,8 +62,8 @@ import { asSourceBytes, scanIfcEntities, type IfcSourceBytes } from '@ifc-lite/p
 import {
   collectReferencedEntityIds,
   collectRefsInByteRange,
-  collectStyleEntities,
 } from './reference-collector.js';
+import { collectStyleEntities } from './style-closure.js';
 
 /** Fixture, relative to `tests/models`. Fixtures are NOT committed (AGENTS.md). */
 const FIXTURE_RELPATH = 'ara3d/AC20-FZK-Haus.ifc';

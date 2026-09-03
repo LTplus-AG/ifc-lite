@@ -950,106 +950,12 @@ function propagateOpeningExclusions(
 }
 
 // ---------------------------------------------------------------------------
-// Style / layer entity collection (reverse pass)
+// Style / layer entity collection (reverse pass) — moved to style-closure.ts
 // ---------------------------------------------------------------------------
 
-/**
- * Collect style and presentation-layer entities (IFCSTYLEDITEM,
- * IFCSTYLEDREPRESENTATION, IFCPRESENTATIONLAYERASSIGNMENT) that reference
- * geometry already in the closure, then transitively follow their own
- * references.
- *
- * In IFC STEP, IFCSTYLEDITEM references a geometry RepresentationItem, but
- * nothing references the StyledItem back — and IFCPRESENTATIONLAYERASSIGNMENT
- * is the same shape: it names the representation/items assigned to a layer
- * (`AssignedItems`) but nothing points back at the assignment itself. So the
- * forward closure walk misses both entirely. This function does one reverse
- * pass using the byType index: for each candidate, check if any referenced ID
- * is in the closure. If yes, add it and walk its own reference chain in.
- *
- * Uses byType for O(candidates) instead of O(allEntities), and byte-level
- * scanning for #ID extraction.
- *
- * Must be called AFTER collectReferencedEntityIds so the closure is complete.
- *
- * @param closure - The existing closure set (mutated in place)
- * @param source - The original STEP file source buffer
- * @param entityIndex - Full entity index with type info and byType lookup
- */
-export function collectStyleEntities(
-  closure: Set<number>,
-  source: Uint8Array | IfcSourceBytes,
-  entityIndex: {
-    byId: {
-      get(expressId: number): { type: string; byteOffset: number; byteLength: number } | undefined;
-      has(expressId: number): boolean;
-      refsOf?(expressId: number): readonly number[] | undefined;
-    };
-    byType: Map<string, number[]>;
-  },
-): void {
-  const src = asSourceBytes(source);
-  const queue: number[] = [];
-  const refs: number[] = [];
-  const refsInto = (expressId: number, ref: { byteOffset: number; byteLength: number }): void => {
-    refs.length = 0;
-    const authored = entityIndex.byId.refsOf?.(expressId);
-    if (authored) refs.push(...authored);
-    else {
-      const span = src.slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
-      extractRefsFromBytes(span, 0, span.length, refs);
-    }
-  };
-
-  // Use byType index for direct lookup — O(candidates) not O(allEntities)
-  const styledItemIds = entityIndex.byType.get('IFCSTYLEDITEM') ?? [];
-  const styledRepIds = entityIndex.byType.get('IFCSTYLEDREPRESENTATION') ?? [];
-  const layerAssignmentIds = entityIndex.byType.get('IFCPRESENTATIONLAYERASSIGNMENT') ?? [];
-  // IFCPRESENTATIONLAYERWITHSTYLE is a subtype (adds LayerOn/LayerFrozen/
-  // LayerBlocked/LayerStyles) indexed under its own STEP type name, not
-  // IFCPRESENTATIONLAYERASSIGNMENT's — a separate byType lookup, same rescue.
-  const layerWithStyleIds = entityIndex.byType.get('IFCPRESENTATIONLAYERWITHSTYLE') ?? [];
-
-  for (const ids of [styledItemIds, styledRepIds, layerAssignmentIds, layerWithStyleIds]) {
-    for (const expressId of ids) {
-      if (closure.has(expressId)) continue;
-
-      const entityRef = entityIndex.byId.get(expressId);
-      if (!entityRef) continue;
-
-      // Check if any referenced ID is in the closure
-      refsInto(expressId, entityRef);
-
-      let referencesClosureEntity = false;
-      for (let i = 0; i < refs.length; i++) {
-        if (closure.has(refs[i])) {
-          referencesClosureEntity = true;
-          break;
-        }
-      }
-
-      if (referencesClosureEntity) {
-        closure.add(expressId);
-        queue.push(expressId);
-      }
-    }
-  }
-
-  // Walk forward from newly added style entities to pull in their style chain
-  // (IfcPresentationStyleAssignment → IfcSurfaceStyle → IfcSurfaceStyleRendering → IfcColourRgb)
-  while (queue.length > 0) {
-    const entityId = queue.pop()!;
-    const ref = entityIndex.byId.get(entityId);
-    if (!ref) continue;
-
-    refsInto(entityId, ref);
-
-    for (let i = 0; i < refs.length; i++) {
-      const referencedId = refs[i];
-      if (!closure.has(referencedId) && entityIndex.byId.has(referencedId)) {
-        closure.add(referencedId);
-        queue.push(referencedId);
-      }
-    }
-  }
-}
+// `collectStyleEntities` (IFCSTYLEDITEM / IFCSTYLEDREPRESENTATION /
+// IFCPRESENTATIONLAYERASSIGNMENT / IFCPRESENTATIONLAYERWITHSTYLE rescue) now
+// lives in `style-closure.ts`, split out for the same reason
+// `collectGeoreferencingEntities` was: this file was already at its module
+// size budget. It still uses `collectRefsInByteRange` (above) for its byte
+// scan.

@@ -21,9 +21,9 @@ import type { MutablePropertyView } from '@ifc-lite/mutations';
 import {
   collectReferencedEntityIds,
   getVisibleEntityIds,
-  collectStyleEntities,
   filterHiddenRefsFromRelationshipLine,
 } from './reference-collector.js';
+import { collectStyleEntities, STYLE_RESCUE_TYPES } from './style-closure.js';
 import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
@@ -536,7 +536,7 @@ export class MergedExporter {
         if (plan.skipEntityIds.has(expressId)) continue;
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null,
         );
         if (line !== null) allEntityLines.push(line);
       }
@@ -674,7 +674,7 @@ export class MergedExporter {
 
         const line = this.renderEntity(
           expressId, entityRef, source, offset, plan, sourceSchema, schema, guidToFinalId, mode,
-          visibility?.hiddenProductIds ?? null, completeIndex,
+          visibility?.hiddenProductIds ?? null, completeIndex, visibility?.included ?? null,
         );
         if (line !== null) allEntityLines.push(line);
 
@@ -1059,11 +1059,11 @@ export class MergedExporter {
     const isolatedIds = options.isolatedEntityIdsByModel?.get(model.id) ?? null;
     const { roots, hiddenProductIds } = getVisibleEntityIds(model.dataStore, hiddenIds, isolatedIds);
     const included = collectReferencedEntityIds(roots, source, completeIndex, hiddenProductIds);
-    // Second pass: collect style entities that reference included geometry.
+    // Second pass: style entities referencing included geometry (see style-closure.ts).
     collectStyleEntities(included, source, {
       byId: completeIndex,
       byType: model.dataStore.entityIndex.byType,
-    });
+    }, hiddenProductIds);
     // Third pass: rescue IFCMAPCONVERSION/IFCPROJECTEDCRS — see georef-closure.ts.
     collectGeoreferencingEntities(
       included, source,
@@ -1189,30 +1189,37 @@ export class MergedExporter {
     mode: ModelMode,
     hiddenProductIds: ReadonlySet<number> | null,
     completeIndex: CompleteEntityIndex,
+    includedIds: ReadonlySet<number> | null,
   ): string | null {
     let entityText = decodeRange(source, entityRef.byteOffset, entityRef.byteOffset + entityRef.byteLength);
 
     // A `visibleOnly` export must narrow — or entirely withhold — a
-    // relationship's own OUTPUT line the same way `StepExporter` does
-    // (`isOmittedFromOutput`, consumed at its two
-    // `filterHiddenRefsFromRelationshipLine` call sites — named rather than
-    // cited by line number, which went stale the first time either file moved).
-    // NOTE the predicates are not identical: `StepExporter`'s also answers for
-    // an unreadable source ref and a geometry exclusion, which this one — a
-    // hidden product or an id absent from the complete index — does not.
+    // relationship's (and, below, a rescued style/layer entity's) own OUTPUT
+    // line the same way `StepExporter` does (`isOmittedFromOutput`, its two
+    // `filterHiddenRefsFromRelationshipLine` call sites). NOTE the predicates
+    // are not identical: `StepExporter`'s also answers for an unreadable
+    // source ref and a geometry exclusion, which these do not.
     // `collectReferencedEntityIds` already refuses to WALK INTO a relationship
     // whose sole subject is hidden (#2548), but a root's own bytes are still
     // copied to the output verbatim unless narrowed here too — without this,
-    // a hidden id survived as a dangling `#N` with no `#N=` line (the #2398
-    // shape), which is exactly what closing the #2548 closure leak would
-    // otherwise have traded it for. Runs in LOCAL id space, before the remap
-    // below, because `hiddenProductIds` and `completeIndex` are both local to
-    // this model.
-    if (hiddenProductIds !== null && isRelationshipType(entityRef.type.toUpperCase())) {
-      const isExcluded = (id: number): boolean => hiddenProductIds.has(id) || !completeIndex.has(id);
-      const filtered = filterHiddenRefsFromRelationshipLine(entityText, isExcluded);
-      if (filtered === null) return null;
-      entityText = filtered;
+    // a hidden id survives as a dangling `#N` with no `#N=` line (#2398).
+    // Runs in LOCAL id space, before the remap below.
+    if (hiddenProductIds !== null) {
+      const entityTypeUpper = entityRef.type.toUpperCase();
+      // Same narrowing for a rescued style/layer entity (`STYLE_RESCUE_TYPES`,
+      // `style-closure.ts`): its line can name a kept AND an excluded id (a
+      // shared CAD layer) — `hiddenProductIds` misses that id (exclusively-
+      // owned geometry, not a hidden PRODUCT), so this arm uses `includedIds`.
+      const isExcluded: ((id: number) => boolean) | null = isRelationshipType(entityTypeUpper)
+        ? (id) => hiddenProductIds.has(id) || !completeIndex.has(id)
+        : STYLE_RESCUE_TYPES.has(entityTypeUpper) && includedIds !== null
+          ? (id) => !includedIds.has(id) || !completeIndex.has(id)
+          : null;
+      if (isExcluded) {
+        const filtered = filterHiddenRefsFromRelationshipLine(entityText, isExcluded);
+        if (filtered === null) return null;
+        entityText = filtered;
+      }
     }
 
     // A dropped empty spatial container (#3643) is never written, so any line

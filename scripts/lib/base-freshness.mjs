@@ -11,6 +11,8 @@
  * is narrowed the way it is.
  */
 
+import { unifiedDiffLineKind } from './unified-diff.mjs';
+
 /**
  * A repo-relative path token: at least one `/`, and an extension. Deliberately
  * greedy about the characters a path may hold (`@`, `.`, `-`) because package
@@ -94,8 +96,11 @@ const intersect = (files, set) => files.filter((f) => set.has(f));
  */
 export function rowsChangedInPatch(patch, isRepoFile) {
   const changed = new Set();
+  let insideHunk = false;
   for (const line of (patch ?? '').split('\n')) {
-    if (!/^[+-]/.test(line) || /^(\+\+\+|---)/.test(line)) continue;
+    const kind = unifiedDiffLineKind(line, insideHunk);
+    if (kind === 'hunk') { insideHunk = true; continue; }
+    if (kind !== 'added' && kind !== 'removed') continue;
     for (const path of recordedFiles(line.slice(1), isRepoFile)) changed.add(path);
   }
   return changed;

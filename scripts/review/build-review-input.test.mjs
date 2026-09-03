@@ -71,6 +71,14 @@ test('a `+++` header line is not counted as an addition', () => {
   assert.deepEqual(ranges, [[2, 2]], 'only the real addition counts');
 });
 
+test('#3634: diff-header prefixes inside a hunk are content, not headers', () => {
+  const removedRule = ['--- a/doc.md', '+++ b/doc.md', '@@ -1,3 +1,3 @@', ' # Title', '----', '+replacement', ' tail'].join('\n');
+  assert.deepEqual(addedLineRanges(removedRule), [[2, 2]]);
+
+  const addedIncrement = ['--- a/code.ts', '+++ b/code.ts', '@@ -1,1 +1,2 @@', ' context', '+++i;'].join('\n');
+  assert.deepEqual(addedLineRanges(addedIncrement), [[2, 2]]);
+});
+
 test('the no-newline marker is metadata, not a context line', () => {
   // Counting it shifted every later range by one: a correct finding on the real
   // line was dropped as out-of-range, and a finding one past EOF was posted and

@@ -97,6 +97,11 @@ test('hunkLines numbers the NEW file, so a window lands where the reader will lo
   assert.deepEqual(hunkLines('@@ -1,2 +10,4 @@\n ctx\n+one\n+two'), [11, 12]);
 });
 
+test('#3634: hunkLines treats diff-header prefixes as content after a hunk starts', () => {
+  const patch = ['--- a/a.ts', '+++ b/a.ts', '@@ -1,2 +1,2 @@', '----', '+++i;'].join('\n');
+  assert.deepEqual(hunkLines(patch), [1]);
+});
+
 /**
  * A pack under REAL budget pressure, which is the only condition the reservation
  * has any effect under. The first version of these tests supplied `exec: () => ''`

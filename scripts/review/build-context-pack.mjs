@@ -40,6 +40,7 @@
 import { execFileSync } from 'node:child_process';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
 import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
+import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 
 /**
  * What the PR description may claim before the siblings compete for the rest.
@@ -232,14 +233,13 @@ export function showAtRef(ref, path, { cwd = process.cwd(), exec = execFileSync 
 
 /** New-file line numbers a patch touches, so a long file can be windowed. */
 export function hunkLines(patch) {
-  const out = [];
-  let n = 0;
+  const out = []; let n = 0, insideHunk = false;
   for (const line of String(patch).split(/\r?\n/)) {
     const h = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (h) { n = Number(h[1]); continue; }
-    if (line.startsWith('\\')) continue;
-    if (line.startsWith('+') && !line.startsWith('+++')) { out.push(n); n += 1; }
-    else if (line.startsWith('-') && !line.startsWith('---')) { /* no new line */ }
+    if (h) { insideHunk = true; n = Number(h[1]); continue; }
+    const kind = unifiedDiffLineKind(line, insideHunk); if (kind === 'metadata' || kind === 'header') continue;
+    if (kind === 'added') { out.push(n); n += 1; }
+    else if (kind === 'removed') { /* no new line */ }
     else n += 1;
   }
   return out;

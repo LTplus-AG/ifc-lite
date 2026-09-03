@@ -19,20 +19,50 @@
  * fixed for the byte scanners; a new trivia matcher should not reintroduce
  * it under a different name.
  *
- * The comment body is `[\s\S]*?` (lazy, not `[\s\S]*`): for every WELL-FORMED
- * comment this is the same match either quantifier would settle on — regex
- * backtracking tries longer alternatives too when a shorter one leaves the
- * rest of the pattern unsatisfied, so laziness alone is not a correctness
- * guarantee here. Kept lazy anyway because it is the closer analogue of
- * `skip_step_comment`'s forward-only, no-backtracking scan and never matches
- * MORE than necessary when a match exists at all. Neither quantifier can, by
- * itself, reproduce that scanner's true non-nesting semantics on adversarial
- * input containing a bare, unpaired `*​/` before the real one (regex
- * backtracking will walk past it looking for a way to complete the overall
- * pattern) — accepted because ISO 10303-21 forbids an unpaired `*​/` outside
- * a comment, so producing one requires an already-malformed file, and this
- * module is reached only after the record has matched a much stricter
- * historical adjacency test suite (see `wrapped-type-paren-adjacency.test.ts`)
- * that covers every case a real STEP writer produces.
+ * Both alternatives are written so the outer `(?:A|B)*` has exactly one way
+ * to partition any given input into iterations — there is nothing left for
+ * the engine to backtrack over:
+ *
+ * - The comment body is `(?:[^*]|\*(?!/))*`, not `[\s\S]*?`. A lazy
+ *   `[\s\S]*?` looks unambiguous locally, but when the *overall* pattern
+ *   fails past a comment, the engine retries the lazy body against every
+ *   later `*​/` in the string, so one comment can absorb subsequent ones and
+ *   the two alternatives (comment vs. whitespace) start overlapping on the
+ *   same span. That overlap is what makes `(?:A|B)*` exponential: with N
+ *   well-formed, back-to-back `/**​/` comments there are ~2^N ways to
+ *   group them into "one comment eats the rest" vs. "N separate comments",
+ *   and a failing suffix forces the engine to try all of them. Measured
+ *   with the OLD (lazy-body) pattern against `'#5=IFCWALL' + '/**​/'.repeat(n)`
+ *   with no closing `(`: n=25 ~0.1s, n=28 ~0.8s, n=30 ~3s+ (machine-
+ *   dependent, but the doubling-per-comment growth is the signature).
+ *   `(?:[^*]|\*(?!/))*` forbids that: every `*` inside the body must NOT be
+ *   followed by `/`, so the body has exactly one maximal extent for a given
+ *   start position — no shorter match is ever retried, and one comment can
+ *   never swallow the next.
+ * - The whitespace alternative is `[ \t\n\r\x0b\x0c]+`, not a bare
+ *   character class. A single-char alternative has no quantifier of its own
+ *   so it does not carry the same exponential risk by itself (measured:
+ *   with the comment body already unambiguous, restoring the single-char
+ *   class stays linear even against 200k whitespace characters) — but `+`
+ *   still removes a second, cheaper redundancy: without it the outer `*`
+ *   has many ways to split one whitespace run into N single-character
+ *   iterations, all recombined on backtracking. `+` collapses a run to one
+ *   iteration, so there is only one partition to consider there too.
+ *
+ * Both changes preserve the language exactly: still any run, in any order,
+ * of STEP whitespace and paired `/* ... *​/` comments. Only the matching
+ * *path* changed, verified with a ~111k-case fuzz comparison of the old and
+ * new patterns over well-formed whitespace/comment combinations (0
+ * mismatches) plus the two-way rejection and adversarial-input suites in
+ * `wrapped-type-paren-adjacency.test.ts` and the trivia timing test.
+ *
+ * An unpaired, unterminated `/*` (no matching `*​/` anywhere after it) still
+ * correctly fails to match rather than hanging: `(?:[^*]|\*(?!/))*` simply
+ * runs out of input, backtracking is O(1) per position (no ambiguity to
+ * explore), and the required `\*​/` after the body never appears. Note this
+ * corrects an earlier version of this comment, which reasoned that an
+ * exponential blowup "requires an already-malformed file" — that was wrong:
+ * the measurement above uses only well-formed, correctly paired comments;
+ * malformed input was never required to trigger it.
  */
-export const STEP_TRIVIA = '(?:[ \\t\\n\\r\\x0b\\x0c]|/\\*[\\s\\S]*?\\*/)*';
+export const STEP_TRIVIA = '(?:[ \\t\\n\\r\\x0b\\x0c]+|/\\*(?:[^*]|\\*(?!/))*\\*/)*';

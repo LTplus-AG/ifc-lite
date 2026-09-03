@@ -714,18 +714,18 @@ test('the charging formula: renderSiblingRow bytes are what gets charged, at ANY
   );
 });
 
+// The pre-marker truncation `capKey` must apply before a key is sent to grep
+// (#3732 item 2, `MAX_KEY_LENGTH` = 60). Recomputed here from the PUBLIC
+// constant rather than imported, so the fixture states the contract
+// independently of whatever private formula `capKey` currently uses.
+const withoutMarkerCap = (rawKey) =>
+  rawKey.length <= MAX_KEY_LENGTH ? rawKey : rawKey.slice(0, MAX_KEY_LENGTH - 1);
+
 function longKeyFixture(n) {
   // One file per key so `searchKeys`'s own 12-per-file cap cannot suppress the
   // fixture, and MAX_SEARCH_KEYS (150) is never approached at n <= 40. The raw
   // token is well past MAX_KEY_LENGTH so every key here exercises `capKey`'s
-  // truncation branch. The sibling source below embeds `rawKey` -- the REAL,
-  // un-truncated identifier, never `…`-marked -- because that is what a real
-  // sibling file contains; a real source file can never contain a literal `…`
-  // marker. `grepOut` mimics `git grep --fixed-strings` itself: a hit only if
-  // the pattern `buildPack` actually passed is a substring of that real source
-  // line. A capped-with-marker search string is therefore NOT a substring and
-  // must produce no hit -- this is what makes the test non-circular: it fails
-  // if `siblingSites` ever again sends the `…`-marked key to grep.
+  // truncation branch.
   const files = Array.from({ length: n }, (_, i) => {
     const rawKey = `overlongIdentifierToken${i}` + 'Z'.repeat(4_000);
     return {
@@ -734,22 +734,41 @@ function longKeyFixture(n) {
       rawKey,
     };
   });
+  // BEHAVIOURAL, not textual: this does not read a file and probe its text for
+  // a substring. It asserts the CONTRACT of the pattern `siblingSites` hands to
+  // `git grep` -- the pattern must equal the key with its truncation marker
+  // stripped, exactly (`withoutMarkerCap`), never the marker-appended string
+  // `capKey` displays. Equality against an independently stated expected value
+  // is what makes this non-circular: it fails the moment `siblingSites` sends
+  // the `…`-marked key to grep, exactly the #3732 regression, WITHOUT quoting
+  // or re-deriving `capKey`'s own output as the fixture.
+  const patterns = [];
   const grepOut = (args) => {
     const pattern = args[args.length - 2]; // `git grep -n --fixed-strings --no-color -I -e <pattern> <ref>`
-    const file = files.find((f) => `  use(${f.rawKey});`.includes(pattern));
+    patterns.push(pattern);
+    const file = files.find((f) => pattern === withoutMarkerCap(f.rawKey));
     return file ? `HEAD:packages/z/sibling-${file.path.split('/').pop()}:1:  use(${file.rawKey});` : '';
   };
-  return buildPack(
+  const pack = buildPack(
     { headSha: 'a'.repeat(40), files: files.map(({ rawKey: _k, ...f }) => f) },
     { baseRef: 'HEAD', body: null, exec: (_cmd, args) => (args[0] === 'grep' ? grepOut(args) : '') },
   );
+  return { pack, patterns };
 }
 
 test('THE FIX: the assembled pack never exceeds the budget it was charged against, even with capped long keys', () => {
   // 40 candidates is `siblings.length >= 40`'s own cap. What proves the fix is
   // that the RENDERED bytes -- the ones `run-reviewer.mjs` actually puts on
   // the wire, key included -- stay inside the budget `buildPack` was handed.
-  const pack = longKeyFixture(40);
+  const { pack, patterns } = longKeyFixture(40);
+  assert.equal(patterns.length, 40, 'fixture: every candidate must reach grep');
+  for (const pattern of patterns) {
+    assert.equal(
+      pattern.length,
+      MAX_KEY_LENGTH - 1,
+      `the grep pattern must be the marker-stripped truncation (${MAX_KEY_LENGTH - 1} chars), got ${pattern.length}`,
+    );
+  }
   assert.ok(pack.siblings.length > 0, 'fixture: at least one site retrieved');
   for (const h of pack.siblings) {
     assert.ok(h.key.length <= MAX_KEY_LENGTH, `every h.key must be capKey'd, got ${h.key.length} bytes`);

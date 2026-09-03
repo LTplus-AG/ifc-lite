@@ -5,8 +5,8 @@
 /**
  * Pure decision logic for the TypeScript module-size ratchet
  * (`scripts/check-module-size.mjs`). Split out from the tree walk so the
- * FIRING paths — a new god file, an allowlisted file over budget, a stale
- * digest, an empty/unreadable allowlist — are unit-testable against synthetic
+ * FIRING paths — a new god file, an allowlisted file over budget, an
+ * empty/unreadable allowlist — are unit-testable against synthetic
  * inputs rather than only against the all-clean repo.
  *
  * This mirrors `rust/processing/tests/module_size_ratchet.rs` deliberately:
@@ -101,7 +101,8 @@ export function parseAllowlist(text, label = 'allowlist') {
  * string because the value does not fit a JS number exactly.
  *
  * FNV-1a rather than a platform hash for the reason the Rust side gives: the
- * value is pinned in a source file, so it must not move when a toolchain
+ * value is pinned in a Rust source file (the TS gate no longer pins one,
+ * #3745), so it must not move when a toolchain
  * moves. BigInt arithmetic here reproduces Rust's wrapping u64 multiply, and
  * `moduleSizeRatchetDigest` on the same rows returns the same number in both
  * languages (pinned in the unit tests).

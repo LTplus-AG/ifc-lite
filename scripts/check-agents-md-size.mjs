@@ -105,10 +105,9 @@
  *
  * WHERE THIS DELIBERATELY DIFFERS FROM check-module-size.mjs, since the two
  * will be read side by side:
- *  - NO DIGEST PIN. That pin exists because a 339-row allowlist can absorb a
- *    raise invisibly. This budget file has 6 rows; any edit to it IS a
- *    reviewable line of the PR diff, so a pin would add a second thing to keep
- *    in sync and buy nothing.
+ *  - NO DIGEST PIN, and since #3745 neither has check-module-size.mjs: an
+ *    edit to either budget file IS a reviewable line of the PR diff, so a pin
+ *    would add a second thing to keep in sync and buy nothing.
  *  - `--update` IS NOT SCOPED to the files your change touched. There, scoping
  *    stops a regenerate from annexing headroom that accumulated on main. Here
  *    there is no headroom to annex: NO WRITE CAN RAISE A ROW WITHOUT

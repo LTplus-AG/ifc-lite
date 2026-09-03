@@ -41,6 +41,7 @@ import {
   INCONCLUSIVE,
   BASELINE_BROKEN,
 } from './revert-oracle.mjs';
+import { ciExitCode } from './revert-oracle-ci.mjs';
 
 // ---------------------------------------------------------------------------
 // Fixtures: real runner output
@@ -786,6 +787,13 @@ test('verdict: every non-OBSERVED outcome exits non-zero', () => {
 test('verdict: a missing run never reports clean', () => {
   assert.notEqual(verdict({ baseline: null, reverted: green }).exitCode, 0);
   assert.notEqual(verdict({ baseline: green, reverted: null }).exitCode, 0);
+});
+
+test('#3661: CI blocks misses and broken baselines, but not honest inconclusives', () => {
+  assert.equal(ciExitCode(OBSERVED), 0);
+  assert.equal(ciExitCode(UNOBSERVED), 1);
+  assert.equal(ciExitCode(INCONCLUSIVE), 0);
+  assert.notEqual(ciExitCode(BASELINE_BROKEN), 0);
 });
 
 // ---------------------------------------------------------------------------

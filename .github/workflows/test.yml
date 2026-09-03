@@ -425,6 +425,38 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # #3661: text review missed 10/10 independently confirmed defect cases even
+  # after rubric retuning. This asks the executable question instead: do this
+  # branch's changed tests fail when its production change is removed?
+  revert-oracle:
+    name: Changed tests observe production
+    needs: [changes, build]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.frontend == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Prove the changed tests observe the production change
+        run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
+
   typecheck:
     name: Typecheck
     needs: [changes, build]
@@ -1682,7 +1714,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -1691,6 +1723,7 @@ jobs:
         run: |
           declare -A results=(
             [build]="${{ needs.build.result }}"
+            [revert-oracle]="${{ needs.revert-oracle.result }}"
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"

@@ -48,12 +48,8 @@
  * indistinguishable from a real RED, so that text is read as a load failure
  * too — see `LOAD_ERROR_PATTERNS` in `lib/revert-oracle.mjs`.
  *
- * NOT A CI CHECK, DELIBERATELY. It mutates the working tree and it is slow.
- * See the LIMITATIONS block at the bottom of this file, and `--help`, for what
- * wiring it into CI would require.
- *
- * @unwired-by-design it reverse-applies patches to the working tree and reruns
- * a branch's suites twice; a pre-push interrogation tool, not a required check.
+ * CI runs it only in a throwaway, read-only checkout with a hard timeout. An
+ * honest INCONCLUSIVE is advisory; UNOBSERVED and a broken baseline block.
  *
  * USAGE
  *   node scripts/check-test-revert-oracle.mjs [options]
@@ -72,6 +68,7 @@
  *                       Lets you point a version of the oracle you trust at a
  *                       checkout that predates it.
  *   --json              emit a machine-readable result alongside the report
+ *   --ci                block UNOBSERVED/broken baselines; allow INCONCLUSIVE
  */
 
 import { spawnSync } from 'node:child_process';
@@ -92,6 +89,7 @@ import {
   UNOBSERVED,
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
+import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootFlag = process.argv.indexOf('--root');
@@ -140,7 +138,7 @@ function gitOrDie(args) {
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const opts = { base: 'upstream/main', head: 'HEAD', only: [], tests: [], mutation: null, json: false };
+  const opts = { base: 'upstream/main', head: 'HEAD', only: [], tests: [], mutation: null, json: false, ci: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => {
@@ -155,6 +153,7 @@ function parseArgs(argv) {
     else if (a === '--mutation') opts.mutation = next();
     else if (a === '--root') next(); // already consumed above, before ROOT is frozen
     else if (a === '--json') opts.json = true;
+    else if (a === '--ci') opts.ci = true;
     else if (a === '--help' || a === '-h') {
       console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('*/')[0]);
       process.exit(0);
@@ -328,11 +327,13 @@ if (opts.tests.length > 0) {
 console.log(`  files: ${production.length} production, ${testEntries.length} test, ${ignored.length} ignored`);
 
 if (prodPaths.length === 0) {
-  die(EXIT_NOTHING_CHECKED, 'this branch changes no production files; there is nothing whose absence a test could notice.');
+  const message = 'this branch changes no production files; there is nothing whose absence a test could notice.';
+  if (opts.ci) { console.log(`  NOT APPLICABLE: ${message}`); process.exit(0); }
+  die(EXIT_NOTHING_CHECKED, message);
 }
 if (testPaths.length === 0) {
   die(
-    EXIT_NOTHING_CHECKED,
+    opts.ci ? EXIT_UNOBSERVED : EXIT_NOTHING_CHECKED,
     'this branch changes production code and adds/changes NO test file. That is itself the finding: nothing can observe the change.',
     production.map((e) => `changed: ${e.path}`),
   );
@@ -445,7 +446,9 @@ try {
   result.revertedRun = revertedAgg;
   result.prodPaths = prodPaths;
   result.testPaths = testPaths;
-  exitCode = result.exitCode === 0 ? EXIT_OBSERVED : result.verdict === UNOBSERVED ? EXIT_UNOBSERVED : EXIT_INCONCLUSIVE;
+  exitCode = opts.ci
+    ? ciExitCode(result.verdict)
+    : result.exitCode === 0 ? EXIT_OBSERVED : result.verdict === UNOBSERVED ? EXIT_UNOBSERVED : EXIT_INCONCLUSIVE;
 
   if (revertedAgg.kind !== 'pass' && revertedAgg.kind !== 'assertion-failure') {
     const worst = revertedResults.find((r) => r.kind === revertedAgg.kind);
@@ -597,16 +600,10 @@ process.exit(exitCode);
  *    baseline run fails and you get BASELINE-BROKEN. Build first.
  *
  * ---------------------------------------------------------------------------
- * WIRING IT INTO CI — deliberately NOT done
+ * CI POLICY
  * ---------------------------------------------------------------------------
- * This is a thing a person runs before pushing. It reverse-applies production
- * code into the working tree, which is a bad property for a required check, and
- * it runs each affected suite twice. If someone later wants it in CI it would
- * need: (a) its own job on a throwaway checkout, never sharing a workspace with
- * another job; (b) a hard timeout and a concurrency cap, since cost is 2x the
- * affected suites; (c) a policy decision on INCONCLUSIVE, which is common and
- * benign and must NOT fail the build or it will be disabled within a week;
- * (d) `--base origin/main` and a fetch depth that reaches the merge base;
- * (e) an opt-out label, because legitimate refactor-only branches exist.
- * Until those five are decided, leaving it manual is the honest choice.
+ * `test.yml` supplies the five required bounds: its own throwaway checkout, a
+ * hard timeout and workflow concurrency, INCONCLUSIVE-as-advisory, a full clone
+ * with `--base origin/main`, and the maintainer-only `revert-oracle-exempt`
+ * label for legitimate refactors. `--ci` implements that verdict policy.
  * --------------------------------------------------------------------------- */

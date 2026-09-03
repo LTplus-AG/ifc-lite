@@ -24,8 +24,7 @@ pub struct EntityScanner<'a> {
     /// [`Self::skipped_oversized_id_starts`]. It never allocates on a file
     /// with nothing to refuse, which is every real file.
     skipped_oversized_id_starts: Vec<usize>,
-    /// `line_start` of the first record that made [`Self::find_entity_end`]
-    /// fail — see [`Self::malformed_record_start`].
+    /// See [`Self::malformed_record_start`] for what this points at.
     malformed_record_start: Option<usize>,
 }
 
@@ -108,11 +107,12 @@ impl<'a> EntityScanner<'a> {
         &self.skipped_oversized_id_starts
     }
 
-    /// The `line_start` byte offset of the record that stopped this scan
-    /// because [`find_entity_end`](Self::find_entity_end) found no
-    /// terminator, or `None` otherwise. A whole-file scan needs only
-    /// `is_some()`; a SHARDED scan needs the offset, for the reason
-    /// [`Self::skipped_oversized_id_starts`] does.
+    /// The byte offset that stopped this scan because no terminator was
+    /// found, or `None` otherwise: a record's `line_start` (its `#`) when
+    /// [`find_entity_end`](Self::find_entity_end) fails, or the `/` of an
+    /// unterminated comment found BETWEEN records (no record to name yet).
+    /// A whole-file scan needs only `is_some()`; a SHARDED scan needs the
+    /// offset, for the reason [`Self::skipped_oversized_id_starts`] does.
     pub fn malformed_record_start(&self) -> Option<usize> {
         self.malformed_record_start
     }

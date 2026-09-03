@@ -61,7 +61,8 @@ pub type ShardRecords = Vec<(u32, usize, usize)>;
 /// an instance name above `u32::MAX` (#3395), strictly increasing.
 ///
 /// Offsets, not a count, because a shard cannot tell on its own which of its
-/// refusals are real — see [`scan_shard_with_refusals`].
+/// refusals are real — see [`scan_shard_with_diagnostics`], which is where
+/// that "cannot report from inside a shard" reasoning actually lives.
 pub type ShardRefusals = Vec<usize>;
 
 /// [`scan_shard_with_refusals`] without the refusal offsets.
@@ -98,7 +99,8 @@ pub fn scan_shard_with_refusals(
 }
 
 /// One shard's speculative scan over `[range_start, range_end)`, plus the byte
-/// offset of every record this shard refused.
+/// offset of every record this shard refused and, if any, the byte offset of
+/// the record that made the scan stop early (#3695's malformed-record stop).
 ///
 /// This is the exact per-chunk primitive [`build_entity_index_parallel`] fans
 /// across cores, and the sibling of the wasm **sharded pre-pass**'s
@@ -114,9 +116,10 @@ pub fn scan_shard_with_refusals(
 /// makes that exact, not heuristic). Returns every record with
 /// `start < range_end` (strictly increasing in `start`), the `handoff` (the
 /// `start` of the first record at/after `range_end`, i.e. the next shard's
-/// first real entity, or `None` at EOF), and the refusal offsets.
+/// first real entity, or `None` at EOF), the refusal offsets, and the
+/// malformed-record stop offset (see below).
 ///
-/// **It does not report them, and it must not.** A shard with
+/// **It does not report either diagnostic, and it must not.** A shard with
 /// `range_start > 0` starts at an arbitrary byte, so it can begin inside a
 /// quoted value; a string literal containing `#4294967297=IFCWALL(` satisfies
 /// the scanner's `#<digits>[ws]*=` shape check (which has no quote context),
@@ -131,9 +134,9 @@ pub fn scan_shard_with_refusals(
 /// counts. Only the stitch knows which bytes of a shard were kept, so only the
 /// stitch can attribute a refusal — see [`native::stitch`].
 ///
-/// [`scan_shard_with_refusals`] plus the byte offset of the record — if any —
-/// that made [`ifc_lite_core::EntityScanner::find_entity_end`] fail (an
-/// unterminated `'` string or `/* … */` comment). Unlike an oversized-id
+/// The malformed-record stop offset is the byte offset of the record — if
+/// any — that made [`ifc_lite_core::EntityScanner::find_entity_end`] fail
+/// (an unterminated `'` string or `/* … */` comment). Unlike an oversized-id
 /// refusal, the scanner STOPS ENTIRELY when this happens, so `records`/
 /// `handoff` above already reflect it; this offset is only the "why", for
 /// [`native::stitch`] to attribute — same speculative-prefix caveat as a

@@ -3,7 +3,6 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Geometry Router - Dynamic dispatch to geometry processors
-//!
 //! Routes IFC representation entities to appropriate processors based on type.
 
 mod caching;
@@ -12,6 +11,7 @@ mod content_hash;
 mod diagnostics;
 mod instancing;
 mod layers;
+mod mapped_item;
 mod processing;
 mod processor;
 mod rtc_offset;

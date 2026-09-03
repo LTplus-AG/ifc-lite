@@ -1032,6 +1032,34 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.comments.length).toBe(1);
       expect(topic.comments[0].comment).toBe('Needs REI 90 & a "review"');
     });
+
+    it('falls back to Untitled instead of leaking real (non-CDATA) child markup as text', async () => {
+      // decodeXmlCharData is documented to return null -- and extractElement
+      // undefined -- when the content holds real child-element markup (a `<`
+      // outside any CDATA section), so the caller's own absent-value default
+      // applies instead of the raw markup leaking through as garbled text.
+      // No existing test exercised this branch: it is reachable only by a
+      // Title/Comment that is schema-illegal (xs:string, no children), but
+      // the function's null-return contract for it is still asserted here
+      // rather than left uncovered.
+      const markup = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<Markup>',
+        '  <Topic Guid="topic-1" TopicType="Issue" TopicStatus="Open">',
+        '    <Title>Fire<Wall/> in progress</Title>',
+        '  </Topic>',
+        '</Markup>',
+      ].join('\n');
+
+      const zip = new JSZip();
+      zip.file('bcf.version', '<?xml version="1.0"?><Version VersionId="3.0"></Version>');
+      zip.file('topic-1/markup.bcf', markup);
+      const buffer = await zip.generateAsync({ type: 'arraybuffer' });
+
+      const project = await readBCF(buffer);
+      const topic = Array.from(project.topics.values())[0];
+      expect(topic.title).toBe('Untitled');
+    });
   });
 
   describe('DocumentReference isExternal (xs:boolean numeral form)', () => {

@@ -72,11 +72,12 @@ export interface ShadowedColumns {
 
 /**
  * Pack `(edgePosition, extraIds)` pairs collected during a CSR scatter into
- * the three sparse typed-array columns `RelationshipEdges` stores them as
- * (shared by `buildCSR` and the `@ifc-lite/cache` binary reader, #3782).
- * `pairs` need not be pre-sorted by position. Returns `undefined` for an
- * empty input so a caller can omit the columns entirely rather than write
- * out empty arrays — they're optional on `RelationshipEdges`.
+ * the three sparse typed-array columns `RelationshipEdges` stores them as.
+ * `buildCSR`'s only caller in-package; not re-exported from the package
+ * index (see `binarySearchU32`, which the `@ifc-lite/cache` reader does
+ * share). `pairs` need not be pre-sorted by position. Returns `undefined`
+ * for an empty input so a caller can omit the columns entirely rather than
+ * write out empty arrays — they're optional on `RelationshipEdges`.
  */
 export function buildShadowedColumns(pairs: Array<[position: number, ids: number[]]>): ShadowedColumns | undefined {
   if (pairs.length === 0) return undefined;

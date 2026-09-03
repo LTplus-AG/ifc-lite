@@ -266,8 +266,9 @@
             vec![0, 1, 2],
             [0.5, 0.5, 0.5, 1.0],
         );
-        use crate::services::parquet_optimized::serialize_to_parquet_optimized;
-        let blob = serialize_to_parquet_optimized(&[mesh], false).expect("optimized serialize");
+        use crate::services::parquet_optimized::serialize_to_parquet_optimized_with_stats;
+        let (blob, _) =
+            serialize_to_parquet_optimized_with_stats(&[mesh], false).expect("optimized serialize");
         // The optimized blob has its OWN framing --
         // [version:u8][flags:u8][5 x len:u32][instance_parquet]... -- not the
         // section layout `read_sections` expects. Using the wrong reader here
@@ -297,8 +298,19 @@
             shared,
             "mesh_schema() stopped composing shared_trailing_fields()"
         );
+        // The instance schema appends nine rotation columns AFTER the shared
+        // block (issue #3575, `/optimized`-only -- see `instance_schema()`'s
+        // doc comment for why they aren't folded into `shared_trailing_fields`
+        // itself), so strip those before comparing the shared tail. They are
+        // absent entirely from a v2-shaped payload, which this single
+        // non-instanced mesh produces, so strip by NAME rather than by count.
+        let instance_without_rotation: Vec<String> = instance
+            .iter()
+            .filter(|name| !name.starts_with("rot"))
+            .cloned()
+            .collect();
         assert_eq!(
-            tail(&instance),
+            tail(&instance_without_rotation),
             shared,
             "the optimized instance schema stopped composing shared_trailing_fields()"
         );

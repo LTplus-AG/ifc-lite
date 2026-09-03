@@ -56,12 +56,19 @@
         assert_eq!(stats.unique_materials, 2);
         assert!(stats.mesh_reuse_ratio > 1.0);
 
+        // No mesh here carries `InstanceMeta`, so no rotation-aware placement is
+        // produced and the payload is v2-shaped (see the two-direction pair
+        // `translation_only_reuse_ships_wire_version_2` /
+        // `rotated_mapped_item_repeats_dedup_and_reconstruct_correctly`).
+        assert_eq!(data[0], 2, "a payload with no rotation data must stay wire version 2");
+
         // Should be very compact. Parquet has fixed per-column overhead, so
         // tiny fixtures are dominated by it — the per-instance placement columns
         // (origin_x/y/z + geometry_class, issue #1841) add four columns' worth of
-        // that fixed overhead, so the floor here is generous on purpose.
+        // that fixed overhead, and the nine rotation columns (issue #3575) add
+        // nine more, so the floor here is generous on purpose.
         assert!(
-            data.len() < 8000,
+            data.len() < 9000,
             "Expected compact output, got {} bytes",
             data.len()
         );
@@ -354,4 +361,499 @@
     #[test]
     fn all_small_section_lengths_pass_the_u32_wire_check() {
         assert!(check_optimized_section_lengths(4, 4, 4, 4, 4).is_ok());
+    }
+
+    /// Row-major mat4 (Z-up, `InstanceMeta::transform` convention): rotate
+    /// `deg` about Z, then translate by `t`.
+    fn rot_z_mat4(deg: f64, t: [f64; 3]) -> [f64; 16] {
+        let rad = deg.to_radians();
+        let (s, c) = (rad.sin(), rad.cos());
+        #[rustfmt::skip]
+        let m = [
+            c,  -s, 0.0, t[0],
+            s,   c, 0.0, t[1],
+            0.0, 0.0, 1.0, t[2],
+            0.0, 0.0, 0.0, 1.0,
+        ];
+        m
+    }
+
+    /// Bake a canonical (source-coords) triangle through a row-major mat4.
+    fn bake_triangle(canonical: &[[f64; 3]; 3], m: &[f64; 16]) -> Vec<f32> {
+        let r = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
+        let t = [m[3], m[7], m[11]];
+        let mut out = Vec::with_capacity(9);
+        for p in canonical {
+            for (row, t_i) in r.iter().zip(t.iter()) {
+                out.push((row[0] * p[0] + row[1] * p[1] + row[2] * p[2] + t_i) as f32);
+            }
+        }
+        out
+    }
+
+    const CANON_TRIANGLE: [[f64; 3]; 3] =
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
+
+    /// RED/GREEN for issue #3575: three occurrences of one `IfcMappedItem`
+    /// shape at DIFFERENT rotations (0°, 90°, 180° about Z) — exactly the
+    /// "furniture, pipe runs, repeated structural members" case the issue
+    /// reports. Before the fix these hash to three distinct mesh rows
+    /// (`mesh_reuse_ratio` ≈ 1.0, the bug); after it they collapse to ONE
+    /// template mesh with a per-instance rotation.
+    ///
+    /// Also the correctness gate: reconstructing `world = origin + R *
+    /// template_position` from the decoded instance/mesh/vertex tables must
+    /// reproduce each occurrence's ORIGINAL world position — wrong rotation
+    /// data would place the geometry, just in the wrong spot.
+    #[test]
+    fn rotated_mapped_item_repeats_dedup_and_reconstruct_correctly() {
+        use arrow::array::{Float32Array, Int32Array};
+        use ifc_lite_geometry::InstanceMeta;
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let placements = [
+            rot_z_mat4(0.0, [0.0, 0.0, 0.0]),
+            rot_z_mat4(90.0, [5.0, 0.0, 0.0]),
+            rot_z_mat4(180.0, [0.0, 5.0, 0.0]),
+        ];
+        let meshes: Vec<MeshData> = placements
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    100 + i as u32,
+                    "IfcFurniture".to_string(),
+                    bake_triangle(&CANON_TRIANGLE, m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    transform: *m,
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: 777,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+        // Expected Y-up world position of each occurrence's vertices: the
+        // baked positions we just fed in ARE the Z-up world (origin is
+        // [0,0,0] here), so convert with the same swap the server applies.
+        let expected_yup: Vec<Vec<[f32; 3]>> = meshes
+            .iter()
+            .map(|m| {
+                (0..3)
+                    .map(|v| {
+                        let (x, y, z) =
+                            zup_to_yup(m.positions[v * 3], m.positions[v * 3 + 1], m.positions[v * 3 + 2]);
+                        [x, y, z]
+                    })
+                    .collect()
+            })
+            .collect();
+
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(stats.input_meshes, 3);
+        assert_eq!(
+            stats.unique_meshes, 1,
+            "three rotated occurrences of one shape must dedup to ONE template mesh"
+        );
+        assert!(
+            (stats.mesh_reuse_ratio - 3.0).abs() < 1e-6,
+            "mesh_reuse_ratio must reflect the real 3x reuse, got {}",
+            stats.mesh_reuse_ratio
+        );
+
+        // Unframe: [version:u8][flags:u8][instance_len][mesh_len][material_len][vertex_len][index_len][...]
+        assert_eq!(data[0], 3, "format version must be bumped for the rotation column (#3575)");
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let mesh_len = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+        let material_len = u32::from_le_bytes(data[10..14].try_into().unwrap()) as usize;
+        let vertex_len = u32::from_le_bytes(data[14..18].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
+        let mesh_start = header + instance_len;
+        let mesh_bytes = Bytes::copy_from_slice(&data[mesh_start..mesh_start + mesh_len]);
+        let vertex_start = mesh_start + mesh_len + material_len;
+
+        let instance_batch = ParquetRecordBatchReaderBuilder::try_new(instance_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+        let mesh_batch = ParquetRecordBatchReaderBuilder::try_new(mesh_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+
+        let icol = |name: &str| instance_batch.schema().index_of(name).expect(name);
+        let f32col = |name: &str| {
+            instance_batch
+                .column(icol(name))
+                .as_any()
+                .downcast_ref::<Float32Array>()
+                .unwrap()
+                .clone()
+        };
+        let f64col = |name: &str| {
+            instance_batch
+                .column(icol(name))
+                .as_any()
+                .downcast_ref::<Float64Array>()
+                .unwrap()
+                .clone()
+        };
+        let mesh_idx_col = instance_batch
+            .column(icol("mesh_index"))
+            .as_any()
+            .downcast_ref::<UInt32Array>()
+            .unwrap()
+            .clone();
+        let (ox, oy, oz) = (f64col("origin_x"), f64col("origin_y"), f64col("origin_z"));
+        let rot: Vec<Float32Array> = (0..9).map(|i| f32col(&format!("rot{i}"))).collect();
+
+        // Mesh table: one row (the deduplicated template), offset 0.
+        assert_eq!(mesh_batch.num_rows(), 1);
+        let mcol = |name: &str| mesh_batch.schema().index_of(name).expect(name);
+        let vertex_offset = mesh_batch
+            .column(mcol("vertex_offset"))
+            .as_any()
+            .downcast_ref::<UInt32Array>()
+            .unwrap()
+            .value(0);
+
+        // Vertex table (this test never sets include_normals, so x/y/z only).
+        let vertex_bytes = Bytes::copy_from_slice(&data[vertex_start..vertex_start + vertex_len]);
+        let vertex_batch = ParquetRecordBatchReaderBuilder::try_new(vertex_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+        let vcol = |name: &str| vertex_batch.schema().index_of(name).expect(name);
+        let vint = |name: &str| {
+            vertex_batch
+                .column(vcol(name))
+                .as_any()
+                .downcast_ref::<Int32Array>()
+                .unwrap()
+                .clone()
+        };
+        let (vx, vy, vz) = (vint("x"), vint("y"), vint("z"));
+        let dequant = 1.0 / VERTEX_MULTIPLIER;
+
+        assert_eq!(instance_batch.num_rows(), 3);
+        for (i, expected_for_instance) in expected_yup.iter().enumerate() {
+            let mesh_index = mesh_idx_col.value(i);
+            assert_eq!(
+                mesh_index, 0,
+                "all three occurrences must point at the single template mesh"
+            );
+            let origin = [ox.value(i), oy.value(i), oz.value(i)];
+            let r = [
+                rot[0].value(i) as f64, rot[1].value(i) as f64, rot[2].value(i) as f64,
+                rot[3].value(i) as f64, rot[4].value(i) as f64, rot[5].value(i) as f64,
+                rot[6].value(i) as f64, rot[7].value(i) as f64, rot[8].value(i) as f64,
+            ];
+            for (v, expected) in expected_for_instance.iter().enumerate() {
+                let src = vertex_offset as usize + v;
+                let template = [
+                    vx.value(src) as f64 * dequant as f64,
+                    vy.value(src) as f64 * dequant as f64,
+                    vz.value(src) as f64 * dequant as f64,
+                ];
+                let reconstructed = [
+                    origin[0] + r[0] * template[0] + r[1] * template[1] + r[2] * template[2],
+                    origin[1] + r[3] * template[0] + r[4] * template[1] + r[5] * template[2],
+                    origin[2] + r[6] * template[0] + r[7] * template[1] + r[8] * template[2],
+                ];
+                for axis in 0..3 {
+                    assert!(
+                        (reconstructed[axis] - expected[axis] as f64).abs() < 1e-3,
+                        "instance {i} vertex {v} axis {axis}: reconstructed {:?} vs expected {:?}",
+                        reconstructed,
+                        expected
+                    );
+                }
+            }
+        }
+    }
+
+    /// Control for the test above: a RIGID-tier group (one occurrence carries
+    /// `canonical_transform`, meaning the template is congruent but not
+    /// bit-identical to this occurrence's own geometry) must NOT be
+    /// instanced — the per-vertex residual check has nothing bit-identical to
+    /// verify against, so #3575's dedup conservatively falls back to today's
+    /// content-hash behaviour (each occurrence keeps its own mesh row).
+    #[test]
+    fn rigid_tier_groups_are_not_rotation_instanced() {
+        use ifc_lite_geometry::InstanceMeta;
+
+        let m0 = rot_z_mat4(0.0, [0.0, 0.0, 0.0]);
+        let m1 = rot_z_mat4(90.0, [5.0, 0.0, 0.0]);
+        let meshes: Vec<MeshData> = [m0, m1]
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    200 + i as u32,
+                    "IfcFurniture".to_string(),
+                    bake_triangle(&CANON_TRIANGLE, m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    transform: *m,
+                    local_transform: None,
+                    // Rigid tier: a recovered congruence transform is present.
+                    canonical_transform: Some([
+                        1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0,
+                        0.0, 1.0,
+                    ]),
+                    rep_identity: 888,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 2,
+            "rigid-tier (congruent, non-bit-identical) groups must fall back to distinct mesh rows"
+        );
+    }
+
+    /// Half of the version-byte pair with
+    /// `rotated_mapped_item_repeats_dedup_and_reconstruct_correctly` (which
+    /// asserts version 3 and reads `rot0..rot8`). The version byte must
+    /// describe what the payload CONTAINS, not which code built it: an
+    /// unconditional 3 breaks every already-published client
+    /// (`@ifc-lite/server-client` throws `Unsupported optimized Parquet
+    /// version: 3`) on models that carry no rotation at all.
+    ///
+    /// This fixture is the sharp case: `InstanceMeta` IS present and the
+    /// rotation-aware dedup DOES fire (two occurrences collapse to one
+    /// template), but every derived rotation is identity because the reuse is
+    /// pure translation. Gating on "the feature ran" or "the model has
+    /// instance metadata" would emit 3 here; gating on the emitted rotation
+    /// data emits 2, which is exactly what this payload is.
+    #[test]
+    fn translation_only_reuse_ships_wire_version_2() {
+        use ifc_lite_geometry::InstanceMeta;
+        use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+
+        let placements = [
+            rot_z_mat4(0.0, [0.0, 0.0, 0.0]),
+            rot_z_mat4(0.0, [7.0, 0.0, 0.0]),
+        ];
+        let meshes: Vec<MeshData> = placements
+            .iter()
+            .enumerate()
+            .map(|(i, m)| {
+                MeshData::new(
+                    300 + i as u32,
+                    "IfcFurniture".to_string(),
+                    bake_triangle(&CANON_TRIANGLE, m),
+                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                    vec![0, 1, 2],
+                    [0.6, 0.4, 0.2, 1.0],
+                )
+                .with_instance(Some(InstanceMeta {
+                    transform: *m,
+                    local_transform: None,
+                    canonical_transform: None,
+                    rep_identity: 999,
+                    instanceable: true,
+                }))
+            })
+            .collect();
+
+        let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 1,
+            "translation-only reuse must still deduplicate to one template"
+        );
+        assert_eq!(
+            data[0], 2,
+            "no non-identity rotation was emitted, so this is a v2 payload and must say so"
+        );
+
+        // A v2 payload must also be v2-SHAPED: the rotation columns a v2
+        // client never saw must not be in the table.
+        let instance_len = u32::from_le_bytes(data[2..6].try_into().unwrap()) as usize;
+        let header = 2 + 5 * 4;
+        let instance_bytes = Bytes::copy_from_slice(&data[header..header + instance_len]);
+        let batch = ParquetRecordBatchReaderBuilder::try_new(instance_bytes)
+            .unwrap()
+            .build()
+            .unwrap()
+            .map(|b| b.unwrap())
+            .next()
+            .unwrap();
+        for i in 0..9 {
+            assert!(
+                batch.schema().index_of(&format!("rot{i}")).is_err(),
+                "rot{i} must be absent from a v2 payload"
+            );
+        }
+        // The placement columns a v2 client DOES read are still there, with
+        // the per-occurrence translation the dedup relies on. Origin [7,0,0]
+        // in IFC Z-up is [x, z, -y] = [7, 0, 0] in the Y-up wire frame.
+        let ox = batch
+            .column(batch.schema().index_of("origin_x").unwrap())
+            .as_any()
+            .downcast_ref::<Float64Array>()
+            .unwrap()
+            .clone();
+        assert_eq!(batch.num_rows(), 2);
+        assert!((ox.value(1) - 7.0).abs() < 1e-9, "got {}", ox.value(1));
+    }
+
+    /// Exercises the residual-rejection fallback that
+    /// `rotated_mapped_item_repeats_dedup_and_reconstruct_correctly` never
+    /// reaches (it always verifies) and `rigid_tier_groups_are_not_rotation_instanced`
+    /// short-circuits before (it returns at the `canonical_transform` guard,
+    /// never calling `verify_and_derive_placement`). Two occurrences share
+    /// `rep_identity`, so `collate_refs` groups them, but occurrence 1's own
+    /// baked vertices do NOT match `transform` applied to the template — a
+    /// stand-in for a stale/corrupt `InstanceMeta::transform` — so its
+    /// residual is `1.0` metre, far past `RECOMPOSITION_TOLERANCE_M`
+    /// (1e-4 m). `verify_and_derive_placement`'s `!(max_err <= TOL)` gate
+    /// (not `max_err > TOL`) is what must reject this: the same form of
+    /// comparison that also rejects a NaN residual, since `NaN <= TOL` is
+    /// `false` either way.
+    ///
+    /// The group-scoped fallback (this module's doc comment above
+    /// `collate_rotation_aware_placements`) means the WHOLE group falls back
+    /// to content-hash dedup, not just the failing occurrence — occurrence 0
+    /// would reconstruct fine on its own but is discarded too, because a
+    /// client has no way to trust a rotation-aware template it can only
+    /// verify for some of its occurrences.
+    #[test]
+    fn a_group_with_one_unverifiable_occurrence_falls_back_for_the_whole_group() {
+        use ifc_lite_geometry::InstanceMeta;
+
+        let m0 = rot_z_mat4(0.0, [0.0, 0.0, 0.0]);
+        let m1 = rot_z_mat4(90.0, [5.0, 0.0, 0.0]);
+        // Occurrence 1's baked triangle is the CANONICAL one translated by
+        // 1m on X in addition to m1's own placement — `transform` (m1) says
+        // where it should be; its own baked vertices disagree by 1m, well
+        // past the 1e-4m tolerance.
+        let mismatched_triangle: Vec<f32> = bake_triangle(&CANON_TRIANGLE, &m1)
+            .iter()
+            .enumerate()
+            .map(|(i, v)| if i % 3 == 0 { v + 1.0 } else { *v })
+            .collect();
+
+        let meshes: Vec<MeshData> = vec![
+            MeshData::new(
+                400,
+                "IfcFurniture".to_string(),
+                bake_triangle(&CANON_TRIANGLE, &m0),
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m0,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 555,
+                instanceable: true,
+            })),
+            MeshData::new(
+                401,
+                "IfcFurniture".to_string(),
+                mismatched_triangle,
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m1,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 555,
+                instanceable: true,
+            })),
+        ];
+
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 2,
+            "an unverifiable occurrence must reject rotation-aware dedup for its \
+             ENTIRE group (both occurrences), not just itself — a partially \
+             trusted template is not a safe thing to ship"
+        );
+    }
+
+    /// Control for the test above, at the OTHER guard: `collate_refs` itself
+    /// (`rust/geometry/src/instancing/collate.rs`) checks each occurrence's
+    /// vertex/index count against the template BEFORE this module ever runs
+    /// `verify_and_derive_placement` — so a real vertex-count mismatch never
+    /// reaches this module's `target.positions.len() / 3 != n` guard at all;
+    /// `collate_refs` routes the whole group to `flat_indices` first. (That
+    /// guard here is defensive dead code on the current caller contract, not
+    /// something this fixture can exercise — the count check one layer up is
+    /// what actually protects a real shape mismatch.) Either way, the
+    /// invariant under test holds: a real vertex-count mismatch must not
+    /// produce a trusted rotation-aware template.
+    #[test]
+    fn a_group_with_a_vertex_count_mismatch_also_falls_back() {
+        use ifc_lite_geometry::InstanceMeta;
+
+        let m0 = rot_z_mat4(0.0, [0.0, 0.0, 0.0]);
+        let m1 = rot_z_mat4(90.0, [5.0, 0.0, 0.0]);
+        // Occurrence 1 carries a FOURTH vertex the template never had —
+        // caught by `collate_refs`'s own same-shape guard.
+        let mut extra_vertex_triangle = bake_triangle(&CANON_TRIANGLE, &m1);
+        extra_vertex_triangle.extend_from_slice(&[0.0, 0.0, 0.0]);
+
+        let meshes: Vec<MeshData> = vec![
+            MeshData::new(
+                410,
+                "IfcFurniture".to_string(),
+                bake_triangle(&CANON_TRIANGLE, &m0),
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m0,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 556,
+                instanceable: true,
+            })),
+            MeshData::new(
+                411,
+                "IfcFurniture".to_string(),
+                extra_vertex_triangle,
+                vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+                vec![0, 1, 2, 0, 1, 3],
+                [0.6, 0.4, 0.2, 1.0],
+            )
+            .with_instance(Some(InstanceMeta {
+                transform: m1,
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 556,
+                instanceable: true,
+            })),
+        ];
+
+        let (_, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
+        assert_eq!(
+            stats.unique_meshes, 2,
+            "a vertex-count mismatch must reject the group exactly like an \
+             over-tolerance residual does, never producing a trusted template"
+        );
     }

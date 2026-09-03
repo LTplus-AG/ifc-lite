@@ -230,9 +230,15 @@ export async function decodeOptimizedParquetGeometry(
   // Read header
   const version = view.getUint8(offset);
   offset += 1;
-  if (version !== 2) {
+  // v2: no rotation columns (pre-#3575), every instance decodes as identity.
+  // v3: instance table carries rot0..rot8 (#3575) — `readRotationColumns`
+  // (parquet-tables.ts) reads them when present; `buildMeshesFromOptimizedTables`
+  // rejects a v3 payload that omits/truncates them (malformed wire data),
+  // rather than silently falling back to identity as it would for v2.
+  if (version !== 2 && version !== 3) {
     throw new Error(`Unsupported optimized Parquet version: ${version}`);
   }
+  const wireVersion: 2 | 3 = version;
 
   const flags = view.getUint8(offset);
   offset += 1;
@@ -284,6 +290,7 @@ export async function decodeOptimizedParquetGeometry(
     indexArrow,
     hasNormals,
     vertexMultiplier,
+    wireVersion,
   });
 }
 

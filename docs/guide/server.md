@@ -213,7 +213,9 @@ const result = await client.parseParquetOptimized(file);
 // Same as parseParquet but with:
 // - Integer vertex quantization (0.1mm precision)
 // - Byte colors (0-255 instead of 0-1)
-// - Mesh deduplication (instancing)
+// - Mesh deduplication (instancing), rotation-aware: repeated occurrences of
+//   one shape at different orientations (e.g. IfcMappedItem reuse) share one
+//   template mesh, placed per instance by an origin + a 3x3 rotation
 ```
 
 #### parseParquetStream

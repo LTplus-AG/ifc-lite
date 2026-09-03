@@ -16,6 +16,7 @@
 
 import type { MeshData } from './types.js';
 import { meshColumns, numericColumn, readSourceId } from './parquet-columns.js';
+import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -174,10 +175,8 @@ export function buildMeshesFromTables(
       );
     }
 
-    // Reconstruct interleaved positions from columnar format
-    // OPTIMIZATION: Z-up to Y-up transform is now done server-side
-    // Server already transforms: X stays same, new Y = old Z, new Z = -old Y
-    // So we just copy directly without per-vertex transformation
+    // Reconstruct interleaved positions from columnar format. The server
+    // already applies the Z-up -> Y-up swap, so this just copies through.
     const positions = new Float32Array(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;
@@ -186,7 +185,7 @@ export function buildMeshesFromTables(
       positions[v * 3 + 2] = posZ[srcIdx];
     }
 
-    // Reconstruct interleaved normals (also pre-transformed server-side)
+    // Reconstruct interleaved normals (also pre-transformed server-side).
     const normals = new Float32Array(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;
@@ -195,9 +194,8 @@ export function buildMeshesFromTables(
       normals[v * 3 + 2] = normZ[srcIdx];
     }
 
-    // Reconstruct triangle indices from columnar format
-    const triangleCount = indexCount / 3;
-    const triangleStart = indexStart / 3;
+    // Reconstruct triangle indices from columnar format.
+    const triangleCount = indexCount / 3, triangleStart = indexStart / 3;
     const indices = new Uint32Array(indexCount);
     for (let t = 0; t < triangleCount; t++) {
       const srcIdx = triangleStart + t;
@@ -232,6 +230,7 @@ export interface OptimizedTables {
   hasNormals: boolean;
   /** Quantization divisor: metres = quantized / vertexMultiplier. */
   vertexMultiplier: number;
+  wireVersion: 2 | 3;
 }
 
 /**
@@ -319,6 +318,7 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const cols = meshColumns(instanceArrow, instanceCount);
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
+  const rotationCols = readRotationColumns(instanceArrow, instanceCount, tables.wireVersion); // #3575
 
   // Additive per-instance origin/geometry_class columns (issue #1841): consume
   // only when present AND parallel to the instance rows.
@@ -358,9 +358,7 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
       );
     }
 
-    // Dequantize and reconstruct positions
-    // OPTIMIZATION: Z-up to Y-up transform is now done server-side for optimized format too
-    // Server already transforms before quantization, so we just dequantize directly
+    // Dequantize (the server already applied Z-up -> Y-up before quantizing).
     const positions = new Float32Array(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexOffset + v;
@@ -375,25 +373,28 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
       meshIndicesArray[j] = indices[indexOffset + j];
     }
 
-    // Reconstruct normals (pre-transformed server-side, or compute if not present)
-    let normals: Float32Array;
+    // Server-provided normals, read BEFORE rotating (#3575) so a flat
+    // recompute below, when absent, starts from already-rotated positions.
+    let providedNormals: Float32Array | undefined;
     if (hasNormals && normalX && normalY && normalZ) {
-      normals = new Float32Array(vertexCount * 3);
+      providedNormals = new Float32Array(vertexCount * 3);
       for (let v = 0; v < vertexCount; v++) {
         const srcIdx = vertexOffset + v;
-        normals[v * 3] = normalX[srcIdx];
-        normals[v * 3 + 1] = normalY[srcIdx];
-        normals[v * 3 + 2] = normalZ[srcIdx];
+        providedNormals[v * 3] = normalX[srcIdx];
+        providedNormals[v * 3 + 1] = normalY[srcIdx];
+        providedNormals[v * 3 + 2] = normalZ[srcIdx];
       }
-    } else {
-      // Compute flat normals from triangle faces
-      normals = computeFlatNormals(positions, meshIndicesArray);
     }
 
-    // Convert byte colors to float [0-1]. `positions` are the TEMPLATE-local
-    // vertices; `origin` (not baked in, to keep f32 precision at building scale)
-    // carries the per-instance placement so the renderer reconstructs
-    // world = origin + position — the same contract as the standard path.
+    // Rotate into this instance's own frame (#3575); no-op for identity rows.
+    if (rotationCols) applyInstanceRotation(positions, providedNormals, rotationCols, i);
+
+    const normals = providedNormals ?? computeFlatNormals(positions, meshIndicesArray);
+
+    // Convert byte colors to float [0-1]. `origin` (not baked in, for f32
+    // precision at building scale) carries the remaining translation: world
+    // = origin + position, same contract as the standard path (#1841),
+    // extended with the rotation already applied to `positions` above.
     meshes[i] = {
       express_id: entityIds[i],
       ifc_type: (ifcTypes?.get(i) as string) ?? 'Unknown',

@@ -171,7 +171,26 @@ pub(super) fn shared_trailing_fields() -> Vec<Field> {
 /// block and differ only in the leading identity columns (`entity_id` vs
 /// `express_id`). It was inline in `parquet_optimized.rs`, which is how the
 /// pair drifted by hand in the first place.
-pub(super) fn instance_schema() -> Arc<Schema> {
+///
+/// The `rot0..rot8` tail (issue #3575) is `/optimized`-ONLY, appended after
+/// the columns shared with `mesh_schema()` rather than folded into
+/// `shared_trailing_fields()` — the flat `/parquet` route's mesh table has no
+/// per-row rotation to offer (its dedup is content-hash only, never
+/// rotation-aware), so adding the column there would be dead weight on a
+/// route the issue explicitly scoped out. A row-major 3x3, in the SAME Y-up
+/// frame as `origin_x/y/z`: `world = origin + R * template_position`. Nine
+/// plain columns (not a quaternion) because the underlying transform can carry
+/// non-uniform scale/shear baked in by an `IfcCartesianTransformationOperator`,
+/// which a quaternion cannot represent losslessly; identity
+/// (`1,0,0,0,1,0,0,0,1`) for every instance the server did not verify as a
+/// rotation-safe dedup, which is exactly today's `origin`-only placement.
+///
+/// `include_rotation` is false when the writer produced no non-identity
+/// rotation at all: the table is then byte-shaped exactly as it was before
+/// #3575 and ships under wire version 2, so a client that predates the
+/// rotation columns keeps decoding it (see `optimized_wire_version` in
+/// `parquet_optimized.rs`).
+pub(super) fn instance_schema(include_rotation: bool) -> Arc<Schema> {
     Arc::new(Schema::new(
         vec![
             Field::new("entity_id", DataType::UInt32, false),
@@ -181,6 +200,15 @@ pub(super) fn instance_schema() -> Arc<Schema> {
         ]
         .into_iter()
         .chain(shared_trailing_fields())
+        .chain(if include_rotation { rotation_fields() } else { Vec::new() })
         .collect::<Vec<_>>(),
     ))
+}
+
+/// The nine row-major rotation columns appended to `instance_schema()` (see
+/// its doc comment for the coordinate-frame contract).
+fn rotation_fields() -> Vec<Field> {
+    (0..9)
+        .map(|i| Field::new(format!("rot{i}"), DataType::Float32, false))
+        .collect()
 }

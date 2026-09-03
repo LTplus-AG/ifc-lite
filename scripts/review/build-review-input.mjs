@@ -95,7 +95,7 @@ import {
 // copies held together by prose drifted once already: a constant that charged
 // a kept file's path once, where the prompt spends it twice, declared a
 // 600-file long-path diff "fits" 8,476 bytes over the ceiling.
-import { fileHeader, rosterRow, unreviewableRow } from './run-reviewer.mjs';
+import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
 // it MINUS the one thing it exists for: the probe past a full final page. A PR
@@ -325,17 +325,13 @@ export function addedLineRanges(patch) {
  * @returns {{ kept: typeof candidates, omitted: typeof candidates }}
  */
 export function fitFilesToPrompt(candidates, unreviewable) {
-  const rendered = (s) => Buffer.byteLength(s, 'utf8');
-  // The join bytes are part of the row: files join on `\n\n`, the roster and
-  // the unreviewable list on `\n`. Charged per row rather than per gap, which
-  // over-reserves by one joiner per section -- conservative by bytes, not
-  // kilobytes.
-  const keptCharge = (path) => rendered(fileHeader(path)) + 2 + rendered(rosterRow(path)) + 1;
-  const omittedCharge = (path) =>
-    rendered(unreviewableRow({ path, reason: OMITTED_FOR_PROMPT_REASON })) + 1;
+  // Charged by run-reviewer's own per-row charges, which sit next to the
+  // renderers they measure. Re-spelling the arithmetic here is how the two
+  // copies would drift apart.
+  const omittedCharge = (path) => unreviewableRowCharge({ path, reason: OMITTED_FOR_PROMPT_REASON });
   let budget = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
-  for (const u of unreviewable) budget -= rendered(unreviewableRow(u)) + 1;
-  for (const c of candidates) budget -= Math.max(keptCharge(c.path), omittedCharge(c.path));
+  for (const u of unreviewable) budget -= unreviewableRowCharge(u);
+  for (const c of candidates) budget -= Math.max(keptRowCharge(c.path), omittedCharge(c.path));
 
   const sized = candidates.map((c) => ({ c, bytes: Buffer.byteLength(c.patch, 'utf8') }));
   if (sized.reduce((n, s) => n + s.bytes, 0) <= budget) return { kept: candidates, omitted: [] };

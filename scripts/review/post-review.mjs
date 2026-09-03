@@ -314,7 +314,7 @@ export function readFindings(path) {
     // and tells you to re-run, and the re-run fails identically. That is the
     // very unclearable red this guard exists to prevent, re-created by the
     // guard. Narrow to the character sequence that can actually open a marker.
-    if (typeof f.path === 'string' && f.path.includes('<!--')) {
+    if (f.path.includes('<!--')) {
       throw new PostReviewError(
         'BAD_FINDING',
         `${where} has a \`path\` containing an HTML comment opener. Rendered onto the summary it would ` +

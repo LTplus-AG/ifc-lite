@@ -39,7 +39,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
-import { fileHeader, rosterRow, unreviewableRow } from './run-reviewer.mjs';
+import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
 
 /**
  * What the PR description may claim before the siblings compete for the rest.
@@ -113,9 +113,6 @@ export const MAX_PROMPT_BYTES = 390_000;
  */
 export const PROMPT_BASE_OVERHEAD_BYTES = 24_000;
 
-
-
-
 /** What the prompt spends on structure, before any diff or pack content. */
 export function promptEnvelopeBytes(input) {
   // CHARGED AS RENDERED, not as stored, and by the SAME functions `buildPrompt`
@@ -128,9 +125,10 @@ export function promptEnvelopeBytes(input) {
   // and then assemble 8,476 bytes over the ceiling. Only the fixed-part margin
   // was hiding it here.
   //
-  // The `+ 2` and `+ 1` are the join bytes each row costs in its section.
-  const rendered = (str) => Buffer.byteLength(str, 'utf8');
-  // The rows above are charged exactly. What is left is the handful of bytes
+  // The per-row charges themselves live in run-reviewer.mjs next to the
+  // renderers, which is where the join-byte arithmetic is documented.
+  //
+  // The row loops below charge exactly. What is left is the handful of bytes
   // that scale with NEITHER row bytes nor row count directly: the item COUNTS
   // `buildPrompt` renders into its section headers, which cost one more byte
   // each time the count crosses a power of ten. Measured: 101 files vs 1 file
@@ -150,7 +148,7 @@ export function promptEnvelopeBytes(input) {
   let total = PROMPT_BASE_OVERHEAD_BYTES;
   for (const f of input?.files ?? []) {
     const path = String(f?.path ?? '');
-    total += rendered(fileHeader(path)) + 2 + rendered(rosterRow(path)) + 1;
+    total += keptRowCharge(path);
   }
   const unreviewable = input?.unreviewable ?? [];
   if (unreviewable.length > 0) {
@@ -165,7 +163,7 @@ export function promptEnvelopeBytes(input) {
     // 128 rather than 88 because over-reserving a few dozen bytes is free and
     // under-reserving is the entire defect this function exists to prevent.
     total += 128;
-    for (const u of unreviewable) total += rendered(unreviewableRow(u)) + 1;
+    for (const u of unreviewable) total += unreviewableRowCharge(u);
   }
   // Only for sections that actually render, because an empty input must charge
   // exactly PROMPT_BASE_OVERHEAD_BYTES and a test pins that.

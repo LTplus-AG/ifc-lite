@@ -372,7 +372,7 @@ fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() 
         instanceable: true,
     };
     // Baked positions are in the CONVERTED (S-applied) frame: `S · occ · canon`.
-    let meshes = vec![
+    let meshes = [
         mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
         mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
     ];
@@ -416,7 +416,7 @@ fn verify_basis_still_catches_a_genuine_collision() {
         rep_identity: 4343,
         instanceable: true,
     };
-    let meshes = vec![
+    let meshes = [
         mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
         mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
     ];

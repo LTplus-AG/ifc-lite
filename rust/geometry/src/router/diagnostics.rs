@@ -129,7 +129,10 @@ pub struct WorstHost {
 /// invalidation token): this is a promise consumers can gate on.
 ///
 /// Bump discipline: bump on any field rename, field removal, or
-/// count-semantics change; additive optional fields do NOT bump.
+/// count-semantics change. Also bump when a field is additive but its absence
+/// is otherwise indistinguishable from a real zero, so consumers have
+/// something to gate on (`#[serde(default)]` deserializes both cases to 0).
+/// A purely additive optional field that no consumer gates on does NOT bump.
 ///
 /// Changelog:
 /// - 1: initial versioned contract (the #1439 shape; a deserialized 0 means a

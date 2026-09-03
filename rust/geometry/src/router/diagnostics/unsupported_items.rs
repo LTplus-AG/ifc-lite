@@ -13,6 +13,13 @@ use rustc_hash::FxHashMap;
 impl GeometryRouter {
     /// Record one dropped representation item (unsupported type, or its
     /// processor errored), keyed by `IfcType`.
+    ///
+    /// Lower bound, not an exact instance count: a `RepresentationMap` source
+    /// is walked once and then served from the mapped-item cache, so a drop
+    /// inside that source is counted once no matter how many `IfcMappedItem`
+    /// occurrences reuse it. That is enough for "something was dropped, and of
+    /// this type", which is what this counter exists to answer; it must not be
+    /// read as the number of affected occurrences.
     pub(crate) fn record_unsupported_item(&self, ifc_type: ifc_lite_core::IfcType) {
         *self.unsupported_items.borrow_mut().entry(ifc_type.to_string()).or_insert(0) += 1;
     }

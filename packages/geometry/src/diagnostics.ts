@@ -19,9 +19,13 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3). Bumped on field
-   * renames/removals or count-semantics changes; additive optional fields do
-   * not bump.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3 — that constant carries
+   * the per-version changelog and is the single source of truth). Bumped on
+   * field renames, field removals, and count-semantics changes; also on an
+   * additive field whose absence a consumer must tell apart from a real zero,
+   * which is why 2 (removed `guardSaved`) and 3 (added
+   * `totalUnsupportedItems`) both bumped. A purely additive optional field
+   * that no consumer gates on does not bump.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -92,6 +96,11 @@ export interface GeometryDiagnostics {
    * geometry). Excludes elements with no Body representation at all — those
    * are correctly absent from the 3D view and never counted here. Absent on
    * a payload produced before this counter existed (schemaVersion < 3).
+   *
+   * A lower bound on instances: a drop inside a `RepresentationMap` source is
+   * counted once, not once per `IfcMappedItem` occurrence that reuses the
+   * cached source. Read it as "these types were dropped", not as a count of
+   * affected elements.
    */
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */

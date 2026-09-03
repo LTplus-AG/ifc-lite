@@ -30,13 +30,81 @@ const RUNTIME_METHOD_DOCS: Record<string, string> = {
   first: 'Run the chain and return the first entity, or null',
   count: 'Run the chain and return the number of matches',
   refs: 'Run the chain and return entity refs only',
+  on: 'Subscribe to an event, e.g. bim.on("selection:changed", handler)',
 };
 
-/** Own value-function property names on a prototype, minus the constructor. */
-function prototypeMethods(proto: object): string[] {
+/**
+ * Parameter names and return types for `BimContext` / `QueryBuilder` methods,
+ * transcribed from their own signatures in `packages/sdk/src/context.ts` and
+ * `packages/sdk/src/namespaces/query.ts` (#3763 follow-up).
+ *
+ * `describe()` used to spread the sandbox bridge's own `paramNames`/`tsReturn`
+ * onto these methods. The bridge runs a whole query synchronously and returns
+ * plain data (`bim.query.byType(...): BimEntity[]`, `entity(modelId, expressId)`),
+ * which is not the shape the CLI's raw `BimContext`/`QueryBuilder` have
+ * (`byType(...types): this`, `entity(ref: EntityRef)`) — copying it produced a
+ * schema entry an agent could follow into a TypeError or a chain that stops
+ * one link early.
+ */
+const RUNTIME_METHOD_SIGNATURES: Record<string, { paramNames?: string[]; tsReturn: string }> = {
+  // BimContext
+  query: { tsReturn: 'QueryBuilder' },
+  matchingActiveFilter: { tsReturn: 'EntityData[] | null' },
+  entity: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+  attributes: { paramNames: ['ref'], tsReturn: 'EntityAttributeData[]' },
+  properties: { paramNames: ['ref'], tsReturn: 'PropertySetData[]' },
+  quantities: { paramNames: ['ref'], tsReturn: 'QuantitySetData[]' },
+  classifications: { paramNames: ['ref'], tsReturn: 'ClassificationData[]' },
+  materials: { paramNames: ['ref'], tsReturn: 'MaterialData | null' },
+  typeProperties: { paramNames: ['ref'], tsReturn: 'TypePropertiesData | null' },
+  documents: { paramNames: ['ref'], tsReturn: 'DocumentData[]' },
+  relationships: { paramNames: ['ref'], tsReturn: 'EntityRelationshipsData' },
+  property: { paramNames: ['ref', 'psetName', 'propName'], tsReturn: 'string | number | boolean | null' },
+  quantity: { paramNames: ['ref', 'qsetNameOrQuantityName', 'quantityName?'], tsReturn: 'number | null' },
+  related: { paramNames: ['ref', 'relType', 'direction'], tsReturn: 'EntityData[]' },
+  containedIn: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+  contains: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
+  decomposedBy: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+  decomposes: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
+  storey: { paramNames: ['ref'], tsReturn: 'EntityData | null' },
+  path: { paramNames: ['ref'], tsReturn: 'EntityData[]' },
+  storeys: { tsReturn: 'EntityData[]' },
+  on: { paramNames: ['event', 'handler'], tsReturn: 'void' },
+  // QueryBuilder
+  model: { paramNames: ['modelId'], tsReturn: 'this' },
+  byType: { paramNames: ['...types'], tsReturn: 'this' },
+  where: { paramNames: ['psetName', 'propName', 'operator?', 'value?'], tsReturn: 'this' },
+  limit: { paramNames: ['n'], tsReturn: 'this' },
+  offset: { paramNames: ['n'], tsReturn: 'this' },
+  toArray: { tsReturn: 'EntityData[]' },
+  first: { tsReturn: 'EntityData | null' },
+  count: { tsReturn: 'number' },
+  refs: { tsReturn: 'EntityRef[]' },
+};
+
+/**
+ * Own value-function property names on a prototype, minus the constructor,
+ * plus getters whose value is itself callable (e.g. `BimContext.prototype.on`,
+ * a getter returning a bound subscription function) — the CLI exposes those
+ * the same way as a method, so a filter that only checked `.value` silently
+ * dropped them from the dump (#3763 follow-up).
+ *
+ * A getter can't be classified from the prototype alone — invoking it there
+ * runs the getter with `this` bound to the bare prototype, not an instance,
+ * which is exactly the state `on`'s getter needs (`this._boundOn`, set in
+ * the constructor) to return the function rather than `undefined`. `instance`
+ * lets a caller supply a real object to invoke the getter against; without
+ * one, getters are skipped rather than guessed at.
+ */
+function prototypeMethods(proto: object, instance?: object): string[] {
   return Object.getOwnPropertyNames(proto).filter((name) => {
     if (name === 'constructor') return false;
-    return typeof Object.getOwnPropertyDescriptor(proto, name)?.value === 'function';
+    const desc = Object.getOwnPropertyDescriptor(proto, name);
+    if (typeof desc?.value === 'function') return true;
+    if (typeof desc?.get === 'function' && instance) {
+      return typeof (instance as Record<string, unknown>)[name] === 'function';
+    }
+    return false;
   });
 }
 
@@ -53,8 +121,12 @@ function prototypeMethods(proto: object): string[] {
  *
  * Method lists are reflected off `BimContext.prototype` and
  * `QueryBuilder.prototype` — the objects `run`/`eval` construct — rather than
- * transcribed, so this cannot drift from the runtime. Docs and parameter names
- * are carried over from the bridge schema by name where it has them.
+ * transcribed, so this cannot drift from the runtime. Params and return types
+ * come from `RUNTIME_METHOD_SIGNATURES`, not the bridge schema: the bridge
+ * describes its own (different) call shape, and copying its `paramNames` /
+ * `tsReturn` here just relabelled the wrong signature (#3763 follow-up). Only
+ * `llmSemantics` (`useWhen`, `taskTags`) is still carried over from the
+ * bridge entry by name, where it has one.
  */
 function withRuntimeQueryShape(schemas: any[]): any[] {
   const bridgeQuery = schemas.find((ns) => ns?.name === 'query');
@@ -64,18 +136,26 @@ function withRuntimeQueryShape(schemas: any[]): any[] {
 
   const describe = (name: string) => {
     const fromBridge = bridgeMethods.get(name);
+    const signature = RUNTIME_METHOD_SIGNATURES[name];
     return {
       ...(fromBridge ?? {}),
       name,
       doc: RUNTIME_METHOD_DOCS[name] ?? fromBridge?.doc ?? name,
+      paramNames: signature?.paramNames,
+      tsReturn: signature?.tsReturn ?? fromBridge?.tsReturn,
     };
   };
+
+  // Constructed only to invoke the `on` getter against real instance state
+  // (see `prototypeMethods`) — no backend method is called during
+  // construction or by this dump.
+  const bimInstance = new BimContext({ backend: {} as never });
 
   return [
     {
       name: 'bim',
       doc: 'Top-level methods on the `bim` object (call as bim.<method>(...))',
-      methods: prototypeMethods(BimContext.prototype).map(describe),
+      methods: prototypeMethods(BimContext.prototype, bimInstance).map(describe),
     },
     {
       name: 'query',

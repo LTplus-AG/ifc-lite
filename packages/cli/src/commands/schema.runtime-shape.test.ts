@@ -30,7 +30,7 @@ afterEach(() => {
 interface DumpedNamespace {
   namespace: string;
   description?: string;
-  methods: { name: string }[];
+  methods: { name: string; params?: string[]; returns?: string }[];
 }
 
 async function dumpSchema(): Promise<DumpedNamespace[]> {
@@ -48,11 +48,20 @@ async function dumpSchema(): Promise<DumpedNamespace[]> {
   return JSON.parse(out.join('')) as DumpedNamespace[];
 }
 
-/** Value-function own property names on a prototype, minus the constructor. */
-function prototypeMethods(proto: object): string[] {
+/**
+ * Value-function own property names on a prototype, minus the constructor,
+ * plus getters whose value is itself callable (e.g. `BimContext.prototype.on`)
+ * when a live `instance` is supplied to invoke them against.
+ */
+function prototypeMethods(proto: object, instance?: object): string[] {
   return Object.getOwnPropertyNames(proto).filter((name) => {
     if (name === 'constructor') return false;
-    return typeof Object.getOwnPropertyDescriptor(proto, name)?.value === 'function';
+    const desc = Object.getOwnPropertyDescriptor(proto, name);
+    if (typeof desc?.value === 'function') return true;
+    if (typeof desc?.get === 'function' && instance) {
+      return typeof (instance as Record<string, unknown>)[name] === 'function';
+    }
+    return false;
   });
 }
 
@@ -64,7 +73,7 @@ describe('ifc-lite schema describes the run/eval bim object', () => {
     expect(root, 'a root `bim` namespace must be documented').toBeDefined();
 
     const documented = new Set(root!.methods.map((m) => m.name));
-    const runtime = prototypeMethods(BimContext.prototype);
+    const runtime = prototypeMethods(BimContext.prototype, new BimContext({ backend: {} as never }));
 
     // Every runtime top-level method is documented …
     expect([...runtime].sort()).toEqual([...documented].filter((n) => runtime.includes(n)).sort());
@@ -136,5 +145,32 @@ describe('ifc-lite schema describes the run/eval bim object', () => {
     }
 
     expect(unresolved).toEqual([]);
+  });
+
+  it('documents the callable `on` accessor on the bim root', async () => {
+    const dump = await dumpSchema();
+
+    const root = dump.find((ns) => ns.namespace === 'bim');
+    const on = root!.methods.find((m) => m.name === 'on');
+
+    expect(on, 'bim.on is a getter returning a bound function; it must appear in the dump').toBeDefined();
+  });
+
+  it("describes bim.entity and query().byType() from their own runtime signatures, not the sandbox bridge's", async () => {
+    const dump = await dumpSchema();
+
+    const root = dump.find((ns) => ns.namespace === 'bim');
+    const entity = root!.methods.find((m) => m.name === 'entity');
+    // The bridge's `entity` takes (modelId, expressId) and returns `BimEntity | null`
+    // because it resolves the ref itself; the CLI's raw `BimContext.entity`
+    // takes a single `EntityRef` (see packages/sdk/src/context.ts).
+    expect(entity?.params).toEqual(['ref']);
+    expect(entity?.returns).toBe('EntityData | null');
+
+    const query = dump.find((ns) => ns.namespace === 'query');
+    const byType = query!.methods.find((m) => m.name === 'byType');
+    // The bridge's `byType` runs the whole chain and returns `BimEntity[]`;
+    // the CLI's `QueryBuilder.byType` returns `this` to keep chaining.
+    expect(byType?.returns).toBe('this');
   });
 });

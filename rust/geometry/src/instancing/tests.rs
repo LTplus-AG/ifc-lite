@@ -1526,3 +1526,93 @@ fn an_item_id_on_a_mesh_collate_drops_does_not_widen_the_stride() {
          that names nothing, reported as if it were data"
     );
 }
+
+#[test]
+fn verify_recomposition_flags_a_nan_vertex_instead_of_dropping_it() {
+    use super::collate::{InstanceOccurrence, InstanceTemplate};
+    // Without the NaN guard in verify_recomposition's max-accumulation loop,
+    // `err > max_err` is false for a NaN `err`, so a NaN vertex error is
+    // silently dropped rather than winning the max — the function returns
+    // 0.0 (not NaN), and a caller's `assert!(max_err < 1e-4)` passes as if
+    // every vertex reconstructed exactly.
+    let template: Mesh = mesh_from(CANON.to_vec(), InstanceMeta {
+        transform: mat_rm(&Matrix4::identity()),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 1,
+        instanceable: true,
+    });
+    let mut target = template.clone();
+    target.positions[0] = f32::NAN;
+
+    let meshes = vec![template, target];
+    let collated = Collated {
+        templates: vec![InstanceTemplate {
+            rep_identity: 1,
+            template_index: 0,
+            occurrences: vec![
+                InstanceOccurrence {
+                    mesh_index: 0,
+                    transform: mat4_to_row_major_f32(&Matrix4::identity()),
+                },
+                InstanceOccurrence {
+                    mesh_index: 1,
+                    transform: mat4_to_row_major_f32(&Matrix4::identity()),
+                },
+            ],
+        }],
+        flat_indices: vec![],
+    };
+
+    let err = verify_recomposition(&meshes, &collated);
+    assert!(
+        !(err < 1e-4),
+        "a NaN vertex error must not be silently dropped from the max \
+         (`err {err}` cleared the `< 1e-4` bar a real caller's assert uses)"
+    );
+    assert!(err.is_infinite(), "expected the unbounded-error sentinel, got {err}");
+}
+
+#[test]
+fn verify_recomposition_genuine_match_still_clears_the_tolerance() {
+    // The NaN guard above must not turn verify_recomposition into something
+    // that rejects everything — a real matching pair still has to pass.
+    let placement = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, -1.0, 0.5));
+    let template: Mesh = mesh_from(CANON.to_vec(), InstanceMeta {
+        transform: mat_rm(&Matrix4::identity()),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 1,
+        instanceable: true,
+    });
+    let target: Mesh = mesh_from(baked(&CANON, &placement), InstanceMeta {
+        transform: mat_rm(&placement),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 1,
+        instanceable: true,
+    });
+
+    use super::collate::{InstanceOccurrence, InstanceTemplate};
+    let meshes = vec![template, target];
+    let collated = Collated {
+        templates: vec![InstanceTemplate {
+            rep_identity: 1,
+            template_index: 0,
+            occurrences: vec![
+                InstanceOccurrence {
+                    mesh_index: 0,
+                    transform: mat4_to_row_major_f32(&Matrix4::identity()),
+                },
+                InstanceOccurrence {
+                    mesh_index: 1,
+                    transform: mat4_to_row_major_f32(&placement),
+                },
+            ],
+        }],
+        flat_indices: vec![],
+    };
+
+    let err = verify_recomposition(&meshes, &collated);
+    assert!(err < 1e-4, "genuine match recomposition error {err} exceeds the f32 storage floor");
+}

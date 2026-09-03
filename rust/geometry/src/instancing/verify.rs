@@ -188,6 +188,19 @@ pub fn verify_recomposition(meshes: &[Mesh], collated: &Collated) -> f64 {
                     &rel,
                     v,
                 );
+                // `err > max_err` is false whenever `err` is NaN, so an
+                // unguarded max-accumulation SILENTLY DROPS a NaN vertex
+                // error instead of it winning the max — verified empirically:
+                // an all-NaN occurrence still returns 0.0 here, not NaN, so a
+                // caller's `assert!(max_err < 1e-4)` passes as if every
+                // vertex reconstructed exactly. Flag it the same way the
+                // vertex-count mismatch above already does (unbounded error)
+                // so a NaN transform or position fails this diagnostic loudly
+                // instead of reading as a perfect match.
+                if err.is_nan() {
+                    max_err = f64::INFINITY;
+                    continue;
+                }
                 if err > max_err {
                     max_err = err;
                 }

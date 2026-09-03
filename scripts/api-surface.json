@@ -1966,6 +1966,7 @@
     "GeometryProcessorOptions: interface",
     "GeometryResult: interface",
     "GridAxis: interface",
+    "HbjsonStats: interface",
     "IPlatformBridge: interface",
     "IfcLiteBridge: class",
     "KmzAltitudeMode: type",

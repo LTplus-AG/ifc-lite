@@ -142,6 +142,13 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
       // like `Tower.v2` must survive into the exported model name.
       const baseName = selectedModel.name.replace(/\.(ifc|ifcx|ifczip)$/i, '');
 
+      // Set only for HBJSON when the export's `HbjsonStats.skipped > 0` (spaces dropped
+      // as degenerate — malformed footprint / holes / non-extrusion): appended to the
+      // success message below so a "successful" export that silently truncated the
+      // model is never reported as a plain, unqualified success. Stays empty on a clean
+      // export (nothing skipped) or for DFJSON (no stats contract).
+      let hbjsonSkipNote = '';
+
       // HBJSON comes back as UTF-8 bytes (not capped by the V8 max-string
       // ceiling); DFJSON models are small 2D plates, so that exporter stays
       // a string.
@@ -155,14 +162,18 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
         try {
           await processor.init();
           if (format === 'hbjson') {
-            const hbjson = processor.exportHbjson(content, baseName);
-            if (hbjson === null) {
+            const result = processor.exportHbjsonWithStats(content, baseName);
+            if (result === null) {
               throw new Error('Geometry engine unavailable');
             }
+            const { content: hbjson, stats } = result;
             // The HBJSON exporter returns empty output when the model has no
             // IfcSpace volumes.
             if (hbjson.length === 0) {
               throw new Error('No IfcSpace volumes found in the model to export');
+            }
+            if (stats.skipped > 0) {
+              hbjsonSkipNote = ` — ${stats.skipped} of ${stats.spaces} IfcSpace skipped as degenerate`;
             }
             return hbjson;
           }
@@ -225,7 +236,7 @@ export function EnergyModelExportDialog({ trigger }: EnergyModelExportDialogProp
       const blob = new Blob([out as BlobPart], { type: 'application/json' });
       downloadBlob(blob, `${sanitizeFilename(baseName, { fallback: 'model' })}.${spec.ext}`);
 
-      const msg = `Exported ${spec.label} (${(blob.size / 1024).toFixed(0)} KB)`;
+      const msg = `Exported ${spec.label} (${(blob.size / 1024).toFixed(0)} KB)${hbjsonSkipNote}`;
       setExportResult({ success: true, message: msg });
       toast.success(msg);
     } catch (err) {

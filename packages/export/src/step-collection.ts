@@ -30,6 +30,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { collectReferencedEntityIds, getVisibleEntityIds, collectStyleEntities } from './reference-collector.js';
+import { collectGeoreferencingEntities } from './georef-closure.js';
 import { getSubsetEntityIds } from './subset-roots.js';
 import { buildRelDefinesByPropertiesIndex } from './step-property-set-index.js';
 import { collectPropertyAndQuantitySetMutations } from './step-property-set-collection.js';
@@ -240,5 +241,19 @@ function applyExportClosure(
     pass.allowedEntityIds,
     ctx.dataStore.source,
     { byId: pass.effective, byType: pass.effective.byType },
+  );
+  // Third pass: collect IFCMAPCONVERSION (+ its IFCPROJECTEDCRS) when the
+  // context it converts is already in the closure. IfcMapConversion.SourceCRS
+  // points AT the context, never the other way, so the forward closure never
+  // reaches it — without this a visible-only/subset export of a georeferenced
+  // model silently drops its georeferencing. `excludeIds` is passed through so
+  // a deliberately-excluded map conversion (e.g. `subset-roots.ts`'s
+  // `IDENTIFYING_TYPES` when the anonymize-export "remove georeferencing"
+  // option is on) stays excluded rather than being resurrected here.
+  collectGeoreferencingEntities(
+    pass.allowedEntityIds,
+    ctx.dataStore.source,
+    { byId: pass.effective, byType: pass.effective.byType },
+    excludeIds,
   );
 }

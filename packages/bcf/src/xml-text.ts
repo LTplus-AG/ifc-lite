@@ -16,10 +16,52 @@
  * Values are unescaped so {@link escapeXml} round-trips correctly (see
  * escapeXml/unescapeXml regression: & < > " ' in titles/descriptions/
  * comments must come back exactly as written, not as literal entities).
+ *
+ * The content between the tags is read with {@link decodeXmlCharData}
+ * rather than a bare `[^<]*` match, so a CDATA-wrapped value (whose content
+ * starts with the literal `<![CDATA[`) is read instead of silently
+ * rejected -- the same defect `parseLabels` was fixed for, but present on
+ * every other caller of this function (Title, Comment, and the rest).
+ * `decodeXmlCharData` still returns `null`, and this still returns
+ * `undefined`, when the content holds real child-element markup.
  */
 export function extractElement(content: string, elementName: string): string | undefined {
-  const match = content.match(new RegExp(`<${elementName}>([^<]*)<\\/${elementName}>`));
-  return match?.[1] !== undefined ? unescapeXml(match[1]) : undefined;
+  const match = content.match(new RegExp(`<${elementName}>([\\s\\S]*?)<\\/${elementName}>`));
+  if (match?.[1] === undefined) return undefined;
+  const decoded = decodeXmlCharData(match[1]);
+  return decoded ?? undefined;
+}
+
+/**
+ * Parse a captured `xs:boolean` value per its lexical space
+ * `{true, false, 1, 0}` (whiteSpace=collapse, so leading/trailing
+ * whitespace is ignored; matched case-sensitively, per the XSD's literal
+ * lexical space -- BCF markup never emits `True`/`TRUE`).
+ *
+ * Does NOT decide what an *absent* attribute means, nor a *blank* one: a
+ * value that collapses to the empty string is schema-invalid for
+ * `xs:boolean` and is treated the same as absent, not as recognised-false or
+ * as garbage -- so every caller checks `raw === undefined` (or blank, after
+ * a `.trim()`) itself and supplies its own absent-case default, which
+ * differs by call site (`DefaultVisibility` leans true on BCF 2.1, false on
+ * 3.0; the others are `undefined`-optional or lean false). This unifies the
+ * four hand-rolled xs:boolean parses this package had (`parseVisibility`,
+ * `parseViewSetupHints`'s `flag()`, and the two `isExternal` sites in
+ * `reader.ts`), which is exactly the drift #3713 warns about: one behaviour,
+ * several hand-rolled implementations, each patched independently.
+ *
+ * A present value outside the lexical space (garbage, e.g. `"yes"`) resolves
+ * to `ifUnrecognized` rather than a hardcoded pick, because callers
+ * genuinely disagree on which way an unrecognised value should lean.
+ *
+ * @param raw a non-blank, already-captured attribute or element value (the
+ *   caller has already ruled out absent/blank)
+ */
+export function parseXsBoolean(raw: string, { ifUnrecognized }: { ifUnrecognized: boolean }): boolean {
+  const trimmed = raw.trim();
+  if (trimmed === 'true' || trimmed === '1') return true;
+  if (trimmed === 'false' || trimmed === '0') return false;
+  return ifUnrecognized;
 }
 
 /**
@@ -69,4 +111,69 @@ export function unescapeXml(str: string): string {
         : whole;
     },
   );
+}
+
+/**
+ * Extract topic `<Labels>` values, tolerant of both BCF markup.xsd shapes.
+ *
+ * BCF 2.1 repeats the label element itself: `<Labels>Structural</Labels>
+ * <Labels>Urgent</Labels>`. BCF 3.0 instead wraps ONE `<Labels>` container
+ * around repeated `<Label>` children: `<Labels><Label>Structural</Label>
+ * <Label>Urgent</Label></Labels>`. A regex that only matched the 2.1 shape
+ * (immediate non-tag text) silently dropped every label from a conformant
+ * 3.0 archive, since its `<Labels>` is immediately followed by a nested `<`,
+ * not text. This walks each `<Labels>` block and prefers nested `<Label>`
+ * children when present, falling back to the 2.1 direct-text shape.
+ *
+ * Label content goes through {@link decodeXmlCharData} rather than a bare
+ * `[^<]*` match, so a CDATA label (`<Label><![CDATA[Urgent & Important]]>
+ * </Label>` — whose content starts with `<`) is read instead of dropped.
+ */
+export function parseLabels(topicContent: string): string[] {
+  const labels: string[] = [];
+  // One emptiness rule for both shapes, so `<Labels><Label></Label></Labels>`
+  // and `<Labels></Labels>` agree. The 3.0 branch used to push
+  // decodeXmlCharData's '' straight through while the 2.1 branch skipped it,
+  // so only the 3.0 shape produced a phantom empty label. Whitespace-only
+  // content is NOT empty and is kept: markup.xsd types both elements as
+  // xs:string (whiteSpace=preserve), so '   ' is a legal value, and that is
+  // what the 2.1 path has always returned.
+  const push = (raw: string): void => {
+    const text = decodeXmlCharData(raw);
+    if (text !== null && text.length > 0) labels.push(text);
+  };
+  for (const block of topicContent.matchAll(/<Labels>([\s\S]*?)<\/Labels>/g)) {
+    const inner = block[1];
+    const nested = [...inner.matchAll(/<Label>([\s\S]*?)<\/Label>/g)];
+    if (nested.length > 0) {
+      for (const label of nested) push(label[1]);
+    } else {
+      push(inner);
+    }
+  }
+  return labels;
+}
+
+/**
+ * Decode element content that should be XML character data, tolerating CDATA
+ * sections.
+ *
+ * Per the XML spec, CDATA content is literal — `&amp;` inside CDATA stays
+ * `&amp;` — while text outside CDATA is entity-decoded via
+ * {@link unescapeXml}. Returns `null` when the content holds real markup (a
+ * `<` outside any CDATA section): that is child elements, not character
+ * data, and the caller should not treat it as a text value.
+ */
+function decodeXmlCharData(raw: string): string | null {
+  let out = '';
+  let last = 0;
+  for (const m of raw.matchAll(/<!\[CDATA\[([\s\S]*?)\]\]>/g)) {
+    const text = raw.slice(last, m.index);
+    if (text.includes('<')) return null;
+    out += unescapeXml(text) + m[1];
+    last = m.index + m[0].length;
+  }
+  const tail = raw.slice(last);
+  if (tail.includes('<')) return null;
+  return out + unescapeXml(tail);
 }

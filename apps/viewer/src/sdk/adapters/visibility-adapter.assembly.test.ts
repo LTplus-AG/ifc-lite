@@ -133,4 +133,32 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     assert.equal(calls.length, 1, 'isolate() must still install an isolation');
     assert.deepEqual(calls[0], [ASSEMBLY_GLOBAL_ID], 'an empty resolve falls back to the raw ids');
   });
+
+  // #3426, correcting #3382: the previous test's `emptyResolver` stood in for
+  // EVERY reason a resolver answers `[]`, including a geometry-less assembly
+  // whose parts genuinely never render — but for that case, falling back to
+  // the raw (parent) id is the bug: the assembly has no mesh either, so
+  // isolating `[ASSEMBLY_GLOBAL_ID]` blanks the viewport exactly as isolating
+  // `[]` would have, just with an extra step. `expandToGeometryBearingIds`
+  // (`utils/aggregation.ts`) no longer answers `[]` for this case: when none
+  // of an assembly's parts currently render, the real `resolveHighlightIds`
+  // now falls back to ALL of the assembly's aggregated parts rather than
+  // dropping it — this mock mirrors that corrected contract.
+  it('a resolver that expands to un-rendered aggregated parts is unioned in, not discarded (#3426)', () => {
+    const structuralResolver = (ids: number[]) =>
+      ids.flatMap((id) => (id === ASSEMBLY_GLOBAL_ID ? [PART_A_GLOBAL_ID, PART_B_GLOBAL_ID] : []));
+    const store = makeStore(structuralResolver);
+    const adapter = createVisibilityAdapter(store);
+
+    adapter.isolate([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
+
+    const calls = (store.getState().isolateEntities as unknown as { calls: number[][] }).calls;
+    assert.equal(calls.length, 1);
+    assert.deepEqual(
+      [...calls[0]].sort((a, b) => a - b),
+      [ASSEMBLY_GLOBAL_ID, PART_A_GLOBAL_ID, PART_B_GLOBAL_ID],
+      'isolating a geometry-less assembly must install its parts, not just the ' +
+      'parent id the parts belong to — the parent alone has no mesh to render',
+    );
+  });
 });

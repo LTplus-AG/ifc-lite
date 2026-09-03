@@ -17,6 +17,7 @@ import {
   computeGrossFloorArea,
   computeMaterialSummary,
   computeValidation,
+  filterBuildingElements,
   computeStoreyNames,
   computeBuildingName,
   sumQuantity,
@@ -85,7 +86,7 @@ export async function statsCommand(args: string[]): Promise<void> {
   }
 
   // Material summary with volumes
-  const allBuildingElements = bim.query().toArray();
+  const allBuildingElements = filterBuildingElements(bim.query().toArray());
   const materialSummary = computeMaterialSummary(bim, allBuildingElements, round);
 
   // Validation checks

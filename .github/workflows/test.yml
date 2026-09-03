@@ -740,17 +740,21 @@ jobs:
       # AGENTS.md has asked for TypeScript modules under ~400 lines since long
       # before this gate existed, and self-policing left 312 files over the
       # line. A convention with no gate ratchets the wrong way: the allowlist
-      # is the frozen debt, and anything NEW over 400 lines fails here. The
-      # allowlist is digest-pinned, so editing it to dodge the gate is itself
-      # a failure rather than a silent widening.
+      # is the frozen debt. The gate has exactly two teeth and this step fails
+      # on either: a NEW source file over 400 lines with no allowlist row, and
+      # an allowlisted file that GREW past its recorded budget. Raising a
+      # budget by hand is NOT one of them (#3745) -- it is sanctioned, and the
+      # allowlist row's own diff is the reviewable line, read by a human in
+      # the PR rather than failed here.
       - name: Check TypeScript module size ratchet
         run: node scripts/check-module-size.mjs
       # Executable proof the ratchet cannot pass vacuously: a gate that
-      # measures nothing, or an allowlist whose digest is not actually
-      # enforced, would report the same clean line as a real pass.
-      # check-module-size.test.mjs covers the harness (tree walk, allowlist
-      # ratchet, digest pin); lib/module-size-ratchet.test.mjs covers the
-      # counting and digest logic underneath it.
+      # measured nothing -- no files, a missing search root, an empty or
+      # unreadable allowlist -- would report the same clean line as a real
+      # pass. check-module-size.test.mjs covers the harness (tree walk,
+      # allowlist ratchet, --update); lib/module-size-ratchet.test.mjs covers
+      # the counting underneath it, plus the digest helpers that still back
+      # the Rust twin's pin and no longer gate anything on this side.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
       # An entity can legitimately carry two distinct property/quantity sets

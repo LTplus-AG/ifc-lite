@@ -19,6 +19,7 @@ import type {
 } from '../../types.js';
 import type { IDSAuditIssue } from '../types.js';
 import { XSD_NUMERIC_SPECIALS } from '../../constraints/xsd-cast.js';
+import { isValidXsdDateTimeLiteral, isXsdDateTimeBase } from '../../constraints/xsd-datetime.js';
 import { compileXsdRegex } from './regex.js';
 import { auditRequirementCardinality } from './cardinality.js';
 
@@ -311,8 +312,9 @@ function checkPattern(
 
 /**
  * Validate that `value` matches the lexical space of the supplied XSD
- * primitive base. Mirrors upstream `XsTypes.IsValid` (see the table); flags
- * `<xs:enumeration value="12,0"/>` under `<xs:restriction base="xs:double">`.
+ * primitive base. Mirrors upstream `XsTypes.IsValid` (see the table, and the
+ * date family it hands off); flags `<xs:enumeration value="12,0"/>` under
+ * `<xs:restriction base="xs:double">`.
  */
 const XS_VALUE_REGEX: Record<string, RegExp> = {
   // Upstream `XmlRegex.cs`, except the mantissa: `[0-9]*(?:\.[0-9]*)?` not
@@ -323,14 +325,13 @@ const XS_VALUE_REGEX: Record<string, RegExp> = {
   'xs:float': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:decimal': /^([-+]?[0-9]*(?:\.[0-9]*)?([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$/,
   'xs:boolean': /^(true|false|0|1)$/,
-  'xs:date': /^\d{4}-\d{2}-\d{2}(Z|([+-]\d{2}:\d{2}))?$/,
-  'xs:dateTime':
-    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))?$/,
-  'xs:time': /^\d{2}:\d{2}:\d{2}(\.\d+)?(Z|([+-]\d{2}:\d{2}))?$/,
+  // The date family is absent on purpose: its value space is a calendar, not a
+  // digit-run shape, so it goes through `isValidXsdDateTimeLiteral` (#3721).
   'xs:duration': /^[-+]?P(\d+Y)?(\d+M)?(\d+D)?(T(\d+H)?(\d+M)?(\d+S)?)?$/,
 };
 
 export function isValidLexicalForXsType(value: string, base: string): boolean {
+  if (isXsdDateTimeBase(base)) return isValidXsdDateTimeLiteral(value, base);
   const rx = XS_VALUE_REGEX[base];
   if (!rx) return true; // base we don't recognise → don't fabricate errors
   if (base === 'xs:double' || base === 'xs:float' || base === 'xs:decimal') {

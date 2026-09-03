@@ -26,6 +26,7 @@ import {
   computeStoreyNames,
   computeBuildingName,
   computeValidation,
+  filterBuildingElements,
   type QuantitySet,
   type PropertySet,
 } from './stats-aggregation.js';
@@ -249,6 +250,19 @@ describe('computeMaterialSummary', () => {
     expect(summary).toEqual([{ name: 'Wood', count: 1, volume: 0 }]);
   });
 
+  it('does not double-count a volume when one element carries TWO quantity sets that both report GrossVolume (issue: a vendor-specific Qto_ set alongside the standard one restates, not adds, the physical volume)', () => {
+    const bim = fakeBim({
+      1: [
+        { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'GrossVolume', value: 10 }] },
+        { name: 'BaseQuantities', quantities: [{ name: 'GrossVolume', value: 10 }] },
+      ],
+    }, {}, { 1: { name: 'Concrete' } });
+    const summary = computeMaterialSummary(bim, [{ ref: 1 }], n => n);
+    // The element's real volume is 10 m3 (one wall), not 20 — a naive
+    // per-qset accumulation over both quantity sets doubles it.
+    expect(summary).toEqual([{ name: 'Concrete', count: 1, volume: 10 }]);
+  });
+
   /**
    * Regression: `firstName ?? mat?.name` followed by `if (!matName)
    * continue;` skips a plain empty-string name (falsy) but a
@@ -299,6 +313,61 @@ describe('computeBuildingName', () => {
 
   it('returns "(unnamed)" when there is no building at all (control)', () => {
     expect(computeBuildingName([])).toBe('(unnamed)');
+  });
+});
+
+describe('filterBuildingElements', () => {
+  // ISSUE(AC20-FZK-Haus.ifc fixture): `bim.query()` with no type filter
+  // returns every "product" entity, including 14 unnamed IfcAnnotation
+  // (drafting) entities and the model's IfcProject/IfcSite/IfcBuilding/
+  // IfcBuildingStorey/IfcSpace containers — none of which are physical
+  // building elements. Passing that unfiltered set into computeValidation
+  // reported 19 "unnamed elements" for a model where only 5 physical
+  // elements actually lack a Name.
+  it('drops spatial-structure containers and drafting annotations, keeps physical elements', () => {
+    const entities = [
+      { type: 'IfcProject', name: undefined },
+      { type: 'IfcSite', name: undefined },
+      { type: 'IfcBuilding', name: 'Building' },
+      { type: 'IfcBuildingStorey', name: 'Level 1' },
+      { type: 'IfcSpace', name: 'Room 1' },
+      { type: 'IfcAnnotation', name: undefined },
+      { type: 'IfcAnnotation', name: undefined },
+      { type: 'IfcWall', name: 'Wall 1' },
+      { type: 'IfcRailing', name: undefined },
+    ];
+    const kept = filterBuildingElements(entities);
+    expect(kept.map(e => e.type)).toEqual(['IfcWall', 'IfcRailing']);
+  });
+
+  it('an all-physical-element input passes through unchanged', () => {
+    const entities = [{ type: 'IfcWall' }, { type: 'IfcDoor' }, { type: 'IfcWindow' }];
+    expect(filterBuildingElements(entities)).toEqual(entities);
+  });
+
+  // The exclusion set used to be a hand-written list of type names and had
+  // drifted twice: it missed `IfcExternalSpatialElement`, and it named
+  // IfcFacilityPart/IfcBridgePart/IfcRoadPart but not the IFC4X3 siblings
+  // (IfcMarinePart, IfcFacilityPartCommon) or the IfcGroup subtypes outside
+  // IfcZone/IfcSystem/IfcDistributionSystem. The filter now matches the
+  // inheritance chain, so each of these is covered by a supertype rather than
+  // by name. One case per supertype branch, plus a control.
+  it.each([
+    ['IfcMarinePart', 'an IFC4X3 facility-part leaf (IfcSpatialStructureElement)'],
+    ['IfcExternalSpatialElement', 'the IfcExternalSpatialStructureElement branch'],
+    ['IfcBuiltSystem', 'an IfcGroup subtype the old name list never mentioned'],
+    ['IfcProject', 'IfcContext, which is not spatial and not a group'],
+    ['IfcAnnotation', 'a drafting annotation, which matches itself'],
+  ])('excludes %s — %s', type => {
+    const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type, name: undefined }];
+    expect(filterBuildingElements(entities).map(e => e.type)).toEqual(['IfcWall']);
+  });
+
+  // Control for the polarity: this filter excludes non-elements, it does not
+  // test for IfcElement, so the entities that are neither stay counted.
+  it('leaves IfcGrid and IfcPort in, the same as before', () => {
+    const entities = [{ type: 'IfcGrid' }, { type: 'IfcDistributionPort' }];
+    expect(filterBuildingElements(entities)).toEqual(entities);
   });
 });
 

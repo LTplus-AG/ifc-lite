@@ -636,6 +636,28 @@ ENDSEC;\nEND-ISO-10303-21;\n";
     );
 }
 
+/// RED for CodeRabbit (PR #3766): `resolve_included` returns `index.order`
+/// directly when `roots` is `None` (a full, unfiltered model — the common
+/// case, `MergedModel.included: None`) without ever walking any entity line,
+/// so an oversized reference anywhere in an unfiltered model was never
+/// counted or reported. A filtered model with the same reference (covered
+/// above) already worked; only the `None` path was blind.
+#[test]
+fn an_unfiltered_models_oversized_reference_is_reported_in_warnings() {
+    let content = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCWALL('WALL0000000000000000A',$,'W',$,$,#4294967297,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let models =
+        [MergedModel { content: content.as_bytes(), id: "a".to_string(), included: None }];
+    let (_merged, stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert!(
+        stats.warnings.iter().any(|w| w.contains("u32 express-id bound")),
+        "an oversized reference in an unfiltered (included: None) model must be reported too: {:?}",
+        stats.warnings
+    );
+}
+
 /// Control: a filtered model whose root's references are all ordinary
 /// (`u32`-representable) reports no oversized-ref warning.
 #[test]

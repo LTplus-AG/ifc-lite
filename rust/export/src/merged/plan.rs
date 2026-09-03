@@ -105,7 +105,24 @@ pub fn resolve_included(
     mut refused: Option<&mut usize>,
 ) -> HashSet<u32> {
     match roots {
-        None => index.order.iter().copied().collect(),
+        None => {
+            // Every id is included regardless, so this is purely a counting
+            // pass: it must not touch `keep`/`stack`, only `refused`, or an
+            // unfiltered model's oversized references would go unreported
+            // (CodeRabbit, PR #3766) — the `Some(roots)` arm below already
+            // counts as it walks the closure; here nothing walks anything, so
+            // the count has to come from a dedicated scan of every line.
+            if let Some(refused) = refused.as_deref_mut() {
+                let mut refs = Vec::new();
+                for &id in &index.order {
+                    if let Some(bytes) = index.line_bytes(id) {
+                        refs.clear();
+                        refs_in_line_counted(bytes, &mut refs, refused);
+                    }
+                }
+            }
+            index.order.iter().copied().collect()
+        }
         Some(roots) => {
             let mut keep: HashSet<u32> = HashSet::new();
             let mut stack: Vec<u32> = roots.clone();

@@ -369,3 +369,7 @@ fn sig_walk_bytes(
     }
     fold_bytes(acc, &bytes[lit_start..len])
 }
+
+#[cfg(test)]
+#[path = "content_hash_tests.rs"]
+mod tests;

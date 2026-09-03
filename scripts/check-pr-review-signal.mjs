@@ -519,7 +519,9 @@ function fetchHeadCommittedAt(opts) {
       'NO_HEAD_COMMIT_TIME',
       `The commit API returned ${JSON.stringify(at)} for ${opts.sha}'s committer date. Part 3 ` +
         'compares review evidence to that moment; without it a stale review and a current one ' +
-        'are the same row.',
+        'are the same row. REMEDY: inspect `gh api repos/{owner}/{repo}/git/commits/' + opts.sha +
+        '` and, if its committer.date shape changed, update fetchHeadCommittedAt; a re-run alone ' +
+        'cannot fix a malformed value that persists.',
     );
   }
   return at;

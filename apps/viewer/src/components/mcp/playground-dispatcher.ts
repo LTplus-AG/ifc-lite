@@ -576,11 +576,15 @@ const IMPLS: Record<string, ToolImpl> = {
     const groupBy = (args.group_by as string | undefined) ?? 'type';
     const counts = new Map<string, number>();
     if (groupBy === 'type') {
-      // Same PascalCase normalization as model_info — keep user-facing
-      // type counts aligned with the rest of the surface.
-      for (const [storageType, ids] of m.store.entityIndex.byType) {
-        const pretty = (ids.length > 0 ? m.store.entities.getTypeName(ids[0]) : null) ?? storageType;
-        counts.set(pretty, ids.length);
+      // Same universe as `query_entities`/`get_entity` and the Node MCP
+      // server's `count_entities` (#3765): the BIM products `m.bim.query()`
+      // yields. `m.store.entityIndex.byType` is every raw STEP record —
+      // geometry, relationships, properties included — which is what this
+      // branch used to fold, so the playground reported a different total
+      // than the installed MCP server for the same model.
+      for (const e of m.bim.query().toArray()) {
+        const key = e.type || '(unknown)';
+        counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'storey') {
       for (const e of m.bim.query().toArray()) {

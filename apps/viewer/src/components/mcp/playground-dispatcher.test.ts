@@ -113,3 +113,30 @@ describe('meshForClash WASM disposal (#1959 P0 leak)', () => {
     }
   });
 });
+
+describe('count_entities group_by:type universe (#3765)', () => {
+  it('counts BIM products, not every raw STEP record (owner history, pset, property included)', async () => {
+    // One wall, plus non-product STEP records (owner history, a property set
+    // and its single property) that `m.store.entityIndex.byType` would still
+    // fold in. `query_entities`/`get_entity`/the Node MCP server's own
+    // count_entities only ever mean "BIM product" — this branch used to
+    // report the raw-STEP total instead, disagreeing with all of those for
+    // the same model.
+    const bytes = new TextEncoder().encode(
+      ifc4([
+        "#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);",
+        "#10=IFCWALL('0aBcDeFgHiJkLmNoPqRsT3',#1,'Wall A',$,$,$,$,$,.STANDARD.);",
+        "#20=IFCPROPERTYSINGLEVALUE('FireRating',$,'REI60',$);",
+        "#30=IFCPROPERTYSET('psetguid00000000000001',#1,'Pset_WallCommon',$,(#20));",
+        "#40=IFCRELDEFINESBYPROPERTIES('relguid0000000000000001',#1,$,$,(#10),#30);",
+      ].join('\n')),
+    );
+    const model = await parsePlaygroundModel(bytes.buffer as ArrayBuffer, 'wall-with-pset.ifc');
+    const result = await dispatch(model, 'count_entities', { group_by: 'type' });
+    assert.equal(result.isError, false);
+    const structured = result.structured as { groups: Array<{ key: string; count: number }> };
+    const total = structured.groups.reduce((s, g) => s + g.count, 0);
+    assert.equal(total, 1, 'only the wall is a BIM product; owner history/pset/property are not');
+    assert.deepEqual(structured.groups, [{ key: 'IfcWall', count: 1 }]);
+  });
+});

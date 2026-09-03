@@ -234,6 +234,7 @@ function main() {
     if (files.length === 0) throw new Error('No eval cases found; the harness would report a vacuous 0/0.');
 
     const results = [];
+    const validatedResults = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
       // THE CONTEXT PACK, built per case so the eval measures the pipeline the
@@ -347,7 +348,9 @@ function main() {
         // the description, and a diff-only run carries none at all -- scoring
         // against text the reviewer never received excludes vocabulary it could
         // not have copied, and that reads as a false miss.
-        results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] });
+        const failed = { pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] };
+        validatedResults.push(failed);
+        results.push(failed);
         continue;
       }
       // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
@@ -364,6 +367,17 @@ function main() {
       // the generator alone, which is how you tell "the reviewer missed it" from "the
       // judge threw it away".
       let parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
+      // Record what survived mechanical validation before the optional judge
+      // mutates it. Without this, a final miss cannot be attributed to the
+      // generator/validator or to suppression; live #3609 required manually
+      // reconstructing that distinction from log fragments.
+      validatedResults.push({
+        pr: c.pr,
+        body: c.input.contextPack?.body ?? null,
+        expected: c.expected,
+        verdict: parsed.verdict,
+        findings: parsed.findings ?? [],
+      });
       // Nothing to judge costs no process. `judge()` short-circuits on an empty
       // list anyway, so this only saves a node start -- but four of the fixtures
       // expect zero findings and more come back clean in practice.
@@ -411,17 +425,20 @@ function main() {
       results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted });
     }
 
+    const validatedScore = score(validatedResults);
     const s = score(results);
     console.log(`\nRubric: ${rubric}   model: ${model}`);
     for (const l of s.lines) console.log(l);
     // A case whose review never validated contributes zero to recall, and a recall
     // number is not readable without knowing how many of those there were.
     const noReview = results.filter((r) => r.verdict === null).length;
-    console.log(`\n  RECALL of known findings: ${s.recall}`);
+    console.log(`\n  VALIDATED recall before judge/cap: ${validatedScore.recall}`);
+    console.log(`  VALIDATED extra findings: ${validatedScore.extra}`);
+    console.log(`  POSTED recall after judge/cap: ${s.recall}`);
     if (noReview) {
       console.log(`  ...over ${results.length} cases, of which ${noReview} PRODUCED NO USABLE REVIEW and scored zero.`);
     }
-    console.log(`  EXTRA findings (look at these, do not minimise them): ${s.extra}`);
+    console.log(`  POSTED extra findings (look at these, do not minimise them): ${s.extra}`);
     console.log('\n  Compare against the same command on the other rubric. A change that lowers');
     console.log('  recall is a regression whatever it does to EXTRA.\n');
     ok = true;

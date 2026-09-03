@@ -14,7 +14,7 @@ use super::spatial::{
 };
 use super::units::units_compatible;
 use super::MergedModel;
-use crate::step_text::refs_in_line;
+use crate::step_text::refs_in_line_counted;
 
 /// Entity types forming shared infrastructure — the first instance of each is
 /// unified across compatible models (later duplicates dropped + redirected).
@@ -92,7 +92,16 @@ impl<'a> ModelIndex<'a> {
 /// Resolve the visible id set for a model: `None` ⇒ every entity; otherwise the
 /// forward-reference closure of `roots` (so a filtered export never dangles a
 /// `#ref`), mirroring `export_step_with_stats`.
-pub fn resolve_included(index: &ModelIndex, roots: &Option<Vec<u32>>) -> HashSet<u32> {
+///
+/// `refused` accumulates every `#<digits>` reference this walk discarded for
+/// exceeding `u32::MAX` (issue #3421), so a caller can surface it — see
+/// [`crate::step_text::refs_in_line_counted`]'s doc for why this does not
+/// exclude anything reachable that would otherwise have been included.
+pub fn resolve_included(
+    index: &ModelIndex,
+    roots: &Option<Vec<u32>>,
+    refused: &mut usize,
+) -> HashSet<u32> {
     match roots {
         None => index.order.iter().copied().collect(),
         Some(roots) => {
@@ -105,7 +114,7 @@ pub fn resolve_included(index: &ModelIndex, roots: &Option<Vec<u32>>) -> HashSet
                 }
                 if let Some(bytes) = index.line_bytes(id) {
                     refs.clear();
-                    refs_in_line(bytes, &mut refs);
+                    refs_in_line_counted(bytes, &mut refs, refused);
                     for &r in &refs {
                         if !keep.contains(&r) {
                             stack.push(r);

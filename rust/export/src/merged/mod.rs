@@ -198,8 +198,15 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     // emission would leave later models dangling a `#ref` to a line never written
     // (Greptile P1 / CR). An excluded canonical simply isn't a target — later
     // models then keep their own project/infra/containers (less dedup, still valid).
+    // Total `#<digits>` references above `u32::MAX` refused (issue #3421)
+    // while resolving every model's reachable set below. Surfaced in
+    // `stats.warnings` once the loop finishes — see `resolve_included`'s doc
+    // for why this is a diagnostic about the source file, not a completeness
+    // gap in the merge (#3752).
+    let mut refused_refs_total = 0usize;
+
     let first = ModelIndex::build(models[0].content);
-    let first_included = plan::resolve_included(&first, &models[0].included);
+    let first_included = plan::resolve_included(&first, &models[0].included, &mut refused_refs_total);
     let canonical_project = first.projects.iter().copied().find(|id| first_included.contains(id));
     let first_infra: HashMap<&'static str, u32> = first
         .first_infra
@@ -233,7 +240,7 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
     for (i, model) in models.iter().enumerate() {
         let is_first = i == 0;
         let index = ModelIndex::build(model.content);
-        let included = plan::resolve_included(&index, &model.included);
+        let included = plan::resolve_included(&index, &model.included, &mut refused_refs_total);
         // Placing this model would push the merged EXPRESS-id space past u32::MAX,
         // so stop here instead: the file emitted so far is valid, and the unmerged
         // tail is reported for the caller to gate. `plan::next_offset` is the single
@@ -367,6 +374,19 @@ pub fn export_merged_models(models: &[MergedModel], opts: &MergedOptions) -> (St
         stats.warnings.push(format!(
             "{} model(s) had an incompatible length unit and were federated as separate IfcProject instances (relaxing IfcSingleProjectInstance).",
             stats.federated_model_count
+        ));
+    }
+
+    if refused_refs_total > 0 {
+        // Issue #3421/#3752: a `#<digits>` reference above `u32::MAX` is
+        // refused, not wrapped onto a real entity, while resolving which
+        // ids a filtered/merged model reaches. The referenced record could
+        // never itself be a real entity (every id in this store is also
+        // `u32`-bound), so nothing reachable was excluded — this only says
+        // at least one input file contains an express id ifc-lite cannot
+        // represent.
+        stats.warnings.push(format!(
+            "{refused_refs_total} reference(s) above the u32 express-id bound were refused (see issue #3421) while resolving model reference closures."
         ));
     }
 

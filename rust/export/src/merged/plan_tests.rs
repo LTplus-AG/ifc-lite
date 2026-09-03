@@ -23,10 +23,25 @@ fn build_indexes_order_types_and_max() {
 fn resolve_included_pulls_forward_closure() {
     let idx = ModelIndex::build(TWO_STOREYS.as_bytes());
     // Root at the rel: closure must pull in #1 (relating) and #2 (related).
-    let included = resolve_included(&idx, &Some(vec![3]));
+    let mut refused = 0usize;
+    let included = resolve_included(&idx, &Some(vec![3]), &mut refused);
     assert!(included.contains(&3) && included.contains(&1) && included.contains(&2));
+    assert_eq!(refused, 0, "no reference in this fixture exceeds u32::MAX");
     // None → everything.
-    assert_eq!(resolve_included(&idx, &None).len(), 3);
+    assert_eq!(resolve_included(&idx, &None, &mut refused).len(), 3);
+}
+
+/// RED for issue #3752: a filtered model whose root references an oversized
+/// id must count the refusal, not just silently exclude the closure it
+/// would have pulled in (issue #3421 governs the exclusion itself).
+#[test]
+fn resolve_included_counts_a_refused_oversized_reference() {
+    let content = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,$,$,$,#4294967297,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let idx = ModelIndex::build(content);
+    let mut refused = 0usize;
+    let included = resolve_included(&idx, &Some(vec![1]), &mut refused);
+    assert!(included.contains(&1));
+    assert_eq!(refused, 1, "the oversized reference must be counted (#3752)");
 }
 
 #[test]

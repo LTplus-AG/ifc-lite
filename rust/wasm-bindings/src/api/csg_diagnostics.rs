@@ -31,6 +31,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
         csg_failures.entry(product_id).or_default().extend(fails);
     }
     let host_diags = router.take_host_opening_diagnostics();
+    let oversized_ref_drops = router.take_content_hash_oversized_ref_drops() as u64;
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
     let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
@@ -260,8 +261,29 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
+    if oversized_ref_drops > 0 {
+        // #3752: a content-hash reference above u32::MAX is refused (issue
+        // #3421), not wrapped onto a real entity — the dedup key stays
+        // correct, but until now nothing told the caller this model has an
+        // id ifc-lite cannot represent.
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] {oversized_ref_drops} content-hash reference(s) above the \
+                 u32 express-id bound were refused (see issue #3421)"
+            )
+            .into(),
+        );
+    }
+
     // The console logging above is the human-facing surface; this is the typed,
     // serializable contract the worker/event path consumes (built from the same
     // single drain — `rf`/`cls`/`csg_failures`/`host_diags` are not re-taken).
-    ifc_lite_geometry::aggregate_diagnostics(cls, &csg_failures, &host_diags, rf, WORST_HOSTS_LIMIT)
+    ifc_lite_geometry::aggregate_diagnostics(
+        cls,
+        &csg_failures,
+        &host_diags,
+        rf,
+        WORST_HOSTS_LIMIT,
+        oversized_ref_drops,
+    )
 }

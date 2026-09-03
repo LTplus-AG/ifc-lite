@@ -143,13 +143,11 @@ pub struct GeometryRouter {
     /// per-occurrence `MappingTarget` transform + `instance_meta` are applied AFTER
     /// the lookup, so a cross-router hit is byte-identical to a fresh build. The
     /// lock is held only for a map get/clone (hit) or insert (miss) — the source
-    /// meshing (which nests faceted-brep's rayon `par_iter`) runs OUTSIDE the lock,
-    /// so a lock is never held across a nested join (the #1587 deadlock class).
-    /// `None` ⇒ use the RefCell fallback.
+    /// meshing (which nests faceted-brep's rayon `par_iter`) runs OUTSIDE the
+    /// lock, so it is never held across a nested join (#1587). `None` ⇒ fallback.
     shared_mapped_item_cache: Option<SharedMappedItemCache>,
-    /// Cache for geometry deduplication by content hash
-    /// Buildings with repeated floors have 99% identical geometry
-    /// Key: Hash of mesh content, Value: Processed mesh
+    /// Cache for geometry deduplication by content hash (buildings with
+    /// repeated floors have 99% identical geometry). Key: mesh-content hash.
     geometry_hash_cache: RefCell<FxHashMap<u64, Arc<Mesh>>>,
     /// SHARED content-dedup of LOCAL (pre-placement, void-free) representation-ITEM
     /// meshes, keyed by a 128-bit structural hash of the item subtree
@@ -165,17 +163,17 @@ pub struct GeometryRouter {
     /// so the lock is held only for a map get/clone (hit) or insert (miss); the
     /// build runs outside it. `None` ⇒ dedup disabled (e.g. `new()` in tests).
     item_dedup_cache: Option<ItemDedupCache>,
-    /// Per-router memo for the per-item structural hash (shared sub-entities hashed
-    /// once). Keyed by entity id ⇒ valid for one loaded model. Kept LOCAL (not
-    /// shared) so the recursive DAG walk never contends the shared cache's lock;
-    /// recomputing it per router is cheap next to meshing.
+    /// Per-router memo for the per-item structural hash (shared sub-entities
+    /// hashed once). Kept LOCAL so the recursive DAG walk never contends the
+    /// shared cache's lock; recomputing it per router is cheap next to meshing.
     content_sig_memo: RefCell<FxHashMap<u32, u128>>,
-    /// Unit scale factor (e.g., 0.001 for millimeters -> meters)
-    /// Applied to all mesh positions after processing
+    /// Content-hash refs refused above `u32::MAX` (#3421/#3752); diagnostic only.
+    content_hash_oversized_ref_drops: RefCell<usize>,
+    /// Unit scale factor (e.g., 0.001 for millimeters -> meters), applied to
+    /// all mesh positions after processing.
     unit_scale: f64,
-    /// RTC (Relative-to-Center) offset for handling large coordinates
-    /// Subtracted from all world positions in f64 before converting to f32
-    /// This preserves precision for georeferenced models (e.g., Swiss UTM)
+    /// RTC (Relative-to-Center) offset, subtracted from world positions in f64
+    /// before converting to f32 to preserve precision (e.g. Swiss UTM).
     rtc_offset: (f64, f64, f64),
     /// Material-layer buildup index. When set, `process_element_with_submeshes`
     /// and `process_element_with_submeshes_and_voids` first attempt to slice
@@ -273,6 +271,7 @@ impl GeometryRouter {
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
             content_sig_memo: RefCell::new(FxHashMap::default()),
+            content_hash_oversized_ref_drops: RefCell::new(0),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
             material_layer_index: None,
@@ -555,7 +554,8 @@ impl GeometryRouter {
     ) -> Option<u128> {
         let rep = element.get(6)?.as_entity_ref()?;
         let mut memo = self.content_sig_memo.borrow_mut();
-        Some(content_hash::item_signature(decoder, rep, &mut memo))
+        let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
+        Some(content_hash::item_signature(decoder, rep, &mut memo, &mut refused))
     }
 
     /// Create router with RTC offset for large coordinate handling

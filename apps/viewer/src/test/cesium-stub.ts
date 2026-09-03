@@ -103,6 +103,30 @@ export const CesiumTerrainProvider = {
 /** Outstanding {@link CesiumTerrainProvider.fromIonAssetId} calls. */
 export const pendingTerrain: Array<{ promise: Promise<unknown>; resolve: (v: unknown) => void; reject: (r?: unknown) => void }> = [];
 
+/** A pending `Cesium3DTileset.fromUrl(...)` call (#3607). */
+export interface StubTilesetRequest {
+  url: string;
+  resolve: (value: unknown) => void;
+  reject: (reason?: unknown) => void;
+}
+
+/** Every {@link Cesium3DTileset.fromUrl} call since the last reset, newest last. */
+export const pendingCustomTilesets: StubTilesetRequest[] = [];
+
+/**
+ * Stands in for `Cesium3DTileset.fromUrl` — the real one fetches a live
+ * tileset.json over the network, which this environment cannot do. Kept
+ * outstanding until a test resolves or rejects it, the same shape as
+ * {@link CesiumTerrainProvider.fromIonAssetId}.
+ */
+export const Cesium3DTileset = {
+  fromUrl(url: string): Promise<unknown> {
+    const d = defer<unknown>();
+    pendingCustomTilesets.push({ url, resolve: d.resolve, reject: d.reject });
+    return d.promise;
+  },
+};
+
 interface StubGlobe {
   show: boolean;
   shadows: unknown;
@@ -120,6 +144,8 @@ export class StubViewer {
   readonly imageryLayers = {
     addImageryProvider: (provider: unknown) => { this.imageryProviders.push(provider); return provider; },
   };
+  /** Every primitive (tileset) added via `scene.primitives.add`, newest last. */
+  readonly addedPrimitives: unknown[] = [];
   readonly scene = {
     screenSpaceCameraController: {
       enableInputs: true, enableRotate: true, enableTranslate: true, enableZoom: true,
@@ -136,7 +162,10 @@ export class StubViewer {
     skyAtmosphere: { show: true },
     fog: { enabled: true },
     backgroundColor: null as unknown,
-    primitives: { add: (p: unknown) => p },
+    primitives: { add: (p: unknown) => { this.addedPrimitives.push(p); return p; } },
+    // Called once the overlay reaches `status === 'ready'` (`useCesiumSolar`,
+    // `useCesiumCameraSync`); a no-op here since this stub renders nothing.
+    requestRender: () => {},
   };
 
   constructor(container: HTMLElement, _options?: unknown) {
@@ -154,4 +183,5 @@ export function resetCesiumStub(): void {
   stubProviders.length = 0;
   stubViewers.length = 0;
   pendingTerrain.length = 0;
+  pendingCustomTilesets.length = 0;
 }

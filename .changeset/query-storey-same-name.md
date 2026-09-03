@@ -12,6 +12,9 @@ storey via `Array.find`, so when two storeys shared a `Name` only the first one
 storey was silently excluded from the result with no error and no warning.
 
 `--storey` now resolves an unambiguous `expressId` to exactly one storey, but
-resolves a `Name` (exact or substring match) to every storey with that name and
-unions their contained elements. A single unique storey name behaves exactly as
-before.
+resolves an exact `Name` to every storey with that name and unions their
+contained elements. A substring match unions its storeys only when they all
+share one `Name`; a substring spanning differently named storeys (`"Level"`
+against `Level 1` and `Level 2`) exits 1 and lists the candidate names instead
+of silently merging or arbitrarily picking one. A single unique storey name
+behaves exactly as before.

@@ -99,4 +99,43 @@ describe('query --storey with two same-named storeys', () => {
 
     expect(names(stdout.out)).toEqual(['Wall A']);
   });
+
+  it('a substring spanning two DIFFERENTLY named storeys errors instead of silently unioning them', async () => {
+    // "Level" substring-matches both "Level 1" and "Level 2". Unioning them
+    // would merge storeys the user never asked to combine, silently, with
+    // exit 0 -- the same "wrong answer without an error" shape the exact-name
+    // union exists to fix, inverted. First-match is no better: it picks one of
+    // the two by array order. Ambiguity across different names must be loud.
+    const fixture = await writeFixture(FIXTURE_MODEL_UNIQUE);
+    captureStdout();
+    const stderr = { out: '' };
+    vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string) => {
+      stderr.out += chunk;
+      return true;
+    }) as typeof process.stderr.write);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      throw new Error(`process.exit(${code}) called`);
+    }) as never);
+
+    await expect(queryCommand([fixture, '--storey', 'Level', '--json'])).rejects.toThrow(
+      /process\.exit\(1\) called/,
+    );
+    expect(stderr.out).toMatch(/ambiguous/i);
+    expect(stderr.out).toContain('Level 1');
+    expect(stderr.out).toContain('Level 2');
+  });
+
+  it('a case-insensitive substring whose matches all share ONE Name still unions them', async () => {
+    // "level 1" misses the (case-sensitive) exact tier but substring-matches
+    // both storeys named "Level 1". That is the same-name family this fix
+    // exists for, reached through the substring tier; there is no ambiguity
+    // about WHICH storey is meant, only a duplicated Name.
+    const fixture = await writeFixture(FIXTURE_MODEL);
+    const stdout = captureStdout();
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await queryCommand([fixture, '--storey', 'level 1', '--json']);
+
+    expect(names(stdout.out)).toEqual(['Column C', 'Wall A']);
+  });
 });

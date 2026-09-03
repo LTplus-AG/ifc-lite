@@ -103,6 +103,13 @@ test('every eval case is well-formed, and an empty one is DECLARED, never inferr
         c.input.files.some((x) => x.path === e.path),
         `${f}: expects a finding in ${e.path}, which is not in the diff`,
       );
+      const patch = c.input.files.find((x) => x.path === e.path)?.patch ?? '';
+      for (const evidence of e.evidence ?? []) {
+        assert.ok(patch.includes(evidence), `${f}: expected defect evidence is absent: ${evidence}`);
+      }
+      for (const fixed of e.fixedEvidence ?? []) {
+        assert.ok(!patch.includes(fixed), `${f}: fixture includes the later fix: ${fixed}`);
+      }
     }
   }
   // And the set must still be mostly positive, or recall is measured over a

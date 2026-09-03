@@ -431,3 +431,60 @@ describe("get_entities_bulk → include: ['attributes']", () => {
     expect((entities[guid('WALA')].attributes as unknown[]).length).toBeGreaterThan(0);
   });
 });
+
+// -- #3765: one universe of "entity" across every group_by ----------------
+//
+// `count_entities` used to answer with two different populations depending
+// only on the grouping key: `type` (and no `group_by` at all) folded
+// `store.entityIndex.byType` — every raw STEP record, IfcCartesianPoint and
+// IfcPropertySingleValue included — while `storey`/`material` walked
+// `bim.query()`, which yields BIM products only. On AC20-FZK-Haus that was
+// 44,249 vs 128.
+//
+// GROUP_MODEL is the fixture that separates them: it holds 8 walls plus the
+// spatial structure, and a pile of geometry/placement records (the `step()`
+// preamble's IfcCartesianPoint, IfcAxis2Placement3D, IfcSIUnit, plus four
+// IfcRelContainedInSpatialStructure and two IfcRelAggregates) that only the
+// raw-STEP path ever counted. A regression to `foldedTypeCounts` therefore
+// changes the `type` total while leaving `storey`/`material` alone, which is
+// exactly what these assertions compare.
+describe('count_entities → one entity universe across every group_by (#3765)', () => {
+  it('type, storey and material agree on the total for the same model', async () => {
+    const totals = await Promise.all(
+      (['type', 'storey', 'material'] as const).map(async (groupBy) => {
+        const out = await call('count_entities', { model_id: 'group', group_by: groupBy });
+        return (out.structuredContent as { total: number }).total;
+      }),
+    );
+    expect(totals[0]).toBe(totals[1]);
+    expect(totals[0]).toBe(totals[2]);
+  });
+
+  it('the ungrouped total is the same universe, and matches query_entities', async () => {
+    const bare = await call('count_entities', { model_id: 'group' });
+    const grouped = await call('count_entities', { model_id: 'group', group_by: 'type' });
+    const listed = await call('query_entities', { model_id: 'group', limit: 1 });
+
+    const bareTotal = (bare.structuredContent as { total: number }).total;
+    expect(bareTotal).toBe((grouped.structuredContent as { total: number }).total);
+    expect(bareTotal).toBe((listed.structuredContent as { count: number }).count);
+  });
+
+  it('groups by product type only — no geometry or placement records', async () => {
+    const out = await call('count_entities', { model_id: 'group', group_by: 'type' });
+    const groups = (out.structuredContent as { groups: Array<{ key: string; count: number }> }).groups;
+    const keys = groups.map((g) => g.key);
+    expect(keys).toContain('IfcWall');
+    expect(groups.find((g) => g.key === 'IfcWall')?.count).toBe(8);
+    for (const raw of ['IfcCartesianPoint', 'IfcAxis2Placement3D', 'IfcSIUnit', 'IfcRelAggregates']) {
+      expect(keys).not.toContain(raw);
+    }
+  });
+
+  it('a type filter still narrows the grouped count', async () => {
+    const out = await call('count_entities', { model_id: 'group', type: 'IfcWall', group_by: 'type' });
+    const structured = out.structuredContent as { total: number; groups: Array<{ key: string }> };
+    expect(structured.total).toBe(8);
+    expect(structured.groups.map((g) => g.key)).toEqual(['IfcWall']);
+  });
+});

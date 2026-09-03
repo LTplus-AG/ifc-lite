@@ -368,13 +368,19 @@ describe('model_info and count_entities after an edit', () => {
 
   it('applies the same fold to count_entities', async () => {
     await session();
+    // Measured either side of the create rather than pinned to a literal:
+    // `count_entities` counts BIM products, the same universe `query_entities`
+    // returns (#3765), so the fixture's absolute size is not the thing under
+    // test — that the queued entity joins the count is.
+    const before = await structured<CountShape>('count_entities', {});
+    expect(before.total).toBeTypeOf('number');
     await call('entity_create', {
       type: 'IfcWall',
       attributes: [`'${guid('WALC')}'`, null, "'Wall C'", null, null, '#40', null, "'tagC'", null],
     });
 
     const total = await structured<CountShape>('count_entities', {});
-    expect(total.total).toBe(19);
+    expect(total.total).toBe((before.total ?? 0) + 1);
     expect(total.pendingMutations).toBe(1);
 
     const byType = await structured<CountShape>('count_entities', { group_by: 'type' });

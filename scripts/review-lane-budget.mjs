@@ -23,13 +23,18 @@ export function assertReviewLaneBudget({
 } = {}) {
   if (pollSeconds <= laneTimeoutSeconds) {
     throw new Error(
-      `Review-posted polls for ${pollSeconds}s, but the review lane may run for ${laneTimeoutSeconds}s.`,
+      `Review-posted polls for ${pollSeconds}s, but the review lane may run for ${laneTimeoutSeconds}s, ` +
+        'so the gate can give up while the reviewer is still working and report NOT_POSTED on a ' +
+        `good PR. Remedy: raise the poll budget above ${laneTimeoutSeconds}s (REVIEW_POSTED_POLL_SECONDS), ` +
+        'or lower claude-review.yml timeout-minutes and REVIEW_LANE_TIMEOUT_SECONDS together.',
     );
   }
   if (gateJobTimeoutSeconds - pollSeconds < minimumGraceSeconds) {
     throw new Error(
       `Review-posted job leaves ${gateJobTimeoutSeconds - pollSeconds}s after its ${pollSeconds}s poll; ` +
-        `it needs at least ${minimumGraceSeconds}s to print a verdict.`,
+        `it needs at least ${minimumGraceSeconds}s to print a verdict, or it is killed mid-wait with ` +
+        'no verdict at all. Remedy: raise review-posted.yml timeout-minutes and ' +
+        'REVIEW_POSTED_JOB_TIMEOUT_SECONDS together, or lower the poll budget.',
     );
   }
 }

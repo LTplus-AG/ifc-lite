@@ -607,12 +607,12 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
 
   assert.throws(
     () => assertReviewLaneBudget({ pollSeconds: REVIEW_LANE_TIMEOUT_SECONDS }),
-    /may run/,
+    /raise the poll budget above/,
     'equal budgets reproduce the race',
   );
   assert.throws(
     () => assertReviewLaneBudget({ laneTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS }),
-    /may run/,
+    /raise the poll budget above/,
     'raising the producer cap alone reproduces the race',
   );
   assert.throws(
@@ -620,13 +620,57 @@ test('THE RACE: the shared producer/consumer budget rejects either side shrinkin
       assertReviewLaneBudget({
         gateJobTimeoutSeconds: REVIEW_POSTED_POLL_SECONDS + REVIEW_POSTED_MINIMUM_GRACE_SECONDS - 1,
       }),
-    /needs at least/,
+    /raise .*timeout-minutes.* or lower the poll budget/,
     'the gate cannot be killed before it prints its verdict',
   );
   assert.equal(
     REVIEW_POSTED_JOB_TIMEOUT_SECONDS - REVIEW_POSTED_POLL_SECONDS,
     REVIEW_POSTED_MINIMUM_GRACE_SECONDS,
     'the shipped gate retains its promised grace period',
+  );
+});
+
+// The constants above are the AUTHORITY, but `timeout-minutes:` is evaluated by
+// GitHub before any step runs, so no workflow can read them at run time. That
+// leaves a copy in each YAML, and a copy held together only by prose drifts:
+// the very race this module exists to prevent comes back the moment someone
+// edits one number. Bind the copies to the authority here -- this is a gate on
+// the duplication the design cannot remove, not a restatement of the module.
+test('THE COPIES: both workflows carry the job caps the budget module assumes', () => {
+  const jobTimeoutSeconds = (workflow) => {
+    const text = readFileSync(join(HERE, '..', '.github/workflows', workflow), 'utf8');
+    const found = [...text.matchAll(/^[ \t]*timeout-minutes:[ \t]*(\d+)/gm)];
+    assert.equal(found.length, 1, `${workflow} must declare exactly one job timeout`);
+    return Number(found[0][1]) * 60;
+  };
+
+  assert.equal(
+    jobTimeoutSeconds('claude-review.yml'),
+    REVIEW_LANE_TIMEOUT_SECONDS,
+    'claude-review.yml timeout-minutes drifted from REVIEW_LANE_TIMEOUT_SECONDS: the gate ' +
+      'sizes its poll against that constant, so change both or the gate can give up while ' +
+      'the reviewer is still legitimately working',
+  );
+  assert.equal(
+    jobTimeoutSeconds('review-posted.yml'),
+    REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
+    'review-posted.yml timeout-minutes drifted from REVIEW_POSTED_JOB_TIMEOUT_SECONDS: the ' +
+      'job would be killed mid-poll and report no verdict at all, so change both',
+  );
+
+  // The gate reads its poll budget from the module rather than from a literal.
+  // If that wiring is ever replaced by a hardcoded number, the module stops
+  // governing anything, so pin the wiring itself.
+  const gateText = readFileSync(join(HERE, '..', '.github/workflows/review-posted.yml'), 'utf8');
+  assert.match(
+    gateText,
+    /--timeout-seconds "\$poll_seconds"/,
+    'review-posted.yml must pass the poll budget it read from review-lane-budget.mjs',
+  );
+  assert.match(
+    gateText,
+    /pollSecondsArgument.*review-lane-budget\.mjs|review-lane-budget\.mjs.*pollSecondsArgument/s,
+    'review-posted.yml must source its poll budget from review-lane-budget.mjs',
   );
 });
 

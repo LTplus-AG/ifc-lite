@@ -266,13 +266,62 @@ jobs:
       # Mechanical validation before anything is posted: verbatim quotes, added-
       # line anchoring, the cap, and the sanitisation that stops a steered model
       # laundering a forged marker through our own trusted identity.
+      #
+      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED (#3652). Every other reason here
+      # (SCHEMA_INVALID, RESPONSE_TRUNCATED, VALIDATION_EMPTY, ...) reflects the
+      # prompt or the harness, not a bad choice of quote, and re-running the model
+      # would not change either -- those still fail this step outright, exactly
+      # as before. PROOF_OF_WORK_FAILED on `riskiest_change.quoted_line` is
+      # different: the check itself is UNCHANGED (still verbatim, still an
+      # 8-character floor -- widening it was tried three times on #3652/#3690 and
+      # measured wrong each time, because a short or truncated quote is
+      # guessable, not just uncommon). What was permanently blocking a PR was
+      # never the check; it was that the model got exactly one attempt to pick a
+      # quotable line, and a re-run of the SAME prompt reliably repeats the SAME
+      # choice (#3597 on this issue: a 217-character riskiest line, truncated
+      # identically on every manual re-run). A second attempt, told concretely
+      # which quote failed, can nominate any OTHER real line of the diff instead
+      # -- it does not need the one that failed. If the retry also fails, this
+      # step fails exactly as it always has; nothing here can turn a failure into
+      # a clean or findings verdict.
       - name: Validate the findings
+        id: validate
         if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
+        # EMPTY CWD, same reason as the reviewer and judge steps: the retry
+        # branch below can invoke run-reviewer.mjs a second time, and that must
+        # never inherit $GITHUB_WORKSPACE -- the PR's own checkout -- as its cwd.
+        working-directory: ${{ runner.temp }}
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
         run: |
-          node scripts/review/validate-findings.mjs \
+          set +e
+          node "$GITHUB_WORKSPACE/scripts/review/validate-findings.mjs" \
             --raw "$RUNNER_TEMP/raw-review.txt" \
             --input "$RUNNER_TEMP/review-input.json" \
-            --out "$RUNNER_TEMP/findings.json"
+            --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
+          rc=${PIPESTATUS[0]}
+
+          if [ "$rc" -ne 0 ] && grep -q '^❌ PROOF_OF_WORK_FAILED:' "$RUNNER_TEMP/validate.log"; then
+            echo "::notice::PROOF_OF_WORK_FAILED on the first attempt; retrying once, told which quote failed."
+            node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
+              --rubric "${{ steps.rubric.outputs.path }}" \
+              --input "$RUNNER_TEMP/review-input.json" \
+              --out "$RUNNER_TEMP/raw-review.txt" \
+              --retry-note "$RUNNER_TEMP/validate.log" \
+              --model sonnet
+            reviewer_rc=$?
+            if [ "$reviewer_rc" -eq 0 ]; then
+              node "$GITHUB_WORKSPACE/scripts/review/validate-findings.mjs" \
+                --raw "$RUNNER_TEMP/raw-review.txt" \
+                --input "$RUNNER_TEMP/review-input.json" \
+                --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
+              rc=${PIPESTATUS[0]}
+            else
+              rc=$reviewer_rc
+            fi
+          fi
+          exit "$rc"
 
       # The second half of the precision/recall inversion. The generator is now
       # told to report what it cannot rule out (up to twelve), the validator has

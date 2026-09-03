@@ -535,3 +535,66 @@ describe('buildComponentFingerprints — the material component', () => {
     expect(a['pset:Pset_Common']).toBe(b['pset:Pset_Common']);
   });
 });
+
+describe('buildDataFingerprint — resolved classification references', () => {
+  // Classifications were not in the fingerprint at all, so a re-coded element —
+  // e.g. a proxy moved from one Uniclass group to another, geometry and every
+  // property untouched — read as unchanged in every channel.
+  const proxy = (classifications?: string[]): DataFingerprintInput => ({
+    ifcType: 'IfcBuildingElementProxy',
+    name: 'road - roadside verge - soil',
+    ...(classifications ? { classifications } : {}),
+  });
+
+  it('moves the hash when the resolved classification reference changes', () => {
+    expect(buildDataFingerprint(proxy(['Uniclass2015:Ss_25_10_30']))).not.toBe(
+      buildDataFingerprint(proxy(['Uniclass2015:Ss_25_10_90'])),
+    );
+  });
+
+  it('separates gaining a classification from having none', () => {
+    expect(buildDataFingerprint(proxy())).not.toBe(
+      buildDataFingerprint(proxy(['Uniclass2015:Ss_25_10_30'])),
+    );
+  });
+
+  it('leaves an element with no classifications hashing exactly as an empty list', () => {
+    expect(buildDataFingerprint(proxy())).toBe(buildDataFingerprint(proxy([])));
+  });
+
+  it('is order-independent, so a re-export that walks associations differently still matches', () => {
+    expect(buildDataFingerprint(proxy(['SysA:CodeA', 'SysB:CodeB']))).toBe(
+      buildDataFingerprint(proxy(['SysB:CodeB', 'SysA:CodeA'])),
+    );
+  });
+
+  it('does not confuse a classification reference with an equally-spelled material', () => {
+    const asClassification = buildDataFingerprint(proxy(['Uniclass2015:Ss_25_10_30']));
+    const asMaterial = buildDataFingerprint({ ...proxy(), materials: ['Uniclass2015:Ss_25_10_30'] });
+    expect(asClassification).not.toBe(asMaterial);
+  });
+});
+
+describe('buildComponentFingerprints — the classification component', () => {
+  const proxy = (classifications?: string[]): DataFingerprintInput => ({
+    ifcType: 'IfcBuildingElementProxy',
+    name: 'road - roadside verge - soil',
+    propertySets: [{ name: 'Pset_Common', properties: [{ name: 'Status', value: 'New' }] }],
+    ...(classifications ? { classifications } : {}),
+  });
+
+  it('emits a `classification` key only for an element that carries one', () => {
+    expect(buildComponentFingerprints(proxy(['Uniclass2015:Ss_25_10_30']))).toHaveProperty(
+      'classification',
+    );
+    expect(buildComponentFingerprints(proxy())).not.toHaveProperty('classification');
+  });
+
+  it('moves `classification` and nothing else when the reference changes', () => {
+    const a = buildComponentFingerprints(proxy(['Uniclass2015:Ss_25_10_30']));
+    const b = buildComponentFingerprints(proxy(['Uniclass2015:Ss_25_10_90']));
+    expect(a['classification']).not.toBe(b['classification']);
+    expect(a['attr:core']).toBe(b['attr:core']);
+    expect(a['pset:Pset_Common']).toBe(b['pset:Pset_Common']);
+  });
+});

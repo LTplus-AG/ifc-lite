@@ -39,6 +39,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   EntityExtractor,
   extractAllEntityAttributes,
+  extractClassificationsOnDemand,
   extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
@@ -49,6 +50,7 @@ import {
   type IfcDataStore,
   type ProjectUnits,
 } from '@ifc-lite/parser';
+import { classificationLabel } from './diff-classification-label.js';
 import { comparableEntities, type RootAttributes } from './diff-scope.js';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
@@ -162,6 +164,12 @@ function buildDataInput(
       type: store.entities.getTypeName(typeId) || undefined,
     }));
 
+  // Resolved classification references (never entity references — see
+  // `DataFingerprintInput.classifications`): an `IfcRelAssociatesClassification`
+  // has no channel of its own here, so a re-coded element — geometry and every
+  // property untouched — previously read as unchanged on every path.
+  const classifications = extractClassificationsOnDemand(store, expressId).map(classificationLabel);
+
   return {
     ifcType,
     name: store.entities.getName(expressId) || source?.name || undefined,
@@ -172,6 +180,7 @@ function buildDataInput(
     propertySets,
     quantitySets,
     typeAssignments,
+    classifications,
   };
 }
 

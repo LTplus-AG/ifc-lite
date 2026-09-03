@@ -11,6 +11,7 @@
  * byte-identical fingerprints for an unchanged entity.
  */
 import { stringifyIfNonFinite } from './nonfinite-value.js';
+import { sortedClassifications, sortedMaterials } from './fingerprint-projections.js';
 
 export interface PropertyEntryInput {
   name: string;
@@ -110,6 +111,18 @@ export interface DataFingerprintInput {
    * identical to omitting the field: both say "no material named".
    */
   materials?: string[];
+  /**
+   * The entity's resolved **classification references**, each projected to a
+   * single string (e.g. `system:identification`). Same reasoning as
+   * {@link materials}: missing from this projection entirely was the prior
+   * state, so a re-classified element (re-coded from one Uniclass group to
+   * another, geometry and every property untouched) read as unchanged
+   * everywhere — a classification edit touches none of `propertySets`,
+   * `quantitySets` or `materials`. Resolve through the full
+   * `IfcRelAssociatesClassification` -> `IfcClassificationReference` chain
+   * before supplying this; order is irrelevant, and `[]` == omitted.
+   */
+  classifications?: string[];
 }
 
 /** FNV-1a-64 offset basis. Same constant as `rust/processing/src/determinism.rs`;
@@ -264,6 +277,7 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
   const typeAssignments = sortedTypeAssignments(input);
 
   const materials = sortedMaterials(input);
+  const classifications = sortedClassifications(input);
 
   return stableHash(
     JSON.stringify({
@@ -271,39 +285,18 @@ export function buildDataFingerprint(input: DataFingerprintInput): string {
       TypeAssignments: typeAssignments,
       PropertySets: propertySets,
       QuantitySets: quantitySets,
-      // Present only when the entity names a material, unlike the three
-      // collections above. That is deliberate: an unconditional key would move
-      // the fingerprint of every material-LESS entity in every model the moment
-      // this field shipped, for a slice they do not carry. Absent and empty
-      // therefore hash alike, which is the documented contract of
-      // {@link DataFingerprintInput.materials}.
+      // Present only when the entity names one, unlike the three collections
+      // above. That is deliberate: an unconditional key would move the
+      // fingerprint of every material-/classification-LESS entity in every
+      // model the moment the field shipped, for a slice it does not carry.
+      // Absent and empty therefore hash alike — the documented contract of
+      // {@link DataFingerprintInput.materials} and
+      // {@link DataFingerprintInput.classifications}. Projection and sorting
+      // for both live in `fingerprint-projections.ts`.
       ...(materials.length > 0 ? { Materials: materials } : {}),
+      ...(classifications.length > 0 ? { Classifications: classifications } : {}),
     }),
   );
-}
-
-/**
- * Canonical projection of the resolved material names: sorted by code unit,
- * duplicates kept.
- *
- * Sorting is what makes the fingerprint independent of the order an adapter
- * happened to walk an element's `IfcRelAssociatesMaterial` rows in — the same
- * requirement, and the same reason, as the property-set sort. Duplicates
- * survive for the reason `sortedTypeAssignments` keeps its own: cardinality is
- * content when an adapter supplies it — two separate material associations
- * naming one material are not the same statement as one. (The shipped viewer
- * adapter reaches this through `lensMaterialNames`, which de-duplicates
- * *within* one association's resolved set, so only cross-association repeats
- * arrive here from that path; the engine keeps whatever cardinality it is
- * given rather than second-guessing the adapter.) Blank and whitespace-only
- * names are dropped, because a nameless material is not a material a
- * comparison can speak about and different exporters spell "no name"
- * differently (`''`, `' '`).
- */
-function sortedMaterials(input: DataFingerprintInput): string[] {
-  return (input.materials ?? [])
-    .filter((name) => typeof name === 'string' && name.trim().length > 0)
-    .sort(compareCodeUnits);
 }
 
 /**
@@ -380,6 +373,8 @@ function sortedTypeAssignments(input: DataFingerprintInput) {
  * - `type-assignment`  — assigned type entities, by name + IFC class
  * - `material`         — resolved material names (see
  *                        {@link DataFingerprintInput.materials})
+ * - `classification`   — resolved classification references (see
+ *                        {@link DataFingerprintInput.classifications})
  */
 export type ComponentKey = string;
 
@@ -433,6 +428,11 @@ export function buildComponentFingerprints(
   const materials = sortedMaterials(input);
   if (materials.length > 0) {
     components['material'] = stableHash(JSON.stringify(materials));
+  }
+
+  const classifications = sortedClassifications(input);
+  if (classifications.length > 0) {
+    components['classification'] = stableHash(JSON.stringify(classifications));
   }
 
   return components;

@@ -22,9 +22,8 @@
  * RTC- and origin-relative and would report a moved element as stationary.
  *
  * A federated model whose vertices were re-baked into the anchor's frame has
- * had its boxes re-framed with them (`hooks/ingest/federationAlignAabb.ts`),
- * so both sides of a compare are read in one frame no matter which of them
- * the federation anchored on.
+ * had its boxes re-framed with them (`hooks/ingest/federationAlignAabb.ts`), so
+ * both sides of a compare are read in one frame regardless of anchor.
  *
  * The proved enclosed volume (#1993) rides on `MeshData.geometryVolume` from
  * that same pass, and is the one fingerprint that does NOT survive a federation
@@ -45,11 +44,10 @@
  * the composed transform, not the local one: re-georeferencing rewrites the
  * placement *expression* of objects that did not move.
  *
- * The data fingerprint also carries the entity's RESOLVED MATERIAL NAMES
- * (through every `IfcMaterial*` indirection) and, for a Qto_ Length/Area/Volume
- * quantity, the value SCALED TO BASE SI (`quantitySiScale`) rather than the raw
- * project-unit number — so a model re-authored in a different length unit, with
- * no physical quantity actually changed, does not read as modified.
+ * The data fingerprint also carries the entity's RESOLVED MATERIAL NAMES,
+ * resolved CLASSIFICATION REFERENCES, and, for a Qto_ Length/Area/Volume
+ * quantity, the value SCALED TO BASE SI (`quantitySiScale`) — so a re-authored
+ * length unit with no physical quantity change does not read as modified.
  */
 
 import {
@@ -62,6 +60,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
   extractAllMaterialsOnDemand,
+  extractClassificationsOnDemand,
   extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
@@ -70,6 +69,7 @@ import {
   scaledPropertyValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
+import { classificationLabel } from '../lens-classification-labels.js';
 import { lensMaterialNames } from '../lens-material-names.js';
 import type { EntityWorldAabb, MeshData } from '@ifc-lite/geometry';
 import { comparableProductIds } from './compareScope.js';
@@ -415,15 +415,14 @@ function buildDataInput(
     }));
 
   // Resolved material NAMES (never entity references — express ids are
-  // reassigned on every save). `extractAllMaterialsOnDemand` is the parser's
-  // canonical resolver: it follows `IfcMaterialLayerSetUsage` /
-  // `IfcMaterialProfileSetUsage` to their sets, and occurrence associations
-  // take precedence over the type's; `lensMaterialNames` then takes the
-  // individual layer / constituent / profile / list-member names, falling back
-  // to the top-level name only when the element has no sub-structure. Two
-  // proxies re-specified from `Soil1` to `topsoil` went unreported before this
-  // — materials were in no comparison channel at all.
+  // reassigned on every save). `extractAllMaterialsOnDemand` follows
+  // `IfcMaterialLayerSetUsage`/`IfcMaterialProfileSetUsage` to their sets;
+  // `lensMaterialNames` then takes the individual layer/constituent/profile/
+  // list-member names. Two proxies re-specified `Soil1` -> `topsoil` went
+  // unreported before this — materials were in no comparison channel at all.
   const materials = extractAllMaterialsOnDemand(store, localId).flatMap(lensMaterialNames);
+  // Resolved classification references — the same re-specification gap, above.
+  const classifications = extractClassificationsOnDemand(store, localId).map(classificationLabel);
 
   return {
     ifcType,
@@ -436,6 +435,7 @@ function buildDataInput(
     quantitySets,
     typeAssignments,
     materials,
+    classifications,
   };
 }
 

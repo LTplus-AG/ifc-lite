@@ -44,13 +44,12 @@
  * (`by_entity` on the same tool still asks the store and so still misses them;
  * that is pre-existing behaviour of a different flag, untouched here.)
  *
- * The same distinction closes the drop-out's mirror image. The parser fills the
- * table's GlobalId column positionally, and for a resource entity slot 0 is not
- * a GlobalId: an `IfcMaterial`, `IfcSurfaceStyle`, `IfcClassification` or
- * `IfcProjectedCRS` was being compared under its *Name*, which put colliding
- * keys into the comparison — a material and a surface style of the same name
- * arriving as one entity. None of them is an `IfcRoot`, so the chain check
- * leaves them out and the key set is unique again.
+ * The same distinction closes the drop-out's mirror image. The parser fills
+ * the table's GlobalId column positionally, and for a resource entity slot 0
+ * is not a GlobalId: an `IfcMaterial`, `IfcSurfaceStyle`, `IfcClassification`
+ * or `IfcProjectedCRS` was compared under its *Name*, colliding keys into the
+ * comparison — a material and a surface style of the same name arriving as
+ * one entity. None is an `IfcRoot`, so the chain check leaves them out.
  *
  * ## Why this is a second copy, and what stops it drifting
  *
@@ -69,10 +68,8 @@
  *   to parser-domain — it exists to compensate for the columnar parser's own
  *   `EntityTable` gaps — but which `IfcRoot` branches a comparison may speak
  *   for is diff policy, and exporting that from the most-depended-on package
- *   under a neutral name would only rename the problem.
- *
- * That leaves a fourth package both could depend on, which is a published
- * artefact and a release decision rather than a review fix.
+ *   under a neutral name would only rename the problem. (A fourth package both
+ *   could depend on is a published artefact and a release decision, not this.)
  *
  * Until then the agreement is **asserted, not assumed**. The copies previously
  * relied on parallel suites (`diff.test.ts` here, `diff-content.test.ts` in the
@@ -80,15 +77,14 @@
  * fixing one copy and not the other passes both. It took hours to find out —
  * #2001 moved the CLI's membership check to the cross-schema inheritance lookup
  * and this copy stayed on the IFC4 codegen pin, silently dropping every IFC2X3
- * and IFC4X3 object class outside that pin. `diff-fingerprints.test.ts` now runs
- * *both* copies over the CLI's own fixtures and requires the same entities under
- * the same type names, so the next divergence fails a build instead of shipping.
+ * and IFC4X3 object class outside it. `diff-fingerprints.test.ts` now runs
+ * *both* copies over the CLI's own fixtures, so the next divergence fails a
+ * build instead of shipping.
  *
- * The one thing this copy has and the CLI's does not is the optional
- * `overlay` argument. It is additive, not a divergence: a `model_id` on this
- * server names a session that may carry queued mutations, and the CLI diffs two
- * files that cannot. Called without it, the two copies compute byte-identical
- * fingerprints, which is what the paired tests check.
+ * The one thing this copy has and the CLI's does not is the optional `overlay`
+ * argument: a `model_id` here may carry queued mutations the CLI's two files
+ * cannot. Called without it, the two copies compute byte-identical
+ * fingerprints, which the paired tests check.
  */
 
 import {
@@ -101,6 +97,7 @@ import { RelationshipType } from '@ifc-lite/data';
 import {
   EntityExtractor,
   extractAllEntityAttributes,
+  extractClassificationsOnDemand,
   extractProjectUnits,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
@@ -112,6 +109,7 @@ import {
   scaledPropertyValue,
   type IfcDataStore, type ProjectUnits,
 } from '@ifc-lite/parser';
+import { classificationLabel } from './diff-classification-label.js';
 import type { CreatedEntity, PendingOverlay } from '../overlay.js';
 
 /** Adapter handle threaded through the diff: the entity's express id. */
@@ -406,8 +404,10 @@ function buildDataInput(
       type: store.entities.getTypeName(typeId) || undefined,
     }));
 
+  const classifications = extractClassificationsOnDemand(store, expressId).map(classificationLabel);
   return {
     ifcType,
+    classifications,
     // The hash sees all four attributes `entity_set_attribute` accepts, but
     // `Tag` only on a type object (issue #2021) — on an occurrence it stays out
     // of the hash, so an edit to it is deliberately invisible here. The overlay

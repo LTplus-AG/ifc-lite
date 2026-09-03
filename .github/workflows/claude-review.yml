@@ -302,7 +302,7 @@ jobs:
             --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
           rc=${PIPESTATUS[0]}
 
-          if [ "$rc" -ne 0 ] && grep -q '❌ PROOF_OF_WORK_FAILED' "$RUNNER_TEMP/validate.log"; then
+          if [ "$rc" -ne 0 ] && grep -q '^❌ PROOF_OF_WORK_FAILED:' "$RUNNER_TEMP/validate.log"; then
             echo "::notice::PROOF_OF_WORK_FAILED on the first attempt; retrying once, told which quote failed."
             node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
               --rubric "${{ steps.rubric.outputs.path }}" \

@@ -18,7 +18,7 @@ import type {
   BCFViewSetupHints,
   BCFVisibility,
 } from './types.js';
-import { extractElement, unescapeXml } from './xml-text.js';
+import { extractElement, parseXsBoolean, unescapeXml } from './xml-text.js';
 
 /**
  * Every `<Component>` element in an XML fragment.
@@ -51,7 +51,10 @@ function parseComponentElements(xml: string): BCFComponent[] {
 /**
  * Parse components (selection/visibility/coloring)
  */
-export function parseComponents(content: string): BCFComponents | undefined {
+export function parseComponents(
+  content: string,
+  versionId: '2.1' | '3.0',
+): BCFComponents | undefined {
   const componentsMatch = content.match(/<Components>([\s\S]*?)<\/Components>/);
   if (!componentsMatch) return undefined;
 
@@ -61,7 +64,7 @@ export function parseComponents(content: string): BCFComponents | undefined {
   const selection = parseComponentList(componentsContent, 'Selection');
 
   // Parse visibility
-  let visibility = parseVisibility(componentsContent);
+  let visibility = parseVisibility(componentsContent, versionId);
 
   // Parse coloring
   const coloring = parseColoring(componentsContent);
@@ -78,9 +81,13 @@ export function parseComponents(content: string): BCFComponents | undefined {
   // read half the files we produce.
   const viewSetupHints = parseViewSetupHints(componentsContent);
   if (viewSetupHints) {
-    // Visibility is required by the schema, but tolerate a file that omits it:
-    // DefaultVisibility's schema default is true.
-    visibility = { ...(visibility ?? { defaultVisibility: true }), viewSetupHints };
+    // Visibility is required by the schema, but tolerate a file that omits
+    // it entirely: fall back to the same per-version DefaultVisibility
+    // default used below when the attribute itself is present-but-omitted.
+    visibility = {
+      ...(visibility ?? { defaultVisibility: defaultVisibilityFallback(versionId) }),
+      viewSetupHints,
+    };
   }
 
   if (!selection && !visibility && !coloring) {
@@ -163,9 +170,29 @@ function parseComponent(content: string): BCFComponent | undefined {
 }
 
 /**
+ * The `DefaultVisibility` attribute's value when a `<Visibility>` element
+ * omits it entirely.
+ *
+ * visinfo.xsd disagrees by version: 2.1 declares
+ * `<xs:attribute name="DefaultVisibility" type="xs:boolean"/>` with no
+ * schema default, while 3.0 changes this to
+ * `<xs:attribute name="DefaultVisibility" type="xs:boolean" default="false"/>`.
+ * Per XML Schema attribute defaulting, an omitted attribute with a declared
+ * default takes that default, so a spec-legal 3.0 file that omits it means
+ * "hide everything except the listed exceptions". ifc-lite's own writer
+ * always emits the attribute explicitly (writeVisibility in writer.ts), so
+ * this only matters for a third-party file -- which is why no round-trip
+ * fixture caught the reader treating every omission as `true` regardless of
+ * version.
+ */
+function defaultVisibilityFallback(versionId: '2.1' | '3.0'): boolean {
+  return versionId !== '3.0';
+}
+
+/**
  * Parse visibility settings
  */
-function parseVisibility(content: string): BCFVisibility | undefined {
+function parseVisibility(content: string, versionId: '2.1' | '3.0'): BCFVisibility | undefined {
   // Both branches, for the same reason as `COMPONENT_ELEMENT`: `<Exceptions>`
   // and `<ViewSetupHints>` are optional, so `<Visibility DefaultVisibility=
   // "false"/>` is schema-legal. Matching only the paired form made the whole
@@ -182,7 +209,18 @@ function parseVisibility(content: string): BCFVisibility | undefined {
   // `<Selection>` component, say) won the match and inverted the answer, so a
   // file saying show-all hid everything.
   const defaultVisMatch = visibilityMatch[0].match(/DefaultVisibility="([^"]+)"/);
-  const defaultVisibility = defaultVisMatch?.[1] !== 'false';
+  // A whitespace-only value collapses to '' under xs:boolean's whiteSpace=
+  // collapse, which is not in the {true, false, 1, 0} lexical space at all --
+  // the same as the attribute being absent -- so both fall back to the
+  // per-version default via parseXsBoolean's caller-owns-absent contract,
+  // rather than surviving into parseXsBoolean's unrecognized-value branch.
+  // An unrecognized but non-blank value (e.g. "yes") leans true here: this
+  // site's existing behavior for garbage input, preserved via
+  // `ifUnrecognized: true`.
+  const rawDefaultVis = defaultVisMatch?.[1].trim();
+  const defaultVisibility = rawDefaultVis !== undefined && rawDefaultVis !== ''
+    ? parseXsBoolean(rawDefaultVis, { ifUnrecognized: true })
+    : defaultVisibilityFallback(versionId);
 
   const exceptions = parseComponentList(visibilityMatch[0], 'Exceptions');
 
@@ -227,8 +265,13 @@ function parseViewSetupHints(content: string): BCFViewSetupHints | undefined {
   const attrs = match[1];
   const flag = (name: string): boolean | undefined => {
     const raw = attrs.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
-    if (raw === undefined) return undefined;
-    return raw === 'true' || raw === '1';
+    // Blank (whitespace-only, or empty) is treated the same as absent -- see
+    // parseXsBoolean's absent-vs-blank note -- so both stay `undefined` here
+    // rather than reading as false. Unrecognized-but-non-blank content also
+    // leans false: unlike DefaultVisibility, an unset hint should not be
+    // read as an emphatic "show it".
+    if (raw === undefined || raw.trim() === '') return undefined;
+    return parseXsBoolean(raw, { ifUnrecognized: false });
   };
 
   const spacesVisible = flag('SpacesVisible');

@@ -10,7 +10,7 @@
 
 import JSZip from 'jszip';
 import { parseComponents } from './reader-components.js';
-import { extractElement, unescapeXml } from './xml-text.js';
+import { extractElement, unescapeXml, parseLabels, parseXsBoolean } from './xml-text.js';
 import type {
   BCFProject,
   BCFTopic,
@@ -210,7 +210,7 @@ export async function readBCF(
   const { projectId, name, extensions } = await readProjectFile(zip, budget);
 
   // Read topics
-  const topics = await readTopics(zip, budget);
+  const topics = await readTopics(zip, budget, version.versionId);
 
   return {
     version: version.versionId,
@@ -279,7 +279,7 @@ async function readProjectFile(zip: JSZip, budget: ExpansionBudget): Promise<{
 /**
  * Read all topics from the BCF archive
  */
-async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<string, BCFTopic>> {
+async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<Map<string, BCFTopic>> {
   const topics = new Map<string, BCFTopic>();
 
   // Find all topic folders (folders with markup.bcf)
@@ -295,7 +295,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<stri
   // Parse each topic
   for (const topicGuid of topicFolders) {
     try {
-      const topic = await readTopic(zip, topicGuid, budget);
+      const topic = await readTopic(zip, topicGuid, budget, versionId);
       if (topic) {
         topics.set(topic.guid, topic);
       }
@@ -311,7 +311,7 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget): Promise<Map<stri
 /**
  * Read a single topic from the BCF archive
  */
-async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget): Promise<BCFTopic | null> {
+async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudget, versionId: '2.1' | '3.0'): Promise<BCFTopic | null> {
   const markupFile = zip.file(`${topicFolder}/markup.bcf`);
   if (!markupFile) {
     return null;
@@ -357,12 +357,8 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const assignedTo = extractElement(topicContent, 'AssignedTo');
   const stage = extractElement(topicContent, 'Stage');
 
-  // Extract labels
-  const labels: string[] = [];
-  const labelMatches = topicContent.matchAll(/<Labels>([^<]+)<\/Labels>/g);
-  for (const match of labelMatches) {
-    labels.push(unescapeXml(match[1]));
-  }
+  // Extract labels (tolerant of both BCF 2.1 and 3.0 markup.xsd shapes; see parseLabels)
+  const labels = parseLabels(topicContent);
 
   // Extract BIM snippet
   const bimSnippet = extractBimSnippet(topicContent);
@@ -382,7 +378,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const comments = parseComments(markupContent);
 
   // Parse viewpoints
-  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget);
+  const viewpoints = await parseViewpoints(zip, topicFolder, markupContent, budget, versionId);
 
   return {
     guid,
@@ -429,13 +425,13 @@ function parseHeaderFiles(markupContent: string): BCFHeaderFile[] {
     const ifcProject = attrs.match(/IfcProject="([^"]*)"/)?.[1];
     const ifcSpatial = attrs.match(/IfcSpatialStructureElement="([^"]*)"/)?.[1];
     // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal`; accept either casing
-    // (and the xs:boolean `1`/`0` forms a foreign tool may emit).
+    // and the xs:boolean `1`/`0` forms. Blank is absent, per parseXsBoolean.
     const isExternalRaw = attrs.match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
 
     files.push({
       ifcProject: ifcProject || undefined,
       ifcSpatialStructureElement: ifcSpatial || undefined,
-      isExternal: isExternalRaw === undefined ? undefined : (isExternalRaw === 'true' || isExternalRaw === '1'),
+      isExternal: isExternalRaw?.trim() ? parseXsBoolean(isExternalRaw, { ifUnrecognized: false }) : undefined,
       filename: extractElement(body, 'Filename'),
       date: extractElement(body, 'Date'),
       reference: extractElement(body, 'Reference'),
@@ -478,16 +474,16 @@ function extractBimSnippet(content: string): BCFBimSnippet | undefined {
   if (!snippetType) return undefined;
 
   // BCF 2.1 spells this `isExternal`, 3.0 `IsExternal` (same rename as the
-  // Header `<File>` attribute in reader.ts's parseHeaderFiles); accept either
-  // casing so a spec-correct 3.0 file's flag isn't silently read as false, and
-  // the xs:boolean `1`/`0` forms alongside `true`/`false`.
+  // Header `<File>` site above); accept either casing and `1`/`0`. Unlike
+  // that site, `isExternal` here is a required boolean, so absent and blank
+  // both resolve to `false`, not `undefined`.
   const isExternalRaw = match[1].match(/\b[Ii]sExternal="([^"]*)"/)?.[1];
   const reference = extractElement(match[2], 'Reference');
   const referenceSchema = extractElement(match[2], 'ReferenceSchema');
 
   return {
     snippetType,
-    isExternal: isExternalRaw === 'true' || isExternalRaw === '1',
+    isExternal: isExternalRaw?.trim() ? parseXsBoolean(isExternalRaw, { ifUnrecognized: false }) : false,
     reference: reference || '',
     referenceSchema,
   };
@@ -513,7 +509,9 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
 
   for (const match of matches) {
     const guidMatch = match[0].match(/Guid="([^"]+)"/);
-    const isExternalMatch = match[0].match(/\bisExternal="([^"]+)"/);
+    // xs:boolean's lexical space is {true, false, 1, 0}; see isExternal above.
+    // Blank is absent, per parseXsBoolean (same as the header <File> site).
+    const isExternalRaw = match[0].match(/\bisExternal="([^"]*)"/)?.[1];
     const referencedDoc = extractElement(match[1], 'ReferencedDocument');
     const documentGuid = extractElement(match[1], 'DocumentGuid');
     const url = extractElement(match[1], 'Url');
@@ -522,7 +520,7 @@ function extractDocumentReferences(content: string): BCFDocumentReference[] {
     if (referencedDoc || documentGuid || url) {
       refs.push({
         guid: guidMatch?.[1],
-        isExternal: isExternalMatch ? isExternalMatch[1] === 'true' : undefined,
+        isExternal: isExternalRaw?.trim() ? parseXsBoolean(isExternalRaw, { ifUnrecognized: false }) : undefined,
         referencedDocument: referencedDoc,
         documentGuid,
         url,
@@ -605,7 +603,8 @@ async function parseViewpoints(
   zip: JSZip,
   topicFolder: string,
   markupContent: string,
-  budget: ExpansionBudget
+  budget: ExpansionBudget,
+  versionId: '2.1' | '3.0',
 ): Promise<BCFViewpoint[]> {
   const viewpoints: BCFViewpoint[] = [];
 
@@ -693,7 +692,7 @@ async function parseViewpoints(
       if (!viewpointFile) continue;
 
       const viewpointContent = await readEntryCapped(viewpointFile, 'string', budget);
-      const viewpoint = parseViewpointContent(viewpointContent);
+      const viewpoint = parseViewpointContent(viewpointContent, versionId);
 
       if (viewpoint) {
         // Get snapshot filename from markup.bcf if available
@@ -783,7 +782,7 @@ async function parseViewpoints(
 /**
  * Parse viewpoint XML content
  */
-function parseViewpointContent(content: string): BCFViewpoint | null {
+function parseViewpointContent(content: string, versionId: '2.1' | '3.0'): BCFViewpoint | null {
   // Extract viewpoint GUID from root element (Guid can be anywhere in the tag)
   const guidMatch = content.match(/<VisualizationInfo[^>]+Guid="([^"]+)"/);
   const guid = guidMatch?.[1] || crypto.randomUUID?.() || `vp-${Date.now()}`;
@@ -795,7 +794,7 @@ function parseViewpointContent(content: string): BCFViewpoint | null {
   const orthogonalCamera = parseOrthogonalCamera(content);
 
   // Parse components
-  const components = parseComponents(content);
+  const components = parseComponents(content, versionId);
 
   // Parse lines
   const lines = parseLines(content);

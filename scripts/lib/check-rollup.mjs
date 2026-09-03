@@ -1,6 +1,7 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
+// @unwired-by-design Pure helper imported by the transient-state PR green sweep; its behavior is covered by pr-green-sweep.test.mjs.
 
 /**
  * GitHub retains check runs from a cancelled, superseded workflow alongside

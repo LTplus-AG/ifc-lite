@@ -345,30 +345,30 @@ describe('filterBuildingElements', () => {
     expect(filterBuildingElements(entities)).toEqual(entities);
   });
 
-  // Regression: `IfcExternalSpatialElement` — the IFC4/IFC4X3 spatial
-  // container for a space boundary outside a building (never a physical
-  // element, per its IfcSpatialElement inheritance chain, same as
-  // IfcSpace/IfcSpatialZone) — was missing from the exclusion set. Like
-  // IfcAnnotation, it never carries a Name in normal use, so leaving it
-  // in would inflate unnamedElements exactly as the original bug did.
-  it('excludes IfcExternalSpatialElement, the same as the other spatial containers', () => {
-    const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type: 'IfcExternalSpatialElement', name: undefined }];
+  // The exclusion set used to be a hand-written list of type names and had
+  // drifted twice: it missed `IfcExternalSpatialElement`, and it named
+  // IfcFacilityPart/IfcBridgePart/IfcRoadPart but not the IFC4X3 siblings
+  // (IfcMarinePart, IfcFacilityPartCommon) or the IfcGroup subtypes outside
+  // IfcZone/IfcSystem/IfcDistributionSystem. The filter now matches the
+  // inheritance chain, so each of these is covered by a supertype rather than
+  // by name. One case per supertype branch, plus a control.
+  it.each([
+    ['IfcMarinePart', 'an IFC4X3 facility-part leaf (IfcSpatialStructureElement)'],
+    ['IfcExternalSpatialElement', 'the IfcExternalSpatialStructureElement branch'],
+    ['IfcBuiltSystem', 'an IfcGroup subtype the old name list never mentioned'],
+    ['IfcProject', 'IfcContext, which is not spatial and not a group'],
+    ['IfcAnnotation', 'a drafting annotation, which matches itself'],
+  ])('excludes %s — %s', type => {
+    const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type, name: undefined }];
     expect(filterBuildingElements(entities).map(e => e.type)).toEqual(['IfcWall']);
   });
 
-  // Regression: the exclusion set was a hand-written copy of the spatial
-  // type list and had drifted from `@ifc-lite/data`'s authority — it named
-  // IfcFacilityPart/IfcBridgePart/IfcRoadPart/IfcRailwayPart but not the
-  // IFC4X3 siblings IfcFacilityPartCommon and IfcMarinePart, so an unnamed
-  // instance of either still counted as an unnamed building element. The
-  // filter now asks that authority instead of restating the list.
-  it.each(['IfcFacilityPartCommon', 'IfcMarinePart', 'IfcFacilityPart', 'IfcMarineFacility', 'IfcRoadPart'])(
-    'excludes the IFC4X3 spatial container %s',
-    type => {
-      const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type, name: undefined }];
-      expect(filterBuildingElements(entities).map(e => e.type)).toEqual(['IfcWall']);
-    },
-  );
+  // Control for the polarity: this filter excludes non-elements, it does not
+  // test for IfcElement, so the entities that are neither stay counted.
+  it('leaves IfcGrid and IfcPort in, the same as before', () => {
+    const entities = [{ type: 'IfcGrid' }, { type: 'IfcDistributionPort' }];
+    expect(filterBuildingElements(entities)).toEqual(entities);
+  });
 });
 
 describe('computeValidation', () => {

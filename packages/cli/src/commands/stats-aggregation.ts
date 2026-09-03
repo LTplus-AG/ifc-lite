@@ -9,7 +9,7 @@
  * these to the SDK's `BimContext`.
  */
 
-import { isSpatialStructureTypeName } from '@ifc-lite/data';
+import { getInheritanceChainAcrossSchemas } from '@ifc-lite/parser';
 import { findPropertyInSets } from '@ifc-lite/query';
 import { firstNonBlank, isBlank } from '../output.js';
 
@@ -205,10 +205,7 @@ export function computeMaterialSummary<R>(
     // wallVolume: Gross/Net are alternative names for the same slot, and a
     // second IfcElementQuantity set on the same element (e.g. a
     // vendor-specific set alongside the standard Qto_ set) restates the same
-    // physical volume rather than adding to it. The un-labelled `break`
-    // below only left the inner (per-qset) loop, so a second qset with its
-    // own Gross/NetVolume kept accumulating — take the first match across
-    // every qset on this element, then stop.
+    // physical volume rather than adding to it.
     const qsets = bim.quantities(e.ref);
     qsetLoop: for (const qset of qsets) {
       for (const q of qset.quantities) {
@@ -230,38 +227,44 @@ export function computeMaterialSummary<R>(
 }
 
 /**
- * `bim.query()` with no type filter returns every entity the SDK treats as
- * a "product" — which includes spatial-structure containers and groupings
- * (IfcProject/IfcSite/IfcBuilding/IfcBuildingStorey/IfcSpace/IfcExternalSpatialElement/
- * IfcZone/IfcSystem/IfcDistributionSystem/IfcSpatialZone and their infrastructure
- * counterparts) and 2D/3D drafting annotations (IfcAnnotation), none of
- * which are physical building elements. Left in, they inflate the
- * material summary and the "unnamedElements"/"duplicateGlobalIds"
- * validation counts with entities a user would never call a "building
- * element" (e.g. an `IfcAnnotation` dimension line never carries a Name
- * and isn't a modeling defect).
- *
- * The spatial-structure half of that population is not restated here: it is
- * read off `@ifc-lite/data`'s `isSpatialStructureTypeName`, the repo's single
- * authority for that list, so an IFC4X3 facility-part class it already covers
- * (`IfcFacilityPartCommon`, `IfcMarinePart`) is not left counted as a building
- * element by a stale copy in this file. Only what that authority does not
- * cover is listed below: `IfcExternalSpatialElement` (the
- * `IfcExternalSpatialStructureElement` branch, deliberately outside the
- * spatial-structure list), the grouping classes, and annotations.
+ * Supertypes that mark an entity as not a physical building element. Matched
+ * against the whole inheritance chain, so every leaf is covered without a hand
+ * list: `IfcSpatialElement`/`IfcSpatialStructureElement` subsume the containers
+ * and every IFC4X3 facility-part leaf (`IfcExternalSpatialElement`,
+ * `IfcMarinePart`, ...), `IfcGroup` subsumes `IfcZone`/`IfcSystem`/
+ * `IfcBuiltSystem`/..., `IfcContext` covers `IfcProject`, and `IfcAnnotation`
+ * matches itself. Both spatial supertypes are named because IFC2X3 has no
+ * `IfcSpatialElement` — `IfcSpatialStructureElement` descends straight from
+ * `IfcProduct` there.
  */
-const NON_ELEMENT_TYPES = new Set([
-  'IfcExternalSpatialElement',
-  'IfcZone', 'IfcSystem', 'IfcDistributionSystem',
-  'IfcAnnotation',
+const NON_ELEMENT_SUPERTYPES = new Set([
+  'IfcSpatialElement', 'IfcSpatialStructureElement',
+  'IfcGroup', 'IfcContext', 'IfcAnnotation',
 ]);
 
+const nonElementByType = new Map<string, boolean>();
+
 /**
- * Scope an unfiltered `bim.query().toArray()` result down to physical
- * building elements, for the material summary and validation stats.
+ * Scope an unfiltered `bim.query().toArray()` result down to physical building
+ * elements, for the material summary and validation stats. `bim.query()` with
+ * no type filter answers with every `IfcObjectDefinition` occurrence, so
+ * spatial containers, groupings and drafting annotations would otherwise inflate
+ * the material summary and the `unnamedElements`/`duplicateGlobalIds` counts (an
+ * `IfcAnnotation` dimension line never carries a Name and is not a defect).
+ *
+ * Excluding rather than testing for `IfcElement` is deliberate: a positive test
+ * would also drop `IfcGrid`, `IfcPort` and the structural-analysis items, which
+ * this fix has no opinion about — they stay counted exactly as before.
  */
 export function filterBuildingElements<T extends { type: string }>(entities: T[]): T[] {
-  return entities.filter(e => !NON_ELEMENT_TYPES.has(e.type) && !isSpatialStructureTypeName(e.type));
+  return entities.filter(e => {
+    let nonElement = nonElementByType.get(e.type);
+    if (nonElement === undefined) {
+      nonElement = getInheritanceChainAcrossSchemas(e.type).some(a => NON_ELEMENT_SUPERTYPES.has(a));
+      nonElementByType.set(e.type, nonElement);
+    }
+    return !nonElement;
+  });
 }
 
 export interface ValidationSummary {

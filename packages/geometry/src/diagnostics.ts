@@ -19,8 +19,9 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`). Bumped on field renames/removals or
-   * count-semantics changes; additive optional fields do not bump.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3). Bumped on field
+   * renames/removals or count-semantics changes; additive optional fields do
+   * not bump.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of

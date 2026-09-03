@@ -47,6 +47,12 @@ export interface FlattenedRelationshipEdge {
  * `relationships` table) would silently drop that STEP record from its
  * output (#3782 review). Both use this shared helper instead of
  * hand-rolling the CSR walk so they cannot drift out of sync on it again.
+ *
+ * Walks `edges.offsets` to find source ids, so it needs a real CSR half —
+ * an accessor that only implements `getEdges`/`getTargets`/`hasAnyEdges`
+ * over a facade with empty `offsets`/`counts` (e.g. the server-loaded-model
+ * path's hand-rolled `RelationshipEdges`) yields nothing here, regardless
+ * of what `getEdges` itself would answer.
  */
 export function flattenRelationshipEdges(edges: RelationshipEdges): FlattenedRelationshipEdge[] {
   const out: FlattenedRelationshipEdge[] = [];

@@ -283,29 +283,28 @@
     }
 
     /// A cancelled `DELETE` must not hand the cache back to writers while
-    /// its GC pass is still running.
+    /// its blob-reclaim pass is still running.
     ///
-    /// `remove_by_key_prefix` does its scan, index removals and blob
-    /// reclaim on a blocking task, and Tokio DETACHES a started
-    /// `spawn_blocking` task when its `JoinHandle` is dropped -- dropping
-    /// the handle neither aborts nor waits for it. So when the request
-    /// future is cancelled (a `TimeoutLayer` firing, a client
-    /// disconnecting), an exclusion guard held by the async fn would be
-    /// released right then, while the detached blocking task is still
-    /// unlinking blobs: precisely the window `write_gc_lock` exists to
-    /// close, in which a concurrent `set`/`set_bytes` can have its content
-    /// blob unlinked between cacache's blob-commit and index-insert halves.
+    /// `remove_by_key_prefix` does its blob reclaim on a blocking task, and
+    /// Tokio DETACHES a started `spawn_blocking` task when its `JoinHandle`
+    /// is dropped -- dropping the handle neither aborts nor waits for it. So
+    /// when the request future is cancelled (a `TimeoutLayer` firing, a
+    /// client disconnecting), an exclusion guard held by the async fn would
+    /// be released right then, while the detached task is still unlinking
+    /// blobs: precisely the window `write_gc_lock` exists to close, in which
+    /// a concurrent `set`/`set_bytes` can have its content blob unlinked
+    /// between cacache's blob-commit and index-insert halves.
     ///
-    /// Pin that the guard travels WITH the blocking work: immediately after
-    /// the future is cancelled the lock is still held, and it is released
-    /// only once the pass has actually finished (at which point the entries
-    /// really are gone).
+    /// Pin that the guard travels WITH the blocking work: cancelling the
+    /// request once the reclaim pass holds the lock does not release it, and
+    /// it is released only when that pass has actually finished (at which
+    /// point the entries really are gone).
     #[tokio::test]
     async fn a_cancelled_remove_by_key_prefix_holds_the_gc_lock_until_the_pass_ends() {
         let (cache, _dir) = fresh_cache("prefix-removal-cancelled").await;
-        // Enough entries that the blocking pass is still walking the index
-        // when the assertion below runs; each also gets unique content, so
-        // the pass has real blob-removal work to do after the scan.
+        // Each entry gets unique content, so the reclaim pass has one blob
+        // per entry to unlink and is comfortably still running when the
+        // assertions below sample it.
         const ENTRIES: usize = 400;
         for i in 0..ENTRIES {
             cache
@@ -314,30 +313,81 @@
                 .unwrap();
         }
 
-        // One poll: enough to take the guard and spawn the blocking pass,
-        // then the timeout fires and the future is dropped mid-flight --
-        // the same cancellation `TimeoutLayer` performs.
-        let cancelled = tokio::time::timeout(
-            std::time::Duration::ZERO,
-            cache.remove_by_key_prefix("cancelme"),
-        )
-        .await;
-        assert!(cancelled.is_err(), "the request future should have been cancelled mid-pass");
+        let delete = tokio::spawn({
+            let cache = cache.clone();
+            async move { cache.remove_by_key_prefix("cancelme").await }
+        });
+
+        // Wait for the reclaim phase to actually take the lock. The
+        // index-removal phase before it runs unlocked by design, so "the
+        // lock is held" is the observable that says we are inside the window
+        // this test is about.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while cache.write_gc_lock.try_read().is_ok() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "never observed the blob-reclaim pass holding the exclusion lock"
+            );
+            tokio::task::yield_now().await;
+        }
+
+        // Cancel the request the way `TimeoutLayer` does, and await the
+        // handle so the future is definitively dropped before we sample.
+        delete.abort();
+        assert!(delete.await.unwrap_err().is_cancelled(), "the request should have been cancelled");
 
         assert!(
             cache.write_gc_lock.try_read().is_err(),
-            "the GC exclusion lock must still be held by the detached blocking pass; \
+            "the exclusion lock must still be held by the detached blocking pass; \
              a writer let in here can lose its content blob to the in-flight GC"
         );
 
-        // ...and it is a real lock hand-off, not a leak: the pass finishes,
+        // ...and it is a real hand-off, not a leak: the pass finishes,
         // releases the guard, and the entries are actually gone.
         let released = tokio::time::timeout(
             std::time::Duration::from_secs(60),
             Arc::clone(&cache.write_gc_lock).write_owned(),
         )
         .await
-        .expect("the detached GC pass should finish and release the lock");
+        .expect("the detached reclaim pass should finish and release the lock");
         drop(released);
         assert_eq!(cache.stats().await.unwrap().entries, 0, "every matching entry should be gone");
+    }
+
+    /// The benign case above (`stats_reports_zero_for_an_empty_cache`) and
+    /// this one are the pair that matters: cacache reports a never-written
+    /// cache as a `NotFound` walk error, so a blanket "treat a walk error as
+    /// empty" would make a cache whose directory has gone away (an unmounted
+    /// volume) report `entries=0 bytes=0` and scrape as perfectly healthy.
+    /// An unreadable store must look DIFFERENT from an empty one.
+    #[tokio::test]
+    async fn stats_reports_a_vanished_cache_dir_as_an_error_not_an_empty_cache() {
+        let (cache, dir) = fresh_cache("stats-vanished").await;
+        cache.set_bytes("key-a", b"12345").await.unwrap();
+        assert_eq!(cache.stats().await.unwrap().entries, 1, "sanity: the entry is counted");
+
+        tokio::fs::remove_dir_all(&dir).await.unwrap();
+
+        let result = cache.stats().await;
+        assert!(
+            matches!(result, Err(ApiError::Cache(_))),
+            "a vanished cache dir must surface as an error, got {result:?}"
+        );
+    }
+
+    /// Same asymmetry on the deletion path: a walk it cannot complete must
+    /// not be reported as `{"deleted": 0}`, which a caller reads as "there
+    /// was nothing to remove".
+    #[tokio::test]
+    async fn remove_by_key_prefix_reports_a_vanished_cache_dir_as_an_error() {
+        let (cache, dir) = fresh_cache("prefix-removal-vanished").await;
+        cache.set_bytes("gone-symbolic-v1", b"payload").await.unwrap();
+
+        tokio::fs::remove_dir_all(&dir).await.unwrap();
+
+        let result = cache.remove_by_key_prefix("gone").await;
+        assert!(
+            matches!(result, Err(ApiError::Cache(_))),
+            "a vanished cache dir must surface as an error, got {result:?}"
+        );
     }

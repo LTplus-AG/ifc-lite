@@ -31,9 +31,37 @@ pub struct DiskCache {
     // the one failure mode that method's ordering was written to prevent.
     // `read()` here is shared among concurrent writers (they may still race
     // each other inside `cacache::write`, which is safe on its own); only
-    // the GC pass takes `write()`, so it runs with no write in flight and no
-    // write can start until it finishes.
+    // the BLOB-RECLAIM half of `remove_by_key_prefix` takes `write()`, so it
+    // runs with no write in flight and no write can start until it finishes.
+    // Its index-entry removals need no exclusion at all -- removing an index
+    // entry can only orphan a blob, never unlink one out from under a
+    // writer -- and are deliberately left outside the lock.
     write_gc_lock: Arc<RwLock<()>>,
+}
+
+/// Classify an error yielded by `cacache::list_sync`.
+///
+/// A cache nothing has ever been written to has no index directory at all,
+/// and cacache reports that as a `NotFound` walk error rather than as an
+/// empty iterator (its own `list_sync` test asserts exactly that). That is an
+/// empty cache, not a fault -- but only while the cache directory ITSELF is
+/// still there. If that is gone too, the same `NotFound` means the store is
+/// unreadable (an unmounted volume, a wiped `CACHE_DIR`), and reporting it as
+/// "0 entries" would make a broken cache indistinguishable from a healthy
+/// empty one. Every other error -- a permission-denied bucket, a corrupt
+/// index line -- is always a real failure.
+///
+/// `Some(err)` means "propagate this"; `None` means "the cache is empty, stop
+/// walking".
+fn classify_index_walk_error(cache_dir: &std::path::Path, err: cacache::Error) -> Option<ApiError> {
+    if let cacache::Error::IoError(ref io, _) = err {
+        // `is_dir()` answers false for a permission error too, which lands on
+        // the safe side: that is reported rather than swallowed.
+        if io.kind() == std::io::ErrorKind::NotFound && cache_dir.is_dir() {
+            return None;
+        }
+    }
+    Some(ApiError::Cache(err.to_string()))
 }
 
 impl DiskCache {
@@ -76,14 +104,14 @@ impl DiskCache {
     }
 
     /// Set a cached value.
+    ///
+    /// Serializes and then delegates to [`Self::set_bytes`], so there is
+    /// exactly one body that takes the `write_gc_lock` read guard around a
+    /// `cacache::write` -- the invariant cannot drift between the two entry
+    /// points.
     pub async fn set<T: Serialize>(&self, key: &str, value: &T) -> Result<(), ApiError> {
         let data = serde_json::to_vec(value)?;
-        // Excludes `remove_by_key_prefix`'s GC pass, not other concurrent
-        // writers -- see `write_gc_lock`'s docstring.
-        let _guard = self.write_gc_lock.read().await;
-        cacache::write(&self.cache_dir, key, &data).await?;
-        tracing::debug!(key = %key, size = data.len(), "Cached result");
-        Ok(())
+        self.set_bytes(key, &data).await
     }
 
     /// Check if a key exists in the cache.
@@ -151,69 +179,121 @@ impl DiskCache {
     /// already had its entries removed -- deleting an absent entry is a
     /// no-op, not an error, so a retried or duplicate `DELETE` stays safe.
     pub async fn remove_by_key_prefix(&self, key_prefix: &str) -> Result<usize, ApiError> {
-        // Owned, so it can be MOVED INTO the blocking closure below rather
-        // than held by this async fn: a request future can be dropped
-        // mid-flight (a `TimeoutLayer` firing, a client disconnecting), and
-        // `spawn_blocking` work that has already started keeps running when
-        // its `JoinHandle` is dropped. A guard held here would be released
-        // by that drop while the GC pass is still walking the index, letting
-        // a `set`/`set_bytes` write interleave with blob removal -- the
-        // exact race `write_gc_lock` exists to close. Owned by the closure,
-        // the guard is released only when the blocking work itself ends.
-        let guard = Arc::clone(&self.write_gc_lock).write_owned().await;
-
         let cache_dir = self.cache_dir.clone();
         let prefix = format!("{key_prefix}-");
         let exact = key_prefix.to_string();
+        let (prefix_phase2, exact_phase2) = (prefix.clone(), exact.clone());
 
+        // PHASE 1 -- index-entry removals, deliberately OUTSIDE the exclusion
+        // lock. Removing an index entry can only orphan a blob (wasted disk,
+        // never a corrupt read); it cannot unlink content a concurrent writer
+        // is committing. Only phase 2 below races `cacache::write`'s two-step
+        // commit, so only phase 2 excludes writers.
+        //
         // `cacache` only exposes a synchronous index iterator (it walks the
-        // index directory on disk); run the scan, the index-entry removals
-        // and the blob GC on one blocking thread so they don't stall the
-        // async runtime and cannot be split apart by a cancellation.
-        // Integrities are tracked by their string form (`Integrity` itself
-        // carries no `Hash`/`Eq` impl) and re-parsed just before the
-        // hash-addressed removal call, which is the only place that needs
-        // the typed value.
-        tokio::task::spawn_blocking(move || {
-            let mut removed_integrities: Vec<String> = Vec::new();
+        // index directory on disk), so this runs on a blocking thread rather
+        // than stalling the async runtime. Integrities are tracked by their
+        // string form (`Integrity` itself carries no `Hash`/`Eq` impl) and
+        // re-parsed just before the hash-addressed removal call, which is the
+        // only place that needs the typed value.
+        let removed_integrities: Vec<String> = tokio::task::spawn_blocking(move || {
+            let mut removed = Vec::new();
             for entry in cacache::list_sync(&cache_dir) {
-                let Ok(meta) = entry else { continue };
-                if meta.key == exact || meta.key.starts_with(&prefix) {
-                    // Index-only removal: the content blob is left in place
-                    // until the GC pass below confirms nothing else needs it.
-                    if cacache::remove_sync(&cache_dir, &meta.key).is_ok() {
-                        removed_integrities.push(meta.integrity.to_string());
-                    }
+                // An unreadable index bucket is a real failure, not an empty
+                // one: swallowing it here would under-count `deleted` and
+                // report a partial invalidation as a complete `200`.
+                let meta = match entry {
+                    Ok(meta) => meta,
+                    Err(e) => match classify_index_walk_error(&cache_dir, e) {
+                        Some(err) => return Err(err),
+                        None => break,
+                    },
+                };
+                if (meta.key == exact || meta.key.starts_with(&prefix))
+                    && cacache::remove_sync(&cache_dir, &meta.key).is_ok()
+                {
+                    removed.push(meta.integrity.to_string());
                 }
             }
-
-            if !removed_integrities.is_empty() {
-                // Re-scan: whatever is still in the index after the removals
-                // above is still live and its content must be kept, no
-                // matter which key it is filed under.
-                let mut still_referenced = std::collections::HashSet::new();
-                for meta in cacache::list_sync(&cache_dir).flatten() {
-                    still_referenced.insert(meta.integrity.to_string());
-                }
-                for integrity_str in &removed_integrities {
-                    if !still_referenced.contains(integrity_str) {
-                        // Best-effort: an orphaned blob left behind on a rare
-                        // removal failure just wastes disk space, it never
-                        // makes a surviving entry read as corrupt.
-                        if let Ok(integrity) = integrity_str.parse::<cacache::Integrity>() {
-                            let _ = cacache::remove_hash_sync(&cache_dir, &integrity);
-                        }
-                    }
-                }
-            }
-
-            // Explicit: the exclusion window ends here, with the blocking
-            // work, not at the (possibly cancelled) await above.
-            drop(guard);
-            removed_integrities.len()
+            Ok::<_, ApiError>(removed)
         })
-        .await
-        .map_err(ApiError::from)
+        .await??;
+
+        if removed_integrities.is_empty() {
+            // Nothing was removed, so no blob can have become unreferenced:
+            // there is no GC work to do and no reason to lock writers out.
+            return Ok(0);
+        }
+
+        // PHASE 2 -- blob reclaim, under exclusion. The guard is OWNED and
+        // moved into the blocking closure rather than held by this async fn:
+        // a request future can be dropped mid-flight (`TimeoutLayer` firing,
+        // a client disconnecting) and Tokio DETACHES a started
+        // `spawn_blocking` task when its `JoinHandle` is dropped -- it
+        // neither aborts nor waits. A guard held here would be released by
+        // that drop while the blocking pass was still unlinking blobs, which
+        // is exactly the window `write_gc_lock` exists to close. Owned by the
+        // closure, it is released only when the blocking work itself ends.
+        let guard = Arc::clone(&self.write_gc_lock).write_owned().await;
+        let cache_dir = self.cache_dir.clone();
+        let mut removed_integrities = removed_integrities;
+        tokio::task::spawn_blocking(move || {
+            let _guard = guard;
+
+            // A SECOND walk, not the one phase 1 made. Phase 1 ran before the
+            // lock was taken, so this walk does two jobs the first cannot:
+            //
+            //  - it sweeps up any MATCHING entry that a writer committed
+            //    while phase 1 was scanning past it. Without this, narrowing
+            //    the lock would let a concurrent cache fill survive the
+            //    `DELETE` that was supposed to remove it; with it, every
+            //    entry committed before the lock was acquired is removed,
+            //    which is the guarantee holding the lock over both phases
+            //    used to give.
+            //  - it rebuilds "what is still referenced" under exclusion. Its
+            //    phase-1 equivalent would be stale: an entry committed
+            //    between that walk and this acquisition would be missing from
+            //    the set, and its blob unlinked out from under a live entry.
+            let mut still_referenced = std::collections::HashSet::new();
+            for entry in cacache::list_sync(&cache_dir) {
+                // Same reasoning as phase 1, one step sharper: a bucket that
+                // fails to read here would look like "no entry references
+                // this blob" and licence an unlink that corrupts a surviving
+                // entry. Bail out and leave the blobs orphaned instead --
+                // the index entries are already gone, so a retried DELETE is
+                // still correct and still reclaims them.
+                let meta = match entry {
+                    Ok(meta) => meta,
+                    Err(e) => match classify_index_walk_error(&cache_dir, e) {
+                        Some(err) => return Err(err),
+                        None => break,
+                    },
+                };
+                if (meta.key == exact_phase2 || meta.key.starts_with(&prefix_phase2))
+                    && cacache::remove_sync(&cache_dir, &meta.key).is_ok()
+                {
+                    // Removed just now, so it must NOT count as a live
+                    // reference; its blob is a reclaim candidate like the
+                    // rest. A failed removal falls through instead, which
+                    // keeps the entry AND its content.
+                    removed_integrities.push(meta.integrity.to_string());
+                    continue;
+                }
+                still_referenced.insert(meta.integrity.to_string());
+            }
+            for integrity_str in &removed_integrities {
+                if !still_referenced.contains(integrity_str) {
+                    // Best-effort: an orphaned blob left behind on a rare
+                    // removal failure just wastes disk space, it never makes
+                    // a surviving entry read as corrupt.
+                    if let Ok(integrity) = integrity_str.parse::<cacache::Integrity>() {
+                        let _ = cacache::remove_hash_sync(&cache_dir, &integrity);
+                    }
+                }
+            }
+            Ok::<usize, ApiError>(removed_integrities.len())
+        })
+        .await?
     }
 
     /// Cache-wide entry count and total content size in bytes, for the
@@ -225,14 +305,24 @@ impl DiskCache {
         let cache_dir = self.cache_dir.clone();
         tokio::task::spawn_blocking(move || {
             let mut stats = CacheStats::default();
-            for meta in cacache::list_sync(&cache_dir).flatten() {
+            for entry in cacache::list_sync(&cache_dir) {
+                // Never `flatten()` here: an unreadable index bucket (an
+                // unmounted or permission-denied `CACHE_DIR`) would then be
+                // indistinguishable from an empty cache, and the gauges would
+                // report `entries=0 bytes=0` as if the cache were healthy.
+                let meta = match entry {
+                    Ok(meta) => meta,
+                    Err(e) => match classify_index_walk_error(&cache_dir, e) {
+                        Some(err) => return Err(err),
+                        None => break,
+                    },
+                };
                 stats.entries += 1;
                 stats.bytes += meta.size as u64;
             }
-            stats
+            Ok::<_, ApiError>(stats)
         })
-        .await
-        .map_err(ApiError::from)
+        .await?
     }
 }
 

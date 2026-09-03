@@ -231,8 +231,8 @@ export function computeMaterialSummary<R>(
 /**
  * `bim.query()` with no type filter returns every entity the SDK treats as
  * a "product" — which includes spatial-structure containers and groupings
- * (IfcProject/IfcSite/IfcBuilding/IfcBuildingStorey/IfcSpace/IfcZone/
- * IfcSystem/IfcDistributionSystem/IfcSpatialZone and their infrastructure
+ * (IfcProject/IfcSite/IfcBuilding/IfcBuildingStorey/IfcSpace/IfcExternalSpatialElement/
+ * IfcZone/IfcSystem/IfcDistributionSystem/IfcSpatialZone and their infrastructure
  * counterparts) and 2D/3D drafting annotations (IfcAnnotation), none of
  * which are physical building elements. Left in, they inflate the
  * material summary and the "unnamedElements"/"duplicateGlobalIds"
@@ -242,7 +242,7 @@ export function computeMaterialSummary<R>(
  */
 const NON_ELEMENT_TYPES = new Set([
   'IfcProject', 'IfcSite', 'IfcBuilding', 'IfcBuildingStorey', 'IfcSpace',
-  'IfcSpatialZone', 'IfcZone', 'IfcSystem', 'IfcDistributionSystem',
+  'IfcSpatialZone', 'IfcExternalSpatialElement', 'IfcZone', 'IfcSystem', 'IfcDistributionSystem',
   'IfcFacility', 'IfcFacilityPart', 'IfcBridge', 'IfcBridgePart',
   'IfcRoad', 'IfcRoadPart', 'IfcRailway', 'IfcRailwayPart', 'IfcMarineFacility',
   'IfcAnnotation',

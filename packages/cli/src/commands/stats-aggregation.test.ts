@@ -277,7 +277,6 @@ describe('computeMaterialSummary', () => {
   });
 });
 
-describe('computeStoreyNames', () => {
   /**
    * Regression: `storeys.map(s => s.name).filter(Boolean)` drops a plain
    * empty-string Name (falsy) but keeps a whitespace-only one
@@ -343,6 +342,17 @@ describe('filterBuildingElements', () => {
   it('an all-physical-element input passes through unchanged', () => {
     const entities = [{ type: 'IfcWall' }, { type: 'IfcDoor' }, { type: 'IfcWindow' }];
     expect(filterBuildingElements(entities)).toEqual(entities);
+  });
+
+  // Regression: `IfcExternalSpatialElement` — the IFC4/IFC4X3 spatial
+  // container for a space boundary outside a building (never a physical
+  // element, per its IfcSpatialElement inheritance chain, same as
+  // IfcSpace/IfcSpatialZone) — was missing from the exclusion set. Like
+  // IfcAnnotation, it never carries a Name in normal use, so leaving it
+  // in would inflate unnamedElements exactly as the original bug did.
+  it('excludes IfcExternalSpatialElement, the same as the other spatial containers', () => {
+    const entities = [{ type: 'IfcWall', name: 'Wall 1' }, { type: 'IfcExternalSpatialElement', name: undefined }];
+    expect(filterBuildingElements(entities).map(e => e.type)).toEqual(['IfcWall']);
   });
 });
 

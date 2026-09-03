@@ -3,9 +3,17 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! `GET /api/v1/metrics` - Prometheus text exposition of the admission
-//! gauges/counters and resident memory. Hand-rolled text (no exporter
-//! dependency); the route only responds when `IFC_METRICS_ENABLED` is set,
-//! and it sits behind the bearer-token layer like every compute route.
+//! gauges/counters, resident memory, and the disk-cache size gauges
+//! (`ifc_server_cache_entries`, `ifc_server_cache_bytes`). Hand-rolled text
+//! (no exporter dependency); the route only responds when
+//! `IFC_METRICS_ENABLED` is set, and it sits behind the bearer-token layer
+//! like every compute route.
+//!
+//! The two cache gauges cost a FULL walk of the cacache index on every
+//! scrape (`DiskCache::stats`), so their cost grows with the number of
+//! cached entries rather than being O(1) like the admission counters.
+//! Accepted for now: the index carries the per-entry size already, and the
+//! alternative is running bookkeeping on every cache write.
 
 use axum::extract::State;
 use axum::http::{header, StatusCode};

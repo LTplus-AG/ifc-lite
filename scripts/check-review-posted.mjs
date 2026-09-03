@@ -100,7 +100,7 @@ import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { gh, GhError } from './lib/gh.mjs';
 // ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
-import { ReviewProvenanceError, inlineCommentAnchors } from './lib/review-provenance.mjs';
+import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -436,7 +436,7 @@ export function evaluate({ comments, cfg, headSha }) {
         // SCOPED FIRST, THEN READ. `inlineCommentAnchors` refuses an
         // unreadable row, and only a row this check would have COUNTED may
         // take the gate down.
-        inlineCommentAnchors(c.raw).written === headSha,
+        wroteAtCommit(c.raw, headSha),
     ).length;
     if (posted === 0) {
       lines.push(

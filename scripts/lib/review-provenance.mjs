@@ -245,9 +245,7 @@ export function predatesCommit(timestamp, headCommittedAt) {
  */
 export function ageAgainstCommit(timestamp, headCommittedAt) {
   if (predatesCommit(timestamp, headCommittedAt) !== true) return null;
-  const seconds = Math.round(
-    (Date.parse(String(headCommittedAt)) - Date.parse(String(timestamp))) / 1000,
-  );
+  const seconds = Math.round((Date.parse(headCommittedAt) - Date.parse(timestamp)) / 1000);
   if (seconds < 90) return `${seconds}s`;
   const minutes = Math.round(seconds / 60);
   if (minutes < 90) return `${minutes}m`;

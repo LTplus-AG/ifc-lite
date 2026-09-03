@@ -36,10 +36,10 @@ pub(super) fn build(content: &[u8]) -> EntityIndex {
         // malformed-record stop).
         return build_entity_index(content);
     }
-    let (index, refused, malformed) = with_chunks_counted(content, n);
-    ifc_lite_core::report_oversized_ids(refused);
-    ifc_lite_core::report_malformed_records(malformed);
-    index
+    let stitched = with_chunks_counted(content, n);
+    ifc_lite_core::report_oversized_ids(stitched.refused);
+    ifc_lite_core::report_malformed_records(stitched.malformed);
+    stitched.index
 }
 
 fn chunk_count(len: usize) -> usize {
@@ -91,10 +91,24 @@ fn scan_chunk(content: &[u8], i: usize, n_chunks: usize) -> ChunkScan {
     }
 }
 
-/// Scan with an explicit chunk count, returning the index, the number of
-/// refusals the stitch ATTRIBUTED — the count a caller may report, never
-/// the raw per-shard sum — and whether the stitch attributed a real
-/// malformed-record stop (see [`stitch`]). Public within the crate so the
+/// [`stitch`]'s result: the merged index, the number of refusals it
+/// ATTRIBUTED (never the raw per-shard sum — see [`stitch`]'s doc), and
+/// whether it attributed a real #3695 malformed-record stop.
+///
+/// Named rather than a positional tuple so a caller reads `stitched.refused`
+/// and `stitched.malformed` rather than `.1` / `.2` — the two fields are
+/// different types here (`usize` / `bool`), but [`RescanResult`] right below
+/// has two `Option<usize>` fields in the same shape a tuple would let a
+/// caller swap silently, and consistency between the two return types
+/// (both feed the same stitch loop) keeps that discipline from looking
+/// like a special case.
+pub(super) struct StitchResult {
+    pub(super) index: EntityIndex,
+    pub(super) refused: usize,
+    pub(super) malformed: bool,
+}
+
+/// Scan with an explicit chunk count. Public within the crate so the
 /// byte-identity and refusal-parity tests can force many boundary
 /// positions (including inside a quoted string) on a small buffer.
 ///
@@ -104,7 +118,7 @@ fn scan_chunk(content: &[u8], i: usize, n_chunks: usize) -> ChunkScan {
 /// and has no boundary, which is precisely the serial scan. Routing it
 /// through the same shard+stitch machinery means the `n = 1` leg of the
 /// byte-identity sweep exercises this code rather than delegating past it.
-pub(super) fn with_chunks_counted(content: &[u8], n_chunks: usize) -> (EntityIndex, usize, bool) {
+pub(super) fn with_chunks_counted(content: &[u8], n_chunks: usize) -> StitchResult {
     let len = content.len();
     let n_chunks = n_chunks.max(1).min(len.max(1));
     let chunks: Vec<ChunkScan> = (0..n_chunks)
@@ -171,7 +185,7 @@ pub(super) fn with_chunks_counted(content: &[u8], n_chunks: usize) -> (EntityInd
 /// "Attributed" carries the same speculative-prefix caveat as a refusal —
 /// `chunk.malformed_start >= target` is that filter, mirroring the `<
 /// target` split `refusals.partition_point` already makes.
-fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> (EntityIndex, usize, bool) {
+fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> StitchResult {
     let len = content.len();
     // Same capacity heuristic as the serial builder.
     let mut index: EntityIndex =
@@ -234,25 +248,36 @@ fn stitch(content: &[u8], chunks: &[ChunkScan], n_chunks: usize) -> (EntityIndex
                     // This rescan starts at a validated real boundary, not
                     // speculatively, so ANY malformed stop it hits is real —
                     // no `>= target` filter needed, unlike the `Ok` arm.
-                    let (next, rescanned, rescan_malformed) =
-                        rescan_range(content, target, end, &mut index);
-                    refused += rescanned;
-                    if rescan_malformed.is_some() {
+                    let rescanned = rescan_range(content, target, end, &mut index);
+                    refused += rescanned.refused;
+                    if rescanned.malformed_start.is_some() {
                         malformed = true;
                         break;
                     }
-                    expected_start = next;
+                    expected_start = rescanned.handoff;
                 }
             }
         }
     }
-    (index, refused, malformed)
+    StitchResult { index, refused, malformed }
+}
+
+/// [`rescan_range`]'s result: the handoff for the next chunk (the first
+/// entity start at/after `end`, or `None` at EOF), the refusals rescanned
+/// over `[target, end)`, and the malformed-record stop over those bytes if
+/// any.
+///
+/// Named, not a positional tuple, because `handoff` and `malformed_start`
+/// are BOTH `Option<usize>` — a tuple would let a caller swap them (e.g.
+/// treat the handoff as the malformed stop) with no type error to catch it.
+struct RescanResult {
+    handoff: Option<usize>,
+    refused: usize,
+    malformed_start: Option<usize>,
 }
 
 /// Serial rescan from a known-real entity start `target` up to `end`,
-/// inserting each entity; returns the first entity start at/after `end`
-/// (the handoff for the next chunk, or `None` at EOF), the refusals over
-/// those bytes, and the malformed-record stop over those bytes if any.
+/// inserting each entity.
 ///
 /// This scan is aligned from its first byte, so every refusal — and
 /// every malformed stop — it makes is one the serial builder makes too:
@@ -262,17 +287,21 @@ fn rescan_range(
     target: usize,
     end: usize,
     index: &mut EntityIndex,
-) -> (Option<usize>, usize, Option<usize>) {
+) -> RescanResult {
     let mut scanner = EntityScanner::new_at(content, target);
     while let Some((id, _type_name, start, entity_end)) = scanner.next_entity() {
         if start >= end {
-            return (
-                Some(start),
-                scanner.skipped_oversized_ids(),
-                scanner.malformed_record_start(),
-            );
+            return RescanResult {
+                handoff: Some(start),
+                refused: scanner.skipped_oversized_ids(),
+                malformed_start: scanner.malformed_record_start(),
+            };
         }
         index.insert(id, (start, entity_end));
     }
-    (None, scanner.skipped_oversized_ids(), scanner.malformed_record_start())
+    RescanResult {
+        handoff: None,
+        refused: scanner.skipped_oversized_ids(),
+        malformed_start: scanner.malformed_record_start(),
+    }
 }

@@ -28,7 +28,8 @@ fn assert_parallel_matches_serial(content: &[u8], label: &str) {
     let serial = build_entity_index(content);
     let serial_refused = serial_refusals(content);
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
-        let (par, refused, malformed) = with_chunks_counted(content, n);
+        let stitched = with_chunks_counted(content, n);
+        let (par, refused, malformed) = (stitched.index, stitched.refused, stitched.malformed);
         assert_eq!(
             par, serial,
             "parallel index (n_chunks={n}) != serial for {label}"
@@ -177,7 +178,7 @@ fn clean_file_with_an_oversized_shaped_string_reports_no_refusal() {
             saw_a_speculative_refusal = true;
         }
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             0,
             "n_chunks={n}: a file with no oversized id must report no refusal \
              (raw per-shard sum was {raw})"
@@ -212,7 +213,7 @@ fn a_real_oversized_id_near_a_boundary_counts_exactly_once() {
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the one real refusal must be counted once"
         );
@@ -301,7 +302,7 @@ fn an_oversized_id_in_a_serially_rescanned_range_counts_once() {
 
     for n in 2..=40usize {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the refusal inside the rescanned range, counted once"
         );
@@ -325,7 +326,7 @@ fn an_oversized_id_in_a_rescanned_range_that_hits_eof_counts_once() {
 
     for n in 2..=40usize {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the refusal in the file's tail, counted once"
         );
@@ -358,7 +359,7 @@ fn a_real_oversized_id_behind_an_adversarial_string_counts_once() {
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: exactly the one real refusal, none of the in-string ones"
         );
@@ -390,7 +391,7 @@ fn an_oversized_id_after_a_chunk_spanning_record_counts_once() {
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the refusal in the rescanned range must be counted once"
         );
@@ -450,7 +451,8 @@ fn malformed_record_truncates_and_is_reported_at_every_chunk_count() {
     assert!(!serial.contains_key(&(malformed_id + 1)), "every record after the malformed one must be gone");
 
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
-        let (par, refused, malformed) = with_chunks_counted(bytes, n);
+        let stitched = with_chunks_counted(bytes, n);
+        let (par, refused, malformed) = (stitched.index, stitched.refused, stitched.malformed);
         assert_eq!(
             par, serial,
             "n_chunks={n}: parallel index must match the serial truncation exactly"

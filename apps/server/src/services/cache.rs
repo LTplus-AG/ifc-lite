@@ -39,25 +39,54 @@ pub struct DiskCache {
     write_gc_lock: Arc<RwLock<()>>,
 }
 
-/// Classify an error yielded by `cacache::list_sync`.
+/// cacache's on-disk index root inside a cache directory.
 ///
-/// A cache nothing has ever been written to has no index directory at all,
-/// and cacache reports that as a `NotFound` walk error rather than as an
-/// empty iterator (its own `list_sync` test asserts exactly that). That is an
-/// empty cache, not a fault -- but only while the cache directory ITSELF is
-/// still there. If that is gone too, the same `NotFound` means the store is
-/// unreadable (an unmounted volume, a wiped `CACHE_DIR`), and reporting it as
-/// "0 entries" would make a broken cache indistinguishable from a healthy
-/// empty one. Every other error -- a permission-denied bucket, a corrupt
-/// index line -- is always a real failure.
+/// `cacache::list_sync` reports a cache nothing has ever been written to as a
+/// `NotFound` walk error rather than as an empty iterator (its own
+/// `list_sync` test asserts exactly that), so telling "empty" apart from
+/// "unreadable" means knowing whether this directory exists. cacache does not
+/// expose the path, so the layout is mirrored here -- `INDEX_VERSION` is `5`
+/// in cacache 13.1.0, the same way `cache_tests::corrupt_stored_content`
+/// mirrors the content layout. `index_root_matches_the_cacache_layout` fails
+/// if a cacache bump moves it.
+fn index_root(cache_dir: &std::path::Path) -> PathBuf {
+    cache_dir.join("index-v5")
+}
+
+/// Classify an error yielded by `cacache::list_sync` on a walk that may be
+/// starting from a cache that was never written to.
+///
+/// The ONE benign case takes BOTH halves of a conjunction, and each half
+/// closes a different way of reading a broken cache as an empty one:
+///
+///  - the index root must be ABSENT, so the walk demonstrably never started.
+///    A `NotFound` raised part-way through a walk (a bucket or subdirectory
+///    disappearing under it) is a real failure; treating it as "the cache is
+///    empty" is how a truncated walk gets to unlink live content.
+///  - the cache directory itself must still be PRESENT. If it is gone too --
+///    an unmounted volume, a wiped `CACHE_DIR` -- the same `NotFound` means
+///    the store is unreadable, and answering "0 entries" would make a broken
+///    cache indistinguishable from a healthy empty one.
+///
+/// Note what cacache does NOT report: `bucket_entries` drops unreadable and
+/// unparseable index LINES silently (`map_while(Result::ok)` then a
+/// `filter_map` that yields `None` for a bad line), and turns a `NotFound`
+/// on opening a bucket into an empty vec. Only a failure to open a bucket
+/// for some other reason (a permission error, say) and the directory walk
+/// itself can produce the errors classified here.
 ///
 /// `Some(err)` means "propagate this"; `None` means "the cache is empty, stop
 /// walking".
 fn classify_index_walk_error(cache_dir: &std::path::Path, err: cacache::Error) -> Option<ApiError> {
     if let cacache::Error::IoError(ref io, _) = err {
-        // `is_dir()` answers false for a permission error too, which lands on
-        // the safe side: that is reported rather than swallowed.
-        if io.kind() == std::io::ErrorKind::NotFound && cache_dir.is_dir() {
+        // Both stat calls answer false on a permission error, and both land
+        // on the safe side for that: an index root we cannot stat reads as
+        // PRESENT (so a mid-walk error propagates) and a cache dir we cannot
+        // stat reads as ABSENT (so an unreadable store propagates).
+        if io.kind() == std::io::ErrorKind::NotFound
+            && cache_dir.is_dir()
+            && !index_root(cache_dir).exists()
+        {
             return None;
         }
     }
@@ -199,9 +228,13 @@ impl DiskCache {
         let removed_integrities: Vec<String> = tokio::task::spawn_blocking(move || {
             let mut removed = Vec::new();
             for entry in cacache::list_sync(&cache_dir) {
-                // An unreadable index bucket is a real failure, not an empty
-                // one: swallowing it here would under-count `deleted` and
-                // report a partial invalidation as a complete `200`.
+                // A walk that cannot complete is a real failure, not an
+                // empty cache: swallowing it here would under-count
+                // `deleted` and report a partial invalidation as a complete
+                // `200`. (An individual index LINE that fails to read or
+                // parse never reaches us -- cacache drops those silently --
+                // so this catches walk failures and non-`NotFound` bucket
+                // open failures, not corruption within a bucket.)
                 let meta = match entry {
                     Ok(meta) => meta,
                     Err(e) => match classify_index_walk_error(&cache_dir, e) {
@@ -218,12 +251,6 @@ impl DiskCache {
             Ok::<_, ApiError>(removed)
         })
         .await??;
-
-        if removed_integrities.is_empty() {
-            // Nothing was removed, so no blob can have become unreferenced:
-            // there is no GC work to do and no reason to lock writers out.
-            return Ok(0);
-        }
 
         // PHASE 2 -- blob reclaim, under exclusion. The guard is OWNED and
         // moved into the blocking closure rather than held by this async fn:
@@ -255,31 +282,28 @@ impl DiskCache {
             //    between that walk and this acquisition would be missing from
             //    the set, and its blob unlinked out from under a live entry.
             let mut still_referenced = std::collections::HashSet::new();
-            for entry in cacache::list_sync(&cache_dir) {
-                // Same reasoning as phase 1, one step sharper: a bucket that
-                // fails to read here would look like "no entry references
-                // this blob" and licence an unlink that corrupts a surviving
-                // entry. Bail out and leave the blobs orphaned instead --
-                // the index entries are already gone, so a retried DELETE is
-                // still correct and still reclaims them.
-                let meta = match entry {
-                    Ok(meta) => meta,
-                    Err(e) => match classify_index_walk_error(&cache_dir, e) {
-                        Some(err) => return Err(err),
-                        None => break,
-                    },
-                };
-                if (meta.key == exact_phase2 || meta.key.starts_with(&prefix_phase2))
-                    && cacache::remove_sync(&cache_dir, &meta.key).is_ok()
-                {
-                    // Removed just now, so it must NOT count as a live
-                    // reference; its blob is a reclaim candidate like the
-                    // rest. A failed removal falls through instead, which
-                    // keeps the entry AND its content.
-                    removed_integrities.push(meta.integrity.to_string());
-                    continue;
+            // Deliberately NOT `classify_index_walk_error`: this walk decides
+            // which blobs nothing references any more, so a walk that stops
+            // early reads as "nothing references these" and licenses an
+            // unlink that corrupts a surviving entry. Every error here
+            // propagates, and the only "empty" this accepts is an index root
+            // that does not exist at all -- checked once, before walking,
+            // rather than inferred from an error mid-walk.
+            if index_root(&cache_dir).exists() {
+                for entry in cacache::list_sync(&cache_dir) {
+                    let meta = entry.map_err(|e| ApiError::Cache(e.to_string()))?;
+                    if (meta.key == exact_phase2 || meta.key.starts_with(&prefix_phase2))
+                        && cacache::remove_sync(&cache_dir, &meta.key).is_ok()
+                    {
+                        // Removed just now, so it must NOT count as a live
+                        // reference; its blob is a reclaim candidate like the
+                        // rest. A failed removal falls through instead, which
+                        // keeps the entry AND its content.
+                        removed_integrities.push(meta.integrity.to_string());
+                        continue;
+                    }
+                    still_referenced.insert(meta.integrity.to_string());
                 }
-                still_referenced.insert(meta.integrity.to_string());
             }
             for integrity_str in &removed_integrities {
                 if !still_referenced.contains(integrity_str) {
@@ -306,7 +330,7 @@ impl DiskCache {
         tokio::task::spawn_blocking(move || {
             let mut stats = CacheStats::default();
             for entry in cacache::list_sync(&cache_dir) {
-                // Never `flatten()` here: an unreadable index bucket (an
+                // Never `flatten()` here: a walk that cannot complete (an
                 // unmounted or permission-denied `CACHE_DIR`) would then be
                 // indistinguishable from an empty cache, and the gauges would
                 // report `entries=0 bytes=0` as if the cache were healthy.

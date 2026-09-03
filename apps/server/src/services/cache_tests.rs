@@ -391,3 +391,27 @@
             "a vanished cache dir must surface as an error, got {result:?}"
         );
     }
+
+    /// `index_root` mirrors a path cacache does not expose. If a cacache bump
+    /// moves `INDEX_VERSION`, the mirror goes stale silently -- every walk
+    /// error would then look benign ("no index root") and an unreadable cache
+    /// would read as an empty one again. Pin both directions: absent before
+    /// the first write, present after it.
+    #[tokio::test]
+    async fn index_root_matches_the_cacache_layout() {
+        let (cache, dir) = fresh_cache("index-root-layout").await;
+        assert!(
+            !index_root(&dir).exists(),
+            "a never-written cache should have no index root at {}",
+            index_root(&dir).display()
+        );
+
+        cache.set_bytes("layout-probe", b"v").await.unwrap();
+
+        assert!(
+            index_root(&dir).is_dir(),
+            "index_root() must name the directory cacache actually writes; \
+             a cacache bump may have moved INDEX_VERSION"
+        );
+    }
+

@@ -163,33 +163,33 @@ test('an allowlisted file that GREW past its budget fails', () => {
   assert.match(out, /packages\/a\/big\.ts: 501 lines, budget 500/);
 });
 
-test('RAISING the budget to match the file DOES buy a green (#3745)', () => {
-  // The old behaviour here (RED unless a separately-committed digest also
-  // moved) is exactly the contention #3745 was filed for: two PRs raising
-  // DIFFERENT files in the SAME scope both had to rewrite the identical pinned
-  // line. The row edit itself is the reviewable signal now; a plain
-  // allowlist-only edit that matches the file's real, measured size is not a
-  // second, separately-gated event.
+test('the allowlist ALONE decides: a row matching the file is green (#3745)', () => {
+  // The gate's whole input is this allowlist and the tree. Nothing outside the
+  // two is consulted, which is what #3745 changed: the same fixture exits 1 on
+  // origin/main's checker, because a scope whose digest is absent from the
+  // pinned table counts as drift, and no allowlist edit can settle it from
+  // here. That second, separately-committed file is what two PRs raising
+  // DIFFERENT rows in the SAME scope both had to rewrite, on the identical
+  // line, however disjoint their row edits were.
   const dir = tree({ 'packages/a/big.ts': 501 });
   const { code, out } = run(dir, '501 packages/a/big.ts\n');
   assert.equal(code, 0, out);
 });
 
-test('two PRs raising DIFFERENT rows in the SAME scope both pass independently (#3745)', () => {
-  // The RED this issue reproduced: both used to rewrite one pinned digest
-  // line for the scope and could not both land without a merge conflict, even
-  // though their row edits never touched the same line. There is nothing left
-  // to rewrite in a second file, so each passes on its own — simulated here as
-  // two independent worktrees, each with only ITS OWN row raised to match its
-  // own file, the other row left at the pre-existing (lower) budget exactly as
-  // a real branch that never touched that file would leave it.
-  const dirA = tree({ 'packages/a/x.ts': 455, 'packages/a/y.ts': 450 });
-  const afterA = '455 packages/a/x.ts\n450 packages/a/y.ts\n';
-  assert.equal(run(dirA, afterA).code, 0);
-
-  const dirB = tree({ 'packages/a/x.ts': 450, 'packages/a/y.ts': 455 });
-  const afterB = '450 packages/a/x.ts\n455 packages/a/y.ts\n';
-  assert.equal(run(dirB, afterB).code, 0);
+test('--digests is gone from the CLI, not merely ignored (#3745)', () => {
+  // The removal asserted on the surface a caller can reach. origin/main parses
+  // `--digests <json>` and compares the allowlist against it; a version that
+  // dropped the comparison but kept swallowing the flag would pass the case
+  // above and still leave the contention in place for anyone who scripted it.
+  // Refusing an unknown argument is this parser's existing contract (see the
+  // --all and --allow-raise cases below), so the flag has to be REJECTED, not
+  // accepted and ignored.
+  const dir = tree({ 'packages/a/big.ts': 501 });
+  const { code, out } = run(dir, '501 packages/a/big.ts\n', {
+    extra: ['--digests', '{"packages/a":"1"}'],
+  });
+  assert.equal(code, 1, out);
+  assert.match(out, /unknown argument: --digests/);
 });
 
 test('a stale row at or under the limit fails', () => {
@@ -408,9 +408,9 @@ test('the committed gate runs green against the real repo', () => {
 
 // ---------------------------------------------------------------------------
 // --update is SCOPED to the change (#3398). Repo-wide re-recording rewrote 11
-// allowlist rows and moved 5 digest lines on an unmodified checkout of
-// afa717bcf, with `git status` clean, which is the mechanism behind the
-// two-PR collision #3398 was filed for.
+// allowlist rows on an unmodified checkout of afa717bcf, with `git status`
+// clean, which is the mechanism behind the two-PR collision #3398 was filed
+// for.
 // ---------------------------------------------------------------------------
 
 const SCOPED_BEFORE = `${HEADER}   500 packages/a/big.ts\n   460 packages/b/slack.ts\n`;

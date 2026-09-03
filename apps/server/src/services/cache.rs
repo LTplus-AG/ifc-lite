@@ -151,62 +151,65 @@ impl DiskCache {
     /// already had its entries removed -- deleting an absent entry is a
     /// no-op, not an error, so a retried or duplicate `DELETE` stays safe.
     pub async fn remove_by_key_prefix(&self, key_prefix: &str) -> Result<usize, ApiError> {
-        // Held across BOTH spawn_blocking phases below, so no `set`/
-        // `set_bytes` write can start (and no write already past its own
-        // `read()` acquisition, since a write cannot begin its GC-visible
-        // work before it acquires that guard) while this scan-and-remove
-        // runs -- see `write_gc_lock`'s docstring for the race this closes.
-        let _guard = self.write_gc_lock.write().await;
+        // Owned, so it can be MOVED INTO the blocking closure below rather
+        // than held by this async fn: a request future can be dropped
+        // mid-flight (a `TimeoutLayer` firing, a client disconnecting), and
+        // `spawn_blocking` work that has already started keeps running when
+        // its `JoinHandle` is dropped. A guard held here would be released
+        // by that drop while the GC pass is still walking the index, letting
+        // a `set`/`set_bytes` write interleave with blob removal -- the
+        // exact race `write_gc_lock` exists to close. Owned by the closure,
+        // the guard is released only when the blocking work itself ends.
+        let guard = Arc::clone(&self.write_gc_lock).write_owned().await;
 
         let cache_dir = self.cache_dir.clone();
         let prefix = format!("{key_prefix}-");
         let exact = key_prefix.to_string();
 
         // `cacache` only exposes a synchronous index iterator (it walks the
-        // index directory on disk); run the scan + index-entry removal on a
-        // blocking thread so it doesn't stall the async runtime. Integrities
-        // are tracked by their string form (`Integrity` itself carries no
-        // `Hash`/`Eq` impl) and re-parsed just before the hash-addressed
-        // removal call, which is the only place that needs the typed value.
-        let removed_integrities: Vec<String> = tokio::task::spawn_blocking(move || {
-            let mut removed = Vec::new();
+        // index directory on disk); run the scan, the index-entry removals
+        // and the blob GC on one blocking thread so they don't stall the
+        // async runtime and cannot be split apart by a cancellation.
+        // Integrities are tracked by their string form (`Integrity` itself
+        // carries no `Hash`/`Eq` impl) and re-parsed just before the
+        // hash-addressed removal call, which is the only place that needs
+        // the typed value.
+        tokio::task::spawn_blocking(move || {
+            let mut removed_integrities: Vec<String> = Vec::new();
             for entry in cacache::list_sync(&cache_dir) {
                 let Ok(meta) = entry else { continue };
                 if meta.key == exact || meta.key.starts_with(&prefix) {
                     // Index-only removal: the content blob is left in place
                     // until the GC pass below confirms nothing else needs it.
                     if cacache::remove_sync(&cache_dir, &meta.key).is_ok() {
-                        removed.push(meta.integrity.to_string());
+                        removed_integrities.push(meta.integrity.to_string());
                     }
                 }
             }
-            removed
-        })
-        .await?;
 
-        if removed_integrities.is_empty() {
-            return Ok(0);
-        }
-
-        let cache_dir = self.cache_dir.clone();
-        tokio::task::spawn_blocking(move || {
-            // Re-scan: whatever is still in the index after the removals
-            // above is still live and its content must be kept, no matter
-            // which key it is filed under.
-            let mut still_referenced = std::collections::HashSet::new();
-            for meta in cacache::list_sync(&cache_dir).flatten() {
-                still_referenced.insert(meta.integrity.to_string());
-            }
-            for integrity_str in &removed_integrities {
-                if !still_referenced.contains(integrity_str) {
-                    // Best-effort: an orphaned blob left behind on a rare
-                    // removal failure just wastes disk space, it never makes
-                    // a surviving entry read as corrupt.
-                    if let Ok(integrity) = integrity_str.parse::<cacache::Integrity>() {
-                        let _ = cacache::remove_hash_sync(&cache_dir, &integrity);
+            if !removed_integrities.is_empty() {
+                // Re-scan: whatever is still in the index after the removals
+                // above is still live and its content must be kept, no
+                // matter which key it is filed under.
+                let mut still_referenced = std::collections::HashSet::new();
+                for meta in cacache::list_sync(&cache_dir).flatten() {
+                    still_referenced.insert(meta.integrity.to_string());
+                }
+                for integrity_str in &removed_integrities {
+                    if !still_referenced.contains(integrity_str) {
+                        // Best-effort: an orphaned blob left behind on a rare
+                        // removal failure just wastes disk space, it never
+                        // makes a surviving entry read as corrupt.
+                        if let Ok(integrity) = integrity_str.parse::<cacache::Integrity>() {
+                            let _ = cacache::remove_hash_sync(&cache_dir, &integrity);
+                        }
                     }
                 }
             }
+
+            // Explicit: the exclusion window ends here, with the blocking
+            // work, not at the (possibly cancelled) await above.
+            drop(guard);
             removed_integrities.len()
         })
         .await

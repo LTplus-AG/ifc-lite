@@ -281,3 +281,63 @@
         assert_eq!(stats.entries, 2);
         assert_eq!(stats.bytes, 15);
     }
+
+    /// A cancelled `DELETE` must not hand the cache back to writers while
+    /// its GC pass is still running.
+    ///
+    /// `remove_by_key_prefix` does its scan, index removals and blob
+    /// reclaim on a blocking task, and Tokio DETACHES a started
+    /// `spawn_blocking` task when its `JoinHandle` is dropped -- dropping
+    /// the handle neither aborts nor waits for it. So when the request
+    /// future is cancelled (a `TimeoutLayer` firing, a client
+    /// disconnecting), an exclusion guard held by the async fn would be
+    /// released right then, while the detached blocking task is still
+    /// unlinking blobs: precisely the window `write_gc_lock` exists to
+    /// close, in which a concurrent `set`/`set_bytes` can have its content
+    /// blob unlinked between cacache's blob-commit and index-insert halves.
+    ///
+    /// Pin that the guard travels WITH the blocking work: immediately after
+    /// the future is cancelled the lock is still held, and it is released
+    /// only once the pass has actually finished (at which point the entries
+    /// really are gone).
+    #[tokio::test]
+    async fn a_cancelled_remove_by_key_prefix_holds_the_gc_lock_until_the_pass_ends() {
+        let (cache, _dir) = fresh_cache("prefix-removal-cancelled").await;
+        // Enough entries that the blocking pass is still walking the index
+        // when the assertion below runs; each also gets unique content, so
+        // the pass has real blob-removal work to do after the scan.
+        const ENTRIES: usize = 400;
+        for i in 0..ENTRIES {
+            cache
+                .set_bytes(&format!("cancelme-v{i}"), format!("payload {i}").as_bytes())
+                .await
+                .unwrap();
+        }
+
+        // One poll: enough to take the guard and spawn the blocking pass,
+        // then the timeout fires and the future is dropped mid-flight --
+        // the same cancellation `TimeoutLayer` performs.
+        let cancelled = tokio::time::timeout(
+            std::time::Duration::ZERO,
+            cache.remove_by_key_prefix("cancelme"),
+        )
+        .await;
+        assert!(cancelled.is_err(), "the request future should have been cancelled mid-pass");
+
+        assert!(
+            cache.write_gc_lock.try_read().is_err(),
+            "the GC exclusion lock must still be held by the detached blocking pass; \
+             a writer let in here can lose its content blob to the in-flight GC"
+        );
+
+        // ...and it is a real lock hand-off, not a leak: the pass finishes,
+        // releases the guard, and the entries are actually gone.
+        let released = tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            Arc::clone(&cache.write_gc_lock).write_owned(),
+        )
+        .await
+        .expect("the detached GC pass should finish and release the lock");
+        drop(released);
+        assert_eq!(cache.stats().await.unwrap().entries, 0, "every matching entry should be gone");
+    }

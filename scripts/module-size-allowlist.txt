@@ -351,7 +351,7 @@
   1145 scripts/check-loader-hook-specifier-match.mjs
    554 scripts/check-module-size.mjs
   1044 scripts/check-pr-review-signal.mjs
-   798 scripts/check-review-posted.mjs
+   859 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
    612 scripts/check-test-revert-oracle.mjs
@@ -385,12 +385,12 @@
    415 scripts/moonshot/m5-constrained-decoding/dsl.mjs
    621 scripts/moonshot/m5-constrained-decoding/run-tier2.mjs
    980 scripts/moonshot/m5-constrained-decoding/tasks-tier2.mjs
-   661 scripts/review/build-context-pack.mjs
-   413 scripts/review/build-review-input.mjs
-   904 scripts/review/post-review.mjs
+   680 scripts/review/build-context-pack.mjs
+   679 scripts/review/build-review-input.mjs
+  1062 scripts/review/post-review.mjs
    443 scripts/review/rubric-eval.mjs
-   526 scripts/review/run-reviewer.mjs
-   985 scripts/review/validate-findings.mjs
+   551 scripts/review/run-reviewer.mjs
+  1103 scripts/review/validate-findings.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
   2196 scripts/test-wasm-contract.mjs

@@ -16,7 +16,12 @@
 # tables they resolve through (#3292); 793 -> 758.
      758 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
-     601 rust/core/src/parser/scanner.rs
+# -50: data_section_start (the STEP HEADER-skip, self-contained, no scanner
+# state) split out to scanner_header.rs (62 lines, under budget, no row) to
+# bring this file back under budget after a merge combined two independent
+# feature additions to it (#3673's four-scanner comment-trivia work and
+# #3699's unterminated-record reporting) past the recorded 601; 606 -> 557.
+     557 rust/core/src/parser/scanner.rs
 # +3: Arc<Vec<AttributeValue>> so DecodedEntity clone is a refcount bump not a deep attribute-tree clone (perf/decode-churn).
     553 rust/core/src/schema_gen.rs
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into

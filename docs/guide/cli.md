@@ -353,6 +353,43 @@ ifc-lite export model.ifc --format csv --out walls.csv
 
 ---
 
+### `schedule` — Tabular Schedules
+
+Generate an AEC-style schedule (door schedule, window schedule, room schedule, material takeoff, …) for one IFC class: a filtered, columnar table with attribute/property/quantity columns, optional sort/group/subtotal rows, and CSV/JSON/Markdown/HTML output. Column values resolve through the same property/quantity resolver `export` uses and `--where` reuses `query`'s exact filter, so a schedule always agrees with the equivalent `query`/`export` invocation.
+
+```bash
+# Explicit columns, a property filter, JSON output
+ifc-lite schedule tests/models/ara3d/AC20-FZK-Haus.ifc --type IfcDoor \
+  --columns "Name, Mark=Tag, Width=Qto_DoorBaseQuantities.Width" \
+  --where "Pset_DoorCommon.IsExternal=true" --format json
+
+# A built-in preset — sensible columns with no other flags
+ifc-lite schedule tests/models/ara3d/AC20-FZK-Haus.ifc --preset door
+
+# Save the resolved definition, then reload it later with --spec
+ifc-lite schedule tests/models/ara3d/AC20-FZK-Haus.ifc --preset door --save door-schedule.json
+ifc-lite schedule tests/models/ara3d/AC20-FZK-Haus.ifc --spec door-schedule.json --format md
+```
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--type <T>` | IFC class to schedule (e.g. `IfcDoor`); auto-prefixes `Ifc` like `query`/`export` |
+| `--columns <spec>` | Comma-separated `Header=path` pairs; a bare `path` is its own header. `path` is an attribute name (`Name`, `Tag`, …), `PsetName.PropName`, or `QtoName.QtyName` |
+| `--where <filter>` | Property filter: `PsetName.PropName=Value` (same resolver as `query --where`) |
+| `--sort <spec>` | `"Header[:asc\|desc], ..."` — stable multi-key sort by column header; numeric when both cells parse as numbers, else string; missing values sort last |
+| `--group-by <headers>` | `"Header, ..."` — orders rows so each group is contiguous (group key ascending, or `--sort`'s direction when the group header is also a sort key) |
+| `--subtotals <spec>` | `"count \| sum:Header \| avg:Header \| min:Header \| max:Header, ..."` — a subtotal row after each group plus a grand total (grand total only, without `--group-by`) |
+| `--preset <name>` | `door \| window \| space \| wall \| material-takeoff` — default `--type`/`--columns` (and a default sort/group for `space`/`material-takeoff`); an explicit flag overrides the preset's corresponding default |
+| `--format <fmt>` | `csv` (default), `json`, `md`, or `html` |
+| `--spec <file.json>` | Load a reusable schedule definition (`type`/`columns`/`where`/`sort`/`groupBy`/`subtotals`/`format`, plus an optional `preset` to start from); same override priority as `--preset` |
+| `--save <file.json>` | Write the schedule definition this invocation resolved to (after any `--preset`/`--spec` defaults are folded in), so it's self-contained and reloadable with `--spec` alone |
+
+A missing value is an empty CSV/Markdown cell or a JSON `null`. CSV/Markdown/HTML cells are escaped for their format (RFC-4180 CSV escaping with a formula-injection guard, `|`/backslash/newline escaping for Markdown, full HTML-entity escaping for HTML), since model text is untrusted.
+
+---
+
 ### `diagnose-geometry` - Geometry Diagnostics
 
 Run geometry extraction headlessly and report CSG / opening diagnostics: opening classification, per-reason failure breakdown, fast-path engagement, and the worst-failing host elements. This is the same diagnostics contract the viewer and server surface.

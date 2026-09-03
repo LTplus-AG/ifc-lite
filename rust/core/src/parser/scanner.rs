@@ -128,10 +128,10 @@ impl<'a> EntityScanner<'a> {
         // matched TypeScript half is `skipTrivia` in
         // `packages/parser/src/step-lexing.ts`; change the two together.
         //
-        // Both checks together keep `next_entity` aligned with
-        // `build_entity_index` which is comment-blind today; if a stray
-        // comment-bound entity slips past the scanner, the index also
-        // ignores it, so the entity decoder + scanner stay consistent.
+        // Both checks together are what `build_entity_index` (`decoder.rs`)
+        // relies on for its own comment-awareness: it is a bare loop over
+        // `next_entity`, not a separate scan, so it inherits this method's
+        // comment handling directly rather than needing to duplicate it.
         let bytes = self.bytes;
         let len = bytes.len();
         // Outer loop so a record this scanner refuses (an oversized

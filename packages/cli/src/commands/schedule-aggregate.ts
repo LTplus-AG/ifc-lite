@@ -21,7 +21,7 @@ import { fatal } from '../output.js';
 import { aggregateFinite, type NumericAggMode } from './query-aggregation.js';
 import type { ScheduleColumn } from './schedule-columns.js';
 import type { ScheduleRow } from './schedule-render.js';
-import { cellToNumber, type GroupKey } from './schedule-group.js';
+import { cellToNumber, cellCanonicalKey, columnMode, type CellMode, type GroupKey } from './schedule-group.js';
 
 export type SubtotalMode = 'count' | NumericAggMode;
 
@@ -105,15 +105,19 @@ function computeValues(rows: ScheduleRow[], aggs: SubtotalAgg[]): SubtotalValue[
   });
 }
 
-/** True when two rows share every group key value (contiguous-group boundary test). */
-function sameGroup(a: ScheduleRow, b: ScheduleRow, groupKeys: GroupKey[]): boolean {
+/**
+ * True when two rows share every group key value (contiguous-group boundary
+ * test). Uses the SAME `cellCanonicalKey`/`columnMode` canonicalisation
+ * `orderRows` groups by (`schedule-group.ts`) — a raw `String(value)`
+ * comparison here used to disagree with the sorter's numeric/nullish
+ * equivalences ('1' vs '1.0', `null` vs a whitespace-only string), splitting
+ * one contiguous run the sorter placed together into two separate groups
+ * with repeated "Subtotal (...)" headings.
+ */
+function sameGroup(a: ScheduleRow, b: ScheduleRow, groupKeys: GroupKey[], modeByIndex: Map<number, CellMode>): boolean {
   return groupKeys.every(g => {
-    const av = a[g.index];
-    const bv = b[g.index];
-    // Normalise nullish so `null`/`undefined`/'' fall in one group.
-    const an = av == null ? '' : String(av);
-    const bn = bv == null ? '' : String(bv);
-    return an === bn;
+    const mode = modeByIndex.get(g.index)!;
+    return cellCanonicalKey(a[g.index], mode) === cellCanonicalKey(b[g.index], mode);
   });
 }
 
@@ -127,9 +131,12 @@ export function buildSubtotalPlan(rows: ScheduleRow[], groupKeys: GroupKey[], ag
   const groups: SubtotalPlan['groups'] = [];
 
   if (groupKeys.length > 0) {
+    // Decide each group column's mode once, from the full row set — the same
+    // canonicalisation `orderRows` used to make these rows contiguous.
+    const modeByIndex = new Map<number, CellMode>(groupKeys.map(g => [g.index, columnMode(rows, g.index)]));
     let start = 0;
     for (let i = 1; i <= rows.length; i++) {
-      if (i === rows.length || !sameGroup(rows[start], rows[i], groupKeys)) {
+      if (i === rows.length || !sameGroup(rows[start], rows[i], groupKeys, modeByIndex)) {
         const groupRows = rows.slice(start, i);
         const groupValues = groupKeys.map(g => ({ header: g.header, index: g.index, value: groupRows[0][g.index] }));
         groups.push({

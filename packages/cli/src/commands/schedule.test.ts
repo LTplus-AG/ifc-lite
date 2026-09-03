@@ -287,6 +287,25 @@ describe('parseSortSpec / orderRows (pure)', () => {
       ['a', 5, 'second'],
     ]);
   });
+
+  /**
+   * Bug: compareCell used to decide numeric-vs-string PER PAIR ("both cells
+   * individually numeric" -> numeric, else string). That is intransitive
+   * once a column mixes clean numbers with a non-numeric string: 2 vs 10
+   * compares numerically (2 < 10), but 2 vs '1x' falls back to string
+   * compare ('1x' vs '2' lexically), so the overall order depends on
+   * comparison order rather than forming one consistent ranking — the
+   * textbook Array.sort() hazard for a non-transitive comparator. Deciding
+   * the mode once per COLUMN (numeric only when every non-blank cell in it
+   * parses as a number) fixes this: '1x' makes the whole column a string
+   * sort, matching a plain localeCompare oracle over every value exactly.
+   */
+  it('decides numeric-vs-string per COLUMN, not per compared pair (fixes an intransitive sort)', () => {
+    const rows: ScheduleRow[] = [['2'], ['10'], ['1x'], ['3']];
+    const sorted = orderRows(rows, parseSortSpec('V', cols), []);
+    const oracle = ['2', '10', '1x', '3'].slice().sort((a, b) => a.localeCompare(b));
+    expect(sorted.map(r => r[0])).toEqual(oracle);
+  });
 });
 
 describe('parseGroupBySpec / orderRows grouping (pure)', () => {
@@ -303,6 +322,46 @@ describe('parseGroupBySpec / orderRows grouping (pure)', () => {
     const groupKeys = parseGroupBySpec('G', cols);
     const sortKeys = parseSortSpec('G:desc', cols);
     expect(orderRows(rows, sortKeys, groupKeys)).toEqual([['b'], ['b'], ['a'], ['a']]);
+  });
+});
+
+describe('group-boundary canonicalisation agrees with the sorter (pure)', () => {
+  const cols = [{ header: 'G', path: 'G' }, { header: 'V', path: 'V' }];
+
+  /**
+   * Bug: orderRows' compareCell treats '1' and '1.0' as numerically equal
+   * (both parse to 1), so they land adjacent and contiguous after
+   * ordering — but buildSubtotalPlan's sameGroup compared the RAW
+   * `String(value)` ('1' !== '1.0'), splitting one conceptual group into
+   * two separate contiguous runs and emitting two "Subtotal (G=...)"
+   * headings for what a numeric column treats as one group.
+   */
+  it('a numeric-looking column groups "1" and "1.0" as ONE group, not two', () => {
+    const rows: ScheduleRow[] = [['1', 'a'], ['1.0', 'b'], ['2', 'c']];
+    const groupKeys = parseGroupBySpec('G', cols);
+    const ordered = orderRows(rows, [], groupKeys);
+    const aggs = parseSubtotalsSpec('count', cols);
+    const plan = buildSubtotalPlan(ordered, groupKeys, aggs);
+    expect(plan.groups).toHaveLength(2); // {1, 1.0} together, {2} alone
+    expect(plan.groups[0].rows).toHaveLength(2);
+    expect(plan.groups[0].subtotal.groupValues[0].value).toBe('1');
+  });
+
+  /**
+   * Bug companion: compareCell's `isNullish` treats `null` and a
+   * whitespace-only string as the SAME "sorts last" bucket (so they end up
+   * adjacent), but sameGroup's raw `String(value)` treated `null` ('') and
+   * `'   '` as different keys, splitting them into two subtotal groups.
+   */
+  it('groups null and a whitespace-only cell together as one blank group', () => {
+    const rows: ScheduleRow[] = [[null, 'a'], ['   ', 'b'], ['x', 'c']];
+    const groupKeys = parseGroupBySpec('G', cols);
+    const ordered = orderRows(rows, [], groupKeys);
+    const aggs = parseSubtotalsSpec('count', cols);
+    const plan = buildSubtotalPlan(ordered, groupKeys, aggs);
+    expect(plan.groups).toHaveLength(2); // {null, '   '} together, {'x'} alone
+    const blankGroup = plan.groups.find(g => g.rows.length === 2)!;
+    expect(blankGroup.rows).toHaveLength(2);
   });
 });
 

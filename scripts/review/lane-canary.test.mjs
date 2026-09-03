@@ -162,6 +162,14 @@ test('THE CANARY RUNS THE LANE\'S REAL PIPELINE, not a shortcut past it', () => 
   }
 });
 
+test('#3808: the live canary passes every review fallback credential', () => {
+  const workflow = readFileSync(join(HERE, '..', '..', '.github/workflows/review-lane-canary.yml'), 'utf8');
+  const step = workflow.split('- name: Ask the reviewer for a known answer')[1]?.split('- name: Raise or update')[0] ?? '';
+  for (const secret of ['CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN_2', 'OPENAI_API_KEY']) {
+    assert.match(step, new RegExp(`${secret}:\\s*\\$\\{\\{\\s*secrets\\.${secret}\\s*\\}\\}`));
+  }
+});
+
 test('THE FIXTURE PASSES THE VALIDATOR THE LANE ACTUALLY RUNS, and it can still refuse', () => {
   // The canary's third failure was a fixture the pipeline refused before the
   // reviewer's verdict could be judged: `headSha` was `canary000...ca`, which

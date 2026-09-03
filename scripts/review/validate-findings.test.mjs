@@ -1083,9 +1083,14 @@ test('RED, shape 3: a `//!` doc-comment quoted without its marker', () => {
 test('GREEN: the retry prompt fences the failure and asks for a DIFFERENT real line', () => {
   const p = buildPrompt('RUBRIC', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.' });
   assert.match(p, /## This is a RETRY/);
-  assert.match(p, /<<<UNTRUSTED-DIFF-[0-9a-f]{18}/, 'the prior failure text is fenced, not trusted');
-  assert.match(p, /PROOF_OF_WORK_FAILED: quote a WHOLE line\./);
-  assert.match(p, /Nominate a DIFFERENT real line/);
+  // The diff is always fenced, so a prompt-wide fence match proves nothing
+  // about the retry note. Isolate the retry section and require the failure
+  // text to sit INSIDE its own opener/closer pair.
+  const retry = p.slice(p.indexOf('## This is a RETRY'));
+  const fenced = /<<<UNTRUSTED-DIFF-([0-9a-f]{18})\n([\s\S]*?)\nUNTRUSTED-DIFF-\1>>>/.exec(retry);
+  assert.ok(fenced, 'the retry section carries its own nonce fence');
+  assert.match(fenced[2], /PROOF_OF_WORK_FAILED: quote a WHOLE line\./, 'the prior failure text is inside the retry fence, not trusted');
+  assert.match(retry, /Nominate a DIFFERENT real line/);
   // No retryNote (the normal, non-retry call): no retry section at all.
   const first = buildPrompt('RUBRIC', INPUT);
   assert.doesNotMatch(first, /## This is a RETRY/);

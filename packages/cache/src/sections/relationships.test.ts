@@ -93,7 +93,7 @@ describe('shadowed rel ids survive a cache round-trip (#3782)', () => {
     const writer = new BufferWriter();
     writeRelationships(writer, graph);
     const reader = new BufferReader(writer.build());
-    const roundTripped = readRelationships(reader);
+    const roundTripped = readRelationships(reader, 18);
 
     const edge = roundTripped.forward.getEdges(200, RelationshipType.ContainsElements)[0];
     expect(edge.relationshipId).toBe(5001);
@@ -113,7 +113,7 @@ describe('shadowed rel ids survive a cache round-trip (#3782)', () => {
     const writer = new BufferWriter();
     writeRelationships(writer, graph);
     const reader = new BufferReader(writer.build());
-    const roundTripped = readRelationships(reader);
+    const roundTripped = readRelationships(reader, 18);
 
     const edge = roundTripped.forward.getEdges(200, RelationshipType.ContainsElements)[0];
     expect(edgeSurvives(edge, (id) => id === 5001)).toBe(true); // 5002 still alive
@@ -154,7 +154,7 @@ describe('shadowed rel ids survive a cache round-trip (#3782)', () => {
 });
 
 /**
- * `readEdges`'s v17 shadow-id trailer had the SAME gap the (offset, count)
+ * `readEdges`'s v18 shadow-id trailer had the SAME gap the (offset, count)
  * guard above closed for the base edge arrays: `readUint32Array` bounds-
  * checks against the buffer's remaining bytes, not against whether the
  * VALUES it read are internally consistent. Probed against `getEdges`'s
@@ -173,7 +173,7 @@ describe('shadowed-rel-ids trailer corruption guard (#3782 round 3)', () => {
    *  validated against. Inverse half is empty and well-formed. The shadow
    *  trailer itself is exactly what `opts` supplies, unvalidated by this
    *  helper — the corruption under test. */
-  function buildV17Buffer(opts: {
+  function buildV18Buffer(opts: {
     shadowedEdgeIndex: number[];
     shadowedGroupOffsets: number[];
     shadowedRelIds: number[];
@@ -204,59 +204,59 @@ describe('shadowed-rel-ids trailer corruption guard (#3782 round 3)', () => {
   }
 
   it('accepts a well-formed multi-group trailer (sanity check for the helper below)', () => {
-    const buf = buildV17Buffer({
+    const buf = buildV18Buffer({
       shadowedEdgeIndex: [0, 1],
       shadowedGroupOffsets: [0, 1, 3],
       shadowedRelIds: [7001, 8001, 8002],
     });
     const reader = new BufferReader(buf);
-    const graph = readRelationships(reader, 17);
+    const graph = readRelationships(reader, 18);
     expect(graph.forward.getEdges(1, RelationshipType.ContainsElements)[0].shadowedRelationshipIds).toEqual([7001]);
     expect(graph.forward.getEdges(1, RelationshipType.ContainsElements)[1].shadowedRelationshipIds).toEqual([8001, 8002]);
   });
 
   it('rejects a non-ascending shadowedEdgeIndex (would attach an id to the wrong edge)', () => {
-    const buf = buildV17Buffer({
+    const buf = buildV18Buffer({
       shadowedEdgeIndex: [1, 0],
       shadowedGroupOffsets: [0, 1, 2],
       shadowedRelIds: [7777, 8888],
     });
-    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+    expect(() => readRelationships(new BufferReader(buf), 18)).toThrow(/Corrupt cache RelationshipGraph/);
   });
 
   it('rejects a shadowedGroupOffsets tail that does not match shadowedRelIds.length (silent clamp)', () => {
-    const buf = buildV17Buffer({
+    const buf = buildV18Buffer({
       shadowedEdgeIndex: [0],
       shadowedGroupOffsets: [0, 99],
       shadowedRelIds: [7777],
     });
-    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+    expect(() => readRelationships(new BufferReader(buf), 18)).toThrow(/Corrupt cache RelationshipGraph/);
   });
 
   it('rejects a shadowedEdgeIndex entry past edgeCount (the group becomes unreachable)', () => {
-    const buf = buildV17Buffer({
+    const buf = buildV18Buffer({
       shadowedEdgeIndex: [99],
       shadowedGroupOffsets: [0, 1],
       shadowedRelIds: [7777],
     });
-    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+    expect(() => readRelationships(new BufferReader(buf), 18)).toThrow(/Corrupt cache RelationshipGraph/);
   });
 
   it('rejects shadowedGroupOffsets not starting at 0', () => {
-    const buf = buildV17Buffer({
+    const buf = buildV18Buffer({
       shadowedEdgeIndex: [0],
       shadowedGroupOffsets: [1, 2],
       shadowedRelIds: [7777],
     });
-    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+    expect(() => readRelationships(new BufferReader(buf), 18)).toThrow(/Corrupt cache RelationshipGraph/);
   });
 
   it('rejects an empty group (two equal neighbouring offsets)', () => {
-    const buf = buildV17Buffer({
+    const buf = buildV18Buffer({
       shadowedEdgeIndex: [0, 1],
       shadowedGroupOffsets: [0, 0, 1],
       shadowedRelIds: [7777],
     });
-    expect(() => readRelationships(new BufferReader(buf), 17)).toThrow(/Corrupt cache RelationshipGraph/);
+    expect(() => readRelationships(new BufferReader(buf), 18)).toThrow(/Corrupt cache RelationshipGraph/);
   });
 });

@@ -9,7 +9,6 @@
 import type { RelationshipGraph, Edge, RelationshipInfo } from '@ifc-lite/data';
 import { RelationshipType, binarySearchU32 } from '@ifc-lite/data';
 import { BufferWriter, BufferReader } from '../utils/buffer-utils.js';
-import { FORMAT_VERSION } from '../types.js';
 
 /**
  * Write RelationshipGraph to buffer
@@ -92,8 +91,15 @@ function writeEdges(
  * FORMAT_VERSION — v17 sections have no shadow-id trailer (see
  * `writeEdges`'s doc comment); pass the header's actual version so a v17
  * section isn't misread as a v18+ one.
+ *
+ * Required, not defaulted to `FORMAT_VERSION`: a forgotten argument would
+ * silently read every buffer as the CURRENT version, the unsafe direction —
+ * a real v17 blob would be misread as v18 and hit `validateShadowedColumns`
+ * on bytes that were never written as a trailer at all (#3782 round 3
+ * review). `reader.ts`'s only call site already threads `header.version`
+ * through.
  */
-export function readRelationships(reader: BufferReader, version: number = FORMAT_VERSION): RelationshipGraph {
+export function readRelationships(reader: BufferReader, version: number): RelationshipGraph {
   const forward = readEdges(reader, version);
   const inverse = readEdges(reader, version);
 

@@ -145,7 +145,7 @@ describe('expandToGeometryBearingIds', () => {
         : { modelId: 'A', expressId: globalId },
     relationshipsFor: (modelId) =>
       modelId === 'A'
-        ? makeRelationships({ 10: [11, 12] })
+        ? makeRelationships({ 10: [11, 12], 20: [21, 22] })
         : modelId === 'B'
           ? makeRelationships({ 10: [11] })
           : undefined,
@@ -175,6 +175,28 @@ describe('expandToGeometryBearingIds', () => {
 
   it('dedups when an assembly and one of its parts are both selected', () => {
     assert.deepStrictEqual(expandToGeometryBearingIds([11, 10], hasGeometry, access), [11, 12]);
+  });
+
+  // #3426, correcting #3382: `hasGeometry` is a point-in-time mesh/bounds
+  // check — during streaming, or behind a type-visibility filter, it says
+  // "no" for a part that legitimately has geometry and just hasn't rendered
+  // YET. Assembly 20's parts (21, 22) are neither in `meshed`.
+  it('falls back to ALL aggregated parts when none of them currently render (#3426)', () => {
+    assert.deepStrictEqual(expandToGeometryBearingIds([20], hasGeometry, access), [21, 22]);
+  });
+
+  it('the #3426 fallback still dedups and composes with an ordinary meshed id', () => {
+    assert.deepStrictEqual(
+      expandToGeometryBearingIds([20, 14], hasGeometry, access),
+      [21, 22, 14],
+    );
+  });
+
+  // Control: an entity with NO aggregated descendants at all (13) is still
+  // dropped — the #3426 fallback only helps an id that HAS parts to expand
+  // to; there is nothing here to expand id 13 into.
+  it('control: an entity with no aggregated descendants at all is still dropped', () => {
+    assert.deepStrictEqual(expandToGeometryBearingIds([13], hasGeometry, access), []);
   });
 
   // frameSelection and resolveHighlightIds live in a useImperativeHandle

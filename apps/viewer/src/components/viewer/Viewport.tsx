@@ -1016,12 +1016,19 @@ export function Viewport({
         const geom = geometryRef.current;
         if (!geom) return [];
         const hasGeometry = (id: number) => boundsOf(id) !== null;
-        return expandToGeometryBearingIds(ids, hasGeometry, {
+        const resolved = expandToGeometryBearingIds(ids, hasGeometry, {
           resolve: resolveEntityRef,
           relationshipsFor: relationshipsForModel,
           toGlobalId: (modelId, expressId) =>
             toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId),
         });
+        // Empty here + streaming finished means truly nothing to expand to
+        // (#3426 residual — see aggregation.ts's doc on the fallback above).
+        // Gated on streaming so the ordinary "hasn't arrived yet" case is silent.
+        if (resolved.length === 0 && ids.length > 0 && !isGeometryLoadStreaming(useViewerStore.getState())) {
+          console.warn('[Viewport] resolveHighlightIds: nothing renderable for', ids);
+        }
+        return resolved;
       };
 
       // Register camera callbacks for ViewCube and other controls

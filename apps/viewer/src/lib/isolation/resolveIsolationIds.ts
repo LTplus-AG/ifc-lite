@@ -26,9 +26,11 @@
  *   - their meshes have not streamed in yet (`filteredGeometry` is non-null
  *     from the FIRST batch and grows incrementally, so a mesh that has not
  *     arrived reads exactly like one that does not exist);
- *   - they are genuinely geometry-less with no renderable aggregated part.
+ *   - they are geometry-less but have `IfcRelAggregates` parts that will
+ *     render (an `IfcElementAssembly` and the like);
+ *   - they are genuinely geometry-less with no aggregated part at all.
  *
- * Only the third deserves "do nothing". Treating all three that way makes an
+ * Only the last deserves "do nothing". Treating all four that way makes an
  * IDS/lens/SDK/embed isolate of a hidden-type set a silent no-op, which is why
  * `PropertiesPanel.tsx`'s zone isolate (#1075) and `SearchModal.filter.tsx`'s
  * "Isolate in 3D" (#2660) both keep the raw ids on an empty resolve — the
@@ -38,13 +40,28 @@
  * starts showing the right thing as soon as the toggle flips or the batch
  * lands.
  *
- * The residual gap, stated rather than papered over: for the third situation
- * this still isolates a set with no mesh in it and the viewport goes blank
- * (#3426). Closing that needs a resolver that can see UNFILTERED geometry and
- * so can say "geometry is in and nothing here renders" as a fact distinct from
- * `[]`; that is Viewport/ViewportContainer plumbing, not a policy this
- * function can infer. What is fixed here is #3338: an assembly whose parts DO
- * render now contributes those parts in every channel that routes through here.
+ * #3426, correcting #3382: the third situation used to fall all the way back
+ * to the raw ids too, which converts one empty viewport (isolating `[]`) into
+ * a DIFFERENT empty viewport (isolating a geometry-less id with no mesh) —
+ * the assembly's own id never matches anything, streamed or not. Closed in
+ * `expandToGeometryBearingIds` (`utils/aggregation.ts`), which
+ * `resolveHighlightIds` (`Viewport.tsx`) is built on: when none of an
+ * assembly's aggregated parts currently render, it now falls back to ALL of
+ * them (not just the currently-meshed ones) instead of dropping the id — so
+ * this module receives a non-empty `resolved` for that case and unions it in
+ * exactly as it already does for an ordinary element.
+ *
+ * The residual gap, stated rather than papered over: the fourth situation — no
+ * geometry AND no aggregated descendant at all — has nothing to expand to;
+ * this still unions in the bare raw id and the viewport goes blank, with no
+ * distinguishing signal available at this layer (this function only ever sees
+ * ids, not the model graph). `resolveRenderableIds` in `Viewport.tsx` is where
+ * that distinction IS visible (it already resolved-and-found-nothing), so it
+ * is what surfaces a console warning once streaming has finished — see the
+ * comment there. What is fixed here is #3338 (assembly parts contributed
+ * through every channel) and, now, the third row of #3426 (geometry-less WITH
+ * parts). The fourth row (geometry-less, no parts) is the one case a resolver
+ * genuinely cannot help with, because there is nothing to resolve to.
  */
 export function resolveIsolationIds(
   resolver: ((ids: number[]) => number[]) | undefined,

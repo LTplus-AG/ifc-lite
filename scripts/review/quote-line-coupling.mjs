@@ -22,6 +22,10 @@
 // must agree, computed twice, agreeing with each other only until a hunk that
 // does not start at line 1 shows they never did. See `addedLinesMatching` below.
 import { newFileLines } from './build-review-input.mjs';
+// The SAME classifier `newFileLines` uses (#3802). Two independent answers to
+// "is this line a file header" is the shape one layer up from the one this file
+// exists to close.
+import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 
 /**
  * The lines of a unified diff a quote may legitimately come from, each with its
@@ -39,12 +43,23 @@ import { newFileLines } from './build-review-input.mjs';
  */
 export function quotableLines(patch) {
   const out = [];
+  // BY POSITION, NOT BY PREFIX. `---`/`+++` are file headers only BEFORE the
+  // first `@@`; after it they are content that happens to start the same way --
+  // a deleted `-- old sql comment` is the raw line `--- old sql comment`, and an
+  // added `++ new sql comment` is `+++ new sql comment`. #3802 moved
+  // `newFileLines` onto this rule and left this function on the prefix, so the
+  // two halves of one check disagreed about the same diff: `addedLinesMatching`
+  // would anchor a finding that `quoteAppearsIn` then refused as metadata.
+  let insideHunk = false;
   for (const line of String(patch).split(/\r?\n/)) {
     // Hunk headers, file headers and the no-newline note are diff METADATA. A
     // model that quotes one has demonstrated nothing about the code.
-    if (line.startsWith('@@') || line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('\\')) {
+    const kind = unifiedDiffLineKind(line, insideHunk);
+    if (kind === 'hunk') {
+      insideHunk = true;
       continue;
     }
+    if (kind === 'metadata' || kind === 'header') continue;
     const marker = line[0];
     const body = marker === '+' || marker === '-' || marker === ' ' ? line.slice(1) : line;
     const trimmed = body.trim();

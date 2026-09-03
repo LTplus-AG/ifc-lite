@@ -1504,3 +1504,37 @@ test('a HOSTILE overlong path is cut unambiguously, and the cut stays defanged',
   const straddling = sanitizePath(`${'y'.repeat(490)}ifc-lite-review${'z'.repeat(600)}`);
   assert.ok(!straddling.includes('<!--') && !straddling.includes('ifc-lite-review'), 'defanging survives the cut');
 });
+
+test('quotableLines classifies diff headers by hunk POSITION, like newFileLines (#3634)', () => {
+  // #3802 moved `newFileLines` onto `unifiedDiffLineKind`, which decides by
+  // position -- `---`/`+++` are file headers only BEFORE the first `@@`. It left
+  // `quotableLines` deciding by prefix, so the two halves of one check disagree
+  // about the same diff: `addedLinesMatching` anchors a finding on an added
+  // `++ new sql comment here` (raw `+++ new sql comment here`) that
+  // `quoteAppearsIn` then refuses as metadata, and the mirror case drops a
+  // deleted `-- old sql comment here`.
+  const patch = [
+    'diff --git a/schema.sql b/schema.sql',
+    '--- a/schema.sql',
+    '+++ b/schema.sql',
+    '@@ -1,2 +1,3 @@',
+    ' CREATE TABLE t (id INT);',
+    // Their RAW diff lines are byte-for-byte the shape of a file header; only
+    // their position, after the `@@`, says they are content.
+    '--- old sql comment here',
+    '+++ new sql comment here',
+  ].join('\n');
+
+  const lines = quotableLines(patch);
+  assert.ok(lines.includes('++ new sql comment here'), lines.join(' | '));
+  assert.ok(lines.includes('-- old sql comment here'), lines.join(' | '));
+  assert.equal(quoteAppearsIn(patch, '++ new sql comment here', 8), true);
+  assert.equal(quoteAppearsIn(patch, '-- old sql comment here', 8), true);
+
+  // THE TWO HALVES NOW AGREE, which is the point rather than a side effect.
+  assert.deepEqual(addedLinesMatching(patch, '++ new sql comment here'), [2]);
+
+  // The real headers are still metadata, because they still sit before the hunk.
+  assert.ok(!lines.includes('a/schema.sql'), lines.join(' | '));
+  assert.ok(!lines.includes('b/schema.sql'), lines.join(' | '));
+});

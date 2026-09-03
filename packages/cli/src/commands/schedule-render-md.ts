@@ -19,6 +19,20 @@
  * break). The backslash introduced by the `|` escape is itself escaped first
  * so a value already containing a backslash can't produce an unintended
  * escape sequence.
+ *
+ * Contract, and how it differs from `schedule-render-html.ts`: this renderer
+ * does NOT HTML-escape (`&`/`<`/`>`/`"`/`'` pass through verbatim) — only
+ * table-structure characters are neutralised. That is deliberate, not an
+ * oversight: GFM's own spec renders inline HTML in a cell, so escaping `<`
+ * would defeat legitimate uses (e.g. a deliberate `<br>`) without this tool's
+ * involvement being what makes the difference. It is safe in THIS codebase
+ * because the output only ever reaches `process.stdout` in `schedule.ts` —
+ * nothing here writes it to a file or hands it to an HTML-rendering pipeline.
+ * A caller who pipes this Markdown into a raw-HTML-enabled renderer (e.g.
+ * `remark`+`rehype-raw` with no sanitize schema) is responsible for treating
+ * cell content as untrusted model text and sanitising it there — the same way
+ * `escapeHtml` in `schedule-render-html.ts` treats it as untrusted for a
+ * renderer that unconditionally executes markup.
  */
 
 import { columnValueToCsv } from './export.js';

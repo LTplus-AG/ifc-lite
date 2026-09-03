@@ -19,6 +19,14 @@
  * every cell — headers included — is escaped: `&` first (so escaping the
  * other characters doesn't get re-escaped), then `<`, `>`, `"`, `'`. Subtotal
  * rows carry a `class` for CSS hooks, not to change escaping.
+ *
+ * Contract, and how it differs from `schedule-render-md.ts`: THIS renderer's
+ * output is a document a browser executes as HTML the moment it's opened, so
+ * full HTML-escaping is mandatory here — unlike the Markdown renderer, which
+ * only neutralises table-structure characters and deliberately leaves inline
+ * HTML in a cell alone (GFM permits it). Both renderers treat cell content as
+ * untrusted; they differ because their output has a different execution
+ * model.
  */
 
 import { columnValueToCsv } from './export.js';

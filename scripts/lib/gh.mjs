@@ -5,10 +5,10 @@
 /**
  * One fail-closed `gh` invoker, and an honest count of what it consolidates.
  *
- * Against `origin/main` there are THREE prior `gh` callers, not four. An earlier
- * draft of this comment said four and named `check-issue-queue.mjs`, which exists
- * only on an unmerged sibling branch -- a justification resting on a population
- * one member short. Corrected rather than quietly dropped, because a docblock
+ * Against `origin/main` at the time this shipped there were THREE prior `gh`
+ * callers, not four. An earlier draft of this comment said four and named
+ * `check-issue-queue.mjs`, which exists only on an unmerged sibling branch -- a
+ * justification resting on a population one member short. Corrected rather than quietly dropped, because a docblock
  * that overstates its own evidence is the thing this repository's gates exist to
  * catch, and it does not stop applying to the gates themselves.
  *
@@ -28,6 +28,15 @@
  *     `gh` callable so the module stays pure, which its own docblock states as a
  *     design choice. It is STRUCTURALLY INCOMPATIBLE with a module that spawns
  *     and parses internally, and should stay that way.
+ *
+ * FOURTH CALLER, added by #3726. `check-base-freshness.mjs` routes its five
+ * JSON reads through this function and keeps a local raw-stdout spawner
+ * (`ghText`) for three that cannot come here: two `--jq` NDJSON walks, which
+ * want the text because `--jq` and `--slurp` are mutually exclusive in gh, and
+ * a `--silent` label write whose stdout is empty by design. That is a genuine
+ * gap in this module -- there is no raw-text mode -- rather than an oversight
+ * at the call site, and it is recorded here so the next caller does not
+ * rediscover it.
  *
  * THE ONE RULE: every failure throws. A `gh` call that cannot be made, exits
  * non-zero, or returns unparseable output must never be reported as an empty

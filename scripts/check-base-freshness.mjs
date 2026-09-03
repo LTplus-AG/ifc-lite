@@ -62,9 +62,12 @@ import { dirname, resolve } from 'node:path';
 import {
   discoverSnapshots,
   evaluateFreshness,
+  formatSweepSummary,
   formatVerdict,
   rowsChangedInPatch,
 } from './lib/base-freshness.mjs';
+import { gh as ghJson } from './lib/gh.mjs';
+import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const STALE_LABEL = 'base-stale';
@@ -101,12 +104,15 @@ const SNAPSHOT_FLOOR = 3;
  * its own outcome rather than being quietly treated as "nothing moved".
  */
 
-function gh(args) {
-  return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-}
-
-function ghJson(path) {
-  return JSON.parse(gh(['api', path]));
+/**
+ * Raw `gh` stdout, for the three reads `lib/gh.mjs` cannot serve: it always
+ * `JSON.parse`s, and these want the text. Two are `--jq` NDJSON walks (one
+ * object per line, because `--jq` and `--slurp` are mutually exclusive in gh)
+ * and the third is a `--silent` label write whose stdout is empty by design.
+ * Every JSON read here goes through the shared invoker instead.
+ */
+function ghText(args) {
+  return execFileSync('gh', args, { encoding: 'utf8', maxBuffer: 128 * 1024 * 1024 });
 }
 
 function git(args) {
@@ -141,13 +147,7 @@ function isRepoFile(p) {
 }
 
 function loadSnapshots() {
-  const tracked = execFileSync('git', ['ls-files'], {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    maxBuffer: 64 * 1024 * 1024,
-  })
-    .split('\n')
-    .filter(Boolean);
+  const tracked = git(['ls-files']).split('\n').filter(Boolean);
 
   const snapshots = discoverSnapshots({
     trackedFiles: tracked,
@@ -168,7 +168,10 @@ function loadSnapshots() {
 /** The base the PR's checks actually ran against, best-effort. */
 function testedBase(repo, pr, mainTip) {
   try {
-    const runs = ghJson(`repos/${repo}/commits/${pr.headRefOid}/check-runs?per_page=100`);
+    const runs = ghJson(
+      ['api', `repos/${repo}/commits/${pr.headRefOid}/check-runs?per_page=100`],
+      `the check runs on PR #${pr.number}'s head`,
+    );
     for (const run of runs.check_runs ?? []) {
       const base = run.pull_requests?.[0]?.base?.sha;
       if (base) return { sha: base, source: 'check-suite' };
@@ -176,20 +179,43 @@ function testedBase(repo, pr, mainTip) {
   } catch {
     // Falls through to the merge-base, which over-reports rather than hides.
   }
-  const cmp = ghJson(`repos/${repo}/compare/${mainTip}...${pr.headRefOid}`);
+  const cmp = ghJson(
+    ['api', `repos/${repo}/compare/${mainTip}...${pr.headRefOid}`],
+    `the merge base of PR #${pr.number} and main`,
+  );
   return { sha: cmp.merge_base_commit.sha, source: 'merge-base' };
 }
 
-function prChangedFiles(repo, number) {
-  return gh([
+/**
+ * The PR's changed files, plus the rows it moved in each snapshot it touches.
+ *
+ * The rows cost NOTHING extra: `pulls/:n/files` already returns each file's
+ * `patch`, and this used to discard it. Asking for it is what lets the
+ * `pr-recorded` direction be row-granular instead of whole-file -- see the
+ * measurement in `evaluateFreshness`.
+ */
+function prChanges(repo, number, snapshotPaths) {
+  const rows = ghText([
     'api',
     '--paginate',
     `repos/${repo}/pulls/${number}/files?per_page=100`,
     '--jq',
-    '.[].filename',
+    '.[] | {filename, patch}',
   ])
     .split('\n')
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
+
+  const prFiles = rows.map((f) => f.filename);
+  const rowsChangedInPr = new Map();
+  for (const f of rows) {
+    // A snapshot big enough for GitHub to omit `patch` falls through to the
+    // whole pinned set, which over-reports. That direction is visible and
+    // arguable; an omission would be neither.
+    if (!snapshotPaths.has(f.filename) || !f.patch) continue;
+    rowsChangedInPr.set(f.filename, rowsChangedInPatch(f.patch, isRepoFile));
+  }
+  return { prFiles, rowsChangedInPr };
 }
 
 /**
@@ -220,17 +246,15 @@ function evaluatePr(repo, pr, mainTip, snapshots) {
   // indistinguishable from "nothing moved" once it reaches the verdict. So it
   // is its own outcome, named, rather than an OK nobody can audit.
   if (!haveCommit(base.sha)) {
-    return {
-      pr: pr.number,
-      baseSha: base.sha,
-      baseSource: base.source,
-      commitsBehind: null,
-      movedFileCount: 0,
-      result: {
-        stale: true,
-        couplings: [{ snapshot: null, direction: 'unfetched', overlap: [] }],
-      },
-    };
+    // Routed to the SAME unevaluated outcome as any other failure to look,
+    // rather than being reported STALE. Labelling a PR because this checkout
+    // is shallow blames the PR for the sweep's depth: from a `--depth 1`
+    // clone every PR came back STALE and was told to "rebase and re-record",
+    // which is advice about the wrong repository.
+    throw new Error(
+      `its tested base ${base.sha.slice(0, 9)} is not in this checkout, so no diff could be ` +
+        'taken -- deepen the checkout (fetch-depth: 0) or rebase the PR'
+    );
   }
 
   const commitsBehind = Number(
@@ -240,21 +264,26 @@ function evaluatePr(repo, pr, mainTip, snapshots) {
   const snapshotPaths = new Set(snapshots.map((s) => s.path));
   const { movedFiles, rowsChangedOnMain } = movedSince(base.sha, mainTip, snapshotPaths);
 
-  const prFiles = prChangedFiles(repo, pr.number);
+  const { prFiles, rowsChangedInPr } = prChanges(repo, pr.number, snapshotPaths);
   return {
     pr: pr.number,
     baseSha: base.sha,
-    baseSource: base.source,
     commitsBehind,
     movedFileCount: movedFiles.length,
-    result: evaluateFreshness({ prFiles, movedFiles, snapshots, rowsChangedOnMain }),
+    result: evaluateFreshness({
+      prFiles,
+      movedFiles,
+      snapshots,
+      rowsChangedOnMain,
+      rowsChangedInPr,
+    }),
   };
 }
 
 function syncLabel(repo, number, stale) {
   try {
     if (stale) {
-      gh([
+      ghText([
         'api',
         `repos/${repo}/issues/${number}/labels`,
         '--method',
@@ -264,7 +293,7 @@ function syncLabel(repo, number, stale) {
         '--silent',
       ]);
     } else {
-      gh([
+      ghText([
         'api',
         `repos/${repo}/issues/${number}/labels/${STALE_LABEL}`,
         '--method',
@@ -289,12 +318,11 @@ function summarize(lines) {
 }
 
 function parseArgs(argv) {
-  const opts = { all: false, pr: null, label: false, fromJson: null, json: false };
+  const opts = { all: false, pr: null, label: false, fromJson: null };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--all') opts.all = true;
     else if (arg === '--label') opts.label = true;
-    else if (arg === '--json') opts.json = true;
     else if (arg === '--pr') opts.pr = Number(argv[++i]);
     else if (arg === '--from-json') opts.fromJson = argv[++i];
     else {
@@ -323,6 +351,9 @@ function main() {
       rowsChangedOnMain: new Map(
         Object.entries(input.rowsChangedOnMain ?? {}).map(([k, v]) => [k, new Set(v)])
       ),
+      rowsChangedInPr: new Map(
+        Object.entries(input.rowsChangedInPr ?? {}).map(([k, v]) => [k, new Set(v)])
+      ),
     });
     const verdict = formatVerdict({
       pr: input.pr ?? 0,
@@ -331,15 +362,26 @@ function main() {
       movedFileCount: (input.movedFiles ?? []).length,
       result,
     });
-    console.log(opts.json ? JSON.stringify({ ...result, verdict }) : verdict);
+    console.log(verdict);
     process.exit(result.stale ? 1 : 0);
   }
 
-  const repo = process.env.GITHUB_REPOSITORY || gh(['repo', 'view', '--json', 'nameWithOwner', '--jq', '.nameWithOwner']).trim();
-  const mainTip = ghJson(`repos/${repo}/commits/main`).sha;
+  const repo =
+    process.env.GITHUB_REPOSITORY ||
+    ghJson(['repo', 'view', '--json', 'nameWithOwner'], 'this repository\'s name').nameWithOwner;
+  // TWO SOURCES OF TRUTH FOR MAIN'S TIP IS A MEASURED FAILURE, NOT A THEORY.
+  // Every diff below is taken from local git, so reading the tip from the API
+  // means comparing a local object database against a sha it may not contain.
+  // A sweep run minutes after a fetch did exactly that: main had moved on the
+  // API, all 35 PRs threw on `rev-list`, and the summary line still printed
+  // `0 of 35 open PR(s) STALE`. Only the exit code told the truth. CI has the
+  // same window between its checkout and an API read, and
+  // `cancel-in-progress` does not close it. So the tip is the checkout's own
+  // HEAD, which on `push: main` IS the commit that triggered the run.
+  const mainTip = git(['rev-parse', 'HEAD']).trim();
 
   if (opts.pr) {
-    const pr = ghJson(`repos/${repo}/pulls/${opts.pr}`);
+    const pr = ghJson(['api', `repos/${repo}/pulls/${opts.pr}`], `PR #${opts.pr}`);
     const report = evaluatePr(
       repo,
       { number: pr.number, headRefOid: pr.head.sha },
@@ -347,7 +389,7 @@ function main() {
       snapshots
     );
     const verdict = formatVerdict(report);
-    console.log(opts.json ? JSON.stringify({ ...report, verdict }) : verdict);
+    console.log(verdict);
     process.exit(report.result.stale ? 1 : 0);
   }
 
@@ -357,7 +399,7 @@ function main() {
   }
 
   // NDJSON, one PR per line: `--jq` and `--slurp` are mutually exclusive in gh.
-  const open = gh([
+  const open = ghText([
     'api',
     '--paginate',
     `repos/${repo}/pulls?state=open&per_page=100`,
@@ -374,13 +416,20 @@ function main() {
 
   const stale = [];
   const summaryLines = [];
+  const unevaluated = [];
   let displayFailures = 0;
   for (const pr of open) {
     let report;
     try {
       report = evaluatePr(repo, pr, mainTip, snapshots);
     } catch (err) {
+      // UNEVALUATED IS NOT A VERDICT. It says nothing about this PR's base, so
+      // it must not be labelled `base-stale` (that would blame the PR for the
+      // sweep's own inability to look) and it must not be silently absent from
+      // the count either -- a run where every PR threw once printed
+      // `0 of 35 STALE`, which reads exactly like a clean sweep.
       console.error(`check-base-freshness: PR #${pr.number} could not be evaluated: ${err.message}`);
+      unevaluated.push(pr.number);
       displayFailures += 1;
       continue;
     }
@@ -393,7 +442,7 @@ function main() {
     if (opts.label && !syncLabel(repo, pr.number, report.result.stale)) displayFailures += 1;
   }
 
-  console.log(`check-base-freshness: ${stale.length} of ${open.length} open PR(s) STALE.`);
+  console.log(formatSweepSummary({ stale, open: open.length, unevaluated }));
   if (summaryLines.length > 0) summarize(summaryLines);
 
   // The sweep is a display, so a stale PR is not a failure of the sweep. Being
@@ -402,4 +451,4 @@ function main() {
   process.exit(displayFailures > 0 ? 1 : 0);
 }
 
-main();
+if (isMainEntry(import.meta.url)) main();

@@ -22,6 +22,7 @@ import {
   recordedFiles,
   discoverSnapshots,
   evaluateFreshness,
+  formatSweepSummary,
   formatVerdict,
   rowsChangedInPatch,
 } from './lib/base-freshness.mjs';
@@ -274,28 +275,19 @@ test('#3726: the CLI exits 1 on STALE and 0 on OK', () => {
   assert.match(ok.stdout, /base-freshness: OK/);
 });
 
-test('#3726: a base missing from the checkout is its own verdict, not an OK', () => {
-  // The moved-file set is read from local git. If the tested base is not in the
-  // object database there is no diff to take, and "no diff" is byte-identical
-  // to "nothing moved" by the time it reaches the verdict. It therefore gets a
-  // named outcome that says what to do, rather than the OK it would otherwise
-  // be indistinguishable from.
-  const line = formatVerdict({
-    pr: 3610,
-    baseSha: '605f3946e09042230ff16b66577f57aa8bf77362',
-    commitsBehind: null,
-    movedFileCount: 0,
-    result: {
-      stale: true,
-      couplings: [{ snapshot: null, direction: 'unfetched', overlap: [] }],
-    },
-  });
+test('#3726: an unevaluated PR is counted, and never labelled STALE', () => {
+  // A base missing from the checkout is a failure to LOOK, not a verdict about
+  // the PR. Two runs proved why this matters: from a `--depth 1` clone every
+  // PR came back STALE and was told to "rebase and re-record", which is advice
+  // about the wrong repository; and a sweep where all 35 PRs threw still
+  // printed `0 of 35 open PR(s) STALE`, which reads exactly like a clean run.
+  // So the count and the message are asserted together here.
+  const line = formatSweepSummary({ stale: [3551], open: 36, unevaluated: [3610, 3205] });
+  assert.match(line, /1 of 36 open PR\(s\) STALE/);
+  assert.match(line, /2 COULD NOT BE EVALUATED \(3610, 3205\)/);
+  assert.match(line, /not labelled/);
 
-  assert.match(line, /base-freshness: STALE/);
-  assert.match(line, /not in this checkout/);
-  assert.match(line, /fetch-depth: 0/);
-  // The count is unknown here, and printing `null commit(s)` would read as a
-  // bug in the sweep rather than as the outcome it is.
-  assert.doesNotMatch(line, /null commit/);
-  assert.match(line, /how far main has moved since is unknown/);
+  const clean = formatSweepSummary({ stale: [], open: 36, unevaluated: [] });
+  assert.match(clean, /0 of 36 open PR\(s\) STALE\./);
+  assert.doesNotMatch(clean, /COULD NOT BE EVALUATED/);
 });

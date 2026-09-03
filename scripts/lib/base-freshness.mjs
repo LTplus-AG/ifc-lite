@@ -108,7 +108,13 @@ export function rowsChangedInPatch(patch, isRepoFile) {
  * `module-size-allowlist.txt` after #3668 grew three files it pins, and #3686
  * then grew files it pins after #3689 had re-recorded it.
  */
-export function evaluateFreshness({ prFiles, movedFiles, snapshots, rowsChangedOnMain }) {
+export function evaluateFreshness({
+  prFiles,
+  movedFiles,
+  snapshots,
+  rowsChangedOnMain,
+  rowsChangedInPr,
+}) {
   const pr = new Set(prFiles);
   const moved = new Set(movedFiles);
   const couplings = [];
@@ -116,10 +122,24 @@ export function evaluateFreshness({ prFiles, movedFiles, snapshots, rowsChangedO
   for (const { path, inputs } of snapshots) {
     const prTouchesSnapshot = pr.has(path);
     const mainTouchesSnapshot = moved.has(path);
-    const mainInputs = intersect(movedFiles, inputs);
-    // Rows main moved, when the diff was readable. GitHub omits `patch` for a
-    // large file, so the fallback is the whole pinned set: over-reporting is
-    // visible and arguable, an omission is neither.
+    // ROW GRANULARITY ON BOTH SIDES, because whole-file granularity on either
+    // one makes the signal noise. It was already measured for the main side
+    // (21 of 55 PRs called stale purely because #3723 had re-recorded the
+    // allowlist), and the same measurement on the PR side is worse: replaying
+    // the last 20 allowlist-touching merges at the median 21-commit lag, ALL
+    // 20 fire `pr-recorded` at whole-file granularity and 8 at row
+    // granularity -- while both incident cases survive (`55d5d1707`'s overlap
+    // is exactly the three files #3668 grew). 47 of the last 400 commits on
+    // main touch the allowlist, usually adding one row, so at whole-file
+    // granularity nearly every PR that re-records it gets labelled for a
+    // coupling that does not exist, and the label stops meaning anything.
+    const prRows = rowsChangedInPr?.get(path) ?? inputs;
+    const mainInputs = intersect(movedFiles, prRows);
+    // Rows main moved. The live path always records an entry for a moved
+    // snapshot (`movedSince` diffs each one), so this fallback is reached only
+    // by a `--from-json` replay that carries no rows. It falls back to the
+    // whole pinned set because over-reporting is visible and arguable, and an
+    // omission is neither.
     const movedRows = rowsChangedOnMain?.get(path) ?? inputs;
     const prMovedRows = intersect(prFiles, movedRows);
 
@@ -146,19 +166,12 @@ export function formatVerdict({ pr, baseSha, commitsBehind, movedFileCount, resu
   // `commitsBehind` is null exactly when the base is not in the checkout, so
   // there is no count to print and printing `null commit(s)` would read as a
   // bug in the sweep rather than as the outcome it is.
-  const gained =
-    commitsBehind === null
-      ? 'how far main has moved since is unknown'
-      : `main has gained ${commitsBehind} commit(s) touching ${movedFileCount} file(s) since`;
-  const head = `PR #${pr} was tested against ${base}; ${gained}.`;
+  const head = `PR #${pr} was tested against ${base}; main has gained ${commitsBehind} commit(s) touching ${movedFileCount} file(s) since.`;
   if (!result.stale) {
     return `base-freshness: OK -- ${head} None of them couples to a whole-tree snapshot this PR records or is recorded by.`;
   }
   const why = result.couplings
     .map(({ snapshot, direction, overlap }) => {
-      if (direction === 'unfetched') {
-        return 'the tested base is not in this checkout, so no snapshot could be compared -- deepen the checkout (fetch-depth: 0) or rebase the PR';
-      }
       if (direction === 'both-recorded') {
         return `${snapshot}: this PR and main each re-recorded it, from two different trees`;
       }
@@ -170,4 +183,22 @@ export function formatVerdict({ pr, baseSha, commitsBehind, movedFileCount, resu
     })
     .join('; ');
   return `base-freshness: STALE -- ${head} ${why}. The recorded snapshot predates the other side, so a green verdict here does not carry to main: rebase and re-record before merging.`;
+}
+
+/**
+ * The sweep's one-line summary.
+ *
+ * The unevaluated count shares this line with the stale count deliberately.
+ * Printed separately it is a stderr line above a reassuring stdout summary,
+ * and that is exactly how a run in which all 35 PRs threw still read as clean:
+ * `0 of 35 open PR(s) STALE`. An unevaluated PR carries no verdict either way
+ * and is not labelled, so this line is the only place it can be seen.
+ */
+export function formatSweepSummary({ stale, open, unevaluated }) {
+  const head = `check-base-freshness: ${stale.length} of ${open} open PR(s) STALE`;
+  if (unevaluated.length === 0) return `${head}.`;
+  return (
+    `${head}, and ${unevaluated.length} COULD NOT BE EVALUATED ` +
+    `(${unevaluated.join(', ')}) -- those carry no verdict either way and are not labelled.`
+  );
 }

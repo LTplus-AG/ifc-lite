@@ -78,17 +78,29 @@ impl GeometryRouter {
                         // geometry, and the insert below would publish that model-wide.
                         return;
                     }
-                    if let Some(processor) = self.processors.get(&sub_item.ifc_type) {
-                        if let Ok(mut sub_mesh) = processor.process(
+                    // A missing processor or a failing one leaves `mesh` short of
+                    // the source's real geometry, and the insert below publishes
+                    // that to EVERY instance of this source model-wide. The partial
+                    // mesh itself is consistent with the per-occurrence path
+                    // (`mapped_item.rs` also keeps going past a failed sub-item), so
+                    // the drop is recorded rather than the source withheld — but it
+                    // MUST be recorded, or the one place the loss is visible at all
+                    // is the one place instancing removed.
+                    match self.processors.get(&sub_item.ifc_type) {
+                        Some(processor) => match processor.process(
                             &sub_item,
                             decoder,
                             &self.schema,
                             self.tessellation_quality,
                         ) {
-                            sub_mesh.validate_indices();
-                            self.scale_mesh(&mut sub_mesh);
-                            mesh.merge(&sub_mesh);
-                        }
+                            Ok(mut sub_mesh) => {
+                                sub_mesh.validate_indices();
+                                self.scale_mesh(&mut sub_mesh);
+                                mesh.merge(&sub_mesh);
+                            }
+                            Err(_e) => self.record_unsupported_item(sub_item.ifc_type),
+                        },
+                        None => self.record_unsupported_item(sub_item.ifc_type),
                     }
                 }
             }

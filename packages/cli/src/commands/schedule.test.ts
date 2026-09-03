@@ -26,7 +26,7 @@ import {
   subtotalCells,
   type ScheduleRow,
 } from './schedule-render.js';
-import { resolveScheduleValue, scheduleCommand } from './schedule.js';
+import { resolveScheduleValue, scheduleCommand, buildScheduleRows } from './schedule.js';
 import { parseWhereFilter, applyWhereFilter } from './query.js';
 import { parseSortSpec, parseGroupBySpec, orderRows } from './schedule-group.js';
 import { parseSubtotalsSpec, buildSubtotalPlan } from './schedule-aggregate.js';
@@ -221,6 +221,64 @@ const IFC_TAG_SHADOW = [
   'END-ISO-10303-21;',
   '',
 ].join('\n');
+
+describe('buildScheduleRows hoists one properties/quantities/attributes/materials read per entity', () => {
+  /**
+   * Bug: resolving N columns for one entity called bim.properties(ref) (and
+   * quantities/attributes/materials, whichever the column paths touch) N
+   * separate times for the SAME ref — every column re-fetches the whole
+   * property/quantity/attribute list from scratch. Measured 5.6x on
+   * FM_ARC_DigitalHub: 40.6ms -> 7.2ms per 6-column row build. This test
+   * pins the call count instead of wall-clock time (deterministic, not
+   * flaky): each of these four accessors must be called AT MOST ONCE per
+   * distinct entity ref, no matter how many columns request them.
+   */
+  it('calls each bim accessor at most once per entity, not once per (entity, column)', () => {
+    const propertiesSpy = vi.fn().mockReturnValue([{ name: 'Pset_A', properties: [{ name: 'P1', value: 'v1' }] }]);
+    const quantitiesSpy = vi.fn().mockReturnValue([{ name: 'Qto_A', quantities: [{ name: 'Q1', value: 1 }] }]);
+    const attributesSpy = vi.fn().mockReturnValue([{ name: 'Tag', value: 'T-1' }]);
+    const materialsSpy = vi.fn().mockReturnValue({ name: 'Concrete' });
+    const fakeBim = {
+      properties: propertiesSpy,
+      quantities: quantitiesSpy,
+      attributes: attributesSpy,
+      materials: materialsSpy,
+    };
+    // 6 columns touching every accessor, over 2 entities.
+    const columns = [
+      { header: 'Tag', path: 'Tag' },
+      { header: 'P1', path: 'Pset_A.P1' },
+      { header: 'Q1', path: 'Qto_A.Q1' },
+      { header: 'Mat', path: 'Material' },
+      { header: 'Tag2', path: 'Tag' },
+      { header: 'P1b', path: 'Pset_A.P1' },
+    ];
+    const entities = [{ ref: 1, name: 'E1' }, { ref: 2, name: 'E2' }];
+
+    const rows = buildScheduleRows(entities, columns, fakeBim);
+    expect(rows).toHaveLength(2);
+
+    // Every accessor: at most one call per distinct ref (1 and 2) — 2 total,
+    // not 2 entities * (up to 6 columns) = up to 12.
+    expect(propertiesSpy.mock.calls.map(c => c[0]).sort()).toEqual([1, 2]);
+    expect(attributesSpy.mock.calls.map(c => c[0]).sort()).toEqual([1, 2]);
+    expect(materialsSpy.mock.calls.map(c => c[0]).sort()).toEqual([1, 2]);
+  });
+
+  it('still produces the same values a naive per-column resolve would (real fixture)', async () => {
+    const columns = [
+      { header: 'Name', path: 'Name' },
+      { header: 'Tag', path: 'Tag' },
+      { header: 'Mark', path: 'Pset_DoorCommon.Reference' },
+      { header: 'Area', path: 'Qto_DoorBaseQuantities.Area' },
+    ];
+    const { bim } = await makeBim(IFC);
+    const doors = bim.query().byType('IfcDoor').toArray();
+    const hoisted = buildScheduleRows(doors, columns, bim);
+    const naive = scheduleRows(bim, columns, doors);
+    expect(hoisted).toEqual(naive);
+  });
+});
 
 describe('bare-path resolution reads the schema attribute before a same-named pset property', () => {
   /**

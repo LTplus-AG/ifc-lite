@@ -170,7 +170,7 @@ export const keptRowCharge = (path) => rowBytes(fileHeader(path)) + 2 + rowBytes
 export const unreviewableRowCharge = (u) => rowBytes(unreviewableRow(u)) + 1;
 
 /** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
-export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote: see retry-prompt.mjs
+export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote/opts.retryReason: see retry-prompt.mjs
   const files = input.files
     .map((f) => `${fileHeader(f.path)}${f.patch}`)
     .join('\n\n');
@@ -261,7 +261,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
     fenceUntrusted(files),
     unreviewable,
     roster,
-    ...sections, ...buildRetrySection(opts.retryNote, fenceUntrusted), // #3652 retry, sibling-extracted
+    ...sections, ...buildRetrySection(opts.retryNote, fenceUntrusted, opts.retryReason), // #3652/#3777 retry, sibling-extracted
     '',
     'Emit the JSON described above and nothing else.',
   ].join('\n');
@@ -482,8 +482,8 @@ export function resolveTokens(env) {
 }
 
 function main() {
-  const args = { rubric: null, input: null, out: null, model: 'sonnet', retryNote: null };
-  const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model'], ['--retry-note', 'retryNote']]); // optional: retry-prompt.mjs
+  const args = { rubric: null, input: null, out: null, model: 'sonnet', retryNote: null, retryReason: null };
+  const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model'], ['--retry-note', 'retryNote'], ['--retry-reason', 'retryReason']]); // optional: retry-prompt.mjs
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 1) {
     const key = FLAGS.get(argv[i]);
@@ -498,7 +498,7 @@ function main() {
 
   const rubric = readFileSync(args.rubric, 'utf8');
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
-  const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null });
+  const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null, retryReason: args.retryReason ?? 'PROOF_OF_WORK_FAILED' }); // default: #3652 wording for an older caller with no --retry-reason
 
   const tokens = resolveTokens(process.env);
   if (tokens.length === 0) {

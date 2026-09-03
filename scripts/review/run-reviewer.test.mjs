@@ -374,6 +374,41 @@ test('no credential value ever reaches a label or a log line', () => {
   assert.doesNotMatch(t[0].note, /SUPERSECRET/, 'the note reports SHAPE, never the value');
 });
 
+test('buildPrompt: retryReason RESPONSE_TRUNCATED gets truthful wording, never the proof-of-work text (#3777)', () => {
+  const p = buildPrompt('R', INPUT, { retryNote: '❌ RESPONSE_TRUNCATED: sentinel missing.', retryReason: 'RESPONSE_TRUNCATED' });
+  assert.match(p, /## This is a RETRY/);
+  assert.match(p, /terminal sentinel\s+was missing/);
+  assert.match(p, /Review the SAME diff again/);
+  // Must NOT claim a proof-of-work failure -- that would tell the model
+  // something false about what went wrong last time.
+  assert.doesNotMatch(p, /failed proof-of-work/);
+  assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
+});
+
+test('buildPrompt: retryReason VALIDATION_EMPTY gets truthful wording, never proof-of-work or truncation text (#3775)', () => {
+  const p = buildPrompt('R', INPUT, { retryNote: '❌ VALIDATION_EMPTY: The model reported 1 finding(s) and NONE survived validation.', retryReason: 'VALIDATION_EMPTY' });
+  assert.match(p, /## This is a RETRY/);
+  assert.match(p, /Every finding in your previous answer was dropped/);
+  assert.match(p, /report `verdict: "clean"`/);
+  // Must NOT claim a proof-of-work failure or a truncation -- both would be
+  // false: nothing was quoted wrong, and nothing was cut off mid-answer.
+  assert.doesNotMatch(p, /failed proof-of-work/);
+  assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
+  assert.doesNotMatch(p, /terminal sentinel/);
+});
+
+test('buildPrompt: retryReason PROOF_OF_WORK_FAILED (explicit) matches the unchanged #3652 text', () => {
+  const explicit = buildPrompt('R', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.', retryReason: 'PROOF_OF_WORK_FAILED' });
+  const implicit = buildPrompt('R', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.' });
+  // fenceUntrusted mints a fresh random nonce per call, so the two prompts
+  // differ only in that nonce -- strip it before comparing, since the claim is
+  // "same wording", not "same random fence".
+  const stripNonce = (s) => s.replace(/UNTRUSTED-DIFF-[0-9a-f]{18}/g, 'UNTRUSTED-DIFF-NONCE');
+  assert.equal(stripNonce(explicit), stripNonce(implicit), 'an explicit PROOF_OF_WORK_FAILED reason must produce the same wording as the no-reason default');
+  assert.match(explicit, /failed proof-of-work on `riskiest_change\.quoted_line`/);
+  assert.doesNotMatch(explicit, /terminal sentinel was missing/);
+});
+
 test('THE WIRING: the workflow actually passes the fallback secret', () => {
   // Without this the failover is dead code that tests green: `resolveTokens`
   // reads the environment, and the environment is built by the workflow. Static,

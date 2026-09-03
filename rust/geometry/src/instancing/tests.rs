@@ -1654,3 +1654,43 @@ fn verify_recomposition_genuine_match_still_clears_the_tolerance() {
     let err = verify_recomposition(&meshes, &collated);
     assert!(err < 1e-4, "genuine match recomposition error {err} exceeds the f32 storage floor");
 }
+
+#[test]
+fn one_rigid_member_does_not_disable_verification_for_the_others() {
+    // The rigid tier is exempt from the shape + reconstruction checks by design
+    // (it substitutes a congruent-but-not-bit-identical template, so a member's
+    // raw vertex count may legitimately differ). That exemption was decided at
+    // GROUP level with `.any()`: ONE member carrying a `canonical_transform`
+    // switched the checks off for EVERY other member of the group, so an
+    // exact-tier collision sharing a group with a single rigid member was
+    // instanced unverified. The exemption is per MEMBER.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let q = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 4.0, 0.0));
+    let meta = |canonical: Option<[f64; 16]>, m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: canonical,
+        rep_identity: 5150,
+        instanceable: true,
+    };
+    const CANON_COLLIDING: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
+    let identity = mat_rm(&Matrix4::identity());
+    let meshes = vec![
+        // 0: the template (exact tier).
+        mesh_from(baked(&CANON, &p), meta(None, &p)),
+        // 1: a RIGID member — carries a canonical_transform, so it is exempt.
+        mesh_from(baked(&CANON, &q), meta(Some(identity), &q)),
+        // 2: an exact-tier #3666 collision — genuinely different geometry under
+        //    the same rep_identity. It must still be verified, and must still
+        //    drop the group to flat.
+        mesh_from(baked(&CANON_COLLIDING, &q), meta(None, &q)),
+    ];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a rigid member must not switch verification off for its exact-tier siblings"
+    );
+    assert_eq!(collated.flat_indices.len(), 3, "the whole group falls back flat");
+}

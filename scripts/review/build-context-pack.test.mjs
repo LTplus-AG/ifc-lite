@@ -766,8 +766,8 @@ test('a quoted literal that naturally ends in an ellipsis keeps it in the grep p
     { headSha: 'a'.repeat(40), files: [{ path: 'packages/a/f.ts', patch: `@@ -1,1 +1,1 @@\n+  const label = '${literal}';\n` }] },
     { baseRef: 'HEAD', body: null, exec: (_cmd, args) => { if (args[0] === 'grep') patterns.push(args[args.length - 2]); return ''; } },
   );
-  assert.ok(patterns.includes(literal), `the untruncated literal must reach grep intact, got ${JSON.stringify(patterns)}`);
-  assert.ok(!patterns.includes(literal.slice(0, -1)), 'the ellipsis must not be stripped from an uncapped key');
+  assert.ok(patterns.some((p) => p === literal), `the untruncated literal must reach grep intact, got ${JSON.stringify(patterns)}`);
+  assert.ok(patterns.every((p) => p !== literal.slice(0, -1)), 'the ellipsis must not be stripped from an uncapped key');
 });
 
 test('THE FIX: the assembled pack never exceeds the budget it was charged against, even with capped long keys', () => {

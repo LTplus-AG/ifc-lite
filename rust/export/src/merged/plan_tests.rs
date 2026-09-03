@@ -24,11 +24,11 @@ fn resolve_included_pulls_forward_closure() {
     let idx = ModelIndex::build(TWO_STOREYS.as_bytes());
     // Root at the rel: closure must pull in #1 (relating) and #2 (related).
     let mut refused = 0usize;
-    let included = resolve_included(&idx, &Some(vec![3]), &mut refused);
+    let included = resolve_included(&idx, &Some(vec![3]), Some(&mut refused));
     assert!(included.contains(&3) && included.contains(&1) && included.contains(&2));
     assert_eq!(refused, 0, "no reference in this fixture exceeds u32::MAX");
     // None → everything.
-    assert_eq!(resolve_included(&idx, &None, &mut refused).len(), 3);
+    assert_eq!(resolve_included(&idx, &None, Some(&mut refused)).len(), 3);
 }
 
 /// RED for issue #3752: a filtered model whose root references an oversized
@@ -39,9 +39,20 @@ fn resolve_included_counts_a_refused_oversized_reference() {
     let content = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,$,$,$,#4294967297,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
     let idx = ModelIndex::build(content);
     let mut refused = 0usize;
-    let included = resolve_included(&idx, &Some(vec![1]), &mut refused);
+    let included = resolve_included(&idx, &Some(vec![1]), Some(&mut refused));
     assert!(included.contains(&1));
     assert_eq!(refused, 1, "the oversized reference must be counted (#3752)");
+}
+
+/// `None` opts out of counting entirely (used by callers whose own scan of
+/// this model is not the one that gets reported, e.g. a pre-pass) — the
+/// oversized reference is still excluded, just not counted twice.
+#[test]
+fn resolve_included_with_no_counter_still_excludes_the_oversized_reference() {
+    let content = b"ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCWALL('g',$,$,$,$,#4294967297,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n";
+    let idx = ModelIndex::build(content);
+    let included = resolve_included(&idx, &Some(vec![1]), None);
+    assert_eq!(included, HashSet::from([1]), "the oversized reference is excluded, not followed");
 }
 
 #[test]

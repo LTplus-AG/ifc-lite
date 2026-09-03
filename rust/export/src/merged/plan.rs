@@ -14,7 +14,7 @@ use super::spatial::{
 };
 use super::units::units_compatible;
 use super::MergedModel;
-use crate::step_text::refs_in_line_counted;
+use crate::step_text::{refs_in_line, refs_in_line_counted};
 
 /// Entity types forming shared infrastructure — the first instance of each is
 /// unified across compatible models (later duplicates dropped + redirected).
@@ -93,14 +93,16 @@ impl<'a> ModelIndex<'a> {
 /// forward-reference closure of `roots` (so a filtered export never dangles a
 /// `#ref`), mirroring `export_step_with_stats`.
 ///
-/// `refused` accumulates every `#<digits>` reference this walk discarded for
-/// exceeding `u32::MAX` (issue #3421), so a caller can surface it — see
-/// [`crate::step_text::refs_in_line_counted`]'s doc for why this does not
-/// exclude anything reachable that would otherwise have been included.
+/// `refused`, when given, accumulates every `#<digits>` reference this walk
+/// discarded for exceeding `u32::MAX` (issue #3421), so a caller can surface
+/// it — see [`crate::step_text::refs_in_line_counted`]'s doc for why this
+/// does not exclude anything reachable that would otherwise have been
+/// included. `None` when a caller only needs the included set itself (e.g. a
+/// pre-pass whose own scan of this model is not the one that gets reported).
 pub fn resolve_included(
     index: &ModelIndex,
     roots: &Option<Vec<u32>>,
-    refused: &mut usize,
+    mut refused: Option<&mut usize>,
 ) -> HashSet<u32> {
     match roots {
         None => index.order.iter().copied().collect(),
@@ -114,7 +116,10 @@ pub fn resolve_included(
                 }
                 if let Some(bytes) = index.line_bytes(id) {
                     refs.clear();
-                    refs_in_line_counted(bytes, &mut refs, refused);
+                    match refused.as_deref_mut() {
+                        Some(refused) => refs_in_line_counted(bytes, &mut refs, refused),
+                        None => refs_in_line(bytes, &mut refs),
+                    }
                     for &r in &refs {
                         if !keep.contains(&r) {
                             stack.push(r);

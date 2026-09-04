@@ -116,14 +116,23 @@ export interface AggregationModelAccess {
  *    Frame moves the camera nowhere. Expanding makes an assembly frame as the
  *    union of its parts.
  *
- * 2. Presentation channels (hide, isolate, colour): `hasGeometry` is a
- *    point-in-time check — during streaming or behind a type-visibility filter,
- *    it says "no" for a part that legitimately has geometry and simply hasn't
- *    rendered YET (#3426, #3865). Persisting only currently-meshed parts means
- *    parts that stream in later escape the presentation action. Always including
- *    the full descendant set ensures the persisted action applies to all parts,
- *    present and future. Carrying an id with no mesh is free: it simply never
- *    matches a renderer's mesh whitelist.
+ * 2. Presentation channels: `hasGeometry` is a point-in-time check — during
+ *    streaming or behind a type-visibility filter, it says "no" for a part that
+ *    legitimately has geometry and simply hasn't rendered YET (#3426, #3865).
+ *    Persisting only currently-meshed parts means parts that stream in later
+ *    escape the action. Always including the full descendant set ensures the
+ *    persisted action applies to all parts, present and future. Carrying an id
+ *    with no mesh is free: it simply never matches a renderer's mesh whitelist.
+ *
+ *    This buys HIDE and ISOLATE, and only those two. Both are whitelists the
+ *    renderer re-matches mesh ids against, so a mesh-less id in the persisted
+ *    set starts matching the moment its mesh lands. COLOUR does not get the
+ *    same benefit from a bigger set: both colour sinks in
+ *    `useGeometryStreaming.ts` drain their pending map and clear it, and
+ *    `scene.setColorOverrides` builds overlay batches once from `meshDataMap`,
+ *    so a part whose mesh arrives after the flush is never painted. Making
+ *    colour repaint late meshes needs a re-application on the geometry tick,
+ *    which is #3890, not this expansion.
  *
  * Ids that already have geometry pass through untouched and in order. An id
  * with neither geometry nor ANY aggregated descendant at all is dropped — that
@@ -159,10 +168,11 @@ export function expandToGeometryBearingIds(
     // Include ALL aggregated descendants, regardless of current renderability
     // (#3426, #3865). `hasGeometry` is a point-in-time check — during streaming,
     // it says "no" for a part that has geometry and simply hasn't rendered YET.
-    // Including the full set ensures that parts streaming in after a
-    // presentation action (hide, isolate, colour) is applied are included in
-    // the persisted set and respect the action. Carrying an id with no mesh is
-    // free: it simply never matches a renderer's mesh whitelist.
+    // Including the full set puts parts that stream in later into the persisted
+    // hide/isolate whitelist, so they are hidden or isolated the moment their
+    // mesh lands. Colour needs a repaint on the geometry tick as well (#3890).
+    // Carrying an id with no mesh is free: it simply never matches a renderer's
+    // mesh whitelist.
     for (const partGlobalId of descendantGlobalIds) push(partGlobalId);
   }
   return out;

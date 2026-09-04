@@ -12,7 +12,9 @@
  * (`updateMeshColors` / `pendingColorUpdates`). All three share one failure
  * mode — a geometry-less `IfcElementAssembly` id owns no mesh, so isolating it
  * blanks the viewport and hiding or colouring it does nothing at all — and all
- * three are fixed by the same expansion. That is why this module is named for
+ * three take the same expansion here. (Expansion is the whole fix for hide and
+ * isolate; colour also needs a repaint once a late part's mesh arrives, which
+ * this module does not own — see #3890.) That is why this module is named for
  * the class of channel rather than for isolation: a `hide` handler written
  * against a module called "isolation ids" learns nothing, which is exactly the
  * "one call site every channel has to remember" shape #3338 is about.
@@ -52,10 +54,11 @@
  * The third situation is handled one level down, in
  * `expandToGeometryBearingIds` (`utils/aggregation.ts`), which
  * `resolveHighlightIds` (`Viewport.tsx`) is built on: it expands a
- * geometry-less id to its aggregated parts, falling back to ALL of them when
- * none of them currently render (#3426). This module just receives a
- * non-empty `resolved` for that case and unions it in as it does for any
- * ordinary element.
+ * geometry-less id to ALL of its aggregated parts, whether or not they render
+ * right now (#3426, then #3865, which dropped the "only the meshed ones unless
+ * none of them are" split so a part that streams in later is already in the
+ * persisted set). This module just receives a non-empty `resolved` for that
+ * case and unions it in as it does for any ordinary element.
  *
  * The fourth has nothing to expand to, so it stays a blank isolate: this
  * module unions in the bare raw id and no mesh ever matches it. That case is
@@ -78,7 +81,7 @@ export function resolvePresentationIds(
  * fourth situation above plus its post-#3426 sibling.
  *
  * `resolved.length === 0` is NOT that condition any more. Since #3426 the
- * resolver falls back to ALL of a geometry-less id's aggregated parts, so a
+ * resolver answers with ALL of a geometry-less id's aggregated parts, so a
  * NON-empty `resolved` can still be entirely mesh-less — an assembly whose
  * parts never render is exactly the blank viewport the warning exists to
  * surface, and counting the result would step straight past it. Renderability

@@ -24,7 +24,7 @@ import { SCHEMA_REGISTRY } from '../src/generated/schema-registry.js';
 
 describe('expandTypes', () => {
   it('includes both IFC4 case subtypes of IfcWall', () => {
-    const result = expandTypes(['IfcWall']);
+    const result = expandTypes(['IfcWall'], 'IFC4');
     expect(result).toContain('IFCWALL');
     expect(result).toContain('IFCWALLSTANDARDCASE');
     expect(result).toContain('IFCWALLELEMENTEDCASE');
@@ -33,33 +33,33 @@ describe('expandTypes', () => {
   it('includes both IFC4 case subtypes of IfcSlab', () => {
     // The mutation that survived: dropping IFCSLABELEMENTEDCASE from one copy
     // silently narrowed `byType('IfcSlab')` on that surface alone.
-    const result = expandTypes(['IfcSlab']);
+    const result = expandTypes(['IfcSlab'], 'IFC4');
     expect(result).toContain('IFCSLABSTANDARDCASE');
     expect(result).toContain('IFCSLABELEMENTEDCASE');
   });
 
   it('passes through a type with no known subtypes', () => {
-    expect(expandTypes(['IfcRoof'])).toEqual(['IFCROOF']);
+    expect(expandTypes(['IfcRoof'], 'IFC4')).toEqual(['IFCROOF']);
   });
 
   it('uppercases lowercase input, since entityIndex.byType is uppercase-keyed', () => {
-    expect(expandTypes(['ifcwall'])).toContain('IFCWALL');
+    expect(expandTypes(['ifcwall'], 'IFC4')).toContain('IFCWALL');
   });
 
   it('expands every type in the list', () => {
-    const result = expandTypes(['IfcWall', 'IfcRoof']);
+    const result = expandTypes(['IfcWall', 'IfcRoof'], 'IFC4');
     expect(result).toContain('IFCWALLSTANDARDCASE');
     expect(result).toContain('IFCROOF');
   });
 
   it('returns nothing for an empty list', () => {
-    expect(expandTypes([])).toEqual([]);
+    expect(expandTypes([], 'IFC4')).toEqual([]);
   });
 
   it('lists the parent type before its subtypes', () => {
     // Callers build a Set from this, but the parent-first order is what makes
     // the result readable in a debug dump; pin it so a rewrite keeps it.
-    expect(expandTypes(['IfcBeam'])).toEqual(['IFCBEAM', 'IFCBEAMSTANDARDCASE']);
+    expect(expandTypes(['IfcBeam'], 'IFC4')).toEqual(['IFCBEAM', 'IFCBEAMSTANDARDCASE']);
   });
 });
 
@@ -113,7 +113,7 @@ describe('IFC_SUBTYPES agrees with the generated schema registry', () => {
 
   it('lists every subtype the registry declares, for every supertype in the map', () => {
     for (const supertype of Object.keys(IFC_SUBTYPES)) {
-      const expanded = expandTypes([supertype]);
+      const expanded = expandTypes([supertype], 'IFC4');
       for (const sub of registryDescendants(supertype)) {
         expect(expanded, `${supertype} -> ${sub}`).toContain(sub);
       }
@@ -134,7 +134,7 @@ describe('IFC_SUBTYPES agrees with the generated schema registry', () => {
   it('expands IfcFurnishingElement to IfcFurniture and IfcSystemFurnitureElement', () => {
     // The #3229 instance, named so the regression is legible without rerunning
     // the derivation above.
-    const expanded = expandTypes(['IfcFurnishingElement']);
+    const expanded = expandTypes(['IfcFurnishingElement'], 'IFC4');
     expect(expanded).toContain('IFCFURNITURE');
     expect(expanded).toContain('IFCSYSTEMFURNITUREELEMENT');
   });
@@ -188,19 +188,19 @@ describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () 
     // the loop below would pass by finding nothing to compare.
     expect(BASES.some((b) => tableDescendants(list, b).length > 0), version).toBe(true);
     for (const base of BASES) {
-      const expanded = expandTypes([base]);
+      const expanded = expandTypes([base], version);
       for (const sub of tableDescendants(list, base)) {
         expect(expanded, `${version}: ${base} -> ${sub}`).toContain(sub);
       }
     }
   });
 
-  it('reaches IfcCourse from IfcBuildingElement, the IFC4X3 rename of its own base', () => {
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('reaches across the IfcBuiltElement rename on %s', (version) => {
     // IfcBuildingElement is absent from the IFC4X3 table and IfcBuiltElement
-    // from the IFC4 one, so the union of the tables alone leaves each spelling
-    // blind to the other version's leaves.
-    expect(expandTypes(['IfcBuildingElement'])).toContain('IFCCOURSE');
-    expect(expandTypes(['IfcBuiltElement'])).toContain('IFCWALLSTANDARDCASE');
+    // from the IFC4 one, so without the rename equality each spelling is blind
+    // to the other version's leaves on every header.
+    expect(expandTypes(['IfcBuildingElement'], version)).toContain('IFCCOURSE');
+    expect(expandTypes(['IfcBuiltElement'], version)).toContain('IFCWALLSTANDARDCASE');
   });
 
   it('honours the alias tables in the descendant direction, not just the ancestor one', () => {
@@ -208,14 +208,18 @@ describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () 
     // descendant direction did not, so `byType('IfcGeotechnicalStratum')`
     // answered 0 on a file full of IFCSOLIDSTRATUM records.
     expect(Object.keys(ENTITY_NAME_ALIASES).length).toBeGreaterThan(0);
-    for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
-      expect(expandTypes([supertype]), `${supertype} -> ${leaf}`).toContain(leaf.toUpperCase());
+    for (const version of ['IFC2X3', 'IFC4', 'IFC4X3']) {
+      for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
+        expect(expandTypes([supertype], version), `${version}: ${supertype} -> ${leaf}`).toContain(
+          leaf.toUpperCase(),
+        );
+      }
     }
     // The one rename pair, spelled out rather than read off the resolver's own
     // table: deriving the expectation from the thing under test would pass on
     // an empty table.
-    const a = expandTypes(['IfcBuildingElement']).filter((n) => !RENAME_PAIR.includes(n));
-    const b = expandTypes(['IfcBuiltElement']).filter((n) => !RENAME_PAIR.includes(n));
+    const a = expandTypes(['IfcBuildingElement'], 'IFC4').filter((n) => !RENAME_PAIR.includes(n));
+    const b = expandTypes(['IfcBuiltElement'], 'IFC4').filter((n) => !RENAME_PAIR.includes(n));
     expect(a.sort()).toEqual(b.sort());
     expect(a.length).toBeGreaterThan(0);
   });

@@ -82,11 +82,12 @@ function rootBranchOf(type: string): RootBranch {
  * that only aliased `*StandardCase`/`*ElementedCase` pairs and silently
  * dropped every abstract-supertype query.
  *
- * Takes no schema version: the expansion is the union across the bundled
- * schemas, so the same bytes answer the same way whatever their `FILE_SCHEMA`
- * header says (see the resolver's module doc). That is also what lets
- * `validate`'s scanned type lists be computed once at module load and still be
- * unable to disagree with `byType` about what counts as a wall.
+ * `schemaVersion` is required and is the queried model's own
+ * `store.schemaVersion`. Descendant sets are not the same across versions --
+ * buildingSMART re-parented entities, so `IfcReinforcingBar` is an
+ * `IfcBuildingElement` in IFC2X3 and an `IfcElementComponent` in IFC4 -- while
+ * the names a FILE contains need not belong to the version its header claims.
+ * The resolver reconciles the two; see its module doc for the exact rule.
  *
  * The expansion does not cross an `IfcRoot` branch. Descending the whole
  * hierarchy from an abstract root turned `byType('IfcRoot')` into "every
@@ -103,12 +104,12 @@ function rootBranchOf(type: string): RootBranch {
  * are never gated: a caller who spells out `IfcPropertySet` said what they
  * wanted.
  */
-export function expandTypes(types: string[]): string[] {
+export function expandTypes(types: string[], schemaVersion: string | undefined): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const type of types) {
     const branch = rootBranchOf(type);
-    const [self, ...descendants] = expandTypeNamesToDescendants([type]);
+    const [self, ...descendants] = expandTypeNamesToDescendants([type], schemaVersion);
     for (const name of [self as string, ...descendants.filter(
       (d) => isQueryableObjectType(d) || rootBranchOf(d) === branch,
     )]) {

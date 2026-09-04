@@ -320,7 +320,7 @@ export class HeadlessBackend implements BimBackend {
         let entityIds: number[];
         if (descriptor.types && descriptor.types.length > 0) {
           entityIds = [];
-          for (const type of expandTypes(descriptor.types)) {
+          for (const type of expandTypes(descriptor.types, store.schemaVersion)) {
             const typeIds = store.entityIndex.byType.get(type) ?? [];
             for (const id of typeIds) entityIds.push(id);
           }
@@ -346,7 +346,7 @@ export class HeadlessBackend implements BimBackend {
             objectType: node.objectType,
           });
         }
-        if (view) results.push(...foldNewEntities(view, descriptor.types, expandTypes, isProductType, MODEL_ID));
+        if (view) results.push(...foldNewEntities(view, descriptor.types, (t) => expandTypes(t, store.schemaVersion), isProductType, MODEL_ID));
         let filtered = results;
         if (descriptor.filters && descriptor.filters.length > 0) {
           const propsCache = new Map<number, PropertySetData[]>();

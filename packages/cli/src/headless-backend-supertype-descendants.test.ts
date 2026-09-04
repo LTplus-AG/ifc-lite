@@ -94,6 +94,53 @@ async function idsByType(schema: string, type: string): Promise<number[]> {
   return bim.query().byType(type).toArray().map((e) => e.ref.expressId).sort((a, b) => a - b);
 }
 
+/**
+ * The counterweight to the block above: a name the file's OWN schema declares
+ * is never pulled in from a version the file is not written in.
+ *
+ * buildingSMART re-parented entities between versions, so widening to a plain
+ * union misfiled 45 (supertype, schema) pairs. Each fixture here holds the
+ * re-parented record and asks for a base it is NOT under on that header.
+ */
+describe('a re-parented entity is not swept in from another schema', () => {
+  it('IfcBuildingElement on an IFC4 file does not return an IfcReinforcingBar', async () => {
+    // IfcReinforcingBar is an IfcBuildingElement in IFC2X3 and an
+    // IfcElementComponent from IFC4 on.
+    const source = ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'Wall',$,$,$,$,'tag',$);
+#71= IFCREINFORCINGBAR('RBAR00000000000000000X',$,'Rebar',$,$,$,$,'tag',$,$,$,$,$);`, 'IFC4');
+    const bim = await loadInlineModel(source, 'reparent-ifc4');
+    const types = bim.query().byType('IfcBuildingElement').toArray().map((e) => e.type);
+    expect(types).toEqual(['IfcWall']);
+    // Anti-vacuity: the record is in the file and reachable under the class it
+    // really has on this schema.
+    expect(bim.query().byType('IfcElementComponent').toArray().map((e) => e.type)).toEqual([
+      'IfcReinforcingBar',
+    ]);
+  });
+
+  it('IfcBuildingElement on an IFC2X3 file DOES return it — the parentage that schema declares', async () => {
+    const source = ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'Wall',$,$,$,$,'tag',$);
+#71= IFCREINFORCINGBAR('RBAR00000000000000000X',$,'Rebar',$,$,$,$,'tag',$,$,$,$,$);`, 'IFC2X3');
+    const bim = await loadInlineModel(source, 'reparent-ifc2x3');
+    const types = bim.query().byType('IfcBuildingElement').toArray().map((e) => e.type).sort();
+    expect(types).toEqual(['IfcReinforcingBar', 'IfcWall']);
+  });
+
+  it.each(['IFC4', 'IFC4X3'])('IfcObject on a %s file does not return the IfcProject', async (schema) => {
+    // IfcProject is an IfcObject in IFC2X3 and an IfcContext from IFC4 on.
+    const bim = await loadInlineModel(ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'Wall',$,$,$,$,'tag',$);`, schema), `reparent-obj-${schema}`);
+    expect(bim.query().byType('IfcObject').toArray().map((e) => e.type)).not.toContain('IfcProject');
+  });
+
+  it('IfcSystem on an IFC2X3 file does not return an IfcZone', async () => {
+    // IfcZone is an IfcGroup in IFC2X3 and an IfcSystem in IFC4.
+    const source = ifcFile(`#70= IFCZONE('ZONE00000000000000000X',$,'Zone',$,$);`, 'IFC2X3');
+    const bim = await loadInlineModel(source, 'reparent-zone-2x3');
+    expect(bim.query().byType('IfcSystem').toArray()).toHaveLength(0);
+    expect(bim.query().byType('IfcGroup').toArray().map((e) => e.type)).toEqual(['IfcZone']);
+  });
+});
+
 describe('a re-headered file answers byType the same under every schema header', () => {
   it.each([
     ['IfcSlab', [70, 71, 72]],

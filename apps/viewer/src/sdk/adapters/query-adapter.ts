@@ -200,7 +200,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
         // Resolved across the union of the bundled schemas, so the model's
         // FILE_SCHEMA header cannot narrow what its own records answer.
         entityIds = [];
-        for (const type of expandTypes(descriptor.types)) {
+        for (const type of expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)) {
           const typeIds = model.ifcDataStore.entityIndex.byType.get(type) ?? [];
           for (const id of typeIds) entityIds.push(id);
         }

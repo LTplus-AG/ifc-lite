@@ -8,14 +8,14 @@ import { ENTITY_NAME_ALIASES, CROSS_SCHEMA_RENAMES } from './entity-aliases.js';
 
 describe('expandTypeNamesToDescendants', () => {
   it('IfcWall includes itself and IfcWallStandardCase, excludes unrelated types', () => {
-    const result = expandTypeNamesToDescendants(['IfcWall']);
+    const result = expandTypeNamesToDescendants(['IfcWall'], 'IFC4');
     expect(result).toContain('IFCWALL');
     expect(result).toContain('IFCWALLSTANDARDCASE');
     expect(result).not.toContain('IFCDOOR');
   });
 
   it('IfcBuildingElement includes many concrete subtypes, excludes non-elements', () => {
-    const result = expandTypeNamesToDescendants(['IfcBuildingElement']);
+    const result = expandTypeNamesToDescendants(['IfcBuildingElement'], 'IFC4');
     expect(result).toContain('IFCWALL');
     expect(result).toContain('IFCSLAB');
     expect(result).toContain('IFCCOLUMN');
@@ -24,56 +24,63 @@ describe('expandTypeNamesToDescendants', () => {
   });
 
   it('an unrecognized type still falls back to itself, no crash', () => {
-    const result = expandTypeNamesToDescendants(['IfcTotallyMadeUpType']);
+    const result = expandTypeNamesToDescendants(['IfcTotallyMadeUpType'], 'IFC4');
     expect(result).toEqual(['IFCTOTALLYMADEUPTYPE']);
   });
 
   it('is case-insensitive on input and uppercases output', () => {
-    const result = expandTypeNamesToDescendants(['ifcwall']);
+    const result = expandTypeNamesToDescendants(['ifcwall'], 'IFC4');
     expect(result).toContain('IFCWALL');
   });
 
   it('deduplicates across multiple requested types', () => {
-    const result = expandTypeNamesToDescendants(['IfcWall', 'IfcWallStandardCase']);
+    const result = expandTypeNamesToDescendants(['IfcWall', 'IfcWallStandardCase'], 'IFC4');
     const count = result.filter((t) => t === 'IFCWALLSTANDARDCASE').length;
     expect(count).toBe(1);
   });
 });
 
 /**
- * The closure is the UNION across the bundled schemas, because
- * `entityIndex.byType` is keyed by the names a FILE contains and those need
- * not belong to the version its header claims.
+ * `entityIndex.byType` is keyed by the names a FILE contains, and those need
+ * not belong to the version its header claims. `IfcSlabStandardCase` is only
+ * in the IFC4 table and `IfcCourse` only in IFC4X3, so a closure that read one
+ * table answered a different set for each header on the same bytes.
  *
- * `IfcSlabStandardCase` is only in the IFC4 table, `IfcCourse` only in IFC4X3,
- * so a per-version closure answered a different set for each header on the
- * same bytes. These pin the union directly, one name per table.
+ * Rule (b) admits exactly those names: declared by another table, and not
+ * declared by this file's schema AT ALL. The negatives in the next block are
+ * the other half of that rule.
  */
-describe('the closure spans the bundled schemas, not one version', () => {
+describe('the closure reaches leaf spellings the file\'s own schema does not declare', () => {
   it('IfcSlab reaches the IFC4-only case subtypes', () => {
-    const result = expandTypeNamesToDescendants(['IfcSlab']);
+    const result = expandTypeNamesToDescendants(['IfcSlab'], 'IFC4');
     expect(result).toContain('IFCSLABSTANDARDCASE');
     expect(result).toContain('IFCSLABELEMENTEDCASE');
   });
 
   it('IfcFurnishingElement reaches IfcFurniture, absent from the IFC2X3 table', () => {
-    const result = expandTypeNamesToDescendants(['IfcFurnishingElement']);
+    const result = expandTypeNamesToDescendants(['IfcFurnishingElement'], 'IFC4');
     expect(result).toContain('IFCFURNITURE');
     expect(result).toContain('IFCSYSTEMFURNITUREELEMENT');
   });
 
   it('IfcBuiltElement reaches IfcCourse, an IFC4X3-only leaf', () => {
-    const result = expandTypeNamesToDescendants(['IfcBuiltElement']);
+    const result = expandTypeNamesToDescendants(['IfcBuiltElement'], 'IFC4');
     expect(result).toContain('IFCCOURSE');
   });
 
-  it('takes no schema version, so no header can narrow it', () => {
-    // The signature is the guarantee: there is no argument a caller could pass
-    // that makes `IfcSlab` stop reaching `IfcSlabStandardCase`. Pinned as a
-    // behaviour rather than a type, because the type is erased at runtime and
-    // the query surfaces used to pass `store.schemaVersion` here.
-    expect(expandTypeNamesToDescendants.length).toBe(1);
-  });
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])(
+    'reaches the same slab, furniture and stratum spellings under %s',
+    (version) => {
+      // The differential: the three headers must agree about names no schema
+      // re-parented, whichever table declares them.
+      expect(expandTypeNamesToDescendants(['IfcSlab'], version)).toContain('IFCSLABSTANDARDCASE');
+      expect(expandTypeNamesToDescendants(['IfcSlab'], version)).toContain('IFCSLABELEMENTEDCASE');
+      expect(expandTypeNamesToDescendants(['IfcFurnishingElement'], version)).toContain('IFCFURNITURE');
+      expect(expandTypeNamesToDescendants(['IfcGeotechnicalStratum'], version)).toContain('IFCSOLIDSTRATUM');
+      expect(expandTypeNamesToDescendants(['IfcBuildingElement'], version)).toContain('IFCCOURSE');
+      expect(expandTypeNamesToDescendants(['IfcBuiltElement'], version)).toContain('IFCWALLSTANDARDCASE');
+    },
+  );
 });
 
 /**
@@ -85,7 +92,7 @@ describe('alias tables in the descendant direction', () => {
   it('every aliased leaf is a descendant of the supertype it aliases to', () => {
     expect(Object.keys(ENTITY_NAME_ALIASES).length).toBeGreaterThan(0);
     for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
-      expect(expandTypeNamesToDescendants([supertype]), `${supertype} -> ${leaf}`).toContain(
+      expect(expandTypeNamesToDescendants([supertype], 'IFC4'), `${supertype} -> ${leaf}`).toContain(
         leaf.toUpperCase(),
       );
     }
@@ -95,15 +102,15 @@ describe('alias tables in the descendant direction', () => {
     // The narrowing is one-way. `IfcSolidStratum` resolving UP to
     // `IfcGeotechnicalStratum` must not make it resolve back DOWN to every
     // other stratum, which would over-match a query for solid strata.
-    const result = expandTypeNamesToDescendants(['IfcSolidStratum']);
+    const result = expandTypeNamesToDescendants(['IfcSolidStratum'], 'IFC4');
     expect(result).toEqual(['IFCSOLIDSTRATUM']);
   });
 
   it('both spellings of a cross-schema rename reach the same descendants', () => {
     expect(CROSS_SCHEMA_RENAMES.length).toBeGreaterThan(0);
     for (const [older, newer] of CROSS_SCHEMA_RENAMES) {
-      const a = expandTypeNamesToDescendants([older]).filter((n) => n !== older && n !== newer);
-      const b = expandTypeNamesToDescendants([newer]).filter((n) => n !== older && n !== newer);
+      const a = expandTypeNamesToDescendants([older], 'IFC4').filter((n) => n !== older && n !== newer);
+      const b = expandTypeNamesToDescendants([newer], 'IFC4').filter((n) => n !== older && n !== newer);
       expect(a.sort(), `${older} vs ${newer}`).toEqual(b.sort());
       expect(a.length, `${older} has descendants to compare`).toBeGreaterThan(0);
     }
@@ -111,7 +118,7 @@ describe('alias tables in the descendant direction', () => {
 
   it('IfcBuildingElement reaches the IFC4X3-only leaves of its renamed self', () => {
     // The named instance of the rule above, legible without rerunning it.
-    expect(expandTypeNamesToDescendants(['IfcBuildingElement'])).toContain('IFCCOURSE');
+    expect(expandTypeNamesToDescendants(['IfcBuildingElement'], 'IFC4')).toContain('IFCCOURSE');
   });
 });
 
@@ -122,21 +129,57 @@ describe('alias tables in the descendant direction', () => {
  */
 describe('order is deterministic and documented', () => {
   it('puts the requested type first, then its descendants sorted', () => {
-    const result = expandTypeNamesToDescendants(['IfcSlab']);
+    const result = expandTypeNamesToDescendants(['IfcSlab'], 'IFC4');
     expect(result[0]).toBe('IFCSLAB');
     expect(result.slice(1)).toEqual([...result.slice(1)].sort());
   });
 
   it('keeps each requested type immediately ahead of its own descendants', () => {
-    const result = expandTypeNamesToDescendants(['IfcBeam', 'IfcRoof']);
+    const result = expandTypeNamesToDescendants(['IfcBeam', 'IfcRoof'], 'IFC4');
     expect(result).toEqual(['IFCBEAM', 'IFCBEAMSTANDARDCASE', 'IFCROOF']);
   });
 
   it('a deeply nested closure is sorted, not depth-first', () => {
     // `IfcBuildingElement`'s closure is wide enough that depth-first pop order
     // and sorted order cannot coincide by accident.
-    const result = expandTypeNamesToDescendants(['IfcBuildingElement']).slice(1);
+    const result = expandTypeNamesToDescendants(['IfcBuildingElement'], 'IFC4').slice(1);
     expect(result.length).toBeGreaterThan(20);
     expect(result).toEqual([...result].sort());
+  });
+});
+
+/**
+ * The other half of rule (b): a name the file's own schema declares is never
+ * pulled in from a version the file is not written in.
+ *
+ * buildingSMART re-parented entities between versions, so unioning the tables
+ * misfiled 45 (supertype, schema) pairs. Each case below is a real re-parenting
+ * measured against the bundled tables, and each one made a query answer with
+ * records that are not of the requested class on that schema.
+ */
+describe('a re-parented entity is not pulled in from another schema', () => {
+  it.each([
+    // base, schema, name that must NOT appear, where the union got it from
+    ['IfcBuildingElement', 'IFC4', 'IFCREINFORCINGBAR', 'an IfcElementComponent from IFC4 on'],
+    ['IfcBuildingElement', 'IFC4', 'IFCBUILDINGELEMENTPART', 'an IfcElementComponent from IFC4 on'],
+    ['IfcObject', 'IFC4', 'IFCPROJECT', 'an IfcContext from IFC4 on'],
+    ['IfcObject', 'IFC4X3', 'IFCPROJECT', 'an IfcContext from IFC4 on'],
+    ['IfcSystem', 'IFC2X3', 'IFCZONE', 'an IfcGroup in IFC2X3'],
+    ['IfcElementType', 'IFC4', 'IFCSPACETYPE', 'an IfcSpatialElementType in IFC4'],
+    ['IfcFastener', 'IFC4', 'IFCMECHANICALFASTENER', 'a sibling, not a subtype, in IFC4'],
+  ])('%s on %s does not return %s (%s)', (base, version, forbidden) => {
+    expect(expandTypeNamesToDescendants([base], version)).not.toContain(forbidden);
+  });
+
+  it('but still returns the type it IS a descendant of on the schema that says so', () => {
+    // Anti-vacuity in the strongest form available: the same name, the same
+    // resolver, the schema where the parentage really holds.
+    expect(expandTypeNamesToDescendants(['IfcBuildingElement'], 'IFC2X3')).toContain('IFCREINFORCINGBAR');
+    expect(expandTypeNamesToDescendants(['IfcObject'], 'IFC2X3')).toContain('IFCPROJECT');
+    expect(expandTypeNamesToDescendants(['IfcSystem'], 'IFC4')).toContain('IFCZONE');
+  });
+
+  it('IfcElementComponent, the class IfcReinforcingBar really has on IFC4, still finds it', () => {
+    expect(expandTypeNamesToDescendants(['IfcElementComponent'], 'IFC4')).toContain('IFCREINFORCINGBAR');
   });
 });

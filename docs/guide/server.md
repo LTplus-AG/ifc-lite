@@ -272,6 +272,27 @@ const metadata = await client.getMetadata(file);
 // - entity_count: number
 // - geometry_count: number
 // - file_size: number
+// - oversized_id_count?: number  // records the scan refused (#3395)
+// - malformed_record_found?: boolean  // the scan stopped early (#3695)
+```
+
+The last two report that `entity_count` covers less than the file declares:
+`oversized_id_count` is how many records were skipped for an instance name
+too large to represent, and `malformed_record_found` means the scan hit a
+record with no terminating `;` (an unterminated string or comment, or a
+truncated upload) and stopped there, so the count covers only the bytes
+before the break.
+
+Both are **optional**, and absence is not the same as zero. A server older
+than these fields sends neither, which means "not scanned for" — never
+"clean". Branch on presence before reading the value:
+
+```typescript
+if (metadata.malformed_record_found) {
+  console.warn('This file is truncated — the counts above are partial.');
+} else if (metadata.malformed_record_found === undefined) {
+  console.warn('This server does not check; the counts may still be partial.');
+}
 ```
 
 ### Cache Methods

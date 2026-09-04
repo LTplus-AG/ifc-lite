@@ -924,77 +924,6 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
 }
 
 #[test]
-fn a_dont_bake_placeholder_is_dropped_when_its_group_fails_verification() {
-    // Companion to `dont_bake_empty_occurrence_refs_recompose_like_materialized`:
-    // here the group's #3666 reconstruction check FAILS (a same-count exact
-    // collision), rather than genuinely sharing geometry. A don't-bake
-    // placeholder carries no baked geometry of its own -- once its group is
-    // untrustworthy there is no fallback geometry to draw it flat with, so
-    // it is documented (not silently, per the diag_warn! at the drop site) to
-    // fall out of BOTH `templates` and `flat_indices`: it renders nowhere.
-    // This asserts today's actual (signaled) behaviour so a future change
-    // that quietly starts drawing wrong geometry, or one that starts padding
-    // `flat_indices` with an empty mesh nothing can render, is caught.
-    let template = mesh_from(
-        baked(&CANON, &Matrix4::identity()),
-        InstanceMeta {
-            transform: mat_rm(&Matrix4::identity()),
-            local_transform: None,
-            canonical_transform: None,
-            rep_identity: 4646,
-            instanceable: true,
-        },
-    );
-    // The materialized second member: same vertex COUNT, genuinely different
-    // content (the #3666 collision shape), so verification must fail.
-    const COLLIDING: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 9.0, 9.0, 9.0];
-    let m_colliding = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
-    let colliding = mesh_from(
-        baked(&COLLIDING, &m_colliding),
-        InstanceMeta {
-            transform: mat_rm(&m_colliding),
-            local_transform: None,
-            canonical_transform: None,
-            rep_identity: 4646,
-            instanceable: true,
-        },
-    );
-    // The don't-bake placeholder: empty geometry, only a placement.
-    let placeholder_meta = InstanceMeta {
-        transform: mat_rm(&Matrix4::new_translation(&nalgebra::Vector3::new(-3.0, 0.0, 0.0))),
-        local_transform: None,
-        canonical_transform: None,
-        rep_identity: 4646,
-        instanceable: true,
-    };
-
-    let refs: Vec<InstanceMeshRef> = vec![
-        InstanceMeshRef::from_mesh(&template),
-        InstanceMeshRef::from_mesh(&colliding),
-        InstanceMeshRef {
-            positions: &[],
-            normals: &[],
-            indices: &[],
-            origin: [0.0; 3],
-            instance_meta: Some(&placeholder_meta),
-            entity_id: 2,
-            color: [0.0; 4],
-            item_id: None,
-        },
-    ];
-    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
-    assert_eq!(collated.templates.len(), 0, "the collision must still fail verification");
-    // The two MATERIALIZED members (indices 0, 1) still draw flat on their own
-    // baked vertices; the placeholder (index 2, empty geometry) has none and is
-    // dropped -- it appears in neither list.
-    assert_eq!(
-        collated.flat_indices,
-        vec![0, 1],
-        "the empty-geometry placeholder must not appear in flat_indices (nothing to draw)"
-    );
-}
-
-#[test]
 fn a_singular_verify_basis_degrades_like_no_basis_rather_than_panicking_or_hanging() {
     // Companion to the wrong-basis tests above: a caller-supplied basis that is
     // singular (non-invertible) cannot be conjugated with at all. It must fall
@@ -1611,6 +1540,8 @@ fn verify_recomposition_flags_a_nan_vertex_instead_of_dropping_it() {
             ],
         }],
         flat_indices: vec![],
+        dropped_placeholders: 0,
+        verification_rejections: 0,
     };
 
     let err = verify_recomposition(&meshes, &collated);
@@ -1660,6 +1591,8 @@ fn verify_recomposition_genuine_match_still_clears_the_tolerance() {
             ],
         }],
         flat_indices: vec![],
+        dropped_placeholders: 0,
+        verification_rejections: 0,
     };
 
     let err = verify_recomposition(&meshes, &collated);

@@ -42,6 +42,16 @@ describe('normalizeBcfBaseUrl', () => {
   it('keeps URLs whose last segment is not a version number', () => {
     expect(normalizeBcfBaseUrl('https://host/api/v1')).toBe('https://host/api/v1');
   });
+
+  it('drops a query or fragment, which is never part of a base path', () => {
+    expect(normalizeBcfBaseUrl('https://host/bcf?tenant=a')).toBe('https://host/bcf');
+    expect(normalizeBcfBaseUrl('https://host/#/projects')).toBe('https://host');
+    expect(normalizeBcfBaseUrl('https://host/bcf/2.1?x=1#y')).toBe('https://host/bcf');
+  });
+
+  it('leaves an address it cannot parse to the request that reports it', () => {
+    expect(normalizeBcfBaseUrl('not a url/')).toBe('not a url');
+  });
 });
 
 describe('BcfApiClient URL construction', () => {
@@ -113,14 +123,16 @@ describe('BcfApiClient auth handling', () => {
     expect(apiError.message).toBe('Not authenticated');
   });
 
-  it('reports non-JSON error bodies by status line', async () => {
+  it('reports non-JSON error bodies by status line and request URL', async () => {
     const { fetchFn } = mockFetch(
       () => new Response('<html>gateway timeout</html>', { status: 504 }),
     );
     const client = new BcfApiClient({ baseUrl: 'https://host/bcf', fetchFn });
     const error = await client.getProjects().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BcfApiError);
-    expect((error as BcfApiError).message).toBe('BCF request failed (HTTP 504)');
+    expect((error as BcfApiError).message).toBe(
+      'BCF request failed (HTTP 504) at https://host/bcf/2.1/projects',
+    );
   });
 });
 

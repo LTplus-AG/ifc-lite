@@ -76,9 +76,7 @@ export async function signInToBcfServer(
   password: string,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  const anonymous = new api.BcfApiClient({ baseUrl });
-  const authInfo = await anonymous.getAuthInfo();
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const token = await api.requestPasswordToken({
     tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
     username,
@@ -98,8 +96,15 @@ export async function signInWithToken(
   accessToken: string,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  return completeSignIn(baseUrl, { access_token: accessToken.trim() });
+  const token = { access_token: accessToken.trim() };
+  // Resolve the base ANONYMOUSLY before the token is used. Probing with the
+  // token itself would send the user's secret to a candidate not yet known
+  // to be a BCF service — for a Nexus space, its public web UI — so an
+  // ambiguous address costs one unauthenticated `/auth` request and the
+  // token then goes to exactly one address. An address that already names a
+  // path is unambiguous and skips discovery entirely.
+  const baseUrl = await api.resolveBcfServiceBaseUrl({ baseUrl: serverUrl });
+  return completeSignIn(baseUrl, token);
 }
 
 /** Path the popup returns to; must match what OAuth apps register. */
@@ -134,8 +139,7 @@ export async function prepareBcfOAuth(
   options: { clientId?: string; clientSecret?: string; scope?: string } = {},
 ): Promise<BcfOAuthPreparation> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  const authInfo = await new api.BcfApiClient({ baseUrl }).getAuthInfo();
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
   const authEndpoint = requireSecureOAuthUrl(authInfo.oauth2_auth_url, 'authorization endpoint');
 
@@ -220,9 +224,7 @@ export async function signInWithClientCredentials(
   clientSecret: string,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  const anonymous = new api.BcfApiClient({ baseUrl });
-  const authInfo = await anonymous.getAuthInfo();
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const token = await api.requestClientCredentialsToken({
     tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
     clientId,
@@ -280,8 +282,9 @@ async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
         url: config.serverUrl,
       });
     }
-    const anonymous = new api.BcfApiClient({ baseUrl: config.serverUrl });
-    const authInfo = await anonymous.getAuthInfo();
+    // The stored URL was already resolved at sign-in, so the candidate it
+    // needs is the one tried first and no extra request is made.
+    const { authInfo } = await api.discoverBcfService({ baseUrl: config.serverUrl });
     const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
     // OAuth-app sessions must present the app credentials on the refresh
     // grant too; token servers that never issued a client ignore them.

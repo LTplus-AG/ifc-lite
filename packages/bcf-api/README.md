@@ -15,17 +15,22 @@ npm install @ifc-lite/bcf-api @ifc-lite/bcf
 ```ts
 import {
   BcfApiClient,
-  normalizeBcfBaseUrl,
+  discoverBcfService,
   requestPasswordToken,
   fetchProjectAsBCF,
 } from '@ifc-lite/bcf-api';
 
-const baseUrl = normalizeBcfBaseUrl('https://example.com/bcf');
+// Normalizes the address and fetches `/auth`. Vendors tell users to enter the
+// bare space or instance URL (BIMcollab: https://myspace.bimcollab.com) while
+// serving the API under a path, so a pathless address also gets tried at
+// `/bcf`; `baseUrl` below is whichever one answered.
+const { baseUrl, authInfo } = await discoverBcfService({
+  baseUrl: 'https://example.com/bcf',
+});
 
-// Discover the token endpoint, then use the OAuth2 password grant
-const auth = await new BcfApiClient({ baseUrl }).getAuthInfo();
+// Then use the OAuth2 password grant against the discovered token endpoint
 const token = await requestPasswordToken({
-  tokenUrl: auth.oauth2_token_url!,
+  tokenUrl: authInfo.oauth2_token_url!,
   username: 'you@example.com',
   password: '...',
 });

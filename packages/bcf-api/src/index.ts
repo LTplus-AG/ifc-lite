@@ -12,6 +12,12 @@
 export { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
 export type { BcfApiClientOptions, TopicQueryOptions } from './client.js';
 
+// bcfBaseUrlCandidates and resolveBcfBaseUrl stay module-local: the
+// candidate list and probe order are implementation details of the two
+// entry points below, not a public contract.
+export { discoverBcfService, resolveBcfServiceBaseUrl } from './discovery.js';
+export type { BcfServiceDiscovery, DiscoverBcfServiceOptions } from './discovery.js';
+
 export {
   exchangeAuthorizationCode,
   refreshAccessToken,

@@ -46,12 +46,28 @@ export interface TopicQueryOptions {
 }
 
 /**
- * Strip whitespace, trailing slashes, and an accidentally pasted version
- * segment ('/2.1', '/3.0') from a user-entered BCF server URL, so
- * `https://host/bcf/2.1/` and `https://host/bcf` configure the same client.
+ * Strip whitespace, any query or fragment, trailing slashes, and an
+ * accidentally pasted version segment ('/2.1', '/3.0') from a user-entered
+ * BCF server URL, so `https://host/bcf/2.1/` and `https://host/bcf`
+ * configure the same client.
+ *
+ * A BCF base URL is a path prefix that request paths are appended to, so a
+ * query or fragment is never part of it — and one pasted out of a browser
+ * address bar (`https://myspace.bimcollab.com/#/projects`) would otherwise
+ * be carried into every request URL.
  */
 export function normalizeBcfBaseUrl(input: string): string {
   let url = input.trim();
+  try {
+    const parsed = new URL(url);
+    if (parsed.search !== '' || parsed.hash !== '') {
+      parsed.search = '';
+      parsed.hash = '';
+      url = parsed.toString();
+    }
+  } catch {
+    // Not an absolute URL; the string rules below still apply.
+  }
   while (url.endsWith('/')) url = url.slice(0, -1);
   const versionSuffix = /\/(\d+\.\d+)$/.exec(url);
   if (versionSuffix) url = url.slice(0, -versionSuffix[0].length);
@@ -125,7 +141,10 @@ export class BcfApiClient {
         parsed = undefined;
       }
       const detail = extractErrorDetail(parsed);
-      throw new BcfApiError(detail ?? `BCF request failed (HTTP ${response.status})`, {
+      // Without a server-supplied detail the status alone says nothing about
+      // WHICH request failed, and a wrong base URL is the common cause; name
+      // the URL so the message is actionable (and so bug reports carry it).
+      throw new BcfApiError(detail ?? `BCF request failed (HTTP ${response.status}) at ${url}`, {
         status: response.status,
         url,
         detail,

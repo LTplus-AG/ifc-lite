@@ -57,8 +57,13 @@
  * THE OTHER HALF OF THE CONTRACT: THE REVIEWER MUST POST ON EVERY RUN, INCLUDING
  * A CLEAN ONE. A reviewer that stays silent when it finds nothing makes
  * "reviewed and found nothing" byte-identical to "never ran", which is exactly
- * the trap CodeRabbit falls into here. So a clean run posts a `verdict=clean`
- * marker, and silence therefore means failure.
+ * the trap CodeRabbit falls into here. So an empty run still posts a marker, and
+ * silence therefore means failure.
+ *
+ * WHICH empty-run marker is `markerVerdict`'s decision (#3862): `verdict=clean`
+ * only when a per-class pass stood behind the reviewer's own `clean`, and
+ * `verdict=clean-by-judge` for a `findings` verdict the judge emptied -- covered
+ * by the gate, never `llm-reviewed`.
  *
  * FAILURE CLASSES, each with its OWN remedy, because a remedy that contradicts
  * its finding is worse than no remedy:

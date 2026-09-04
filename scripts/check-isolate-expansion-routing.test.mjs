@@ -43,6 +43,9 @@ import {
   isSufficientAllowlistReason,
   stripCommentsAndStrings,
   walk,
+  unroutedCallSites,
+  POLICED_ACTIONS,
+  EXEMPT_ACTIONS,
 } from './check-isolate-expansion-routing.mjs';
 
 describe('check-isolate-expansion-routing: classifyFile', () => {
@@ -82,7 +85,7 @@ describe('check-isolate-expansion-routing: classifyFile', () => {
     const verdict = classifyFile(relPath, regressed);
     assert.equal(verdict.isCandidate, true);
     assert.equal(verdict.ok, false, 'a regressed known channel must fail');
-    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+    assert.match(verdict.reason, /without routing through a resolver|lost its assembly-expansion routing/);
   });
 
   it('GREEN: a REQUIRES_ROUTING_MARKER file that calls resolveHighlightIds passes', () => {
@@ -232,7 +235,7 @@ describe('check-isolate-expansion-routing: classifyFile scans code, not comments
     `;
     const verdict = classifyFile(relPath, content);
     assert.equal(verdict.ok, false, 'a commented-out routing call must not satisfy the gate');
-    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+    assert.match(verdict.reason, /without routing through a resolver|lost its assembly-expansion routing/);
   });
 
   it('a call-shaped BLOCK COMMENT spanning multiple lines does NOT satisfy classifyFile', () => {
@@ -247,7 +250,7 @@ describe('check-isolate-expansion-routing: classifyFile scans code, not comments
     `;
     const verdict = classifyFile(relPath, content);
     assert.equal(verdict.ok, false, 'a call-shaped fragment inside a block comment must not satisfy the gate');
-    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+    assert.match(verdict.reason, /without routing through a resolver|lost its assembly-expansion routing/);
   });
 
   it('the same call-shaped text inside a STRING LITERAL does NOT satisfy classifyFile', () => {
@@ -259,7 +262,7 @@ describe('check-isolate-expansion-routing: classifyFile scans code, not comments
     `;
     const verdict = classifyFile(relPath, content);
     assert.equal(verdict.ok, false, 'a call-shaped string literal must not satisfy the gate');
-    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+    assert.match(verdict.reason, /without routing through a resolver|lost its assembly-expansion routing/);
   });
 
   it('a REAL call still satisfies classifyFile -- plain form', () => {
@@ -347,7 +350,7 @@ describe('check-isolate-expansion-routing: end-to-end -- a commented-out routing
         output = `${err.stdout || ''}${err.stderr || ''}`;
       }
       assert.equal(threw, true, 'a real routing call commented out must make the gate exit non-zero');
-      assert.match(output, /lost its assembly-expansion routing/);
+      assert.match(output, /without routing through a resolver|lost its assembly-expansion routing/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -617,7 +620,7 @@ describe('check-isolate-expansion-routing: seventh channel -- setIsolatedEntitie
     assert.equal(ROUTING_MARKERS.test(regressed), false);
     const verdict = classifyFile(relPath, regressed);
     assert.equal(verdict.ok, false, 'a regressed known channel must fail even via setIsolatedEntities');
-    assert.match(verdict.reason, /lost its assembly-expansion routing/);
+    assert.match(verdict.reason, /without routing through a resolver|lost its assembly-expansion routing/);
   });
 
   it('GREEN: useEmbedUrlParams.ts routed through resolveHighlightIds before assigning passes', () => {
@@ -660,5 +663,149 @@ describe('check-isolate-expansion-routing: seventh channel -- setIsolatedEntitie
     const verdict = classifyFile(relPath, content);
     assert.equal(verdict.isCandidate, true);
     assert.equal(verdict.ok, true, 'allowlisted with a reason, not exempt by pattern-matching the argument');
+  });
+});
+
+/**
+ * #3338 review, finding 1: `ROUTING_MARKERS.test(code)` asked the routing
+ * question PER FILE. Once a file carried any routing call, stripping the
+ * routing from one of its call sites left the file reading as ok --
+ * vacuously so in the two files that route four channels each.
+ */
+describe('check-isolate-expansion-routing: routing is checked per call site, not per file', () => {
+  const ROUTED = 'apps/viewer/src/sdk/adapters/visibility-adapter.ts';
+
+  it('a file whose isolate call lost its routing fails even though its hide call still routes', () => {
+    const verdict = classifyFile(
+      ROUTED,
+      `hide() { state.hideEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, ids)); }
+       isolate() { state.isolateEntities?.(globalIds); }`,
+    );
+    assert.equal(verdict.ok, false, 'the unrouted isolate must fail on its own');
+    assert.match(verdict.reason, /isolateEntities\(globalIds\)/);
+  });
+
+  it('and the file-level question this replaces would have passed that same input', () => {
+    // The vacuity, made explicit: the surviving hide routing satisfies the old
+    // predicate, which is why the mutation above used to go unnoticed.
+    assert.equal(
+      ROUTING_MARKERS.test('state.hideEntities(resolvePresentationIds(r, ids)); state.isolateEntities?.(globalIds);'),
+      true,
+    );
+  });
+
+  it('accepts an argument wrapped inline in the resolver', () => {
+    const verdict = classifyFile(ROUTED, 'state.isolateEntities?.(resolvePresentationIds(r, ids));');
+    assert.equal(verdict.ok, true);
+  });
+
+  it('accepts an argument assigned from the resolver one hop earlier', () => {
+    const verdict = classifyFile(
+      'apps/viewer/src/components/viewer/LensPanel.tsx',
+      'const isolationIds = resolvePresentationIds(cameraCallbacks.resolveHighlightIds, matchingIds);\n isolateEntities(isolationIds);',
+    );
+    assert.equal(verdict.ok, true);
+  });
+
+  it('accepts two hops, the SearchModal.filter shape', () => {
+    const verdict = classifyFile(
+      'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
+      'const resolved = cameraCallbacks.resolveHighlightIds?.(globalIds) ?? [];\n' +
+      'const isolationIds = [...resolved, ...globalIds];\n' +
+      'isolateEntities(isolationIds);',
+    );
+    assert.equal(verdict.ok, true);
+  });
+
+  it('treats a release (null / empty) as having nothing to expand', () => {
+    for (const arg of ['null', 'undefined', '[]', 'new Set()']) {
+      assert.deepEqual(
+        unroutedCallSites(`state.setIsolatedEntities(${arg});`),
+        [],
+        `${arg} names no entity, so there is nothing to route`,
+      );
+    }
+  });
+
+  it('still fails an ALIASED call in a listed file with no routing anywhere (no hole opened)', () => {
+    const verdict = classifyFile(
+      'apps/viewer/src/hooks/useIDS.ts',
+      'const { isolateEntities: apply } = useViewerStore(); apply(rawIds);',
+    );
+    assert.equal(verdict.ok, false, 'per-call-site analysis is blind to aliases, so the file-level question must still run');
+  });
+});
+
+/**
+ * #3338 review, finding 2: the gate policed only the two isolation actions,
+ * so a new file that hides or colours raw ids was invisible to it.
+ */
+describe('check-isolate-expansion-routing: the hide / show / colour channels are policed too', () => {
+  it('policies exactly the five presentation actuators', () => {
+    assert.deepEqual(POLICED_ACTIONS.map((a) => a.name), [
+      'isolateEntities',
+      'setIsolatedEntities',
+      'hideEntities',
+      'showEntities',
+      'updateMeshColors',
+    ]);
+  });
+
+  for (const action of ['hideEntities', 'showEntities', 'updateMeshColors']) {
+    it(`a NEW, unlisted file calling ${action}( is reported as an unknown channel`, () => {
+      const verdict = classifyFile(
+        'apps/viewer/src/components/viewer/BrandNewPanel.tsx',
+        `state.${action}(pickedIds);`,
+      );
+      assert.equal(verdict.isCandidate, true, 'must be seen at all');
+      assert.equal(verdict.ok, false);
+      assert.match(verdict.reason, /not in either allowlist/);
+    });
+  }
+
+  it('a listed file whose hide call routes is accepted', () => {
+    const verdict = classifyFile(
+      'apps/viewer-embed/src/bridge/handler.ts',
+      'state.hideEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));',
+    );
+    assert.equal(verdict.ok, true);
+  });
+
+  it('resolvePresentationColorMap counts as routing for the colour channel', () => {
+    const verdict = classifyFile(
+      'apps/viewer-embed/src/bridge/handler.ts',
+      'const updates = resolvePresentationColorMap(state.cameraCallbacks.resolveHighlightIds, entries);\n' +
+      'state.updateMeshColors(updates, { override: true });',
+    );
+    assert.equal(verdict.ok, true);
+  });
+
+  it('EXEMPT_ACTIONS lets one action opt out of a file that must route another, with a reason', () => {
+    const lens = EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx');
+    assert.ok(lens, 'LensPanel is the mixed case this structure exists for');
+    for (const [action, reason] of lens) {
+      assert.ok(
+        isSufficientAllowlistReason(reason),
+        `${action} exemption needs a reviewable reason, got ${JSON.stringify(reason)}`,
+      );
+    }
+    const verdict = classifyFile(
+      'apps/viewer/src/components/viewer/LensPanel.tsx',
+      'const isolationIds = resolvePresentationIds(r, matchingIds);\n isolateEntities(isolationIds);\n hideEntities(plan.hide);',
+    );
+    assert.equal(verdict.ok, true, 'the exempt hide must not fail the routed isolate');
+  });
+
+  it('an EXEMPT_ACTIONS entry with a stub reason fails rather than passing quietly', () => {
+    const original = EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx');
+    EXEMPT_ACTIONS.set('apps/viewer/src/hooks/useIDS.ts', new Map([['hideEntities', 'x']]));
+    try {
+      const verdict = classifyFile('apps/viewer/src/hooks/useIDS.ts', 'state.hideEntities(rawIds);');
+      assert.equal(verdict.ok, false);
+      assert.match(verdict.reason, /no reviewable reason/);
+    } finally {
+      EXEMPT_ACTIONS.delete('apps/viewer/src/hooks/useIDS.ts');
+      assert.equal(EXEMPT_ACTIONS.get('apps/viewer/src/components/viewer/LensPanel.tsx'), original);
+    }
   });
 });

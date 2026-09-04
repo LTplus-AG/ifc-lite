@@ -43,8 +43,9 @@
  * ## What counts as a channel
  *
  * Any non-test `.ts`/`.tsx` file under `apps/viewer/src` or
- * `apps/viewer-embed/src` that calls `isolateEntities(` or
- * `setIsolatedEntities(` (directly, via `state.`, the optional-call form
+ * `apps/viewer-embed/src` that calls one of `POLICED_ACTIONS` --
+ * `isolateEntities`, `setIsolatedEntities`, `hideEntities`, `showEntities`,
+ * `updateMeshColors` (directly, via `state.`, the optional-call form
  * `?.(`, a destructured/aliased local binding of either (`const {
  * isolateEntities: apply } = ...`, including `let`/reassignment and
  * function-parameter destructuring -- see `ALIAS_DESTRUCTURE_PATTERN`), or a
@@ -56,15 +57,19 @@
  *
  * ## Two ways to fail
  *
- * 1. UNKNOWN CHANNEL: a file calls `isolateEntities(` or `setIsolatedEntities(`
+ * 1. UNKNOWN CHANNEL: a file calls one of `POLICED_ACTIONS`
  *    and is not in either allowlist below. This is the "a channel nobody
  *    enumerated" failure mode -- new code that isolates ids has to be
  *    triaged into one of the two lists (with a reason), not silently pass.
- * 2. LOST ROUTING: a file in `REQUIRES_ROUTING_MARKER` no longer contains a
- *    call to one of the resolvers in `ROUTING_MARKERS`. This catches a
- *    channel that HAD the fix regressing -- e.g. a refactor that inlines the
- *    handler and drops the `cameraCallbacks.resolveHighlightIds` call along
- *    the way.
+ * 2. LOST ROUTING: a file in `REQUIRES_ROUTING_MARKER` has a policed CALL
+ *    SITE whose own argument does not reach one of the resolvers in
+ *    `ROUTING_MARKERS`. This catches a channel that HAD the fix regressing --
+ *    e.g. a refactor that inlines the handler and drops the
+ *    `cameraCallbacks.resolveHighlightIds` call along the way. Asked per call
+ *    site rather than per file (#3338 review): a file that routes four
+ *    channels answered the file-level question with any one of them, so
+ *    stripping the routing from one call site went unnoticed. A single action
+ *    in such a file can opt out through `EXEMPT_ACTIONS`, with a reason.
  *
  * `NO_MARKER_REQUIRED` covers the other two shapes a compliant channel can
  * take: a DIFFERENT, already-verified expansion mechanism (HierarchyPanel's
@@ -77,15 +82,22 @@
  *
  * ## LIMITATIONS -- read before assuming coverage
  *
- *  - Structural, not data-flow: "lost routing" checks that a ROUTING_MARKERS
- *    token appears ANYWHERE in the file as a call, not that its result flows
- *    into the SPECIFIC `isolateEntities(...)` argument. A file with an
- *    unrelated `resolveHighlightIds(...)` call elsewhere (e.g. a highlight
- *    handler) and a second, newly-added, unrouted `isolateEntities(rawIds)`
- *    would pass here. Every current ROUTED file's isolate handler routes
- *    through the resolver at its OWN call site (verified by reading each one
- *    while building this allowlist), so this is a real gap for a FUTURE
- *    edit, not a known miss today.
+ *  - Data flow is followed, but only through LOCAL ASSIGNMENTS, and only a
+ *    bounded number of hops (`ASSIGNMENT_WALK_DEPTH`). "Lost routing" used to
+ *    ask whether a ROUTING_MARKERS token appeared ANYWHERE in the file, which
+ *    made the question vacuous for the two files that route four channels
+ *    each: deleting `visibility-adapter.ts`'s isolate() routing left the file
+ *    green because its hide() still routed. `unroutedCallSites` now checks
+ *    each call site's own argument, following `const x = resolver(...)` into
+ *    the call that uses `x`. A value that reaches the action through a helper
+ *    function, a ref, or a component prop still reads as UNROUTED -- a false
+ *    failure a reviewer clears with an allowlist entry, which is the safe
+ *    direction.
+ *  - An ALIASED call (`const { isolateEntities: apply } = ...; apply(ids)`)
+ *    has no literal call site to check, so for those files the gate falls
+ *    back to the old file-level question rather than passing them silently.
+ *  - `setPendingColorUpdates`, the OTHER colour actuator, is not policed --
+ *    31 call sites across 14 files, unaudited. See `POLICED_ACTIONS`.
  *  - Textual match, not parsed: `ROUTING_MARKERS` and `CALL_PATTERN` are
  *    regexes over raw source. `ALIAS_DESTRUCTURE_PATTERN` closes the specific
  *    gap an adversarial review found in `isolateEntities` itself -- a
@@ -127,6 +139,23 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, dirname, relative, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
+import {
+  ROUTING_MARKERS,
+  actionCallPattern,
+  unroutedCallSites,
+} from './lib/presentation-channel-call-sites.mjs';
+import {
+  POLICED_ACTIONS,
+  REQUIRES_ROUTING_MARKER,
+  NO_MARKER_REQUIRED,
+  EXEMPT_ACTIONS,
+  CANDIDATE_FLOOR,
+} from './lib/presentation-channel-allowlist.mjs';
+
+// Re-exported so this gate stays the single import surface for its own test
+// file and for anything else that needs to read the allowlists.
+export { POLICED_ACTIONS, REQUIRES_ROUTING_MARKER, NO_MARKER_REQUIRED, EXEMPT_ACTIONS };
+export { ROUTING_MARKERS, unroutedCallSites };
 
 const ROOT_ARG_INDEX = process.argv.indexOf('--root');
 const ROOT =
@@ -215,112 +244,6 @@ export const ALIAS_DESTRUCTURE_PATTERN =
 export const PROPERTY_ALIAS_PATTERN =
   /=\s*[\w$]+(?:\([^()]*\))?(?:\??\.[\w$]+(?:\([^()]*\))?)*\.(?:isolateEntities|setIsolatedEntities)\b/;
 
-/** The resolvers that actually perform `IfcRelAggregates` expansion, or read
- *  from a resolver that does, called as real code (not merely named in prose).
- *  `resolvePresentationIds` (`apps/viewer/src/lib/presentation/resolvePresentationIds.ts`,
- *  #3338) is the shared policy wrapper most isolation channels now
- *  call INSTEAD of `resolveHighlightIds` directly -- it takes the resolver
- *  as its first argument rather than invoking it inline, so a channel that
- *  switched to it no longer contains the literal `resolveHighlightIds(`
- *  call this pattern used to require. (`PropertiesPanel.tsx` and
- *  `SearchModal.filter.tsx` still call the resolver inline on purpose, each
- *  with its own reason in the source -- both spellings must keep passing.) */
-export const ROUTING_MARKERS =
-  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolvePresentationIds)\b\s*\?{0,1}\.{0,1}\s*\(/;
-
-/**
- * Channels that MUST show a `ROUTING_MARKERS` call in the same file. Paths
- * are repo-relative, forward-slashed.
- */
-export const REQUIRES_ROUTING_MARKER = new Set([
-  'apps/viewer/src/components/viewer/LensPanel.tsx',
-  'apps/viewer/src/components/viewer/PropertiesPanel.tsx',
-  'apps/viewer/src/components/viewer/SearchModal.filter.tsx',
-  'apps/viewer-embed/src/bridge/handler.ts',
-  // A SEVENTH channel found by widening CALL_PATTERN to setIsolatedEntities
-  // (a real bug, not hypothetical): `?isolate=` named a geometry-less
-  // assembly and blanked the viewport, because this hook calls the
-  // ASSIGNING `setIsolatedEntities`, never `isolateEntities` -- invisible to
-  // every earlier version of this gate.
-  'apps/viewer-embed/src/components/useEmbedUrlParams.ts',
-  // Audited alongside the seventh channel (all five other setIsolatedEntities
-  // callers, per the review that found #useEmbedUrlParams.ts): a BCF
-  // viewpoint's visible-component exceptions can name whatever the
-  // AUTHORING tool recorded, not guaranteed geometry-bearing in this
-  // renderer.
-  'apps/viewer/src/hooks/useBCF.ts',
-  // The IDS row-focus isolate (`installFocusIsolation`) and set-level
-  // isolate (`installSetIsolation`, the failed/passed/involved buttons):
-  // both isolate ids an IDS specification's applicability filter matched,
-  // which can be any IFC class, including a geometry-less assembly -- the
-  // same shape as LensPanel/SearchModal.filter's rule-matched ids.
-  'apps/viewer/src/hooks/useIDS.ts',
-  // The SDK/MCP isolate() channel: #3382 landed the routing fix and #3338
-  // moved its union policy into the shared `resolvePresentationIds`, so this
-  // now genuinely routes and belongs here instead of NO_MARKER_REQUIRED.
-  'apps/viewer/src/sdk/adapters/visibility-adapter.ts',
-]);
-
-/**
- * Channels that call `isolateEntities(` but are not required to show a
- * `ROUTING_MARKERS` call, each with a reason a reviewer can check.
- */
-export const NO_MARKER_REQUIRED = new Map([
-  [
-    'apps/viewer/src/components/viewer/HierarchyPanel.tsx',
-    "isolates ids from getNodeElements()/node.globalIds, which treeDataBuilder.ts already " +
-    'resolved to geometry-bearing members at tree-build time via hasAggregatedGeometry / ' +
-    'collectAggregatedDescendants (issue #1133) -- a different, non-renderer-dependent path ' +
-    'to the same correctness property, not a raw ref.',
-  ],
-  [
-    'apps/viewer/src/hooks/useClash.ts',
-    'installClashIsolation only ever receives a clash PAIR\'s element refs (clash.a.ref / ' +
-    'clash.b.ref), and clash detection tests actual mesh triangles for intersection -- an ' +
-    'element without geometry can never appear in a clash result, so these ids are always ' +
-    'geometry-bearing by construction, not a raw user pick that needs expansion.',
-  ],
-  [
-    'apps/viewer/src/components/viewer/anonymized-export/usePreviewIsolation.ts',
-    "the 3D preview's contract is to MIRROR the export's `includedIds` exactly, not to isolate " +
-    'what a user picked -- a geometry-less container in that set draws nothing because the export ' +
-    'genuinely contains no geometry for it, which is the truth the preview is there to show. ' +
-    "Expanding it would be inert under the shipped defaults (`related-entities.ts` walks " +
-    "`IfcRelAggregates` 'both', so an included container's renderable parts are already in the " +
-    'set) and actively wrong when the user turns that walk off or unchecks a part: the preview ' +
-    'would then show geometry the exported file does not contain.',
-  ],
-  [
-    'apps/viewer/src/lib/tours/tours/ids.ts',
-    'the tour cleanup only ever calls setIsolatedEntities(null) to release an isolation the ' +
-    'tour installed elsewhere -- null clears the channel and has nothing to expand, and this ' +
-    'file never installs a non-null set of its own.',
-  ],
-  [
-    'apps/viewer/src/store/slices/visibilitySlice.ts',
-    'this IS the definition site of both isolateEntities and setIsolatedEntities (the actions ' +
-    'this gate polices, not a caller of them) -- the only textual match is a doc comment ' +
-    'describing another channel\'s restore sequence ("... went setIsolatedEntities(null) ..."), ' +
-    'and the file itself never installs a raw id set into a resolver-dependent channel.',
-  ],
-]);
-
-/** Anti-vacuity floor: fewer total call sites than this means the detection
- *  regex broke (renamed action, moved directory), not that channels vanished.
- *  Raised from 6 to 13 when `SET_ISOLATED_CALL_PATTERN` widened the scan to
- *  `setIsolatedEntities` (seven new real candidates: the seventh channel
- *  itself plus the six audited direct callers) -- the real tree scans clean
- *  at 13 as of this change; lower it only after confirming channels were
- *  deliberately removed, never just because the count dropped.
- *  Lowered from 13 to 12 when `classifyFile` started scanning
- *  `stripCommentsAndStrings(content)` instead of raw source: this floor's OWN
- *  NO_MARKER_REQUIRED entry for `visibilitySlice.ts` already documented that
- *  "the only textual match is a doc comment" there (a `setIsolatedEntities(
- *  null)` mention describing a DIFFERENT channel's restore sequence, not a
- *  call in this file). Stripping comments correctly removes that false
- *  candidate rather than a real channel disappearing -- confirmed by rereading
- *  the file, not by the count alone. */
-const CANDIDATE_FLOOR = 12;
 
 /**
  * A `NO_MARKER_REQUIRED` reason below this length is treated as a stub, not
@@ -460,9 +383,10 @@ export function walk(dir, out, errors) {
  */
 export function classifyFile(relPath, content) {
   const code = stripCommentsAndStrings(content);
+  const unrouted = unroutedCallSites(code);
+  const callsPolicedAction = POLICED_ACTIONS.some(({ name }) => actionCallPattern(name).test(code));
   if (
-    !CALL_PATTERN.test(code) &&
-    !SET_ISOLATED_CALL_PATTERN.test(code) &&
+    !callsPolicedAction &&
     !ALIAS_DESTRUCTURE_PATTERN.test(code) &&
     !PROPERTY_ALIAS_PATTERN.test(code)
   ) {
@@ -487,29 +411,67 @@ export function classifyFile(relPath, content) {
     return { isCandidate: true, ok: true, reason };
   }
   if (REQUIRES_ROUTING_MARKER.has(relPath)) {
-    if (ROUTING_MARKERS.test(code)) {
-      return { isCandidate: true, ok: true };
+    const exempt = EXEMPT_ACTIONS.get(relPath);
+    const offenders = [];
+    for (const site of unrouted) {
+      const reason = exempt?.get(site.action);
+      if (reason !== undefined) {
+        if (!isSufficientAllowlistReason(reason)) {
+          return {
+            isCandidate: true,
+            ok: false,
+            reason:
+              `EXEMPT_ACTIONS entry ${relPath} -> ${site.action} carries no reviewable reason ` +
+              `(got ${JSON.stringify(reason)}).`,
+          };
+        }
+        continue;
+      }
+      offenders.push(site);
     }
+    // An ALIASED binding (`const { isolateEntities: apply } = ...; apply(ids)`)
+    // has no literal call site for `unroutedCallSites` to find, so per-call-site
+    // analysis is blind to it. Keep the old file-level question for exactly
+    // that case rather than letting the tighter check open a hole: a known
+    // channel that binds an action under another name must still show SOME
+    // routing call in the file.
+    const aliasBound = ALIAS_DESTRUCTURE_PATTERN.test(code) || PROPERTY_ALIAS_PATTERN.test(code);
+    if (offenders.length === 0 && aliasBound && !ROUTING_MARKERS.test(code)) {
+      return {
+        isCandidate: true,
+        ok: false,
+        reason:
+          'binds a policed action to a local alias (destructured or by member access) and ' +
+          'contains no routing call anywhere in the file. An aliased call has no literal call ' +
+          'site to check per-site, so this known channel falls back to the file-level question ' +
+          'and fails it -- it appears to have lost its assembly-expansion routing.',
+      };
+    }
+    if (offenders.length === 0) return { isCandidate: true, ok: true };
     return {
       isCandidate: true,
       ok: false,
       reason:
-        'calls a raw isolation action (isolateEntities( / setIsolatedEntities() but no ' +
-        'resolveHighlightIds / expandToGeometryBearingIds / expandFilterRowsThroughAggregation ' +
-        'call was found in the file -- this known channel appears to have lost its ' +
-        'assembly-expansion routing.',
+        `${offenders.length} call site(s) actuate a policed channel without routing through a ` +
+        'resolver: ' +
+        offenders.map((o) => `${o.action}(${o.arg})`).join(', ') +
+        '. Routing is checked PER CALL SITE, not per file, so another routed call elsewhere in ' +
+        'this file does not cover these. Wrap the argument in resolvePresentationIds / ' +
+        'resolvePresentationColorMap (or assign it from one), or add the action to ' +
+        'EXEMPT_ACTIONS for this path with a reason a reviewer can check.',
     };
   }
   return {
     isCandidate: true,
     ok: false,
     reason:
-      'calls a raw isolation action (isolateEntities( / setIsolatedEntities() -- or binds one via ' +
-      'destructuring) and is not in either allowlist (REQUIRES_ROUTING_MARKER / ' +
-      'NO_MARKER_REQUIRED) in scripts/check-isolate-expansion-routing.mjs -- this looks like a ' +
-      'NEW selection/isolation channel (issue #3338: "expansion is one call site every channel ' +
-      'must remember to use"). Either route it through cameraCallbacks.resolveHighlightIds the ' +
-      'way LensPanel/PropertiesPanel/SearchModal.filter/the embed bridge do, and add it to ' +
+      `calls a policed presentation action (${POLICED_ACTIONS.map((a) => a.name).join(' / ')}) -- ` +
+      'or binds one via destructuring -- and is not in either allowlist ' +
+      '(REQUIRES_ROUTING_MARKER / NO_MARKER_REQUIRED) in ' +
+      'scripts/check-isolate-expansion-routing.mjs -- this looks like a NEW ' +
+      'selection/isolation/hide/colour channel (issue #3338: "expansion is one call site every ' +
+      'channel must remember to use"). Either route it through resolvePresentationIds the way ' +
+      'LensPanel/PropertiesPanel/SearchModal.filter/the embed bridge do, and add it to ' +
       'REQUIRES_ROUTING_MARKER, or -- if it genuinely does not need expansion -- add it to ' +
       'NO_MARKER_REQUIRED with a reason a reviewer can check.',
   };
@@ -588,7 +550,7 @@ function main() {
 
   console.log(
     `check-isolate-expansion-routing: OK (${files.length} file(s) scanned, ${candidateCount} candidate ` +
-    `channel file(s) calling a raw isolation action -- ${seenAllowlisted.size} allowlisted: ` +
+    `channel file(s) calling a policed presentation action -- ${seenAllowlisted.size} allowlisted: ` +
     `${seenRoutedCount} routed, ${seenExemptCount} exempt-with-reason)`,
   );
 }

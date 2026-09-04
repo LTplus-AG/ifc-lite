@@ -506,6 +506,34 @@ fn max_abs_coord(mesh: &Mesh) -> f64 {
     mesh.positions.iter().fold(0.0f64, |m, &v| m.max((v as f64).abs()))
 }
 
+/// One census row from a host's void-applied mesh. Every column that is a
+/// reading OF THAT MESH is derived here and nowhere else, so a test that builds
+/// a row from a mesh cannot drift from the sweep; `alt` and `pre` are second
+/// processing passes and stay with the caller, which has already read `stats`
+/// to decide whether `pre` is taken.
+fn row_from_mesh(
+    model: &str,
+    id: u32,
+    rep: String,
+    mesh: &Mesh,
+    stats: &EdgeStats,
+    alt: Option<usize>,
+    pre: PreVoid,
+) -> HostRow {
+    HostRow {
+        model: model.to_string(),
+        id,
+        rep,
+        open: stats.open,
+        strict: stats.strict,
+        tris: mesh.indices.len() / 3,
+        collapsed: stats.degenerate > 0,
+        far: max_abs_coord(mesh) >= F32_SAFE_MAGNITUDE,
+        alt,
+        pre,
+    }
+}
+
 /// The host, then the reasons that moved it. The one definition of that shape
 /// for the four buckets that carry a [`Delta`], so their print lines and their
 /// failure texts cannot drift apart. `missing` and `added` carry a bare
@@ -578,18 +606,15 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
                     None => PreVoid::Failed,
                 }
             };
-            rows.push(HostRow {
-                model: rel.clone(),
+            rows.push(row_from_mesh(
+                rel,
                 id,
-                rep: representation_type(&content, &lines, id),
-                open,
-                strict: stats.strict,
-                tris: base.indices.len() / 3,
-                collapsed: stats.degenerate > 0,
-                far: max_abs_coord(&base) >= F32_SAFE_MAGNITUDE,
-                alt: alt.as_ref().map(open_boundary_edges),
+                representation_type(&content, &lines, id),
+                &base,
+                &stats,
+                alt.as_ref().map(open_boundary_edges),
                 pre,
-            });
+            ));
         }
     }
 
@@ -1193,6 +1218,130 @@ fn a_snap_collapsed_triangle_is_skipped_by_both_readings() {
     assert_eq!(s.degenerate, 1, "the collapsed triangle is counted");
     assert_eq!(s.open, 0, "and contributes no unbalanced edge");
     assert_eq!(s.strict, 0, "nor any strict violation, or every far-field host would gain some");
+}
+
+/// One 2.0 x 0.1 x 3.0 m panel with one rectangular opening through it, twice:
+/// wall #50 with the opening as authored (0.5 x 1.0 m), wall #150 with the
+/// SAME opening scaled by `scale` in its own plane, centre unmoved. That is
+/// the #3219 shape as a fixture: an opening cut larger than authored, on a
+/// host that is watertight either way.
+fn over_cut_fixture(scale: f64) -> String {
+    let (w, h) = (0.5 * scale, 1.0 * scale);
+    let z0 = 1.5 - h / 2.0;
+    format!(
+        r##"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('#3422 over-cut census probe'),'2;1');
+FILE_NAME('overcut.ifc','2026-09-03T00:00:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#2=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCDIRECTION((0.,0.,1.));
+#7=IFCDIRECTION((1.,0.,0.));
+#8=IFCAXIS2PLACEMENT3D(#5,#6,#7);
+#10=IFCUNITASSIGNMENT((#11));
+#11=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#8,$);
+#1=IFCPROJECT('0proj0000000000000001',#2,'P',$,$,$,$,(#20),#10);
+#30=IFCLOCALPLACEMENT($,#8);
+#40=IFCCARTESIANPOINT((0.,0.));
+#41=IFCDIRECTION((1.,0.));
+#42=IFCAXIS2PLACEMENT2D(#40,#41);
+/* --- wall #50: the panel, opening as authored --- */
+#43=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,2.,0.1);
+#44=IFCEXTRUDEDAREASOLID(#43,#8,#6,3.);
+#45=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#44));
+#46=IFCPRODUCTDEFINITIONSHAPE($,$,(#45));
+#50=IFCWALLSTANDARDCASE('authoredwall00000001',#2,'wall',$,$,#30,#46,'t1');
+/* opening 0.5 wide x 0.3 deep, z from 1.0 to 2.0: centre (0, 0, 1.5) */
+#60=IFCCARTESIANPOINT((0.,0.,1.));
+#61=IFCAXIS2PLACEMENT3D(#60,#6,#7);
+#62=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,0.5,0.3);
+#63=IFCEXTRUDEDAREASOLID(#62,#61,#6,1.);
+#64=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#63));
+#65=IFCPRODUCTDEFINITIONSHAPE($,$,(#64));
+#66=IFCOPENINGELEMENT('authoredopening00001',#2,'op',$,$,#30,#65,'t2');
+#70=IFCRELVOIDSELEMENT('authoredvoid0000001',#2,$,$,#50,#66);
+/* --- wall #150: the same panel, opening scaled about its centre --- */
+#143=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,2.,0.1);
+#144=IFCEXTRUDEDAREASOLID(#143,#8,#6,3.);
+#145=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#144));
+#146=IFCPRODUCTDEFINITIONSHAPE($,$,(#145));
+#150=IFCWALLSTANDARDCASE('overcutwall000000001',#2,'wall',$,$,#30,#146,'t3');
+#160=IFCCARTESIANPOINT((0.,0.,{z0:?}));
+#161=IFCAXIS2PLACEMENT3D(#160,#6,#7);
+#162=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,{w:?},0.3);
+#163=IFCEXTRUDEDAREASOLID(#162,#161,#6,{h:?});
+#164=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#163));
+#165=IFCPRODUCTDEFINITIONSHAPE($,$,(#164));
+#166=IFCOPENINGELEMENT('overcutopening000001',#2,'op',$,$,#30,#165,'t4');
+#170=IFCRELVOIDSELEMENT('overcutvoid00000001',#2,$,$,#150,#166);
+ENDSEC;
+END-ISO-10303-21;"##
+    )
+}
+
+/// #3422. The census row vocabulary (`open`, `strict`, `tris`, `coll`, `far`,
+/// `alt`, `pre`) is COUNTS and FLAGS over topology, and the golden is a
+/// ceiling: a host may get better for free. An opening cut larger than
+/// authored on a watertight host, the #3219 shape, reads one of two ways under
+/// that vocabulary, and both are green:
+///
+/// - at 1.4x every count holds and the pair is an IDENTICAL row;
+/// - at 1.6x the cutter emits MORE triangles, and a grown `tris` files under
+///   `improved`, which requires no bless.
+///
+/// Measured on the pipeline rather than on synthetic rows: both walls go
+/// through the `process` / `edge_stats` / `max_abs_coord` path the sweep uses,
+/// via `row_from_mesh`, and the two rows are then diffed as golden and run.
+///
+/// Runs in the default `cargo test`: it needs no fixture and no alternate
+/// triangulator.
+#[test]
+fn an_over_cut_on_a_watertight_host_requires_a_bless() {
+    let swept: BTreeSet<String> = ["overcut.ifc".to_string()].into_iter().collect();
+
+    for (scale, tris_grow) in [(1.4, false), (1.6, true)] {
+        let ifc = over_cut_fixture(scale);
+        let voids = void_index(&ifc);
+        let authored = process(&ifc, 50, &voids).expect("authored wall meshes");
+        let over_cut = process(&ifc, 150, &voids).expect("over-cut wall meshes");
+
+        let (a, b) = (edge_stats(&authored), edge_stats(&over_cut));
+        // The rows exactly as the sweep records a host, through the same
+        // builder, so this test measures the sweep's own row and not a copy.
+        let wired_a =
+            row_from_mesh("overcut.ifc", 1, "SweptSolid".into(), &authored, &a, Some(a.open), PreVoid::NotTaken);
+        let wired_b =
+            row_from_mesh("overcut.ifc", 1, "SweptSolid".into(), &over_cut, &b, Some(b.open), PreVoid::NotTaken);
+        // Both must be WATERTIGHT, or this probes the torn-host rules instead.
+        assert_eq!(wired_a.open, 0, "{scale}x: authored wall must be watertight");
+        assert_eq!(wired_b.open, 0, "{scale}x: over-cut wall must be watertight");
+        assert_eq!(wired_a.strict, wired_b.strict, "{scale}x: strict");
+        assert_eq!(wired_a.collapsed, wired_b.collapsed, "{scale}x: collapsed");
+        assert_eq!(wired_a.far, wired_b.far, "{scale}x: far");
+        // The one count that CAN move, pinned per scale so the test says which
+        // green reading it is exercising. If either arm flips, the fixture has
+        // stopped demonstrating that reading and the test must say so rather
+        // than pass on the other one.
+        let (ta, tb) = (wired_a.tris, wired_b.tris);
+        if tris_grow {
+            assert!(tb > ta, "{scale}x: expected MORE triangles, got {ta} -> {tb}");
+        } else {
+            assert_eq!(ta, tb, "{scale}x: expected the same triangle count");
+        }
+
+        // The over-cut removed material the authored opening did not, and the
+        // census must say so. Nothing in the row vocabulary above can: this is
+        // the blind spot, and it is what the volume column closes.
+        let d = census_golden::diff(&[wired_a], &[wired_b], &swept);
+        assert!(
+            d.requires_bless(),
+            "{scale}x: an opening cut larger than authored left the census green"
+        );
+    }
 }
 
 /* -------------------------------------------------------------------- *

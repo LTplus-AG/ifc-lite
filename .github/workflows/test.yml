@@ -251,6 +251,11 @@ jobs:
               - 'rust/processing/**'
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
+              # Workspace inputs the feature builds inherit: a root manifest or
+              # toolchain change can break the off-by-default gate builds that
+              # only the csg-accept-gates lane compiles.
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
               - '.github/workflows/test.yml'
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.
@@ -1647,6 +1652,11 @@ jobs:
         run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
       - name: Clippy (csg_topology_gate)
         run: cargo clippy -p ifc-lite-geometry --features csg_topology_gate --all-targets -- -D warnings
+      # The combined build selects code behind cfg(all(...)) that neither
+      # single-feature pass compiles, and `cargo test` does not make warnings
+      # fatal, so it needs its own -D warnings pass.
+      - name: Clippy (both gates)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --all-targets -- -D warnings
 
       # `IFC_LITE_REQUIRE_FIXTURES` for the same reason rust-tests sets it:
       # fixtures are fetched and verified above, so a missing one here is drift,

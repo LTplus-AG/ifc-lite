@@ -189,6 +189,11 @@ fn issue_583_institute_var2_walls_and_doors_present() {
     );
 }
 
+// Default build only: with `csg_manifold_gate` on, the accept gate refuses two
+// boolean results on this fixture as non-manifold and #3854 routes each refusal
+// into `csg_failures_total`. That is the gate reporting, not a #583 regression;
+// the census in issue_3440_manifold_gate_census.rs is what pins the gated count.
+#[cfg(not(feature = "csg_manifold_gate"))]
 #[test]
 fn issue_583_institute_var2_no_csg_failures() {
     let Some(content) = read_fixture("ara3d/C20-Institute-Var-2.ifc") else {

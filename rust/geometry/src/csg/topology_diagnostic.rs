@@ -10,6 +10,8 @@
 use super::ClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::mesh::Mesh;
+#[cfg(feature = "csg_manifold_gate")]
+use crate::router::voids::prism_cut::closure_checks::edge_multiplicity_defects;
 use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
 
 /// Message carried by the [`BoolFailureReason::KernelError`] record this
@@ -106,5 +108,110 @@ impl ClippingProcessor {
     #[inline(always)]
     pub(crate) fn topology_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
         false
+    }
+
+    /// #3440 step 3: the other half of the accept gate, behind its own
+    /// `csg_manifold_gate` feature.
+    ///
+    /// `topology_gate_reject` above reads OPEN edges, and a tessellated host
+    /// routinely carries those from T-junction subdivision alone — a
+    /// population this crate has documented as largely benign (`prism_cut.rs`
+    /// accepts exactly that class at every one of its own gates). This one
+    /// reads a strictly different defect class:
+    /// [`edge_multiplicity_defects`], the per-edge UNSIGNED use count that a
+    /// signed closure tally cannot represent at all.
+    ///
+    /// That distinction is why this looked like the reading that COULD gate
+    /// by default, and it is a separate feature from its sibling so a census
+    /// can attribute a flip to one class rather than to whichever gate fired
+    /// first. A T-junction leaves edges used ONCE, which this predicate
+    /// ignores. An
+    /// edge used four times, or twice the same way round, is not something a
+    /// differently-subdivided shared boundary can produce — it is a doubled
+    /// skin, a fin, or a flipped neighbour. Neither `validate_mesh` (finite +
+    /// in-bounds) nor `directed_closed` (signed, so 2-forward/2-reverse
+    /// cancels to zero) can observe it, which is precisely the silent-accept
+    /// this issue is about.
+    ///
+    /// Called on the mesh the op is about to RETURN — and, in
+    /// `subtract_mesh_many`, on each chunk's intermediate too, because that
+    /// intermediate BECOMES the next chunk's host. A non-manifold operand
+    /// would corrupt every subtraction after it, so a gate that waited for the
+    /// final mesh would be reporting damage it could have prevented. That is
+    /// the same reason `validate_mesh` runs per chunk there, and it is a
+    /// genuine difference from `record_topology_tear`, which is purely
+    /// informational and so must NOT speak about a mesh the caller never sees.
+    /// On a hit it records
+    /// [`BoolFailureReason::NonManifoldRejected`] and returns `true`, so the
+    /// caller discards the kernel result and falls back exactly like an
+    /// existing `KernelOutputInvalid` — un-cut host, empty mesh, or plain
+    /// merge, whichever that site already does. Never an `Err`: the element
+    /// keeps its geometry, it just keeps the UN-cut version, with a diagnostic
+    /// saying so.
+    ///
+    /// It is NOT on by default, and the reason is measured rather than
+    /// cautious: rejecting a torn result only helps if what replaces it is
+    /// better, and on this repo's own pinned quality fixtures the fallback is
+    /// worse than the tear. The measurement itself — corpus reach, and the
+    /// per-fixture regressions — is stated ONCE, on the `csg_manifold_gate`
+    /// feature in `rust/geometry/Cargo.toml`. Do not copy the numbers here:
+    /// they move when the fallback path is fixed, and a second copy is a
+    /// second thing to keep true.
+    #[cfg(feature = "csg_manifold_gate")]
+    pub(crate) fn manifold_gate_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
+        if mesh.is_empty() {
+            return false;
+        }
+        let defects = edge_multiplicity_defects(mesh);
+        if defects.is_clean() {
+            return false;
+        }
+        self.record_failure(
+            op,
+            BoolFailureReason::NonManifoldRejected {
+                over_used: defects.over_used,
+                same_direction: defects.same_direction,
+            },
+        );
+        true
+    }
+
+    /// Default-build twin of the above: always `false`, and the multiplicity
+    /// sweep never runs. A separate `cfg` body rather than an internal
+    /// `if cfg!(...)`, for the same zero-cost reason its sibling gives.
+    #[cfg(not(feature = "csg_manifold_gate"))]
+    #[inline(always)]
+    pub(crate) fn manifold_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
+        false
+    }
+
+    /// Run BOTH accept gates over `mesh` and report whether either rejected
+    /// it. The single entry point every accept path uses, so the rule below is
+    /// stated once instead of being re-derived at each site.
+    ///
+    /// `|`, not `||`, and that is the whole reason this is a function rather
+    /// than three lines repeated at four call sites. The two gates read
+    /// different defect classes behind different features and each records its
+    /// own `BoolFailureReason`; a short-circuit would silently drop the second
+    /// one's record whenever the first fired. The census that decides whether
+    /// either may ever be default-on has to attribute a rejection to a class,
+    /// which it cannot do if one gate's verdict depends on the other's.
+    /// Written here, that cannot be "tidied" into `||` at one site only.
+    ///
+    /// With neither feature on, both operands are the always-`false` stubs and
+    /// this compiles away to `false`, exactly as the two do individually.
+    ///
+    /// What this buys is the FAILURE LIST, not the label. With both features
+    /// on, a mesh that trips both records two `BoolFailure`s and
+    /// `router::diagnostics::first_failure_label` still names only
+    /// `failures[0]` — which, since the manifold gate is called first here, is
+    /// `NonManifoldRejected` even for a mesh whose open topology is the more
+    /// interesting half. A census that wants the split has to read
+    /// `take_csg_failures`, which is the channel it already reads. No build in
+    /// the workspace enables both today; this is a note for the one that does.
+    pub(crate) fn accept_gates_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
+        let manifold_rejected = self.manifold_gate_reject(op, mesh);
+        let topology_rejected = self.topology_gate_reject(op, mesh);
+        manifold_rejected | topology_rejected
     }
 }

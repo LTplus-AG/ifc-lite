@@ -1472,6 +1472,27 @@ jobs:
       - name: Clippy (parquet-bos feature)
         run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
 
+      # Same rule, same reason (#3440). `csg_manifold_gate` is off by default
+      # because the fallback a rejection reaches is worse than the tear it
+      # replaces on this repo's own quality fixtures, so it stays opt-in until
+      # that path is fixed. But the feature build carries EXACTLY-pinned
+      # regression numbers - issue_098_reveal_wall, issue_098_v5c,
+      # issue_960_segmented_roof_clip - and `cargo test --workspace` above never
+      # compiles them. Without this leg those pins are dead code that looks
+      # maintained, and the first person to learn they had drifted would be
+      # whoever enabled the feature to fix the fallback: they would inherit a
+      # red suite naming their own change rather than the drift.
+      #
+      # Its own step rather than folding in `csg_topology_gate` (which has the
+      # same gap and predates this) so a breakage names one feature.
+      - name: Rust tests (csg_manifold_gate feature)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate
+
+      - name: Clippy (csg_manifold_gate feature)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
+
   # Geometry watertightness / triangulation-invariance census.
   #
   # Its own job, not a step in `rust-tests`: the sweep runs the whole fixture

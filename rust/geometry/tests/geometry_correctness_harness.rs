@@ -616,6 +616,25 @@ fn geometry_correctness_harness() {
     // vendored, so every snapshot is asserted there. Accept intentional
     // changes with `cargo insta review` (or `INSTA_UPDATE=auto`).
     //
+    // #3440: under `csg_manifold_gate` the boolean accept seam rejects torn
+    // kernel results and the router falls back, so some fixtures emit
+    // different geometry - `218_IFC-test-lite` measured 3492 tris / 21 spike
+    // triangles against the default build's 3340 / 19. These snapshots are a
+    // per-fixture baseline for the DEFAULT build; blessing a second set under
+    // the feature would be a second golden to keep true, for a configuration
+    // nothing ships. The hard invariants above (no NaN, no parse failure, no
+    // empty-when-expected) still run in both builds, so the feature build is
+    // not unguarded here - it is unpinned on tessellation detail only. The
+    // per-fixture regression numbers the feature DOES need pinned live in
+    // `issue_098_reveal_wall`, `issue_098_v5c` and
+    // `issue_960_segmented_roof_clip`, which assert them directly.
+    if cfg!(feature = "csg_manifold_gate") {
+        println!(
+            "[harness] csg_manifold_gate build: {} fixture snapshot(s) not asserted (#3440)",
+            reports.iter().filter(|r| r.fixture_found).count()
+        );
+        return;
+    }
     for r in &reports {
         if !r.fixture_found {
             continue;

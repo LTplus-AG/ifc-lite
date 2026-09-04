@@ -230,3 +230,136 @@ pub(crate) fn closed_or_hairline(mesh: &Mesh) -> bool {
     }
     true
 }
+
+/// Per-undirected-edge MULTIPLICITY defects, the class both predicates above
+/// are structurally blind to.
+///
+/// [`directed_closed`] and [`closed_or_hairline`] both count edges with a
+/// SIGNED tally (`+1` forward, `-1` reverse) and pass when everything nets to
+/// zero. Cancellation is the point there — it is what makes a hairline
+/// T-junction chain forgivable — but it also erases multiplicity: an edge used
+/// by FOUR triangles, two each way, nets to exactly zero and reads as closed.
+/// That is a doubled coincident surface, not a solid boundary, and no amount of
+/// tolerance tuning on a signed tally can see it.
+///
+/// So this counts UNSIGNED uses per undirected edge and reports the two
+/// defects a signed tally cannot represent:
+///
+/// * `over_used` — an undirected edge with MORE than two triangle uses
+///   (non-manifold: a fin, a doubled skin, or self-intersecting output).
+/// * `same_direction` — an undirected edge with exactly two uses that run the
+///   SAME way round (inconsistent winding: one of the two neighbours is
+///   flipped).
+///
+/// An edge used ONCE is deliberately NOT a defect here. That is an open
+/// boundary, which is what the two closure predicates above already measure,
+/// and it is the reading that T-junction tessellation trips constantly. Keeping
+/// it out is what lets a caller gate on this without inheriting that class's
+/// false-positive rate.
+///
+/// # Why this one is EXACT and its neighbours are not
+///
+/// The two predicates above snap vertices to a 0.1 mm grid. That is right for
+/// them: they ask whether a surface CLOSES, and two corners a hair apart
+/// should close. It is wrong here, and not by a little. Snapping merges two
+/// distinct vertices closer than a grid cell into one key, and the moment two
+/// distinct edges collapse onto one key their uses ADD — so two perfectly
+/// manifold surfaces sitting 0.03 mm apart report a four-use edge that exists
+/// in neither of them. Measured on the snapped key this replaced: the two
+/// closed bipyramids in `closure_checks_tests.rs`, offset 0.03 mm, report
+/// `over_used = 12`, and the 0.05 mm slab there reports `over_used = 1` — both
+/// entirely manufactured by the snap, and both clean under exact keys.
+///
+/// That failure mode is fatal for a REJECTION predicate in a way it is not for
+/// a closure one. A snap that wrongly closes a hairline gap errs toward
+/// accepting; a snap that wrongly fuses two surfaces errs toward throwing away
+/// geometry that was never wrong. So the keys here are the vertex coordinates
+/// EXACTLY, bit for bit (with `-0.0` folded to `0.0` so the two spellings of
+/// zero are one point). Two positions are the same point only if they are the
+/// same position.
+///
+/// The cost is a miss, not a false positive: a genuine non-manifold edge whose
+/// endpoints differ in the last bit reads as two separate edges and is not
+/// reported. That is the right trade for a predicate whose job is to discard a
+/// kernel result — and it is cheap in practice, because the kernel interns
+/// coincident corners, so a real shared edge in its output is bit-identical at
+/// both ends.
+// The three items below are consumed by `csg::topology_diagnostic`'s
+// `manifold_gate_reject`, which only exists under `csg_manifold_gate`, and by
+// this module's own tests. `allow(dead_code)` rather than a `cfg` on the
+// predicate itself: the tests must keep running in the default build, since
+// they are what proves the predicate still reads what its doc says before the
+// gate is ever turned on.
+#[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct EdgeMultiplicityDefects {
+    /// Undirected edges used by more than two triangles.
+    pub over_used: usize,
+    /// Undirected edges used exactly twice, both uses running the same way.
+    pub same_direction: usize,
+}
+
+#[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
+impl EdgeMultiplicityDefects {
+    /// True when the mesh carries neither defect.
+    pub(crate) fn is_clean(&self) -> bool {
+        self.over_used == 0 && self.same_direction == 0
+    }
+}
+
+/// Count the [`EdgeMultiplicityDefects`] of `mesh`. O(triangles) hash sweep,
+/// the same shape and cost as [`directed_closed`] — but keyed EXACTLY, for the
+/// reason spelled out on [`EdgeMultiplicityDefects`].
+#[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
+pub(crate) fn edge_multiplicity_defects(mesh: &Mesh) -> EdgeMultiplicityDefects {
+    // Exact vertex identity: the raw f32 bits of the three coordinates, with
+    // `-0.0` normalised to `0.0` (they compare equal but have different bit
+    // patterns, and they are the same point). Non-finite coordinates cannot
+    // reach here — every caller runs `validate_mesh` first — so no NaN key can
+    // split a vertex from itself.
+    type K = (u32, u32, u32);
+    let key = |i: u32| -> K {
+        let b = i as usize * 3;
+        let q = |v: f32| (if v == 0.0 { 0.0f32 } else { v }).to_bits();
+        (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        )
+    };
+    // Undirected edge (lo, hi) -> (uses running lo->hi, uses running hi->lo).
+    let mut edges: FxHashMap<(K, K), (u32, u32)> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        // A triangle with two corners at the SAME point contributes a
+        // zero-length edge and two coincident ones; it bounds no area and its
+        // uses would be noise. Skipped, matching what the signed predicates do
+        // with their own (grid-scale) degenerates.
+        if ka == kb || kb == kc || kc == ka {
+            continue;
+        }
+        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
+            let (lo, hi, forward) = if x <= y { (x, y, true) } else { (y, x, false) };
+            let slot = edges.entry((lo, hi)).or_insert((0, 0));
+            if forward {
+                slot.0 += 1;
+            } else {
+                slot.1 += 1;
+            }
+        }
+    }
+    let mut defects = EdgeMultiplicityDefects::default();
+    for &(fwd, rev) in edges.values() {
+        match fwd + rev {
+            0 | 1 => {}
+            2 if fwd == 1 && rev == 1 => {}
+            2 => defects.same_direction += 1,
+            _ => defects.over_used += 1,
+        }
+    }
+    defects
+}
+
+#[cfg(test)]
+#[path = "closure_checks_tests.rs"]
+mod closure_checks_tests;

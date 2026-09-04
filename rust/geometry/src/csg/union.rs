@@ -6,36 +6,70 @@
 //! module-size budget) so the pair-vs-batch split the #3440 audit needs is
 //! visible in one place: `union_pair` does the work and records nothing,
 //! `union_mesh` and `union_meshes` each audit — and, under `csg_topology_gate`
-//! (step 2), gate — exactly the mesh they return.
+//! (step 2), gate — exactly the mesh they return, and only when a boolean
+//! actually ran: an empty operand short-circuits both of them past the audit.
 
 use super::{record_csg_op, ClippingProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::error::Result;
 use crate::mesh::Mesh;
 
+/// What [`ClippingProcessor::union_pair`] handed back, so its callers can tell
+/// a boolean RESULT from a mesh no boolean produced.
+///
+/// The #3440 audit and both accept gates speak about kernel output. Three
+/// different things come out of `union_pair` looking like a union: an operand
+/// passed through because the other was empty, the plain merge the
+/// kernel-failure path returns (already recorded as `KernelOutputInvalid`),
+/// and an actual kernel result. Only the last is a boolean's work, and the
+/// returned `Mesh` alone cannot say which it is.
+enum UnionOutcome {
+    /// The exact kernel produced this mesh and it passed `validate_mesh`. The
+    /// audit and the gates speak about it.
+    Kernel(Mesh),
+    /// No boolean produced this mesh: an operand handed straight back, or the
+    /// merge that replaced a discarded kernel result. Not audited, not gated.
+    PassThrough(Mesh),
+}
+
 impl ClippingProcessor {
     /// Union two meshes together using CSG boolean operations on the
     /// pure-Rust exact kernel.
     ///
     /// Empty operands are handled silently — they have a unique correct answer.
+    /// "Silently" includes the #3440 audit, and so does the kernel-failure
+    /// merge: both come back as [`UnionOutcome::PassThrough`], which this does
+    /// not audit. Auditing a mesh no boolean produced blames this union for
+    /// topology it did not create, and under `csg_manifold_gate` that lands a
+    /// spurious `NonManifoldRejected` in both the public failure list and the
+    /// census the flip decision is read off — on top of the
+    /// `KernelOutputInvalid` the same incident already recorded.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
-        let result = self.union_pair(mesh_a, mesh_b)?;
-        Ok(self.audit_and_gate_union(result, || {
-            let mut merged = mesh_a.clone();
-            merged.merge(mesh_b);
-            merged
-        }))
+        match self.union_pair(mesh_a, mesh_b)? {
+            UnionOutcome::PassThrough(mesh) => Ok(mesh),
+            UnionOutcome::Kernel(mesh) => Ok(self.audit_and_gate_union(mesh, || {
+                let mut merged = mesh_a.clone();
+                merged.merge(mesh_b);
+                merged
+            })),
+        }
     }
 
     /// [`Self::union_mesh`] minus the #3440 audit, so `union_meshes` can drive
     /// it in a loop and audit only the mesh it hands back.
-    fn union_pair(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
+    ///
+    /// Returns WHICH of the two kinds of mesh it produced, because that is the
+    /// fact the audit turns on and this is the only place that knows it. The
+    /// caller cannot re-derive it: "was an operand empty" misses the
+    /// kernel-failure merge, and inspecting the returned mesh cannot tell a
+    /// merge from a kernel result at all.
+    fn union_pair(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<UnionOutcome> {
         record_csg_op(1, mesh_a.triangle_count(), mesh_b.triangle_count());
         if mesh_a.is_empty() {
-            return Ok(mesh_b.clone());
+            return Ok(UnionOutcome::PassThrough(mesh_b.clone()));
         }
         if mesh_b.is_empty() {
-            return Ok(mesh_a.clone());
+            return Ok(UnionOutcome::PassThrough(mesh_a.clone()));
         }
 
         // Pure-Rust exact kernel. On an empty/invalid kernel result
@@ -47,9 +81,9 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Union, BoolFailureReason::KernelOutputInvalid);
             let mut merged = mesh_a.clone();
             merged.merge(mesh_b);
-            return Ok(merged);
+            return Ok(UnionOutcome::PassThrough(merged));
         }
-        Ok(result)
+        Ok(UnionOutcome::Kernel(result))
     }
 
     /// Union multiple meshes together
@@ -68,7 +102,12 @@ impl ClippingProcessor {
         // Start with first non-empty mesh
         let mut result = Mesh::new();
         let mut found_first = false;
-        let mut unioned = false;
+        // Did a BOOLEAN produce the mesh this is about to hand back? Only the
+        // LAST fold step decides that: an earlier merge fallback is an operand
+        // to the step after it, and that step's kernel output is a kernel
+        // output. `false` also covers "no pair ever met", where `result` is a
+        // pass-through clone of the caller's own mesh.
+        let mut returned_by_kernel = false;
         for mesh in meshes {
             if mesh.is_empty() {
                 continue;
@@ -78,25 +117,27 @@ impl ClippingProcessor {
                 found_first = true;
                 continue;
             }
-            result = self.union_pair(&result, mesh)?;
-            unioned = true;
+            match self.union_pair(&result, mesh)? {
+                UnionOutcome::Kernel(m) => {
+                    result = m;
+                    returned_by_kernel = true;
+                }
+                UnionOutcome::PassThrough(m) => {
+                    result = m;
+                    returned_by_kernel = false;
+                }
+            }
         }
-        // No pair ever met: `result` is a pass-through clone of the caller's
-        // own mesh, and blaming a union that never ran for its topology is
-        // the same noise as auditing an intermediate.
+        // Audit only a mesh a boolean actually produced. Blaming a union that
+        // never ran — or one whose result was already discarded and recorded as
+        // `KernelOutputInvalid` — for the topology of the merge that replaced it
+        // is the same noise as auditing an intermediate the caller never sees.
         //
-        // `validate_mesh` again, because this is the one audit site whose mesh
-        // has not just come through that check: every other one sits directly
-        // under it, but `union_pair`'s merge fallback returns WITHOUT it, and
-        // `directed_closed` indexes `positions` straight from `indices`, so a
-        // caller mesh with an out-of-bounds index would abort the process
-        // rather than be recorded.
-        //
-        // Under `csg_topology_gate`, a rejected fold has no single operand
+        // Under either gate feature, a rejected fold has no single operand
         // pair to fall back to — `result` folded however many meshes ran —
         // so the fallback is the plain merge of every non-empty input, the
         // N-way generalisation of `union_pair`'s own 2-way fallback above.
-        if unioned {
+        if returned_by_kernel {
             result = self.audit_and_gate_union(result, || {
                 let mut merged = Mesh::new();
                 for mesh in meshes.iter().filter(|m| !m.is_empty()) {
@@ -108,25 +149,26 @@ impl ClippingProcessor {
         Ok(result)
     }
 
-    /// The pair fallback can return a plain merge of its operands.  Unlike a
-    /// kernel result, that merge has not necessarily passed `validate_mesh`;
-    /// check it before the closure predicates, which index positions through
-    /// the mesh's untrusted indices.  This is diagnostic-only: the malformed
-    /// result remains the legacy return value and the existing invalid-output
-    /// record from `union_pair` remains the only failure record added there.
+    /// Both callers reach this only with a [`UnionOutcome::Kernel`] mesh, which
+    /// `union_pair` has already run `validate_mesh` over. The check is repeated
+    /// anyway rather than asserted away: the closure predicates index
+    /// `positions` straight through `indices`, so an out-of-bounds index here
+    /// would abort the process rather than be recorded, and that is too sharp
+    /// an edge to leave resting on a caller's discipline. It is diagnostic-only
+    /// either way — a mesh that failed it is still the legacy return value.
     ///
-    /// #3440 step 2: also the ONE place union gates. `topology_gate_reject`
-    /// itself records on a hit, so when it does this returns `fallback()`
-    /// WITHOUT also calling `record_topology_tear` — recording both would
-    /// double-count the same tear as two unrelated incidents. Without the
-    /// `csg_topology_gate` feature `topology_gate_reject` is the zero-cost
-    /// always-`false` stub, so this is exactly the step-1 behaviour above,
-    /// unchanged.
+    /// #3440 steps 2 and 3: also the ONE place union gates. Each gate inside
+    /// `accept_gates_reject` records on its own hit, so when one does this
+    /// returns `fallback()` WITHOUT also calling `record_topology_tear` —
+    /// recording both would double-count the same tear as two unrelated
+    /// incidents. Without either gate feature `accept_gates_reject` is the
+    /// zero-cost always-`false` stub, so this is exactly the step-1 behaviour
+    /// above, unchanged.
     fn audit_and_gate_union(&self, mesh: Mesh, fallback: impl FnOnce() -> Mesh) -> Mesh {
         if !self.validate_mesh(&mesh) {
             return mesh;
         }
-        if self.topology_gate_reject(BoolOp::Union, &mesh) {
+        if self.accept_gates_reject(BoolOp::Union, &mesh) {
             return fallback();
         }
         self.record_topology_tear(BoolOp::Union, &mesh);

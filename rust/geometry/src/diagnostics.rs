@@ -145,6 +145,36 @@ pub enum BoolFailureReason {
     /// its other rarely-emitted variants above) but is only ever actually
     /// recorded in a `--features csg_topology_gate` build.
     OpenTopologyRejected,
+    /// #3440 step 3: the kernel result passed `validate_mesh` AND the signed
+    /// closure audit, but carries an edge-multiplicity defect that audit
+    /// cannot express — an undirected edge used by more than two triangles, or
+    /// used twice the same way round (`edge_multiplicity_defects`). Rejected,
+    /// and the caller falls back exactly as it does for
+    /// `KernelOutputInvalid`.
+    ///
+    /// Like [`Self::OpenTopologyRejected`], only ever constructed under a
+    /// feature — its own `csg_manifold_gate`, kept separate from
+    /// `csg_topology_gate` so a census can attribute a flip to one defect
+    /// class rather than to whichever gate fired first. The variant exists in
+    /// every build, per this enum's convention for its other rarely-emitted
+    /// reasons.
+    ///
+    /// The gate reads a defect class benign tessellation cannot produce, so it
+    /// was tried as a default; the fallback a rejection reaches turned out to
+    /// be worse than the tear it replaces. The numbers behind that live in one
+    /// place — `csg_manifold_gate` in `Cargo.toml` — with the corpus sweep in
+    /// `tests/issue_3440_manifold_gate_census.rs`.
+    ///
+    /// Carries the two counts (as `OperandTooLarge` carries its operand sizes)
+    /// so the census can break the flip set down by defect class without a
+    /// second sweep: the two say different things about the kernel, and a bare
+    /// variant would force anyone measuring to re-derive them.
+    NonManifoldRejected {
+        /// Undirected edges used by more than two triangles.
+        over_used: usize,
+        /// Undirected edges used twice, both uses the same way round.
+        same_direction: usize,
+    },
 }
 
 impl BoolFailureReason {
@@ -169,6 +199,7 @@ impl BoolFailureReason {
             BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
             BoolFailureReason::OpenTopologyRejected => "OpenTopologyRejected",
             BoolFailureReason::UnsupportedOperand(_) => "UnsupportedOperand",
+            BoolFailureReason::NonManifoldRejected { .. } => "NonManifoldRejected",
         }
     }
 }
@@ -215,6 +246,13 @@ impl fmt::Display for BoolFailureReason {
             BoolFailureReason::UnsupportedOperand(ty) => {
                 write!(f, "boolean operand type '{ty}' has no processor; operand meshed empty")
             }
+            BoolFailureReason::NonManifoldRejected {
+                over_used,
+                same_direction,
+            } => write!(
+                f,
+                "CSG kernel output passed validate_mesh but carries {over_used} non-manifold and {same_direction} reversed-winding edge(s); rejected (#3440)"
+            ),
         }
     }
 }

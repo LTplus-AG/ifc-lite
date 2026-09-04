@@ -22,10 +22,7 @@ import {
   type ViewPreset,
   type SectionAxis,
 } from '@ifc-lite/embed-protocol';
-import {
-  resolvePresentationColorMap,
-  resolvePresentationIds,
-} from '@/lib/presentation/resolvePresentationIds.js';
+import { resolvePresentationColorMap, resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds.js';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
 import { applyInitConfig } from './initConfig.js';
@@ -373,15 +370,10 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'SET_COLORS': {
       const payload = data as InboundPayloads['SET_COLORS'];
-      // #3338: same expansion as HIDE/ISOLATE, in the shape the colour
-      // channel needs -- a geometry-less assembly id keyed here paints nothing
-      // until it becomes the parts that carry the meshes.
-      const updates = resolvePresentationColorMap(
-        state.cameraCallbacks.resolveHighlightIds,
-        Object.entries(payload.colorMap).map(
-          ([key, color]) => [Number(key), color] as [number, [number, number, number, number]],
-        ),
-      );
+      // #3338: same expansion as HIDE/ISOLATE, in the shape the colour channel needs -- a
+      // geometry-less assembly id keyed here paints nothing until it becomes its meshed parts.
+      const entries = Object.entries(payload.colorMap).map(([k, c]) => [Number(k), c] as const);
+      const updates = resolvePresentationColorMap(state.cameraCallbacks.resolveHighlightIds, entries);
       // `override` so the displaced colors are captured and RESET_COLORS can
       // put them back.
       state.updateMeshColors(updates, { override: true });

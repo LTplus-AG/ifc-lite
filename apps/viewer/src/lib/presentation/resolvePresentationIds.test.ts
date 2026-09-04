@@ -43,8 +43,8 @@ describe('resolvePresentationColorMap (#3338, the colour channel)', () => {
   const ASSEMBLY = 42;
   const PART_A = 9001;
   const PART_B = 9002;
-  const red = [1, 0, 0, 1] as const;
-  const blue = [0, 0, 1, 1] as const;
+  const red: readonly number[] = [1, 0, 0, 1];
+  const blue: readonly number[] = [0, 0, 1, 1];
   const resolver = (ids: number[]) =>
     ids.flatMap((id) => (id === ASSEMBLY ? [PART_A, PART_B] : [id]));
 

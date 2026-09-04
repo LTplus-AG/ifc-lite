@@ -547,20 +547,31 @@ fn row_from_mesh(
 
 /// The golden a lane compares against, or that a bless overwrites.
 ///
-/// Outside a bless an unreadable golden is fatal: a lane that carried on would
-/// be measuring against nothing. In bless mode it is expected exactly once per
-/// schema change — the file on disk has one column fewer than `parse` demands
-/// (#3397, #3422), and its rows cannot be reused without inventing that column
-/// — so it is treated as empty and the lane says so. Every swept model is then
-/// rewritten from this run, and a model NOT swept has no rows to keep, which
-/// the bless line's `kept` count shows. Before this the only way past the
-/// parse was the run report under `target/`, which the heavy lane does not
-/// write.
+/// Outside a bless an unreadable golden is fatal, whatever the reason: a lane
+/// that carried on would be measuring against nothing.
+///
+/// In bless mode exactly ONE failure is tolerated, and it is the one a
+/// column-adding change creates: [`census_golden::ParseError::Schema`], the
+/// file on disk having one column fewer than `parse` demands (#3397, #3422).
+/// Its rows are intact but cannot be reused without inventing the new column,
+/// so the lane discards them and says so; every swept model is rewritten from
+/// this run, and a model NOT swept has no rows to keep, which the bless line's
+/// `kept` count shows. Before this the only way past the parse was the run
+/// report under `target/`, which the heavy lane does not write.
+///
+/// Every OTHER failure — a bad number, an unreadable flag, a truncated write,
+/// a mangled merge — is fatal in bless mode too. Treating it as an empty
+/// golden would be the absence-reads-as-success shape: in the heavy lane the
+/// two fixtures share one file and each blesses only its own model's rows, so
+/// a bless of ISSUE_053 against a file carrying one corrupt ISSUE_068 row
+/// would silently write a golden missing all 363 of that model's rows, taking
+/// the #3435 tear pin with them. `parse` separates the two classes so this
+/// function can refuse the second one.
 fn read_golden(path: &std::path::Path, bless: bool) -> Vec<HostRow> {
     let text = std::fs::read_to_string(path).unwrap_or_default();
     match census_golden::parse(&text) {
         Ok(rows) => rows,
-        Err(e) if bless => {
+        Err(e @ census_golden::ParseError::Schema { .. }) if bless => {
             println!(
                 "\nBLESS WITHOUT COMPARISON: {} does not parse under the current golden \
                  schema ({e}). Its rows cannot be compared or kept, so every swept model \
@@ -569,6 +580,12 @@ fn read_golden(path: &std::path::Path, bless: bool) -> Vec<HostRow> {
             );
             Vec::new()
         }
+        Err(e @ census_golden::ParseError::Malformed(_)) => panic!(
+            "{} is CORRUPT, not merely on an older schema ({e}). A bless will not treat \
+             this as an empty golden: the rows it would silently drop include every model \
+             this run does not sweep. Fix or restore the file first.",
+            path.display()
+        ),
         Err(e) => panic!("{} is unreadable: {e}", path.display()),
     }
 }
@@ -596,6 +613,42 @@ fn a_golden_one_column_short_kills_a_measuring_run_and_is_kept_by_no_bless() {
     assert!(text.contains("expected 11 columns, got 10"), "{text}");
     let rows = blessing.expect("a bless must tolerate a golden one column short");
     assert!(rows.is_empty(), "an old-schema row was kept: {rows:?}");
+}
+
+/// The other half of the same rule (#3422). A golden that is CORRUPT rather
+/// than merely on an older schema is fatal in BOTH modes: the rows a bless
+/// would discard include every model this run does not sweep, and in the heavy
+/// lane, where two fixtures share one file, that is 363 rows and the #3435
+/// tear pin.
+///
+/// The fixture is the schema-short row from the test above with the new column
+/// present and unreadable, so the ONLY difference between the two is the class
+/// of failure, not the file's shape. Without the split in
+/// `census_golden::ParseError` this test passes an empty `Vec` back and writes
+/// a golden missing the other model.
+#[test]
+fn a_bless_refuses_a_corrupt_golden_instead_of_treating_it_as_empty() {
+    let path =
+        std::env::temp_dir().join(format!("ifc-lite-3422-corrupt-{}.tsv", std::process::id()));
+    std::fs::write(
+        &path,
+        "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\tvol\n\
+         a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\tnot-a-number\n",
+    )
+    .expect("write the corrupt golden");
+    let measuring = std::panic::catch_unwind(|| read_golden(&path, false));
+    let blessing = std::panic::catch_unwind(|| read_golden(&path, true));
+    let _ = std::fs::remove_file(&path);
+
+    for (mode, outcome) in [("measuring", measuring), ("blessing", blessing)] {
+        let err = outcome.expect_err("a corrupt golden must be fatal in {mode} mode");
+        let text = err.downcast_ref::<String>().cloned().unwrap_or_default();
+        assert!(text.contains("is CORRUPT, not merely on an older schema"), "{mode}: {text}");
+        assert!(text.contains("bad volume"), "{mode}: {text}");
+        // And it must NOT be described as a schema change, or the reader
+        // reaches for the bless command that would destroy the file.
+        assert!(!text.contains("BLESS WITHOUT COMPARISON"), "{mode}: {text}");
+    }
 }
 
 /// The host, then the reasons that moved it. The one definition of that shape

@@ -25,23 +25,38 @@ console.log(`${result.metadata.entity_count} entities, ${result.meshes.length} m
 ## Stream a large file
 
 ```typescript
+import type { MeshData as ServerMeshData } from '@ifc-lite/server-client';
+import type { MeshData } from '@ifc-lite/geometry';
+
+// Server meshes are the snake_case wire shape. Converting them is a real seam,
+// not a rename: `origin` and `geometryClass` must be OMITTED rather than
+// stamped when absent or zero, so a world-baked mesh decodes identically over
+// every transport, and the two disjoint source ids are tested against
+// `undefined` rather than for truthiness. The viewer keeps the tested copy at
+// apps/viewer/src/utils/serverMesh.ts (issue #1841, #3199); keep yours in step.
+function convertServerMesh(m: ServerMeshData): MeshData {
+  return {
+    expressId: m.express_id,
+    ifcType: m.ifc_type,
+    positions: new Float32Array(m.positions),
+    normals: m.normals ? new Float32Array(m.normals) : new Float32Array(0),
+    indices: new Uint32Array(m.indices),
+    color: m.color,
+    ...(m.origin?.some((v) => v !== 0) ? { origin: m.origin } : {}),
+    ...(m.geometry_class ? { geometryClass: m.geometry_class } : {}),
+    ...(m.geometry_item_id !== undefined ? { geometryItemId: m.geometry_item_id } : {}),
+    ...(m.material_id !== undefined ? { materialId: m.material_id } : {}),
+  };
+}
+
 for await (const event of client.parseStream(file)) {
   switch (event.type) {
     case 'progress':
       console.log(`${event.processed}/${event.total}`);
       break;
     case 'batch':
-      // Server meshes are snake_case; map them onto the renderer's MeshData.
       renderer.addMeshes(
-        event.meshes.map((m) => ({
-          expressId: m.express_id,
-          ifcType: m.ifc_type,
-          positions: m.positions,
-          normals: m.normals,
-          indices: m.indices,
-          color: m.color,
-          origin: m.origin,
-        })),
+        event.meshes.map(convertServerMesh),
         true, // streaming: throttle batch rebuilds — first triangles ~300ms in
       );
       break;

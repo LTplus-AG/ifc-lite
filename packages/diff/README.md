@@ -18,12 +18,13 @@ npm install @ifc-lite/diff
 ## Usage
 
 ```ts
-import {
-  diffModels,
-  buildDataFingerprint,
-  identityMapFromContentMatches,
-  type EntityFingerprint,
-} from '@ifc-lite/diff';
+import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
+
+// Your adapter walks a store and emits one fingerprint per entity, per model.
+declare function extractFingerprints(model: unknown): EntityFingerprint<number>[];
+declare const baseModel: unknown;
+declare const headModel: unknown;
+declare const gid: string; // the GlobalId you picked in the viewer
 
 // One fingerprint per entity, per model. `key` is the stable cross-revision
 // identity (the IFC GlobalId). `dataHash` comes from buildDataFingerprint;
@@ -109,11 +110,13 @@ same `{ base, here, reason }` vocabulary a published layer carries in its
 provenance manifest:
 
 ```ts
+import { diffModels, identityMapFromContentMatches } from '@ifc-lite/diff';
+
 const first = diffModels(base, head, { matchUnpairedByContent: true });
 const claims = identityMapFromContentMatches(first.contentMatches);
 // [{ base: 'oldGid', here: 'newGid', reason: 'content-match:renamed' }]
 
-const aliases = new Map(claims.map((c) => [c.here, c.base]));
+const aliases = new Map(claims.map((c) => [c.here, c.base] as const));
 const second = diffModels(base, head, { matchUnpairedByContent: true, keyAliases: aliases });
 second.appliedKeyAliases; // what actually took effect
 ```
@@ -146,9 +149,20 @@ type assignments, so collection ordering never produces a spurious diff. Feed it
 a plain `DataFingerprintInput` extracted from your store:
 
 ```ts
+import { buildDataFingerprint, type DataFingerprintInput } from '@ifc-lite/diff';
+
+// Whatever your store hands back for one entity.
+declare const entity: DataFingerprintInput;
+
 const dataHash = buildDataFingerprint({
-  ifcType, name, description, objectType, predefinedType,
-  propertySets, quantitySets, typeAssignments,
+  ifcType: entity.ifcType,
+  name: entity.name,
+  description: entity.description,
+  objectType: entity.objectType,
+  predefinedType: entity.predefinedType,
+  propertySets: entity.propertySets,
+  quantitySets: entity.quantitySets,
+  typeAssignments: entity.typeAssignments,
 });
 ```
 

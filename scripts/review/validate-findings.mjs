@@ -200,6 +200,7 @@ export const REASONS = new Set([
   'INPUT_INVALID',
   'SCHEMA_INVALID',
   'VERDICT_CONTRADICTS_FINDINGS',
+  'CLASS_PASS_INCOMPLETE',
   'PROOF_OF_WORK_FAILED',
   'VALIDATION_EMPTY',
   'OUT_UNWRITABLE',
@@ -255,7 +256,16 @@ function main() {
 
   const input = readInput(args.input);
   const response = parseRaw(readText(args.raw, 'raw'));
-  const result = validate({ response, input, onWarn: (w) => console.log(`${WARN_PREFIX}${w}`) });
+  // A WARNING THAT IS ALREADY AN ANNOTATION IS PRINTED UNPREFIXED. GitHub parses
+  // `::warning::` only at the start of a line, so decorating one with WARN_PREFIX
+  // would turn the annotation into ordinary text and quietly drop it out of the run
+  // summary -- the same shape as the `PARTIAL REVIEW` annotation in
+  // build-review-input.mjs, which is emitted bare for the same reason.
+  const result = validate({
+    response,
+    input,
+    onWarn: (w) => console.log(w.startsWith('::') ? w : `${WARN_PREFIX}${w}`),
+  });
 
   const doc = {
     headSha: input.headSha,

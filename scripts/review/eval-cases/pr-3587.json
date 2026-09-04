@@ -88,14 +88,25 @@
     {
       "path": "scripts/check-review-posted.mjs",
       "what": "headRepo !== repo compares case-sensitively and can be reached with a null repo, either of which silently disables enforcement",
-      "evidence": ["return headRepo !== repo;", "args.stateFile ? payload?.headRepo : undefined"],
-      "fixedEvidence": ["return headRepo.toLowerCase() !== repo.toLowerCase();"]
+      "evidence": [
+        "return headRepo !== repo;",
+        "args.stateFile ? payload?.headRepo : undefined"
+      ],
+      "fixedEvidence": [
+        "return headRepo.toLowerCase() !== repo.toLowerCase();"
+      ],
+      "class": "absence-reads-as-success"
     },
     {
       "path": "scripts/review/post-review.mjs",
       "what": "WOULD_DOWNGRADE_VERDICT throws, reddening the job for a state that needs no action and that no re-run can clear",
-      "evidence": ["throw new PostReviewError(", "'WOULD_DOWNGRADE_VERDICT',"],
-      "fixedEvidence": ["console.log(\n        `WOULD_DOWNGRADE_VERDICT:"]
+      "evidence": [
+        "throw new PostReviewError(",
+        "'WOULD_DOWNGRADE_VERDICT',"
+      ],
+      "fixedEvidence": [
+        "console.log(\n        `WOULD_DOWNGRADE_VERDICT:"
+      ]
     }
   ]
 }

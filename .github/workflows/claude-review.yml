@@ -307,8 +307,9 @@ jobs:
       # line anchoring, the cap, and the sanitisation that stops a steered model
       # laundering a forged marker through our own trusted identity.
       #
-      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, OR
-      # VALIDATION_EMPTY (#3652, #3777, #3775). Every other reason here
+      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED,
+      # VALIDATION_EMPTY OR CLASS_PASS_INCOMPLETE (#3652, #3777, #3775, #3831).
+      # Every other reason here
       # (SCHEMA_INVALID, VERDICT_CONTRADICTS_FINDINGS, ...) reflects the prompt
       # or the harness, not a fixable shape of model output, and re-running the
       # model would not change the answer -- those still fail this step
@@ -347,6 +348,16 @@ jobs:
       # is UNCHANGED: if the retry also drops everything, this still fails
       # loudly -- nothing here relaxes that throw.
       #
+      # CLASS_PASS_INCOMPLETE (#3831): `verdict: "clean"` without the per-class
+      # pass the rubric now requires -- missing, short a class, or twelve rows
+      # carrying one sentence. Three live evaluations of this lane scored 1-3/15
+      # recall over 18 real pull requests with 13-14 of them returning clean and
+      # zero findings, and Opus scored the same, so the gap is the walk being
+      # skipped rather than the model being too small. The retry says outright
+      # that clean is still a real answer, so the model is never steered into
+      # inventing a finding to escape the check; what it may not do twice is
+      # claim clean without showing the walk.
+      #
       # Either way, if the retry also fails, this step fails exactly as it
       # always has; nothing here can turn a failure into a clean or findings
       # verdict.
@@ -373,7 +384,7 @@ jobs:
             --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
           rc=${PIPESTATUS[0]}
 
-          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED|VALIDATION_EMPTY):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
+          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED|VALIDATION_EMPTY|CLASS_PASS_INCOMPLETE):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
           if [ "$rc" -ne 0 ] && [ -n "$retry_reason" ]; then
             echo "::notice::${retry_reason} on the first attempt; retrying once."
             node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \

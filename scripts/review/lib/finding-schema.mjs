@@ -16,6 +16,7 @@ import { ValidateFindingsError } from './validate-findings-error.mjs';
 import { lineIsAdded, addedLinesMatching } from '../quote-line-coupling.mjs';
 import { sanitizeBody, sanitizeLabel, sanitizePath } from './finding-sanitizers.mjs';
 import { checkProofOfWork, siblingVerifies } from './finding-proof-of-work.mjs';
+import { checkClassPass } from './defect-classes.mjs';
 import { isUnread } from '../build-review-input.mjs';
 // One spelling of the drop warning, shared with the sink that prefixes it and the
 // CLI that reads it back out of the log.
@@ -208,6 +209,18 @@ export function validate({ response, input, onWarn = null }) {
   // emit and the callee never destructured the argument. A parameter nothing
   // reads is a claim that something happens.
   checkProofOfWork({ response, input });
+  // THE PER-CLASS PASS (#3831), LAST OF THE THREE AND ON `clean` ONLY. The order
+  // is the diagnosis order: the sentinel says the answer finished, the schema
+  // says it has the right shape, proof of work says the model opened the diff --
+  // and only once all three hold is "did it walk the rubric's classes" the most
+  // useful thing to tell it. Ahead of proof of work, a model that never read the
+  // diff at all would be sent away to write twelve paragraphs about it.
+  // `warn` IS PASSED, so the class pass's non-fatal note lands in the same place
+  // every other warning does: printed as it happens, and recorded in
+  // `warnings` on findings.json. A note console.logged from inside the check
+  // would be visible in the lane log and absent from the artefact, which is the
+  // half of the record anything downstream actually reads.
+  if (response.verdict === 'clean') checkClassPass({ response, input, warn });
 
   let kept = validateFindings({ response, input, warn });
   const survived = kept.length;

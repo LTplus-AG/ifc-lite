@@ -8,7 +8,7 @@
 //! live parse streams (issue #3895). The geometry is split back into its
 //! original stream batches via `parquet_replay_batches::split_into_batches`
 //! (recovered from the cached blob's Parquet row-group boundaries); a blob
-//! that doesn't decode that way falls back to one oversized batch, same as
+//! with no recoverable boundary falls back to one oversized batch, same as
 //! before.
 
 use super::cache_keys::{has_current_data_model, load_cached_symbolic};
@@ -81,24 +81,30 @@ pub(super) async fn try_cached_replay(
     // Extract the geometry blob (framed `[geometry_len: u32-LE][geometry_data]
     // ...`, sliced WITHOUT `.unwrap()` panicking on a short/corrupt cached
     // blob) and split it back into its original stream batches, each
-    // base64-encoded; or fall back to one whole-geometry batch when the blob
-    // doesn't decode into row-group-aligned Parquet sections. All of this
-    // runs off the async worker via `block_in_place` (matching the live path
-    // in `parse_parquet_stream`) so a large replay doesn't stall other
-    // polls. (Guarded by runtime flavor: `block_in_place` panics on
+    // base64-encoded. Runs off the async worker via `block_in_place` (matching
+    // the live path in `parse_parquet_stream`) so a large replay doesn't stall
+    // other polls. (Guarded by runtime flavor: `block_in_place` panics on
     // current_thread, which the `#[tokio::test]` harness uses.)
     let total_meshes = metadata_header.stats.total_meshes;
     let build_batches = || -> Option<Vec<(String, usize)>> {
         let geometry = cached_geometry_slice(&cached_parquet)?;
-        match split_into_batches(geometry) {
-            Some(batches) => Some(
-                batches
-                    .into_iter()
-                    .map(|b| (STANDARD.encode(&b.data), b.mesh_count))
-                    .collect(),
-            ),
-            None => Some(vec![(STANDARD.encode(geometry), total_meshes)]),
-        }
+        let Some(batches) = split_into_batches(geometry) else {
+            // Not a multi-row-group blob: one batch's worth of geometry, a
+            // pre-streaming cache entry, or a layout we can't align. Log it —
+            // otherwise a replay that has silently stopped being progressive
+            // is indistinguishable from one that never needed to be.
+            tracing::debug!(
+                geometry_bytes = geometry.len(),
+                "Cached geometry has no recoverable batch boundaries; replaying as one batch"
+            );
+            return Some(vec![(STANDARD.encode(geometry), total_meshes)]);
+        };
+        Some(
+            batches
+                .into_iter()
+                .map(|b| (STANDARD.encode(&b.data), b.mesh_count))
+                .collect(),
+        )
     };
     let batches = if tokio::runtime::Handle::current().runtime_flavor()
         == tokio::runtime::RuntimeFlavor::MultiThread
@@ -123,51 +129,38 @@ pub(super) async fn try_cached_replay(
     // Same Start / (Batch, Progress)* / Complete shape the live path streams
     // (`parquet_stream.rs`'s per-batch Progress callback), so a cache hit is
     // progressive too (issue #3895).
-    let cache_key_for_stream = cache_key.to_string();
-    let mut events: Vec<Result<Event, Infallible>> = Vec::with_capacity(batches.len() * 2 + 2);
-    events.push(Ok(Event::default().data(
-        serde_json::to_string(&ParquetStreamEvent::Start {
-            total_estimate: total_meshes,
-            cache_key: cache_key_for_stream,
-        })
-        .unwrap(),
-    )));
-    events.push(Ok(Event::default().data(
-        serde_json::to_string(&ParquetStreamEvent::Progress {
-            processed: 0,
-            total: total_meshes,
-        })
-        .unwrap(),
-    )));
+    let sse = |event: &ParquetStreamEvent| -> Result<Event, Infallible> {
+        Ok(Event::default().data(serde_json::to_string(event).unwrap()))
+    };
+    let mut events: Vec<Result<Event, Infallible>> = Vec::with_capacity(batches.len() * 2 + 3);
+    events.push(sse(&ParquetStreamEvent::Start {
+        total_estimate: total_meshes,
+        cache_key: cache_key.to_string(),
+    }));
+    events.push(sse(&ParquetStreamEvent::Progress {
+        processed: 0,
+        total: total_meshes,
+    }));
 
     let mut processed = 0usize;
     for (batch_number, (data, mesh_count)) in batches.into_iter().enumerate() {
         processed += mesh_count;
-        events.push(Ok(Event::default().data(
-            serde_json::to_string(&ParquetStreamEvent::Batch {
-                data,
-                mesh_count,
-                batch_number: batch_number + 1,
-            })
-            .unwrap(),
-        )));
-        events.push(Ok(Event::default().data(
-            serde_json::to_string(&ParquetStreamEvent::Progress {
-                processed,
-                total: total_meshes,
-            })
-            .unwrap(),
-        )));
+        events.push(sse(&ParquetStreamEvent::Batch {
+            data,
+            mesh_count,
+            batch_number: batch_number + 1,
+        }));
+        events.push(sse(&ParquetStreamEvent::Progress {
+            processed,
+            total: total_meshes,
+        }));
     }
 
-    events.push(Ok(Event::default().data(
-        serde_json::to_string(&ParquetStreamEvent::Complete {
-            stats: metadata_header.stats,
-            metadata: metadata_header.metadata,
-            symbolic_data,
-        })
-        .unwrap(),
-    )));
+    events.push(sse(&ParquetStreamEvent::Complete {
+        stats: metadata_header.stats,
+        metadata: metadata_header.metadata,
+        symbolic_data,
+    }));
 
     let fast_stream: std::pin::Pin<
         Box<dyn futures::Stream<Item = Result<Event, Infallible>> + Send>,

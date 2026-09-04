@@ -375,7 +375,15 @@ pub struct StreamingParquetCacheWriter {
 impl StreamingParquetCacheWriter {
     pub fn new() -> Result<Self, ParquetError> {
         fn writer(schema: Arc<Schema>) -> Result<ArrowWriter<Vec<u8>>, ParquetError> {
-            let props = writer_props(&schema);
+            // One `append` must produce exactly ONE row group per table, or
+            // the cached blob loses the batch boundaries
+            // `parquet_replay_batches` recovers on a cache hit (#3895):
+            // arrow-rs otherwise splits a `write` at 1,048,576 rows, which the
+            // vertex table crosses on large models. `append` flushes per batch.
+            let props = writer_props(&schema)
+                .into_builder()
+                .set_max_row_group_row_count(None)
+                .build();
             Ok(ArrowWriter::try_new(Vec::new(), schema, Some(props))?)
         }
         Ok(Self {

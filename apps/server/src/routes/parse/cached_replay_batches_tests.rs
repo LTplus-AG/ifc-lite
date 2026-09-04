@@ -161,10 +161,13 @@ async fn cache_hit_replays_multiple_batches_matching_the_live_shape() {
     assert_eq!(decode(batches[1]), expected_b.to_vec(), "batch 2 payload must match the live encoding");
 }
 
-/// A small cache built from a single live stream batch must still show the
-/// live shape: at least one batch, at least one progress event.
+/// A cache built from a single live stream batch has no boundary to recover,
+/// so the replay falls back to one whole-geometry batch — but it must STILL
+/// carry the live event shape around it. Asserted as the exact sequence: the
+/// pre-fix code emitted start / batch / complete with no progress at all, so
+/// an "at least one of each" check would not have failed on it.
 #[tokio::test]
-async fn small_cache_hit_still_yields_at_least_one_batch_and_progress() {
+async fn small_cache_hit_still_yields_the_live_event_sequence() {
     let meshes = vec![test_mesh(1, 3)];
 
     let state = test_state("small-cache-hit").await;
@@ -173,7 +176,16 @@ async fn small_cache_hit_still_yields_at_least_one_batch_and_progress() {
 
     let events = replay_sse_payloads(&state, cache_key).await;
 
-    assert!(events.iter().any(|e| e["type"] == "batch"), "expected at least one batch: {events:?}");
-    assert!(events.iter().any(|e| e["type"] == "progress"), "expected at least one progress: {events:?}");
-    assert!(events.iter().any(|e| e["type"] == "complete"), "expected a complete event: {events:?}");
+    let types: Vec<&str> = events.iter().map(|e| e["type"].as_str().unwrap()).collect();
+    assert_eq!(
+        types,
+        vec!["start", "progress", "batch", "progress", "complete"],
+        "got {events:?}"
+    );
+    let progresses: Vec<i64> = events
+        .iter()
+        .filter(|e| e["type"] == "progress")
+        .map(|p| p["processed"].as_i64().unwrap())
+        .collect();
+    assert_eq!(progresses, vec![0, 1], "processed must still reach total");
 }

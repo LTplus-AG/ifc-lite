@@ -60,28 +60,46 @@ fn splits_two_appended_batches_with_byte_identical_localized_output() {
         "batch 2 must match the live per-batch encoding byte for byte"
     );
 
-    // Concatenating the two replayed batches must reproduce exactly what a
-    // one-shot serialize of the whole model (all 5 meshes) decodes to, i.e.
-    // the split loses nothing and adds nothing.
-    let mut all = batch_a.clone();
-    all.extend(batch_b.clone());
-    let _ = serialize_to_parquet(&all).unwrap(); // sanity: whole-model call succeeds too
 }
 
-/// One `append()` call (a single live stream batch, e.g. a small file) must
-/// still split into exactly one `ReplayBatch`, matching the live shape for a
-/// small file (at least one batch).
+/// One `append()` call (a single live stream batch, e.g. a small file) has no
+/// batch boundary to recover: the blob's single row group IS the whole model,
+/// and re-encoding it would only reproduce the bytes the caller already holds.
+/// `split_into_batches` reports that as `None` so the caller replays the
+/// cached bytes directly instead of paying a decode + re-encode for nothing.
 #[test]
-fn a_single_appended_batch_splits_into_exactly_one_replay_batch() {
+fn a_single_appended_batch_has_no_boundary_to_recover() {
     let meshes = vec![mesh(1, 3, 1)];
     let mut writer = StreamingParquetCacheWriter::new().unwrap();
     writer.append(&meshes).unwrap();
     let geometry = writer.finish().unwrap();
 
-    let batches = split_into_batches(&geometry).expect("one row-group-aligned batch");
-    assert_eq!(batches.len(), 1);
-    assert_eq!(batches[0].mesh_count, 1);
-    assert_eq!(batches[0].data.as_ref(), serialize_to_parquet(&meshes).unwrap().as_ref());
+    assert!(split_into_batches(&geometry).is_none());
+}
+
+/// The whole reconstruction rests on `StreamingParquetCacheWriter::append`
+/// emitting exactly ONE row group per table per batch. arrow-rs otherwise
+/// splits a single `write` once a table passes 1,048,576 rows, which the
+/// VERTEX table (one row per vertex) crosses on ordinary large models long
+/// before the mesh table (one row per mesh) does — the row-group counts then
+/// disagree and the replay degrades silently to one oversized batch. This
+/// pins the writer property that disables that split, with a batch big enough
+/// to have triggered it.
+#[test]
+fn an_append_over_the_default_row_group_limit_still_writes_one_row_group() {
+    // 1200 meshes x 1000 vertices = 1.2M vertex rows, past the 1,048,576
+    // default, while the mesh table holds only 1200 rows.
+    let big: Vec<MeshData> = (0..1200).map(|id| mesh(id, 1000, 1)).collect();
+    let mut writer = StreamingParquetCacheWriter::new().unwrap();
+    writer.append(&big).unwrap();
+    writer.append(&[mesh(9999, 3, 1)]).unwrap();
+    let geometry = writer.finish().unwrap();
+
+    let batches = split_into_batches(&geometry)
+        .expect("both appends must stay row-group-aligned across all three tables");
+    assert_eq!(batches.len(), 2);
+    assert_eq!(batches[0].mesh_count, 1200);
+    assert_eq!(batches[1].mesh_count, 1);
 }
 
 /// A blob that isn't the triple-framed Parquet shape at all (garbage bytes,

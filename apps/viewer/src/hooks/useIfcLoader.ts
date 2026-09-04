@@ -439,7 +439,7 @@ export function useIfcLoader() {
       // analytics — the retry only gives the user a shot at a result first.
       posthog.captureException(err, {
         context,
-        ...errorCaptureProps(err),
+        ...errorCaptureProps(err, context),
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
         resource_retry: retryTier,
@@ -2050,11 +2050,11 @@ export function useIfcLoader() {
                   // registered on success via finalizeModel→addModel), so
                   // updateModel would no-op and the failure would vanish —
                   // addModel just returns null. Surface it to the user instead.
-                  toast.error(formatLoadError(err, file.name));
+                  toast.error(formatLoadError(err, file.name, 'geometry_processing'));
                 } else {
                   updateModel(modelId, {
                     loadState: 'error',
-                    loadError: formatLoadError(err, file.name),
+                    loadError: formatLoadError(err, file.name, 'geometry_processing'),
                   });
                 }
               });
@@ -2077,16 +2077,16 @@ export function useIfcLoader() {
         // A WASM engine-load failure (e.g. the geometry binary 404'd) surfaces
         // here as a cryptic `compile on 'WebAssembly'` TypeError — humanise it
         // and tag the captured exception so it is filterable in error tracking.
-        const kind = classifyLoadError(err);
+        const kind = classifyLoadError(err, 'geometry_processing');
         // The stall / worker-crash / OOM failures land HERE, not in the outer
         // catch — retry once at lower detail before surfacing a dead end.
         if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
-        setError(formatLoadError(err, file.name));
+        setError(formatLoadError(err, file.name, 'geometry_processing'));
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
           context: 'geometry_processing',
-          ...errorCaptureProps(err),
+          ...errorCaptureProps(err, 'geometry_processing'),
           load_stage: loadStage,
           is_retry: options?.isResourceRetry === true,
         });
@@ -2198,14 +2198,14 @@ export function useIfcLoader() {
     } catch (err) {
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;
-      const kind = classifyLoadError(err);
+      const kind = classifyLoadError(err, 'ifc_model_load');
 
       // Resource-limit recovery — see tryResourceRetry. A failure that reaches
       // this outer catch (rather than the streaming loop's inner one) still
       // qualifies, e.g. an allocation failure outside the stream.
       if (await tryResourceRetry(err, kind, 'ifc_model_load')) return;
 
-      const friendly = formatLoadError(err, file.name);
+      const friendly = formatLoadError(err, file.name, 'ifc_model_load');
       updateModel(modelId, {
         loadState: 'error',
         loadError: friendly,
@@ -2217,7 +2217,7 @@ export function useIfcLoader() {
       // signal there is. See errorCaptureProps in ../lib/load-errors.ts.
       posthog.captureException(err, {
         context: 'ifc_model_load',
-        ...errorCaptureProps(err),
+        ...errorCaptureProps(err, 'ifc_model_load'),
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
       });

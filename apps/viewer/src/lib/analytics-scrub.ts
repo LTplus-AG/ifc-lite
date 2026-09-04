@@ -411,7 +411,13 @@ const tagErrorKind = (
   if (typeof event.properties.error_kind === 'string') return;
   const message = exceptionMessage(event.properties);
   if (message === undefined) return;
-  const kind = classifyLoadError(message);
+  // The event's own `context` travels into the classifier. All it gates is the
+  // one WebKit wording that a message cannot settle on its own ("The object can
+  // not be found here." is Safari's text for BOTH a vanished file and the
+  // removeChild/insertBefore reconciler crash). Autocaptured exceptions carry
+  // no context, so they keep the honest `unknown` and stay out of the
+  // file-picker issue.
+  const kind = classifyLoadError(message, event.properties.context);
   // Only tag recognised families — never stamp `unknown` onto an unrelated
   // exception (that would mislabel it as a triaged load error).
   if (kind === 'unknown') return;

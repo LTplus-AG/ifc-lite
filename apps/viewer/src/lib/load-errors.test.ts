@@ -160,9 +160,42 @@ describe('classifyLoadError', () => {
       )),
       'file_unreadable',
     );
-    // WebKit's wording for the same DOMException (#2860).
+    // WebKit's wording for the same DOMException (#2860) needs the load
+    // context to be safe - see the Safari test below.
     assert.equal(
-      classifyLoadError(new Error('The object can not be found here.')),
+      classifyLoadError(new Error('The object can not be found here.'), 'ifc_model_load'),
+      'file_unreadable',
+    );
+  });
+
+  it('only trusts the WebKit NotFoundError wording inside a load context', () => {
+    // "The object can not be found here." is WebKit's GENERIC description for
+    // the NotFoundError name, and WebKit - unlike Blink - gives removeChild and
+    // insertBefore no message of their own, so a Safari reconciler crash
+    // (#1229/#1230/#1232) carries this EXACT string. Message-only, the two are
+    // indistinguishable, and claiming it unconditionally shows a user whose
+    // React tree just died a note about re-picking their file.
+    const webkit = new Error('The object can not be found here.');
+
+    assert.equal(
+      classifyLoadError(webkit),
+      'unknown',
+      'no context: the honest answer, because on this engine the string does not say which failure it was',
+    );
+    assert.equal(
+      classifyLoadError(webkit, 'export_glb'),
+      'unknown',
+      'a context that is not a load is as disqualifying as none',
+    );
+    assert.equal(classifyLoadError(webkit, 'ifc_model_load'), 'file_unreadable');
+    assert.equal(classifyLoadError(webkit, 'geometry_processing'), 'file_unreadable');
+
+    // The Chromium wording needs no context: Blink words its DOM failures
+    // "Failed to execute '...' on '...'", so they never reach this text.
+    assert.equal(
+      classifyLoadError(new Error(
+        'A requested file or directory could not be found at the time an operation was processed.',
+      )),
       'file_unreadable',
     );
   });

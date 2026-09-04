@@ -61,7 +61,8 @@ export type LoadErrorKind =
    * whose bytes are gone by read time — moved, renamed, deleted, or rewritten
    * in place by the authoring tool between `getFile()` and the read, which is
    * exactly what the Refresh flow (#1345) invites. See
-   * {@link isFileNotFoundMessage}.
+   * {@link isChromiumFileNotFoundMessage} and, for the wording that needs a
+   * load context to be safe, {@link isWebkitGenericNotFoundMessage}.
    */
   | 'file_unreadable'
   /**
@@ -175,6 +176,32 @@ function isFileUnreadableError(message: string): boolean {
 }
 
 /**
+ * The `context` property a model-load capture site stamps on its exception.
+ *
+ * Only these two mean "this exception was thrown while reading and processing a
+ * file the user picked" — `useIfcLoader`'s outer catch and its geometry-stream
+ * catch. Every other context in the app (`ids_validation`, `clash_detection`,
+ * `export_glb`, `device_lost`, …) is some other operation entirely, and an
+ * exception with NO context at all is an uncaught one PostHog autocaptured,
+ * which by definition nobody attributed to a load.
+ *
+ * It exists for exactly one matcher: {@link isWebkitGenericNotFoundMessage}.
+ * Nothing else here needs to know who was calling, and nothing else should
+ * start to — a classifier that consults the caller for its ordinary buckets is
+ * a classifier that gives two answers for one error.
+ */
+const LOAD_CONTEXTS: ReadonlySet<string> = new Set(['ifc_model_load', 'geometry_processing']);
+
+/**
+ * Whether a capture-site `context` marks a model-load failure. Deliberately
+ * takes `unknown`: the analytics path reads it straight off an event's
+ * properties, where it is whatever the capture site put there.
+ */
+export function isLoadContext(context: unknown): boolean {
+  return typeof context === 'string' && LOAD_CONTEXTS.has(context);
+}
+
+/**
  * The picked file is GONE, not merely unreadable — the sibling of
  * `NotReadableError` above, and the one the field reports actually carry
  * (#2546, #2860, #3324, #3731: four separate PostHog issues over four weeks,
@@ -190,34 +217,68 @@ function isFileUnreadableError(message: string): boolean {
  * guidance is identical to `NotReadableError`'s, which is why both map to
  * `file_unreadable`: the file the user picked is not there to be read.
  *
+ * This is Chromium's wording only (#2546, #3324, #3731); WebKit's is a
+ * different string with a different safety argument, and lives in
+ * {@link isWebkitGenericNotFoundMessage}.
+ *
  * ANCHORED on the whole message, never a substring test, and that is
  * load-bearing rather than stylistic: `NotFoundError` is also what
  * `removeChild` / `insertBefore` throw when a translation extension re-parents
  * a node React owns (the family `harden-dom-mutations.ts` exists to suppress —
- * #1229 / #1230 / #1232). Those carry `Failed to execute '…' on 'Node': …`, so
- * anchoring keeps them out; a search for "could not be found" would sweep them
+ * #1229 / #1230 / #1232). A search for "could not be found" would sweep those
  * in and tell that user their file had moved, which is a lie. Matching by
  * `.name` alone would do the same, so the name is deliberately NOT used here.
  *
- * Both engine wordings, because both have been observed:
- *  - Chromium: "A requested file or directory could not be found at the time an
- *    operation was processed." (#2546, #3324, #3731). Blink's fixed text for
- *    FileErrorCode::kNotFoundErr — it names files and directories outright, so
- *    claiming it for this family is safe.
- *  - WebKit:   "The object can not be found here." (#2860). WEAKER, and worth
- *    knowing before trusting the kind: this is WebKit's DEFAULT description for
- *    NotFoundError, emitted by any internal throw that supplies no message of
- *    its own, so it is file-specific only by where it can arise in THIS app.
- *    Kept because the viewer's only other NotFoundError surface is the DOM pair
- *    above, which words itself distinctly; drop this arm the day a Safari
- *    NotFoundError from somewhere else shows up misfiled.
+ * What makes anchoring SUFFICIENT here is a property of Blink, and it is worth
+ * stating precisely because the obvious reading is wrong: this string does not
+ * name files because Blink reserved it for file failures. It is Blink's generic
+ * description for the `NotFoundError` NAME, handed to any throw that supplies
+ * no message of its own. The safety comes from the other side — Blink's DOM
+ * sites all DO supply a message, the `Failed to execute '…' on '…'` form, so
+ * they never reach this text and the anchor excludes them. That is a fact about
+ * Blink's DOM bindings, not about this string, and if it ever stopped being
+ * true this matcher would need the same context gate its WebKit sibling has.
+ *
  * An optional `NotFoundError: ` prefix is tolerated for the stringified form —
  * `analytics-scrub.ts` classifies from the message text alone, where all that
  * survives is `String(err)`.
  */
-function isFileNotFoundMessage(message: string): boolean {
-  return /^(?:NotFoundError: )?(?:A requested file or directory could not be found at the time an operation was processed\.?|The object can ?not be found here\.?)$/i
+function isChromiumFileNotFoundMessage(message: string): boolean {
+  return /^(?:NotFoundError: )?A requested file or directory could not be found at the time an operation was processed\.?$/i
     .test(message.trim());
+}
+
+/**
+ * WebKit's wording for the same DOMException (#2860) — and the arm that CANNOT
+ * stand on the message alone, which is why it takes a context.
+ *
+ * "The object can not be found here." is WebKit's GENERIC description for the
+ * `NotFoundError` name, and unlike Blink, WebKit does NOT supply a per-site
+ * message for the DOM mutation failures: `removeChild` / `insertBefore` against
+ * a parent that no longer holds the node throw a bare `NotFoundError` carrying
+ * exactly this text. So on Safari the string is genuinely ambiguous between
+ * "the file the user picked is gone" and "a translation extension re-parented a
+ * node React owns and the reconciler crashed" (#1229 / #1230 / #1232). The
+ * anchoring that separates the two families on Chromium separates nothing here.
+ *
+ * Getting it wrong is not cosmetic in either direction. Claimed unconditionally,
+ * a Safari reconciler crash is shown to the user as "your file may have been
+ * moved… select the file again" and, because `analytics-scrub.ts` runs this
+ * classifier over EVERY `$exception`, is fingerprinted into
+ * `ifc-lite:file_unreadable` and buried in a file-picker issue. Dropped
+ * entirely, the Safari half of the family it was added for goes back to being
+ * an unclassified one-off.
+ *
+ * The capture-site `context` is what actually distinguishes them, and it is
+ * already on the event: a load failure is caught by `useIfcLoader` and captured
+ * as `ifc_model_load` / `geometry_processing`, while a reconciler crash is
+ * uncaught and reaches PostHog with no context at all. So this wording counts
+ * only inside a load. An uncontextualised occurrence stays `unknown`, which is
+ * the honest answer: on this engine, with this string and nothing else, we do
+ * not know which failure it was.
+ */
+function isWebkitGenericNotFoundMessage(message: string): boolean {
+  return /^(?:NotFoundError: )?The object can ?not be found here\.?$/i.test(message.trim());
 }
 
 /**
@@ -276,8 +337,16 @@ function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
   );
 }
 
-/** Classify a load failure into a stable analytics bucket. */
-export function classifyLoadError(err: unknown): LoadErrorKind {
+/**
+ * Classify a load failure into a stable analytics bucket.
+ *
+ * `context` is the capture site's own `context` property, where one exists. It
+ * is consulted by exactly one matcher — {@link isWebkitGenericNotFoundMessage},
+ * whose string is ambiguous on WebKit — and ignored by every other bucket, so
+ * omitting it can only cost that one Safari wording its kind. It can never
+ * change any other answer.
+ */
+export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKind {
   const message = messageOf(err);
   // Checked before the memory/worker buckets: a NotReadableError says nothing
   // about the model or this device's capacity, and its message ("...could not
@@ -289,7 +358,8 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   if (
     name === 'NotReadableError' ||
     isFileUnreadableError(message) ||
-    isFileNotFoundMessage(message)
+    isChromiumFileNotFoundMessage(message) ||
+    (isLoadContext(context) && isWebkitGenericNotFoundMessage(message))
   ) {
     return 'file_unreadable';
   }
@@ -330,6 +400,9 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
  *
  * - `error_kind`  the classified family (see {@link classifyLoadError}); drives
  *                 `$exception_fingerprint` grouping and the severity downgrade.
+ *                 Pass the same `context` the call site stamps on the event:
+ *                 one WebKit wording is only classifiable inside a load, and a
+ *                 kind set here wins over the analytics-path re-classification.
  * - `error_type`  the throwable's own identity — a DOMException's stable
  *                 `.name`, else the constructor name. The one property that
  *                 survives when the message is two words and the stack empty.
@@ -337,10 +410,10 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
  *                 be told apart from a failure of ours. Omitted where the
  *                 browser doesn't expose it (Node tests).
  */
-export function errorCaptureProps(err: unknown): Record<string, unknown> {
+export function errorCaptureProps(err: unknown, context?: unknown): Record<string, unknown> {
   const name = errorNameOf(err);
   const props: Record<string, unknown> = {
-    error_kind: classifyLoadError(err),
+    error_kind: classifyLoadError(err, context),
     // `name` is set on every Error and DOMException; the constructor fallback
     // covers a thrown non-Error (posthog stringifies those, losing even this).
     error_type: name || (err as { constructor?: { name?: string } })?.constructor?.name || typeof err,

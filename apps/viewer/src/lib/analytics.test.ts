@@ -674,7 +674,9 @@ describe('scrubEvent — issue grouping', () => {
     const chromium = scrubEvent(exceptionEvent(
       'A requested file or directory could not be found at the time an operation was processed.',
     ));
-    const webkit = scrubEvent(exceptionEvent('The object can not be found here.'));
+    const webkit = scrubEvent(exceptionEvent('The object can not be found here.', {
+      context: 'ifc_model_load',
+    }));
     const unreadable = scrubEvent(exceptionEvent(
       'NotReadableError: The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.',
     ));
@@ -682,6 +684,17 @@ describe('scrubEvent — issue grouping', () => {
     assert.equal(webkit?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
     assert.equal(unreadable?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
     assert.equal(chromium?.properties?.error_kind, 'file_unreadable');
+  });
+
+  it('keeps a Safari reconciler crash out of the file_unreadable group (no load context)', () => {
+    // WebKit words the removeChild/insertBefore failure with its generic
+    // NotFoundError text, the same string a vanished file gets, so the message
+    // alone cannot separate them. A reconciler crash is UNCAUGHT and reaches
+    // PostHog with no `context`; that absence is what keeps it out of the
+    // file-picker issue and off the "your file moved" message.
+    const out = scrubEvent(exceptionEvent('The object can not be found here.'));
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
   });
 
   it('keeps the DOM-mutation NotFoundError out of the file_unreadable group', () => {

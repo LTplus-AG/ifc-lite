@@ -1810,6 +1810,31 @@ test('#3768: a resolved thread longer than one comment page is disclosed too', (
 
 // ============================== a judge-emptied findings verdict is not `clean` (#3862)
 
+test('#3862 summaryBody REFUSES a zero-count review with no verdict passed', () => {
+  // THE BRANCH THAT MUST BE EXECUTED, not merely written. `summaryBody` used to
+  // hardcode `clean` here while main() computed the same string a second time --
+  // two answers to one question, agreeing until the `clean-by-judge` split made
+  // one of them change. The verdict is an argument now, and it REFUSES rather
+  // than defaulting: a default is what makes a forgotten wire-up silent, and the
+  // silence would post the stronger verdict.
+  //
+  // Nothing is posted on this path: the throw happens while the body is being
+  // built, before `upsertAndVerify` is reached, so the gate reads NOT_POSTED and
+  // the remedy is a code fix rather than a re-run.
+  for (const verdict of [undefined, null, '', 'findings', 'nothing-to-review', 'clean-ish']) {
+    assert.throws(
+      () => summaryBody({ sha: SHA, findings: [], count: 0, verdict }),
+      /BAD_ARGS|markerVerdict/,
+      `verdict=${JSON.stringify(verdict)} must not render a zero-count body`,
+    );
+  }
+  // ANTI-VACUITY: both accepted verdicts still render, or the guard would be
+  // refusing everything and no clean review could post at all.
+  for (const verdict of ['clean', 'clean-by-judge']) {
+    assert.match(summaryBody({ sha: SHA, findings: [], count: 0, verdict }), new RegExp(`verdict=${verdict} count=0`));
+  }
+});
+
 test('#3862 a validated CLEAN verdict still posts a plain `clean` marker', () => {
   // The control. `clean` is the strongest thing this lane says, and it must stay
   // reachable: a reviewer that walked the twelve defect classes and found

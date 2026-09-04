@@ -76,6 +76,100 @@ export function requireAspectRatioOption(aspectRatio: number): number {
   return aspectRatio;
 }
 
+type Vec3 = readonly [number, number, number];
+
+function dot(a: Vec3, b: Vec3): number {
+  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+function cross(a: Vec3, b: Vec3): Vec3 {
+  return [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
+  ];
+}
+
+function normalize(v: Vec3): Vec3 {
+  const len = Math.sqrt(dot(v, v));
+  return [v[0] / len, v[1] / len, v[2] / len];
+}
+
+/**
+ * Slack left around the framed box, as a multiple of the fitted distance.
+ *
+ * The fit below puts the worst corner exactly on the frustum edge, which
+ * reads as a crop in any viewer that letterboxes or draws a border.
+ *
+ * Exported so the tests can take the padding back out and assert the fit
+ * underneath it is TIGHT. `cornersOutsideFrustum` is monotone in distance, so
+ * without that the whole corner-fit suite would pass on a camera parked
+ * arbitrarily far away.
+ */
+export const FRAMING_PADDING = 1.5;
+
+/**
+ * Floor on the FITTED distance for a box with no size, in model units.
+ *
+ * A point fits at every distance including zero, which would put the camera
+ * inside the entity it is meant to be looking at. Floored before
+ * {@link FRAMING_PADDING} applies, so the standoff such a box actually gets is
+ * this times the padding.
+ */
+const MIN_FRAMED_DISTANCE = 0.1;
+
+/**
+ * The southeast-isometric camera basis, in viewer coordinates (Y-up).
+ *
+ * Fixed for every computed camera, so it is derived once here rather than per
+ * call. The camera sits at `center + CAMERA_OFFSET * distance` and looks back
+ * along `CAMERA_FORWARD`; `CAMERA_RIGHT` and `CAMERA_UP` are perpendicular to
+ * that, which is why the standoff cancels out of a corner's sideways offsets
+ * in the fit below and appears only in its depth.
+ */
+const CAMERA_OFFSET = normalize([0.6, 0.5, 0.6]);
+const CAMERA_FORWARD: Vec3 = [-CAMERA_OFFSET[0], -CAMERA_OFFSET[1], -CAMERA_OFFSET[2]];
+const CAMERA_RIGHT = normalize(cross(CAMERA_FORWARD, [0, 1, 0]));
+const CAMERA_UP = cross(CAMERA_RIGHT, CAMERA_FORWARD);
+
+/**
+ * The smallest standoff along {@link CAMERA_OFFSET} that puts every corner of
+ * `bounds` inside both half-angles, before padding.
+ *
+ * The distance used to come from the largest SIDE of the box, which is not
+ * what the projection sees: down this isometric axis a box projects wider than
+ * any of its sides, so a unit cube's worst corner sat at a vertical slope of
+ * 0.837 against the tan(30 deg) = 0.577 limit at 16/9, and overran
+ * horizontally at 9/16 (#3882). Only the corners answer the question, so all
+ * eight are walked.
+ *
+ * A corner's sideways offsets `h` and `v` do not depend on the standoff, and
+ * its depth is `dot(corner, CAMERA_FORWARD) + distance`. It is inside when
+ * `h <= tanH * depth` and `v <= tanV * depth`; solving each for `distance` and
+ * taking the largest satisfies all sixteen constraints at once, because
+ * growing the distance only ever relaxes them.
+ */
+function fitCornersInFrustum(
+  bounds: EntityBoundsInput,
+  center: Vec3,
+  tanH: number,
+  tanV: number,
+): number {
+  let distance = 0;
+  for (const x of [bounds.min.x, bounds.max.x]) {
+    for (const y of [bounds.min.y, bounds.max.y]) {
+      for (const z of [bounds.min.z, bounds.max.z]) {
+        const corner: Vec3 = [x - center[0], y - center[1], z - center[2]];
+        const depthAtCenter = dot(corner, CAMERA_FORWARD);
+        const h = Math.abs(dot(corner, CAMERA_RIGHT)) / tanH;
+        const v = Math.abs(dot(corner, CAMERA_UP)) / tanV;
+        distance = Math.max(distance, h - depthAtCenter, v - depthAtCenter);
+      }
+    }
+  }
+  return distance;
+}
+
 /**
  * Compute a BCF perspective camera from entity bounds.
  *
@@ -97,56 +191,37 @@ export function computeCameraFromBounds(
   aspectRatio: number = DEFAULT_ASPECT_RATIO,
 ): BCFPerspectiveCamera {
   // Center in viewer coords (Y-up)
-  const cx = (bounds.min.x + bounds.max.x) / 2;
-  const cy = (bounds.min.y + bounds.max.y) / 2;
-  const cz = (bounds.min.z + bounds.max.z) / 2;
+  const center: Vec3 = [
+    (bounds.min.x + bounds.max.x) / 2,
+    (bounds.min.y + bounds.max.y) / 2,
+    (bounds.min.z + bounds.max.z) / 2,
+  ];
 
-  // Max extent for framing distance
-  const sx = bounds.max.x - bounds.min.x;
-  const sy = bounds.max.y - bounds.min.y;
-  const sz = bounds.max.z - bounds.min.z;
-  const maxSize = Math.max(sx, sy, sz, 0.1); // Floor to avoid zero
-
-  // Camera distance: fit maxSize into the 60deg FOV with 1.5x padding.
-  //
   // `FieldOfView` is the VERTICAL angle in BCF, and the horizontal one follows
-  // from the aspect ratio: tan(hHalf) = aspectRatio * tan(vHalf). Framing off
-  // the vertical angle alone therefore held only while the viewport was at
-  // least as wide as it is tall; at a portrait ratio the horizontal angle is
-  // the NARROWER of the two, and a wide entity was cropped by exactly the
-  // factor the ratio understated (at 9/16, by 16/9). Dividing by the narrower
-  // half-angle frames the box in whichever direction is tighter, and is inert
-  // at every ratio >= 1 -- including the 16/9 default -- because the vertical
-  // angle is the narrower one there.
-  const vHalf = (FIELD_OF_VIEW_DEGREES * Math.PI) / 360;
-  const hHalf = Math.atan(aspectRatio * Math.tan(vHalf));
-  const distance = (maxSize / 2) / Math.tan(Math.min(vHalf, hHalf)) * 1.5;
+  // from the aspect ratio: tan(hHalf) = aspectRatio * tan(vHalf). Both bound
+  // every corner below, so neither a portrait nor a landscape viewport crops
+  // the box.
+  const tanV = Math.tan((FIELD_OF_VIEW_DEGREES * Math.PI) / 360);
+  const tanH = aspectRatio * tanV;
 
-  // Southeast-isometric offset in viewer coords (Y-up):
-  // camera position = center + normalized(0.6, 0.5, 0.6) * distance
-  const offsetLen = Math.sqrt(0.6 * 0.6 + 0.5 * 0.5 + 0.6 * 0.6);
-  const ox = (0.6 / offsetLen) * distance;
-  const oy = (0.5 / offsetLen) * distance;
-  const oz = (0.6 / offsetLen) * distance;
+  const distance =
+    Math.max(fitCornersInFrustum(bounds, center, tanH, tanV), MIN_FRAMED_DISTANCE) *
+    FRAMING_PADDING;
 
-  const camX = cx + ox;
-  const camY = cy + oy;
-  const camZ = cz + oz;
-
-  // Direction: from camera to center (viewer coords)
-  const dx = cx - camX;
-  const dy = cy - camY;
-  const dz = cz - camZ;
-  const dLen = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  // Southeast-isometric position in viewer coords (Y-up).
+  const camX = center[0] + CAMERA_OFFSET[0] * distance;
+  const camY = center[1] + CAMERA_OFFSET[1] * distance;
+  const camZ = center[2] + CAMERA_OFFSET[2] * distance;
 
   // Convert to BCF coords (Z-up)
-  // Viewer (x, y, z) → BCF (x, -z, y)
+  // Viewer (x, y, z) → BCF (x, -z, y). The camera sits on the +CAMERA_OFFSET
+  // ray from the center, so it looks back along CAMERA_FORWARD exactly.
   return {
     cameraViewPoint: { x: camX, y: -camZ, z: camY },
     cameraDirection: {
-      x: dx / dLen,
-      y: -dz / dLen,
-      z: dy / dLen,
+      x: CAMERA_FORWARD[0],
+      y: -CAMERA_FORWARD[2],
+      z: CAMERA_FORWARD[1],
     },
     cameraUpVector: { x: 0, y: 0, z: 1 }, // BCF Z-up
     fieldOfView: FIELD_OF_VIEW_DEGREES,

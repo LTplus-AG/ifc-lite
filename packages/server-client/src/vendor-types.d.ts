@@ -3,32 +3,17 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Minimal ambient type declarations for parquet-wasm and apache-arrow.
+ * Minimal ambient type declarations for apache-arrow.
  *
  * These cover only the API surface actually used in this package,
  * avoiding the need for @ts-ignore on every call site.
+ *
+ * parquet-wasm is NOT declared here: it ships its own `.d.ts` per build and
+ * they resolve fine from this package's tsconfig. An ambient stub would
+ * shadow them (#3845). See `parquet-decoder.ts` for the one place the real
+ * types need help: they describe whichever build the resolver picked, and
+ * the runtime may be the other one.
  */
-
-// ── parquet-wasm ──
-
-// The package's own entry point (`parquet-wasm`), not a build-specific deep
-// path: `esm/arrow2.js` was dropped in parquet-wasm 0.6, so importing it
-// broke for any consumer on the version the rest of this workspace pins
-// (#3845). The bare specifier lets the package's export map pick the build:
-// the Node build (auto-initializing, no default export) under Node, the
-// wasm-bindgen ESM build (whose default export must be awaited before any
-// other call) in a browser or bundler.
-declare module 'parquet-wasm' {
-  /** Initialize WASM module. Browser/bundler build only; absent on Node. */
-  export default function init(wasmUrlOrResponse?: string | Response): Promise<void>;
-  /** Read a Parquet buffer and return an Arrow IPC-compatible table. */
-  export function readParquet(data: Uint8Array): ParquetTable;
-}
-
-interface ParquetTable {
-  /** Convert to Arrow IPC stream bytes for use with apache-arrow. */
-  intoIPCStream(): Uint8Array;
-}
 
 // ── apache-arrow ──
 

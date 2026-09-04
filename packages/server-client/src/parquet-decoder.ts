@@ -12,7 +12,8 @@
 import type { MeshData } from './types.js';
 import { buildMeshesFromTables, buildMeshesFromOptimizedTables } from './parquet-tables.js';
 
-// Ambient types in vendor-types.d.ts cover parquet-wasm and apache-arrow APIs.
+// Ambient types in vendor-types.d.ts cover the apache-arrow APIs used here.
+// parquet-wasm ships its own types, one set per build.
 
 // WASM initialization state. The in-flight promise is cached too, so
 // concurrent decodes share one init instead of racing two.
@@ -47,8 +48,14 @@ async function loadParquet(): Promise<ParquetModule> {
   // itself on import and exposes no default init, hence the guard rather
   // than an unconditional call. Same shape as
   // packages/export/src/columns-to-parquet.ts.
-  if (typeof parquet.default === 'function') {
-    await parquet.default();
+  //
+  // The cast is the price of that guard: TypeScript resolves the export map
+  // under the `node` condition, so it only ever sees the Node build's types,
+  // where `default` is the CommonJS namespace object and not callable. Which
+  // build actually loads is a runtime question, so ask at runtime.
+  const init = (parquet as { default?: unknown }).default;
+  if (typeof init === 'function') {
+    await (init as () => Promise<unknown>)();
   }
 
   if (typeof parquet.readParquet !== 'function') {

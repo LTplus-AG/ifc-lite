@@ -7,12 +7,14 @@
 //!
 //! Split out of `parquet.rs`, which keeps the wire framing and the writers.
 //! The seam is the plan: above it decides what to emit, below it packs
-//! columns. `-parquet-v5` is the case where that decision is the identity (row
-//! `i` owns block `i`); `-parquet-v6` (#3888) adds the case where several rows
-//! share one block and a per-row rotation places each of them.
+//! columns. The default layout is the case where that decision is the identity
+//! (row `i` owns block `i`); `shared-shapes` (#3888) adds the case where
+//! several rows share one block and a per-row rotation places each of them.
 
-use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
+use crate::services::axis::zup_to_yup_f64;
 use crate::services::parquet::ParquetError;
+use crate::services::parquet_layout::ParquetLayout;
+use crate::services::parquet_vertex_columns::{shape_vertices, VertexColumns};
 use crate::services::parquet_instancing::{
     collate_rotation_aware_placements, rotation_zup_to_yup, IDENTITY_ROTATION,
 };
@@ -60,10 +62,10 @@ pub(super) enum ShapePlan {
 }
 
 impl ShapePlan {
-    /// Plan the `-parquet-v6` layout: occurrences of one `IfcMappedItem` /
-    /// `IfcRepresentationMap` shape at different placements collapse onto the
-    /// template's single block of vertices, each row carrying the verified
-    /// origin + rotation that puts it back where it belongs.
+    /// Plan the shared layout: occurrences of one `IfcMappedItem` /
+    /// `IfcRepresentationMap` shape collapse onto the template's single block
+    /// of vertices, each row carrying the verified origin + rotation that puts
+    /// it back where it belongs.
     ///
     /// Reuses [`collate_rotation_aware_placements`] verbatim — the same
     /// grouping, the same per-vertex residual check, the same all-or-nothing
@@ -157,6 +159,7 @@ impl ShapePlan {
 pub(super) fn build_mesh_tables(
     meshes: &[MeshData],
     plan: &ShapePlan,
+    layout: ParquetLayout,
     base_vertex_offset: u32,
     base_index_offset: u32,
 ) -> Result<(RecordBatch, RecordBatch, RecordBatch), ParquetError> {
@@ -306,10 +309,12 @@ pub(super) fn build_mesh_tables(
         Arc::new(UInt32Array::from(geometry_item_ids)),
         Arc::new(UInt32Array::from(material_ids)),
     ];
-    for column in rotation {
-        mesh_columns.push(Arc::new(Float32Array::from(column)));
+    if layout.has_rotation() {
+        for column in rotation {
+            mesh_columns.push(Arc::new(Float32Array::from(column)));
+        }
     }
-    let mesh_batch = RecordBatch::try_new(mesh_schema(), mesh_columns)?;
+    let mesh_batch = RecordBatch::try_new(mesh_schema(layout.has_rotation()), mesh_columns)?;
 
     let vertex_batch = RecordBatch::try_new(
         vertex_schema(),
@@ -333,63 +338,6 @@ pub(super) fn build_mesh_tables(
     )?;
 
     Ok((mesh_batch, vertex_batch, index_batch))
-}
-
-/// One shape's six Y-up vertex columns, in `vertex_schema()` order:
-/// `(x, y, z, nx, ny, nz)`. Named rather than left as a bare 6-tuple because
-/// every slot has the same type and the positional pairing with the schema is
-/// what keeps positions out of the normal columns.
-type VertexColumns = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
-
-fn shape_vertices(mesh: &MeshData) -> VertexColumns {
-    let vert_count = mesh.positions.len() / 3;
-    let mut px = Vec::with_capacity(vert_count);
-    let mut py = Vec::with_capacity(vert_count);
-    let mut pz = Vec::with_capacity(vert_count);
-    let mut nx = Vec::with_capacity(vert_count);
-    let mut ny = Vec::with_capacity(vert_count);
-    let mut nz = Vec::with_capacity(vert_count);
-
-    // Some IFC pipelines (e.g. advanced_brep) yield meshes with positions but
-    // no normals. The schema requires non-null normal columns, so pad with
-    // zeros and let the client recompute them from positions.
-    let has_normals = mesh.normals.len() == mesh.positions.len();
-    if !has_normals && !mesh.normals.is_empty() {
-        tracing::warn!(
-            express_id = mesh.express_id,
-            ifc_type = %mesh.ifc_type,
-            positions = mesh.positions.len(),
-            normals = mesh.normals.len(),
-            "Mesh normals length mismatch; emitting zero normals"
-        );
-    }
-
-    for i in 0..vert_count {
-        let (x, y, z) = zup_to_yup(
-            mesh.positions[i * 3],
-            mesh.positions[i * 3 + 1],
-            mesh.positions[i * 3 + 2],
-        );
-        px.push(x);
-        py.push(y);
-        pz.push(z);
-
-        if has_normals {
-            let (x, y, z) = zup_to_yup(
-                mesh.normals[i * 3],
-                mesh.normals[i * 3 + 1],
-                mesh.normals[i * 3 + 2],
-            );
-            nx.push(x);
-            ny.push(y);
-            nz.push(z);
-        } else {
-            nx.push(0.0);
-            ny.push(0.0);
-            nz.push(0.0);
-        }
-    }
-    (px, py, pz, nx, ny, nz)
 }
 
 // The unit tests live in the ratchet-exempt sibling file

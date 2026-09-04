@@ -6,7 +6,7 @@
 
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
 /// Cache-key segment for a tessellation level. Empty for the default level so
@@ -61,7 +61,8 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
     format!("{cache_key}-json-v2")
 }
 
-/// The flat Parquet geometry entry for a request cache key.
+/// The flat Parquet geometry entry for a request cache key, under the LAYOUT
+/// the client asked for.
 ///
 /// THE definition of that suffix. It used to be a `format!` literal repeated in
 /// `parse_parquet` (twice), `parse_parquet_stream`, `try_cached_replay` and
@@ -70,46 +71,32 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
 /// a reader looking up a key nobody writes, or worse a writer storing under a
 /// version an old reader still serves.
 ///
-/// `v6`, not `v5`: #3888 gave the flat mesh table rotation-aware SHAPE SHARING
-/// -- several rows point at one block of vertices, placed by `origin + R * p`,
-/// with `rot0..rot8` added to carry the R (see `mesh_schema()` in
-/// `services/parquet_schema.rs` for the layout).
-///
-/// What the bump BUYS, stated precisely, because the obvious answer is wrong:
-/// it retires the v5 entries so already-cached models are re-serialised into
-/// the smaller layout. Without it every model parsed before the deploy would
-/// replay its old full-size blob forever and never see the change at all.
-///
-/// What it does NOT buy is protection for an old CLIENT. A cache key
+/// The two layouts get SEPARATE namespaces (`-parquet-v5` / `-parquet-v6`,
+/// from `ParquetLayout::cache_suffix`) rather than one versioned slot, and the
+/// reason is that a version bump cannot do the job here. A cache key
 /// namespaces server-side entries; it has no bearing on which client is
-/// asking. A client pinned to a `@ifc-lite/server-client` that predates #3888
-/// posts to this route, gets a freshly generated v6 blob, ignores
-/// `rot0..rot8` because it does not know they exist, and stacks every
-/// occurrence of a shared shape at the template's placement -- and no cache
-/// key can stop that, because the blob was never in the cache. The flat wire
-/// carries no version byte to fail loud on either (unlike `/optimized`, see
-/// `optimized_wire_version`). That exposure is real and is carried by the
-/// `@ifc-lite/server-client` version bump, not by this string.
+/// asking. Bumping one shared key would have retired the v5 entries and then
+/// handed every client -- including one pinned to a `@ifc-lite/server-client`
+/// that predates #3888 -- a freshly generated v6 blob it decodes without error
+/// and draws wrong. Two namespaces plus an opt-in signal means a client that
+/// did not ask for the shared layout can never be served it, from cache or
+/// from a live parse, and the two entries coexist instead of evicting each
+/// other on every request.
 ///
-/// `v5`, not `v4`, was #3215 adding the two source-id columns, where absence
-/// read exactly like success.
-///
-/// ONE key covers the non-streaming and the streaming route. Only the
-/// non-streaming one SHARES shapes -- the streaming writer serializes one
-/// batch at a time, where sharing would be batch-local -- but it emits the
-/// same v6 schema with identity rotations, so either route's entry is a valid
-/// v6 payload for the other to replay.
-pub(crate) fn parquet_geometry_key(cache_key: &str) -> String {
-    format!("{cache_key}-parquet-v6")
+/// `-parquet-v5` is unchanged from before #3888 on purpose: a default request
+/// must still hit the entries already on disk. `v5`, not `v4`, was #3215
+/// adding the two source-id columns, where absence read exactly like success.
+pub(crate) fn parquet_geometry_key(cache_key: &str, layout: ParquetLayout) -> String {
+    format!("{cache_key}-{}", layout.cache_suffix())
 }
 
 /// The flat Parquet metadata entry (the `X-IFC-Metadata` header) for a request
 /// cache key. THE definition of that suffix, for the same reason as above.
 ///
-/// NOT versioned in lockstep with [`parquet_geometry_key`]: it holds the
-/// metadata header, whose shape #3888 did not touch. A hit needs both entries,
-/// so a v5-era header left beside a missing v6 body simply misses and both get
-/// rewritten.
+/// NOT keyed by layout, and not versioned alongside the geometry: it holds the
+/// metadata header, whose shape #3888 did not touch and which is identical for
+/// both layouts of the same file. A hit needs the geometry entry too, so the
+/// layouts still cannot cross-serve.
 pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
     format!("{cache_key}-parquet-metadata-v4")
 }
@@ -120,8 +107,9 @@ pub(crate) fn parquet_cache_key(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layout: ParquetLayout,
 ) -> String {
-    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality))
+    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality), layout)
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.

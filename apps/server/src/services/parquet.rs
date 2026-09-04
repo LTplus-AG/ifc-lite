@@ -9,6 +9,7 @@
 //! - JSON: ~30KB per mesh with ~500 vertices
 //! - Parquet: ~2KB per mesh (15x smaller)
 
+use crate::services::parquet_layout::ParquetLayout;
 use crate::services::parquet_mesh_tables::{build_mesh_tables, ShapePlan};
 use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema};
 use crate::types::MeshData;
@@ -46,7 +47,19 @@ pub enum ParquetError {
 /// This format is compatible with ara3d BOS and provides excellent compression
 /// for geometry data through columnar storage and dictionary encoding.
 pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
-    serialize_with_plan(meshes, &ShapePlan::Identity)
+    serialize_with_plan(meshes, &ShapePlan::Identity, ParquetLayout::Flat)
+}
+
+/// Serialize one batch under the layout the client asked for, sharing nothing.
+///
+/// The streaming route's per-batch blobs: `SharedShapes` here means only that
+/// the mesh table carries identity `rot0..rot8`, since sharing across a batch
+/// boundary is not something a per-batch writer can see.
+pub fn serialize_batch_with_layout(
+    meshes: &[MeshData],
+    layout: ParquetLayout,
+) -> Result<Bytes, ParquetError> {
+    serialize_with_plan(meshes, &ShapePlan::Identity, layout)
 }
 
 /// Serialize mesh data with rotation-aware shape sharing (issue #3888). Same
@@ -57,11 +70,19 @@ pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> 
 /// streaming route serializes ONE BATCH at a time, where sharing could only
 /// ever be batch-local, so it keeps calling the identity-plan serializer.
 pub fn serialize_to_parquet_shared_shapes(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
-    serialize_with_plan(meshes, &ShapePlan::shared_shapes(meshes))
+    serialize_with_plan(
+        meshes,
+        &ShapePlan::shared_shapes(meshes),
+        ParquetLayout::SharedShapes,
+    )
 }
 
-fn serialize_with_plan(meshes: &[MeshData], plan: &ShapePlan) -> Result<Bytes, ParquetError> {
-    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, plan, 0, 0)?;
+fn serialize_with_plan(
+    meshes: &[MeshData],
+    plan: &ShapePlan,
+    layout: ParquetLayout,
+) -> Result<Bytes, ParquetError> {
+    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, plan, layout, 0, 0)?;
 
     // Write to a custom binary format with multiple Parquet sections
     // Format: [mesh_parquet_len:u32][mesh_parquet][vertex_parquet_len:u32][vertex_parquet][index_parquet_len:u32][index_parquet]
@@ -140,6 +161,7 @@ fn frame_combined_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<B
 /// columns carry GLOBAL offsets (whole-model), matching what the one-shot
 /// `serialize_to_parquet` emits for the cached fast-path replay.
 pub struct StreamingParquetCacheWriter {
+    layout: ParquetLayout,
     mesh_w: ArrowWriter<Vec<u8>>,
     vert_w: ArrowWriter<Vec<u8>>,
     idx_w: ArrowWriter<Vec<u8>>,
@@ -149,7 +171,7 @@ pub struct StreamingParquetCacheWriter {
 }
 
 impl StreamingParquetCacheWriter {
-    pub fn new() -> Result<Self, ParquetError> {
+    pub fn new(layout: ParquetLayout) -> Result<Self, ParquetError> {
         fn writer(schema: Arc<Schema>) -> Result<ArrowWriter<Vec<u8>>, ParquetError> {
             // One `append` must produce exactly ONE row group per table, or
             // the cached blob loses the batch boundaries
@@ -163,7 +185,8 @@ impl StreamingParquetCacheWriter {
             Ok(ArrowWriter::try_new(Vec::new(), schema, Some(props))?)
         }
         Ok(Self {
-            mesh_w: writer(mesh_schema())?,
+            layout,
+            mesh_w: writer(mesh_schema(layout.has_rotation()))?,
             vert_w: writer(vertex_schema())?,
             idx_w: writer(index_schema())?,
             vertex_offset: 0,
@@ -181,6 +204,7 @@ impl StreamingParquetCacheWriter {
         let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(
             meshes,
             &ShapePlan::Identity,
+            self.layout,
             self.vertex_offset,
             self.index_offset,
         )?;

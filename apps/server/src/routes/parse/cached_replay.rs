@@ -20,6 +20,7 @@
 use super::cache_keys::{
     has_current_data_model, load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
 };
+use crate::services::ParquetLayout;
 use super::parquet::ParquetMetadataHeader;
 use super::parquet_stream::ParquetStreamEvent;
 use super::stream_progress::load_stream_progress;
@@ -51,8 +52,9 @@ pub(super) fn cached_geometry_slice(cached: &[u8]) -> Option<&[u8]> {
 pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
+    layout: ParquetLayout,
 ) -> Result<Option<axum::response::Response>, ApiError> {
-    let parquet_cache_key = parquet_geometry_key(cache_key);
+    let parquet_cache_key = parquet_geometry_key(cache_key, layout);
     let metadata_cache_key = parquet_metadata_key(cache_key);
 
     let (Some(cached_parquet), Some(cached_metadata_json)) = (

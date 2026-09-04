@@ -21,6 +21,7 @@ import type {
   SymbolicData,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
+import { parseQuery } from './parse-query.js';
 
 /**
  * Raised when an SSE parse stream ends with no terminal event.
@@ -98,15 +99,6 @@ export interface ParseRequestOptions {
 }
 
 /** Build the query string shared by the parse endpoints. */
-function parseQuery(options?: ParseRequestOptions): string {
-  const params = new URLSearchParams();
-  if (options?.tessellationQuality && options.tessellationQuality !== 'medium') {
-    params.set('tessellation_quality', options.tessellationQuality);
-  }
-  const qs = params.toString();
-  return qs ? `?${qs}` : '';
-}
-
 export class IfcServerClient {
   private baseUrl: string;
   private readonly token?: string;
@@ -233,7 +225,7 @@ export class IfcServerClient {
 
     // Step 2: Check if already cached
     const cacheCheckStart = performance.now();
-    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options)}`, {
+    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options, true)}`, {
       method: 'GET',
       headers: this.authHeaders(),
       signal: AbortSignal.timeout(5000), // 5s timeout for cache check
@@ -300,7 +292,7 @@ export class IfcServerClient {
 
     // Step 2: Check if already cached
     const cacheCheckStart = performance.now();
-    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options)}`, {
+    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options, true)}`, {
       method: 'GET',
       headers: this.authHeaders(),
       signal: AbortSignal.timeout(5000),
@@ -351,7 +343,7 @@ export class IfcServerClient {
     formData.append('file', file instanceof File ? file : new Blob([file]), fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options)}`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options, true)}`, {
       method: 'POST',
       headers: this.authHeaders(),
       body: formData,
@@ -480,7 +472,7 @@ export class IfcServerClient {
     options?: ParseRequestOptions
   ): Promise<ParquetParseResponse> {
     const fetchStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/cache/geometry/${hash}${parseQuery(options)}`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/cache/geometry/${hash}${parseQuery(options, true)}`, {
       method: 'GET',
       headers: this.authHeaders(),
       signal: AbortSignal.timeout(this.timeout),
@@ -536,7 +528,7 @@ export class IfcServerClient {
     formData.append('file', uploadFile as Blob, fileName);
 
     const uploadStart = performance.now();
-    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet${parseQuery(options)}`, {
+    const response = await fetch(`${this.baseUrl}/api/v1/parse/parquet${parseQuery(options, true)}`, {
       method: 'POST',
       headers: this.authHeaders(),
       body: formData,

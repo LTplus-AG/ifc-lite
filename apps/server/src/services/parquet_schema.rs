@@ -47,7 +47,15 @@ use std::sync::Arc;
 ///   reading it is MANDATORY rather than merely recommended.
 /// - `rot0..rot8` are absent on a v5 blob. Absent means identity, which is
 ///   exactly v5's behaviour; a v6 writer always emits them, identity included.
-pub(super) fn mesh_schema() -> Arc<Schema> {
+///
+/// `include_rotation` follows the LAYOUT the client asked for
+/// (`ParquetLayout`), not whether anything was actually shared: a v5 request
+/// must come back byte-identical to what this route emitted before #3888, and
+/// a v6 request must carry the columns even from the streaming writer, which
+/// shares nothing. That is why this is a parameter rather than being derived
+/// from the payload, unlike `instance_schema`, whose transport HAS a version
+/// byte to disambiguate an absent block from a truncated one.
+pub(super) fn mesh_schema(include_rotation: bool) -> Arc<Schema> {
     Arc::new(Schema::new(
         vec![
             Field::new("express_id", DataType::UInt32, false),
@@ -63,7 +71,7 @@ pub(super) fn mesh_schema() -> Arc<Schema> {
         ]
         .into_iter()
         .chain(shared_trailing_fields())
-        .chain(rotation_fields())
+        .chain(if include_rotation { rotation_fields() } else { Vec::new() })
         .collect::<Vec<_>>(),
     ))
 }

@@ -10,6 +10,7 @@ use super::*;
 use crate::services::parquet::{
     serialize_to_parquet, serialize_to_parquet_shared_shapes, StreamingParquetCacheWriter,
 };
+use crate::services::ParquetLayout;
 use crate::services::parquet_test_fixtures::{
     col, expected_yup, read_flat_sections, rotated_repeats,
 };
@@ -95,13 +96,16 @@ fn rotated_repeats_share_one_vertex_block_and_reconstruct_within_1mm() {
     }
 }
 
-/// A model with nothing to share must come out byte-for-byte as `-parquet-v5`
-/// did, apart from the nine identity rotation columns.
+/// A model with nothing to share must produce the v5 layout, and the v6 blob
+/// for the same model must differ from it ONLY by the identity rotation
+/// columns.
 ///
-/// Compared against the identity plan rather than against a hand-written
-/// expectation: the identity plan IS the v5 layout (`serialize_to_parquet`,
-/// which the streaming route still calls, is built on it), so this asserts the
-/// two agree on every other column rather than restating what they should say.
+/// Two claims, and the second is what the opt-in rests on. The default request
+/// must be byte-identical to what this route emitted before #3888 (asserted by
+/// comparing against the same `serialize_to_parquet` the streaming route still
+/// calls), and the opt-in request on a repeat-free model must carry the same
+/// vertex layout with nine identity columns bolted on — not a reordered or
+/// re-planned table that merely happens to render the same.
 #[test]
 fn zero_reuse_model_matches_the_v5_layout_with_identity_rotations() {
     // Distinct shapes, distinct origins, no `InstanceMeta` -> nothing to share.
@@ -129,15 +133,43 @@ fn zero_reuse_model_matches_the_v5_layout_with_identity_rotations() {
 
     let v5 = serialize_to_parquet(&meshes).unwrap();
     let v6 = serialize_to_parquet_shared_shapes(&meshes).unwrap();
-    assert_eq!(
-        v5, v6,
-        "with no shape to share the v6 writer must produce the identity-plan bytes"
+
+    let v5_tables = read_flat_sections(&v5);
+    let v6_tables = read_flat_sections(&v6);
+    // Vertex and index tables must be untouched: nothing was shared, so no
+    // block moved.
+    assert_eq!(v5_tables[1], v6_tables[1], "vertex table must be unchanged");
+    assert_eq!(v5_tables[2], v6_tables[2], "index table must be unchanged");
+
+    // The v5 mesh table must carry NO rotation columns at all — that is what
+    // makes a default request decode on a client that predates #3888.
+    let v5_names: Vec<String> = v5_tables[0]
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| f.name().clone())
+        .collect();
+    assert!(
+        !v5_names.iter().any(|n| n.starts_with("rot")),
+        "the default layout must not emit rotation columns: {v5_names:?}"
     );
 
-    let mesh_batch = &read_flat_sections(&v6)[0];
-    let rot = rotation_columns(mesh_batch);
+    // ...and the v6 mesh table must be that same table plus nine columns.
+    let v6_names: Vec<String> = v6_tables[0]
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| f.name().clone())
+        .collect();
+    assert_eq!(v6_names[..v5_names.len()], v5_names[..]);
+    assert_eq!(v6_names.len(), v5_names.len() + 9);
+    for (i, column) in v5_tables[0].columns().iter().enumerate() {
+        assert_eq!(column, v6_tables[0].column(i), "column {} diverged", v5_names[i]);
+    }
+
+    let rot = rotation_columns(&v6_tables[0]);
     let identity = [1.0f32, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
-    for row in 0..mesh_batch.num_rows() {
+    for row in 0..v6_tables[0].num_rows() {
         for (k, want) in identity.iter().enumerate() {
             assert_eq!(
                 rot[k].value(row),
@@ -148,24 +180,92 @@ fn zero_reuse_model_matches_the_v5_layout_with_identity_rotations() {
     }
 }
 
-/// The streaming writer keeps the v5 (identity) plan: sharing there could only
-/// ever be batch-local, and #3888 scopes the first change to the non-streaming
-/// route. Pinned because the two writers now differ only by which plan they
-/// pass, which is one argument away from silently changing the streamed wire.
+/// The opt-in, end to end on the bytes (issue #3888).
+///
+/// The SAME meshes — a model that DOES have shareable repeats, so the two
+/// layouts genuinely diverge — serialized under each layout. Without the
+/// signal: no rotation columns, no sharing, byte-identical to the pre-#3888
+/// output. With it: rotation columns and one shared block.
+///
+/// The fixture matters. Run against a repeat-free model this test would pass
+/// with the sharing code deleted, because both layouts would emit one block per
+/// mesh and only the columns would differ.
 #[test]
-fn the_streaming_writer_does_not_share_shapes() {
+fn the_layout_signal_decides_sharing_and_the_rotation_columns() {
     let meshes = rotated_repeats();
-    let mut writer = StreamingParquetCacheWriter::new().unwrap();
-    writer.append(&meshes).unwrap();
-    let blob = writer.finish().unwrap();
-    let sections = read_flat_sections(&blob);
-    let (mesh_batch, vertex_batch) = (&sections[0], &sections[1]);
-    assert_eq!(
-        col::<UInt32Array>(mesh_batch, "vertex_start").values(),
-        &[0, 3, 6],
-        "the streamed layout must stay one block per mesh"
+
+    let default_blob = serialize_to_parquet(&meshes).unwrap();
+    let opted_blob = serialize_to_parquet_shared_shapes(&meshes).unwrap();
+
+    let default_mesh = &read_flat_sections(&default_blob)[0];
+    let default_names: Vec<String> = default_mesh
+        .schema()
+        .fields()
+        .iter()
+        .map(|f| f.name().clone())
+        .collect();
+    assert!(
+        !default_names.iter().any(|n| n.starts_with("rot")),
+        "a request without the signal must get no rotation columns: {default_names:?}"
     );
-    assert_eq!(vertex_batch.num_rows(), 9);
+    assert_eq!(
+        col::<UInt32Array>(default_mesh, "vertex_start").values(),
+        &[0, 3, 6],
+        "a request without the signal must get one vertex block per mesh"
+    );
+    assert_eq!(read_flat_sections(&default_blob)[1].num_rows(), 9);
+
+    let opted = read_flat_sections(&opted_blob);
+    let opted_mesh = &opted[0];
+    assert_eq!(
+        rotation_columns(opted_mesh).len(),
+        9,
+        "a request with the signal must get the rotation columns"
+    );
+    assert_eq!(
+        col::<UInt32Array>(opted_mesh, "vertex_start").values(),
+        &[0, 0, 0],
+        "a request with the signal must get the shared block"
+    );
+    assert_eq!(opted[1].num_rows(), 3);
+
+    assert_ne!(
+        default_blob, opted_blob,
+        "the two layouts must not produce the same bytes on a model with repeats"
+    );
+}
+
+/// The streaming writer honours the signal for the SCHEMA even though it can
+/// never share: everything stored under the v6 key has to be a v6 payload, and
+/// everything under v5 has to be free of the columns a pre-#3888 client would
+/// not expect.
+#[test]
+fn the_streaming_writer_follows_the_layout_signal() {
+    let meshes = rotated_repeats();
+    for (layout, wants_rotation) in [
+        (ParquetLayout::Flat, false),
+        (ParquetLayout::SharedShapes, true),
+    ] {
+        let mut writer = StreamingParquetCacheWriter::new(layout).unwrap();
+        writer.append(&meshes).unwrap();
+        let sections = read_flat_sections(&writer.finish().unwrap());
+        let names: Vec<String> = sections[0]
+            .schema()
+            .fields()
+            .iter()
+            .map(|f| f.name().clone())
+            .collect();
+        assert_eq!(
+            names.iter().any(|n| n.starts_with("rot")),
+            wants_rotation,
+            "{layout:?} produced the wrong mesh-table schema: {names:?}"
+        );
+        // Never shares, under either layout.
+        assert_eq!(
+            col::<UInt32Array>(&sections[0], "vertex_start").values(),
+            &[0, 3, 6]
+        );
+    }
 }
 
 /// Size ratchet on a real model (issue #3888 asks for 2.4x-4.3x on models with

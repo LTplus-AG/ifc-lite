@@ -89,7 +89,7 @@
 
         let one_shot = serialize_to_parquet(&meshes).unwrap();
 
-        let mut writer = StreamingParquetCacheWriter::new().unwrap();
+        let mut writer = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
         // Uneven batches on purpose: 2 + 4 + 1.
         writer.append(&meshes[0..2]).unwrap();
         writer.append(&meshes[2..6]).unwrap();
@@ -129,7 +129,7 @@
 
         // Old path: finish() the inner geometry blob, then wrap it a second
         // time exactly like the route used to (before finish_combined()).
-        let mut writer_old = StreamingParquetCacheWriter::new().unwrap();
+        let mut writer_old = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
         writer_old.append(&meshes[0..2]).unwrap();
         writer_old.append(&meshes[2..5]).unwrap();
         let geometry_parquet = writer_old.finish().unwrap();
@@ -139,7 +139,7 @@
         old_combined.extend_from_slice(&0u32.to_le_bytes());
 
         // New path: finish_combined() builds the same outer framing in one pass.
-        let mut writer_new = StreamingParquetCacheWriter::new().unwrap();
+        let mut writer_new = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
         writer_new.append(&meshes[0..2]).unwrap();
         writer_new.append(&meshes[2..5]).unwrap();
         let new_combined = writer_new.finish_combined().unwrap();
@@ -249,7 +249,7 @@
         // Anti-vacuity: an empty tail would make every assertion below pass.
         assert!(shared.len() >= 6, "expected the full shared block, got {shared:?}");
 
-        let standard: Vec<String> = mesh_schema()
+        let standard: Vec<String> = mesh_schema(true)
             .fields()
             .iter()
             .map(|f| f.name().clone())

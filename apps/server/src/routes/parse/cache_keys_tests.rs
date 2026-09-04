@@ -12,7 +12,7 @@ use super::cache_keys::*;
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
 use crate::services::streaming::detect_schema_version;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
 /// Regression test for #587: the reader (`check_cache`) used to look up
@@ -24,7 +24,7 @@ fn parquet_cache_key_matches_writer_format() {
     let hash = "0ab20f4e4014";
 
     // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
-    // `format!("{cache_key}-parquet-v6")`. The helper must produce the same string.
+    // appends the layout suffix. The helper must produce the same string.
     for mode in [
         OpeningFilterMode::Default,
         OpeningFilterMode::IgnoreAll,
@@ -41,10 +41,13 @@ fn parquet_cache_key_matches_writer_format() {
                 mode.cache_key_suffix(),
                 quality_cache_suffix(quality)
             );
-            let writer_parquet_key = format!("{}-parquet-v6", writer_cache_key);
+            let writer_parquet_key = format!("{}-parquet-v5", writer_cache_key);
             let writer_metadata_key = format!("{}-parquet-metadata-v4", writer_cache_key);
 
-            assert_eq!(parquet_cache_key(hash, mode, quality), writer_parquet_key);
+            assert_eq!(
+                parquet_cache_key(hash, mode, quality, ParquetLayout::Flat),
+                writer_parquet_key
+            );
             assert_eq!(
                 parquet_metadata_cache_key(hash, mode, quality),
                 writer_metadata_key
@@ -53,49 +56,81 @@ fn parquet_cache_key_matches_writer_format() {
     }
 }
 
-/// A `-parquet-v5` entry must never be served as v6 (issue #3888).
+/// The two layouts never share a cache entry (issue #3888).
 ///
-/// v6 gave the flat mesh table rotation-aware shape sharing: several rows point
-/// at one block of vertices, placed by `origin + R * p`. A v5 blob decodes
-/// CLEANLY under a v6 decoder (no rotation columns means identity, and its rows
-/// share nothing), so nothing downstream can tell the two apart — the hazard
-/// runs the other way, a pre-#3888 client handed a v6 blob drawing every
-/// occurrence of a shared shape on top of the template. Either way the two
-/// layouts must never share a cache slot, and the only thing separating them is
-/// this suffix.
+/// This is the whole safety story of the opt-in, so it is asserted rather than
+/// argued. The shared-shape layout renders WRONG on a client that predates it
+/// -- the flat wire has no version byte to fail loud on, so an old decoder
+/// ignores `rot0..rot8` and stacks every occurrence of a shared shape at the
+/// template's placement. A default request must therefore be unable to reach a
+/// shared entry through any path: not the parse routes, not the cache check,
+/// not the cached-geometry fetch. They all build their key here.
 ///
-/// Asserted as "the key does not end in -parquet-v5" rather than "it ends in
-/// -parquet-v6": the next bump must not quietly satisfy this test by moving
-/// both sides of an equality, and re-using v5 is the specific mistake.
+/// Asserted three ways because each catches a different mistake: the default
+/// key must still be the PRE-#3888 string (so entries already on disk still
+/// hit, and so a future edit cannot quietly move the default onto the new
+/// layout), the opt-in key must differ from it, and neither may be a prefix of
+/// the other (a `starts_with` lookup would otherwise cross the namespaces).
 #[test]
-fn a_v5_entry_is_never_served_as_v6() {
+fn the_two_layouts_never_share_a_cache_entry() {
     for mode in [
         OpeningFilterMode::Default,
         OpeningFilterMode::IgnoreAll,
         OpeningFilterMode::IgnoreOpaque,
     ] {
         for quality in [TessellationQuality::Medium, TessellationQuality::Highest] {
-            let key = parquet_cache_key("deadbeef", mode, quality);
+            let flat = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::Flat);
+            let shared = parquet_cache_key("deadbeef", mode, quality, ParquetLayout::SharedShapes);
             assert!(
-                !key.ends_with("-parquet-v5"),
-                "the shared-shape layout must not read or write the v5 slot: {key}"
+                flat.ends_with("-parquet-v5"),
+                "the default layout must keep the pre-#3888 key: {flat}"
             );
             assert!(
-                key.ends_with("-parquet-v6"),
-                "the flat geometry key must name the layout it holds: {key}"
+                shared.ends_with("-parquet-v6"),
+                "the opt-in layout needs its own namespace: {shared}"
+            );
+            assert_ne!(flat, shared);
+            assert!(
+                !flat.starts_with(&shared) && !shared.starts_with(&flat),
+                "neither key may be a prefix of the other: {flat} / {shared}"
             );
         }
     }
+}
+
+/// The default is `Flat`, and it is the default that carries the safety
+/// property above: a client that sends no `parquet_layout` at all must get the
+/// layout it already understands.
+#[test]
+fn the_default_parquet_layout_is_the_pre_3888_one() {
+    assert_eq!(ParquetLayout::default(), ParquetLayout::Flat);
+    // A request that omits the parameter entirely, which is every request from
+    // every client that predates #3888.
+    let query: ParseQuery = serde_json::from_str("{}").expect("empty query");
+    assert_eq!(query.parquet_layout, ParquetLayout::Flat);
+    let opted: ParseQuery =
+        serde_json::from_str(r#"{"parquet_layout":"shared-shapes"}"#).expect("opt-in query");
+    assert_eq!(opted.parquet_layout, ParquetLayout::SharedShapes);
 }
 
 /// The default (medium) level maps to the LEGACY key shape — pre-existing
 /// cache entries written before the quality knob stay valid.
 #[test]
 fn parquet_cache_key_default_filter_uses_default_suffix() {
-    let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::Medium);
-    assert_eq!(key, "abc-default-parquet-v6");
-    let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::High);
-    assert_eq!(key, "abc-default-qhigh-parquet-v6");
+    let key = parquet_cache_key(
+        "abc",
+        OpeningFilterMode::Default,
+        TessellationQuality::Medium,
+        ParquetLayout::Flat,
+    );
+    assert_eq!(key, "abc-default-parquet-v5");
+    let key = parquet_cache_key(
+        "abc",
+        OpeningFilterMode::Default,
+        TessellationQuality::High,
+        ParquetLayout::Flat,
+    );
+    assert_eq!(key, "abc-default-qhigh-parquet-v5");
 }
 
 /// The JSON `ParseResponse` cache must NOT be keyed by the bare request key
@@ -228,7 +263,11 @@ fn request_cache_key_separates_content_filter_and_quality() {
             TessellationQuality::High,
             TessellationQuality::Highest,
         ] {
-            let query = ParseQuery { opening_filter: mode, tessellation_quality: None };
+            let query = ParseQuery {
+                opening_filter: mode,
+                tessellation_quality: None,
+                parquet_layout: ParquetLayout::Flat,
+            };
             let key = request_cache_key(data, &query, quality);
             assert!(key.starts_with(&hash), "the file hash must lead the key: {key}");
             assert!(
@@ -275,7 +314,12 @@ fn derived_keys_never_collide_with_each_other() {
         json_response_cache_key(seed),
         symbolic_cache_key(seed),
         data_model_cache_key(seed),
-        parquet_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
+        parquet_cache_key(
+            "0ab20f4e4014",
+            OpeningFilterMode::Default,
+            TessellationQuality::Medium,
+            ParquetLayout::Flat,
+        ),
         parquet_metadata_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
         parquet_optimized_cache_key(seed),
         parquet_optimized_metadata_cache_key(seed),
@@ -340,7 +384,12 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
     );
 
     // Neither optimized key may equal, or be a prefix-shadow of, the flat pair.
-    let flat = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::Medium);
+    let flat = parquet_cache_key(
+        hash,
+        OpeningFilterMode::Default,
+        TessellationQuality::Medium,
+        ParquetLayout::Flat,
+    );
     let flat_metadata =
         parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::Medium);
     for optimized in [

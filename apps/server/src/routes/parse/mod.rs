@@ -20,7 +20,7 @@ pub use parquet_optimized::parse_parquet_optimized;
 pub use parquet_stream::parse_parquet_stream;
 
 use crate::error::ApiError;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use axum::extract::Multipart;
 use flate2::read::GzDecoder;
 use ifc_lite_processing::TessellationQuality;
@@ -38,6 +38,13 @@ pub struct ParseQuery {
     /// `setTessellationQuality`, keeping client and server meshes in parity).
     #[serde(default)]
     pub tessellation_quality: Option<String>,
+    /// Flat-Parquet mesh-table layout (#3888): "flat" (default) or
+    /// "shared-shapes" — see [`ParquetLayout`] for why it is opt-in. A query
+    /// parameter rather than a header because every endpoint it has to reach
+    /// (both parse routes, the cache check, the cached-geometry fetch) already
+    /// takes this struct, so the signal travels with the cache identity.
+    #[serde(default)]
+    pub parquet_layout: ParquetLayout,
 }
 
 impl ParseQuery {

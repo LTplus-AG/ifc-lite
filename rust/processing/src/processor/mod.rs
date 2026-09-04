@@ -1041,6 +1041,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         unit_scales.length_unit_scale,
         unit_scales.plane_angle_to_radians,
     );
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
     router.set_tessellation_quality(options.tessellation_quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
@@ -1516,7 +1517,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
-    let products_with_failures = csg_failures.len();
+    let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
     let backstop_dropped = backstop_collector.into_inner();
     // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
     let oversized_ref_drops = oversized_ref_drop_collector.into_inner();
@@ -1639,7 +1640,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             total_time_ms: total_time.as_millis() as u64,
             from_cache: false,
             total_csg_failures: total_csg_failures as u64,
-            products_with_failures: products_with_failures as u64,
+            products_with_failures,
             degenerate_triangles_dropped: backstop_dropped,
             point_cache_hits,
             point_cache_misses,

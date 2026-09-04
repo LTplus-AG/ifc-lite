@@ -71,7 +71,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
-    let products_with_failures = csg_failures.len();
+    let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
 
     if total_failures > 0 || !host_diags.is_empty() {
         // Per-reason breakdown for the warn line.

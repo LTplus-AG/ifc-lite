@@ -144,12 +144,15 @@
 # per-processor reset, and a valid 8-CsgSolid-8 chain that resolves on main
 # would have been dropped with "depth 11 exceeds limit 10". Caught in review,
 # so the note is the record of a regression avoided rather than commentary.
-    1005 rust/geometry/src/processors/boolean/mod.rs
+# -69: #3821 split process_operand_with_depth (with its new unsupported-operand
+# record) out to the operand.rs sibling and the failure-log methods out to
+# failures.rs; 1005 -> 936.
+     936 rust/geometry/src/processors/boolean/mod.rs
      486 rust/geometry/src/processors/brep/faceted.rs
-# +20: #2866 — the Boolean<->CSG cycle guard, with the module's tests moved to a
-# sibling csg_primitive_tests.rs (402 -> 422). The guard costs more than the
-# test split paid back, so this is a LOOSENING and is recorded as one.
-     422 rust/geometry/src/processors/csg_primitive.rs
+# csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
+# tessellation, verbatim) to the sphere.rs sibling to make room for the
+# CsgSolid boolean-failure hand-off; 422 -> 348, under the 400 limit. That
+# repays the #2866 loosening this row recorded.
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs
      598 rust/geometry/src/profiles/curves_2d.rs
@@ -179,7 +182,15 @@
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
-     595 rust/geometry/src/router/diagnostics.rs
+# -10: #3821 replaced the second, hand-maintained copy of the BoolFailureReason
+# label match with a call to BoolFailureReason::label(), and put the new
+# processor-failure sweep in the diagnostics/processor_failures.rs sibling;
+# that paid for count_attributed_products and the reworked take_csg_failures
+# doc, and the id-0 bucket rules moved on to diagnostics/attribution.rs.
+# The baseline moved under this PR: #3863 grew the file to 595 without moving
+# the row, and #3881 re-measured the row to match. Measured after the rebase
+# onto that: 595 -> 585.
+     585 rust/geometry/src/router/diagnostics.rs
 # +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
 # a file-supplied reference, so one self-referential entity aborted the process
 # (stack overflow = abort in Rust, not a catchable panic). The walk is now
@@ -202,7 +213,10 @@
 # +42: #1623 Phase 3 batch-local template mode — instancing_batch_local flag + instanced_sources_materialized tracker fields + set_/getter/mark_source_materialized_if_first methods (browser per-batch don't-bake).
 # +1: #1293 dedup rep_identity: build_dedup_extra_enabled/set_build_dedup_extra_override gate + DEDUP_EXTRA_OVERRIDE static; net +1 after the ItemDedupCache doc consolidation.
 # +1: #1781 `mod textured;` — texture channel split OUT of processing.rs (that file drops ~90 lines below its budget; crate trends down).
-     749 rust/geometry/src/router/mod.rs
+# -17: #3821 moved the GeometryProcessor trait to the router/processor.rs
+# sibling, which paid for its new take_bool_failures drain hook and for the
+# sweep that stops set_skip_small_cuts discarding an undrained log; 749 -> 732.
+     732 rust/geometry/src/router/mod.rs
 # +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
 # +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
 # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).

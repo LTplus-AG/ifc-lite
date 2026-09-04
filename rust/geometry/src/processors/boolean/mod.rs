@@ -23,6 +23,8 @@ use super::tessellated::TriangulatedFaceSetProcessor;
 use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
+mod failures;
+mod operand;
 mod halfspace_cap;
 mod polygonal_prism;
 use cut_heuristics::{
@@ -104,23 +106,6 @@ impl BooleanClippingProcessor {
         }
     }
 
-    /// Drain the boolean-failure log accumulated since this processor was
-    /// created (or the last `take_failures` call).
-    pub fn take_failures(&self) -> Vec<BoolFailure> {
-        std::mem::take(&mut *self.failures.borrow_mut())
-    }
-
-    fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
-        self.failures.borrow_mut().push(BoolFailure::new(op, reason));
-    }
-
-    /// Move every failure from `clipper` into this processor's log. Used
-    /// after a transient `ClippingProcessor` instance is about to drop.
-    fn drain_clipper_failures(&self, clipper: &ClippingProcessor) {
-        let mut log = self.failures.borrow_mut();
-        log.extend(clipper.take_failures());
-    }
-
     /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
     /// plane is coincident with one of the host's bounding-box faces,
     /// revert to the host and record the loss. The coincidence test is
@@ -148,70 +133,6 @@ impl BooleanClippingProcessor {
         }
         self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
         host
-    }
-
-    /// Process a solid operand with depth tracking
-    fn process_operand_with_depth(
-        &self,
-        operand: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: u32,
-        quality: TessellationQuality,
-        visited: &mut OperandPath,
-    ) -> Result<Mesh> {
-        match operand.ifc_type {
-            IfcType::IfcExtrudedAreaSolid => {
-                let processor = ExtrudedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcFacetedBrep => {
-                let processor = FacetedBrepProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcTriangulatedFaceSet => {
-                let processor = TriangulatedFaceSetProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcSweptDiskSolid => {
-                let processor = SweptDiskSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcRevolvedAreaSolid => {
-                let processor = RevolvedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcBlock => {
-                BlockProcessor::new().process(operand, decoder, &self.schema, quality)
-            }
-            // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
-            // for a boolean TreeRootExpression, so routing through it used to reset
-            // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
-            // #20 IfcCsgSolid -> TreeRootExpression #10` then recursed forever with
-            // depth never passing 1, and a Rust stack overflow ABORTS (#2866).
-            // `depth` restarts at 0 here, as it did before this guard existed
-            // (the hop built a fresh processor). Carrying it would tighten
-            // MAX_BOOLEAN_DEPTH, which #960 calibrated against a per-processor
-            // reset: 8 booleans + a CsgSolid + 8 more is valid, resolves on
-            // main, and would error as "depth 11 exceeds limit 10", dropping
-            // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
-            // hop instead, counting frames of both kinds.
-            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(
-                self.skip_small_cuts,
-            )
-            .process_with_boolean_cycle_guard(
-                operand,
-                decoder,
-                &self.schema,
-                0,
-                quality,
-                visited,
-            ),
-            IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
-            }
-            _ => Ok(Mesh::new()),
-        }
     }
 
     /// Parse IfcHalfSpaceSolid to get clipping plane
@@ -426,6 +347,9 @@ impl BooleanClippingProcessor {
             return Ok(None);
         }
 
+        // Provisional from here: every deferral below goes through
+        // `defer_after`, which discards what this attempt recorded.
+        let mark = self.failure_mark();
         // Process the base solid (the innermost first-operand). The chain is
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
@@ -453,7 +377,7 @@ impl BooleanClippingProcessor {
                 // A cutter we can't build a prism for would be silently dropped
                 // here; defer to the sequential path, which records the loss as
                 // `PolygonalBoundedHalfSpaceFallback`.
-                _ => return Ok(None),
+                _ => return self.defer_after(mark),
             }
         }
 
@@ -479,12 +403,12 @@ impl BooleanClippingProcessor {
                 // fallback handles it better than a batched union would.
                 _ => {
                     let _ = clipper.take_failures();
-                    return Ok(None);
+                    return self.defer_after(mark);
                 }
             };
             if ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &trial) {
                 let _ = clipper.take_failures();
-                return Ok(None);
+                return self.defer_after(mark);
             }
             let (tmn, tmx) = trial.bounds();
             tight_min = Point3::new(
@@ -518,13 +442,14 @@ impl BooleanClippingProcessor {
                 // attempt is unique to this path — preserve its kernel
                 // failures and record the deferral, since the sequential
                 // fallback can leave seam fins the batched subtract avoids.
-                self.drain_clipper_failures(&clipper);
+                self.rewind_to(mark);
+                self.absorb_failures(clipper.take_failures());
                 self.record_failure(BoolOp::Union, BoolFailureReason::CutterUnionUnavailable);
                 return Ok(None);
             }
         };
         let result = clipper.subtract_mesh(&base_mesh, &combined);
-        self.drain_clipper_failures(&clipper);
+        self.absorb_failures(clipper.take_failures());
         let clipped = match result {
             Ok(m)
                 if !m.is_empty()
@@ -534,7 +459,7 @@ impl BooleanClippingProcessor {
             }
             // Kernel error or a degenerate union result — fall back to the
             // sequential per-cutter path.
-            _ => return Ok(None),
+            _ => return self.defer_after(mark),
         };
 
         // Reject a silently under-removing union: the result must fit inside the
@@ -554,7 +479,7 @@ impl BooleanClippingProcessor {
             || rmn.y < tight_min.y - tol
             || rmn.z < tight_min.z - tol;
         if under_removed {
-            return Ok(None);
+            return self.defer_after(mark);
         }
         Ok(Some(clipped))
     }
@@ -861,7 +786,7 @@ impl BooleanClippingProcessor {
                 ) {
                     let clipper = ClippingProcessor::new();
                     let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
-                    self.drain_clipper_failures(&clipper);
+                    self.absorb_failures(clipper.take_failures());
                     if let Ok(clipped) = subtract_result {
                         // The bounded-prism subtract is fragile on coincident
                         // faces: when the clip polygon spans the full host
@@ -909,10 +834,10 @@ impl BooleanClippingProcessor {
             // short-circuit here meant every CSG primitive cut (issue #780
             // bath, any `IfcCsgSolid` with a solid cutter) silently rendered
             // as the uncut host even when the operands were trivially small.
-            let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Difference, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Difference, unsupported);
                 return Ok(mesh);
             }
             // Small-cut skip: a cutter far smaller than its host (a steel
@@ -934,36 +859,37 @@ impl BooleanClippingProcessor {
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.subtract_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
         if operator == ".UNION." || operator == "UNION" {
-            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Union, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Union, unsupported);
                 return Ok(mesh);
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.union_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
         // Handle INTERSECTION operation — a real intersection volume on the
         // pure-Rust exact kernel.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Intersection, unsupported);
                 return Ok(Mesh::new());
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.intersection_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
@@ -989,6 +915,11 @@ impl GeometryProcessor for BooleanClippingProcessor {
 
     fn supported_types(&self) -> Vec<IfcType> {
         vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
+    }
+
+    /// Hand the log to the router (#3821); rationale on the trait method.
+    fn take_bool_failures(&self) -> Vec<BoolFailure> {
+        self.take_failures()
     }
 }
 

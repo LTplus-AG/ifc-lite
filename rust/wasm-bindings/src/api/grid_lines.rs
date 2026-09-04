@@ -51,6 +51,7 @@ pub(crate) fn extract_grid_axes(content: &str) -> Vec<GridAxis3D> {
 
     // Reuse the geometry router for both unit-scale and the placement resolver,
     // exactly like the mesh pipeline (and the symbolic builder).
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale();
 

@@ -99,6 +99,7 @@ pub fn resolve_stream_meta(
     let length_unit_scale = unit_scales.length_unit_scale;
     decoder.seed_unit_scales(length_unit_scale, unit_scales.plane_angle_to_radians);
 
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_scale(length_unit_scale);
 
     let rtc_offset = match mode {

@@ -710,7 +710,7 @@ impl IfcAPI {
         {
             let mut akey_decoder =
                 EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
-            let akey_router = GeometryRouter::new();
+            let akey_router = GeometryRouter::new(); // not drained: meshes nothing (issue_3821_auxiliary_routers_mesh_nothing.rs)
             let rest = &buffered_jobs[first_n..];
             let mut affinity: Vec<u32> = Vec::with_capacity(rest.len());
             for &(id, _s, _e, _t) in rest {

@@ -95,25 +95,33 @@ impl OpeningKindDiag {
 }
 
 impl GeometryRouter {
-    /// Drain the boolean / CSG failures accumulated by the void-subtraction
-    /// path since the router was created (or the last `take_csg_failures`
-    /// call). Failures are keyed by IFC product express ID — the element
-    /// whose opening / clip operation tripped a fallback.
+    /// Drain every boolean / CSG failure this router knows about since it was
+    /// created (or the last `take_csg_failures` call). The single drain point:
+    /// the native pipeline and the wasm batch path both call this and nothing
+    /// else.
     ///
-    /// Only the router-driven CSG path (multi-layer wall sub-meshes,
-    /// single-mesh `apply_voids_to_mesh`) is currently attributed. Standalone
-    /// `IfcBooleanResult` chains processed via the mapped-item path don't
-    /// yet flow their failures here.
+    /// Two kinds of record come out, distinguished by their key:
+    ///
+    ///  * Keyed by IFC product express id — the void-subtraction path
+    ///    (multi-layer wall sub-meshes, single-mesh `apply_voids_to_mesh`),
+    ///    which knows the host element whose opening / clip tripped a fallback.
+    ///  * Keyed by [`UNATTRIBUTED_PRODUCT_ID`] — the registered processors' own
+    ///    logs (swept by [`Self::drain_processor_failures`], #3821, including
+    ///    what the transient boolean under an `IfcCsgSolid` hands back to
+    ///    `CsgSolidProcessor`) and the producer-less hatch. Standalone
+    ///    `IfcBooleanResult` chains DO flow here now; what they still lack is
+    ///    the owning product id. See `drain_processor_failures` for the cost.
     pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
-        // Fold in any failures from a context without a direct router handle
-        // (see `PENDING_MAPPED_BOOL_FAILURES`). They have no product
-        // attribution, so we bucket them under product id 0 — keeps the
-        // diagnostics surface visible without inventing a fake host id.
+        // Sweep the processors' own logs, then fold in any failures from a
+        // context with no router handle at all (`PENDING_MAPPED_BOOL_FAILURES`,
+        // which has no producer today). Neither carries a product attribution,
+        // so both land in the unattributed bucket, not a fake host id.
+        self.drain_processor_failures();
         let pending = crate::diagnostics::take_pending_mapped_bool_failures();
         if !pending.is_empty() {
             self.csg_failures
                 .borrow_mut()
-                .entry(0)
+                .entry(UNATTRIBUTED_PRODUCT_ID)
                 .or_default()
                 .extend(pending);
         }
@@ -132,12 +140,16 @@ impl GeometryRouter {
         std::mem::take(&mut *self.layer_slice_diag.borrow_mut())
     }
 
-    /// Number of products with at least one recorded CSG failure.
+    /// Products with at least one recorded CSG failure, under the same
+    /// [`count_attributed_products`] rule the pipelines' scalar uses (a bare
+    /// `.len()` would make this the one surface counting the synthetic
+    /// bucket). PEEKS: no processor sweep, unlike `take_csg_failures`.
     pub fn csg_failure_product_count(&self) -> usize {
-        self.csg_failures.borrow().len()
+        count_attributed_products(&self.csg_failures.borrow()) as usize
     }
 
-    /// Total number of CSG failures across all products.
+    /// Total CSG failures, INCLUDING the unattributed bucket (real failures,
+    /// unknown owner). Peeks, like [`Self::csg_failure_product_count`].
     pub fn csg_failure_total(&self) -> usize {
         self.csg_failures.borrow().values().map(|v| v.len()).sum()
     }
@@ -273,37 +285,10 @@ impl GeometryRouter {
         let entry = log.entry(host_id).or_default();
         entry.csg_failure_count += failures.len();
         if entry.first_failure_label.is_none() {
-            // Short label for at-a-glance grouping. Full BoolFailure list
-            // remains in `csg_failures` for callers that want detail.
-            let label = match &failures[0].reason {
-                crate::diagnostics::BoolFailureReason::OperandTooLarge { .. } => "OperandTooLarge",
-                crate::diagnostics::BoolFailureReason::EmptyOperand => "EmptyOperand",
-                crate::diagnostics::BoolFailureReason::DegenerateOperand => "DegenerateOperand",
-                crate::diagnostics::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
-                crate::diagnostics::BoolFailureReason::KernelOutputInvalid => "KernelOutputInvalid",
-                crate::diagnostics::BoolFailureReason::SolidSolidDifferenceSkipped => {
-                    "SolidSolidDifferenceSkipped"
-                }
-                crate::diagnostics::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
-                    "PolygonalBoundedHalfSpaceFallback"
-                }
-                crate::diagnostics::BoolFailureReason::CutterUnionUnavailable => {
-                    "CutterUnionUnavailable"
-                }
-                crate::diagnostics::BoolFailureReason::UnknownBooleanOperator(_) => {
-                    "UnknownBooleanOperator"
-                }
-                crate::diagnostics::BoolFailureReason::ManifoldOutputDegenerate { .. } => {
-                    "ManifoldOutputDegenerate"
-                }
-                crate::diagnostics::BoolFailureReason::KernelError(_) => "KernelError",
-                crate::diagnostics::BoolFailureReason::DifferenceEmptiedHost => {
-                    "DifferenceEmptiedHost"
-                }
-                crate::diagnostics::BoolFailureReason::OpenTopologyRejected => {
-                    "OpenTopologyRejected"
-                }
-            };
+            // Short label for at-a-glance grouping, from the ONE home shared
+            // with the wasm console + native tracing summaries; a second copy
+            // of this match lived here, held in lockstep by prose alone.
+            let label = failures[0].reason.label();
             entry.first_failure_label = Some(label.to_string());
         }
     }
@@ -505,7 +490,7 @@ pub fn aggregate_diagnostics(
     oversized_ref_drops: u64,
 ) -> GeometryDiagnostics {
     let total_csg_failures = csg_failures.values().map(Vec::len).sum::<usize>() as u64;
-    let products_with_failures = csg_failures.len() as u64;
+    let products_with_failures = count_attributed_products(csg_failures);
     let hosts_with_openings = host_diags.len() as u64;
 
     let classification = ClassificationSummary {
@@ -590,6 +575,11 @@ pub fn aggregate_diagnostics(
         oversized_ref_drops,
     }
 }
+
+mod attribution;
+mod processor_failures;
+
+pub use attribution::{count_attributed_products, UNATTRIBUTED_PRODUCT_ID};
 
 #[cfg(test)]
 mod diagnostics_contract_tests;

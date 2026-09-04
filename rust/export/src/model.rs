@@ -278,6 +278,7 @@ pub fn stream_export_model_with_options(
     // they cannot forget to ask.
     let units = resolve_unit_scales(content, project_id, &mut decoder);
 
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     // Built with the file's scale, NOT `GeometryRouter::new()`: `new` defaults
     // `unit_scale` to 1.0 and `scale_transform` only scales when it was given
     // the real one, so the difference is silently-millimetre translations.

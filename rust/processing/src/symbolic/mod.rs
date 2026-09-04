@@ -127,6 +127,7 @@ where
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     // Reuse the geometry router for both unit-scale and the RTC offset.
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = ifc_lite_geometry::GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale() as f32;
 

@@ -23,6 +23,7 @@ mod alignment;
 mod boolean;
 mod brep;
 mod csg_primitive;
+mod sphere;
 pub(crate) mod extrusion;
 mod extrusion_tapered;
 mod helpers;
@@ -42,7 +43,8 @@ pub use boolean::BooleanClippingProcessor;
 pub use brep::{
     FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, ShellBasedSurfaceModelProcessor,
 };
-pub use csg_primitive::{BlockProcessor, CsgSolidProcessor, SphereProcessor};
+pub use csg_primitive::{BlockProcessor, CsgSolidProcessor};
+pub use sphere::SphereProcessor;
 pub use extrusion::ExtrudedAreaSolidProcessor;
 pub use extrusion_tapered::ExtrudedAreaSolidTaperedProcessor;
 pub use sectioned::SectionedSolidHorizontalProcessor;

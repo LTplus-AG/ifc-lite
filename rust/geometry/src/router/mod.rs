@@ -13,18 +13,19 @@ mod diagnostics;
 mod instancing;
 mod layers;
 mod processing;
+mod processor;
 mod rtc_offset;
 mod textured;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
+pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
-    aggregate_diagnostics, ClassificationStats, ClassificationSummary, GeometryDiagnostics,
-    HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary,
-    WorstHost,
+    aggregate_diagnostics, count_attributed_products, ClassificationStats, ClassificationSummary,
+    GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
 pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};
@@ -50,28 +51,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-/// Geometry processor trait
-/// Each processor handles one type of IFC representation
-pub trait GeometryProcessor {
-    /// Process entity into mesh.
-    ///
-    /// `quality` selects tessellation detail; processors that approximate
-    /// curves derive their segment counts from it via
-    /// [`crate::tessellation::scale_segments`]. Processors with no curved
-    /// geometry ignore it. [`TessellationQuality::Medium`] reproduces the
-    /// engine's historical hardcoded behavior.
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
-        quality: TessellationQuality,
-    ) -> Result<Mesh>;
-
-    /// Get supported IFC types
-    fn supported_types(&self) -> Vec<IfcType>;
-}
 
 /// Shared content-dedup cache: maps a 128-bit structural item hash to the
 /// LOCAL (pre-placement, void-free, colour-free) item mesh PLUS its precomputed
@@ -636,7 +615,11 @@ impl GeometryRouter {
     /// so they pick up the current value. Called at construction and whenever
     /// [`Self::set_skip_small_cuts`] flips the flag; `register` overwrites the
     /// existing map entries keyed by IFC type.
+    /// The processors this replaces are DROPPED, and a dropped processor takes
+    /// its failure log with it. Sweep first, so flipping the flag mid-pass can
+    /// never discard records the pipeline had not drained yet (#3821).
     fn register_skip_dependent_processors(&mut self) {
+        self.drain_processor_failures();
         self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
             self.skip_small_cuts,
         )));

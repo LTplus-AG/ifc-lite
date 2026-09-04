@@ -10,7 +10,7 @@
  */
 
 import { SCHEMA_REGISTRY, getAllAttributesForEntity, isKnownEntity, getInheritanceChainForEntity, getEntityMetadata } from './generated/schema-registry.js';
-import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
+import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, ENTITY_NAME_ALIASES, IFC_DATA_TYPES, type IfcEntityInfo } from '@ifc-lite/data';
 
 // Union map across every bundled IFC schema (2X3 + 4 + 4X3). The parser
 // has to categorize entities from ANY schema the user loads — so the
@@ -33,25 +33,13 @@ const ENTITY_INFO_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
 // authoring tools emit the leaf. Resolving the alias to its closest
 // schema-known supertype lets the inheritance walk reach IfcProduct.
 //
-// Mirrors `rust/core/src/legacy_entities.rs` so the two sides stay in
-// lockstep — if you add a row here, add the matching Rust entry too.
-const ENTITY_NAME_ALIASES: Record<string, string> = {
-    // IFC4.3 stratum subtypes (issue #860) — schema only has the abstract
-    // `IfcGeotechnicalStratum`, real models emit one of these three leaves
-    // with a PredefinedType pinned (SOLID / VOID / WATER).
-    IFCSOLIDSTRATUM: 'IfcGeotechnicalStratum',
-    IFCVOIDSTRATUM: 'IfcGeotechnicalStratum',
-    IFCWATERSTRATUM: 'IfcGeotechnicalStratum',
-    // There was a fourth row here, `IFCELECTRICALDISTRIBUTIONPOINT`. The
-    // IFC2X3 entity is `IfcElectricDistributionPoint` — no "AL" — so the key
-    // named nothing and the row could never fire. Removed rather than
-    // respelled (#3172): the correctly spelled name IS in `ENTITIES_IFC2X3`,
-    // so `ENTITY_INFO_BY_UPPER` already resolves it and an alias would be a
-    // second, shadowing answer. This table's mandate is narrower than
-    // `legacy_entities.rs`'s: only names absent from ALL THREE bundled
-    // tables belong here, which is why the five IFC2X3 products that fix
-    // added on the Rust side have no row here either.
-};
+// The table itself lives in `@ifc-lite/data` (`ifc-schema/entity-aliases.ts`),
+// next to the entity tables it names gaps in, because the descendant
+// direction — `expandTypeNamesToDescendants`, which turns
+// `byType('IfcGeotechnicalStratum')` into its three concrete leaves — has to
+// read the SAME rows this walk reads or the two directions disagree about what
+// a stratum is. `rust/core/src/legacy_entities.rs` mirrors it on the Rust side;
+// if you add a row, add the matching Rust entry too.
 
 /**
  * Resolve an entity name through {@link ENTITY_NAME_ALIASES}, returning the
@@ -60,9 +48,9 @@ const ENTITY_NAME_ALIASES: Record<string, string> = {
  * Exported because consumers that index the bundled schema union themselves
  * (the STEP exporter's enum-slot resolution) have to canonicalize the SAME way
  * {@link getAttributeNamesAcrossSchemas} does, or their indices refer to a
- * different attribute list than the names they are indices into. Copying the
- * table into another package would give it a third home — this one and
- * `rust/core/src/legacy_entities.rs` are already two.
+ * different attribute list than the names they are indices into. The table has
+ * one TypeScript home, `@ifc-lite/data`; `rust/core/src/legacy_entities.rs` is
+ * the second, on the other side of the language boundary.
  */
 export function resolveEntityNameAlias(type: string): string {
     return ENTITY_NAME_ALIASES[type.toUpperCase()] ?? type;

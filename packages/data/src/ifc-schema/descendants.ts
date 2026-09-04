@@ -13,127 +13,115 @@
  * finds the concrete leaves a real file actually contains, instead of
  * silently answering zero.
  *
- * Deliberately per-schema-version, not a union across all three bundled
- * schemas: a descendant query has to respect schema boundaries the same way
- * the model itself does. `IfcWallStandardCase` exists in IFC4's entity list;
- * IFC4X3 renamed `IfcBuildingElement` to `IfcBuiltElement`. Resolving against
- * the union would let an IFC2X3 model's `byType('IfcBuiltElement')` match an
- * IFC4X3-only name it could never contain, or vice versa.
+ * Resolved against the UNION of the three bundled schema tables, not against
+ * one version at a time. `entityIndex.byType` is keyed by the names the FILE
+ * contains, and those names do not have to belong to the version its
+ * `FILE_SCHEMA` header claims: converters, authoring tools and hand-edits all
+ * emit IFC4X3-headered files still carrying `IFCSLABSTANDARDCASE`, and
+ * IFC2X3-headered files carrying `IFCFURNITURE`. A per-version closure made
+ * the header — not the content — decide what a query found, so the same bytes
+ * answered 3 under `IFC4` and 1 under `IFC4X3`. A name the file does not
+ * contain matches an empty bucket, so widening to the union costs a caller
+ * nothing: it can only find records that are really there.
+ *
+ * Cross-version renames and the leaves no bundled table states are folded in
+ * from `./entity-aliases.js`; see that module for why the two tables there
+ * are read in opposite directions.
  */
 
+import { ENTITY_NAME_ALIASES, CROSS_SCHEMA_RENAMES } from './entity-aliases.js';
 import { ENTITIES_IFC2X3 } from './generated/entities-ifc2x3.js';
 import { ENTITIES_IFC4 } from './generated/entities-ifc4.js';
 import { ENTITIES_IFC4X3 } from './generated/entities-ifc4x3.js';
-import type { IfcEntityInfo, IfcSchemaVersion } from './types.js';
 
-const ENTITY_LISTS_BY_VERSION: Record<IfcSchemaVersion, readonly IfcEntityInfo[]> = {
-  IFC2X3: ENTITIES_IFC2X3,
-  IFC4: ENTITIES_IFC4,
-  IFC4X3: ENTITIES_IFC4X3,
-  // IFC4X3_ADD2 is the addendum-2 release of IFC4X3 — same entity list.
-  IFC4X3_ADD2: ENTITIES_IFC4X3,
-};
+/** parent (UPPERCASE) → direct children names (UPPERCASE), across all bundled schemas. */
+type ChildrenMap = ReadonlyMap<string, readonly string[]>;
 
-/** parent (UPPERCASE) → direct children names (UPPERCASE), for one schema version. */
-type ChildrenMap = Map<string, string[]>;
+// Built once, on first use: three full entity tables plus two alias tables is
+// more work than a `byType()` call should repeat, and the tables are static.
+let childrenMap: ChildrenMap | undefined;
 
-// Cached per schema version so a query loop (every `byType()` call, across
-// every entity fetched) doesn't rebuild the parent→children map each time.
-const childrenMapCache = new Map<IfcSchemaVersion, ChildrenMap>();
-
-function buildChildrenMap(v: IfcSchemaVersion): ChildrenMap {
-  const cached = childrenMapCache.get(v);
-  if (cached) return cached;
-
-  const list = ENTITY_LISTS_BY_VERSION[v];
-  const map: ChildrenMap = new Map();
-  for (const entity of list) {
-    if (!entity.parent) continue;
-    const parentUpper = entity.parent.toUpperCase();
-    let children = map.get(parentUpper);
-    if (!children) {
-      children = [];
-      map.set(parentUpper, children);
-    }
-    children.push(entity.name.toUpperCase());
+function addChild(map: Map<string, string[]>, parent: string, child: string): void {
+  let children = map.get(parent);
+  if (!children) {
+    children = [];
+    map.set(parent, children);
   }
-  childrenMapCache.set(v, map);
+  if (!children.includes(child)) children.push(child);
+}
+
+function buildChildrenMap(): ChildrenMap {
+  if (childrenMap) return childrenMap;
+
+  const map = new Map<string, string[]>();
+  for (const list of [ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3]) {
+    for (const entity of list) {
+      if (!entity.parent) continue;
+      addChild(map, entity.parent.toUpperCase(), entity.name.toUpperCase());
+    }
+  }
+  // A leaf no bundled table states hangs off its nearest schema-known
+  // supertype. One direction only: `IfcGeotechnicalStratum` gains
+  // `IfcSolidStratum`, but `IfcSolidStratum` must not gain `IfcWaterStratum`.
+  for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
+    addChild(map, supertype.toUpperCase(), leaf.toUpperCase());
+  }
+  // A rename is an equality, so each spelling adopts the other's children —
+  // not the other name itself, which is the same class rather than a subtype
+  // and would show up as a phantom row in a debug dump of the expansion.
+  for (const [older, newer] of CROSS_SCHEMA_RENAMES) {
+    for (const child of map.get(newer) ?? []) addChild(map, older, child);
+    for (const child of map.get(older) ?? []) addChild(map, newer, child);
+  }
+
+  childrenMap = map;
   return map;
 }
 
-// Every entity name (UPPERCASE) known to a schema version, so an unknown
-// type can fall back to itself instead of silently vanishing.
-const knownNamesCache = new Map<IfcSchemaVersion, Set<string>>();
-
-function knownNames(v: IfcSchemaVersion): Set<string> {
-  const cached = knownNamesCache.get(v);
-  if (cached) return cached;
-  const set = new Set<string>();
-  for (const entity of ENTITY_LISTS_BY_VERSION[v]) set.add(entity.name.toUpperCase());
-  knownNamesCache.set(v, set);
-  return set;
-}
-
 /**
- * Resolve a raw schema-version string (e.g. a store's `schemaVersion`
- * field, which may carry values like `'IFC5'` that this table doesn't
- * cover) to one of the versions the bundled entity tables support.
- * Unrecognized/undefined input falls back to IFC4 — the version the old
- * hand-written `IFC_SUBTYPES` table implicitly assumed.
+ * One type's full descendant set (itself + every type with it as an ancestor),
+ * UPPERCASE and deduplicated.
+ *
+ * Order: the requested type first, then its descendants. Callers page results
+ * with `offset`/`limit` over the rows this produces, so a traversal-dependent
+ * order would shift a caller's page whenever the schema tables were
+ * regenerated. Depth-first pop order did exactly that; sorted does not.
  */
-function resolveSchemaVersion(schemaVersion: string | undefined): IfcSchemaVersion {
-  const upper = schemaVersion?.toUpperCase();
-  if (upper === 'IFC2X3' || upper === 'IFC4' || upper === 'IFC4X3' || upper === 'IFC4X3_ADD2') {
-    return upper;
-  }
-  return 'IFC4';
-}
-
-/** One type's full descendant set (itself + every type with it as an ancestor), UPPERCASE, deduplicated. */
-function descendantsOf(type: string, v: IfcSchemaVersion): string[] {
+function descendantsOf(type: string): string[] {
   const upper = type.toUpperCase();
-  const childrenMap = buildChildrenMap(v);
-  const result: string[] = [upper];
-  const seen = new Set<string>([upper]);
+  const map = buildChildrenMap();
+  const found = new Set<string>();
   const stack: string[] = [upper];
   while (stack.length > 0) {
     const current = stack.pop() as string;
-    const children = childrenMap.get(current);
-    if (!children) continue;
-    for (const child of children) {
-      if (seen.has(child)) continue;
-      seen.add(child);
-      result.push(child);
+    for (const child of map.get(current) ?? []) {
+      if (found.has(child) || child === upper) continue;
+      found.add(child);
       stack.push(child);
     }
   }
-  // Graceful fallback: an unknown type (typo, vendor extension, or a name
-  // outside this schema version) still returns itself rather than being
-  // silently dropped from the caller's type list.
-  if (result.length === 1 && !knownNames(v).has(upper)) return [upper];
-  return result;
+  return [upper, ...[...found].sort()];
 }
 
 /**
  * Expand a caller's type list to include every descendant of each type
- * (itself plus every type that has it as an ancestor, direct or indirect)
- * within ONE IFC schema version. Case-insensitive input; UPPERCASE output,
- * deduplicated across the whole list.
+ * (itself plus every type that has it as an ancestor, direct or indirect),
+ * across the union of the bundled schemas. Case-insensitive input; UPPERCASE
+ * output, deduplicated across the whole list, each requested type immediately
+ * ahead of its own sorted descendants.
  *
- * `schemaVersion` should be the MODEL'S OWN schema version (a store's
- * `schemaVersion` field), not a hardcoded default — descendant sets differ
- * across schema versions (see module doc). Unrecognized/undefined values
- * fall back to IFC4.
+ * A type unknown to every bundled table (a typo, a vendor extension) comes
+ * back as itself, so the caller's list keeps its shape rather than silently
+ * losing an entry.
+ *
+ * Takes no schema version by design — see the module doc. The queried model's
+ * header narrowing this would mean the same bytes answering differently.
  */
-export function expandTypeNamesToDescendants(
-  types: readonly string[],
-  schemaVersion: IfcSchemaVersion | string | undefined,
-): string[] {
-  const v = resolveSchemaVersion(schemaVersion);
+export function expandTypeNamesToDescendants(types: readonly string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const type of types) {
-    for (const name of descendantsOf(type, v)) {
+    for (const name of descendantsOf(type)) {
       if (seen.has(name)) continue;
       seen.add(name);
       out.push(name);

@@ -62,3 +62,59 @@ describe('byType resolves per the model\'s own schema version (IFC4X3)', () => {
     expect(result.length).toBe(2);
   });
 });
+
+/**
+ * The descendant closure must not be narrowed by the file's schema header.
+ *
+ * `entityIndex.byType` is keyed by the names the FILE contains, not by what the
+ * header claims the schema is, and re-headering happens: converters, authoring
+ * tools and hand-edits all produce IFC4X3-headered files still carrying
+ * `IFCSLABSTANDARDCASE`, and IFC2X3-headered files carrying `IFCFURNITURE`. A
+ * per-schema-version closure answered zero for exactly those records while the
+ * same bytes under an IFC4 header answered three, so the header — not the
+ * content — decided what a query found.
+ *
+ * The three fixtures below are byte-identical apart from `FILE_SCHEMA`, so any
+ * difference in what `byType` returns is the header alone.
+ */
+const CROSS_HEADER_DATA = `#70= IFCSLAB('SLB000000000000000000X',$,'Slab',$,$,$,$,'tag',$);
+#71= IFCSLABSTANDARDCASE('SLBS00000000000000000X',$,'Slab standard case',$,$,$,$,'tag',$);
+#72= IFCSLABELEMENTEDCASE('SLBE00000000000000000X',$,'Slab elemented case',$,$,$,$,'tag',$);
+#73= IFCFURNITURE('FURN00000000000000000X',$,'Furniture',$,$,$,$,'tag',$);
+#74= IFCSYSTEMFURNITUREELEMENT('SFUR00000000000000000X',$,'System furniture',$,$,$,$,'tag',$);
+#75= IFCSOLIDSTRATUM('SSTR00000000000000000X',$,'Solid stratum',$,$,$,$,'tag',$);
+#76= IFCWATERSTRATUM('WSTR00000000000000000X',$,'Water stratum',$,$,$,$,'tag',$);
+#77= IFCWALL('WALL00000000000000000X',$,'Wall',$,$,$,$,'tag',$);
+#78= IFCCOURSE('CRSE00000000000000000X',$,'Course',$,$,$,$,'tag',$);`;
+
+const CROSS_HEADER_SCHEMAS = ['IFC2X3', 'IFC4', 'IFC4X3'] as const;
+
+async function idsByType(schema: string, type: string): Promise<number[]> {
+  const bim = await loadInlineModel(ifcFile(CROSS_HEADER_DATA, schema), `cross-header-${schema}`);
+  return bim.query().byType(type).toArray().map((e) => e.ref.expressId).sort((a, b) => a - b);
+}
+
+describe('a re-headered file answers byType the same under every schema header', () => {
+  it.each([
+    ['IfcSlab', [70, 71, 72]],
+    ['IfcFurnishingElement', [73, 74]],
+    ['IfcGeotechnicalStratum', [75, 76]],
+  ])('%s returns the same rows under IFC2X3, IFC4 and IFC4X3', async (type, expected) => {
+    for (const schema of CROSS_HEADER_SCHEMAS) {
+      expect(await idsByType(schema, type), `${type} under ${schema}`).toEqual(expected);
+    }
+  });
+
+  it.each(CROSS_HEADER_SCHEMAS)(
+    'IfcBuildingElement and IfcBuiltElement are the same question under %s',
+    async (schema) => {
+      // IFC4X3 renamed `IfcBuildingElement` to `IfcBuiltElement`. Both spellings
+      // have to reach the same rows, or a file's header decides whether a
+      // caller's own spelling works: the three slabs, the wall, and the
+      // IFC4X3-only course (furniture and strata are neither).
+      const expected = [70, 71, 72, 77, 78];
+      expect(await idsByType(schema, 'IfcBuildingElement'), `IfcBuildingElement/${schema}`).toEqual(expected);
+      expect(await idsByType(schema, 'IfcBuiltElement'), `IfcBuiltElement/${schema}`).toEqual(expected);
+    },
+  );
+});

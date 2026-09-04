@@ -58,13 +58,14 @@ export const IFC_SUBTYPES: Record<string, string[]> = {
  * that only aliased `*StandardCase`/`*ElementedCase` pairs and silently
  * dropped every abstract-supertype query.
  *
- * `schemaVersion` should be the queried model's own `store.schemaVersion` —
- * descendant sets differ by IFC version (e.g. IFC4X3 renamed
- * `IfcBuildingElement` to `IfcBuiltElement`). Omitted/unrecognized falls back
- * to IFC4, matching what the old hardcoded table implicitly assumed.
+ * Takes no schema version: the expansion is the union across the bundled
+ * schemas, so the same bytes answer the same way whatever their `FILE_SCHEMA`
+ * header says (see the resolver's module doc). That is also what lets
+ * `validate`'s scanned type lists be computed once at module load and still be
+ * unable to disagree with `byType` about what counts as a wall.
  */
-export function expandTypes(types: string[], schemaVersion?: string): string[] {
-  return expandTypeNamesToDescendants(types, schemaVersion);
+export function expandTypes(types: string[]): string[] {
+  return expandTypeNamesToDescendants(types);
 }
 
 /**

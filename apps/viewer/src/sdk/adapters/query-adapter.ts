@@ -199,7 +199,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
         // own schema version (e.g., IfcWall → IfcWallStandardCase on IFC4;
         // IfcBuildingElement → its concrete leaves on any version).
         entityIds = [];
-        for (const type of expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)) {
+        for (const type of expandTypes(descriptor.types)) {
           const typeIds = model.ifcDataStore.entityIndex.byType.get(type) ?? [];
           for (const id of typeIds) entityIds.push(id);
         }

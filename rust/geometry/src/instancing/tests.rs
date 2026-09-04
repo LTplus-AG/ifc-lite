@@ -965,6 +965,49 @@ fn a_singular_verify_basis_refuses_rather_than_panicking_or_hanging() {
 }
 
 #[test]
+fn a_singular_verify_basis_counts_the_placeholders_the_whole_refusal_drops() {
+    // The whole-input refusal above returns "every drawable mesh, flat". A
+    // pose-only (#1623 don't-bake) placeholder is not drawable, so it is in
+    // neither `templates` nor `flat_indices` — the same disappearance every
+    // other refusal path reports through `dropped_placeholders`, and this one
+    // did not. An occurrence going missing must not be indistinguishable from
+    // an occurrence that was never fed in.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9494,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    let placeholder_meta = meta(&p1);
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&placeholder_meta, 1),
+    ];
+    let singular = Matrix4::<f64>::zeros();
+    assert!(singular.try_inverse().is_none(), "fixture must actually be singular");
+    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
+    assert_eq!(collated.templates.len(), 0, "the whole collation is refused");
+    assert_eq!(collated.flat_indices, vec![0], "only the materialized member can draw");
+    assert_eq!(
+        collated.dropped_placeholders, 1,
+        "the placeholder the refusal drops is reported, not silently gone"
+    );
+    // And it really is nowhere else in the result.
+    assert!(
+        !collated
+            .templates
+            .iter()
+            .any(|t| t.template_index == 1 || t.occurrences.iter().any(|o| o.mesh_index == 1)),
+        "mesh 1 must not appear as a template or an occurrence"
+    );
+    assert!(!collated.flat_indices.contains(&1), "mesh 1 must not appear flat");
+}
+
+#[test]
 fn decode_rejects_bad_magic() {
     assert!(decode_instanced(&[0u8; 32]).is_none());
     assert!(decode_instanced(&[]).is_none());

@@ -312,13 +312,25 @@ fn fall_back(
 
 /// Every mesh that carries geometry, rendered flat: the whole-input fallback when
 /// collation is refused before any group is examined. Empty (pose-only) members
-/// are omitted because they have nothing to draw on their own; they exist only as
-/// occurrences of a template, and this result has none.
+/// cannot go flat — they have nothing to draw on their own and exist only as
+/// occurrences of a template, and this result has none — so they are counted in
+/// `dropped_placeholders` exactly as `fall_back` counts the ones it cannot place.
+/// Reporting the loss is the whole point of that field: an occurrence going
+/// missing must not look like an occurrence that was never fed in.
 fn all_drawable_flat(meshes: &[InstanceMeshRef]) -> Collated {
     Collated {
         flat_indices: (0..meshes.len())
             .filter(|&i| !meshes[i].positions.is_empty())
             .collect(),
+        // A placeholder is an EMPTY mesh with instanceable meta; an empty mesh
+        // without it carries nothing and was never an occurrence, so it is not a
+        // loss to report (the grouping loop skips it the same way).
+        dropped_placeholders: meshes
+            .iter()
+            .filter(|m| {
+                m.positions.is_empty() && m.instance_meta.is_some_and(|im| im.instanceable)
+            })
+            .count(),
         ..Collated::default()
     }
 }

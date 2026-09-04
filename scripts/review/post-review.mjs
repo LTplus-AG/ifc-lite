@@ -338,6 +338,30 @@ function main() {
     );
   }
 
+  // JUDGE-EMPTIED FINDINGS (#3862). The reviewer's verdict was "findings", but
+  // the judge dropped every one. The original verdict survived validation (else
+  // validate-findings would have thrown VALIDATION_EMPTY), but this judge-only
+  // path has no class pass to back it. Posting a clean marker would falsely
+  // claim the review found nothing, silently discarding the fact that the
+  // judge rejected everything. Not the same as a genuinely clean review. FAIL
+  // loudly and refuse to post.
+  if (
+    doc.verdict === 'findings' &&
+    findings.length === 0 &&
+    confirmed === 0 &&
+    doc.judged === true &&
+    (doc.counts?.judgeInput ?? 0) > 0
+  ) {
+    throw new PostReviewError(
+      'JUDGE_EMPTIED_FINDINGS',
+      `The reviewer's verdict was "findings" and ${doc.counts.judgeInput} finding(s) survived validation. ` +
+        'The judge then dropped every one, leaving findings: []. Posting a clean marker here would ' +
+        'post a verdict the reviewer never gave, and falsely claim the diff was reviewed for no issues. ' +
+        'Not downgraded to clean, which would be a lie. REMEDY: the reviewer must find things the ' +
+        'judge accepts, or this diff cannot be reviewed under this rubric.',
+    );
+  }
+
   // ------------------------------------------------------------------ STEP 4+5
   const verdict = confirmed === 0 ? 'clean' : 'findings';
   upsertAndVerify({

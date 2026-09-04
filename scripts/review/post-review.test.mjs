@@ -1488,3 +1488,137 @@ for (const legal of ['docs/ifc-lite-review-lane.md', 'docs/IFC-LITE-REVIEW.md'])
     assert.equal(got[0].path, legal, 'the path must survive verbatim');
   });
 }
+
+test('FAIL: #3862 a findings verdict with all findings dropped by the judge posts no clean marker', () => {
+  // The judge can drop every finding, leaving findings: [] in judged.json. The
+  // reviewer's original verdict was "findings", but post-review derives a clean
+  // marker from confirmed === 0. This posts a clean marker for a review that
+  // found things, a silent drop of data, and precisely the defect this lane
+  // exists to catch. The fix: refuse to post a clean marker when the original
+  // verdict was "findings" but all findings were dropped by the judge.
+  const dir = join(TMP, `judge-drop-all-${(seq += 1)}`);
+  mkdirSync(dir);
+  const findingsPath = join(dir, 'judged.json');
+  writeFileSync(
+    findingsPath,
+    JSON.stringify({
+      headSha: SHA,
+      verdict: 'findings', // The ORIGINAL verdict from the reviewer
+      findings: [], // Judge dropped ALL findings
+      omitted: [],
+      counts: {
+        emitted: 2,
+        surviving: 2,
+        capped: 0,
+        kept: 2,
+        judgeInput: 2,
+        dropped: 2,
+        kept: 0,
+      },
+      warnings: [],
+      judged: true, // Judge ran
+    }),
+  );
+  const r = runPoster({ findingsPath });
+  assert.notEqual(r.code, 0, 'posting a clean marker over a judge-emptied findings verdict must fail');
+  assertNoMarker(r.state, 'no marker must be posted on this path');
+  assert.match(r.out, /JUDGE_EMPTIED_FINDINGS/, 'the error reason must clearly name the case');
+});
+
+// CONTROL 1: a review with surviving findings still posts them normally
+test('#3862 CONTROL 1: a review with surviving findings still posts them normally', () => {
+  const dir = join(TMP, `judge-keeps-some-${(seq += 1)}`);
+  mkdirSync(dir);
+  const findingsPath = join(dir, 'judged.json');
+  writeFileSync(
+    findingsPath,
+    JSON.stringify({
+      headSha: SHA,
+      verdict: 'findings',
+      findings: [finding(1), finding(2)],
+      omitted: [],
+      counts: {
+        emitted: 3,
+        surviving: 3,
+        capped: 0,
+        kept: 3,
+        judgeInput: 3,
+        dropped: 1,
+        kept: 2,
+      },
+      warnings: [],
+      judged: true,
+    }),
+  );
+  const r = runPoster({ findingsPath });
+  assert.equal(r.code, 0, r.out);
+  assert.match(
+    allBodies(r.state),
+    new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=findings count=2`),
+    'must post findings marker with confirmed count'
+  );
+});
+
+// CONTROL 2: a review that genuinely found nothing (clean verdict) still posts clean
+test('#3862 CONTROL 2: a genuinely clean review (model reported clean) posts clean marker', () => {
+  const dir = join(TMP, `genuinely-clean-${(seq += 1)}`);
+  mkdirSync(dir);
+  const findingsPath = join(dir, 'clean.json');
+  writeFileSync(
+    findingsPath,
+    JSON.stringify({
+      headSha: SHA,
+      verdict: 'clean', // ORIGINAL verdict is clean, NOT findings
+      findings: [],
+      omitted: [],
+      counts: {
+        emitted: 0,
+        surviving: 0,
+        capped: 0,
+        kept: 0,
+      },
+      warnings: [],
+    }),
+  );
+  const r = runPoster({ findingsPath });
+  assert.equal(r.code, 0, r.out);
+  assert.match(
+    allBodies(r.state),
+    new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0`),
+    'must post clean marker when original verdict was clean'
+  );
+});
+
+// CONTROL 3: some findings drop, others survive still posts the survivors
+test('#3862 CONTROL 3: some judge drops, some survive, posts survivors', () => {
+  const dir = join(TMP, `judge-partial-drop-${(seq += 1)}`);
+  mkdirSync(dir);
+  const findingsPath = join(dir, 'partial-drop.json');
+  writeFileSync(
+    findingsPath,
+    JSON.stringify({
+      headSha: SHA,
+      verdict: 'findings',
+      findings: [finding(1), finding(2), finding(3)],
+      omitted: [],
+      counts: {
+        emitted: 5,
+        surviving: 5,
+        capped: 0,
+        kept: 5,
+        judgeInput: 5,
+        dropped: 2,
+        kept: 3,
+      },
+      warnings: [],
+      judged: true,
+    }),
+  );
+  const r = runPoster({ findingsPath });
+  assert.equal(r.code, 0, r.out);
+  assert.match(
+    allBodies(r.state),
+    new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=findings count=3`),
+    'must post remaining findings after judge drops some'
+  );
+});

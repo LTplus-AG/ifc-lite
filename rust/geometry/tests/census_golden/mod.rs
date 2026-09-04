@@ -1013,10 +1013,12 @@ pub fn render(rows: &[HostRow]) -> String {
 /// Why a golden could not be read. TWO classes, because a bless treats them
 /// differently and treating them alike loses rows silently (#3422).
 ///
-/// [`ParseError::Schema`] is the file a column-adding change leaves on disk:
-/// every row is intact under the OLD schema and short of the new column. Its
-/// rows cannot be reused without inventing that column, so a bless discards
-/// them deliberately and says so. That is the sanctioned path.
+/// [`ParseError::Schema`] is the file a column-adding change leaves on disk,
+/// POSITIVELY identified rather than assumed from any row-shape failure: EVERY
+/// data row exactly one column short, which is the only shape such a change
+/// produces. Those rows are intact under the OLD schema and cannot be reused
+/// without inventing the new column, so a bless discards them deliberately and
+/// says so. That is the sanctioned path.
 ///
 /// [`ParseError::Malformed`] is anything else — a bad number, an unreadable
 /// flag, a truncated write, a merge that mangled one line. It is NOT a
@@ -1029,8 +1031,9 @@ pub fn render(rows: &[HostRow]) -> String {
 /// `added` hosts and demand another bless, and the tear pin would be gone.
 #[derive(Debug)]
 pub enum ParseError {
-    /// A row has the wrong number of columns. Carries the line so a stale
-    /// golden names the schema it is on.
+    /// EVERY data row is exactly one column short. Carries the first such line
+    /// so a stale golden names the schema it is on. An arbitrary wrong column
+    /// count is [`Self::Malformed`], not this.
     Schema { line: usize, expected: usize, got: usize },
     /// A field the schema DOES have could not be read.
     Malformed(String),
@@ -1049,26 +1052,51 @@ impl std::fmt::Display for ParseError {
     }
 }
 
+/// Columns a current row has. A pre-#3397 nine-column or pre-#3422 ten-column
+/// row is an ERROR, not a row with an implied strict count or volume: accepting
+/// one would have to invent the missing value, and a fabricated value is a
+/// clean-looking host that was never measured.
+pub const COLUMNS: usize = 11;
+
 pub fn parse(text: &str) -> Result<Vec<HostRow>, ParseError> {
-    let mut out = Vec::new();
-    for (n, line) in text.lines().enumerate() {
-        // Skip comments, the column header and blank lines. `model\t` catches
-        // the header without also swallowing a fixture literally named "model".
-        if line.is_empty() || line.starts_with('#') || line.starts_with("model\t") {
-            continue;
+    // Data rows, paired with their 1-based line number. Comments, blank lines
+    // and the column header are skipped; `model\t` catches the header without
+    // also swallowing a fixture literally named "model".
+    let rows: Vec<(usize, Vec<&str>)> = text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !(l.is_empty() || l.starts_with('#') || l.starts_with("model\t")))
+        .map(|(n, l)| (n + 1, l.split('\t').collect()))
+        .collect();
+
+    // The file's SHAPE, decided over ALL rows before any field is read, because
+    // the two error classes are decided by shape and a bless treats them
+    // differently. `Schema` — the arm a bless tolerates as an empty golden — is
+    // reserved for the one file a column-adding change leaves: every data row
+    // exactly one column short. Classifying an ARBITRARY wrong count that way
+    // would hand a bless the very loss the split exists to prevent: a truncated
+    // write, a mangled merge or one stray tab would read as "obsolete schema",
+    // and in the heavy lane, where two fixtures share one file and each blesses
+    // only its own model's rows, the golden would come back missing the other
+    // model entirely. Uniformity is part of the identification: a single short
+    // row among current-schema rows is a mangled file, not a migration.
+    let odd: Vec<(usize, usize)> =
+        rows.iter().map(|(n, f)| (*n, f.len())).filter(|&(_, len)| len != COLUMNS).collect();
+    if let Some(&(line, got)) = odd.first() {
+        if odd.len() == rows.len() && odd.iter().all(|&(_, len)| len + 1 == COLUMNS) {
+            return Err(ParseError::Schema { line, expected: COLUMNS, got });
         }
-        let f: Vec<&str> = line.split('\t').collect();
-        // Exactly 11. A pre-#3397 nine-column or pre-#3422 ten-column row is an
-        // ERROR, not a row with an implied strict count or volume: accepting it
-        // would have to invent one, and a fabricated value is a clean-looking
-        // host that was never measured. A bad merge of this golden is then loud
-        // instead of silently under-gated.
-        if f.len() != 11 {
-            return Err(ParseError::Schema { line: n + 1, expected: 11, got: f.len() });
-        }
+        return Err(ParseError::Malformed(format!(
+            "line {line}: expected {COLUMNS} columns, got {got}; this is a MANGLED file, \
+             not the uniformly one-column-short golden a column-adding change leaves"
+        )));
+    }
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (n, f) in rows {
         // Every failure below is a field the schema HAS that could not be
         // read, so all of them are `Malformed` and none is a bless input.
-        let bad = |m: String| ParseError::Malformed(format!("line {}: {m}", n + 1));
+        let bad = |m: String| ParseError::Malformed(format!("line {n}: {m}"));
         let num = |i: usize| -> Result<usize, ParseError> {
             f[i].parse::<usize>().map_err(|_| bad(format!("bad number {:?}", f[i])))
         };
@@ -2645,48 +2673,74 @@ mod tests {
     }
 
     #[test]
-    fn a_truncated_row_is_an_error_not_a_silently_short_golden() {
+    fn only_a_uniformly_one_column_short_golden_is_a_schema_error() {
         let header = "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\tvol\n";
         // Matched on the VARIANT, not on the message. The two classes are what
         // `read_golden` branches on in bless mode (#3422), so a test that only
         // read the text would stay green if a row-shape failure started
         // reporting as `Malformed` — which would make a column-adding bless
-        // fatal — or, far worse, if a corrupt field started reporting as
+        // fatal — or, far worse, if a mangled row started reporting as
         // `Schema`, which is the arm a bless treats as an empty golden.
-        let short = |text: String, what: &str| match parse(&text) {
+        let schema = |text: String, what: &str| match parse(&text) {
             Err(ParseError::Schema { expected, got, .. }) => {
-                assert_eq!(expected, 11, "{what}");
+                assert_eq!(expected, COLUMNS, "{what}");
                 got
             }
             other => panic!("{what} must be a Schema error, got {other:?}"),
         };
-        assert_eq!(short(format!("{header}a.ifc\t1\tCSG\t0\t0\t0\t0\n"), "a 7-column row"), 7);
-        // And a COMPLETE pre-#3397 or pre-#3422 row is a truncation too, not a
-        // row with an implied strict count or volume. Defaulting either would
-        // fabricate a clean-looking host for every line of a stale golden,
-        // which is the one way a column could go dark across the whole corpus
-        // at once.
+        let malformed = |text: String, what: &str| match parse(&text) {
+            Err(ParseError::Malformed(m)) => m,
+            other => panic!("{what} must be a Malformed error, got {other:?}"),
+        };
+
+        // The ONE tolerated shape, and the only one a bless may treat as an
+        // empty golden: EVERY data row exactly one column short, which is what
+        // a column-adding change leaves on disk and nothing else produces.
         assert_eq!(
-            short(format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\n"), "a pre-#3397 row"),
-            9
-        );
-        assert_eq!(
-            short(
-                format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\n"),
-                "a pre-#3422 row"
+            schema(
+                format!(
+                    "{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\n\
+                     a.ifc\t2\tCSG\t0\t12\t0\t0\t0\t-\t0\n"
+                ),
+                "a pre-#3422 golden"
             ),
             10
+        );
+
+        // Every OTHER column count is a MANGLED file, not an older schema, and
+        // so is fatal in bless mode too. A truncated write, a mangled merge or
+        // a stray tab lands here, and treating any of them as an empty golden
+        // is the loss this split exists to prevent: in the heavy lane the two
+        // fixtures share one file and each blesses only its own model's rows.
+        malformed(format!("{header}a.ifc\t1\tCSG\t0\t0\t0\t0\n"), "a 7-column row");
+        // Two schemas stale is not the sanctioned migration either. Its rows
+        // would need TWO columns invented, and a bless that discarded them
+        // silently would be indistinguishable from the mangled cases above.
+        malformed(format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\n"), "a pre-#3397 row");
+        malformed(
+            format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t55\t7\n"),
+            "a row one column too many"
+        );
+        // The heavy lane's actual hazard: ONE truncated row among rows that are
+        // on the current schema. Not uniform, so not a migration — and under a
+        // rule that only looked at the FIRST bad row's count it would have been
+        // one, taking the other model's rows with it.
+        malformed(
+            format!(
+                "{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t55\n\
+                 b.ifc\t2\tCSG\t0\t12\t0\t0\t0\t-\t0\n"
+            ),
+            "one short row among current-schema rows"
         );
 
         // A volume token that is neither `-` nor an integer is a CORRUPT row,
         // not a missing reading and not an older schema: the column is there
         // and unreadable. `Malformed` is what keeps a bless from swallowing it.
-        let bad = parse(&format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t1.5\n"))
-            .expect_err("a float volume must not parse");
-        assert!(
-            matches!(bad, ParseError::Malformed(ref m) if m.contains("bad volume")),
-            "{bad:?}"
+        let bad = malformed(
+            format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t1.5\n"),
+            "a float volume"
         );
+        assert!(bad.contains("bad volume"), "{bad}");
     }
 
     #[test]

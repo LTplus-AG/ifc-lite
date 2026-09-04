@@ -551,8 +551,12 @@ fn row_from_mesh(
 /// that carried on would be measuring against nothing.
 ///
 /// In bless mode exactly ONE failure is tolerated, and it is the one a
-/// column-adding change creates: [`census_golden::ParseError::Schema`], the
-/// file on disk having one column fewer than `parse` demands (#3397, #3422).
+/// column-adding change creates: [`census_golden::ParseError::Schema`], EVERY
+/// row on disk having exactly one column fewer than `parse` demands (#3397,
+/// #3422). `parse` identifies that shape positively rather than inferring it
+/// from any row-shape failure, so an arbitrary wrong column count — a
+/// truncated write, a mangled merge, one stray tab — is `Malformed` and stays
+/// fatal here.
 /// Its rows are intact but cannot be reused without inventing the new column,
 /// so the lane discards them and says so; every swept model is rewritten from
 /// this run, and a model NOT swept has no rows to keep, which the bless line's

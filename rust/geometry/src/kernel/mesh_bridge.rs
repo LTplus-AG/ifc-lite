@@ -244,14 +244,18 @@ pub fn union_many(meshes: &[&Mesh]) -> Mesh {
     // Participate in the #1109 budget like `subtract` / `union` — fresh per-boolean
     // count, per-element accumulator preserved (see `union`).
     super::budget::begin();
-    // NO near-coplanar weld here, unlike the binary `union` (#3353). The root
-    // cause DOES reach this path, and the weld does help it — but its gate is
-    // PLANE-level rather than footprint-level, which scales badly with operand
-    // count and regressed `issue_960_segmented_roof_clip`. The measurements and
-    // the pin are in `mesh_bridge_tests::issue_3353_nary_near_coplanar`, kept
-    // there rather than restated here so the numbers have one home.
-    let tri_lists: Vec<Vec<Tri>> =
-        meshes.iter().map(|m| orient_outward(mesh_to_tris(m))).collect();
+    // Mutual near-coplanar weld, same as the binary `union` (#3353 N-ary
+    // half). An earlier attempt at this welded already bit-identical shared
+    // vertices onto a spurious nearby plane from an unrelated operand and
+    // regressed `issue_960_segmented_roof_clip`; the guard that fixes that
+    // (skip a cutter vertex already exactly matching a host vertex) lives in
+    // `promote_cutter_verts_onto_host_faces` (`plane_weld.rs`). The
+    // measurements are in `mesh_bridge_tests::issue_3353_nary_near_coplanar`,
+    // kept there rather than restated here so the numbers have one home.
+    let mut tri_lists: Vec<Vec<Tri>> =
+        meshes.iter().map(|m| mesh_to_tris(m)).collect();
+    promote_operands_mutually(&mut tri_lists);
+    let tri_lists: Vec<Vec<Tri>> = tri_lists.into_iter().map(orient_outward).collect();
     let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();
     let (out, conforming) = union_all(&refs);
     // #1109 budget trip ⇒ `arrange_many` bailed and `out` is PARTIAL; return empty so

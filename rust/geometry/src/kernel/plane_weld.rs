@@ -249,10 +249,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     if cutter.is_empty() || host.is_empty() {
         return 0;
     }
-    let mut welded = 0usize;
-    let mut band = NearBand::default();
-    band.observe_tris(cutter);
-    band.observe_tris(host);
+    let (mut welded, mut band) = (0usize, NearBand::default());
+    [cutter as &[Tri], host].into_iter().for_each(|t| band.observe_tris(t));
+    let host_verts = super::near_band::exact_vertex_set(host); // #3353 N-ary half
 
     struct Face {
         /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
@@ -288,6 +287,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
+            if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
             // Nearest host plane the vertex is within the band of but NOT
             // exactly on (d == 0 planes are already reconciled — and must not
             // shadow a second, still-noisy plane: in the repro the jamb verts

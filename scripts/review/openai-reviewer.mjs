@@ -8,7 +8,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 
-export const OPENAI_REVIEW_MODEL = 'gpt-5.6-terra';
+export const OPENAI_REVIEW_MODEL = 'gpt-5.6-sol';
 
 export function responseText(response) {
   if (typeof response?.output_text === 'string' && response.output_text.trim()) {

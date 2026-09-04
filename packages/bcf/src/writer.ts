@@ -192,7 +192,7 @@ async function writeTopicFolder(
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  // A path prefix, not zip.folder(): folder() adds a "<guid>/" directory entry Solibri refuses (#3612).
+  // Every entry below passes createFolders:false: JSZip otherwise adds a "<guid>/" directory entry, which Solibri refuses (#3612).
   const folderName = sanitizeZipComponent(topic.guid, usedFolderNames, 'topic');
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>

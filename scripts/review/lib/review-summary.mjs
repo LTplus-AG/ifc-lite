@@ -13,6 +13,7 @@
  */
 
 import { marker, inlineCode, MAX_POSTED_FINDINGS } from './review-findings.mjs';
+import { PostReviewError } from './post-review-error.mjs';
 import { sanitizeBody } from '../validate-findings.mjs';
 
 /** Longest index line in the summary. A summary that scrolls is a summary nobody reads. */
@@ -161,7 +162,7 @@ export function readCappedCount(doc, shown) {
  * count is an observation and not a claim. Collapsing them into one number is
  * how the marker would quietly become a receipt for the model's own file again.
  */
-export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, omitted = [], resolutionIncomplete = false }) {
+export function summaryBody({ sha, findings, count, verdict, judgedAway = 0, capped = 0, omitted = [], resolutionIncomplete = false }) {
   const short = sha.slice(0, 9);
   const n = findings.length;
   // The partial-review block sits ABOVE the marker in both branches, and the
@@ -170,6 +171,21 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, 
   // machine surface. A full review renders byte-identically to before.
   const partial = omitted.length > 0 ? ['', ...omittedSection(omitted)] : [];
   if (count === 0) {
+    // THE VERDICT IS AN ARGUMENT, NOT A DEFAULT (#3862). This branch used to
+    // hardcode `clean` while main() computed the very same string a second
+    // time -- two answers to one question, agreeing until one of them changed,
+    // which is what the `clean-by-judge` split made happen. A default here
+    // would have made the forgotten wire-up silent and posted the stronger
+    // verdict, so an unpassed verdict REFUSES instead: nothing is posted, the
+    // gate reads NOT_POSTED, and the remedy is a code fix.
+    if (verdict !== 'clean' && verdict !== 'clean-by-judge') {
+      throw new PostReviewError(
+        'BAD_ARGS',
+        `\`summaryBody\` was given verdict ${JSON.stringify(verdict)} for a zero-count review. It must ` +
+          'be the value `markerVerdict` returned, so the marker and the prose above it cannot disagree. ' +
+          'REMEDY: pass it through from the caller.',
+      );
+    }
     // Reachable only when `n` is 0 as well: `count >= n` is enforced one step
     // earlier, and the `n === 0 && count > 0` case is handled by the branch below.
     // A REVIEW JUDGED TO NOTHING IS NOT A REVIEW THAT FOUND NOTHING. The judge
@@ -194,10 +210,22 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, 
         ? 'Reviewed everything that fit the model prompt and found nothing to flag there.'
         : 'Reviewed this diff and found nothing to flag.',
       ...judged,
+      // WHAT THE WEAKER VERDICT MEANS, said on the human surface too. The
+      // marker tells the gate; this tells the author why the pull request is
+      // not going to be marked as reviewed, so the label's absence is not a
+      // mystery they have to open a workflow log to explain.
+      ...(verdict === 'clean-by-judge'
+        ? [
+            '',
+            'This is NOT a clean bill of health. The reviewer answered `findings`, so it was never ' +
+              'asked to show a verdict on every defect class -- and nothing it wrote survived. Another ' +
+              'reviewer must not stand down on this head.',
+          ]
+        : []),
       ...partial,
       '',
       // No thumbs-down footer here on purpose: see STATED HOLES 6.
-      marker(sha, 'clean', 0, omitted.length),
+      marker(sha, verdict, 0, omitted.length),
     ].join('\n');
   }
   // AN INCOMPLETE RESOLUTION WALK, SAID OUT LOUD. Failing closed keeps the count

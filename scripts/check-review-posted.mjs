@@ -46,7 +46,9 @@
  * THE ONE THING IT DOES ACCEPT is a marker the reviewer writes at the END of a
  * successful post, naming the exact commit it reviewed:
  *
- *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review|dropped count=<n> -->
+ *     <!-- ifc-lite-review sha=<40-hex> verdict=<token> count=<n> -->
+ *
+ *     The tokens, and what each buys, are in ./lib/review-marker.mjs.
  *
  *     An optional trailing ` omitted=<n>` (present only when n > 0) records how
  *     many changed files were too large to fit the model prompt and were NOT
@@ -106,7 +108,7 @@ import { gh, GhError } from './lib/gh.mjs';
 // ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
 import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
 import { droppedVerdict, shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
-import { MARKER_RE, MARKER_SHAPE } from './lib/review-marker.mjs';
+import { MARKER_RE, MARKER_SHAPE, MARKER_VERDICTS, certifiesDiff } from './lib/review-marker.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -143,7 +145,9 @@ const MAX_PAGES = 10;
 const PER_PAGE = 100;
 
 export { shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
-export { MARKER_RE } from './lib/review-marker.mjs';
+// Re-exported so every existing importer of these names from this file keeps
+// working; the grammar lives in ./lib/review-marker.mjs with its docs.
+export { MARKER_RE, MARKER_VERDICTS, certifiesDiff };
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {

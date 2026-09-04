@@ -235,6 +235,37 @@ export function readOmitted(parsed, path) {
   return omitted;
 }
 
+/**
+ * THE MARKER'S VERDICT WHEN NOTHING REACHED THE PULL REQUEST (#3862).
+ *
+ * A standing count of zero is produced by two runs that are not the same review:
+ *
+ *   - the reviewer answered `clean`, and `checkClassPass` made it show a verdict
+ *     on every defect class before that answer was accepted;
+ *   - the reviewer answered `findings` -- exempt from the class pass on purpose
+ *     -- and run-judge then dropped every one of them.
+ *
+ * The second never walked the list, so calling it `clean` certifies a diff
+ * nothing walked. The flag the validator wrote is the only thing that separates
+ * them by the time this file runs, and it is required to be EXACTLY `true`: a
+ * findings.json that carries no flag says nothing about a class pass, and
+ * reading silence as a pass is the defect family this lane is named after.
+ *
+ * A verdict is never upgraded here. `classPass: true` beside a document the
+ * judge emptied cannot happen -- a `clean` verdict has no findings to empty --
+ * and if it ever did, this would post `clean`, which is what the validator
+ * already certified.
+ *
+ * @param {unknown} doc - the parsed findings.json / judged.json.
+ * @param {number} standing - findings read back off the pull request and still
+ *   unresolved (#3768); the same number the marker carries.
+ * @returns {'clean'|'clean-by-judge'|'findings'}
+ */
+export function markerVerdict(doc, standing) {
+  if (standing > 0) return 'findings';
+  return (Array.isArray(doc) ? undefined : doc?.classPass) === true ? 'clean' : 'clean-by-judge';
+}
+
 /** The marker the gate parses. Built in exactly one place; proved against the real gate by the harness. */
 export function marker(sha, verdict, count, omitted = 0) {
   // `omitted=` appears ONLY on a partial review: a full review's marker stays

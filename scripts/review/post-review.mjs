@@ -161,7 +161,7 @@ import { parseArgs } from './lib/review-args.mjs';
 // working unchanged. `fingerprint` is used only inside
 // `postFindingsAndConfirm` now, so it is re-exported directly rather than
 // imported.
-import { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker } from './lib/review-findings.mjs';
+import { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker, markerVerdict } from './lib/review-findings.mjs';
 // fetchHeadSha/upsertAndVerify/postNothingToReview/postFindingsAndConfirm
 // moved to ./lib/review-comments.mjs (module-size budget, #3795). Imported
 // for the same reason as above. `confirmedOnHead` is used only inside that
@@ -175,7 +175,7 @@ import { summaryBody, readJudgedAway, readCappedCount } from './lib/review-summa
 
 export { parseArgs, DEFAULT_CONFIG } from './lib/review-args.mjs';
 export { PostReviewError };
-export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker };
+export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker, markerVerdict };
 export { fingerprint } from './lib/review-findings.mjs';
 export { confirmedOnHead } from './lib/review-comments.mjs';
 export { nothingToReviewBody } from './lib/review-summary.mjs';
@@ -309,7 +309,12 @@ function main() {
   }
 
   // ------------------------------------------------------------------ STEP 4+5
-  const verdict = standing === 0 ? 'clean' : 'findings';
+  // `clean` is EARNED, not inferred from a count (#3862): see `markerVerdict`.
+  // `standing`, not `confirmed`, is the input, because that is the count the
+  // marker carries and the one #3768 made authoritative: a run whose every prior
+  // finding has been resolved has nothing on the pull request, and asking about
+  // `confirmed` would call it `findings` again.
+  const verdict = markerVerdict(doc, standing);
   upsertAndVerify({
     repo: args.repo,
     pr: args.pr,
@@ -319,6 +324,7 @@ function main() {
       sha: args.sha,
       findings,
       count: standing,
+      verdict,
       resolutionIncomplete,
       judgedAway: readJudgedAway(doc),
       capped: readCappedCount(doc, findings.length),

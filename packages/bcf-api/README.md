@@ -46,6 +46,16 @@ const { project, warnings } = await fetchProjectAsBCF(client, projects[0].projec
 ## Direct endpoint access
 
 ```ts
+import { BcfApiClient } from '@ifc-lite/bcf-api';
+
+const client = new BcfApiClient({
+  baseUrl: 'https://example.com/bcf/2.1',
+  getAccessToken: () => 'your-access-token',
+});
+const projectId = 'my-project-guid';
+const topicGuid = 'my-topic-guid';
+const viewpointGuid = 'my-viewpoint-guid';
+
 await client.getVersions();
 await client.getCurrentUser();
 await client.getExtensions(projectId);

@@ -108,7 +108,7 @@
    436 apps/viewer/src/components/viewer/tools/SectionVisualization.tsx
   1510 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
-   991 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   981 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1843 apps/viewer/src/components/viewer/Viewport.tsx
@@ -317,7 +317,7 @@
    474 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4436 packages/renderer/src/scene.ts
+  4444 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts

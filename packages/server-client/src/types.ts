@@ -234,7 +234,6 @@ export * from './geometry-diagnostics-types.js';
 import type { SymbolicData } from './symbolic-types.js';
 export * from './symbolic-types.js';
 
-
 /**
  * Full parse response with all meshes.
  */
@@ -263,9 +262,7 @@ export interface ParseResponse {
   symbolic_data?: SymbolicData;
 }
 
-/**
- * Metadata-only response (no geometry).
- */
+/** Metadata-only response (no geometry). */
 export interface MetadataResponse {
   /** Total number of entities */
   entity_count: number;
@@ -275,11 +272,13 @@ export interface MetadataResponse {
   schema_version: string;
   /** File size in bytes */
   file_size: number;
+  /** Records refused for a `u32`-overflowing instance name (#3395): `entity_count` is short by this many. */
+  oversized_id_count: number;
+  /** The scan stopped at a record with no terminating `;` (#3695), so `entity_count` covers only the bytes before it. */
+  malformed_record_found: boolean;
 }
 
-/**
- * Health check response.
- */
+/** Health check response. */
 export interface HealthResponse {
   /** Server status */
   status: string;

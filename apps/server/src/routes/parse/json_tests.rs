@@ -106,3 +106,122 @@ async fn parse_metadata_counts_entities_and_geometry_separately() {
     assert_eq!(json["schema_version"].as_str().unwrap(), "IFC4");
     assert_eq!(json["file_size"].as_u64().unwrap(), FIXTURE.len() as u64);
 }
+
+/// #3791: the same 16 records, but `#4294967297` (`u32::MAX + 2`) is added as
+/// a 17th. Its instance name does not fit the `u32` every express-id column
+/// in this workspace uses, so the scanner refuses it (#3395) and the count
+/// comes back at 16 again — indistinguishable from `FIXTURE` without a
+/// diagnostic saying a record went missing.
+const FIXTURE_WITH_OVERSIZED_ID: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('r31 metadata fixture'),'2;1');
+FILE_NAME('meta.ifc','2026-06-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6,#7));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#7=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#40=IFCLOCALPLACEMENT($,#5);
+#300=IFCCARTESIANPOINT((0.,0.));
+#301=IFCAXIS2PLACEMENT2D(#300,$);
+#302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#301,1.0,0.2);
+#303=IFCDIRECTION((0.,0.,1.));
+#304=IFCEXTRUDEDAREASOLID(#302,#5,#303,3.0);
+#305=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#304));
+#306=IFCPRODUCTDEFINITIONSHAPE($,$,(#305));
+#307=IFCWALL('Wall00000000000000001',$,'W1',$,$,#40,#306,$,$);
+#4294967297=IFCWALL('Wall00000000000000002',$,'W2',$,$,#40,#306,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// #3791: `#302`'s first string literal never closes, so `find_entity_end`
+/// runs off the end of the buffer and the scan stops there (#3695) — every
+/// record after it is silently absent from the count.
+const FIXTURE_WITH_UNTERMINATED_STRING: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('r31 metadata fixture'),'2;1');
+FILE_NAME('meta.ifc','2026-06-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6,#7));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#7=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#40=IFCLOCALPLACEMENT($,#5);
+#300=IFCCARTESIANPOINT((0.,0.));
+#301=IFCAXIS2PLACEMENT2D(#300,$);
+#302=IFCRECTANGLEPROFILEDEF(.AREA.,'unterminated,#301,1.0,0.2);
+#303=IFCDIRECTION((0.,0.,1.));
+#304=IFCEXTRUDEDAREASOLID(#302,#5,#303,3.0);
+#305=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#304));
+#306=IFCPRODUCTDEFINITIONSHAPE($,$,(#305));
+#307=IFCWALL('Wall00000000000000001',$,'W1',$,$,#40,#306,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// POST `content` to `/api/v1/parse/metadata` and return the decoded body.
+async fn metadata_json(label: &str, content: &str) -> Value {
+    let state = test_state(label).await;
+    let (content_type, body) = multipart_body(content.as_bytes());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse/metadata")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let response = build_router(state).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+/// #3791: the handler walks its own `EntityScanner` and returned a 200 whose
+/// `entity_count` was computed over the bytes before a refusal — with nothing
+/// in the response distinguishing that from a whole file. Asserted through the
+/// HTTP response, not the scanner, because the response is what a client sees.
+#[tokio::test]
+async fn parse_metadata_reports_a_refused_oversized_id() {
+    let json = metadata_json("oversized", FIXTURE_WITH_OVERSIZED_ID).await;
+
+    // The 17th record really is gone: same count as the intact fixture.
+    assert_eq!(json["entity_count"].as_u64().unwrap(), 16);
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 1);
+    assert!(!json["malformed_record_found"].as_bool().unwrap());
+}
+
+/// The other stop, same surface: an unterminated string ends the scan, so the
+/// count covers only the records before it.
+#[tokio::test]
+async fn parse_metadata_reports_a_malformed_record_stop() {
+    let json = metadata_json("malformed", FIXTURE_WITH_UNTERMINATED_STRING).await;
+
+    assert_eq!(
+        json["entity_count"].as_u64().unwrap(),
+        10,
+        "the scan stops at #302, so only the ten records before it are counted"
+    );
+    assert!(json["malformed_record_found"].as_bool().unwrap());
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
+}
+
+/// The other direction: an intact file must report neither, or a client would
+/// learn to ignore both fields.
+#[tokio::test]
+async fn parse_metadata_reports_nothing_on_an_intact_file() {
+    let json = metadata_json("intact", FIXTURE).await;
+
+    assert_eq!(json["entity_count"].as_u64().unwrap(), 16);
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
+    assert!(!json["malformed_record_found"].as_bool().unwrap());
+}

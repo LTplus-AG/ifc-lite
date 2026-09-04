@@ -277,6 +277,10 @@ export interface GeometryWorkerShardResultMessage {
   /** Global starts of records this shard refused above the u32 express-id bound
    * (#3395); `shard-stitch.ts` attributes them. Absent on an older wasm. */
   oversizedIdStarts?: Uint32Array;
+  /** Global start of the record this shard's scan stopped at because a string
+   * or comment never closed (#3790); `shard-stitch.ts` attributes it.
+   * TODO(#3699): the Rust sharded scan returns no such offset yet. */
+  malformedStart?: number;
 }
 
 /**
@@ -1521,7 +1525,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           data: Uint8Array,
           rangeStart: number,
           rangeEnd: number,
-        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array };
+          // `malformedStart` is TODO(#3699) -- not returned by Rust yet.
+        ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
       });
       let shard;
       try {
@@ -1541,6 +1546,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           lengths: shard.lengths,
           classes: shard.classes,
           handoff: shard.handoff, oversizedIdStarts: shard.oversizedIdStarts,
+          malformedStart: shard.malformedStart,
         } as GeometryWorkerShardResultMessage,
         [shard.ids.buffer, shard.starts.buffer, shard.lengths.buffer, shard.classes.buffer, ...(shard.oversizedIdStarts ? [shard.oversizedIdStarts.buffer] : [])],
       );

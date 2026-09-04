@@ -758,6 +758,7 @@ export class GeometryProcessor {
       ids: Uint32Array,
       starts: Uint32Array,
       lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
+      malformedRecordCount?: number, // #3790 scan stopped: 0 or 1
     ) => void,
     /**
      * Explicit wasm asset URL forwarded to the worker pool. See
@@ -837,11 +838,10 @@ export class GeometryProcessor {
         ids: Uint32Array,
         starts: Uint32Array,
         lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
+        malformedRecordCount?: number, // #3790 scan stopped: 0 or 1
       ) => void;
-      /**
-       * Explicit wasm asset URL forwarded to the worker pool.
-       * See `processParallel(...).wasmUrls` for rationale.
-       */
+      /** Explicit wasm asset URL forwarded to the worker pool.
+       * See `processParallel(...).wasmUrls` for rationale. */
       wasmUrls?: { wasm?: string };
       /**
        * Explicit geometry-worker count for A/B tuning (viewer `?geomWorkers=N`).

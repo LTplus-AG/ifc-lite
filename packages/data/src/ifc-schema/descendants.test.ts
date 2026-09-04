@@ -183,3 +183,61 @@ describe('a re-parented entity is not pulled in from another schema', () => {
     expect(expandTypeNamesToDescendants(['IfcElementComponent'], 'IFC4')).toContain('IFCREINFORCINGBAR');
   });
 });
+
+/**
+ * The transitive form of the same misfiling, one level below the node rule (b)
+ * skips.
+ *
+ * Rule (b) never ADDS a name the file's own schema declares. On its own that
+ * is not enough: the walk through a foreign table also has to stop at such a
+ * node when the own schema puts it outside the requested subtree, or the
+ * foreign-only leaves hanging below it come in anyway.
+ *
+ * `IfcTendonConduit` is IFC4X3-only and sits under `IfcReinforcingElement`
+ * there. IFC2X3 declares `IfcReinforcingElement` too, under
+ * `IfcBuildingElement` — nowhere near `IfcElementComponent`. Walking through
+ * the skipped node put `IFCTENDONCONDUIT` in `byType('IfcElementComponent')`
+ * on an IFC2X3 file.
+ *
+ * Verified by measurement rather than by argument: sweeping all 1159 entity
+ * names across the three schema versions, the subtree test changes exactly
+ * this one answer and removes nothing else. The first, cruder form of the test
+ * — comparing declared parents instead of subtree membership — changed 30
+ * answers, including dropping `IFCSLABSTANDARDCASE` from `IfcBuiltElement` on
+ * IFC4X3, which is the headline case this resolver exists for. Both directions
+ * are pinned below.
+ */
+describe('a foreign walk stops at a node the file schema places elsewhere', () => {
+  it('IfcElementComponent on IFC2X3 does not reach IFCTENDONCONDUIT through IfcReinforcingElement', () => {
+    expect(expandTypeNamesToDescendants(['IfcElementComponent'], 'IFC2X3')).not.toContain(
+      'IFCTENDONCONDUIT',
+    );
+  });
+
+  it('but IfcElement on IFC2X3 does, since IFC2X3 really does put it under there', () => {
+    // Anti-vacuity: the name is reachable, and the resolver still finds it by
+    // the route the file's own schema agrees with.
+    expect(expandTypeNamesToDescendants(['IfcElement'], 'IFC2X3')).toContain('IFCTENDONCONDUIT');
+    expect(expandTypeNamesToDescendants(['IfcElementComponent'], 'IFC4X3')).toContain(
+      'IFCTENDONCONDUIT',
+    );
+  });
+
+  it('the rename does not read as a re-parenting: IFC4-only leaves survive on IFC4X3', () => {
+    // Every element moved from IfcBuildingElement to IfcBuiltElement in
+    // IFC4X3. A same-parent test would call that a re-parenting and prune the
+    // whole hierarchy; subtree membership does not.
+    const built = expandTypeNamesToDescendants(['IfcBuiltElement'], 'IFC4X3');
+    expect(built).toContain('IFCSLABSTANDARDCASE');
+    expect(built).toContain('IFCWALLSTANDARDCASE');
+    expect(expandTypeNamesToDescendants(['IfcSlab'], 'IFC4X3')).toContain('IFCSLABSTANDARDCASE');
+  });
+
+  it('a type the file schema does not declare at all keeps the foreign answer whole', () => {
+    // `active` guard: IFC2X3 has no IfcSpatialElement, so it has no opinion
+    // about that subtree and must not prune the table that does declare it.
+    const spatial = expandTypeNamesToDescendants(['IfcSpatialElement'], 'IFC2X3');
+    expect(spatial).toContain('IFCBRIDGE');
+    expect(spatial).toContain('IFCROAD');
+  });
+});

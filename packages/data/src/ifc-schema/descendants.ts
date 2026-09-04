@@ -38,27 +38,21 @@
  *       define AT ALL and that are descendants of the requested type in the
  *       table that does define them — the legacy and newer leaf spellings
  *       (`IFCSLABSTANDARDCASE` on an IFC4X3 file, `IFCFURNITURE` on an IFC2X3
- *       one). A name the file's own schema defines under a different parent is
- *       never added, which is what keeps (b) from re-opening the union's
- *       misfiling;
+ *       one). A name the file's own schema defines is never added, and if it
+ *       defines that name under a DIFFERENT parent the walk does not descend
+ *       through it either — both halves are what keep (b) from re-opening the
+ *       union's misfiling;
  *   (c) plus the two alias relations in `./entity-aliases.js`: the
  *       cross-schema rename equality, and the narrowing for leaves no bundled
  *       table declares.
  */
 
 import { ENTITY_NAME_ALIASES, CROSS_SCHEMA_RENAMES } from './entity-aliases.js';
-import { ENTITIES_IFC2X3 } from './generated/entities-ifc2x3.js';
-import { ENTITIES_IFC4 } from './generated/entities-ifc4.js';
-import { ENTITIES_IFC4X3 } from './generated/entities-ifc4x3.js';
-import type { IfcEntityInfo, IfcSchemaVersion } from './types.js';
-
-const ENTITY_LISTS: Record<IfcSchemaVersion, readonly IfcEntityInfo[]> = {
-  IFC2X3: ENTITIES_IFC2X3,
-  IFC4: ENTITIES_IFC4,
-  IFC4X3: ENTITIES_IFC4X3,
-  // IFC4X3_ADD2 is the addendum-2 release of IFC4X3 — same entity list.
-  IFC4X3_ADD2: ENTITIES_IFC4X3,
-};
+// The same per-version map `getEntities` answers from. Shared rather than
+// re-declared here: a second copy would let a future schema version reach one
+// of the two and give `getEntities` and this resolver different worlds.
+import { ENTITIES_BY_VERSION } from './index.js';
+import type { IfcSchemaVersion } from './types.js';
 
 const ALL_VERSIONS: readonly IfcSchemaVersion[] = ['IFC2X3', 'IFC4', 'IFC4X3'];
 
@@ -77,13 +71,14 @@ function tableFor(v: IfcSchemaVersion): SchemaTable {
   if (cached) return cached;
   const children = new Map<string, string[]>();
   const names = new Set<string>();
-  for (const entity of ENTITY_LISTS[v]) {
-    names.add(entity.name.toUpperCase());
+  for (const entity of ENTITIES_BY_VERSION[v]) {
+    const name = entity.name.toUpperCase();
+    names.add(name);
     if (!entity.parent) continue;
     const parent = entity.parent.toUpperCase();
     const bucket = children.get(parent);
-    if (bucket) bucket.push(entity.name.toUpperCase());
-    else children.set(parent, [entity.name.toUpperCase()]);
+    if (bucket) bucket.push(name);
+    else children.set(parent, [name]);
   }
   const table: SchemaTable = { children, names };
   tableCache.set(v, table);
@@ -133,8 +128,60 @@ function renameGroup(upper: string): string[] {
   return group;
 }
 
-/** Transitive descendants of `seeds` within one schema table, seeds excluded. */
-function descendantsInTable(table: SchemaTable, seeds: readonly string[]): Set<string> {
+/**
+ * `ENTITY_NAME_ALIASES` as UPPERCASE `[leaf, supertype]` rows, uppercased once
+ * at module load rather than on every call. The table is read-only.
+ */
+const ALIAS_ROWS: readonly (readonly [string, string])[] = Object.entries(
+  ENTITY_NAME_ALIASES,
+).map(([leaf, supertype]) => [leaf.toUpperCase(), supertype.toUpperCase()] as const);
+
+/**
+ * The file's own schema's verdict on a foreign table's walk: which names it
+ * declares, and which of them it puts inside the requested subtree.
+ *
+ * `subtree` is the seeds plus their descendants in the OWN table. `active` is
+ * false when the own table declares none of the seeds — it then has no opinion
+ * about this subtree at all, and the table that does declare the requested type
+ * is the only authority, so nothing is pruned. Pruning without that guard cost
+ * `byType('IfcSpatialElement')` on IFC2X3 every `IFCBRIDGE`/`IFCROAD`: IFC2X3
+ * has no `IfcSpatialElement`, so an empty subtree would have read as "own says
+ * no" rather than "own says nothing".
+ */
+interface OwnVerdict {
+  readonly table: SchemaTable;
+  readonly subtree: ReadonlySet<string>;
+  readonly active: boolean;
+}
+
+/**
+ * Transitive descendants of `seeds` within one schema table, seeds excluded.
+ *
+ * `own` is the file's own schema's verdict, passed when `table` is a foreign
+ * one; it is what implements rule (b). A name the own table declares is never
+ * returned — that table is the authority on where it sits — and when the own
+ * table puts it OUTSIDE the requested subtree, the walk does not descend
+ * through it either.
+ *
+ * That second half is not decoration. `IfcTendonConduit` is IFC4X3-only and
+ * sits under `IfcReinforcingElement` there; IFC2X3 declares
+ * `IfcReinforcingElement` under `IfcBuildingElement`, nowhere near
+ * `IfcElementComponent`. Skipping the re-parented node but still walking
+ * through it put `IFCTENDONCONDUIT` in `byType('IfcElementComponent')` on an
+ * IFC2X3 file — the union's misfiling, one level down.
+ *
+ * The test is subtree membership, not same-parent: the IFC4X3 rename moved
+ * every element from `IfcBuildingElement` to `IfcBuiltElement`, so comparing
+ * declared parents reads the whole hierarchy as re-parented and drops
+ * `IFCSLABSTANDARDCASE` from `byType('IfcBuiltElement')` on IFC4X3 — the
+ * headline case this resolver exists for. `IfcSlab` sits under both spellings,
+ * so it is inside the subtree and the walk continues through it.
+ */
+function descendantsInTable(
+  table: SchemaTable,
+  seeds: readonly string[],
+  own?: OwnVerdict,
+): Set<string> {
   const found = new Set<string>();
   const stack = [...seeds];
   const visited = new Set<string>(seeds);
@@ -142,6 +189,12 @@ function descendantsInTable(table: SchemaTable, seeds: readonly string[]): Set<s
     for (const child of table.children.get(stack.pop() as string) ?? []) {
       if (visited.has(child)) continue;
       visited.add(child);
+      if (own?.table.names.has(child)) {
+        // Own declares it, so it is never added here; own's own walk already
+        // returned it if own agrees it belongs. Descend only if own agrees.
+        if (!own.active || own.subtree.has(child)) stack.push(child);
+        continue;
+      }
       found.add(child);
       stack.push(child);
     }
@@ -157,32 +210,66 @@ function descendantsInTable(table: SchemaTable, seeds: readonly string[]): Set<s
  * with `offset`/`limit`, so a traversal-dependent order would shift a caller's
  * page whenever the schema tables were regenerated. Depth-first pop order did
  * exactly that; sorted does not.
+ *
+ * Memoized per (version, type). Three table walks plus a sort of the result is
+ * 0.3 ms for `IfcRoot` on IFC4, and `expandTypeNamesToDescendants` is public
+ * API, so a consumer outside `@ifc-lite/parser` — whose own memo is keyed on
+ * the whole ordered list, and so misses whenever that list is reordered —
+ * would otherwise pay that on every call. The cached array never leaves this
+ * module: the only caller copies names out of it into a fresh list.
  */
-function descendantsOf(type: string, v: IfcSchemaVersion): string[] {
+const descendantCache = new Map<string, readonly string[]>();
+
+/**
+ * Bound on every memo in this resolver's path. The keys are caller-supplied
+ * type names, and the MCP server and the viewer are long-lived processes where
+ * those come from an agent or an SDK script, so an unbounded map grows on
+ * typos and vendor namespaces forever. Clearing wholesale rather than evicting
+ * one entry costs a recompute on the next call and needs no bookkeeping; the
+ * bundled schemas declare ~1160 names, so a real workload never reaches it.
+ */
+const CACHE_LIMIT = 4096;
+
+function descendantsOf(type: string, v: IfcSchemaVersion): readonly string[] {
   const upper = type.toUpperCase();
+  const key = `${v}\u0000${upper}`;
+  const cached = descendantCache.get(key);
+  if (cached) return cached;
+  const computed = computeDescendantsOf(upper, v);
+  if (descendantCache.size >= CACHE_LIMIT) descendantCache.clear();
+  descendantCache.set(key, computed);
+  return computed;
+}
+
+function computeDescendantsOf(upper: string, v: IfcSchemaVersion): string[] {
   const seeds = renameGroup(upper);
   const own = tableFor(v);
 
+  const ownDescendants = descendantsInTable(own, seeds);
   const found = new Set<string>(seeds.slice(1));
-  for (const name of descendantsInTable(own, seeds)) found.add(name);
+  for (const name of ownDescendants) found.add(name);
 
-  // (b) A leaf spelling this schema has no opinion about at all. Guarded on
-  // `own.names`, so a name this schema DOES declare — under whatever parent —
-  // is never pulled in from a version the file is not written in.
+  // (b) A leaf spelling this schema has no opinion about at all. The own
+  // table's verdict is handed to the walk, which is what keeps a name this
+  // schema declares out of the answer, and what stops the walk from descending
+  // through one this schema places outside the requested subtree. See
+  // `descendantsInTable`.
+  const verdict: OwnVerdict = {
+    table: own,
+    subtree: new Set([...seeds, ...ownDescendants]),
+    active: seeds.some((seed) => own.names.has(seed)),
+  };
   for (const other of ALL_VERSIONS) {
     const table = tableFor(other);
     if (table === own) continue;
-    for (const name of descendantsInTable(table, seeds)) {
-      if (!own.names.has(name)) found.add(name);
-    }
+    for (const name of descendantsInTable(table, seeds, verdict)) found.add(name);
   }
 
   // (c) The narrowing: a leaf no bundled table declares hangs off its nearest
   // schema-known supertype. One direction only, so `IfcGeotechnicalStratum`
   // gains `IfcSolidStratum` while `IfcSolidStratum` does not gain its siblings.
-  for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
-    const parent = supertype.toUpperCase();
-    if (parent === upper || found.has(parent)) found.add(leaf.toUpperCase());
+  for (const [leaf, parent] of ALIAS_ROWS) {
+    if (parent === upper || found.has(parent)) found.add(leaf);
   }
 
   found.delete(upper);

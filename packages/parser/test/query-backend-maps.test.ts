@@ -63,6 +63,63 @@ describe('expandTypes', () => {
   });
 });
 
+/**
+ * `schemaVersion` is optional because `expandTypes` is a published export and
+ * requiring it would break `expandTypes(['IfcWall'])` at compile time, which a
+ * bug-fix release must not do. Omitted, it unions the three bundled schemas.
+ *
+ * The union is exactly the misfiling the per-version path exists to avoid, so
+ * these pin the difference in both directions rather than only asserting the
+ * fallback returns something.
+ */
+describe('an omitted schema version falls back to the union', () => {
+  it('is a superset of what every named version answers', () => {
+    // The defining property, and the reason omitting the version is safe for
+    // an existing caller: nothing a per-schema answer contains goes missing.
+    // (Most leaf spellings are already in every per-version answer -- that is
+    // rule (b) doing its job -- so the union's only real addition is the
+    // re-parented names the next case names.)
+    for (const base of ['IfcBuildingElement', 'IfcElement', 'IfcObject', 'IfcSlab']) {
+      const unioned = new Set(expandTypes([base]));
+      for (const version of ['IFC2X3', 'IFC4', 'IFC4X3']) {
+        const named = expandTypes([base], version);
+        expect(named.length, `${base} @ ${version}`).toBeGreaterThan(0);
+        for (const name of named) expect(unioned, `${base} @ ${version}: ${name}`).toContain(name);
+      }
+    }
+  });
+
+  it('and is strictly bigger than at least one of them, so the superset is not an identity', () => {
+    const unioned = expandTypes(['IfcBuildingElement']);
+    expect(unioned.length).toBeGreaterThan(expandTypes(['IfcBuildingElement'], 'IFC4').length);
+  });
+
+  it('and pays for it by misfiling a re-parented entity, which naming the schema does not', () => {
+    // IfcReinforcingBar is an IfcBuildingElement in IFC2X3 and an
+    // IfcElementComponent from IFC4 on. This is the cost the doc comment
+    // warns about, stated as a test so it cannot be mistaken for a bug.
+    expect(expandTypes(['IfcBuildingElement'])).toContain('IFCREINFORCINGBAR');
+    expect(expandTypes(['IfcBuildingElement'], 'IFC4')).not.toContain('IFCREINFORCINGBAR');
+    expect(expandTypes(['IfcBuildingElement'], 'IFC2X3')).toContain('IFCREINFORCINGBAR');
+  });
+
+  it('still gates the IfcRoot branch, so the fallback is not a free-for-all', () => {
+    const rooted = expandTypes(['IfcRoot']);
+    expect(rooted).not.toContain('IFCPROPERTYSET');
+    expect(rooted).not.toContain('IFCRELDEFINESBYPROPERTIES');
+    expect(rooted).toContain('IFCWALL');
+  });
+
+  it('does not share a cache entry with a named version, or with an unknown string', () => {
+    // '' and 'nonsense' resolve to IFC4; only an ABSENT version unions. A key
+    // built with `schemaVersion ?? ''` would have collapsed the first pair.
+    expect(expandTypes(['IfcObject'])).toContain('IFCPROJECT');
+    expect(expandTypes(['IfcObject'], '')).not.toContain('IFCPROJECT');
+    expect(expandTypes(['IfcObject'], 'nonsense')).not.toContain('IFCPROJECT');
+    expect(expandTypes(['IfcObject'])).toContain('IFCPROJECT');
+  });
+});
+
 describe('expandTypes is memoized without leaking its cache', () => {
   it('a repeated call returns an equal but separate array', () => {
     const a = expandTypes(['IfcWall'], 'IFC4');

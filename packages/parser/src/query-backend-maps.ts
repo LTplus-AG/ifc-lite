@@ -64,10 +64,22 @@ type RootBranch = 'object' | 'typeObject' | 'propertyDefinition' | 'relationship
 // `byType('IfcRoot')` that is 294 uncached walks for one query.
 const rootBranchCache = new Map<string, RootBranch>();
 
+/**
+ * Bound on both memos below. Their keys are caller-supplied type names and
+ * type lists, and `byType()` is reached from the MCP server and the viewer,
+ * long-lived processes where those come from an agent or an SDK script — so
+ * an unbounded map grows on typos and vendor namespaces for the life of the
+ * process. Clearing wholesale costs one recompute and needs no bookkeeping;
+ * the bundled schemas declare ~1160 names, so a real workload never reaches
+ * it.
+ */
+const CACHE_LIMIT = 4096;
+
 function rootBranchOf(type: string): RootBranch {
   const cached = rootBranchCache.get(type);
   if (cached !== undefined) return cached;
   const branch = computeRootBranch(type);
+  if (rootBranchCache.size >= CACHE_LIMIT) rootBranchCache.clear();
   rootBranchCache.set(type, branch);
   return branch;
 }
@@ -95,12 +107,24 @@ function computeRootBranch(type: string): RootBranch {
  * that only aliased `*StandardCase`/`*ElementedCase` pairs and silently
  * dropped every abstract-supertype query.
  *
- * `schemaVersion` is required and is the queried model's own
- * `store.schemaVersion`. Descendant sets are not the same across versions --
- * buildingSMART re-parented entities, so `IfcReinforcingBar` is an
- * `IfcBuildingElement` in IFC2X3 and an `IfcElementComponent` in IFC4 -- while
- * the names a FILE contains need not belong to the version its header claims.
- * The resolver reconciles the two; see its module doc for the exact rule.
+ * PASS `schemaVersion`. It is the queried model's own `store.schemaVersion`,
+ * and it is what makes the answer exact. Descendant sets are not the same
+ * across versions -- buildingSMART re-parented entities, so
+ * `IfcReinforcingBar` is an `IfcBuildingElement` in IFC2X3 and an
+ * `IfcElementComponent` in IFC4 -- while the names a FILE contains need not
+ * belong to the version its header claims. The resolver reconciles the two;
+ * see its module doc for the exact rule.
+ *
+ * It is optional only because this function is a published export of
+ * `@ifc-lite/parser` and of `@ifc-lite/mcp/browser`, and requiring it would
+ * stop an existing `expandTypes(['IfcWall'])` compiling -- a major, which a
+ * bug-fix release is not. Omitted, the expansion falls back to the UNION
+ * across the three bundled schemas: a superset that finds every spelling but
+ * cannot tell a re-parented entity from a real subtype, so
+ * `expandTypes(['IfcBuildingElement'])` answers with reinforcing bars that
+ * `expandTypes(['IfcBuildingElement'], 'IFC4')` correctly leaves out. Every
+ * caller in this repository passes the version; a viewer test goes red if one
+ * stops.
  *
  * The expansion does not cross an `IfcRoot` branch. Descending the whole
  * hierarchy from an abstract root turned `byType('IfcRoot')` into "every
@@ -126,13 +150,46 @@ function computeRootBranch(type: string): RootBranch {
  */
 const expandCache = new Map<string, readonly string[]>();
 
-export function expandTypes(types: string[], schemaVersion: string | undefined): string[] {
-  const key = `${schemaVersion ?? ''}\u0000${types.join('\u0000')}`;
+/**
+ * Cache-key stand-in for an omitted version. Not a value `resolveSchemaVersion`
+ * can ever see, so the union answer cannot share an entry with `''` or any
+ * other unrecognized string, which resolve to IFC4 instead.
+ */
+const NO_VERSION_KEY = '\u0001union';
+
+export function expandTypes(types: string[], schemaVersion?: string): string[] {
+  const key = `${schemaVersion ?? NO_VERSION_KEY}\u0000${types.join('\u0000')}`;
   const cached = expandCache.get(key);
   if (cached) return [...cached];
   const result = computeExpandTypes(types, schemaVersion);
+  if (expandCache.size >= CACHE_LIMIT) expandCache.clear();
   expandCache.set(key, result);
   return [...result];
+}
+
+/** The three versions with a bundled table, for the no-version union. */
+const UNION_VERSIONS: readonly string[] = ['IFC2X3', 'IFC4', 'IFC4X3'];
+
+/**
+ * One type's expansion when the caller named no schema: the requested type,
+ * then every descendant ANY bundled schema gives it, sorted.
+ *
+ * Deliberately a superset rather than a guess at a version. A caller who has
+ * not said which schema the file is written in is better served finding a
+ * record that is arguably of the wrong class than silently finding none at
+ * all, which is what picking one table for them would do to the other two.
+ * The sort keeps the order stable across schema-table regeneration, as the
+ * per-version path does.
+ */
+function unionExpansion(type: string): string[] {
+  const self = expandTypeNamesToDescendants([type], UNION_VERSIONS[0] as string)[0] as string;
+  const rest = new Set<string>();
+  for (const version of UNION_VERSIONS) {
+    const expanded = expandTypeNamesToDescendants([type], version);
+    for (let i = 1; i < expanded.length; i++) rest.add(expanded[i] as string);
+  }
+  rest.delete(self);
+  return [self, ...[...rest].sort()];
 }
 
 function computeExpandTypes(types: string[], schemaVersion: string | undefined): string[] {
@@ -140,10 +197,15 @@ function computeExpandTypes(types: string[], schemaVersion: string | undefined):
   const seen = new Set<string>();
   for (const type of types) {
     const branch = rootBranchOf(type);
-    const [self, ...descendants] = expandTypeNamesToDescendants([type], schemaVersion);
-    for (const name of [self as string, ...descendants.filter(
-      (d) => isQueryableObjectType(d) || rootBranchOf(d) === branch,
-    )]) {
+    const expanded =
+      schemaVersion === undefined
+        ? unionExpansion(type)
+        : expandTypeNamesToDescendants([type], schemaVersion);
+    for (let i = 0; i < expanded.length; i++) {
+      const name = expanded[i] as string;
+      // Index 0 is the requested type itself, which is never gated: a caller
+      // who spells out `IfcPropertySet` said what they wanted.
+      if (i > 0 && !isQueryableObjectType(name) && rootBranchOf(name) !== branch) continue;
       if (seen.has(name)) continue;
       seen.add(name);
       out.push(name);

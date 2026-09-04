@@ -95,3 +95,40 @@ export function hasNoRenderableTarget(
   if (requested.length === 0) return false;
   return !resolved.some(hasGeometry);
 }
+
+/**
+ * The same policy for the COLOUR channel, whose input is an id→colour map
+ * rather than a flat id list (`viewer-adapter.ts`'s `colorize`/`colorizeAll`,
+ * and the embed bridge's `SET_COLORS`).
+ *
+ * A colour map cannot just be flattened through `resolvePresentationIds`: each
+ * id carries its own colour, and the expansion has to keep the pairing. Ids
+ * are grouped by colour so the resolver is called once per DISTINCT colour
+ * rather than once per id — a `colorizeAll` painting a whole model by class
+ * typically has thousands of entries and a handful of colours.
+ *
+ * An id the caller named EXPLICITLY always wins over the same id arriving as
+ * some other id's aggregated part, whichever order the groups were in: the raw
+ * entries are re-applied last. Without that, colouring an assembly red and one
+ * of its own parts blue would leave the part red or blue depending on
+ * iteration order.
+ */
+export function resolvePresentationColorMap<C extends readonly number[]>(
+  resolver: ((ids: number[]) => number[]) | undefined,
+  entries: Iterable<readonly [number, C]>,
+): Map<number, C> {
+  const raw = [...entries];
+  const byColor = new Map<string, { color: C; ids: number[] }>();
+  for (const [id, color] of raw) {
+    const key = String(color);
+    const group = byColor.get(key);
+    if (group) group.ids.push(id);
+    else byColor.set(key, { color, ids: [id] });
+  }
+  const out = new Map<number, C>();
+  for (const { color, ids } of byColor.values()) {
+    for (const id of resolvePresentationIds(resolver, ids)) out.set(id, color);
+  }
+  for (const [id, color] of raw) out.set(id, color);
+  return out;
+}

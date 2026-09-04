@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { hasNoRenderableTarget } from './resolvePresentationIds.js';
+import { hasNoRenderableTarget, resolvePresentationColorMap } from './resolvePresentationIds.js';
 
 /** `hasGeometry` stand-in: exactly the ids whose mesh is on screen right now. */
 const rendering = (...ids: number[]) => {
@@ -36,5 +36,47 @@ describe('hasNoRenderableTarget (#3741, the warning gate for #3426)', () => {
 
   it('never fires for an empty request', () => {
     assert.equal(hasNoRenderableTarget([], [], rendering()), false);
+  });
+});
+
+describe('resolvePresentationColorMap (#3338, the colour channel)', () => {
+  const ASSEMBLY = 42;
+  const PART_A = 9001;
+  const PART_B = 9002;
+  const red = [1, 0, 0, 1] as const;
+  const blue = [0, 0, 1, 1] as const;
+  const resolver = (ids: number[]) =>
+    ids.flatMap((id) => (id === ASSEMBLY ? [PART_A, PART_B] : [id]));
+
+  it('carries an assembly colour down to its parts', () => {
+    const out = resolvePresentationColorMap(resolver, [[ASSEMBLY, red]]);
+    assert.deepEqual([...out.entries()].sort((a, b) => a[0] - b[0]), [
+      [ASSEMBLY, red],
+      [PART_A, red],
+      [PART_B, red],
+    ]);
+  });
+
+  it('lets an explicitly named id keep its own colour whichever order it arrives in', () => {
+    const partFirst = resolvePresentationColorMap(resolver, [[PART_B, blue], [ASSEMBLY, red]]);
+    const partLast = resolvePresentationColorMap(resolver, [[ASSEMBLY, red], [PART_B, blue]]);
+    assert.deepEqual(partFirst.get(PART_B), blue, 'explicit colour survives an earlier position');
+    assert.deepEqual(partLast.get(PART_B), blue, 'and a later one');
+    assert.deepEqual(partFirst.get(PART_A), red, 'the part reached only via the assembly stays red');
+  });
+
+  it('groups by colour so the resolver is called once per distinct colour, not once per id', () => {
+    const calls: number[][] = [];
+    const counting = (ids: number[]) => {
+      calls.push([...ids]);
+      return resolver(ids);
+    };
+    resolvePresentationColorMap(counting, [[1, red], [2, red], [3, blue]]);
+    assert.deepEqual(calls, [[1, 2], [3]]);
+  });
+
+  it('without a resolver, keeps every raw pairing rather than dropping the call', () => {
+    const out = resolvePresentationColorMap(undefined, [[ASSEMBLY, red]]);
+    assert.deepEqual([...out.entries()], [[ASSEMBLY, red]]);
   });
 });

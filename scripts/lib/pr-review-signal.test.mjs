@@ -102,10 +102,12 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Docs checks (docs-only PRs)',
     'AGENTS.md ratchet',
     'Build + WASM + Rust + Node',
+    // #3878: the two CSG accept gates are feature builds nothing else compiles.
+    'CSG accept gates (feature builds)',
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 18);
+  assert.equal(names.length, 19);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

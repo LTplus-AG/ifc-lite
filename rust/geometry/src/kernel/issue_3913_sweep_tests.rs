@@ -33,18 +33,18 @@
 //!   answer #3913's "does a `dz` sign correlate with tearing" question
 //!   directly, instead of only being able to speculate about the untested
 //!   sign.
-//! - **3 operand orderings**: `three_boxes_at` returns `[a, b, c]` in a fixed
+//! - **6 operand orderings**: `three_boxes_at` returns `[a, b, c]` in a fixed
 //!   spatial arrangement; `ORDERINGS` permutes which mesh `union_many` sees
 //!   first/second/third. The pinned #3353 fixture checks all 6 permutations
-//!   (`union_many` has no privileged operand); this sweep checks 3 -
-//!   `[A,B,C]` (identity), `[C,B,A]` (full reversal), and `[B,C,A]` (a
-//!   rotation) - to keep the total at #3913's 441 rather than 882, while
-//!   still covering "forward", "reversed", and "rotated" as three distinct
-//!   shapes (`promote_operands_mutually` walks operands in index order per
+//!   and so does this sweep: `[A,B,C]` (identity), `[A,C,B]`, `[B,A,C]`,
+//!   `[B,C,A]`, `[C,A,B]`, and `[C,B,A]` (full reversal). The full set
+//!   answers whether the #3912 weld's observed `BCA => 0` is genuinely special
+//!   or an artefact of sampling only 3 of 6.
+//!   (`promote_operands_mutually` walks operands in index order per
 //!   #3912's PR description, so which mesh is index 0 is a plausible axis of
 //!   asymmetry, not an arbitrary choice).
 //!
-//! 7 x 7 x 3 x 3 = 441.
+//! 7 x 7 x 3 x 6 = 882.
 //!
 //! ## Determinism
 //!
@@ -248,11 +248,17 @@ const CORNER_OFFSETS: [f64; 7] = [0.1, 0.2, 0.35, 0.4, 0.5, 0.65, 0.8];
 const DZ_VALUES: [f64; 3] = [0.0, SG, -SG];
 const DZ_LABELS: [&str; 3] = ["flush", "+1snap", "-1snap"];
 
-/// 3 of the 6 operand-index permutations `union_many` can see: identity,
-/// full reversal, and a rotation. See the module doc for why 3 (not the
-/// pinned fixture's 6) keeps the sweep at #3913's 441.
-const ORDERINGS: [[usize; 3]; 3] = [[0, 1, 2], [2, 1, 0], [1, 2, 0]];
-const ORDERING_LABELS: [&str; 3] = ["ABC", "CBA", "BCA"];
+/// All 6 permutations of the three operands `union_many` can see, in
+/// standard permutation order. See the module doc.
+const ORDERINGS: [[usize; 3]; 6] = [
+    [0, 1, 2], // ABC
+    [0, 2, 1], // ACB
+    [1, 0, 2], // BAC
+    [1, 2, 0], // BCA
+    [2, 0, 1], // CAB
+    [2, 1, 0], // CBA
+];
+const ORDERING_LABELS: [&str; 6] = ["ABC", "ACB", "BAC", "BCA", "CAB", "CBA"];
 
 /// One sweep configuration's verdict.
 struct Verdict {
@@ -264,13 +270,13 @@ struct Verdict {
     detail: String,
 }
 
-/// Runs the full 441-configuration sweep and returns every verdict, in
+/// Runs the full 882-configuration sweep and returns every verdict, in
 /// deterministic enumeration order (bx outer, by, dz, ordering inner).
 /// Shared by the CI gate test and can be driven standalone (e.g. from a
 /// `#[test] #[ignore]` or a future `examples/` binary) to print just the
 /// torn subset.
 fn run_sweep() -> Vec<Verdict> {
-    let mut out = Vec::with_capacity(441);
+    let mut out = Vec::with_capacity(882);
     for (bx_idx, &bx) in CORNER_OFFSETS.iter().enumerate() {
         for (by_idx, &by) in CORNER_OFFSETS.iter().enumerate() {
             for (dz_idx, &dz) in DZ_VALUES.iter().enumerate() {
@@ -301,30 +307,30 @@ fn run_sweep() -> Vec<Verdict> {
 }
 
 /// Regression ceiling recorded from a real run of `run_sweep()` on this
-/// commit: `249 / 441` torn, measured via `cargo test -p ifc-lite-geometry
-/// --lib mesh_bridge::issue_3913_sweep_tests -- --nocapture` on this branch
-/// (based on `upstream/main`, where `union_many` has NO N-ary weld — #3912,
-/// the weld, is a separate unmerged PR). All 249 torn configurations have
-/// `dz != 0` (the flush control never tears) and the count is IDENTICAL
-/// across all 3 operand orderings (83 each) — see the PR body / issue #3913
-/// comment for the full breakdown. A future weld landing in `union_many`
-/// should only ever LOWER this count; this gate exists so it can never rise
-/// again unnoticed. Update this constant (down, with the new measured count
-/// quoted in the same commit) whenever a fix intentionally changes the
-/// sweep's outcome; never raise it to force a pass.
-const KNOWN_TORN_CEILING: usize = 249;
+/// commit: `498 / 882` torn, measured via `cargo test -p ifc-lite-geometry
+/// --lib mesh_bridge::issue_3913_sweep_tests -- --nocapture` on upstream/main
+/// (where `union_many` has NO N-ary weld — #3912, the weld, is a separate
+/// unmerged PR), extended to all 6 operand orderings. All 498 torn configurations
+/// have `dz != 0` (the flush control never tears). A future weld landing in
+/// `union_many` should only ever LOWER this count; this gate exists so it can
+/// never rise again unnoticed. Update this constant (down, with the new
+/// measured count quoted in the same commit) whenever a fix intentionally
+/// changes the sweep's outcome; never raise it to force a pass.
+const KNOWN_TORN_CEILING: usize = 498;
 
 /// The primary #3913 deliverable: a committed, deterministic, CI-run sweep
-/// over the exact 441-configuration shape (7x7 corner grid x 3 dz x 3
-/// orderings) #3913 measured with an uncommitted script. Reports how many of
-/// the 441 configurations tear, breaks the torn set down by `dz` sign and by
+/// over the exact 882-configuration shape (7x7 corner grid x 3 dz x 6
+/// orderings) #3913 measured with an uncommitted script (extended from 3 to
+/// all 6 permutations to answer whether the #3912 weld's `BCA => 0` is
+/// genuinely special or an artefact). Reports how many of the 882
+/// configurations tear, breaks the torn set down by `dz` sign and by
 /// operand ordering (#3913's suggested characterisation axes), and asserts
 /// the count has not REGRESSED past `KNOWN_TORN_CEILING` - not that it is
 /// zero, since a fix is not required and #3913 documents this residual as a
 /// known, currently-unfixed defect.
 ///
-/// Not `#[ignore]`d: measured locally at 441 `union_many` + consolidate
-/// calls over 3 twelve-triangle boxes each, well under a second total wall
+/// Not `#[ignore]`d: measured locally at 882 `union_many` + consolidate
+/// calls over 3 twelve-triangle boxes each, taking ~2.6 seconds total wall
 /// time (`cargo test -p ifc-lite-geometry --lib
 /// kernel::issue_3913_sweep_tests -- --nocapture`), so it runs on every
 /// `cargo test -p ifc-lite-geometry` / `cargo test --workspace` like any
@@ -332,7 +338,7 @@ const KNOWN_TORN_CEILING: usize = 249;
 #[test]
 fn union_many_nary_sweep_regression_gate() {
     let verdicts = run_sweep();
-    assert_eq!(verdicts.len(), 441, "sweep must enumerate exactly 441 configurations");
+    assert_eq!(verdicts.len(), 882, "sweep must enumerate exactly 882 configurations");
 
     let torn: Vec<&Verdict> = verdicts.iter().filter(|v| v.torn).collect();
 
@@ -342,7 +348,7 @@ fn union_many_nary_sweep_regression_gate() {
         by_dz[v.dz_idx] += 1;
     }
     // Characterisation: torn count broken down by operand ordering.
-    let mut by_order = [0usize; 3];
+    let mut by_order = [0usize; 6];
     for v in &torn {
         by_order[v.order_idx] += 1;
     }
@@ -350,11 +356,13 @@ fn union_many_nary_sweep_regression_gate() {
     let mut report = format!(
         "issue #3913 union_many N-ary sweep: {} / {} configurations torn\n\
          by dz:      {}={:<4} {}={:<4} {}={}\n\
-         by order:   {}={:<4} {}={:<4} {}={}\n",
+         by order:   {}={:<4} {}={:<4} {}={:<4} {}={:<4} {}={:<4} {}={}\n",
         torn.len(),
         verdicts.len(),
         DZ_LABELS[0], by_dz[0], DZ_LABELS[1], by_dz[1], DZ_LABELS[2], by_dz[2],
-        ORDERING_LABELS[0], by_order[0], ORDERING_LABELS[1], by_order[1], ORDERING_LABELS[2], by_order[2],
+        ORDERING_LABELS[0], by_order[0], ORDERING_LABELS[1], by_order[1],
+        ORDERING_LABELS[2], by_order[2], ORDERING_LABELS[3], by_order[3],
+        ORDERING_LABELS[4], by_order[4], ORDERING_LABELS[5], by_order[5],
     );
     for v in &torn {
         report.push_str(&format!(
@@ -370,7 +378,7 @@ fn union_many_nary_sweep_regression_gate() {
 
     assert!(
         torn.len() <= KNOWN_TORN_CEILING,
-        "{report}\n{} of 441 configurations tore, exceeding the recorded ceiling of {} \
+        "{report}\n{} of 882 configurations tore, exceeding the recorded ceiling of {} \
          (issue #3913) — this is a REGRESSION, not the known residual. Do not raise \
          KNOWN_TORN_CEILING to force a pass; find what changed.",
         torn.len(),

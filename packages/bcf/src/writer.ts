@@ -861,10 +861,18 @@ function writeDocumentReference(
   // one topic can name the same document, and one document can appear under
   // two topics. The result is written back onto `docRef` so the in-memory
   // project agrees with the file rather than reporting no guid at all.
+  //
+  // The "document pointed at" is read in the SAME precedence the 3.0 body
+  // below uses -- `documentGuid` first, then the url. Seeding from the url
+  // alone left every internal reference seeded on the empty string, so its
+  // guid was a function of the topic and the position only and two references
+  // naming different documents at one position collided.
   const guid =
     version === '3.0'
       ? docRef.guid ||
-        uuidFromSeed(`${topicGuid}|${docRef.url ?? docRef.referencedDocument ?? ''}|${index}`)
+        uuidFromSeed(
+          `${topicGuid}|${docRef.documentGuid ?? docRef.url ?? docRef.referencedDocument ?? ''}|${index}`
+        )
       : docRef.guid;
   if (version === '3.0' && !docRef.guid) docRef.guid = guid;
   const guidAttr = guid ? ` Guid="${escapeXml(guid)}"` : '';

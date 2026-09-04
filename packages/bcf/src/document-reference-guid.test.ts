@@ -206,6 +206,26 @@ describe('DocumentReference/@Guid', () => {
   });
 
   /**
+   * A 3.0 reference can point at its document with `DocumentGuid` instead of a
+   * `Url` -- the writer's own body prefers it -- so the seed has to read the
+   * same field. Seeding from `url ?? referencedDocument ?? ''` alone leaves
+   * every internal reference seeded on the empty string, and then the guid is
+   * a function of the topic and the position only: two references naming
+   * DIFFERENT documents at the same position land on the same identifier.
+   */
+  it('separates references that differ only in documentGuid', async () => {
+    const guidOf = (xml: string) => /<DocumentReference Guid="([^"]+)"/.exec(xml)![1];
+    const internal = (documentGuid: string): BCFDocumentReference => ({
+      isExternal: false,
+      documentGuid,
+    });
+
+    const a = guidOf(await markupOf(projectWith('3.0', [internal('55555555-5555-4555-8555-555555555555')])));
+    const b = guidOf(await markupOf(projectWith('3.0', [internal('66666666-6666-4666-8666-666666666666')])));
+    expect(a).not.toBe(b);
+  });
+
+  /**
    * The writer stores what it wrote back on the object, so the in-memory
    * project is not left claiming a reference has no guid while the file on
    * disk says otherwise.

@@ -663,6 +663,38 @@ test('a regex containing an unbalanced paren still does not corrupt the call it 
   assert.deepEqual(unprotectedNames(src), ['next']);
 });
 
+test('a regex opening right after an arrow (=>) is not read as division', () => {
+  // #3856's `document-reference-guid.test.ts` shape: a one-line arrow whose
+  // body IS a regex literal. `>` was absent from the regex-start heuristic, so
+  // the `/` was read as division, the `"` in the pattern opened a phantom
+  // string that ran to the next `"` fifteen lines later, and the call sites in
+  // between vanished while the enclosing `describe` and `it` became unparsable.
+  const src = [
+    "describe('suite', () => {",
+    "  it('arrow regex', () => {",
+    '    const line = (xml) => /<Ref Guid="[^"]+"/.exec(xml)[0];',
+    '    expect(line(a)).toBe(line(b));',
+    '  });',
+    "  it('after', () => { doWork(); });",
+    '});',
+  ].join('\n');
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['arrow regex', 'after']);
+});
+
+// `<` is NOT a regex-starter here even though `a < /re/` is legal JS: in a
+// `.test.tsx` a JSX closing tag puts `/` straight after `<`, and treating that
+// as a regex opening runs it to the next `/` on the line, swallowing whatever
+// quote sits between. That costs a real, common shape to buy a contrived one.
+test('a JSX closing tag is not read as a regex opening', () => {
+  const src = [
+    "it('a', () => { render(<div>x</div>); expect(u).toBe('/p'); });",
+    "it('b', () => { doWork(); });",
+  ].join('\n');
+  assert.deepEqual(findUnparsedCallSites(src), []);
+  assert.deepEqual(auditSource(src).map((r) => r.name), ['a', 'b']);
+});
+
 test('a slash that is division after a string literal is not read as a regex opening', () => {
   // A blanked string is indistinguishable from whitespace, so without
   // tracking where the literal ended the `=` before it would make this `/`

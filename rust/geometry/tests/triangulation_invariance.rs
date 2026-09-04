@@ -523,7 +523,6 @@ fn volume_cm3(mesh: &Mesh) -> i64 {
 /// metres above the walls' top edge, so the surface carries a slit of that
 /// width all the way round. The one shape that separates the census's
 /// watertightness reading from the closure `mesh_volume` actually needs.
-#[cfg(test)]
 fn cracked_cube(crack: f32) -> Mesh {
     let base = [[0.0f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
     let mut positions: Vec<f32> = Vec::new();
@@ -717,7 +716,9 @@ fn a_bless_refuses_a_corrupt_golden_instead_of_treating_it_as_empty() {
     let _ = std::fs::remove_file(&path);
 
     for (mode, outcome) in [("measuring", measuring), ("blessing", blessing)] {
-        let err = outcome.expect_err("a corrupt golden must be fatal in {mode} mode");
+        let Err(err) = outcome else {
+            panic!("a corrupt golden must be fatal in {mode} mode");
+        };
         let text = err.downcast_ref::<String>().cloned().unwrap_or_default();
         assert!(text.contains("is CORRUPT, not merely on an older schema"), "{mode}: {text}");
         assert!(text.contains("bad volume"), "{mode}: {text}");
@@ -1384,16 +1385,6 @@ fn unit_cube() -> Mesh {
     m
 }
 
-/// [`unit_cube`] with one existing face triangle re-emitted AND its reverse.
-///
-/// Every position is already in the mesh, so this adds no boundary at all: the
-/// three affected edges go from 1 forward / 1 reverse to 2 forward / 2 reverse.
-/// That is the exact shape the signed balance cancels to zero on.
-///
-/// ONE fixture rather than a copy per test, because the six indices are what
-/// makes it a doubling rather than a hole: a copy that drifted would leave the
-/// superset test below asserting `strict >= open` over some other mesh, and
-/// passing.
 /// `n` disjoint doubled sheets: one triangle and its reverse, side by side.
 ///
 /// The shape the volume column cannot read (#3422). The signed balance
@@ -1446,6 +1437,16 @@ fn a_watertight_host_reading_zero_volume_is_not_re_tessellated_when_it_shrinks()
     assert!(reasons.contains("triangles 4 -> 2 (geometry lost)"), "{reasons}");
 }
 
+/// [`unit_cube`] with one existing face triangle re-emitted AND its reverse.
+///
+/// Every position is already in the mesh, so this adds no boundary at all: the
+/// three affected edges go from 1 forward / 1 reverse to 2 forward / 2 reverse.
+/// That is the exact shape the signed balance cancels to zero on.
+///
+/// ONE fixture rather than a copy per test, because the six indices are what
+/// makes it a doubling rather than a hole: a copy that drifted would leave the
+/// superset test below asserting `strict >= open` over some other mesh, and
+/// passing.
 fn doubled_face_cube() -> Mesh {
     let mut m = unit_cube();
     m.indices.extend_from_slice(&[0, 3, 2, 0, 2, 3]);

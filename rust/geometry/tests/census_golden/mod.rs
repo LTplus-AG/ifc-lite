@@ -916,11 +916,14 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         // re-tessellation. Under, because both are "review, then re-bless"
         // verdicts and a relabel changes what the volume is a volume OF; above,
         // because a shrink at unchanged volume is the friendly reading and a
-        // shrink with the volume moving is not. The two lists are exclusive by
-        // construction today — `retessellated` fires on a torn host, where
-        // there is no volume, or on a watertight one at EQUAL volume — but the
-        // order is still stated so that adding a route does not decide it by
-        // accident.
+        // shrink with the volume moving is not. The two lists are NOT
+        // exclusive, and the order is what decides between them: a SIGN FLIP at
+        // equal magnitude fills both, since `volume_moved` is read on the
+        // signed integer and the shrink's routing on the magnitude, so
+        // `55000 -> -55000` with fewer triangles is "winding inverted" AND
+        // "enclosed volume unchanged". Filing it as a volume move is the right
+        // answer — the re-winding is the bigger news — and the re-tessellation
+        // reason rides along in the same text.
         if !c.worse_counts.is_empty() {
             out.regressed.push(delta(
                 [
@@ -2505,6 +2508,13 @@ mod tests {
         let mut retessellated = 0usize;
         let mut improved = 0usize;
         let mut unchanged = 0usize;
+        // The expected bucket counts when exactly bucket `i` fired. Captures
+        // nothing, so it is built once rather than per pair.
+        let only = |i: usize| {
+            let mut e = [0usize; 5];
+            e[i] = 1;
+            e
+        };
         for g in &vs {
             for r in &vs {
                 let c = classify(g, r);
@@ -2521,11 +2531,6 @@ mod tests {
                     d.retessellated.len(),
                     d.improved.len(),
                 ];
-                let only = |i: usize| {
-                    let mut e = [0usize; 5];
-                    e[i] = 1;
-                    e
-                };
                 assert!(d.added.is_empty() && d.missing.is_empty(), "{g:?} -> {r:?}");
                 if !c.worse_counts.is_empty() {
                     assert_eq!(got, only(0), "a worsened count must regress: {g:?} -> {r:?}");

@@ -126,6 +126,10 @@ struct ParserState<'a> {
     entities_scanned: usize,
     total_entities: usize,
     triangles_generated: usize,
+    /// Whether [`Self::report_scan_once`] has already fired. The scan is
+    /// reported at whichever comes first: the end of the walk, or the state
+    /// being dropped under a consumer that stopped early.
+    scan_reported: bool,
 }
 
 impl<'a> ParserState<'a> {
@@ -140,7 +144,35 @@ impl<'a> ParserState<'a> {
             entities_scanned: 0,
             total_entities: 0,
             triangles_generated: 0,
+            scan_reported: false,
         }
+    }
+
+    /// Report what the scan refused or stopped on, at most once.
+    ///
+    /// `None` from `next_entity` does not only mean "the file ended": the
+    /// scanner skips a record whose instance name does not fit `u32` (#3395)
+    /// and stops the whole scan at a record with no terminator (#3695).
+    /// Either way this stream is short of what the file declares, so say so
+    /// — the same one-line call every other whole-file walk in this
+    /// workspace makes (`columnar_index.rs`, `decoder.rs`,
+    /// `processor/mod.rs`).
+    ///
+    /// Called from both the `Completed` branch and [`Drop`], because a
+    /// consumer is free to stop polling early (`take`, `break`, a dropped
+    /// future) and a refusal the scanner ALREADY recorded would otherwise
+    /// die with the stream — silence for exactly the reader who saw the
+    /// fewest entities. The flag makes the second call a no-op, so the two
+    /// paths cannot double-report (#3791).
+    fn report_scan_once(&mut self) {
+        if self.scan_reported {
+            return;
+        }
+        self.scan_reported = true;
+        report_scan_diagnostics(
+            self.scanner.skipped_oversized_ids(),
+            self.scanner.malformed_record_start().is_some(),
+        );
     }
 
     fn next_event(&mut self) -> Option<ParseEvent> {
@@ -165,21 +197,11 @@ impl<'a> ParserState<'a> {
         loop {
             let Some((id, type_name, start, _end)) = self.scanner.next_entity() else {
                 // No more entities - emit Completed event and end stream.
-                //
-                // `None` here means one of two things, and only one of them is
-                // "the file ended": the scanner also stops on a record with no
-                // terminator (#3695), and it silently skips one whose instance
-                // name does not fit `u32` (#3395). Either way this stream is
-                // short of what the file declares while `Completed` still
-                // reads like a clean finish, so report both before ending —
-                // the same one-line call every other whole-file walk in this
-                // workspace makes (`columnar_index.rs`, `decoder.rs`,
-                // `processor/mod.rs`). Runs exactly once: the `completed`
-                // guard above returns `None` on every later poll (#3791).
-                report_scan_diagnostics(
-                    self.scanner.skipped_oversized_ids(),
-                    self.scanner.malformed_record_start().is_some(),
-                );
+                // `Completed` reads like a clean finish even when the scan
+                // came back short, so report before ending. See
+                // `report_scan_once` for what "short" covers and why the
+                // `Drop` path shares this call (#3791).
+                self.report_scan_once();
                 self.completed = true;
                 let duration_ms = get_timestamp() - self.start_time;
                 return Some(ParseEvent::Completed {
@@ -230,6 +252,19 @@ impl<'a> ParserState<'a> {
 
             return Some(event);
         }
+    }
+}
+
+/// Report the scan even when the consumer never asked for `Completed`.
+///
+/// `parse_stream` hands back a lazy stream, so "stop reading" is a normal,
+/// supported thing for a caller to do (`take`, a `break`, a cancelled task) —
+/// and it is the caller who then sees the FEWEST entities. Reporting only on
+/// the `Completed` branch would stay silent for exactly that reader while
+/// reporting to the one who read everything (#3791).
+impl Drop for ParserState<'_> {
+    fn drop(&mut self) {
+        self.report_scan_once();
     }
 }
 

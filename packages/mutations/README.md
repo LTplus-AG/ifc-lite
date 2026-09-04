@@ -207,8 +207,17 @@ import { PropertyValueType } from '@ifc-lite/data';
 
 const engine = new BulkQueryEngine(store.entities, view);
 
+// The same query the execute example above runs.
 const bulkQuery: BulkQuery = {
-  select: { propertyFilters: [{ propName: 'IsExternal', operator: '=', value: true }] },
+  select: {
+    entityTypes: [/* IfcWall enum value */],
+    propertyFilters: [{
+      psetName: 'Pset_WallCommon',
+      propName: 'IsExternal',
+      operator: '=',
+      value: true,
+    }],
+  },
   action: {
     type: 'SET_PROPERTY',
     psetName: 'Pset_WallCommon',

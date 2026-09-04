@@ -813,11 +813,8 @@ pub fn process_geometry_streaming_filtered_with_options(
         }
     }
 
-    // The scan just refused every record whose instance name is wider than
-    // `u32` (#3395). This is the native/server load's only whole-file walk, so
-    // those records are simply not in the result — say so rather than returning
-    // a model that is short by a count nobody read.
-    ifc_lite_core::report_oversized_ids(scanner.skipped_oversized_ids());
+    // The whole-file scan: refused ids (#3395) + a malformed stop (#3695).
+    ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     // #957: synthesize render jobs for orphan type-product geometry — a
     // RepresentationMap on an IfcXxxType that no IfcMappedItem instantiates.

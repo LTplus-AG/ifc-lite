@@ -79,7 +79,7 @@ pub fn scan_shard_classified(
 /// and delegates here, so there is one loop, not two.
 ///
 /// Offsets rather than a count, for the reason spelled out on
-/// [`scan_shard_with_refusals`](crate::scan_shard_with_refusals): a shard that
+/// [`scan_shard_with_diagnostics`](crate::scan_shard_with_diagnostics): a shard that
 /// starts inside a quoted value refuses text the file never declared, so only
 /// the host's stitch — which knows where this shard's retained region begins
 /// — can tell a real refusal from an artefact of where the shard started.

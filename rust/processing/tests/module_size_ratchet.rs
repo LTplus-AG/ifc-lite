@@ -57,7 +57,7 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// would rewrite the digest and fail CI for no reason.
 const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
     ("apps/server", 12409080334009393247),
-    ("rust/core", 7194159970789730787),
+    ("rust/core", 218310759456605933),
     ("rust/export", 15791359419451037914),
     ("rust/geometry", 2973351381616537576),
     ("rust/processing", 7633784028779437211),

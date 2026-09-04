@@ -7,6 +7,10 @@
 //! Independent of the nom [`tokenizer`](super::tokenizer): does its own
 //! hand-rolled, quote- and comment-aware parsing without building [`Token`]s.
 
+#[path = "scanner_header.rs"]
+mod scanner_header;
+use scanner_header::data_section_start;
+
 /// Fast entity scanner over raw IFC bytes without full parsing.
 /// O(n) performance for finding entities by type
 /// Uses memchr for SIMD-accelerated byte searching
@@ -20,6 +24,8 @@ pub struct EntityScanner<'a> {
     /// [`Self::skipped_oversized_id_starts`]. It never allocates on a file
     /// with nothing to refuse, which is every real file.
     skipped_oversized_id_starts: Vec<usize>,
+    /// See [`Self::malformed_record_start`] for what this points at.
+    malformed_record_start: Option<usize>,
 }
 
 impl<'a> EntityScanner<'a> {
@@ -38,6 +44,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: data_section_start(bytes),
             skipped_oversized_id_starts: Vec::new(),
+            malformed_record_start: None,
         }
     }
 
@@ -61,6 +68,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: clamped,
             skipped_oversized_id_starts: Vec::new(),
+            malformed_record_start: None,
         }
     }
 
@@ -97,6 +105,23 @@ impl<'a> EntityScanner<'a> {
     /// retained from that shard (issue #3395/#3430).
     pub fn skipped_oversized_id_starts(&self) -> &[usize] {
         &self.skipped_oversized_id_starts
+    }
+
+    /// The byte offset that stopped this scan because no terminator was
+    /// found, or `None` otherwise: a record's `line_start` (its `#`) when
+    /// [`find_entity_end`](Self::find_entity_end) fails, or the `/` of an
+    /// unterminated comment found BETWEEN records (no record to name yet).
+    /// A whole-file scan needs only `is_some()`; a SHARDED scan needs the
+    /// offset, for the reason [`Self::skipped_oversized_id_starts`] does.
+    pub fn malformed_record_start(&self) -> Option<usize> {
+        self.malformed_record_start
+    }
+
+    /// Record `at` as this scan's stop point, the first time only.
+    fn mark_malformed(&mut self, at: usize) {
+        if self.malformed_record_start.is_none() {
+            self.malformed_record_start = Some(at);
+        }
     }
 
     /// Scan for the next entity
@@ -152,13 +177,18 @@ impl<'a> EntityScanner<'a> {
                     // past `*/`; if not, it's a STEP arithmetic '/' inside a
                     // value list (rare; just step past it).
                     if candidate + 1 < len && bytes[candidate + 1] == b'*' {
-                        // An unterminated `/*` here means corrupt input.
-                        // `skip_step_comment` refuses (returns `None`) rather
-                        // than silently consuming the rest of the file — see
-                        // its doc comment for why that's the right call for a
-                        // scanner (issue #3303).
-                        self.position = super::lexical::skip_step_comment(bytes, candidate)?;
-                        continue;
+                        // An unterminated `/*` means corrupt input (#3303) —
+                        // same "no resume point" shape as `find_entity_end`.
+                        match super::lexical::skip_step_comment(bytes, candidate) {
+                            Some(next_pos) => {
+                                self.position = next_pos;
+                                continue;
+                            }
+                            None => {
+                                self.mark_malformed(candidate);
+                                return None;
+                            }
+                        }
                     }
                     // Lone '/' — not a comment. Skip past.
                     self.position = candidate + 1;
@@ -194,7 +224,15 @@ impl<'a> EntityScanner<'a> {
             // Find the end of the entity (semicolon) while respecting quoted strings
             // IFC strings use single quotes and can contain semicolons
             let line_content = &bytes[line_start..];
-            let end_offset = self.find_entity_end(line_content)?;
+            let end_offset = match self.find_entity_end(line_content) {
+                Some(o) => o,
+                None => {
+                    // No terminator found (see `find_entity_end`'s doc
+                    // comment) — record and stop, per `tokenizer.ts`.
+                    self.mark_malformed(line_start);
+                    return None;
+                }
+            };
             let line_end = line_start + end_offset + 1;
 
             // Parse entity ID — digit range already validated in the candidate loop.
@@ -384,6 +422,7 @@ impl<'a> EntityScanner<'a> {
     pub fn reset(&mut self) {
         self.position = data_section_start(self.bytes);
         self.skipped_oversized_id_starts.clear();
+        self.malformed_record_start = None;
     }
 
     /// Fast check if attribute at given index is non-null (not '$')
@@ -511,59 +550,6 @@ where
     T: AsRef<[u8]> + ?Sized,
 {
     EntityScanner::new(content).count()
-}
-
-/// Locate the byte offset of the first character after `DATA;` (skipping the
-/// STEP HEADER section). Returns 0 if the marker isn't found — partial files
-/// without a HEADER still scan from the top.
-///
-/// Scanning the HEADER for entities is unsafe: the HEADER is a free-form
-/// STEP record that legally contains arbitrary characters inside quoted
-/// strings (filenames, descriptions). CATIA emits `FILE_NAME('…\X0\2#.ifc'…)`,
-/// and a tokenizer that anchors on `#` will latch onto the in-string `#`,
-/// flip `find_entity_end`'s quote parity, and drop the rest of the file.
-/// See issue #654.
-///
-/// Quote-aware: the marker is only matched outside `'…'` strings, since a
-/// HEADER field could legally contain the literal text `DATA;` in a
-/// description or filename. Escaped single quotes (`''`) are treated as a
-/// pair of in-string characters per ISO 10303-21.
-fn data_section_start(bytes: &[u8]) -> usize {
-    const MARKER: &[u8] = b"DATA;";
-    let len = bytes.len();
-    if len < MARKER.len() {
-        return 0;
-    }
-    // Cap the header scan. Real-world headers are <2 KB; an unbounded scan
-    // here would defeat the point of an O(1)-up-front fix on giant files
-    // that legitimately lack a HEADER section.
-    let limit = len.min(1 << 18); // 256 KB
-    let mut pos = 0;
-    let mut in_string = false;
-    while pos < limit {
-        let b = bytes[pos];
-        if in_string {
-            if b == b'\'' {
-                if pos + 1 < limit && bytes[pos + 1] == b'\'' {
-                    pos += 2; // escaped quote
-                    continue;
-                }
-                in_string = false;
-            }
-            pos += 1;
-            continue;
-        }
-        if b == b'\'' {
-            in_string = true;
-            pos += 1;
-            continue;
-        }
-        if b == b'D' && pos + MARKER.len() <= len && &bytes[pos..pos + MARKER.len()] == MARKER {
-            return pos + MARKER.len();
-        }
-        pos += 1;
-    }
-    0
 }
 
 #[cfg(test)]

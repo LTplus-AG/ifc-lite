@@ -310,7 +310,10 @@ fn a_commented_out_record_is_still_not_a_record() {
 
 /// An unterminated comment inside a record leaves it with no terminator, so
 /// the record is refused and the scan ends — the same answer
-/// `skip_step_comment` gives, rather than inventing an end.
+/// `skip_step_comment` gives, rather than inventing an end. It must also be
+/// reported (see `unterminated_comment_inside_a_record_is_reported` below) —
+/// ending silently was the bug this scanner shared with the pre-#3695 TS
+/// tokenizer.
 #[test]
 fn unterminated_comment_inside_a_record_ends_the_scan() {
     let content = data_file(&["#11=IFCWALL('a', /* never closes $);"]);
@@ -428,4 +431,143 @@ fn entity_scanner_does_not_treat_a_form_feed_inside_a_string_as_trivia() {
     assert_eq!(id, 1);
     assert_eq!(type_name, "IFCWALL");
     assert_eq!(&content[start..end], content);
+}
+
+// ---------------------------------------------------------------------------
+// A record whose argument list opens a `'` string that never closes must not
+// silently drop every entity after it — the Rust twin of the TS fix in
+// `packages/parser/src/tokenizer.ts` (#3695). `find_entity_end` has no byte
+// to resume from once this happens, so the scan still stops there (that part
+// is unchanged and deliberate), but it must now say why.
+// ---------------------------------------------------------------------------
+
+/// RED, pre-fix: entities #12 and #13 vanish with no trace anywhere on the
+/// scanner that anything went wrong.
+#[test]
+fn unterminated_string_in_a_record_loses_every_entity_after_it() {
+    let content =
+        data_file(&["#11=IFCWALL('a',$);", "#12=IFCWALL('never closes);", "#13=IFCSLAB($,$);"]);
+
+    let mut scanner = EntityScanner::new(&content);
+    let mut ids = Vec::new();
+    while let Some((id, _type_name, _start, _end)) = scanner.next_entity() {
+        ids.push(id);
+    }
+
+    // Only #11 survives — #12 and #13 are gone, exactly the silent-tail-loss
+    // shape #3695 fixed on the TS side.
+    assert_eq!(ids, vec![11]);
+    // GREEN requirement: the scanner must know it stopped early, and where.
+    assert_eq!(
+        scanner.malformed_record_start(),
+        Some(content.find("#12").unwrap()),
+        "an unterminated string must be reported, not just silently end the scan"
+    );
+}
+
+/// A record after the malformed one is genuinely unrecoverable (no resync),
+/// but the scanner must still report the malformed record on its own,
+/// independent of the exact `data_file` boilerplate.
+#[test]
+fn unterminated_string_alone_is_reported() {
+    let content = "#1=IFCWALL('never closes);";
+    let mut scanner = EntityScanner::new(content);
+    assert_eq!(scanner.next_entity(), None);
+    assert_eq!(scanner.malformed_record_start(), Some(0));
+}
+
+/// A clean end of scan (no more `#<digits>=` candidates) must NOT be
+/// mistaken for a malformed-record stop — `malformed_record_start` is only
+/// for the case `find_entity_end` refused a record it had already started.
+#[test]
+fn clean_end_of_scan_reports_no_malformed_record() {
+    let content = data_file(&["#1=IFCWALL('a',$);"]);
+    let mut scanner = EntityScanner::new(&content);
+    while scanner.next_entity().is_some() {}
+    assert_eq!(scanner.malformed_record_start(), None);
+}
+
+/// The pre-existing "unterminated comment inside a record" stop (#3303) has
+/// the identical silent-stop shape and is fixed the same way here, in the
+/// same edit, since it shares `find_entity_end`'s failure path.
+#[test]
+fn unterminated_comment_inside_a_record_is_reported() {
+    let content = data_file(&["#11=IFCWALL('a', /* never closes $);"]);
+    let mut scanner = EntityScanner::new(&content);
+    assert_eq!(scanner.next_entity(), None);
+    assert_eq!(
+        scanner.malformed_record_start(),
+        Some(content.find("#11").unwrap())
+    );
+}
+
+/// An unterminated comment BETWEEN records (not inside one) hits the other
+/// `skip_step_comment` call site in `next_entity`'s candidate-hunt loop, and
+/// must be reported the same way.
+#[test]
+fn unterminated_comment_between_records_is_reported() {
+    let content = data_file(&["#11=IFCWALL('a',$);", "/* never closes"]);
+    let mut scanner = EntityScanner::new(&content);
+    let mut ids = Vec::new();
+    while let Some((id, _type_name, _start, _end)) = scanner.next_entity() {
+        ids.push(id);
+    }
+    assert_eq!(ids, vec![11]);
+    assert_eq!(
+        scanner.malformed_record_start(),
+        Some(content.find("/* never closes").unwrap())
+    );
+}
+
+// ---------------------------------------------------------------------------
+// The HEADER-skip's own comment handling (`scanner_header::data_section_start`).
+// A STEP comment is legal wherever whitespace is, the HEADER included, so the
+// `DATA;` marker search has to walk past a complete `/* … */` the same way it
+// walks past a quoted string.
+// ---------------------------------------------------------------------------
+
+/// RED, pre-fix: the marker search skipped strings but not comments, so a
+/// `DATA;` written inside a HEADER comment ended the search there. The scan
+/// then started INSIDE the comment and yielded `#99`, an entity the file does
+/// not declare, on top of the real `#1`.
+#[test]
+fn data_marker_inside_a_header_comment_is_not_the_marker() {
+    let content = "ISO-10303-21;\nHEADER;\n\
+/* DATA; #99=IFCWALL($); */\n\
+ENDSEC;\nDATA;\n\
+#1=IFCWALL('a',$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+    let mut scanner = EntityScanner::new(content);
+    let mut ids = Vec::new();
+    while let Some((id, _type_name, _start, _end)) = scanner.next_entity() {
+        ids.push(id);
+    }
+
+    assert_eq!(
+        ids,
+        vec![1],
+        "the commented-out #99 is not a record this file declares"
+    );
+    assert_eq!(scanner.malformed_record_start(), None);
+}
+
+/// A HEADER comment that never closes swallows the whole file, so there is no
+/// `DATA;` marker to find and no entity to return. That is the same
+/// malformed-record condition #3695/#3699 report elsewhere, and it must reach
+/// the caller through the same channel rather than being silently skipped.
+#[test]
+fn unterminated_header_comment_is_reported() {
+    let content = "ISO-10303-21;\nHEADER;\n\
+/* never closes\n\
+ENDSEC;\nDATA;\n\
+#1=IFCWALL('a',$);\n";
+
+    let mut scanner = EntityScanner::new(content);
+    assert_eq!(scanner.next_entity(), None);
+    assert_eq!(
+        scanner.malformed_record_start(),
+        Some(content.find("/* never closes").unwrap()),
+        "an unterminated HEADER comment must be reported, not silently skipped"
+    );
 }

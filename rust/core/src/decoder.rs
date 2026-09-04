@@ -8,7 +8,7 @@
 
 use crate::columnar_index::EntityIndexStore;
 use crate::error::{Error, Result};
-use crate::parser::{parse_entity, report_oversized_ids, EntityScanner};
+use crate::parser::{parse_entity, report_scan_diagnostics, EntityScanner};
 use crate::schema_gen::{AttributeValue, DecodedEntity};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
@@ -36,7 +36,7 @@ where
     while let Some((id, _type_name, start, end)) = scanner.next_entity() {
         index.insert(id, (start, end));
     }
-    report_oversized_ids(scanner.skipped_oversized_ids());
+    report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
     index
 }
 

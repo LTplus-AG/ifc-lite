@@ -28,7 +28,8 @@ fn assert_parallel_matches_serial(content: &[u8], label: &str) {
     let serial = build_entity_index(content);
     let serial_refused = serial_refusals(content);
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
-        let (par, refused) = with_chunks_counted(content, n);
+        let stitched = with_chunks_counted(content, n);
+        let (par, refused, malformed) = (stitched.index, stitched.refused, stitched.malformed);
         assert_eq!(
             par, serial,
             "parallel index (n_chunks={n}) != serial for {label}"
@@ -36,6 +37,11 @@ fn assert_parallel_matches_serial(content: &[u8], label: &str) {
         assert_eq!(
             refused, serial_refused,
             "attributed refusals (n_chunks={n}) != serial ({serial_refused}) for {label}"
+        );
+        assert!(
+            !malformed,
+            "n_chunks={n}: {label} must not report a malformed-record stop — none of \
+             this file's `assert_parallel_matches_serial` fixtures declare one"
         );
     }
 }
@@ -172,7 +178,7 @@ fn clean_file_with_an_oversized_shaped_string_reports_no_refusal() {
             saw_a_speculative_refusal = true;
         }
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             0,
             "n_chunks={n}: a file with no oversized id must report no refusal \
              (raw per-shard sum was {raw})"
@@ -207,7 +213,7 @@ fn a_real_oversized_id_near_a_boundary_counts_exactly_once() {
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the one real refusal must be counted once"
         );
@@ -296,7 +302,7 @@ fn an_oversized_id_in_a_serially_rescanned_range_counts_once() {
 
     for n in 2..=40usize {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the refusal inside the rescanned range, counted once"
         );
@@ -320,7 +326,7 @@ fn an_oversized_id_in_a_rescanned_range_that_hits_eof_counts_once() {
 
     for n in 2..=40usize {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the refusal in the file's tail, counted once"
         );
@@ -353,7 +359,7 @@ fn a_real_oversized_id_behind_an_adversarial_string_counts_once() {
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: exactly the one real refusal, none of the in-string ones"
         );
@@ -385,7 +391,7 @@ fn an_oversized_id_after_a_chunk_spanning_record_counts_once() {
     assert_eq!(serial_refusals(bytes), 1, "one real oversized declaration");
     for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
         assert_eq!(
-            with_chunks_counted(bytes, n).1,
+            with_chunks_counted(bytes, n).refused,
             1,
             "n_chunks={n}: the refusal in the rescanned range must be counted once"
         );
@@ -406,6 +412,74 @@ fn record_larger_than_chunk() {
     }
     assert_parallel_matches_serial(content.as_bytes(), "record-larger-than-chunk");
 }
+
+// ---------------------------------------------------------------------------
+// #3695's Rust twin: a record with an unterminated `'` string (or `/* … */`
+// comment) has no terminator for `find_entity_end` to find, so the SERIAL
+// scanner stops the whole scan there — nothing past that byte is ever in the
+// serial index, unlike an oversized-id refusal, which skips one record and
+// keeps going. Byte-identity with serial (this module's whole contract)
+// means the parallel path must reproduce that same truncation point AND
+// report that it happened, at every chunk count and wherever the malformed
+// record lands relative to a shard boundary.
+// ---------------------------------------------------------------------------
+
+fn malformed_record_fixture() -> (String, u32, u32) {
+    let mut content = String::from("ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n");
+    for id in 1..=200u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    // #201's string never closes.
+    content.push_str("#201=IFCWALL('never closes,$,$,$,$,$,$,$);\n");
+    for id in 202..=400u32 {
+        content.push_str(&format!("#{id}=IFCDOOR('g{id}',$,$,$,$,$,$,$);\n"));
+    }
+    (content, 200, 201)
+}
+
+#[test]
+fn malformed_record_truncates_and_is_reported_at_every_chunk_count() {
+    let (content, last_good_id, malformed_id) = malformed_record_fixture();
+    let bytes = content.as_bytes();
+
+    let serial = build_entity_index(bytes);
+    // Guard the fixture: the serial scanner really does stop AT the
+    // malformed record, not before or after it, or nothing below is testing
+    // the shape this test is named for.
+    assert!(serial.contains_key(&last_good_id), "the record before the malformed one must survive");
+    assert!(!serial.contains_key(&malformed_id), "the malformed record itself must not appear");
+    assert!(!serial.contains_key(&(malformed_id + 1)), "every record after the malformed one must be gone");
+
+    for n in [1usize, 2, 3, 4, 5, 7, 8, 11, 16, 32, 64] {
+        let stitched = with_chunks_counted(bytes, n);
+        let (par, refused, malformed) = (stitched.index, stitched.refused, stitched.malformed);
+        assert_eq!(
+            par, serial,
+            "n_chunks={n}: parallel index must match the serial truncation exactly"
+        );
+        assert_eq!(refused, 0, "n_chunks={n}: this fixture has no oversized ids");
+        assert!(
+            malformed,
+            "n_chunks={n}: the malformed record must be attributed, not silently dropped \
+             the way the pre-#3695 scanner dropped it"
+        );
+    }
+
+    // The public, thread-count-driven entry point must agree too.
+    assert_eq!(
+        super::build_entity_index_parallel(bytes),
+        serial,
+        "build_entity_index_parallel must match the serial truncation exactly"
+    );
+}
+
+// The stitched malformed flag reaching the installed report sink THROUGH
+// `native::build`'s own call site (not a test calling `report_malformed_records`
+// on `with_chunks_counted`'s return value, which proves only that the flag is
+// computed, not that anything wires it to the sink in production) is pinned
+// in the integration test `rust/processing/tests/issue_3395_oversized_id_report.rs`
+// — it owns the report sink for its process, and needs a fixture over
+// `PARALLEL_MIN_BYTES` to reach `native::build`'s fork/join path at all.
 
 /// Fixture leg: byte-identical over real models when present. Sweeps chunk
 /// counts AND checks the public `build_entity_index_parallel` (thread-count

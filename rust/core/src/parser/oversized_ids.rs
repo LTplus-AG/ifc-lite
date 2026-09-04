@@ -40,14 +40,11 @@
 //! scan with the sink still unset. Anything embedding this crate with its own
 //! log pipeline can do the same.
 
-use std::sync::OnceLock;
+use super::report_sink::REPORT_SINK;
 
-/// Host-installed destination for [`report_oversized_ids`]. Set once, because
-/// a swappable sink invites a reset race between two loads on different
-/// threads and nothing here needs one.
-static REPORT_SINK: OnceLock<fn(&str)> = OnceLock::new();
-
-/// Route [`report_oversized_ids`] to `sink` instead of stderr.
+/// Route every scan diagnostic in this crate — [`report_oversized_ids`] and
+/// [`super::malformed_records::report_malformed_records`] alike — to `sink`
+/// instead of stderr.
 ///
 /// Returns `true` when this call installed the sink, `false` when one was
 /// already installed (the first wins). Callers on `wasm32` MUST install one:
@@ -81,10 +78,7 @@ pub fn report_oversized_ids(skipped: usize) {
     let Some(message) = oversized_id_report(skipped) else {
         return;
     };
-    match REPORT_SINK.get() {
-        Some(sink) => sink(&format!("[ifc-lite] {message}")),
-        None => eprintln!("[ifc-lite] {message}"),
-    }
+    super::report_sink::emit(&message);
 }
 
 #[cfg(test)]

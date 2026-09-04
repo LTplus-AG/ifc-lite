@@ -17,11 +17,22 @@
 //! unterminated comment mean" differently gives the same answer (#3303).
 
 mod lexical;
+mod malformed_records;
 mod oversized_ids;
+mod report_sink;
 mod scanner;
 mod tokenizer;
 
 pub use lexical::skip_step_comment;
+pub use malformed_records::report_malformed_records;
 pub use oversized_ids::{oversized_id_report, report_oversized_ids, set_report_sink};
 pub use scanner::{entity_count, EntityScanner};
 pub use tokenizer::{parse_entity, Token};
+
+/// [`report_oversized_ids`] + [`report_malformed_records`] in one call — the
+/// two diagnostics every whole-file `EntityScanner` walk in this workspace
+/// emits after a scan, so every call site needs only one line, not two.
+pub fn report_scan_diagnostics(skipped_oversized_ids: usize, malformed_record_found: bool) {
+    report_oversized_ids(skipped_oversized_ids);
+    report_malformed_records(malformed_record_found);
+}

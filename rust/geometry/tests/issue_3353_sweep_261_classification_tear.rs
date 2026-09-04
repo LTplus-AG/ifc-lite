@@ -80,9 +80,9 @@
 //!
 //! `kernel/arrangement/issue_3353_vid_census_tests.rs` is where this is written
 //! up: the per-triangle regime table for every triangle on an over-used edge,
-//! the measurements behind the paragraph above, and the five fix shapes tried
+//! the measurements behind the paragraph above, and the seven fix shapes tried
 //! against it — including why the two that fix this test each cost 20 golden
-//! census hosts. Read it before attempting a sixth.
+//! census hosts. Read it before attempting an eighth.
 //!
 //! One correction to record here, because it is this file's own earlier reading:
 //! the "84 um IN-PLANE vertex split" to be healed by a coplanar-overlay /

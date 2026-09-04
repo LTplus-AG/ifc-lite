@@ -132,8 +132,8 @@
 //! near test gated on coplanar_a  passes      98 -> 77       20 hosts regressed
 //! parent NORMAL for the dot      FAILS       not run        not run
 //! flush test on the sub-tri      FAILS       not run        not run
-//! parent-flush, A side, 3 verts   passes      98 -> 77       26 regressed, 9 improved
-//! needle refused (area < 1e-6 parent) FAILS    98 -> 92       12 regressed, 3 improved
+//! parent-flush, A side, 3 verts  passes      98 -> 77       26 regressed, 9 improved
+//! needle refused (area < 1e-6 parent) FAILS   98 -> 92       12 regressed, 3 improved
 //! ```
 //!
 //! The last two rows were re-measured on 2026-09-04 with the parent index

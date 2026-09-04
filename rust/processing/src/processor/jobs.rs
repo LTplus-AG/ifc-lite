@@ -123,7 +123,8 @@ pub(super) fn process_entity_job(
     classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
     host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
     rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
-    // Shared tally of degenerate-backstop triangle drops (`element::build_mesh_data`).
+    // Shared tally of dropped representation items by IFC type (no processor for
+    // the type, or the processor errored).
     unsupported_item_collector: &std::sync::Mutex<FxHashMap<String, u64>>,
     // Shared tally of degenerate-backstop triangle drops (see
     // `element::build_mesh_data`); relaxed atomic, added to only when non-zero.

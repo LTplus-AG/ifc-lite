@@ -378,16 +378,26 @@ pub struct WorstHost {
     pub ifc_type: String,
     pub openings: u64,
     pub csg_failures: u64,
+    /// SKIPPED WHEN `None`, like the two fields below. The TypeScript mirrors
+    /// declare these as `field?: T`, which means the key is ABSENT; a plain
+    /// `Option` writes an explicit `null` through `serde_json` (the server
+    /// response path), and a consumer that guards with `!== undefined` then
+    /// throws on it. `serde_wasm_bindgen` writes `None` as `undefined`, so the
+    /// wasm boundary hid the difference. Deserialization is unaffected: a
+    /// missing key and an explicit `null` both read back as `None`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub first_failure_label: Option<String>,
     /// World-space AABB of the host mesh, when captured by
     /// `record_host_cut_effect` (opt-in per-product detail, #C1). `None` when
     /// no void cut touched this host (e.g. the failure came from a
     /// non-router CSG path).
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub bbox: Option<HostBbox>,
     /// Final triangle count of the host's mesh: post-cut (`tris_after`) when a
     /// void subtraction ran, falling back to the pre-cut count
     /// (`tris_before`) when it didn't (the un-cut host is what actually
     /// renders in that case). `None` when neither was captured.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub triangle_count: Option<u64>,
 }
 

@@ -206,43 +206,12 @@ export interface ProcessingStats {
   geometry_diagnostics?: GeometryDiagnostics;
 }
 
-/**
- * CSG / opening diagnostics for a geometry pass. Mirrors the Rust
- * `GeometryDiagnostics` (camelCase serde) the server and the WASM batch path both
- * emit. `totalCsgFailures` and the classification counts are exact;
- * `productsWithFailures`, `hostsWithOpenings` and `silentNoOps` are batch-summed
- * upper bounds.
- */
-export interface GeometryDiagnostics {
-  totalCsgFailures: number;
-  productsWithFailures: number;
-  hostsWithOpenings: number;
-  classification: {
-    rectangular: number;
-    diagonal: number;
-    nonRectangular: number;
-    total: number;
-  };
-  failuresByReason: Array<{ reason: string; count: number }>;
-  silentNoOps: number;
-  rectFast: {
-    fired: number;
-    openingsCut: number;
-    deferHostNotBox: number;
-    deferNotThrough: number;
-    deferOffFace: number;
-    deferNearEdge: number;
-    deferNoOpenings: number;
-    deferTooManyOpenings?: number;
-  };
-  worstHosts: Array<{
-    productId: number;
-    ifcType: string;
-    openings: number;
-    csgFailures: number;
-    firstFailureLabel?: string;
-  }>;
-}
+// The `GeometryDiagnostics` wire shape lives in `geometry-diagnostics-types.ts`
+// and is re-exported here, so this module's public surface is unchanged (#3857).
+// `export *` re-exports without binding locally, so the name this file still
+// REFERENCES above is imported too.
+import type { GeometryDiagnostics } from './geometry-diagnostics-types.js';
+export * from './geometry-diagnostics-types.js';
 
 // ============================================
 // 2D Symbol Data (IfcAnnotation + IfcGrid)

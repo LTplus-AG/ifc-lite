@@ -19,9 +19,14 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 1). Bumped on field
-   * renames/removals or count-semantics changes; additive optional fields do
-   * not bump. `0`/absent means a pre-versioned producer.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`). Bumped on field renames/removals or
+   * count-semantics changes; additive optional fields do not bump.
+   *
+   * REQUIRED, not optional: the Rust field is a plain `u32` serialized
+   * unconditionally, so every producer since #1514 writes the key. A value of
+   * `0` is what Rust's `#[serde(default)]` yields when it READS a payload
+   * written before #1514, and is the only "pre-versioned producer" signal a
+   * consumer sees.
    */
   schemaVersion: number;
   /** Total CSG boolean failures (un-cut openings, emptied hosts, kernel fallbacks). */
@@ -59,6 +64,13 @@ export interface GeometryDiagnostics {
     /** Optional: absent on payloads produced before this counter existed (#1649). */
     deferTooManyOpenings?: number;
   };
+  /**
+   * Content-hash references the geometry pass refused because they exceeded
+   * `u32::MAX` (#3421 / #3752). Nonzero means some instancing was skipped, not
+   * that geometry is wrong. Optional: absent on payloads from producers
+   * predating the counter.
+   */
+  oversizedRefDrops?: number;
   /** Bounded top-N worst-failing hosts (opt-in per-product detail). */
   worstHosts: Array<{
     productId: number;
@@ -147,6 +159,7 @@ export function mergeGeometryDiagnostics(
       deferNoOpenings: a.rectFast.deferNoOpenings + b.rectFast.deferNoOpenings,
       deferTooManyOpenings: (a.rectFast.deferTooManyOpenings ?? 0) + (b.rectFast.deferTooManyOpenings ?? 0),
     },
+    oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
   };
 }

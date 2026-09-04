@@ -307,14 +307,26 @@ describe('useColorOverlaySync — colour reaches late-streamed meshes (#3890)', 
     try {
       h.adapter.colorize([{ modelId: 'default', expressId: ASSEMBLY }], RED);
       await h.render();
+
+      // What makes this test bite, pinned rather than assumed: the map keeps
+      // the geometry-less ASSEMBLY id next to its parts. The fixture's resolver
+      // answers with the parts only, but `resolvePresentationColorMap` unions
+      // the raw ids back in (#2680's never-substitute policy), so the id that
+      // can never gain a mesh IS in the override map, exactly as in the app.
+      assert.ok(
+        scene.getColorOverrides()?.has(ASSEMBLY),
+        'the geometry-less assembly id must be in the override map',
+      );
+      assert.equal(scene.hasMeshData(ASSEMBLY), false, 'and it never gains a mesh');
+
       scene.meshedIds.add(PART_LATE);
       await h.bumpGeometry();
       const afterCatchUp = scene.setColorOverridesCalls;
 
       // Two more streaming bursts that bring nothing the overlay is waiting
-      // for. ASSEMBLY itself is in the override map (#3880 keeps the raw id)
-      // and never gains a mesh, so "is anything still waiting" would rebuild
-      // here forever.
+      // for. Because ASSEMBLY stays unmeshed forever, "is anything still
+      // waiting" would rebuild here on every burst, for the life of the
+      // overlay. "Did an awaited id arrive" is the question that terminates.
       await h.bumpGeometry();
       await h.bumpGeometry();
 

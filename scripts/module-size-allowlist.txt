@@ -317,7 +317,7 @@
    474 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4436 packages/renderer/src/scene.ts
+  4444 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts

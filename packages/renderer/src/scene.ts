@@ -21,6 +21,7 @@ import {
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
 import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
+import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
 import { quantizeInterleaved } from './quantize.js';
 import { bucketBaseKeyFor, type SpatialChunkingConfig } from './chunk-grid.js';
@@ -3263,6 +3264,11 @@ export class Scene {
     // Selected ids whose occurrences arrived in THIS shard (selection recorded
     // before the shard streamed in) — their flags are written after upload.
     const lateSelectedEids = new Set<number>();
+    // Same for COLOUR (#3890): an override is recorded against ids with no
+    // occurrence yet, and nothing consulted it when they arrived. The viewer's
+    // catch-up cannot cover this — a shard-only streaming event never moves the
+    // geometry counter it keys on.
+    const lateOverriddenEids = new Set<number>();
     for (const t of prepared) {
       const vcount = Math.floor(t.positions.length / 3);
       if (vcount === 0 || t.indices.length === 0 || t.instanceCount === 0) continue;
@@ -3385,6 +3391,7 @@ export class Scene {
           template.selectedCount++;
           lateSelectedEids.add(eid);
         }
+        if (this.instancedOverrideColors?.has(eid)) lateOverriddenEids.add(eid);
 
         if (haveBox) {
           const w = this.unionInstancedWorldAabb(eid, cdv, byteOffset, lmnx, lmny, lmnz, lmxx, lmxy, lmxz);
@@ -3402,6 +3409,11 @@ export class Scene {
     // so the highlight shows on late-streamed geometry too.
     for (const eid of lateSelectedEids) {
       this.writeInstanceFlags(device, eid);
+    }
+    // Paint ids whose override predates their occurrences.
+    for (const eid of lateOverriddenEids) {
+      const rgba = this.instancedOverrideColors?.get(eid);
+      if (rgba) this.writeInstanceColor(device, eid, composeInstancedOverrideColor(rgba, this.instancedGhosted.has(eid), this.lastGhostAlpha));
     }
     // New occurrences default to flags=0 (visible). Force the next setInstancedVisibility
     // to recompute so an already-active isolate/hide also applies to geometry that
@@ -3668,11 +3680,7 @@ export class Scene {
     }
     let hasTransparent = false;
     for (const [eid, rgba] of next) {
-      // An occurrence that is currently ghosted keeps the ghost alpha: X-Ray is
-      // a stronger statement about visibility than a lens tint, and the flat
-      // path resolves the same way.
-      const ghosted = this.instancedGhosted.has(eid);
-      this.writeInstanceColor(device, eid, ghosted ? [rgba[0], rgba[1], rgba[2], this.lastGhostAlpha] : rgba);
+      this.writeInstanceColor(device, eid, composeInstancedOverrideColor(rgba, this.instancedGhosted.has(eid), this.lastGhostAlpha));
       // Instanced occurrences are opaque by partition; only an override can drop alpha
       // below the cutoff (lens-ghost / x-ray / compare). Track it so the renderer runs
       // the transparent instanced sub-pass only when something is actually translucent.

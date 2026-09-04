@@ -109,6 +109,7 @@ impl ClippingProcessor {
     pub(crate) fn topology_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
         false
     }
+
     /// #3440 step 3: the ALWAYS-ON half of the accept gate.
     ///
     /// `topology_gate_reject` above stays behind `csg_topology_gate` because

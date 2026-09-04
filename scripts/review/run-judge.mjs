@@ -272,6 +272,18 @@ export function main(argv, {
     // every clean PR and made the eval print "THE JUDGE DID NOT RUN" on runs where
     // it did. A field means what it says; prose does not.
     judged: result.ran === true,
+    // THE PER-CLASS PASS FLAG (#3862), RESTATED AS A BOOLEAN rather than left to
+    // the spread above. The spread carries it when the validator wrote one, and
+    // a findings.json from before the field existed -- or the one
+    // claude-review.yml's crash backstop copies verbatim -- carries nothing, so
+    // the spread alone would hand the poster `undefined` on exactly the runs
+    // where something has already gone wrong. judged.json is a contract: the
+    // field is PRESENT and it is a boolean, and the poster's rule is `=== true`,
+    // which is the direction that refuses a flag nobody set.
+    //
+    // This file never SETS the flag true, and could not: only the validator ran
+    // the class pass. It can only carry one forward.
+    classPass: doc?.classPass === true,
     // `kept` is RESTATED, not inherited. The validator's `kept` describes what
     // survived validation; leaving it beside a post-judge `findings` array made
     // `counts.kept !== findings.length` on any run that dropped something, and a

@@ -27,8 +27,11 @@ export interface EntityRefWorkerResult {
 export interface EntityScanWorkerResult {
   refs: EntityRefWorkerResult[];
   oversizedIdCount: number;
+  /** See {@link StepTokenizer.malformedRecordCount} in tokenizer.ts — same
+   *  condition, same recovery, counted by this worker's own copy of the
+   *  scan loop. */
+  malformedRecordCount: number;
 }
-
 
 export { WORKER_CODE };
 
@@ -69,7 +72,7 @@ export function scanEntitiesInWorker(
       const activeWorker = worker;
 
       activeWorker.onmessage = (e: MessageEvent) => {
-        const { ids, offsets, lengths, lines, types, count, oversizedIds } = e.data;
+        const { ids, offsets, lengths, lines, types, count, oversizedIds, malformedRecords } = e.data;
         const idArr = new Uint32Array(ids);
         const offsetArr = new Uint32Array(offsets);
         const lengthArr = new Uint32Array(lengths);
@@ -87,7 +90,7 @@ export function scanEntitiesInWorker(
         }
 
         activeWorker.terminate();
-        resolve({ refs, oversizedIdCount: oversizedIds });
+        resolve({ refs, oversizedIdCount: oversizedIds, malformedRecordCount: malformedRecords ?? 0 });
       };
 
       activeWorker.onerror = (e) => {

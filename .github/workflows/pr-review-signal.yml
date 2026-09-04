@@ -137,9 +137,11 @@ jobs:
       #      the rest -- so there is nothing to optimise and no
       #      ceiling: queue depth grows with how many PRs are open, which is
       #      when this gate is under load. A budget cannot bound that, so it
-      #      WILL breach again; the gate then says "within the poll budget"
-      #      rather than reporting a bare absence, and the remedy is a re-run,
-      #      because nothing failed.
+      #      WILL breach again. A breach while the rollup is still moving is an
+      #      explicit LANE_PUBLICATION_TIMEOUT advisory, not MISSING_LANES: five
+      #      runs in #3810 crossed 2400 s and published every named lane later.
+      #      The remedy is a re-run; the independent dirty-PR scan remains the
+      #      eventual failing signal for lanes that genuinely never appear.
       #
       #      Measuring from run creation is the CONSERVATIVE direction: this
       #      job's own deadline starts later still, after its pickup and

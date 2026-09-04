@@ -608,6 +608,75 @@ ENDSEC;\nEND-ISO-10303-21;\n";
     assert_no_dangling(&merged);
 }
 
+/// RED for issue #3752: a filtered model whose root references an id above
+/// `u32::MAX` (issue #3421's own refusal) used to have that reference vanish
+/// from the closure with no trace anywhere in `MergedStats`. It must now be
+/// counted into `stats.warnings`.
+#[test]
+fn a_filtered_models_oversized_reference_is_reported_in_warnings() {
+    let content = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCWALL('WALL0000000000000000A',$,'W',$,$,#4294967297,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let models =
+        [MergedModel { content: content.as_bytes(), id: "a".to_string(), included: Some(vec![1]) }];
+    let (_merged, stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert!(
+        stats.warnings.iter().any(|w| w.contains("u32 express-id bound")),
+        "an oversized reference must be reported in warnings, not silently dropped (#3752): {:?}",
+        stats.warnings
+    );
+    // Exactly one oversized reference exists in this model, and it must be
+    // counted once — not twice, from a stray prepass scan over model 0
+    // (CodeRabbit, PR #3766).
+    assert!(
+        stats.warnings.iter().any(|w| w.starts_with("1 reference(s)")),
+        "the single oversized reference must be counted exactly once, not double-counted: {:?}",
+        stats.warnings
+    );
+}
+
+/// RED for CodeRabbit (PR #3766): `resolve_included` returns `index.order`
+/// directly when `roots` is `None` (a full, unfiltered model — the common
+/// case, `MergedModel.included: None`) without ever walking any entity line,
+/// so an oversized reference anywhere in an unfiltered model was never
+/// counted or reported. A filtered model with the same reference (covered
+/// above) already worked; only the `None` path was blind.
+#[test]
+fn an_unfiltered_models_oversized_reference_is_reported_in_warnings() {
+    let content = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCWALL('WALL0000000000000000A',$,'W',$,$,#4294967297,$,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let models =
+        [MergedModel { content: content.as_bytes(), id: "a".to_string(), included: None }];
+    let (_merged, stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert!(
+        stats.warnings.iter().any(|w| w.contains("u32 express-id bound")),
+        "an oversized reference in an unfiltered (included: None) model must be reported too: {:?}",
+        stats.warnings
+    );
+}
+
+/// Control: a filtered model whose root's references are all ordinary
+/// (`u32`-representable) reports no oversized-ref warning.
+#[test]
+fn an_ordinary_filtered_model_reports_no_oversized_ref_warning() {
+    let content = "ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n\
+#1=IFCWALL('WALL0000000000000000A',$,'W',$,$,#2,$,$);\n\
+#2=IFCLOCALPLACEMENT($,$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+    let models =
+        [MergedModel { content: content.as_bytes(), id: "a".to_string(), included: Some(vec![1]) }];
+    let (_merged, stats) = export_merged_models(&models, &MergedOptions::default());
+
+    assert!(
+        stats.warnings.iter().all(|w| !w.contains("u32 express-id bound")),
+        "an ordinary reference must not trigger the oversized-ref warning: {:?}",
+        stats.warnings
+    );
+}
+
 #[test]
 fn converted_rooted_entity_keeps_source_globalid_for_later_unify() {
     // Two IFC4X3 models sharing one IfcAlignmentSegment (a rooted entity) GlobalId,

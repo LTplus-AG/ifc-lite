@@ -1181,29 +1181,24 @@ pub fn process_geometry_streaming_filtered_with_options(
         std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
     let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
         std::sync::Mutex::new(FxHashMap::default());
-    // rect_fast engagement is now drained from each per-job router too (request-
-    // local), so this pass's `rectFast` is isolated from any concurrent geometry
-    // pass instead of reading process-global counters.
+    // rect_fast engagement is drained per-job router (request-local), isolating
+    // this pass's `rectFast` from any concurrent geometry pass.
     let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
         std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
-    // Degenerate-backstop drop tally, summed from each element's
-    // `ProducedElementMeshes::degenerate_triangles_dropped` (request-local,
-    // like the other sinks). Non-zero means the f32-collapse safety net in
-    // `element::build_mesh_data` engaged for this model.
+    // Degenerate-backstop drop tally (request-local, like the other sinks);
+    // non-zero means the f32-collapse safety net engaged for this model.
     let backstop_collector = std::sync::atomic::AtomicU64::new(0);
+    let oversized_ref_drop_collector = std::sync::atomic::AtomicU64::new(0); // #3421/#3752
 
-    // Shared content-dedup cache for the whole model: every per-job router (built
-    // fresh per element below) dedups against it, so byte-identical geometry the
-    // exporter failed to share via IfcMappedItem (Tekla parts) is meshed once
-    // across the rayon pool instead of once per element. The lock is held only for
-    // a hash get/insert; meshing runs outside it.
+    // Shared content-dedup cache for the whole model: every per-job router dedups
+    // against it, so byte-identical geometry the exporter failed to share via
+    // IfcMappedItem (Tekla parts) is meshed once across the pool, not once per
+    // element. The lock is held only for a hash get/insert; meshing runs outside it.
     let item_dedup_cache = GeometryRouter::new_dedup_cache();
 
     // Shared IfcMappedItem source cache for the whole model (#1623): every per-job
-    // router (built fresh per element below) meshes each RepresentationMap source
-    // once against it, instead of once per owning element — the per-router RefCell
-    // cache only dedups within a single element's own mapped items. The lock is
-    // held only for a source-mesh get/insert; the meshing runs outside it.
+    // router meshes each RepresentationMap source once against it, instead of once
+    // per owning element. Lock held only for a source-mesh get/insert.
     let mapped_item_cache = GeometryRouter::new_mapped_item_cache();
 
     // #1623 Phase 2 don't-bake plan (Some only when enabled): filter to repeated
@@ -1453,6 +1448,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     &host_diag_collector,
                     &rect_fast_collector,
                     &backstop_collector,
+                    &oversized_ref_drop_collector,
                     &item_dedup_cache,
                     &mapped_item_cache,
                     instancing_plan.as_ref(),
@@ -1525,6 +1521,8 @@ pub fn process_geometry_streaming_filtered_with_options(
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
     let products_with_failures = csg_failures.len();
     let backstop_dropped = backstop_collector.into_inner();
+    // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
+    let oversized_ref_drops = oversized_ref_drop_collector.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
     let point_cache_misses = point_cache_misses_collector.into_inner();
     let faceted_brep_time_ms = faceted_brep_ns_collector.into_inner() / 1_000_000;
@@ -1582,6 +1580,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             &host_diags,
             rect_fast,
             WORST_HOSTS_LIMIT,
+            oversized_ref_drops,
         );
         (!diag.is_empty()).then_some(diag)
     });

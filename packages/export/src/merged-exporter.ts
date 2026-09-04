@@ -24,6 +24,7 @@ import {
   collectStyleEntities,
   filterHiddenRefsFromRelationshipLine,
 } from './reference-collector.js';
+import { collectGeoreferencingEntities } from './georef-closure.js';
 import { convertStepLine, needsConversion, type IfcSchemaVersion } from './schema-converter.js';
 import { assembleStepBytes, assembleStepBlob } from './step-file-assembly.js';
 import { getCompleteEntityIndex, getMaxExpressId, type CompleteEntityIndex, type ExportEntityRef } from './entity-iteration.js';
@@ -1063,6 +1064,12 @@ export class MergedExporter {
       byId: completeIndex,
       byType: model.dataStore.entityIndex.byType,
     });
+    // Third pass: rescue IFCMAPCONVERSION/IFCPROJECTEDCRS — see georef-closure.ts.
+    collectGeoreferencingEntities(
+      included, source,
+      { byId: completeIndex, byType: model.dataStore.entityIndex.byType },
+      hiddenProductIds,
+    );
     return { included, hiddenProductIds };
   }
 

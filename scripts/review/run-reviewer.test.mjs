@@ -181,6 +181,24 @@ test('a non-zero exit with a usage limit is QUOTA_DRAINED, not an empty review',
   );
 });
 
+test('#3803: the measured exit-1-with-no-output shape is CLI_SILENT_EXIT', () => {
+  assert.throws(
+    () => runReviewer({ prompt: 'x', model: 'sonnet', spawn: () => ({ status: 1, stdout: '', stderr: '' }) }),
+    (error) => error.reason === 'CLI_SILENT_EXIT',
+  );
+});
+
+test('#3812: exit 1 with empty stderr and an opaque stdout envelope is CLI_SILENT_EXIT', () => {
+  assert.throws(
+    () => runReviewer({
+      prompt: 'x',
+      model: 'sonnet',
+      spawn: () => ({ status: 1, stdout: '{"type":"result","subtype":"error"}', stderr: '' }),
+    }),
+    (error) => error.reason === 'CLI_SILENT_EXIT' && /independent provider/.test(error.message),
+  );
+});
+
 test('`is_error: true` alongside EXIT 0 still fails', () => {
   // This is the claude-code-action #1644 shape: success by exit code, nothing by
   // content. An exit code alone is not evidence here either.
@@ -245,7 +263,6 @@ const TOKENS = [
   { token: 'sk-ant-oat01-primary', label: 'the primary credential' },
   { token: 'sk-ant-oat01-fallback', label: 'the fallback credential' },
 ];
-const fail = (stderr) => () => ({ status: 1, stdout: '', stderr });
 const okOn = (which) => {
   let n = 0;
   return (_c, _a, _stdin, env) => {
@@ -298,6 +315,62 @@ test('with ONE token it behaves exactly as before', () => {
   assert.equal(calls, 1);
 });
 
+test('#3803: an exhausted Claude pool invokes the independent provider once', () => {
+  let fallbackCalls = 0;
+  const result = runReviewerWithFailover({
+    prompt: 'exact prompt', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '', stderr: 'Usage limit reached' }),
+    providerFallback: (prompt) => { fallbackCalls += 1; assert.equal(prompt, 'exact prompt'); return '{"findings":[]}'; },
+  });
+  assert.equal(result.text, '{"findings":[]}');
+  assert.equal(result.envelope.provider, 'openai-fallback');
+  assert.equal(fallbackCalls, 1);
+});
+
+test('#3803: a silent Claude CLI exit invokes the independent provider', () => {
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '', stderr: '' }),
+    providerFallback: () => '{"verdict":"clean"}',
+  });
+  assert.equal(result.text, '{"verdict":"clean"}');
+});
+
+test('#3812: an opaque stdout envelope with empty stderr invokes the independent provider', () => {
+  let fallbackCalls = 0;
+  const result = runReviewerWithFailover({
+    prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+    spawn: () => ({ status: 1, stdout: '{"type":"result","subtype":"error"}', stderr: '' }),
+    providerFallback: () => { fallbackCalls += 1; return '{"verdict":"clean"}'; },
+  });
+  assert.equal(result.text, '{"verdict":"clean"}');
+  assert.equal(fallbackCalls, 1);
+});
+
+test('#3803: independent-provider failure is explicit, never a clean verdict', () => {
+  assert.throws(
+    () => runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: '', stderr: '429 quota exceeded' }),
+      providerFallback: () => { throw new Error('HTTP 500'); },
+    }),
+    (error) => error.reason === 'FALLBACK_ERROR' && /HTTP 500/.test(error.message),
+  );
+});
+
+test('#3803: model errors never switch providers', () => {
+  let fallbackCalls = 0;
+  assert.throws(
+    () => runReviewerWithFailover({
+      prompt: 'p', model: 'sonnet', tokens: [TOKENS[0]],
+      spawn: () => ({ status: 1, stdout: '', stderr: 'unknown model failure' }),
+      providerFallback: () => { fallbackCalls += 1; return 'wrong'; },
+    }),
+    (error) => error.reason === 'MODEL_ERROR',
+  );
+  assert.equal(fallbackCalls, 0);
+});
+
 test('resolveTokens: the same secret in both slots is REFUSED, not treated as a fallback', () => {
   // An easy mistake while wiring the second one up, and a fallback that shares
   // the primary's pool and expiry fails at exactly the moment it is needed while
@@ -323,6 +396,41 @@ test('no credential value ever reaches a label or a log line', () => {
   assert.doesNotMatch(t[0].note, /SUPERSECRET/, 'the note reports SHAPE, never the value');
 });
 
+test('buildPrompt: retryReason RESPONSE_TRUNCATED gets truthful wording, never the proof-of-work text (#3777)', () => {
+  const p = buildPrompt('R', INPUT, { retryNote: '❌ RESPONSE_TRUNCATED: sentinel missing.', retryReason: 'RESPONSE_TRUNCATED' });
+  assert.match(p, /## This is a RETRY/);
+  assert.match(p, /terminal sentinel\s+was missing/);
+  assert.match(p, /Review the SAME diff again/);
+  // Must NOT claim a proof-of-work failure -- that would tell the model
+  // something false about what went wrong last time.
+  assert.doesNotMatch(p, /failed proof-of-work/);
+  assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
+});
+
+test('buildPrompt: retryReason VALIDATION_EMPTY gets truthful wording, never proof-of-work or truncation text (#3775)', () => {
+  const p = buildPrompt('R', INPUT, { retryNote: '❌ VALIDATION_EMPTY: The model reported 1 finding(s) and NONE survived validation.', retryReason: 'VALIDATION_EMPTY' });
+  assert.match(p, /## This is a RETRY/);
+  assert.match(p, /Every finding in your previous answer was dropped/);
+  assert.match(p, /report `verdict: "clean"`/);
+  // Must NOT claim a proof-of-work failure or a truncation -- both would be
+  // false: nothing was quoted wrong, and nothing was cut off mid-answer.
+  assert.doesNotMatch(p, /failed proof-of-work/);
+  assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
+  assert.doesNotMatch(p, /terminal sentinel/);
+});
+
+test('buildPrompt: retryReason PROOF_OF_WORK_FAILED (explicit) matches the unchanged #3652 text', () => {
+  const explicit = buildPrompt('R', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.', retryReason: 'PROOF_OF_WORK_FAILED' });
+  const implicit = buildPrompt('R', INPUT, { retryNote: '❌ PROOF_OF_WORK_FAILED: quote a WHOLE line.' });
+  // fenceUntrusted mints a fresh random nonce per call, so the two prompts
+  // differ only in that nonce -- strip it before comparing, since the claim is
+  // "same wording", not "same random fence".
+  const stripNonce = (s) => s.replace(/UNTRUSTED-DIFF-[0-9a-f]{18}/g, 'UNTRUSTED-DIFF-NONCE');
+  assert.equal(stripNonce(explicit), stripNonce(implicit), 'an explicit PROOF_OF_WORK_FAILED reason must produce the same wording as the no-reason default');
+  assert.match(explicit, /failed proof-of-work on `riskiest_change\.quoted_line`/);
+  assert.doesNotMatch(explicit, /terminal sentinel was missing/);
+});
+
 test('THE WIRING: the workflow actually passes the fallback secret', () => {
   // Without this the failover is dead code that tests green: `resolveTokens`
   // reads the environment, and the environment is built by the workflow. Static,
@@ -333,4 +441,5 @@ test('THE WIRING: the workflow actually passes the fallback secret', () => {
   const env = step.split('run:')[0];
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN\s*\}\}/);
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN_2:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN_2\s*\}\}/);
+  assert.match(env, /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/);
 });

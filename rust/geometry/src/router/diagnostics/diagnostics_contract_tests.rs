@@ -18,6 +18,7 @@ fn aggregate_empty_is_all_zero() {
         &FxHashMap::default(),
         RectFastStats::default(),
         16,
+        0,
     );
     assert_eq!(d.total_csg_failures, 0);
     assert_eq!(d.products_with_failures, 0);
@@ -73,7 +74,7 @@ fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
     let cls = ClassificationStats { rectangular: 3, diagonal: 1, non_rectangular: 0 };
     let rf = RectFastStats { fired: 2, openings_cut: 4, ..Default::default() };
 
-    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16);
+    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16, 0);
     assert_eq!(d.total_csg_failures, 3);
     assert_eq!(d.products_with_failures, 2);
     assert_eq!(d.hosts_with_openings, 2);
@@ -117,7 +118,7 @@ fn worst_host_triangle_count_falls_back_to_tris_before_when_no_cut_ran() {
     );
     let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
     csg.insert(3, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::EmptyOperand)]);
-    let d = aggregate_diagnostics(ClassificationStats::default(), &csg, &hosts, RectFastStats::default(), 16);
+    let d = aggregate_diagnostics(ClassificationStats::default(), &csg, &hosts, RectFastStats::default(), 16, 0);
     assert_eq!(d.worst_hosts[0].triangle_count, Some(80));
     assert!(d.worst_hosts[0].bbox.is_none());
 }
@@ -148,6 +149,7 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
         &hosts,
         RectFastStats::default(),
         16,
+        0,
     );
     let v = serde_json::to_value(&d).expect("serializes");
     for key in [
@@ -159,6 +161,7 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
         "silentNoOps",
         "rectFast",
         "worstHosts",
+        "oversizedRefDrops",
     ] {
         assert!(v.get(key).is_some(), "missing top-level key {key}");
     }
@@ -179,6 +182,41 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
     assert!(wh["bbox"].get("min").is_some() && wh["bbox"].get("max").is_some());
     let fr = &v["failuresByReason"][0];
     assert!(fr.get("reason").is_some() && fr.get("count").is_some());
+}
+
+/// RED for issue #3752: `oversized_ref_drops` must pass through
+/// `aggregate_diagnostics` unchanged and must NOT be swallowed by
+/// `is_empty`'s all-zero gate — a model whose ONLY diagnostic-worthy event is
+/// a refused oversized reference must still be surfaced, not suppressed.
+#[test]
+fn oversized_ref_drops_passes_through_and_defeats_is_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        3,
+    );
+    assert_eq!(d.oversized_ref_drops, 3);
+    assert!(
+        !d.is_empty(),
+        "a nonzero oversized_ref_drops must defeat is_empty so the diagnostics object is attached"
+    );
+}
+
+/// Control: zero refusals is genuinely empty (all other fields already zero).
+#[test]
+fn zero_oversized_ref_drops_stays_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+    );
+    assert!(d.is_empty());
 }
 
 #[test]

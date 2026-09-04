@@ -114,3 +114,45 @@ export function addedLinesMatching(patch, quote) {
   return out;
 }
 
+/**
+ * Explain a proof quote attributed to the wrong reviewed file (#3769).
+ * Diagnostic only: the caller has already rejected the quote against its
+ * claimed patch. Finding it elsewhere improves the one corrective retry but
+ * never weakens the proof-of-work decision.
+ */
+export function quotedLineFailureMessage(files, claimedPath, quote, minChars) {
+  const claimedKey = normalizePathForSelfMatch(claimedPath);
+  const elsewhere = [];
+  for (const [path, file] of files) {
+    if (normalizePathForSelfMatch(path) === claimedKey) continue;
+    if (quoteAppearsIn(file.patch, quote, minChars)) elsewhere.push(path);
+  }
+  const base =
+    `\`riskiest_change.quoted_line\` is not a line of \`${claimedPath}\`'s patch (or is shorter than ` +
+    `${minChars} characters, which would not be evidence of anything): ` +
+    `${JSON.stringify(String(quote).slice(0, 120))}.`;
+  if (elsewhere.length === 1) {
+    return (
+      `${base} This exact line IS in \`${elsewhere[0]}\`'s patch instead -- the file attribution is wrong, ` +
+      `not the quote. REMEDY: re-run; the correct \`riskiest_change.path\` is \`${elsewhere[0]}\`.`
+    );
+  }
+  if (elsewhere.length > 1) {
+    const named = elsewhere.map((path) => `\`${path}\``).join(', ');
+    return (
+      `${base} This exact line IS in ${elsewhere.length} other reviewed files' patches instead (${named}) ` +
+      '-- the file attribution is wrong, but which one it belongs to cannot be told from the quote alone. ' +
+      'REMEDY: re-run and name the specific file the quote came from.'
+    );
+  }
+  return (
+    `${base} This is the one thing a model that quit early cannot fake. REMEDY: re-run. Quote a WHOLE ` +
+    'line, not a fragment; and if the line you nominated is too long to reproduce exactly, nominate a ' +
+    'SHORTER line from the same file instead -- any real line of the diff proves you read it.'
+  );
+}
+
+/** Compare spellings only for excluding the claimed file from the search. */
+function normalizePathForSelfMatch(path) {
+  return String(path).replace(/\\/g, '/').replace(/^\.\//, '');
+}

@@ -22,6 +22,7 @@ import assert from 'node:assert/strict';
 
 import {
   DirtyPrScanError,
+  cadenceReport,
   missingLanes,
   pullRequestBaseBranches,
   classifyPr,
@@ -463,4 +464,77 @@ test('pullRequestBaseBranches: fails closed on a workflow with no `pull_request`
     assert.equal(err.reason, 'NO_PULL_REQUEST_TRIGGER');
     return true;
   });
+});
+
+// -------------------------------------------------------- cadence (#3776)
+
+const NOW = '2026-09-03T16:00:00Z';
+/** @param {number} minutes */
+const ago = (minutes) => new Date(Date.parse(NOW) - minutes * 60000).toISOString();
+
+test('cadence: a gap past two missed ticks is STALE and raises an annotation', () => {
+  // 61 minutes on a 30-minute cron. #3776's real gap was four hours, over which
+  // `main` showed a failure naming PRs that had been remediated.
+  const r = cadenceReport({ previousCreatedAt: ago(61), now: NOW, cronMinutes: 30 });
+  assert.equal(r.stale, true);
+  assert.match(r.lines.join('\n'), /STALE/);
+  assert.ok(r.warning && r.warning.includes('61 minutes'), r.warning ?? '(no warning)');
+});
+
+test('cadence: ONE missed tick is not stale — a best-effort cron drops ticks routinely', () => {
+  // 45 minutes. Warning on this would fire most days and teach the reader to
+  // ignore the one that matters.
+  const r = cadenceReport({ previousCreatedAt: ago(45), now: NOW, cronMinutes: 30 });
+  assert.equal(r.stale, false);
+  assert.equal(r.warning, null);
+  assert.match(r.lines.join('\n'), /45 minute\(s\) ago/);
+});
+
+test('cadence: exactly two intervals is the boundary and is NOT stale', () => {
+  assert.equal(cadenceReport({ previousCreatedAt: ago(60), now: NOW, cronMinutes: 30 }).stale, false);
+});
+
+test('cadence: no previous run says so, and does not claim health', () => {
+  const r = cadenceReport({ previousCreatedAt: null, now: NOW, cronMinutes: 30 });
+  assert.equal(r.stale, false);
+  assert.equal(r.warning, null);
+  assert.match(r.lines.join('\n'), /No earlier completed run/);
+});
+
+test('cadence: a `gh` failure reads UNKNOWN and WARNS — never the healthy first-run line', () => {
+  // The two facts are different and must not share a rendering: "nothing has
+  // run before" is benign, "I could not find out" is the absence this scan
+  // exists to make visible, one level up.
+  const r = cadenceReport({
+    previousCreatedAt: null,
+    now: NOW,
+    cronMinutes: 30,
+    ghError: 'GH_ERROR: `gh run list` exited 1',
+  });
+  assert.equal(r.stale, false);
+  assert.match(r.lines.join('\n'), /Cadence unknown/);
+  assert.ok(!r.lines.join('\n').includes('No earlier completed run'));
+  assert.ok(r.warning && r.warning.includes('exited 1'), r.warning ?? '(no warning)');
+});
+
+test('cadence: an unparseable or future timestamp degrades to UNKNOWN rather than throwing', () => {
+  // The cadence line is commentary about the scan, not the scan. A bad value
+  // here must not take down a job whose output is the PR findings.
+  for (const bad of ['not-a-date', ago(-5)]) {
+    const r = cadenceReport({ previousCreatedAt: bad, now: NOW, cronMinutes: 30 });
+    assert.match(r.lines.join('\n'), /Cadence unknown/, `for ${bad}`);
+    assert.ok(r.warning, `for ${bad}`);
+  }
+});
+
+test('cadence: a nonsensical interval is a CALLER error and throws', () => {
+  // Zero or negative would make every gap stale, which is a wrong verdict
+  // rather than a missing one.
+  for (const bad of [0, -30, NaN, undefined]) {
+    assert.throws(
+      () => cadenceReport({ previousCreatedAt: ago(10), now: NOW, cronMinutes: bad }),
+      (e) => e instanceof DirtyPrScanError && e.reason === 'BAD_CADENCE_INTERVAL',
+      `for ${bad}`,
+    );
+  }
 });

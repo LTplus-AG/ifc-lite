@@ -38,6 +38,7 @@ import {
   lineIsAdded,
   quotableLines,
   quoteAppearsIn,
+  quotedLineFailureMessage,
   sanitizeBody,
   sanitizeLabel,
   sanitizePath,
@@ -49,6 +50,7 @@ import {
 import { addedLineRanges, OMITTED_FOR_PROMPT_REASON } from './build-review-input.mjs';
 // #3652: the retry prompt this file's own tests exercise below.
 import { buildPrompt } from './run-reviewer.mjs';
+import { RETRYABLE_VALIDATION_REASONS } from './retry-prompt.mjs'; // #3777
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -754,6 +756,17 @@ test('sanitising is idempotent and leaves ordinary prose alone', () => {
   assert.equal(sanitizeLabel('  correctness   bug '), 'correctness bug');
 });
 
+test('sanitizeLabel caps at 60 chars, unlike sanitizePath which keeps a path whole', () => {
+  // sanitizePath has its own dedicated coverage for the opposite policy (kept
+  // WHOLE up to 500 chars, with a disambiguating digest past that); this is
+  // sanitizeLabel's own cap, previously asserted nowhere -- raising MAX_CLASS_CHARS
+  // from 60 to 61 left the whole suite green.
+  const label = 'x'.repeat(80);
+  const out = sanitizeLabel(label);
+  assert.equal(out.length, 60, `got length ${out.length}`);
+  assert.equal(out, 'x'.repeat(60));
+});
+
 // ===================================================== broken invocation / input
 
 test('an unknown flag that exists on Object.prototype is refused', () => {
@@ -879,6 +892,37 @@ test('quoteAppearsIn enforces its minimum length in both directions', () => {
   assert.equal(quoteAppearsIn(PATCH_A, 'return n;', 20), false, 'the floor is what rejects it, not the patch');
 });
 
+test('#3769: a rejected proof quote names the other reviewed file that contains it', () => {
+  const moved = 'const movedImplementation = buildCanonicalResult();';
+  const files = new Map([
+    ['packages/old.ts', { patch: '@@ -1 +1 @@\n+const replacement = true;' }],
+    ['packages/new.ts', { patch: `@@ -1 +1 @@\n+${moved}` }],
+  ]);
+  const message = quotedLineFailureMessage(files, 'packages/old.ts', moved, 8);
+  assert.match(message, /file attribution is wrong/);
+  assert.match(message, /correct `riskiest_change\.path` is `packages\/new\.ts`/);
+});
+
+test('#3769: the wrong-file diagnostic never self-matches an equivalent path spelling', () => {
+  const quote = 'const substantiveProofLine = true;';
+  const files = new Map([['packages/a.ts', { patch: `@@ -1 +1 @@\n+${quote}` }]]);
+  const message = quotedLineFailureMessage(files, './packages\\a.ts', quote, 8);
+  assert.doesNotMatch(message, /file attribution is wrong/);
+  assert.match(message, /model that quit early cannot fake/);
+});
+
+test('#3769: an ambiguous wrong-file quote names every candidate instead of guessing one', () => {
+  const quote = 'return sharedSubstantiveValue;';
+  const files = new Map([
+    ['claimed.ts', { patch: '@@ -1 +1 @@\n+return somethingElse;' }],
+    ['first.ts', { patch: `@@ -1 +1 @@\n+${quote}` }],
+    ['second.ts', { patch: `@@ -1 +1 @@\n+${quote}` }],
+  ]);
+  const message = quotedLineFailureMessage(files, 'claimed.ts', quote, 8);
+  assert.match(message, /2 other reviewed files/);
+  assert.match(message, /`first\.ts`, `second\.ts`/);
+});
+
 test('stripFence removes one fence and refuses to guess at anything else', () => {
   assert.equal(stripFence('```json\n{"a":1}\n```'), '{"a":1}');
   assert.equal(stripFence('```\n{"a":1}\n```'), '{"a":1}');
@@ -905,7 +949,21 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   // unclassified reason with every test green. Lowercase tokens are skipped,
   // which is what lets a condition like `kind === 'raw' ? ...` through without
   // a special case.
-  const src = readFileSync(new URL('./validate-findings.mjs', import.meta.url), 'utf8');
+  //
+  // SCANS FOUR FILES, NOT ONE, as of #3795: `checkSchema`/`checkProofOfWork`/
+  // `validate`/`readText`/`stripFence`/`parseRaw`/`readInput` -- the raise
+  // sites this guard exists to inventory -- moved to ./lib/finding-schema.mjs,
+  // ./lib/finding-proof-of-work.mjs and ./lib/review-input-reader.mjs for the
+  // module-size budget. Concatenated so "every raise site" still means every
+  // raise site of THIS MODULE, not just of this one physical file.
+  const src = [
+    './validate-findings.mjs',
+    './lib/finding-schema.mjs',
+    './lib/finding-proof-of-work.mjs',
+    './lib/review-input-reader.mjs',
+  ]
+    .map((p) => readFileSync(new URL(p, import.meta.url), 'utf8'))
+    .join('\n');
   const NEEDLE = 'ValidateFindingsError(';
   const seen = new Set();
   const barren = [];
@@ -970,6 +1028,73 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
 
   const phantom = [...REASONS].filter((r) => !seen.has(r));
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
+});
+
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY} (#3777, #3775)', () => {
+  // Mutation-tested shape: this must fail if the set grows to include a fourth
+  // reason (e.g. a genuine VERDICT_CONTRADICTS_FINDINGS "papers over a real
+  // failure with a retry"), and must fail if it shrinks. Exact-set comparison,
+  // not a subset/superset check either direction, per this repo's own
+  // substring/subset false-pass lesson.
+  //
+  // VALIDATION_EMPTY belongs here (#3775) even though every finding was
+  // individually dropped with its own loud DROPPED warning: that per-finding
+  // drop already exists and is already loud, so this is not a case of
+  // silently loosening what gets dropped. VALIDATION_EMPTY fires only when
+  // ALL of them were dropped, measured non-deterministic (the same unchanged
+  // commit, reviewed three times, dropped a different count each time before
+  // finally posting a real finding) -- the same "bad response this time"
+  // shape as RESPONSE_TRUNCATED, not a verdict about the code. The throw
+  // itself is unchanged: a retry that also drops everything still fails
+  // loudly, never downgrades to clean, never passes through empty.
+  assert.deepEqual(
+    [...RETRYABLE_VALIDATION_REASONS].sort(),
+    ['PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
+  );
+  // Every retryable reason must be a real one -- catches a typo'd string that
+  // would silently never match anything real REASONS raises.
+  for (const r of RETRYABLE_VALIDATION_REASONS) {
+    assert.ok(REASONS.has(r), `${r} is retryable but is not in REASONS`);
+  }
+  // The control: every OTHER real reason must be explicitly non-retryable,
+  // including the shape closest to a real finding -- a verdict that
+  // contradicts its own findings must never get a second, quieter attempt.
+  for (const r of REASONS) {
+    if (RETRYABLE_VALIDATION_REASONS.has(r)) continue;
+    assert.ok(
+      !RETRYABLE_VALIDATION_REASONS.has(r),
+      `${r} must not be retried -- it reflects the prompt/input/harness, not a fixable model-output shape`,
+    );
+  }
+  assert.ok(!RETRYABLE_VALIDATION_REASONS.has('VERDICT_CONTRADICTS_FINDINGS'), 'a contradicted verdict is a real failure, never retried');
+  assert.ok(!RETRYABLE_VALIDATION_REASONS.has('SCHEMA_INVALID'), 'malformed output is a prompt/harness problem, never retried');
+  assert.ok(RETRYABLE_VALIDATION_REASONS.has('VALIDATION_EMPTY'), 'every finding dropped is transient and IS retried (#3775)');
+});
+
+test('THE WIRING: claude-review.yml retries on EXACTLY the reasons RETRYABLE_VALIDATION_REASONS names', () => {
+  // The dispatch itself is bash in the workflow (validate-findings.mjs stays
+  // pure/offline by design, so it cannot invoke run-reviewer.mjs itself), so
+  // this cannot behaviourally exercise the retry -- only pin the workflow's
+  // grep pattern against the same source of truth the prompt-building side
+  // uses, so the two cannot silently drift apart.
+  const wf = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const step = wf.split('- name: Validate the findings')[1];
+  assert.ok(step, 'the validate step must exist');
+  const m = step.match(/grep -oE '\^❌ \(([A-Z_|]+)\):'/); // @source-text-assertion-ok the retry trigger is bash in YAML; there is no runtime signal for which reasons it matches
+  assert.ok(m, 'the retry-reason grep must be present');
+  const wired = new Set(m[1].split('|'));
+  assert.deepEqual(wired, RETRYABLE_VALIDATION_REASONS, 'the workflow grep must match exactly the retryable set, no more and no fewer');
+
+  // Bounded to ONE retry: an `if`, never a loop construct, around the retry
+  // block -- guards against someone turning this into an unbounded/`while`
+  // retry that could hammer the model on a truly permanent failure.
+  const retryBlock = step.slice(step.indexOf('retry_reason='), step.indexOf('exit "$rc"'));
+  assert.doesNotMatch(retryBlock, /\bwhile\b|\buntil\b|\bfor\b/, 'the retry must be a single bounded attempt, never a loop');
+  // Exactly one nested reviewer invocation and one nested validator
+  // invocation inside the retry branch -- two of either would mean it retries
+  // more than once.
+  assert.equal((retryBlock.match(/run-reviewer\.mjs/g) || []).length, 1, 'exactly one retried reviewer call');
+  assert.equal((retryBlock.match(/validate-findings\.mjs/g) || []).length, 1, 'exactly one retried validator call');
 });
 
 test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () => {

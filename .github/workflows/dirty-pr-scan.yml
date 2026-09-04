@@ -37,8 +37,28 @@ on:
     # fixed between two runs is never reported, by design.
     - cron: '*/30 * * * *'
   workflow_dispatch:
+  # PIGGYBACK, because `schedule` alone is not a cadence you can rely on
+  # (#3776): one run fired in four hours on this `*/30` cron, so the scan's only
+  # output on `main` was a four-hour-old failure naming PRs that had since been
+  # remediated. GitHub's scheduled triggers are best-effort and are dropped
+  # under load; nothing in-repo changes that. What it can do is add a trigger
+  # that fires on real activity, and a merge to `main` is the event most likely
+  # to have INVALIDATED the last scan -- it is what lands a stacked PR's base
+  # and what makes another PR conflicted. Deliberately not `pull_request`: see
+  # the block above, a PR that cannot fire `pull_request` is the whole point.
+  push:
+    branches: [main]
+
+# A push during a cron tick would otherwise scan the same PR list twice and
+# publish two verdicts seconds apart. Newest wins; an in-flight scan of an
+# older PR list has nothing to say that the newer one does not.
+concurrency:
+  group: dirty-pr-scan
+  cancel-in-progress: true
 
 permissions:
+  # `gh run list`, for the cadence report below. Without it that step 403s.
+  actions: read
   contents: read
   pull-requests: read
   # Declaring ANY `permissions:` block sets every scope not listed to `none`,
@@ -75,6 +95,11 @@ jobs:
       - name: Unit-test the scan itself
         run: node --test scripts/lib/dirty-pr-scan.test.mjs scripts/scan-dirty-prs.test.mjs
 
+      # The scan also reports its OWN cadence -- how long since the last
+      # completed run, and an annotation past two missed ticks (#3776). It is
+      # in the script rather than a shell step here so the arithmetic is a
+      # tested pure function (`cadenceReport`) instead of untested YAML, and so
+      # it reaches the same summary file as the findings.
       - name: Scan open PRs
         env:
           GH_TOKEN: ${{ github.token }}

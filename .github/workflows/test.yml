@@ -5,7 +5,35 @@
 name: Test
 
 on:
+  # `edited` IS THE RETARGET EVENT, and without it a PR moved onto `main` gets
+  # NO lanes at all (#3772). The default activity types are
+  # opened/synchronize/reopened; changing a PR's base fires `edited` and nothing
+  # else. Measured on #3695/#3699/#3701: each merged `main` into its branch
+  # while still based on a feature branch -- that `synchronize` was dropped by
+  # `branches: [main]` below -- and was then retargeted, which fired only
+  # `edited`. #3699 had ZERO `Test` runs in its life. All 16 required lanes sat
+  # absent, which reads identically to "passed" on the PR surface.
+  #
+  # NO `github.event.changes.base` GATE, and that omission is the considered
+  # half of this fix rather than the lazy one. Gating the jobs so a title/body
+  # edit skips them would make every such edit publish a full set of SKIPPED
+  # check runs -- and `skipped` counts as a pass BOTH in the `test` aggregate at
+  # the foot of this file (`case "$r" in success|skipped) ;;`) and in GitHub's
+  # required-status-check evaluation, which takes the LATEST run per check name.
+  # A red PR would go green on a typo fix in its description. That is the exact
+  # absence-reads-as-success class this trigger is being widened to close.
+  #
+  # THE PRICE, STATED: every title or body edit now costs a second full 16-lane
+  # run of a head that already has a verdict -- routine on the changesets
+  # release PR, which rewrites its body after every merge. What it does NOT
+  # cost is the run already in flight; see `cancel-in-progress` below, which
+  # declines to cancel for `edited` alone.
+  #
+  # NO `ready_for_review` EITHER, and for the plainer reason: nothing in this
+  # workflow gates on `draft`, so every job already runs on a draft PR. Adding
+  # the type would buy a second run of a head that has already been judged.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
     branches: [main]
   # Post-merge guard. Two PRs can each be green against their own base and be
   # broken as a pair on main: #2551 removed a helper from
@@ -27,8 +55,21 @@ concurrency:
   # run for a frontend-breaking second merge, and its path filters would then
   # skip the Node lane — leaving exactly the broken state this guard exists to
   # catch unchecked. A per-commit group means no merge can displace another.
+  #
+  # AN `edited` RUN NEVER CANCELS (#3772). With `edited` now a trigger and the
+  # PR group keyed on the ref, an unconditional `cancel-in-progress` would let a
+  # description edit kill a 16-lane run mid-flight and start it again from
+  # scratch -- and the changesets release PR rewrites its own body after every
+  # merge to main, so this is routine, not hypothetical. The group stays keyed
+  # on the REF rather than on `head.sha`, which is the other way to stop the
+  # cancellation: a per-SHA group would put a superseded run in its own group
+  # where nothing can reach it, so a stale-head run would survive the
+  # `synchronize` that obsoleted it and publish its verdict afterwards. Keeping
+  # the ref group means a real push still cancels; only the no-op event
+  # declines to. The `edited` run itself queues behind the in-flight one and is
+  # evicted if a push arrives first, which is the right outcome.
   group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pull_request' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'edited' }}
 
 permissions:
   contents: read
@@ -383,6 +424,38 @@ jobs:
             packages/*/pkg
           retention-days: 1
           if-no-files-found: error
+
+  # #3661: text review missed 10/10 independently confirmed defect cases even
+  # after rubric retuning. This asks the executable question instead: do this
+  # branch's changed tests fail when its production change is removed?
+  revert-oracle:
+    name: Changed tests observe production
+    needs: [changes, build]
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.frontend == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Prove the changed tests observe the production change
+        run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
 
   typecheck:
     name: Typecheck
@@ -1641,7 +1714,7 @@ jobs:
 
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -1650,6 +1723,7 @@ jobs:
         run: |
           declare -A results=(
             [build]="${{ needs.build.result }}"
+            [revert-oracle]="${{ needs.revert-oracle.result }}"
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"

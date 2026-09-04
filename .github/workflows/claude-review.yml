@@ -168,8 +168,27 @@ jobs:
         if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           set +e
+          # The rolling changesets PR is generated release metadata, not a new
+          # authored code change. Sending it through the model on every refresh
+          # caused 13 of 23 measured review failures (#3771), and its accumulated
+          # changelogs now exceed the harness's hard patch ceiling. Classify the
+          # exact branch+title pair before downloading or prompting. A near-match
+          # stays on the normal path, and the skip still posts an explicit marker
+          # below, so this can never become an absence that looks like success.
+          target=$(node scripts/review/classify-review-target.mjs \
+            --head-ref "$PR_HEAD_REF" \
+            --title "$PR_TITLE")
+          if [ "$(jq -r .skip <<<"$target")" = "true" ]; then
+            jq -r .reason <<<"$target" > "$RUNNER_TEMP/skip-reason.txt"
+            echo "::notice::$(cat "$RUNNER_TEMP/skip-reason.txt")"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # THE PR BODY, VIA A FILE. Never an argument: it is author-controlled
           # text, and `jq -r` to a file keeps it out of the command line and out
           # of any shell interpolation. build-review-input fences it before it
@@ -276,6 +295,7 @@ jobs:
           # which it is on every run rather than leaving a single-credential setup
           # looking like a redundant one.
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
             --rubric "${{ steps.rubric.outputs.path }}" \
@@ -287,23 +307,49 @@ jobs:
       # line anchoring, the cap, and the sanitisation that stops a steered model
       # laundering a forged marker through our own trusted identity.
       #
-      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED (#3652). Every other reason here
-      # (SCHEMA_INVALID, RESPONSE_TRUNCATED, VALIDATION_EMPTY, ...) reflects the
-      # prompt or the harness, not a bad choice of quote, and re-running the model
-      # would not change either -- those still fail this step outright, exactly
-      # as before. PROOF_OF_WORK_FAILED on `riskiest_change.quoted_line` is
-      # different: the check itself is UNCHANGED (still verbatim, still an
-      # 8-character floor -- widening it was tried three times on #3652/#3690 and
-      # measured wrong each time, because a short or truncated quote is
-      # guessable, not just uncommon). What was permanently blocking a PR was
-      # never the check; it was that the model got exactly one attempt to pick a
-      # quotable line, and a re-run of the SAME prompt reliably repeats the SAME
-      # choice (#3597 on this issue: a 217-character riskiest line, truncated
-      # identically on every manual re-run). A second attempt, told concretely
-      # which quote failed, can nominate any OTHER real line of the diff instead
-      # -- it does not need the one that failed. If the retry also fails, this
-      # step fails exactly as it always has; nothing here can turn a failure into
-      # a clean or findings verdict.
+      # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, OR
+      # VALIDATION_EMPTY (#3652, #3777, #3775). Every other reason here
+      # (SCHEMA_INVALID, VERDICT_CONTRADICTS_FINDINGS, ...) reflects the prompt
+      # or the harness, not a fixable shape of model output, and re-running the
+      # model would not change the answer -- those still fail this step
+      # outright, exactly as before. The retryable set is pinned in
+      # scripts/review/retry-prompt.mjs's RETRYABLE_VALIDATION_REASONS, and
+      # run-reviewer.test.mjs asserts this grep matches exactly that set.
+      #
+      # PROOF_OF_WORK_FAILED on `riskiest_change.quoted_line`: the check itself
+      # is UNCHANGED (still verbatim, still an 8-character floor -- widening it
+      # was tried three times on #3652/#3690 and measured wrong each time,
+      # because a short or truncated quote is guessable, not just uncommon).
+      # What was permanently blocking a PR was never the check; it was that the
+      # model got exactly one attempt to pick a quotable line, and a re-run of
+      # the SAME prompt reliably repeats the SAME choice (#3597 on this issue: a
+      # 217-character riskiest line, truncated identically on every manual
+      # re-run). A second attempt, told concretely which quote failed, can
+      # nominate any OTHER real line of the diff instead -- it does not need the
+      # one that failed.
+      #
+      # RESPONSE_TRUNCATED (#3777): the terminal sentinel was missing, meaning
+      # the response ended before the model meant it to -- most likely the
+      # output token budget ran out. The sentinel check itself is UNCHANGED and
+      # stays strict (a parseable-but-incomplete response is still refused); the
+      # retry just gives the model a second, differently-steered attempt to
+      # finish within budget, same as #3652 gives it a second attempt to pick a
+      # provable quote.
+      #
+      # VALIDATION_EMPTY (#3775): `verdict: "findings"` and every individual
+      # finding was dropped (each drop is its own loud `DROPPED findings[i]: ...`
+      # warning naming the reason -- an unreviewed file, an off-by-one line, an
+      # empty body after sanitising). Measured non-deterministic on one
+      # unchanged commit reviewed three times in a row (336, then 290+143, then
+      # 210 dropped, before a real finding finally posted), so this is the same
+      # "bad response this time" shape as RESPONSE_TRUNCATED, not a verdict
+      # about the code. The refusal to downgrade to clean or pass through empty
+      # is UNCHANGED: if the retry also drops everything, this still fails
+      # loudly -- nothing here relaxes that throw.
+      #
+      # Either way, if the retry also fails, this step fails exactly as it
+      # always has; nothing here can turn a failure into a clean or findings
+      # verdict.
       - name: Validate the findings
         id: validate
         if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
@@ -314,6 +360,7 @@ jobs:
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           CLAUDE_CODE_OAUTH_TOKEN_2: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN_2 }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
           node "$GITHUB_WORKSPACE/scripts/review/validate-findings.mjs" \
@@ -322,13 +369,15 @@ jobs:
             --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
           rc=${PIPESTATUS[0]}
 
-          if [ "$rc" -ne 0 ] && grep -q '^❌ PROOF_OF_WORK_FAILED:' "$RUNNER_TEMP/validate.log"; then
-            echo "::notice::PROOF_OF_WORK_FAILED on the first attempt; retrying once, told which quote failed."
+          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED|VALIDATION_EMPTY):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
+          if [ "$rc" -ne 0 ] && [ -n "$retry_reason" ]; then
+            echo "::notice::${retry_reason} on the first attempt; retrying once."
             node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \
               --rubric "${{ steps.rubric.outputs.path }}" \
               --input "$RUNNER_TEMP/review-input.json" \
               --out "$RUNNER_TEMP/raw-review.txt" \
               --retry-note "$RUNNER_TEMP/validate.log" \
+              --retry-reason "$retry_reason" \
               --model sonnet
             reviewer_rc=$?
             if [ "$reviewer_rc" -eq 0 ]; then

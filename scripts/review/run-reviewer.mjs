@@ -53,6 +53,8 @@
  *                    CLAUDE_CODE_OAUTH_TOKEN with `claude setup-token`.
  *   MODEL_ERROR      Any other non-zero exit or `is_error`. REMEDY: read the
  *                    captured stderr, which is printed verbatim.
+ *   CLI_SILENT_EXIT  Non-zero with no diagnostic stderr. The live session-limit
+ *                    shape may still leave an opaque JSON envelope on stdout.
  *   EMPTY_RESPONSE   The CLI succeeded and produced nothing. Treated as failure
  *                    rather than as an empty review.
  *   BAD_ENVELOPE     The CLI's own JSON wrapper did not parse.
@@ -75,6 +77,7 @@ import { randomBytes } from 'node:crypto';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { renderSiblingRow } from './sibling-row.mjs';
 import { buildRetrySection } from './retry-prompt.mjs';
+import { runOpenAiFallback } from './openai-reviewer.mjs';
 
 export class RunReviewerError extends Error {
   constructor(reason, message) {
@@ -168,7 +171,7 @@ export const keptRowCharge = (path) => rowBytes(fileHeader(path)) + 2 + rowBytes
 export const unreviewableRowCharge = (u) => rowBytes(unreviewableRow(u)) + 1;
 
 /** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
-export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote: see retry-prompt.mjs
+export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote/opts.retryReason: see retry-prompt.mjs
   const files = input.files
     .map((f) => `${fileHeader(f.path)}${f.patch}`)
     .join('\n\n');
@@ -259,7 +262,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
     fenceUntrusted(files),
     unreviewable,
     roster,
-    ...sections, ...buildRetrySection(opts.retryNote, fenceUntrusted), // #3652 retry, sibling-extracted
+    ...sections, ...buildRetrySection(opts.retryNote, fenceUntrusted, opts.retryReason), // #3652/#3777 retry, sibling-extracted
     '',
     'Emit the JSON described above and nothing else.',
   ].join('\n');
@@ -358,7 +361,19 @@ export function runReviewer({ prompt, model, spawn = realSpawn, token = null }) 
   }
   const stderr = String(r.stderr ?? '');
   if (r.status !== 0) {
-    const reason = classify(`${stderr}\n${r.stdout ?? ''}`);
+    const output = `${stderr}\n${r.stdout ?? ''}`;
+    const classified = classify(output);
+    // Run 33802488121 measured the second early-exit shape: exit 1 and empty
+    // stderr, but an opaque stdout envelope that contains no recognised
+    // diagnostic. It is still an exit before a usable review, and treating the
+    // envelope's mere bytes as MODEL_ERROR prevents the independent provider
+    // from taking over. Preserve specific auth/quota text wherever the CLI
+    // writes it; only the otherwise-unclassified, stderr-empty shape is silent.
+    const reason = classified !== 'MODEL_ERROR'
+      ? classified
+      : stderr.trim() === ''
+        ? 'CLI_SILENT_EXIT'
+        : 'MODEL_ERROR';
     throw new RunReviewerError(
       reason,
       `The reviewer CLI exited ${r.status}. ${remedyFor(reason)}\n--- stderr ---\n${stderr.trim() || '(empty)'}`,
@@ -405,41 +420,21 @@ function remedyFor(reason) {
   if (reason === 'AUTH_FAILED') {
     return 'AUTH_FAILED. REMEDY: refresh the token with `claude setup-token` and update the CLAUDE_CODE_OAUTH_TOKEN secret.';
   }
+  if (reason === 'CLI_SILENT_EXIT') {
+    return 'CLI_SILENT_EXIT: the CLI exited before producing a usable review. REMEDY: use an independent provider or inspect the captured process output.';
+  }
   return 'MODEL_ERROR. REMEDY: read the captured stderr below.';
 }
 
 /**
- * Run the reviewer, falling back to a SECOND credential when the first is the
- * thing that failed.
- *
- * WHY THIS EXISTS. The lane rests on one manually-refreshed subscription token.
- * It expired once already, and the day it did the lane was dark while every
- * per-PR check looked like an ordinary transient red. CodeRabbit covers about a
- * third of this repository's volume, so a single dead credential means most PRs
- * get no review at all.
- *
- * ONLY TWO REASONS RETRY, and the list is deliberately short:
- *
- *   AUTH_FAILED    - this credential is dead. A different one may not be.
- *   QUOTA_DRAINED  - this POOL is empty. A different account has its own pool.
- *
- * Everything else -- MODEL_ERROR, EMPTY_RESPONSE, BAD_ENVELOPE -- is a property
- * of the request or the model, not of the credential, and retrying it on a
- * second account would burn a second pool to get the same answer. Worse, it
- * would turn a deterministic failure into an intermittent one, which is harder
- * to diagnose than the failure itself.
- *
- * THE FALLBACK IS OPTIONAL. With no second token configured this behaves exactly
- * as before, and says so, because a silent single-credential setup that looks
- * like a redundant one is the failure this whole function is about.
- *
- * @param {{ prompt: string, model: string, tokens: {token: string, label: string}[], spawn: Function }} o
+ * Retry only credential-specific failures: first across independent Claude
+ * accounts, then across providers. Request/model/output failures stay failed.
  */
-export function runReviewerWithFailover({ prompt, model, tokens, spawn }) {
+export function runReviewerWithFailover({ prompt, model, tokens, spawn, providerFallback = null }) {
   if (!Array.isArray(tokens) || tokens.length === 0) {
     throw new RunReviewerError('AUTH_MISSING', 'No usable credential was resolved.');
   }
-  const RETRYABLE = new Set(['AUTH_FAILED', 'QUOTA_DRAINED']);
+  const RETRYABLE = new Set(['AUTH_FAILED', 'QUOTA_DRAINED', 'CLI_SILENT_EXIT']);
   let last;
   for (const [i, t] of tokens.entries()) {
     try {
@@ -449,8 +444,20 @@ export function runReviewerWithFailover({ prompt, model, tokens, spawn }) {
     } catch (err) {
       last = err;
       const more = i + 1 < tokens.length;
-      if (!(err instanceof RunReviewerError) || !RETRYABLE.has(err.reason) || !more) throw err;
+      if (!(err instanceof RunReviewerError) || !RETRYABLE.has(err.reason)) throw err;
+      if (!more) break;
       console.log(`auth: ${t.label} failed with ${err.reason}; trying ${tokens[i + 1].label}.`);
+    }
+  }
+  if (providerFallback) {
+    console.log(`auth: Claude failed with ${last.reason}; trying the independent provider fallback.`);
+    try {
+      return { text: providerFallback(prompt), envelope: { provider: 'openai-fallback' } };
+    } catch (error) {
+      throw new RunReviewerError(
+        'FALLBACK_ERROR',
+        `Claude failed with ${last.reason}, and the independent provider failed: ${error.message}`,
+      );
     }
   }
   throw last;
@@ -490,8 +497,8 @@ export function resolveTokens(env) {
 }
 
 function main() {
-  const args = { rubric: null, input: null, out: null, model: 'sonnet', retryNote: null };
-  const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model'], ['--retry-note', 'retryNote']]); // optional: retry-prompt.mjs
+  const args = { rubric: null, input: null, out: null, model: 'sonnet', retryNote: null, retryReason: null };
+  const FLAGS = new Map([['--rubric', 'rubric'], ['--input', 'input'], ['--out', 'out'], ['--model', 'model'], ['--retry-note', 'retryNote'], ['--retry-reason', 'retryReason']]); // optional: retry-prompt.mjs
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i += 1) {
     const key = FLAGS.get(argv[i]);
@@ -506,7 +513,7 @@ function main() {
 
   const rubric = readFileSync(args.rubric, 'utf8');
   const input = JSON.parse(readFileSync(args.input, 'utf8'));
-  const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null });
+  const prompt = buildPrompt(rubric, input, { retryNote: args.retryNote ? readFileSync(args.retryNote, 'utf8') : null, retryReason: args.retryReason ?? 'PROOF_OF_WORK_FAILED' }); // default: #3652 wording for an older caller with no --retry-reason
 
   const tokens = resolveTokens(process.env);
   if (tokens.length === 0) {
@@ -521,11 +528,15 @@ function main() {
         : ', NO fallback configured (set CLAUDE_CODE_OAUTH_TOKEN_2 from a second account)'),
   );
 
+  const openAiKey = String(process.env.OPENAI_API_KEY ?? '').trim();
+  console.log(openAiKey ? 'provider fallback: configured.' : 'provider fallback: NOT configured (set OPENAI_API_KEY).');
+
   const { text, envelope } = runReviewerWithFailover({
     prompt,
     model: args.model,
     tokens,
     spawn: realSpawn,
+    providerFallback: openAiKey ? (reviewPrompt) => runOpenAiFallback({ prompt: reviewPrompt, apiKey: openAiKey }) : null,
   });
 
   writeFileSync(args.out, text);

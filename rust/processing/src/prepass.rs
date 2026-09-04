@@ -357,7 +357,24 @@ pub fn resolve_unit_scales(
 
 /// Find the singleton `IFCPROJECT`'s express id by SIMD substring search —
 /// no full entity scan. Returns `None` when the file has no project.
+///
+/// A refused id (issue #3421: an `IFCPROJECT` express id above `u32::MAX`) is
+/// reported through [`ifc_lite_core::parser::report_oversized_ids`] — the
+/// same sink the definition scanner uses (issue #3395/#3752) — because it is
+/// exactly that class of event: this function backtracks from `IFCPROJECT(`
+/// to the record's OWN id, not to a reference into another entity, so a
+/// refusal here is indistinguishable in kind from a scan refusing to index
+/// the record at all. Left unreported, it would default the file's unit
+/// scales (see [`resolve_unit_scales`]) with the exact silent-1000×-oversized
+/// symptom issue #1367 already fixed for the "not found at all" case.
 pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
+    let mut refused = 0usize;
+    let result = find_ifcproject_id_inner(content, &mut refused);
+    ifc_lite_core::parser::report_oversized_ids(refused);
+    result
+}
+
+fn find_ifcproject_id_inner(content: &[u8], refused: &mut usize) -> Option<u32> {
     let mut from = 0usize;
     // Search for the keyword+paren only; the `=` and `#<id>` are reconstructed by
     // backtracking. Exporters vary the whitespace around `=` — Revit/EDM emits
@@ -387,8 +404,11 @@ pub fn find_ifcproject_id(content: &[u8]) -> Option<u32> {
             if i > 0 && content[i - 1] == b'#' && i < digits_end {
                 // Refuse (not wrap) above u32::MAX (#3421); None here just
                 // keeps searching, same as the "not found" case below.
-                if let Some(id) = parse_express_id(&content[i..digits_end]) {
-                    return Some(id);
+                // Counted (issue #3752) so the caller can report it via the
+                // scanner's own oversized-id sink instead of it vanishing.
+                match parse_express_id(&content[i..digits_end]) {
+                    Some(id) => return Some(id),
+                    None => *refused += 1,
                 }
             }
         }

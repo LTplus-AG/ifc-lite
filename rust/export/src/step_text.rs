@@ -84,6 +84,24 @@ pub fn escape(s: &str) -> String {
 /// Collect outgoing `#<digits>` references in a STEP entity line, skipping the
 /// contents of single-quoted strings (where a `#` is literal text).
 pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
+    let mut discarded = 0usize;
+    refs_in_line_counted(line, out, &mut discarded);
+}
+
+/// [`refs_in_line`], additionally counting every reference discarded because it
+/// exceeded `u32::MAX` (issue #3421/#3752) into `refused`. Used by the two
+/// reachability-closure callers ([`crate::step::export_step_with_stats`]'s
+/// included-set walk and [`crate::merged::plan::resolve_included`]) so a
+/// refusal there — which decides what a filtered/merged export DOES NOT emit —
+/// is at least counted, even though the referenced record, being unrepresentable,
+/// could never have been a real entity in this model either. Callers that only
+/// use the result to decide whether a line names an already-known id (the
+/// merged exporter's dropped-container rewrite in `merged/line_edit.rs`) keep
+/// calling plain `refs_in_line`: `dropped`/similar sets there only ever hold
+/// ids that were themselves scanned successfully (so at most `u32::MAX`), and
+/// a ref this function refuses can never equal one of them — refusing it there
+/// changes no decision, so counting it would be reporting a no-op.
+pub(crate) fn refs_in_line_counted(line: &[u8], out: &mut Vec<u32>, refused: &mut usize) {
     let mut i = 0;
     let mut in_quote = false;
     while i < line.len() {
@@ -104,9 +122,11 @@ pub(crate) fn refs_in_line(line: &[u8], out: &mut Vec<u32>) {
                 // real low-numbered entity (issue #3421): it is dropped from
                 // the reference list instead of being followed to the wrong
                 // entity, the same "no third policy" refusal
-                // `parse_express_id` establishes everywhere else.
-                if let Some(n) = parse_express_id(&line[i + 1..j]) {
-                    out.push(n);
+                // `parse_express_id` establishes everywhere else. Counted
+                // (issue #3752) so a refusal here at least leaves a trace.
+                match parse_express_id(&line[i + 1..j]) {
+                    Some(n) => out.push(n),
+                    None => *refused += 1,
                 }
                 i = j;
                 continue;

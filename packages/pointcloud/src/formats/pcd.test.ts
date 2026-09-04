@@ -296,7 +296,7 @@ describe('decodePcd pre-allocation guard', () => {
           `POINTS 1`,
           `DATA binary`,
           '',
-        ].join('\n') + ' '.repeat(64),
+        ].join('\n') + '\x00'.repeat(64),
       );
     // Fractional SIZE would poison every offset downstream.
     expect(() => decodePcd(pcd('4 4.5 4', '1 1 1'))).toThrow(/invalid field SIZE or COUNT/);

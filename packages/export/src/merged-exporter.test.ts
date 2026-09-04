@@ -255,6 +255,39 @@ describe('MergedExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // The georef rescue (#3696, `georef-closure.ts`) has two call sites:
+  // `step-collection.ts` (pinned by `step-exporter.test.ts`'s own
+  // "retains IFCMAPCONVERSION..." test) and this file's
+  // `buildVisibleOnlyClosure`, which had no equivalent pin. Same shape as
+  // the hidden-door pset test above: `IfcMapConversion.SourceCRS` points AT
+  // the `IFCGEOMETRICREPRESENTATIONCONTEXT` it converts and nothing points
+  // the other way, so the ordinary forward closure a visibleOnly merged
+  // export walks never reaches it on its own.
+  it('retains IFCMAPCONVERSION and IFCPROJECTEDCRS in a visibleOnly merged export', () => {
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,(#4),$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'Wall',$,$,$,$,$);"],
+      [3, 'IFCWALL', "#3=IFCWALL('g3',$,'HiddenWall',$,$,$,$,$);"],
+      [4, 'IFCGEOMETRICREPRESENTATIONCONTEXT', "#4=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,$,$);"],
+      [5, 'IFCMAPCONVERSION', '#5=IFCMAPCONVERSION(#4,#6,160000.,450000.,0.,$,$,$);'],
+      [6, 'IFCPROJECTEDCRS', "#6=IFCPROJECTEDCRS('EPSG:2056',$,$,$,$,$,$);"],
+    ]);
+
+    const exporter = new MergedExporter([model1]);
+    const result = exporter.export({
+      schema: 'IFC4',
+      projectStrategy: 'keep-first',
+      visibleOnly: true,
+      hiddenEntityIdsByModel: new Map([['m1', new Set([3])]]), // Hide wall #3
+    });
+
+    const content = decode(result.content);
+    expect(content).toContain('IFCMAPCONVERSION');
+    expect(content).toContain('IFCPROJECTEDCRS');
+    expect(content).not.toContain('HiddenWall');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('should unify single site and remap spatial chain', () => {
     // Model1: Project#1 → Site#2 (via RelAgg#3)
     const model1 = buildModel('m1', 'Arch', [

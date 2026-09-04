@@ -102,6 +102,14 @@ const SCHEMA_FOR_ENTRY: ReadonlyArray<readonly [RegExp, string]> = [
 const STRESS_TEXT = `Grüße & <critical> "urgent" 'now' — 通風管 café`;
 
 /**
+ * The viewport ratio every camera below carries, mirroring what the viewer
+ * now records (`Camera.getAspect()`). 3.0's `visinfo.xsd` requires
+ * `<AspectRatio>`; 2.1 has no such element, and the writer emits none there,
+ * so one fixture value serves both arms.
+ */
+const ASPECT_RATIO = 16 / 9;
+
+/**
  * Build the archive a user downloads, using only the public helpers (plus the
  * plain-field-assignment pattern real callers already use for fields no
  * helper option reaches -- see the file-level comment above).
@@ -154,6 +162,7 @@ function plainExport(version: '2.1' | '3.0'): BCFProject {
         up: { x: 0, y: 1, z: 0 },
         fov: Math.PI / 4,
         isOrthographic: false,
+        aspectRatio: ASPECT_RATIO,
       },
       // The user's report singles out selected objects by GUID; a viewpoint
       // with no selection could not show them going missing.
@@ -252,6 +261,7 @@ function plainExport(version: '2.1' | '3.0'): BCFProject {
       fov: Math.PI / 3,
       isOrthographic: true,
       orthoScale: 5.5,
+      aspectRatio: ASPECT_RATIO,
     },
     sectionPlane: { axis: 'down', position: 40, enabled: true, flipped: false },
     bounds: { min: { x: -10, y: -10, z: -10 }, max: { x: 10, y: 10, z: 10 } },
@@ -268,6 +278,7 @@ function plainExport(version: '2.1' | '3.0'): BCFProject {
       position: { x: 3, y: 1, z: -2 },
       target: { x: 0, y: 0, z: 0 },
       up: { x: 0, y: 1, z: 0 },
+      aspectRatio: ASPECT_RATIO,
       // 50 degrees -- inside 2.1's [45, 60] FieldOfView facet, distinct from
       // plainTopic's 45-degree boundary case. (writer-camera.ts deliberately
       // does not enforce this facet on write -- see requireFieldOfViewElement
@@ -324,17 +335,21 @@ async function entriesOf(project: BCFProject): Promise<Map<string, string>> {
 }
 
 /**
- * 2.1 only, and that is the point rather than a shortcut: `createBCFProject`
- * defaults to 2.1 and every caller in this repository takes that default, so
- * 2.1 is the archive users actually get. A plain 3.0 export cannot even be
- * built through these helpers today — 3.0's `visinfo.xsd` requires
- * `AspectRatio` on both camera types, `ViewerCameraState` carries none, so
- * `createViewpoint` produces a camera the writer refuses (deliberately) rather
- * than emitting an invalid archive. `schema-validation.test.ts` covers 3.0
- * from a hand-built fixture that supplies the field.
+ * Both versions. 2.1 is what `createBCFProject` defaults to and what most
+ * callers download, but 3.0 is NOT hypothetical: `readBCF` sets
+ * `project.version` from the imported `bcf.version`, so importing another
+ * tool's 3.0 archive and adding a topic exports 3.0.
+ *
+ * The 3.0 arm was skipped until #3612 because it could not be built at all
+ * through these helpers -- `visinfo.xsd` requires `AspectRatio` on both camera
+ * types, `ViewerCameraState` carried none, and the writer refuses (rightly) to
+ * invent one, so `writeBCF` threw for the whole archive. That was read as "3.0
+ * is not what users get" when it was really "3.0 export is broken"; skipping
+ * the arm is what let it stay broken. `ViewerCameraState.aspectRatio` closes
+ * it, and running the arm is what keeps it closed.
  */
 describe('a plainly-exported archive validates entry by entry', () => {
-  for (const version of ['2.1'] as const) {
+  for (const version of ['2.1', '3.0'] as const) {
     it(`BCF ${version}`, async () => {
       const entries = await entriesOf(plainExport(version));
 
@@ -360,11 +375,14 @@ describe('a plainly-exported archive validates entry by entry', () => {
           // contain `/`; a fixed inert name keeps both out of the argv.
           xml: [{ fileName: 'subject.xml', contents: xml }],
           schema: [schema(version, xsd)],
-          // No preload needed: this sweep is 2.1-only (see the block comment
-          // above), and 2.1's schemas are self-contained. A 3.0 archive would
-          // need shared-types.xsd preloaded for its cross-schema references;
-          // `schema-validation.test.ts` covers that case.
-          preload: [],
+          // 2.1's schemas are self-contained; 3.0 pulls its simple types in
+          // with `<xs:include schemaLocation="shared-types.xsd"/>`, which
+          // xmllint resolves against its in-memory filesystem, so the include
+          // target has to be preloaded under exactly that name.
+          preload:
+            version === '3.0'
+              ? [{ fileName: 'shared-types.xsd', contents: schema('3.0', 'shared-types.xsd') }]
+              : [],
         });
         if (!result.valid) {
           failures.push(`${name} [${xsd}]: ${result.errors.map((e) => e.message).join(' | ')}`);

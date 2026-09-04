@@ -386,7 +386,10 @@ pub struct Diff {
     /// reading a triangle count as damage. The volume dimension cannot reach
     /// it either: `vol` is not taken on a torn host (see [`HostRow::vol`]).
     /// What would close it is the tear being fixed, at which point the host
-    /// gains a reading.
+    /// gains a reading. The gap is pinned as a KNOWN GAP, asserting the
+    /// wrong-but-current verdict, by
+    /// `a_torn_host_that_loses_half_its_mesh_is_still_called_a_re_tessellation`
+    /// below, which also names the #3219 population it applies to.
     pub retessellated: Vec<Delta>,
     /// Enclosed volume differs between two WATERTIGHT readings of the same host
     /// (#3422), and nothing outranked it. Requires a bless, is never a
@@ -405,6 +408,20 @@ pub struct Diff {
     /// `improved`; before this bucket the census read both as green. See
     /// `an_over_cut_on_a_watertight_host_requires_a_bless`
     /// in `triangulation_invariance.rs` for the measurement.
+    ///
+    /// What it does NOT catch, stated here so a reader landing on the bucket
+    /// does not over-read it:
+    ///
+    /// - The SAME over-cut on a TORN host. There is no reading on either side,
+    ///   so the pair is decided by the pre-#3422 rules and the
+    ///   [`Diff::retessellated`] over-fire is untouched. That is not a corner:
+    ///   all 32 hosts the candidate #3219 fix moves are torn. Pinned as a known
+    ///   gap by
+    ///   `a_torn_host_that_loses_half_its_mesh_is_still_called_a_re_tessellation`.
+    /// - The DEFECT THAT IS ALREADY THERE. A host over-cut on main today is
+    ///   blessed at its over-cut volume, the same way every other column blessed
+    ///   the state it found. This bucket makes the NEXT move in either direction
+    ///   cost a bless; it says nothing about whether today's number is right.
     pub volume_moved: Vec<Delta>,
     /// Strictly better. Reported, never a failure.
     ///
@@ -1790,6 +1807,65 @@ mod tests {
         let d = diff(std::slice::from_ref(&g), &[row("a.ifc", 1, 0, 600)], &swept(&["a.ifc"]));
         assert!(d.volume_moved.is_empty(), "one reading is not a comparison");
         assert_eq!(d.changed.len(), 1);
+    }
+
+    /// KNOWN GAP (#3422). The volume dimension does NOT close the
+    /// `Diff::retessellated` over-fire on a TORN host, and this test asserts
+    /// the wrong-but-known verdict rather than the right one, so that the day
+    /// it is fixed this test fails and has to be rewritten deliberately.
+    ///
+    /// The population is not hypothetical. Running the candidate #3219 cap fix
+    /// through the census moves 32 hosts, 23 regressed and 9 re-tessellated,
+    /// and EVERY one of the 32 is torn, with open counts from 11 to 1125. Not
+    /// one watertight host is among them. That is the exact population the
+    /// #3219 bless has to judge, and `vol` is deliberately not taken there, for
+    /// the reason [`HostRow::vol`] gives: on an open surface the divergence sum
+    /// is not a volume, so two readings compared say nothing about material.
+    /// #3422's own framing of this ("translation-variant, changing if the model
+    /// moved") does not hold against
+    /// `mesh_volume_is_stable_far_from_the_world_origin_for_an_open_mesh` in
+    /// `kernel/mesh_volume.rs`, which pins an OPEN reading stable across a
+    /// 10 km offset because the sum is AABB-centred. The conclusion is the same
+    /// and the reason is not, so the reason is corrected here rather than
+    /// inherited.
+    ///
+    /// What the gap costs, concretely: a host that loses HALF its mesh while
+    /// its tearing improves is filed as a re-tessellation and described as
+    /// "less torn". That is a bless-requiring bucket, so the event is not
+    /// silent, but it is misdescribed, and the exposure is a wrong bless by a
+    /// reviewer reading "less torn" and approving it.
+    ///
+    /// Closing it needs the tear fixed, at which point the host gains a
+    /// reading. Do NOT close it with a proportionality heuristic on `tris`:
+    /// that is a second magnitude rule on a vocabulary with no magnitude in it,
+    /// which is the mistake `Diff::retessellated` already documents.
+    #[test]
+    fn a_torn_host_that_loses_half_its_mesh_is_still_called_a_re_tessellation() {
+        let g = row("a.ifc", 1, 40, 800);
+        assert_eq!(g.vol, None, "torn, so there is no volume to adjudicate with");
+        let halved = row("a.ifc", 1, 2, 400);
+        assert_eq!(halved.vol, None, "still torn on the run side, so still no reading");
+
+        let d = diff(std::slice::from_ref(&g), &[halved], &swept(&["a.ifc"]));
+        // The WRONG verdict, pinned as the current behaviour. Half the mesh is
+        // gone; the census says the host got less torn.
+        assert_eq!(d.regressed.len(), 0, "KNOWN GAP #3422: this SHOULD be a regression");
+        assert_eq!(d.retessellated.len(), 1, "and is filed as a re-tessellation instead");
+        assert!(d.volume_moved.is_empty(), "no volume on either side, so nothing to compare");
+        let reasons = d.retessellated[0].reasons.join("; ");
+        assert!(reasons.contains("triangles 800 -> 400 (fewer triangles, less torn)"), "{reasons}");
+        // The one thing that is right about it: it is not GREEN. A reviewer is
+        // asked, with the wrong description.
+        assert!(d.requires_bless(), "the misdescribed event must at least require a bless");
+
+        // The same shrink on a WATERTIGHT host IS caught, which is what the
+        // column bought and what makes the gap a population boundary rather
+        // than a hole in the rule. Same 800 -> 400, volume falls with it.
+        let wg = row("a.ifc", 1, 0, 800);
+        let wr = HostRow { tris: 400, vol: Some(27_000), ..wg.clone() };
+        let d = diff(std::slice::from_ref(&wg), &[wr], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "watertight, so the volume says material left");
+        assert!(d.regressed[0].reasons.join("; ").contains("geometry lost"));
     }
 
     #[test]

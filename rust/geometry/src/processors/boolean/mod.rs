@@ -439,13 +439,13 @@ impl BooleanClippingProcessor {
                 // attempt is unique to this path — preserve its kernel
                 // failures and record the deferral, since the sequential
                 // fallback can leave seam fins the batched subtract avoids.
-                self.drain_clipper_failures(&clipper);
+                self.absorb_failures(clipper.take_failures());
                 self.record_failure(BoolOp::Union, BoolFailureReason::CutterUnionUnavailable);
                 return Ok(None);
             }
         };
         let result = clipper.subtract_mesh(&base_mesh, &combined);
-        self.drain_clipper_failures(&clipper);
+        self.absorb_failures(clipper.take_failures());
         let clipped = match result {
             Ok(m)
                 if !m.is_empty()
@@ -782,7 +782,7 @@ impl BooleanClippingProcessor {
                 ) {
                     let clipper = ClippingProcessor::new();
                     let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
-                    self.drain_clipper_failures(&clipper);
+                    self.absorb_failures(clipper.take_failures());
                     if let Ok(clipped) = subtract_result {
                         // The bounded-prism subtract is fragile on coincident
                         // faces: when the clip polygon spans the full host
@@ -855,7 +855,7 @@ impl BooleanClippingProcessor {
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.subtract_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
@@ -870,7 +870,7 @@ impl BooleanClippingProcessor {
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.union_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
@@ -885,7 +885,7 @@ impl BooleanClippingProcessor {
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.intersection_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 

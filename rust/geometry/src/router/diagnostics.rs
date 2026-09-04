@@ -140,12 +140,22 @@ impl GeometryRouter {
         std::mem::take(&mut *self.layer_slice_diag.borrow_mut())
     }
 
-    /// Number of products with at least one recorded CSG failure.
+    /// Number of products with at least one recorded CSG failure, through the
+    /// same [`count_attributed_products`] rule the pipelines' scalar uses: the
+    /// synthetic [`UNATTRIBUTED_PRODUCT_ID`] bucket is not a product. A bare
+    /// `.len()` here would have made this the one surface that counts it, and
+    /// it is the obvious method to reach for.
+    ///
+    /// PEEKS: unlike [`Self::take_csg_failures`] it does not sweep the
+    /// processors' own logs first, so a record still sitting in a processor is
+    /// not counted yet.
     pub fn csg_failure_product_count(&self) -> usize {
-        self.csg_failures.borrow().len()
+        count_attributed_products(&self.csg_failures.borrow()) as usize
     }
 
-    /// Total number of CSG failures across all products.
+    /// Total number of CSG failures across all products, INCLUDING the
+    /// unattributed bucket — those are real failures, only their owner is
+    /// unknown. Peeks, like [`Self::csg_failure_product_count`].
     pub fn csg_failure_total(&self) -> usize {
         self.csg_failures.borrow().values().map(|v| v.len()).sum()
     }

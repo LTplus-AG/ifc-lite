@@ -151,7 +151,7 @@
      486 rust/geometry/src/processors/brep/faceted.rs
 # csg_primitive.rs row REMOVED: #3821 moved IfcSphere (processor + UV-sphere
 # tessellation, verbatim) to the sphere.rs sibling to make room for the
-# CsgSolid boolean-failure hand-off; 422 -> 324, under the 400 limit. That
+# CsgSolid boolean-failure hand-off; 422 -> 347, under the 400 limit. That
 # repays the #2866 loosening this row recorded.
      608 rust/geometry/src/processors/sectioned.rs
      758 rust/geometry/src/profile_extractor.rs

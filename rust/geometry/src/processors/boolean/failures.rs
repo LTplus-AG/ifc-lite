@@ -9,7 +9,6 @@
 
 use super::BooleanClippingProcessor;
 use crate::diagnostics::{BoolFailure, BoolFailureReason, BoolOp};
-use crate::ClippingProcessor;
 
 impl BooleanClippingProcessor {
     /// Drain the boolean-failure log accumulated since this processor was
@@ -22,11 +21,13 @@ impl BooleanClippingProcessor {
         self.failures.borrow_mut().push(BoolFailure::new(op, reason));
     }
 
-    /// Move every failure from `clipper` into this processor's log. Used
-    /// after a transient `ClippingProcessor` instance is about to drop.
-    pub(super) fn drain_clipper_failures(&self, clipper: &ClippingProcessor) {
-        let mut log = self.failures.borrow_mut();
-        log.extend(clipper.take_failures());
+    /// Move a drained log into this processor's log. Used after a transient
+    /// helper — a `ClippingProcessor`, or the `CsgSolidProcessor` built for an
+    /// `IfcCsgSolid` operand — is about to drop and would take its records
+    /// with it. Takes the drained `Vec` rather than the producer, so one
+    /// method covers every transient kind.
+    pub(super) fn absorb_failures(&self, failures: Vec<BoolFailure>) {
+        self.failures.borrow_mut().extend(failures);
     }
 
     /// Record the `EmptyOperand` consequence for a second operand that meshed

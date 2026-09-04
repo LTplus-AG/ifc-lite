@@ -72,7 +72,7 @@ fn decoder() -> EntityDecoder<'static> {
     EntityDecoder::with_index(bytes, ifc_lite_core::build_entity_index(bytes))
 }
 
-fn jobs(decoder: &mut EntityDecoder) -> Vec<(u32, usize, usize, IfcType)> {
+fn jobs() -> Vec<(u32, usize, usize, IfcType)> {
     let mut scanner = ifc_lite_core::EntityScanner::new(BOOLEAN_MODEL.as_bytes());
     let mut out = Vec::new();
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -81,11 +81,10 @@ fn jobs(decoder: &mut EntityDecoder) -> Vec<(u32, usize, usize, IfcType)> {
             out.push((id, start, end, ty));
         }
     }
-    let _ = decoder;
     out
 }
 
-/// Everything drained after `body` ran, as stable reason labels.
+/// Everything the router has to hand out, as stable reason labels.
 fn drained(router: &GeometryRouter) -> Vec<String> {
     // `take_csg_failures` also sweeps the processors' own logs, so a failure
     // from `CsgSolidProcessor`'s transient boolean processor is caught too.
@@ -128,7 +127,7 @@ fn the_preprocess_router_meshes_nothing() {
         let element = dec.decode_by_id(id).expect("decode element");
         let _ = router.resolve_scaled_placement(&element, &mut dec);
     }
-    let js = jobs(&mut dec);
+    let js = jobs();
     let rtc = router.detect_rtc_offset_with_fallback(&js, &mut dec, BOOLEAN_MODEL.as_bytes());
     router.set_rtc_offset(rtc);
     let _ = router.unit_scale();
@@ -142,7 +141,7 @@ fn the_preprocess_router_meshes_nothing() {
 fn the_stream_meta_router_meshes_nothing() {
     let mut dec = decoder();
     let router = GeometryRouter::with_scale(1.0);
-    let js = jobs(&mut dec);
+    let js = jobs();
     let _ = router.detect_rtc_offset_from_jobs(&js, &mut dec);
     let _ = router.detect_rtc_offset_with_fallback(&js, &mut dec, BOOLEAN_MODEL.as_bytes());
     for id in ELEMENT_IDS {

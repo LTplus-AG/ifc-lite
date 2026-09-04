@@ -116,7 +116,7 @@ impl BooleanClippingProcessor {
                     quality,
                     visited,
                 );
-                self.failures.borrow_mut().extend(csg.take_failures());
+                self.absorb_failures(csg.take_failures());
                 out
             }
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
@@ -140,5 +140,4 @@ impl BooleanClippingProcessor {
         }?;
         Ok((mesh, unsupported))
     }
-
 }

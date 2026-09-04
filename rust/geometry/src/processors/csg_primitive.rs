@@ -130,7 +130,8 @@ impl CsgSolidProcessor {
     /// TRANSIENT `CsgSolidProcessor` that `BooleanClippingProcessor` builds
     /// for an `IfcCsgSolid` OPERAND — not registered on any router — can hand
     /// its log back to the boolean processor that built it, the same way
-    /// `drain_clipper_failures` does for a transient `ClippingProcessor`.
+    /// `BooleanClippingProcessor::absorb_failures` does for a transient
+    /// `ClippingProcessor`.
     pub fn take_failures(&self) -> Vec<BoolFailure> {
         std::mem::take(&mut *self.failures.borrow_mut())
     }

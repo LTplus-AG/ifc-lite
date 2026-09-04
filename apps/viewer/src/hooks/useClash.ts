@@ -556,18 +556,26 @@ export function useClash() {
     [gatherElements, discardSolidPresentation, publishClashResult, stillWanted],
   );
 
-  /**
-   * Run rules built from PRESETS, resolving each side's optional advanced
-   * filter (#3902) against the loaded models first. A side with no filter is
-   * left to its type selector, so a rule set from before filters existed goes
-   * through here byte-for-byte as it did.
-   */
+  /** Run rules built from PRESETS, resolving each side's optional advanced
+   *  filter (#3902) against the loaded models first. A side with no filter is
+   *  left to its type selector, so a rule set from before filters existed runs
+   *  through here exactly as it did. */
   const runPresets = useCallback(
     async (presets: ClashPreset[]): Promise<void> => {
       const state = useViewerStore.getState();
       const models = [...state.models].map(([id, m]) => ({ id, store: m.ifcDataStore }));
       const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
-      return run(await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId));
+      let resolved: ClashRule[];
+      try {
+        state.setClashError(null);
+        resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId);
+      } catch (err) {
+        // Resolution happens BEFORE `run()` owns the running/error state, so a
+        // refused filter reports itself here or nothing on screen changes.
+        state.setClashError(err instanceof Error ? err.message : String(err));
+        return;
+      }
+      return run(resolved);
     },
     [run, mode, clearance, reportTouch],
   );

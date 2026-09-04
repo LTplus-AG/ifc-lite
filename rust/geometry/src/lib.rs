@@ -213,6 +213,7 @@ pub use profile::{Profile2D, Profile2DWithVoids, ProfileType, VoidInfo};
 pub use profile_extractor::{extract_profiles, extract_profiles_with_diagnostics, ExtractedProfile};
 pub use profile_skip::SkippedProfile;
 pub use profiles::ProfileProcessor;
+pub use kernel::plane_weld::take_plane_weld_stats;
 pub use router::take_bool2d_stats;
 pub use router::{take_prism_defers, take_prism_stats};
 pub use router::{

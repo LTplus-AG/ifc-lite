@@ -50,6 +50,28 @@
 //! coincident-face classification regime this case exercises never fires
 //! there.
 //!
+//! ## Not fixed by the #3353 near-coplanar weld, and what is left
+//!
+//! `issue_3353_near_coplanar_rotated_overlap.rs` fixed the half of #3353 where
+//! two operand faces land a few `SNAP_GRID` steps apart because `mesh_bridge`
+//! snaps per axis: `union_with_conformity` now welds the operands onto shared
+//! planes before the arrangement, which closed a 9464-union sweep of the
+//! rotated corner-overlap family.
+//!
+//! `sweep_261` is only PARTLY that. With the weld in place its Union still
+//! reports 3 unmatched directed edges, unchanged. The residual is a different
+//! mechanism, and the trace names it: two vertices at the SAME height,
+//! `(-1.6740501, -0.2988684, 1.6377716)` and `(-1.6739786, -0.2989122,
+//! 1.6377716)`, 84 µm apart IN PLANE. That is an in-plane vertex split, not a
+//! near-coplanar face pair — nothing perpendicular for a plane weld to close,
+//! and it sits above the `NearBand` (~122 µm floor) only by being an in-plane
+//! separation the band does not measure at all.
+//!
+//! So the remaining work here is the coplanar-overlay / retriangulation chord
+//! divergence that produced two nearly-coincident vertices where one belongs,
+//! NOT the snap reconciliation and NOT (per the earlier measurement recorded
+//! on the issue) the `unrecovered` conformity story.
+//!
 //! ## Status
 //!
 //! `#[ignore]`d: this documents a KNOWN, OPEN defect, not a passing
@@ -137,7 +159,10 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
 /// `sweep_261`, recovered verbatim from PR #3373's closed branch.
 #[test]
 #[ignore = "known-open #3353 defect: classification-level tear, consolidate_coplanar \
-            is a byte-identical no-op on this input (see module doc)"]
+            is a byte-identical no-op on this input. NOT the near-coplanar half fixed \
+            by issue_3353_near_coplanar_rotated_overlap.rs — with that weld in place \
+            this is still 3 unmatched edges, from an 84 um IN-PLANE vertex split \
+            (see module doc)"]
 fn sweep_261_overlapping_rotated_union_never_tears() {
     let a_min = [-1.72371594746207, -0.35246108913603935, -1.2204342720208154];
     let a_size = [2.8534163464770894, 3.0795194627753784, 2.858202766048261];

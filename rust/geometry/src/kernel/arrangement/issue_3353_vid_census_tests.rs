@@ -132,7 +132,20 @@
 //! near test gated on coplanar_a  passes      98 -> 77       20 hosts regressed
 //! parent NORMAL for the dot      FAILS       not run        not run
 //! flush test on the sub-tri      FAILS       not run        not run
+//! parent-flush, A side, 3 verts   passes      98 -> 77       26 regressed, 9 improved
+//! needle refused (area < 1e-6 parent) FAILS    98 -> 92       12 regressed, 3 improved
 //! ```
+//!
+//! The last two rows were re-measured on 2026-09-04 with the parent index
+//! carried on the `Arrangement` (patches kept off-tree). The all-vertex flush
+//! gate fixes the target but also refuses the #1007 tilted-flush caps whose far
+//! vertices leave the band: one host doubles its open edges (622 -> 1333) and
+//! seven read "geometry lost". The needle gate is scale-free but a 1e-12 cut
+//! in |n|^2 misses the very needle in `sweep_261` (its ratio is 3.7e-10), and
+//! loosening it to catch that would be tuning a constant on one case. What a
+//! fix still needs: a coincidence criterion that is a property of the parent
+//! face yet tolerates a tilt of a few um across the face's extent, measured
+//! against the corpus golden, with the 26-host row as the first thing to beat.
 //!
 //! (The two that fail `sweep_261` were not carried further; "not run" is not a
 //! null result.)

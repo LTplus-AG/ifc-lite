@@ -7,6 +7,7 @@
 //! ratchet. `use super::*` keeps access to the parent's private helpers.
 
 use super::*;
+use crate::services::ParquetLayout;
 use crate::services::parquet::{serialize_to_parquet, StreamingParquetCacheWriter};
 use crate::types::MeshData;
 
@@ -37,7 +38,7 @@ fn splits_two_appended_batches_with_byte_identical_localized_output() {
     let batch_a = vec![mesh(1, 3, 1), mesh(2, 4, 2)];
     let batch_b = vec![mesh(3, 2, 1), mesh(4, 5, 3), mesh(5, 1, 0)];
 
-    let mut writer = StreamingParquetCacheWriter::new().unwrap();
+    let mut writer = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
     writer.append(&batch_a).unwrap();
     writer.append(&batch_b).unwrap();
     let geometry = writer.finish().unwrap();
@@ -70,7 +71,7 @@ fn splits_two_appended_batches_with_byte_identical_localized_output() {
 #[test]
 fn a_single_appended_batch_has_no_boundary_to_recover() {
     let meshes = vec![mesh(1, 3, 1)];
-    let mut writer = StreamingParquetCacheWriter::new().unwrap();
+    let mut writer = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
     writer.append(&meshes).unwrap();
     let geometry = writer.finish().unwrap();
 
@@ -90,7 +91,7 @@ fn an_append_over_the_default_row_group_limit_still_writes_one_row_group() {
     // 1200 meshes x 1000 vertices = 1.2M vertex rows, past the 1,048,576
     // default, while the mesh table holds only 1200 rows.
     let big: Vec<MeshData> = (0..1200).map(|id| mesh(id, 1000, 1)).collect();
-    let mut writer = StreamingParquetCacheWriter::new().unwrap();
+    let mut writer = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
     writer.append(&big).unwrap();
     writer.append(&[mesh(9999, 3, 1)]).unwrap();
     let geometry = writer.finish().unwrap();

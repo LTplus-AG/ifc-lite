@@ -43,6 +43,10 @@ plus unit scale, RTC offset, void/style indices) followed by
 ```typescript
 import init, { IfcAPI } from '@ifc-lite/wasm';
 
+// Your renderer, and your own adapter from a wasm mesh to its mesh type.
+declare const scene: { add(m: unknown): void };
+declare function toThreeMesh(mesh: unknown): unknown;
+
 await init();
 const api = new IfcAPI();
 const modelBuffer = await fetch('model.ifc').then(r => r.arrayBuffer());
@@ -62,9 +66,7 @@ for (let start = 0; start < pre.totalJobs; start += 100) {
   );
   for (let i = 0; i < collection.length; i++) {
     const mesh = collection.get(i);
-    // mesh.expressId, .ifcType, .positions, .normals, .indices, .color —
-    // hand these to your renderer of choice before freeing the mesh.
-    console.log(mesh.expressId, mesh.ifcType, mesh.positions.length / 3);
+    scene.add(toThreeMesh(mesh)); // mesh.expressId, .ifcType, .positions, .normals, .indices, .color
     mesh.free();
   }
   collection.free();

@@ -232,3 +232,58 @@ fn schema_version_round_trips_and_defaults() {
         serde_json::from_str(&json.replace("\"schemaVersion\":2,", "")).unwrap();
     assert_eq!(legacy.schema_version, 0);
 }
+
+/// A `WorstHost` field the TypeScript mirrors declare as `field?: T` must be
+/// ABSENT from the JSON when it is `None`, not present as an explicit `null`.
+///
+/// The two are different wire states and `?:` means absent: an HTTP consumer
+/// doing `if (h.triangleCount !== undefined) h.triangleCount.toLocaleString()`
+/// typechecks and then throws on a `null`. The wasm boundary hid this because
+/// `serde_wasm_bindgen` writes `None` as `undefined`; `serde_json`, which is
+/// what the server response goes through, writes it as `null`.
+///
+/// Both directions are asserted, so "always skip" fails this test too.
+#[test]
+fn worst_host_optional_fields_are_omitted_when_none_and_present_when_some() {
+    let none = WorstHost {
+        product_id: 1,
+        ifc_type: "IfcWall".to_string(),
+        openings: 2,
+        csg_failures: 1,
+        first_failure_label: None,
+        bbox: None,
+        triangle_count: None,
+    };
+    let obj = serde_json::to_value(&none).unwrap();
+    let obj = obj.as_object().expect("serializes to a JSON object");
+    for key in ["firstFailureLabel", "bbox", "triangleCount"] {
+        assert!(
+            !obj.contains_key(key),
+            "`{key}` must be absent when None, not null: {obj:?}"
+        );
+    }
+
+    let some = WorstHost {
+        first_failure_label: Some("difference_emptied_host".to_string()),
+        bbox: Some(HostBbox { min: [0.0, 0.0, 0.0], max: [1.0, 2.0, 3.0] }),
+        triangle_count: Some(42),
+        ..none
+    };
+    let obj = serde_json::to_value(&some).unwrap();
+    let obj = obj.as_object().expect("serializes to a JSON object");
+    for key in ["firstFailureLabel", "bbox", "triangleCount"] {
+        assert!(
+            obj.contains_key(key),
+            "`{key}` must be present when Some: {obj:?}"
+        );
+    }
+    assert_eq!(obj["triangleCount"], serde_json::json!(42));
+
+    // A legacy payload that still writes explicit nulls stays readable.
+    let legacy = serde_json::json!({
+        "productId": 1, "ifcType": "IfcWall", "openings": 2, "csgFailures": 1,
+        "firstFailureLabel": null, "bbox": null, "triangleCount": null,
+    });
+    let back: WorstHost = serde_json::from_value(legacy).unwrap();
+    assert!(back.bbox.is_none() && back.triangle_count.is_none());
+}

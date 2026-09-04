@@ -40,8 +40,13 @@ export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
    * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`). Bumped on field renames/removals or
-   * count-semantics changes; additive optional fields do not bump. `0`/absent
-   * means a pre-versioned producer.
+   * count-semantics changes; additive optional fields do not bump.
+   *
+   * REQUIRED, not optional: the Rust field is a plain `u32` serialized
+   * unconditionally, so every producer since #1514 writes the key. A value of
+   * `0` is what Rust's `#[serde(default)]` yields when it READS a payload
+   * written before #1514, and is the only "pre-versioned producer" signal a
+   * consumer sees.
    */
   schemaVersion: number;
   /** Total CSG boolean failures (un-cut openings, emptied hosts, kernel fallbacks). */

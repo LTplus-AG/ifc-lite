@@ -27,9 +27,18 @@ import { Crosshair } from 'lucide-react';
 /**
  * Overlay chrome drawn on top of the 3D viewport.
  *
- * The three `hide*` props exist for the embed (`?hideViewCube=`, `?hideAxis=`,
- * `?hideScale=`): a host iframe is often too small for the full chrome. They
- * default to `false`, so the standalone viewer is unaffected.
+ * The three `hide*` props exist for the embed: a host iframe is often too
+ * small for the full chrome. They default to `false`, so the standalone
+ * viewer is unaffected.
+ *
+ * Only two of them are host-controllable. `hideAxis` and `hideScale` carry the
+ * `?hideAxis=`/`?hideScale=` URL params and INIT's `config.hideAxis`/
+ * `.hideScale` (`useEmbedRuntimeOverlays.ts`). `hideViewCube` has NO param
+ * behind it -- `urlParams.ts` never parses one and `EmbedUrlParams` never
+ * declared one -- the embed passes it unconditionally, so the ViewCube is
+ * always off there. This comment named a `?hideViewCube=` from #3316 until
+ * #2934's closing sweep; no such param has ever been parsed, so a host that
+ * sent it got exactly the silent no-op #2934 is about.
  */
 export function ViewportOverlays({
   hideViewCube = false,

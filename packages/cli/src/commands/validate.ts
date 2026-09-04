@@ -64,12 +64,9 @@ interface DanglingReference {
  * out none of the ten at all. `expandTypes` is the same expansion every
  * `byType()` backend uses, so these rules and a `byType('IfcWall')` query
  * cannot disagree about what counts as a wall.
- *
- * That last sentence is why the expansion is computed PER STORE rather than
- * once at module load. `expandTypes` reads the model's own `schemaVersion`,
- * because a descendant set is not the same across versions; a list frozen at
- * the IFC4 answer would count records on an IFC2X3 or IFC4X3 file that
- * `byType` does not, which is the disagreement this doc says cannot happen.
+ * Which is why they are computed PER STORE, not once at module load:
+ * `expandTypes` reads the model's own `schemaVersion`, and a list frozen at the
+ * IFC4 answer counts records on an IFC2X3 or IFC4X3 file that `byType` does not.
  */
 export const NAMED_ELEMENT_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
   'IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCRAILING', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
@@ -79,14 +76,12 @@ export const QUANTIFIABLE_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB',
   'IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
 
 /** `NAMED_ELEMENT_BASE_TYPES` plus every subtype this store's schema declares under one. */
-export function namedElementTypes(schemaVersion: string | undefined): readonly string[] {
-  return expandTypes([...NAMED_ELEMENT_BASE_TYPES], schemaVersion);
-}
+export const namedElementTypes = (schemaVersion: string | undefined): readonly string[] =>
+  expandTypes([...NAMED_ELEMENT_BASE_TYPES], schemaVersion);
 
 /** `QUANTIFIABLE_BASE_TYPES` plus every subtype this store's schema declares under one. */
-export function quantifiableTypes(schemaVersion: string | undefined): readonly string[] {
-  return expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
-}
+export const quantifiableTypes = (schemaVersion: string | undefined): readonly string[] =>
+  expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
 
 /** Cap on individually-reported dangling references; the remainder is rolled into one summary issue. */
 const DANGLING_REF_ISSUE_CAP = 50;

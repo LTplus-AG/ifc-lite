@@ -1067,7 +1067,7 @@ ifc-lite schema              # Full schema with params and return types
 ifc-lite schema --compact    # Minimal: names and descriptions only
 ```
 
-The schema includes the runtime SDK namespaces: `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, `export`, and their methods with parameter names, return types, and LLM semantic hints.
+The dump matches the `bim` object `run`/`eval` hand to scripts: a root `bim` namespace with its top-level methods (`entity`, `properties`, `contains`, `on`, …), plus the runtime SDK namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, `export` — where `query` is the builder chain reached via `bim.query()` (`.byType(...).where(...).toArray()`), not a flat namespace — and their methods with parameter names, return types, and LLM semantic hints.
 
 ---
 

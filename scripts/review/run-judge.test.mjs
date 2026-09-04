@@ -97,6 +97,17 @@ test('the judge removes what it rejects and keeps the rest', () => {
   assert.equal(written.counts.dropped, 1);
 });
 
+test('#3837: the optional judge cannot suppress a mechanically verified sibling finding', () => {
+  const doc = docOf(1);
+  doc.findings[0].sibling = { path: 'src/twin.ts', line: 9, quote: 'return raw;' };
+  const { written } = run(doc, spawnSaying(verdicts([
+    { index: 0, keep: false, why: 'the sibling means this is already owned' },
+  ])));
+  assert.equal(written.findings.length, 1);
+  assert.equal(written.counts.dropped, 0);
+  assert.deepEqual(written.findings[0].sibling, doc.findings[0].sibling);
+});
+
 test('a judge that emptied the list leaves the verdict alone', () => {
   // It used to rewrite `findings` -> `clean` here. Nothing reads that field:
   // post-review.mjs computes the marker's verdict from what it reads back off the
@@ -220,6 +231,13 @@ test('EVERY call site passes the three flags run-judge requires', () => {
       }
     }
   }
+});
+
+test('judge rubric treats a verified untouched sibling as second-site evidence, not ownership', () => {
+  const rubric = readFileSync(join(HERE, 'judge.md'), 'utf8');
+  assert.match(rubric, /verified sibling/i); // @source-text-assertion-ok judge.md is the prompt handed to the judge (data, not code); the test pins that the rubric states this rule
+  assert.match(rubric, /second-site defect/i); // @source-text-assertion-ok judge.md is the prompt handed to the judge (data, not code); the test pins that the rubric states this rule
+  assert.match(rubric, /“Already[\s\S]*owned” means a deterministic gate/i); // @source-text-assertion-ok judge.md is the prompt handed to the judge (data, not code); the test pins that the rubric states this rule
 });
 
 // =================================== 6. the shipped path, which no fake can reach

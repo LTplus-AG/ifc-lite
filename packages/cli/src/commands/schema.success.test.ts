@@ -29,9 +29,9 @@ import { describe, expect, it, vi, afterEach } from 'vitest';
 vi.mock('@ifc-lite/sandbox/schema', () => ({
   NAMESPACE_SCHEMAS: [
     {
-      name: 'query',
-      doc: 'Query entities',
-      methods: [{ name: 'byType', doc: 'Filter by IFC type', params: [], returns: 'Entity[]' }],
+      name: 'lens',
+      doc: 'Lens visualization',
+      methods: [{ name: 'presets', doc: 'Get built-in lens presets', params: [], returns: 'unknown[]' }],
     },
   ],
 }));
@@ -68,10 +68,16 @@ describe('schemaCommand when the sandbox schema loads', () => {
       // And it is genuinely the real schema being emitted, not the fallback
       // reached without a warning — otherwise this would pass for the wrong
       // reason if the mock ever stopped taking effect.
+      //
+      // The dump also carries the two namespaces reflected off the SDK
+      // runtime (`bim` and the query builder, #3763), so the mocked namespace
+      // is looked up by name rather than by position.
       const parsed = JSON.parse(out.join(''));
       expect(Array.isArray(parsed)).toBe(true);
-      expect(parsed).toHaveLength(1);
-      expect(parsed[0]).toMatchObject({ namespace: 'query', description: 'Query entities' });
+      expect(parsed.find((ns: { namespace: string }) => ns.namespace === 'lens')).toMatchObject({
+        namespace: 'lens',
+        description: 'Lens visualization',
+      });
     } finally {
       // The test runner's own exit-status flag, not a per-test sandbox.
       process.exitCode = previousExitCode;

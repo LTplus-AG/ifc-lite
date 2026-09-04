@@ -103,6 +103,13 @@ test('every eval case is well-formed, and an empty one is DECLARED, never inferr
         c.input.files.some((x) => x.path === e.path),
         `${f}: expects a finding in ${e.path}, which is not in the diff`,
       );
+      const patch = c.input.files.find((x) => x.path === e.path)?.patch ?? '';
+      for (const evidence of e.evidence ?? []) {
+        assert.ok(patch.includes(evidence), `${f}: expected defect evidence is absent: ${evidence}`); // @source-text-assertion-ok `patch` is a pinned eval fixture (data), the assertion guards the fixture, not a subject
+      }
+      for (const fixed of e.fixedEvidence ?? []) {
+        assert.ok(!patch.includes(fixed), `${f}: fixture includes the later fix: ${fixed}`); // @source-text-assertion-ok `patch` is a pinned eval fixture (data), the assertion guards the fixture, not a subject
+      }
     }
   }
   // And the set must still be mostly positive, or recall is measured over a
@@ -358,11 +365,12 @@ test('ONLY findings that survive validation are scored, and a FENCED response is
 
   assert.equal(r.status, 0, said);
   // Exactly one finding survived, it was the real one, and it was RECOGNISED.
-  assert.match(said, /RECALL of known findings: 1\/1/, said);
-  assert.match(said, /EXTRA findings[^:]*: 0/, said);
+  assert.match(said, /VALIDATED recall before judge\/cap: 1\/1/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.match(said, /POSTED recall after judge\/cap: 1\/1/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.match(said, /extra findings[^:]*: 0/i, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
   // The drop names the FABRICATED quote, not merely the word DROPPED, which the
   // whole-output echo on the failure path also satisfies.
-  assert.match(said, /DROPPED[\s\S]*this line is nowhere in the diff/, said);
+  assert.match(said, /DROPPED[\s\S]*this line is nowhere in the diff/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
   assert.doesNotMatch(said, /a fabricated anchor/, 'a finding that failed validation must not reach the score');
 });
 
@@ -380,9 +388,9 @@ test('a response where NOTHING survives scores ZERO and the eval CARRIES ON', (t
 
   assert.equal(r.status, 0, `the eval must finish and report a score:\n${said}`);
   assert.equal(readFileSync(reviewer.count, 'utf8'), '2', 'a failed retry must not loop');
-  assert.match(said, /VALIDATION_EMPTY/, said);
-  assert.match(said, /scored ZERO/, said);
-  assert.match(said, /PRODUCED NO USABLE REVIEW/, 'the recall line must say how many cases produced nothing');
+  assert.match(said, /VALIDATION_EMPTY/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.match(said, /scored ZERO/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.match(said, /PRODUCED NO USABLE REVIEW/, 'the recall line must say how many cases produced nothing'); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
 });
 
 test('#3829: a retryable validation failure gets exactly the production corrective retry', (t) => {
@@ -400,8 +408,8 @@ test('#3829: a retryable validation failure gets exactly the production correcti
 
   assert.equal(r.status, 0, said);
   assert.equal(readFileSync(reviewer.count, 'utf8'), '2', 'one initial call plus one bounded retry');
-  assert.match(said, /corrective retry ran once/, said);
-  assert.match(said, /RECALL of known findings: 1\/1/, said);
+  assert.match(said, /corrective retry ran once/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.match(said, /POSTED recall after judge\/cap: 1\/1/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
 });
 
 test('an EMPTY response is a HARD ERROR, because the real chain cannot produce one', (t) => {
@@ -418,8 +426,8 @@ test('an EMPTY response is a HARD ERROR, because the real chain cannot produce o
   const said = `${r.stdout}${r.stderr}`;
 
   assert.notEqual(r.status, 0, `an empty response must not produce a score:\n${said}`);
-  assert.match(said, /RAW_EMPTY/, said);
-  assert.doesNotMatch(said, /RECALL of known findings/, 'no recall number may be printed from a run that produced nothing');
+  assert.match(said, /RAW_EMPTY/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.doesNotMatch(said, /POSTED recall after judge\/cap/, 'no recall number may be printed from a run that produced nothing');
 });
 
 test('a VALIDATION failure on the harness\'s own input is a HARD ERROR', (t) => {
@@ -439,8 +447,8 @@ test('a VALIDATION failure on the harness\'s own input is a HARD ERROR', (t) => 
   const said = `${r.stdout}${r.stderr}`;
 
   assert.notEqual(r.status, 0, `an INPUT_INVALID refusal must stop the run:\n${said}`);
-  assert.match(said, /INPUT_INVALID/, said);
-  assert.doesNotMatch(said, /RECALL of known findings/, 'no recall number may be printed from a run that did not happen');
+  assert.match(said, /INPUT_INVALID/, said); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
+  assert.doesNotMatch(said, /POSTED recall after judge\/cap/, 'no recall number may be printed from a run that did not happen');
 });
 
 test('a finding that only PARAPHRASES THE PR BODY does not score as recall', () => {

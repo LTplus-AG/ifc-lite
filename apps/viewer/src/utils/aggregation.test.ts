@@ -199,18 +199,16 @@ describe('expandToGeometryBearingIds', () => {
     assert.deepStrictEqual(expandToGeometryBearingIds([13], hasGeometry, access), []);
   });
 
-  // Two-way control on the #3426 fallback itself: it must fire ONLY when
-  // NONE of an assembly's parts currently render, not whenever any part is
-  // unmeshed. Assembly 30 has two parts (31 meshed, 32 not) -- if the
-  // fallback fired on ANY partial gap instead of gating on `foundGeometry`,
-  // this would (wrongly) also pull in 32. A mutation that always appends the
-  // full descendant set regardless of `foundGeometry` passes every OTHER
-  // case in this file untouched (`push`'s dedup absorbs the redundant add
-  // when the full set and the meshed subset are identical), so this is the
-  // one case that actually distinguishes "gated on foundGeometry" from
-  // "always expand".
-  it('does NOT fall back to the unmeshed sibling when at least one part already renders', () => {
-    assert.deepStrictEqual(expandToGeometryBearingIds([30], hasGeometry, access), [31]);
+  // Always expand to ALL aggregated descendants, regardless of renderability
+  // (#3426, #3865). Point-in-time `hasGeometry` checks cannot predict which
+  // parts will arrive during streaming, so presentation channels (hide,
+  // isolate, colour) must persist the complete descendant set to ensure that
+  // parts streaming in later respect the action. Assembly 30 has two parts
+  // (31 meshed, 32 not) — both must be included in the expansion so that when
+  // 32 streams in later, it's already in the persisted set. Carrying an id
+  // with no mesh is free: it simply never matches a renderer's mesh whitelist.
+  it('expands to ALL aggregated parts, including unmeshed ones that may stream in later', () => {
+    assert.deepStrictEqual(expandToGeometryBearingIds([30], hasGeometry, access), [31, 32]);
   });
 
   // frameSelection and resolveHighlightIds live in a useImperativeHandle

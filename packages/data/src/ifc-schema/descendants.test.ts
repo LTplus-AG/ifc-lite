@@ -235,9 +235,28 @@ describe('a foreign walk stops at a node the file schema places elsewhere', () =
 
   it('a type the file schema does not declare at all keeps the foreign answer whole', () => {
     // `active` guard: IFC2X3 has no IfcSpatialElement, so it has no opinion
-    // about that subtree and must not prune the table that does declare it.
+    // about that subtree and must neither prune nor skip the table that does
+    // declare it. IFCBRIDGE/IFCROAD are IFC4X3-only names, so they only pin
+    // the pruning half; IFCBUILDING and the rest are names IFC2X3 DOES
+    // declare, under a supertype it has no equivalent of, and they are what an
+    // unguarded own-declares skip dropped — the whole spatial structure of
+    // every IFC2X3 file, missing from the query the resolver exists to answer.
     const spatial = expandTypeNamesToDescendants(['IfcSpatialElement'], 'IFC2X3');
     expect(spatial).toContain('IFCBRIDGE');
     expect(spatial).toContain('IFCROAD');
+    expect(spatial).toContain('IFCSPATIALSTRUCTUREELEMENT');
+    expect(spatial).toContain('IFCBUILDING');
+    expect(spatial).toContain('IFCBUILDINGSTOREY');
+    expect(spatial).toContain('IFCSITE');
+    expect(spatial).toContain('IFCSPACE');
+  });
+
+  it('but an own-declared name still yields to the own table when own HAS an opinion', () => {
+    // The counterpart, so the guard above cannot be widened into "never skip".
+    // IFC2X3 declares IfcElementComponent and puts IfcReinforcingElement
+    // elsewhere, so own is active and the skip must still apply.
+    expect(expandTypeNamesToDescendants(['IfcElementComponent'], 'IFC2X3')).not.toContain(
+      'IFCREINFORCINGBAR',
+    );
   });
 });

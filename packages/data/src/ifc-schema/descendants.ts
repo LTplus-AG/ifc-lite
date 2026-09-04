@@ -143,10 +143,13 @@ const ALIAS_ROWS: readonly (readonly [string, string])[] = Object.entries(
  * `subtree` is the seeds plus their descendants in the OWN table. `active` is
  * false when the own table declares none of the seeds — it then has no opinion
  * about this subtree at all, and the table that does declare the requested type
- * is the only authority, so nothing is pruned. Pruning without that guard cost
- * `byType('IfcSpatialElement')` on IFC2X3 every `IFCBRIDGE`/`IFCROAD`: IFC2X3
- * has no `IfcSpatialElement`, so an empty subtree would have read as "own says
- * no" rather than "own says nothing".
+ * is the only authority, so nothing is pruned and nothing is skipped. Pruning
+ * without that guard cost `byType('IfcSpatialElement')` on IFC2X3 every
+ * `IFCBRIDGE`/`IFCROAD`: IFC2X3 has no `IfcSpatialElement`, so an empty subtree
+ * would have read as "own says no" rather than "own says nothing". Skipping
+ * without it cost the same query every `IFCBUILDING`, `IFCBUILDINGSTOREY`,
+ * `IFCSITE` and `IFCSPACE` — names IFC2X3 does declare, under a supertype it
+ * has no equivalent of, so its own walk had returned none of them either.
  */
 interface OwnVerdict {
   readonly table: SchemaTable;
@@ -158,10 +161,14 @@ interface OwnVerdict {
  * Transitive descendants of `seeds` within one schema table, seeds excluded.
  *
  * `own` is the file's own schema's verdict, passed when `table` is a foreign
- * one; it is what implements rule (b). A name the own table declares is never
- * returned — that table is the authority on where it sits — and when the own
- * table puts it OUTSIDE the requested subtree, the walk does not descend
- * through it either.
+ * one; it is what implements rule (b). When the own table has an opinion about
+ * this subtree, a name it declares is never returned — that table is the
+ * authority on where it sits — and when it puts that name OUTSIDE the requested
+ * subtree, the walk does not descend through it either. When `own.active` is
+ * false the own table has no opinion at all, so neither half applies and the
+ * foreign table's answer is kept whole: `IfcSpatialElement` on IFC2X3 must
+ * still find `IFCBUILDING` and `IFCSPACE`, names IFC2X3 declares but places
+ * under a supertype it has no equivalent of.
  *
  * That second half is not decoration. `IfcTendonConduit` is IFC4X3-only and
  * sits under `IfcReinforcingElement` there; IFC2X3 declares
@@ -189,10 +196,11 @@ function descendantsInTable(
     for (const child of table.children.get(stack.pop() as string) ?? []) {
       if (visited.has(child)) continue;
       visited.add(child);
-      if (own?.table.names.has(child)) {
-        // Own declares it, so it is never added here; own's own walk already
-        // returned it if own agrees it belongs. Descend only if own agrees.
-        if (!own.active || own.subtree.has(child)) stack.push(child);
+      if (own?.active && own.table.names.has(child)) {
+        // Own declares it AND has an opinion about this subtree, so it is
+        // never added here: own's own walk already returned it if own agrees
+        // it belongs. Descend only if own agrees.
+        if (own.subtree.has(child)) stack.push(child);
         continue;
       }
       found.add(child);

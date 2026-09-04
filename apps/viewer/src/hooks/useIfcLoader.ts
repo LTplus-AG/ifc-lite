@@ -1612,7 +1612,8 @@ export function useIfcLoader() {
               // null then; the callback no-ops). #3395/#3790: the refusal
               // count and the malformed-stop flag ride along, because neither
               // a refused record nor anything after a stop is IN the columns.
-              onEntityIndex: forwardEntityIndexTo(workerParserInstance),
+              // A getter, not the instance: `workerParserInstance` is still null here, assigned in the setTimeout task below.
+              onEntityIndex: forwardEntityIndexTo(() => workerParserInstance),
               // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
               // count heuristic so the host's thermal sweet spot can be measured.
               // Still clamped to the memory budget by the engine. Geometry output

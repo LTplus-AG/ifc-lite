@@ -33,10 +33,19 @@ export interface EntityIndexSink {
 
 /**
  * Build the `onEntityIndex` callback for `processAdaptive`, forwarding to
- * `sink` -- or doing nothing when the parser fell back to the main thread and
- * there is no worker to hand anything to.
+ * whatever `resolveSink` returns -- or doing nothing when the parser fell back
+ * to the main thread and there is no worker to hand anything to.
+ *
+ * A resolver rather than the sink itself, because the sink does not exist yet
+ * when this callback is built. `useIfcLoader` calls `processAdaptive`
+ * synchronously and only assigns its `WorkerParser` in the
+ * `setTimeout(startDataModelParsing, 0)` task that runs afterwards, so a helper
+ * that captured the VALUE would close over null for the life of the load and
+ * drop both counts on every load large enough to take this path.
  */
-export function forwardEntityIndexTo(sink: EntityIndexSink | null | undefined) {
+export function forwardEntityIndexTo(
+  resolveSink: () => EntityIndexSink | null | undefined,
+) {
   return (
     ids: Uint32Array,
     starts: Uint32Array,
@@ -44,6 +53,6 @@ export function forwardEntityIndexTo(sink: EntityIndexSink | null | undefined) {
     oversizedIdCount?: number,
     malformedRecordCount?: number,
   ): void => {
-    sink?.setEntityIndex(ids, starts, lengths, oversizedIdCount, malformedRecordCount);
+    resolveSink()?.setEntityIndex(ids, starts, lengths, oversizedIdCount, malformedRecordCount);
   };
 }

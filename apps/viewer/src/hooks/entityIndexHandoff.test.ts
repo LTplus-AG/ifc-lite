@@ -52,7 +52,7 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
   it('forwards the malformed-record stop alongside the columns', () => {
     const { sink, calls } = recordingSink();
 
-    forwardEntityIndexTo(sink)(IDS, STARTS, LENGTHS, 0, 1);
+    forwardEntityIndexTo(() => sink)(IDS, STARTS, LENGTHS, 0, 1);
 
     assert.equal(calls.length, 1);
     assert.equal(calls[0][4], 1);
@@ -63,7 +63,7 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
     // that threads one and forgets the other is the failure this pins.
     const { sink, calls } = recordingSink();
 
-    forwardEntityIndexTo(sink)(IDS, STARTS, LENGTHS, 3, 1);
+    forwardEntityIndexTo(() => sink)(IDS, STARTS, LENGTHS, 3, 1);
 
     assert.equal(calls[0][3], 3);
     assert.equal(calls[0][4], 1);
@@ -74,7 +74,7 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
     // which is the only thing that makes a nonzero elsewhere mean anything.
     const { sink, calls } = recordingSink();
 
-    forwardEntityIndexTo(sink)(IDS, STARTS, LENGTHS, 0, 0);
+    forwardEntityIndexTo(() => sink)(IDS, STARTS, LENGTHS, 0, 0);
 
     assert.equal(calls[0][4], 0);
   });
@@ -84,7 +84,7 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
     // `0` makes. The parser side decides what to do with the difference.
     const { sink, calls } = recordingSink();
 
-    forwardEntityIndexTo(sink)(IDS, STARTS, LENGTHS);
+    forwardEntityIndexTo(() => sink)(IDS, STARTS, LENGTHS);
 
     assert.equal(calls[0][3], undefined);
     assert.equal(calls[0][4], undefined);
@@ -92,7 +92,25 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
 
   it('is a no-op when the parser fell back to the main thread', () => {
     // `workerParserInstance` is null on that path; the callback still fires.
-    assert.doesNotThrow(() => forwardEntityIndexTo(null)(IDS, STARTS, LENGTHS, 0, 1));
+    assert.doesNotThrow(() => forwardEntityIndexTo(() => null)(IDS, STARTS, LENGTHS, 0, 1));
+  });
+
+  it('reads the sink when the callback fires, not when it is built', () => {
+    // The hook's real ordering, and the whole reason this takes a resolver:
+    // `processAdaptive` is called synchronously, while `workerParserInstance`
+    // is not assigned until the `setTimeout(startDataModelParsing, 0)` task
+    // runs. A helper that captured the VALUE would close over null forever and
+    // silently drop every count on exactly the loads this issue is about.
+    let instance: EntityIndexSink | null = null;
+    const onEntityIndex = forwardEntityIndexTo(() => instance);
+
+    const { sink, calls } = recordingSink();
+    instance = sink;
+    onEntityIndex(IDS, STARTS, LENGTHS, 3, 1);
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][3], 3);
+    assert.equal(calls[0][4], 1);
   });
 
   it('declares all five parameters, so a shortened forward is caught', () => {
@@ -101,7 +119,7 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
     // see that -- the fifth parameter is optional on both sides, so dropping
     // it compiles -- but `Function.length` counts declared parameters before
     // the first optional one is bound, and this callback declares five.
-    assert.equal(forwardEntityIndexTo(null).length, 5);
+    assert.equal(forwardEntityIndexTo(() => null).length, 5);
   });
 });
 

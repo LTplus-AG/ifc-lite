@@ -792,11 +792,12 @@ fn finned_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
     mesh
 }
 
-/// #3440 step 3: the always-on half of the gate. A kernel result carrying an
-/// edge-multiplicity defect must be REJECTED at the accept seam, in the
-/// DEFAULT build (no `csg_topology_gate`), and each op must fall back the way
-/// it already falls back for `KernelOutputInvalid` — un-cut host or plain
-/// merge — never an `Err` that would drop the element.
+/// #3440 step 3: under `csg_manifold_gate`, a kernel result carrying an
+/// edge-multiplicity defect must be REJECTED at the accept seam, and each op
+/// must fall back the way it already falls back for `KernelOutputInvalid` —
+/// un-cut host or plain merge — never an `Err` that would drop the element.
+/// The default build's half of this pair is
+/// `manifold_gate_is_a_true_noop_without_the_feature` at the end of this file.
 ///
 /// Driving the public ops rather than `manifold_gate_reject` directly is the
 /// point: the call sites are the change, so reverting any one of them has to
@@ -880,8 +881,8 @@ fn manifold_gate_reports_the_intersection_op_when_it_rejects() {
     );
 }
 
-/// The other direction: a CLEAN boolean result must sail through the always-on
-/// gate untouched. Without this the tests above are satisfied by a gate that
+/// The other direction: a CLEAN boolean result must sail through the gate
+/// untouched. Without this the tests above are satisfied by a gate that
 /// rejects everything, which would be a far worse bug than the one being
 /// fixed.
 #[cfg(feature = "csg_manifold_gate")]

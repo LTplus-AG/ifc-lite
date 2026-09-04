@@ -46,7 +46,9 @@
  * THE ONE THING IT DOES ACCEPT is a marker the reviewer writes at the END of a
  * successful post, naming the exact commit it reviewed:
  *
- *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review|dropped count=<n> -->
+ *     <!-- ifc-lite-review sha=<40-hex> verdict=<token> count=<n> -->
+ *
+ *     The tokens, and what each buys, are in ./lib/review-marker.mjs.
  *
  *     An optional trailing ` omitted=<n>` (present only when n > 0) records how
  *     many changed files were too large to fit the model prompt and were NOT
@@ -106,7 +108,7 @@ import { gh, GhError } from './lib/gh.mjs';
 // ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
 import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
 import { droppedVerdict, shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
-import { MARKER_RE, MARKER_SHAPE } from './lib/review-marker.mjs';
+import { MARKER_RE, MARKER_SHAPE, MARKER_VERDICTS, certifiesDiff, verdictLines } from './lib/review-marker.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -143,7 +145,9 @@ const MAX_PAGES = 10;
 const PER_PAGE = 100;
 
 export { shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
-export { MARKER_RE } from './lib/review-marker.mjs';
+// Re-exported so every existing importer of these names from this file keeps
+// working; the grammar lives in ./lib/review-marker.mjs with its docs.
+export { MARKER_RE, MARKER_VERDICTS, certifiesDiff, verdictLines };
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -353,8 +357,10 @@ export function normaliseComments(payload) {
  *   review-posted.yml turns it into the `llm-reviewed` label, which is what
  *   .coderabbit.yaml reads to stay off the PR. It is false on two shapes that
  *   are nonetheless `ok`: `nothing-to-review`, because nothing read the diff at
- *   all, and any marker carrying `omitted>0` (#3679), because nothing read the
- *   omitted files.
+ *   all, `clean-by-judge` (#3862), because the reviewer's own verdict was
+ *   `findings` and no per-class pass ever stood behind the empty result, and
+ *   any marker carrying `omitted>0` (#3679), because nothing read the omitted
+ *   files. `certifiesDiff` in ./lib/review-marker.mjs owns the first two.
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -473,21 +479,11 @@ export function evaluate({ comments, cfg, headSha }) {
     }
   }
 
-  lines.push(
-    match.verdict === 'nothing-to-review'
-      ? `✅ REVIEW_POSTED: the reviewer reached ${headSha.slice(0, 9)} and reported NOTHING TO REVIEW — ` +
-        'the comment itself says why (every changed path excluded, or no part of the diff fitting the ' +
-        'model prompt). That is a decision the lane made and POSTED, not a statement that the diff was ' +
-        'read and is fine. The distinction is the point: a `clean` marker here would certify these PRs ' +
-        'as reviewed, and an exclusion-list bug would then do it silently for every PR it swallowed.'
-      : `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${headSha.slice(0, 9)}` +
-        `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`,
-    match.verdict === 'nothing-to-review'
-      ? '   FULL=FALSE, though: nobody read this diff, so CodeRabbit must NOT stand down on it.'
-      : '   This proves a review REACHED the pull request for this exact commit.',
-    '   It proves nothing about whether the review was any good; precision is a separate',
-    '   instrument.',
-  );
+  // WHAT EACH VERDICT MEANS is rendered by ./lib/review-marker.mjs, beside the
+  // grammar that defines the tokens and the `certifiesDiff` predicate the
+  // `full` return below turns into the stand-down decision. Three answers to
+  // "what does this token buy" kept in one file rather than three.
+  lines.push(...verdictLines(match, headSha));
   // ABSENCE STAYS VISIBLE AT THIS SURFACE TOO. The marker's `omitted` count is
   // how a degraded review (#3679) says which part of the diff nothing vouches
   // for; swallowing it here would let a partial review read as a full one.
@@ -521,7 +517,7 @@ export function evaluate({ comments, cfg, headSha }) {
   // fit and post their inline comments again.
   return {
     ok: true,
-    full: match.verdict !== 'nothing-to-review' && match.omitted === 0,
+    full: certifiesDiff(match.verdict) && match.omitted === 0,
     verdict: 'REVIEW_POSTED',
     lines,
   };

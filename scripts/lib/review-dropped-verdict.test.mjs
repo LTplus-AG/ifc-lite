@@ -45,7 +45,11 @@ test('MARKER_RE accepts every verdict MARKER_SHAPE advertises, and nothing else'
   // are the same fact. Spelled twice, a new verdict could be accepted by one and
   // absent from the other, and the remedy would name a form the gate rejects.
   const advertised = MARKER_SHAPE.match(/verdict=([a-z|-]+)/)[1].split('|');
-  assert.deepEqual(advertised, ['clean', 'findings', 'nothing-to-review', 'dropped']);
+  // Spelled out rather than compared to `MARKER_VERDICTS`: MARKER_SHAPE is built
+  // from that array, so the two would agree by construction and the check would
+  // certify nothing. `clean-by-judge` leads because the alternation is
+  // longest-prefix-first (#3862).
+  assert.deepEqual(advertised, ['clean-by-judge', 'clean', 'findings', 'nothing-to-review', 'dropped']);
   for (const v of advertised) {
     const m = MARKER_RE.exec(`<!-- ifc-lite-review sha=${SHA} verdict=${v} count=0 -->`);
     assert.ok(m, `MARKER_RE must accept the advertised verdict \`${v}\``);

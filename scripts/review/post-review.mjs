@@ -57,8 +57,13 @@
  * THE OTHER HALF OF THE CONTRACT: THE REVIEWER MUST POST ON EVERY RUN, INCLUDING
  * A CLEAN ONE. A reviewer that stays silent when it finds nothing makes
  * "reviewed and found nothing" byte-identical to "never ran", which is exactly
- * the trap CodeRabbit falls into here. So a clean run posts a `verdict=clean`
- * marker, and silence therefore means failure.
+ * the trap CodeRabbit falls into here. So an empty run still posts a marker, and
+ * silence therefore means failure.
+ *
+ * WHICH empty-run marker is `markerVerdict`'s decision (#3862): `verdict=clean`
+ * only when a per-class pass stood behind the reviewer's own `clean`, and
+ * `verdict=clean-by-judge` for a `findings` verdict the judge emptied -- covered
+ * by the gate, never `llm-reviewed`.
  *
  * FAILURE CLASSES, each with its OWN remedy, because a remedy that contradicts
  * its finding is worse than no remedy:
@@ -161,7 +166,7 @@ import { parseArgs } from './lib/review-args.mjs';
 // working unchanged. `fingerprint` is used only inside
 // `postFindingsAndConfirm` now, so it is re-exported directly rather than
 // imported.
-import { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker } from './lib/review-findings.mjs';
+import { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker, markerVerdict } from './lib/review-findings.mjs';
 // fetchHeadSha/upsertAndVerify/postNothingToReview/postFindingsAndConfirm
 // moved to ./lib/review-comments.mjs (module-size budget, #3795). Imported
 // for the same reason as above. `confirmedOnHead` is used only inside that
@@ -175,7 +180,7 @@ import { summaryBody, readJudgedAway, readCappedCount } from './lib/review-summa
 
 export { parseArgs, DEFAULT_CONFIG } from './lib/review-args.mjs';
 export { PostReviewError };
-export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker };
+export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker, markerVerdict };
 export { fingerprint } from './lib/review-findings.mjs';
 export { confirmedOnHead } from './lib/review-comments.mjs';
 export { nothingToReviewBody } from './lib/review-summary.mjs';
@@ -309,7 +314,12 @@ function main() {
   }
 
   // ------------------------------------------------------------------ STEP 4+5
-  const verdict = standing === 0 ? 'clean' : 'findings';
+  // `clean` is EARNED, not inferred from a count (#3862): see `markerVerdict`.
+  // `standing`, not `confirmed`, is the input, because that is the count the
+  // marker carries and the one #3768 made authoritative: a run whose every prior
+  // finding has been resolved has nothing on the pull request, and asking about
+  // `confirmed` would call it `findings` again.
+  const verdict = markerVerdict(doc, standing);
   upsertAndVerify({
     repo: args.repo,
     pr: args.pr,
@@ -319,6 +329,7 @@ function main() {
       sha: args.sha,
       findings,
       count: standing,
+      verdict,
       resolutionIncomplete,
       judgedAway: readJudgedAway(doc),
       capped: readCappedCount(doc, findings.length),

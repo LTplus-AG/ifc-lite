@@ -108,8 +108,19 @@ jobs:
       # "was this finding written at the head" predicate now lives in that
       # module (#3729), so leaving its tests to the scripts/ glob would put the
       # half that decides the verdict behind a filter this workflow refuses.
+      #
+      # `review-marker` is the third, and the same rule again (#3862): the
+      # marker grammar, `MARKER_VERDICTS` and `certifiesDiff` moved there, and
+      # `certifiesDiff` IS the `full` output this workflow turns into the
+      # `llm-reviewed` label. Its tests are otherwise reachable only behind
+      # test.yml's `scripts/**` path filter, so a PR touching neither would
+      # decide the stand-down with an untested predicate.
       - name: Unit-test the gate itself
-        run: node --test scripts/check-review-posted.test.mjs scripts/lib/review-provenance.test.mjs
+        run: >-
+          node --test
+          scripts/check-review-posted.test.mjs
+          scripts/lib/review-provenance.test.mjs
+          scripts/lib/review-marker.test.mjs
 
       # CLEARED FIRST, BEFORE THE GATE WAITS. This is a race, not a tidy-up.
       #

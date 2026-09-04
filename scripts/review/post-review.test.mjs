@@ -191,6 +191,17 @@ process.stdout.write(JSON.stringify(out));
 writeFileSync(join(BIN, 'gh'), FAKE_GH);
 chmodSync(join(BIN, 'gh'), 0o755);
 
+/**
+ * A findings.json from a VALIDATED CLEAN REVIEW (#3862).
+ *
+ * `{ findings: [] }` alone is no longer enough to earn a `clean` marker: the
+ * poster wants the flag validate-findings writes when `checkClassPass` accepted
+ * a per-class pass, because an empty findings array is also what a `findings`
+ * verdict looks like after the judge has dropped every one of them. Tests that
+ * mean "the reviewer read this diff and found nothing" say so through this.
+ */
+const cleanDoc = (patch = {}) => JSON.stringify({ headSha: SHA, verdict: 'clean', classPass: true, findings: [], ...patch });
+
 /** A finding, distinct per index in path, line and body. */
 const finding = (n) => ({
   path: `packages/a/src/f${n}.ts`,
@@ -263,10 +274,16 @@ function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWE
   return { code: r.status, out: `${r.stdout}${r.stderr}`, state: JSON.parse(readFileSync(statePath, 'utf8')) };
 }
 
-/** Re-run the poster against a world a previous run left behind. */
-function rerunPoster(statePath, findings, sha = SHA) {
+/**
+ * Re-run the poster against a world a previous run left behind.
+ *
+ * `raw` overrides the findings file wholesale, because a bare array carries no
+ * `classPass` flag and #3862 reads that absence as `clean-by-judge`. A rerun that
+ * has to reach a plain `clean` marker passes `cleanDoc()` here.
+ */
+function rerunPoster(statePath, findings, sha = SHA, raw) {
   const fPath = join(TMP, `findings-rerun-${(seq += 1)}.json`);
-  writeFileSync(fPath, JSON.stringify(findings));
+  writeFileSync(fPath, raw ?? JSON.stringify(findings));
   const r = spawnSync(
     process.execPath,
     [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', sha, '--findings', fPath, '--author', REVIEWER],
@@ -302,7 +319,7 @@ function runGate(state, sha = SHA) {
 // ================================================================== happy paths
 
 test('PASS: a clean run posts exactly one marker comment and no inline comments', () => {
-  const r = runPoster({ findings: [] });
+  const r = runPoster({ findingsRaw: cleanDoc() });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.state.issueComments.length, 1);
   assert.equal(r.state.reviewComments.length, 0);
@@ -391,7 +408,7 @@ test('THE ORDER: every inline POST, then a read-back GET, then the marker', () =
 // ====================================== the poster and the gate cannot disagree
 
 test('the REAL gate reads REVIEW_POSTED from what a CLEAN run posted', () => {
-  const r = runPoster({ findings: [] });
+  const r = runPoster({ findingsRaw: cleanDoc() });
   const g = runGate(r.state);
   assert.equal(g.code, 0, g.out);
   assert.match(g.out, /REVIEW_POSTED/);
@@ -589,20 +606,25 @@ test('#3729: a RELOCATED finding does not contradict a clean run; one WRITTEN he
     side: 'RIGHT',
     body: 'An earlier head\'s finding, relocated onto this one.',
   };
-  const r = runPoster({ findings: [], state: { reviewComments: [relocated] } });
+  // `cleanDoc()`, NOT `findings: []` (#3862). A bare array carries no class-pass
+  // flag, so the poster now writes `clean-by-judge` for it -- and `/verdict=clean/`
+  // matches that as a PREFIX, so this test would have gone on passing while
+  // asserting something it no longer meant. What it is about is `clean` versus
+  // `findings`, so it feeds a validated clean review and matches the whole token.
+  const r = runPoster({ findingsRaw: cleanDoc(), state: { reviewComments: [relocated] } });
   assert.equal(r.code, 0, r.out);
   assert.doesNotMatch(r.out, /CONTRADICTED/);
-  assert.match(allBodies(r.state), /verdict=clean/);
+  assert.match(allBodies(r.state), /verdict=clean count=0/);
   // ANTI-VACUITY: the same row WRITTEN at this head still contradicts. The only
   // difference between the two inputs is `original_commit_id`.
   const real = runPoster({
-    findings: [],
+    findingsRaw: cleanDoc(),
     state: { reviewComments: [{ ...relocated, original_commit_id: SHA }] },
   });
   assert.equal(real.code, 0, real.out);
   assert.match(real.out, /CONTRADICTED/);
   assert.match(allBodies(real.state), /verdict=findings count=1/);
-  assert.doesNotMatch(allBodies(real.state), /verdict=clean/);
+  assert.doesNotMatch(allBodies(real.state), /verdict=clean /, 'nor `clean-by-judge`, which shares the prefix');
 });
 
 test('a finding whose body already exists at ANOTHER line or path is still posted', () => {
@@ -743,7 +765,7 @@ test('WITHDRAWAL: a standing findings marker is DOWNGRADED to clean once the com
     user: { login: REVIEWER },
     body: `### Claude review - 1 standing finding for \`${SHA.slice(0, 9)}\`\n\n${'x'}\n\n${marker(SHA, 'findings', 1)}`,
   };
-  const r = runPoster({ findings: [], state: { issueComments: [standing], reviewComments: [] } });
+  const r = runPoster({ findingsRaw: cleanDoc(), state: { issueComments: [standing], reviewComments: [] } });
   assert.equal(r.code, 0, r.out);
 
   const bodies = allBodies(r.state);
@@ -1125,11 +1147,11 @@ test('a review the judge emptied does NOT read as a review that found nothing', 
   // The judge can reject every validated finding. Without this the PR shows
   // "found nothing to flag" and the only record that they existed is a runner
   // log that expires -- absence reading as success, on a path the judge created.
-  const plain = summaryBody({ sha: 'a'.repeat(40), findings: [], count: 0 });
+  const plain = summaryBody({ sha: 'a'.repeat(40), findings: [], count: 0, verdict: 'clean' });
   assert.match(plain, /found nothing to flag/);
   assert.doesNotMatch(plain, /dropped as too vague/, 'a genuinely clean review must not claim drops');
 
-  const judged = summaryBody({ sha: 'a'.repeat(40), findings: [], count: 0, judgedAway: 4 });
+  const judged = summaryBody({ sha: 'a'.repeat(40), findings: [], count: 0, verdict: 'clean-by-judge', judgedAway: 4 });
   assert.match(judged, /4 finding\(s\) were written and then dropped/);
   assert.match(judged, /ifc-lite-review sha=/, 'the marker must still be written');
 });
@@ -1239,7 +1261,7 @@ test('PARTIAL CLEAN: the marker carries omitted=N and the REAL gate reads posted
   // degraded review-input; the gate below is the REAL gate over exactly what
   // this run posted.
   const r = runPoster({
-    findingsRaw: JSON.stringify({ findings: [], omitted: ['packages/a/big.ts', 'packages/b/huge.ts'] }),
+    findingsRaw: cleanDoc({ omitted: ['packages/a/big.ts', 'packages/b/huge.ts'] }),
   });
   assert.equal(r.code, 0, r.out);
   assert.equal(r.state.issueComments.length, 1);
@@ -1275,7 +1297,7 @@ test('a FULL review still writes the marker BYTE-IDENTICAL to before #3679', () 
   // on a partial review, so every marker written for a fully-reviewed head
   // parses under the gate exactly as it always has -- including gates checked
   // out from branches that predate this change.
-  const r = runPoster({ findings: [] });
+  const r = runPoster({ findingsRaw: cleanDoc() });
   assert.equal(r.code, 0, r.out);
   const body = r.state.issueComments[0].body;
   assert.match(body, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->`));
@@ -1336,7 +1358,7 @@ test('an omitted PATH containing a backtick cannot close its code span early (#3
   // manufacture a failure as hide one. One decoder, and it is the correct one.
 
   for (const evil of ['packages/a/we`ird.ts', 'packages/a/tw``o.ts', 'packages/a/ends`', '`starts/a.ts']) {
-    const body = summaryBody({ sha: SHA, findings: [], count: 0, omitted: [evil] });
+    const body = summaryBody({ sha: SHA, findings: [], count: 0, verdict: 'clean', omitted: [evil] });
     const line = body.split('\n').find((l) => l.startsWith('- '));
     assert.match(line, /^- /, 'the omitted entry must render as a bullet');
     // Equality IS the early-close check: a span that closed at the path's own
@@ -1350,7 +1372,7 @@ test('an omitted PATH containing a backtick cannot close its code span early (#3
 
   // The plain path keeps its plain single-backtick rendering: no fence inflation
   // on the common case, which every existing fixture in this file relies on.
-  const plain = summaryBody({ sha: SHA, findings: [], count: 0, omitted: ['packages/a/plain.ts'] });
+  const plain = summaryBody({ sha: SHA, findings: [], count: 0, verdict: 'clean', omitted: ['packages/a/plain.ts'] });
   assert.match(plain, /^- `packages\/a\/plain\.ts`$/m);
 });
 
@@ -1528,10 +1550,14 @@ test('#3768: a clean run whose prior findings are all RESOLVED writes a clean ma
   assert.equal(first.code, 0, first.out);
   assert.match(allBodies(first.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=findings count=2/);
 
-  // Both threads resolved, then a run that finds nothing.
+  // Both threads resolved, then a run that finds nothing. `cleanDoc()`, NOT a
+  // bare `[]` (#3862): the plain `clean` marker this test is about is only
+  // reachable for a document that shows the per-class pass, and a bare array
+  // shows nothing. What #3768 asserts is unchanged -- resolving the threads is
+  // what clears the verdict.
   first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
   writeFileSync(first.statePath, JSON.stringify(first.state));
-  const clean = rerunPoster(first.statePath, []);
+  const clean = rerunPoster(first.statePath, [], SHA, cleanDoc());
   assert.equal(clean.code, 0, clean.out);
   assert.match(allBodies(clean.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=clean count=0/);
   assert.doesNotMatch(clean.out, /CONTRADICTED/);
@@ -1780,4 +1806,80 @@ test('#3768: a resolved thread longer than one comment page is disclosed too', (
   const second = rerunPoster(first.statePath, [finding(1)]);
   assert.equal(second.code, 0, second.out);
   assert.match(allBodies(second.state), /resolution of the review threads could not be read in full/i);
+});
+
+// ============================== a judge-emptied findings verdict is not `clean` (#3862)
+
+test('#3862 summaryBody REFUSES a zero-count review with no verdict passed', () => {
+  // THE BRANCH THAT MUST BE EXECUTED, not merely written. `summaryBody` used to
+  // hardcode `clean` here while main() computed the same string a second time --
+  // two answers to one question, agreeing until the `clean-by-judge` split made
+  // one of them change. The verdict is an argument now, and it REFUSES rather
+  // than defaulting: a default is what makes a forgotten wire-up silent, and the
+  // silence would post the stronger verdict.
+  //
+  // Nothing is posted on this path: the throw happens while the body is being
+  // built, before `upsertAndVerify` is reached, so the gate reads NOT_POSTED and
+  // the remedy is a code fix rather than a re-run.
+  for (const verdict of [undefined, null, '', 'findings', 'nothing-to-review', 'clean-ish']) {
+    assert.throws(
+      () => summaryBody({ sha: SHA, findings: [], count: 0, verdict }),
+      /BAD_ARGS|markerVerdict/,
+      `verdict=${JSON.stringify(verdict)} must not render a zero-count body`,
+    );
+  }
+  // ANTI-VACUITY: both accepted verdicts still render, or the guard would be
+  // refusing everything and no clean review could post at all.
+  for (const verdict of ['clean', 'clean-by-judge']) {
+    assert.match(summaryBody({ sha: SHA, findings: [], count: 0, verdict }), new RegExp(`verdict=${verdict} count=0`));
+  }
+});
+
+test('#3862 a validated CLEAN verdict still posts a plain `clean` marker', () => {
+  // The control. `clean` is the strongest thing this lane says, and it must stay
+  // reachable: a reviewer that walked the twelve defect classes and found
+  // nothing has earned it, and a change that made every empty run
+  // `clean-by-judge` would have fixed the hole by deleting the verdict.
+  const r = runPoster({ findingsRaw: cleanDoc({ judged: true }) });
+  assert.equal(r.code, 0, r.out);
+  assert.match(allBodies(r.state), new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->`));
+  assert.equal(runGate(r.state).code, 0, 'the real gate must accept it');
+});
+
+test('#3862 a findings verdict the JUDGE EMPTIED posts `clean-by-judge`, never `clean`', () => {
+  // THE DEFECT. `checkClassPass` runs on a `clean` verdict only, so a `findings`
+  // response never showed a per-class pass; run-judge then dropped all of them,
+  // and this poster sees `confirmed === 0` -- byte-identical to a genuinely
+  // clean review. It used to post `clean`, which certified a diff as walked
+  // when nothing had walked it.
+  const raw = cleanDoc({ judged: true, verdict: 'findings', classPass: false, counts: { judgeInput: 3, dropped: 3, kept: 0 } });
+  const r = runPoster({ findingsRaw: raw });
+  assert.equal(r.code, 0, r.out);
+  const bodies = allBodies(r.state);
+  assert.match(bodies, new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean-by-judge count=0 -->`));
+  assert.doesNotMatch(bodies, /verdict=clean /, 'a plain clean marker must not stand for an unwalked diff');
+});
+
+test('#3862 a findings.json with NO class-pass flag cannot buy a plain `clean`', () => {
+  // Absence is not evidence. A bare-array findings file, and any document from
+  // before the flag existed, says nothing about whether a class pass was shown
+  // -- so it gets the weaker verdict. The alternative is to read silence as a
+  // pass, which is the defect family this whole lane is named after.
+  const r = runPoster({ findings: [] });
+  assert.equal(r.code, 0, r.out);
+  assert.match(allBodies(r.state), new RegExp(`verdict=clean-by-judge count=0`));
+});
+
+test('#3862 the downgrade applies to the OMITTED form of the marker too', () => {
+  const raw = cleanDoc({ judged: true, verdict: 'findings', classPass: false, omitted: ['big/generated.ts'] });
+  const r = runPoster({ findingsRaw: raw });
+  assert.equal(r.code, 0, r.out);
+  assert.match(allBodies(r.state), new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=clean-by-judge count=0 omitted=1 -->`));
+});
+
+test('#3862 a run that CONFIRMS findings is unaffected by the flag', () => {
+  const raw = JSON.stringify({ headSha: SHA, verdict: 'findings', classPass: false, findings: [finding(1)] });
+  const r = runPoster({ findingsRaw: raw });
+  assert.equal(r.code, 0, r.out);
+  assert.match(allBodies(r.state), new RegExp(`<!-- ifc-lite-review sha=${SHA} verdict=findings count=1 -->`));
 });

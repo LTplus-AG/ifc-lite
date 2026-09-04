@@ -276,6 +276,12 @@ function main() {
     // poster sees: without this row the marker for a partial review would be
     // byte-identical to a full one.
     omitted: omittedForPromptPaths(input.unreviewable),
+    // WHETHER A PER-CLASS PASS STANDS BEHIND THIS VERDICT (#3862). Written here
+    // because this is the last place that knows: `checkClassPass` runs on
+    // `clean` only, and the poster downstream sees a count, not a verdict's
+    // backing. Its absence on an older findings.json is read by the poster as
+    // "no pass shown", which is the safe direction.
+    classPass: result.classPass,
     counts: result.counts,
     warnings: result.warnings,
   };

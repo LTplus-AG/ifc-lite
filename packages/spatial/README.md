@@ -64,8 +64,9 @@ import { buildSpatialIndex, FrustumUtils } from '@ifc-lite/spatial';
 
 const index = buildSpatialIndex(meshes);
 
-// Build a frustum from a view-projection matrix (column-major 4×4)
-const viewProjMatrix = new Float32Array(16); // from your camera
+// Your camera's view-projection matrix (column-major 4×4)
+declare const viewProjMatrix: Float32Array;
+
 const frustum = FrustumUtils.fromViewProjMatrix(viewProjMatrix);
 
 const visible = index.queryFrustum(frustum);

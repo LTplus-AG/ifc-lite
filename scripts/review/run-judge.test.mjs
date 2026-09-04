@@ -235,9 +235,9 @@ test('EVERY call site passes the three flags run-judge requires', () => {
 
 test('judge rubric treats a verified untouched sibling as second-site evidence, not ownership', () => {
   const rubric = readFileSync(join(HERE, 'judge.md'), 'utf8');
-  assert.match(rubric, /verified sibling/i);
-  assert.match(rubric, /second-site defect/i);
-  assert.match(rubric, /“Already[\s\S]*owned” means a deterministic gate/i);
+  assert.match(rubric, /verified sibling/i); // @source-text-assertion-ok judge.md is the prompt handed to the judge (data, not code); the test pins that the rubric states this rule
+  assert.match(rubric, /second-site defect/i); // @source-text-assertion-ok judge.md is the prompt handed to the judge (data, not code); the test pins that the rubric states this rule
+  assert.match(rubric, /“Already[\s\S]*owned” means a deterministic gate/i); // @source-text-assertion-ok judge.md is the prompt handed to the judge (data, not code); the test pins that the rubric states this rule
 });
 
 // =================================== 6. the shipped path, which no fake can reach

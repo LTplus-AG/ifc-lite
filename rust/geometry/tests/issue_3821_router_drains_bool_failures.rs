@@ -293,3 +293,23 @@ fn a_genuinely_empty_cutter_still_records_emptyoperand() {
         "an empty cutter of a SUPPORTED type must still record EmptyOperand"
     );
 }
+
+#[test]
+fn flipping_skip_small_cuts_does_not_discard_an_undrained_log() {
+    // `set_skip_small_cuts` re-registers the boolean and CSG processors, which
+    // DROPS the old ones — and a dropped processor takes its failure log with
+    // it. The viewer flips this flag on a live router, so a record made before
+    // the flip and drained after it must survive.
+    let (mut router, mut decoder) = router_for(UNSUPPORTED_BASE_OPERAND);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let _ = router.process_element(&element, &mut decoder);
+
+    // Deliberately NOT drained first: that is the whole hazard.
+    router.set_skip_small_cuts(true);
+
+    assert_eq!(
+        unsupported_operand_types(&router),
+        vec!["IfcSectionedSpine".to_string()],
+        "a record made before the flag flipped must survive the re-registration"
+    );
+}

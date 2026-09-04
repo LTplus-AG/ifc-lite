@@ -23,11 +23,9 @@ pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
-    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION,
-    aggregate_diagnostics, count_attributed_products, ClassificationStats,
-    ClassificationSummary, GeometryDiagnostics,
-    HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary,
-    WorstHost, UNATTRIBUTED_PRODUCT_ID,
+    aggregate_diagnostics, count_attributed_products, ClassificationStats, ClassificationSummary,
+    GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
+    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
 pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};
@@ -617,7 +615,11 @@ impl GeometryRouter {
     /// so they pick up the current value. Called at construction and whenever
     /// [`Self::set_skip_small_cuts`] flips the flag; `register` overwrites the
     /// existing map entries keyed by IFC type.
+    /// The processors this replaces are DROPPED, and a dropped processor takes
+    /// its failure log with it. Sweep first, so flipping the flag mid-pass can
+    /// never discard records the pipeline had not drained yet (#3821).
     fn register_skip_dependent_processors(&mut self) {
+        self.drain_processor_failures();
         self.register(Box::new(BooleanClippingProcessor::with_skip_small_cuts(
             self.skip_small_cuts,
         )));

@@ -19,8 +19,13 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`). Bumped on field renames/removals or
-   * count-semantics changes; additive optional fields do not bump.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3 — that constant carries
+   * the per-version changelog and is the single source of truth). Bumped on
+   * field renames, field removals, and count-semantics changes; also on an
+   * additive field whose absence a consumer must tell apart from a real zero,
+   * which is why 2 (removed `guardSaved`) and 3 (added
+   * `totalUnsupportedItems`) both bumped. A purely additive optional field
+   * that no consumer gates on does not bump.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -85,10 +90,50 @@ export interface GeometryDiagnostics {
      *  subtraction ran, otherwise the pre-cut count). */
     triangleCount?: number;
   }>;
+  /**
+   * Representation items dropped from the output: no processor is registered
+   * for the IFC type, or the registered processor errored (degenerate/failed
+   * geometry). Excludes elements with no Body representation at all — those
+   * are correctly absent from the 3D view and never counted here. Absent on
+   * a payload produced before this counter existed (schemaVersion < 3).
+   *
+   * A lower bound on instances: a drop inside a `RepresentationMap` source is
+   * counted once per walking router, not once per `IfcMappedItem` occurrence
+   * that reuses the cached source. That is once model-wide on the wasm batch
+   * path, which uses one router; the native pool builds a router per element,
+   * and a source whose items ALL drop is never published to the shared cache
+   * (it meshes to nothing), so there it contributes once per owning element.
+   * Read it as "these types were dropped", never as a count of affected
+   * elements or of distinct sources.
+   */
+  totalUnsupportedItems?: number;
+  /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */
+  unsupportedItemsByType?: Array<{ reason: string; count: number }>;
 }
 
 /** Cap on the merged worst-hosts detail list (matches the Rust WORST_HOSTS_LIMIT). */
 const WORST_HOSTS_LIMIT = 16;
+
+/** One reason/type and how many times it was seen. */
+type ReasonCount = { reason: string; count: number };
+
+/**
+ * Sum two reason-keyed lists by key, count-desc then reason-asc. The tie-break
+ * is load-bearing, not cosmetic: without it equal counts come out in Map
+ * insertion order, so the same model could render a different string on two
+ * runs. Shared by `failuresByReason` and `unsupportedItemsByType` so the two
+ * cannot order themselves differently. Agrees with the Rust `summarize` for the
+ * ASCII `Ifc*` type names and reason labels that actually reach here; the two
+ * are not identical orderings in general, since Rust ties break on byte order
+ * and `localeCompare` does not.
+ */
+function mergeReasonCounts(a: readonly ReasonCount[], b: readonly ReasonCount[]): ReasonCount[] {
+  const byKey = new Map<string, number>();
+  for (const r of [...a, ...b]) byKey.set(r.reason, (byKey.get(r.reason) ?? 0) + r.count);
+  return [...byKey.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
+}
 
 /**
  * Merge two GeometryDiagnostics (per-batch -> per-load, or per-worker ->
@@ -105,12 +150,7 @@ export function mergeGeometryDiagnostics(
 
   const schemaVersion = Math.max(a.schemaVersion ?? 0, b.schemaVersion ?? 0);
 
-  const reasons = new Map<string, number>();
-  for (const r of a.failuresByReason) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + r.count);
-  for (const r of b.failuresByReason) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + r.count);
-  const failuresByReason = [...reasons.entries()]
-    .map(([reason, count]) => ({ reason, count }))
-    .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
+  const failuresByReason = mergeReasonCounts(a.failuresByReason, b.failuresByReason);
 
   // Fold by productId first (a host whose geometry spans batches/workers can
   // appear in both operands' lists) before re-ranking and capping, mirroring the
@@ -135,6 +175,27 @@ export function mergeGeometryDiagnostics(
   const worstHosts = [...hostById.values()]
     .sort((x, y) => y.csgFailures - x.csgFailures || x.productId - y.productId)
     .slice(0, WORST_HOSTS_LIMIT);
+
+  // Whether EITHER operand actually carried the counter. Folding an absent field
+  // to 0 here would hand back `totalUnsupportedItems: 0` on a payload still
+  // labelled `schemaVersion: 2` — "we counted, and nothing was dropped" built out
+  // of "this producer never counted". That is the precise confusion the v3 bump
+  // exists to prevent, so absence has to survive the merge: the fields are
+  // omitted unless at least one side supplied one.
+  const countedUnsupported =
+    a.totalUnsupportedItems !== undefined ||
+    b.totalUnsupportedItems !== undefined ||
+    a.unsupportedItemsByType !== undefined ||
+    b.unsupportedItemsByType !== undefined;
+  const unsupportedFields = countedUnsupported
+    ? {
+        totalUnsupportedItems: (a.totalUnsupportedItems ?? 0) + (b.totalUnsupportedItems ?? 0),
+        unsupportedItemsByType: mergeReasonCounts(
+          a.unsupportedItemsByType ?? [],
+          b.unsupportedItemsByType ?? [],
+        ),
+      }
+    : {};
 
   return {
     schemaVersion,
@@ -161,6 +222,7 @@ export function mergeGeometryDiagnostics(
     },
     oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
+    ...unsupportedFields,
   };
 }
 

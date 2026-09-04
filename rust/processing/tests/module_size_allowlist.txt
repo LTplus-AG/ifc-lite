@@ -178,15 +178,6 @@
      706 rust/geometry/src/profiles/simplify.rs
 # +26: cap the fast-path opening count (O(N^3) DoS guard) + regression test.
      807 rust/geometry/src/rect_fast.rs
-# -10: #3821 replaced the second, hand-maintained copy of the BoolFailureReason
-# label match with a call to BoolFailureReason::label(), and put the new
-# processor-failure sweep in the diagnostics/processor_failures.rs sibling;
-# that paid for count_attributed_products and the reworked take_csg_failures
-# doc, and the id-0 bucket rules moved on to diagnostics/attribution.rs.
-# The baseline moved under this PR: #3863 grew the file to 595 without moving
-# the row, and #3881 re-measured the row to match. Measured after the rebase
-# onto that: 595 -> 585.
-     585 rust/geometry/src/router/diagnostics.rs
 # +26: #2866 — item_has_identity_position chases IfcBooleanResult.FirstOperand,
 # a file-supplied reference, so one self-referential entity aborted the process
 # (stack overflow = abort in Rust, not a catchable panic). The walk is now
@@ -212,7 +203,21 @@
 # -17: #3821 moved the GeometryProcessor trait to the router/processor.rs
 # sibling, which paid for its new take_bool_failures drain hook and for the
 # sweep that stops set_skip_small_cuts discarding an undrained log; 749 -> 732.
-     732 rust/geometry/src/router/mod.rs
+# +6: #3691. Measured against the row above after rebasing onto it, not against
+# the 749 this PR was first written on. The six are: `mod diagnostics_recording;`
+# and `mod mapped_item;` (2) for the two modules this PR extracts, which take
+# ~570 lines OUT of diagnostics.rs and processing.rs and drop diagnostics.rs off
+# this list entirely; one line from reflowing the `pub use diagnostics::{..}`
+# block around the new `format_unsupported_breakdown` re-export (1); and the
+# dropped-item counter's router state (3) — the `unsupported` RefCell field, its
+# constructor line, and the `forget_sources` call in set_tessellation_quality.
+# The counter's three state pieces (counts, sources already counted, open
+# scopes) are ONE struct in router/diagnostics/unsupported_items.rs rather than
+# three fields here, which is as small as the router side gets. Raised rather
+# than paid for by trimming unrelated doc comments: earlier rounds of this PR
+# did that and it makes an unrelated comment the currency of an unrelated
+# change, leaving no record of either.
+     738 rust/geometry/src/router/mod.rs
 # +65: #1623 Phase 2 don't-bake — the top-level mapped-item intercept (template retag + instance placeholder) + the public/impl process_element_with_submeshes split; the two eligibility/ensure helpers were extracted to router/instancing.rs (new, 92 lines) to hold the net down.
 # +7: #858 palette guard — exclude an indexed-colour single-solid source from the don't-bake decision (one .filter on the resolved solid id + explanatory comment) so its per-triangle palette survives the flat split.
 # +16: #1623 Phase 3 — thread the batch-local vs global template decision through the mapped-item intercept (is_template match arm + retag guard).

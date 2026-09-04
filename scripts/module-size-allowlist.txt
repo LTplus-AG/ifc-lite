@@ -127,7 +127,7 @@
   1416 apps/viewer/src/hooks/useIDS.ts
    591 apps/viewer/src/hooks/useIfcCache.ts
    681 apps/viewer/src/hooks/useIfcFederation.ts
-  2247 apps/viewer/src/hooks/useIfcLoader.ts
+  2243 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    496 apps/viewer/src/hooks/useSymbolicAnnotations.ts

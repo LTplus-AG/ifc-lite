@@ -83,6 +83,34 @@ describe('mergeGeometryDiagnostics', () => {
     ]);
   });
 
+  it('sums totalUnsupportedItems and merges unsupportedItemsByType by IfcType, re-sorted desc', () => {
+    const a = make({
+      totalUnsupportedItems: 2,
+      unsupportedItemsByType: [{ reason: 'IfcGeometricSet', count: 2 }],
+    });
+    const b = make({
+      totalUnsupportedItems: 4,
+      unsupportedItemsByType: [
+        { reason: 'IfcGeometricSet', count: 1 },
+        { reason: 'IfcAnnotationFillArea', count: 3 },
+      ],
+    });
+    const m = mergeGeometryDiagnostics(a, b)!;
+    expect(m.totalUnsupportedItems).toBe(6);
+    expect(m.unsupportedItemsByType).toEqual([
+      { reason: 'IfcAnnotationFillArea', count: 3 },
+      { reason: 'IfcGeometricSet', count: 3 },
+    ]);
+  });
+
+  it('treats totalUnsupportedItems/unsupportedItemsByType as absent-safe (pre-schemaVersion-3 payloads)', () => {
+    const a = make();
+    const b = make({ totalUnsupportedItems: 1, unsupportedItemsByType: [{ reason: 'IfcGeometricSet', count: 1 }] });
+    const m = mergeGeometryDiagnostics(a, b)!;
+    expect(m.totalUnsupportedItems).toBe(1);
+    expect(m.unsupportedItemsByType).toEqual([{ reason: 'IfcGeometricSet', count: 1 }]);
+  });
+
   it('folds worstHosts by productId across operands (no duplicate rows, no mutation)', () => {
     const a = make({ worstHosts: [{ productId: 5, ifcType: 'IfcWall', openings: 1, csgFailures: 2, firstFailureLabel: 'KernelError' }] });
     const b = make({ worstHosts: [{ productId: 5, ifcType: 'IfcWall', openings: 2, csgFailures: 3 }] });
@@ -184,6 +212,33 @@ describe('the streaming `complete` event payload (buildGeometryWorkerCompleteMes
     expect(wh.triangleCount).toBe(256);
     expect(typeof wh.productId).toBe('number');
     expect(typeof wh.ifcType).toBe('string');
+  });
+
+  it('does NOT fabricate a counted zero when merging two pre-v3 payloads', () => {
+    // Both operands predate the drop counter, so neither field is present and the
+    // merged schemaVersion stays 2. Writing `totalUnsupportedItems: 0` here would
+    // say "we counted, nothing was dropped" on a payload that never counted —
+    // absence has to stay distinguishable from a real zero, which is the whole
+    // reason v3 was a version bump rather than a silent additive field.
+    const merged = mergeGeometryDiagnostics(
+      make({ schemaVersion: 2, totalCsgFailures: 1 }),
+      make({ schemaVersion: 2, totalCsgFailures: 2 }),
+    )!;
+    expect(merged.schemaVersion).toBe(2);
+    expect('totalUnsupportedItems' in merged).toBe(false);
+    expect('unsupportedItemsByType' in merged).toBe(false);
+  });
+
+  it('keeps a real zero from a v3 producer that counted and found nothing', () => {
+    // The mirror case: a v3 operand DID count. Its 0 is a measurement and must
+    // survive, so the field is present and the merge stays additive.
+    const merged = mergeGeometryDiagnostics(
+      make({ schemaVersion: 3, totalUnsupportedItems: 0, unsupportedItemsByType: [] }),
+      make({ schemaVersion: 2 }),
+    )!;
+    expect(merged.schemaVersion).toBe(3);
+    expect(merged.totalUnsupportedItems).toBe(0);
+    expect(merged.unsupportedItemsByType).toEqual([]);
   });
 
   it('leaves bbox/triangleCount absent on a worstHosts entry that never captured a cut effect', () => {

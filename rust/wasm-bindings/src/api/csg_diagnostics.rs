@@ -32,6 +32,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
     }
     let host_diags = router.take_host_opening_diagnostics();
     let oversized_ref_drops = router.take_content_hash_oversized_ref_drops() as u64;
+    let unsupported_items = router.take_unsupported_items();
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
     let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
@@ -275,9 +276,33 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
+    // Dropped representation items: no processor registered for the IFC type,
+    // or the registered processor errored (degenerate/failed geometry). An
+    // element with a Body representation item that reaches here produced no
+    // geometry for that item — the #3678-shaped gap this counter closes (the
+    // reason string existed at the drop site all along; it just never left
+    // the function). warn_1, not info — this is a genuine content gap, not a
+    // perf/engagement note, and healthy models never populate the map so this
+    // never fires on a clean load.
+    let total_unsupported_items: u64 = unsupported_items.values().sum();
+    if total_unsupported_items > 0 {
+        // Shared with the native tracing warning so the two surfaces cannot drift.
+        let breakdown = ifc_lite_geometry::format_unsupported_breakdown(&unsupported_items);
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] {total_unsupported_items} representation item(s) dropped \
+                 (unsupported type or failed geometry) — these elements are missing or \
+                 incomplete: {}",
+                breakdown,
+            )
+            .into(),
+        );
+    }
+
     // The console logging above is the human-facing surface; this is the typed,
     // serializable contract the worker/event path consumes (built from the same
-    // single drain — `rf`/`cls`/`csg_failures`/`host_diags` are not re-taken).
+    // single drain — `rf`/`cls`/`csg_failures`/`host_diags`/`unsupported_items`
+    // are not re-taken).
     ifc_lite_geometry::aggregate_diagnostics(
         cls,
         &csg_failures,
@@ -285,5 +310,6 @@ pub(super) fn drain_and_log_csg_diagnostics(
         rf,
         WORST_HOSTS_LIMIT,
         oversized_ref_drops,
+        &unsupported_items,
     )
 }

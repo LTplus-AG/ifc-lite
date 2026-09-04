@@ -19,8 +19,11 @@ fn aggregate_empty_is_all_zero() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
     assert_eq!(d.total_csg_failures, 0);
+    assert_eq!(d.total_unsupported_items, 0);
+    assert!(d.unsupported_items_by_type.is_empty());
     assert_eq!(d.products_with_failures, 0);
     assert!(d.failures_by_reason.is_empty());
     assert!(d.worst_hosts.is_empty());
@@ -74,7 +77,7 @@ fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
     let cls = ClassificationStats { rectangular: 3, diagonal: 1, non_rectangular: 0 };
     let rf = RectFastStats { fired: 2, openings_cut: 4, ..Default::default() };
 
-    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16, 0);
+    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16, 0, &FxHashMap::default());
     assert_eq!(d.total_csg_failures, 3);
     assert_eq!(d.products_with_failures, 2);
     assert_eq!(d.hosts_with_openings, 2);
@@ -118,7 +121,15 @@ fn worst_host_triangle_count_falls_back_to_tris_before_when_no_cut_ran() {
     );
     let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
     csg.insert(3, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::EmptyOperand)]);
-    let d = aggregate_diagnostics(ClassificationStats::default(), &csg, &hosts, RectFastStats::default(), 16, 0);
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &csg,
+        &hosts,
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
     assert_eq!(d.worst_hosts[0].triangle_count, Some(80));
     assert!(d.worst_hosts[0].bbox.is_none());
 }
@@ -143,6 +154,8 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
     );
     let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
     csg.insert(7, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid)]);
+    let mut unsupported: FxHashMap<String, u64> = FxHashMap::default();
+    unsupported.insert("IfcSectionedSpine".to_string(), 3);
     let d = aggregate_diagnostics(
         ClassificationStats { rectangular: 1, ..Default::default() },
         &csg,
@@ -150,7 +163,11 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
         RectFastStats::default(),
         16,
         0,
+        &unsupported,
     );
+    assert_eq!(d.total_unsupported_items, 3);
+    assert_eq!(d.unsupported_items_by_type[0].reason, "IfcSectionedSpine");
+    assert_eq!(d.unsupported_items_by_type[0].count, 3);
     let v = serde_json::to_value(&d).expect("serializes");
     for key in [
         "totalCsgFailures",
@@ -162,6 +179,8 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
         "rectFast",
         "worstHosts",
         "oversizedRefDrops",
+        "totalUnsupportedItems",
+        "unsupportedItemsByType",
     ] {
         assert!(v.get(key).is_some(), "missing top-level key {key}");
     }
@@ -197,6 +216,7 @@ fn oversized_ref_drops_passes_through_and_defeats_is_empty() {
         RectFastStats::default(),
         16,
         3,
+        &FxHashMap::default(),
     );
     assert_eq!(d.oversized_ref_drops, 3);
     assert!(
@@ -215,6 +235,7 @@ fn zero_oversized_ref_drops_stays_empty() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
     assert!(d.is_empty());
 }
@@ -224,12 +245,12 @@ fn schema_version_round_trips_and_defaults() {
     let d = GeometryDiagnostics::default();
     assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     let json = serde_json::to_string(&d).unwrap();
-    assert!(json.contains("\"schemaVersion\":2"), "serialized unconditionally: {json}");
+    assert!(json.contains("\"schemaVersion\":3"), "serialized unconditionally: {json}");
     let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
     assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
     let legacy: GeometryDiagnostics =
-        serde_json::from_str(&json.replace("\"schemaVersion\":2,", "")).unwrap();
+        serde_json::from_str(&json.replace("\"schemaVersion\":3,", "")).unwrap();
     assert_eq!(legacy.schema_version, 0);
 }
 
@@ -315,6 +336,7 @@ fn the_unattributed_bucket_counts_in_the_totals_but_is_not_a_product() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
 
     assert_eq!(d.products_with_failures, 1, "the synthetic bucket is not a product");
@@ -343,9 +365,55 @@ fn an_unattributed_only_pass_reports_zero_products_and_still_has_issues() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
     assert_eq!(d.products_with_failures, 0);
     assert_eq!(d.total_csg_failures, 1);
     assert!(d.has_issues(), "an unowned failure is still a failure");
     assert!(!d.is_empty(), "and must not be skipped as an empty diagnostic");
+}
+
+/// RED for the #3691 counter, mirroring #3752's pair above: a model whose ONLY
+/// diagnostic-worthy event is a dropped representation item must still be
+/// surfaced. `is_empty()` gates whether `processor/mod.rs` attaches the
+/// diagnostics object at all — `(!diag.is_empty()).then_some(diag)` — so
+/// deleting the `total_unsupported_items == 0` arm does not merely loosen a
+/// predicate, it throws the whole object away on exactly the models this
+/// counter was added for. Nothing failed when that arm was deleted.
+#[test]
+fn unsupported_items_pass_through_and_defeat_is_empty() {
+    let mut unsupported: FxHashMap<String, u64> = FxHashMap::default();
+    unsupported.insert("IfcGeometricSet".to_string(), 2);
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &unsupported,
+    );
+    assert_eq!(d.total_unsupported_items, 2);
+    assert_eq!(d.unsupported_items_by_type[0].reason, "IfcGeometricSet");
+    assert!(
+        !d.is_empty(),
+        "a nonzero total_unsupported_items must defeat is_empty, or processor/mod.rs drops the \
+         diagnostics object and the drop is invisible again"
+    );
+}
+
+/// Control: no dropped items is genuinely empty, so the arm above cannot be
+/// satisfied by making `is_empty` always false.
+#[test]
+fn zero_unsupported_items_stays_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
+    assert!(d.is_empty());
 }

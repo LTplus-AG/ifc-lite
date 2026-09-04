@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 mod color_layer;
+mod diagnostics;
 pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
@@ -1165,28 +1166,9 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     let mut deferred_styles_applied = !defer_style_updates;
 
-    // CSG-diagnostics sink shared across all per-job routers (drained after
-    // the loop into ProcessingStats + one tracing summary).
-    let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
-        std::sync::Mutex::new(FxHashMap::default());
-    // Opening-classification + per-host opening diagnostics sinks, drained from
-    // each fresh per-job router and merged here, so the native pass can build the
-    // SAME `GeometryDiagnostics` the WASM batch path produces. Drained from the
-    // local router (not inside `produce_element_meshes`) because the WASM batch path
-    // shares that function and drains classification/host from its own warm router
-    // at batch end — draining there would empty it.
-    let classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats> =
-        std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
-    let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
-        std::sync::Mutex::new(FxHashMap::default());
-    // rect_fast engagement is drained per-job router (request-local), isolating
-    // this pass's `rectFast` from any concurrent geometry pass.
-    let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
-        std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
-    // Degenerate-backstop drop tally (request-local, like the other sinks);
-    // non-zero means the f32-collapse safety net engaged for this model.
-    let backstop_collector = std::sync::atomic::AtomicU64::new(0);
-    let oversized_ref_drop_collector = std::sync::atomic::AtomicU64::new(0); // #3421/#3752
+    // Every request-local diagnostic sink for this pass, declared and drained as
+    // one subject — see `diagnostics::DiagnosticCollectors`.
+    let diag_collectors = diagnostics::DiagnosticCollectors::new();
 
     // Shared content-dedup cache for the whole model: every per-job router dedups
     // against it, so byte-identical geometry the exporter failed to share via
@@ -1441,12 +1423,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     element_material_colors.as_ref(),
                     texture_index.as_ref(),
                     site_local_rotation,
-                    &csg_failure_collector,
-                    &classification_collector,
-                    &host_diag_collector,
-                    &rect_fast_collector,
-                    &backstop_collector,
-                    &oversized_ref_drop_collector,
+                    &diag_collectors,
                     &item_dedup_cache,
                     &mapped_item_cache,
                     instancing_plan.as_ref(),
@@ -1513,14 +1490,15 @@ pub fn process_geometry_streaming_filtered_with_options(
     let geometry_time = geometry_start.elapsed();
     // Surface the aggregated CSG diagnostics — same per-reason breakdown the
     // browser console shows on the wasm path.
-    let csg_failures = csg_failure_collector
+    let csg_failures = diag_collectors
+        .csg_failures
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
     let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
-    let backstop_dropped = backstop_collector.into_inner();
+    let backstop_dropped = diag_collectors.backstop.into_inner();
     // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
-    let oversized_ref_drops = oversized_ref_drop_collector.into_inner();
+    let oversized_ref_drops = diag_collectors.oversized_ref_drops.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
     let point_cache_misses = point_cache_misses_collector.into_inner();
     let faceted_brep_time_ms = faceted_brep_ns_collector.into_inner() / 1_000_000;
@@ -1552,35 +1530,15 @@ pub fn process_geometry_streaming_filtered_with_options(
         );
     }
 
-    // Build the full GeometryDiagnostics contract from the drained sinks — the
-    // SAME shape the wasm batch path surfaces, so a native consumer and a browser
-    // consumer see identical diagnostics. `None` when nothing diagnostic-worthy
-    // happened (mirrors the wasm `is_empty` skip).
-    //
-    // Every sink — `classification`, `host_diags`, `csg_failures` AND `rect_fast` —
-    // is request-local: each was drained from this pass's own per-job routers and
-    // merged here, so concurrent in-process geometry passes never cross-contaminate.
     let geometry_diagnostics = tracing::debug_span!("collate_diagnostics").in_scope(|| {
-        // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
-        const WORST_HOSTS_LIMIT: usize = 16;
-        let classification = classification_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let host_diags = host_diag_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let rect_fast = rect_fast_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let diag = ifc_lite_geometry::aggregate_diagnostics(
-            classification,
+        diagnostics::collate(
+            diag_collectors.classification,
+            diag_collectors.host_diags,
+            diag_collectors.rect_fast,
+            diag_collectors.unsupported_items,
             &csg_failures,
-            &host_diags,
-            rect_fast,
-            WORST_HOSTS_LIMIT,
             oversized_ref_drops,
-        );
-        (!diag.is_empty()).then_some(diag)
+        )
     });
 
     // #1623 Phase 2: resolve the don't-bake occurrences into InstanceRecords against

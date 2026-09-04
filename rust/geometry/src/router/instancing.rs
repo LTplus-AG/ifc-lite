@@ -68,6 +68,13 @@ impl GeometryRouter {
         {
             return;
         }
+        // Same two rules the other three walks apply, from one place: a non-Body
+        // source's dropped items are not a content loss, and this source's drops
+        // are counted once rather than once per occurrence that re-walks it —
+        // which is exactly this function, since the insert below is skipped for a
+        // total-loss (empty) source and every later occurrence lands here again.
+        // See `GeometryRouter::enter_unsupported_source`.
+        let _drop_scope = self.enter_unsupported_source(source_id, mapped_repr);
         let mut mesh = Mesh::new();
         if let Some(items_attr) = mapped_repr.get(3) {
             if let Ok(items) = decoder.resolve_ref_list(items_attr) {
@@ -76,18 +83,64 @@ impl GeometryRouter {
                         // Unreachable via the only caller (see the doc above).
                         // Skipping it would leave `mesh` short of the source's real
                         // geometry, and the insert below would publish that model-wide.
+                        //
+                        // If it ever becomes reachable, note the second cost: the
+                        // scope above has already CLAIMED `source_id` in
+                        // `sources_recorded`, so a later, complete walk of the same
+                        // source through `mapped_item.rs` would find it claimed and
+                        // record nothing — losing its drops rather than duplicating
+                        // them. Releasing the claim belongs with whatever makes this
+                        // branch reachable.
                         return;
                     }
-                    if let Some(processor) = self.processors.get(&sub_item.ifc_type) {
-                        if let Ok(mut sub_mesh) = processor.process(
+                    // A missing processor or a failing one leaves `mesh` short of
+                    // the source's real geometry, and the insert below publishes
+                    // that to EVERY instance of this source model-wide. The partial
+                    // mesh itself is consistent with the per-occurrence path
+                    // (`mapped_item.rs` also keeps going past a failed sub-item), so
+                    // the drop is recorded rather than the source withheld — but it
+                    // MUST be recorded, or the one place the loss is visible at all
+                    // is the one place instancing removed.
+                    match self.processors.get(&sub_item.ifc_type) {
+                        Some(processor) => match processor.process(
                             &sub_item,
                             decoder,
                             &self.schema,
                             self.tessellation_quality,
                         ) {
-                            sub_mesh.validate_indices();
-                            self.scale_mesh(&mut sub_mesh);
-                            mesh.merge(&sub_mesh);
+                            Ok(mut sub_mesh) => {
+                                sub_mesh.validate_indices();
+                                self.scale_mesh(&mut sub_mesh);
+                                mesh.merge(&sub_mesh);
+                            }
+                            Err(_e) => {
+                                self.record_unsupported_item(sub_item.ifc_type);
+                                crate::diag::diag_debug!(
+                                    { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
+                                      error = %_e, "skipping unsupported shared-source item" }
+                                    else {
+                                        #[cfg(debug_assertions)]
+                                        eprintln!(
+                                            "[ifc-lite] Skipping unsupported shared-source item #{} ({:?}): {}",
+                                            sub_item.id, sub_item.ifc_type, _e
+                                        );
+                                    }
+                                );
+                            }
+                        },
+                        None => {
+                            self.record_unsupported_item(sub_item.ifc_type);
+                            crate::diag::diag_debug!(
+                                { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
+                                  "skipping unsupported shared-source item (no processor)" }
+                                else {
+                                    #[cfg(debug_assertions)]
+                                    eprintln!(
+                                        "[ifc-lite] Skipping unsupported shared-source item #{} ({:?}): no processor",
+                                        sub_item.id, sub_item.ifc_type
+                                    );
+                                }
+                            );
                         }
                     }
                 }
@@ -106,6 +159,95 @@ impl GeometryRouter {
 mod tests {
     use crate::router::GeometryRouter;
     use ifc_lite_core::EntityDecoder;
+
+    /// A Body source whose two items both fail to mesh: `#8` has no registered
+    /// processor at all (the `None` arm), `#7` has one that errors on a null
+    /// profile/placement (the `Err` arm). `ensure_shared_mapped_source` is the
+    /// don't-bake path's own flat walk of a source, structurally separate from
+    /// `mapped_item.rs`'s, and its two drop arms had no test: deleting both
+    /// `record_unsupported_item` calls left the whole suite green, so the one
+    /// place a don't-bake occurrence's loss is visible was unguarded.
+    const TWO_FAILING_ITEMS: &str = r#"
+#7=IFCEXTRUDEDAREASOLID($,$,$,0.);
+#8=IFCGEOMETRICSET(());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
+"#;
+
+    #[test]
+    fn both_drop_arms_of_the_shared_source_walk_are_recorded() {
+        let mut decoder = EntityDecoder::new(TWO_FAILING_ITEMS);
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let rep = decoder.decode_by_id(9).expect("decode #9");
+        router.ensure_shared_mapped_source(&rep, 100, &mut decoder);
+
+        assert_eq!(
+            router.mapped_shared_unique_count(),
+            0,
+            "a source that meshes to nothing must not be published (unchanged)"
+        );
+        let unsupported = router.take_unsupported_items();
+        assert_eq!(
+            unsupported.get("IfcGeometricSet"),
+            Some(&1),
+            "the None arm (no processor for the type) must record: {unsupported:?}"
+        );
+        assert_eq!(
+            unsupported.get("IfcExtrudedAreaSolid"),
+            Some(&1),
+            "the Err arm (processor ran and failed) must record: {unsupported:?}"
+        );
+    }
+
+    /// The Body gate, on this walk. `plan_type_geometry` selects a type's
+    /// RepresentationMaps by reference and instantiation only, so a 2D
+    /// 'FootPrint'/'Annotation' map reaches the don't-bake path exactly as it
+    /// reaches the other three, carrying items no processor handles and which
+    /// are CORRECTLY absent from a 3D view. Counting them warns on a clean
+    /// model. The other three walks already gated; this one did not.
+    #[test]
+    fn a_footprint_source_records_nothing_on_the_shared_source_walk() {
+        let footprint = r#"
+#8=IFCANNOTATIONFILLAREA($,());
+#9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
+"#;
+        let mut decoder = EntityDecoder::new(footprint);
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let rep = decoder.decode_by_id(9).expect("decode #9");
+        router.ensure_shared_mapped_source(&rep, 101, &mut decoder);
+
+        let unsupported = router.take_unsupported_items();
+        assert!(
+            unsupported.is_empty(),
+            "a 2D representation carries no 3D content to lose: {unsupported:?}"
+        );
+    }
+
+    /// The other half of that gate, so it cannot be satisfied by never counting:
+    /// the identical item under a Body representation IS a content loss.
+    #[test]
+    fn the_same_item_under_a_body_source_is_still_recorded_on_the_shared_source_walk() {
+        let body = r#"
+#8=IFCANNOTATIONFILLAREA($,());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+"#;
+        let mut decoder = EntityDecoder::new(body);
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let rep = decoder.decode_by_id(9).expect("decode #9");
+        router.ensure_shared_mapped_source(&rep, 102, &mut decoder);
+
+        let unsupported = router.take_unsupported_items();
+        assert_eq!(
+            unsupported.values().sum::<u64>(),
+            1,
+            "the gate keys on the representation, not on the item type: {unsupported:?}"
+        );
+    }
 
     fn fixture() -> String {
         std::fs::read_to_string("tests/fixtures/nested_mapped_item.ifc")

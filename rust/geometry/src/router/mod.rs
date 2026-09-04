@@ -10,8 +10,10 @@ mod caching;
 mod rep_filter;
 mod content_hash;
 mod diagnostics;
+mod diagnostics_recording;
 mod instancing;
 mod layers;
+mod mapped_item;
 mod processing;
 mod processor;
 mod rtc_offset;
@@ -23,9 +25,10 @@ pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
-    aggregate_diagnostics, count_attributed_products, ClassificationStats, ClassificationSummary,
-    GeometryDiagnostics, HostOpeningDiagnostic, OpeningDiagnostic, OpeningKindDiag, ReasonCount,
-    RectFastSummary, WorstHost, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
+    aggregate_diagnostics, count_attributed_products, format_unsupported_breakdown,
+    ClassificationStats, ClassificationSummary, GeometryDiagnostics, HostOpeningDiagnostic,
+    OpeningDiagnostic, OpeningKindDiag, ReasonCount, RectFastSummary, WorstHost,
+    GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, UNATTRIBUTED_PRODUCT_ID,
 };
 pub(crate) use diagnostics::ClassificationKind;
 pub(super) use rep_filter::{effective_rep_type, is_body_representation, is_direct_body_representation};
@@ -235,6 +238,7 @@ pub struct GeometryRouter {
     /// the id present and don't-bake. Reset implicitly per batch — a fresh router is
     /// built per `produce_batch`. Unused (stays empty) in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
+    unsupported: RefCell<diagnostics::UnsupportedItemState>, // dropped items by `IfcType` + per-source bookkeeping
 }
 
 impl GeometryRouter {
@@ -266,6 +270,7 @@ impl GeometryRouter {
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
+            unsupported: RefCell::new(Default::default()),
         };
 
         // Register default P0 processors
@@ -570,16 +575,17 @@ impl GeometryRouter {
 
     /// Set the tessellation quality level.
     ///
-    /// Reusing one router across a quality change invalidates `mapped_item_cache`
-    /// (keyed by RepresentationMap id, not by quality), so it is cleared here to
-    /// avoid serving meshes tessellated at the previous level. The other caches
-    /// are content-hash keyed (`geometry_hash_cache`), so they stay correct.
+    /// A quality change invalidates `mapped_item_cache` (keyed by RepresentationMap
+    /// id, not by quality) and the record of which sources' drops are already
+    /// counted, since every source is re-walked; both are cleared here. The
+    /// content-hash-keyed caches stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
         if self.tessellation_quality == quality {
             return;
         }
         self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
+        self.unsupported.get_mut().forget_sources();
     }
 
     /// Get the current tessellation quality level

@@ -39,8 +39,13 @@
 export interface GeometryDiagnostics {
   /**
    * Contract version handshake (mirrors Rust
-   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`). Bumped on field renames/removals or
-   * count-semantics changes; additive optional fields do not bump.
+   * `GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION`, currently 3). Bumped on field
+   * renames/removals and count-semantics changes; also on an additive field
+   * whose absence a consumer must tell apart from a real zero, which is why 3
+   * (added `totalUnsupportedItems`) bumped. A purely additive optional field
+   * that no consumer gates on does not bump. Kept worded the same as the
+   * canonical copy in `@ifc-lite/geometry`: the structural contract test cannot
+   * see comments, so a rule stated two ways here is drift nothing catches.
    *
    * REQUIRED, not optional: the Rust field is a plain `u32` serialized
    * unconditionally, so every producer since #1514 writes the key. A value of
@@ -107,12 +112,6 @@ export interface GeometryDiagnostics {
    * Representation items dropped from the mesh output because no processor is
    * registered for the item's type, or the registered processor errored (#3691).
    * Optional: absent on payloads from producers predating the counter.
-   *
-   * AHEAD OF THE CANONICAL TYPE. #3691 is still open at the time of writing, so
-   * `@ifc-lite/geometry` does not carry these two fields yet. They are declared
-   * here so that PR and this one do not collide over the server wire shape; the
-   * contract test allowlists exactly these two names and fails once the
-   * canonical type gains them, at which point the allowlist entry is deleted.
    */
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */

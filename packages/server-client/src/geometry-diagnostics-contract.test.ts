@@ -32,15 +32,20 @@ import type { GeometryDiagnostics as WireCopy } from './geometry-diagnostics-typ
 
 /**
  * Fields this copy carries AHEAD of the canonical type, because the PR that adds
- * them there (#3691) is still open and this package's wire shape had to be
- * written not to collide with it.
+ * them there has not landed yet and this package's wire shape had to be written
+ * not to collide with it.
+ *
+ * EMPTY, and that is the healthy state: this PR (#3691) adds
+ * `totalUnsupportedItems` / `unsupportedItemsByType` to the canonical type, so
+ * the two entries that used to sit here are deleted in the same change and the
+ * comparison below now runs with nothing excused.
  *
  * This list is self-retiring: `AheadFieldsAreNotYetCanonical` below fails the
  * moment `@ifc-lite/geometry` gains one of these names, which is the signal to
- * delete the name from here so the two types are compared with nothing excused.
- * An entry that is merely convenient does not belong in it.
+ * delete the name from here. An entry that is merely convenient does not belong
+ * in it.
  */
-type FieldsAheadOfCanonical = 'totalUnsupportedItems' | 'unsupportedItemsByType';
+type FieldsAheadOfCanonical = never;
 
 /** The allowlist above, minus anything the canonical type has since caught up on. */
 type AheadFieldsAreNotYetCanonical = Extract<FieldsAheadOfCanonical, keyof Canonical>;
@@ -56,8 +61,8 @@ describe('GeometryDiagnostics wire copy vs @ifc-lite/geometry', () => {
   });
 
   it('has an allowlist of ahead-of-canonical fields that is still needed', () => {
-    // Fails once #3691 lands and the canonical type declares these fields. Fix
-    // by emptying `FieldsAheadOfCanonical` (`type … = never`), not by widening it.
+    // Fails once the canonical type declares an allowlisted field. Fix by
+    // deleting that name from `FieldsAheadOfCanonical`, not by widening it.
     expectTypeOf<AheadFieldsAreNotYetCanonical>().toEqualTypeOf<never>();
     expect(true).toBe(true);
   });

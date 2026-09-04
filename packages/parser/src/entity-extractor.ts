@@ -10,6 +10,7 @@ import { createLogger } from '@ifc-lite/data';
 import { decodeIfcString } from '@ifc-lite/encoding';
 import { isIndexableExpressId } from './express-id.js';
 import { StepTextScan } from './step-lexing.js';
+import { STEP_TRIVIA } from './step-trivia.js';
 import type { IfcEntity, EntityRef } from './types.js';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 
@@ -19,6 +20,21 @@ const log = createLogger('EntityExtractor');
 
 /** Maximum recursion depth for parsing nested structures (prevents DoS via deeply nested data) */
 const MAX_PARSE_DEPTH = 100;
+
+/**
+ * `#ID = TYPE(attr1, attr2, ...)`, with STEP trivia (whitespace and/or a
+ * `/* ... *​/` comment, #3789) tolerated between the type name and its `(`.
+ * Compiled once: `extractEntity` is on the hot path for every entity in a
+ * model.
+ */
+const ENTITY_RECORD_RE = new RegExp(`^#(\\d+)\\s*=\\s*(\\w+)${STEP_TRIVIA}\\(([\\s\\S]*)\\)`);
+
+/**
+ * `TYPE(inner)` for a positional typed-value attribute, same trivia
+ * tolerance as {@link ENTITY_RECORD_RE}. Case-insensitive and dot-all
+ * (`is`) to match the regex it replaces.
+ */
+const TYPED_VALUE_RE = new RegExp(`^([A-Z][A-Z0-9_]*)${STEP_TRIVIA}\\((.+)\\)$`, 'is');
 
 /**
  * Is this raw source token a bare STEP enumeration token (`.USERDEFINED.`,
@@ -73,7 +89,13 @@ export class EntityExtractor {
       // source lines still match — `.` stops at the first newline and made
       // extractEntity return null for ANY multi-line STEP record (lost
       // storey/covering names + the on-demand attribute fallback).
-      const match = entityText.match(/^#(\d+)\s*=\s*(\w+)\(([\s\S]*)\)/);
+      // Trivia (whitespace and/or a comment) between the type name and `(`
+      // mirrors the Rust tokenizer's `ws` before its typed-value/entity
+      // paren (#3205): a STEP writer's line wrap, or a `/* ... */` comment,
+      // can land exactly there (e.g. `IFCSURFACESTYLERENDERING\r\n(#4,0.)`),
+      // and without it this regex returned null, silently hiding the
+      // entity from every downstream extractor keyed on extractEntity.
+      const match = entityText.match(ENTITY_RECORD_RE);
       if (!match) return null;
 
       // `\d+` guarantees this is not NaN, but not that the id fits the 32-bit
@@ -212,7 +234,13 @@ export class EntityExtractor {
     // e.g. an IFCLABEL/IFCTEXT string an authoring tool broke across physical
     // lines — is still unwrapped. Without it the match fails and the raw
     // `IFCLABEL('...')` literal (mis-typed as a plain string) leaks to callers.
-    const typedValueMatch = value.match(/^([A-Z][A-Z0-9_]*)\((.+)\)$/is);
+    // Trivia between the type name and `(` handles the same wrap (or an
+    // embedded comment) landing there instead of inside the value (e.g.
+    // `IFCPOSITIVELENGTHMEASURE\r\n(1.)`); without it this fell through to
+    // the plain-string branch below, and a downstream conversion-unit reader
+    // (unit-extractor.ts) then defaulted an unreadable ValueComponent to
+    // conversionValue 1.0 instead of the real one.
+    const typedValueMatch = value.match(TYPED_VALUE_RE);
     if (typedValueMatch) {
       const typeName = typedValueMatch[1];
       const innerValue = typedValueMatch[2].trim();

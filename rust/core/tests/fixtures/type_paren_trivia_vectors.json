@@ -1,0 +1,193 @@
+{
+  "_comment": [
+    "Shared vectors for issue #3789: which trivia is legal between a STEP type",
+    "name and its '(' -- for an entity record's type name and for a typed",
+    "value's. ISO 10303-21 allows a comment anywhere whitespace is allowed, and",
+    "STEP whitespace is the ASCII set { ' ', \\t, \\n, \\r, 0x0B, 0x0C } -- NOT",
+    "U+00A0 and friends (the TS/Rust divergence class of issue #3733).",
+    "",
+    "Rust half: rust/core/tests/type_paren_trivia_parity.rs (parse_entity).",
+    "TS half:   packages/parser/src/type-paren-trivia.parity.test.ts",
+    "           (EntityExtractor.extractEntity).",
+    "",
+    "trivia == 'entity': `accepted` is whether the whole record parses, and",
+    "`attributeCount` its attribute count.",
+    "",
+    "trivia == 'typedValue': `accepted` is whether attribute 0 is read as a",
+    "TYPED VALUE naming `typeName`. The two halves deliberately differ in how",
+    "they REJECT: Rust's nom grammar fails the whole record, while the TS",
+    "extractor's per-attribute regex falls through to its plain-string branch",
+    "and hands back the raw text. Both are correct refusals to read it as a",
+    "typed value, so that -- not the record-level verdict -- is what these",
+    "cases pin."
+  ],
+  "cases": [
+    {
+      "name": "adjacent (control)",
+      "record": "#1=IFCWALL(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "space",
+      "record": "#1=IFCWALL (1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "tab",
+      "record": "#1=IFCWALL\t(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "CRLF line wrap",
+      "record": "#1=IFCWALL\r\n(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "vertical tab (0x0B)",
+      "record": "#1=IFCWALL\u000b(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "form feed (0x0C)",
+      "record": "#1=IFCWALL\f(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "block comment",
+      "record": "#1=IFCWALL/* c */(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "empty block comment",
+      "record": "#1=IFCWALL/**/(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "whitespace and comments interleaved",
+      "record": "#1=IFCWALL /* a */\t/* b */\n(1.);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 1
+    },
+    {
+      "name": "empty argument list wrapped before ')'",
+      "record": "#1=IFCWALL(\r\n);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 0
+    },
+    {
+      "name": "empty argument list holding only a comment",
+      "record": "#1=IFCWALL(/* c */);",
+      "trivia": "entity",
+      "accepted": true,
+      "attributeCount": 0
+    },
+    {
+      "name": "reject: entity reference is not trivia",
+      "record": "#1=IFCWALL#5(1.);",
+      "trivia": "entity",
+      "accepted": false
+    },
+    {
+      "name": "reject: unterminated comment",
+      "record": "#1=IFCWALL/*(1.);",
+      "trivia": "entity",
+      "accepted": false
+    },
+    {
+      "name": "reject: U+00A0 is not STEP whitespace (#3733)",
+      "record": "#1=IFCWALL (1.);",
+      "trivia": "entity",
+      "accepted": false
+    },
+    {
+      "name": "reject: '//' is not a STEP comment",
+      "record": "#1=IFCWALL//x\n(1.);",
+      "trivia": "entity",
+      "accepted": false
+    },
+    {
+      "name": "reject: comments do not nest, so the trailing '*/' is junk",
+      "record": "#1=IFCWALL/* /* */ */(1.);",
+      "trivia": "entity",
+      "accepted": false
+    },
+    {
+      "name": "typed value adjacent (control)",
+      "record": "#1=IFCWALL(IFCLABEL('a'));",
+      "trivia": "typedValue",
+      "accepted": true,
+      "typeName": "IFCLABEL"
+    },
+    {
+      "name": "typed value wrapped across CRLF",
+      "record": "#1=IFCWALL(IFCLABEL\r\n('a'));",
+      "trivia": "typedValue",
+      "accepted": true,
+      "typeName": "IFCLABEL"
+    },
+    {
+      "name": "typed value separated by a vertical tab",
+      "record": "#1=IFCWALL(IFCLABEL\u000b('a'));",
+      "trivia": "typedValue",
+      "accepted": true,
+      "typeName": "IFCLABEL"
+    },
+    {
+      "name": "typed value separated by a block comment",
+      "record": "#1=IFCWALL(IFCLABEL/* c */('a'));",
+      "trivia": "typedValue",
+      "accepted": true,
+      "typeName": "IFCLABEL"
+    },
+    {
+      "name": "not a typed value: entity reference is not trivia",
+      "record": "#1=IFCWALL(IFCLABEL#5('a'));",
+      "trivia": "typedValue",
+      "accepted": false
+    },
+    {
+      "name": "not a typed value: U+00A0 is not STEP whitespace",
+      "record": "#1=IFCWALL(IFCLABEL ('a'));",
+      "trivia": "typedValue",
+      "accepted": false
+    },
+    {
+      "name": "not a typed value: unterminated comment",
+      "record": "#1=IFCWALL(IFCLABEL/*('a'));",
+      "trivia": "typedValue",
+      "accepted": false
+    },
+    {
+      "name": "not a typed value: quoted 'IFCLABEL (x)' stays a string",
+      "record": "#1=IFCWALL('IFCLABEL (x)');",
+      "trivia": "typedValue",
+      "accepted": false,
+      "stringValue": "IFCLABEL (x)"
+    },
+    {
+      "name": "not a typed value: quoted text holding a comment stays a string",
+      "record": "#1=IFCWALL('IFCLABEL/* c */(x)');",
+      "trivia": "typedValue",
+      "accepted": false,
+      "stringValue": "IFCLABEL/* c */(x)"
+    }
+  ]
+}

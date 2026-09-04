@@ -18,6 +18,7 @@ export type { IfcZipContents } from './ifczip.js';
 export { StepTokenizer } from './tokenizer.js';
 export { EntityIndexBuilder } from './entity-index.js';
 export { EntityExtractor } from './entity-extractor.js';
+export { STEP_TRIVIA } from './step-trivia.js';
 // The source accessor (#2183). Exported because the byte-range readers in
 // @ifc-lite/export, @ifc-lite/cli and the viewer now accept either shape, and
 // `IfcDataStore.source` is on its way to this type — so it is public surface

@@ -282,3 +282,81 @@ fn test_parse_entity_typed_value_wrapped_with_crlf() {
         other => panic!("Expected TypedValue token, got {:?}", other),
     }
 }
+
+/// An entity with an EMPTY argument list separated from `)` by whitespace
+/// (#3789: `separated_list0` consumes nothing on zero items, so a bare
+/// `char(')')` never advanced past the trailing `\r\n`).
+#[test]
+fn test_parse_entity_empty_args_with_whitespace() {
+    let input = "#1=IFCX(\r\n);";
+    let result = parse_entity(input);
+    assert!(result.is_ok(), "Failed to parse: {:?}", result);
+    let (id, _ifc_type, args) = result.unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(args.len(), 0);
+}
+
+/// A nested EMPTY list argument separated from its own `)` by a single
+/// space (#3789), inside an otherwise-normal entity.
+#[test]
+fn test_parse_entity_nested_empty_list_with_whitespace() {
+    let input = "#1=IFCTABLE('a',( ));";
+    let result = parse_entity(input);
+    assert!(result.is_ok(), "Failed to parse: {:?}", result);
+    let (id, _ifc_type, args) = result.unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(args.len(), 2);
+    match &args[1] {
+        Token::List(items) => assert_eq!(items.len(), 0),
+        other => panic!("Expected empty List token, got {:?}", other),
+    }
+}
+
+/// A typed value with an EMPTY argument list wrapped across whitespace
+/// before its `)` (#3789).
+#[test]
+fn test_parse_entity_nested_typed_value_empty_args_with_whitespace() {
+    let input = "#1=IFCX(IFCLABEL(\r\n));";
+    let result = parse_entity(input);
+    assert!(result.is_ok(), "Failed to parse: {:?}", result);
+    let (id, _ifc_type, args) = result.unwrap();
+    assert_eq!(id, 1);
+    assert_eq!(args.len(), 1);
+    match &args[0] {
+        Token::TypedValue(type_name, inner) => {
+            assert_eq!(*type_name, b"IFCLABEL");
+            assert_eq!(inner.len(), 0);
+        }
+        other => panic!("Expected TypedValue token, got {:?}", other),
+    }
+}
+
+/// A bare empty list containing only a STEP comment (#3789): `ws` (which
+/// already skips `/* ... */` per #3205) must be consulted on both sides of
+/// the empty `separated_list0`, not just before `(`.
+#[test]
+fn test_list_empty_with_comment_only() {
+    let result = list(b"(/* empty */)");
+    assert!(result.is_ok(), "Failed to parse: {:?}", result);
+    let (rest, token) = result.unwrap();
+    assert_eq!(rest, b"");
+    match token {
+        Token::List(items) => assert_eq!(items.len(), 0),
+        other => panic!("Expected empty List token, got {:?}", other),
+    }
+}
+
+/// Two-way rule: a widened parser must not become permissive about
+/// non-whitespace, non-comment junk between the parens. An unclosed
+/// paren-content mismatch (stray `x`) must still fail, not silently
+/// swallow the invalid byte as if it were trivia.
+#[test]
+fn test_list_rejects_junk_where_only_whitespace_is_allowed() {
+    // `x` is not `ws`/comment, and no token rule in this grammar accepts a
+    // bare identifier, so the widened `ws` around the empty
+    // `separated_list0` must not let it through: `(x)` is rejected outright.
+    assert!(
+        list(b"(x)").is_err(),
+        "`(x)` must be rejected: `x` is neither STEP trivia nor a token"
+    );
+}

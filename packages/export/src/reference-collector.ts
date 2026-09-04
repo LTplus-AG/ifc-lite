@@ -28,7 +28,7 @@
  */
 
 import type { IfcDataStore, IfcSourceBytes } from '@ifc-lite/parser';
-import { asSourceBytes } from '@ifc-lite/parser';
+import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import type { EffectiveEntityIndex } from './effective-index.js';
 import { splitTopLevelArgs } from './step-argument-parser.js';
 // Schema-derived type-set machinery (INFRASTRUCTURE_TYPES, PRODUCT_TYPES,
@@ -38,6 +38,21 @@ import { splitTopLevelArgs } from './step-argument-parser.js';
 // working unchanged.
 import { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames } from './entity-type-sets.js';
 export { INFRASTRUCTURE_TYPES, PRODUCT_TYPES, collectDescendantNames };
+
+/**
+ * `#N=TYPE(...)` record split into prefix/type/args/suffix, with STEP trivia
+ * (whitespace and/or a `/* ... *​/` comment, #3789) tolerated between the
+ * type name and `(` — same adjacency fix as `entity-extractor.ts`'s
+ * `extractEntity`. Shared by both line rewriters below.
+ *
+ * Groups: 1=prefix, 2=type, 3=args, 4=suffix. The type needs its OWN capture
+ * because slicing it back out of the prefix only worked while nothing could
+ * sit between it and `(`: a commented record yielded the type
+ * `IFCRELCONNECTSSTRUCTURALMEMBER/* c *​/`, matching no {@link
+ * isOptionalTrailingRef} entry, so its omitted trailing ref dropped the WHOLE
+ * line instead of becoming `$`. `.trim()` hides the whitespace-only form.
+ */
+const RECORD_PREFIX_RE = new RegExp(`^(#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\()([\\s\\S]*)(\\)\\s*;)\\s*$`);
 
 /**
  * UTF-8 decode of `[start, end)` of the source. Mirrors `step-exporter.ts` /
@@ -539,11 +554,11 @@ export function filterHiddenRefsFromRelationshipLine(
   line: string,
   isExcluded: (id: number) => boolean,
 ): string | null {
-  const match = line.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
+  const match = line.match(RECORD_PREFIX_RE);
   if (!match) return line;
-  const [, prefix, argsText, suffix] = match;
+  const [, prefix, typeName, argsText, suffix] = match;
   const attrs = splitTopLevelArgs(argsText);
-  const entityType = prefix.slice(prefix.indexOf('=') + 1, -1).trim().toUpperCase();
+  const entityType = typeName.toUpperCase();
 
   let changed = false;
   const nextAttrs: string[] = [];
@@ -719,9 +734,9 @@ export function refGroupFromArg(attr: string): number | number[] | undefined {
 }
 
 function extractRelationshipRefGroupsIndexed(line: string): Array<number | number[] | undefined> {
-  const match = line.match(/^(#\d+\s*=\s*\w+\()([\s\S]*)(\)\s*;)\s*$/);
+  const match = line.match(RECORD_PREFIX_RE);
   if (!match) return [];
-  const attrs = splitTopLevelArgs(match[2]);
+  const attrs = splitTopLevelArgs(match[3]);
   return attrs.map(refGroupFromArg);
 }
 

@@ -32,6 +32,46 @@ describe('replaceStepArgument slot validation', () => {
 });
 
 /**
+ * #3789's TS/Rust adjacency fix widened `entity-extractor.ts`'s regexes but
+ * left this identically-shaped one untouched: `replaceStepArgument` required
+ * its type name to be immediately followed by `(`, so a STEP writer's line
+ * wrap (or, per ISO 10303-21, a `/* ... *​/` comment — legal anywhere
+ * whitespace is) between them made the caller (`rewriteTypeOwnedPsetLine`)
+ * degrade with a surfaced warning instead of repointing the property set.
+ */
+describe('replaceStepArgument: trivia between the type name and "(" (#3789)', () => {
+  it('replaces a slot on a record wrapped across a CRLF before "("', () => {
+    const line = '#5=IFCLENGTHMEASURE\r\n(100.);';
+    expect(replaceStepArgument(line, 0, '0.1')).toBe('#5=IFCLENGTHMEASURE\r\n(0.1);');
+  });
+
+  it('replaces a slot on a record with a comment before "("', () => {
+    const line = '#5=IFCLENGTHMEASURE/* mm */(100.);';
+    expect(replaceStepArgument(line, 0, '0.1')).toBe('#5=IFCLENGTHMEASURE/* mm */(0.1);');
+  });
+
+  it('a comment containing "(" or ";" does not derail the parse (control)', () => {
+    const line = "#5=IFCWALLTYPE/* has ( and ; inside */('a',$,'WT1',$,$,(#30),$,$,$,.STANDARD.);";
+    const out = replaceStepArgument(line, 5, '(#33)');
+    expect(out).toBe("#5=IFCWALLTYPE/* has ( and ; inside */('a',$,'WT1',$,$,(#33),$,$,$,.STANDARD.);");
+  });
+
+  it('two-way rule: an unterminated comment before "(" does not match', () => {
+    // A comment that never closes is not trivia; the record must be refused
+    // rather than silently accepted with the "comment" treated as text.
+    const line = '#5=IFCLENGTHMEASURE/* never closes (100.);';
+    expect(replaceStepArgument(line, 0, '0.1')).toBeNull();
+  });
+
+  it('still replaces an adjacent record correctly (no regression)', () => {
+    const line = "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#30),$,$,$,.STANDARD.);";
+    expect(replaceStepArgument(line, 5, '(#33)')).toBe(
+      "#5=IFCWALLTYPE('0OSuGGYUFyIf0LtE29OSuT',$,'WT1',$,$,(#33),$,$,$,.STANDARD.);",
+    );
+  });
+});
+
+/**
  * github.com/LTplus-AG/ifc-lite/issues/2470, second half: the helper's failure
  * SIGNALLING, one level below the null contract above.
  *

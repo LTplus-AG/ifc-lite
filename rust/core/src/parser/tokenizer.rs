@@ -166,21 +166,27 @@ const MAX_NESTING_DEPTH: u32 = 256;
 /// `Err`, and every caller's `let Ok(..) = .. else { continue }` skips it) -
 /// the entity was never malformed, just wrapped where the parser assumed it
 /// never would be.
+///
+/// An EMPTY argument list also needs `ws` on both sides of the parens
+/// (`IFCLABEL(\r\n)`), not just before `(`: `separated_list0` matches zero
+/// items without consuming anything, so with a bare `char(')')` any
+/// whitespace or comment before the `)` left it unconsumed and the whole
+/// typed value failed to parse (#3789).
 fn typed_value_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
     map(
         pair(
             // Type name (all caps with optional numbers/underscores)
             take_while1(|c: u8| c.is_ascii_alphanumeric() || c == b'_'),
             // Arguments
-            preceded(
-                ws,
-                delimited(
-                    char('('),
+            delimited(
+                pair(ws, char('(')),
+                preceded(
+                    ws,
                     separated_list0(delimited(ws, char(','), ws), move |i| {
                         token_at_depth(i, depth)
                     }),
-                    char(')'),
                 ),
+                pair(ws, char(')')),
             ),
         ),
         |(type_name, args)| Token::TypedValue(type_name, args),
@@ -244,14 +250,19 @@ fn list(input: &[u8]) -> IResult<&[u8], Token<'_>> {
     list_at_depth(input, 0)
 }
 
+/// An EMPTY list (`( )`, `(\r\n)`, `(/* empty */)`) needs `ws` explicitly
+/// around the empty `separated_list0`: it matches zero items without
+/// consuming anything, so a bare `char(')')` failed to parse past any
+/// whitespace or comment left between the parens (#3789, same shape as
+/// `typed_value_at_depth`'s empty-args fix).
 fn list_at_depth(input: &[u8], depth: u32) -> IResult<&[u8], Token<'_>> {
     map(
         delimited(
-            char('('),
+            pair(char('('), ws),
             separated_list0(delimited(ws, char(','), ws), move |i| {
                 token_at_depth(i, depth)
             }),
-            char(')'),
+            pair(ws, char(')')),
         ),
         Token::List,
     )(input)
@@ -284,11 +295,16 @@ where
                 ws,
             ),
         ),
-        // Arguments: ('guid', 'owner', ...)
+        // Arguments: ('guid', 'owner', ...). `ws` around the empty
+        // `separated_list0` handles an EMPTY argument list separated from
+        // its `)` by whitespace or a comment (`#1=IFCX(\r\n);`), the same
+        // shape as `list_at_depth`'s and `typed_value_at_depth`'s fix
+        // (#3789): with zero items `separated_list0` consumes nothing, so
+        // a bare `char(')')` failed to parse past it.
         delimited(
-            char('('),
+            pair(char('('), ws),
             separated_list0(delimited(ws, char(','), ws), token),
-            tuple((char(')'), ws, char(';'))),
+            tuple((ws, char(')'), ws, char(';'))),
         ),
     ))(input);
 

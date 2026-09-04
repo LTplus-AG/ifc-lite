@@ -7,6 +7,7 @@ import {
   PRODUCT_TYPES,
   collectReferencedEntityIds,
   getVisibleEntityIds,
+  filterHiddenRefsFromRelationshipLine,
 } from './reference-collector.js';
 import { collectStyleEntities } from './style-closure.js';
 import { EMPTY_SOURCE_BYTES, type IfcDataStore } from '@ifc-lite/parser';
@@ -869,5 +870,76 @@ describe('collectStyleEntities rescues IFCPRESENTATIONLAYERASSIGNMENT', () => {
 
     expect(closure.has(20)).toBe(true);
     expect(closure.has(77)).toBe(false);
+  });
+});
+
+/**
+ * #3789 follow-up: `filterHiddenRefsFromRelationshipLine`'s own record regex
+ * required its type name immediately adjacent to '(' -- unlike
+ * `entity-extractor.ts`'s sibling fix. The fallback on a failed parse is
+ * "return the line UNCHANGED" (not null, not stripped), so a wrapped or
+ * commented relationship line silently kept every hidden/deleted `#N` it
+ * named instead of stripping them -- a dangling-reference leak, the opposite
+ * of #2398's "narrow this line" contract.
+ */
+describe('filterHiddenRefsFromRelationshipLine: trivia between the type name and "(" (#3789)', () => {
+  it('strips an excluded id from a list argument on a line wrapped across a CRLF', () => {
+    const line = '#5=IFCRELAGGREGATES\r\n(\'GUID\',$,$,$,#1,(#2,#3));';
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe('#5=IFCRELAGGREGATES\r\n(\'GUID\',$,$,$,#1,(#2));');
+  });
+
+  it('strips an excluded id from a list argument on a line carrying a comment before "("', () => {
+    const line = "#5=IFCRELAGGREGATES/* c */('GUID',$,$,$,#1,(#2,#3));";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe("#5=IFCRELAGGREGATES/* c */('GUID',$,$,$,#1,(#2));");
+  });
+
+  it('a comment containing "(" or ";" does not derail the parse (control)', () => {
+    const line = "#5=IFCRELAGGREGATES/* has ( and ; inside */('GUID',$,$,$,#1,(#2,#3));";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe("#5=IFCRELAGGREGATES/* has ( and ; inside */('GUID',$,$,$,#1,(#2));");
+  });
+
+  it('two-way rule: an unterminated comment before "(" leaves the line unchanged (falls through, not corrupted)', () => {
+    const line = "#5=IFCRELAGGREGATES/* never closes ('GUID',$,$,$,#1,(#2,#3));";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 3)).toBe(line);
+  });
+
+  it('still narrows an adjacent line correctly (no regression)', () => {
+    const line = "#5=IFCRELAGGREGATES('GUID',$,$,$,#1,(#2,#3));";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
+    expect(out).toBe("#5=IFCRELAGGREGATES('GUID',$,$,$,#1,(#2));");
+  });
+
+  // CodeRabbit finding on this PR: widening the record regex put the trivia
+  // INSIDE the prefix capture, and the entity type was sliced back out of
+  // that prefix -- so a commented record produced the type
+  // `IFCRELCONNECTSSTRUCTURALMEMBER/* c */`, which matches nothing in
+  // `isOptionalTrailingRef`'s table. The optional 10th attribute would then
+  // take the general withhold path and drop the WHOLE relationship instead
+  // of rewriting the ref to `$`. `.trim()` hid the whitespace-only form of
+  // the same defect, which is why only the comment case is RED here.
+  it('rewrites the optional trailing ref to $ when a comment sits before "(" (type must survive the trivia)', () => {
+    const line = "#1=IFCRELCONNECTSSTRUCTURALMEMBER/* c */('G',$,$,$,#2,#3,$,$,$,#9);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 9);
+    expect(out).toBe("#1=IFCRELCONNECTSSTRUCTURALMEMBER/* c */('G',$,$,$,#2,#3,$,$,$,$);");
+  });
+
+  it('rewrites the optional trailing ref to $ when the record wraps before "("', () => {
+    const line = "#1=IFCRELCONNECTSSTRUCTURALMEMBER\r\n('G',$,$,$,#2,#3,$,$,$,#9);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 9);
+    expect(out).toBe("#1=IFCRELCONNECTSSTRUCTURALMEMBER\r\n('G',$,$,$,#2,#3,$,$,$,$);");
+  });
+
+  it('the adjacent form behaves identically (control -- the trivia is what was at risk)', () => {
+    const line = "#1=IFCRELCONNECTSSTRUCTURALMEMBER('G',$,$,$,#2,#3,$,$,$,#9);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 9);
+    expect(out).toBe("#1=IFCRELCONNECTSSTRUCTURALMEMBER('G',$,$,$,#2,#3,$,$,$,$);");
+  });
+
+  it('two-way rule: a commented NON-exempt relationship still withholds the whole line', () => {
+    const line = "#1=IFCRELCONNECTSWITHECCENTRICITY/* c */('G',$,$,$,#2,#3,$,$,$,#9,#8);";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 9)).toBeNull();
   });
 });

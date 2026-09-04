@@ -518,3 +518,56 @@ fn unterminated_comment_between_records_is_reported() {
         Some(content.find("/* never closes").unwrap())
     );
 }
+
+// ---------------------------------------------------------------------------
+// The HEADER-skip's own comment handling (`scanner_header::data_section_start`).
+// A STEP comment is legal wherever whitespace is, the HEADER included, so the
+// `DATA;` marker search has to walk past a complete `/* … */` the same way it
+// walks past a quoted string.
+// ---------------------------------------------------------------------------
+
+/// RED, pre-fix: the marker search skipped strings but not comments, so a
+/// `DATA;` written inside a HEADER comment ended the search there. The scan
+/// then started INSIDE the comment and yielded `#99`, an entity the file does
+/// not declare, on top of the real `#1`.
+#[test]
+fn data_marker_inside_a_header_comment_is_not_the_marker() {
+    let content = "ISO-10303-21;\nHEADER;\n\
+/* DATA; #99=IFCWALL($); */\n\
+ENDSEC;\nDATA;\n\
+#1=IFCWALL('a',$);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+    let mut scanner = EntityScanner::new(content);
+    let mut ids = Vec::new();
+    while let Some((id, _type_name, _start, _end)) = scanner.next_entity() {
+        ids.push(id);
+    }
+
+    assert_eq!(
+        ids,
+        vec![1],
+        "the commented-out #99 is not a record this file declares"
+    );
+    assert_eq!(scanner.malformed_record_start(), None);
+}
+
+/// A HEADER comment that never closes swallows the whole file, so there is no
+/// `DATA;` marker to find and no entity to return. That is the same
+/// malformed-record condition #3695/#3699 report elsewhere, and it must reach
+/// the caller through the same channel rather than being silently skipped.
+#[test]
+fn unterminated_header_comment_is_reported() {
+    let content = "ISO-10303-21;\nHEADER;\n\
+/* never closes\n\
+ENDSEC;\nDATA;\n\
+#1=IFCWALL('a',$);\n";
+
+    let mut scanner = EntityScanner::new(content);
+    assert_eq!(scanner.next_entity(), None);
+    assert_eq!(
+        scanner.malformed_record_start(),
+        Some(content.find("/* never closes").unwrap()),
+        "an unterminated HEADER comment must be reported, not silently skipped"
+    );
+}

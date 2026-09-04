@@ -23,6 +23,22 @@
 /// HEADER field could legally contain the literal text `DATA;` in a
 /// description or filename. Escaped single quotes (`''`) are treated as a
 /// pair of in-string characters per ISO 10303-21.
+///
+/// Comment-aware for the same reason: ISO 10303-21 allows a `/* … */`
+/// comment wherever whitespace is allowed, the HEADER included, so a
+/// commented-out `DATA;` is not the marker either. Matching one used to end
+/// the search inside the comment, and every `#N=…` written after it in that
+/// comment was then scanned as a real record.
+///
+/// An unterminated `/*` in the header gets the same answer as a missing
+/// marker, 0: everything from that `/` on is inside the comment, so there is
+/// no `DATA;` left to find. Answering 0 rather than skipping past the
+/// comment is also what keeps the condition REPORTED — the scan then starts
+/// at the top, [`super::EntityScanner::next_entity`] meets the same
+/// unterminated `/*`, and [`super::lexical::skip_step_comment`] refusing it
+/// marks `malformed_record_start` through the one channel #3699 added. It is
+/// also what a headerless partial file needs: `#1=IFCWALL($); /* oops` has
+/// real records BEFORE the bad comment, and they still scan.
 pub(super) fn data_section_start(bytes: &[u8]) -> usize {
     const MARKER: &[u8] = b"DATA;";
     let len = bytes.len();
@@ -47,6 +63,16 @@ pub(super) fn data_section_start(bytes: &[u8]) -> usize {
             }
             pos += 1;
             continue;
+        }
+        if b == b'/' && bytes.get(pos + 1) == Some(&b'*') {
+            match super::super::lexical::skip_step_comment(bytes, pos) {
+                Some(next) => {
+                    pos = next;
+                    continue;
+                }
+                // Unterminated: nothing after this is outside the comment.
+                None => return 0,
+            }
         }
         if b == b'\'' {
             in_string = true;

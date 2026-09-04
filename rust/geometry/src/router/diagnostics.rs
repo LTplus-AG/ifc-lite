@@ -140,22 +140,16 @@ impl GeometryRouter {
         std::mem::take(&mut *self.layer_slice_diag.borrow_mut())
     }
 
-    /// Number of products with at least one recorded CSG failure, through the
-    /// same [`count_attributed_products`] rule the pipelines' scalar uses: the
-    /// synthetic [`UNATTRIBUTED_PRODUCT_ID`] bucket is not a product. A bare
-    /// `.len()` here would have made this the one surface that counts it, and
-    /// it is the obvious method to reach for.
-    ///
-    /// PEEKS: unlike [`Self::take_csg_failures`] it does not sweep the
-    /// processors' own logs first, so a record still sitting in a processor is
-    /// not counted yet.
+    /// Products with at least one recorded CSG failure, under the same
+    /// [`count_attributed_products`] rule the pipelines' scalar uses (a bare
+    /// `.len()` would make this the one surface counting the synthetic
+    /// bucket). PEEKS: no processor sweep, unlike `take_csg_failures`.
     pub fn csg_failure_product_count(&self) -> usize {
         count_attributed_products(&self.csg_failures.borrow()) as usize
     }
 
-    /// Total number of CSG failures across all products, INCLUDING the
-    /// unattributed bucket — those are real failures, only their owner is
-    /// unknown. Peeks, like [`Self::csg_failure_product_count`].
+    /// Total CSG failures, INCLUDING the unattributed bucket (real failures,
+    /// unknown owner). Peeks, like [`Self::csg_failure_product_count`].
     pub fn csg_failure_total(&self) -> usize {
         self.csg_failures.borrow().values().map(|v| v.len()).sum()
     }
@@ -292,12 +286,8 @@ impl GeometryRouter {
         entry.csg_failure_count += failures.len();
         if entry.first_failure_label.is_none() {
             // Short label for at-a-glance grouping, from the ONE home shared
-            // with the wasm console + native tracing summaries. A second copy
-            // of this match lived here and had to be extended in lockstep with
-            // every new `BoolFailureReason`; nothing but prose held them
-            // together, so a new variant could silently label differently on
-            // this surface. Full `BoolFailure` list remains in `csg_failures`
-            // for callers that want detail.
+            // with the wasm console + native tracing summaries; a second copy
+            // of this match lived here, held in lockstep by prose alone.
             let label = failures[0].reason.label();
             entry.first_failure_label = Some(label.to_string());
         }

@@ -12,7 +12,7 @@ use rustc_hash::FxHashMap;
 
 /// The `csg_failures` key used for records that belong to no single product:
 /// the boolean processors' own logs (swept once per element by
-/// [`GeometryRouter::drain_processor_failures`]) and
+/// [`crate::GeometryRouter::drain_processor_failures`]) and
 /// `PENDING_MAPPED_BOOL_FAILURES`. Zero is not a valid IFC express id, so it
 /// cannot collide with a real product.
 pub const UNATTRIBUTED_PRODUCT_ID: u32 = 0;

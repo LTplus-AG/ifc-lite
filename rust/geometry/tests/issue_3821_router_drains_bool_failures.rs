@@ -368,3 +368,85 @@ fn an_undrained_router_does_not_leak_into_the_next_one() {
         "the owning router must still be able to drain its own records"
     );
 }
+
+/// A DIFFERENCE chain of two `IfcPolygonalBoundedHalfSpace` cutters over a base
+/// that itself records a failure, with the SECOND cutter's `PolygonalBoundary`
+/// authored as an `IfcCircle` instead of an `IfcPolyline`.
+///
+/// The batched-chain attempt (`try_union_polygonal_chain`) meshes the base,
+/// then fails to build that cutter's prism and defers to the sequential walk —
+/// which re-meshes the same base and records the same `UnsupportedOperand`
+/// again. Two walks over one authored step.
+const DEFERRED_PBHS_CHAIN_OVER_A_FAILING_BASE: &str = r"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('3821 deferred chain'),'2;1');
+FILE_NAME('c.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWALL('1DeferredChainWall00001',$,'Wall',$,$,#11,#12,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#30));
+#30=IFCBOOLEANRESULT(.DIFFERENCE.,#40,#70);
+#40=IFCBOOLEANRESULT(.DIFFERENCE.,#50,#60);
+#50=IFCBOOLEANRESULT(.DIFFERENCE.,#33,#31);
+#31=IFCSECTIONEDSPINE(#32,(#34),(#5));
+#32=IFCCOMPOSITECURVE((),$);
+#33=IFCEXTRUDEDAREASOLID(#34,#5,#35,2.0);
+#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.0,1.0);
+#35=IFCDIRECTION((0.,0.,1.));
+#60=IFCPOLYGONALBOUNDEDHALFSPACE(#61,.F.,#63,#64);
+#61=IFCPLANE(#62);
+#62=IFCAXIS2PLACEMENT3D(#67,$,$);
+#63=IFCAXIS2PLACEMENT3D(#67,$,$);
+#64=IFCPOLYLINE((#65,#66,#68,#69,#65));
+#65=IFCCARTESIANPOINT((-0.4,-0.4));
+#66=IFCCARTESIANPOINT((0.4,-0.4));
+#67=IFCCARTESIANPOINT((-1.5,0.,0.5));
+#68=IFCCARTESIANPOINT((0.4,0.4));
+#69=IFCCARTESIANPOINT((-0.4,0.4));
+#70=IFCPOLYGONALBOUNDEDHALFSPACE(#71,.F.,#73,#74);
+#71=IFCPLANE(#72);
+#72=IFCAXIS2PLACEMENT3D(#77,$,$);
+#73=IFCAXIS2PLACEMENT3D(#77,$,$);
+#74=IFCCIRCLE(#75,0.4);
+#75=IFCAXIS2PLACEMENT2D(#76,$);
+#76=IFCCARTESIANPOINT((0.,0.));
+#77=IFCCARTESIANPOINT((1.5,0.,0.5));
+ENDSEC;
+END-ISO-10303-21;
+";
+
+/// A speculative attempt that DEFERS must not leave its records behind for the
+/// walk that redoes the work to record again.
+///
+/// `try_union_polygonal_chain` is a batched attempt at a chain the sequential
+/// walk can also resolve; when it gives up, everything it meshed is meshed
+/// again. Its trial subtracts already discarded their own probe failures for
+/// this reason, but the base operand it meshed first did not, so one authored
+/// unsupported operand under a deferring chain was counted TWICE — inflating
+/// `total_csg_failures` and skewing the reason breakdown the viewer's "top
+/// failure reason" reads.
+///
+/// The calibration is the assertion itself: 0 would mean the fixture never
+/// reached the failing base at all, so the count has to be exactly 1.
+#[test]
+fn a_deferred_batched_chain_does_not_record_the_base_operand_twice() {
+    let (router, mut decoder) = router_for(DEFERRED_PBHS_CHAIN_OVER_A_FAILING_BASE);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let _ = router.process_element(&element, &mut decoder);
+
+    assert_eq!(
+        unsupported_operand_types(&router),
+        vec!["IfcSectionedSpine".to_string()],
+        "the deferring batched attempt and the sequential walk that redoes its \
+         work must yield ONE record for the one authored operand, not two"
+    );
+}

@@ -347,6 +347,9 @@ impl BooleanClippingProcessor {
             return Ok(None);
         }
 
+        // Provisional from here: every deferral below goes through
+        // `defer_after`, which discards what this attempt recorded.
+        let mark = self.failure_mark();
         // Process the base solid (the innermost first-operand). The chain is
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
@@ -374,7 +377,7 @@ impl BooleanClippingProcessor {
                 // A cutter we can't build a prism for would be silently dropped
                 // here; defer to the sequential path, which records the loss as
                 // `PolygonalBoundedHalfSpaceFallback`.
-                _ => return Ok(None),
+                _ => return self.defer_after(mark),
             }
         }
 
@@ -400,12 +403,12 @@ impl BooleanClippingProcessor {
                 // fallback handles it better than a batched union would.
                 _ => {
                     let _ = clipper.take_failures();
-                    return Ok(None);
+                    return self.defer_after(mark);
                 }
             };
             if ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &trial) {
                 let _ = clipper.take_failures();
-                return Ok(None);
+                return self.defer_after(mark);
             }
             let (tmn, tmx) = trial.bounds();
             tight_min = Point3::new(
@@ -439,6 +442,7 @@ impl BooleanClippingProcessor {
                 // attempt is unique to this path — preserve its kernel
                 // failures and record the deferral, since the sequential
                 // fallback can leave seam fins the batched subtract avoids.
+                self.rewind_to(mark);
                 self.absorb_failures(clipper.take_failures());
                 self.record_failure(BoolOp::Union, BoolFailureReason::CutterUnionUnavailable);
                 return Ok(None);
@@ -455,7 +459,7 @@ impl BooleanClippingProcessor {
             }
             // Kernel error or a degenerate union result — fall back to the
             // sequential per-cutter path.
-            _ => return Ok(None),
+            _ => return self.defer_after(mark),
         };
 
         // Reject a silently under-removing union: the result must fit inside the
@@ -475,7 +479,7 @@ impl BooleanClippingProcessor {
             || rmn.y < tight_min.y - tol
             || rmn.z < tight_min.z - tol;
         if under_removed {
-            return Ok(None);
+            return self.defer_after(mark);
         }
         Ok(Some(clipped))
     }
@@ -913,11 +917,7 @@ impl GeometryProcessor for BooleanClippingProcessor {
         vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
     }
 
-    /// Hand this processor's failure log to the router (#3821). Same drain as
-    /// [`Self::take_failures`], which until now had no caller outside tests —
-    /// every unsupported operand, empty cutter and unknown operator recorded
-    /// here accumulated in a buffer nothing read, so the pipeline reported a
-    /// clean load for a model whose booleans had all degraded.
+    /// Hand the log to the router (#3821); rationale on the trait method.
     fn take_bool_failures(&self) -> Vec<BoolFailure> {
         self.take_failures()
     }

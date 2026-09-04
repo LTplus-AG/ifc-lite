@@ -218,6 +218,15 @@ describe('isInlineEditableToken', () => {
     assert.strictEqual(isInlineEditableToken('IFCLABEL'), true);
     assert.strictEqual(isInlineEditableToken('IFCLABEL x'), true);
   });
+
+  it('two-way rule: a quoted string whose TEXT looks like a wrapped typed value stays editable', () => {
+    // `'IFCWALL (x)'` is a plain string attribute, not a typed value, so the
+    // pen icon must stay. The widened trivia is only allowed between a BARE
+    // type name and its `(`; a leading quote ends the question.
+    assert.strictEqual(isInlineEditableToken("'IFCWALL (x)'"), true);
+    assert.strictEqual(isInlineEditableToken("'IFCWALL\r\n(x)'"), true);
+    assert.strictEqual(isInlineEditableToken("'IFCWALL/* c */(x)'"), true);
+  });
 });
 
 describe('parseRawStepInput', () => {

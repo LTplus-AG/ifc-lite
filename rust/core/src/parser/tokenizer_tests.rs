@@ -352,16 +352,11 @@ fn test_list_empty_with_comment_only() {
 /// swallow the invalid byte as if it were trivia.
 #[test]
 fn test_list_rejects_junk_where_only_whitespace_is_allowed() {
-    let result = list(b"(x)");
-    // `x` is not `ws`/comment and not a valid token start handled by this
-    // grammar as a bare identifier, so this must NOT parse as an empty list.
-    match result {
-        Ok((_, Token::List(items))) => {
-            assert!(!items.is_empty(), "must not silently parse as an empty list");
-        }
-        Ok((rest, other)) => {
-            panic!("must not parse `(x)` as {:?} with rest {:?}", other, rest)
-        }
-        Err(_) => {} // expected: rejected
-    }
+    // `x` is not `ws`/comment, and no token rule in this grammar accepts a
+    // bare identifier, so the widened `ws` around the empty
+    // `separated_list0` must not let it through: `(x)` is rejected outright.
+    assert!(
+        list(b"(x)").is_err(),
+        "`(x)` must be rejected: `x` is neither STEP trivia nor a token"
+    );
 }

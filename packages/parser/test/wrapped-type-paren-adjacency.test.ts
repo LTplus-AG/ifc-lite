@@ -63,7 +63,7 @@ describe('extractEntity: entity type name wrapped from its args paren (#3789)', 
 
     it('rejects a malformed record with no "=" between id and type (two-way rule)', () => {
         const ifc = `#5 IFCWALL(#4,0.);`;
-        const { source, entityRefs } = scan(ifc);
+        const { entityRefs } = scan(ifc);
         // The scanner itself should not even find a valid #id= boundary here,
         // so there is nothing to extract.
         expect(entityRefs.find(r => r.expressId === 5)).toBeUndefined();

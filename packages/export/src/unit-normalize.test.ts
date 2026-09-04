@@ -118,6 +118,25 @@ describe('scaleTypedMeasures', () => {
     const input = 'IFCLENGTHMEASURE/* never closes (100.)';
     expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);
   });
+
+  it('two-way rule: a WRAPPED keyword inside a quoted string is still left alone', () => {
+    // The quoted-string alternative runs first precisely so a keyword that is
+    // only text inside an IFCLABEL is never rewritten. Widening the keyword
+    // branch across whitespace and comments must not reach into a string
+    // literal, which spans newlines too — the case the adjacent-keyword test
+    // above could not have caught.
+    const wrapped = "#1=IFCPROPERTYSINGLEVALUE('IFCLENGTHMEASURE\r\n(1000.)',$);";
+    expect(scaleTypedMeasures(wrapped, 0.001, 1, 1)).toBe(wrapped);
+    const commented = "#1=IFCPROPERTYSINGLEVALUE('IFCLENGTHMEASURE/* mm */(1000.)',$);";
+    expect(scaleTypedMeasures(commented, 0.001, 1, 1)).toBe(commented);
+  });
+
+  it('scales a real wrapped measure that sits after a quoted string on the same line', () => {
+    // The string branch must consume only the string, not shadow the real
+    // measure that follows it.
+    expect(scaleTypedMeasures("#1=IFCX('a',IFCLENGTHMEASURE (1000.));", 0.001, 1, 1))
+      .toBe("#1=IFCX('a',IFCLENGTHMEASURE(1.));");
+  });
 });
 
 describe('getEntityLengthPlan (schema-derived)', () => {

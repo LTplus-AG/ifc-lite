@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Geometry Router - Dynamic dispatch to geometry processors
+//!
 //! Routes IFC representation entities to appropriate processors based on type.
 
 mod caching;
@@ -231,19 +232,13 @@ pub struct GeometryRouter {
     /// same shard), so a batch never depends on a template materialized in another
     /// batch. Both modes emit geometrically identical world triangles.
     instancing_batch_local: bool,
-    /// #1623 Phase 3 (batch-local mode only): source ids this router has already
-    /// materialized as a batch-local template; later occurrences don't-bake.
-    /// Reset per batch. Unused in the native global mode.
+    /// #1623 Phase 3 (batch-local mode only): the `IfcRepresentationMap` source ids
+    /// this router has already materialized as a batch-local template. The first
+    /// occurrence of a source inserts its id (materializes); later occurrences see
+    /// the id present and don't-bake. Reset implicitly per batch — a fresh router is
+    /// built per `produce_batch`. Unused (stays empty) in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
-    unsupported_items: RefCell<FxHashMap<String, u64>>, // dropped items (no processor / errored), by `IfcType`
-    /// `IfcRepresentationMap` source ids whose dropped items have already been
-    /// counted, so a source is counted ONCE however many `IfcMappedItem`
-    /// occurrences walk it — the per-source contract `unsupported_items`
-    /// promises. Mirrors `mapped_item_cache`'s scope and is cleared with it.
-    unsupported_sources_recorded: RefCell<FxHashSet<u32>>,
-    /// Stack of "record drops beneath this source?" decisions, one per
-    /// `GeometryRouter::enter_unsupported_source` scope currently open.
-    unsupported_source_scope: RefCell<Vec<bool>>,
+    unsupported: RefCell<diagnostics::UnsupportedItemState>, // dropped items by `IfcType` + per-source bookkeeping
 }
 
 impl GeometryRouter {
@@ -275,9 +270,7 @@ impl GeometryRouter {
             indexed_colour_split_ids: None, // armed by `enable_indexed_colour_split_guard`
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
-            unsupported_items: RefCell::new(FxHashMap::default()),
-            unsupported_sources_recorded: RefCell::new(FxHashSet::default()),
-            unsupported_source_scope: RefCell::new(Vec::new()),
+            unsupported: RefCell::new(Default::default()),
         };
 
         // Register default P0 processors
@@ -582,20 +575,17 @@ impl GeometryRouter {
 
     /// Set the tessellation quality level.
     ///
-    /// Reusing one router across a quality change invalidates `mapped_item_cache`
-    /// (keyed by RepresentationMap id, not by quality), so it is cleared here to
-    /// avoid serving meshes tessellated at the previous level. The other caches
-    /// are content-hash keyed (`geometry_hash_cache`), so they stay correct.
+    /// A quality change invalidates `mapped_item_cache` (keyed by RepresentationMap
+    /// id, not by quality) and the record of which sources' drops are already
+    /// counted, since every source is re-walked; both are cleared here. The
+    /// content-hash-keyed caches stay correct.
     pub fn set_tessellation_quality(&mut self, quality: TessellationQuality) {
         if self.tessellation_quality == quality {
             return;
         }
         self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
-        // Same reason: every source is re-walked at the new quality, so the
-        // "already counted this source" set has to forget them too, or the
-        // re-walk's drops would be suppressed as duplicates of the old pass.
-        self.unsupported_sources_recorded.get_mut().clear();
+        self.unsupported.get_mut().forget_sources();
     }
 
     /// Get the current tessellation quality level

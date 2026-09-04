@@ -116,21 +116,10 @@ pub(super) fn process_entity_job(
     // Present only when the selected coordinate space is `site_local`; rotates
     // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
-    // Shared sink for per-job router CSG diagnostics (parity with the wasm
-    // path's `drain_and_log_csg_diagnostics`).
-    csg_failure_collector: &std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
-    // Shared sinks for opening classification + per-host diagnostics (aggregated GeometryDiagnostics).
-    classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
-    host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
-    rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
-    // Shared tally of dropped representation items by IFC type (no processor for
-    // the type, or the processor errored).
-    unsupported_item_collector: &std::sync::Mutex<FxHashMap<String, u64>>,
-    // Shared tally of degenerate-backstop triangle drops (see
-    // `element::build_mesh_data`); relaxed atomic, added to only when non-zero.
-    backstop_collector: &std::sync::atomic::AtomicU64,
-    // Content-hash refs refused above u32::MAX (#3421/#3752), request-local.
-    oversized_ref_drop_collector: &std::sync::atomic::AtomicU64,
+    // Every request-local diagnostic sink this job feeds (CSG failures, opening
+    // classification, per-host diagnostics, rect_fast, dropped representation
+    // items, the degenerate backstop, refused oversized refs).
+    diag: &super::diagnostics::DiagnosticCollectors,
     // Model-wide content-dedup cache shared by every per-job router (#1109).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
     // Model-wide IfcMappedItem source cache so a RepresentationMap source shared
@@ -289,7 +278,7 @@ pub(super) fn process_entity_job(
 
     // Fold this element's degenerate-backstop drops into the pass tally.
     if produced.degenerate_triangles_dropped > 0 {
-        backstop_collector.fetch_add(
+        diag.backstop.fetch_add(
             produced.degenerate_triangles_dropped,
             std::sync::atomic::Ordering::Relaxed,
         );
@@ -299,7 +288,7 @@ pub(super) fn process_entity_job(
     // wasm path logs them in the browser console; without this the server
     // would silently discard every failed opening cut.
     if !produced.csg_failures.is_empty() {
-        if let Ok(mut collector) = csg_failure_collector.lock() {
+        if let Ok(mut collector) = diag.csg_failures.lock() {
             for (product_id, fails) in produced.csg_failures {
                 collector.entry(product_id).or_default().extend(fails);
             }
@@ -313,7 +302,7 @@ pub(super) fn process_entity_job(
     // accumulate-then-drain, giving the same GeometryDiagnostics counts.
     let cls = local_router.take_classification_stats();
     if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
-        if let Ok(mut acc) = classification_collector.lock() {
+        if let Ok(mut acc) = diag.classification.lock() {
             acc.rectangular += cls.rectangular;
             acc.diagonal += cls.diagonal;
             acc.non_rectangular += cls.non_rectangular;
@@ -321,7 +310,7 @@ pub(super) fn process_entity_job(
     }
     let host_diags = local_router.take_host_opening_diagnostics();
     if !host_diags.is_empty() {
-        if let Ok(mut acc) = host_diag_collector.lock() {
+        if let Ok(mut acc) = diag.host_diags.lock() {
             // Product ids are disjoint across jobs (one product = one job), so this
             // is an insert; `extend` is robust if that ever changes.
             acc.extend(host_diags);
@@ -329,7 +318,7 @@ pub(super) fn process_entity_job(
     }
     // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
     let oversized_refs = local_router.take_content_hash_oversized_ref_drops() as u64;
-    oversized_ref_drop_collector.fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
+    diag.oversized_ref_drops.fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
     // Drain this job's router rect_fast counters into the request-local collector
     // (process-global counters are gone — see GeometryRouter::record_rect_fast).
     let rf = local_router.take_rect_fast_stats();
@@ -341,7 +330,7 @@ pub(super) fn process_entity_job(
         || rf.defer_near_edge != 0
         || rf.defer_no_openings != 0
     {
-        if let Ok(mut acc) = rect_fast_collector.lock() {
+        if let Ok(mut acc) = diag.rect_fast.lock() {
             acc.fired += rf.fired;
             acc.openings_cut += rf.openings_cut;
             acc.defer_host_not_box += rf.defer_host_not_box;
@@ -351,7 +340,7 @@ pub(super) fn process_entity_job(
             acc.defer_no_openings += rf.defer_no_openings;
         }
     }
-    super::unsupported_items::drain_unsupported_items(&local_router, unsupported_item_collector);
+    super::diagnostics::drain_unsupported_items(&local_router, &diag.unsupported_items);
 
     // #1623 Phase 2: hand this element's don't-bake occurrences to the shared
     // collector (resolved into InstanceRecords later; empty on the flat path).

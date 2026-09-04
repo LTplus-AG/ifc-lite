@@ -329,10 +329,11 @@ pub fn aggregate_diagnostics(
 mod attribution;
 mod processor_failures;
 mod unsupported_items;
+pub use unsupported_items::format_unsupported_breakdown;
+pub(crate) use unsupported_items::UnsupportedItemState;
 
 #[cfg(test)]
 mod unsupported_items_tests;
-pub use unsupported_items::format_unsupported_breakdown;
 
 pub use attribution::{count_attributed_products, UNATTRIBUTED_PRODUCT_ID};
 

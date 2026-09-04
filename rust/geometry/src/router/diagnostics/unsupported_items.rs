@@ -8,7 +8,31 @@
 //! for the wire shape this feeds.
 
 use super::{GeometryRouter, ReasonCount};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+/// All dropped-representation-item state, behind one `RefCell` on the router:
+/// the counts themselves, the sources already counted, and the open
+/// [`GeometryRouter::enter_unsupported_source`] scopes. One struct rather than
+/// three fields because `router/mod.rs` sits exactly at its module-size budget,
+/// and because the three are meaningless apart.
+#[derive(Default)]
+pub(crate) struct UnsupportedItemState {
+    /// Dropped items (no processor / errored), by `IfcType`. Drained per
+    /// element or batch by `take_unsupported_items`.
+    counts: FxHashMap<String, u64>,
+    /// `IfcRepresentationMap` source ids already counted, so a source is
+    /// counted ONCE however many `IfcMappedItem` occurrences walk it.
+    sources_recorded: FxHashSet<u32>,
+    /// One "record drops beneath this source?" decision per open scope.
+    scope: Vec<bool>,
+}
+
+impl UnsupportedItemState {
+    /// Forget which sources have been counted, so a re-walk counts them again.
+    pub(crate) fn forget_sources(&mut self) {
+        self.sources_recorded.clear();
+    }
+}
 
 impl GeometryRouter {
     /// Enter a `RepresentationMap` source's item walk, returning a scope guard.
@@ -47,8 +71,9 @@ impl GeometryRouter {
         source_id: u32,
         is_body: bool,
     ) -> UnsupportedSourceScope<'_> {
-        let record = is_body && self.unsupported_sources_recorded.borrow_mut().insert(source_id);
-        self.unsupported_source_scope.borrow_mut().push(record);
+        let mut state = self.unsupported.borrow_mut();
+        let record = is_body && state.sources_recorded.insert(source_id);
+        state.scope.push(record);
         UnsupportedSourceScope { router: self }
     }
 
@@ -61,21 +86,21 @@ impl GeometryRouter {
     ///
     /// [`enter_unsupported_source`]: Self::enter_unsupported_source
     pub(crate) fn record_unsupported_item(&self, ifc_type: ifc_lite_core::IfcType) {
-        if self.unsupported_source_scope.borrow().last() == Some(&false) {
+        let mut state = self.unsupported.borrow_mut();
+        if state.scope.last() == Some(&false) {
             return;
         }
-        *self.unsupported_items.borrow_mut().entry(ifc_type.to_string()).or_insert(0) += 1;
+        *state.counts.entry(ifc_type.to_string()).or_insert(0) += 1;
     }
 
     /// Drain the dropped-item counts gathered since the last call.
     ///
-    /// Does NOT clear `unsupported_sources_recorded`: the drain moves counts to
-    /// the caller, it does not un-see the sources already counted. That set is
-    /// cleared with the mapped-item cache it mirrors
-    /// (`set_tessellation_quality`), since a re-tessellation re-walks every
-    /// source.
+    /// Does NOT forget the sources already counted: the drain moves counts to
+    /// the caller, it does not un-see them. That happens with the mapped-item
+    /// cache this mirrors (`set_tessellation_quality`), since a re-tessellation
+    /// re-walks every source.
     pub fn take_unsupported_items(&self) -> FxHashMap<String, u64> {
-        std::mem::take(&mut *self.unsupported_items.borrow_mut())
+        std::mem::take(&mut self.unsupported.borrow_mut().counts)
     }
 }
 
@@ -89,7 +114,7 @@ pub(crate) struct UnsupportedSourceScope<'a> {
 
 impl Drop for UnsupportedSourceScope<'_> {
     fn drop(&mut self) {
-        self.router.unsupported_source_scope.borrow_mut().pop();
+        self.router.unsupported.borrow_mut().scope.pop();
     }
 }
 

@@ -44,7 +44,7 @@ afterEach(() => {
 
 describe('parseParquetStream', () => {
   it('releases the response body reader when the stream reports a terminal error', async () => {
-    // First call: cache-check (miss, so the streaming upload path runs).
+    // First call: the hash-only probe (404, so the streaming upload path runs).
     // Second call: the parquet-stream upload itself, whose SSE body carries
     // a terminal `error` event — the same shape `parseStream` already
     // handles by releasing its reader in a `finally`.
@@ -55,7 +55,7 @@ describe('parseParquetStream', () => {
 
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(new Response(null, { status: 404 })) // cache/check miss
+      .mockResolvedValueOnce(new Response(null, { status: 404 })) // hash probe: not cached
       .mockResolvedValueOnce(streamResponse); // parquet-stream upload
     vi.stubGlobal('fetch', fetchMock);
 

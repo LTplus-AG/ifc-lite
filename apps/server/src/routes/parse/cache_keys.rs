@@ -37,6 +37,24 @@ pub(crate) fn cache_key_from_parts(
     )
 }
 
+/// Whether `hash` has the shape [`DiskCache::generate_key`] produces: 64
+/// lowercase hex characters.
+///
+/// Lives beside [`cache_key_from_parts`] because that is what it protects. The
+/// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
+/// the namespace suffix (`-parquet-v5`, `-datamodel-v6`, ...) is appended after
+/// it, so a caller-shaped string is a caller-shaped cache key. Checking the
+/// shape keeps the value to the one job it has, naming a file.
+///
+/// Applied by the hash-only stream probe (#3901). The two older hash-taking
+/// endpoints, `check_cache` and `get_cached_geometry`, do NOT call it yet: a
+/// malformed hash there names a key nobody wrote and gets a 404, which is a
+/// correct answer by a different route. Tightening them is a behaviour change
+/// to a published surface and is deliberately not part of #3901.
+pub(crate) fn is_file_digest(hash: &str) -> bool {
+    hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// Request-level cache key: file hash + opening-filter suffix + quality suffix.
 pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
     cache_key_from_parts(

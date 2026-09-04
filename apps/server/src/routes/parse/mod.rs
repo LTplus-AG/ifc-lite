@@ -48,19 +48,15 @@ pub struct ParseQuery {
     pub parquet_layout: ParquetLayout,
     /// SHA-256 of the file the client is asking about, hex, lowercase (#3901).
     ///
-    /// Only `POST /api/v1/parse/parquet-stream` reads it, and only when the
-    /// request carries NO multipart body: it turns that route into a
-    /// replay-or-404 probe so a cache hit costs no upload. It lives here
-    /// rather than in a header so it travels with the rest of the cache
-    /// identity (`opening_filter`, `tessellation_quality`, `parquet_layout`)
-    /// through the one struct every parse route already parses -- a hash
-    /// paired with the wrong layout names a different entry, and splitting
-    /// the identity across two transports is how those pairings drift apart.
-    ///
-    /// NEVER trusted for anything but SELECTING entries that already exist:
-    /// it names a cache key, and a key that misses answers 404. It can not
-    /// cause anything to be written, and when a body IS present it is ignored
-    /// outright in favour of hashing the received bytes.
+    /// Read only by `POST /api/v1/parse/parquet-stream`, and only when the
+    /// request carries no multipart body: see
+    /// [`cached_replay::replay_by_client_hash`] for what it does and what it
+    /// is not allowed to do. It lives on this struct rather than in a header
+    /// so it travels with the rest of the cache identity (`opening_filter`,
+    /// `tessellation_quality`, `parquet_layout`) through the one place every
+    /// parse route already parses. A hash paired with the wrong layout names a
+    /// different entry, and splitting one identity across two transports is how
+    /// such pairings drift apart.
     #[serde(default)]
     pub sha256: Option<String>,
 }

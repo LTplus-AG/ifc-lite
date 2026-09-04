@@ -248,6 +248,48 @@ async fn stream_once(state: &AppState, content: &str) -> Vec<Value> {
     parse_sse_events(&text)
 }
 
+/// Wait until every entry `try_cached_replay` needs for `live`'s cache key has
+/// actually landed, and return that key.
+///
+/// The geometry, metadata, data model and progress sidecar are all written by
+/// tasks spawned off the `Complete` event. Without this wait a follow-up
+/// request re-parses, and a comparison between a "hit" and a miss is really
+/// between two live runs, which matches for every implementation of the replay
+/// including none.
+///
+/// ONE copy of this suffix list. `docs/guide/server.md` says each suffix bumps
+/// whenever its payload changes shape, so two lists here would be two things to
+/// bump and one of them would be forgotten.
+async fn await_cache_fill(state: &AppState, live: &[Value]) -> String {
+    let key = live
+        .iter()
+        .find(|e| e["type"] == "start")
+        .expect("live run must emit start")["cache_key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let required = [
+        format!("{key}-parquet-v5"),
+        format!("{key}-parquet-metadata-v4"),
+        crate::routes::parse::cache_keys::data_model_cache_key(&key),
+        crate::routes::parse::stream_progress::stream_progress_cache_key(&key),
+    ];
+    for _ in 0..200 {
+        let mut all = true;
+        for k in &required {
+            if !matches!(state.cache.get_bytes(k).await, Ok(Some(_))) {
+                all = false;
+                break;
+            }
+        }
+        if all {
+            return key;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+    panic!("cache fill never completed for {key}; a follow-up run would not be a hit");
+}
+
 /// `progress` is a public event with one meaning, so a cache HIT must report
 /// the same numbers a MISS did for the same file (issue #3897).
 ///
@@ -261,39 +303,7 @@ async fn a_cache_hit_reports_the_same_progress_numbers_as_the_miss() {
 
     let live = stream_once(&state, JOBS_NE_MESHES_FIXTURE).await;
 
-    // The geometry, metadata, data model and progress sidecar are all filled
-    // by tasks spawned off the Complete event, and `try_cached_replay` needs
-    // every one of them. Without this wait the second request re-parses and
-    // the comparison below is between two LIVE runs, which matches for any
-    // implementation of the replay at all.
-    let key = live
-        .iter()
-        .find(|e| e["type"] == "start")
-        .unwrap()["cache_key"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let required = [
-        format!("{key}-parquet-v5"),
-        format!("{key}-parquet-metadata-v4"),
-        crate::routes::parse::cache_keys::data_model_cache_key(&key),
-        crate::routes::parse::stream_progress::stream_progress_cache_key(&key),
-    ];
-    let mut filled = false;
-    for _ in 0..200 {
-        let mut all = true;
-        for k in &required {
-            if !matches!(state.cache.get_bytes(k).await, Ok(Some(_))) {
-                all = false;
-            }
-        }
-        if all {
-            filled = true;
-            break;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    assert!(filled, "cache fill never completed; the second run would not be a hit");
+    await_cache_fill(&state, &live).await;
 
     let replay = stream_once(&state, JOBS_NE_MESHES_FIXTURE).await;
 

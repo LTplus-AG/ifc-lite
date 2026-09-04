@@ -592,10 +592,13 @@ a client that does not know to apply its rotation columns.
 The `{SHA256}` half is what a client can supply itself, and two endpoints let
 it: `GET /api/v1/cache/check/{hash}` and `POST /api/v1/parse/parquet-stream?sha256=`
 (above). A client-supplied hash is a SELECTOR for entries that already exist and
-nothing more. It is required to be 64 lowercase hex characters, because it is
-concatenated into the keys above and a caller-shaped hash would otherwise be a
-caller-shaped key; it never causes a write; and on a request that also carries a
-file body it is discarded in favour of hashing that body.
+nothing more: it never causes a parse or a write, and on a request that also
+carries a file body it is discarded in favour of hashing that body. The stream
+probe additionally requires it to be 64 lowercase hex characters and answers
+`400` otherwise, because the value is concatenated into the keys above and a
+caller-shaped hash would otherwise be a caller-shaped key. `/cache/check` and
+`/cache/geometry` do not check the shape; a malformed hash there simply names a
+key nobody wrote, and they answer `404`.
 
 Each suffix is bumped whenever the payload it names changes shape: a column
 added to or removed from its tables, or a change in what an existing column

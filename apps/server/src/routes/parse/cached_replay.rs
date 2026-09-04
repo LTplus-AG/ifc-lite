@@ -18,8 +18,8 @@
 //! still monotonic and still ends at its own stated total.
 
 use super::cache_keys::{
-    cache_key_from_parts, has_current_data_model, load_cached_symbolic, parquet_geometry_key,
-    parquet_metadata_key,
+    cache_key_from_parts, has_current_data_model, is_file_digest, load_cached_symbolic,
+    parquet_geometry_key, parquet_metadata_key,
 };
 use super::ParseQuery;
 use ifc_lite_processing::TessellationQuality;
@@ -34,19 +34,6 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::convert::Infallible;
-
-/// Whether `hash` has the shape `DiskCache::generate_key` produces: 64
-/// lowercase hex characters.
-///
-/// This is a GUARD, not a validation nicety. The hash goes straight into
-/// `cache_key_from_parts`, which builds `{hash}-{filter}{quality}`, and the
-/// namespace suffix (`-parquet-v5`, `-datamodel-v6`, ...) is appended after
-/// that. A caller-shaped string is therefore a caller-shaped cache key.
-/// Rejecting anything that is not a bare digest keeps the parameter to the one
-/// job it has, naming a file, and no other.
-fn is_file_digest(hash: &str) -> bool {
-    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
-}
 
 /// Serve `POST /api/v1/parse/parquet-stream` from a client-supplied file hash,
 /// with no request body at all (issue #3901).
@@ -67,9 +54,14 @@ fn is_file_digest(hash: &str) -> bool {
 /// `GET /api/v1/cache/check/{hash}` already uses for "upload it", and the
 /// client uploads.
 ///
-/// No admission guard: there is no upload to buffer and no parse to run, and
-/// the body-carrying hit path drops its own guard before returning a replay for
-/// that same reason.
+/// Admission is acquired around the replay BUILD, then dropped before the
+/// response is returned. That is what the body-carrying hit path does, and for
+/// the same reason: `try_cached_replay` is not free. It reads the whole
+/// geometry blob into memory, base64-encodes every batch, and materializes the
+/// full event vector before a byte is sent, which is several times the model's
+/// geometry resident at once. A probe is the cheapest request a client can
+/// send, so leaving that window unbounded would make it the cheapest way to
+/// exhaust the server. Draining the finished stream needs no slot.
 pub(super) async fn replay_by_client_hash(
     state: &AppState,
     query: &ParseQuery,
@@ -82,7 +74,13 @@ pub(super) async fn replay_by_client_hash(
         ));
     }
     let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
-    if let Some(response) = try_cached_replay(state, &cache_key, query.parquet_layout).await? {
+    let admission_guard = state
+        .admission
+        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+        .await?;
+    let replay = try_cached_replay(state, &cache_key, query.parquet_layout).await;
+    drop(admission_guard);
+    if let Some(response) = replay? {
         tracing::info!(
             cache_key = %cache_key,
             "Streaming cache HIT by client-supplied hash - no upload"

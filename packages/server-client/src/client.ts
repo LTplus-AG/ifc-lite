@@ -24,7 +24,6 @@ import {
   STREAM_ENDED_WITHOUT_TERMINAL_EVENT,
 } from './parquet-stream-events.js';
 
-
 /**
  * Compress a file or ArrayBuffer using gzip compression.
  * Uses the browser's CompressionStream API for efficient compression.
@@ -249,8 +248,8 @@ export class IfcServerClient {
   /**
    * Parse IFC file with streaming Parquet response for progressive rendering.
    *
-   * Returns an async generator that yields geometry batches as they're processed.
-   * Use this for large files (>50MB) to show geometry progressively.
+   * Calls `onBatch` with each geometry batch as it is decoded. Use this for
+   * large files (>50MB) to show geometry progressively.
    *
    * After streaming completes, fetch the data model via `fetchDataModel(cacheKey)`.
    *

@@ -53,42 +53,6 @@ async fn sse_events(response: axum::response::Response) -> Vec<Value> {
     parse_sse_events(std::str::from_utf8(&bytes).unwrap())
 }
 
-/// Warm the cache by parsing `content` through the real route, then wait until
-/// every entry `try_cached_replay` needs has actually landed. The geometry,
-/// metadata, data model and progress sidecar are all written by tasks spawned
-/// off the `Complete` event, so without this wait a follow-up request re-parses
-/// and any comparison is between two live runs, which matches for every
-/// implementation of the replay including none.
-async fn warm_cache(state: &AppState, content: &str) -> String {
-    let live = stream_once(state, content).await;
-    let key = live
-        .iter()
-        .find(|e| e["type"] == "start")
-        .expect("live run must emit start")["cache_key"]
-        .as_str()
-        .unwrap()
-        .to_string();
-    let required = [
-        format!("{key}-parquet-v5"),
-        format!("{key}-parquet-metadata-v4"),
-        crate::routes::parse::cache_keys::data_model_cache_key(&key),
-        crate::routes::parse::stream_progress::stream_progress_cache_key(&key),
-    ];
-    for _ in 0..200 {
-        let mut all = true;
-        for k in &required {
-            if !matches!(state.cache.get_bytes(k).await, Ok(Some(_))) {
-                all = false;
-            }
-        }
-        if all {
-            return key;
-        }
-        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
-    }
-    panic!("cache fill never completed for {key}");
-}
-
 /// Property 1: the hash-only hit is the SAME stream as the upload hit.
 ///
 /// Both requests replay from the same cache entries, so every event — start,
@@ -98,7 +62,8 @@ async fn warm_cache(state: &AppState, content: &str) -> String {
 #[tokio::test]
 async fn a_hash_only_hit_replays_the_same_events_as_an_upload_hit() {
     let state = test_state("hash-only-hit").await;
-    let key = warm_cache(&state, JOBS_NE_MESHES_FIXTURE).await;
+    let live = stream_once(&state, JOBS_NE_MESHES_FIXTURE).await;
+    let key = await_cache_fill(&state, &live).await;
 
     let upload_hit = stream_once(&state, JOBS_NE_MESHES_FIXTURE).await;
 

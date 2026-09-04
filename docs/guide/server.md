@@ -288,6 +288,7 @@ than these fields sends neither, which means "not scanned for" — never
 "clean". Branch on presence before reading the value:
 
 ```typescript
+const metadata = await client.getMetadata(file);
 if (metadata.malformed_record_found) {
   console.warn('This file is truncated — the counts above are partial.');
 } else if (metadata.malformed_record_found === undefined) {

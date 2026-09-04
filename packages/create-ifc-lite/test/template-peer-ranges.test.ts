@@ -31,6 +31,7 @@ type Caret = { major: number; minor: number; patch: number };
  * reason about fails loudly instead of passing vacuously.
  */
 function parseCaret(range: string, what: string): Caret {
+  // @source-text-assertion-ok shape guard, not a subject assertion: a range outside ^X.Y.Z throws below instead of being mis-compared
   const match = /^\^(\d+)\.(\d+)\.(\d+)$/.exec(range);
   if (!match) {
     throw new Error(`${what} is "${range}", which this test can only check in ^X.Y.Z form.`);
@@ -63,6 +64,7 @@ function readPeerRange(): string {
 
 function readTemplatePin(relativePath: string): string {
   const source = readFileSync(resolve(REPO_ROOT, relativePath), 'utf-8');
+  // @source-text-assertion-ok the hand-written pin literal is the subject; scaffolding it instead needs getPackageVersion, which shells out to `npm view`
   const match = /'parquet-wasm':\s*'([^']+)'/.exec(source);
   if (!match) {
     throw new Error(`${relativePath} no longer pins parquet-wasm in a scaffolded package.json.`);

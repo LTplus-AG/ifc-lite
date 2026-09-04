@@ -62,6 +62,7 @@ describe('parquet-wasm entry point', () => {
   it('resolves a version that satisfies the declared peer range', () => {
     const pkg = readJson(new URL('../package.json', import.meta.url));
     const range = (pkg.peerDependencies as Record<string, string>)['parquet-wasm'];
+    // @source-text-assertion-ok shape guard, not a subject assertion: satisfiesZeroMajorCaret only reads a 0.x caret, so a `^1.x` range would let the check below pass vacuously
     expect(range.startsWith('^0.')).toBe(true);
 
     // Ask the resolver, not a hard-coded node_modules path: this resolves

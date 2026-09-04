@@ -409,6 +409,33 @@ interface Quantity {
 }
 ```
 
+### Relationships
+
+One row per (relating, related) pair: an `IfcRel*` record naming several
+related objects is flattened into one row each, so the same `rel_id` can appear
+on several rows.
+
+```typescript
+interface Relationship {
+  rel_type: string;      // e.g. 'IFCRELAGGREGATES', as declared in the file
+  relating_id: number;
+  related_id: number;
+  rel_id?: number;       // express id of the IfcRel entity
+}
+```
+
+`rel_id` is what a Parquet or DuckDB export writes as `RelId`, and what
+identifies the record to delete or edit. Two cases where it is not a live
+express id:
+
+- **Absent** (`undefined`) when the server predates the `datamodel-v6` payload,
+  which is where the column was added. Consumers fall back to `0`; the viewer
+  warns once naming the column, since every id reading 0 otherwise looks like a
+  normal graph.
+- **`0`** on the synthetic `TYPEHASPROPERTYSETS` rows. Those are read off
+  `IfcTypeObject.HasPropertySets` to attach a type's own property sets, and no
+  IFC entity declares them, so there is no id to carry.
+
 ### Spatial Hierarchy
 
 ```typescript
@@ -488,11 +515,18 @@ Cache keys are derived from file content:
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
 # quality appends a "-q{level}" suffix after it
-{SHA256}-{filter}-parquet-v4          # Geometry
+{SHA256}-{filter}-parquet-v5          # Geometry
 {SHA256}-{filter}-parquet-metadata-v4 # Metadata header
-{SHA256}-{filter}-datamodel-v2        # Properties & hierarchy
+{SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v1         # 2D symbol stream
 ```
+
+Each suffix is bumped whenever the payload it names changes shape: a column
+added to or removed from its tables, or a change in what an existing column
+means. Without the bump a warm cache replays the old blob, the client decodes
+it cleanly as if an older server had answered, and the change is silently
+absent. The keys above are built in `apps/server/src/routes/parse/cache_keys.rs`;
+that module is the single definition of each one.
 
 ### Cache Flow
 

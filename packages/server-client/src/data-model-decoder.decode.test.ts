@@ -128,11 +128,21 @@ function emptyQuantitiesTable() {
   });
 }
 
-function relationshipsTable(rows: { relType: string; relatingId: number; relatedId: number }[]) {
-  return new arrow.Table({
+/** `relId` is the data-model v6 column (issue #3860). Omitting it reproduces an
+ *  older server's payload, which the decoder must still accept. */
+function relationshipsTable(
+  rows: { relType: string; relatingId: number; relatedId: number; relId?: number }[],
+  opts: { withRelId?: boolean } = {}
+) {
+  const columns = {
     rel_type: arrow.vectorFromArray(rows.map((r) => r.relType), new arrow.Utf8()),
     relating_id: arrow.vectorFromArray(rows.map((r) => r.relatingId), new arrow.Uint32()),
     related_id: arrow.vectorFromArray(rows.map((r) => r.relatedId), new arrow.Uint32()),
+  };
+  if (!opts.withRelId) return new arrow.Table(columns);
+  return new arrow.Table({
+    ...columns,
+    rel_id: arrow.vectorFromArray(rows.map((r) => r.relId ?? 0), new arrow.Uint32()),
   });
 }
 
@@ -246,6 +256,8 @@ function buildDataModelBuffer(
     /** Raw Parquet bytes for the optional materials section; appending it
      *  also appends empty classifications/documents (positional triplet). */
     materialsBytes?: Uint8Array;
+    /** Emit the relationships table's `rel_id` column (data-model v6). */
+    withRelId?: boolean;
   } = {}
 ): ArrayBuffer {
   const entities = toParquetBytes(
@@ -255,8 +267,10 @@ function buildDataModelBuffer(
   const quantities = toParquetBytes(emptyQuantitiesTable());
   const relationships = toParquetBytes(
     opts.emptyRelationships
-      ? relationshipsTable([])
-      : relationshipsTable([{ relType: 'IfcRelAggregates', relatingId: 1, relatedId: 2 }])
+      ? relationshipsTable([], { withRelId: opts.withRelId })
+      : relationshipsTable([{ relType: 'IfcRelAggregates', relatingId: 1, relatedId: 2, relId: 7 }], {
+          withRelId: opts.withRelId,
+        })
   );
 
   const nodes =
@@ -416,6 +430,9 @@ describe('decodeDataModel — bounding controls (well-formed buffers still decod
       relating_id: 1,
       related_id: 2,
     });
+    // No `rel_id` column in this payload (older server) -> field absent, never
+    // a fabricated 0 that a caller would write into an export as a real id.
+    expect(model.relationships[0].rel_id).toBeUndefined();
 
     expect(model.spatialHierarchy.project_id).toBe(42);
     expect(model.spatialHierarchy.nodes).toHaveLength(1);
@@ -426,6 +443,21 @@ describe('decodeDataModel — bounding controls (well-formed buffers still decod
     expect(model.classifications).toEqual([]);
     expect(model.materials).toEqual([]);
     expect(model.documents).toEqual([]);
+  });
+
+  it('round-trips the relationships `rel_id` column when the server sends it (v6 payload)', async () => {
+    const buf = buildDataModelBuffer({ withRelId: true });
+    const model = await decodeDataModel(buf);
+
+    // 7 is distinct from both id columns (1, 2), so neither a copy of a
+    // neighbouring column nor the old hard-coded 0 passes.
+    expect(model.relationships).toHaveLength(1);
+    expect(model.relationships[0]).toEqual({
+      rel_type: 'IfcRelAggregates',
+      relating_id: 1,
+      related_id: 2,
+      rel_id: 7,
+    });
   });
 
   it('decodes a model with legitimately EMPTY required tables (zero quantities, zero relationships)', async () => {

@@ -181,7 +181,7 @@
    497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
-   619 apps/viewer/src/utils/serverDataModel.ts
+   630 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts
@@ -331,7 +331,7 @@
    458 packages/sdk/src/namespaces/bsdd.ts
    875 packages/sdk/src/types.ts
   1082 packages/server-client/src/client.ts
-   775 packages/server-client/src/data-model-decoder.ts
+   784 packages/server-client/src/data-model-decoder.ts
    466 packages/server-client/src/parquet-tables.ts
    596 packages/server-client/src/types.ts
    411 packages/source-dalux/src/http-client.ts

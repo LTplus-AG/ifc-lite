@@ -50,17 +50,17 @@ const WALL = 3;
  * source file looks like once the server has flattened it into rows.
  */
 const RELATIONSHIPS = [
-  { rel_type: 'IFCRELAGGREGATES', relating_id: PROJECT, related_id: STOREY },
-  { rel_type: 'IFCRELCONTAINEDINSPATIALSTRUCTURE', relating_id: STOREY, related_id: WALL },
-  { rel_type: 'IFCRELCONTAINEDINSPATIALSTRUCTURE', relating_id: STOREY, related_id: WALL },
+  { rel_type: 'IFCRELAGGREGATES', relating_id: PROJECT, related_id: STOREY, rel_id: 900 },
+  { rel_type: 'IFCRELCONTAINEDINSPATIALSTRUCTURE', relating_id: STOREY, related_id: WALL, rel_id: 901 },
+  { rel_type: 'IFCRELCONTAINEDINSPATIALSTRUCTURE', relating_id: STOREY, related_id: WALL, rel_id: 902 },
 ] as const;
 
 /** The same edges, in the same order, through the locally-parsed path's builder. */
 function referenceGraph() {
   const builder = new RelationshipGraphBuilder();
-  builder.addEdge(PROJECT, STOREY, RelationshipType.Aggregates, 0);
-  builder.addEdge(STOREY, WALL, RelationshipType.ContainsElements, 0);
-  builder.addEdge(STOREY, WALL, RelationshipType.ContainsElements, 0);
+  builder.addEdge(PROJECT, STOREY, RelationshipType.Aggregates, 900);
+  builder.addEdge(STOREY, WALL, RelationshipType.ContainsElements, 901);
+  builder.addEdge(STOREY, WALL, RelationshipType.ContainsElements, 902);
   return builder.build();
 }
 
@@ -141,6 +141,14 @@ async function exportRelationships(s: ReturnType<typeof store>): Promise<string[
   return rows.map((r) => `${Number(r.SourceId)}->${Number(r.TargetId)}:${String(r.RelType)}`);
 }
 
+/** Every exported row, RelId included. */
+async function exportRelationshipRowsWithRelId(s: ReturnType<typeof store>): Promise<string[]> {
+  const rows = decode(await new ParquetExporter(s).exportTable('relationships'));
+  return rows
+    .map((r) => `${Number(r.SourceId)}->${Number(r.TargetId)}:${String(r.RelType)}#${Number(r.RelId)}`)
+    .sort();
+}
+
 describe('server-path relationship graph', () => {
   it('anti-vacuity: the fixture really does repeat one relationship verbatim', () => {
     const seen = RELATIONSHIPS.map((r) => `${r.rel_type}:${r.relating_id}:${r.related_id}`);
@@ -184,6 +192,33 @@ describe('server-path relationship graph', () => {
       server.getRelated(STOREY, RelationshipType.ContainsElements, 'forward'),
       local.getRelated(STOREY, RelationshipType.ContainsElements, 'forward'),
       'getRelated must not count the repeat differently from the local path',
+    );
+  });
+
+  it('exports the real IfcRel express id in the RelId column', async () => {
+    // The CSR `edgeRelIds` column is what the exporter reads for RelId, so an
+    // id that reaches `getRelationshipsBetween` can still be lost on the way
+    // to an export (#3860). Assert on the exported column itself. The two
+    // repeated rows carry DIFFERENT ids, which is what a repeated
+    // relationship actually looks like: two IfcRel records, one pair.
+    const rows = await exportRelationshipRowsWithRelId(store());
+    assert.deepEqual(rows, [
+      `${PROJECT}->${STOREY}:IfcRelAggregates#900`,
+      `${STOREY}->${WALL}:IfcRelContainedInSpatialStructure#901`,
+      `${STOREY}->${WALL}:IfcRelContainedInSpatialStructure#902`,
+    ]);
+
+    // Anti-vacuity: 0 was the placeholder the server path used to write, and
+    // no fixture id equals an entity id, so a copied column fails too.
+    assert.ok(
+      rows.every((row) => !row.endsWith('#0')),
+      `no exported RelId may be the placeholder 0: ${JSON.stringify(rows)}`,
+    );
+
+    // Parity with the locally-parsed path, through the exporter.
+    assert.deepEqual(
+      rows,
+      await exportRelationshipRowsWithRelId({ ...store(), relationships: referenceGraph() }),
     );
   });
 

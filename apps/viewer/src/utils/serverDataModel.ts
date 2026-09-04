@@ -294,6 +294,8 @@ function buildRelationships(
   const typeOwnPsets = new Map<number, Array<any>>();
   const typeOwnQsets = new Map<number, Array<ServerQuantitySet>>();
   const unmappedRelTypes = new Set<string>();
+  // Whether the payload carried the rel_id column at all (#3860).
+  let sawRelId = false;
 
   // Combined loop - process relationships once for both graph building AND property mapping
   for (const rel of dataModel.relationships) {
@@ -328,13 +330,22 @@ function buildRelationships(
       continue;
     }
 
-    // The server payload carries no IfcRel express id, so every edge gets 0 —
-    // the same placeholder the hand-rolled facade used.
-    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, 0);
+    // The IfcRel express id (#3860). Absent only against a server older than
+    // the column; 0 is then the placeholder every edge used to get.
+    if (rel.rel_id !== undefined) sawRelId = true;
+    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, rel.rel_id ?? 0);
   }
 
   if (unmappedRelTypes.size > 0) {
     console.warn(`[serverDataModel] Found ${unmappedRelTypes.size} unmapped relationship types: ${Array.from(unmappedRelTypes).join(', ')}`);
+  }
+
+  // Every edge then carries relationshipId 0, which looks exactly like a real
+  // graph until an export writes RelId = 0 on every row (#3860). Say it once.
+  if (!sawRelId && dataModel.relationships.length > 0) {
+    console.warn(
+      `[serverDataModel] Server sent no rel_id column: all ${dataModel.relationships.length} relationship(s) get id 0. Exported RelId will be 0 — the server predates the data-model v6 payload.`
+    );
   }
 
   // Merge each type's own (HasPropertySets) sets into its entry, FIRST and

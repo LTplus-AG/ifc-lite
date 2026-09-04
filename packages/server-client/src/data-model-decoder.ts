@@ -240,6 +240,10 @@ export interface Relationship {
   rel_type: string;
   relating_id: number;
   related_id: number;
+  /** Express id of the `IfcRel*` entity this row came from. v6 payload (issue
+   *  #3860); `undefined` for older servers. `0` on the synthetic
+   *  `TYPEHASPROPERTYSETS` rows, which no IFC entity declares. */
+  rel_id?: number;
 }
 
 export interface SpatialNode {
@@ -548,6 +552,10 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const relTypesArr = relationshipsArrow.getChild('rel_type')?.toArray() as string[];
   const relatingIds = relationshipsArrow.getChild('relating_id')?.toArray() as Uint32Array;
   const relatedIds = relationshipsArrow.getChild('related_id')?.toArray() as Uint32Array;
+  // rel_id arrives with the v6 payload (issue #3860). An older server sends no
+  // such column: leave the field absent rather than defaulting to 0, so a
+  // caller can tell "no id on the wire" from the genuine 0 on synthetic rows.
+  const relIds = relationshipsArrow.getChild('rel_id')?.toArray() as Uint32Array | undefined;
 
   // Pre-allocate array for better performance
   const relationships: Relationship[] = new Array(relatingIds.length);
@@ -557,6 +565,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       relating_id: relatingIds[i],
       related_id: relatedIds[i],
     };
+    if (relIds !== undefined) relationships[i].rel_id = relIds[i];
   }
 
   // Parse spatial hierarchy - format: [nodes_len][nodes_data][element_to_storey_len][element_to_storey_data]...

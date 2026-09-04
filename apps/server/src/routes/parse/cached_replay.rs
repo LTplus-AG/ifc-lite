@@ -6,7 +6,7 @@
 //! request's geometry + metadata are already cached, replay them as a
 //! three-event stream (Start / one Batch / Complete) without re-parsing.
 
-use super::cache_keys::load_cached_symbolic;
+use super::cache_keys::{has_current_data_model, load_cached_symbolic};
 use super::parquet::ParquetMetadataHeader;
 use super::parquet_stream::ParquetStreamEvent;
 use crate::error::ApiError;
@@ -46,6 +46,17 @@ pub(super) async fn try_cached_replay(
     ) else {
         return Ok(None);
     };
+
+    // Replaying skips the parse, and the parse is what writes the data model.
+    // A geometry entry that outlived a data-model version bump must therefore
+    // re-parse rather than replay (issue #3869).
+    if !has_current_data_model(&state.cache, cache_key).await {
+        tracing::info!(
+            cache_key = %cache_key,
+            "Geometry cached but the data model predates the current payload; re-parsing"
+        );
+        return Ok(None);
+    }
 
     tracing::info!(
         cache_key = %cache_key,
@@ -247,6 +258,7 @@ mod tests {
             .set_bytes(&format!("{cache_key}-parquet-v5"), &[1, 2, 3]) // < 4 bytes
             .await
             .unwrap();
+        seed_current_data_model(&state, cache_key).await;
 
         let result = try_cached_replay(&state, cache_key).await;
         assert!(
@@ -273,9 +285,55 @@ mod tests {
             .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[9, 9]))
             .await
             .unwrap();
+        seed_current_data_model(&state, cache_key).await;
 
         let result = try_cached_replay(&state, cache_key).await;
         assert!(result.is_err(), "unparseable cached metadata must be an error");
+    }
+
+    /// Seed a data-model entry at the CURRENT payload version.
+    async fn seed_current_data_model(state: &AppState, cache_key: &str) {
+        state
+            .cache
+            .set_bytes(
+                &crate::routes::parse::cache_keys::data_model_cache_key(cache_key),
+                b"data-model-bytes",
+            )
+            .await
+            .unwrap();
+    }
+
+    /// Geometry and metadata both cached, but the data model beside them
+    /// predates the current payload version: replaying skips the parse, so
+    /// nothing would ever write the current data-model key and the client's
+    /// poll never resolves (issue #3869). Must be a miss, so the live parse
+    /// rewrites both.
+    #[tokio::test]
+    async fn miss_when_the_cached_data_model_predates_the_current_version() {
+        let state = test_state("miss-stale-datamodel").await;
+        let cache_key = "stale-datamodel-key";
+        let metadata_bytes = serde_json::to_vec(&sample_metadata_header(cache_key, 3)).unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
+            .await
+            .unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[7, 7, 7]))
+            .await
+            .unwrap();
+        state
+            .cache
+            .set_bytes(&format!("{cache_key}-datamodel-v5"), b"pre-rel_id-parquet")
+            .await
+            .unwrap();
+
+        let result = try_cached_replay(&state, cache_key).await;
+        assert!(
+            matches!(result, Ok(None)),
+            "a geometry hit with a stale data model must re-parse, not replay"
+        );
     }
 
     #[tokio::test]
@@ -297,6 +355,8 @@ mod tests {
             .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&geometry))
             .await
             .unwrap();
+        // A replay also requires a current data model beside the geometry (#3869).
+        seed_current_data_model(&state, cache_key).await;
 
         let result = try_cached_replay(&state, cache_key).await;
         let response = match result {

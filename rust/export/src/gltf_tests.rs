@@ -2405,6 +2405,110 @@ fn the_bounded_path_reports_the_groups_it_could_not_verify() {
         stream_stats.unverified_instance_groups > 0,
         "duplex has shared rep groups, and the bounded path instances them unverified"
     );
-    // 79 groups on duplex at the time of writing; the assertion is on the
-    // direction, not the number, which moves with the model and the collator.
+    // The assertion is on the direction, not the number: duplex's group count
+    // moves with the model and the collator. The exact figure is pinned on the
+    // synthetic fixture below, where it is a property of the fixture instead.
+}
+
+/// Four occurrences of ONE `IfcRepresentationMap` in TWO colours: the shape the
+/// bounded path's bucket key (identity, colour) splits and its `GltfStats`
+/// field does not. Colour comes from the material chain, which is per PRODUCT,
+/// so the four proxies share a representation while two of them are red and two
+/// blue.
+const ONE_IDENTITY_TWO_COLOURS: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('one rep map, two colours'),'2;1');
+FILE_NAME('two-colour.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0TwoColourProject0001',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCREPRESENTATIONMAP(#5,#21);
+#21=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#22));
+#22=IFCTRIANGULATEDFACESET(#23,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#23=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#30=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);
+#110=IFCCARTESIANPOINT((0.,0.,0.));
+#111=IFCAXIS2PLACEMENT3D(#110,$,$);
+#112=IFCLOCALPLACEMENT($,#111);
+#113=IFCMAPPEDITEM(#20,#30);
+#114=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#113));
+#115=IFCPRODUCTDEFINITIONSHAPE($,$,(#114));
+#116=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0001A',$,'E',$,$,#112,#115,$,$);
+#120=IFCCARTESIANPOINT((5.,0.,0.));
+#121=IFCAXIS2PLACEMENT3D(#120,$,$);
+#122=IFCLOCALPLACEMENT($,#121);
+#123=IFCMAPPEDITEM(#20,#30);
+#124=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#123));
+#125=IFCPRODUCTDEFINITIONSHAPE($,$,(#124));
+#126=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0002A',$,'E',$,$,#122,#125,$,$);
+#130=IFCCARTESIANPOINT((10.,0.,0.));
+#131=IFCAXIS2PLACEMENT3D(#130,$,$);
+#132=IFCLOCALPLACEMENT($,#131);
+#133=IFCMAPPEDITEM(#20,#30);
+#134=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#133));
+#135=IFCPRODUCTDEFINITIONSHAPE($,$,(#134));
+#136=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0003B',$,'E',$,$,#132,#135,$,$);
+#140=IFCCARTESIANPOINT((15.,0.,0.));
+#141=IFCAXIS2PLACEMENT3D(#140,$,$);
+#142=IFCLOCALPLACEMENT($,#141);
+#143=IFCMAPPEDITEM(#20,#30);
+#144=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#143));
+#145=IFCPRODUCTDEFINITIONSHAPE($,$,(#144));
+#146=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0004B',$,'E',$,$,#142,#145,$,$);
+#80=IFCMATERIAL('Red',$,$);
+#81=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#82),#80);
+#82=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#83));
+#83=IFCSTYLEDITEM($,(#84),$);
+#84=IFCSURFACESTYLE('Red',.BOTH.,(#85));
+#85=IFCSURFACESTYLERENDERING(#86,$,$,$,$,$,$,$,.FLAT.);
+#86=IFCCOLOURRGB($,1.,0.,0.);
+#90=IFCMATERIAL('Blue',$,$);
+#91=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#92),#90);
+#92=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#93));
+#93=IFCSTYLEDITEM($,(#94),$);
+#94=IFCSURFACESTYLE('Blue',.BOTH.,(#95));
+#95=IFCSURFACESTYLERENDERING(#96,$,$,$,$,$,$,$,.FLAT.);
+#96=IFCCOLOURRGB($,0.,0.,1.);
+#98=IFCRELASSOCIATESMATERIAL('0TwoColourRelRed00001',$,$,$,(#116,#126),#80);
+#99=IFCRELASSOCIATESMATERIAL('0TwoColourRelBlue0001',$,$,$,(#136,#146),#90);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// `unverified_instance_groups` counts REP IDENTITIES, not the bucket key the
+/// bounded path groups on.
+///
+/// That key is `(rep_identity, colour)`, because a glTF material rides the mesh
+/// primitive rather than the node — so this fixture's ONE representation map in
+/// TWO colours is two buckets. Reporting 2 would name the same unverified hash
+/// twice and contradict the field's own doc comment. Only a fixture that splits
+/// a single identity across colours can tell the two counts apart; duplex, the
+/// other side of this pair, happens to hold one colour per identity and reports
+/// the same number either way.
+#[test]
+fn the_bounded_path_counts_identities_not_colour_buckets() {
+    let opts = GltfOptions::default();
+    let content = ONE_IDENTITY_TWO_COLOURS.as_bytes();
+    // The fixture only discriminates if it really is one shape in two colours.
+    let mut colors: Vec<[u32; 4]> = process_geometry(content)
+        .meshes
+        .iter()
+        .map(|m| m.color.map(|c| c.to_bits()))
+        .collect();
+    colors.sort_unstable();
+    colors.dedup();
+    assert_eq!(colors.len(), 2, "fixture must hold two distinct colours");
+
+    let (_, stats) = export_glb_streaming_bounded(content, &opts);
+    assert_eq!(
+        stats.unverified_instance_groups, 1,
+        "four occurrences of one representation map are ONE unverified identity, \
+         whatever the colours split them into"
+    );
 }

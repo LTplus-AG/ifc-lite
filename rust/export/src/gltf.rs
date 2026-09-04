@@ -2469,8 +2469,14 @@ fn plan_bounded_glb(
     // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
     // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
     // Every group this path instances is instanced unverified; see the field's
-    // docs and the KNOWN GAP note above `refused`.
-    stats.unverified_instance_groups = rep_groups.len();
+    // docs and the KNOWN GAP note above `refused`. Counted per REP IDENTITY, not
+    // per bucket: a bucket is (identity, colour) because a glTF material rides
+    // the primitive, so one shape in two colours is two buckets — but it is one
+    // identity, and the identity is the thing the unverified substitution is
+    // made on the strength of. Counting buckets reported the same unchecked
+    // hash more than once and inflated the figure against its own doc comment.
+    stats.unverified_instance_groups =
+        rep_groups.keys().map(|&(rid, _)| rid).collect::<FxHashSet<u128>>().len();
     let mut shared_cache: FxHashMap<u128, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
     let quantize = opts.quantize;

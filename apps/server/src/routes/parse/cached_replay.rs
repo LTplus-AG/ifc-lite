@@ -10,10 +10,17 @@
 //! (recovered from the cached blob's Parquet row-group boundaries); a blob
 //! with no recoverable boundary falls back to one oversized batch, same as
 //! before.
+//!
+//! `progress` numbers come from the `stream_progress` sidecar the live parse
+//! wrote, so a hit reports the same JOB counts a miss does (issue #3897).
+//! Entries cached before that sidecar existed have no job counts to replay;
+//! those fall back to counting emitted MESHES, which is the wrong unit but
+//! still monotonic and still ends at its own stated total.
 
 use super::cache_keys::{has_current_data_model, load_cached_symbolic};
 use super::parquet::ParquetMetadataHeader;
 use super::parquet_stream::ParquetStreamEvent;
+use super::stream_progress::load_stream_progress;
 use crate::error::ApiError;
 use crate::services::parquet_replay_batches::split_into_batches;
 use crate::AppState;
@@ -78,6 +85,9 @@ pub(super) async fn try_cached_replay(
     // even on the cache fast-path (issue #900).
     let symbolic_data = load_cached_symbolic(&state.cache, cache_key).await;
 
+    // The job-unit progress the live parse reported for this file.
+    let recorded_progress = load_stream_progress(&state.cache, cache_key).await;
+
     // Extract the geometry blob (framed `[geometry_len: u32-LE][geometry_data]
     // ...`, sliced WITHOUT `.unwrap()` panicking on a short/corrupt cached
     // blob) and split it back into its original stream batches, each
@@ -129,31 +139,42 @@ pub(super) async fn try_cached_replay(
     // Same Start / (Batch, Progress)* / Complete shape the live path streams
     // (`parquet_stream.rs`'s per-batch Progress callback), so a cache hit is
     // progressive too (issue #3895).
+    //
+    // The checkpoints only line up if there is one per batch. A sidecar from
+    // a run whose batch count differs from what we recovered (a fallback to
+    // one whole-geometry batch, say) describes a different segmentation, so
+    // it is dropped rather than misapplied.
+    let checkpoints = recorded_progress
+        .filter(|p| p.after_batch.len() == batches.len())
+        .map(|p| (p.total_jobs, p.after_batch));
+    let (total, per_batch_processed) = match checkpoints {
+        Some((total_jobs, after_batch)) => (total_jobs, Some(after_batch)),
+        // No sidecar: pre-#3897 cache entry. Mesh units, as before.
+        None => (total_meshes, None),
+    };
+
     let sse = |event: &ParquetStreamEvent| -> Result<Event, Infallible> {
         Ok(Event::default().data(serde_json::to_string(event).unwrap()))
     };
     let mut events: Vec<Result<Event, Infallible>> = Vec::with_capacity(batches.len() * 2 + 3);
     events.push(sse(&ParquetStreamEvent::Start {
-        total_estimate: total_meshes,
+        total_estimate: total,
         cache_key: cache_key.to_string(),
     }));
-    events.push(sse(&ParquetStreamEvent::Progress {
-        processed: 0,
-        total: total_meshes,
-    }));
+    events.push(sse(&ParquetStreamEvent::Progress { processed: 0, total }));
 
     let mut processed = 0usize;
     for (batch_number, (data, mesh_count)) in batches.into_iter().enumerate() {
-        processed += mesh_count;
+        processed = match &per_batch_processed {
+            Some(checkpoints) => checkpoints[batch_number],
+            None => processed + mesh_count,
+        };
         events.push(sse(&ParquetStreamEvent::Batch {
             data,
             mesh_count,
             batch_number: batch_number + 1,
         }));
-        events.push(sse(&ParquetStreamEvent::Progress {
-            processed,
-            total: total_meshes,
-        }));
+        events.push(sse(&ParquetStreamEvent::Progress { processed, total }));
     }
 
     events.push(sse(&ParquetStreamEvent::Complete {

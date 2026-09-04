@@ -6,6 +6,7 @@
 
 use super::cache_keys::{cache_symbolic_data, data_model_cache_key, request_cache_key};
 use super::parquet::ParquetMetadataHeader;
+use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
@@ -133,6 +134,10 @@ pub async fn parse_parquet_stream(
             }
         }));
     let cache_writer_for_stream = cache_writer.clone();
+    // Job-unit progress checkpoints for the cache-hit replay: `progress`
+    // events report the pipeline's `processed_jobs` / `total_jobs`, which the
+    // geometry blob does not record (issue #3897).
+    let mut progress_recorder = StreamProgressRecorder::default();
     let cache_for_geometry = cache.clone();
     let cache_key_for_geometry = cache_key.clone();
 
@@ -154,9 +159,11 @@ pub async fn parse_parquet_stream(
                 }
             }
             StreamEvent::Progress { processed, total, .. } => {
+                progress_recorder.on_progress(processed, total);
                 ParquetStreamEvent::Progress { processed, total }
             }
             StreamEvent::Batch { meshes, batch_number } => {
+                progress_recorder.on_batch();
                 // Per-batch CPU work (client-blob serialization + cache-writer
                 // append) runs inside this stream map, i.e. on an async worker.
                 // On the multi-thread runtime, step off the async pool for it
@@ -220,6 +227,7 @@ pub async fn parse_parquet_stream(
                 let stats_clone = stats.clone();
                 let metadata_clone = metadata.clone();
                 let writer_for_cache = cache_writer.clone();
+                let recorded_progress = progress_recorder.take();
                 let coord_space = mesh_coordinate_space.clone();
                 let site_tf = site_transform.clone();
                 let building_tf = building_transform.clone();
@@ -288,6 +296,9 @@ pub async fn parse_parquet_stream(
                                 tracing::debug!(cache_key = %metadata_cache_key, "Metadata cached from stream");
                             }
                         }
+
+                        // The job-unit progress a replay must reproduce.
+                        cache_stream_progress(&cache, &key, &recorded_progress).await;
                     } else {
                         tracing::error!("Failed to serialize accumulated meshes for caching");
                     }

@@ -6,6 +6,7 @@
 
 mod cache_keys;
 mod cached_replay;
+mod stream_progress;
 mod fetch;
 mod json;
 mod parquet;

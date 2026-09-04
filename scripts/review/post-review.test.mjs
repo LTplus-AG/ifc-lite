@@ -606,20 +606,25 @@ test('#3729: a RELOCATED finding does not contradict a clean run; one WRITTEN he
     side: 'RIGHT',
     body: 'An earlier head\'s finding, relocated onto this one.',
   };
-  const r = runPoster({ findings: [], state: { reviewComments: [relocated] } });
+  // `cleanDoc()`, NOT `findings: []` (#3862). A bare array carries no class-pass
+  // flag, so the poster now writes `clean-by-judge` for it -- and `/verdict=clean/`
+  // matches that as a PREFIX, so this test would have gone on passing while
+  // asserting something it no longer meant. What it is about is `clean` versus
+  // `findings`, so it feeds a validated clean review and matches the whole token.
+  const r = runPoster({ findingsRaw: cleanDoc(), state: { reviewComments: [relocated] } });
   assert.equal(r.code, 0, r.out);
   assert.doesNotMatch(r.out, /CONTRADICTED/);
-  assert.match(allBodies(r.state), /verdict=clean/);
+  assert.match(allBodies(r.state), /verdict=clean count=0/);
   // ANTI-VACUITY: the same row WRITTEN at this head still contradicts. The only
   // difference between the two inputs is `original_commit_id`.
   const real = runPoster({
-    findings: [],
+    findingsRaw: cleanDoc(),
     state: { reviewComments: [{ ...relocated, original_commit_id: SHA }] },
   });
   assert.equal(real.code, 0, real.out);
   assert.match(real.out, /CONTRADICTED/);
   assert.match(allBodies(real.state), /verdict=findings count=1/);
-  assert.doesNotMatch(allBodies(real.state), /verdict=clean/);
+  assert.doesNotMatch(allBodies(real.state), /verdict=clean /, 'nor `clean-by-judge`, which shares the prefix');
 });
 
 test('a finding whose body already exists at ANOTHER line or path is still posted', () => {

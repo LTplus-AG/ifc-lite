@@ -33,6 +33,12 @@
  * `IfcWall` global_id is a no-op here); an explicit ref for both a
  * container and one of its own descendants collapses to one entry via the
  * express-id dedup below rather than double-expanding.
+ *
+ * Called from exactly one place, `viewer.ts`'s `resolveTargetRefs` (#3338):
+ * every viewer tool that takes a selector gets the expansion by construction
+ * rather than by remembering to ask for it. A tool that genuinely needs the
+ * unexpanded refs has to say so by assembling them itself -- it must not be
+ * possible to lose the guarantee for every other tool by editing one line.
  */
 
 import { collectAggregatedDescendants } from '@ifc-lite/data';

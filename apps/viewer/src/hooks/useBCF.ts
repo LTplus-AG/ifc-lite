@@ -30,7 +30,7 @@ import {
   expressIdToGlobalId as expressIdToGlobalIdLookup,
 } from './bcfIdLookup';
 import { fromGlobalIdFromModels } from '@/store/globalId';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 
 // ============================================================================
@@ -572,7 +572,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         if (isolatedExpressIds.size > 0) {
           // #3338: a viewpoint guid may name a geometry-less assembly whose parts carry the mesh.
           const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
-          setIsolatedEntities(new Set(resolveIsolationIds(resolver, [...isolatedExpressIds])));
+          setIsolatedEntities(new Set(resolvePresentationIds(resolver, [...isolatedExpressIds])));
         } else {
           setIsolatedEntities(null);
         }

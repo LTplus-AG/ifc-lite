@@ -53,6 +53,14 @@ function refsForExpressIds(m: ReturnType<typeof resolveModel>, eids: number[]): 
   return eids.map((expressId) => ({ modelId: m.id, expressId }));
 }
 
+/**
+ * The ids a viewer tool acts on, given its selector input -- assemblies
+ * already expanded (#3338). Expansion lives HERE, not at each tool, so a tool
+ * cannot get it wrong by forgetting: all five selector-taking viewer tools
+ * used to pair this call with `expandAssemblyRefs` themselves, which is the
+ * "one call site every channel must remember" shape #3338 describes. See
+ * `viewer-assembly-expansion.ts` for what goes wrong without it.
+ */
 function resolveTargetRefs(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): EntityRef[] {
   const refs: EntityRef[] = [];
   if (Array.isArray(input.global_ids)) refs.push(...refsForGlobalIds(m, input.global_ids as string[]));
@@ -62,7 +70,7 @@ function resolveTargetRefs(m: ReturnType<typeof resolveModel>, input: Record<str
   if (typeof input.type === 'string') {
     for (const e of m.bim.query().byType(input.type).toArray()) refs.push(e.ref);
   }
-  return refs;
+  return expandAssemblyRefs(m, refs);
 }
 
 function parseColor(input: unknown): [number, number, number, number] {
@@ -194,7 +202,7 @@ const viewerColorize: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open. Call viewer_open first.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
+    const refs = resolveTargetRefs(m, input);
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched the selector.' });
     const color = parseColor(input.color);
     if (input.reset_others) m.bim.viewer.resetColors();
@@ -218,7 +226,7 @@ const viewerIsolate: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
+    const refs = resolveTargetRefs(m, input);
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched.' });
     m.bim.viewer.isolate(refs);
     return okResult(`Isolated ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
@@ -240,7 +248,7 @@ const viewerHide: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
+    const refs = resolveTargetRefs(m, input);
     m.bim.viewer.hide(refs);
     return okResult(`Hid ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
   },
@@ -261,7 +269,7 @@ const viewerShow: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
+    const refs = resolveTargetRefs(m, input);
     m.bim.viewer.show(refs);
     return okResult(`Showed ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });
   },
@@ -297,7 +305,7 @@ const viewerFlyTo: Tool = {
     const viewer = requireViewer(ctx);
     if (!viewer.isOpen()) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'Viewer is not open.' });
     const m = resolveModel(ctx, input.model_id as string | undefined);
-    const refs = expandAssemblyRefs(m, resolveTargetRefs(m, input));
+    const refs = resolveTargetRefs(m, input);
     if (refs.length === 0) throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'No entities matched.' });
     m.bim.viewer.flyTo(refs);
     return okResult(`Flying to ${refs.length} entit${refs.length === 1 ? 'y' : 'ies'}.`, { count: refs.length });

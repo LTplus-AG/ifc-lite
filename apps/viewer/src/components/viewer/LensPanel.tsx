@@ -36,7 +36,7 @@ import {
 } from './lens-editor-utils';
 import { importLensFile } from './lens-import';
 import { planLensHiddenSync, ruleIsolationOwnsChannel } from './lens-visibility-ownership';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { Lens, LensRule, LensCriteria, AutoColorSpec, AutoColorLegendEntry, DiscoveredLensData } from '@/store/slices/lensSlice';
 import {
   LENS_PALETTE, ENTITY_ATTRIBUTE_NAMES, AUTO_COLOR_SOURCES,
@@ -1377,7 +1377,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // geometry-less one is replaced by its geometry-bearing parts.
     //
     // Resolved ids are APPENDED to the raw matches, never substituted (#2680),
-    // via `resolveIsolationIds`. The resolver bounds-checks against the
+    // via `resolvePresentationIds`. The resolver bounds-checks against the
     // type-visibility FILTERED mesh list -- TYPE_VISIBILITY_SEMANTIC_DEFAULTS
     // starts `spaces`/`spatialZones`/`openings`/`virtualElements` OFF -- so a
     // rule matching walls AND spaces resolves the walls, returns non-empty,
@@ -1387,7 +1387,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // An empty resolve keeps the raw ids rather than isolating nothing: `[]`
     // is also what a set hidden by a type toggle, or one whose meshes have
     // not streamed in yet, answers, and isolating an empty set hides the
-    // ENTIRE model. See `resolveIsolationIds` for why the three cases cannot
+    // ENTIRE model. See `resolvePresentationIds` for why the three cases cannot
     // be told apart here.
     //
     // #2660's second fallback -- walking IfcRelAggregates when the resolver
@@ -1396,7 +1396,7 @@ export function LensPanel({ onClose }: LensPanelProps) {
     // filter-result rows, not a lens rule's globalIds, and only pays off next
     // to a type-visibility gate the lens panel doesn't have. Adding one is a
     // feature, not this fix.
-    const isolationIds = resolveIsolationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
+    const isolationIds = resolvePresentationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
 
     // `isolateEntities` is a same-set TOGGLE (visibilitySlice.ts, `isolateEntities`): if
     // the channel already holds exactly these ids it CLEARS instead of

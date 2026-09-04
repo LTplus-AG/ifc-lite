@@ -6,6 +6,10 @@ import type { EntityRef, SectionPlane, CameraState, ViewerBackendMethods } from 
 import type { StoreApi } from './types.js';
 import { getModelForRef } from './model-compat.js';
 import { toGlobalIdForRef } from '../../store/globalId.js';
+import {
+  resolvePresentationColorMap,
+  resolvePresentationIds,
+} from '../../lib/presentation/resolvePresentationIds.js';
 
 const AXIS_TO_STORE: Record<string, 'down' | 'front' | 'side'> = {
   x: 'side',
@@ -33,9 +37,19 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       // and survives the effect having already flushed+cleared pendingColorUpdates).
       const existing = state.pendingColorUpdates ?? sdkColorOverrides;
       const colorMap = new Map(existing);
+      // #3338: the renderer looks each id up in its MESH set, so painting a
+      // geometry-less `IfcElementAssembly` id paints nothing at all. Expand to
+      // the parts that carry the meshes, exactly as isolate()/hide() do.
+      const picked: Array<[number, [number, number, number, number]]> = [];
       for (const ref of refs) {
         if (!getModelForRef(state, ref.modelId)) continue;
-        colorMap.set(toGlobalIdForRef(state.models, ref), color);
+        picked.push([toGlobalIdForRef(state.models, ref), color]);
+      }
+      for (const [id, c] of resolvePresentationColorMap(
+        state.cameraCallbacks?.resolveHighlightIds,
+        picked,
+      )) {
+        colorMap.set(id, c);
       }
       sdkColorOverrides = colorMap;
       state.setPendingColorUpdates(colorMap);
@@ -45,17 +59,41 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       const state = store.getState();
       // Batch colorize: build the complete color map in a single call.
       // Avoids accumulation issues when React effects fire between calls.
-      const batchMap = new Map<number, [number, number, number, number]>();
+      // #3338: same expansion as colorize() above, applied to the flattened
+      // batches so an id repeated across batches keeps the last-wins order
+      // this method already had.
+      const picked: Array<[number, [number, number, number, number]]> = [];
       for (const batch of batches) {
         for (const ref of batch.refs) {
           if (!getModelForRef(state, ref.modelId)) continue;
-          batchMap.set(toGlobalIdForRef(state.models, ref), batch.color);
+          picked.push([toGlobalIdForRef(state.models, ref), batch.color]);
         }
       }
+      const batchMap = resolvePresentationColorMap(
+        state.cameraCallbacks?.resolveHighlightIds,
+        picked,
+      );
       sdkColorOverrides = batchMap;
       state.setPendingColorUpdates(batchMap);
       return undefined;
     },
+    /**
+     * Drop SDK colours: everything when called with no argument, otherwise
+     * just the given entities.
+     *
+     * #3338: "the given entities" includes an assembly's `IfcRelAggregates`
+     * PARTS, because `colorize` paints the parts (an assembly owns no mesh of
+     * its own, so painting its bare id paints nothing). A reset that removed
+     * only the parent id could not undo its own colorize.
+     *
+     * The consequence a script author should know about: `resetColors([
+     * assemblyRef])` also clears a colour that was applied to one of those
+     * parts DIRECTLY and independently, by an earlier `colorize([partRef])`.
+     * This adapter tracks a flat id -> colour map with no record of which call
+     * put each entry there, so it cannot tell the two apart. Reset the part
+     * you care about and re-apply it, or reset by part rather than by
+     * assembly, if that matters.
+     */
     resetColors(refs?: EntityRef[]) {
       const state = store.getState();
       if (!refs || refs.length === 0) {
@@ -69,8 +107,13 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       // if nothing remains, this naturally clears everything too).
       const existing = state.pendingColorUpdates ?? sdkColorOverrides;
       const colorMap = new Map(existing);
-      for (const ref of refs) {
-        colorMap.delete(toGlobalIdForRef(state.models, ref));
+      // #3338: colorize() wrote the assembly's PARTS, so a reset that deleted
+      // only the parent id would leave every one of them painted.
+      for (const id of resolvePresentationIds(
+        state.cameraCallbacks?.resolveHighlightIds,
+        refs.map((ref) => toGlobalIdForRef(state.models, ref)),
+      )) {
+        colorMap.delete(id);
       }
       sdkColorOverrides = colorMap;
       state.setPendingColorUpdates(colorMap);

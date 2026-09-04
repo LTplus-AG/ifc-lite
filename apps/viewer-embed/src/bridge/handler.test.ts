@@ -909,6 +909,47 @@ describe('selection and visibility commands', () => {
     expect(argsOf(state, 'isolateEntities')).toEqual([[1005]]);
   });
 
+  /**
+   * #3338, the sibling channels of the ISOLATE above. HIDE/SHOW write
+   * `hiddenEntities` and SET_COLORS writes mesh colours; both are matched
+   * against MESH ids, so a geometry-less `IfcElementAssembly` id sent over
+   * postMessage was a silent no-op in all three -- quieter than the blank
+   * embed ISOLATE produced, and wrong the same way.
+   */
+  it.each([
+    ['HIDE', 'hideEntities'],
+    ['SHOW', 'showEntities'],
+  ])('%s expands a geometry-less assembly id to its parts via resolveHighlightIds', async (command, method) => {
+    state.cameraCallbacks.resolveHighlightIds = (ids: number[]) =>
+      ids.flatMap((id) => (id === 1005 ? [9001, 9002] : [id]));
+    initBridge(makeCtx(state));
+    await send(fw, cmd(command, { ids: [1005] }, 'r1'));
+    expect(argsOf(state, method)).toEqual([[9001, 9002, 1005]]);
+  });
+
+  it('SET_COLORS paints the parts of a geometry-less assembly, not the id that owns no mesh', async () => {
+    state.cameraCallbacks.resolveHighlightIds = (ids: number[]) =>
+      ids.flatMap((id) => (id === 1005 ? [9001, 9002] : [id]));
+    initBridge(makeCtx(state));
+    await send(fw, cmd('SET_COLORS', { colorMap: { '1005': [1, 0, 0, 1] } }, 'r1'));
+    const [updates] = argsOf(state, 'updateMeshColors') as [Map<number, unknown>, unknown];
+    expect([...updates.keys()].sort((a, b) => a - b)).toEqual([1005, 9001, 9002]);
+    expect(updates.get(9001)).toEqual([1, 0, 0, 1]);
+  });
+
+  it('SET_COLORS lets a host-named part outrank the colour it inherits from its assembly', async () => {
+    state.cameraCallbacks.resolveHighlightIds = (ids: number[]) =>
+      ids.flatMap((id) => (id === 1005 ? [9001, 9002] : [id]));
+    initBridge(makeCtx(state));
+    await send(
+      fw,
+      cmd('SET_COLORS', { colorMap: { '1005': [1, 0, 0, 1], '9002': [0, 0, 1, 1] } }, 'r1'),
+    );
+    const [updates] = argsOf(state, 'updateMeshColors') as [Map<number, unknown>, unknown];
+    expect(updates.get(9001)).toEqual([1, 0, 0, 1]);
+    expect(updates.get(9002)).toEqual([0, 0, 1, 1]);
+  });
+
   it('SHOW_ALL restores visibility across every model', async () => {
     initBridge(makeCtx(state));
     await send(fw, cmd('SHOW_ALL', undefined, 'r1'));

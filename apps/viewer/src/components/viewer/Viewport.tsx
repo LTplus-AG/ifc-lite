@@ -47,7 +47,7 @@ import {
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
 import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
-import { hasNoRenderableTarget } from '@/lib/isolation/resolveIsolationIds';
+import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
 import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';

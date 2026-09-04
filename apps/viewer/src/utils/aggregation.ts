@@ -127,7 +127,7 @@ export interface AggregationModelAccess {
  * entity that unambiguously DOES have renderable content once its parts
  * arrive. Falling back to the full descendant set is free when they never
  * render (an id with no mesh simply never matches a renderer's whitelist,
- * same reasoning as `resolveIsolationIds`'s raw-id union) and self-heals the
+ * same reasoning as `resolvePresentationIds`'s raw-id union) and self-heals the
  * moment streaming completes or the filter is toggled off.
  *
  * An id with neither geometry nor ANY aggregated descendant at all is still

@@ -22,7 +22,7 @@ import {
   type ViewPreset,
   type SectionAxis,
 } from '@ifc-lite/embed-protocol';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
+import { resolvePresentationColorMap, resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds.js';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
 import { applyInitConfig } from './initConfig.js';
@@ -343,21 +343,21 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'ISOLATE': {
       const payload = data as InboundPayloads['ISOLATE']; // #3338: expand assemblies, matching LensPanel/PropertiesPanel/SearchModal/SDK.
-      state.isolateEntities(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
+      state.isolateEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }
 
     case 'HIDE': {
-      const payload = data as InboundPayloads['HIDE'];
-      state.hideEntities(payload.ids);
+      const payload = data as InboundPayloads['HIDE']; // #3338: hiddenEntities is matched against MESH ids, so an unexpanded assembly id hides nothing.
+      state.hideEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }
 
     case 'SHOW': {
-      const payload = data as InboundPayloads['SHOW'];
-      state.showEntities(payload.ids);
+      const payload = data as InboundPayloads['SHOW']; // #3338: expands for HIDE's reason plus its own -- HIDE put the PARTS in the set.
+      state.showEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }
@@ -370,10 +370,10 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'SET_COLORS': {
       const payload = data as InboundPayloads['SET_COLORS'];
-      const updates = new Map<number, [number, number, number, number]>();
-      for (const [key, color] of Object.entries(payload.colorMap)) {
-        updates.set(Number(key), color);
-      }
+      // #3338: same expansion as HIDE/ISOLATE, in the shape the colour channel needs -- a
+      // geometry-less assembly id keyed here paints nothing until it becomes its meshed parts.
+      const entries = Object.entries(payload.colorMap).map(([k, c]) => [Number(k), c] as const);
+      const updates = resolvePresentationColorMap(state.cameraCallbacks.resolveHighlightIds, entries);
       // `override` so the displaced colors are captured and RESET_COLORS can
       // put them back.
       state.updateMeshColors(updates, { override: true });

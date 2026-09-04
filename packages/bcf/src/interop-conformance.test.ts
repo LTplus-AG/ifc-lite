@@ -75,6 +75,8 @@ import {
   createBCFTopic,
   updateTopicStatus,
 } from './index.js';
+import { createBCFFromIDSReport } from './ids-reporter.js';
+import type { EntityBoundsInput, IDSReportInput } from './ids-reporter.js';
 import type { BCFProject } from './types.js';
 
 const DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -390,5 +392,115 @@ describe('a plainly-exported archive validates entry by entry', () => {
       }
       expect(failures).toEqual([]);
     });
+  }
+});
+
+/**
+ * The other archive shape this package produces: `createBCFFromIDSReport`.
+ *
+ * `plainExport` above builds its viewpoints through `createViewpoint`, so it
+ * only ever exercises cameras the VIEWER captured. The IDS reporter builds
+ * viewpoints itself, from entity bounds, and that second path had its own
+ * 3.0 hole (#3849): the camera it computed carried no `AspectRatio`, which
+ * `visinfo.xsd` requires, so a 3.0 archive from an IDS report could not be
+ * written at all. Validating it here — against the same vendored schemas, in
+ * the same sweep — is what keeps the two paths honest about the same rules.
+ */
+describe('an IDS-derived archive validates entry by entry', () => {
+  const IDS_REPORT: IDSReportInput = {
+    title: 'Fire rating',
+    description: STRESS_TEXT,
+    specificationResults: [
+      {
+        specification: { name: 'Walls carry a fire rating', description: STRESS_TEXT },
+        status: 'fail',
+        applicableCount: 2,
+        passedCount: 0,
+        failedCount: 2,
+        entityResults: [
+          {
+            expressId: 100,
+            modelId: 'model-1',
+            entityType: 'IfcWall',
+            entityName: STRESS_TEXT,
+            globalId: '2O2Fr$t4X7Zf8NOew3FL01',
+            passed: false,
+            requirementResults: [
+              {
+                status: 'fail',
+                facetType: 'property',
+                checkedDescription: 'Pset_WallCommon.FireRating must exist',
+                failureReason: STRESS_TEXT,
+                expectedValue: 'REI 60',
+              },
+            ],
+          },
+          {
+            expressId: 200,
+            modelId: 'model-1',
+            entityType: 'IfcWall',
+            entityName: 'Curtain Wall',
+            globalId: '3P3Gs$u5Y8Ag9OPfx4GM02',
+            passed: false,
+            requirementResults: [
+              {
+                status: 'fail',
+                facetType: 'attribute',
+                checkedDescription: 'Description must be provided',
+                failureReason: 'Attribute Description is missing',
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  const IDS_BOUNDS = new Map<string, EntityBoundsInput>([
+    ['model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 4, y: 3, z: 0.2 } }],
+    ['model-1:200', { min: { x: 9, y: 0, z: 0 }, max: { x: 13, y: 3, z: 0.2 } }],
+  ]);
+
+  for (const version of ['2.1', '3.0'] as const) {
+    for (const topicGrouping of ['per-entity', 'per-specification', 'per-requirement'] as const) {
+      it(`BCF ${version} / ${topicGrouping}`, async () => {
+        const project = createBCFFromIDSReport(IDS_REPORT, {
+          version,
+          topicGrouping,
+          entityBounds: IDS_BOUNDS,
+        });
+        const entries = await entriesOf(project);
+
+        // Guard against a vacuous pass with the EXACT counts each grouping
+        // owes for this report -- one specification, two failing entities, one
+        // failing requirement each -- the way the plainExport arm above does.
+        // "At least one" is satisfied by an export that dropped a topic or its
+        // viewpoint, which is precisely how the camera rules under test would
+        // stop being reached.
+        const expectedTopics = topicGrouping === 'per-specification' ? 1 : 2;
+        const kinds = [...entries.keys()].map((n) => n.replace(/^[^/]+\//, ''));
+        expect(kinds).toContain('bcf.version');
+        expect(kinds).toContain('project.bcfp');
+        expect(kinds.filter((n) => n === 'markup.bcf')).toHaveLength(expectedTopics);
+        expect(kinds.filter((n) => n.endsWith('.bcfv'))).toHaveLength(expectedTopics);
+
+        const failures: string[] = [];
+        for (const [name, xml] of entries) {
+          const xsd = SCHEMA_FOR_ENTRY.find(([re]) => re.test(name))![1];
+          const result = await validateXML({
+            xml: [{ fileName: 'subject.xml', contents: xml }],
+            schema: [schema(version, xsd)],
+            preload:
+              version === '3.0'
+                ? [{ fileName: 'shared-types.xsd', contents: schema('3.0', 'shared-types.xsd') }]
+                : [],
+          });
+          if (!result.valid) {
+            failures.push(`${name} [${xsd}]: ${result.errors.map((e) => e.message).join(' | ')}`);
+          }
+        }
+        expect(failures).toEqual([]);
+      });
+    }
   }
 });

@@ -185,7 +185,7 @@
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts
-   792 packages/bcf/src/ids-reporter.ts
+   788 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
   1058 packages/bcf/src/reader.ts
    595 packages/bcf/src/viewpoint.ts

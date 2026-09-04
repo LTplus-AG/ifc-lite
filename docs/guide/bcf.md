@@ -146,6 +146,10 @@ const blob = await writeBCF(project);
 
 The viewer's IDS panel uses this to export validation failures as BCF, with optional camera viewpoints and snapshots. See [IDS Validation](ids.md).
 
+Exporting `version: '3.0'` also needs `entityBounds`. BCF 3.0 requires exactly one camera per viewpoint, and `createBCFFromIDSReport` computes that camera only from the bounds you pass, keyed `"modelId:expressId"`. Bounds that are absent, or that cover only some of the entities a viewpoint frames, make the call throw and name the topic it could not frame, rather than write a partial view that leaves the rest off screen. With no bounds to hand, export `version: '2.1'`, or set an explicit camera on every viewpoint before writing 3.0.
+
+A computed camera gets an `AspectRatio` of 16/9, the convention for a viewpoint that never had a viewport behind it. Pass `aspectRatio` to use your own viewport's width / height instead; it must be a finite number greater than 0, since `visinfo.xsd` types `AspectRatio` as `PositiveDouble`, and the option is rejected where you set it rather than later inside `writeBCF`.
+
 ## Clash Results as BCF
 
 The clash package (`@ifc-lite/clash/bcf`) exports clash detection results as a BCF 2.1 project, one topic per clash group:

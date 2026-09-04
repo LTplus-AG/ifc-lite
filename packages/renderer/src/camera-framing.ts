@@ -10,8 +10,8 @@
  * The ViewCube's *preset* directions are the neighbouring subject and live in
  * `camera-preset-view.ts`: there the direction is dictated by a named face and
  * a rotation cycle rather than inherited from the pose, and the box has to pass
- * its own admission check first. They share only the box arithmetic below,
- * which is why `centerOf` / `maxExtentOf` are exported.
+ * its own admission check first. They share the box arithmetic below and the
+ * corner fit, which is why `centerOf` and `fitDistanceFor` are exported.
  *
  * Pure by construction — every function here reads `CameraInternalState` and
  * returns a target, and none of them writes to it or touches the tween. That
@@ -36,6 +36,8 @@
 import type { Vec3 } from './types.js';
 import type { CameraInternalState } from './camera-state.js';
 import { areFiniteNumbers, isUsableBounds, isUsableDistance } from './camera-guards.js';
+import { MathUtils, viewBasis } from './math.js';
+import { CAMERA_CONSTANTS } from './constants.js';
 
 /** A pose to animate to. `orthoSize` is undefined when the fit should not touch zoom. */
 export interface FramingTarget {
@@ -64,47 +66,205 @@ export function centerOf(min: Vec3, max: Vec3): Vec3 {
   };
 }
 
-/** Largest edge length of a box. */
-export function maxExtentOf(min: Vec3, max: Vec3): number {
+/** Largest edge length of a box. Local: only the two fits below measure it. */
+function maxExtentOf(min: Vec3, max: Vec3): number {
   return Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
 }
 
 /**
- * Orthographic half-height that shows a box of `maxSize` with `padding` slack,
- * or `undefined` in perspective mode where `orthoSize` is not in play.
+ * The viewport's width-to-height ratio, or 1 when it carries no usable one.
+ *
+ * `setAspect` is the only writer and already rejects a non-positive or
+ * non-finite ratio, so the substitute is only for a hand-built state — but
+ * both fits below key on it, and an `Infinity` would silently drop the
+ * horizontal constraint from one while the other substituted.
  */
-function orthoSizeFor(state: CameraInternalState, maxSize: number, padding: number): number | undefined {
-  if (state.projectionMode !== 'orthographic') return undefined;
-  const aspect = state.camera.aspect || 1;
-  return Math.max(0.01, maxSize / 2, maxSize / 2 / aspect) * padding;
+function usableAspect(state: CameraInternalState): number {
+  const aspect = state.camera.aspect;
+  return Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+}
+
+/** Smallest half-height in model units that shows every corner of the box. */
+function orthoHalfHeightFor(bounds: FramingBounds, axes: ViewAxes, aspect: number): number {
+  let half = 0;
+  for (const corner of cornerOffsets(bounds)) {
+    const h = Math.abs(MathUtils.dot(corner, axes.right));
+    const v = Math.abs(MathUtils.dot(corner, axes.up));
+    half = Math.max(half, v, h / aspect);
+  }
+  return half;
 }
 
 /**
- * Distance at which a box of `maxSize` fits the perspective frustum, with
- * `padding` slack. Shared with `camera-preset-view.ts`, which fits the same
- * way from a dictated direction.
+ * Orthographic half-height that shows the box with `padding` slack, or
+ * `undefined` in perspective mode where `orthoSize` is not in play.
  *
- * Fits **both** screen axes. The vertical half-angle is `fov / 2`; the
- * horizontal one is `atan(tan(fov / 2) * aspect)`, so on a portrait viewport
- * (`aspect < 1`) the horizontal field is the *narrower* of the two and a
- * distance derived from the vertical field alone leaves the box overflowing
- * left and right — the fit silently clips the very thing it was asked to
- * frame. Landscape is unaffected: for `aspect >= 1` the vertical field is
- * already the binding one and this returns the vertical distance exactly,
- * bit for bit.
- *
- * `orthoSizeFor` above has divided by `aspect` for the same reason since it
- * was written; this is the perspective half of the same rule, which had been
- * missing (the three fit-distance formulas in this package all predate it).
+ * Corner-based for the same reason {@link fitDistanceFor} is (#3892), and it
+ * is the half that decides what an orthographic viewer actually sees: there
+ * the standoff sets no scale at all, so a largest-side `orthoSize` cropped the
+ * selection on its own. The depth term does not appear — an orthographic
+ * projection does not foreshorten — but the obliqueness one does, and in full:
+ * down a south-east isometric direction a 20-unit cube reaches 15.9 units
+ * above the centre line, against the 10 the largest-side rule allowed.
  */
-export function fitDistanceFor(state: CameraInternalState, maxSize: number, padding: number): number {
-  const fovFactor = Math.tan(state.camera.fov / 2);
-  const vertical = (maxSize / 2) / fovFactor * padding;
-  const aspect = state.camera.aspect;
-  // `setAspect` is the only writer and already rejects a non-positive or
-  // non-finite ratio, so this only ever narrows the *portrait* case.
-  if (!Number.isFinite(aspect) || aspect <= 0 || aspect >= 1) return vertical;
-  return vertical / aspect;
+function orthoSizeFor(
+  state: CameraInternalState,
+  bounds: FramingBounds,
+  axes: ViewAxes,
+  padding: number,
+): number | undefined {
+  if (state.projectionMode !== 'orthographic') return undefined;
+  return Math.max(0.01, orthoHalfHeightFor(bounds, axes, usableAspect(state))) * padding;
+}
+
+/**
+ * The screen axes a fit projects into: unit length and mutually perpendicular.
+ *
+ * A structural subset of what {@link viewBasis} returns, and the direction
+ * convention is its one: `forward` points from the eye TOWARDS the target,
+ * which is the negation of `lookAt`'s third row. Handing in the backward axis
+ * type-checks and would frame the box from the wrong side.
+ */
+export interface ViewAxes {
+  right: Vec3;
+  up: Vec3;
+  forward: Vec3;
+}
+
+/**
+ * The eight corners of a box, as offsets from its own centre.
+ *
+ * Both fits below need exactly this, and the offset form is what makes the
+ * corner arithmetic independent of where the box sits in the world. (The
+ * package has other corner walks — `shadow-light-matrix.ts`,
+ * `render-section-plane.ts` — but they take tuples and return world points.)
+ */
+function cornerOffsets(bounds: FramingBounds): Vec3[] {
+  const center = centerOf(bounds.min, bounds.max);
+  const offsets: Vec3[] = [];
+  for (const x of [bounds.min.x, bounds.max.x]) {
+    for (const y of [bounds.min.y, bounds.max.y]) {
+      for (const z of [bounds.min.z, bounds.max.z]) {
+        offsets.push({ x: x - center.x, y: y - center.y, z: z - center.z });
+      }
+    }
+  }
+  return offsets;
+}
+
+/**
+ * Smallest standoff along `-axes.forward` that puts every corner of the box
+ * inside both half-angles, times `padding`. Shared with
+ * `camera-preset-view.ts`, which fits the same way from a dictated direction.
+ *
+ * The distance used to come from the box's largest SIDE, which answers a
+ * different question than the projection asks (#3892). Two ways that came
+ * apart:
+ *
+ *  - **Depth.** The near half of the box is closer than its centre, so it
+ *    projects bigger than a rule measured at the centre allows for. Head-on
+ *    and axis-aligned, a cube of side `s` needs `s/2 / tan + s/2`, not
+ *    `s/2 / tan`; at a 60 degree field the old rule cropped it even under the
+ *    1.5 padding.
+ *  - **Obliqueness.** `frameBoundsTarget` fits along the live view direction,
+ *    which is essentially never axis-aligned, and down a diagonal a box
+ *    projects wider than any single side of it.
+ *
+ * Only the corners answer the question, so all eight are walked. A corner's
+ * sideways offsets do not depend on the standoff and its depth is
+ * `dot(corner, forward) + distance`, so it is inside when
+ * `|h| <= tanH * depth` and `|v| <= tanV * depth`; solving each for `distance`
+ * and taking the largest satisfies all sixteen constraints at once, because
+ * growing the distance only ever relaxes them.
+ *
+ * Both half-angles bind. The vertical one is `fov / 2` and the horizontal one
+ * is `atan(tan(fov / 2) * aspect)`, so on a portrait viewport (`aspect < 1`)
+ * the horizontal field is the *narrower* of the two and fitting the vertical
+ * field alone would leave the box overflowing left and right. `orthoSizeFor`
+ * above has divided by `aspect` for the same reason since it was written, and
+ * now walks the same corners.
+ *
+ * Two fit-distance formulas in this package are deliberately NOT this one:
+ * `CameraProjection.fitToBounds` and the compact branch of
+ * `camera-fit-policy.ts`, which reproduce the legacy opening pose of every
+ * model 1:1 and have tests pinning exactly that. They are a different subject
+ * — the initial auto-fit, not "frame what I selected" — and moving them would
+ * change the first thing every user sees.
+ *
+ * The twin of `fitCornersInFrustum` in `packages/bcf/src/ids-camera.ts`
+ * (#3882), which fits the same closed form to the BCF camera's one dictated
+ * isometric direction. A copy rather than a shared helper because sharing runs
+ * the dependency the wrong way — `bcf` does not depend on `renderer`, and this
+ * signature is stated in terms of `CameraInternalState`. Keep the arithmetic
+ * legible enough that the two read alike.
+ */
+export function fitDistanceFor(
+  state: CameraInternalState,
+  bounds: FramingBounds,
+  axes: ViewAxes,
+  padding: number,
+): number {
+  const tanV = Math.tan(state.camera.fov / 2);
+  const tanH = usableAspect(state) * tanV;
+
+  let distance = 0;
+  for (const corner of cornerOffsets(bounds)) {
+    const depth = MathUtils.dot(corner, axes.forward);
+    const h = Math.abs(MathUtils.dot(corner, axes.right)) / tanH;
+    const v = Math.abs(MathUtils.dot(corner, axes.up)) / tanV;
+    distance = Math.max(distance, h - depth, v - depth);
+  }
+  return distance * padding;
+}
+
+/**
+ * The pose both fits return: the box centred, seen from the direction the
+ * camera is already looking in, at the standoff that keeps every corner of it
+ * on screen.
+ *
+ * `frameBounds` and `zoomExtent` differ only in their padding and in what they
+ * do with a degenerate box, so the pose itself is built once here. Callers
+ * have already run `isUsableBounds` and their own degenerate branch.
+ *
+ * The direction comes from the pose rather than from `state.viewMatrix`.
+ * `frameBoundsTarget` used to read its forward axis as `-(m[8], m[9], m[10])`,
+ * which is the world Z axis expressed in CAMERA coordinates, not the camera's
+ * world-space backward axis (that is `(m[2], m[6], m[10])`). It is unit
+ * length, so neither a finiteness nor a magnitude floor could notice, and it
+ * agreed with the pose only for a symmetric rotation — Frame Selection jumped
+ * to a mirrored direction on an ordinary orbited pose (#3892).
+ *
+ * `viewBasis` is the one function that builds this frame, shared with
+ * `MathUtils.lookAt` and `unprojectToRay` (#2467). It scrubs non-finite
+ * coordinates and substitutes a deterministic basis for a degenerate pose or
+ * `up`, so it always returns finite unit axes: the two direction ladders that
+ * used to stand in these functions (view matrix, then pose, then a hard-coded
+ * isometric) were reimplementing that fallback with less care, and one of them
+ * against the wrong vector. The fit needs the `up` axis as well, and only the
+ * basis has it.
+ */
+function fitPoseFor(
+  state: CameraInternalState,
+  bounds: FramingBounds,
+  center: Vec3,
+  padding: number,
+): ZoomExtentTarget {
+  const basis = viewBasis(state.camera.position, state.camera.target, state.camera.up);
+  const distance = fitDistanceFor(state, bounds, basis, padding);
+
+  return {
+    // The camera sits opposite the direction it looks in.
+    position: {
+      x: center.x - basis.forward.x * distance,
+      y: center.y - basis.forward.y * distance,
+      z: center.z - basis.forward.z * distance,
+    },
+    target: center,
+    // orthoSize so the zoom level resets properly in orthographic mode.
+    orthoSize: orthoSizeFor(state, bounds, basis, padding),
+    // `zoomExtent`'s caller hands this to `CameraProjection.updateNearFarPlanes`.
+    fitDistance: distance,
+  };
 }
 
 /**
@@ -159,68 +319,12 @@ export function frameBoundsTarget(state: CameraInternalState, min: Vec3, max: Ve
     return framePointTarget(state, center);
   }
 
-  // Calculate required distance based on FOV to fit bounds
-  const distance = fitDistanceFor(state, maxSize, 1.2); // 1.2x padding for nice framing
-
-  // Get current viewing direction from view matrix (more reliable than position-target)
-  // View matrix forward is -Z axis in view space
-  const viewMatrix = state.viewMatrix.m;
-  // Extract forward direction from view matrix (negative Z column, normalized)
-  let dir = {
-    x: -viewMatrix[8],   // -m[2][0] (forward X)
-    y: -viewMatrix[9],   // -m[2][1] (forward Y)
-    z: -viewMatrix[10],  // -m[2][2] (forward Z)
-  };
-  const dirLen = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-
-  // Normalize direction
-  if (dirLen > 1e-6) {
-    dir.x /= dirLen;
-    dir.y /= dirLen;
-    dir.z /= dirLen;
-  } else {
-    // Fallback: use position-target if view matrix is invalid
-    dir = {
-      x: state.camera.position.x - state.camera.target.x,
-      y: state.camera.position.y - state.camera.target.y,
-      z: state.camera.position.z - state.camera.target.z,
-    };
-    const fallbackLen = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    // Finiteness, not just magnitude — see `zoomExtentTarget`. `dirLen` above
-    // is safe (`MathUtils.lookAt` guarantees a finite view matrix), but this
-    // fallback reads the raw pose, where an overflowed coordinate is reachable.
-    if (isUsableDistance(fallbackLen, 1e-6)) {
-      dir.x /= fallbackLen;
-      dir.y /= fallbackLen;
-      dir.z /= fallbackLen;
-    } else {
-      // Last resort: southeast isometric
-      dir.x = 0.6;
-      dir.y = 0.5;
-      dir.z = 0.6;
-      const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-      dir.x /= len;
-      dir.y /= len;
-      dir.z /= len;
-    }
-  }
-
-  return {
-    // New position: center + direction * distance
-    position: {
-      x: center.x + dir.x * distance,
-      y: center.y + dir.y * distance,
-      z: center.z + dir.z * distance,
-    },
-    target: center,
-    // Calculate orthoSize for orthographic mode so zoom level resets properly
-    orthoSize: orthoSizeFor(state, maxSize, 1.2),
-  };
+  return fitPoseFor(state, { min, max }, center, CAMERA_CONSTANTS.FRAME_PADDING_MULTIPLIER);
 }
 
 /**
- * Zoom to extents: same fit, wider padding, and the current view direction is
- * taken from the pose rather than the view matrix.
+ * Zoom to extents: same fit and the same view direction as `frameBounds`, with
+ * wider padding and the fit distance reported back to the caller.
  */
 export function zoomExtentTarget(state: CameraInternalState, min: Vec3, max: Vec3): ZoomExtentTarget | null {
   // Same input class and same reasoning as `frameBoundsTarget` (#2461).
@@ -229,13 +333,13 @@ export function zoomExtentTarget(state: CameraInternalState, min: Vec3, max: Vec
   const center = centerOf(min, max);
   const maxSize = maxExtentOf(min, max);
 
-  // Keep current viewing direction
-  const dir = {
-    x: state.camera.position.x - state.camera.target.x,
-    y: state.camera.position.y - state.camera.target.y,
-    z: state.camera.position.z - state.camera.target.z,
-  };
-  const currentDistance = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+  // The standoff the camera already has, which the degenerate-box branch
+  // below keeps rather than fitting.
+  const currentDistance = Math.sqrt(
+    (state.camera.position.x - state.camera.target.x) ** 2 +
+    (state.camera.position.y - state.camera.target.y) ** 2 +
+    (state.camera.position.z - state.camera.target.z) ** 2,
+  );
 
   // The degenerate box `frameBoundsTarget` has always special-cased and this
   // one did not. `isUsableBounds` deliberately admits `max === min` (a flat
@@ -248,46 +352,16 @@ export function zoomExtentTarget(state: CameraInternalState, min: Vec3, max: Vec
   //
   // Only when the current offset is usable. When it is not, the pose already
   // has position === target (or is non-finite), so there is no offset to keep
-  // and nothing is gained by keeping it; fall through to the isometric
-  // fallback below, which is what this path did before.
+  // and nothing is gained by keeping it. Such a call falls through to the fit,
+  // which for a point-sized box returns a zero standoff and so writes
+  // `position === target` again — unchanged from before #3892, and the one
+  // input for which this function still hands back a pose with no direction in
+  // it. `MathUtils.lookAt` substitutes a basis for it downstream.
   if (maxSize < 1e-6 && isUsableDistance(currentDistance, 1e-10)) {
     const framed = framePointTarget(state, center);
     if (framed) return { ...framed, fitDistance: currentDistance };
   }
 
-  // Calculate required distance based on FOV
-  const distance = fitDistanceFor(state, maxSize, 1.5); // 1.5x for padding
-
-  // Normalize direction. Finiteness, not just magnitude: `len > 1e-10` is
-  // *true* for Infinity, and `Infinity / Infinity` is NaN, so a pose whose
-  // position has overflowed walks past a bare floor and writes a NaN position
-  // from a perfectly usable box (#2441).
-  if (isUsableDistance(currentDistance, 1e-10)) {
-    dir.x /= currentDistance;
-    dir.y /= currentDistance;
-    dir.z /= currentDistance;
-  } else {
-    // Fallback direction
-    dir.x = 0.6;
-    dir.y = 0.5;
-    dir.z = 0.6;
-    const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
-    dir.x /= len;
-    dir.y /= len;
-    dir.z /= len;
-  }
-
-  return {
-    // New position: center + direction * distance
-    position: {
-      x: center.x + dir.x * distance,
-      y: center.y + dir.y * distance,
-      z: center.z + dir.z * distance,
-    },
-    target: center,
-    // Calculate orthoSize for orthographic mode so zoom level resets properly
-    orthoSize: orthoSizeFor(state, maxSize, 1.5),
-    // The caller hands this to `CameraProjection.updateNearFarPlanes`.
-    fitDistance: distance,
-  };
+  return fitPoseFor(state, { min, max }, center, CAMERA_CONSTANTS.ZOOM_EXTENT_PADDING);
 }
+

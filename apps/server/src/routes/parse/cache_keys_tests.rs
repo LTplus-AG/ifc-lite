@@ -242,6 +242,8 @@ fn derived_keys_never_collide_with_each_other() {
         data_model_cache_key(seed),
         parquet_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
         parquet_metadata_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
+        parquet_optimized_cache_key(seed),
+        parquet_optimized_metadata_cache_key(seed),
     ];
     let unique: std::collections::HashSet<&String> = derived.iter().collect();
     assert_eq!(unique.len(), derived.len(), "derived keys collide: {derived:?}");
@@ -280,4 +282,40 @@ DATA;
 ENDSEC;";
 
     assert_eq!(detect_schema_version(content), "IFC2X3");
+}
+
+/// The optimized-Parquet route got a key of its own with #3889. Its whole
+/// point is that it is a DIFFERENT namespace from the flat route's: the two
+/// emit different payloads, so a hit on one must never satisfy the other.
+/// Deriving the optimized key from the flat one (or reusing `-parquet-v5`)
+/// would put a quantized, deduplicated payload where a client expecting flat
+/// meshes reads it.
+#[test]
+fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
+    let hash = "0ab20f4e4014";
+    let seed = format!("{hash}-default");
+
+    assert_eq!(
+        parquet_optimized_cache_key(&seed),
+        format!("{seed}-parquet-optimized-v1")
+    );
+    assert_eq!(
+        parquet_optimized_metadata_cache_key(&seed),
+        format!("{seed}-parquet-optimized-metadata-v1")
+    );
+
+    // Neither optimized key may equal, or be a prefix-shadow of, the flat pair.
+    let flat = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::Medium);
+    let flat_metadata =
+        parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::Medium);
+    for optimized in [
+        parquet_optimized_cache_key(&seed),
+        parquet_optimized_metadata_cache_key(&seed),
+    ] {
+        assert_ne!(optimized, flat);
+        assert_ne!(optimized, flat_metadata);
+        assert_ne!(optimized, symbolic_cache_key(&seed));
+        assert_ne!(optimized, data_model_cache_key(&seed));
+        assert_ne!(optimized, json_response_cache_key(&seed));
+    }
 }

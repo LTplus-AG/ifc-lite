@@ -100,6 +100,61 @@ describe('reportDeviceLost', () => {
     );
   });
 
+  it('groups every device loss under one fingerprint, whatever the driver said (#3767)', () => {
+    // Without a capture-site fingerprint PostHog groups by type + message +
+    // STACK, and both halves of that vary: the driver text is Dawn's (a D3D12
+    // hang, a Vulkan VRAM exhaustion, a Metal timeout all word themselves
+    // differently) and the stack names the hashed bundle, so it changes on
+    // every deploy. #3767 and #3774 are the demonstration - the SAME
+    // DXGI_ERROR_DEVICE_HUNG message, six hours apart, filed as two separate
+    // GitHub issues. `stampFingerprint` in analytics-scrub cannot help: it only
+    // fingerprints kinds `classifyLoadError` recognises, and a GPU loss is not
+    // one, so the fingerprint has to be chosen here.
+    const d3d12 = 'ID3D12Device::GetDeviceRemovedReason failed with DXGI_ERROR_DEVICE_HUNG (0x887A0006)';
+    const vulkan = 'vkAllocateMemory failed with VK_ERROR_OUT_OF_DEVICE_MEMORY';
+
+    reportDeviceLost({ message: d3d12, reason: 'unknown' });
+    const first = scrubEvent({ event: '$exception', properties: { ...(captures[0].props ?? {}) } });
+    resetDeviceLossReportForTests();
+    reportDeviceLost({ message: vulkan, reason: 'unknown' });
+    const second = scrubEvent({ event: '$exception', properties: { ...(captures[1].props ?? {}) } });
+
+    assert.equal(first?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:unknown');
+    assert.equal(second?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:unknown');
+    // The driver text is not lost to the grouping - it stays queryable inside
+    // the one issue, which is the whole trade.
+    assert.equal(first?.properties?.device_lost_detail, d3d12);
+    assert.equal(second?.properties?.device_lost_detail, vulkan);
+  });
+
+  it('separates loss reasons, and caps how many groups an engine can mint', () => {
+    // The reason discriminates: a driver-side loss and Safari's synchronous
+    // frame throw are different bugs with different fixes.
+    reportDeviceLost({ message: SAFARI_LOST, reason: 'render-exception' });
+    const safari = scrubEvent({ event: '$exception', properties: { ...(captures[0].props ?? {}) } });
+    assert.equal(safari?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:render-exception');
+
+    // But `info.reason` is half browser-supplied, and an unbounded fingerprint
+    // is the bug this whole change exists to fix. Anything off the allowlist -
+    // a future spec value, a non-conforming engine, a vendor putting driver
+    // text where a reason belongs - folds into one bucket instead of minting a
+    // group per wording.
+    resetDeviceLossReportForTests();
+    reportDeviceLost({ message: SAFARI_LOST, reason: 'GPUDevice was removed: 0x887A0006 (vendor text)' });
+    const rogue = scrubEvent({ event: '$exception', properties: { ...(captures[1].props ?? {}) } });
+    assert.equal(rogue?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:other');
+    assert.doesNotMatch(
+      String(rogue?.properties?.$exception_fingerprint),
+      /887A0006|vendor text/,
+      'no engine-supplied text may ever reach a fingerprint',
+    );
+    // The raw reason still travels, so the fold costs nothing to triage.
+    assert.equal(
+      rogue?.properties?.device_lost_reason,
+      'GPUDevice was removed: 0x887A0006 (vendor text)',
+    );
+  });
+
   it('carries the GPU detail THROUGH the real privacy scrubber, not just to the capture call', () => {
     // The trap this pins: every captured event passes `scrubEvent`
     // (`before_send`), which DELETES any property whose key contains `message`
@@ -244,6 +299,12 @@ describe('reportPersistentRenderDegradation (#2417)', () => {
     assert.doesNotThrow(() => reportPersistentRenderDegradation(DEGRADED));
   });
 
+  it('groups persistent degradation under its OWN fingerprint, separate from a loss', () => {
+    reportPersistentRenderDegradation(DEGRADED);
+    const sent = scrubEvent({ event: '$exception', properties: { ...(captures[0].props ?? {}) } });
+    assert.equal(sent?.properties?.$exception_fingerprint, 'ifc-lite:render_degraded');
+  });
+
   it('carries the GPU detail THROUGH the real privacy scrubber', () => {
     // Same trap as `device_lost_detail`: `scrubEvent` DELETES any property key
     // containing `message` as a `_`-delimited word, and a test that stubs
@@ -336,7 +397,7 @@ describe('subscribeViewportHealth wires every way the view can stop', () => {
     const props = captures[0].props ?? {};
     assert.deepEqual(
       Object.keys(props).sort(),
-      ['context', 'device_lost_detail', 'device_lost_reason'],
+      ['$exception_fingerprint', 'context', 'device_lost_detail', 'device_lost_reason'],
       'base fields intact, and a throwing builder contributes no context fields',
     );
     assert.equal(props.context, 'device_lost');

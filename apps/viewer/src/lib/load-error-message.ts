@@ -25,9 +25,14 @@ import {
  * never hide useful detail.
  *
  * @param fileName Optional file name to attribute the failure to.
+ * @param context  The capture site's `context`, where the caller has one. Only
+ *   one WebKit wording depends on it (see `isFileNotFoundMessage` in
+ *   ./file-not-found-errors.ts); omitting it costs that string its guidance and nothing
+ *   else. A caller that is NOT a model load should omit it rather than invent
+ *   one, because that is precisely the case the gate exists to exclude.
  */
-export function formatLoadError(err: unknown, fileName?: string): string {
-  const kind = classifyLoadError(err);
+export function formatLoadError(err: unknown, fileName?: string, context?: unknown): string {
+  const kind = classifyLoadError(err, context);
   const subject = fileName ? `"${fileName}"` : 'the model';
   switch (kind) {
     case 'wasm_engine_load':

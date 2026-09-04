@@ -27,6 +27,45 @@ import {
  * than as raw stack frames nobody can attribute.
  */
 
+/**
+ * The reasons a device loss can carry, and the ONLY strings allowed into a
+ * fingerprint.
+ *
+ * Two sources feed `info.reason`, and only one of them is ours. The WebGPU spec
+ * bounds `GPUDeviceLostInfo.reason` to `'unknown'` and `'destroyed'` (and
+ * `device.ts` never forwards a `'destroyed'` teardown), while `Renderer`
+ * synthesises `'render-exception'` / `'render-encode-exception'` for the
+ * synchronous-throw path Safari takes instead of resolving `device.lost`.
+ *
+ * The point of the allowlist is that a fingerprint must have a CEILING. The
+ * browser-supplied half is a string we do not control: a future spec value, a
+ * non-conforming engine, or a vendor that puts driver text where a reason
+ * belongs would each mint a new issue group per wording, which is exactly the
+ * unbounded grouping that made #3767 and #3774 two issues for one failure.
+ * Anything not on this list folds into `other`, so the ceiling is five groups
+ * whatever an engine hands us, and no vendor or driver text can ever reach a
+ * fingerprint. The raw reason is not lost: it stays on the event as
+ * `device_lost_reason`, queryable inside whichever group it landed in.
+ *
+ * A single `ifc-lite:device_lost` would have been simpler and is what one
+ * reading of the review asks for, but it merges failures with different fixes:
+ * a driver-side loss on Windows and a Safari frame throwing a DOMException are
+ * not the same bug, and that is the same argument that keeps `render_degraded`
+ * out of the loss group below.
+ */
+const DEVICE_LOST_FINGERPRINT_REASONS: ReadonlySet<string> = new Set([
+  'unknown',
+  'destroyed',
+  'render-exception',
+  'render-encode-exception',
+]);
+
+/** Bounded fingerprint for a device loss. Never carries engine-supplied text. */
+function deviceLostFingerprint(reason: string): string {
+  const bucket = DEVICE_LOST_FINGERPRINT_REASONS.has(reason) ? reason : 'other';
+  return `ifc-lite:device_lost:${bucket}`;
+}
+
 // Session-scoped latch. Module state is deliberate: the loss is a property of
 // the device, not of a component instance, so a remount must not re-toast.
 let reported = false;
@@ -78,6 +117,28 @@ export function reportDeviceLost(
         // scrub-path test in device-loss-report.test.ts, which runs the real
         // `scrubEvent` so this cannot regress unnoticed.
         device_lost_detail: info.message,
+        // One issue per LOSS REASON, chosen here because nothing downstream
+        // can choose it. PostHog groups an exception by type + message + stack
+        // unless the client supplies this, and both halves vary for a device
+        // loss: the message is Dawn's driver text (a D3D12 hang, a Vulkan VRAM
+        // exhaustion and a Metal timeout word themselves differently) and the
+        // stack names the hashed bundle, so it moves on every deploy — the
+        // same reason #2354's fixed-string WebGL report still minted a fresh
+        // issue per release. What was OBSERVED: #3767 and #3774 carry the same
+        // DXGI_ERROR_DEVICE_HUNG text six hours apart and were filed as two
+        // separate GitHub issues, with a dozen merges to main (so several
+        // viewer deploys) in between; #3207's Vulkan loss is a third issue for
+        // the same family. The `stampFingerprint` pass in
+        // lib/analytics-scrub.ts cannot cover this: it fingerprints only the
+        // kinds `classifyLoadError` recognises, and a GPU loss is deliberately
+        // not one of them. It DOES honour a fingerprint set at the capture
+        // site, which is what this is.
+        //
+        // The reason, and NOTHING else, discriminates — see
+        // `DEVICE_LOST_FINGERPRINT_REASONS` for why it is allowlisted rather
+        // than interpolated raw. The driver text and the whole enrichment
+        // block stay queryable inside whichever group they landed in.
+        $exception_fingerprint: deviceLostFingerprint(info.reason),
       },
     );
   } catch (err) {
@@ -162,6 +223,11 @@ export function reportPersistentRenderDegradation(
         // scrub-path test in device-loss-report.test.ts runs the real
         // `scrubEvent` over these keys so that cannot regress unnoticed.
         render_degraded_detail: info.detail,
+        // Its own fingerprint, not the loss's — see the note there. A live
+        // device that stopped drawing and a dead device are different bugs
+        // with different fixes, so they must not share an issue even though
+        // they share this module and their user-visible outcome.
+        $exception_fingerprint: 'ifc-lite:render_degraded',
       },
     );
   } catch (err) {

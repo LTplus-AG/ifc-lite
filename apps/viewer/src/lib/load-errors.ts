@@ -5,9 +5,10 @@
 /**
  * Classification of model-load failures. This module owns the taxonomy and the
  * ORDER the buckets are tried in; the user-facing humanisation lives in
- * ./load-error-message.ts, and the two families whose matchers carry more
+ * ./load-error-message.ts, and the families whose matchers carry more
  * rationale than pattern have their own modules (./webgl-unavailable.ts,
- * ./cancelled-and-network-errors.ts) rather than a longer file here.
+ * ./cancelled-and-network-errors.ts, ./file-not-found-errors.ts) rather than a
+ * longer file here.
  *
  * Despite the name, this is the viewer's ONLY error-family classifier —
  * `analytics-scrub.ts` runs it over every captured `$exception` — so a non-load
@@ -25,6 +26,7 @@
  */
 
 import { isCancelledError, isNetworkUnavailableError } from './cancelled-and-network-errors.js';
+import { isFileNotFoundMessage } from './file-not-found-errors.js';
 import { isWebglUnavailable } from './webgl-unavailable.js';
 
 /** Stable, analytics-friendly classification of a load failure. */
@@ -55,6 +57,14 @@ export type LoadErrorKind =
    * evicted it, removable media was unplugged, or an AV/permission change
    * locked it. Nothing about the model is wrong and nothing in the app failed;
    * the user just needs to pick the file again.
+   *
+   * TWO DOMException names land here, not one. `NotReadableError` is the file
+   * that is still at its path but cannot be read; `NotFoundError` is the file
+   * whose bytes are gone by read time — moved, renamed, deleted, or rewritten
+   * in place by the authoring tool between `getFile()` and the read, which is
+   * exactly what the Refresh flow (#1345) invites. Both engine wordings, and
+   * the load context one of them needs to be safe, live in
+   * ./file-not-found-errors.ts.
    */
   | 'file_unreadable'
   /**
@@ -223,8 +233,16 @@ function isWasmRuntimeCrashError(err: unknown, message: string): boolean {
   );
 }
 
-/** Classify a load failure into a stable analytics bucket. */
-export function classifyLoadError(err: unknown): LoadErrorKind {
+/**
+ * Classify a load failure into a stable analytics bucket.
+ *
+ * `context` is the capture site's own `context` property, where one exists. It
+ * is consulted by exactly one matcher — the WebKit arm of
+ * {@link isFileNotFoundMessage}, whose string is ambiguous on that engine — and
+ * ignored by every other bucket, so omitting it can only cost that one Safari
+ * wording its kind. It can never change any other answer.
+ */
+export function classifyLoadError(err: unknown, context?: unknown): LoadErrorKind {
   const message = messageOf(err);
   // Checked before the memory/worker buckets: a NotReadableError says nothing
   // about the model or this device's capacity, and its message ("...could not
@@ -233,7 +251,11 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   // browser worded `.message`; the message match covers the analytics path,
   // where all we have is the already-stringified value.
   const name = errorNameOf(err);
-  if (name === 'NotReadableError' || isFileUnreadableError(message)) {
+  if (
+    name === 'NotReadableError' ||
+    isFileUnreadableError(message) ||
+    isFileNotFoundMessage(message, context)
+  ) {
     return 'file_unreadable';
   }
   // Same stable-`.name` argument as NotReadableError above: an aborted fetch
@@ -273,6 +295,9 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
  *
  * - `error_kind`  the classified family (see {@link classifyLoadError}); drives
  *                 `$exception_fingerprint` grouping and the severity downgrade.
+ *                 Pass the same `context` the call site stamps on the event:
+ *                 one WebKit wording is only classifiable inside a load, and a
+ *                 kind set here wins over the analytics-path re-classification.
  * - `error_type`  the throwable's own identity — a DOMException's stable
  *                 `.name`, else the constructor name. The one property that
  *                 survives when the message is two words and the stack empty.
@@ -280,10 +305,10 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
  *                 be told apart from a failure of ours. Omitted where the
  *                 browser doesn't expose it (Node tests).
  */
-export function errorCaptureProps(err: unknown): Record<string, unknown> {
+export function errorCaptureProps(err: unknown, context?: unknown): Record<string, unknown> {
   const name = errorNameOf(err);
   const props: Record<string, unknown> = {
-    error_kind: classifyLoadError(err),
+    error_kind: classifyLoadError(err, context),
     // `name` is set on every Error and DOMException; the constructor fallback
     // covers a thrown non-Error (posthog stringifies those, losing even this).
     error_type: name || (err as { constructor?: { name?: string } })?.constructor?.name || typeof err,

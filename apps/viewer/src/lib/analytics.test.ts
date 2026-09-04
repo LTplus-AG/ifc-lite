@@ -569,6 +569,42 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
   });
 
+  it('downgrades a moved file to warning, but not the Safari crash that shares its wording', () => {
+    // A file that moved between the pick and the read is user-side, transient
+    // and unfixable from here - the same bar `cancelled` and
+    // `webgl_unavailable` clear - so it is kept, classified and fingerprinted,
+    // just not competing with real breakage at error level.
+    const moved = scrubEvent(exceptionEvent(
+      'A requested file or directory could not be found at the time an operation was processed.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(moved, null);
+    assert.equal(moved?.properties?.error_kind, 'file_unreadable');
+    assert.equal(moved?.properties?.$exception_level, 'warning');
+    assert.equal(moved?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+
+    // And the reason the downgrade is safe: WebKit gives a reconciler crash the
+    // SAME text as a vanished file, and an uncontextualised occurrence is not
+    // claimed as a load failure. If it were, this downgrade would be hiding a
+    // hard React crash behind a warning.
+    const safariCrash = scrubEvent(exceptionEvent(
+      'The object can not be found here.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(safariCrash, null);
+    assert.equal(safariCrash?.properties?.error_kind, undefined);
+    assert.equal(safariCrash?.properties?.$exception_level, 'error');
+    assert.equal(safariCrash?.properties?.$exception_fingerprint, undefined);
+
+    // The same wording INSIDE a load is the real thing, and is downgraded.
+    const safariLoad = scrubEvent(exceptionEvent(
+      'The object can not be found here.',
+      { $exception_level: 'error', context: 'ifc_model_load' },
+    ));
+    assert.equal(safariLoad?.properties?.error_kind, 'file_unreadable');
+    assert.equal(safariLoad?.properties?.$exception_level, 'warning');
+  });
+
   it('KEEPS a Cesium-shaped stringification whose key list is really a sentence', () => {
     // The `^`-only arm's exact escape (CodeRabbit, round two of this PR): the
     // three key names are all present and the value starts correctly, so every
@@ -663,6 +699,49 @@ describe('scrubEvent — issue grouping', () => {
     assert.equal(stalled?.properties?.$exception_fingerprint, 'ifc-lite:geometry_stream_stalled');
     assert.equal(worker?.properties?.$exception_fingerprint, 'ifc-lite:geometry_worker_crash');
     assert.equal(oom?.properties?.$exception_fingerprint, 'ifc-lite:out_of_memory');
+  });
+
+  it('collapses the file-moved NotFoundError onto the file_unreadable fingerprint (#3731)', () => {
+    // Four PostHog issues carried this condition (#2546, #2860, #3324, #3731),
+    // each a fresh GitHub issue, because an unclassified message keeps
+    // PostHog's default type+message+stack grouping and the stack names the
+    // hashed bundle it came from. Both engine wordings, and the
+    // NotReadableError sibling, must land on ONE fingerprint.
+    const chromium = scrubEvent(exceptionEvent(
+      'A requested file or directory could not be found at the time an operation was processed.',
+    ));
+    const webkit = scrubEvent(exceptionEvent('The object can not be found here.', {
+      context: 'ifc_model_load',
+    }));
+    const unreadable = scrubEvent(exceptionEvent(
+      'NotReadableError: The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.',
+    ));
+    assert.equal(chromium?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+    assert.equal(webkit?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+    assert.equal(unreadable?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+    assert.equal(chromium?.properties?.error_kind, 'file_unreadable');
+  });
+
+  it('keeps a Safari reconciler crash out of the file_unreadable group (no load context)', () => {
+    // WebKit words the removeChild/insertBefore failure with its generic
+    // NotFoundError text, the same string a vanished file gets, so the message
+    // alone cannot separate them. A reconciler crash is UNCAUGHT and reaches
+    // PostHog with no `context`; that absence is what keeps it out of the
+    // file-picker issue and off the "your file moved" message.
+    const out = scrubEvent(exceptionEvent('The object can not be found here.'));
+    assert.equal(out?.properties?.error_kind, undefined);
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+  });
+
+  it('keeps the DOM-mutation NotFoundError out of the file_unreadable group', () => {
+    // Same DOMException name, different failure entirely (#1229/#1230/#1232,
+    // the family harden-dom-mutations.ts suppresses). Grouping it with a moved
+    // file would bury a React-reconciler crash under a file-picker message.
+    const out = scrubEvent(exceptionEvent(
+      "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",
+    ));
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.error_kind, undefined);
   });
 
   it('leaves unrecognised exceptions on PostHog default grouping', () => {

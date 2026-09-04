@@ -216,6 +216,7 @@ fn oversized_ref_drops_passes_through_and_defeats_is_empty() {
         RectFastStats::default(),
         16,
         3,
+        &FxHashMap::default(),
     );
     assert_eq!(d.oversized_ref_drops, 3);
     assert!(
@@ -234,6 +235,7 @@ fn zero_oversized_ref_drops_stays_empty() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
     assert!(d.is_empty());
 }

@@ -1911,20 +1911,83 @@ test('#3831 round 3 PASS: an applicable class cleared with NO cited line is ACCE
   assert.equal(r.doc.verdict, 'clean');
 });
 
-test('#3831 round 3 FAIL: a citation that was OFFERED must be real', () => {
-  // The other half of making citing optional. If an unresolvable `path:line`
-  // read the same as none at all, the model would learn that inventing
-  // `some/file.ts:42` looks like evidence -- which is worse than the silence it
-  // replaced. Line 1 of PATCH_A is context rather than added, line 99 does not
-  // exist, and the third file was never sent.
+test('#3848 round 4: an unresolvable citation is a NOTE on stdout, not a refusal', () => {
+  // WAS FATAL, and it reddened this lane for a review that did the work. The
+  // measured failure is quoted in `checkClassPass`: `description-mismatch` is
+  // applicable whenever a PR body exists, its site is the BODY (`path: null`,
+  // no line), and there is no diff line the model could have cited for it -- so
+  // the check asked for evidence in a form the class does not have and then
+  // refused the answer for getting the form wrong.
+  //
+  // The note still has to be LOUD, because an invented citation accepted in
+  // silence teaches the model that `some/file.ts:42` reads as evidence. So both
+  // halves are asserted: exit 0 with the clean verdict written, AND the class
+  // and the offered string named on stdout. Line 1 of PATCH_A is context rather
+  // than added, line 99 does not exist, and the third file was never sent.
   for (const cite of [`${PATH_A}:1`, `${PATH_A}:99`, 'packages/x/never-sent.ts:2']) {
     const rows = classPass().map((row) =>
       (row.class === 'one-ended-numeric-bound' ? { ...row, why: `walked the comparison at ${cite}` } : row));
     const r = run(response({ class_pass: rows }));
-    assert.equal(r.code, 1, `${cite} was accepted as a citation:\n${r.out}`);
-    assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
-    assert.match(r.out, /invented one is worse than none/);
+    assert.equal(r.code, 0, `${cite} was refused rather than noted:\n${r.out}`);
+    assert.equal(r.doc.verdict, 'clean');
+    // @source-text-assertion-ok asserts on the validator's own stdout, which is runtime output
+    assert.match(r.out, /one-ended-numeric-bound/, r.out);
+    // @source-text-assertion-ok asserts on the validator's own stdout, which is runtime output
+    assert.ok(r.out.includes(cite), `the note must quote what was offered:\n${r.out}`);
+    assert.ok(
+      r.out.split('\n').some((l) => l.startsWith('::warning::class-pass:')),
+      `the note must be a bare annotation, or GitHub drops it:\n${r.out}`,
+    );
+    assert.doesNotMatch(r.out, /CLASS_PASS_INCOMPLETE/, r.out);
   }
+});
+
+test('#3848 round 4: the note is RECORDED on findings.json, not only printed', () => {
+  // A note that exists only in the lane log is invisible to everything
+  // downstream, and this repository has been bitten by exactly that: the loud
+  // channel said one thing and the artefact said another. `warn` is threaded
+  // into `checkClassPass` so the note goes where every other warning goes.
+  const rows = classPass().map((row) =>
+    (row.class === 'one-ended-numeric-bound' ? { ...row, why: `walked the comparison at ${PATH_A}:99` } : row));
+  const r = run(response({ class_pass: rows }));
+  assert.equal(r.code, 0, r.out);
+  assert.ok(
+    r.doc.warnings.some((w) => w.includes('class-pass:') && w.includes(`${PATH_A}:99`)),
+    `the note is missing from findings.json: ${JSON.stringify(r.doc.warnings)}`,
+  );
+});
+
+test('#3848 round 4: the DESCRIPTION-MISMATCH case from the lane log now passes', () => {
+  // The exact shape that killed attempt 1 on head 872fd9d24, rebuilt: a PR body
+  // is present, so `description-mismatch` is applicable and cannot be waved off,
+  // and the class has no diff line of its own to cite. A model that answers
+  // `clear` and reaches for the nearest path it can see must not lose the run
+  // over it.
+  const input = { ...INPUT, contextPack: { body: 'A description of what this PR does.', siblings: [] } };
+  const rows = classPass().map((row) =>
+    (row.class === 'description-mismatch'
+      ? { class: 'description-mismatch', verdict: 'clear', why: `the body describes the scaling change and ${PATH_A}:1 is what it changed` }
+      : row));
+  const r = run(response({ class_pass: rows }), { input });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
+});
+
+test('#3848 round 4: the WAVE-OFF is still fatal, which is the half that was never relaxed', () => {
+  // The control on the three tests above. Making the citation non-fatal must not
+  // take the applicability binding down with it: a class the diff can carry,
+  // waved off, is still refused. If this ever passes, the whole per-class pass is
+  // decoration and the evasions #3831 measured are back.
+  const rows = classPass().map((row) =>
+    (row.class === 'one-ended-numeric-bound'
+      ? { class: 'one-ended-numeric-bound', verdict: 'not-applicable', why: 'no comparison of that kind here at all' }
+      : row));
+  const r = run(response({ class_pass: rows }));
+  assert.equal(r.code, 1, r.out);
+  // @source-text-assertion-ok asserts on the validator's own stdout, which is runtime output
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  // @source-text-assertion-ok asserts on the validator's own stdout, which is runtime output
+  assert.match(r.out, /was declared not-applicable/);
 });
 
 test('#3831 round 3 PASS: a SIBLING excerpt is a citation, because that is where a second site lives', () => {

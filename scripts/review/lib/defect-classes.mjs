@@ -104,19 +104,19 @@ const normaliseWhy = (v) => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
  *   - a class the predicates cannot see is free: `not-applicable` needs only a
  *     reason, because the harness has nothing to contradict it with.
  *
- * ONLY THE WAVE-OFF. `clear` is accepted with or without a cited line -- see the
- * measured red lane in `checkClassPass` below -- and a citation is checked only
- * when one is offered.
+ * ONLY THE WAVE-OFF IS FATAL. `clear` is accepted with or without a cited line,
+ * and a citation that does not resolve is an annotation rather than a refusal --
+ * both measured on the red lanes recorded in `checkClassPass` below.
  *
  * The predicates under-fire on purpose (see that file), so this is a floor under
  * `not-applicable`, never a claim that the classes it does not name are absent.
  * The remaining gap is printed by the eval as CLASS SKIPPED rather than assumed
  * away.
  *
- * @param {{ response: object, input: { files: Map<string, object>, contextPack?: object|null } }} args
+ * @param {{ response: object, input: { files: Map<string, object>, contextPack?: object|null }, warn?: (m: string) => void }} args
  * @throws {ValidateFindingsError} CLASS_PASS_INCOMPLETE
  */
-export function checkClassPass({ response, input }) {
+export function checkClassPass({ response, input, warn = (m) => console.log(m) }) {
   const fail = (msg) => {
     throw new ValidateFindingsError(
       'CLASS_PASS_INCOMPLETE',
@@ -198,15 +198,38 @@ export function checkClassPass({ response, input }) {
           'or report the defect.',
       );
     }
-    // A citation that was OFFERED still has to be real. Accepting an
-    // unresolvable one would make the encouragement worse than silence: the
-    // model would learn that inventing `some/file.ts:42` reads as evidence.
+    // A CITATION THAT DOES NOT RESOLVE IS LOGGED, NOT REFUSED (#3848 round 4).
+    //
+    // MEASURED, on the lane reviewing this very change. Attempt 1 on head
+    // 872fd9d24 died here:
+    //
+    //     `description-mismatch`'s `clear` cites a `path:line` that is not in
+    //     what you were shown.
+    //
+    // `description-mismatch` is applicable whenever a PR body exists, and its
+    // site is the BODY -- `path: null`, no line. There is no diff line the model
+    // could ever have cited for it, so the class asked for evidence in a form it
+    // does not have, and then refused the answer for getting the form wrong. The
+    // round-3 commit already settled the principle for the other half of this
+    // check: a citation is welcome, not the price of answering, because reddening
+    // a lane for a review that did the work costs more than the gap it closes.
+    // Refusing an unresolvable citation while accepting no citation at all left
+    // the model one strictly safer move -- say less -- which is the opposite of
+    // what the encouragement is for.
+    //
+    // SO IT IS STILL SAID OUT LOUD. The reason not to accept an invented citation
+    // in silence stands: a model that learns `some/file.ts:42` reads as evidence
+    // has learned to fabricate. The annotation names the class and the path, so
+    // the residual is visible in the run and countable across runs, rather than
+    // being either fatal or invisible. THE WAVE-OFF ABOVE IS STILL FATAL, and it
+    // is the only thing here that is: it is the one claim a model cannot answer
+    // its way out of by writing a better sentence.
     const cite = citationState(row.why, input);
-    if (cite === 'unresolved') {
-      fail(
-        `\`${cls}\`'s \`clear\` cites a \`path:line\` that is not in what you were shown. ` +
-          'A citation is optional here, but an invented one is worse than none: cite a line the diff ' +
-          'ADDED, or a sibling excerpt you were given, or cite nothing.',
+    if (cite.state === 'unresolved') {
+      warn(
+        `::warning::class-pass: \`${cls}\`'s \`clear\` cites \`${cite.offered}\`, which is not a line ` +
+          'of the diff you were shown or of a sibling excerpt you were given. The citation is optional, ' +
+          'so this is a note and not a refusal; cite an ADDED line, a sibling excerpt, or nothing.',
       );
     }
   }
@@ -219,6 +242,11 @@ export function checkClassPass({ response, input }) {
  *   'resolved'    at least one resolves to something the reviewer was shown.
  *   'unresolved'  one or more were offered and none resolves.
  *
+ * The FIRST offered citation is returned beside the state. The annotation that
+ * reads it has to name what was actually written, or "cites a path:line that is
+ * not in what you were shown" sends a reader hunting through twelve rows for a
+ * string the message declined to quote.
+ *
  * SIBLING EXCERPTS COUNT, and leaving them out was a live defect in waiting: the
  * evidence for `duplicate-site` is by definition in a file the PR did not
  * change, so a reviewer citing the excerpt it was handed would have been told it
@@ -227,16 +255,16 @@ export function checkClassPass({ response, input }) {
  * `siblingVerifies` uses against the pack.
  */
 function citationState(why, input) {
-  let offered = false;
+  let offered = null;
   const excerpts = input.contextPack?.siblings ?? [];
   for (const m of String(why).matchAll(/([A-Za-z0-9_./@-]+\.[A-Za-z0-9]+):(\d+)/g)) {
-    offered = true;
+    if (offered === null) offered = m[0];
     const line = Number(m[2]);
     const file = input.files.get(m[1]);
-    if (file && lineIsAdded(line, file.addedLineRanges)) return 'resolved';
-    if (excerpts.some((e) => e.path === m[1] && Math.abs(e.line - line) <= 3)) return 'resolved';
+    if (file && lineIsAdded(line, file.addedLineRanges)) return { state: 'resolved', offered: m[0] };
+    if (excerpts.some((e) => e.path === m[1] && Math.abs(e.line - line) <= 3)) return { state: 'resolved', offered: m[0] };
   }
-  return offered ? 'unresolved' : 'none';
+  return offered === null ? { state: 'none', offered: null } : { state: 'unresolved', offered };
 }
 
 /**

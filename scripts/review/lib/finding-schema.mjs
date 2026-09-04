@@ -215,7 +215,12 @@ export function validate({ response, input, onWarn = null }) {
   // and only once all three hold is "did it walk the rubric's classes" the most
   // useful thing to tell it. Ahead of proof of work, a model that never read the
   // diff at all would be sent away to write twelve paragraphs about it.
-  if (response.verdict === 'clean') checkClassPass({ response, input });
+  // `warn` IS PASSED, so the class pass's non-fatal note lands in the same place
+  // every other warning does: printed as it happens, and recorded in
+  // `warnings` on findings.json. A note console.logged from inside the check
+  // would be visible in the lane log and absent from the artefact, which is the
+  // half of the record anything downstream actually reads.
+  if (response.verdict === 'clean') checkClassPass({ response, input, warn });
 
   let kept = validateFindings({ response, input, warn });
   const survived = kept.length;

@@ -58,9 +58,10 @@ behaviour in the diff and against each sibling excerpt you were given.
 
 - `clear`: you looked for it here and it holds. Cite the `path:line` you
   checked if you have one, in the form `packages/x/y.ts:42` or the line of a
-  sibling excerpt. That is welcome, not required. What is required is that a
-  citation you DO give is real: an invented one fails the review, where none at
-  all would have passed.
+  sibling excerpt. That is welcome, not required, and it is never the price of
+  answering: a citation that does not resolve is logged as a note against the
+  class, not refused. Give a real one or give none, and do not invent a
+  `path:line` to fill the space.
 - `not-applicable`: this diff cannot carry the class at all. Allowed only where
   the harness agrees. It runs its own cheap check per class, and if it can see a
   site in the diff, `not-applicable` is refused and names the file that made the

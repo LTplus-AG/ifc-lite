@@ -34,7 +34,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, copyFileSync, chmodSync, rmSync, readFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  mkdirSync,
+  writeFileSync,
+  copyFileSync,
+  chmodSync,
+  rmSync,
+  readFileSync,
+  readdirSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,7 +58,7 @@ const README = ['# Sample', '', '```ts', 'const n: number = 1;', '```', ''].join
  * snippet, and `node_modules/.bin/tsc` written from `tscShim` (pass `null` to
  * leave the binary out entirely).
  */
-function makeTree(tscShim, { readme = README, packages = [] } = {}) {
+function makeTree(tscShim, { readme = README, packages = [], fillFloor = true } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'doc-samples-'));
   mkdirSync(join(root, 'scripts', 'docs'), { recursive: true });
   mkdirSync(join(root, 'docs', 'guide'), { recursive: true });
@@ -65,6 +74,22 @@ function makeTree(tscShim, { readme = README, packages = [] } = {}) {
     copyFileSync(join(HERE, f), join(root, 'scripts', 'docs', f));
   }
   writeFileSync(join(root, 'README.md'), readme, 'utf8');
+
+  // PACKAGE_README_FLOOR published READMEs, so the floor never fires in a test
+  // that is about something else. Their READMEs carry NO ts fence, so every
+  // snippet count asserted below still counts only the docs the test wrote.
+  if (fillFloor) {
+    for (let i = 0; i < 25; i++) {
+      const dir = join(root, 'packages', `filler${i}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'package.json'),
+        `${JSON.stringify({ name: `@filler/p${i}`, version: '0.0.0' })}\n`,
+        'utf8',
+      );
+      writeFileSync(join(dir, 'README.md'), `# filler${i}\n\nNo code here.\n`, 'utf8');
+    }
+  }
 
   // `packages` entries are `{ dir, name, private?, readme? }`. A package with
   // no `readme` ships none at all, which is check-package-readmes.mjs's
@@ -394,6 +419,167 @@ test('a published package with no README is left to check-package-readmes', () =
     const { status, out } = run(root);
     assert.equal(status, 0, `expected exit 0, got ${status}: ${out}`);
     assert.match(out, /Doc code samples typecheck clean \(1 snippet compiled/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// #3846 review: the published-package rule must MATCH check-package-readmes.mjs
+// and must refuse to go quiet.
+// ---------------------------------------------------------------------------
+
+test('a package manifest that cannot be READ is fatal, not silently dropped', () => {
+  // The sibling gate's finding, one gate over: `existsSync` answers false for
+  // ENOTDIR and EACCES as well as ENOENT, so an unreadable package left the
+  // walk and its README's snippets left with it — a clean tick over docs
+  // nothing looked at, which is the whole #3846 subject.
+  const root = makeTree(workingTsc());
+  try {
+    // A FILE where a package directory belongs: statting its package.json is
+    // ENOTDIR.
+    writeFileSync(join(root, 'packages', 'locked'), 'not a directory', 'utf8');
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /cannot read package manifest .*locked[/\\]package\.json \(ENOTDIR\)/);
+    assert.match(out, /without anyone noticing/);
+    assert.doesNotMatch(out, /typecheck clean/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('too few package READMEs reaching the typecheck is refused, not reported clean', () => {
+  // Without the floor, a walk that stopped finding package READMEs at all —
+  // wrong ROOT, restructured packages/ — reports the guides as a clean run and
+  // says nothing about the class of docs it stopped covering. That silence IS
+  // the pre-#3846 behaviour, so it must not be reachable by accident again.
+  const root = makeTree(workingTsc(), { fillFloor: false });
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /only 0 published-package README\(s\) reached the doc-samples typecheck/);
+    assert.match(out, /expected at least 25/);
+    // The remedy must NAME the constant, as the sibling gate's does.
+    assert.match(out, /lower PACKAGE_README_FLOOR in this file/);
+    assert.doesNotMatch(out, /typecheck clean/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A tree that mirrors the REAL `packages/` layout: one directory per real
+ * package, carrying that package's real manifest (so `private` and `name` are
+ * the real ones), and a one-snippet README wherever the real package has one.
+ *
+ * Both gates derive ROOT from their own location, so copying both into this
+ * tree runs both REAL rules over the real package set without either gate
+ * growing a scan-root flag.
+ */
+function mirrorRealPackages() {
+  const repoPackages = join(HERE, '..', '..', 'packages');
+  const root = mkdtempSync(join(tmpdir(), 'doc-samples-parity-'));
+  mkdirSync(join(root, 'scripts', 'docs'), { recursive: true });
+  mkdirSync(join(root, 'docs', 'guide'), { recursive: true });
+  mkdirSync(join(root, 'docs', 'tutorials'), { recursive: true });
+  mkdirSync(join(root, 'packages'), { recursive: true });
+  mkdirSync(join(root, 'node_modules', '.bin'), { recursive: true });
+  for (const f of [
+    'check-doc-samples.mjs',
+    'check-package-readmes.mjs',
+    'doc-samples-globals.d.ts',
+    'doc-samples-externals.d.ts',
+  ]) {
+    copyFileSync(join(HERE, f), join(root, 'scripts', 'docs', f));
+  }
+  writeFileSync(join(root, 'README.md'), README, 'utf8');
+
+  const withReadme = [];
+  for (const dir of readdirSync(repoPackages).sort()) {
+    if (dir.startsWith('.')) continue;
+    const manifest = join(repoPackages, dir, 'package.json');
+    let text;
+    try {
+      text = readFileSync(manifest, 'utf8');
+    } catch {
+      continue;
+    }
+    mkdirSync(join(root, 'packages', dir), { recursive: true });
+    writeFileSync(join(root, 'packages', dir, 'package.json'), text, 'utf8');
+    let hasReadme = true;
+    try {
+      readFileSync(join(repoPackages, dir, 'README.md'), 'utf8');
+    } catch {
+      hasReadme = false;
+    }
+    if (hasReadme) {
+      writeFileSync(join(root, 'packages', dir, 'README.md'), README, 'utf8');
+      withReadme.push(dir);
+    }
+  }
+  return { root, withReadme };
+}
+
+test('both gates agree on which packages/* are published', () => {
+  // The two gates are only as aligned as their two copies of one rule. This
+  // drives BOTH real rules over the real package layout and compares the sets:
+  // the READMEs check-package-readmes REQUIRES to exist must be exactly the
+  // READMEs check-doc-samples TYPECHECKS. Drift either way is silent — a
+  // README nobody requires, or a landing page nobody compiles.
+  const { root, withReadme } = mirrorRealPackages();
+  try {
+    // Set A: every doc check-doc-samples put in its program. A tsc that
+    // reports an error against EVERY snippet makes the gate print one line per
+    // snippet with its doc path, which the truncated never-compiled listing
+    // could not give.
+    writeFileSync(
+      join(root, 'node_modules', '.bin', 'tsc'),
+      `#!/usr/bin/env node
+const fs = require('node:fs');
+const path = require('node:path');
+const i = process.argv.indexOf('-p');
+const cfg = JSON.parse(fs.readFileSync(process.argv[i + 1], 'utf8'));
+let out = '';
+if (process.argv.includes('--listFiles')) for (const f of cfg.files) out += f + '\\n';
+for (const f of cfg.files) {
+  if (/snippet-\\d+\\.ts$/.test(f)) out += f + "(1,7): error TS2322: parity probe.\\n";
+}
+fs.writeSync(1, out);
+process.exitCode = 2;
+`,
+      'utf8',
+    );
+    chmodSync(join(root, 'node_modules', '.bin', 'tsc'), 0o755);
+
+    const samples = run(root);
+    assert.equal(samples.status, 1, samples.out);
+    const typechecked = new Set(
+      [...samples.out.matchAll(/packages[/\\]([^/\\]+)[/\\]README\.md:/g)].map((m) => m[1]),
+    );
+
+    // Set B: check-package-readmes' own published set. Read out by removing
+    // every package README first — the list it then reports as MISSING is
+    // exactly the set it audits, named by that gate rather than restated here.
+    for (const dir of withReadme) rmSync(join(root, 'packages', dir, 'README.md'));
+    const readmes = spawnSync(
+      process.execPath,
+      [join(root, 'scripts', 'docs', 'check-package-readmes.mjs')],
+      { cwd: root, encoding: 'utf8' },
+    );
+    const out = `${readmes.stdout ?? ''}${readmes.stderr ?? ''}`;
+    assert.equal(readmes.status, 1, out);
+    const required = new Set(
+      [...out.matchAll(/\(packages[/\\]([^/\\]+)[/\\]README\.md\)/g)].map((m) => m[1]),
+    );
+
+    assert.ok(required.size >= 25, `expected the real tree to hold 25+ published packages, got ${required.size}`);
+    // Stated as sorted arrays so a mismatch names the packages that drifted.
+    assert.deepEqual(
+      [...typechecked].sort(),
+      [...required].sort(),
+      'check-doc-samples and check-package-readmes disagree on the published set',
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

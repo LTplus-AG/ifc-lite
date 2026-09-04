@@ -61,6 +61,7 @@ import {
   readdirSync,
   writeFileSync,
   existsSync,
+  statSync,
   rmSync,
 } from 'node:fs';
 import { join, dirname, basename } from 'node:path';
@@ -74,25 +75,71 @@ const GLOBALS_SRC = join(HERE, 'doc-samples-globals.d.ts');
 const EXTERNALS_SRC = join(HERE, 'doc-samples-externals.d.ts');
 
 /**
+ * Lower bound on how many published-package READMEs must reach the typecheck.
+ * The sibling of check-package-readmes.mjs's CHECKED_FLOOR, set to the same
+ * 25 against the same measured 43, and here for the same reason: every way
+ * this walk can go blind - a wrong ROOT, a restructured `packages/`, a read
+ * that stops resolving - collapses the count towards zero rather than to 24,
+ * and a gate that quietly stopped covering package READMEs is exactly the
+ * #3846 defect coming back.
+ */
+const PACKAGE_README_FLOOR = 25;
+
+function fail(message) {
+  console.error(`\n❌ ${message}\n`);
+  process.exit(1);
+}
+
+/**
+ * Does this path exist? Refuses when the answer is UNKNOWABLE.
+ *
+ * Same body and same reason as check-package-readmes.mjs's: `existsSync`
+ * answers false for EACCES and ENOTDIR too, and "absent" here means "skip
+ * this package", which is how one leaves the audit without leaving a trace.
+ * Not the shared scripts/lib/ helper, for the reason that gate documents -
+ * both files are copied alone into synthetic trees by their harnesses, so
+ * neither may import outside node builtins.
+ */
+function existsOrFail(path, what) {
+  try {
+    statSync(path);
+    return true;
+  } catch (err) {
+    if (err.code === 'ENOENT') return false;
+    fail(
+      `cannot read ${what} ${path} (${err.code || err.message}). ` +
+        'Refusing to treat an unreadable path as an absent one - that is how a ' +
+        'package drops out of this audit without anyone noticing.',
+    );
+  }
+}
+
+/**
  * Every published package under `packages/`, as `{ dir, pkg }`.
  *
  * "Published" is decided exactly as check-package-readmes.mjs decides it -
- * a non-dotfile directory carrying a package.json whose `private` is not
- * `true` - so the set of READMEs that gate REQUIRES to exist is the set this
- * gate TYPECHECKS. Restated rather than imported: both gates are copied
- * file-by-file into synthetic trees by their regression harnesses, so
- * neither may import outside node builtins (see `existsOrFail` there).
+ * a non-dotfile directory carrying a readable package.json whose `private`
+ * is not `true` - so the set of READMEs that gate REQUIRES to exist is the
+ * set this gate TYPECHECKS. check-doc-samples.test.mjs drives both rules
+ * over the real packages/ layout and asserts the two sets are equal.
+ *
+ * Deliberately NOT filtered on `pkg.name`: the sibling does not filter on it,
+ * and a nameless manifest that silently left this set would be a package
+ * whose README stopped being checked. buildPaths() drops it instead, where
+ * the name is what is actually needed.
  */
 function publishedPackages() {
   const packagesDir = join(ROOT, 'packages');
   const out = [];
   for (const dir of readdirSync(packagesDir).sort()) {
-    // As check-package-readmes.mjs: `packages/*` never matches a leading dot.
+    // As check-package-readmes.mjs: `packages/*` never matches a leading dot,
+    // and statting `.DS_Store/package.json` raises the ENOTDIR that
+    // existsOrFail refuses by design.
     if (dir.startsWith('.')) continue;
     const pkgJson = join(packagesDir, dir, 'package.json');
-    if (!existsSync(pkgJson)) continue;
+    if (!existsOrFail(pkgJson, 'package manifest')) continue;
     const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'));
-    if (pkg.private === true || !pkg.name) continue;
+    if (pkg.private === true) continue;
     out.push({ dir, pkg });
   }
   return out;
@@ -115,11 +162,25 @@ function targetDocs() {
       if (f.endsWith('.md')) files.push(join('docs', dir, f));
     }
   }
+  let packageReadmes = 0;
   for (const { dir } of publishedPackages()) {
     const rel = join('packages', dir, 'README.md');
     // A missing README is check-package-readmes.mjs's verdict, not this
     // gate's, which would only crash on the unreadable path.
-    if (existsSync(join(ROOT, rel))) files.push(rel);
+    if (!existsOrFail(join(ROOT, rel), 'package README')) continue;
+    files.push(rel);
+    packageReadmes += 1;
+  }
+  if (packageReadmes < PACKAGE_README_FLOOR) {
+    fail(
+      `only ${packageReadmes} published-package README(s) reached the doc-samples ` +
+        `typecheck under ${join(ROOT, 'packages')}, expected at least ` +
+        `${PACKAGE_README_FLOOR}. Refusing a vacuous pass: this gate found almost ` +
+        'no package READMEs to check, which is a failure of discovery, not a clean ' +
+        'tree, and leaving them unchecked is the #3846 defect. If packages/ ' +
+        'genuinely shrank this far, lower PACKAGE_README_FLOOR in this file - ' +
+        'deliberately, in a reviewable diff.',
+    );
   }
   return files;
 }
@@ -169,6 +230,9 @@ function buildPaths() {
   const paths = {};
   const packagesDir = join(ROOT, 'packages');
   for (const { dir, pkg } of publishedPackages()) {
+    // A manifest with no `name` is not in the published set's business, but it
+    // is in this map's: the name IS the key here (#3846 review).
+    if (!pkg.name) continue;
     // @ifc-lite/wasm ships a committed .d.ts (no src/index.ts).
     if (pkg.name === '@ifc-lite/wasm') {
       paths['@ifc-lite/wasm'] = ['packages/wasm/pkg/ifc-lite.d.ts'];

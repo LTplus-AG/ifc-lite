@@ -559,8 +559,22 @@ const stampFingerprint = (
 // `isThreeContextRefusal` in ./webgl-unavailable.ts) and they inherit this severity
 // with it. If a WebGLRenderer is ever constructed outside that guard again, the
 // throw would arrive here benign; the guard is the thing keeping this honest.
+//
+// `file_unreadable` meets the same bar and joins them: the file the user picked
+// moved, was renamed, deleted or evicted by a cloud-sync client between the
+// pick and the read, which is user-side and transient, nothing in the app
+// failed, the toast already says to select the file again, and no code change
+// of ours can alter it. It stays captured, kept and fingerprinted, so a spike
+// is still a real signal about (say) a sync client evicting files mid-load; it
+// just stops competing with genuine breakage on an error-level list.
+//
+// This is only safe BECAUSE of the load-context gate on the WebKit wording:
+// while "The object can not be found here." was claimed unconditionally, a
+// Safari React reconciler crash classified as `file_unreadable`, and a downgrade
+// would have hidden a hard crash behind a warning. It classifies `unknown` now
+// and keeps its `error` level, which the severity test pins alongside this.
 const BENIGN_ERROR_KINDS = new Set<string>([
-  'network_unavailable', 'cancelled', 'webgl_unavailable',
+  'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable',
 ]);
 
 const downgradeBenignExceptions = (

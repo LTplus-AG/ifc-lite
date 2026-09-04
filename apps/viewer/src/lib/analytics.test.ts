@@ -569,6 +569,42 @@ describe('scrubEvent — the noise filter never drops on a substring', () => {
     assert.equal(out?.properties?.$exception_fingerprint, 'ifc-lite:webgl_unavailable');
   });
 
+  it('downgrades a moved file to warning, but not the Safari crash that shares its wording', () => {
+    // A file that moved between the pick and the read is user-side, transient
+    // and unfixable from here - the same bar `cancelled` and
+    // `webgl_unavailable` clear - so it is kept, classified and fingerprinted,
+    // just not competing with real breakage at error level.
+    const moved = scrubEvent(exceptionEvent(
+      'A requested file or directory could not be found at the time an operation was processed.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(moved, null);
+    assert.equal(moved?.properties?.error_kind, 'file_unreadable');
+    assert.equal(moved?.properties?.$exception_level, 'warning');
+    assert.equal(moved?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+
+    // And the reason the downgrade is safe: WebKit gives a reconciler crash the
+    // SAME text as a vanished file, and an uncontextualised occurrence is not
+    // claimed as a load failure. If it were, this downgrade would be hiding a
+    // hard React crash behind a warning.
+    const safariCrash = scrubEvent(exceptionEvent(
+      'The object can not be found here.',
+      { $exception_level: 'error' },
+    ));
+    assert.notEqual(safariCrash, null);
+    assert.equal(safariCrash?.properties?.error_kind, undefined);
+    assert.equal(safariCrash?.properties?.$exception_level, 'error');
+    assert.equal(safariCrash?.properties?.$exception_fingerprint, undefined);
+
+    // The same wording INSIDE a load is the real thing, and is downgraded.
+    const safariLoad = scrubEvent(exceptionEvent(
+      'The object can not be found here.',
+      { $exception_level: 'error', context: 'ifc_model_load' },
+    ));
+    assert.equal(safariLoad?.properties?.error_kind, 'file_unreadable');
+    assert.equal(safariLoad?.properties?.$exception_level, 'warning');
+  });
+
   it('KEEPS a Cesium-shaped stringification whose key list is really a sentence', () => {
     // The `^`-only arm's exact escape (CodeRabbit, round two of this PR): the
     // three key names are all present and the value starts correctly, so every

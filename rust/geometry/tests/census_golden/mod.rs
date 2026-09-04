@@ -635,11 +635,32 @@ fn fall_note(g: &HostRow, r: &HostRow) -> &'static str {
 /// move more than a single cm³: at the corpus's largest readings (a few million
 /// cm³) it is a few cm³, still far under one grid step's worth of a real face.
 ///
+/// AND IT DOES NOT COVER ONE FLIPPED VERTEX, which the paragraph above is
+/// wrong about and this one corrects (raised in review, then measured). The
+/// shift from moving one vertex by one grid step is the incident triangle area
+/// times the step over three, so it grows with the FACE, not with the host's
+/// volume, and the 1e-6 relative term does not track it. Measured on this PR's
+/// own over-cut fixture — a 2.0 x 0.1 x 3.0 m panel reading 550034 cm³, 108
+/// vertices, each nudged one step on each axis in turn — the worst single
+/// vertex moves the reading by 8 cm³ against a tolerance of 1. (A UNIFORM
+/// one-step shift of every vertex moves it by 0: a grid-aligned translation is
+/// exact, so only INDEPENDENT re-rounding costs anything.)
+///
+/// So the tolerance is not sized for the platform difference its first
+/// paragraph invokes, and if arm64 and x86_64 do disagree on a boundary vertex
+/// this column reds the census lane rather than absorbing it. That is left
+/// as-is deliberately: widening the gate to a measured worst case would have to
+/// be roughly two decades wider, and a gate that is too NARROW fails loudly on
+/// a run a reviewer can look at, while one that is too WIDE fails silently on
+/// the small real moves the column exists to catch. It has never been observed
+/// to fire — these goldens have not yet been read back on x86_64 at all — so
+/// the first CI run is the measurement, not this doc.
+///
 /// WHAT IT DOES NOT COST. Every move this column exists to catch is orders of
 /// magnitude above it: the 1.4x over-cut fixture moves 50000 cm³ against a
 /// tolerance of 1. A tolerance that admitted a real over-cut would have to be
 /// four decades wider than this one.
-fn volume_tolerance_cm3(golden: i64) -> i64 {
+pub fn volume_tolerance_cm3(golden: i64) -> i64 {
     ((golden.unsigned_abs() as f64) * 1.0e-6).ceil().max(1.0) as i64
 }
 
@@ -725,9 +746,32 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
         ));
     }
 
+    // The one magnitude in the row (#3422). Read where BOTH sides are
+    // watertight, which is the only place either side has it, and reported
+    // whichever way it moved: see `Diff::volume_moved` for why neither
+    // direction is a verdict. Compared on the SIGNED integer, so a sign flip at
+    // equal magnitude is still a difference, and described on the magnitude,
+    // which is what "more" and "less" mean below.
+    let vol = g.vol.zip(r.vol);
+    if let Some((a, b)) = vol {
+        if volume_reading_moved(a, b) {
+            c.volume_moved.push(format!(
+                "enclosed volume {a} -> {b} cm³ ({}){}{}",
+                volume_delta(a, b),
+                winding_note(a, b),
+                if g.far || r.far { "; far-field, so the reading is f32-quantized" } else { "" }
+            ));
+        }
+    }
+
     // Triangles shrinking is the loss direction ONLY when the tearing did not
     // improve with it. An empty mesh is always a loss: it still returns `Ok` and
     // still reports `open == 0`, so nothing else here would catch it.
+    //
+    // Everything from here to the `if r.tris < g.tris` below describes the TORN
+    // route, the `None` arm of the match: where neither side carries a volume,
+    // the open counts are all there is and the paragraphs below are the rules
+    // for reading them. A watertight pair never reaches any of it.
     //
     // And only where both open counts are COMPARABLE, because `g.open` and
     // `r.open` only read as repair if each one measures the same kind of thing.
@@ -759,24 +803,18 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     // Carrying the degenerate COUNT instead of a flag would
     // let the axis fire on an increase and is the better fix, but it changes the
     // golden's schema and so needs its own re-bless.
-    // The one magnitude in the row (#3422). Read where BOTH sides are
-    // watertight, which is the only place either side has it, and reported
-    // whichever way it moved: see `Diff::volume_moved` for why neither
-    // direction is a verdict. Compared on the SIGNED integer, so a sign flip at
-    // equal magnitude is still a difference, and described on the magnitude,
-    // which is what "more" and "less" mean below.
-    let vol = g.vol.zip(r.vol);
-    if let Some((a, b)) = vol {
-        if volume_reading_moved(a, b) {
-            c.volume_moved.push(format!(
-                "enclosed volume {a} -> {b} cm³ ({}){}{}",
-                volume_delta(a, b),
-                winding_note(a, b),
-                if g.far || r.far { "; far-field, so the reading is f32-quantized" } else { "" }
-            ));
-        }
-    }
-
+    //
+    // #3422 LOOSENED that collapse guard on the watertight route, deliberately
+    // and without a comment until now. A host `coll=1` on BOTH sides that
+    // shrinks at `open 0 -> 0` used to be geometry lost, because
+    // `open_is_comparable` is false on a collapse and the old chain fell
+    // through; it now files as a re-tessellation, because the volume arm never
+    // asks. That is the right adjudicator on this route — `edge_stats` skips
+    // degenerate triangles, so they enclose nothing and cannot move the
+    // divergence sum — but it IS a change in verdict for the rows that are
+    // watertight AND collapsed (16 of 1005 in the default golden, 11 of 624 in
+    // the heavy one, counted at this commit), and it is a change the volume,
+    // not the collapse flag, is now answering for.
     if r.tris < g.tris {
         let msg = format!("triangles {} -> {}", g.tris, r.tris);
         // A vanished mesh is always a loss, whatever else moved: it still
@@ -881,9 +919,15 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         // alternate triangulator: the divergence decides (regressed), but
         // dropping the shrink from the text makes the failure less informative
         // than it was before the retessellated split existed. A gained COLLAPSE
-        // is not the example any more, because `r.collapsed` now disqualifies
-        // the re-tessellation outright, so that pair cannot occur. `better` rides
-        // along for the same reason and not as good
+        // is the example again since #3422. It stopped being one while the only
+        // route into `c.retessellated` ran through `open_is_comparable`, which
+        // `r.collapsed` disqualifies; the watertight arm added below routes on
+        // the VOLUME and never consults it, so `open 0 -> 0` with fewer
+        // triangles at unchanged volume fills `worse_counts` ("gained
+        // snap-collapsed triangles") and `c.retessellated` at the same time.
+        // The verdict is unaffected — a worsened count outranks — but the
+        // shrink reason has to ride along, which is what this paragraph is
+        // about. `better` rides along for the same reason and not as good
         // news: the shrink reason SAYS "less torn", and the open-edge numbers
         // are the only thing in the output that lets a reviewer check it.
         //

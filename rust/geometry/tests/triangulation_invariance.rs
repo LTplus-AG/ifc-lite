@@ -1680,6 +1680,60 @@ fn an_over_cut_on_a_watertight_host_requires_a_bless() {
     }
 }
 
+/// What ONE vertex rounding the other way costs the reading (#3422), measured
+/// rather than argued. `census_golden::volume_tolerance_cm3`'s doc invokes this
+/// difference to justify a tolerance, and the number it originally quoted ("a
+/// real cm³ or two") is an order of magnitude under what the shape actually
+/// gives, so the figure is pinned here instead of asserted there.
+///
+/// The shift from moving one vertex by one snap step is the incident triangle
+/// area times the step over three: it grows with the FACE, not with the host's
+/// volume, which is why the tolerance's 1e-6 relative term does not track it.
+///
+/// The second arm is the part that makes the first one meaningful: shifting
+/// EVERY vertex by the same step moves the reading by nothing, because a
+/// grid-aligned translation is exact. Only independent re-rounding costs
+/// anything, which is exactly the platform-difference case.
+#[test]
+fn one_vertex_rounding_the_other_way_moves_the_reading_by_more_than_the_tolerance() {
+    const STEP: f32 = 1.0 / 65536.0;
+    let ifc = over_cut_fixture(1.4);
+    let voids = void_index(&ifc);
+    let mesh = process(&ifc, 50, &voids).expect("authored wall meshes");
+    let base = volume_cm3(&mesh);
+
+    let mut worst = 0i64;
+    for v in 0..mesh.positions.len() / 3 {
+        for axis in 0..3 {
+            let mut m = mesh.clone();
+            m.positions[v * 3 + axis] += STEP;
+            worst = worst.max((volume_cm3(&m) - base).abs());
+        }
+    }
+    // The measurement, bounded on BOTH sides. Too small and the claim above is
+    // wrong in the other direction; too large and the panel has changed shape.
+    assert!(
+        (4..=40).contains(&worst),
+        "one vertex, one snap step, on a {base} cm³ panel: expected a shift of \
+         a few cm³, got {worst}"
+    );
+    // The point of the number: it is well OVER the tolerance the column diffs
+    // at, so this really is a way for the census lane to red with no defect.
+    assert!(
+        worst > census_golden::volume_tolerance_cm3(base),
+        "a single flipped vertex ({worst} cm³) must exceed the tolerance ({}) for the \
+         doc's correction to be the right one",
+        census_golden::volume_tolerance_cm3(base)
+    );
+
+    // A uniform shift is a translation, and the grid is closed under it.
+    let mut all = mesh.clone();
+    for x in all.positions.iter_mut() {
+        *x += STEP;
+    }
+    assert_eq!(volume_cm3(&all), base, "a grid-aligned translation must be exact");
+}
+
 /* -------------------------------------------------------------------- *
  * The heavy lane (#3434). See the module doc's "heavy lane" section.   *
  * -------------------------------------------------------------------- */

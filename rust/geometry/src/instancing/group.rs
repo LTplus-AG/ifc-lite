@@ -139,7 +139,18 @@ pub fn collate_refs_verified_in(
         // because placing anything against untrustworthy geometry is the thing
         // being prevented.
         if !template.positions.iter().all(|p| p.is_finite()) {
-            out.verification_rejections += 1;
+            // The check cannot move below the threshold: a below-threshold group
+            // with pose-only members is still instanced (that is what
+            // `fall_back` does with a valid `m_ref_inv`), so deferring it would
+            // put the NaN template back into exactly those occurrences. What the
+            // threshold DOES decide is whether the refusal changed anything —
+            // a group that was going flat regardless was never refused a
+            // template, so counting it would inflate the figure.
+            if members.len() >= min_group.max(1)
+                || members.iter().any(|&i| meshes[i].positions.is_empty())
+            {
+                out.verification_rejections += 1;
+            }
             fall_back(&mut out, meshes, rep, members, t_idx, None, rtc);
             continue;
         }

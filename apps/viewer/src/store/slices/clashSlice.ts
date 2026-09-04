@@ -71,13 +71,11 @@ export type ClashGroupBy = ClashSettingsGroupBy;
 export type { ClashPreset, ClashGlobalSettings, SaveResult };
 export type { ClashExclusionRule };
 
-/** Fields a user supplies when adding a custom rule (id/flags filled in here). */
-export type NewClashPreset = {
-  name: string;
+/** Fields a user supplies when adding a custom rule (id/flags filled in here).
+ *  Derived from `ClashPreset` so an optional side filter (#3902), or any later
+ *  addition, reaches `createClashPreset` without a second list to keep in step. */
+export type NewClashPreset = Omit<ClashPreset, 'id' | 'enabled' | 'builtin' | 'description'> & {
   description?: string;
-  severity: ClashPreset['severity'];
-  selectorA: string;
-  selectorB: string;
 };
 
 export interface ClashSlice {
@@ -732,10 +730,10 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
         return { ok: false, reason: 'serialize', message: 'Name and both selectors are required.' };
       }
       const preset: ClashPreset = {
+        ...input,
         id: `custom-${crypto.randomUUID()}`,
         name,
         description: input.description?.trim() ?? '',
-        severity: input.severity,
         selectorA,
         selectorB,
         enabled: true,

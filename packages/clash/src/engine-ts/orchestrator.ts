@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { matchesSelector } from '../selectors.js';
+import { clashMemberSet, inClashSet } from '../members.js';
 import { inferClashSeverity } from '../disciplines.js';
 import { isExcluded, qualifiedKey } from '../exclude.js';
 import { summarizeClashes } from '../analysis.js';
@@ -57,10 +57,15 @@ export async function runClash(
 
       const groupA: number[] = [];
       const groupB: number[] | null = rule.b ? [] : null;
+      // Membership when the rule carries one, type selector otherwise — the
+      // ONE place a rule's sides are resolved, so both kernels see the same
+      // partition and every later stage is unaware there are two ways in.
+      const membersA = clashMemberSet(rule.membersA);
+      const membersB = clashMemberSet(rule.membersB);
       for (let i = 0; i < elements.length; i += 1) {
-        const tag = elements[i].tag;
-        if (matchesSelector(tag, rule.a)) groupA.push(i);
-        if (groupB && matchesSelector(tag, rule.b!)) groupB.push(i);
+        const el = elements[i];
+        if (inClashSet(el, rule.a, membersA)) groupA.push(i);
+        if (groupB && inClashSet(el, rule.b!, membersB)) groupB.push(i);
       }
       ruleCoverage.push({
         rule: rule.id,

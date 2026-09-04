@@ -27,11 +27,11 @@ import {
   defaultPresets,
   loadSettings,
   saveSettings,
-  serializeClashConfig,
   DEFAULT_CLASH_SETTINGS,
   type ClashGlobalSettings,
   type ClashPreset,
 } from '@/lib/clash/persistence';
+import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
 
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
 

@@ -518,7 +518,7 @@ export class ExtensionHostService {
     // opaque settings.clash blob, mirroring the lens roundtrip above. Missing /
     // malformed blobs deserialize to null and are skipped (no-op).
     try {
-      const { deserializeClashConfig } = await import('@/lib/clash/persistence');
+      const { deserializeClashConfig } = await import('@/lib/clash/persistence.flavor');
       const config = deserializeClashConfig((target.settings as Record<string, unknown> | undefined)?.clash);
       if (config) {
         const { useViewerStore } = await import('@/store');

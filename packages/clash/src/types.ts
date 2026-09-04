@@ -64,6 +64,16 @@ export interface ClashRule {
   a: string;
   /** Selector for set B. Omitted ⇒ self-clash within A. */
   b?: string;
+  /**
+   * Explicit membership for set A — `clashMemberKey(model, ref)` strings. When
+   * present it REPLACES the `a` selector, so a caller that can resolve a richer
+   * filter than a type name (properties, attributes, storeys) against the model
+   * can express it. An empty array means "matched nothing", never "everything".
+   * See `members.ts`.
+   */
+  membersA?: readonly string[];
+  /** Explicit membership for set B, replacing the `b` selector. See `membersA`. */
+  membersB?: readonly string[];
   mode: ClashMode;
   /** Touching band (m). Defaults to the run-level tolerance. */
   tolerance?: number;

@@ -31,11 +31,19 @@ import {
   type ClashExclusionKind,
   type ClashExclusionRule,
 } from './exclusions.js';
+import { parseClashSetFilters, type ClashSetFilters } from './set-filter.js';
 import { downloadFile } from '../export/download.js';
 import { optionalLocalStorage, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
-/** A built-in or user-defined clash rule preset, with editor/runtime flags. */
-export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean };
+/**
+ * A built-in or user-defined clash rule preset, with editor/runtime flags.
+ *
+ * `filterA` / `filterB` are the optional advanced-filter definition of each
+ * side (#3902). Absent on every preset saved before they existed and on every
+ * built-in, which is exactly what makes them additive: a side with no filter
+ * keeps resolving through its `selectorA` / `selectorB` type selector.
+ */
+export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean } & ClashSetFilters;
 
 /** How the panel groups the flat clash list (display only). */
 export type ClashSettingsGroupBy = 'severity' | 'rule' | 'typePair';
@@ -89,7 +97,7 @@ const SETTINGS_KEY = 'ifc-lite-clash-settings';
 const REVIEWS_KEY = 'ifc-lite-clash-reviews';
 /** The user's own "these two may overlap" rules (type pairs + element pairs). */
 const EXCLUSIONS_KEY = 'ifc-lite-clash-exclusions';
-const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 1;
 
 const MAX_PRESETS = 200;
 const MAX_NAME = 100;
@@ -125,7 +133,7 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
 // of undefined" on boot. Deferring to first call sidesteps the chunk
 // initialization-order hazard entirely.
 let builtinPresetIdsCache: Set<string> | null = null;
-function builtinPresetIds(): Set<string> {
+export function builtinPresetIds(): Set<string> {
   return (builtinPresetIdsCache ??= new Set(CLASH_RULE_PRESETS.map((p) => p.id)));
 }
 
@@ -173,7 +181,7 @@ export function validateSelector(selector: string): string | null {
   return t ? t : null;
 }
 
-function isValidStoredPreset(p: unknown): p is ClashPreset {
+export function isValidStoredPreset(p: unknown): p is ClashPreset {
   if (!p || typeof p !== 'object') return false;
   const r = p as Record<string, unknown>;
   return (
@@ -208,6 +216,7 @@ function readStoredPresets(): ClashPreset[] {
         selectorB: p.selectorB,
         enabled: p.enabled !== false,
         builtin: builtinPresetIds().has(p.id),
+        ...parseClashSetFilters(p),
       }));
   } catch (err) {
     onReadFailure(PRESETS_KEY, err);
@@ -248,6 +257,7 @@ function builtinDiffersFromDefault(p: ClashPreset): boolean {
   if (!orig) return true;
   return (
     !p.enabled ||
+    !!p.filterA || !!p.filterB ||
     p.name !== orig.name ||
     p.severity !== orig.severity ||
     p.selectorA !== orig.selectorA ||
@@ -607,45 +617,6 @@ export async function importPresets(file: File): Promise<ClashPreset[]> {
     selectorB: p.selectorB,
     enabled: p.enabled !== false,
     builtin: false,
+    ...parseClashSetFilters(p),
   }));
-}
-
-// ── Flavor integration ───────────────────────────────────────────────────────
-// Clash config rides inside a flavor's generic `settings.clash` blob, so each
-// flavor/profile carries its own rule-set + detection settings (and they travel
-// with flavor export/import). Serialize stores the minimal shape (customs +
-// modified built-ins + settings); deserialize rebuilds the full, validated state.
-
-/** Plain-JSON snapshot of clash config stored in a flavor. */
-export interface ClashFlavorConfig {
-  schemaVersion: number;
-  settings: ClashGlobalSettings;
-  /** Customs + modified built-ins only (built-ins are re-merged on restore). */
-  presets: ClashPreset[];
-}
-
-export function serializeClashConfig(presets: ClashPreset[], settings: ClashGlobalSettings): ClashFlavorConfig {
-  return { schemaVersion: SCHEMA_VERSION, settings: { ...settings }, presets: presetsToStore(presets) };
-}
-
-/**
- * Rebuild clash state from a flavor blob: the full resolved preset list (defaults
- * + the blob's overrides/customs) and bounds-clamped settings. Returns null when
- * the blob is missing/garbage so the caller can skip the restore.
- */
-export function deserializeClashConfig(blob: unknown): { presets: ClashPreset[]; settings: ClashGlobalSettings } | null {
-  if (!blob || typeof blob !== 'object') return null;
-  const b = blob as Partial<ClashFlavorConfig>;
-  const storedRaw = Array.isArray(b.presets) ? b.presets : [];
-  const stored = storedRaw.filter(isValidStoredPreset).map((p) => ({
-    id: p.id,
-    name: p.name,
-    description: typeof p.description === 'string' ? p.description : '',
-    severity: p.severity,
-    selectorA: p.selectorA,
-    selectorB: p.selectorB,
-    enabled: p.enabled !== false,
-    builtin: builtinPresetIds().has(p.id),
-  }));
-  return { presets: mergeStoredPresets(stored), settings: normalizeSettings(b.settings) };
 }

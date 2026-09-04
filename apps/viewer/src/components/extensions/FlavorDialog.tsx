@@ -29,7 +29,7 @@ import { FlavorImportPreview } from './FlavorImportPreview';
 import * as toastText from './toast-helpers';
 import { HelpHint } from './HelpHint';
 import { useViewerStore } from '@/store';
-import { serializeClashConfig } from '@/lib/clash/persistence';
+import { serializeClashConfig } from '@/lib/clash/persistence.flavor';
 
 /** Snapshot the current clash rule-set + detection settings for a flavor's
  *  `settings.clash` blob, so each profile carries its own clash config. */

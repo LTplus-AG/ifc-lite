@@ -54,7 +54,6 @@
    418 apps/viewer/src/components/viewer/chat/ExecutableCodeBlock.tsx
   1802 apps/viewer/src/components/viewer/ChatPanel.tsx
   1314 apps/viewer/src/components/viewer/ClashPanel.tsx
-   437 apps/viewer/src/components/viewer/ClashSettingsDialog.tsx
    849 apps/viewer/src/components/viewer/CommandPalette.tsx
    410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
@@ -92,7 +91,6 @@
    488 apps/viewer/src/components/viewer/schedule/schedule-animator.ts
    701 apps/viewer/src/components/viewer/ScriptPanel.tsx
    734 apps/viewer/src/components/viewer/SearchInline.tsx
-   439 apps/viewer/src/components/viewer/SearchModal.filter.builder.tsx
    534 apps/viewer/src/components/viewer/SearchModal.filter.editors.tsx
    862 apps/viewer/src/components/viewer/SearchModal.filter.tsx
    404 apps/viewer/src/components/viewer/SearchModal.text.tsx
@@ -120,7 +118,7 @@
    545 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    551 apps/viewer/src/hooks/useAnnotation2D.ts
    690 apps/viewer/src/hooks/useBCF.ts
-  1374 apps/viewer/src/hooks/useClash.ts
+  1367 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
   1359 apps/viewer/src/hooks/useDrawingExport.ts
   1036 apps/viewer/src/hooks/useDrawingGeneration.ts
@@ -132,7 +130,7 @@
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    496 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
-   651 apps/viewer/src/lib/clash/persistence.ts
+   622 apps/viewer/src/lib/clash/persistence.ts
    427 apps/viewer/src/lib/collab/geometry-sync.ts
    445 apps/viewer/src/lib/compare/buildFingerprints.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts
@@ -164,7 +162,7 @@
    581 apps/viewer/src/store/index.ts
    404 apps/viewer/src/store/slices/addElementMeshes.ts
    452 apps/viewer/src/store/slices/chatSlice.ts
-   994 apps/viewer/src/store/slices/clashSlice.ts
+   992 apps/viewer/src/store/slices/clashSlice.ts
   1599 apps/viewer/src/store/slices/collabSlice.ts
    482 apps/viewer/src/store/slices/dataSlice.ts
    874 apps/viewer/src/store/slices/drawing2DSlice.ts

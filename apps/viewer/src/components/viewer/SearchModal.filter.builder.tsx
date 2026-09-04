@@ -14,7 +14,7 @@
  * the path-B evaluator from a single Run button.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Plus, Trash2, X, Bookmark, Save } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
@@ -28,17 +28,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { COMMON_IFC_TYPES } from '@/lib/search/common-ifc-types';
-import {
-  Rule,
-  type FilterRule,
-  type Combinator,
-} from '@/lib/search/filter-rules';
-import {
-  discoverFilterSchema,
-  discoverPropertyAndQuantitySchema,
-  discoverFilterValues,
-} from '@/lib/search/filter-schema';
+import { Rule, type FilterRule } from '@/lib/search/filter-rules';
+import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
+import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import {
   loadSavedFilters,
   saveFilter,
@@ -46,14 +38,11 @@ import {
   type SavedFilterPreset,
 } from '@/lib/search/saved-filters';
 import { toast } from '@/components/ui/toast';
-import { RuleRow, RULE_KIND_LABEL } from './SearchModal.filter.editors';
+import { RuleRow } from './SearchModal.filter.editors';
 
 export function SearchModalFilterBuilder() {
   const {
     filter,
-    schemaMap,
-    models,
-    activeModelId,
     searchQuery,
     setFilterCombinator,
     setFilterLimit,
@@ -61,16 +50,10 @@ export function SearchModalFilterBuilder() {
     updateFilterRule,
     removeFilterRule,
     clearFilterRules,
-    setFilterSchema,
-    setFilterPsetQtoSchema,
-    setFilterValueSchema,
     setSearchFilter,
   } = useViewerStore(
     useShallow((s) => ({
       filter: s.searchFilter,
-      schemaMap: s.searchFilterSchema,
-      models: s.models,
-      activeModelId: s.activeModelId,
       searchQuery: s.searchQuery,
       setFilterCombinator: s.setFilterCombinator,
       setFilterLimit: s.setFilterLimit,
@@ -78,106 +61,20 @@ export function SearchModalFilterBuilder() {
       updateFilterRule: s.updateFilterRule,
       removeFilterRule: s.removeFilterRule,
       clearFilterRules: s.clearFilterRules,
-      setFilterSchema: s.setFilterSchema,
-      setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
-      setFilterValueSchema: s.setFilterValueSchema,
       setSearchFilter: s.setSearchFilter,
     })),
   );
 
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
-  const activeModel = activeModelId ? models.get(activeModelId) : undefined;
-  const activeStore = activeModel?.ifcDataStore ?? null;
-  const schemaEntry = activeModelId ? schemaMap.get(activeModelId) : undefined;
-
-  // Cheap schema discovery — runs once per active model.
-  useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    if (schemaMap.has(activeModelId)) return;
-    setFilterSchema(activeModelId, discoverFilterSchema(activeStore));
-  }, [activeModelId, activeStore, schemaMap, setFilterSchema]);
-
-  // Lazy pset/qto schema — fired the first time a property/quantity rule appears.
-  useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.psetQto) return;
-    const needs = filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity');
-    if (!needs) return;
-    setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
-  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterPsetQtoSchema]);
-
-  // Lazy value discovery - distinct material / classification / property /
-  // predefined-type values for the chip value suggestions. Fired the first time
-  // a rule that benefits from them appears.
-  useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.values) return;
-    const needs = filter.rules.some(
-      (r) =>
-        r.kind === 'property' ||
-        r.kind === 'material' ||
-        r.kind === 'classification' ||
-        r.kind === 'predefinedType',
-    );
-    if (!needs) return;
-    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore));
-  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterValueSchema]);
-
-  const ifcTypeOptions = useMemo<string[]>(() => {
-    if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {
-      return schemaEntry.basic.ifcTypes;
-    }
-    return COMMON_IFC_TYPES.slice();
-  }, [schemaEntry]);
-  const storeyOptions = schemaEntry?.basic.storeys ?? [];
-
-  // The canonical IFC types the filter selects (ifcType "is one of" rules).
-  const selectedTypes = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of filter.rules) {
-      if (r.kind === 'ifcType' && r.op === 'in') {
-        for (const v of r.values) if (v) set.add(v);
-      }
-    }
-    return Array.from(set);
-  }, [filter.rules]);
-
-  const hasPropOrQty = useMemo(
-    () => filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity'),
-    [filter.rules],
-  );
-
-  // Pset/Qto dropdown source: when the filter targets specific IFC types, scope
-  // discovery to just those elements so only their (legal + user-defined) psets
-  // show - no scrolling past unrelated MEP/structural sets - and read them
-  // directly so a pset missing from the on-demand map still appears. Otherwise
-  // use the cached whole-model schema. (#1462)
-  const psetQto = useMemo(() => {
-    const cached = schemaEntry?.psetQto ?? null;
-    if (!activeStore || !hasPropOrQty || selectedTypes.length === 0) return cached;
-    return discoverPropertyAndQuantitySchema(activeStore, selectedTypes);
-  }, [activeStore, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
+  const ruleOptions = useFilterRuleOptions(filter.rules);
 
   // ── Rule construction ─────────────────────────────────────────────
 
-  const addRuleOfKind = useCallback((kind: FilterRule['kind']) => {
-    let rule: FilterRule;
-    switch (kind) {
-      case 'storey':         rule = Rule.storey([], 'in'); break;
-      case 'ifcType':        rule = Rule.ifcType([], 'in'); break;
-      case 'predefinedType': rule = Rule.predefinedType([], 'in'); break;
-      case 'name':           rule = Rule.name('contains', ''); break;
-      case 'property':       rule = Rule.property('', '', 'eq', ''); break;
-      case 'quantity':       rule = Rule.quantity('', '', 'gt', 0); break;
-      case 'material':       rule = Rule.material('contains', ''); break;
-      case 'classification': rule = Rule.classification('', 'contains', ''); break;
-      case 'elevation':      rule = Rule.elevation('gt', 0); break;
-    }
-    addFilterRule(rule);
-  }, [addFilterRule]);
+  const addRuleOfKind = useCallback(
+    (kind: FilterRule['kind']) => addFilterRule(blankRuleOfKind(kind)),
+    [addFilterRule],
+  );
 
   const promoteSearchQuery = useCallback(() => {
     const q = searchQuery.trim();
@@ -294,10 +191,7 @@ export function SearchModalFilterBuilder() {
           <RuleRow
             key={i}
             rule={rule}
-            ifcTypeOptions={ifcTypeOptions}
-            storeyOptions={storeyOptions}
-            psetQto={psetQto}
-            valueSchema={schemaEntry?.values ?? null}
+            {...ruleOptions}
             onChange={(next) => updateFilterRule(i, next)}
             onRemove={() => removeFilterRule(i)}
           />
@@ -309,36 +203,6 @@ export function SearchModalFilterBuilder() {
 }
 
 // ── Sub-components ────────────────────────────────────────────────────
-
-function CombinatorToggle({
-  value,
-  onChange,
-}: {
-  value: Combinator;
-  onChange: (next: Combinator) => void;
-}) {
-  return (
-    <div
-      className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950"
-      title="AND requires every rule to match. OR matches any rule."
-    >
-      {(['AND', 'OR'] as const).map((c) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onChange(c)}
-          className={`rounded px-2 py-0.5 font-mono font-medium transition-colors ${
-            value === c
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {c}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function PresetMenu({
   presets,
@@ -401,32 +265,6 @@ function PresetMenu({
             >
               <Trash2 className="h-3 w-3" />
             </button>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function AddRuleMenu({
-  onAdd,
-}: {
-  onAdd: (kind: FilterRule['kind']) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 self-start text-xs">
-          <Plus className="h-3 w-3" />
-          Add rule
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuLabel className="text-[10px] uppercase">Filter dimension</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {(Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]).map((k) => (
-          <DropdownMenuItem key={k} onSelect={() => onAdd(k)}>
-            {RULE_KIND_LABEL[k]}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

@@ -12,7 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
-import type { ClashFocusMode } from '@/store/slices/clashSlice';
+import type { ClashFocusMode, ClashPreset } from '@/store/slices/clashSlice';
 import {
   createClashEngine,
   rulesFromPresets,
@@ -20,7 +20,6 @@ import {
   groupDuplicateSets,
   findDuplicates,
   clashReviewKey,
-  summarizeClashes,
   type Clash,
   type ClashElement,
   type ClashElementRef,
@@ -45,6 +44,8 @@ import {
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
+import { filterResultBySeverity } from '@/lib/clash/severity-filter';
+import { withResolvedClashSetFilters } from '@/lib/clash/set-filter';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
@@ -57,7 +58,7 @@ import {
 } from '@/lib/clash/federation-identity';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
-import { downloadBlob } from '@/lib/export/download';
+import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 
 /**
@@ -191,31 +192,6 @@ export interface ClashBcfConfig {
 
 /** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];
-
-/** Decode a `data:image/png;base64,...` URL into raw PNG bytes for the BCF zip. */
-function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {
-  const comma = dataUrl.indexOf(',');
-  if (comma < 0) return undefined;
-  try {
-    const binary = atob(dataUrl.slice(comma + 1));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Drop clashes whose severity is not selected, rebuilding the WHOLE summary
- * (not just `total`): this feeds `exportBcf`/`bcfPreview`, and a stale
- * `byTypePair`/`byRule`/`bySeverity` would still advertise buckets the filter
- * just removed.
- */
-export function filterResultBySeverity(result: ClashResult, severities: Set<ClashSeverity>): ClashResult {
-  const clashes = result.clashes.filter((c) => severities.has(c.severity));
-  return { ...result, clashes, summary: summarizeClashes(clashes) };
-}
 
 export function useClash() {
   const result = useViewerStore((s) => s.clashResult);
@@ -581,6 +557,23 @@ export function useClash() {
   );
 
   /**
+   * Run rules built from PRESETS, resolving each side's optional advanced
+   * filter (#3902) against the loaded models first. A side with no filter is
+   * left to its type selector, so a rule set from before filters existed goes
+   * through here byte-for-byte as it did.
+   */
+  const runPresets = useCallback(
+    async (presets: ClashPreset[]): Promise<void> => {
+      const state = useViewerStore.getState();
+      const models = [...state.models].map(([id, m]) => ({ id, store: m.ifcDataStore }));
+      const filters = new Map(presets.map((p) => [p.id, { filterA: p.filterA, filterB: p.filterB }]));
+      const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
+      return run(await withResolvedClashSetFilters(rules, filters, models, state.toGlobalId));
+    },
+    [run, mode, clearance, reportTouch],
+  );
+
+  /**
    * Run the user's ENABLED rule set (built-in discipline rules they've kept on,
    * plus any custom presets). With no enabled rules, surface a clear message
    * instead of silently finding nothing.
@@ -591,8 +584,8 @@ export function useClash() {
       useViewerStore.getState().setClashError('All rules are disabled — enable at least one in Clash settings (⚙).');
       return Promise.resolve();
     }
-    return run(rulesFromPresets(enabled, mode, mode === 'clearance' ? clearance : undefined, reportTouch));
-  }, [run, mode, clearance, reportTouch, clashPresets]);
+    return runPresets(enabled);
+  }, [runPresets, clashPresets]);
 
   /**
    * Detect ALL clashes in the loaded geometry — a single self-clash rule over
@@ -619,9 +612,9 @@ export function useClash() {
     (presetId: string): Promise<void> => {
       const preset = useViewerStore.getState().clashPresets.find((p) => p.id === presetId);
       if (!preset) return Promise.resolve();
-      return run(rulesFromPresets([preset], mode, mode === 'clearance' ? clearance : undefined, reportTouch));
+      return runPresets([preset]);
     },
-    [run, mode, clearance, reportTouch],
+    [runPresets],
   );
 
   /**

@@ -20,7 +20,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import { createClashSlice, type ClashSlice } from './clashSlice.js';
-import { deserializeClashConfig } from '@/lib/clash/persistence';
+import { deserializeClashConfig } from '@/lib/clash/persistence.flavor';
 import type { ClashPreset, ClashGlobalSettings } from '@/lib/clash/persistence';
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';

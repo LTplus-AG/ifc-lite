@@ -1,5 +1,17 @@
 # @ifc-lite/source-dalux
 
+## 0.3.1
+
+### Patch Changes
+
+- [#3370](https://github.com/LTplus-AG/ifc-lite/pull/3370) [`a76bc4e`](https://github.com/LTplus-AG/ifc-lite/commit/a76bc4ec0df4b683b5d03c89ff3f48fa1ab51057) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix "Failed to fetch" downloading a Dalux Box file for an account on a node other than node1.
+  
+  `download()` falls back to a `downloadLink`/revision-content URL Dalux hands back when the file carries no known revision id. For an account on, say, node2, that URL points straight at `node2.field.dalux.com` — not the canonical `node1.field.dalux.com` origin every request in this provider is otherwise built against. The client only ever routed URLs matching that canonical origin through the app's same-origin relay, so this one went out as a direct cross-origin fetch to Dalux, which sends no CORS headers on any node, and the browser blocked it.
+  
+  `getBinary` now recognises a Dalux field-node-shaped URL that lands on a *different* node than `baseUrl` and reroutes it back onto the canonical origin with that node stamped as the relay's `daluxNode` parameter, the same way an explicit node preference is already stamped onto same-origin requests. A genuinely different host (an opaque signed CDN link) is still left byte-for-byte untouched.
+
+- [#3521](https://github.com/LTplus-AG/ifc-lite/pull/3521) [`0e3e71f`](https://github.com/LTplus-AG/ifc-lite/commit/0e3e71fb0a42ea752405a4c54862c8f1159a1ae9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `toSourceFile` now forwards Dalux's `version` field into `SourceFile.meta.version`. `decodeFile` already decoded it, but the mapper dropped it before it reached the `SourceFile` the host consumes — unlike `fileType`/`fileSize`/`lastModified`, which all reach the produced `SourceFile`, or `fileAreaId`/`folderId`, which already flow through the same `meta` bag. `SourceFile.meta` is documented as the provider-specific pass-through channel, and Dalux has no revision-history API to carry a version label through `SourceRevision` the way the msgraph/SharePoint provider does, so `meta` is the only place this value can reach a consumer.
+
 ## 0.3.0
 
 ### Minor Changes

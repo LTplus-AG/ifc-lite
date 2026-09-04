@@ -1,5 +1,54 @@
 # @ifc-lite/server-bin
 
+## 1.17.0
+
+### Minor Changes
+
+- [#3894](https://github.com/LTplus-AG/ifc-lite/pull/3894) [`55fab2c`](https://github.com/LTplus-AG/ifc-lite/commit/55fab2c87ea263d50d1b1239971aecafb6e6ed2e) Thanks [@louistrue](https://github.com/louistrue)! - `POST /api/v1/parse/parquet/optimized` is now cached, so a repeat request is a disk read instead of a full re-parse ([#3889](https://github.com/LTplus-AG/ifc-lite/issues/3889)). The route was added without a cache key of its own, which left the two Parquet endpoints with opposite properties: the flat route stored its large payload and replayed it, while the optimized route rebuilt its small payload on every request, and got no benefit from a flat response cached seconds earlier either. On a 57.9 MB file the flat route roughly halved on its second call and the optimized route did not improve at all.
+  
+  The optimized response now has its own key pair, `{sha256}-{filter}-parquet-optimized-v1` for the body and `{sha256}-{filter}-parquet-optimized-metadata-v1` for the `X-IFC-Metadata` header, `optimization_stats` included, so a replay reports what the live parse reported. They are a separate namespace from the flat route's `-parquet-v5` / `-parquet-metadata-v4` on purpose: the optimized payload is quantized and deduplicated, so a cached flat response must never satisfy the optimized route or the other way round. Bump the suffix on any change to the optimized payload's columns.
+  
+  Two details of the write. It happens before the response goes out rather than in a background task, because this payload is the small one and a background write races the very next request, which is the request the cache exists to serve. And a hit requires the symbolic sidecar to still be present alongside the body and metadata: the optimized parse is what writes that sidecar, so replaying past a missing one would leave `GET /api/v1/parse/symbolic/{cache_key}` polling a key nobody writes.
+
+- [#3904](https://github.com/LTplus-AG/ifc-lite/pull/3904) [`34aacc6`](https://github.com/LTplus-AG/ifc-lite/commit/34aacc689d26cbaa15c3bdd4c06d5c710f5676c6) Thanks [@louistrue](https://github.com/louistrue)! - `POST /api/v1/parse/parquet` can now share geometry between occurrences of one shape, behind the opt-in `?parquet_layout=shared-shapes` ([#3888](https://github.com/LTplus-AG/ifc-lite/issues/3888)). The flat writer emitted one full copy of the vertices per occurrence, so a model built from repeated furniture, pipe runs or structural members paid for every repeat. `/optimized` has deduplicated those since [#3595](https://github.com/LTplus-AG/ifc-lite/issues/3595); the flat route, which is the one a viewer replays from cache on every open after the first, was scoped out of that work.
+  
+  Under the new layout the mesh table gains `rot0..rot8` (row-major 3x3, Float32) and its `vertex_start`/`vertex_count`/`index_start`/`index_count` stop being one-to-one with the blocks they name: several rows can point at one block, each placed by `world = origin + R * p` in the same Y-up metres frame the positions are already in. The grouping is `collate_rotation_aware_placements` reused verbatim, so the flat route can never share a shape the optimized route would have refused to: same representation-identity grouping, same per-vertex residual check against the occurrence's own baked geometry, same all-or-nothing per group. On `S_Office_Integrated Design Archi.ifc` the blob goes from 23,577,415 to 4,923,656 bytes, 20.9% of the previous size.
+  
+  **It is opt-in, and a request that does not ask for it gets byte-identical output to before.** The layout renders incorrectly on a client that does not apply the rotation — every occurrence of a shared shape lands at the template's placement — and the flat Parquet wire carries no version marker such a client could fail loud on, unlike `/optimized`. A server cannot tell those clients apart, so producing the new layout by default would silently draw the wrong building for anyone pinned to an older `@ifc-lite/server-client`. A cache-key bump would not have helped: a key namespaces server-side entries and has no bearing on which client is asking.
+  
+  The two layouts are cached under separate keys, `-parquet-v5` (unchanged, so entries already on disk still hit) and `-parquet-v6`, and never cross-serve. `GET /api/v1/cache/check/{hash}` and `GET /api/v1/cache/geometry/{hash}` take the same `parquet_layout` parameter and answer for the layout the caller asked about, so a default client cannot be told "cached" about an entry it would draw wrong.
+  
+  `POST /api/v1/parse/parquet-stream` honours the parameter too, but shares nothing under either value: it serializes one batch at a time, where sharing could only be batch-local. There the parameter decides only whether the mesh table carries identity rotation columns, which keeps everything under the v6 key a v6 payload.
+
+- [#3595](https://github.com/LTplus-AG/ifc-lite/pull/3595) [`cfee55b`](https://github.com/LTplus-AG/ifc-lite/commit/cfee55b287075eddbe10cc37d4c0d70caaac7279) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `POST /api/v1/parse/parquet/optimized`'s documented "Mesh deduplication (instancing)" was inert whenever reuse was rotational: the dedup key hashed each occurrence's BAKED (world-space) vertices, and rotation is baked into those vertices, so two instances of one shape at different orientations always hashed distinct. Across models with heavy `IfcMappedItem` reuse (furniture, pipe runs, repeated structural members) `optimization_stats.mesh_reuse_ratio` sat at ~1.0 where 3.6x-72x reuse was available.
+  
+  The instance table now dedupes by representation identity too: occurrences that share one `IfcMappedItem` / `IfcRepresentationMap` at different orientations collapse to ONE template mesh, verified per occurrence (each occurrence's derived placement must reconstruct that occurrence's own baked vertices within 0.1mm before the group is trusted — if any single occurrence fails, the WHOLE representation group falls back to the previous content-hash behaviour, never a wrong placement). The instance table gains nine `rot0..rot8` columns (row-major 3x3, identity for every non-rotated instance) alongside the existing `origin_x/y/z`: `world = origin + R * template_position`. The optimized-format wire version is 3 for a payload that actually carries a non-identity rotation, and stays 2 otherwise — a response with no rotational reuse is byte-shaped exactly as before (no `rot0..rot8` columns) and keeps decoding on clients that predate this change. Only a genuinely rotation-bearing payload declares 3, where a v2-only decoder must reject it rather than silently ignore the rotation and misplace every rotated instance.
+  
+  `optimization_stats.unique_meshes`/`mesh_reuse_ratio` now reflect the real dedup, not a separate content-hash-only estimate.
+
+- [#3907](https://github.com/LTplus-AG/ifc-lite/pull/3907) [`4bdab03`](https://github.com/LTplus-AG/ifc-lite/commit/4bdab03efb71f878f307ceb3767beb83d8c8b0f6) Thanks [@louistrue](https://github.com/louistrue)! - Streaming cache hits no longer pay for the upload.
+  
+  `POST /api/v1/parse/parquet-stream` keys on the SHA-256 of the bytes it
+  receives, so the whole file had to arrive before the cache could be consulted.
+  On a 40 MB model that upload was the entire cost of a hit. The route now also
+  accepts `?sha256={hex}` with no request body: if everything the replay needs is
+  already cached it streams it back, and otherwise answers 404 meaning "send the
+  file". A hash that arrives alongside a body is ignored, so the received bytes
+  still decide which entry is read and written.
+  
+  `parseParquetStream` in `@ifc-lite/server-client` hashes the file locally and
+  probes before uploading. The probe degrades to the upload whenever it is not
+  answered, so pointing an upgraded client at a server that predates this change
+  still works. This also makes a hit progressive: it used to fetch the
+  whole model through `/cache/geometry` and hand it over as one batch. Pass
+  `{ skipCacheProbe: true }` to upload straight away.
+
+### Patch Changes
+
+- [#3897](https://github.com/LTplus-AG/ifc-lite/pull/3897) [`e08db2b`](https://github.com/LTplus-AG/ifc-lite/commit/e08db2be8976c1e16a92c6d86d25289547ec05fc) Thanks [@louistrue](https://github.com/louistrue)! - A cache hit on `POST /api/v1/parse/parquet-stream` replayed geometry as a single oversized `batch` event with zero `progress` events, instead of the `Start` / (`batch`, `progress`)* / `Complete` shape a live parse streams ([#3895](https://github.com/LTplus-AG/ifc-lite/issues/3895)). The cached geometry blob still carries its original stream-batch boundaries as Parquet row groups; the replay now recovers them and re-emits one `batch` plus one `progress` event per original batch, byte-identical to what the live path would have sent for that batch. The streaming cache writer now pins one row group per batch (arrow-rs otherwise splits the vertex table past 1,048,576 rows, which large models cross), so the boundaries survive on exactly the models this helps. A blob with no recoverable boundary — a single row group, or a corrupt one — replays as one batch, same as before.
+
+- [#3897](https://github.com/LTplus-AG/ifc-lite/pull/3897) [`e08db2b`](https://github.com/LTplus-AG/ifc-lite/commit/e08db2be8976c1e16a92c6d86d25289547ec05fc) Thanks [@louistrue](https://github.com/louistrue)! - `progress` events on `POST /api/v1/parse/parquet-stream` reported different units on a cache hit than on a miss ([#3897](https://github.com/LTplus-AG/ifc-lite/issues/3897)). A live parse reports the pipeline's geometry JOB counts (`processed_jobs` / `total_jobs`); the cached replay counted the meshes it emitted, and a job can produce several meshes or none, so the same file streamed `0/3, 3/3` when parsed and `0/4, 4/4` when replayed. `start.total_estimate` had the same split. The live path now caches its per-batch job checkpoints beside the geometry and the replay emits those, so a hit and a miss report the same numbers. Entries cached before the sidecar existed have no job counts to replay and keep the old mesh-unit behaviour.
+
 ## 1.16.7
 
 ### Patch Changes

@@ -1,5 +1,36 @@
 # @ifc-lite/lists
 
+## 2.1.0
+
+### Minor Changes
+
+- [#3706](https://github.com/LTplus-AG/ifc-lite/pull/3706) [`a8c48ee`](https://github.com/LTplus-AG/ifc-lite/commit/a8c48eed679a31ef0c44782ee19c0889cef5a665) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add a `geometry` column/condition source (issue [#3671](https://github.com/LTplus-AG/ifc-lite/issues/3671), "Reporting World Coordinates in Lists"): `propertyName` selects `X` | `Y` | `Z` (default `X`) of the element's World Coordinate, in the project's own coordinate system and IFC Z-up axes, project length units. This is PROJECT space, distinct from the map/WGS84 georeferenced frame.
+  
+  The value is the CENTRE of the element's world bounding box, not its `IfcLocalPlacement` origin. For an L-shaped slab or a curved wall those differ, and the centre can fall outside the element itself.
+  
+  `ListDataProvider` gains an optional `getWorldPosition(expressId)` accessor to back it; providers built before this existed simply have no World Coordinate columns, the same graceful-degrade contract as every other optional accessor.
+  
+  `geometry` columns resolve through the existing generic numeric sort/filter machinery, so sorting works and the engine supports `gt`/`lt` conditions. The list builder UI does not yet offer `geometry` as a condition source, so those conditions can currently only be authored programmatically.
+  
+  Elements whose whole mesh set went to the GPU-instanced shard report no World Coordinate: they never appear in `GeometryResult.meshes`, and `instancedGeometryAabbs` is not consulted yet. Their cells are blank rather than wrong.
+
+### Patch Changes
+
+- [#3746](https://github.com/LTplus-AG/ifc-lite/pull/3746) [`020932a`](https://github.com/LTplus-AG/ifc-lite/commit/020932aade4a506b5e6e6e27ddb706884660f995) Thanks [@louistrue](https://github.com/louistrue)! - A World Coordinate column whose axis is not `X`, `Y` or `Z` now resolves to an empty cell instead of silently reporting the X coordinate.
+  
+  `getWorldCoordinateValue` matched the axis with `case 'X': default: return pos.x;`, so the explicit `X` case and the fallback shared a body. Any other axis — a hand-edited saved list definition, a definition written by a build that knows an axis this one does not — got the X coordinate under a header saying something else. A blank cell is a visible gap; a plausible number under the wrong label is a wrong answer that reads as a right one, and nothing downstream can tell the two apart.
+  
+  Blank or whitespace-only still means `X`, which is the documented default for a column created without an axis. ("Whitespace" is JavaScript's `trim()` definition, so a zero-width space is an unknown axis rather than a blank one — a distinction with no known producer, noted rather than coded around.)
+  
+  The same resolver backs geometry **conditions**, so this narrows the filter too: a condition on an unknown axis now matches no rows, `exists` included. That is reachable only from a hand-edited or imported definition — the Lists builder constructs geometry columns and never geometry conditions — but it is a behaviour change and is now pinned by a test rather than inherited.
+  
+  No existing column changes: the Lists builder offers only `X`, `Y` and `Z` (`ListBuilder.tsx`), so no axis a user can pick today is affected. The change protects persisted definitions and forward compatibility.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`142b84c`](https://github.com/LTplus-AG/ifc-lite/commit/142b84c41036b749e7b64418a882424b9c386edb), [`bcbe7b9`](https://github.com/LTplus-AG/ifc-lite/commit/bcbe7b9afa38e8dafb5900e73575c71a8fd96012), [`82343f7`](https://github.com/LTplus-AG/ifc-lite/commit/82343f75dd2e6029946cbcd0990d3f8fd38a26ad), [`1000dce`](https://github.com/LTplus-AG/ifc-lite/commit/1000dce72e9ec75c59848efefc1f709d01172e72), [`89c4cf2`](https://github.com/LTplus-AG/ifc-lite/commit/89c4cf22e83d76115035f7dcbf6e34f9c06dd091), [`a1aebc8`](https://github.com/LTplus-AG/ifc-lite/commit/a1aebc822b819221258f4759edf4c82ff0d140f7), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`1060a30`](https://github.com/LTplus-AG/ifc-lite/commit/1060a30187c8f6bb327f9e356056f2364568e8ff), [`80a0cd9`](https://github.com/LTplus-AG/ifc-lite/commit/80a0cd9b946a5ff1aa6ca214ddb427a5d1f5303c), [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0)]:
+  - @ifc-lite/encoding@2.2.0
+  - @ifc-lite/data@4.0.0
+
 ## 2.0.2
 
 ### Patch Changes

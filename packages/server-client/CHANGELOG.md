@@ -1,5 +1,70 @@
 # @ifc-lite/server-client
 
+## 2.0.0
+
+### Major Changes
+
+- [#3851](https://github.com/LTplus-AG/ifc-lite/pull/3851) [`1389598`](https://github.com/LTplus-AG/ifc-lite/commit/1389598ac7e8c4986a89b50d7671cbb5028ab066) Thanks [@louistrue](https://github.com/louistrue)! - `parquet-decoder.ts` imported `parquet-wasm/esm/arrow2.js`, an entry point parquet-wasm removed in 0.6, while `peerDependencies` advertised `parquet-wasm >=0.5.0`. In-repo that range auto-installed 0.5.0, where the path still existed, so nothing here failed; a consumer who installed 0.7 (what the rest of this workspace pins) got a missing module the first time any Parquet decode ran. The decoder now imports the package entry point `parquet-wasm` and lets its export map pick the build, the same shape `@ifc-lite/export` already uses, and the peer range narrows to `^0.7.2`, the version that entry point is verified against. A new test decodes a payload written by the resolved parquet-wasm, so the dropped entry point cannot come back unnoticed.
+  
+  **Breaking:** this drops support for parquet-wasm 0.5 and 0.6. parquet-wasm 0.5 declares no `exports` and no `main`, so under Node the new bare `import('parquet-wasm')` fails outright with `ERR_MODULE_NOT_FOUND` (verified against 0.5.0). A consumer still on 0.5 whose Parquet decoding worked before gets a hard failure, not a peer-dependency warning: upgrade to `parquet-wasm@^0.7.2` alongside this release.
+
+### Minor Changes
+
+- [#3904](https://github.com/LTplus-AG/ifc-lite/pull/3904) [`34aacc6`](https://github.com/LTplus-AG/ifc-lite/commit/34aacc689d26cbaa15c3bdd4c06d5c710f5676c6) Thanks [@louistrue](https://github.com/louistrue)! - `decodeParquetGeometry` now applies the per-mesh rotation the flat Parquet transport carries under the server's shared-shape layout ([#3888](https://github.com/LTplus-AG/ifc-lite/issues/3888)), and the client asks for that layout by default. Occurrences of one shape share a single block of vertices there, and `rot0..rot8` plus `origin_x/y/z` are what put each of them back where it belongs (`world = origin + R * p`) — decoding without the rotation draws every occurrence of a shared shape unrotated at the template's placement.
+  
+  It is the same `applyInstanceRotation` the optimized decoder has used since [#3575](https://github.com/LTplus-AG/ifc-lite/issues/3575), on the same columns in the same frame, rather than a second implementation. A payload without the rotation columns decodes exactly as before: absent means identity, and a partial or short block (truncated wire data) also falls back to identity rather than reading `undefined` into the matrix.
+  
+  The opt-in signal (`parquet_layout=shared-shapes`) is sent on all four endpoints that touch the flat geometry cache — the two parse routes, the cache check and the cached-geometry fetch — because the two layouts are stored under separate keys and a check that omitted it would answer about the other entry. The optimized route does not get the parameter; it has its own format and its own key.
+  
+  **A pinned older copy of this package keeps working**, and that is the point of the opt-in: it never sends the signal, so an upgraded server keeps producing the layout it understands. Upgrading is what gets you the smaller payload.
+  
+  One thing to check if you consume `MeshData` from the flat route directly: `origin` was `[0, 0, 0]` on every row from a default native server until now, so code that folded it in and code that ignored it behaved identically there. Under the shared-shape layout it carries real values, and world-space consumers must fold it. (`IFC_LITE_LOCAL_FRAME` has made native origins non-zero since [#1841](https://github.com/LTplus-AG/ifc-lite/issues/1841), so a deployment that sets it was already relying on that.)
+
+- [#3595](https://github.com/LTplus-AG/ifc-lite/pull/3595) [`cfee55b`](https://github.com/LTplus-AG/ifc-lite/commit/cfee55b287075eddbe10cc37d4c0d70caaac7279) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `decodeOptimizedParquetGeometry` now accepts optimized-format version 3 (issue [#3575](https://github.com/LTplus-AG/ifc-lite/issues/3575)), which carries a per-instance rotation (`rot0..rot8`, row-major 3x3) alongside the existing per-instance `origin_x/y/z` — the server's fix for rotated `IfcMappedItem` reuse (furniture, pipe runs, repeated structural members) that previously never deduplicated. `buildMeshesFromOptimizedTables` applies the rotation to the shared template's local vertices/normals before `origin` places them, so `world = origin + R * template_position`; version-2 payloads (no rotation columns) and any instance without a verified rotation decode exactly as before (identity rotation, origin-only placement).
+
+- [#3907](https://github.com/LTplus-AG/ifc-lite/pull/3907) [`4bdab03`](https://github.com/LTplus-AG/ifc-lite/commit/4bdab03efb71f878f307ceb3767beb83d8c8b0f6) Thanks [@louistrue](https://github.com/louistrue)! - Streaming cache hits no longer pay for the upload.
+  
+  `POST /api/v1/parse/parquet-stream` keys on the SHA-256 of the bytes it
+  receives, so the whole file had to arrive before the cache could be consulted.
+  On a 40 MB model that upload was the entire cost of a hit. The route now also
+  accepts `?sha256={hex}` with no request body: if everything the replay needs is
+  already cached it streams it back, and otherwise answers 404 meaning "send the
+  file". A hash that arrives alongside a body is ignored, so the received bytes
+  still decide which entry is read and written.
+  
+  `parseParquetStream` in `@ifc-lite/server-client` hashes the file locally and
+  probes before uploading. The probe degrades to the upload whenever it is not
+  answered, so pointing an upgraded client at a server that predates this change
+  still works. This also makes a hit progressive: it used to fetch the
+  whole model through `/cache/geometry` and hand it over as one batch. Pass
+  `{ skipCacheProbe: true }` to upload straight away.
+
+- [#3869](https://github.com/LTplus-AG/ifc-lite/pull/3869) [`e5b8dbc`](https://github.com/LTplus-AG/ifc-lite/commit/e5b8dbc7e037aa049d56b1fb3bd1b55c034f9114) Thanks [@louistrue](https://github.com/louistrue)! - Decode the relationships table's new `rel_id` column: `Relationship.rel_id` carries the express id of the `IfcRel*` entity that produced the row. The field is optional and stays `undefined` against a server that does not send the column, so an older server keeps decoding unchanged.
+
+### Patch Changes
+
+- [#3863](https://github.com/LTplus-AG/ifc-lite/pull/3863) [`3b266b9`](https://github.com/LTplus-AG/ifc-lite/commit/3b266b99dac5e384c48a410df7074803b01ef20f) Thanks [@louistrue](https://github.com/louistrue)! - Type-only fix: `ParseResponse.geometry_diagnostics` no longer points at a stale copy of `GeometryDiagnostics`. The copy had missed `schemaVersion`, `worstHosts.bbox`, `worstHosts.triangleCount` and `oversizedRefDrops`, all of which the Rust server serialises, so reading one meant a type error and a cast. A compile-time contract test now compares the client's copy with the canonical type in `@ifc-lite/geometry` field for field, so the two cannot drift again.
+  
+  `@ifc-lite/server-client` keeps its empty `dependencies` map: no dependency on `@ifc-lite/geometry` was added, and the runtime is untouched.
+  
+  `@ifc-lite/geometry` gains `GeometryDiagnostics.oversizedRefDrops` (optional) and sums it in `mergeGeometryDiagnostics`. The Rust pass has emitted the counter since [#3752](https://github.com/LTplus-AG/ifc-lite/issues/3752); no TypeScript consumer could read it, and the merge dropped it on every fold.
+  
+  The client copy also declares `totalUnsupportedItems` / `unsupportedItemsByType` ahead of the canonical type so that PR [#3691](https://github.com/LTplus-AG/ifc-lite/issues/3691), which adds those two fields in `@ifc-lite/geometry`, does not collide with this change. The contract test allowlists exactly those names and fails once [#3691](https://github.com/LTplus-AG/ifc-lite/issues/3691) lands, which is the signal to delete the allowlist entry.
+  
+  The Rust producer now omits `worstHosts.firstFailureLabel`, `worstHosts.bbox` and `worstHosts.triangleCount` from the JSON when they are `None`, instead of writing an explicit `null`. The TypeScript mirrors declare them as `field?: T`, which means the key is absent; the wasm boundary already matched that because `serde_wasm_bindgen` writes `None` as `undefined`, but the server response goes through `serde_json`, which wrote `null`. A consumer guarding with `!== undefined` typechecked and then threw. Deserialisation is unchanged: a missing key and an explicit `null` both read back as `None`, so older payloads still parse.
+
+- [#3858](https://github.com/LTplus-AG/ifc-lite/pull/3858) [`3174ee9`](https://github.com/LTplus-AG/ifc-lite/commit/3174ee9d5b72d3d07c7b8c41238ae84221ae89fd) Thanks [@louistrue](https://github.com/louistrue)! - `MetadataResponse` now carries `oversized_id_count` and `malformed_record_found`, so a client can tell a whole file from a truncated one.
+  
+  `POST /api/v1/parse/metadata` walks its own entity scanner and returned a 200 whose `entity_count` was computed over the bytes before the scan stopped. Both ways that happens were invisible to the caller: a record whose instance name does not fit `u32` is skipped ([#3395](https://github.com/LTplus-AG/ifc-lite/issues/3395)), and a record with no terminating `;` — an unterminated string or comment, or a truncated file — stops the scan outright ([#3695](https://github.com/LTplus-AG/ifc-lite/issues/3695)). A model that came back short read exactly like a small one.
+  
+  The server now reports both to its own sink and puts both on the response. Counting behaviour is unchanged; only the silence is fixed. `oversized_id_count > 0` means `entity_count` is short by that many records; `malformed_record_found === true` means it covers only the bytes before the break, so the answer is a partial view of the file rather than a smaller file.
+  
+  Both fields are optional, following the same "absent on older servers" convention as `ParseResponse.mesh_coordinate_space`. Absence is not zero: a server that predates these fields sends neither, which means the response was not scanned for either condition, never that the file is clean. Branch on presence before reading the value.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
+- [#3571](https://github.com/LTplus-AG/ifc-lite/pull/3571) [`3e61c40`](https://github.com/LTplus-AG/ifc-lite/commit/3e61c407e8b274c85ea4c74bd3b0d63cfc1c300f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `decodeDataModel` no longer fabricates `0` for a legitimately-null nullable numeric column. Both `elevation` (a storey whose elevation cannot be resolved) and `thickness` (every non-layer material association — single material, list, constituent) are server-emitted as nullable `Float64` Parquet columns; reading them via `Vector.toArray()` returns the column's raw values buffer, which carries `0` at a NULL row's slot rather than a detectable sentinel. A storey with no resolvable elevation, or a material that is not a layer, previously decoded with a real-looking `elevation: 0` / `thickness: 0` instead of `undefined` — silently wrong data that downstream code (which already checks `!== undefined` for both fields) could not distinguish from a genuine zero-elevation storey or a zero-thickness layer. Both columns are now read through a null-safe path (`parquet-nullable.ts`) that consults the column's own validity per null-containing row.
+
 ## 1.24.0
 
 ### Minor Changes

@@ -1,5 +1,27 @@
 # @ifc-lite/sandbox
 
+## 2.2.2
+
+### Patch Changes
+
+- [#3472](https://github.com/LTplus-AG/ifc-lite/pull/3472) [`c4fb369`](https://github.com/LTplus-AG/ifc-lite/commit/c4fb36908b350829e73217851c07d9a2e6de74fb) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.query.entity(modelId, expressId)` built its `EntityRef` inline from the raw arguments, with type casts and no runtime check, instead of going through the shared `toRef()` helper that every other method in `bim.query` uses. A call that omitted an argument — `bim.query.entity('m1')` — therefore reached `sdk.entity()` with `expressId: undefined` instead of being rejected first.
+  
+  `entity()` now builds its ref via `toRef()` and returns `null` when the ref is unusable, matching the rest of `bim.query`. A script that passes a real `(modelId, expressId)` pair is unaffected, and so is a wrong-typed one: the bridge coerces argument 0 with `getString` and argument 1 with `getNumber` before the handler runs, so `bim.query.entity(42, '7')` arrived — and still arrives — as `('42', 7)`.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
+- [#3496](https://github.com/LTplus-AG/ifc-lite/pull/3496) [`8b975fe`](https://github.com/LTplus-AG/ifc-lite/commit/8b975fec2769ba8f1787075ecb7785bb3bc06ac0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `bim.viewer.resetColors()` in sandbox scripts always reset every color override in the model. The SDK method it wraps (`resetColors(refs?: EntityRef[])`) already supports resetting only the given entities' colors, but the sandbox schema declared `resetColors` with zero parameters, so a script had no way to pass any — the capability was unreachable from user scripts, the editor's completions, and the LLM system prompt. `resetColors` now takes an optional `entities` argument and forwards it; calling it with no arguments still resets everything.
+
+- [#3471](https://github.com/LTplus-AG/ifc-lite/pull/3471) [`cd6f54f`](https://github.com/LTplus-AG/ifc-lite/commit/cd6f54f48e0c3d9013d13f1b9a95d495287b3b45) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `toRef()` accepting a `NaN`, `Infinity`, negative, or fractional `expressId`.
+  
+  The bridge boundary shared by `bim.mutate`, `bim.store`, and `bim.query` checked `typeof ref.expressId === 'number'` but not that the number was a finite positive integer. `bridge-store.ts`'s `requireStoreyId` already enforced `Number.isInteger(id) && id > 0` for storey ids; `toRef` is now held to the same standard, since every call site trusts a non-null result as naming a real entity.
+  
+  Concretely, this closes a silent-failure path: a script that computes an express id from parsed data (a CSV join is the documented use case) and passes a `NaN` or fractional value into `bim.mutate.setProperty`/`setAttribute`/`deleteProperty` used to record the mutation under a key no real entity has and no export path ever emits, with no exception — the script reported success while the edit went nowhere. `toRef` now returns `null` for these shapes. Of the 22 call sites, 5 throw `Error` on a `null` ref (the three in `bridge-mutate.ts` and the two in `bridge-store.ts`, e.g. `bim.mutate.setProperty: invalid entity reference`), so on those the behaviour changes from silent no-op to a thrown error. The other 17, all the read paths in `bridge-query.ts`, return an empty result on a `null` ref (`[]`, `null`, or an empty relationship object), so a bad express id there stops reaching the SDK and reads as "no data" instead.
+  
+  This is an observable behaviour change: a script that was previously computing a bad express id and "succeeding" (the mutation was simply lost) will now throw from `bim.mutate`/`bim.store` instead, and get an empty result back from `bim.query`. A script that only ever passes valid express ids is unaffected.
+- Updated dependencies [[`f98e601`](https://github.com/LTplus-AG/ifc-lite/commit/f98e601e5efc749088949665e41efd44f1b889c4), [`586fa29`](https://github.com/LTplus-AG/ifc-lite/commit/586fa292b69cdb3ba6e45764b4ff742b2fa7b9a9), [`c1390f3`](https://github.com/LTplus-AG/ifc-lite/commit/c1390f38e32f7a345a4f2651b8a3b6d849e56af6)]:
+  - @ifc-lite/sdk@4.0.0
+
 ## 2.2.1
 
 ### Patch Changes

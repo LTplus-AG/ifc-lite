@@ -1,5 +1,17 @@
 # @ifc-lite/diff
 
+## 0.8.0
+
+### Minor Changes
+
+- [#3704](https://github.com/LTplus-AG/ifc-lite/pull/3704) [`b0a6265`](https://github.com/LTplus-AG/ifc-lite/commit/b0a6265a804099b9cea7e55f26fc50825c1df07a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A model comparison did not carry an entity's classification (`IfcRelAssociatesClassification` -> `IfcClassificationReference`) in any channel at all: re-coding an element from one Uniclass group to another, with geometry and every property untouched, read as `unchanged` on `ifc-lite diff --by-content`, the MCP `model_diff` tool, and the viewer's compare panel alike — the same silent-drop shape [#1198](https://github.com/LTplus-AG/ifc-lite/issues/1198) fixed for quantity sets. `@ifc-lite/diff`'s `DataFingerprintInput` gains an optional `classifications` field (resolved reference labels, never entity references — an id is reassigned on every save), hashed the same way as the existing `materials` field: present only when the entity carries one, so an unclassified entity's fingerprint is unaffected, and exposed as its own `classification` component key for the content-matching collision guard. All three adapters now populate it.
+
+### Patch Changes
+
+- [#3659](https://github.com/LTplus-AG/ifc-lite/pull/3659) [`eb142e0`](https://github.com/LTplus-AG/ifc-lite/commit/eb142e00bc8ad1d6c699ea42fdbc35a9281d8133) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `buildDataFingerprint`/`buildComponentFingerprints` no longer hash a non-finite property/quantity value (`NaN`/`Infinity`/`-Infinity` — reachable from a STEP `IfcReal` with an extreme exponent, e.g. `1.0E400`) the same as that value being absent. `JSON.stringify`, which both functions feed into, has no non-finite numeric literal (RFC 8259) and silently maps all three to `null`; `normalizeValue` now stringifies a non-finite number first, so it survives as a distinct token instead of colliding with a genuinely `null` property. Left unfixed, that collision let `matchUnpairedByContent` retire a real `added`/`deleted` pair as one "unchanged" match whenever the only difference was a corrupt-but-present value versus an absent one.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
 ## 0.7.0
 
 ### Minor Changes

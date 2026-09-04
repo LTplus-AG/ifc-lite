@@ -1,5 +1,42 @@
 # @ifc-lite/encoding
 
+## 2.2.0
+
+### Minor Changes
+
+- [#3856](https://github.com/LTplus-AG/ifc-lite/pull/3856) [`142b84c`](https://github.com/LTplus-AG/ifc-lite/commit/142b84c41036b749e7b64418a882424b9c386edb) Thanks [@louistrue](https://github.com/louistrue)! - Write the `DocumentReference/@Guid` that BCF 3.0 requires.
+  
+  2.1's markup.xsd leaves the attribute optional and 3.0's
+  `DocumentReferenceAttributes` marks it `use="required"`, so a 3.0 topic
+  carrying a document reference without one produced a `markup.bcf` that fails
+  validation, and a viewer that rejects markup.bcf drops the topic entirely. A
+  guid is now derived when the caller supplied none, and written back onto the
+  reference so the in-memory project matches the file. A caller-supplied guid is
+  kept, and BCF 2.1 output is unchanged.
+  
+  The guid is a pure function of the topic, the document and the position, so two
+  exports of one unchanged project are byte-identical. `uuidFromSeed` moved from
+  `@ifc-lite/clash` to `@ifc-lite/encoding` to make that sharing possible without
+  a package cycle (`@ifc-lite/clash` depends on `@ifc-lite/bcf`); it is now
+  exported from `@ifc-lite/encoding`, and `@ifc-lite/clash` re-exports it from its
+  existing path, so no clash caller changes.
+
+### Patch Changes
+
+- [#3454](https://github.com/LTplus-AG/ifc-lite/pull/3454) [`82343f7`](https://github.com/LTplus-AG/ifc-lite/commit/82343f75dd2e6029946cbcd0990d3f8fd38a26ad) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Correction to `encodeIfcString`'s doc. The `1.14.4` changelog entry for [#357](https://github.com/louistrue/ifc-lite/pull/357) introduced the function as being "for producing STEP-safe string escapes"; that published entry is left as-is and this note is the correction to it. It is not accurate: `encodeIfcString` emits `\X\`/`\X2\`/`\X4\` directive escapes for non-ASCII and the reverse solidus, but it does NOT double the apostrophe (`'`, code point 39, is printable ASCII and passes through unchanged). Placed directly inside a STEP single-quoted string literal, its output for a value like `O'Brien` produces `'O'Brien'`, which no conformant reader parses as intended.
+  
+  The doc now says plainly what the function does and does not do, and points to `escapeStepString` (`@ifc-lite/data`) for the full literal-context contract — doubling `'` and `\`, mapping control characters to a space, and encoding non-ASCII per ISO 10303-21 6.3.3.4.
+  
+  This corrects the documentation only; `encodeIfcString`'s behaviour is unchanged, and a test now pins the current apostrophe handling so a future change is a deliberate decision, not a silent one. Whether apostrophe-doubling belongs in `encodeIfcString` itself is an open question — see [#3445](https://github.com/LTplus-AG/ifc-lite/issues/3445).
+
+- [#3556](https://github.com/LTplus-AG/ifc-lite/pull/3556) [`80a0cd9`](https://github.com/LTplus-AG/ifc-lite/commit/80a0cd9b946a5ff1aa6ca214ddb427a5d1f5303c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `decodeIfcString`'s `\S\` escape to honor the `\P?\` code page a STEP string literal selects, instead of always treating the result as ISO 8859-1 (ISO 10303-21 6.4.3).
+  
+  `\S\C` decodes to the code point of `C` plus 128, then that 0x80..0xFF value is looked up in the code page most recently selected by a `\P?\` directive within the same string (default: ISO 8859-1, letter `A`). The decoder previously consumed and dropped every `\P?\` directive without tracking which page it selected, so `\S\` always added 128 to the operand's code point and used that as the Unicode code point directly — correct only for the default page, and silently wrong for any other one. `\PE\\S\P` (ISO 8859-5, Cyrillic) decoded to U+00D0 (LATIN CAPITAL LETTER ETH) instead of U+0430 (CYRILLIC SMALL LETTER A); every other non-default page (`\PB\`..`\PI\`, ISO 8859-2..9) was affected the same way. Old ArchiCAD/Allplan-era files using a non-default code page for `\S\` would decode incorrectly; the far more common `\X2\`/`\X4\` Unicode directives and files that never use `\P?\` were unaffected.
+  
+  `decodeIfcString` now tracks the active code page across `\P?\` directives (letters `A`..`I` select ISO 8859-1..9; any other letter is dropped without changing the page) and maps `\S\`'s result through the matching table. A byte position the selected ISO 8859 part itself leaves unassigned falls back to the raw code point (the same answer the default page gives) rather than U+FFFD, since ISO 10303-21 does not define decoder behaviour there.
+  
+  The equivalent Rust decoder (`ifc_lite_core::decode_ifc_string`, bundled into `@ifc-lite/wasm`) had the same bug and is fixed the same way; both are pinned to the same code-page test vectors in the shared `ifc_string_vectors.json` fixture so they cannot drift again.
+
 ## 2.1.0
 
 ### Minor Changes

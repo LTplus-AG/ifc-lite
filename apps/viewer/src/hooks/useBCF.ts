@@ -259,6 +259,11 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     const target = camera.getTarget();
     const up = camera.getUp();
     const fov = camera.getFOV();
+    // BCF 3.0 requires <AspectRatio> on every camera and `@ifc-lite/bcf`
+    // refuses to invent one, so a viewpoint captured without it makes the
+    // WHOLE export throw -- what a user hit after importing another tool's
+    // 3.0 archive (readBCF keeps its version) and adding a topic (#3612).
+    const aspectRatio = camera.getAspect();
 
     return {
       position,
@@ -266,6 +271,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       up, // Use actual camera up vector
       fov,
       isOrthographic: false,
+      aspectRatio,
     };
   }, [getRenderer]);
 

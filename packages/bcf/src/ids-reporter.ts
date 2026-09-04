@@ -187,6 +187,11 @@ export interface IDSBCFExportOptions {
    * there is no viewport to read one from. Defaults to 16/9, the convention
    * when no viewport exists; pass the real viewport ratio when the export runs
    * beside one. 2.1 has no such element, so this changes nothing there.
+   *
+   * The viewer's own IDS export (`apps/viewer/src/hooks/useIDS.ts`, where it
+   * builds `exportOptions` for `createBCFFromIDSReport`) sets none today; it
+   * is the call site to wire `Camera.getAspect()` into if that dialog ever
+   * offers 3.0, which it currently does not.
    */
   aspectRatio?: number;
   /**

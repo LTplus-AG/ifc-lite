@@ -136,9 +136,17 @@ describe('IDS BCF Reporter', () => {
 
     it('should allow custom project name and version', () => {
       const report = createMockReport();
+      // 3.0 needs bounds: a viewpoint with no camera is refused outright
+      // (see "BCF 3.0 camera policy" below), so a bounds-less 3.0 export is
+      // no longer a way to check that the version option is honoured.
+      const bounds = new Map<string, EntityBoundsInput>([
+        ['model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }],
+        ['model-1:200', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }],
+      ]);
       const project = createBCFFromIDSReport(report, {
         projectName: 'Custom Project',
         version: '3.0',
+        entityBounds: bounds,
       });
 
       expect(project.version).toBe('3.0');

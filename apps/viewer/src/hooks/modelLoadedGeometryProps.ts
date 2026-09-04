@@ -77,6 +77,20 @@ export function buildModelLoadedGeometryProps(
 }
 
 /**
+ * Surface a concise main-thread summary when the streaming `complete` event's
+ * diagnostics recorded CSG failures or silent no-ops. `fileName` disambiguates
+ * the primary model from a federated add.
+ */
+export function warnCsgFailures(fileName: string, diagnostics: GeometryDiagnostics): void {
+  if (diagnostics.totalCsgFailures <= 0 && diagnostics.silentNoOps <= 0) return;
+  console.info(
+    `[useIfc] ${fileName} geometry diagnostics: ${diagnostics.totalCsgFailures} CSG failure(s) ` +
+      `across ${diagnostics.productsWithFailures} product(s), ${diagnostics.silentNoOps} silent no-op(s)`,
+    diagnostics,
+  );
+}
+
+/**
  * Surface a concise main-thread warning when the streaming `complete` event's
  * diagnostics recorded dropped representation items (unsupported type or
  * failed geometry) — the affected elements are missing or incomplete.

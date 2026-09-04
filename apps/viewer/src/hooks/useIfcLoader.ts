@@ -15,7 +15,11 @@ import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { buildModelLoadedGeometryProps, warnUnsupportedItems } from './modelLoadedGeometryProps.js';
+import {
+  buildModelLoadedGeometryProps,
+  warnCsgFailures,
+  warnUnsupportedItems,
+} from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
@@ -1852,21 +1856,14 @@ export function useIfcLoader() {
               }
 
               // Geometry diagnostics (the typed GeometryDiagnostics contract on the
-              // streaming `complete` event). Surface a concise main-thread summary
-              // when CSG failures or silent no-ops were recorded (for the primary
-              // model and each federated add — file.name disambiguates); the full
-              // object stays on `event.diagnostics` for any UI/telemetry consumer.
+              // streaming `complete` event). Both warnings live in
+              // modelLoadedGeometryProps.ts; the full object stays on
+              // `event.diagnostics` for any UI/telemetry consumer.
               if (event.diagnostics) {
                 const d = event.diagnostics;
                 loadDiagnostics = event.diagnostics;
                 finalCsgFailures = d.totalCsgFailures;
-                if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
-                  console.info(
-                    `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
-                      `across ${d.productsWithFailures} product(s), ${d.silentNoOps} silent no-op(s)`,
-                    d,
-                  );
-                }
+                warnCsgFailures(file.name, d);
                 warnUnsupportedItems(file.name, d);
               }
 

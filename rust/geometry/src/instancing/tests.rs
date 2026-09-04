@@ -924,13 +924,14 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
 }
 
 #[test]
-fn a_singular_verify_basis_degrades_like_no_basis_rather_than_panicking_or_hanging() {
+fn a_singular_verify_basis_refuses_rather_than_panicking_or_hanging() {
     // Companion to the wrong-basis tests above: a caller-supplied basis that is
-    // singular (non-invertible) cannot be conjugated with at all. It must fall
-    // back to the SAME behaviour as `verify_basis: None` (documented at the drop
-    // site as the maximally-rejecting mode via a `diag_warn!`, not a panic and
-    // not a hang), and — like a wrong-but-invertible basis — must never flip a
-    // genuine collision into a false accept.
+    // singular (non-invertible) cannot be conjugated with at all, so the whole
+    // collation is refused (see `a_singular_verify_basis_rejects_instead_of_\
+    // comparing_unconjugated`) — a `diag_warn!`, not a panic and not a hang.
+    // What this one pins is the direction that matters either way: a singular
+    // basis must never flip a genuine collision into a false accept, and every
+    // materialized mesh still draws.
     let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
     let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
         * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
@@ -958,7 +959,7 @@ fn a_singular_verify_basis_degrades_like_no_basis_rather_than_panicking_or_hangi
     assert_eq!(
         with_singular_basis.templates.len(),
         0,
-        "a singular basis must degrade like no basis, not falsely accept the collision"
+        "a singular basis must refuse the collation, not falsely accept the collision"
     );
     assert_eq!(with_singular_basis.flat_indices.len(), 2);
 }

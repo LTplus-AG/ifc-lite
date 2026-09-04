@@ -63,17 +63,34 @@ afterAll(async () => {
   await rm(ifc4Tmp, { recursive: true, force: true });
 });
 
+/** The `type` of every entity a query answered with, sorted, for exact-set
+ * comparison. A count alone passes on the right number of the wrong entities,
+ * which is the failure an expansion bug actually produces. */
+function typesOf(model: LoadedModel, type: string): string[] {
+  return model.bim
+    .query()
+    .byType(type)
+    .toArray()
+    .map((e) => e.type)
+    .sort();
+}
+
 describe('byType resolves an abstract EXPRESS supertype to its concrete leaves (IFC4)', () => {
   it('byType("IfcBuildingElement") finds all 4 building elements, not 0', () => {
-    expect(ifc4Model.bim.query().byType('IfcBuildingElement').toArray()).toHaveLength(4);
+    expect(typesOf(ifc4Model, 'IfcBuildingElement')).toEqual([
+      'IfcColumn',
+      'IfcSlab',
+      'IfcWall',
+      'IfcWallStandardCase',
+    ]);
   });
 
   it('byType("IfcWall") still returns 2 — no regression on the StandardCase alias', () => {
-    expect(ifc4Model.bim.query().byType('IfcWall').toArray()).toHaveLength(2);
+    expect(typesOf(ifc4Model, 'IfcWall')).toEqual(['IfcWall', 'IfcWallStandardCase']);
   });
 
   it('byType("IfcFooting") — a real IFC type with no instances in this fixture — returns 0', () => {
-    expect(ifc4Model.bim.query().byType('IfcFooting').toArray()).toHaveLength(0);
+    expect(typesOf(ifc4Model, 'IfcFooting')).toEqual([]);
   });
 });
 
@@ -85,7 +102,7 @@ describe('byType resolves an IFC4X3-only supertype (IfcBuildingElement renamed)'
 #71= IFCCOURSE('${guid('CRSE')}',$,'Course',$,$,$,$,'tag',$);`, 'IFC4X3');
       await writeFile(join(dir, 'm.ifc'), source, 'utf-8');
       const model = await loadIfcModel(join(dir, 'm.ifc'), { modelId: 'm' });
-      expect(model.bim.query().byType('IfcBuiltElement').toArray()).toHaveLength(2);
+      expect(typesOf(model, 'IfcBuiltElement')).toEqual(['IfcCourse', 'IfcWall']);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -122,25 +139,23 @@ describe('an abstract-root expansion stays inside the product branch', () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  // The fixture holds exactly one of each of IfcWall, IfcWallType,
+  // IfcPropertySet, IfcPropertySingleValue and IfcRelDefinesByProperties, plus
+  // the header's IfcProject, so an exact set says both what the gate keeps and
+  // what it drops. A membership check said only the second.
   it('byType("IfcRoot") answers with products only, not property sets or relationships', () => {
-    const types = model.bim.query().byType('IfcRoot').toArray().map((e) => e.type);
-    expect(types).not.toContain('IfcPropertySet');
-    expect(types).not.toContain('IfcRelDefinesByProperties');
-    expect(types).not.toContain('IfcWallType');
-    expect(types).toContain('IfcWall');
+    expect(typesOf(model, 'IfcRoot')).toEqual(['IfcProject', 'IfcWall']);
   });
 
   it('byType("IfcObjectDefinition") does not sweep in type objects', () => {
-    const types = model.bim.query().byType('IfcObjectDefinition').toArray().map((e) => e.type);
-    expect(types).toContain('IfcWall');
-    expect(types).not.toContain('IfcWallType');
+    expect(typesOf(model, 'IfcObjectDefinition')).toEqual(['IfcProject', 'IfcWall']);
   });
 
   it('byType("IfcPropertySet") still finds the property set — the gate never drops the requested type', () => {
-    expect(model.bim.query().byType('IfcPropertySet').toArray().map((e) => e.type)).toEqual(['IfcPropertySet']);
+    expect(typesOf(model, 'IfcPropertySet')).toEqual(['IfcPropertySet']);
   });
 
   it('byType("IfcBuildingElementType") keeps its own subtypes — the gate is a branch, not a ban', () => {
-    expect(model.bim.query().byType('IfcBuildingElementType').toArray().map((e) => e.type)).toEqual(['IfcWallType']);
+    expect(typesOf(model, 'IfcBuildingElementType')).toEqual(['IfcWallType']);
   });
 });

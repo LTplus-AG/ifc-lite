@@ -310,9 +310,17 @@ describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () 
     const declared = new Set(list.map((e) => e.name.toUpperCase()));
     let checked = 0;
     for (const base of BASES) {
-      const allowed = new Set([base, ...RENAME_PAIR, ...tableDescendants(list, base)]);
-      // The rename pair's own subtree is legitimate under either spelling.
-      for (const other of RENAME_PAIR) for (const d of tableDescendants(list, other)) allowed.add(d);
+      const allowed = new Set([base, ...tableDescendants(list, base)]);
+      // The rename pair's own subtree is legitimate under either spelling —
+      // but only when the base IS one of the two spellings. Granting it for
+      // every base widened the oracle to the whole built-element subtree, so
+      // an expansion of `IfcWall` that leaked `IFCCOURSE` passed unnoticed.
+      if (RENAME_PAIR.includes(base)) {
+        for (const other of RENAME_PAIR) {
+          allowed.add(other);
+          for (const d of tableDescendants(list, other)) allowed.add(d);
+        }
+      }
       for (const name of expandTypes([base], version)) {
         if (!declared.has(name)) continue; // rule (b): this schema has no opinion
         checked++;

@@ -38,6 +38,14 @@ export interface EntityBoundsInput {
  */
 export const DEFAULT_ASPECT_RATIO = 16 / 9;
 
+/**
+ * Vertical field of view of every computed camera, in degrees.
+ *
+ * Inside BCF 3.0's `(0, 180)` exclusive facet and BCF 2.1's `[45, 60]` one, so
+ * one value is writable under both.
+ */
+const FIELD_OF_VIEW_DEGREES = 60;
+
 /** How {@link DEFAULT_ASPECT_RATIO} reads in an error message. */
 const DEFAULT_ASPECT_RATIO_TEXT = '16/9';
 
@@ -99,9 +107,20 @@ export function computeCameraFromBounds(
   const sz = bounds.max.z - bounds.min.z;
   const maxSize = Math.max(sx, sy, sz, 0.1); // Floor to avoid zero
 
-  // Camera distance: fit maxSize into 60deg FOV with 1.5x padding
-  const fovRad = (60 * Math.PI) / 180;
-  const distance = (maxSize / 2) / Math.tan(fovRad / 2) * 1.5;
+  // Camera distance: fit maxSize into the 60deg FOV with 1.5x padding.
+  //
+  // `FieldOfView` is the VERTICAL angle in BCF, and the horizontal one follows
+  // from the aspect ratio: tan(hHalf) = aspectRatio * tan(vHalf). Framing off
+  // the vertical angle alone therefore held only while the viewport was at
+  // least as wide as it is tall; at a portrait ratio the horizontal angle is
+  // the NARROWER of the two, and a wide entity was cropped by exactly the
+  // factor the ratio understated (at 9/16, by 16/9). Dividing by the narrower
+  // half-angle frames the box in whichever direction is tighter, and is inert
+  // at every ratio >= 1 -- including the 16/9 default -- because the vertical
+  // angle is the narrower one there.
+  const vHalf = (FIELD_OF_VIEW_DEGREES * Math.PI) / 360;
+  const hHalf = Math.atan(aspectRatio * Math.tan(vHalf));
+  const distance = (maxSize / 2) / Math.tan(Math.min(vHalf, hHalf)) * 1.5;
 
   // Southeast-isometric offset in viewer coords (Y-up):
   // camera position = center + normalized(0.6, 0.5, 0.6) * distance
@@ -130,7 +149,7 @@ export function computeCameraFromBounds(
       z: dy / dLen,
     },
     cameraUpVector: { x: 0, y: 0, z: 1 }, // BCF Z-up
-    fieldOfView: 60,
+    fieldOfView: FIELD_OF_VIEW_DEGREES,
     aspectRatio,
   };
 }

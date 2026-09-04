@@ -175,8 +175,12 @@ pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) -> usize {
 const MAX_WELD_PASSES: usize = 4;
 
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that
-/// sits within the snap-scatter band of a HOST face plane — and projects
-/// STRICTLY inside that face — onto the plane, then back onto the snap grid.
+/// sits within the snap-scatter band of a HOST face PLANE onto that plane.
+///
+/// The gate is the plane, not the face's footprint — see "The gate is
+/// PLANE-level" below, which is the whole reason this works on the repro. An
+/// earlier version of this line said the vertex must also project strictly
+/// inside the face; it does not, and never did in this code.
 ///
 /// WHY (found by the kernel-parity sweep on a long tunnel-wall fixture): when
 /// `extend_opening_mesh_through_host` pushes a flush opening cap along the
@@ -207,9 +211,14 @@ const MAX_WELD_PASSES: usize = 4;
 /// (#2684), so an offset along an axis this plane does not face never widens it).
 /// DETERMINISM: plain FMA-free f64 over
 /// already-snapped coords, fixed iteration order, nearest-plane ties broken
-/// by face index ⇒ byte-identical native==wasm. Every pinned box−box
-/// manifest is transversal (no cutter vertex within the band of a
-/// non-incident host plane), so the promotion never fires there.
+/// by face index ⇒ byte-identical native==wasm.
+///
+/// The "every pinned box−box manifest is transversal, so the promotion never
+/// fires there" claim this note used to carry is scoped to SUBTRACT, where it
+/// was measured. It does not hold for the union caller added in #3353: the
+/// whole point there is a near-coplanar operand pair, and the weld fires on
+/// every one of the 9464 unions in
+/// `tests/issue_3353_near_coplanar_rotated_overlap.rs`.
 /// Returns the number of vertices actually MOVED, so callers (and the #3353
 /// census run) can measure whether the promotion fires at all rather than
 /// inferring it from an unchanged golden.

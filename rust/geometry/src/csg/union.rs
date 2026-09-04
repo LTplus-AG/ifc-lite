@@ -6,7 +6,8 @@
 //! module-size budget) so the pair-vs-batch split the #3440 audit needs is
 //! visible in one place: `union_pair` does the work and records nothing,
 //! `union_mesh` and `union_meshes` each audit — and, under `csg_topology_gate`
-//! (step 2), gate — exactly the mesh they return.
+//! (step 2), gate — exactly the mesh they return, and only when a boolean
+//! actually ran: an empty operand short-circuits both of them past the audit.
 
 use super::{record_csg_op, ClippingProcessor};
 use crate::diagnostics::{BoolFailureReason, BoolOp};
@@ -18,7 +19,17 @@ impl ClippingProcessor {
     /// pure-Rust exact kernel.
     ///
     /// Empty operands are handled silently — they have a unique correct answer.
+    /// "Silently" includes the #3440 audit: `union_pair` hands the non-empty
+    /// operand straight back, no boolean ran, and auditing the caller's own
+    /// mesh would blame this union for topology it did not produce. That is
+    /// the same call the `unioned` guard in `union_meshes` makes when no pair
+    /// ever met, and it matters most under `csg_manifold_gate`, where the
+    /// spurious `NonManifoldRejected` lands in both the public failure list
+    /// and the census the flip decision is read off.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
+        if mesh_a.is_empty() || mesh_b.is_empty() {
+            return self.union_pair(mesh_a, mesh_b);
+        }
         let result = self.union_pair(mesh_a, mesh_b)?;
         Ok(self.audit_and_gate_union(result, || {
             let mut merged = mesh_a.clone();

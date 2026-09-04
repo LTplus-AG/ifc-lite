@@ -965,3 +965,41 @@ fn manifold_gate_is_a_true_noop_without_the_feature() {
         "NonManifoldRejected must never be recorded without csg_manifold_gate"
     );
 }
+
+/// An empty operand means `union_pair` hands back the other operand untouched
+/// and no boolean ever ran, so `union_mesh` must record nothing about it — the
+/// same reason `union_meshes` audits only when a pair actually met. Without
+/// this guard a caller mesh that is already torn or already non-manifold gets
+/// blamed on a union, which inflates both the public failure list and the
+/// `csg_manifold_gate` census the flip decision is read off.
+///
+/// Feature-independent on purpose: it pins the topology-tear channel in the
+/// default build and, under `csg_manifold_gate`, the `NonManifoldRejected`
+/// channel too. `finned_box_mesh` trips both predicates (a dangling fin leaves
+/// unpaired edges AND an over-used one), so the same fixture covers each build.
+#[test]
+fn union_with_an_empty_operand_records_no_failure() {
+    let torn = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let empty = Mesh::new();
+
+    let p = ClippingProcessor::new();
+    let right = p.union_mesh(&torn, &empty).unwrap();
+    let left = p.union_mesh(&empty, &torn).unwrap();
+
+    assert_eq!(
+        right.indices, torn.indices,
+        "an empty second operand must pass the first through untouched"
+    );
+    assert_eq!(
+        left.indices, torn.indices,
+        "an empty first operand must pass the second through untouched"
+    );
+    assert_eq!(
+        p.take_failures()
+            .iter()
+            .map(|f| format!("{:?}", f.reason))
+            .collect::<Vec<_>>(),
+        Vec::<String>::new(),
+        "a union that never ran must not be blamed for its operand's topology"
+    );
+}

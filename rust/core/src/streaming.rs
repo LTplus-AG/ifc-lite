@@ -7,7 +7,7 @@
 //! Progressive parsing with event callbacks for real-time processing.
 
 use crate::generated::IfcType;
-use crate::parser::EntityScanner;
+use crate::parser::{report_scan_diagnostics, EntityScanner};
 use futures_core::Stream;
 use futures_util::stream;
 use std::pin::Pin;
@@ -126,6 +126,10 @@ struct ParserState<'a> {
     entities_scanned: usize,
     total_entities: usize,
     triangles_generated: usize,
+    /// Whether [`Self::report_scan_once`] has already fired. The scan is
+    /// reported at whichever comes first: the end of the walk, or the state
+    /// being dropped under a consumer that stopped early.
+    scan_reported: bool,
 }
 
 impl<'a> ParserState<'a> {
@@ -140,7 +144,35 @@ impl<'a> ParserState<'a> {
             entities_scanned: 0,
             total_entities: 0,
             triangles_generated: 0,
+            scan_reported: false,
         }
+    }
+
+    /// Report what the scan refused or stopped on, at most once.
+    ///
+    /// `None` from `next_entity` does not only mean "the file ended": the
+    /// scanner skips a record whose instance name does not fit `u32` (#3395)
+    /// and stops the whole scan at a record with no terminator (#3695).
+    /// Either way this stream is short of what the file declares, so say so
+    /// — the same one-line call every other whole-file walk in this
+    /// workspace makes (`columnar_index.rs`, `decoder.rs`,
+    /// `processor/mod.rs`).
+    ///
+    /// Called from both the `Completed` branch and [`Drop`], because a
+    /// consumer is free to stop polling early (`take`, `break`, a dropped
+    /// future) and a refusal the scanner ALREADY recorded would otherwise
+    /// die with the stream — silence for exactly the reader who saw the
+    /// fewest entities. The flag makes the second call a no-op, so the two
+    /// paths cannot double-report (#3791).
+    fn report_scan_once(&mut self) {
+        if self.scan_reported {
+            return;
+        }
+        self.scan_reported = true;
+        report_scan_diagnostics(
+            self.scanner.skipped_oversized_ids(),
+            self.scanner.malformed_record_start().is_some(),
+        );
     }
 
     fn next_event(&mut self) -> Option<ParseEvent> {
@@ -164,7 +196,12 @@ impl<'a> ParserState<'a> {
         // and could overflow the stack on a long run of skip-listed records.
         loop {
             let Some((id, type_name, start, _end)) = self.scanner.next_entity() else {
-                // No more entities - emit Completed event and end stream
+                // No more entities - emit Completed event and end stream.
+                // `Completed` reads like a clean finish even when the scan
+                // came back short, so report before ending. See
+                // `report_scan_once` for what "short" covers and why the
+                // `Drop` path shares this call (#3791).
+                self.report_scan_once();
                 self.completed = true;
                 let duration_ms = get_timestamp() - self.start_time;
                 return Some(ParseEvent::Completed {
@@ -218,6 +255,19 @@ impl<'a> ParserState<'a> {
     }
 }
 
+/// Report the scan even when the consumer never asked for `Completed`.
+///
+/// `parse_stream` hands back a lazy stream, so "stop reading" is a normal,
+/// supported thing for a caller to do (`take`, a `break`, a cancelled task) —
+/// and it is the caller who then sees the FEWEST entities. Reporting only on
+/// the `Completed` branch would stay silent for exactly that reader while
+/// reporting to the one who read everything (#3791).
+impl Drop for ParserState<'_> {
+    fn drop(&mut self) {
+        self.report_scan_once();
+    }
+}
+
 /// Get current timestamp (mock implementation for native Rust)
 /// In WASM, this would use web_sys::window().performance().now()
 fn get_timestamp() -> f64 {
@@ -239,123 +289,5 @@ fn get_timestamp() -> f64 {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use futures_util::StreamExt;
-
-    #[tokio::test]
-    async fn test_parse_stream_basic() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#2=IFCWALL('guid2',$,$,$,$,$,$,$);
-#3=IFCDOOR('guid3',$,$,$,$,$,$,$);
-"#;
-
-        let config = StreamConfig::default();
-        let mut stream = parse_stream(content, config);
-
-        let mut events = Vec::new();
-        while let Some(event) = stream.next().await {
-            events.push(event);
-        }
-
-        // Should have: Started, EntityScanned x3, Completed
-        assert!(events.len() >= 5);
-
-        // First event should be Started
-        match events[0] {
-            ParseEvent::Started { .. } => {}
-            _ => panic!("Expected Started event"),
-        }
-
-        // Last event should be Completed
-        match events.last().unwrap() {
-            ParseEvent::Completed { entity_count, .. } => {
-                assert_eq!(*entity_count, 3);
-            }
-            _ => panic!("Expected Completed event"),
-        }
-    }
-
-    #[tokio::test]
-    async fn test_parse_stream_skip_types() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#2=IFCOWNERHISTORY('guid2',$,$,$,$,$,$,$);
-#3=IFCWALL('guid3',$,$,$,$,$,$,$);
-"#;
-
-        let config = StreamConfig {
-            skip_types: vec![IfcType::IfcOwnerHistory],
-            ..Default::default()
-        };
-
-        let mut stream = parse_stream(content, config);
-
-        let mut entity_count = 0;
-        while let Some(event) = stream.next().await {
-            if let ParseEvent::EntityScanned { .. } = event {
-                entity_count += 1;
-            }
-        }
-
-        // Should only get 2 entities (skip IfcOwnerHistory)
-        assert_eq!(entity_count, 2);
-    }
-
-    #[tokio::test]
-    async fn test_parse_stream_only_types() {
-        let content = r#"
-#1=IFCPROJECT('guid',$,$,$,$,$,$,$,$);
-#2=IFCWALL('guid2',$,$,$,$,$,$,$);
-#3=IFCDOOR('guid3',$,$,$,$,$,$,$);
-"#;
-
-        let config = StreamConfig {
-            skip_types: vec![],
-            only_types: Some(vec![IfcType::IfcWall]),
-            ..Default::default()
-        };
-
-        let mut stream = parse_stream(content, config);
-
-        let mut entity_count = 0;
-        while let Some(event) = stream.next().await {
-            if let ParseEvent::EntityScanned { .. } = event {
-                entity_count += 1;
-            }
-        }
-
-        // Should only get 1 entity (only IFCWALL)
-        assert_eq!(entity_count, 1);
-    }
-
-    #[tokio::test]
-    async fn test_parse_stream_skips_garbage_and_completes() {
-        // Malformed lines interleaved with valid entities must not truncate the
-        // scan or hang: the scanner skips the garbage and still reaches the
-        // valid entities and a Completed event.
-        let content = r#"
-#1=IFCPROJECT('g',$,$,$,$,$,$,$,$);
-this is not an entity line at all !!! ;;;
-#2=IFCWALL('g2',$,$,$,$,$,$,$);
-@%^&*() not valid step
-#3=IFCDOOR('g3',$,$,$,$,$,$,$);
-"#;
-
-        let mut stream = parse_stream(content, StreamConfig::default());
-
-        let mut entity_count = 0;
-        let mut completed = None;
-        while let Some(event) = stream.next().await {
-            match event {
-                ParseEvent::EntityScanned { .. } => entity_count += 1,
-                ParseEvent::Completed { entity_count: n, .. } => completed = Some(n),
-                _ => {}
-            }
-        }
-
-        assert_eq!(entity_count, 3, "scanner should skip garbage and find all 3");
-        assert_eq!(completed, Some(3), "stream must reach Completed, not truncate");
-    }
-}
+#[path = "streaming_tests.rs"]
+mod streaming_tests;

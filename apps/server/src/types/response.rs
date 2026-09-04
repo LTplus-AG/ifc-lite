@@ -25,6 +25,17 @@ pub struct MetadataResponse {
     pub schema_version: String,
     /// File size in bytes.
     pub file_size: usize,
+    /// Records the scan refused because their instance name does not fit
+    /// `u32` (#3395). Non-zero means `entity_count` is short by this many —
+    /// the file declares records this response does not count.
+    pub oversized_id_count: usize,
+    /// Whether the scan stopped early at a record with no terminating `;`
+    /// (an unterminated string or comment, or a truncated file — #3695).
+    /// `true` means `entity_count` covers only the bytes before that record:
+    /// a partial view of the file, not a smaller file. Reported rather than
+    /// resynced past, for the reason #3695 gives — there is no reliable byte
+    /// to resume from, and guessing risks inventing entities (#3791).
+    pub malformed_record_found: bool,
 }
 
 /// Server-Sent Event types for streaming.

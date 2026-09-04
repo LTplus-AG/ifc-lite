@@ -106,3 +106,126 @@ async fn parse_metadata_counts_entities_and_geometry_separately() {
     assert_eq!(json["schema_version"].as_str().unwrap(), "IFC4");
     assert_eq!(json["file_size"].as_u64().unwrap(), FIXTURE.len() as u64);
 }
+/// The intact fixture with one extra record appended, whose instance name is
+/// `u32::MAX + 2` and so cannot be represented in the `u32` every express-id
+/// column in this workspace uses. DERIVED from `FIXTURE` rather than copied,
+/// so the two cannot drift into differing by something other than the record
+/// under test — a second copy is a second thing to keep in sync, and a
+/// divergence there would move the counts this test reads.
+fn fixture_with_oversized_id() -> String {
+    let derived = FIXTURE.replace(END_OF_DATA, &format!("{OVERSIZED_RECORD}\n{END_OF_DATA}"));
+    assert!(
+        derived.contains(OVERSIZED_RECORD),
+        "the splice must actually fire; a no-op replace would hand back the intact fixture"
+    );
+    derived
+}
+
+/// The intact fixture with `#302`'s first string literal left unterminated,
+/// so `find_entity_end` runs off the end of the buffer and the scan stops
+/// there (#3695) — every record after it is silently absent from the count.
+/// Derived for the same reason as above.
+fn fixture_with_unterminated_string() -> String {
+    let derived = FIXTURE.replace(INTACT_302, BROKEN_302);
+    assert!(
+        derived.contains(BROKEN_302) && !derived.contains(INTACT_302),
+        "the corruption must actually fire; a no-op replace would hand back the intact fixture"
+    );
+    derived
+}
+
+/// The two lines that close the fixture's DATA section, i.e. where a record
+/// gets appended.
+const END_OF_DATA: &str = "ENDSEC;\nEND-ISO-10303-21;";
+/// `#4294967297` is `u32::MAX + 2`: a regression that wraps yields `1` and
+/// collides with a real entity rather than merely erroring.
+const OVERSIZED_RECORD: &str = "#4294967297=IFCWALL('Wall00000000000000002',$,'W2',$,$,#40,#306,$,$);";
+const INTACT_302: &str = "#302=IFCRECTANGLEPROFILEDEF(.AREA.,$,#301,1.0,0.2);";
+const BROKEN_302: &str = "#302=IFCRECTANGLEPROFILEDEF(.AREA.,'unterminated,#301,1.0,0.2);";
+
+/// How many records `FIXTURE` declares before the one that
+/// `fixture_with_unterminated_string` breaks.
+///
+/// Counted off the fixture TEXT (one record per line), not off a parse, so
+/// the expected value does not come from the scanner whose behaviour is
+/// under test.
+fn records_before_302() -> u64 {
+    FIXTURE
+        .lines()
+        .take_while(|line| !line.starts_with("#302="))
+        .filter(|line| line.starts_with('#'))
+        .count() as u64
+}
+
+/// POST `content` to `/api/v1/parse/metadata` and return the decoded body.
+async fn metadata_json(label: &str, content: &str) -> Value {
+    let state = test_state(label).await;
+    let (content_type, body) = multipart_body(content.as_bytes());
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse/metadata")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let response = build_router(state).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    serde_json::from_slice(&bytes).unwrap()
+}
+
+/// `entity_count` from a metadata response.
+fn entity_count(json: &Value) -> u64 {
+    json["entity_count"].as_u64().expect("entity_count must be a number")
+}
+
+/// #3791: the handler walks its own `EntityScanner` and returned a 200 whose
+/// `entity_count` was computed over the bytes before a refusal — with nothing
+/// in the response distinguishing that from a whole file. Asserted through the
+/// HTTP response, not the scanner, because the response is what a client sees.
+#[tokio::test]
+async fn parse_metadata_reports_a_refused_oversized_id() {
+    let baseline = entity_count(&metadata_json("oversized-baseline", FIXTURE).await);
+    let json = metadata_json("oversized", &fixture_with_oversized_id()).await;
+
+    // The appended record really is gone: the same count as the fixture it
+    // was derived from, measured rather than written down, so the assertion
+    // cannot go stale when someone edits FIXTURE.
+    assert_eq!(
+        entity_count(&json),
+        baseline,
+        "the extra record is refused, so the count is indistinguishable from the intact file"
+    );
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 1);
+    assert!(!json["malformed_record_found"].as_bool().unwrap());
+}
+
+/// The other stop, same surface: an unterminated string ends the scan, so the
+/// count covers only the records before it.
+#[tokio::test]
+async fn parse_metadata_reports_a_malformed_record_stop() {
+    let baseline = entity_count(&metadata_json("malformed-baseline", FIXTURE).await);
+    let json = metadata_json("malformed", &fixture_with_unterminated_string()).await;
+
+    let counted = entity_count(&json);
+    assert!(
+        counted < baseline,
+        "the scan must come back short of the intact fixture's {baseline}, got {counted}"
+    );
+    assert_eq!(
+        counted,
+        records_before_302(),
+        "the scan stops at #302, so exactly the records before it are counted"
+    );
+    assert!(json["malformed_record_found"].as_bool().unwrap());
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
+}
+
+/// The other direction: an intact file must report neither, or a client would
+/// learn to ignore both fields.
+#[tokio::test]
+async fn parse_metadata_reports_nothing_on_an_intact_file() {
+    let json = metadata_json("intact", FIXTURE).await;
+
+    assert_eq!(json["oversized_id_count"].as_u64().unwrap(), 0);
+    assert!(!json["malformed_record_found"].as_bool().unwrap());
+}

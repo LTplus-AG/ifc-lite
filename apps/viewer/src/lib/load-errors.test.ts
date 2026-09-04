@@ -138,6 +138,56 @@ describe('classifyLoadError', () => {
     );
   });
 
+  it('classifies the file-moved NotFoundError as file_unreadable, not as unknown (#3731)', () => {
+    // The SIBLING of NotReadableError, and the one the field reports actually
+    // carry. Chromium throws NotReadableError when the file is still there but
+    // unreadable (permissions), and NotFoundError when the bytes are gone --
+    // the file was moved, renamed, deleted, or rewritten in place by the
+    // authoring tool between `getFile()` and the read. Four PostHog issues
+    // (#2546, #2860, #3324, #3731) carried this wording and every one of them
+    // classified as `unknown`, so the user was shown the raw DOM sentence and
+    // each occurrence spawned its own GitHub issue.
+    assert.equal(
+      classifyLoadError(new Error(
+        'A requested file or directory could not be found at the time an operation was processed.',
+      )),
+      'file_unreadable',
+    );
+    // Stringified name-first, the shape `String(err)` produces.
+    assert.equal(
+      classifyLoadError(new Error(
+        'NotFoundError: A requested file or directory could not be found at the time an operation was processed.',
+      )),
+      'file_unreadable',
+    );
+    // WebKit's wording for the same DOMException (#2860).
+    assert.equal(
+      classifyLoadError(new Error('The object can not be found here.')),
+      'file_unreadable',
+    );
+  });
+
+  it('leaves the DOM-mutation NotFoundError alone - it is not a file failure', () => {
+    // `harden-dom-mutations.ts` exists because a translation extension makes
+    // React's reconciler call removeChild/insertBefore against a parent that no
+    // longer holds the node. Those are NotFoundErrors too, and telling that
+    // user their file was moved would be a lie. The two families are separated
+    // by wording, which is why the matcher above is anchored on the whole
+    // message instead of searching for "could not be found".
+    assert.equal(
+      classifyLoadError(new Error(
+        "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",
+      )),
+      'unknown',
+    );
+    assert.equal(
+      classifyLoadError(new Error(
+        "Failed to execute 'insertBefore' on 'Node': The node before which the new node is to be inserted is not a child of this node.",
+      )),
+      'unknown',
+    );
+  });
+
   it('classifies a DOMException by its stable .name, whatever the message says', () => {
     // `.message` is engine-specific prose that need not repeat the name — only
     // `.name` is stable, and `messageOf` alone would never see it.
@@ -612,6 +662,17 @@ describe('formatLoadError', () => {
     assert.match(msg, /select the file again/i);
     // Must NOT tell them to close tabs / shrink the model — nothing is too big.
     assert.doesNotMatch(msg, /memory|too large|smaller/i);
+  });
+
+  it('tells the user to re-pick a file that moved out from under the browser (#3731)', () => {
+    const msg = formatLoadError(
+      new Error('A requested file or directory could not be found at the time an operation was processed.'),
+      'tower.ifc',
+    );
+    assert.match(msg, /"tower\.ifc"/);
+    assert.match(msg, /select the file again/i);
+    // The raw DOM sentence is what four field reports put in front of a user.
+    assert.doesNotMatch(msg, /at the time an operation was processed/i);
   });
 
   it('preserves the raw message for unknown failures', () => {

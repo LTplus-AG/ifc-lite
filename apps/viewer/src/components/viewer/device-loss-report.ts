@@ -78,6 +78,25 @@ export function reportDeviceLost(
         // scrub-path test in device-loss-report.test.ts, which runs the real
         // `scrubEvent` so this cannot regress unnoticed.
         device_lost_detail: info.message,
+        // ONE issue for the whole family, chosen here because nothing
+        // downstream can choose it. PostHog groups an exception by type +
+        // message + stack unless the client supplies this, and both halves
+        // vary for a device loss: the message is Dawn's driver text (a D3D12
+        // hang, a Vulkan VRAM exhaustion and a Metal timeout word themselves
+        // differently) and the stack names the hashed bundle, so it moves on
+        // every deploy — the same reason #2354's fixed-string WebGL report
+        // still minted a fresh issue per release. What was OBSERVED: #3767 and
+        // #3774 carry the same DXGI_ERROR_DEVICE_HUNG text six hours apart and
+        // were filed as two separate GitHub issues, with a dozen merges to
+        // main (so several viewer deploys) in between; #3207's Vulkan loss is
+        // a third issue for the same family. The
+        // `stampFingerprint` pass in lib/analytics-scrub.ts cannot cover this:
+        // it fingerprints only the kinds `classifyLoadError` recognises, and a
+        // GPU loss is deliberately not one of them. It DOES honour a
+        // fingerprint set at the capture site, which is what this is.
+        // Nothing is lost to the grouping — the reason, the driver text and
+        // the whole enrichment block stay queryable inside the one issue.
+        $exception_fingerprint: 'ifc-lite:device_lost',
       },
     );
   } catch (err) {
@@ -162,6 +181,11 @@ export function reportPersistentRenderDegradation(
         // scrub-path test in device-loss-report.test.ts runs the real
         // `scrubEvent` over these keys so that cannot regress unnoticed.
         render_degraded_detail: info.detail,
+        // Its own fingerprint, not the loss's — see the note there. A live
+        // device that stopped drawing and a dead device are different bugs
+        // with different fixes, so they must not share an issue even though
+        // they share this module and their user-visible outcome.
+        $exception_fingerprint: 'ifc-lite:render_degraded',
       },
     );
   } catch (err) {

@@ -55,6 +55,13 @@ export type LoadErrorKind =
    * evicted it, removable media was unplugged, or an AV/permission change
    * locked it. Nothing about the model is wrong and nothing in the app failed;
    * the user just needs to pick the file again.
+   *
+   * TWO DOMException names land here, not one. `NotReadableError` is the file
+   * that is still at its path but cannot be read; `NotFoundError` is the file
+   * whose bytes are gone by read time — moved, renamed, deleted, or rewritten
+   * in place by the authoring tool between `getFile()` and the read, which is
+   * exactly what the Refresh flow (#1345) invites. See
+   * {@link isFileNotFoundMessage}.
    */
   | 'file_unreadable'
   /**
@@ -168,6 +175,52 @@ function isFileUnreadableError(message: string): boolean {
 }
 
 /**
+ * The picked file is GONE, not merely unreadable — the sibling of
+ * `NotReadableError` above, and the one the field reports actually carry
+ * (#2546, #2860, #3324, #3731: four separate PostHog issues over four weeks,
+ * every one of them classified `unknown`, so the user was shown the raw DOM
+ * sentence and each occurrence spawned its own GitHub issue).
+ *
+ * What is CONFIRMED is the wording and that it keeps arriving; the mechanism
+ * behind it is read off Blink rather than reproduced here, and is recorded as
+ * the inference it is: a blob read fails with `NotFoundError` once the backing
+ * file no longer matches the snapshot taken when the `File` was handed out —
+ * moved, renamed, deleted, or (the likely one for this app) rewritten in place
+ * by the authoring tool between `getFile()` and the read. Either way the user
+ * guidance is identical to `NotReadableError`'s, which is why both map to
+ * `file_unreadable`: the file the user picked is not there to be read.
+ *
+ * ANCHORED on the whole message, never a substring test, and that is
+ * load-bearing rather than stylistic: `NotFoundError` is also what
+ * `removeChild` / `insertBefore` throw when a translation extension re-parents
+ * a node React owns (the family `harden-dom-mutations.ts` exists to suppress —
+ * #1229 / #1230 / #1232). Those carry `Failed to execute '…' on 'Node': …`, so
+ * anchoring keeps them out; a search for "could not be found" would sweep them
+ * in and tell that user their file had moved, which is a lie. Matching by
+ * `.name` alone would do the same, so the name is deliberately NOT used here.
+ *
+ * Both engine wordings, because both have been observed:
+ *  - Chromium: "A requested file or directory could not be found at the time an
+ *    operation was processed." (#2546, #3324, #3731). Blink's fixed text for
+ *    FileErrorCode::kNotFoundErr — it names files and directories outright, so
+ *    claiming it for this family is safe.
+ *  - WebKit:   "The object can not be found here." (#2860). WEAKER, and worth
+ *    knowing before trusting the kind: this is WebKit's DEFAULT description for
+ *    NotFoundError, emitted by any internal throw that supplies no message of
+ *    its own, so it is file-specific only by where it can arise in THIS app.
+ *    Kept because the viewer's only other NotFoundError surface is the DOM pair
+ *    above, which words itself distinctly; drop this arm the day a Safari
+ *    NotFoundError from somewhere else shows up misfiled.
+ * An optional `NotFoundError: ` prefix is tolerated for the stringified form —
+ * `analytics-scrub.ts` classifies from the message text alone, where all that
+ * survives is `String(err)`.
+ */
+function isFileNotFoundMessage(message: string): boolean {
+  return /^(?:NotFoundError: )?(?:A requested file or directory could not be found at the time an operation was processed\.?|The object can ?not be found here\.?)$/i
+    .test(message.trim());
+}
+
+/**
  * The geometry stream watchdog timed out (see `useIfcLoader`'s `Promise.race`).
  * Matched on the stable prefix only — the message must NOT carry the file name
  * (it would leak a confidential model name into error tracking), so we never
@@ -233,7 +286,11 @@ export function classifyLoadError(err: unknown): LoadErrorKind {
   // browser worded `.message`; the message match covers the analytics path,
   // where all we have is the already-stringified value.
   const name = errorNameOf(err);
-  if (name === 'NotReadableError' || isFileUnreadableError(message)) {
+  if (
+    name === 'NotReadableError' ||
+    isFileUnreadableError(message) ||
+    isFileNotFoundMessage(message)
+  ) {
     return 'file_unreadable';
   }
   // Same stable-`.name` argument as NotReadableError above: an aborted fetch

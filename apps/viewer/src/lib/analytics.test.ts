@@ -665,6 +665,36 @@ describe('scrubEvent — issue grouping', () => {
     assert.equal(oom?.properties?.$exception_fingerprint, 'ifc-lite:out_of_memory');
   });
 
+  it('collapses the file-moved NotFoundError onto the file_unreadable fingerprint (#3731)', () => {
+    // Four PostHog issues carried this condition (#2546, #2860, #3324, #3731),
+    // each a fresh GitHub issue, because an unclassified message keeps
+    // PostHog's default type+message+stack grouping and the stack names the
+    // hashed bundle it came from. Both engine wordings, and the
+    // NotReadableError sibling, must land on ONE fingerprint.
+    const chromium = scrubEvent(exceptionEvent(
+      'A requested file or directory could not be found at the time an operation was processed.',
+    ));
+    const webkit = scrubEvent(exceptionEvent('The object can not be found here.'));
+    const unreadable = scrubEvent(exceptionEvent(
+      'NotReadableError: The requested file could not be read, typically due to permission problems that have occurred after a reference to a file was acquired.',
+    ));
+    assert.equal(chromium?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+    assert.equal(webkit?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+    assert.equal(unreadable?.properties?.$exception_fingerprint, 'ifc-lite:file_unreadable');
+    assert.equal(chromium?.properties?.error_kind, 'file_unreadable');
+  });
+
+  it('keeps the DOM-mutation NotFoundError out of the file_unreadable group', () => {
+    // Same DOMException name, different failure entirely (#1229/#1230/#1232,
+    // the family harden-dom-mutations.ts suppresses). Grouping it with a moved
+    // file would bury a React-reconciler crash under a file-picker message.
+    const out = scrubEvent(exceptionEvent(
+      "Failed to execute 'removeChild' on 'Node': The node to be removed is not a child of this node.",
+    ));
+    assert.equal(out?.properties?.$exception_fingerprint, undefined);
+    assert.equal(out?.properties?.error_kind, undefined);
+  });
+
   it('leaves unrecognised exceptions on PostHog default grouping', () => {
     const out = scrubEvent(exceptionEvent("Cannot read properties of undefined (reading 'toLowerCase')"));
     assert.equal(out?.properties?.$exception_fingerprint, undefined);

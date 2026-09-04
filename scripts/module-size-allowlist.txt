@@ -357,6 +357,7 @@
    612 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs
    488 scripts/check-wasm-disposal.mjs
+   435 scripts/docs/check-doc-samples.mjs
    506 scripts/generate-bim-globals.mjs
    423 scripts/generate-epsg-index.ts
    403 scripts/lib/ci-path-coverage.mjs

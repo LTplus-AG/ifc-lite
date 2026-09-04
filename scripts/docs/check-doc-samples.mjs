@@ -11,7 +11,8 @@
  *
  * How it works:
  *   1. Extract every fenced ts/typescript block from a fixed list of
- *      docs (README + guides + tutorials).
+ *      docs (README + guides + tutorials + every published package's
+ *      README).
  *   2. Write each block to a temp dir as its own module.
  *   3. Typecheck them all with the workspace TypeScript, resolving
  *      `@ifc-lite/*` to each package's `src/` via tsconfig `paths` so no
@@ -73,23 +74,20 @@ const GLOBALS_SRC = join(HERE, 'doc-samples-globals.d.ts');
 const EXTERNALS_SRC = join(HERE, 'doc-samples-externals.d.ts');
 
 /**
- * Every published (non-private) package under `packages/`, as
- * `{ dir, pkg }`.
+ * Every published package under `packages/`, as `{ dir, pkg }`.
  *
- * "Published" is decided exactly as check-package-readmes.mjs decides it —
+ * "Published" is decided exactly as check-package-readmes.mjs decides it -
  * a non-dotfile directory carrying a package.json whose `private` is not
- * `true` — so the set of READMEs that gate REQUIRES to exist is the same
- * set this gate TYPECHECKS. The rule is restated rather than imported:
- * both gates are copied file-by-file into synthetic trees by their
- * regression harnesses, so neither may import outside node builtins (see
- * the note on `existsOrFail` in check-package-readmes.mjs).
+ * `true` - so the set of READMEs that gate REQUIRES to exist is the set this
+ * gate TYPECHECKS. Restated rather than imported: both gates are copied
+ * file-by-file into synthetic trees by their regression harnesses, so
+ * neither may import outside node builtins (see `existsOrFail` there).
  */
 function publishedPackages() {
   const packagesDir = join(ROOT, 'packages');
   const out = [];
   for (const dir of readdirSync(packagesDir).sort()) {
-    // Same reason as check-package-readmes.mjs: `packages/*` never matches a
-    // leading dot, and statting `.DS_Store/package.json` raises ENOTDIR.
+    // As check-package-readmes.mjs: `packages/*` never matches a leading dot.
     if (dir.startsWith('.')) continue;
     const pkgJson = join(packagesDir, dir, 'package.json');
     if (!existsSync(pkgJson)) continue;
@@ -104,10 +102,10 @@ function publishedPackages() {
  * Docs whose ts/typescript snippets are typechecked: the root README, the
  * guides and tutorials, and every published package's README.
  *
- * The package READMEs were absent from this list until #3846, which is how
+ * The package READMEs were missing here until #3846, which is how
  * packages/cache/README.md shipped a quickstart with two TS2345 errors
- * (#3759). A package README is the npm landing page — the single most
- * copy-pasted code in the repo — so it is checked exactly like a guide.
+ * (#3759). A package README is an npm landing page, so it is checked
+ * exactly like a guide.
  */
 function targetDocs() {
   const files = ['README.md'];
@@ -119,8 +117,8 @@ function targetDocs() {
   }
   for (const { dir } of publishedPackages()) {
     const rel = join('packages', dir, 'README.md');
-    // A missing README is check-package-readmes.mjs's verdict to report,
-    // not this gate's; it would fail here as an unreadable path instead.
+    // A missing README is check-package-readmes.mjs's verdict, not this
+    // gate's, which would only crash on the unreadable path.
     if (existsSync(join(ROOT, rel))) files.push(rel);
   }
   return files;

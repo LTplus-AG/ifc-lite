@@ -179,8 +179,16 @@ pub struct GeometryDiagnostics {
     /// Refs the content-hash pass refused (`u32::MAX`, #3421/#3752). Additive.
     #[serde(default)]
     pub oversized_ref_drops: u64,
-    /// Items dropped: no processor, or the processor errored. Counted once per
-    /// `IfcRepresentationMap` source, not once per occurrence. Additive.
+    /// Items dropped: no processor, or the processor errored. Additive.
+    ///
+    /// Counted once per `IfcRepresentationMap` source PER ROUTER, not once per
+    /// `IfcMappedItem` occurrence. That is a model-wide "once" on the wasm path,
+    /// which walks a whole batch with one router. It is NOT model-wide on the
+    /// native pool: `process_entity_job` builds a fresh router per element, and a
+    /// source whose items all drop is refused by the shared mapped-item cache
+    /// (empty meshes are never published), so every element that instantiates it
+    /// walks it again and contributes its own count. Read the number as a lower
+    /// bound on affected types, never as a count of distinct sources or elements.
     #[serde(default)]
     pub total_unsupported_items: u64,
     /// [`Self::total_unsupported_items`] broken down by IFC type, count-desc.

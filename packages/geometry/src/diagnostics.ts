@@ -98,9 +98,13 @@ export interface GeometryDiagnostics {
    * a payload produced before this counter existed (schemaVersion < 3).
    *
    * A lower bound on instances: a drop inside a `RepresentationMap` source is
-   * counted once, not once per `IfcMappedItem` occurrence that reuses the
-   * cached source. Read it as "these types were dropped", not as a count of
-   * affected elements.
+   * counted once per walking router, not once per `IfcMappedItem` occurrence
+   * that reuses the cached source. That is once model-wide on the wasm batch
+   * path, which uses one router; the native pool builds a router per element,
+   * and a source whose items ALL drop is never published to the shared cache
+   * (it meshes to nothing), so there it contributes once per owning element.
+   * Read it as "these types were dropped", never as a count of affected
+   * elements or of distinct sources.
    */
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */

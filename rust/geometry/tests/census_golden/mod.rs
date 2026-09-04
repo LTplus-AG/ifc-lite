@@ -583,6 +583,53 @@ fn fall_note(g: &HostRow, r: &HostRow) -> &'static str {
     }
 }
 
+/// How far two readings of the same host may differ before the difference is a
+/// real move (#3422). Whichever is larger of 1 cm³ and 1e-6 of the golden's
+/// magnitude.
+///
+/// WHY A TOLERANCE AT ALL, given the column exists to compare exactly. The
+/// reading is a divergence sum over f32 positions that `mesh_to_tris` has
+/// already snapped to the kernel's 1/65536 m grid. That snap normally swallows
+/// the whole difference between one platform's fused multiply-add and
+/// another's: two builds of the same mesh land on the same grid points and so
+/// on the same integer. It swallows it EXCEPT on a boundary, where two
+/// coordinates a hair either side of a grid step round opposite ways and one
+/// vertex moves 15.26 µm. The goldens in this repo are blessed on arm64 and the
+/// census lane runs on x86_64, so a single such vertex is enough to red the
+/// lane on a change that touched no geometry.
+///
+/// WHY THESE TWO TERMS. The absolute one covers a small host, where 1e-6 of the
+/// magnitude is under the cm³ quantum and would be no tolerance at all. The
+/// relative one covers a large host, where a handful of boundary vertices can
+/// move more than a single cm³: at the corpus's largest readings (a few million
+/// cm³) it is a few cm³, still far under one grid step's worth of a real face.
+///
+/// WHAT IT DOES NOT COST. Every move this column exists to catch is orders of
+/// magnitude above it: the 1.4x over-cut fixture moves 50000 cm³ against a
+/// tolerance of 1. A tolerance that admitted a real over-cut would have to be
+/// four decades wider than this one.
+fn volume_tolerance_cm3(golden: i64) -> i64 {
+    ((golden.unsigned_abs() as f64) * 1.0e-6).ceil().max(1.0) as i64
+}
+
+/// Did the reading move, beyond [`volume_tolerance_cm3`]? SIGNED, so a winding
+/// flip at equal magnitude is still a move.
+fn volume_reading_moved(from: i64, to: i64) -> bool {
+    to.saturating_sub(from).saturating_abs() > volume_tolerance_cm3(from)
+}
+
+/// Which way the MAGNITUDE moved, under the same tolerance. `Equal` means "the
+/// same volume as far as this reading can tell", which is what the
+/// re-tessellation verdict below rests on.
+fn volume_magnitude_cmp(from: i64, to: i64) -> std::cmp::Ordering {
+    let (a, b) = (from.abs(), to.abs());
+    if !volume_reading_moved(a, b) {
+        std::cmp::Ordering::Equal
+    } else {
+        b.cmp(&a)
+    }
+}
+
 /// How a volume reading moved, as a percentage of the golden's MAGNITUDE.
 /// From zero there is no percentage to give, so it says so instead of
 /// dividing by it.
@@ -670,7 +717,7 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     // which is what "more" and "less" mean below.
     let vol = g.vol.zip(r.vol);
     if let Some((a, b)) = vol {
-        if a != b {
+        if volume_reading_moved(a, b) {
             c.volume_moved.push(format!(
                 "enclosed volume {a} -> {b} cm³ ({}){}",
                 volume_delta(a, b),
@@ -687,14 +734,17 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
         // and the volume says whether material left with the triangles; where
         // one side is torn, an open count that fell is the repair reading.
         // Everything else is loss.
-        match vol.map(|(a, b)| (a.abs(), b.abs())) {
+        match vol {
             _ if r.tris == 0 => c.worse_counts.push(format!("{msg} (geometry lost)")),
-            Some((a, b)) if b > a => {
-                c.volume_moved.push(format!("{msg} (fewer triangles, more enclosed volume)"))
-            }
-            Some((a, b)) if b == a => {
-                c.retessellated.push(format!("{msg} (fewer triangles, enclosed volume unchanged)"))
-            }
+            Some((a, b)) => match volume_magnitude_cmp(a, b) {
+                std::cmp::Ordering::Greater => {
+                    c.volume_moved.push(format!("{msg} (fewer triangles, more enclosed volume)"))
+                }
+                std::cmp::Ordering::Equal => c
+                    .retessellated
+                    .push(format!("{msg} (fewer triangles, enclosed volume unchanged)")),
+                std::cmp::Ordering::Less => c.worse_counts.push(format!("{msg} (geometry lost)")),
+            },
             None if r.open < g.open && g.open_is_comparable() && r.open_is_comparable() => {
                 c.retessellated.push(format!("{msg} (fewer triangles, less torn)"))
             }
@@ -1928,6 +1978,52 @@ mod tests {
         let d = diff(std::slice::from_ref(&g), &[collapsed], &swept(&["a.ifc"]));
         assert_eq!(d.regressed.len(), 1, "a gained collapse outranks the volume");
         assert!(d.regressed[0].reasons.join("; ").contains("enclosed volume 55000 -> 47200"));
+    }
+
+    #[test]
+    fn a_reading_that_moves_by_less_than_the_platform_noise_is_not_a_move() {
+        // #3422. The goldens are blessed on arm64 and the census lane runs on
+        // x86_64. The 1/65536 m snap normally makes the two agree exactly, but
+        // a vertex sitting on a grid boundary can round the other way and move
+        // 15.26 µm, which is a real cm³ or two on a large host and no defect at
+        // all. Bounded by `volume_tolerance_cm3`: 1 cm³, or 1e-6 of the
+        // golden's magnitude, whichever is larger.
+        let all = swept(&["a.ifc"]);
+
+        // The boundary, both sides of it, on a small host where the absolute
+        // term rules: tolerance 1.
+        let g = HostRow { vol: Some(55_000), ..row("a.ifc", 1, 0, 800) };
+        assert_eq!(volume_tolerance_cm3(55_000), 1);
+        let d = diff(std::slice::from_ref(&g), &[HostRow { vol: Some(55_001), ..g.clone() }], &all);
+        assert!(d.volume_moved.is_empty(), "1 cm³ is inside the noise floor");
+        assert!(!d.requires_bless(), "and must not cost a bless");
+        let d = diff(std::slice::from_ref(&g), &[HostRow { vol: Some(55_002), ..g.clone() }], &all);
+        assert_eq!(d.volume_moved.len(), 1, "2 cm³ is outside it");
+
+        // And on a large host, where the relative term rules: 3 000 000 cm³
+        // gives a tolerance of 3.
+        let big = HostRow { vol: Some(3_000_000), ..row("a.ifc", 1, 0, 800) };
+        assert_eq!(volume_tolerance_cm3(3_000_000), 3);
+        let more = HostRow { vol: Some(3_000_003), ..big.clone() };
+        let d = diff(std::slice::from_ref(&big), &[more], &all);
+        assert!(d.volume_moved.is_empty(), "3 cm³ of 3 m³ is inside the noise floor");
+        let more = HostRow { vol: Some(3_000_004), ..big.clone() };
+        let d = diff(std::slice::from_ref(&big), &[more], &all);
+        assert_eq!(d.volume_moved.len(), 1, "4 cm³ of 3 m³ is outside it");
+
+        // The same tolerance decides the ROUTING of a triangle drop, not only
+        // whether the move is reported. A watertight shrink whose volume held
+        // to within the noise floor is a re-tessellation, and would otherwise
+        // be called geometry lost by a platform difference.
+        let shrank = HostRow { tris: 600, vol: Some(54_999), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[shrank], &all);
+        assert!(d.regressed.is_empty(), "1 cm³ of drift must not read as geometry lost");
+        assert_eq!(d.retessellated.len(), 1);
+        assert!(d.retessellated[0].reasons.join("; ").contains("enclosed volume unchanged"));
+
+        // What the tolerance costs, stated as a measurement: nothing this
+        // column exists to catch. The over-cut fixture moves 50 000 cm³.
+        assert!(volume_tolerance_cm3(550_000) < 50, "the tolerance must stay negligible");
     }
 
     #[test]

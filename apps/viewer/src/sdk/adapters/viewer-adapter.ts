@@ -77,6 +77,23 @@ export function createViewerAdapter(store: StoreApi): ViewerBackendMethods {
       state.setPendingColorUpdates(batchMap);
       return undefined;
     },
+    /**
+     * Drop SDK colours: everything when called with no argument, otherwise
+     * just the given entities.
+     *
+     * #3338: "the given entities" includes an assembly's `IfcRelAggregates`
+     * PARTS, because `colorize` paints the parts (an assembly owns no mesh of
+     * its own, so painting its bare id paints nothing). A reset that removed
+     * only the parent id could not undo its own colorize.
+     *
+     * The consequence a script author should know about: `resetColors([
+     * assemblyRef])` also clears a colour that was applied to one of those
+     * parts DIRECTLY and independently, by an earlier `colorize([partRef])`.
+     * This adapter tracks a flat id -> colour map with no record of which call
+     * put each entry there, so it cannot tell the two apart. Reset the part
+     * you care about and re-apply it, or reset by part rather than by
+     * assembly, if that matters.
+     */
     resetColors(refs?: EntityRef[]) {
       const state = store.getState();
       if (!refs || refs.length === 0) {

@@ -149,6 +149,27 @@ describe('SDK viewer adapter: colorize() and #3338 assembly expansion', () => {
     assert.equal(pending?.size, 0, 'a targeted reset must drop every id its own colorize() set');
   });
 
+  it('resetColors([assemblyRef]) also clears a part the caller coloured directly', () => {
+    // Pinning a real consequence of the expansion rather than asserting it
+    // away. The adapter keeps a flat id -> colour map with no record of which
+    // call wrote each entry, so a reset by assembly cannot distinguish the
+    // part colour ITS OWN colorize wrote from one an earlier, independent
+    // colorize([partRef]) wrote. Documented on resetColors in
+    // viewer-adapter.ts; if this ever needs to change, it needs provenance
+    // tracking, not a tweak here.
+    const { store, getPending } = makeStore(assemblyResolver);
+    const adapter = createViewerAdapter(store);
+
+    adapter.colorize([{ modelId: MODEL_ID, expressId: PART_A }], blue);
+    adapter.resetColors([{ modelId: MODEL_ID, expressId: ASSEMBLY_ID }]);
+
+    assert.equal(
+      getPending()?.has(PART_A),
+      false,
+      "resetColors by assembly clears its parts' colours whoever set them",
+    );
+  });
+
   it('a plain element ref is untouched by the expansion (no over-reach)', () => {
     const { store, getPending } = makeStore(assemblyResolver);
     createViewerAdapter(store).colorize([{ modelId: MODEL_ID, expressId: PART_A }], red);

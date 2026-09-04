@@ -37,8 +37,15 @@ export interface ParsedIfcStore {
    * {@link CacheEntityIndex} as written, with no conversion and no cast. Typed
    * as `CacheEntityIndex` here so the adapter stays free of a parser import;
    * `byType` and the parser index's other members are simply ignored.
+   *
+   * The `byType?: unknown` member carries no meaning to this adapter. It is
+   * here so a caller can pass the parser's index shape as an OBJECT LITERAL
+   * (`{ byId, byType }`, which a worker rehydrating a transported store
+   * writes) without TypeScript's excess-property check rejecting `byType`.
+   * Passing an already-typed variable never needed it, which is why neither
+   * the viewer nor the tests hit that check.
    */
-  entityIndex?: CacheEntityIndex;
+  entityIndex?: CacheEntityIndex & { byType?: unknown };
 }
 
 /**
@@ -80,8 +87,12 @@ function toSchemaVersion(schemaVersion: ParsedIfcStore['schemaVersion']): Schema
  *
  * `entityCount` falls back to `entities.count` when the store leaves it at 0.
  * It is a header field the reader hands straight back to callers, and the
- * viewer's write path carried exactly this fallback inline before it moved
- * onto this adapter.
+ * viewer's write path carried this fallback inline before it moved onto this
+ * adapter. One difference from that inline copy, deliberately: it read
+ * `entities?.count || 0`, so a store carrying no `entities` at all still
+ * wrote a header claiming 0 entities. `entities` is required on
+ * {@link ParsedIfcStore} and a store without it cannot be serialized in any
+ * case, so this throws there instead of writing a plausible wrong count.
  *
  * The entity index IS carried over: `store.entityIndex` already satisfies
  * {@link CacheEntityIndex} structurally, so dropping it only cost callers the

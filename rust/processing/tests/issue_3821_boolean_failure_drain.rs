@@ -159,8 +159,36 @@ fn a_clean_model_records_no_boolean_failures_on_either_entry_point() {
     }
 }
 
+/// Parse `IFC_LITE_REQUIRE_FIXTURES` the way `rust/export/src/test_support.rs`
+/// documents it — that module is the canonical home, but it is private to the
+/// export crate and unreachable from here.
+///
+/// Unset, empty or `"0"` = off (skip a missing fixture, the local default).
+/// `"1"` = on (a missing fixture is a hard failure; CI sets this for
+/// `cargo test --workspace`). Anything else PANICS rather than falling through
+/// to "off": treating a typo like `true` as off would recreate the silent pass
+/// the variable exists to close.
+fn require_fixtures() -> bool {
+    match std::env::var("IFC_LITE_REQUIRE_FIXTURES") {
+        Err(std::env::VarError::NotPresent) => false,
+        Ok(v) if v.is_empty() || v == "0" => false,
+        Ok(v) if v == "1" => true,
+        other => panic!(
+            "IFC_LITE_REQUIRE_FIXTURES must be unset, \"\", \"0\" or \"1\"; got {other:?}"
+        ),
+    }
+}
+
 /// Streaming-vs-native parity on a real model, not just the synthetic fixture:
 /// the batch size must not change what the pass reports.
+///
+/// NOT load-bearing on its own. The fixture is not committed, so without it
+/// this returns early and passes having asserted nothing — it stayed green
+/// under every mutation of the code it covers. The two synthetic tests above
+/// are what actually pin the behaviour; this one adds breadth over real
+/// geometry when the fixture is present. `IFC_LITE_REQUIRE_FIXTURES=1` (which
+/// CI sets) turns the silent skip into a hard failure, so fixture drift shows
+/// up as a failure rather than as a quietly smaller suite.
 #[test]
 fn streaming_and_native_report_identical_diagnostics_on_a_real_fixture() {
     const FIXTURE: &str = "tests/models/ara3d/AC20-FZK-Haus.ifc";
@@ -168,10 +196,17 @@ fn streaming_and_native_report_identical_diagnostics_on_a_real_fixture() {
         .join("..")
         .join("..")
         .join(FIXTURE);
-    // ara3d fixtures are not committed; skip cleanly when absent (AGENTS.md).
-    let Ok(bytes) = std::fs::read(&path) else {
-        eprintln!("{FIXTURE} missing - skipping");
-        return;
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            assert!(
+                !require_fixtures(),
+                "IFC_LITE_REQUIRE_FIXTURES=1 but {FIXTURE} is missing ({e}) — \
+                 run `pnpm fixtures` (sha256 in tests/models/manifest.json)"
+            );
+            eprintln!("{FIXTURE} missing - skipping");
+            return;
+        }
     };
 
     let native = process_geometry(&bytes);

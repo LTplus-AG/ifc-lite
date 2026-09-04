@@ -1928,25 +1928,32 @@ mod tests {
         // `#[ignore]`d, so without this it would be the one place a dark
         // column could be checked in with nothing reading it.
         //
-        // The floors are DARKNESS floors, not population pins: a dark column
-        // reads 0 non-zero volumes, so they sit far below what each file
-        // actually carries (1170 rows / 920 non-zero, and the heavy figures
-        // below: 652 rows, 624 watertight, 623 non-zero) rather than one row
-        // under it. Pinning the population here
-        // would red the lane on any legitimate coverage change, which
+        // The floors are DARKNESS floors, not population pins. A dark column
+        // reads ZERO non-zero volumes, so each floor sits far enough below the
+        // file's real population that a legitimate coverage change cannot
+        // reach it and a dark column cannot miss it. Measured at this commit:
+        // the default golden carries 1170 rows / 1005 watertight / 920
+        // non-zero, the heavy one 652 / 624 / 623. The floors below are set at
+        // roughly half of each, not one row under it. Pinning the population
+        // here would red the lane on any legitimate coverage change, which
         // `MIN_VOID_HOSTS` and the heavy lane's own floors already gate.
+        //
+        // The heavy floor was 600 in the commit that added it, against 652
+        // actual. That contradicted this paragraph: a 53-row coverage change
+        // would have redded the lane and said "the column is dark", which is
+        // the wrong diagnosis by a wide margin (a dark column reads 0).
         for (name, text, min_rows, min_nonzero) in [
             (
                 "watertightness_census.tsv",
                 include_str!("../manifests/watertightness_census.tsv"),
-                1000,
-                700,
+                600,
+                500,
             ),
             (
                 "watertightness_census_heavy.tsv",
                 include_str!("../manifests/watertightness_census_heavy.tsv"),
-                600,
-                400,
+                300,
+                300,
             ),
         ] {
             let rows = parse(text).unwrap_or_else(|e| panic!("{name} must parse: {e}"));

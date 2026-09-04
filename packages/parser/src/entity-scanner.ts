@@ -26,6 +26,21 @@ export interface PreScannedEntityIndex {
    * claim as `0`, and is why the wasm pre-pass now always sets it.
    */
   oversizedIdCount?: number;
+  /**
+   * Whether the pre-pass that produced these columns stopped early at a
+   * malformed record -- a quoted string or block comment that never closed
+   * (#3790). 0 or 1, never a count: a scan that stops has no reliable place to
+   * resume, so every record from that byte on is missing from the columns too.
+   *
+   * It has to travel with them for the same reason `oversizedIdCount` does,
+   * only more so: the refusal drops one record, this drops the whole tail, and
+   * neither is recoverable from `ids` on this side.
+   *
+   * Optional because a host on an older build sends the three columns and
+   * nothing else -- `undefined` means "this producer does not report", which
+   * is not the claim `0` makes.
+   */
+  malformedRecordCount?: number;
 }
 
 export interface WasmScanApi {
@@ -74,12 +89,13 @@ export interface EntityScanResult {
    * existed, that stop was completely silent -- a shorter `entityRefs` with
    * no signal that anything went wrong at all.
    *
-   * `pre-scanned` and `wasm` do not carry this. `pre-scanned`: same
-   * reasoning as `oversizedIdCount`'s doc -- `PreScannedEntityIndex`
-   * predates this field, so a producer built before it sends none. `wasm`:
-   * `scanEntitiesFast`/`scanEntitiesFastBytes` return refs and nothing
-   * else. Both read as `0`, indistinguishable from "scan completed clean"
-   * for those two paths.
+   * `pre-scanned` carries it when the producer reports one
+   * (`PreScannedEntityIndex.malformedRecordCount`, #3790) -- the geometry
+   * pre-pass path the viewer takes for every SAB-backed worker load at or
+   * above 2 MB. A producer built before that field sends none, and reads as
+   * `0`. `wasm` does not carry it at all:
+   * `scanEntitiesFast`/`scanEntitiesFastBytes` return refs and nothing else,
+   * so a `0` on THAT path is not proof of a clean scan.
    */
   malformedRecordCount: number;
 }
@@ -118,6 +134,10 @@ export async function scanIfcEntities(
     // unreported count is announced rather than passed off as a clean scan.
     oversizedIdCount = options.preScannedEntityIndex.oversizedIdCount ?? 0;
     preScanCountUnreported = options.preScannedEntityIndex.oversizedIdCount === undefined;
+    // Same handoff, worse consequence: a stop means the columns are missing
+    // everything after it, not one refused record. Reported through the
+    // existing diagnostic below rather than a second channel (#3790).
+    malformedRecordCount = options.preScannedEntityIndex.malformedRecordCount ?? 0;
   }
 
   if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {

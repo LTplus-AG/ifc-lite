@@ -60,6 +60,7 @@ export class WorkerParser {
     starts: Uint32Array;
     lengths: Uint32Array;
     oversizedIdCount?: number;
+    malformedRecordCount?: number;
   } | null = null;
 
   /**
@@ -217,6 +218,7 @@ export class WorkerParser {
             starts: queued.starts,
             lengths: queued.lengths,
             oversizedIdCount: queued.oversizedIdCount,
+            malformedRecordCount: queued.malformedRecordCount,
           });
         } catch (err) {
           console.warn('[WorkerParser] queued setEntityIndex failed:', err);
@@ -259,15 +261,21 @@ export class WorkerParser {
    * id above the u32 bound (#3395). Pass it: the columns cannot carry a record
    * that was refused, so a caller that drops the number leaves the parse
    * reporting a clean load that is short by exactly that many entities.
+   *
+   * `malformedRecordCount` is the same handoff for the pre-pass stopping early
+   * at a record whose string or comment never closed (#3790). Pass it too: a
+   * stop costs the whole tail of the file, not one record, and the columns
+   * carry no trace of where it happened.
    */
   setEntityIndex(
     ids: Uint32Array,
     starts: Uint32Array,
     lengths: Uint32Array,
     oversizedIdCount?: number,
+    malformedRecordCount?: number,
   ): void {
     if (!this.worker) {
-      this.queuedEntityIndex = { ids, starts, lengths, oversizedIdCount };
+      this.queuedEntityIndex = { ids, starts, lengths, oversizedIdCount, malformedRecordCount };
       return;
     }
     try {
@@ -277,6 +285,7 @@ export class WorkerParser {
         starts,
         lengths,
         oversizedIdCount,
+        malformedRecordCount,
       });
     } catch (err) {
       console.warn('[WorkerParser] setEntityIndex postMessage failed:', err);

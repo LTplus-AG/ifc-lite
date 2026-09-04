@@ -60,6 +60,13 @@ export interface ParserWorkerEntityIndexMessage {
    * quietly short. Optional: an older host sends the three columns only.
    */
   oversizedIdCount?: number;
+  /**
+   * Whether the pre-pass stopped early at a record whose quoted string or
+   * block comment never closed (#3790). 0 or 1. Everything after that byte is
+   * missing from the columns, so this is the only evidence the parse gets.
+   * Optional: an older host sends the three columns only.
+   */
+  malformedRecordCount?: number;
 }
 
 /** Progress update from the worker. */
@@ -171,6 +178,7 @@ let pendingEntityIndex: {
   starts: Uint32Array;
   lengths: Uint32Array;
   oversizedIdCount?: number;
+  malformedRecordCount?: number;
 } | null = null;
 let entityIndexWaiter: ((value: NonNullable<typeof pendingEntityIndex>) => void) | null = null;
 
@@ -219,6 +227,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       starts: data.starts,
       lengths: data.lengths,
       oversizedIdCount: data.oversizedIdCount,
+      malformedRecordCount: data.malformedRecordCount,
     };
     if (entityIndexWaiter) {
       const resolve = entityIndexWaiter;

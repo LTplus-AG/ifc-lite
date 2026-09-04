@@ -192,8 +192,8 @@ async function writeTopicFolder(
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folder = zip.folder(sanitizeZipComponent(topic.guid, usedFolderNames, 'topic'));
-  if (!folder) return;
+  // Every entry below passes createFolders:false: JSZip otherwise adds a "<guid>/" directory entry, which Solibri refuses (#3612).
+  const folderName = sanitizeZipComponent(topic.guid, usedFolderNames, 'topic');
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
   // reference (written below) and the zip entry (written in
@@ -206,11 +206,11 @@ async function writeTopicFolder(
   );
 
   // Write markup.bcf
-  writeMarkupFile(folder, topic, version, viewpointBaseNames);
+  writeMarkupFile(zip, folderName, topic, version, viewpointBaseNames);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
-    await writeViewpointFiles(folder, topic.viewpoints[i], viewpointBaseNames[i], version);
+    await writeViewpointFiles(zip, folderName, topic.viewpoints[i], viewpointBaseNames[i], version);
   }
 }
 
@@ -230,7 +230,7 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
 
 /** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
-  folder: JSZip,
+  zip: JSZip, folderName: string,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   viewpointBaseNames: string[],
@@ -451,14 +451,14 @@ function writeMarkupFile(
 
   content += `\n</Markup>`;
 
-  folder.file('markup.bcf', content);
+  zip.file(`${folderName}/markup.bcf`, content, { createFolders: false });
 }
 
 /**
  * Write viewpoint files (bcfv and snapshot)
  */
 async function writeViewpointFiles(
-  folder: JSZip,
+  zip: JSZip, folderName: string,
   viewpoint: BCFViewpoint,
   baseName: string,
   version: '2.1' | '3.0',
@@ -538,11 +538,11 @@ async function writeViewpointFiles(
 
   content += `\n</VisualizationInfo>`;
 
-  folder.file(filename, content);
+  zip.file(`${folderName}/${filename}`, content, { createFolders: false });
 
   // Write snapshot
   if (viewpoint.snapshotData) {
-    folder.file(snapshotName, viewpoint.snapshotData);
+    zip.file(`${folderName}/${snapshotName}`, viewpoint.snapshotData, { createFolders: false });
   } else if (viewpoint.snapshot && viewpoint.snapshot.startsWith('data:')) {
     // Convert data URL to binary
     const base64Data = viewpoint.snapshot.split(',')[1];
@@ -553,7 +553,7 @@ async function writeViewpointFiles(
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
-        folder.file(snapshotName, bytes);
+        zip.file(`${folderName}/${snapshotName}`, bytes, { createFolders: false });
       } catch (e) {
         // Skip a single malformed snapshot data URL rather than aborting the export
         console.warn('[BCF] Skipping malformed snapshot data URL:', e);

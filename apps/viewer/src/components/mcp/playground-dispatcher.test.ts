@@ -139,4 +139,24 @@ describe('count_entities group_by:type universe (#3765)', () => {
     assert.equal(total, 1, 'only the wall is a BIM product; owner history/pset/property are not');
     assert.deepEqual(structured.groups, [{ key: 'IfcWall', count: 1 }]);
   });
+
+  it('applies args.type before grouping, like the Node MCP server', async () => {
+    // A wall and a door: `type: 'IfcDoor'` must count only the door, and a
+    // non-matching type must count nothing rather than fall back to every
+    // product (the branch used to ignore `type` entirely).
+    const bytes = new TextEncoder().encode(
+      ifc4([
+        "#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);",
+        "#10=IFCWALL('0aBcDeFgHiJkLmNoPqRsT3',#1,'Wall A',$,$,$,$,$,.STANDARD.);",
+        "#11=IFCDOOR('0aBcDeFgHiJkLmNoPqRsT4',#1,'Door A',$,$,$,$,$,$,$,$,$,$);",
+      ].join('\n')),
+    );
+    const model = await parsePlaygroundModel(bytes.buffer as ArrayBuffer, 'wall-and-door.ifc');
+    const door = await dispatch(model, 'count_entities', { group_by: 'type', type: 'IfcDoor' });
+    assert.equal(door.isError, false);
+    assert.deepEqual((door.structured as { groups: unknown }).groups, [{ key: 'IfcDoor', count: 1 }]);
+    const none = await dispatch(model, 'count_entities', { group_by: 'type', type: 'IfcWindow' });
+    assert.equal(none.isError, false);
+    assert.deepEqual((none.structured as { groups: unknown }).groups, []);
+  });
 });

@@ -574,6 +574,11 @@ const IMPLS: Record<string, ToolImpl> = {
 
   async count_entities(m, args) {
     const groupBy = (args.group_by as string | undefined) ?? 'type';
+    // `type` narrows the universe before any grouping, as the Node MCP
+    // server's count_entities does (packages/mcp/src/tools/query.ts); without
+    // it a `type: 'IfcWall'` request still folded every BIM product.
+    const typeFilter = args.type as string | undefined;
+    const universe = () => (typeFilter ? m.bim.query().byType(typeFilter) : m.bim.query()).toArray();
     const counts = new Map<string, number>();
     if (groupBy === 'type') {
       // Same universe as `query_entities`/`get_entity` and the Node MCP
@@ -582,19 +587,19 @@ const IMPLS: Record<string, ToolImpl> = {
       // geometry, relationships, properties included — which is what this
       // branch used to fold, so the playground reported a different total
       // than the installed MCP server for the same model.
-      for (const e of m.bim.query().toArray()) {
+      for (const e of universe()) {
         const key = e.type || '(unknown)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'storey') {
-      for (const e of m.bim.query().toArray()) {
+      for (const e of universe()) {
         const node = new EntityNode(m.store, e.ref.expressId);
         const storey = node.storey();
         const key = firstNonBlank(storey?.name) ?? '(no storey)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'material') {
-      for (const e of m.bim.query().toArray()) {
+      for (const e of universe()) {
         const mat = m.bim.materials(e.ref);
         const key = lensMaterialNames(mat)[0] ?? '(no material)';
         counts.set(key, (counts.get(key) ?? 0) + 1);

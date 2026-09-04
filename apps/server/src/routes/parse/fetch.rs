@@ -5,7 +5,8 @@
 //! GET cache fetch / check endpoints.
 
 use super::cache_keys::{
-    data_model_cache_key, parquet_cache_key, parquet_metadata_cache_key, symbolic_cache_key,
+    cache_key_from_parts, data_model_cache_key, has_current_data_model, parquet_cache_key,
+    parquet_metadata_cache_key, symbolic_cache_key,
 };
 use super::ParseQuery;
 use crate::error::ApiError;
@@ -133,14 +134,16 @@ pub async fn check_cache(
     Query(query): Query<ParseQuery>,
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let parquet_cache_key = parquet_cache_key(
-        &hash,
-        query.opening_filter,
-        query.resolved_tessellation_quality()?,
-    );
+    let quality = query.resolved_tessellation_quality()?;
+    let parquet_cache_key = parquet_cache_key(&hash, query.opening_filter, quality);
+    // A geometry entry alone is not enough: the client skips the upload on a
+    // hit, so a data model at the current payload version has to exist too, or
+    // nothing will ever write one (issue #3869).
+    let seed_cache_key = cache_key_from_parts(&hash, query.opening_filter, quality);
+    let data_model_is_current = has_current_data_model(&state.cache, &seed_cache_key).await;
 
     match state.cache.get_bytes(&parquet_cache_key).await? {
-        Some(_) => {
+        Some(_) if data_model_is_current => {
             tracing::debug!(hash = %hash, cache_key = %parquet_cache_key, "Cache check HIT");
             let response = Response::builder()
                 .status(StatusCode::OK)
@@ -148,8 +151,13 @@ pub async fn check_cache(
                 .map_err(|e| ApiError::Internal(e.to_string()))?;
             Ok(response)
         }
-        None => {
-            tracing::debug!(hash = %hash, cache_key = %parquet_cache_key, "Cache check MISS");
+        cached => {
+            tracing::debug!(
+                hash = %hash,
+                cache_key = %parquet_cache_key,
+                geometry_cached = cached.is_some(),
+                "Cache check MISS"
+            );
             let response = Response::builder()
                 .status(StatusCode::NOT_FOUND)
                 .body(Body::empty())

@@ -8,7 +8,7 @@
 //! coverage in `services::parquet::parquet_tests`; this file targets the
 //! route's own cache lookup, which the service tests can't reach.
 
-use super::cache_keys::request_cache_key;
+use super::cache_keys::{data_model_cache_key, request_cache_key};
 use super::ParseQuery;
 use crate::config::Config;
 use crate::services::cache::DiskCache;
@@ -82,6 +82,13 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
         .set_bytes(&metadata_key, b"METADATA-PAYLOAD")
         .await
         .expect("seed metadata cache entry");
+    // A geometry hit also requires a data model at the current payload
+    // version (#3869); this test is about which side each blob lands on.
+    state
+        .cache
+        .set_bytes(&data_model_cache_key(&cache_key), b"DATA-MODEL-PAYLOAD")
+        .await
+        .expect("seed data model cache entry");
 
     let (content_type, body) = multipart_body(content);
     let request = Request::builder()
@@ -104,4 +111,84 @@ async fn parquet_cache_hit_does_not_swap_body_and_metadata() {
 
     assert_eq!(header_value, "METADATA-PAYLOAD");
     assert_eq!(&body_bytes[..], b"GEOMETRY-PAYLOAD");
+}
+
+/// A minimal but real IFC file: the fall-through parse must actually succeed,
+/// so the assertion below is about the cache gate, not about a parse failure.
+const MINIMAL_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('issue-3869 cache-gate fixture'),'2;1');
+FILE_NAME('gate.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,$,$);
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#20=IFCOPENINGELEMENT('Open00000000000000001',$,'O1',$,$,$,$,$,$);
+#40=IFCRELVOIDSELEMENT('Voi0000000000000000001',$,$,$,#10,#20);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// A deployment that already holds geometry from before the data-model version
+/// bump must still end up with a data model at the CURRENT version (issue
+/// #3869). Seeded state is what such a deployment actually looks like: a
+/// geometry entry plus a data model at the PREVIOUS version. Returning the
+/// cached geometry and stopping there leaves the client polling a key nobody
+/// writes, so the request must fall through to the live parse, which writes it.
+#[tokio::test]
+async fn a_geometry_hit_with_a_stale_data_model_still_writes_the_current_data_model() {
+    let state = test_state("stale-data-model-regenerates").await;
+    let content = MINIMAL_IFC.as_bytes();
+    let query = ParseQuery::default();
+    let cache_key = request_cache_key(content, &query, TessellationQuality::default());
+    let current_key = data_model_cache_key(&cache_key);
+
+    state
+        .cache
+        .set_bytes(&format!("{cache_key}-parquet-v5"), b"OLD-GEOMETRY-PAYLOAD")
+        .await
+        .expect("seed geometry cache entry");
+    state
+        .cache
+        .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), b"{}")
+        .await
+        .expect("seed metadata cache entry");
+    state
+        .cache
+        .set_bytes(&format!("{cache_key}-datamodel-v5"), b"PRE-BUMP-DATA-MODEL")
+        .await
+        .expect("seed previous-version data model");
+
+    // Anti-vacuity: the current key really is absent before the request.
+    assert!(
+        state.cache.get_bytes(&current_key).await.unwrap().is_none(),
+        "fixture must start with no current data model"
+    );
+
+    let (content_type, body) = multipart_body(content);
+    let request = Request::builder()
+        .method("POST")
+        .uri("/api/v1/parse/parquet")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap();
+    let response = build_router(state.clone()).oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let written = state
+        .cache
+        .get_bytes(&current_key)
+        .await
+        .unwrap()
+        .expect("the current data-model key must be written");
+    assert!(!written.is_empty(), "the written data model must not be empty");
+
+    // And the response is the freshly parsed geometry, not the seeded blob.
+    let body_bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    assert_ne!(
+        &body_bytes[..],
+        b"OLD-GEOMETRY-PAYLOAD",
+        "the stale-data-model path must re-parse, not replay the cached blob"
+    );
 }

@@ -20,13 +20,29 @@ fn quality_cache_suffix(quality: TessellationQuality) -> String {
     }
 }
 
-/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
-pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
+/// The seed every derived key is built on: file hash + opening-filter suffix +
+/// quality suffix. Endpoints that receive a bare hash (the cache-check and
+/// cached-geometry routes) rebuild it from the query rather than from bytes
+/// they do not have.
+pub(crate) fn cache_key_from_parts(
+    hash: &str,
+    opening_filter: OpeningFilterMode,
+    quality: TessellationQuality,
+) -> String {
     format!(
         "{}-{}{}",
-        DiskCache::generate_key(data),
-        query.opening_filter.cache_key_suffix(),
+        hash,
+        opening_filter.cache_key_suffix(),
         quality_cache_suffix(quality)
+    )
+}
+
+/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
+pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
+    cache_key_from_parts(
+        &DiskCache::generate_key(data),
+        query.opening_filter,
+        quality,
     )
 }
 
@@ -67,10 +83,8 @@ pub(crate) fn parquet_cache_key(
         // OLD blob verbatim, the columns are absent, the decoder correctly omits
         // them, and drill-to-source stays dead over the binary transport with
         // nothing saying so -- absence reading exactly like success.
-        "{}-{}{}-parquet-v5",
-        hash,
-        opening_filter.cache_key_suffix(),
-        quality_cache_suffix(quality)
+        "{}-parquet-v5",
+        cache_key_from_parts(hash, opening_filter, quality)
     )
 }
 
@@ -81,10 +95,8 @@ pub(crate) fn parquet_metadata_cache_key(
     quality: TessellationQuality,
 ) -> String {
     format!(
-        "{}-{}{}-parquet-metadata-v4",
-        hash,
-        opening_filter.cache_key_suffix(),
-        quality_cache_suffix(quality)
+        "{}-parquet-metadata-v4",
+        cache_key_from_parts(hash, opening_filter, quality)
     )
 }
 
@@ -101,6 +113,26 @@ pub(crate) fn parquet_metadata_cache_key(
 /// `RelId = 0` on every exported relationship row with nothing saying so.
 pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
     format!("{cache_key}-datamodel-v6")
+}
+
+/// Whether a data model at the CURRENT payload version is cached for
+/// `cache_key`.
+///
+/// Geometry and the data model are versioned separately, so a geometry entry
+/// outlives a data-model bump. Every geometry short-circuit must ask this
+/// before returning early: without it a deployment holding pre-bump entries
+/// reports a geometry hit, the client skips the upload (or the replay path
+/// skips the parse), nothing ever writes the current data-model key, and
+/// `fetchDataModel` polls a key nobody writes until it times out — geometry on
+/// screen with no properties and no error (issue #3869). Answering `false`
+/// costs one re-parse and rewrites both entries.
+///
+/// A cache read error answers `false`: re-parsing is the safe direction.
+pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -> bool {
+    matches!(
+        cache.get_bytes(&data_model_cache_key(cache_key)).await,
+        Ok(Some(_))
+    )
 }
 
 /// Build the symbolic-data cache key for a given file cache key.

@@ -18,6 +18,83 @@
 use super::arrangement::Tri;
 use super::near_band::NearBand;
 
+/// Mutually promote every operand onto the OTHERS' face planes — the union
+/// form of [`promote_cutter_verts_onto_host_faces`].
+///
+/// # Why union needs both directions and subtract does not
+///
+/// Subtraction has a natural asymmetry: the host is the thing being cut and
+/// must not move, so welding the CUTTER onto it is the whole answer. Union has
+/// no such role split. `a ∪ b` and `b ∪ a` are the same solid, but a
+/// one-directional weld is keyed to argument POSITION, and on #3353's pinned
+/// fixture each direction fixed only its own caller order: welding B onto A
+/// left `union_mesh(b, a)` with 8 unmatched directed edges, welding A onto B
+/// left `union_mesh(a, b)` with 9. The reconciliation a pair needs is not
+/// always in the direction the caller happened to write.
+///
+/// # Why one pass is not enough
+///
+/// A single pass in index order welds operand 0 onto the others FIRST, which
+/// is the wrong direction for some pairs: pulling an axis-aligned operand's
+/// corner onto a rotated operand's tilted plane reconciles that pair and
+/// perturbs the mover's own faces at the same time. The following operands
+/// then reconcile against the perturbed geometry. A SECOND pass lets the
+/// earlier operands re-reconcile against what the later ones settled on, and
+/// that is what closes the case one pass opens.
+///
+/// So passes run until one welds nothing, capped by [`MAX_WELD_PASSES`]. The
+/// loop terminates on its own for every case measured, and the distribution is
+/// measured rather than assumed: over the 9464-union sweep in
+/// `issue_3353_near_coplanar_rotated_overlap.rs`, 3360 unions settled after one
+/// pass, 6091 after two and 19 after three. Nothing reached the cap, which is a
+/// bound on pathological oscillation (a vertex alternating between two planes
+/// equidistant within the band), not the expected exit.
+///
+/// # What this does and does not make commutative
+///
+/// NOT the coordinates: `a ∪ b` may reconcile onto `a`'s plane where `b ∪ a`
+/// reconciles onto `b`'s, one snap step away. What it makes commutative is the
+/// property that matters — both orders come back CLOSED, with the same volume
+/// to within a snap step's worth of surface. That is what
+/// `issue_3353_near_coplanar_rotated_overlap.rs` asserts, in both orders.
+///
+/// Returns the number of vertices moved, in total, across every pass.
+///
+/// DETERMINISM: fixed index order, fixed pass order, and each step is the same
+/// FMA-free f64 [`promote_cutter_verts_onto_host_faces`] ⇒ byte-identical
+/// native == wasm.
+pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) -> usize {
+    let n = operands.len();
+    if n < 2 {
+        return 0;
+    }
+    let mut welded = 0usize;
+    let mut host: Vec<Tri> = Vec::new();
+    for _pass in 0..MAX_WELD_PASSES {
+        let mut moved = 0usize;
+        for i in 0..n {
+            host.clear();
+            for (j, o) in operands.iter().enumerate() {
+                if j != i {
+                    host.extend_from_slice(o);
+                }
+            }
+            moved += promote_cutter_verts_onto_host_faces(&mut operands[i], &host);
+        }
+        welded += moved;
+        if moved == 0 {
+            break;
+        }
+    }
+    welded
+}
+
+/// Pass cap for [`promote_operands_mutually`]. The deepest input measured
+/// needed two moving passes plus one that confirmed nothing moved; the cap
+/// leaves headroom above that and bounds an oscillation rather than describing
+/// normal behaviour.
+const MAX_WELD_PASSES: usize = 4;
+
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that
 /// sits within the snap-scatter band of a HOST face plane — and projects
 /// STRICTLY inside that face — onto the plane, then back onto the snap grid.
@@ -54,10 +131,14 @@ use super::near_band::NearBand;
 /// by face index ⇒ byte-identical native==wasm. Every pinned box−box
 /// manifest is transversal (no cutter vertex within the band of a
 /// non-incident host plane), so the promotion never fires there.
-pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) {
+/// Returns the number of vertices actually MOVED, so callers (and the #3353
+/// census run) can measure whether the promotion fires at all rather than
+/// inferring it from an unchanged golden.
+pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
     if cutter.is_empty() || host.is_empty() {
-        return;
+        return 0;
     }
+    let mut welded = 0usize;
     let mut band = NearBand::default();
     band.observe_tris(cutter);
     band.observe_tris(host);
@@ -138,11 +219,15 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // that sees it.
             if let Some((_, f)) = best {
                 if let Some(w) = exact_on_plane_weld(*v, f.t0, f.t1, f.t2) {
+                    if w != *v {
+                        welded += 1;
+                    }
                     *v = w;
                 }
             }
         }
     }
+    welded
 }
 
 /// Weld `v` onto the plane of the (snap-grid) host triangle `(t0,t1,t2)` such

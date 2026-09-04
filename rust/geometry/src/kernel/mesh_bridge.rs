@@ -39,7 +39,7 @@ fn snap(c: f64) -> f64 {
 // being tested. `tritri`, `classify` and `plane_weld` all size their
 // near-coplanar/scatter bands with that ONE type rather than mirroring the
 // expression.
-use super::plane_weld::promote_cutter_verts_onto_host_faces;
+use super::plane_weld::{promote_cutter_verts_onto_host_faces, promote_operands_mutually};
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
 /// grid). Panic-free: an out-of-range index OR a non-finite (NaN/Inf) coord drops
@@ -127,7 +127,7 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
-    promote_cutter_verts_onto_host_faces(&mut c, &h);
+    let _ = promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
@@ -152,7 +152,7 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h);
+            let _ = promote_cutter_verts_onto_host_faces(&mut c, &h);
             orient_outward(c)
         })
         .collect();
@@ -221,10 +221,14 @@ pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
     // element STILL trips (see `budget::begin`). Without it a union after a tripped
     // subtract starts tripped and `arrange` bails at its first pair.
     super::budget::begin();
-    let a = orient_outward(mesh_to_tris(a));
-    let mut b = mesh_to_tris(b);
-    promote_cutter_verts_onto_host_faces(&mut b, &a);
-    let b = orient_outward(b);
+    // Reconcile the two operands' near-coplanar faces onto shared planes BEFORE
+    // the arrangement (#3353). Mutual, not cutter-onto-host: union has no host,
+    // and the one-directional form left `union_mesh(b, a)` tearing on the same
+    // fixture `union_mesh(a, b)` handled. See `promote_operands_mutually`.
+    let mut operands = vec![mesh_to_tris(a), mesh_to_tris(b)];
+    let _ = promote_operands_mutually(&mut operands);
+    let b = orient_outward(operands.pop().expect("two operands"));
+    let a = orient_outward(operands.pop().expect("two operands"));
     let (out, conforming) = boolean_with_conformity(&a, &b, BoolOp::Union);
     // On a trip `out` is PARTIAL: discard it, return empty — the graceful fallback callers
     // handle (`csg::union_mesh` merges plainly; #960 goes sequential), never a poisoned

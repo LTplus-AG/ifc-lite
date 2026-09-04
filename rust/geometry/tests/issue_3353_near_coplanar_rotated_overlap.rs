@@ -154,17 +154,26 @@ fn corner_overlap_pair(z_offset: f64, b_height: f64) -> (Mesh, Mesh) {
     (a, b)
 }
 
+/// Both operand orders, because the weld that fixes this is keyed to argument
+/// position unless it is applied mutually: with the one-directional form
+/// `union_mesh(a, b)` came back closed while `union_mesh(b, a)` on the same
+/// two meshes still had 8 unmatched directed edges.
 fn assert_union_is_closed(z_offset: f64, b_height: f64, what: &str) {
     let (a, b) = corner_overlap_pair(z_offset, b_height);
     assert_eq!(open_edges(&a), Ok(0), "operand A must be closed going in");
     assert_eq!(open_edges(&b), Ok(0), "operand B must be closed going in");
-    let out = ClippingProcessor::new()
-        .union_mesh(&a, &b)
-        .expect("union must not error");
+    let clipper = ClippingProcessor::new();
+    let forward = clipper.union_mesh(&a, &b).expect("union must not error");
+    let reversed = clipper.union_mesh(&b, &a).expect("union must not error");
     assert_eq!(
-        open_edges(&out),
+        open_edges(&forward),
         Ok(0),
-        "a closed-in operand pair must come back closed-out ({what})"
+        "a closed-in operand pair must come back closed-out ({what}, A then B)"
+    );
+    assert_eq!(
+        open_edges(&reversed),
+        Ok(0),
+        "a closed-in operand pair must come back closed-out ({what}, B then A)"
     );
 }
 
@@ -184,14 +193,15 @@ fn the_exactly_flush_and_plainly_transversal_neighbours_stay_closed() {
     assert_union_is_closed(0.25, 1.0, "Z faces a quarter metre apart");
 }
 
-/// The tear was never specific to one offset, one sign, or one face pairing:
-/// on `main` this swept 4732 pairs and 2090 of them tore. It is the property
-/// the fix has to hold, so it is asserted rather than described.
+/// The tear was never specific to one offset, one sign, one face pairing or one
+/// operand order: on `main` this swept 4732 pairs and 2090 tore with A first,
+/// 2388 with B first. It is the property the fix has to hold, so it is asserted
+/// rather than described.
 ///
 /// Kept small enough to run in the default lane (a few seconds in debug): 7
 /// offsets from -3 to +3 snap steps, 4 Z layouts (bottom faces near-flush, top
-/// faces near-flush, B contained, B plainly transversal) and 169 corner
-/// overlaps each.
+/// faces near-flush, B contained, B plainly transversal), 169 corner overlaps
+/// each, both operand orders.
 #[test]
 fn no_offset_within_the_snap_band_tears_the_corner_overlap() {
     let clipper = ClippingProcessor::new();
@@ -210,12 +220,19 @@ fn no_offset_within_the_snap_band_tears_the_corner_overlap() {
                         [1.0, 1.0, b_h],
                         Some((Vector3::z(), 30.0f64.to_radians(), about)),
                     );
-                    let out = clipper.union_mesh(&a, &b).expect("union must not error");
-                    match open_edges(&out) {
-                        Ok(0) => {}
-                        other => torn.push(format!(
-                            "steps={steps} b_z={b_z} b_h={b_h} dx={dx} dy={dy}: {other:?}"
-                        )),
+                    // BOTH orders: `a ∪ b` and `b ∪ a` are the same solid, and
+                    // on `main` the two orders tore 2090 and 2388 times here.
+                    for (order, out) in [
+                        ("A then B", clipper.union_mesh(&a, &b)),
+                        ("B then A", clipper.union_mesh(&b, &a)),
+                    ] {
+                        let out = out.expect("union must not error");
+                        if let other @ (Ok(1..) | Err(_)) = open_edges(&out) {
+                            torn.push(format!(
+                                "steps={steps} b_z={b_z} b_h={b_h} dx={dx} dy={dy} \
+                                 {order}: {other:?}"
+                            ));
+                        }
                     }
                 }
             }
@@ -223,7 +240,7 @@ fn no_offset_within_the_snap_band_tears_the_corner_overlap() {
     }
     assert!(
         torn.is_empty(),
-        "{} of 4732 corner-overlap unions tore; first few:\n{}",
+        "{} of 9464 corner-overlap unions tore; first few:\n{}",
         torn.len(),
         torn.iter().take(5).cloned().collect::<Vec<_>>().join("\n")
     );

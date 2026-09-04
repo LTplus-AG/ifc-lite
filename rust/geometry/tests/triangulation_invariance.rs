@@ -510,8 +510,80 @@ fn max_abs_coord(mesh: &Mesh) -> f64 {
 /// Signed enclosed volume in whole cm³, for [`HostRow::vol`] (#3422), which
 /// says where it is taken and why it is an integer. `kernel::mesh_volume`
 /// reads the same f32 positions `edge_stats` does, so one mesh is one integer.
+///
+/// The two do NOT read them at the same resolution, and
+/// [`a_sub_millimetre_crack_reads_watertight_but_shifts_the_volume`] measures
+/// what that costs. See [`HostRow::vol`] for why it is tolerable and why
+/// tightening the gate is not the remedy.
 fn volume_cm3(mesh: &Mesh) -> i64 {
     (mesh_volume(mesh) * 1.0e6).round() as i64
+}
+
+/// A unit cube whose lid is a SEPARATE set of vertices, raised by `crack`
+/// metres above the walls' top edge, so the surface carries a slit of that
+/// width all the way round. The one shape that separates the census's
+/// watertightness reading from the closure `mesh_volume` actually needs.
+#[cfg(test)]
+fn cracked_cube(crack: f32) -> Mesh {
+    let base = [[0.0f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let mut positions: Vec<f32> = Vec::new();
+    for z in [0.0, 1.0, 1.0 + crack] {
+        for v in base {
+            positions.extend([v[0], v[1], z]);
+        }
+    }
+    let mut indices: Vec<u32> = vec![0, 2, 1, 0, 3, 2]; // floor, wound down
+    for k in 0..4u32 {
+        let (a, b) = (k, (k + 1) % 4);
+        indices.extend([a, b, b + 4, a, b + 4, a + 4]); // walls
+    }
+    indices.extend([8, 9, 10, 8, 10, 11]); // lid, off the RAISED copies
+    Mesh { positions, indices, ..Default::default() }
+}
+
+/// The blind spot [`HostRow::vol`]'s gate has, measured rather than asserted
+/// (#3422, raised in review on #3867).
+///
+/// `stats.open == 0` is the gate, and it is read off a walk that quantizes
+/// positions to a 1 mm GRID. `mesh_volume` integrates positions `mesh_to_tris`
+/// snapped to 1/65536 m. So a crack under half a snap bucket lands both of its
+/// sides in one grid cell, the edges pair, the host reads watertight — and the
+/// surface handed to the divergence sum is still open. The reading then carries
+/// the crack as an offset, and this test pins its size against the column's own
+/// 1 cm³ tolerance so nobody has to take the claim on trust.
+///
+/// The second arm is where the blind spot ENDS: at 0.9 mm the two sides fall in
+/// different cells, the walk sees the tear, and no volume is taken at all. The
+/// gap between the arms is the whole of the exposure — sub-half-bucket cracks,
+/// nothing wider.
+#[test]
+fn a_sub_millimetre_crack_reads_watertight_but_shifts_the_volume() {
+    let sealed = cracked_cube(0.0);
+    assert_eq!(edge_stats(&sealed).open, 0, "the sealed cube must be watertight");
+    let truth = volume_cm3(&sealed);
+    assert_eq!(truth, 1_000_000, "a unit cube is 1 m³");
+
+    // Under half the 1 mm bucket: invisible to the gate, visible in the sum.
+    let cracked = cracked_cube(0.0004);
+    assert_eq!(
+        edge_stats(&cracked).open,
+        0,
+        "a 0.4 mm slit is inside one snap bucket, so the census reads it watertight"
+    );
+    let off = (volume_cm3(&cracked) - truth).abs();
+    // Bounded ABOVE by the naive band term (the slit width times the lid area,
+    // 4e-4 m³ = 400 cm³), and far above the 1 cm³ tolerance this column diffs
+    // at — so the offset is real, not rounding, and its scale is the crack's.
+    assert!(
+        (100..=400).contains(&off),
+        "a 0.4 mm slit should shift the reading by ~a third of the 400 cm³ band term, got {off}"
+    );
+
+    // Over half the bucket: the gate catches it and takes no reading.
+    assert!(
+        edge_stats(&cracked_cube(0.0009)).open > 0,
+        "a 0.9 mm slit crosses the snap bucket, so the census must see it as torn"
+    );
 }
 
 /// One census row from a host's void-applied mesh. Every column that is a

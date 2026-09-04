@@ -137,8 +137,39 @@ pub struct HostRow {
     /// translation-variant — `mesh_volume` sums about the mesh's own AABB
     /// centre, and `mesh_volume_is_stable_far_from_the_world_origin_for_an_open_mesh`
     /// pins that even an open reading holds to the snap-grid noise floor across
-    /// a 10 km offset. On a closed surface it IS a real volume, and it answers
-    /// the question no count in this row can:
+    /// a 10 km offset.
+    ///
+    /// CLOSED HERE MEANS CLOSED AT THE CENSUS SNAP, which is weaker than closed
+    /// at the resolution the divergence sum runs at, and the gap is a real
+    /// exposure rather than a rounding detail (raised in review on #3867).
+    /// `edge_stats` pairs edges on a 1 mm position GRID; `mesh_volume`
+    /// integrates positions `mesh_to_tris` snapped to 1/65536 m. A crack under
+    /// half a snap bucket therefore lands both its sides in one cell, reads
+    /// `open == 0`, and still leaves the surface handed to the sum open, so the
+    /// reading carries that crack as an offset — measured, not asserted, by
+    /// `a_sub_millimetre_crack_reads_watertight_but_shifts_the_volume`, which
+    /// also pins where the blind spot ends.
+    ///
+    /// It is tolerable because this column is only ever read DIFFERENTIALLY:
+    /// golden against run, same host, same code path, through
+    /// `volume_reading_moved` and `volume_magnitude_cmp` and never as a claim
+    /// about the host's true volume. An unchanged crack cancels; a changed one
+    /// is a real change in the mesh, and it is REPORTED rather than absorbed.
+    ///
+    /// Gating on closure at the sum's own resolution is NOT the remedy, and the
+    /// reason is the same f32 limit `far` and `F32_SAFE_MAGNITUDE` are about.
+    /// `Mesh.positions` is f32, whose step is already ~0.12 mm at this census's
+    /// magnitude ceiling and ~3 cm at UTM scale — coarser than 1/65536 m either
+    /// way — so vertices meant to coincide cannot be relied on to agree any
+    /// closer than that. A 15 µm pairing rule would therefore read hosts as
+    /// torn for the storage format's reasons rather than the boolean's and take
+    /// the column dark on the population it exists to measure. (A derivation
+    /// from the f32 step, not a sweep: the corpus is not fetched here.) The
+    /// 1 mm grid is the finest topology these positions carry, which is why the
+    /// edge walk uses it and why the gate is stated at that resolution.
+    ///
+    /// On a surface closed at that resolution it is a real volume, and it
+    /// answers the question no count in this row can:
     /// at `open 0 -> 0` a triangle drop is loss or a cut that stopped
     /// over-removing, and an opening cut larger than authored — the #3219
     /// shape — moves no count at all, or only grows `tris`, which is green.

@@ -64,6 +64,9 @@ interface DanglingReference {
  * out none of the ten at all. `expandTypes` is the same expansion every
  * `byType()` backend uses, so these rules and a `byType('IfcWall')` query
  * cannot disagree about what counts as a wall.
+ * Which is why they are computed PER STORE, not once at module load:
+ * `expandTypes` reads the model's own `schemaVersion`, and a list frozen at the
+ * IFC4 answer counts records on an IFC2X3 or IFC4X3 file that `byType` does not.
  */
 export const NAMED_ELEMENT_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
   'IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCRAILING', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
@@ -72,11 +75,13 @@ export const NAMED_ELEMENT_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB'
 export const QUANTIFIABLE_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
   'IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
 
-/** `NAMED_ELEMENT_BASE_TYPES` plus every subtype the schema declares under one. */
-export const NAMED_ELEMENT_TYPES: readonly string[] = expandTypes([...NAMED_ELEMENT_BASE_TYPES]);
+/** `NAMED_ELEMENT_BASE_TYPES` plus every subtype this store's schema declares under one. */
+export const namedElementTypes = (schemaVersion: string | undefined): readonly string[] =>
+  expandTypes([...NAMED_ELEMENT_BASE_TYPES], schemaVersion);
 
-/** `QUANTIFIABLE_BASE_TYPES` plus every subtype the schema declares under one. */
-export const QUANTIFIABLE_TYPES: readonly string[] = expandTypes([...QUANTIFIABLE_BASE_TYPES]);
+/** `QUANTIFIABLE_BASE_TYPES` plus every subtype this store's schema declares under one. */
+export const quantifiableTypes = (schemaVersion: string | undefined): readonly string[] =>
+  expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
 
 /** Cap on individually-reported dangling references; the remainder is rolled into one summary issue. */
 const DANGLING_REF_ISSUE_CAP = 50;
@@ -284,7 +289,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
 
   // 4. Check for unnamed elements
   let unnamedCount = 0;
-  for (const pt of NAMED_ELEMENT_TYPES) {
+  for (const pt of namedElementTypes(store.schemaVersion)) {
     const ids = store.entityIndex.byType.get(pt) ?? [];
     for (const id of ids) {
       const node = new EntityNode(store, id);
@@ -303,7 +308,7 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   // 6. Quantity completeness — check if product entities have quantity sets
   let withQuantities = 0;
   let withoutQuantities = 0;
-  for (const qt of QUANTIFIABLE_TYPES) {
+  for (const qt of quantifiableTypes(store.schemaVersion)) {
     const ids = store.entityIndex.byType.get(qt) ?? [];
     for (const id of ids) {
       const node = new EntityNode(store, id);

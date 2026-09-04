@@ -195,9 +195,15 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
 
       let entityIds: number[];
       if (descriptor.types && descriptor.types.length > 0) {
-        // Expand types to include IFC4 subtypes (e.g., IfcWall → IfcWallStandardCase)
+        // Expand types to every schema-declared descendant (IfcWall →
+        // IfcWallStandardCase, IfcBuildingElement → its concrete leaves).
+        // Resolved against this model's own schema, plus the leaf spellings
+        // that schema does not declare at all, so neither the FILE_SCHEMA
+        // header alone nor a plain union across the bundled tables decides
+        // what its records answer. The version argument is load-bearing:
+        // buildingSMART re-parented entities between versions.
         entityIds = [];
-        for (const type of expandTypes(descriptor.types)) {
+        for (const type of expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)) {
           const typeIds = model.ifcDataStore.entityIndex.byType.get(type) ?? [];
           for (const id of typeIds) entityIds.push(id);
         }

@@ -7,7 +7,9 @@
 //! deliberately-unknown vendor names to exercise the safe-miss direction.
 //!
 //! `LEGACY_ENTITY_NAMES` is here because it is the Rust mirror of the JS
-//! `ENTITY_NAME_ALIASES` table (`packages/parser/src/ifc-schema.ts`): a name
+//! `ENTITY_NAME_ALIASES` table (`packages/parser/src/ifc-schema.ts` for the
+//! ancestor direction, `packages/data/src/ifc-schema/entity-aliases.ts` for
+//! the descendant direction): a name
 //! in neither `IFC_TYPES` nor `LEGACY_ROOTED_TYPES` but present in one of
 //! those two alias tables is invisible to a universe built from the other
 //! two lists alone -- which is precisely how `IFCSOLIDSTRATUM`,

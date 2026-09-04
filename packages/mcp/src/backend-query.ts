@@ -270,7 +270,7 @@ export function createQueryAdapter(
     entities(descriptor: QueryDescriptor): EntityData[] {
       const pending = overlay();
       const requested = descriptor.types && descriptor.types.length > 0
-        ? expandTypes(descriptor.types)
+        ? expandTypes(descriptor.types, store.schemaVersion)
         : null;
 
       const entityIds: number[] = [];

@@ -19,12 +19,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { IfcParser, IFC_SUBTYPES, expandTypes, type IfcDataStore } from '@ifc-lite/parser';
+import { loadInlineModel } from '../headless-test-helpers.js';
 import {
   computeValidationIssues,
   NAMED_ELEMENT_BASE_TYPES,
   QUANTIFIABLE_BASE_TYPES,
-  NAMED_ELEMENT_TYPES,
-  QUANTIFIABLE_TYPES,
+  namedElementTypes,
+  quantifiableTypes,
 } from './validate.js';
 
 function buildIfc(dataLines: string[]): string {
@@ -95,12 +96,17 @@ describe('validate covers the concrete subtypes of the types it lists', () => {
 
 describe('the scanned type lists stay derived, not hand-copied', () => {
   it.each([
-    ['named-elements', NAMED_ELEMENT_BASE_TYPES, NAMED_ELEMENT_TYPES],
-    ['quantity-completeness', QUANTIFIABLE_BASE_TYPES, QUANTIFIABLE_TYPES],
+    ['named-elements', NAMED_ELEMENT_BASE_TYPES, namedElementTypes],
+    ['quantity-completeness', QUANTIFIABLE_BASE_TYPES, quantifiableTypes],
   ])('%s expands exactly the subtypes the schema declares', (_rule, bases, scanned) => {
     // Both directions: every declared subtype of a listed base is scanned, and
     // nothing is scanned that the base list plus the schema does not imply.
-    expect([...scanned].sort()).toEqual([...new Set(expandTypes([...bases]))].sort());
+    // Per schema version, because the answer is not the same on each.
+    for (const version of ['IFC2X3', 'IFC4', 'IFC4X3']) {
+      expect([...scanned(version)].sort(), version).toEqual(
+        [...new Set(expandTypes([...bases], version))].sort(),
+      );
+    }
   });
 
   it.each([
@@ -112,4 +118,74 @@ describe('the scanned type lists stay derived, not hand-copied', () => {
     const subtypes = new Set(Object.values(IFC_SUBTYPES).flat());
     expect([...bases].filter((t) => subtypes.has(t))).toEqual([]);
   });
+});
+
+/**
+ * The scanned lists are computed PER STORE, from the model's own
+ * `schemaVersion`.
+ *
+ * They were computed once at module load, with no model in hand, which is only
+ * sound while the expansion is a property of the schema tables alone. It is
+ * not: a descendant set differs by version, so a list frozen at the IFC4
+ * answer counted records on an IFC4X3 file that `byType` did not — the exact
+ * disagreement the doc at the top of `validate.ts` says cannot happen.
+ *
+ * `validate-subtypes`'s other cases all parse IFC4 fixtures, so they compare
+ * two IFC4 answers and cannot see it. These are IFC4X3 and IFC2X3 on purpose,
+ * and they compare the validator against a real `byType` over the SAME store
+ * rather than pinning the shape of the function that feeds both.
+ */
+describe('the scanned lists and byType agree on a file that is not IFC4', () => {
+  const SLABS = [
+    "#10=IFCSLAB('0Slab_GUID_00000001',$,$,$,$,$,$,$,$);",
+    "#11=IFCSLABSTANDARDCASE('0SlabSC_GUID_000001',$,$,$,$,$,$,$,$);",
+  ];
+
+  function buildIfcWithSchema(schema: string, dataLines: string[]): string {
+    return [
+      'ISO-10303-21;',
+      'HEADER;',
+      "FILE_DESCRIPTION((''),'2;1');",
+      "FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');",
+      `FILE_SCHEMA(('${schema}'));`,
+      'ENDSEC;',
+      'DATA;',
+      ...dataLines,
+      'ENDSEC;',
+      'END-ISO-10303-21;',
+      '',
+    ].join('\n');
+  }
+
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])(
+    'named-elements counts both slabs on a %s file, and byType finds both',
+    async (schema) => {
+      const source = buildIfcWithSchema(schema, [...SPATIAL, ...SLABS]);
+      const store = await parse(source);
+      expect(store.schemaVersion).toBe(schema);
+
+      const counted = issueFor(store, 'named-elements');
+      expect(counted?.message).toBe('2 building elements have no Name');
+
+      const bim = await loadInlineModel(source, `validate-${schema}`);
+      expect(bim.query().byType('IfcSlab').toArray()).toHaveLength(2);
+    },
+  );
+
+  it.each(['IFC2X3', 'IFC4', 'IFC4X3'])(
+    'the validator scans exactly the buckets byType reads, on the same %s store',
+    async (schema) => {
+      // The behavioural form of the invariant: same store, same question. A
+      // list computed against a different schema than the store's would show
+      // up here as a bucket one side reads and the other does not.
+      const source = buildIfcWithSchema(schema, [...SPATIAL, ...SLABS]);
+      const store = await parse(source);
+      const scanned = new Set(namedElementTypes(store.schemaVersion));
+
+      const bim = await loadInlineModel(source, `validate-buckets-${schema}`);
+      const queried = bim.query().byType('IfcSlab').toArray().map((e) => e.type.toUpperCase());
+      expect(queried.length).toBeGreaterThan(0);
+      for (const type of queried) expect(scanned, `${schema}: ${type}`).toContain(type);
+    },
+  );
 });

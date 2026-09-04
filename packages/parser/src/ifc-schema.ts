@@ -33,9 +33,18 @@ const ENTITY_INFO_BY_UPPER: Map<string, IfcEntityInfo> = (() => {
 // authoring tools emit the leaf. Resolving the alias to its closest
 // schema-known supertype lets the inheritance walk reach IfcProduct.
 //
-// Mirrors `rust/core/src/legacy_entities.rs` so the two sides stay in
-// lockstep — if you add a row here, add the matching Rust entry too.
-const ENTITY_NAME_ALIASES: Record<string, string> = {
+// Exported from this module (not from the package index) so
+// `query-backend-maps.test.ts` can pin every row against the DESCENDANT
+// direction: `@ifc-lite/data`'s `expandTypeNamesToDescendants` carries its own
+// copy of these rows — it cannot import this one, since the dependency runs
+// the other way — and a row honoured walking up but not walking down means
+// `byType('IfcGeotechnicalStratum')` answers zero on a file full of
+// IFCSOLIDSTRATUM records. That test is the link between the two copies.
+//
+// `rust/core/src/legacy_entities.rs` is the third home, on the other side of
+// the language boundary — if you add a row here, add the matching Rust entry
+// too.
+export const ENTITY_NAME_ALIASES: Record<string, string> = {
     // IFC4.3 stratum subtypes (issue #860) — schema only has the abstract
     // `IfcGeotechnicalStratum`, real models emit one of these three leaves
     // with a PredefinedType pinned (SOLID / VOID / WATER).
@@ -61,8 +70,9 @@ const ENTITY_NAME_ALIASES: Record<string, string> = {
  * (the STEP exporter's enum-slot resolution) have to canonicalize the SAME way
  * {@link getAttributeNamesAcrossSchemas} does, or their indices refer to a
  * different attribute list than the names they are indices into. Copying the
- * table into another package would give it a third home — this one and
- * `rust/core/src/legacy_entities.rs` are already two.
+ * table into another package would give it a further home — this one,
+ * `@ifc-lite/data`'s descendant-direction copy and
+ * `rust/core/src/legacy_entities.rs` are already three.
  */
 export function resolveEntityNameAlias(type: string): string {
     return ENTITY_NAME_ALIASES[type.toUpperCase()] ?? type;

@@ -64,7 +64,9 @@ use ifc_lite_core::IfcType;
 /// `IFCWATERSTRATUM`), which the generated enum models only by their abstract
 /// base `IfcGeotechnicalStratum` -- a rooted type. The JS classifier resolves
 /// them through its mirror table (`ENTITY_NAME_ALIASES` in
-/// `packages/parser/src/ifc-schema.ts`) and answers `true`, so a bare
+/// `packages/parser/src/ifc-schema.ts`, with a second TypeScript copy for the
+/// descendant direction in
+/// `packages/data/src/ifc-schema/entity-aliases.ts`) and answers `true`, so a bare
 /// `from_str` here made the two languages disagree: `export_merged` would
 /// reconcile a shared GlobalId across two models for `IFCWALL` but leave a
 /// duplicate for `IFCSOLIDSTRATUM` (#3124 review). `legacy_aware_ifc_type` is

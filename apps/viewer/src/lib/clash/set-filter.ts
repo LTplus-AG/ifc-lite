@@ -36,6 +36,11 @@ export interface ClashSetFilter {
  * before this), but bounded so a filter over a 4M-entity federation cannot
  * build an unbounded array. The search modal's own default limit is far
  * lower, which is why this is passed explicitly rather than inherited.
+ *
+ * Reaching it FAILS the run (see `resolveClashSetFilter`). The evaluator
+ * stops scanning at its limit, so a capped set is a silently smaller set —
+ * and a clash run that quietly examined a fraction of what the user asked for
+ * reports fewer clashes with nothing on screen to say so.
  */
 export const CLASH_SET_FILTER_LIMIT = 250_000;
 
@@ -73,6 +78,12 @@ export function parseClashSetFilter(raw: unknown): ClashSetFilter | undefined {
   return { combinator: r.combinator === 'OR' ? 'OR' : 'AND', rules };
 }
 
+export interface ResolveClashSetFilterOptions {
+  signal?: AbortSignal;
+  /** Largest set that may resolve; defaults to {@link CLASH_SET_FILTER_LIMIT}. */
+  limit?: number;
+}
+
 /** The subset of a loaded model this module needs. */
 export interface ClashFilterModel {
   id: string;
@@ -92,12 +103,19 @@ export async function resolveClashSetFilter(
   models: readonly ClashFilterModel[],
   filter: ClashSetFilter,
   toGlobalId: (modelId: string, expressId: number) => number,
-  options: { signal?: AbortSignal } = {},
+  options: ResolveClashSetFilterOptions = {},
 ): Promise<string[]> {
+  const limit = options.limit ?? CLASH_SET_FILTER_LIMIT;
   const matched = await evaluateFilterRulesFederated(models, filter.rules, filter.combinator, {
-    limit: CLASH_SET_FILTER_LIMIT,
+    limit,
     signal: options.signal,
   });
+  if (matched.length >= limit) {
+    throw new Error(
+      `A clash set filter matched more than ${limit.toLocaleString()} elements. ` +
+        'Narrow it — a run over a truncated set would report fewer clashes than the model has.',
+    );
+  }
   return matched.map((m) => clashMemberKey(m.modelId, toGlobalId(m.modelId, m.expressId)));
 }
 
@@ -127,7 +145,7 @@ export async function withResolvedClashSetFilters(
   sources: readonly (ClashSetFilters & { id: string })[],
   models: readonly ClashFilterModel[],
   toGlobalId: (modelId: string, expressId: number) => number,
-  options: { signal?: AbortSignal } = {},
+  options: ResolveClashSetFilterOptions = {},
 ): Promise<ClashRule[]> {
   const byId = new Map(sources.map((s) => [s.id, s]));
   const resolved = new Map<string, Promise<string[]>>();

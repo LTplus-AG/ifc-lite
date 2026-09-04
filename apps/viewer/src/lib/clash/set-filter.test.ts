@@ -100,6 +100,17 @@ describe('resolveClashSetFilter', () => {
     assert.deepEqual(members, []);
   });
 
+  it('refuses a set that hit the resolve cap instead of clashing a truncated one', async () => {
+    // The evaluator stops scanning at its limit, so a capped set is silently
+    // smaller than the user asked for and the run would report fewer clashes
+    // than the model has, with nothing to say so.
+    const loaded = await models();
+    await assert.rejects(
+      () => resolveClashSetFilter(loaded, filter('AND', Rule.ifcType(['IfcWall'])), toGlobalId, { limit: 1 }),
+      /matched more than/,
+    );
+  });
+
   it('keys members by (model, global id) so a federated model stays distinct', async () => {
     const members = await resolveClashSetFilter(
       await models(),

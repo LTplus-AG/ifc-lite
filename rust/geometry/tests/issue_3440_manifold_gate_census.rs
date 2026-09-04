@@ -3,21 +3,28 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! #3440 step 3 measurement: how many hosts across the fixture corpus does the
-//! ALWAYS-ON edge-multiplicity gate (`manifold_gate_reject`) actually REJECT?
+//! edge-multiplicity gate (`manifold_gate_reject`) actually REJECT?
 //!
 //! This is the flip-set measurement the issue demands before a gate changes
-//! behaviour, for the one reading that DOES gate by default. Unlike the
-//! sibling `issue_3440_topology_gate_census.rs`, no feature is needed: the
-//! multiplicity gate is on in every build, so this measures shipped
-//! behaviour.
+//! behaviour. It says the gate is cheap to ship - 110 of 2071 hosts reject and
+//! all 110 are still cut by a downstream fallback - and that reading is what
+//! made the gate look safe to turn on by default. It is not sufficient:
+//! "still cut" is not "cut as well", and this repo's pinned quality fixtures
+//! say the fallback is worse than the tear. See `csg_manifold_gate` in
+//! `Cargo.toml` for the numbers. Keep that in mind before reading the count
+//! below as a green light.
 //!
-//! `#[ignore]`d because it needs the fixture corpus, which `cargo test
-//! --workspace` does not have on a clean checkout — an assertion over an
+//! Needs the `csg_manifold_gate` feature (this file compiles to an empty,
+//! trivially-passing binary without it), and is `#[ignore]`d because it also
+//! needs the fixture corpus, which `cargo test --workspace` does not have on a
+//! clean checkout — an assertion over an
 //! empty corpus would measure nothing while reading green. Fetch the corpus
 //! (`node scripts/fixtures/fetch-fixtures.mjs`) and run:
 //!
-//!   cargo test -p ifc-lite-geometry \
+//!   cargo test -p ifc-lite-geometry --features csg_manifold_gate \
 //!     --test issue_3440_manifold_gate_census -- --ignored --nocapture
+
+#![cfg(feature = "csg_manifold_gate")]
 
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{propagate_voids_to_parts, BoolFailureReason, GeometryRouter};

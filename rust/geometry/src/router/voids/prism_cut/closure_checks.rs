@@ -257,6 +257,13 @@ pub(crate) fn closed_or_hairline(mesh: &Mesh) -> bool {
 /// and it is the reading that T-junction tessellation trips constantly. Keeping
 /// it out is what lets a caller gate on this without inheriting that class's
 /// false-positive rate.
+// The three items below are consumed by `csg::topology_diagnostic`'s
+// `manifold_gate_reject`, which only exists under `csg_manifold_gate`, and by
+// this module's own tests. `allow(dead_code)` rather than a `cfg` on the
+// predicate itself: the tests must keep running in the default build, since
+// they are what proves the predicate still reads what its doc says before the
+// gate is ever turned on.
+#[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct EdgeMultiplicityDefects {
     /// Undirected edges used by more than two triangles.
@@ -265,6 +272,7 @@ pub(crate) struct EdgeMultiplicityDefects {
     pub same_direction: usize,
 }
 
+#[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
 impl EdgeMultiplicityDefects {
     /// True when the mesh carries neither defect.
     pub(crate) fn is_clean(&self) -> bool {
@@ -274,6 +282,7 @@ impl EdgeMultiplicityDefects {
 
 /// Count the [`EdgeMultiplicityDefects`] of `mesh`. O(triangles) hash sweep,
 /// the same shape and cost as [`directed_closed`].
+#[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
 pub(crate) fn edge_multiplicity_defects(mesh: &Mesh) -> EdgeMultiplicityDefects {
     type K = (i64, i64, i64);
     let key = |i: u32| -> K {

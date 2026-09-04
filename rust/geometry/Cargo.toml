@@ -50,6 +50,24 @@ test-support = []
 # hosts on the un-gated default (see issue #3440's measurements), so enabling
 # this by default today would reject geometry that currently renders.
 csg_topology_gate = []
+# #3440 step 3, and NOT on by default either. Turns the edge-multiplicity check
+# (`edge_multiplicity_defects`: an undirected edge used by more than two
+# triangles, or twice the same way round) into a REJECT at the same four accept
+# paths. Separate from `csg_topology_gate` on purpose: the two read different
+# defect classes, and a census run needs to attribute a flip to one of them, not
+# to whichever gate happened to fire first.
+#
+# It was TRIED as a default. It reads a defect class benign tessellation cannot
+# produce, and over the fixture corpus (115 models, 2071 void hosts) it rejects
+# 110 hosts, all of which a downstream fallback still cuts — which looked like
+# enough to ship. It is not: on this repo's own pinned quality fixtures the
+# fallback is WORSE than the torn result it replaces. `issue_098_reveal_wall`
+# goes from ~42 to 380 unpaired edges, `issue_098_v5c` from ~108 to 416, and
+# `issue_960_segmented_roof_clip` grows back the full-height seam sliver that
+# test exists to catch. Rejecting a tear is only an improvement if what replaces
+# it is better, and here it is not — so this stays an opt-in until the fallback
+# path is the one that gets fixed.
+csg_manifold_gate = []
 
 [dependencies]
 

@@ -809,6 +809,7 @@ fn finned_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
 /// host, either argument order, self-intersection). A test asserting rejection
 /// there would have to fake the mesh, and one asserting acceptance would pass
 /// with the call site deleted.
+#[cfg(feature = "csg_manifold_gate")]
 #[test]
 fn manifold_gate_rejects_a_non_manifold_result_at_the_accept_seam() {
     let host = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
@@ -854,6 +855,7 @@ fn manifold_gate_rejects_a_non_manifold_result_at_the_accept_seam() {
 /// pins the predicate + the recorded reason + the `true` return that
 /// `intersection_mesh`'s call site branches on; it cannot pin the call site
 /// itself.
+#[cfg(feature = "csg_manifold_gate")]
 #[test]
 fn manifold_gate_reports_the_intersection_op_when_it_rejects() {
     let torn = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
@@ -882,6 +884,7 @@ fn manifold_gate_reports_the_intersection_op_when_it_rejects() {
 /// gate untouched. Without this the tests above are satisfied by a gate that
 /// rejects everything, which would be a far worse bug than the one being
 /// fixed.
+#[cfg(feature = "csg_manifold_gate")]
 #[test]
 fn manifold_gate_accepts_a_clean_boolean_result() {
     let host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
@@ -903,5 +906,31 @@ fn manifold_gate_accepts_a_clean_boolean_result() {
             .iter()
             .all(|f| !matches!(f.reason, BoolFailureReason::NonManifoldRejected { .. })),
         "clean results must record no multiplicity rejection"
+    );
+}
+
+/// The default build's half of the pair above: WITHOUT `csg_manifold_gate` the
+/// same torn result must come back untouched and record nothing. Without this
+/// test the feature could be left on by accident — or the `cfg(not(...))` twin
+/// could grow a body — and the only thing that would notice is a quality
+/// fixture in another file, whose failure would not name the cause.
+#[cfg(not(feature = "csg_manifold_gate"))]
+#[test]
+fn manifold_gate_is_a_true_noop_without_the_feature() {
+    let host = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+
+    let p = ClippingProcessor::new();
+    let subtract = p.subtract_mesh(&host, &through_cutter).unwrap();
+
+    assert_ne!(
+        subtract.indices, host.indices,
+        "without the feature the torn kernel result must be returned, not the un-cut host"
+    );
+    assert!(
+        p.take_failures()
+            .iter()
+            .all(|f| !matches!(f.reason, BoolFailureReason::NonManifoldRejected { .. })),
+        "NonManifoldRejected must never be recorded without csg_manifold_gate"
     );
 }

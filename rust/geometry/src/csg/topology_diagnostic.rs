@@ -10,9 +10,9 @@
 use super::ClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::mesh::Mesh;
-use crate::router::voids::prism_cut::closure_checks::{
-    closed_or_hairline, directed_closed, edge_multiplicity_defects,
-};
+#[cfg(feature = "csg_manifold_gate")]
+use crate::router::voids::prism_cut::closure_checks::edge_multiplicity_defects;
+use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
 
 /// Message carried by the [`BoolFailureReason::KernelError`] record this
 /// module emits.
@@ -110,19 +110,22 @@ impl ClippingProcessor {
         false
     }
 
-    /// #3440 step 3: the ALWAYS-ON half of the accept gate.
+    /// #3440 step 3: the other half of the accept gate, behind its own
+    /// `csg_manifold_gate` feature.
     ///
-    /// `topology_gate_reject` above stays behind `csg_topology_gate` because
-    /// its predicate reads OPEN edges, and a tessellated host routinely
-    /// carries those from T-junction subdivision alone — flipping it on would
-    /// reroute a population this crate has documented as largely benign
-    /// (`prism_cut.rs` accepts exactly that class at every one of its own
-    /// gates). This one reads a strictly different defect class:
+    /// `topology_gate_reject` above reads OPEN edges, and a tessellated host
+    /// routinely carries those from T-junction subdivision alone — a
+    /// population this crate has documented as largely benign (`prism_cut.rs`
+    /// accepts exactly that class at every one of its own gates). This one
+    /// reads a strictly different defect class:
     /// [`edge_multiplicity_defects`], the per-edge UNSIGNED use count that a
     /// signed closure tally cannot represent at all.
     ///
-    /// That distinction is the whole reason this can gate by default. A
-    /// T-junction leaves edges used ONCE, which this predicate ignores. An
+    /// That distinction is why this looked like the reading that COULD gate
+    /// by default, and it is a separate feature from its sibling so a census
+    /// can attribute a flip to one class rather than to whichever gate fired
+    /// first. A T-junction leaves edges used ONCE, which this predicate
+    /// ignores. An
     /// edge used four times, or twice the same way round, is not something a
     /// differently-subdivided shared boundary can produce — it is a doubled
     /// skin, a fin, or a flipped neighbour. Neither `validate_mesh` (finite +
@@ -138,6 +141,18 @@ impl ClippingProcessor {
     /// merge, whichever that site already does. Never an `Err`: the element
     /// keeps its geometry, it just keeps the UN-cut version, with a diagnostic
     /// saying so.
+    ///
+    /// It is NOT on by default, and the reason is measured rather than
+    /// cautious. Over the fixture corpus it rejects 110 of 2071 void hosts and
+    /// every one of them is still cut by a downstream fallback — but on this
+    /// repo's own pinned quality fixtures that fallback is WORSE than the tear
+    /// it replaces: `issue_098_reveal_wall` goes from ~42 to 380 unpaired
+    /// edges, `issue_098_v5c` from ~108 to 416, and
+    /// `issue_960_segmented_roof_clip` grows back the full-height seam sliver
+    /// it exists to catch. Rejecting a torn result only helps if what replaces
+    /// it is better. Here it is not, so the fallback path is what has to be
+    /// fixed before this flips.
+    #[cfg(feature = "csg_manifold_gate")]
     pub(crate) fn manifold_gate_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
         if mesh.is_empty() {
             return false;
@@ -154,5 +169,14 @@ impl ClippingProcessor {
             },
         );
         true
+    }
+
+    /// Default-build twin of the above: always `false`, and the multiplicity
+    /// sweep never runs. A separate `cfg` body rather than an internal
+    /// `if cfg!(...)`, for the same zero-cost reason its sibling gives.
+    #[cfg(not(feature = "csg_manifold_gate"))]
+    #[inline(always)]
+    pub(crate) fn manifold_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
+        false
     }
 }

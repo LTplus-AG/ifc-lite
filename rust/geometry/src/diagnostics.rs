@@ -152,11 +152,18 @@ pub enum BoolFailureReason {
     /// and the caller falls back exactly as it does for
     /// `KernelOutputInvalid`.
     ///
-    /// Unlike [`Self::OpenTopologyRejected`] this is recorded in the DEFAULT
-    /// build. The open reading stays feature-gated because open edges are what
-    /// T-junction tessellation produces constantly; a multiplicity defect is
-    /// not something benign tessellation can produce, which is what makes it
-    /// safe to gate on unconditionally. See the corpus measurement in
+    /// Like [`Self::OpenTopologyRejected`], only ever constructed under a
+    /// feature — its own `csg_manifold_gate`, kept separate from
+    /// `csg_topology_gate` so a census can attribute a flip to one defect
+    /// class rather than to whichever gate fired first. The variant exists in
+    /// every build, per this enum's convention for its other rarely-emitted
+    /// reasons.
+    ///
+    /// The gate reads a defect class benign tessellation cannot produce, so it
+    /// was tried as a default. It rejects 110 of 2071 corpus void hosts, all
+    /// still cut by a downstream fallback — but that fallback is worse than
+    /// the tear it replaces on this repo's pinned quality fixtures. See
+    /// `csg_manifold_gate` in `Cargo.toml`, and the corpus measurement in
     /// `tests/issue_3440_manifold_gate_census.rs`.
     ///
     /// Carries the two counts (as `OperandTooLarge` carries its operand sizes)

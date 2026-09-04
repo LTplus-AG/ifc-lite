@@ -10,11 +10,16 @@
  * `step-exporter.test.ts` pins this for `visibleOnly` (one CAD layer naming a
  * visible and a hidden wall's shape representation) against a mock store. The
  * issue names FOUR export paths, and `subsetEntityIds` is the one the
- * anonymize export drives (`getSubsetEntityIds` -> `StepExporter.export`), so
- * it gets its own pin — through a REAL parsed fixture, per this package's
- * "assert behaviour through a real fixture" rule, which also exercises the
- * real `byType` index `collectStyleEntities` reverse-scans rather than a
- * hand-built one.
+ * anonymize export ultimately writes through, so it gets its own pin — through
+ * a REAL parsed fixture, per this package's "assert behaviour through a real
+ * fixture" rule, which also exercises the real `byType` index
+ * `collectStyleEntities` reverse-scans rather than a hand-built one.
+ *
+ * Scope, precisely: the subset id set is handed to `StepExporter.export`
+ * directly, so what is pinned here is the EXPORT's treatment of a subset, not
+ * `getSubsetEntityIds`'s choice of roots. `subset-roots.test.ts` owns the
+ * latter; a regression that widened the root selection would not show up in
+ * this file.
  *
  * Both defects in one fixture, because they pull in opposite directions and a
  * fix for either alone would still pass half of this file:
@@ -203,12 +208,36 @@ describe('#3875 subsetEntityIds: a shared presentation layer assignment', () => 
     expect(withheld).toHaveLength(1);
     expect(withheld[0]).toContain('IFCPRESENTATIONLAYERASSIGNMENT');
     expect(withheld[0]).toContain('withheld');
+
+    // Withholding is the step most able to strand a reference — the closure
+    // had already accepted #50 when the write pass dropped it — so check that
+    // nothing #50 named is left dangling.
+    //
+    // Not the blanket `toEqual([])` the other cases use: #20, Wall A's
+    // IFCPRODUCTDEFINITIONSHAPE, IS dangling here, and legitimately so. A `#N`
+    // named from a product's `Representation` slot is out of reach of the
+    // relationship-line filter, a pre-existing `includeGeometry:false` gap
+    // that `step-omission-predicates.ts` documents and measures (80 dangling
+    // refs before and after, on `tests/models/AB22.ifc`). It is not this
+    // test's subject, and asserting it away here would be asserting the
+    // opposite of the documented position.
+    const dangling = findDanglingRefs(content);
+    expect(dangling).not.toContain(21);
+    expect(dangling).not.toContain(31);
   });
 
-  // Control, against over-correction: with BOTH walls in the subset the layer
-  // keeps both members and both geometry chains ship. A rescue pass that
-  // simply stopped following a layer's items would pass every assertion
-  // above and fail here.
+  // Control, against over-correction: with BOTH walls in the subset nothing is
+  // excluded, so the layer must keep both members and both geometry chains must
+  // ship. This is the only case in this file asserting that #31/#32 DO appear
+  // and that `AssignedItems` is left at full width, which is what a narrowing
+  // filter that dropped refs it could not confirm — rather than only refs the
+  // export actually omitted — would break.
+  //
+  // It does NOT catch a rescue pass that stopped following a layer's items:
+  // measured, that mutation leaves this test green, because here #21/#31/#32
+  // are already in the closure via the two wall roots and the layer's forward
+  // walk contributes nothing. The subtype test above is what catches it, via
+  // #51=IFCCOLOURRGB.
   it('control: a subset containing both walls keeps the layer’s full membership', async () => {
     const store = await parse(SHARED_LAYER_MODEL);
 

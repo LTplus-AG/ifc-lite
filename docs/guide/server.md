@@ -409,6 +409,33 @@ interface Quantity {
 }
 ```
 
+### Relationships
+
+One row per (relating, related) pair: an `IfcRel*` record naming several
+related objects is flattened into one row each, so the same `rel_id` can appear
+on several rows.
+
+```typescript
+interface Relationship {
+  rel_type: string;      // e.g. 'IFCRELAGGREGATES', as declared in the file
+  relating_id: number;
+  related_id: number;
+  rel_id?: number;       // express id of the IfcRel entity
+}
+```
+
+`rel_id` is what a Parquet or DuckDB export writes as `RelId`, and what
+identifies the record to delete or edit. Two cases where it is not a live
+express id:
+
+- **Absent** (`undefined`) when the server predates the `datamodel-v6` payload,
+  which is where the column was added. Consumers fall back to `0`; the viewer
+  warns once naming the column, since every id reading 0 otherwise looks like a
+  normal graph.
+- **`0`** on the synthetic `TYPEHASPROPERTYSETS` rows. Those are read off
+  `IfcTypeObject.HasPropertySets` to attach a type's own property sets, and no
+  IFC entity declares them, so there is no id to carry.
+
 ### Spatial Hierarchy
 
 ```typescript

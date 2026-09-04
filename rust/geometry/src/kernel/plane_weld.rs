@@ -120,26 +120,19 @@ mod diag {
 /// earlier operands re-reconcile against what the later ones settled on, and
 /// that is what closes the case one pass opens.
 ///
-/// So passes run until one welds nothing, capped by [`MAX_WELD_PASSES`] — and
-/// the cap is a TERMINATOR, not a safety margin. Over the 9464-union sweep in
-/// `issue_3353_near_coplanar_rotated_overlap.rs` nothing exceeds two moving
-/// passes, which is what an earlier version of this note generalised into "the
-/// loop terminates on its own for every case measured". That was true of that
-/// sweep and false of the operand space: re-running this function UNCAPPED
-/// over 80,000 randomised near-coplanar box pairs (arbitrary rotation axis,
-/// angle in ±90°, edges 0.3–3.0, Z offsets −6..+6 snap steps) left 40 pairs
-/// moving the same vertex count on all 64 passes and still going, with 8 more
-/// converging only after 5 to 13 moving passes. The oscillation this cap was
-/// written to bound — a vertex alternating between two planes equidistant
-/// within the band — is REAL and reachable, so removing the cap in favour of
-/// iterating to `moved == 0` hangs. `the_weld_pass_cap_is_load_bearing_because_the_weld_can_oscillate`
-/// pins one of those pairs and hangs if the cap is removed.
-///
-/// Returning after four passes therefore hands `boolean_with_conformity`
-/// operands that are only partly reconciled in those cases. That is the
-/// deliberate trade: a bounded, deterministic partial reconciliation, whose
-/// output `union_pair` still validates and can fall back on, in exchange for
-/// termination.
+/// So passes run until one welds nothing, capped by [`MAX_WELD_PASSES`] — a
+/// TERMINATOR, not a safety margin. The 9464-union sweep in
+/// `issue_3353_near_coplanar_rotated_overlap.rs` never exceeds two moving
+/// passes, which an earlier note generalised into "terminates on its own for
+/// every case measured": true of that sweep, false of the operand space. Run
+/// UNCAPPED over 80,000 randomised near-coplanar box pairs (arbitrary axis,
+/// angle ±90°, edges 0.3–3.0, Z offsets −6..+6 snap steps), 40 still moved the
+/// same vertex count on all 64 passes and 8 converged only after 5 to 13, so
+/// iterating to `moved == 0` HANGS (pinned by
+/// `the_weld_pass_cap_is_load_bearing_because_the_weld_can_oscillate`). Those
+/// cases reach `boolean_with_conformity` only partly reconciled — an output
+/// `union_pair` still validates and can fall back on — in exchange for
+/// terminating at all.
 ///
 /// # What this does and does not make commutative
 ///
@@ -148,6 +141,22 @@ mod diag {
 /// property that matters — both orders come back CLOSED, with the same volume
 /// to within a snap step's worth of surface. That is what
 /// `issue_3353_near_coplanar_rotated_overlap.rs` asserts, in both orders.
+///
+/// # Cost, and the pruning this does NOT do
+///
+/// A pass is `O(6 · tris_a · tris_b)` plane evaluations, no broadphase in front
+/// of it. Union wall time, weld vs the same build with the call removed, on
+/// DISJOINT boxes where it cannot move anything: 768 tris each 2.8 → 8.3 ms,
+/// 4800 each 39.7 → 571. Quadratic, and blind to whether the operands touch.
+/// Deliberate: a per-face AABB reject contradicts the gate being PLANE-level
+/// (see [`promote_cutter_verts_onto_host_faces`]), and a whole-operand one is
+/// not a no-op either, a plane being infinite. The lever that would work is
+/// keying host faces by PLANE, but that moves which triangle supplies
+/// [`exact_on_plane_weld`]'s edge basis, hence welded coordinates, hence the
+/// determinism manifests and the parity reference: its own change. Exposure is
+/// meanwhile narrow — the CSG census records ZERO unions on AC20-FZK-Haus,
+/// ISSUE_129, ISSUE_053 and FM_ARC_DigitalHub, and only an explicit `.UNION.`
+/// IfcBooleanResult reaches it with unbounded operands.
 ///
 /// Returns the number of vertices moved, in total, across every pass.
 ///
@@ -181,11 +190,8 @@ pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) -> usize {
     welded
 }
 
-/// Pass cap for [`promote_operands_mutually`], and the only thing that makes it
-/// terminate: an uncapped weld does not converge on every input (see that
-/// function's "Why one pass is not enough"). Four covers every pair in the
-/// pinned sweep, which never exceeds two moving passes; raising it only moves
-/// where the non-convergent minority is truncated, and removing it hangs.
+/// Pass cap for [`promote_operands_mutually`] and the only thing that makes it
+/// terminate: an uncapped weld does NOT converge on every input (see there).
 const MAX_WELD_PASSES: usize = 4;
 
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that

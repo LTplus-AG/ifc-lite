@@ -1532,6 +1532,7 @@
     "isValidUuid: function",
     "isWhollyNumeric: function",
     "parsePropertyValue: function",
+    "uuidFromSeed: function",
     "uuidToIfcGuid: function"
   ],
   "@ifc-lite/export": [

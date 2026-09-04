@@ -92,16 +92,22 @@ describe('groupSubContextsByKey: trivia between the type name and "(" (#3789)', 
     }
   });
 
+  // A trailing `X` would NOT test this: `\w+` simply absorbs it into the type
+  // name, leaving the record readable and the two keys distinct -- the test
+  // would pass for the opposite reason to the one it claims. `#5` cannot be
+  // part of `\w+` and is not STEP trivia, so RECORD_RE genuinely fails to
+  // match and `getStepAttr` returns null for both records.
   it('two-way rule: non-whitespace, non-comment junk before "(" still reads as unreadable (both fall in the same empty-key bucket)', () => {
     const store = buildStore([
-      [10, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXTX', `#10=IFCGEOMETRICREPRESENTATIONSUBCONTEXTX(${BODY});`],
-      [11, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXTX', `#11=IFCGEOMETRICREPRESENTATIONSUBCONTEXTX(${AXIS});`],
+      [10, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', `#10=IFCGEOMETRICREPRESENTATIONSUBCONTEXT#5(${BODY});`],
+      [11, 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT', `#11=IFCGEOMETRICREPRESENTATIONSUBCONTEXT#5(${AXIS});`],
     ]);
     const groups = groupSubContextsByKey(store, [10, 11]);
-    // The generic record regex only pins `#N=TYPE(` -- it accepts any type
-    // name, including this malformed one -- so this control is about the
-    // record being READABLE despite the odd type name, not about a rejection.
-    expect(groups.size).toBe(2);
+    // Unreadable on BOTH records, so both collapse to the same empty key --
+    // the widened trivia rule did not quietly start accepting arbitrary
+    // separators.
+    expect(groups.size).toBe(1);
+    expect([...groups.values()][0]).toEqual([10, 11]);
   });
 
   it('groups two subcontexts of the same real kind into one bucket (no regression)', () => {

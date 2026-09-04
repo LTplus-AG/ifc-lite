@@ -911,4 +911,35 @@ describe('filterHiddenRefsFromRelationshipLine: trivia between the type name and
     const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 3);
     expect(out).toBe("#5=IFCRELAGGREGATES('GUID',$,$,$,#1,(#2));");
   });
+
+  // CodeRabbit finding on this PR: widening the record regex put the trivia
+  // INSIDE the prefix capture, and the entity type was sliced back out of
+  // that prefix -- so a commented record produced the type
+  // `IFCRELCONNECTSSTRUCTURALMEMBER/* c */`, which matches nothing in
+  // `isOptionalTrailingRef`'s table. The optional 10th attribute would then
+  // take the general withhold path and drop the WHOLE relationship instead
+  // of rewriting the ref to `$`. `.trim()` hid the whitespace-only form of
+  // the same defect, which is why only the comment case is RED here.
+  it('rewrites the optional trailing ref to $ when a comment sits before "(" (type must survive the trivia)', () => {
+    const line = "#1=IFCRELCONNECTSSTRUCTURALMEMBER/* c */('G',$,$,$,#2,#3,$,$,$,#9);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 9);
+    expect(out).toBe("#1=IFCRELCONNECTSSTRUCTURALMEMBER/* c */('G',$,$,$,#2,#3,$,$,$,$);");
+  });
+
+  it('rewrites the optional trailing ref to $ when the record wraps before "("', () => {
+    const line = "#1=IFCRELCONNECTSSTRUCTURALMEMBER\r\n('G',$,$,$,#2,#3,$,$,$,#9);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 9);
+    expect(out).toBe("#1=IFCRELCONNECTSSTRUCTURALMEMBER\r\n('G',$,$,$,#2,#3,$,$,$,$);");
+  });
+
+  it('the adjacent form behaves identically (control -- the trivia is what was at risk)', () => {
+    const line = "#1=IFCRELCONNECTSSTRUCTURALMEMBER('G',$,$,$,#2,#3,$,$,$,#9);";
+    const out = filterHiddenRefsFromRelationshipLine(line, (id) => id === 9);
+    expect(out).toBe("#1=IFCRELCONNECTSSTRUCTURALMEMBER('G',$,$,$,#2,#3,$,$,$,$);");
+  });
+
+  it('two-way rule: a commented NON-exempt relationship still withholds the whole line', () => {
+    const line = "#1=IFCRELCONNECTSWITHECCENTRICITY/* c */('G',$,$,$,#2,#3,$,$,$,#9,#8);";
+    expect(filterHiddenRefsFromRelationshipLine(line, (id) => id === 9)).toBeNull();
+  });
 });

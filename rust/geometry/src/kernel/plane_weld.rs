@@ -18,6 +18,84 @@
 use super::arrangement::Tri;
 use super::near_band::NearBand;
 
+pub use diag::take_plane_weld_stats;
+
+/// Weld telemetry (#3353): how often the promotion actually MOVES anything.
+///
+/// It exists because the #3353 fix landed with a byte-identical
+/// `triangulation_invariance` golden, and "the golden did not move" has two
+/// readings that matter very differently: the weld fires on real IFC and
+/// changes nothing measurable, or it never fires on real IFC at all. Inferring
+/// which from an unchanged number is the shape this repo keeps rediscovering,
+/// so the count is measured instead. Same feature gating and relaxed-atomic
+/// pattern as `router/voids/prism_cut.rs`'s prism stats.
+#[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
+mod diag {
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    // Two independent tallies, because they answer different questions and a
+    // single one cannot be read. The low-level weld has been running on every
+    // `subtract` since #1007; only the UNION tally is new in #3353, and only it
+    // measures that change's blast radius. Summing them would let subtract's
+    // long-standing traffic stand in for evidence about the new caller.
+    static CALLS: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
+    static FIRED: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
+    static VERTS: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
+
+    /// `CALLS[ALL]` etc.: every call to the low-level weld, whatever the caller.
+    const ALL: usize = 0;
+    /// `CALLS[UNION]` etc.: only calls made through the union's mutual
+    /// promotion.
+    const UNION: usize = 1;
+
+    /// Record one low-level promotion call and the vertices it moved.
+    #[inline]
+    pub(super) fn record(welded: usize) {
+        bump(ALL, welded);
+    }
+
+    /// Record one MUTUAL (union) promotion and the vertices it moved in total.
+    #[inline]
+    pub(super) fn record_union(welded: usize) {
+        bump(UNION, welded);
+    }
+
+    #[inline]
+    fn bump(slot: usize, welded: usize) {
+        CALLS[slot].fetch_add(1, Ordering::Relaxed);
+        if welded > 0 {
+            FIRED[slot].fetch_add(1, Ordering::Relaxed);
+        }
+        VERTS[slot].fetch_add(welded as u64, Ordering::Relaxed);
+    }
+
+    /// Read + reset `[(calls, calls that moved something, vertices moved); 2]`
+    /// as `[every caller, union only]`. Process-global relaxed atomics: a stale
+    /// read under concurrency mis-reports a diagnostic count, never geometry.
+    pub fn take_plane_weld_stats() -> [(u64, u64, u64); 2] {
+        [ALL, UNION].map(|s| {
+            (
+                CALLS[s].swap(0, Ordering::Relaxed),
+                FIRED[s].swap(0, Ordering::Relaxed),
+                VERTS[s].swap(0, Ordering::Relaxed),
+            )
+        })
+    }
+}
+
+#[cfg(not(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry")))]
+mod diag {
+    #[inline]
+    pub(super) fn record(_welded: usize) {}
+    #[inline]
+    pub(super) fn record_union(_welded: usize) {}
+    /// Telemetry disabled in the default build; a caller that wants real counts
+    /// must enable `debug_geometry` (or another observability feature).
+    pub fn take_plane_weld_stats() -> [(u64, u64, u64); 2] {
+        [(0, 0, 0); 2]
+    }
+}
+
 /// Mutually promote every operand onto the OTHERS' face planes — the union
 /// form of [`promote_cutter_verts_onto_host_faces`].
 ///
@@ -86,6 +164,7 @@ pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) -> usize {
             break;
         }
     }
+    diag::record_union(welded);
     welded
 }
 
@@ -227,6 +306,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             }
         }
     }
+    diag::record(welded);
     welded
 }
 

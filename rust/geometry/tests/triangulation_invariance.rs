@@ -127,6 +127,7 @@ mod census_golden;
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
+use ifc_lite_geometry::kernel::plane_weld::take_plane_weld_stats;
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
@@ -787,6 +788,12 @@ fn fmt_host(r: &HostRow) -> String {
 fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
     let mut rows: Vec<HostRow> = Vec::new();
     let mut swept_models: BTreeSet<String> = BTreeSet::new();
+    // #3353 weld telemetry, printed and NEVER written to the golden: a count
+    // that moves with the corpus would make the golden re-baseline on every
+    // fixture change. Zero in a default build (see `take_plane_weld_stats`),
+    // so this is only meaningful under `--features debug_geometry`.
+    let mut weld_totals: Vec<(String, [(u64, u64, u64); 2])> = Vec::new();
+    let _ = take_plane_weld_stats(); // discard anything earlier tests accrued
 
     for (rel, path) in models {
         let Ok(content) = std::fs::read_to_string(path) else {
@@ -837,6 +844,7 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
                 pre,
             ));
         }
+        weld_totals.push((rel.clone(), take_plane_weld_stats()));
     }
 
     // #3422: the wiring rule, asserted on every row this walk produces so both
@@ -857,6 +865,24 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
         );
     }
 
+    println!("\n=== plane-weld telemetry (#3353; zero without --features debug_geometry) ===");
+    let mut all = (0u64, 0u64, 0u64);
+    let mut uni = (0u64, 0u64, 0u64);
+    for (model, [a, u]) in &weld_totals {
+        if a.0 > 0 {
+            println!(
+                "  plane-weld: {model}: all callers {}/{}/{}, union only {}/{}/{} \
+                 (calls / moved something / vertices welded)",
+                a.0, a.1, a.2, u.0, u.1, u.2
+            );
+        }
+        all = (all.0 + a.0, all.1 + a.1, all.2 + a.2);
+        uni = (uni.0 + u.0, uni.1 + u.1, uni.2 + u.2);
+    }
+    println!(
+        "  plane-weld TOTAL: all callers {}/{}/{}, union only {}/{}/{}",
+        all.0, all.1, all.2, uni.0, uni.1, uni.2
+    );
     (rows, swept_models)
 }
 

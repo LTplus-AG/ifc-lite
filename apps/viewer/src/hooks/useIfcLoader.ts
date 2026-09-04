@@ -39,7 +39,7 @@ import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
-import { forwardEntityIndexTo } from './entityIndexHandoff.js';
+import { forwardEntityIndexTo, type EntityIndexSink } from './entityIndexHandoff.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
@@ -1439,7 +1439,8 @@ export function useIfcLoader() {
       // Receiving the index lets the parser worker skip its own ~10 s
       // `scanEntitiesFastBytes` call — the streaming pre-pass already
       // walked the file and built the same index.
-      let workerParserInstance: WorkerParser | null = null;
+      // `& EntityIndexSink` so a setEntityIndex that stops taking the pre-pass's counts (#3395/#3790) breaks the build HERE.
+      let workerParserInstance: (WorkerParser & EntityIndexSink) | null = null;
 
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the
@@ -1608,10 +1609,9 @@ export function useIfcLoader() {
               // Hand the streaming pre-pass's entity index to the parser
               // worker so it skips a duplicate ~10 s WASM scan. Safe even
               // when the parser falls back to main-thread (instance is
-              // null then; the callback no-ops).
-              // #3395/#3790: the refusal count and the malformed-stop flag
-              // travel with the columns, because neither a refused record nor
-              // anything after a stop is IN them. See entityIndexHandoff.ts.
+              // null then; the callback no-ops). #3395/#3790: the refusal
+              // count and the malformed-stop flag ride along, because neither
+              // a refused record nor anything after a stop is IN the columns.
               onEntityIndex: forwardEntityIndexTo(workerParserInstance),
               // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
               // count heuristic so the host's thermal sweet spot can be measured.

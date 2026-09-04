@@ -139,6 +139,124 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
     Ok(edges.values().filter(|&&(f, r)| f != 1 || r != 1).count())
 }
 
+
+/// Signed volume by the divergence theorem, in the mesh's own units.
+///
+/// # Why the open-edge count alone is not enough
+///
+/// `csg/union.rs` falls back to a PLAIN MERGE of the two operands when the
+/// kernel result looks invalid: it returns `A + B` with the overlap left in.
+/// That mesh is perfectly closed — every edge of each box is still paired — so
+/// the watertightness oracle passes it, at volume 2.0 where the real union is
+/// about 1.75. An open-edge assertion on its own therefore cannot tell "the
+/// kernel produced a correct union" from "the kernel gave up". The volume can.
+fn mesh_volume(m: &Mesh) -> f64 {
+    let v = |i: u32| {
+        let b = (i as usize) * 3;
+        [
+            f64::from(m.positions[b]),
+            f64::from(m.positions[b + 1]),
+            f64::from(m.positions[b + 2]),
+        ]
+    };
+    m.indices
+        .chunks_exact(3)
+        .map(|t| {
+            let (p, q, r) = (v(t[0]), v(t[1]), v(t[2]));
+            let cr = [
+                q[1] * r[2] - q[2] * r[1],
+                q[2] * r[0] - q[0] * r[2],
+                q[0] * r[1] - q[1] * r[0],
+            ];
+            (p[0] * cr[0] + p[1] * cr[1] + p[2] * cr[2]) / 6.0
+        })
+        .sum::<f64>()
+        .abs()
+}
+
+/// The union's volume computed WITHOUT the kernel, so the assertion has an
+/// independent oracle rather than one derived from the thing under test.
+///
+/// Both operands are vertical prisms (the only rotation is about Z), so
+/// `|A ∪ B| = |A| + |B| − area(footprint_A ∩ footprint_B) · z-overlap`. The
+/// footprints are convex quads, so the intersection is one Sutherland-Hodgman
+/// clip and the shoelace of the result.
+fn expected_union_volume(dx: f64, dy: f64, z_offset: f64, b_height: f64) -> f64 {
+    let ang = 30.0f64.to_radians();
+    let (c, sn) = (ang.cos(), ang.sin());
+    let about = [dx + 0.5, dy + 0.5];
+    let b_foot: Vec<[f64; 2]> = [
+        [dx, dy],
+        [dx + 1.0, dy],
+        [dx + 1.0, dy + 1.0],
+        [dx, dy + 1.0],
+    ]
+    .iter()
+    .map(|p| {
+        let (ux, uy) = (p[0] - about[0], p[1] - about[1]);
+        [about[0] + ux * c - uy * sn, about[1] + ux * sn + uy * c]
+    })
+    .collect();
+
+    // Sutherland-Hodgman: clip A's unit-square footprint by each of B's edges.
+    let mut poly: Vec<[f64; 2]> = vec![[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    for i in 0..b_foot.len() {
+        let (p0, p1) = (b_foot[i], b_foot[(i + 1) % b_foot.len()]);
+        let side = |p: [f64; 2]| (p1[0] - p0[0]) * (p[1] - p0[1]) - (p1[1] - p0[1]) * (p[0] - p0[0]);
+        let mut out: Vec<[f64; 2]> = Vec::new();
+        for j in 0..poly.len() {
+            let (cur, prev) = (poly[j], poly[(j + poly.len() - 1) % poly.len()]);
+            let (sc, sp) = (side(cur), side(prev));
+            if sc >= 0.0 {
+                if sp < 0.0 {
+                    let t = sp / (sp - sc);
+                    out.push([prev[0] + t * (cur[0] - prev[0]), prev[1] + t * (cur[1] - prev[1])]);
+                }
+                out.push(cur);
+            } else if sp >= 0.0 {
+                let t = sp / (sp - sc);
+                out.push([prev[0] + t * (cur[0] - prev[0]), prev[1] + t * (cur[1] - prev[1])]);
+            }
+        }
+        poly = out;
+        if poly.is_empty() {
+            break;
+        }
+    }
+    let area = (0..poly.len())
+        .map(|i| {
+            let (p, q) = (poly[i], poly[(i + 1) % poly.len()]);
+            p[0] * q[1] - q[0] * p[1]
+        })
+        .sum::<f64>()
+        .abs()
+        / 2.0;
+    let z_overlap = (1.0f64.min(z_offset + b_height) - 0.0f64.max(z_offset)).max(0.0);
+    1.0 + b_height - area * z_overlap
+}
+
+/// Tolerance on the volume. The weld moves vertices by at most a snap step, so
+/// a face of area ~1 can shift its contribution by ~`SNAP_GRID`; over the six
+/// faces of each operand that is ~1e-4. 1e-3 clears that by an order of
+/// magnitude and is still three orders below the 0.25 m³ gap between a real
+/// union and the plain-merge fallback this is here to catch.
+const VOLUME_TOL: f64 = 1.0e-3;
+
+fn volume_complaint(out: &Mesh, expected: f64, merged: f64, what: &str) -> Option<String> {
+    let v = mesh_volume(out);
+    if (v - expected).abs() >= VOLUME_TOL {
+        // The plain-merge fallback is called out by name, because it is the
+        // specific wrong answer the open-edge oracle used to accept.
+        let how = if (v - merged).abs() < VOLUME_TOL {
+            " - this is exactly the plain-merge fallback, so the kernel gave up"
+        } else {
+            ""
+        };
+        return Some(format!("{what}: union volume {v}, expected {expected}{how}"));
+    }
+    None
+}
+
 /// A unit box at the origin, and a unit box rotated 30 degrees about Z placed
 /// so it overlaps the first one's `+X+Y` corner, with `z_offset` added to the
 /// rotated box's Z span.
@@ -175,6 +293,13 @@ fn assert_union_is_closed(z_offset: f64, b_height: f64, what: &str) {
         Ok(0),
         "a closed-in operand pair must come back closed-out ({what}, B then A)"
     );
+    let expected = expected_union_volume(0.5, 0.5, z_offset, b_height);
+    let merged = 1.0 + b_height;
+    for (order, out) in [("A then B", &forward), ("B then A", &reversed)] {
+        if let Some(c) = volume_complaint(out, expected, merged, &format!("{what}, {order}")) {
+            panic!("{c}");
+        }
+    }
 }
 
 /// The pinned minimum: ONE snap step of Z offset. 13 unmatched directed edges
@@ -222,16 +347,19 @@ fn no_offset_within_the_snap_band_tears_the_corner_overlap() {
                     );
                     // BOTH orders: `a ∪ b` and `b ∪ a` are the same solid, and
                     // on `main` the two orders tore 2090 and 2388 times here.
+                    let expected = expected_union_volume(dx, dy, b_z + dz, b_h);
+                    let merged = 1.0 + b_h;
                     for (order, out) in [
                         ("A then B", clipper.union_mesh(&a, &b)),
                         ("B then A", clipper.union_mesh(&b, &a)),
                     ] {
                         let out = out.expect("union must not error");
+                        let here = format!("steps={steps} b_z={b_z} b_h={b_h} dx={dx} dy={dy} {order}");
                         if let other @ (Ok(1..) | Err(_)) = open_edges(&out) {
-                            torn.push(format!(
-                                "steps={steps} b_z={b_z} b_h={b_h} dx={dx} dy={dy} \
-                                 {order}: {other:?}"
-                            ));
+                            torn.push(format!("{here}: {other:?}"));
+                        }
+                        if let Some(c) = volume_complaint(&out, expected, merged, &here) {
+                            torn.push(c);
                         }
                     }
                 }

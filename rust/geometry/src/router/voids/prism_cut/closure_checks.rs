@@ -230,3 +230,90 @@ pub(crate) fn closed_or_hairline(mesh: &Mesh) -> bool {
     }
     true
 }
+
+/// Per-undirected-edge MULTIPLICITY defects, the class both predicates above
+/// are structurally blind to.
+///
+/// [`directed_closed`] and [`closed_or_hairline`] both count edges with a
+/// SIGNED tally (`+1` forward, `-1` reverse) and pass when everything nets to
+/// zero. Cancellation is the point there — it is what makes a hairline
+/// T-junction chain forgivable — but it also erases multiplicity: an edge used
+/// by FOUR triangles, two each way, nets to exactly zero and reads as closed.
+/// That is a doubled coincident surface, not a solid boundary, and no amount of
+/// tolerance tuning on a signed tally can see it.
+///
+/// So this counts UNSIGNED uses per undirected edge, on the same 0.1 mm grid
+/// and with the same degenerate-triangle skip, and reports the two defects a
+/// signed tally cannot represent:
+///
+/// * `over_used` — an undirected edge with MORE than two triangle uses
+///   (non-manifold: a fin, a doubled skin, or self-intersecting output).
+/// * `same_direction` — an undirected edge with exactly two uses that run the
+///   SAME way round (inconsistent winding: one of the two neighbours is
+///   flipped).
+///
+/// An edge used ONCE is deliberately NOT a defect here. That is an open
+/// boundary, which is what the two closure predicates above already measure,
+/// and it is the reading that T-junction tessellation trips constantly. Keeping
+/// it out is what lets a caller gate on this without inheriting that class's
+/// false-positive rate.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct EdgeMultiplicityDefects {
+    /// Undirected edges used by more than two triangles.
+    pub over_used: usize,
+    /// Undirected edges used exactly twice, both uses running the same way.
+    pub same_direction: usize,
+}
+
+impl EdgeMultiplicityDefects {
+    /// True when the mesh carries neither defect.
+    pub(crate) fn is_clean(&self) -> bool {
+        self.over_used == 0 && self.same_direction == 0
+    }
+}
+
+/// Count the [`EdgeMultiplicityDefects`] of `mesh`. O(triangles) hash sweep,
+/// the same shape and cost as [`directed_closed`].
+pub(crate) fn edge_multiplicity_defects(mesh: &Mesh) -> EdgeMultiplicityDefects {
+    type K = (i64, i64, i64);
+    let key = |i: u32| -> K {
+        let b = i as usize * 3;
+        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
+        (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        )
+    };
+    // Undirected edge (lo, hi) -> (uses running lo->hi, uses running hi->lo).
+    let mut edges: FxHashMap<(K, K), (u32, u32)> = FxHashMap::default();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        if ka == kb || kb == kc || kc == ka {
+            continue;
+        }
+        for (x, y) in [(ka, kb), (kb, kc), (kc, ka)] {
+            let (lo, hi, forward) = if x <= y { (x, y, true) } else { (y, x, false) };
+            let slot = edges.entry((lo, hi)).or_insert((0, 0));
+            if forward {
+                slot.0 += 1;
+            } else {
+                slot.1 += 1;
+            }
+        }
+    }
+    let mut defects = EdgeMultiplicityDefects::default();
+    for &(fwd, rev) in edges.values() {
+        match fwd + rev {
+            0 | 1 => {}
+            2 if fwd == 1 && rev == 1 => {}
+            2 => defects.same_direction += 1,
+            _ => defects.over_used += 1,
+        }
+    }
+    defects
+}
+
+#[cfg(test)]
+#[path = "closure_checks_tests.rs"]
+mod closure_checks_tests;

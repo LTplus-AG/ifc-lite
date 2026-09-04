@@ -758,6 +758,7 @@ export class GeometryProcessor {
       ids: Uint32Array,
       starts: Uint32Array,
       lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
+      malformedRecordCount?: number, // #3790 the scan stopped, 0 or 1
     ) => void,
     /**
      * Explicit wasm asset URL forwarded to the worker pool. See
@@ -837,6 +838,7 @@ export class GeometryProcessor {
         ids: Uint32Array,
         starts: Uint32Array,
         lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
+        malformedRecordCount?: number, // #3790 the scan stopped, 0 or 1
       ) => void;
       /**
        * Explicit wasm asset URL forwarded to the worker pool.

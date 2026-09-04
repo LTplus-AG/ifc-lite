@@ -6,7 +6,7 @@
  * The one hop between the geometry pre-pass and the parser worker.
  *
  * On every SAB-backed worker load at or above 2 MB the parser does not scan
- * the file at all — the geometry pre-pass hands it a finished entity index and
+ * the file at all -- the geometry pre-pass hands it a finished entity index and
  * the whole model is built from those columns. Anything the pre-pass dropped
  * is therefore invisible on the parser side by construction: a record refused
  * for an oversized express id (#3395) is not in `ids`, and a scan that stopped
@@ -16,7 +16,7 @@
  *
  * A named function rather than an inline closure in `useIfcLoader.ts` so the
  * forwarding can be tested by calling it, instead of by reading the hook's
- * source text — the pre-pass and the parser worker both live behind Workers,
+ * source text -- the pre-pass and the parser worker both live behind Workers,
  * and this hop is the part the viewer owns.
  */
 
@@ -33,7 +33,7 @@ export interface EntityIndexSink {
 
 /**
  * Build the `onEntityIndex` callback for `processAdaptive`, forwarding to
- * `sink` — or doing nothing when the parser fell back to the main thread and
+ * `sink` -- or doing nothing when the parser fell back to the main thread and
  * there is no worker to hand anything to.
  */
 export function forwardEntityIndexTo(sink: EntityIndexSink | null | undefined) {

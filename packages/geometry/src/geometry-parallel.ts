@@ -475,8 +475,7 @@ export async function* processParallel(
           // Absent on an older wasm build: "does not report", which is not the
           // same claim as zero, but zero is all a host with no offsets can say.
           oversizedIdStarts: (msg.oversizedIdStarts as Uint32Array | undefined) ?? new Uint32Array(0),
-          // Absent = "this shard reported no stop". TODO(#3699): no wasm build
-          // sets it yet, so absent is all a host sees -- not "the scan ran clean".
+          // Absent = "no stop reported". TODO(#3699): no wasm build sets it yet.
           malformedStart: msg.malformedStart as number | undefined,
         };
         shardResultsRemaining--;
@@ -961,9 +960,10 @@ export async function* processParallel(
     // #3395: the parser worker builds the model from these columns alone, so
     // without the count it reports a clean load that is short by that many.
     oversizedIdCount: number,
-    // #3790: 0 or 1, and worse than a refusal -- not "one record the parser
-    // will not find" but "every record from that byte on is missing".
-    malformedRecordCount: number,
+    // #3790: 1, or undefined when nothing reported (never coerced to 0 -- no
+    // producer can say "I ran clean" yet). Worse than a refusal: not "one
+    // record the parser will not find" but "every record after it is missing".
+    malformedRecordCount: number | undefined,
   ) => {
     console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
     if (typeof SharedArrayBuffer !== 'undefined') {
@@ -1354,10 +1354,10 @@ export async function* processParallel(
           console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
           // TODO(#3699): the Rust pre-pass emits no malformed count yet, so
-          // that `?? 0` is "nothing reported", not "the scan ran clean".
+          // this is undefined ("nothing reported"), carried as such.
           deliverEntityIndex(ids, starts, lengths, 'prepass',
             (evt.oversizedIdCount as number | undefined) ?? 0,
-            (evt.malformedRecordCount as number | undefined) ?? 0);
+            evt.malformedRecordCount as number | undefined);
         }
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets

@@ -9,7 +9,7 @@
  * `onEntityIndex` is what the viewer wires to `WorkerParser.setEntityIndex`,
  * and the parser worker builds the whole model from those columns without
  * scanning. When a scan stopped at an unterminated string or comment, every
- * record from that byte on is absent from `ids` by construction — so the flag
+ * record from that byte on is absent from `ids` by construction -- so the flag
  * is the only evidence that reaches the parser at all. Drop it and the viewer
  * shows a model missing its tail and reports the load as clean, which is the
  * exact silence #3695 removed from the paths that do their own scanning.
@@ -85,7 +85,7 @@ function installWorkers(
 
 describe('entity-index handoff and the #3790 malformed-record stop', () => {
   it('forwards the serial pre-pass’s malformedRecordCount to onEntityIndex', async () => {
-    const seen: number[] = [];
+    const seen: (number | undefined)[] = [];
     // One pool worker keeps the sharded branch off (it needs >= 2), so this
     // exercises the pre-pass `entity-index` event and nothing else.
     installWorkers((self, msg, index) => {
@@ -126,7 +126,7 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
     const gen = processParallel(new Uint8Array(16), new CoordinateHandler(), undefined, undefined, {
       workerCountOverride: 1,
       onEntityIndex: (_ids, _starts, _lengths, _oversizedIdCount, malformedRecordCount) => {
-        seen.push(malformedRecordCount ?? -1);
+        seen.push(malformedRecordCount);
       },
     });
     await drainOrTimeout(gen, 2_000);
@@ -145,8 +145,8 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
   async function deliveredCount(
     shard0: { handoff: number; malformedStart?: number },
     shard1: { handoff: number; malformedStart?: number },
-  ): Promise<number[]> {
-    const seen: number[] = [];
+  ): Promise<(number | undefined)[]> {
+    const seen: (number | undefined)[] = [];
     // >= 8 MB of SAB and >= 2 workers arms the shard scan.
     const shared = new SharedArrayBuffer(8 * 1024 * 1024);
     const shards = [
@@ -184,7 +184,10 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
       {
         workerCountOverride: 2,
         onEntityIndex: (_ids, _starts, _lengths, _oversizedIdCount, malformedRecordCount) => {
-          seen.push(malformedRecordCount ?? -1);
+          // Pushed RAW: `?? -1` here would hide the very distinction under
+          // test, which is that "nothing reported" survives the delivery as
+          // undefined rather than arriving as a fabricated 0.
+          seen.push(malformedRecordCount);
         },
       },
     );
@@ -196,17 +199,21 @@ describe('entity-index handoff and the #3790 malformed-record stop', () => {
     // Shard 1's stop at byte 40 sits inside the range shard 0 owns: an artefact
     // of starting mid-quote, on a file that is fine. Summing or OR-ing the
     // shards would warn about it.
-    expect(await deliveredCount({ handoff: 100 }, { handoff: -1, malformedStart: 40 })).toEqual([0]);
+    expect(await deliveredCount({ handoff: 100 }, { handoff: -1, malformedStart: 40 }))
+      .toEqual([undefined]);
   });
 
   it('reports a real stop the sharded scan hit', async () => {
     // Shard 0 is authoritative from byte 0, so its stop is one a serial scan
-    // makes too — and it is exactly the case that used to reach the viewer as
+    // makes too -- and it is exactly the case that used to reach the viewer as
     // a short model with no signal at all.
     expect(await deliveredCount({ handoff: -1, malformedStart: 60 }, { handoff: -1 })).toEqual([1]);
   });
 
-  it('reports 0 on a clean sharded load', async () => {
-    expect(await deliveredCount({ handoff: 100 }, { handoff: -1 })).toEqual([0]);
+  it('delivers undefined, not 0, when no shard reported a stop', async () => {
+    // The state on main today (#3699 unlanded): every shard omits the offset.
+    // Delivering 0 would tell the parser the pre-pass verified a clean scan,
+    // which no producer has said and none can say yet.
+    expect(await deliveredCount({ handoff: 100 }, { handoff: -1 })).toEqual([undefined]);
   });
 });

@@ -7,7 +7,7 @@
  * no way to tell "this shard reached the end of the real entities" from "this
  * shard's scanner hit an unterminated string or comment and could not go on".
  * Both look like -1, and the second one drops every later shard's records with
- * nothing said — the same silence #3695 removed from the TypeScript scanning
+ * nothing said -- the same silence #3695 removed from the TypeScript scanning
  * paths, still live on the load path a large model actually takes in a browser.
  *
  * The attribution rule is the one `oversizedIdStarts` already uses, and for
@@ -46,7 +46,7 @@ describe('stitchShards malformed-stop attribution', () => {
     // Shard 0 begins at the header-skip boundary, so nothing it scans is
     // speculative: a stop it reports is a stop a serial scan makes too.
     // `handoff` is -1 because the scanner could not continue, which is
-    // byte-identical to a clean EOF — the whole reason the flag has to exist.
+    // byte-identical to a clean EOF -- the whole reason the flag has to exist.
     const stitched = stitchShards([shard([0, 50], -1, 70), shard([120], -1)]);
 
     expect(stitched).not.toBeNull();
@@ -59,11 +59,11 @@ describe('stitchShards malformed-stop attribution', () => {
   it('does NOT report a stop that a discarded speculative prefix invented', () => {
     // Shard 1 started mid-file inside a quoted value and ran off the end of a
     // string that, in the file's real framing, closes perfectly well. Its stop
-    // sits at byte 60 — inside the region shard 0 owns and the stitch drops.
+    // sits at byte 60 -- inside the region shard 0 owns and the stitch drops.
     // Counting it would warn that a clean file loaded short (the #3430 shape).
     const stitched = stitchShards([shard([0, 50], 100), shard([40, 60, 100], -1, 60)]);
 
-    expect(stitched!.malformedRecordCount).toBe(0);
+    expect(stitched!.malformedRecordCount).toBeUndefined();
   });
 
   it('keeps a stop that lands exactly where the validated region begins', () => {
@@ -75,13 +75,15 @@ describe('stitchShards malformed-stop attribution', () => {
     expect(stitched!.malformedRecordCount).toBe(1);
   });
 
-  it('reports 0 for a genuine end-of-entities stop', () => {
-    // The control: a -1 handoff with no stop recorded is what every clean file
-    // produces. If this ever reported 1, every load would carry the warning
-    // and the warning would mean nothing.
+  it('reports nothing, NOT 0, when no shard recorded a stop', () => {
+    // The control, and the one that must not be a hard 0: a shard can only
+    // report a stop, never "I reached the end cleanly", so silence from every
+    // shard is silence, not a clean bill of health. A 0 here would be a claim
+    // no producer made, and would read downstream exactly like a verified
+    // clean scan (#3790 round 2).
     const stitched = stitchShards([shard([0, 50], 100), shard([100, 150], -1)]);
 
-    expect(stitched!.malformedRecordCount).toBe(0);
+    expect(stitched!.malformedRecordCount).toBeUndefined();
   });
 
   it('ignores a stop from a shard the stitch never used', () => {
@@ -90,16 +92,16 @@ describe('stitchShards malformed-stop attribution', () => {
     // started, not something the file contains.
     const stitched = stitchShards([shard([0, 50], -1), shard([70], 200, 90)]);
 
-    expect(stitched!.malformedRecordCount).toBe(0);
+    expect(stitched!.malformedRecordCount).toBeUndefined();
     expect(Array.from(stitched!.starts)).toEqual([0, 50]);
   });
 
-  it('reads 0 from a producer that reports no stop offset at all', () => {
+  it('reads undefined from a producer that reports no stop offset at all', () => {
     // The state on `main` today: the Rust sharded scan has no such offset to
-    // give (#3699 is still open), so every shard omits it. 0 here is "nothing
-    // reported", not proof of a clean scan — see the field doc.
+    // give (#3699 is still open), so every shard omits it. That has to reach
+    // the parser as "nothing reported", not as proof of a clean scan.
     const stitched = stitchShards([shard([0], 100), shard([100], -1)]);
 
-    expect(stitched!.malformedRecordCount).toBe(0);
+    expect(stitched!.malformedRecordCount).toBeUndefined();
   });
 });

@@ -78,18 +78,26 @@ export interface StitchedShards {
    */
   oversizedIdCount: number;
   /**
-   * 0 or 1 — whether the stitched scan stopped at a malformed record rather
-   * than at the end of the entities (#3790). Mirrors
-   * `EntityScanResult.malformedRecordCount`'s contract: never a density,
-   * because a scan that stops has no reliable place to resume, so every record
-   * after the stop is missing from these columns too.
+   * `1` when the stitched scan stopped at a malformed record rather than at
+   * the end of the entities (#3790), `undefined` when no shard reported a
+   * stop. Never a density: a scan that stops has no reliable place to resume,
+   * so every record after it is missing from these columns too — the same
+   * contract `EntityScanResult.malformedRecordCount` states.
+   *
+   * `undefined` rather than `0` because a shard has no way to SAY it ran
+   * clean. `ShardColumns.malformedStart` can only report a stop; its absence
+   * is a producer that reported nothing, which is not the claim `0` makes.
+   * Flattening it here would make "nothing reported" and "scanned clean"
+   * identical for every consumer downstream, which is the shape of the bug
+   * this issue is about. A real `0` becomes possible when #3699 gives a shard
+   * a way to say it reached the end without stopping.
    *
    * Attributed, not OR-ed across shards, for the reason spelled out on
    * `ShardColumns.malformedStart`: a shard that starts inside a quoted value
    * reports a stop the file does not contain, and OR-ing would warn that a
    * clean file loaded short.
    */
-  malformedRecordCount: number;
+  malformedRecordCount: number | undefined;
 }
 
 /**
@@ -193,6 +201,6 @@ export function stitchShards(shards: ShardColumns[]): StitchedShards | null {
     lengths: outLengths,
     classes: outClasses,
     oversizedIdCount,
-    malformedRecordCount: malformedStopped ? 1 : 0,
+    malformedRecordCount: malformedStopped ? 1 : undefined,
   };
 }

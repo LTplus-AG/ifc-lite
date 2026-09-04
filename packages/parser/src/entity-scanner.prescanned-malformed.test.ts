@@ -7,7 +7,7 @@
  * takes, and it hands the parser worker a finished entity index instead of
  * letting it scan. #3695 made a malformed-record stop reportable on the paths
  * that scan (`worker`, `tokenizer`); on the `pre-scanned` path there is
- * nothing left to observe — the record that stopped the scan, and every record
+ * nothing left to observe -- the record that stopped the scan, and every record
  * after it, is simply absent from the columns. So the flag has to travel WITH
  * the columns, exactly like `oversizedIdCount` (#3395) does, or the viewer
  * shows a model missing its tail and says the load went fine.
@@ -91,11 +91,19 @@ describe('scanIfcEntities: a pre-scanned index that stopped at a malformed recor
     expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
   });
 
-  it('reads 0 for a producer that does not report one, without inventing a diagnostic', async () => {
-    // An older host sends the columns and no flag at all. `0` is what the
-    // `number` contract can return, and it is not evidence of a clean scan --
-    // but a warning on every such load would cry wolf on every clean file, so
-    // the honesty lives in the field's doc and in this test naming the case.
+  it('does not turn an UNREPORTED stop into a claim, in either direction', async () => {
+    // A producer that sends no flag has said nothing, and that is the state on
+    // main today (#3699 unlanded). `EntityScanResult.malformedRecordCount` is
+    // a `number` by a contract that predates this field, so the terminal value
+    // reads 0 -- but this must not be read as "the pre-pass verified a clean
+    // scan", and it is NOT reached by coercing an absent flag anywhere earlier
+    // in the chain: `stitchShards` and `deliverEntityIndex` carry undefined all
+    // the way to `PreScannedEntityIndex.malformedRecordCount`, which is
+    // optional for exactly this reason (pinned in shard-stitch.malformed.test.ts
+    // and entity-index-malformed-count.test.ts).
+    //
+    // The silence is deliberate too: no producer can say "I ran clean" yet, so
+    // a diagnostic here would fire on every load of every file and mean nothing.
     const diagnostics: string[] = [];
     const result = await scanIfcEntities(BUFFER, {
       disableWorkerScan: true,

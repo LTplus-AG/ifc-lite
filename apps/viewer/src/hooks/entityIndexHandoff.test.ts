@@ -4,7 +4,7 @@
 
 /**
  * Issue #3790: on the load path a large model takes in the browser, the parser
- * never scans the file — the geometry pre-pass hands it the entity index and
+ * never scans the file -- the geometry pre-pass hands it the entity index and
  * the model is built from those columns. When that pre-pass stopped at a
  * record whose quoted string or block comment never closed, every record after
  * it is absent from the columns, and the flag saying so is the only evidence
@@ -51,7 +51,7 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
   });
 
   it('forwards the #3395 refusal count on the same call, not instead of it', () => {
-    // Both numbers ride the same hop and are independently droppable — a fix
+    // Both numbers ride the same hop and are independently droppable -- a fix
     // that threads one and forgets the other is the failure this pins.
     const { sink, calls } = recordingSink();
 

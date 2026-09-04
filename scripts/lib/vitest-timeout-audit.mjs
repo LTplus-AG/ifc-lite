@@ -71,13 +71,13 @@
  *     heuristic: a `/` starts a regex when the last significant token
  *     before it is an operator, punctuator, or one of the keywords in
  *     `REGEX_PRECEDING_RE` (`(`, `,`, `=`, `:`, `[`, `!`, `&`, `|`, `?`,
- *     `{`, `;`, `return`, `typeof`, … or start-of-file), and is division
- *     otherwise — including right after a string or template literal,
+ *     `{`, `;`, `>`, `return`, `typeof`, … or start-of-file), and is
+ *     division otherwise — including right after a string or template literal,
  *     which `stripNoise` tracks separately because a blanked literal is
  *     indistinguishable from whitespace. This covers every shape actually
  *     seen in this codebase. NOT handled, and each of these is a REAL
  *     defect verified by running this module, not a theoretical one:
- *       * a regex after an operator absent from that list;
+ *       * a regex after an operator absent from that list (`<` is out DELIBERATELY -- see the JSX test);
  *       * a regex spanning a line break (bailed on, and the `/` is then read
  *         as ordinary);
  *       * a regex immediately after `}` (a block close) or after `)` — both
@@ -199,7 +199,7 @@ const CALL_KEYWORD_RE = /(?<![.\w$])(describe|it|test)(?![\w$])/g;
  * modifier argument list, and must NOT be skipped as one.
  */
 const PARAMETERIZED_MODIFIERS = new Set(['each', 'skipIf', 'runIf', 'extend']);
-const REGEX_PRECEDING_RE = /[([{,;:=!&|?~^%*+-]$|^$|(?:^|[^\w$])(return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)$/;
+const REGEX_PRECEDING_RE = /[([{,;:=!&|?~^%*+>-]$|^$|(?:^|[^\w$])(return|typeof|instanceof|in|of|new|delete|void|throw|case|do|else|yield|await)$/;
 
 /**
  * Replace every comment, string, and template literal in `source` with

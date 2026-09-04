@@ -540,6 +540,12 @@ Cache keys are derived from file content:
 {SHA256}-{filter}-parquet-metadata-v4 # Metadata header
 {SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v1         # 2D symbol stream
+
+# POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
+# payload is quantized and deduplicated, so a hit on one route must never
+# satisfy the other.
+{SHA256}-{filter}-parquet-optimized-v1          # Optimized geometry
+{SHA256}-{filter}-parquet-optimized-metadata-v1 # Optimized metadata header
 ```
 
 Each suffix is bumped whenever the payload it names changes shape: a column

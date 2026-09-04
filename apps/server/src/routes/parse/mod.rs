@@ -9,11 +9,13 @@ mod cached_replay;
 mod fetch;
 mod json;
 mod parquet;
+mod parquet_optimized;
 mod parquet_stream;
 
 pub use fetch::{check_cache, get_cached_geometry, get_data_model, get_symbolic};
 pub use json::{parse_full, parse_metadata, parse_stream};
-pub use parquet::{parse_parquet, parse_parquet_optimized};
+pub use parquet::parse_parquet;
+pub use parquet_optimized::parse_parquet_optimized;
 pub use parquet_stream::parse_parquet_stream;
 
 use crate::error::ApiError;
@@ -257,6 +259,9 @@ mod ifczip_tests;
 
 #[cfg(test)]
 mod parquet_tests;
+
+#[cfg(test)]
+mod parquet_optimized_tests;
 
 #[cfg(test)]
 mod json_tests;

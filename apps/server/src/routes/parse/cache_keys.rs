@@ -100,6 +100,36 @@ pub(crate) fn parquet_metadata_cache_key(
     )
 }
 
+/// Build the optimized-Parquet body cache key for a given file cache key.
+///
+/// `POST /api/v1/parse/parquet/optimized` was added without a key of its own,
+/// so its response had nowhere to be stored and every request re-parsed the
+/// file while the flat route beside it replayed from disk (issue #3889). This
+/// is that key.
+///
+/// Deliberately a DIFFERENT namespace from `-parquet-v5`: the two routes emit
+/// different payloads (quantized vertices, deduplicated shapes, byte colours),
+/// so a hit on one must never satisfy the other.
+///
+/// `v1` is the ara3d BOS payload as it stands after #3595 (rotation-aware
+/// instancing). Bump on EVERY change to the optimized payload's columns or to
+/// what one of them means, for the same reason the other suffixes bump: a warm
+/// cache otherwise replays a pre-change blob that the decoder reads cleanly,
+/// and the change is silently absent.
+pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-optimized-v1")
+}
+
+/// Build the optimized-Parquet metadata cache key for a given file cache key.
+///
+/// Holds the serialized `X-IFC-Metadata` header, `optimization_stats` included,
+/// so a replay carries the same stats the live parse reported. Versioned in
+/// lockstep with [`parquet_optimized_cache_key`], and distinct from the flat
+/// route's `-parquet-metadata-v4` for the same reason the bodies are.
+pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-optimized-metadata-v1")
+}
+
 /// Build the data-model cache key for a given file cache key.
 ///
 /// One definition for the writers (`parse_parquet`, `parse_parquet_stream`) and
@@ -165,6 +195,26 @@ pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symb
             tracing::error!(error = %e, "Failed to serialize symbolic data for caching");
         }
     }
+}
+
+/// Whether symbolic data is cached for `cache_key`.
+///
+/// The optimized-Parquet route's parse is what writes the symbolic sidecar, so
+/// a replay that skips the parse must first check the sidecar is there. Without
+/// this, a body entry that outlived its symbolic entry replays forever and
+/// `GET /api/v1/parse/symbolic/{cache_key}` answers `202` to a key nobody
+/// writes -- the same shape as the geometry/data-model trap in #3869.
+///
+/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicData::default()`
+/// for an absent entry and for a model with no 2D symbols alike, so absence
+/// there is indistinguishable from success.
+///
+/// A cache read error answers `false`: re-parsing is the safe direction.
+pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> bool {
+    matches!(
+        cache.get_bytes(&symbolic_cache_key(cache_key)).await,
+        Ok(Some(_))
+    )
 }
 
 /// Load cached symbolic data for `cache_key`, defaulting to empty when the

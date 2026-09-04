@@ -1,5 +1,5 @@
 ---
-"ifc-lite": patch
+"@ifc-lite/viewer": patch
 ---
 
 fix(viewer): assembly parts streaming in after a hide or isolate now respect it (#3865)

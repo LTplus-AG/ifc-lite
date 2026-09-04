@@ -4,7 +4,10 @@
 
 //! SSE Parquet-batch streaming parse endpoint.
 
-use super::cache_keys::{cache_symbolic_data, data_model_cache_key, request_cache_key};
+use super::cache_keys::{
+    cache_symbolic_data, data_model_cache_key, parquet_geometry_key, parquet_metadata_key,
+    request_cache_key,
+};
 use super::parquet::ParquetMetadataHeader;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{extract_file, ParseQuery};
@@ -267,7 +270,7 @@ pub async fn parse_parquet_stream(
 
                     if let Ok(Ok(combined_parquet)) = finish_result {
                         // Cache geometry (same format as non-streaming)
-                        let parquet_cache_key = format!("{}-parquet-v6", key);
+                        let parquet_cache_key = parquet_geometry_key(&key);
                         if let Err(e) = cache.set_bytes(&parquet_cache_key, &combined_parquet).await {
                             tracing::error!(error = %e, "Failed to cache geometry from stream");
                         } else {
@@ -289,7 +292,7 @@ pub async fn parse_parquet_stream(
                             data_model_stats: None, // Data model cached separately via data model endpoint
                         };
                         if let Ok(metadata_json) = serde_json::to_vec(&metadata_header) {
-                            let metadata_cache_key = format!("{}-parquet-metadata-v4", key);
+                            let metadata_cache_key = parquet_metadata_key(&key);
                             if let Err(e) = cache.set_bytes(&metadata_cache_key, &metadata_json).await {
                                 tracing::error!(error = %e, "Failed to cache metadata from stream");
                             } else {

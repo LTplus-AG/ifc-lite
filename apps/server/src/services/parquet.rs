@@ -46,17 +46,12 @@ pub enum ParquetError {
 /// This format is compatible with ara3d BOS and provides excellent compression
 /// for geometry data through columnar storage and dictionary encoding.
 pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
-    serialize_with_plan(meshes, &ShapePlan::identity(meshes))
+    serialize_with_plan(meshes, &ShapePlan::Identity)
 }
 
-/// Serialize mesh data to the `-parquet-v6` flat layout: occurrences of one
-/// shape share a single block of vertices, each mesh row carrying the rotation
-/// that places it (`world = origin + R * p`). Issue #3888.
-///
-/// Same three tables, same framing, same columns as [`serialize_to_parquet`]
-/// plus the `rot0..rot8` tail — only the mesh rows' `vertex_start` /
-/// `index_start` stop being one-to-one with the blocks they name. A model with
-/// nothing to share produces the v5 layout with identity rotations.
+/// Serialize mesh data with rotation-aware shape sharing (issue #3888). Same
+/// tables and framing as [`serialize_to_parquet`]; see `mesh_schema()` in
+/// `services::parquet_schema` for what the layout means on the wire.
 ///
 /// Separate from [`serialize_to_parquet`] rather than replacing it: the
 /// streaming route serializes ONE BATCH at a time, where sharing could only
@@ -185,7 +180,7 @@ impl StreamingParquetCacheWriter {
         }
         let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(
             meshes,
-            &ShapePlan::identity(meshes),
+            &ShapePlan::Identity,
             self.vertex_offset,
             self.index_offset,
         )?;
@@ -273,6 +268,14 @@ pub(super) fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, Parqu
 /// Writer properties shared by the one-shot and incremental writers: LZ4, and
 /// dictionary encoding disabled for numeric columns (high-entropy vertex data
 /// gains nothing from a dictionary while paying significant overhead).
+///
+/// `rot0..rot8` are the exception, and the reason is the justification above
+/// read backwards. They are the LOWEST-entropy columns in the schema: identity
+/// on every row of an identity-plan payload (every streamed batch, and every
+/// v6 model with nothing to share), and one of a handful of distinct values on
+/// a shared one. Dictionary plus RLE is exactly what that shape is for, where
+/// the numeric opt-out would write nine plain f32 per row -- 3.6 MB per 100k
+/// rows handed to the compressor for a column with one value in it.
 fn writer_props(schema: &Schema) -> WriterProperties {
     let mut props_builder = WriterProperties::builder()
         .set_compression(Compression::LZ4_RAW)
@@ -287,7 +290,7 @@ fn writer_props(schema: &Schema) -> WriterProperties {
                 | DataType::UInt64
                 | DataType::Int32
                 | DataType::Int64
-        );
+        ) && !field.name().starts_with("rot");
 
         if is_numeric {
             props_builder = props_builder

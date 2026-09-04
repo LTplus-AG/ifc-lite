@@ -17,7 +17,9 @@
 //! those fall back to counting emitted MESHES, which is the wrong unit but
 //! still monotonic and still ends at its own stated total.
 
-use super::cache_keys::{has_current_data_model, load_cached_symbolic};
+use super::cache_keys::{
+    has_current_data_model, load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
+};
 use super::parquet::ParquetMetadataHeader;
 use super::parquet_stream::ParquetStreamEvent;
 use super::stream_progress::load_stream_progress;
@@ -50,8 +52,8 @@ pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
 ) -> Result<Option<axum::response::Response>, ApiError> {
-    let parquet_cache_key = format!("{}-parquet-v6", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
+    let parquet_cache_key = parquet_geometry_key(cache_key);
+    let metadata_cache_key = parquet_metadata_key(cache_key);
 
     let (Some(cached_parquet), Some(cached_metadata_json)) = (
         state.cache.get_bytes(&parquet_cache_key).await?,

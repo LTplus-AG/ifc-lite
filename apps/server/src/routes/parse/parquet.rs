@@ -5,7 +5,8 @@
 //! Binary Parquet parse endpoints.
 
 use super::cache_keys::{
-    cache_symbolic_data, data_model_cache_key, has_current_data_model, request_cache_key,
+    cache_symbolic_data, data_model_cache_key, has_current_data_model, parquet_geometry_key,
+    parquet_metadata_key, request_cache_key,
 };
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
@@ -77,8 +78,8 @@ pub async fn parse_parquet(
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     // Check cache first (before any processing)
-    let parquet_cache_key = format!("{}-parquet-v6", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
+    let parquet_cache_key = parquet_geometry_key(&cache_key);
+    let metadata_cache_key = parquet_metadata_key(&cache_key);
 
     // The cached-geometry short-circuit skips the parse, and the parse is what
     // writes the data model. A geometry entry that outlived a data-model
@@ -230,8 +231,8 @@ pub async fn parse_parquet(
     // Cache the results for future requests. `Bytes` makes the cache task's
     // copy an O(1) refcount bump instead of duplicating the whole payload.
     let combined_parquet = bytes::Bytes::from(combined_parquet);
-    let parquet_cache_key = format!("{}-parquet-v6", cache_key_clone);
-    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key_clone);
+    let parquet_cache_key = parquet_geometry_key(&cache_key_clone);
+    let metadata_cache_key = parquet_metadata_key(&cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();
     let metadata_json_clone = metadata_json.clone();
     let cache = state.cache.clone();

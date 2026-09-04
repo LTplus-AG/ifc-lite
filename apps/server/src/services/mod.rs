@@ -9,8 +9,11 @@ pub mod cache;
 pub mod data_model;
 pub mod parquet;
 pub mod parquet_data_model;
+mod parquet_instancing;
 mod parquet_mesh_tables;
 mod parquet_schema;
+#[cfg(test)]
+mod parquet_test_fixtures;
 pub mod parquet_optimized;
 pub mod parquet_replay_batches;
 pub mod processor;

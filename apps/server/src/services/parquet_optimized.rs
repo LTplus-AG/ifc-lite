@@ -30,10 +30,10 @@ use std::sync::Arc;
 use super::parquet::check_u32_len;
 use super::ParquetError;
 
-#[path = "parquet_optimized_instancing.rs"]
-mod instancing;
-use instancing::optimized_wire_version;
-pub(crate) use instancing::{collate_rotation_aware_placements, rotation_zup_to_yup, IDENTITY_ROTATION}; // re-exported: parquet_mesh_tables.rs reuses this collation verbatim (#3888)
+use crate::services::parquet_instancing::{
+    collate_rotation_aware_placements, optimized_wire_version, rotation_zup_to_yup,
+    IDENTITY_ROTATION,
+};
 
 /// Vertex multiplier for integer quantization. 10,000 = 0.1mm precision.
 pub const VERTEX_MULTIPLIER: f32 = 10_000.0;

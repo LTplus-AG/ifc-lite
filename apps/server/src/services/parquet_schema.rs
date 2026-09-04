@@ -114,12 +114,9 @@ pub(super) struct MeshRow<'a> {
     pub rotation: [f32; 9],
 }
 
-/// Where one mesh row's geometry lives and how that geometry is placed.
-///
-/// Separate from the mesh itself because on `-parquet-v6` the two come apart:
-/// the identity columns and colour are the OCCURRENCE's, while the vertex and
-/// index ranges belong to a shape the occurrence may only borrow, and the
-/// origin/rotation are what map that borrowed shape onto this occurrence.
+/// Where one mesh row's geometry lives and how it is placed. Separate from the
+/// mesh because on `-parquet-v6` the two come apart: the ranges belong to a
+/// shape the occurrence may only borrow.
 pub(super) struct RowPlacement {
     pub v_start: u32,
     pub i_start: u32,

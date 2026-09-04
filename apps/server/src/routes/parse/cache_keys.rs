@@ -61,50 +61,53 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
     format!("{cache_key}-json-v2")
 }
 
-/// Build the parquet geometry cache key for a given file hash and opening filter.
+/// The flat Parquet geometry entry for a request cache key.
 ///
-/// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
-/// which derives the same suffix from `OpeningFilterMode::cache_key_suffix()`.
+/// THE definition of that suffix. It used to be a `format!` literal repeated in
+/// `parse_parquet` (twice), `parse_parquet_stream`, `try_cached_replay` and
+/// here, kept equal by a comment saying they bump together -- four writers and
+/// readers of one cache slot held together by prose, where a missed bump gives
+/// a reader looking up a key nobody writes, or worse a writer storing under a
+/// version an old reader still serves.
 ///
-/// Version bumped `v2` → `v3` with issue #900 (symbolic sidecar), and `v3` → `v4`
-/// with the alignment audit: the server default path switched to per-item
-/// sub-meshes, streamed geometry now comes from the canonical pipeline
-/// (material chain + indexed colours + aggregate void propagation), and
-/// native builds compute normals — entries cached by the old pipelines
-/// would serve visibly different meshes.
+/// `v6`, not `v5`: #3888 gave the flat mesh table rotation-aware SHAPE SHARING
+/// -- several rows point at one block of vertices, placed by `origin + R * p`,
+/// with `rot0..rot8` added to carry the R (see `mesh_schema()` in
+/// `services/parquet_schema.rs` for the layout). A v5 blob decodes cleanly
+/// under a v6 decoder, which is exactly why the key has to move: the two
+/// layouts are indistinguishable on the wire, so nothing else can stop a
+/// pre-#3888 client being handed a v6 blob and drawing every occurrence of a
+/// shared shape at the template's coordinates. `v5`, not `v4`, was #3215
+/// adding the two source-id columns, where absence read exactly like success.
+///
+/// ONE key covers the non-streaming and the streaming route. Only the
+/// non-streaming one SHARES shapes -- the streaming writer serializes one
+/// batch at a time, where sharing would be batch-local -- but it emits the
+/// same v6 schema with identity rotations, so either route's entry is a valid
+/// v6 payload for the other to replay.
+pub(crate) fn parquet_geometry_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-v6")
+}
+
+/// The flat Parquet metadata entry (the `X-IFC-Metadata` header) for a request
+/// cache key. THE definition of that suffix, for the same reason as above.
+///
+/// NOT versioned in lockstep with [`parquet_geometry_key`]: it holds the
+/// metadata header, whose shape #3888 did not touch. A hit needs both entries,
+/// so a v5-era header left beside a missing v6 body simply misses and both get
+/// rewritten.
+pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-metadata-v4")
+}
+
+/// Build the parquet geometry cache key from a file hash and opening filter,
+/// for the endpoints that receive a bare hash rather than the bytes.
 pub(crate) fn parquet_cache_key(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
 ) -> String {
-    format!(
-        // v6, not v5: #3888 gave the flat mesh table rotation-aware SHAPE
-        // SHARING -- several rows point at one block of vertices and are placed
-        // by `origin + R * p`, with `rot0..rot8` added to carry the R. A v5 blob
-        // decodes cleanly under the v6 decoder (no rotation columns means
-        // identity, and its rows share nothing), which is exactly why the key
-        // has to move: without a bump the two layouts are indistinguishable on
-        // the wire, and the CLIENTS differ, not the payloads. A pre-#3888
-        // client handed a v6 blob draws every occurrence of a shared shape at
-        // the template's coordinates. The bump costs one re-parse per file.
-        //
-        // v5, not v4, was #3215: it added the two source-id columns to the mesh
-        // schema. Without a bump a model parsed before that deploy replays its
-        // OLD blob verbatim, the columns are absent, the decoder correctly omits
-        // them, and drill-to-source stays dead over the binary transport with
-        // nothing saying so -- absence reading exactly like success.
-        //
-        // ONE key covers both the non-streaming and the streaming route: they
-        // read and write the same entry (`parse_parquet`, `parse_parquet_stream`
-        // and `try_cached_replay` all build this same string), so they bump
-        // together. Only the non-streaming route SHARES shapes -- the streaming
-        // writer serializes one batch at a time, where sharing would be
-        // batch-local -- but it emits the same v6 schema with identity
-        // rotations, so either route's entry is a valid v6 payload for the
-        // other to replay.
-        "{}-parquet-v6",
-        cache_key_from_parts(hash, opening_filter, quality)
-    )
+    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality))
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
@@ -113,10 +116,7 @@ pub(crate) fn parquet_metadata_cache_key(
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
 ) -> String {
-    format!(
-        "{}-parquet-metadata-v4",
-        cache_key_from_parts(hash, opening_filter, quality)
-    )
+    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality))
 }
 
 /// Build the optimized-Parquet body cache key for a given file cache key.

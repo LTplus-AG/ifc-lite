@@ -2,14 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Rotation-aware instancing for the `/optimized` Parquet route (issue #3575).
+//! Rotation-aware instancing, shared by both Parquet transports (issues #3575,
+//! #3888).
 //!
-//! Split out of `parquet_optimized.rs` to keep that module under the house
-//! module-size budget: content-hash dedup and wire assembly stay there,
-//! this file is the ONE place that groups occurrences by representation
-//! identity, verifies each occurrence's derived rigid placement against its
-//! own baked geometry, and converts a verified placement into the Y-up
-//! origin + rotation the instance table emits.
+//! The ONE place that groups occurrences by representation identity, verifies
+//! each occurrence's derived rigid placement against its own baked geometry,
+//! and converts a verified placement into the Y-up origin + rotation a table
+//! emits. Split out of `parquet_optimized.rs` when it was `/optimized`-only;
+//! a sibling of both writers since the flat route started sharing shapes, so
+//! the module neither transport owns is not named after either of them.
 
 use crate::types::MeshData;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef};
@@ -155,7 +156,7 @@ pub(crate) fn rotation_zup_to_yup(rotation_zup: &[f64; 9]) -> [f32; 9] {
 /// The argument is the rotation data actually emitted, NOT "the model has
 /// instance metadata" or "the feature is on": translation-only reuse runs the
 /// whole rotation-aware dedup and still produces identity everywhere.
-pub(super) fn optimized_wire_version(has_rotation: bool) -> u8 {
+pub(crate) fn optimized_wire_version(has_rotation: bool) -> u8 {
     if has_rotation {
         3
     } else {

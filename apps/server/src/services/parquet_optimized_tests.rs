@@ -10,6 +10,9 @@
 
     use super::*;
     use crate::services::parquet_schema::ABSENT_SOURCE_ID;
+    use crate::services::parquet_test_fixtures::{
+        bake_triangle, expected_yup, rot_z_mat4, rotated_repeats, CANON_TRIANGLE,
+    };
 
     #[test]
     fn test_optimized_parquet_serialization() {
@@ -363,37 +366,6 @@
         assert!(check_optimized_section_lengths(4, 4, 4, 4, 4).is_ok());
     }
 
-    /// Row-major mat4 (Z-up, `InstanceMeta::transform` convention): rotate
-    /// `deg` about Z, then translate by `t`.
-    fn rot_z_mat4(deg: f64, t: [f64; 3]) -> [f64; 16] {
-        let rad = deg.to_radians();
-        let (s, c) = (rad.sin(), rad.cos());
-        #[rustfmt::skip]
-        let m = [
-            c,  -s, 0.0, t[0],
-            s,   c, 0.0, t[1],
-            0.0, 0.0, 1.0, t[2],
-            0.0, 0.0, 0.0, 1.0,
-        ];
-        m
-    }
-
-    /// Bake a canonical (source-coords) triangle through a row-major mat4.
-    fn bake_triangle(canonical: &[[f64; 3]; 3], m: &[f64; 16]) -> Vec<f32> {
-        let r = [[m[0], m[1], m[2]], [m[4], m[5], m[6]], [m[8], m[9], m[10]]];
-        let t = [m[3], m[7], m[11]];
-        let mut out = Vec::with_capacity(9);
-        for p in canonical {
-            for (row, t_i) in r.iter().zip(t.iter()) {
-                out.push((row[0] * p[0] + row[1] * p[1] + row[2] * p[2] + t_i) as f32);
-            }
-        }
-        out
-    }
-
-    const CANON_TRIANGLE: [[f64; 3]; 3] =
-        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]];
-
     /// RED/GREEN for issue #3575: three occurrences of one `IfcMappedItem`
     /// shape at DIFFERENT rotations (0°, 90°, 180° about Z) — exactly the
     /// "furniture, pipe runs, repeated structural members" case the issue
@@ -408,50 +380,15 @@
     #[test]
     fn rotated_mapped_item_repeats_dedup_and_reconstruct_correctly() {
         use arrow::array::{Float32Array, Int32Array};
-        use ifc_lite_geometry::InstanceMeta;
         use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
 
-        let placements = [
-            rot_z_mat4(0.0, [0.0, 0.0, 0.0]),
-            rot_z_mat4(90.0, [5.0, 0.0, 0.0]),
-            rot_z_mat4(180.0, [0.0, 5.0, 0.0]),
-        ];
-        let meshes: Vec<MeshData> = placements
-            .iter()
-            .enumerate()
-            .map(|(i, m)| {
-                MeshData::new(
-                    100 + i as u32,
-                    "IfcFurniture".to_string(),
-                    bake_triangle(&CANON_TRIANGLE, m),
-                    vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
-                    vec![0, 1, 2],
-                    [0.6, 0.4, 0.2, 1.0],
-                )
-                .with_instance(Some(InstanceMeta {
-                    transform: *m,
-                    local_transform: None,
-                    canonical_transform: None,
-                    rep_identity: 777,
-                    instanceable: true,
-                }))
-            })
-            .collect();
-        // Expected Y-up world position of each occurrence's vertices: the
-        // baked positions we just fed in ARE the Z-up world (origin is
-        // [0,0,0] here), so convert with the same swap the server applies.
-        let expected_yup: Vec<Vec<[f32; 3]>> = meshes
-            .iter()
-            .map(|m| {
-                (0..3)
-                    .map(|v| {
-                        let (x, y, z) =
-                            zup_to_yup(m.positions[v * 3], m.positions[v * 3 + 1], m.positions[v * 3 + 2]);
-                        [x, y, z]
-                    })
-                    .collect()
-            })
-            .collect();
+        // The SAME fixture the flat `-parquet-v6` test uses
+        // (`parquet_mesh_tables_tests.rs`): "the flat route shares exactly what
+        // this route shares" is only a claim while both are handed the same
+        // meshes, and two drifting copies of the builder would leave both tests
+        // green with the claim untested.
+        let meshes = rotated_repeats();
+        let expected_yup = expected_yup(&meshes);
 
         let (data, stats) = serialize_to_parquet_optimized_with_stats(&meshes, false).unwrap();
         assert_eq!(stats.input_meshes, 3);

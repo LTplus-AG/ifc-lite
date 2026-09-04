@@ -14,7 +14,7 @@
 
 use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
 use crate::services::parquet::ParquetError;
-use crate::services::parquet_optimized::{
+use crate::services::parquet_instancing::{
     collate_rotation_aware_placements, rotation_zup_to_yup, IDENTITY_ROTATION,
 };
 use crate::services::parquet_schema::{
@@ -29,9 +29,9 @@ use std::sync::Arc;
 
 /// One mesh row's placement against the emitted shape blocks.
 pub(super) struct PlannedRow {
-    /// Index into [`ShapePlan::shapes`], NOT into the mesh slice: the block of
-    /// vertex/index rows this mesh row points at. Several rows share one slot
-    /// on a v6 payload.
+    /// Index into [`ShapePlan::Shared::shapes`], NOT into the mesh slice: the
+    /// block of vertex/index rows this mesh row points at. Several rows share
+    /// one slot.
     shape_slot: usize,
     /// Y-up metres. `world = origin + R * p`.
     origin_yup: [f64; 3],
@@ -40,34 +40,29 @@ pub(super) struct PlannedRow {
 }
 
 /// Which shapes get their vertices written, and how each mesh row reaches one.
-pub(super) struct ShapePlan {
-    /// Mesh indices whose vertex/index data is emitted, in emission order.
-    shapes: Vec<usize>,
-    /// One entry per input mesh, parallel to the mesh slice.
-    rows: Vec<PlannedRow>,
+///
+/// `Identity` carries NO data on purpose. Its plan is a function of the mesh
+/// index alone (row `i` owns block `i`, placed by its own origin with no
+/// rotation), so materializing it would allocate ~80 bytes per mesh — on every
+/// streamed batch, for a writer that never shares anything — to store `i` and
+/// nine repeated constants.
+pub(super) enum ShapePlan {
+    /// The `-parquet-v5` layout: every mesh writes its own geometry. What the
+    /// streaming cache writer and the per-batch stream blobs use — sharing
+    /// there would be batch-local (issue #3888 scopes it to the non-streaming
+    /// route).
+    Identity,
+    /// The `-parquet-v6` layout.
+    Shared {
+        /// Mesh indices whose vertex/index data is emitted, in emission order.
+        shapes: Vec<usize>,
+        /// One entry per input mesh, parallel to the mesh slice.
+        rows: Vec<PlannedRow>,
+    },
 }
 
 impl ShapePlan {
-    /// The `-parquet-v5` plan: every mesh writes its own geometry, placed by
-    /// its own origin with no rotation. Also what the streaming cache writer
-    /// and the per-batch stream blobs use — sharing there would be batch-local
-    /// (issue #3888 scopes it to the non-streaming route).
-    pub(super) fn identity(meshes: &[MeshData]) -> Self {
-        Self {
-            shapes: (0..meshes.len()).collect(),
-            rows: meshes
-                .iter()
-                .enumerate()
-                .map(|(i, mesh)| PlannedRow {
-                    shape_slot: i,
-                    origin_yup: zup_to_yup_f64(mesh.origin),
-                    rotation: IDENTITY_ROTATION,
-                })
-                .collect(),
-        }
-    }
-
-    /// The `-parquet-v6` plan: occurrences of one `IfcMappedItem` /
+    /// Plan the `-parquet-v6` layout: occurrences of one `IfcMappedItem` /
     /// `IfcRepresentationMap` shape at different placements collapse onto the
     /// template's single block of vertices, each row carrying the verified
     /// origin + rotation that puts it back where it belongs.
@@ -77,11 +72,15 @@ impl ShapePlan {
     /// per group — so the flat route can never share a shape the `/optimized`
     /// route would have refused to share.
     ///
-    /// On a model with no such group this returns exactly [`Self::identity`]'s
-    /// layout: `placements` is empty, so every mesh takes its own slot in
-    /// ascending order with an identity rotation.
+    /// Returns [`ShapePlan::Identity`] when that collation found nothing to
+    /// share, so a model with no repeats emits the v5 layout through the same
+    /// path it always did rather than through a Shared plan that happens to be
+    /// one-to-one.
     pub(super) fn shared_shapes(meshes: &[MeshData]) -> Self {
         let placements = collate_rotation_aware_placements(meshes);
+        if placements.is_empty() {
+            return Self::Identity;
+        }
         let mut shapes: Vec<usize> = Vec::with_capacity(meshes.len());
         let mut slot_of: FxHashMap<usize, usize> = FxHashMap::default();
         let mut rows: Vec<PlannedRow> = Vec::with_capacity(meshes.len());
@@ -109,14 +108,40 @@ impl ShapePlan {
                 rotation,
             });
         }
-        Self { shapes, rows }
+        Self::Shared { shapes, rows }
     }
 
-    /// How many mesh geometries are emitted. Equal to the mesh count means
-    /// nothing was shared.
+    /// The meshes whose geometry is emitted, in emission order. One entry per
+    /// input mesh under `Identity`; one per distinct shape under `Shared`.
+    fn shape_meshes<'a>(&self, meshes: &'a [MeshData]) -> Vec<&'a MeshData> {
+        match self {
+            Self::Identity => meshes.iter().collect(),
+            Self::Shared { shapes, .. } => shapes.iter().map(|&i| &meshes[i]).collect(),
+        }
+    }
+
+    /// Mesh row `i`'s slot in [`Self::shape_meshes`] and the placement that
+    /// maps that slot's geometry onto this occurrence.
+    ///
+    /// Computed rather than stored under `Identity`: the answer there is `i`,
+    /// the mesh's own swapped origin, and the identity rotation.
+    fn row(&self, meshes: &[MeshData], i: usize) -> (usize, [f64; 3], [f32; 9]) {
+        match self {
+            Self::Identity => (i, zup_to_yup_f64(meshes[i].origin), IDENTITY_ROTATION),
+            Self::Shared { rows, .. } => {
+                let row = &rows[i];
+                (row.shape_slot, row.origin_yup, row.rotation)
+            }
+        }
+    }
+
+    /// How many mesh geometries this plan emits.
     #[cfg(test)]
-    pub(super) fn shape_count(&self) -> usize {
-        self.shapes.len()
+    pub(super) fn shape_count(&self, meshes: &[MeshData]) -> usize {
+        match self {
+            Self::Identity => meshes.len(),
+            Self::Shared { shapes, .. } => shapes.len(),
+        }
     }
 }
 
@@ -132,7 +157,7 @@ pub(super) fn build_mesh_tables(
     base_vertex_offset: u32,
     base_index_offset: u32,
 ) -> Result<(RecordBatch, RecordBatch, RecordBatch), ParquetError> {
-    let shape_meshes: Vec<&MeshData> = plan.shapes.iter().map(|&i| &meshes[i]).collect();
+    let shape_meshes = plan.shape_meshes(meshes);
     let total_vertices: usize = shape_meshes.iter().map(|m| m.positions.len() / 3).sum();
     let total_triangles: usize = shape_meshes.iter().map(|m| m.indices.len() / 3).sum();
     let mesh_count = meshes.len();
@@ -150,20 +175,18 @@ pub(super) fn build_mesh_tables(
     }
 
     // Phase 2: extract mesh metadata in parallel.
-    let metadata: Vec<MeshRow<'_>> = plan
-        .rows
-        .par_iter()
-        .enumerate()
-        .map(|(i, row)| {
-            let shape = shape_meshes[row.shape_slot];
+    let metadata: Vec<MeshRow<'_>> = (0..mesh_count)
+        .into_par_iter()
+        .map(|i| {
+            let (slot, origin, rotation) = plan.row(meshes, i);
             MeshRow::new(
                 &meshes[i],
-                shape,
+                shape_meshes[slot],
                 RowPlacement {
-                    v_start: shape_vertex_start[row.shape_slot],
-                    i_start: shape_index_start[row.shape_slot],
-                    origin: row.origin_yup,
-                    rotation: row.rotation,
+                    v_start: shape_vertex_start[slot],
+                    i_start: shape_index_start[slot],
+                    origin,
+                    rotation,
                 },
             )
         })
@@ -185,7 +208,7 @@ pub(super) fn build_mesh_tables(
     let mut geometry_class = Vec::with_capacity(mesh_count);
     let mut geometry_item_ids: Vec<u32> = Vec::with_capacity(mesh_count);
     let mut material_ids: Vec<u32> = Vec::with_capacity(mesh_count);
-    let mut rotation: [Vec<f32>; 9] = Default::default();
+    let mut rotation: [Vec<f32>; 9] = std::array::from_fn(|_| Vec::with_capacity(mesh_count));
 
     for m in metadata {
         express_ids.push(m.express_id);
@@ -308,7 +331,6 @@ pub(super) fn build_mesh_tables(
 /// what keeps positions out of the normal columns.
 type VertexColumns = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
 
-/// One shape's six Y-up vertex columns.
 fn shape_vertices(mesh: &MeshData) -> VertexColumns {
     let vert_count = mesh.positions.len() / 3;
     let mut px = Vec::with_capacity(vert_count);

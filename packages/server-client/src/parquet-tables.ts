@@ -109,11 +109,10 @@ export function buildMeshesFromTables(
   // from servers predating them, where origin defaults to [0,0,0] and the
   // source ids simply do not appear.
   const cols = meshColumns(meshArrow, meshCount);
-  // Absent on every pre-#3888 payload (and on any v6 model with nothing to
-  // share, where the server still writes them as identity). `wireVersion` stays
-  // 2 — the flat transport has no version byte to tell a truncated v6 from a
-  // genuine v5, so absence is read as the identity it is on both.
-  const rotationCols = readRotationColumns(meshArrow, meshCount);
+  // Absent on every pre-#3888 payload. The flat transport has no version byte
+  // to tell a truncated v6 from a genuine v5, so absence reads as the identity
+  // it is on a v5 blob (see `readRotationColumns`).
+  const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
   const meshes: MeshData[] = new Array(meshCount);
 
   // Only consume the additive origin/geometry_class columns when all three
@@ -291,7 +290,13 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const cols = meshColumns(instanceArrow, instanceCount);
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
-  const rotationCols = readRotationColumns(instanceArrow, instanceCount, tables.wireVersion); // #3575
+  // Wire version 3 states the columns are there (#3575), so absence is
+  // truncated data, not an older payload; version 2 predates them.
+  const rotationCols = readRotationColumns(
+    instanceArrow,
+    instanceCount,
+    tables.wireVersion === 3 ? 'throw' : 'identity'
+  );
 
   // Additive per-instance origin/geometry_class columns (issue #1841): consume
   // only when present AND parallel to the instance rows.

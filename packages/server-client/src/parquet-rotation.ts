@@ -27,37 +27,38 @@ import { numericColumn } from './parquet-columns.js';
 /** The nine `rot0..rot8` columns, present together or not at all. */
 export type RotationColumns = ArrayLike<number>[];
 
+/** Row-major identity, hoisted so the per-mesh identity check allocates nothing. */
+const IDENTITY = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+
 /**
- * Read the rotation columns, or `undefined` when the payload predates them —
- * optimized wire version 2 (#3575), or a flat `-parquet-v5` blob (#3888).
- * Callers then fall back to the identity rotation, which is exactly the
- * behaviour those payloads were written for.
+ * Read the rotation columns, or `undefined` when the payload does not carry
+ * them — an optimized wire-version-2 payload (#3575), or a flat `-parquet-v5`
+ * blob (#3888). Callers then fall back to the identity rotation, which is
+ * exactly the behaviour those payloads were written for.
  *
- * The flat transport always passes the default `wireVersion` of 2: it has no
- * version byte on the wire, so a truncated v6 mesh table and a genuine v5 one
- * are indistinguishable there, and identity is the reading that is right for
+ * `onAbsent` says what a MISSING or short block means to the caller, in the
+ * caller's own terms rather than in one transport's version numbering.
+ * `'identity'` is the reading above. `'throw'` is for a payload whose own
+ * header states the columns are there: the optimized format's version 3 is
+ * only emitted once a non-identity rotation has actually been written
+ * (`optimized_wire_version` in `parquet_instancing.rs`), so absence there is
+ * truncated wire data, and decoding it as identity would place a genuinely
+ * rotated occurrence at the wrong orientation with no signal why.
+ *
+ * The flat transport has no such header — it cannot tell a truncated v6 mesh
+ * table from a genuine v5 one — so it passes `'identity'`, which is right for
  * the v5 case and no worse than throwing for the other.
- *
- * `wireVersion` (default 2, the pre-#3575 shape) distinguishes that
- * legitimate absence from a MALFORMED v3 payload: format v3 defines
- * `rot0..rot8` as present whenever the server ran the rotation-aware path
- * (`optimized_wire_version` in `parquet_optimized_instancing.rs` only emits
- * `3` once a non-identity rotation was actually written), so a v3 payload
- * missing/short on those columns is truncated wire data, not an older
- * format — decoding it as identity would place a genuinely rotated
- * occurrence at the wrong orientation with no signal why. Pass 3 to reject
- * that case instead of silently falling back.
  */
 export function readRotationColumns(
   instanceArrow: ArrowTableLike,
   rowCount: number,
-  wireVersion: 2 | 3 = 2
+  onAbsent: 'identity' | 'throw' = 'identity'
 ): RotationColumns | undefined {
   const cols: ArrayLike<number>[] = [];
   for (let i = 0; i < 9; i++) {
     const col = numericColumn(instanceArrow, `rot${i}`);
     if (!col || col.length < rowCount) {
-      if (wireVersion === 3) {
+      if (onAbsent === 'throw') {
         throw new Error(
           'Malformed optimized Parquet geometry: format version 3 requires rot0..rot8 instance columns'
         );
@@ -71,9 +72,8 @@ export function readRotationColumns(
 
 /** `true` when row `index`'s rotation is exactly identity (the common case). */
 function isIdentityRow(rot: RotationColumns, index: number): boolean {
-  const expected = [1, 0, 0, 0, 1, 0, 0, 0, 1];
   for (let i = 0; i < 9; i++) {
-    if (rot[i][index] !== expected[i]) return false;
+    if (rot[i][index] !== IDENTITY[i]) return false;
   }
   return true;
 }

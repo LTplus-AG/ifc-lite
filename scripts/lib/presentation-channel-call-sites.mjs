@@ -56,8 +56,29 @@ function argumentTextAt(code, open) {
 const ARG_IDENT_SKIP = new Set(['new', 'Set', 'Map', 'Array', 'from', 'of', 'null', 'undefined', 'true', 'false', 'state', 's', 'get', 'store']);
 
 /**
- * Does `ident` get assigned, anywhere in `code`, from an expression that
- * contains a `ROUTING_MARKERS` call?
+ * Has the block a statement at `from` lives in already CLOSED by the time the
+ * reader reaches `to`? A `}` that drops the brace depth below where it started
+ * means the two positions are in sibling scopes, not nested ones -- which is
+ * how a routed assignment in one function used to answer for a raw call site
+ * in the next one. Braces only, on already-stripped source, so no `}` inside a
+ * comment or a string can move the count.
+ */
+function scopeClosesBetween(code, from, to) {
+  let depth = 0;
+  for (let i = from; i < to; i++) {
+    const ch = code[i];
+    if (ch === '{') depth += 1;
+    else if (ch === '}') {
+      depth -= 1;
+      if (depth < 0) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Does `ident`, as read at `before`, hold a value that came from a
+ * `ROUTING_MARKERS` call?
  *
  * This is the one level of data flow the gate needs and the only one it does:
  * every routed channel today either wraps the resolver inline in the action's
@@ -68,33 +89,47 @@ const ARG_IDENT_SKIP = new Set(['new', 'Set', 'Map', 'Array', 'from', 'of', 'nul
  * through a helper in the same file -- reads as UNROUTED here. That is the
  * safe direction to be wrong in: it costs a false failure a reviewer can
  * resolve with an allowlist entry, not a false pass.
+ *
+ * #3338 review: the answer comes from the NEAREST assignment that precedes
+ * `before` and is still in scope there, not from any assignment anywhere in
+ * the file. Searching the whole file re-created the per-file vacuity one
+ * level down -- `function a(raw) { const ids = resolvePresentationIds(r, raw);
+ * hideEntities(ids); } function b(raw) { const ids = raw; showEntities(ids); }`
+ * had no unrouted call sites, because `a`'s assignment answered for `b`'s
+ * call. Nearest-preceding is also what the language does: the last assignment
+ * before the read is the value read. Still lexical rather than parsed, so a
+ * shadowed binding in a nested block can answer for an outer read; that
+ * direction over-reports, which is the safe one.
  */
-function assignedFromRoutingMarker(code, ident, seen = new Set(), depth = 0) {
+function assignedFromRoutingMarker(code, ident, before, seen = new Set(), depth = 0) {
   if (depth > ASSIGNMENT_WALK_DEPTH || seen.has(ident)) return false;
   seen.add(ident);
   const assign = new RegExp(`\\b${ident}\\s*=(?!=)`, 'g');
   let m;
+  let nearest = null;
   while ((m = assign.exec(code)) !== null) {
-    const start = m.index + m[0].length;
-    let nesting = 0;
-    let end = start;
-    while (end < code.length) {
-      const ch = code[end];
-      if (ch === '(' || ch === '[' || ch === '{') nesting += 1;
-      else if (ch === ')' || ch === ']' || ch === '}') {
-        if (nesting === 0) break;
-        nesting -= 1;
-      } else if (ch === ';' && nesting === 0) break;
-      end += 1;
-    }
-    const rhs = code.slice(start, end);
-    if (ROUTING_MARKERS.test(rhs)) return true;
-    const next = [...new Set(rhs.match(/[A-Za-z_$][\w$]*/g) ?? [])].filter(
-      (id) => !ARG_IDENT_SKIP.has(id) && !seen.has(id),
-    );
-    if (next.some((id) => assignedFromRoutingMarker(code, id, seen, depth + 1))) return true;
+    if (m.index >= before) break;
+    if (scopeClosesBetween(code, m.index, before)) continue;
+    nearest = { index: m.index, start: m.index + m[0].length };
   }
-  return false;
+  if (nearest === null) return false;
+  let nesting = 0;
+  let end = nearest.start;
+  while (end < code.length) {
+    const ch = code[end];
+    if (ch === '(' || ch === '[' || ch === '{') nesting += 1;
+    else if (ch === ')' || ch === ']' || ch === '}') {
+      if (nesting === 0) break;
+      nesting -= 1;
+    } else if (ch === ';' && nesting === 0) break;
+    end += 1;
+  }
+  const rhs = code.slice(nearest.start, end);
+  if (ROUTING_MARKERS.test(rhs)) return true;
+  const next = [...new Set(rhs.match(/[A-Za-z_$][\w$]*/g) ?? [])].filter(
+    (id) => !ARG_IDENT_SKIP.has(id) && !seen.has(id),
+  );
+  return next.some((id) => assignedFromRoutingMarker(code, id, nearest.index, seen, depth + 1));
 }
 
 /** How many local-assignment hops the walk above follows. One hop covers the
@@ -141,7 +176,7 @@ export function unroutedCallSites(code) {
       const idents = [...new Set(arg.match(/[A-Za-z_$][\w$]*/g) ?? [])].filter(
         (id) => !ARG_IDENT_SKIP.has(id),
       );
-      if (idents.some((id) => assignedFromRoutingMarker(code, id))) continue;
+      if (idents.some((id) => assignedFromRoutingMarker(code, id, m.index))) continue;
       out.push({ action: name, kind, arg: arg.trim().slice(0, 80) });
     }
   }

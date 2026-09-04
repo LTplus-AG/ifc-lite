@@ -727,6 +727,40 @@ describe('check-isolate-expansion-routing: routing is checked per call site, not
     }
   });
 
+  // #3338 review (codex, PRRT_kwDOQ3UF-86fL-bM): the assignment walk searched
+  // the WHOLE file for `ids = ...`, so one routed assignment to a name
+  // laundered every other call site that happened to reuse it -- the exact
+  // per-call-site regression the walk above exists to catch, reintroduced one
+  // level down. The assignment that answers for a call site has to be the
+  // nearest one that PRECEDES it and whose block has not already closed.
+  it('a routed assignment in a SIBLING scope does not launder an unrouted call site', () => {
+    const verdict = classifyFile(
+      ROUTED,
+      'function a(raw) { const ids = resolvePresentationIds(r, raw); state.hideEntities(ids); }\n' +
+      'function b(raw) { const ids = raw; state.showEntities(ids); }',
+    );
+    assert.equal(verdict.ok, false, 'b() installs raw ids and must be reported');
+    assert.match(verdict.reason, /showEntities\(ids\)/);
+  });
+
+  it('and the same holds when the routed scope comes SECOND', () => {
+    const verdict = classifyFile(
+      ROUTED,
+      'function b(raw) { const ids = raw; state.showEntities(ids); }\n' +
+      'function a(raw) { const ids = resolvePresentationIds(r, raw); state.hideEntities(ids); }',
+    );
+    assert.equal(verdict.ok, false, 'a later routed assignment cannot reach backwards');
+    assert.match(verdict.reason, /showEntities\(ids\)/);
+  });
+
+  it('control: the routed sibling on its own still passes (the fix tightens, it does not blanket-fail)', () => {
+    const verdict = classifyFile(
+      ROUTED,
+      'function a(raw) { const ids = resolvePresentationIds(r, raw); state.hideEntities(ids); }',
+    );
+    assert.equal(verdict.ok, true);
+  });
+
   it('still fails an ALIASED call in a listed file with no routing anywhere (no hole opened)', () => {
     const verdict = classifyFile(
       'apps/viewer/src/hooks/useIDS.ts',

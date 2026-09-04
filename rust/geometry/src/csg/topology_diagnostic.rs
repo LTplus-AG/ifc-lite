@@ -133,8 +133,15 @@ impl ClippingProcessor {
     /// cancels to zero) can observe it, which is precisely the silent-accept
     /// this issue is about.
     ///
-    /// Same call-site discipline as its siblings: run it on the mesh the op is
-    /// about to RETURN, never an intermediate. On a hit it records
+    /// Called on the mesh the op is about to RETURN — and, in
+    /// `subtract_mesh_many`, on each chunk's intermediate too, because that
+    /// intermediate BECOMES the next chunk's host. A non-manifold operand
+    /// would corrupt every subtraction after it, so a gate that waited for the
+    /// final mesh would be reporting damage it could have prevented. That is
+    /// the same reason `validate_mesh` runs per chunk there, and it is a
+    /// genuine difference from `record_topology_tear`, which is purely
+    /// informational and so must NOT speak about a mesh the caller never sees.
+    /// On a hit it records
     /// [`BoolFailureReason::NonManifoldRejected`] and returns `true`, so the
     /// caller discards the kernel result and falls back exactly like an
     /// existing `KernelOutputInvalid` — un-cut host, empty mesh, or plain

@@ -22,6 +22,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';
 import { decodeParquetGeometry } from './parquet-decoder.js';
 
@@ -42,27 +43,37 @@ beforeAll(async () => {
   arrow = await import('apache-arrow');
 });
 
-function readJson(relative: string): Record<string, unknown> {
-  return JSON.parse(readFileSync(new URL(relative, import.meta.url), 'utf8'));
+function readJson(path: string | URL): Record<string, unknown> {
+  return JSON.parse(readFileSync(path, 'utf8'));
 }
 
-/** Minimal caret check, enough for the `^X.Y.Z` ranges this repo writes and
- *  for 0.x semantics (a caret on 0.x is pinned to the minor). */
-function satisfiesCaret(version: string, range: string): boolean {
+/**
+ * `^0.Y.Z` is pinned to the minor. That is the only shape this package's
+ * parquet-wasm peer range takes (a 0.x caret), and the test below asserts
+ * the range still has that shape rather than quietly mis-reading a `^1.x`.
+ */
+function satisfiesZeroMajorCaret(version: string, range: string): boolean {
   const [rMajor, rMinor, rPatch] = range.replace(/^\^/, '').split('.').map(Number);
   const [vMajor, vMinor, vPatch] = version.split('.').map(Number);
-  if (vMajor !== rMajor) return false;
-  if (rMajor === 0 && vMinor !== rMinor) return false;
-  if (vMinor !== rMinor) return vMinor > rMinor;
-  return vPatch >= rPatch;
+  return vMajor === rMajor && vMinor === rMinor && vPatch >= rPatch;
 }
 
 describe('parquet-wasm entry point', () => {
   it('resolves a version that satisfies the declared peer range', () => {
-    const pkg = readJson('../package.json');
+    const pkg = readJson(new URL('../package.json', import.meta.url));
     const range = (pkg.peerDependencies as Record<string, string>)['parquet-wasm'];
-    const installed = readJson('../node_modules/parquet-wasm/package.json').version as string;
-    expect(satisfiesCaret(installed, range)).toBe(true);
+    expect(range.startsWith('^0.')).toBe(true);
+
+    // Ask the resolver, not a hard-coded node_modules path: this resolves
+    // the very entry point `import('parquet-wasm')` in the decoder gets.
+    // Its manifest is read relatively because 0.7's export map does not
+    // expose `./package.json` (resolving that subpath throws
+    // ERR_PACKAGE_PATH_NOT_EXPORTED), and every build entry it does expose
+    // sits one directory below the package root (bundler/, esm/, node/).
+    const manifest = readJson(new URL('../package.json', pathToFileURL(require.resolve('parquet-wasm'))));
+    expect(manifest.name).toBe('parquet-wasm');
+    const installed = manifest.version as string;
+    expect(satisfiesZeroMajorCaret(installed, range)).toBe(true);
   });
 
   it('resolves the package entry point, not the arrow2 path dropped in 0.6', () => {

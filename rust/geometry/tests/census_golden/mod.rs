@@ -630,6 +630,25 @@ fn volume_magnitude_cmp(from: i64, to: i64) -> std::cmp::Ordering {
     }
 }
 
+/// The winding, said out loud (#3422). `vol` is SIGNED because IFC winding is
+/// not reliably outward and the sweep does not orient the host, so a negative
+/// reading is an inward-wound solid and not a negative volume.
+///
+/// Without this the only cue is a minus sign inside a number, and the two
+/// readings a reviewer most needs to tell apart look nearly identical in a
+/// bucket listing: `55000 -> -55000` is the SAME solid re-wound, a topological
+/// change with no material moved, while `55000 -> -47200` is a re-winding AND
+/// an over-cut. The percentage cannot say it either, since it is taken on the
+/// magnitude.
+fn winding_note(from: i64, to: i64) -> &'static str {
+    match (from < 0, to < 0) {
+        (false, true) => "; WINDING INVERTED (the host is now inward-wound)",
+        (true, false) => "; winding righted (the host is now outward-wound)",
+        (true, true) => "; both readings negative, so the host is inward-wound throughout",
+        (false, false) => "",
+    }
+}
+
 /// How a volume reading moved, as a percentage of the golden's MAGNITUDE.
 /// From zero there is no percentage to give, so it says so instead of
 /// dividing by it.
@@ -719,8 +738,9 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     if let Some((a, b)) = vol {
         if volume_reading_moved(a, b) {
             c.volume_moved.push(format!(
-                "enclosed volume {a} -> {b} cm³ ({}){}",
+                "enclosed volume {a} -> {b} cm³ ({}){}{}",
                 volume_delta(a, b),
+                winding_note(a, b),
                 if g.far || r.far { "; far-field, so the reading is f32-quantized" } else { "" }
             ));
         }
@@ -2035,6 +2055,50 @@ mod tests {
         // What the tolerance costs, stated as a measurement: nothing this
         // column exists to catch. The over-cut fixture moves 50 000 cm³.
         assert!(volume_tolerance_cm3(550_000) < 50, "the tolerance must stay negligible");
+    }
+
+    #[test]
+    fn a_negative_reading_says_the_winding_is_inverted() {
+        // #3422. `vol` is signed because IFC winding is not reliably outward,
+        // so a negative reading is an inward-wound solid, not a negative
+        // volume. A minus sign inside a number is not a legible cue for that
+        // in a bucket listing, and the two readings a reviewer most needs to
+        // separate look nearly alike without one.
+        let all = swept(&["a.ifc"]);
+        let g = row("a.ifc", 1, 0, 800); // vol Some(55_000)
+
+        // The same solid, re-wound: no material moved at all.
+        let flipped = HostRow { vol: Some(-55_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[flipped], &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("55000 -> -55000"), "{reasons}");
+        assert!(reasons.contains("WINDING INVERTED"), "{reasons}");
+        // And the percentage still reads on the magnitude, which is 0%: the
+        // two cues together are what say "re-wound, nothing removed".
+        assert!(reasons.contains("(+0.00%)"), "{reasons}");
+
+        // Re-wound AND over-cut: the pair the cue exists to separate from the
+        // one above. Same sign change, a real magnitude drop with it.
+        let both = HostRow { vol: Some(-47_200), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[both], &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("WINDING INVERTED"), "{reasons}");
+        assert!(reasons.contains("(-14.18%)"), "{reasons}");
+
+        // Coming back the other way is not alarming, and does not shout.
+        let inward = HostRow { vol: Some(-55_000), ..row("a.ifc", 1, 0, 800) };
+        let d = diff(std::slice::from_ref(&inward), std::slice::from_ref(&g), &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("winding righted"), "{reasons}");
+        assert!(!reasons.contains("INVERTED"), "{reasons}");
+
+        // A host inward-wound on BOTH sides says so once, rather than reading
+        // as a flip on every row of a model that is wound that way throughout.
+        let deeper = HostRow { vol: Some(-47_200), ..inward.clone() };
+        let d = diff(std::slice::from_ref(&inward), &[deeper], &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("inward-wound throughout"), "{reasons}");
+        assert!(!reasons.contains("INVERTED"), "{reasons}");
     }
 
     #[test]

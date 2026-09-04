@@ -25,6 +25,7 @@ import { decodeInstancedShard, NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geomet
 import { toast } from '../ui/toast.js';
 import { runGpuUpload } from './gpu-upload-guard';
 import { createRobustFitBoundsAccumulator } from './robustFitBoundsAccumulator.js';
+import { useColorOverlaySync } from './useColorOverlaySync.js';
 
 // Session-scoped flag so the linear-infrastructure hint fires at most once
 // per page load (model swaps included). Stored at module scope rather than
@@ -927,24 +928,13 @@ export function useGeometryStreaming(params: UseGeometryStreamingParams): void {
   }, [pendingMeshRotations, isInitialized, clearPendingMeshRotations]);
 
   // ─── Lens color overlays ─────────────────────────────────────────────
-  useEffect(() => {
-    if (pendingColorUpdates === null || !isInitialized) return;
-    const renderer = rendererRef.current;
-    if (!renderer) return;
-
-    const device = renderer.getGPUDevice();
-    const pipeline = renderer.getPipeline();
-    const scene = renderer.getScene();
-    if (device && pipeline) {
-      if (pendingColorUpdates.size === 0) {
-        scene.clearColorOverrides();
-      } else {
-        scene.setColorOverrides(pendingColorUpdates, device, pipeline);
-      }
-      renderer.requestRender();
-      clearPendingColorUpdates();
-    }
-  }, [pendingColorUpdates, isInitialized, clearPendingColorUpdates]);
+  useColorOverlaySync({
+    rendererRef,
+    isInitialized,
+    pendingColorUpdates,
+    clearPendingColorUpdates,
+    geometryVersion,
+  });
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────

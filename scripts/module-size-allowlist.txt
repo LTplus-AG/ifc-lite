@@ -108,7 +108,7 @@
    436 apps/viewer/src/components/viewer/tools/SectionVisualization.tsx
   1510 apps/viewer/src/components/viewer/tools/SpaceSketchOverlay.tsx
    406 apps/viewer/src/components/viewer/useAnimationLoop.ts
-   991 apps/viewer/src/components/viewer/useGeometryStreaming.ts
+   981 apps/viewer/src/components/viewer/useGeometryStreaming.ts
    946 apps/viewer/src/components/viewer/useMouseControls.ts
    782 apps/viewer/src/components/viewer/ViewerLayout.tsx
   1843 apps/viewer/src/components/viewer/Viewport.tsx

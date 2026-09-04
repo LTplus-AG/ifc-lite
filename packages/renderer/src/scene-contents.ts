@@ -81,6 +81,13 @@ export interface SceneContents {
   getMeshes(): Mesh[];
   getBatchedMeshes(): BatchedMesh[];
   getMeshDataPieces(expressId: number, modelIndex?: number): MeshData[] | undefined;
+  /**
+   * O(1) "is this id in the flat mesh map" — the presence question, without
+   * `getMeshDataPieces`' per-entity extraction out of a colour-merged batch.
+   * Pair it with `isInstancedEntity` to ask the same thing of both geometry
+   * paths (`useColorOverlaySync` does, per settled geometry batch).
+   */
+  hasMeshData(expressId: number, modelIndex?: number): boolean;
   getAllMeshDataExpressIds(): number[];
   getBounds(): {
     min: { x: number; y: number; z: number };
@@ -96,6 +103,12 @@ export interface SceneContents {
   ): void;
   getAllInstancedMeshData(): MeshData[];
   getInstancedMeshDataPieces(expressId: number): MeshData[] | undefined;
+  /**
+   * O(1) instanced-membership test. `getInstancedMeshDataPieces` MATERIALIZES
+   * world-space triangles per occurrence, so it is never the right way to ask
+   * whether an id exists.
+   */
+  isInstancedEntity(expressId: number): boolean;
   getInstancedEntityBounds(expressId: number): BoundingBox | null;
   getInstancedEntityCount(): number;
   getInstancedEntityIds(): IterableIterator<number>;
@@ -116,6 +129,14 @@ export interface SceneContents {
     device: GPUDevice,
     pipeline: RenderPipeline,
   ): void;
+  /**
+   * The overrides currently installed, or null when nothing is painted. The
+   * store's `pendingColorUpdates` is a one-shot signal that is nulled after it
+   * flushes, so this retained map is the only readable record of what is
+   * painted — `useColorOverlaySync` re-hands it back to `setColorOverrides` so
+   * meshes that streamed in after the flush get their colour (#3890).
+   */
+  getColorOverrides(): ReadonlyMap<number, readonly [number, number, number, number]> | null;
   clearColorOverrides(): void;
   updateMeshColors(
     updates: Map<number, [number, number, number, number]>,

@@ -31,7 +31,9 @@ const _: () = assert!(
 
 use crate::error::ExportError;
 use ifc_lite_core::EntityIndex;
-use ifc_lite_geometry::{collate_refs, InstanceMeshRef, InstanceMeta, InstanceTemplate};
+use ifc_lite_geometry::{
+    collate_refs_verified_in, InstanceMeshRef, InstanceMeta, InstanceTemplate, Matrix4,
+};
 use ifc_lite_processing::{
     build_entity_index_parallel, process_geometry_filtered_with_quality,
     process_geometry_streaming_filtered_with_options, MeshData, OpeningFilterMode,
@@ -191,6 +193,20 @@ pub struct GltfStats {
     pub vertices: usize,
     pub triangles: usize,
     pub materials: usize,
+    /// Rep-identity groups that were instanced WITHOUT the #3666 reconstruction
+    /// check: the shared template's geometry is substituted at each occurrence's
+    /// pose on the strength of the identity hash alone, which a merged
+    /// multi-model file has been measured to collide (the occurrence still
+    /// renders, up to 2m from where it belongs).
+    ///
+    /// Always 0 from the in-memory assembler, which verifies every exact-tier
+    /// pairing. Non-zero only from [`export_glb_streaming_bounded`], which holds
+    /// a PLAN and not geometry (`retain_emitted_meshes: false` is the whole
+    /// reason it bounds memory), so it has no occurrence vertices to compare and
+    /// cannot run the check as written. That gap was a comment inside the
+    /// bounded assembler and invisible to its callers; this is it at the seam,
+    /// where a caller choosing between the two paths can read it.
+    pub unverified_instance_groups: usize,
 }
 
 // ── glTF 2.0 JSON schema (subset) ──────────────────────────────────────────
@@ -1125,7 +1141,7 @@ fn build_gltf(
     let mut nodes: Vec<Node> = Vec::new();
     let mut element_node_indices: Vec<u32> = Vec::new();
 
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
 
     // ── Pass 1.5: collate by representation identity ────────────────────────────
     // Group occurrences that share a representation (IfcMappedItem / repeated
@@ -1157,7 +1173,26 @@ fn build_gltf(
     // `occurrence_node_matrix` (it has the Z-up model rtc there). Passing the rtc
     // here too would conjugate twice. The wasm GPU-shard path, which consumes the
     // relative transform directly (no downstream conjugation), passes the real rtc.
-    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    //
+    // `verify_basis = S_YUP · T(-rtc_zup)`: exactly the conjugation
+    // `occurrence_node_matrix` applies to the same `rel`
+    // (`S · T(-rtc) · rel · T(rtc) · S⁻¹`, see gltf/matrix.rs), because the
+    // reconstruction check has to compare in the frame the BAKED positions are
+    // actually in. Two conversions separate the two:
+    //  • Y-up: `visible`'s positions/origin were already converted Z-up→Y-up before
+    //    this function was entered — `with_result_views` (this file) runs
+    //    `crate::frame::to_yup_in_place` over every visible mesh in `result` and only
+    //    then hands the borrowed `MeshView`s here, so the conversion is NOT visible in
+    //    `build_gltf` itself. `InstanceMeta.transform` (hence `rel`) stays Z-up.
+    //  • RTC: `rel` is PRE-RTC here (this path passes `rtc = [0,0,0]` above), while
+    //    the baked positions are POST-RTC. The residual that leaves is
+    //    `(R_rel - I) · rtc` — zero for a translated-only sibling, but hundreds of
+    //    kilometres for a ROTATED one at national-grid magnitude, so `S_YUP` alone
+    //    rejected every rotated group on a georeferenced model.
+    // Without both terms the check reads a frame mismatch as a #3666 collision and
+    // drops the whole group to flat.
+    let verify_basis = Matrix4::from_row_slice(&matrix::verify_basis_yup(rtc_zup));
+    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&verify_basis));
 
     // Partition into instanced templates (non-rigid, exact-bit) and a flat remainder.
     // Only EXACT-bit groups are instanced: the template's local geometry IS each
@@ -1165,26 +1200,37 @@ fn build_gltf(
     // tier groups (rotation-normalized, env-gated and OFF by default) substitute a
     // congruent-but-not-identical template, so they fall to the flat remainder.
     let mut flat: Vec<usize> = collated.flat_indices.clone();
-    let mut instanced: Vec<(&InstanceTemplate, [f64; 16])> =
+    let mut instanced: Vec<(&InstanceTemplate, Vec<usize>, [f64; 16])> =
         Vec::with_capacity(collated.templates.len());
     for template in &collated.templates {
-        let rigid = template.occurrences.iter().any(|o| {
-            visible[o.mesh_index]
-                .instance
-                .and_then(|m| m.canonical_transform)
-                .is_some()
-        });
+        // PER OCCURRENCE, matching the collator: a rigid-tier member is congruent
+        // to the template but not bit-identical, so instancing it would change the
+        // exported geometry — but one such member no longer costs its exact-tier
+        // siblings their shared mesh. The template's own occurrence is exact
+        // against itself whatever tier it was grouped under.
+        let (keep, drop): (Vec<usize>, Vec<usize>) = (0..template.occurrences.len())
+            .partition(|&oi| {
+                let mi = template.occurrences[oi].mesh_index;
+                mi == template.template_index
+                    || visible[mi].instance.and_then(|m| m.canonical_transform).is_none()
+            });
         // Precompute the template's inverse world placement (f64) ONCE per group;
         // every occurrence's node matrix reuses it. A missing instance side-channel
         // or a singular/degenerate template placement routes the whole group to the
-        // flat path (still correct, just not instanced).
-        let m_ref_inv = (!rigid)
+        // flat path (still correct, just not instanced), as does a group left with
+        // fewer than two occurrences to share.
+        let m_ref_inv = (keep.len() >= 2)
             .then(|| visible[template.template_index].instance)
             .flatten()
-            .filter(|_| template.occurrences.iter().all(|o| visible[o.mesh_index].instance.is_some()))
+            .filter(|_| {
+                keep.iter().all(|&oi| visible[template.occurrences[oi].mesh_index].instance.is_some())
+            })
             .and_then(|ti| affine_inverse(&compose_world_meta(ti)));
         match m_ref_inv {
-            Some(inv) => instanced.push((template, inv)),
+            Some(inv) => {
+                flat.extend(drop.iter().map(|&oi| template.occurrences[oi].mesh_index));
+                instanced.push((template, keep, inv));
+            }
             None => flat.extend(template.occurrences.iter().map(|o| o.mesh_index)),
         }
     }
@@ -1278,7 +1324,7 @@ fn build_gltf(
     }
 
     // ── Pass 2: instanced templates ─────────────────────────────────────────────
-    for (template, m_ref_inv) in instanced {
+    for (template, keep, m_ref_inv) in instanced {
         // glTF materials ride the mesh primitive, not the node, but the collator
         // groups by geometry only (`rep_identity` excludes colour). Split the
         // occurrences by colour so same-shape/different-colour occurrences get
@@ -1289,8 +1335,8 @@ fn build_gltf(
         // ordering deterministic (HashMap iteration order is not).
         let mut bucket_order: Vec<(i32, i32, i32, i32)> = Vec::new();
         let mut by_color: FxHashMap<(i32, i32, i32, i32), Vec<usize>> = FxHashMap::default();
-        for (oi, occ) in template.occurrences.iter().enumerate() {
-            let ck = color_key(visible[occ.mesh_index].color);
+        for &oi in &keep {
+            let ck = color_key(visible[template.occurrences[oi].mesh_index].color);
             by_color
                 .entry(ck)
                 .or_insert_with(|| {
@@ -1741,7 +1787,7 @@ fn export_gltf_streaming_impl(
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
     let mut adapt = |name: String, bytes: Vec<u8>| sink(GltfBuffer { name, bytes });
     let mut ch = Chunker::new(if opts.quantize { 8 } else { 12 }, chunk_cap, Some(&mut adapt));
 
@@ -1993,6 +2039,15 @@ pub struct GlbSizeProjection {
 ///   cannot fold into a rotating placement without breaking `Matrix4.decompose`.
 /// - content-hash dedup is kept (the hash is computed batch-locally on pass 1).
 /// - the model is meshed twice (the price of bounded memory).
+/// - **the #3666 reconstruction check does not run here.** The in-memory
+///   assembler reconstructs each exact-tier occurrence from its template and
+///   relative transform and compares it against that occurrence's own baked
+///   vertices, so a `rep_identity` COLLISION between unrelated geometry falls
+///   back to flat. This path holds a plan, not geometry, so it has no
+///   occurrence vertices to compare; its guard remains vertex/index counts,
+///   which a same-shaped colliding pair passes. The returned
+///   [`GltfStats::unverified_instance_groups`] counts the groups shipped on
+///   that weaker guard (always 0 from the in-memory path).
 ///
 /// Supports both the f32 and the `KHR_mesh_quantization` layouts; the quantized
 /// accessor min/max come from the local bbox in closed form (the quantize map is
@@ -2311,6 +2366,18 @@ fn plan_bounded_glb(
     // occurrence has no instance side-channel, and this one drops that
     // occurrence and keeps the rest. See
     // `the_bounded_path_shares_at_least_as_much`, which pins that difference.
+    //
+    // The other difference, and it is a KNOWN GAP (#3666 follow-up): the
+    // in-memory path additionally reconstructs each occurrence from
+    // `(template, rel)` and compares it against that occurrence's own baked
+    // vertices (`ifc_lite_geometry::instancing::verify_pairing`), so a
+    // same-count rep_identity COLLISION is caught there and falls back to
+    // flat. This path cannot run that check as written: it holds a plan, not
+    // geometry — `retain_emitted_meshes: false` is the whole reason it bounds
+    // memory — so nothing here has an occurrence's vertices to compare. Closing
+    // it needs a streaming variant that retains one template's vertices per live
+    // rep group and verifies each later occurrence as it streams past, which is
+    // a memory-budget decision of its own, not a drop-in of the same call.
     let refused: FxHashSet<u128> = {
         let mut seen: FxHashMap<u128, (u32, u32)> = FxHashMap::default();
         let mut bad: FxHashSet<u128> = FxHashSet::default();
@@ -2397,10 +2464,19 @@ fn plan_bounded_glb(
     let mut materials: Vec<Material> = Vec::new();
     let mut material_map: FxHashMap<(i32, i32, i32, i32), u32> = FxHashMap::default();
     let mut element_node_indices: Vec<u32> = Vec::new();
-    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0 };
+    let mut stats = GltfStats { meshes: 0, vertices: 0, triangles: 0, materials: 0, unverified_instance_groups: 0 };
     // key -> (mesh_idx, dequant center, dequant half). center/half are dummy
     // zeros/ones on the f32 path (node scale stays None), the per-mesh dequant
     // the node folds in on the quantized path (mirrors build_gltf's flat_cache).
+    // Every group this path instances is instanced unverified; see the field's
+    // docs and the KNOWN GAP note above `refused`. Counted per REP IDENTITY, not
+    // per bucket: a bucket is (identity, colour) because a glTF material rides
+    // the primitive, so one shape in two colours is two buckets — but it is one
+    // identity, and the identity is the thing the unverified substitution is
+    // made on the strength of. Counting buckets reported the same unchecked
+    // hash more than once and inflated the figure against its own doc comment.
+    stats.unverified_instance_groups =
+        rep_groups.keys().map(|&(rid, _)| rid).collect::<FxHashSet<u128>>().len();
     let mut shared_cache: FxHashMap<u128, (u32, [f64; 3], [f64; 3])> = FxHashMap::default();
     let (mut pos_len, mut norm_len, mut idx_len) = (0u64, 0u64, 0u64);
     let quantize = opts.quantize;

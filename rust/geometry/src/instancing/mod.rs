@@ -23,6 +23,20 @@
 //! floating point; [`verify_recomposition`] bounds the residual and the unit
 //! tests assert it stays within a micrometre.
 //!
+//! `rep_identity` (a 128-bit geometry hash for direct items) is not proven
+//! collision-free, and a merged multi-model file has measured one (#3666):
+//! two unrelated occurrences shared a hash and one reconstructed up to 2m
+//! away from where it actually was, with nothing erroring. `collate_refs`
+//! therefore does not just trust the identity for the exact tier: it
+//! reconstructs each candidate occurrence from `(template, rel)` and
+//! verifies it against that occurrence's own baked vertices before trusting
+//! the group, falling the WHOLE group back to the flat path on any failure
+//! (a mis-grouped occurrence means the template pairing is in doubt, not
+//! just the one member that happened to fail first). The one exception is a
+//! #1623 don't-bake placeholder: it has no geometry of its own, so flat is not
+//! a place it can go — it stays instanced against the template (with the
+//! template itself) rather than disappearing from the output entirely.
+//!
 //! ## Instanced wire format ("IFNS")
 //!
 //! Little-endian, mirroring the packed-shard conventions (header + tables +
@@ -91,16 +105,20 @@
 //! [`InstanceMeta`]: crate::mesh::InstanceMeta
 
 mod collate;
+mod dont_bake;
+mod group;
+mod verify;
 mod wire;
 
 #[cfg(test)]
 mod tests;
 
 pub use collate::{
-    bake_source_at_world, collate_instances, collate_refs, compose_instance_world_row_major,
+    bake_source_at_world, collate_instances, compose_instance_world_row_major,
     instance_rel_row_major_f32, verify_recomposition, Collated, InstanceMeshRef,
     InstanceOccurrence, InstanceTemplate,
 };
+pub use group::{collate_refs, collate_refs_verified_in};
 pub use wire::{
     collate_and_encode, decode_instanced, encode_instanced, encode_refs, DecodedInstance,
     DecodedInstanced, DecodedTemplate, INSTANCED_MAGIC, INSTANCED_VERSION,

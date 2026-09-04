@@ -2,7 +2,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use super::collate::{collate_refs, Collated, InstanceMeshRef};
+use super::collate::{Collated, InstanceMeshRef};
+use super::group::collate_refs;
 use crate::mesh::Mesh;
 
 // The instanced wire format — layout, the append-only field rule, and why header

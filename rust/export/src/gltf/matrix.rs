@@ -59,6 +59,28 @@ fn mat4_mul(a: &[f64; 16], b: &[f64; 16]) -> [f64; 16] {
     out
 }
 
+/// The basis the baked template geometry lives in relative to the frame
+/// `InstanceMeta` (hence a collator `rel`) is expressed in: `S_YUP · T(-rtc_zup)`.
+///
+/// Two conversions separate them. The assembler converts every visible mesh's
+/// baked positions Z-up→Y-up before collation, and the baker has already
+/// subtracted the model RTC offset from them, while `InstanceMeta.transform`
+/// stays Z-up and PRE-RTC. Both terms matter: the RTC one leaves a residual of
+/// `(R_rel - I) · rtc`, which is zero for a translated-only sibling and hundreds
+/// of kilometres for a rotated one at national-grid magnitude.
+///
+/// Used at BOTH sites that need it — `build_gltf` hands it to
+/// `collate_refs_verified_in` as the `verify_basis`, and
+/// [`occurrence_node_matrix_composed`] conjugates `rel` by it to build the
+/// shipped node matrix — so the frame the check verifies in is the frame the
+/// export actually places in, by construction rather than by two copies agreeing.
+pub(super) fn verify_basis_yup(rtc_zup: [f64; 3]) -> [f64; 16] {
+    mat4_mul(
+        &S_YUP,
+        &mat4_translation([-rtc_zup[0], -rtc_zup[1], -rtc_zup[2]]),
+    )
+}
+
 /// Row-major translation matrix.
 fn mat4_translation(t: [f64; 3]) -> [f64; 16] {
     [
@@ -163,13 +185,29 @@ pub(super) fn occurrence_node_matrix_composed(
 ) -> [f32; 16] {
     // rel maps the template's PRE-RTC world geometry onto occurrence k's.
     let rel_pre = mat4_mul(&m_k, m_ref_inv);
-    // Conjugate into the POST-RTC baked frame the geometry actually lives in.
-    let rel_baked = mat4_mul(
-        &mat4_translation([-rtc_zup[0], -rtc_zup[1], -rtc_zup[2]]),
-        &mat4_mul(&rel_pre, &mat4_translation(rtc_zup)),
+    // Conjugate `rel` into the frame the BAKED template geometry lives in:
+    // POST-RTC (the offset the baker subtracted) and Y-up (the conversion the
+    // assembler applied). `B · rel · B⁻¹` with `B = S_YUP · T(-rtc)`, which is
+    // the same `B` the instancing verifier is handed as its `verify_basis` —
+    // shared through [`verify_basis_yup`] so the two cannot drift apart.
+    //
+    // This is NOT bit-identical to computing the two conjugations separately
+    // (`S · (T(-rtc) · rel · T(rtc)) · S⁻¹`), and the earlier claim that it was
+    // is wrong. Folding `S` in is exact — `S_YUP` is a signed permutation, so
+    // multiplying by it only moves and negates entries — but folding the
+    // TRANSLATIONS re-associates real additions, and f64 addition is not
+    // associative: a reviewer measured a max delta of 9.3e-10 m across 20,000
+    // georeferenced cases. That is harmless HERE for two independent reasons,
+    // both worth stating because neither is obvious: the result is cast to f32
+    // below (a ~1e-9 m difference at building scale is far under one f32 ULP, so
+    // the emitted bytes are unchanged), and the collator tolerance this basis
+    // feeds floors at 1e-6 m, a thousand times wider. Anything that changes
+    // either — an f64 node matrix, a tighter tolerance — makes the delta visible
+    // and this note is the warning.
+    let rel_yup = mat4_mul(
+        &mat4_mul(&verify_basis_yup(rtc_zup), &rel_pre),
+        &mat4_mul(&mat4_translation(rtc_zup), &S_YUP_INV),
     );
-    // Conjugate Z-up→Y-up (the template was converted by the same S).
-    let rel_yup = mat4_mul(&mat4_mul(&S_YUP, &rel_baked), &S_YUP_INV);
     let n = mat4_mul(
         &mat4_translation([-scene_center[0], -scene_center[1], -scene_center[2]]),
         &mat4_mul(&rel_yup, &mat4_translation(template_origin_yup)),

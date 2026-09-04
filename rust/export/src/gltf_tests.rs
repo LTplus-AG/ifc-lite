@@ -2130,3 +2130,385 @@ fn the_streamed_mesh_plan_stays_small() {
         "the per-mesh plan grew; see the rep side table in plan_bounded_glb"
     );
 }
+
+/// Two occurrences of one representation on a GEOREFERENCED model, the second
+/// rotated 90 degrees about Z relative to the first.
+///
+/// `build_gltf` passes `rtc = [0,0,0]` to the collator, so the `rel` the #3666
+/// reconstruction check sees is PRE-RTC, while the baked positions it compares
+/// against are POST-RTC (and Y-up). The residual left by that mismatch is
+/// `(R_rel - I) * rtc` — zero for a translated-only sibling, but hundreds of
+/// kilometres for a rotated one at national-grid magnitude. A `verify_basis` of
+/// `S_YUP` alone does not account for it, so the check rejected every rotated
+/// group on a georeferenced model and the geometry fell back to flat (no
+/// instancing at all). The basis has to be `S_YUP · T(-rtc_zup)`, which is
+/// exactly the conjugation the shipped node matrix applies.
+#[test]
+fn a_georeferenced_rotated_sibling_still_instances() {
+    use ifc_lite_geometry::Vector3;
+
+    let rtc = [2_600_000.0f64, 1_200_000.0, 400.0];
+    // Canonical tetra in source coords (>= 3 vertices, so `view_ok` passes).
+    const CANON: [f64; 12] = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5];
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3];
+
+    // Two PRE-RTC world placements at georeferenced magnitude; B is rotated 90
+    // degrees about Z, which is what makes `(R_rel - I) * rtc` non-zero.
+    let place = |offset: [f64; 3], rot: f64| {
+        Matrix4::new_translation(&Vector3::new(
+            rtc[0] + offset[0],
+            rtc[1] + offset[1],
+            rtc[2] + offset[2],
+        )) * Matrix4::from_euler_angles(0.0, 0.0, rot)
+    };
+    let m_a = place([10.0, 5.0, 1.0], 0.0);
+    let m_b = place([-6.0, 4.0, 2.0], std::f64::consts::FRAC_PI_2);
+
+    let row_major = |m: &Matrix4<f64>| {
+        let mut out = [0.0f64; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                out[r * 4 + c] = m[(r, c)];
+            }
+        }
+        out
+    };
+    // Bake exactly like the pipeline: world = M * canon, minus the RTC offset,
+    // then Z-up -> Y-up (`(x, y, z) -> (x, z, -y)`, what `frame::to_yup_in_place`
+    // applies to every visible mesh BEFORE `build_gltf` sees it).
+    let bake_yup = |m: &Matrix4<f64>| {
+        let mut out = Vec::with_capacity(CANON.len());
+        for v in CANON.chunks_exact(3) {
+            let w = [
+                m[(0, 0)] * v[0] + m[(0, 1)] * v[1] + m[(0, 2)] * v[2] + m[(0, 3)],
+                m[(1, 0)] * v[0] + m[(1, 1)] * v[1] + m[(1, 2)] * v[2] + m[(1, 3)],
+                m[(2, 0)] * v[0] + m[(2, 1)] * v[1] + m[(2, 2)] * v[2] + m[(2, 3)],
+            ];
+            let (x, y, z) = (w[0] - rtc[0], w[1] - rtc[1], w[2] - rtc[2]);
+            out.push(x as f32);
+            out.push(z as f32);
+            out.push(-y as f32);
+        }
+        out
+    };
+    let pos_a = bake_yup(&m_a);
+    let pos_b = bake_yup(&m_b);
+    let normals = vec![0.0f32; CANON.len()];
+
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: row_major(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 90_909,
+        instanceable: true,
+    };
+    let (meta_a, meta_b) = (meta(&m_a), meta(&m_b));
+    fn view<'a>(
+        id: u32,
+        positions: &'a [f32],
+        normals: &'a [f32],
+        indices: &'a [u32],
+        im: &'a InstanceMeta,
+    ) -> MeshView<'a> {
+        MeshView {
+            express_id: id,
+            ifc_type: "IfcWall",
+            global_id: None,
+            positions,
+            normals,
+            indices,
+            color: [0.5, 0.5, 0.5, 1.0],
+            origin: [0.0, 0.0, 0.0],
+            instance: Some(im),
+        }
+    }
+    let views = vec![
+        view(1, &pos_a, &normals, &indices, &meta_a),
+        view(2, &pos_b, &normals, &indices, &meta_b),
+    ];
+
+    let mut ch = Chunker::new(12, usize::MAX, None);
+    let (gltf, _stats) =
+        build_gltf(&views, false, None, true, false, rtc, None, false, &mut ch);
+
+    assert_eq!(
+        gltf.meshes.len(),
+        1,
+        "a rotated sibling on a georeferenced model must still share ONE template mesh"
+    );
+    let placed: Vec<[f32; 16]> = gltf.nodes.iter().filter_map(|n| n.matrix).collect();
+    assert_eq!(placed.len(), 2, "both occurrences placed by a node matrix");
+
+    // Placement check that does not need `scene_center`: the DIFFERENCE between
+    // the two occurrence nodes applied to the shared template geometry must equal
+    // the difference between the two occurrences' own baked Y-up vertices.
+    let apply = |m: &[f32; 16], p: [f64; 3]| {
+        // glTF node matrices are column-major.
+        [
+            m[0] as f64 * p[0] + m[4] as f64 * p[1] + m[8] as f64 * p[2] + m[12] as f64,
+            m[1] as f64 * p[0] + m[5] as f64 * p[1] + m[9] as f64 * p[2] + m[13] as f64,
+            m[2] as f64 * p[0] + m[6] as f64 * p[1] + m[10] as f64 * p[2] + m[14] as f64,
+        ]
+    };
+    for v in 0..pos_a.len() / 3 {
+        let p = [pos_a[v * 3] as f64, pos_a[v * 3 + 1] as f64, pos_a[v * 3 + 2] as f64];
+        let d0 = apply(&placed[0], p);
+        let d1 = apply(&placed[1], p);
+        for k in 0..3 {
+            let expected = (pos_b[v * 3 + k] - pos_a[v * 3 + k]) as f64;
+            let got = d1[k] - d0[k];
+            assert!(
+                (got - expected).abs() < 1e-3,
+                "occurrence node placement off by {} on axis {k}",
+                got - expected
+            );
+        }
+    }
+}
+
+/// A rep group holding two exact-tier occurrences and one RIGID-tier member.
+///
+/// The collator decides the rigid-tier exemption per member, so it hands back
+/// one template whose occurrences are mixed. The exporter decided it per GROUP
+/// (`.any()`), so a single rigid member sent the whole group to the flat path
+/// and the two exact occurrences lost their shared mesh. The two now agree:
+/// the exact members instance, the rigid one is flattened on its own.
+#[test]
+fn a_mixed_group_instances_its_exact_members_and_flattens_the_rigid_one() {
+    use ifc_lite_geometry::Vector3;
+
+    const CANON: [f64; 12] = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5];
+    let indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 3, 1, 2, 3];
+    let row_major = |m: &Matrix4<f64>| {
+        let mut out = [0.0f64; 16];
+        for r in 0..4 {
+            for c in 0..4 {
+                out[r * 4 + c] = m[(r, c)];
+            }
+        }
+        out
+    };
+    // Baked Y-up positions, exactly as `to_yup_in_place` leaves them.
+    let bake_yup = |m: &Matrix4<f64>, canon: &[f64]| {
+        let mut out = Vec::with_capacity(canon.len());
+        for v in canon.chunks_exact(3) {
+            let w = [
+                m[(0, 0)] * v[0] + m[(0, 1)] * v[1] + m[(0, 2)] * v[2] + m[(0, 3)],
+                m[(1, 0)] * v[0] + m[(1, 1)] * v[1] + m[(1, 2)] * v[2] + m[(1, 3)],
+                m[(2, 0)] * v[0] + m[(2, 1)] * v[1] + m[(2, 2)] * v[2] + m[(2, 3)],
+            ];
+            out.push(w[0] as f32);
+            out.push(w[2] as f32);
+            out.push(-w[1] as f32);
+        }
+        out
+    };
+    let m_a = Matrix4::new_translation(&Vector3::new(10.0, 5.0, 1.0));
+    let m_b = Matrix4::new_translation(&Vector3::new(-6.0, 4.0, 2.0));
+    let m_r = Matrix4::new_translation(&Vector3::new(20.0, -8.0, 3.0));
+    let exact_meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: row_major(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 71_717,
+        instanceable: true,
+    };
+    // The rigid member: congruent, NOT bit-identical, so it carries a
+    // `canonical_transform` and a different raw vertex count (5, not 4).
+    let rigid_canon: [f64; 15] =
+        [0.0, 0.0, 0.0, 2.0, 0.0, 0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 1.5, 1.0, 1.0, 1.0];
+    let rigid_meta = InstanceMeta {
+        transform: row_major(&m_r),
+        local_transform: None,
+        canonical_transform: Some(row_major(&Matrix4::identity())),
+        rep_identity: 71_717,
+        instanceable: true,
+    };
+    let (pos_a, pos_b) = (bake_yup(&m_a, &CANON), bake_yup(&m_b, &CANON));
+    let pos_r = bake_yup(&m_r, &rigid_canon);
+    let (norm4, norm5) = (vec![0.0f32; 12], vec![0.0f32; 15]);
+    let rigid_indices: Vec<u32> = vec![0, 1, 2, 0, 1, 3, 0, 2, 4, 1, 2, 4];
+    let (meta_a, meta_b) = (exact_meta(&m_a), exact_meta(&m_b));
+    fn view<'a>(
+        id: u32,
+        p: &'a [f32],
+        n: &'a [f32],
+        i: &'a [u32],
+        im: &'a InstanceMeta,
+    ) -> MeshView<'a> {
+        MeshView {
+            express_id: id,
+            ifc_type: "IfcWall",
+            global_id: None,
+            positions: p,
+            normals: n,
+            indices: i,
+            color: [0.5, 0.5, 0.5, 1.0],
+            origin: [0.0, 0.0, 0.0],
+            instance: Some(im),
+        }
+    }
+    let views = vec![
+        view(1, &pos_a, &norm4, &indices, &meta_a),
+        view(2, &pos_b, &norm4, &indices, &meta_b),
+        view(3, &pos_r, &norm5, &rigid_indices, &rigid_meta),
+    ];
+
+    let mut ch = Chunker::new(12, usize::MAX, None);
+    let (gltf, _stats) =
+        build_gltf(&views, false, None, true, false, [0.0, 0.0, 0.0], None, false, &mut ch);
+
+    assert_eq!(
+        gltf.meshes.len(),
+        2,
+        "one shared template mesh for the exact pair, one flat mesh for the rigid member"
+    );
+    assert_eq!(
+        gltf.nodes.iter().filter(|n| n.matrix.is_some()).count(),
+        2,
+        "both exact occurrences are placed by a node matrix"
+    );
+    assert_eq!(
+        gltf.nodes.iter().filter(|n| n.mesh.is_some()).count(),
+        3,
+        "all three occurrences are still drawn"
+    );
+}
+
+/// The #3666 gap between the two GLB assemblers is reported at the seam, not
+/// only in a comment inside the bounded one.
+///
+/// The in-memory path verifies every exact-tier pairing by reconstruction, so a
+/// `rep_identity` collision falls back to flat. The bounded path holds a plan
+/// and no geometry, so it cannot run that check and ships every group it shares
+/// on the vertex/index-count guard alone - which a same-shaped colliding pair
+/// passes. A caller choosing between the two paths can now read that off
+/// `GltfStats` instead of the source.
+#[test]
+fn the_bounded_path_reports_the_groups_it_could_not_verify() {
+    let Some(content) = crate::test_support::fixture_opt("ara3d/duplex.ifc") else { return };
+    let opts = GltfOptions::default();
+    let (_, mem_stats) = export_glb_from_result(process_geometry(&content), &opts);
+    // Catches a fixture that is PRESENT but yields no geometry, which would make
+    // both counts trivially 0 and the assertions below vacuous. It does not close
+    // the skip above -- that `return` has already happened -- and it is not meant
+    // to: the house convention for a missing fixture is the skip, closed in CI by
+    // `IFC_LITE_REQUIRE_FIXTURES=1`, which makes `fixture_opt` panic instead (see
+    // `test_support`). Every other duplex test here relies on the same thing.
+    assert!(mem_stats.meshes > 0, "fixture present but produced no geometry");
+    let (_, stream_stats) = export_glb_streaming_bounded(&content, &opts);
+    assert_eq!(
+        mem_stats.unverified_instance_groups, 0,
+        "the in-memory path verifies every group it instances"
+    );
+    assert!(
+        stream_stats.unverified_instance_groups > 0,
+        "duplex has shared rep groups, and the bounded path instances them unverified"
+    );
+    // The assertion is on the direction, not the number: duplex's group count
+    // moves with the model and the collator. The exact figure is pinned on the
+    // synthetic fixture below, where it is a property of the fixture instead.
+}
+
+/// Four occurrences of ONE `IfcRepresentationMap` in TWO colours: the shape the
+/// bounded path's bucket key (identity, colour) splits and its `GltfStats`
+/// field does not. Colour comes from the material chain, which is per PRODUCT,
+/// so the four proxies share a representation while two of them are red and two
+/// blue.
+const ONE_IDENTITY_TWO_COLOURS: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('one rep map, two colours'),'2;1');
+FILE_NAME('two-colour.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0TwoColourProject0001',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCREPRESENTATIONMAP(#5,#21);
+#21=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#22));
+#22=IFCTRIANGULATEDFACESET(#23,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
+#23=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
+#30=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#4,$,$);
+#110=IFCCARTESIANPOINT((0.,0.,0.));
+#111=IFCAXIS2PLACEMENT3D(#110,$,$);
+#112=IFCLOCALPLACEMENT($,#111);
+#113=IFCMAPPEDITEM(#20,#30);
+#114=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#113));
+#115=IFCPRODUCTDEFINITIONSHAPE($,$,(#114));
+#116=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0001A',$,'E',$,$,#112,#115,$,$);
+#120=IFCCARTESIANPOINT((5.,0.,0.));
+#121=IFCAXIS2PLACEMENT3D(#120,$,$);
+#122=IFCLOCALPLACEMENT($,#121);
+#123=IFCMAPPEDITEM(#20,#30);
+#124=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#123));
+#125=IFCPRODUCTDEFINITIONSHAPE($,$,(#124));
+#126=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0002A',$,'E',$,$,#122,#125,$,$);
+#130=IFCCARTESIANPOINT((10.,0.,0.));
+#131=IFCAXIS2PLACEMENT3D(#130,$,$);
+#132=IFCLOCALPLACEMENT($,#131);
+#133=IFCMAPPEDITEM(#20,#30);
+#134=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#133));
+#135=IFCPRODUCTDEFINITIONSHAPE($,$,(#134));
+#136=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0003B',$,'E',$,$,#132,#135,$,$);
+#140=IFCCARTESIANPOINT((15.,0.,0.));
+#141=IFCAXIS2PLACEMENT3D(#140,$,$);
+#142=IFCLOCALPLACEMENT($,#141);
+#143=IFCMAPPEDITEM(#20,#30);
+#144=IFCSHAPEREPRESENTATION(#2,'Body','MappedRepresentation',(#143));
+#145=IFCPRODUCTDEFINITIONSHAPE($,$,(#144));
+#146=IFCBUILDINGELEMENTPROXY('0TwoColourProxy0004B',$,'E',$,$,#142,#145,$,$);
+#80=IFCMATERIAL('Red',$,$);
+#81=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#82),#80);
+#82=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#83));
+#83=IFCSTYLEDITEM($,(#84),$);
+#84=IFCSURFACESTYLE('Red',.BOTH.,(#85));
+#85=IFCSURFACESTYLERENDERING(#86,$,$,$,$,$,$,$,.FLAT.);
+#86=IFCCOLOURRGB($,1.,0.,0.);
+#90=IFCMATERIAL('Blue',$,$);
+#91=IFCMATERIALDEFINITIONREPRESENTATION($,$,(#92),#90);
+#92=IFCSTYLEDREPRESENTATION(#2,'Style','Material',(#93));
+#93=IFCSTYLEDITEM($,(#94),$);
+#94=IFCSURFACESTYLE('Blue',.BOTH.,(#95));
+#95=IFCSURFACESTYLERENDERING(#96,$,$,$,$,$,$,$,.FLAT.);
+#96=IFCCOLOURRGB($,0.,0.,1.);
+#98=IFCRELASSOCIATESMATERIAL('0TwoColourRelRed00001',$,$,$,(#116,#126),#80);
+#99=IFCRELASSOCIATESMATERIAL('0TwoColourRelBlue0001',$,$,$,(#136,#146),#90);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// `unverified_instance_groups` counts REP IDENTITIES, not the bucket key the
+/// bounded path groups on.
+///
+/// That key is `(rep_identity, colour)`, because a glTF material rides the mesh
+/// primitive rather than the node — so this fixture's ONE representation map in
+/// TWO colours is two buckets. Reporting 2 would name the same unverified hash
+/// twice and contradict the field's own doc comment. Only a fixture that splits
+/// a single identity across colours can tell the two counts apart; duplex, the
+/// other side of this pair, happens to hold one colour per identity and reports
+/// the same number either way.
+#[test]
+fn the_bounded_path_counts_identities_not_colour_buckets() {
+    let opts = GltfOptions::default();
+    let content = ONE_IDENTITY_TWO_COLOURS.as_bytes();
+    // The fixture only discriminates if it really is one shape in two colours.
+    let mut colors: Vec<[u32; 4]> = process_geometry(content)
+        .meshes
+        .iter()
+        .map(|m| m.color.map(|c| c.to_bits()))
+        .collect();
+    colors.sort_unstable();
+    colors.dedup();
+    assert_eq!(colors.len(), 2, "fixture must hold two distinct colours");
+
+    let (_, stats) = export_glb_streaming_bounded(content, &opts);
+    assert_eq!(
+        stats.unverified_instance_groups, 1,
+        "four occurrences of one representation map are ONE unverified identity, \
+         whatever the colours split them into"
+    );
+}

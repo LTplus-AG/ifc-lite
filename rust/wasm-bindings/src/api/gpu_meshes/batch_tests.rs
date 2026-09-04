@@ -70,3 +70,24 @@ fn an_unmeasured_volume_stays_absent_rather_than_becoming_zero() {
     assert_eq!(fp.volume, None, "absent is not 0.0 m³");
     assert_eq!(fp.closure_bits, 0, "nothing hashed closed ⇒ no closure bits");
 }
+
+/// A group the collator refuses (a #3666 reconstruction failure, a singular
+/// placement, a shape mismatch) lands in `Collated::flat_indices`, and the IFNS
+/// encoder turns each entry there into a ONE-INSTANCE template. That is the
+/// orbit-FPS regression `INSTANCE_MIN_OCCURRENCES` exists to prevent, arriving
+/// through a safety check instead of a tuning mistake. The partition takes those
+/// members back for its flat MeshCollection; this pins which ones it takes.
+#[test]
+fn rejected_members_are_taken_back_for_the_flat_path_and_sorted() {
+    use crate::api::gpu_meshes::batch_partition::rejected_to_flat;
+
+    // `refs` is the 5 materialized meshes, then the pose-only placeholders at
+    // 5.. . `flat_indices` arrives in per-GROUP order, not mesh order.
+    assert_eq!(rejected_to_flat(&[3, 0, 4], 5), vec![0, 3, 4], "sorted for lookup");
+    // A placeholder index (>= materialized) is not a mesh that can be drawn flat,
+    // so it is never taken back. The collator does not put one in `flat_indices`;
+    // the bound is what makes that a guarantee here rather than an assumption.
+    assert_eq!(rejected_to_flat(&[6, 1, 5], 5), vec![1]);
+    // Nothing refused: nothing leaves the shard.
+    assert_eq!(rejected_to_flat(&[], 5), Vec::<usize>::new());
+}

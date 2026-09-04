@@ -3,7 +3,8 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::batch_partition::{
-    is_instancing_candidate, meets_instance_threshold, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
+    encode_shard_routing_refusals_back, is_instancing_candidate, meets_instance_threshold,
+    take_back_rejected, tallyable_rep, INSTANCE_MIN_OCCURRENCES,
 };
 use super::void_index::reconstruct_void_index;
 use crate::api::IfcAPI;
@@ -924,14 +925,13 @@ impl IfcAPI {
                 item_id: o.geometry_item_id,
             });
         }
-        // min_group == the routing threshold so collate_refs never re-flattens a group
-        // that already passed the count gate; only its own try_inverse / shape-mismatch
-        // safety net can still drop a (rare, degenerate) group to a singleton template.
-        // Reduce occurrence transforms to the post-RTC frame (see the other call
-        // site) so rotated occurrences don't fly out to 2× the georef offset.
         let rtc = if needs_shift { [rtc_x, rtc_y, rtc_z] } else { [0.0, 0.0, 0.0] };
-        let shard =
-            ifc_lite_geometry::collate_and_encode(&refs, INSTANCE_MIN_OCCURRENCES as usize, rtc);
+        let (shard, rejected, dropped) =
+            encode_shard_routing_refusals_back(&refs, instanced.len(), rtc);
+        drop(refs);
+        // Handed back = drawn flat; DROPPED = drawn nowhere. Both leave the count.
+        let taken = take_back_rejected(instanced, &rejected, &mut mesh_collection);
+        let instanced_occurrences = instanced_occurrences - dropped - taken;
         mesh_collection.set_diagnostics(csg_diag);
         PartitionedBatch {
             meshes: Some(mesh_collection),

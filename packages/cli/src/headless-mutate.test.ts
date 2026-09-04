@@ -85,6 +85,124 @@ describe('bim.mutate through the headless context', () => {
     expect(step).toContain("'keep me'");
   });
 
+  // #3764's guard, and the trap in it. Refusing a write to an entity the model
+  // does not hold is only correct if "the model" means the EFFECTIVE model:
+  // `StoreEditor.addEntity` keeps created ids out of `store.entityIndex.byId`
+  // on purpose (that index may be a `CompactEntityIndex` over immutable typed
+  // arrays), so a guard that asks the base index alone rejects the ids the
+  // session itself just handed out — which is the ordinary create-then-decorate
+  // script, not an edge case.
+  it('accepts a write to an entity created earlier in the same session', async () => {
+    const { bim } = await loadModel();
+    const ref = bim.store.addEntity('default', {
+      type: 'IfcWall',
+      attributes: ["2N1x3zzzzzzzzzzzzzzzzz", null, "'Fresh Wall'", null, null, null, null, null, null],
+    });
+
+    bim.mutate.setProperty(ref, 'Pset_FireRating', 'FireRating', 'EI 90');
+    bim.mutate.setAttribute(ref, 'Name', 'Renamed Fresh Wall');
+
+    // Asserted on the export, like every other case here: the point is that
+    // the write both survives the guard and reaches the file.
+    const step = exportStep(bim);
+    expect(step).toContain("IFCLABEL('EI 90')");
+    expect(step).toContain("'Renamed Fresh Wall'");
+  });
+
+  it('refuses a create under a model id the backend does not answer for', async () => {
+    // The ref-minting side of the same guard. `bim.store.addEntity` used to echo
+    // the caller's model id back verbatim, so a create under any other spelling
+    // handed out a ref that `bim.mutate.*` then refused, with the entity already
+    // in the overlay and in the export. docs/guide/mutations.md teaches 'arch'
+    // for exactly this call, so that is the id the mistake arrives under.
+    const { bim } = await loadModel();
+    const wallDef = {
+      type: 'IfcWall',
+      attributes: ["2N1x3zzzzzzzzzzzzzzzzz", null, "'Arch Wall'", null, null, null, null, null, null],
+    };
+
+    expect(() => bim.store.addEntity('arch', wallDef)).toThrow(/Unknown modelId 'arch'/);
+    // Nothing was created under the rejected id: the assert runs before the
+    // StoreEditor is touched, so a refused create is not a half-done one.
+    expect(exportStep(bim)).not.toContain("'Arch Wall'");
+  });
+
+  it('accepts a create under the file-name spelling and the ref it returns', async () => {
+    // The other spelling `assertModel` admits. Its whole point is that the ref
+    // comes back usable: create, then decorate, then export.
+    const { bim } = await loadModel();
+    const ref = bim.store.addEntity('model.ifc', {
+      type: 'IfcWall',
+      attributes: ["2N1x3zzzzzzzzzzzzzzzzz", null, "'Named Wall'", null, null, null, null, null, null],
+    });
+
+    expect(ref.modelId).toBe('model.ifc');
+    bim.mutate.setProperty(ref, 'Pset_FireRating', 'FireRating', 'EI 30');
+    expect(exportStep(bim)).toContain("IFCLABEL('EI 30')");
+  });
+
+  it('refuses a write to an entity removed earlier in the same session', async () => {
+    // The other direction of the same asymmetry, and the reason the base index
+    // is not the answer either: a tombstoned SOURCE entity is still in
+    // `entityIndex.byId`, and is exported nowhere, so a write to it is dropped
+    // exactly like a phantom one.
+    const { bim, wall } = await loadModel();
+    bim.store.removeEntity(wall.ref);
+
+    expect(() => bim.mutate.setProperty(wall.ref, 'Pset_FireRating', 'FireRating', 'EI 90'))
+      .toThrow(/no entity #70 in model 'default'/);
+    expect(exportStep(bim)).not.toContain('EI 90');
+  });
+
+  it('refuses a write to an entity created and then removed in the same session', async () => {
+    // A created-then-deleted id is absent from the base index AND from
+    // `getNewEntities` — it is exported nowhere, so the same answer is right
+    // for a reference the session itself handed out minutes earlier.
+    const { bim } = await loadModel();
+    const ref = bim.store.addEntity('default', {
+      type: 'IfcWall',
+      attributes: ["2N1x3zzzzzzzzzzzzzzzzz", null, "'Doomed Wall'", null, null, null, null, null, null],
+    });
+    bim.store.removeEntity(ref);
+
+    expect(() => bim.mutate.setProperty(ref, 'Pset_FireRating', 'FireRating', 'EI 90'))
+      .toThrow(/no entity #/);
+  });
+
+  it('refuses every write method for an id that is not in the model', async () => {
+    const { bim } = await loadModel();
+    const phantom = { modelId: 'default', expressId: 999999 };
+
+    expect(() => bim.mutate.setProperty(phantom, 'Pset_Bogus', 'Foo', 'bar'))
+      .toThrow(/setProperty: no entity #999999 in model 'default'/);
+    expect(() => bim.mutate.setAttribute(phantom, 'Name', 'Ghost'))
+      .toThrow(/setAttribute: no entity #999999 in model 'default'/);
+    expect(() => bim.mutate.deleteProperty(phantom, 'Pset_WallCommon', 'Reference'))
+      .toThrow(/deleteProperty: no entity #999999 in model 'default'/);
+
+    // The export is the reason the throw has to be there: nothing about the
+    // phantom write ever reached it, and before #3764 nothing said so.
+    const step = exportStep(bim);
+    expect(step).not.toContain("'Ghost'");
+    expect(step).toContain("'W-01'");
+  });
+
+  it('refuses a real express id carried on an unknown model id, and says so as such', async () => {
+    // `bim.mutate.*` forwards only `ref.expressId` into this backend's one
+    // overlay, so an unchecked model id does not miss — it edits this model's
+    // #70 while the caller believes it addressed another file.
+    const { bim, wall } = await loadModel();
+
+    // The two ways a reference can be wrong are not the same failure, so they
+    // must not share a message: the entity here EXISTS, and reporting it as a
+    // missing #70 sends the caller looking for the wrong problem. The message
+    // names the ids this backend does answer for, which is the fix.
+    expect(() => bim.mutate.setAttribute(
+      { modelId: 'some-other-model', expressId: wall.ref.expressId }, 'Name', 'Wrong Model',
+    )).toThrow(/setAttribute: unknown model 'some-other-model' \(this backend answers for 'default' or 'model\.ifc'\)/);
+    expect(exportStep(bim)).toContain("'Original Name'");
+  });
+
   it('accepts a batch and reports that there is nothing to undo', async () => {
     const { bim, wall } = await loadModel();
     bim.mutate.batch('rename', () => {

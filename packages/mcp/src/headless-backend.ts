@@ -37,7 +37,7 @@ import type {
   QuantitySetData,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter, type StyleBackendMethods } from '@ifc-lite/sdk';
+import { createEffectiveEntityCheck, createHeadlessMutateAdapter, type EntityRefCheck, type StyleBackendMethods } from '@ifc-lite/sdk';
 import { applyStylesInStore } from '@ifc-lite/create';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
@@ -77,6 +77,14 @@ export class HeadlessLikeBackend implements BimBackend {
   private dataStore: IfcDataStore;
   private modelName: string;
   private modelId: string;
+  /** Every model id this backend answers for, so the schedule assert, the
+   *  `bim.mutate.*` guard and `bim.store.addEntity` cannot differ (#3764). The
+   *  file basename is NOT one: no other MCP site accepts one. */
+  private readonly acceptedModelIds: readonly string[];
+  /** The reference check `bim.mutate.*` is gated on (`null` when writable,
+   *  else the reason), exposed because the mutation TOOLS write into
+   *  `getMutationView()` directly and need the same gate (#3764). */
+  readonly checkEntityRef: EntityRefCheck;
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
 
@@ -84,6 +92,7 @@ export class HeadlessLikeBackend implements BimBackend {
     this.dataStore = store;
     this.modelName = modelName;
     this.modelId = modelId;
+    this.acceptedModelIds = [modelId];
     this.model = this.createModelAdapter();
     // The read surface folds this session's queued mutations in (#2004). The
     // overlay is passed as a getter because it is built lazily on the first
@@ -97,7 +106,16 @@ export class HeadlessLikeBackend implements BimBackend {
       flyTo() {}, setSection() {}, getSection() { return null; },
       setCamera() {}, getCamera() { return { mode: 'perspective' as const }; },
     };
-    this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+    this.checkEntityRef = createEffectiveEntityCheck({
+      acceptedModelIds: this.acceptedModelIds,
+      // Both halves of the source index, the union every other "is it in the
+      // source model" site takes: `deferPropertyAtomIndex` keeps property atoms
+      // out of `byId`, and they are exported like any other entity.
+      hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
+        || this.dataStore.deferredEntityIndex?.has(id) === true,
+      overlay: () => this.mutationView,
+    });
+    this.mutate = createHeadlessMutateAdapter(() => this.getOrCreateMutationView(), this.checkEntityRef);
     // Same arrangement as the CLI backend: the work happens in @ifc-lite/create
     // against the shared StoreEditor, so the new entities land in the overlay
     // this backend's export adapter already reads.
@@ -218,10 +236,27 @@ export class HeadlessLikeBackend implements BimBackend {
     this.visibility = { hide() {}, show() {}, isolate() {}, reset() {} };
   }
 
+  /** Whether `modelId` names the one model this backend holds. */
+  acceptsModelId(modelId: string): boolean {
+    return this.acceptedModelIds.includes(modelId);
+  }
+
+  /** Refuse an unknown model id loudly, at whichever surface was handed it. */
+  private assertKnownModelId(modelId: string): void {
+    if (this.acceptsModelId(modelId)) return;
+    throw new Error(
+      `Unknown modelId '${modelId}': this backend answers for ${this.acceptedModelIds.map(id => `'${id}'`).join(' or ')}`,
+    );
+  }
+
   private createStoreAdapter(): StoreBackendMethods {
     const get = () => this.getOrCreateStoreEditor();
     return {
       addEntity: (modelId, def) => {
+        // The ref carries `modelId`, and `bim.mutate.*` refuses one this
+        // backend does not answer for: echoing the caller's id back would mint
+        // a ref the next write rejects, entity already created (#3764).
+        this.assertKnownModelId(modelId);
         const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
         return { modelId, expressId: ref.expressId };
       },
@@ -344,12 +379,9 @@ export class HeadlessLikeBackend implements BimBackend {
 
   private createScheduleAdapter(): ScheduleBackendMethods {
     const store = this.dataStore;
-    const id = this.modelId;
     let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
     const assert = (modelId?: string): void => {
-      if (modelId && modelId !== id) {
-        throw new Error(`Unknown modelId '${modelId}' — this backend only has '${id}'`);
-      }
+      if (modelId) this.assertKnownModelId(modelId);
     };
     const extract = (modelId?: string): ReturnType<ScheduleBackendMethods['data']> => {
       assert(modelId);

@@ -12,13 +12,19 @@
  *   - entity_set_property / entity_delete_property — Pset edits
  *   - entity_set_attribute                         — direct IFC attributes
  *   - entity_create / entity_delete                — STEP-level entity ops
- *   - mutation_batch                               — apply N ops atomically
+ *   - mutation_batch                               — apply N ops in order
  *   - mutation_undo                                — pop last N entries
  *   - mutation_diff                                — pending changes summary
  *
  * The actual save lives in `tools/export.ts::export_ifc` (and the
  * convenience `model_save` alias) so the user can preview a diff before
  * writing the .ifc file.
+ *
+ * `mutation_batch` is NOT atomic and does not claim to be: it runs the
+ * operations in order and records each one's outcome in `results[]`. A failing
+ * operation is reported there and the ones before it stay queued; nothing is
+ * rolled back. Callers that need all-or-nothing have to check `results[]` and
+ * undo themselves.
  */
 
 import { writeFile } from 'node:fs/promises';
@@ -52,6 +58,32 @@ function resolveExpressId(m: ReturnType<typeof resolveModel>, input: Record<stri
     throw new ToolExecutionError({ code: ToolErrorCode.ENTITY_NOT_FOUND, message: `GlobalId not found: ${gid}` });
   }
   throw new ToolExecutionError({ code: ToolErrorCode.INVALID_INPUT, message: 'Provide global_id or express_id.' });
+}
+
+/**
+ * The same id, checked against the model before anything is written to it.
+ *
+ * The write tools below do not go through `bim.mutate.*`: they reach
+ * `backend.getMutationView()` directly, so the guard that refuses a phantom
+ * write on the SDK path did not cover them. `entity_set_property` with an
+ * express id nothing holds created the overlay entry, answered "Queued", and
+ * was then dropped by the exporter (which only visits entities the effective
+ * model holds) with no diagnostic anywhere in the round trip (#3764).
+ *
+ * `entity_create` is the one write tool not routed through this: it has no id
+ * to check yet.
+ */
+function resolveWritableExpressId(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): number {
+  const expressId = resolveExpressId(m, input);
+  const reason = m.backend.checkEntityRef({ modelId: m.id, expressId });
+  if (reason !== null) {
+    throw new ToolExecutionError({
+      code: ToolErrorCode.ENTITY_NOT_FOUND,
+      message: `Cannot write to #${expressId} in model '${m.id}': ${reason}`,
+      details: { expressId, modelId: m.id },
+    });
+  }
+  return expressId;
 }
 
 /** Shared with `bim.mutate.setProperty`, so the two paths cannot classify differently. */
@@ -88,7 +120,7 @@ const entitySetProperty: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
-    const expressId = resolveExpressId(m, input);
+    const expressId = resolveWritableExpressId(m, input);
     const mutation = applySetProperty({ m, backend }, {
       expressId,
       pset: input.pset as string,
@@ -120,10 +152,14 @@ const entityDeleteProperty: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
+    // Check BEFORE materialising the editor: `ensureEditor` creates the
+    // overlay, so checking second left an empty one behind on a refusal and
+    // `mutation_diff` then said "0 pending mutation(s)" where an untouched
+    // session says "No pending mutations."
+    const expressId = resolveWritableExpressId(m, input);
     backend.ensureEditor();
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
-    const expressId = resolveExpressId(m, input);
     const result = view.deleteProperty(expressId, input.pset as string, input.name as string);
     return okResult(
       result ? 'Property delete queued.' : 'Property was not present; no-op.',
@@ -151,10 +187,12 @@ const entitySetAttribute: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
+    // Checked before `ensureEditor` for the same reason as above: a refused
+    // write must leave the session as it found it.
+    const expressId = resolveWritableExpressId(m, input);
     backend.ensureEditor();
     const view = backend.getMutationView();
     if (!view) throw new Error('Mutation view not available');
-    const expressId = resolveExpressId(m, input);
     const attribute = input.attribute as string;
     // Capture the value as it stood right before this write so the mutation
     // record's `oldValue` is the true prior value — `mutation_undo` (and any
@@ -213,16 +251,21 @@ const entityDelete: Tool = {
   handler(input, ctx) {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const backend = getBackend(m);
-    const editor = backend.ensureEditor();
-    const expressId = resolveExpressId(m, input);
-    const removed = editor.removeEntity(expressId);
+    // Checked like the write tools, and for the same reason: a delete of an id
+    // the model does not hold used to answer `okResult` with `deleted: false`,
+    // which `mutation_batch` counts as a succeeded step. "Batch 1/1 succeeded"
+    // for an operation that did nothing is the phantom write from the other
+    // end. `deleted: false` still stands for the one case that is genuinely a
+    // no-op rather than a mistake: an id this session already removed.
+    const expressId = resolveWritableExpressId(m, input);
+    const removed = backend.ensureEditor().removeEntity(expressId);
     return okResult(removed ? 'Entity deleted.' : 'Entity not found / already gone.', { expressId, deleted: removed });
   },
 };
 
 const mutationBatch: Tool = {
   name: 'mutation_batch',
-  description: 'Apply N mutation operations as a single batch. Each item names a sub-tool and its arguments. Returns per-step results in order.',
+  description: 'Apply N mutation operations in order. Each item names a sub-tool and its arguments. Returns per-step results in order. Not atomic: a failing operation is reported in results[] and does not roll back the ones before it.',
   scope: 'mutate',
   inputSchema: {
     type: 'object',

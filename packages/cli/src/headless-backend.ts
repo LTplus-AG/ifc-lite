@@ -40,7 +40,7 @@ import type {
   QueryDescriptor,
   ModelInfo,
 } from '@ifc-lite/sdk';
-import { createHeadlessMutateAdapter } from '@ifc-lite/sdk';
+import { createEffectiveEntityCheck, createHeadlessMutateAdapter } from '@ifc-lite/sdk';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import {
@@ -163,12 +163,18 @@ export class HeadlessBackend implements BimBackend {
 
   private dataStore: IfcDataStore;
   private modelName: string;
+  /** Every spelling of the one model this backend answers for, written once:
+   *  the schedule assert, the `bim.mutate.*` guard and the `bim.store.add*`
+   *  ref-minting sites all have to give the SAME answer, or a ref is minted
+   *  under an id the very next write refuses (#3764). */
+  private readonly acceptedModelIds: readonly string[];
   private mutationView: MutablePropertyView | null = null;
   private storeEditor: StoreEditor | null = null;
 
   constructor(store: IfcDataStore, modelName: string) {
     this.dataStore = store;
     this.modelName = modelName;
+    this.acceptedModelIds = modelName === MODEL_ID ? [MODEL_ID] : [MODEL_ID, modelName];
     this.model = this.createModelAdapter();
     this.query = this.createQueryAdapter();
     this.selection = this.createSelectionAdapter();
@@ -183,6 +189,24 @@ export class HeadlessBackend implements BimBackend {
     this.schedule = this.createScheduleAdapter();
     this.spaces = this.createSpacesAdapter();
     this.style = this.createStyleAdapter();
+  }
+
+  /** Whether `modelId` names the one model this backend holds. */
+  private acceptsModelId(modelId: string): boolean {
+    return this.acceptedModelIds.includes(modelId);
+  }
+
+  /** The accepted spellings as an error-message clause: `'default' or 'a.ifc'`. */
+  private acceptedModelIdList(): string {
+    return this.acceptedModelIds.map(id => `'${id}'`).join(' or ');
+  }
+
+  /** Refuse an unknown model id loudly, at whichever surface was handed it. */
+  private assertKnownModelId(modelId: string): void {
+    if (this.acceptsModelId(modelId)) return;
+    throw new Error(
+      `Unknown modelId '${modelId}': this backend answers for ${this.acceptedModelIdList()}`,
+    );
   }
 
   private createStyleAdapter(): StyleBackendMethods {
@@ -466,7 +490,18 @@ export class HeadlessBackend implements BimBackend {
   }
 
   private createMutateAdapter(): MutateBackendMethods {
-    return createHeadlessMutateAdapter(() => this.getOrCreateMutationView());
+    return createHeadlessMutateAdapter(
+      () => this.getOrCreateMutationView(),
+      createEffectiveEntityCheck({
+        acceptedModelIds: this.acceptedModelIds,
+        // Both halves of the source index, the union every other "is it in
+        // the source model" site takes: `deferPropertyAtomIndex` keeps property
+        // atoms out of `byId`, and they are exported like any other entity.
+        hasSourceEntity: id => this.dataStore.entityIndex.byId.has(id)
+          || this.dataStore.deferredEntityIndex?.has(id) === true,
+        overlay: () => this.mutationView,
+      }),
+    );
   }
 
   /**
@@ -498,8 +533,14 @@ export class HeadlessBackend implements BimBackend {
   private createStoreAdapter(): StoreBackendMethods {
     const get = () => this.getOrCreateStoreEditor();
     const dataStore = () => this.dataStore;
+    // Every `add*` mints an `EntityRef` carrying the model id it was called
+    // with, and `bim.mutate.*` refuses one this backend does not answer for.
+    // Checking here, before the entity exists, is what keeps the two from
+    // disagreeing: no ref is handed back that the next call rejects.
+    const assertModel = (modelId: string) => this.assertKnownModelId(modelId);
     return {
       addEntity(modelId: string, def: { type: string; attributes: unknown[] }): EntityRef {
+        assertModel(modelId);
         const ref = get().addEntity(def.type, def.attributes as Parameters<StoreEditor['addEntity']>[1]);
         return { modelId, expressId: ref.expressId };
       },
@@ -510,60 +551,70 @@ export class HeadlessBackend implements BimBackend {
         get().setPositionalAttribute(ref.expressId, index, value as Parameters<StoreEditor['setPositionalAttribute']>[2]);
       },
       addColumn(modelId: string, storeyExpressId: number, params: ColumnInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addColumnToStore(editor, anchor, params);
         return { modelId, expressId: result.columnId };
       },
       addWall(modelId: string, storeyExpressId: number, params: WallInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addWallToStore(editor, anchor, params);
         return { modelId, expressId: result.wallId };
       },
       addSlab(modelId: string, storeyExpressId: number, params: SlabInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addSlabToStore(editor, anchor, params);
         return { modelId, expressId: result.slabId };
       },
       addBeam(modelId: string, storeyExpressId: number, params: BeamInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addBeamToStore(editor, anchor, params);
         return { modelId, expressId: result.beamId };
       },
       addDoor(modelId: string, storeyExpressId: number, params: DoorInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addDoorToStore(editor, anchor, params);
         return { modelId, expressId: result.doorId };
       },
       addWindow(modelId: string, storeyExpressId: number, params: WindowInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addWindowToStore(editor, anchor, params);
         return { modelId, expressId: result.windowId };
       },
       addSpace(modelId: string, storeyExpressId: number, params: SpaceInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addSpaceToStore(editor, anchor, params);
         return { modelId, expressId: result.spaceId };
       },
       addRoof(modelId: string, storeyExpressId: number, params: RoofInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addRoofToStore(editor, anchor, params);
         return { modelId, expressId: result.roofId };
       },
       addPlate(modelId: string, storeyExpressId: number, params: PlateInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addPlateToStore(editor, anchor, params);
         return { modelId, expressId: result.plateId };
       },
       addMember(modelId: string, storeyExpressId: number, params: MemberInStoreParams): EntityRef {
+        assertModel(modelId);
         const editor = get();
         const anchor = resolveSpatialAnchor(dataStore(), storeyExpressId);
         const result = addMemberToStore(editor, anchor, params);
@@ -714,18 +765,12 @@ export class HeadlessBackend implements BimBackend {
 
   private createScheduleAdapter(): ScheduleBackendMethods {
     const store = this.dataStore;
-    const modelName = this.modelName;
     let cached: ReturnType<ScheduleBackendMethods['data']> | null = null;
 
+    // Unknown ids surface a clear error instead of silently returning the wrong
+    // data, and they surface the SAME error the write guard gives.
     const assertModel = (modelId?: string) => {
-      // Headless mode ships exactly one model — `MODEL_ID` or the configured
-      // name. Unknown ids surface a clear error instead of silently returning
-      // the wrong data.
-      if (modelId && modelId !== MODEL_ID && modelId !== modelName) {
-        throw new Error(
-          `Unknown modelId '${modelId}' — headless backend only has '${MODEL_ID}'`,
-        );
-      }
+      if (modelId) this.assertKnownModelId(modelId);
     };
 
     const extract = (modelId?: string) => {

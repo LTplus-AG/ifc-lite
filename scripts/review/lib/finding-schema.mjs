@@ -172,7 +172,16 @@ function validateFindings({ response, input, warn }) {
  * The whole policy, pure over already-read inputs so the harness can drive every
  * branch without touching a filesystem.
  *
- * @returns {{ verdict: string, findings: object[], warnings: string[], counts: object }}
+ * `classPass` is the flag #3862 needed: TRUE only when this response's verdict
+ * was `clean` AND `checkClassPass` accepted its per-class pass. It is FALSE on a
+ * `findings` verdict, which is exempt from that check on purpose -- and that
+ * exemption is exactly what the poster has to be told about, because a judge
+ * that drops every finding leaves post-review.mjs looking at the same
+ * `confirmed === 0` a genuinely clean review produces. The fact is known HERE
+ * and nowhere downstream, so it travels on findings.json rather than being
+ * re-derived from a count that cannot carry it.
+ *
+ * @returns {{ verdict: string, findings: object[], classPass: boolean, warnings: string[], counts: object }}
  */
 export function validate({ response, input, onWarn = null }) {
   const warnings = [];
@@ -220,7 +229,12 @@ export function validate({ response, input, onWarn = null }) {
   // `warnings` on findings.json. A note console.logged from inside the check
   // would be visible in the lane log and absent from the artefact, which is the
   // half of the record anything downstream actually reads.
-  if (response.verdict === 'clean') checkClassPass({ response, input, warn });
+  //
+  // The RETURNED FLAG is set from the same condition, not from a second one: a
+  // `classPass: true` computed anywhere but immediately beside the call could
+  // claim a pass the call never made.
+  const classPass = response.verdict === 'clean';
+  if (classPass) checkClassPass({ response, input, warn });
 
   let kept = validateFindings({ response, input, warn });
   const survived = kept.length;
@@ -298,6 +312,7 @@ export function validate({ response, input, onWarn = null }) {
   return {
     verdict: response.verdict,
     findings: nonEmpty,
+    classPass,
     warnings,
     counts: { emitted: response.findings.length, surviving: survived, capped, kept: findings.length },
   };

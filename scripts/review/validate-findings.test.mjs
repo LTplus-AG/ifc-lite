@@ -213,6 +213,33 @@ test('PASS: a clean verdict with real proof of work', () => {
   assert.deepEqual(r.doc.findings, []);
 });
 
+test('#3862 the CLASS-PASS FLAG is written for a clean verdict', () => {
+  // WHY findings.json HAS TO SAY THIS. `checkClassPass` runs on `clean` only, so
+  // "this verdict is backed by a per-class pass" is a fact known here and
+  // NOWHERE downstream. post-review.mjs decides the marker's verdict from what
+  // GitHub hands back (`confirmed === 0`), which is the same number a `findings`
+  // verdict emptied by the judge produces -- so without this field the poster
+  // cannot tell a walked-the-list clean from a judge-emptied one, and posts the
+  // stronger of the two.
+  const r = run(response());
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
+  assert.equal(r.doc.classPass, true);
+});
+
+test('#3862 the CLASS-PASS FLAG is FALSE on a findings verdict, which was never asked for one', () => {
+  // Not an oversight and not a defect: a `findings` verdict is exempt from the
+  // class pass on purpose (defect-classes.mjs says why -- it already carries
+  // evidence, and twelve more paragraphs would spend the budget
+  // RESPONSE_TRUNCATED fires on). The flag records that exemption instead of
+  // hiding it, which is what lets the poster refuse to call an emptied findings
+  // run `clean`.
+  const r = run(response({ verdict: 'findings', findings: [finding()] }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'findings');
+  assert.equal(r.doc.classPass, false);
+});
+
 test('PASS: headSha comes from the INPUT, never from the model', () => {
   // The poster writes the marker from this field. A model that could set it could
   // name any commit it liked and satisfy check-review-posted.mjs for a diff nobody

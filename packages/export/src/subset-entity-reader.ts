@@ -19,10 +19,20 @@
  */
 
 import type { IfcSourceBytes } from '@ifc-lite/parser';
-import { getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
+import { STEP_TRIVIA, getAttributeNamesAcrossSchemas, resolveEntityNameAlias } from '@ifc-lite/parser';
 import { ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3, type IfcEntityInfo } from '@ifc-lite/data';
 import { createSourceRefReader, decodeRange } from './source-ref-bounds.js';
 import { splitTopLevelArgs } from './step-argument-parser.js';
+
+/**
+ * `#N=TYPE(...);` record, with STEP trivia (whitespace and/or a
+ * `/* ... *​/` comment, #3789) tolerated between the type name and `(` —
+ * the same adjacency fix the rest of this package's record readers carry.
+ * Without it a wrapped record reads as unparseable, `readEntityArgs` returns
+ * `null`, and `anonymize-placement.ts` / `anonymize-scrub.ts` silently skip
+ * that entity instead of scrubbing it.
+ */
+const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*(\\w+)${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;\\s*$`);
 
 /** One entity's parsed STEP record: its type token and top-level arguments,
  *  in declaration order (still raw STEP tokens — `#N`, `'text'`, `$`, `.T.`,
@@ -64,7 +74,7 @@ export function readEntityArgs(
   if (!isReadable(ref)) return null;
 
   const line = decodeRange(store.source, ref.byteOffset, ref.byteOffset + ref.byteLength);
-  const match = line.match(/^#\d+\s*=\s*(\w+)\(([\s\S]*)\)\s*;\s*$/);
+  const match = line.match(RECORD_RE);
   if (!match) return null;
   const [, type, argsText] = match;
   return { type: type.toUpperCase(), args: splitTopLevelArgs(argsText) };

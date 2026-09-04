@@ -27,6 +27,7 @@
 import type { IfcSourceBytes } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelArgs } from './step-argument-parser.js';
+import type { CompleteEntityIndex } from './entity-iteration.js';
 
 /**
  * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
@@ -37,7 +38,6 @@ import { splitTopLevelArgs } from './step-argument-parser.js';
  * empty-container drop for that entity.
  */
 const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
-import type { CompleteEntityIndex } from './entity-iteration.js';
 
 /**
  * Spatial container types dropped when they end up empty. `IfcProject` is

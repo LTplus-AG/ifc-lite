@@ -36,6 +36,7 @@
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { asSourceBytes, STEP_TRIVIA } from '@ifc-lite/parser';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
 
 /**
  * `#N=TYPE(...)` record, with STEP trivia (whitespace and/or a
@@ -45,7 +46,6 @@ import { splitTopLevelStepArguments } from './step-argument-parser.js';
  * returns `null`), which reads identically to a genuinely-absent attribute.
  */
 const RECORD_RE = new RegExp(`^#\\d+\\s*=\\s*\\w+${STEP_TRIVIA}\\(([\\s\\S]*)\\)\\s*;?\\s*$`);
-import { groupSubContextsByKey, planSubContextUnify } from './merged-subcontext.js';
 
 /** A resolved WorldCoordinateSystem frame: origin in metres and normalized axes. */
 export interface WcsSignature {

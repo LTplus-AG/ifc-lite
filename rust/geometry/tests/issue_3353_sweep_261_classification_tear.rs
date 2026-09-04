@@ -59,18 +59,37 @@
 //! rotated corner-overlap family.
 //!
 //! `sweep_261` is only PARTLY that. With the weld in place its Union still
-//! reports 3 unmatched directed edges, unchanged. The residual is a different
-//! mechanism, and the trace names it: two vertices at the SAME height,
-//! `(-1.6740501, -0.2988684, 1.6377716)` and `(-1.6739786, -0.2989122,
-//! 1.6377716)`, 84 µm apart IN PLANE. That is an in-plane vertex split, not a
-//! near-coplanar face pair — nothing perpendicular for a plane weld to close,
-//! and it sits above the `NearBand` (~122 µm floor) only by being an in-plane
-//! separation the band does not measure at all.
+//! reports 3 unmatched directed edges, unchanged. Disabling the weld entirely
+//! leaves the committed 8000-pair union sweep at exactly 98 torn — measured on
+//! the issue, not here — so the residual is outside the weld's reach.
 //!
-//! So the remaining work here is the coplanar-overlay / retriangulation chord
-//! divergence that produced two nearly-coincident vertices where one belongs,
-//! NOT the snap reconciliation and NOT (per the earlier measurement recorded
-//! on the issue) the `unrecovered` conformity story.
+//! ## The mechanism, and where it is written up
+//!
+//! The residual is `rust/geometry/src/kernel/arrangement/classify.rs`'s regime 1
+//! — the coincident-shared-face test — firing on a face pair that is not
+//! coincident. It establishes coincidence from a sub-triangle's CENTROID alone,
+//! and a sub-triangle need not have its parent's plane: retriangulation can leave
+//! one degenerate onto the LINE where the two parent planes meet, at which point
+//! every one of its points lies in the other operand's plane however transversal
+//! the faces are. Here that is `arr.tris_a[22] = [17, 13, 14]`, kept by regime 1
+//! while its own neighbour in the same A face plane, `arr.tris_a[17]`, is
+//! correctly dropped as inside B. That leaves three Vid-space edges at the wrong
+//! multiplicity, and dropping `tris_a[22]` alone repairs all three: `(13,17)`
+//! goes to 0 (it was used once, by that triangle only) and the other two to 2.
+//! Measured in Vid space, one layer above the float `open_edges` below.
+//!
+//! `kernel/arrangement/issue_3353_vid_census_tests.rs` is where this is written
+//! up: the per-triangle regime table for every triangle on an over-used edge,
+//! the measurements behind the paragraph above, and the five fix shapes tried
+//! against it — including why the two that fix this test each cost 20 golden
+//! census hosts. Read it before attempting a sixth.
+//!
+//! One correction to record here, because it is this file's own earlier reading:
+//! the "84 um IN-PLANE vertex split" to be healed by a coplanar-overlay /
+//! retriangulation chord divergence is the same two vertices seen from the other
+//! end, but it points at the wrong repair. The vertices are exact and
+//! independently derived (measured on the issue), and nothing merges them. What
+//! goes wrong is the verdict taken on the sliver they span.
 //!
 //! ## Status
 //!

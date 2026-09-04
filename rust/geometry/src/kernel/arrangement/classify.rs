@@ -187,8 +187,20 @@ use super::super::near_band::{NearBand, near_band_from_extent};
 /// welding separate surfaces (`csg/world_frame_tests.rs`). Always THREE orders
 /// below the smallest real feature edge (~0.2 m), so a distinct parallel face
 /// can never be within it. All FMA-free f64 over input coords ⇒ byte-identical
-/// native==wasm. GATED on the near-coplanar-parent flag, so a transversal cut
-/// (every pinned box−box manifest face) never reaches it.
+/// native==wasm.
+///
+/// NOT GATED, despite what this paragraph used to claim ("GATED on the
+/// near-coplanar-parent flag, so a transversal cut never reaches it"). The
+/// A-side caller (`BComponents::surface_normal`) and the B-side one
+/// (`c_on_or_near_a`) both reach it unconditionally, and the triangle it wrongly
+/// accepts on `sweep_261` has `coplanar_a[i] == false` — so a transversal cut
+/// face DOES reach it. Gating the A-side call on the flag was measured as a fix
+/// for #3353: it closes `sweep_261` and takes the union sweep 98 -> 77, but it
+/// regresses 20 golden census hosts and breaks two pinned near-band invariants
+/// in `clash_intersection_oracle.rs`
+/// (`no_surviving_near_band_triangle_has_an_x_facing_normal` and
+/// `the_near_band_shortfall_is_a_missing_face_pair_not_a_shape_dependent_wedge`),
+/// both of which need this path ungated. See `issue_3353_vid_census_tests.rs`.
 fn near_on_surface_normal(c: [f64; 3], others: &[Tri]) -> Option<[f64; 3]> {
     let mut band = NearBand::default();
     band.observe_point(&c);
@@ -521,9 +533,23 @@ pub(super) fn boolean_vids_components(
         // EXACT first, then the snap-band-flush analogue (`near_on_surface_normal`)
         // which catches a face left a few µm off a TILTED shared plane by per-axis
         // import snapping (the #1007 flush roof-opening cap). The near test is
-        // ungated (like the exact one) because a coincident-shared-face DROP/keep is
-        // unconditionally correct, and its centroid-inside + µm-perp requirements
-        // never match a transversal cut face (every pinned box−box manifest face).
+        // ungated (like the exact one) because a coincident-shared-face DROP/keep
+        // is unconditionally correct.
+        //
+        // KNOWN FALSE POSITIVE (#3353, open). This comment used to end "and its
+        // centroid-inside + µm-perp requirements never match a transversal cut
+        // face". They do. Both tests establish coincidence from the CENTROID
+        // alone, and a sub-triangle need not have its parent's plane:
+        // retriangulation can leave one degenerate onto the LINE where the two
+        // parent planes meet, and every point of such a sliver lies in the other
+        // operand's plane however transversal the faces are. Normal agreement
+        // then decides it on the sign of a cross product a near-collinear triple
+        // does not pin down. Measured on `sweep_261`, where it keeps a needle
+        // that its neighbour in the same flat face correctly drops, tearing the
+        // mesh. Before changing anything here read the per-triangle regime table
+        // and the four measured (and rejected) fix shapes in
+        // `issue_3353_vid_census_tests.rs` — the promising one costs 20 golden
+        // census hosts.
         if let Some(n_other) = bc.surface_normal(c) {
             let co_oriented = dot3(tri_normal(arr, tri), n_other) > 0.0;
             keep = match op {

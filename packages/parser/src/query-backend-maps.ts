@@ -17,6 +17,7 @@
  */
 
 import { RelationshipType, expandTypeNamesToDescendants } from '@ifc-lite/data';
+import { getInheritanceChain, isQueryableObjectType } from './ifc-schema.js';
 
 /**
  * IFC4 subtype map — parent types to their StandardCase/ElementedCase
@@ -45,6 +46,29 @@ export const IFC_SUBTYPES: Record<string, string[]> = {
 };
 
 /**
+ * Which of `IfcRoot`'s branches a class sits in.
+ *
+ * `IfcRoot` is the ancestor of everything with a GlobalId, and its three
+ * branches answer three different questions: occurrences, the property
+ * definitions attached to them, and the relationships between them. Type
+ * objects are a fourth answer inside the first, which is the line
+ * {@link isQueryableObjectType} already draws for an UNFILTERED query.
+ *
+ * `'other'` is `IfcRoot` itself, and anything the bundled schemas do not
+ * know — a vendor extension, a typo.
+ */
+type RootBranch = 'object' | 'typeObject' | 'propertyDefinition' | 'relationship' | 'other';
+
+function rootBranchOf(type: string): RootBranch {
+  const chain = getInheritanceChain(type);
+  if (chain.includes('IfcRelationship')) return 'relationship';
+  if (chain.includes('IfcPropertyDefinition')) return 'propertyDefinition';
+  if (chain.includes('IfcTypeObject')) return 'typeObject';
+  if (chain.includes('IfcObjectDefinition')) return 'object';
+  return 'other';
+}
+
+/**
  * Expand a caller's type list to every schema-declared descendant (itself
  * plus every type that has it as an ancestor, direct or indirect), so
  * `byType('IfcBuildingElement')` finds the concrete leaves a model actually
@@ -63,9 +87,37 @@ export const IFC_SUBTYPES: Record<string, string[]> = {
  * header says (see the resolver's module doc). That is also what lets
  * `validate`'s scanned type lists be computed once at module load and still be
  * unable to disagree with `byType` about what counts as a wall.
+ *
+ * The expansion does not cross an `IfcRoot` branch. Descending the whole
+ * hierarchy from an abstract root turned `byType('IfcRoot')` into "every
+ * rooted record in the file" — 223 rows on `infra-bridge.ifc`, 36 of them
+ * `IfcRelDefinesByProperties` — which a caller then hands to `storey()` or
+ * `group_by`, written against products. `IfcObjectDefinition` swept in every
+ * `*Type` the same way, contradicting the untyped branch of the very same
+ * backends, which has always answered with {@link isQueryableObjectType}
+ * only.
+ *
+ * The gate reads the requested type's branch rather than "is a product",
+ * because `byType('IfcBuildingElementType')` means its subtypes exactly as
+ * much as `byType('IfcBuildingElement')` does. The requested names themselves
+ * are never gated: a caller who spells out `IfcPropertySet` said what they
+ * wanted.
  */
 export function expandTypes(types: string[]): string[] {
-  return expandTypeNamesToDescendants(types);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const type of types) {
+    const branch = rootBranchOf(type);
+    const [self, ...descendants] = expandTypeNamesToDescendants([type]);
+    for (const name of [self as string, ...descendants.filter(
+      (d) => isQueryableObjectType(d) || rootBranchOf(d) === branch,
+    )]) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  return out;
 }
 
 /**

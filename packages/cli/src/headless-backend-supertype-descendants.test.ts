@@ -118,3 +118,64 @@ describe('a re-headered file answers byType the same under every schema header',
     },
   );
 });
+
+/**
+ * Expanding an abstract type must not walk out of the product branch.
+ *
+ * `IfcRoot` is the ancestor of everything with a GlobalId — occurrences, but
+ * also `IfcPropertySet`, every `IfcRel*` and every `*Type`. Expanding it whole
+ * turned `byType('IfcRoot')` into "every rooted record in the file" (223 rows
+ * on `infra-bridge.ifc`, 36 of them `IfcRelDefinesByProperties`), and the
+ * untyped branch of this same backend has always answered with
+ * `isProductType` only. A caller then hands those rows to `storey()` or
+ * `group_by`, which are written against products.
+ *
+ * The requested type itself is never gated, so asking for a property set or a
+ * relationship by name still works — that caller said what they wanted.
+ */
+const BRANCH_MODEL = ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'Wall',$,$,$,$,'tag',$);
+#71= IFCWALLTYPE('WALT00000000000000000X',$,'Wall type',$,$,$,$,$,$,.STANDARD.);
+#72= IFCPROPERTYSET('PSET00000000000000000X',$,'Pset_Test',$,(#73));
+#73= IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL('v'),$);
+#74= IFCRELDEFINESBYPROPERTIES('RDBP00000000000000000X',$,$,$,(#70),#72);`, 'IFC4');
+
+const loadBranchModel = () => loadInlineModel(BRANCH_MODEL, 'supertype-branch');
+
+describe('an abstract-root expansion stays inside the product branch', () => {
+  it('byType("IfcRoot") answers with products only, not property sets or relationships', async () => {
+    const bim = await loadBranchModel();
+    const types = bim.query().byType('IfcRoot').toArray().map((e) => e.type).sort();
+    expect(types).not.toContain('IfcPropertySet');
+    expect(types).not.toContain('IfcRelDefinesByProperties');
+    expect(types).not.toContain('IfcWallType');
+    expect(types).toContain('IfcWall');
+  });
+
+  it('byType("IfcObjectDefinition") does not sweep in type objects', async () => {
+    // The untyped branch holds type objects back so a query answers with
+    // occurrences; the typed branch has to agree with it.
+    const bim = await loadBranchModel();
+    const types = bim.query().byType('IfcObjectDefinition').toArray().map((e) => e.type);
+    expect(types).toContain('IfcWall');
+    expect(types).not.toContain('IfcWallType');
+  });
+
+  it('byType("IfcPropertySet") still finds the property set — the gate never drops the requested type', async () => {
+    const bim = await loadBranchModel();
+    const result = bim.query().byType('IfcPropertySet').toArray();
+    expect(result.map((e) => e.type)).toEqual(['IfcPropertySet']);
+  });
+
+  it('byType("IfcWallType") still finds the type object', async () => {
+    const bim = await loadBranchModel();
+    expect(bim.query().byType('IfcWallType').toArray().map((e) => e.type)).toEqual(['IfcWallType']);
+  });
+
+  it('byType("IfcBuildingElementType") keeps its own subtypes — the gate is a branch, not a ban', async () => {
+    // A caller asking for an abstract TYPE supertype meant its subtypes just
+    // as much as one asking for IfcBuildingElement did. Gating on
+    // "is a product" alone would answer 0 here.
+    const bim = await loadBranchModel();
+    expect(bim.query().byType('IfcBuildingElementType').toArray().map((e) => e.type)).toEqual(['IfcWallType']);
+  });
+});

@@ -91,3 +91,56 @@ describe('byType resolves per the model\'s own schema version (IFC4X3)', () => {
     }
   });
 });
+
+/**
+ * Expanding an abstract type must not walk out of the product branch.
+ *
+ * `IfcRoot` is the ancestor of everything with a GlobalId, so expanding it
+ * whole turned `byType('IfcRoot')` into "every rooted record in the file" —
+ * property sets, `IfcRel*`, `*Type`. `count_entities({type:'IfcObject',
+ * group_by:'storey'})` then calls `storey()` on relationships. The untyped
+ * branch of this backend has always answered with `isProductType` only; the
+ * typed branch has to agree with it. The requested type itself is never
+ * gated, so asking for a property set by name still works.
+ */
+describe('an abstract-root expansion stays inside the product branch', () => {
+  let dir: string;
+  let model: LoadedModel;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-branch-'));
+    const source = ifcFile(`#70= IFCWALL('${guid('WAL1')}',$,'Wall',$,$,$,$,'tag',$);
+#71= IFCWALLTYPE('${guid('WALT')}',$,'Wall type',$,$,$,$,$,$,.STANDARD.);
+#72= IFCPROPERTYSET('${guid('PSET')}',$,'Pset_Test',$,(#73));
+#73= IFCPROPERTYSINGLEVALUE('P',$,IFCLABEL('v'),$);
+#74= IFCRELDEFINESBYPROPERTIES('${guid('RDBP')}',$,$,$,(#70),#72);`, 'IFC4');
+    await writeFile(join(dir, 'm.ifc'), source, 'utf-8');
+    model = await loadIfcModel(join(dir, 'm.ifc'), { modelId: 'm' });
+  });
+
+  afterAll(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it('byType("IfcRoot") answers with products only, not property sets or relationships', () => {
+    const types = model.bim.query().byType('IfcRoot').toArray().map((e) => e.type);
+    expect(types).not.toContain('IfcPropertySet');
+    expect(types).not.toContain('IfcRelDefinesByProperties');
+    expect(types).not.toContain('IfcWallType');
+    expect(types).toContain('IfcWall');
+  });
+
+  it('byType("IfcObjectDefinition") does not sweep in type objects', () => {
+    const types = model.bim.query().byType('IfcObjectDefinition').toArray().map((e) => e.type);
+    expect(types).toContain('IfcWall');
+    expect(types).not.toContain('IfcWallType');
+  });
+
+  it('byType("IfcPropertySet") still finds the property set — the gate never drops the requested type', () => {
+    expect(model.bim.query().byType('IfcPropertySet').toArray().map((e) => e.type)).toEqual(['IfcPropertySet']);
+  });
+
+  it('byType("IfcBuildingElementType") keeps its own subtypes — the gate is a branch, not a ban', () => {
+    expect(model.bim.query().byType('IfcBuildingElementType').toArray().map((e) => e.type)).toEqual(['IfcWallType']);
+  });
+});

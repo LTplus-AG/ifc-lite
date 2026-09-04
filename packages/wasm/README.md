@@ -45,7 +45,8 @@ import init, { IfcAPI } from '@ifc-lite/wasm';
 
 await init();
 const api = new IfcAPI();
-const bytes = new Uint8Array(await fetch('model.ifc').then(r => r.arrayBuffer()));
+const modelBuffer = await fetch('model.ifc').then(r => r.arrayBuffer());
+const bytes = new Uint8Array(modelBuffer);
 
 const pre = api.buildPrePassOnce(bytes);
 // Large-coordinate models: pre.needsShift / pre.rtcOffset give the RTC origin.
@@ -61,7 +62,9 @@ for (let start = 0; start < pre.totalJobs; start += 100) {
   );
   for (let i = 0; i < collection.length; i++) {
     const mesh = collection.get(i);
-    scene.add(toThreeMesh(mesh)); // mesh.expressId, .ifcType, .positions, .normals, .indices, .color
+    // mesh.expressId, .ifcType, .positions, .normals, .indices, .color —
+    // hand these to your renderer of choice before freeing the mesh.
+    console.log(mesh.expressId, mesh.ifcType, mesh.positions.length / 3);
     mesh.free();
   }
   collection.free();

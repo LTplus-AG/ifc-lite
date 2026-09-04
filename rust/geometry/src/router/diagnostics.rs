@@ -95,20 +95,27 @@ impl OpeningKindDiag {
 }
 
 impl GeometryRouter {
-    /// Drain the boolean / CSG failures accumulated by the void-subtraction
-    /// path since the router was created (or the last `take_csg_failures`
-    /// call). Failures are keyed by IFC product express ID — the element
-    /// whose opening / clip operation tripped a fallback.
+    /// Drain every boolean / CSG failure this router knows about since it was
+    /// created (or the last `take_csg_failures` call). The single drain point:
+    /// the native pipeline and the wasm batch path both call this and nothing
+    /// else.
     ///
-    /// Only the router-driven CSG path (multi-layer wall sub-meshes,
-    /// single-mesh `apply_voids_to_mesh`) is currently attributed. Standalone
-    /// `IfcBooleanResult` chains processed via the mapped-item path don't
-    /// yet flow their failures here.
+    /// Two kinds of record come out, distinguished by their key:
+    ///
+    ///  * Keyed by IFC product express id — the void-subtraction path
+    ///    (multi-layer wall sub-meshes, single-mesh `apply_voids_to_mesh`),
+    ///    which knows the host element whose opening / clip tripped a fallback.
+    ///  * Keyed by [`UNATTRIBUTED_PRODUCT_ID`] — the registered processors'
+    ///    own logs (swept by [`Self::drain_processor_failures`], #3821) and
+    ///    `PENDING_MAPPED_BOOL_FAILURES`. Standalone `IfcBooleanResult` chains
+    ///    DO flow here now; what they still lack is the owning product id.
+    ///    See `drain_processor_failures` for exactly what that costs.
     pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
-        // Fold in any failures from a context without a direct router handle
-        // (see `PENDING_MAPPED_BOOL_FAILURES`). They have no product
-        // attribution, so we bucket them under product id 0 — keeps the
-        // diagnostics surface visible without inventing a fake host id.
+        // Sweep the processors' own logs, then fold in any failures from a
+        // context with no direct router handle (`PENDING_MAPPED_BOOL_FAILURES`
+        // — today `CsgSolidProcessor`'s transient boolean processor). Neither
+        // carries a product attribution, so both land in the unattributed
+        // bucket rather than inventing a fake host id.
         self.drain_processor_failures();
         let pending = crate::diagnostics::take_pending_mapped_bool_failures();
         if !pending.is_empty() {

@@ -288,6 +288,47 @@ describe('MergedExporter', () => {
     expect(findDanglingRefs(content)).toEqual([]);
   });
 
+  // Same shape as `step-exporter.test.ts`'s "does not leak a hidden
+  // product's geometry through a layer assignment it shares with a visible
+  // one" — `MergedExporter.computeIncludedEntityIds` has its OWN
+  // `collectStyleEntities` call site (`style-closure.ts`), and `renderEntity`
+  // has its OWN dangling-ref line filter, both independent of
+  // `StepExporter`'s. A shared `IFCPRESENTATIONLAYERASSIGNMENT` naming a
+  // visible and a hidden wall's shape representations must not resurrect the
+  // hidden wall's geometry, nor ship a dangling `#N` on the assignment's own
+  // line, through this path either.
+  it('does not leak a hidden product’s geometry through a shared layer assignment in a merged export', () => {
+    const model1 = buildModel('m1', 'Arch', [
+      [1, 'IFCPROJECT', "#1=IFCPROJECT('g1',$,'P',$,$,$,$,$,$);"],
+      [2, 'IFCWALL', "#2=IFCWALL('g2',$,'VisibleWall',$,$,$,$,#10);"],
+      [3, 'IFCWALL', "#3=IFCWALL('g3',$,'HiddenWall',$,$,$,$,#99);"],
+      [10, 'IFCSHAPEREPRESENTATION', "#10=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#11));"],
+      [11, 'IFCEXTRUDEDAREASOLID', '#11=IFCEXTRUDEDAREASOLID($,$,$,3.);'],
+      [99, 'IFCSHAPEREPRESENTATION', "#99=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#98));"],
+      [98, 'IFCEXTRUDEDAREASOLID', '#98=IFCEXTRUDEDAREASOLID($,$,$,3.);'],
+      [20, 'IFCPRESENTATIONLAYERASSIGNMENT', "#20=IFCPRESENTATIONLAYERASSIGNMENT('Layer_Walls',$,(#10,#99),$);"],
+    ]);
+
+    const exporter = new MergedExporter([model1]);
+    const result = exporter.export({
+      schema: 'IFC4',
+      projectStrategy: 'keep-first',
+      visibleOnly: true,
+      hiddenEntityIdsByModel: new Map([['m1', new Set([3])]]), // Hide wall #3
+    });
+
+    const content = decode(result.content);
+    expect(content).not.toContain('HiddenWall');
+    expect(content).toContain('IFCPRESENTATIONLAYERASSIGNMENT');
+    expect(content).toContain('#10=IFCSHAPEREPRESENTATION');
+    expect(content).toContain('#11=IFCEXTRUDEDAREASOLID');
+    expect(content).not.toContain('#99=IFCSHAPEREPRESENTATION');
+    expect(content).not.toContain('#98=IFCEXTRUDEDAREASOLID');
+    const layerLine = content.split('\n').find((line) => line.includes('IFCPRESENTATIONLAYERASSIGNMENT'));
+    expect(layerLine).not.toContain('#99');
+    expect(findDanglingRefs(content)).toEqual([]);
+  });
+
   it('should unify single site and remap spatial chain', () => {
     // Model1: Project#1 → Site#2 (via RelAgg#3)
     const model1 = buildModel('m1', 'Arch', [

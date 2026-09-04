@@ -54,6 +54,8 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { filterHiddenRefsFromRelationshipLine } from './reference-collector.js';
+import { STYLE_RESCUE_TYPES } from './style-closure.js';
+import { styleEntityWithheldWarning } from './step-export-types.js';
 import { convertStepLine, type IfcSchemaVersion } from './schema-converter.js';
 import { nominateDeliveredInPlaceEdits } from './in-place-nomination.js';
 import { decodeRange } from './source-ref-bounds.js';
@@ -260,6 +262,24 @@ export function writeSourceEntityLines(
         const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
         if (filtered === null) {
           pass.warnings.push(ctx.relationshipWithheldWarning(expressId, effectiveRelType));
+          continue;
+        }
+        nextEntityText = filtered;
+      } else if (mayNameOmittedRefs && STYLE_RESCUE_TYPES.has(effectiveRelType)) {
+        // A rescued IFCSTYLEDITEM/IFCSTYLEDREPRESENTATION/
+        // IFCPRESENTATIONLAYERASSIGNMENT/IFCPRESENTATIONLAYERWITHSTYLE
+        // (`style-closure.ts`) can legitimately name BOTH a kept item and one
+        // this export omits — e.g. a layer assignment shared by a visible and
+        // a hidden product's geometry, rescued because the visible one is in
+        // the closure. Unlike `IFCREL*`, these lines are otherwise never
+        // touched (`step-omission-predicates.ts` documents that as a general
+        // gap for non-relationship lines), so left alone this would ship the
+        // exact #2398 dangling-`#N` shape on a line the rescue itself just
+        // introduced into the closure. Same filter, same withhold-vs-narrow
+        // rule, applied to this line for the same reason.
+        const filtered = filterHiddenRefsFromRelationshipLine(nextEntityText, isOmittedFromOutput);
+        if (filtered === null) {
+          pass.warnings.push(styleEntityWithheldWarning(expressId, effectiveRelType));
           continue;
         }
         nextEntityText = filtered;

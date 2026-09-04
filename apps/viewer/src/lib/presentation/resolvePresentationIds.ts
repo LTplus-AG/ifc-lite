@@ -102,16 +102,37 @@ export function hasNoRenderableTarget(
  * and the embed bridge's `SET_COLORS`).
  *
  * A colour map cannot just be flattened through `resolvePresentationIds`: each
- * id carries its own colour, and the expansion has to keep the pairing. Ids
- * are grouped by colour so the resolver is called once per DISTINCT colour
- * rather than once per id — a `colorizeAll` painting a whole model by class
- * typically has thousands of entries and a handful of colours.
+ * id carries its own colour, and the expansion has to keep the pairing.
  *
- * An id the caller named EXPLICITLY always wins over the same id arriving as
- * some other id's aggregated part, whichever order the groups were in: the raw
- * entries are re-applied last. Without that, colouring an assembly red and one
- * of its own parts blue would leave the part red or blue depending on
- * iteration order.
+ * ## The rule, in full
+ *
+ * 1. An id the caller named EXPLICITLY always wins, whatever colour it would
+ *    have inherited as some assembly's part. Colouring an assembly red and one
+ *    of its own parts blue leaves that part blue.
+ * 2. Between two INHERITED claims on the same id — two assemblies that share a
+ *    part, coloured differently — the LAST entry wins, matching the plain
+ *    last-wins the callers already had for explicit ids (`colorizeAll` builds
+ *    its map with `set`, and `Object.entries` on a `SET_COLORS` colourMap keeps
+ *    insertion order).
+ *
+ * ## Why there are two paths through this
+ *
+ * The resolver is a batch call, so resolving each entry on its own would cost
+ * one call per id. That is not free: `Viewport.tsx`'s `resolveRenderableIds`
+ * allocates a fresh bounds cache per call (its `boundsOf` default argument),
+ * reads the store, and can warn — a whole-model `colorizeAll` would pay all of
+ * that thousands of times. So ids are GROUPED by colour and each group is
+ * resolved in one call.
+ *
+ * Grouping loses the entry position of an inherited id, which is exactly what
+ * rule 2 needs. It only matters when two groups actually claim the same
+ * expanded id: with no overlap, every order produces the identical map, so the
+ * cheap path is not a weaker rule, it is the same rule computed cheaply. When
+ * an overlap IS present the per-group expansions genuinely cannot say which
+ * entry produced the contested id, and this falls back to resolving entry by
+ * entry, in order. That path costs one resolver call per entry, and is reached
+ * only when a caller colours two overlapping assemblies differently in one
+ * call.
  */
 export function resolvePresentationColorMap<C extends readonly number[]>(
   resolver: ((ids: number[]) => number[]) | undefined,
@@ -125,9 +146,29 @@ export function resolvePresentationColorMap<C extends readonly number[]>(
     if (group) group.ids.push(id);
     else byColor.set(key, { color, ids: [id] });
   }
+  const groups = [...byColor.values()].map((group) => ({
+    color: group.color,
+    expanded: resolvePresentationIds(resolver, group.ids),
+  }));
+
+  const claimed = new Set<number>();
+  let contested = false;
+  for (const group of groups) {
+    for (const id of group.expanded) {
+      if (claimed.has(id)) contested = true;
+      claimed.add(id);
+    }
+  }
+
   const out = new Map<number, C>();
-  for (const { color, ids } of byColor.values()) {
-    for (const id of resolvePresentationIds(resolver, ids)) out.set(id, color);
+  if (contested) {
+    for (const [id, color] of raw) {
+      for (const expandedId of resolvePresentationIds(resolver, [id])) out.set(expandedId, color);
+    }
+  } else {
+    for (const group of groups) {
+      for (const id of group.expanded) out.set(id, group.color);
+    }
   }
   for (const [id, color] of raw) out.set(id, color);
   return out;

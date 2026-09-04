@@ -65,6 +65,73 @@ describe('resolvePresentationColorMap (#3338, the colour channel)', () => {
     assert.deepEqual(partFirst.get(PART_A), red, 'the part reached only via the assembly stays red');
   });
 
+  // Two assemblies whose parts OVERLAP: 500 is a part of both. Nothing but the
+  // entry order can decide its colour, and the grouped fast path cannot see
+  // that order -- this is the case that forces the entry-by-entry fallback.
+  const SHARED = 500;
+  const ASM_X = 61;
+  const ASM_Y = 62;
+  const overlapping = (ids: number[]) =>
+    ids.flatMap((id) => {
+      if (id === ASM_X) return [SHARED, 501];
+      if (id === ASM_Y) return [SHARED, 502];
+      return [id];
+    });
+
+  it('gives a contested inherited id the colour of the LAST entry, not of the first colour seen', () => {
+    const xThenY = resolvePresentationColorMap(overlapping, [[ASM_X, red], [ASM_Y, blue]]);
+    assert.deepEqual(xThenY.get(SHARED), blue, 'ASM_Y is last, so the shared part is blue');
+    assert.deepEqual(xThenY.get(501), red, "ASM_X's own part is unaffected");
+    assert.deepEqual(xThenY.get(502), blue, "ASM_Y's own part is unaffected");
+  });
+
+  it('and the same in the opposite input order', () => {
+    const yThenX = resolvePresentationColorMap(overlapping, [[ASM_Y, blue], [ASM_X, red]]);
+    assert.deepEqual(yThenX.get(SHARED), red, 'ASM_X is last now, so the shared part is red');
+    assert.deepEqual(yThenX.get(501), red);
+    assert.deepEqual(yThenX.get(502), blue);
+  });
+
+  it('last-wins survives colour groups interleaving: blue, red, blue on one shared part ends blue', () => {
+    // THE discriminating case. All three entries claim SHARED. Grouping by
+    // colour collapses blue's two entries into one group that first appears at
+    // index 0, so applying group by group runs blue then red and leaves SHARED
+    // RED -- even though the last entry claiming it is blue. Ordering the
+    // groups by their LAST entry instead does not fix it either: that is still
+    // a per-group decision, and here both orderings are wrong for a different
+    // reason each. Only resolving entry by entry answers it.
+    const ASM_Z = 63;
+    const threeClaims = (ids: number[]) =>
+      ids.flatMap((id) => {
+        if (id === ASM_X) return [SHARED, 501];
+        if (id === ASM_Y) return [SHARED, 502];
+        if (id === ASM_Z) return [SHARED, 503];
+        return [id];
+      });
+    const out = resolvePresentationColorMap(threeClaims, [
+      [ASM_Y, blue],
+      [ASM_X, red],
+      [ASM_Z, blue],
+    ]);
+    assert.deepEqual(
+      out.get(SHARED),
+      blue,
+      'ASM_Z is the last entry claiming the shared part, so its blue wins -- not the red of ' +
+      'the group that happens to be applied second',
+    );
+    assert.deepEqual(out.get(501), red, "the red assembly's own part stays red");
+    assert.deepEqual(out.get(503), blue);
+  });
+
+  it('an explicit id still outranks a contested inherited one', () => {
+    const out = resolvePresentationColorMap(overlapping, [
+      [ASM_X, red],
+      [ASM_Y, blue],
+      [SHARED, red],
+    ]);
+    assert.deepEqual(out.get(SHARED), red, 'named explicitly last, so red wins outright');
+  });
+
   it('groups by colour so the resolver is called once per distinct colour, not once per id', () => {
     const calls: number[][] = [];
     const counting = (ids: number[]) => {

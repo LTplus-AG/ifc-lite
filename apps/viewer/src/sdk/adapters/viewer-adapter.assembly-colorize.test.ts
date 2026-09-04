@@ -90,6 +90,36 @@ describe('SDK viewer adapter: colorize() and #3338 assembly expansion', () => {
     );
   });
 
+  it('colorizeAll: three batches sharing one part give it the LAST batch\'s colour', () => {
+    // Two assemblies sharing a part, coloured blue / red / blue. Grouping the
+    // ids by colour collapses the two blue batches into one group that first
+    // appears at index 0, so a group-ordered apply would leave the shared part
+    // RED. The last batch claiming it is blue, and that is what a caller
+    // writing three colorizeAll batches expects (`colorizeAll` has always been
+    // last-wins for explicitly named ids).
+    const SHARED = 500;
+    const ASM_X = 61;
+    const ASM_Y = 62;
+    const ASM_Z = 63;
+    const overlapping = (ids: number[]) =>
+      ids.flatMap((id) => {
+        if (id === ASM_X) return [SHARED, 501];
+        if (id === ASM_Y) return [SHARED, 502];
+        if (id === ASM_Z) return [SHARED, 503];
+        return [id];
+      });
+    const { store, getPending } = makeStore(overlapping);
+    createViewerAdapter(store).colorizeAll([
+      { refs: [{ modelId: MODEL_ID, expressId: ASM_Y }], color: blue },
+      { refs: [{ modelId: MODEL_ID, expressId: ASM_X }], color: red },
+      { refs: [{ modelId: MODEL_ID, expressId: ASM_Z }], color: blue },
+    ]);
+
+    const pending = getPending();
+    assert.deepEqual(pending?.get(SHARED), blue, 'the last batch claiming the shared part wins');
+    assert.deepEqual(pending?.get(501), red, "the red assembly's own part stays red");
+  });
+
   it('resolves once per distinct colour, not once per id', () => {
     const { store, resolverCalls } = makeStore(assemblyResolver);
     createViewerAdapter(store).colorizeAll([

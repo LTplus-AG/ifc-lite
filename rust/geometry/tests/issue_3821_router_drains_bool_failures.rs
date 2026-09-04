@@ -11,7 +11,7 @@
 //! which is what made the gap invisible for so long.
 
 use ifc_lite_core::EntityDecoder;
-use ifc_lite_geometry::{BoolFailureReason, GeometryRouter};
+use ifc_lite_geometry::{BoolFailureReason, BoolOp, GeometryRouter};
 
 fn router_for(content: &'static str) -> (GeometryRouter, EntityDecoder<'static>) {
     let entity_index = ifc_lite_core::build_entity_index(content.as_bytes());
@@ -78,7 +78,8 @@ END-ISO-10303-21;
 /// The same unsupported operand, one level deeper: the Body item is an
 /// `IfcCsgSolid` whose `TreeRootExpression` is the boolean. That boolean runs
 /// on a TRANSIENT processor `CsgSolidProcessor` builds and drops, so it is not
-/// in the router's processor table and needs the thread-local hand-off.
+/// in the router's processor table and has to hand its log back to the
+/// `CsgSolidProcessor` that built it.
 const UNSUPPORTED_BASE_OPERAND_UNDER_CSGSOLID: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('3821 csgsolid boolean'),'2;1');
@@ -311,5 +312,59 @@ fn flipping_skip_small_cuts_does_not_discard_an_undrained_log() {
         unsupported_operand_types(&router),
         vec!["IfcSectionedSpine".to_string()],
         "a record made before the flag flipped must survive the re-registration"
+    );
+}
+
+/// An unsupported SECOND operand is the only record for its step (the
+/// `EmptyOperand` consequence is suppressed by the one-record rule above), so
+/// the operation it names is the only operation a consumer of
+/// `take_csg_failures` or of `BoolFailure`'s `Display` ever sees for that step.
+/// Recording `Unknown` there renders "UNKNOWN failed: ..." for a boolean the
+/// file authored as `.DIFFERENCE.`.
+#[test]
+fn an_unsupported_cutter_names_the_containing_operation() {
+    let (router, mut decoder) = router_for(UNSUPPORTED_SECOND_OPERAND);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let _ = router.process_element(&element, &mut decoder);
+
+    let ops: Vec<BoolOp> = router
+        .take_csg_failures()
+        .values()
+        .flatten()
+        .map(|f| f.op)
+        .collect();
+    assert_eq!(
+        ops,
+        vec![BoolOp::Difference],
+        "the record must name the authored .DIFFERENCE., not UNKNOWN"
+    );
+}
+
+/// Two routers, one thread. A boolean under an `IfcCsgSolid` runs on a
+/// transient processor; if its log escapes through a thread-local rather than
+/// through the router that owns the CSG processor, a router that never drains
+/// hands its records to whichever router drains next — diagnostics for the
+/// wrong model. The public router API permits exactly this order, so nothing
+/// but scoping prevents it.
+#[test]
+fn an_undrained_router_does_not_leak_into_the_next_one() {
+    let (leaky, mut leaky_decoder) = router_for(UNSUPPORTED_BASE_OPERAND_UNDER_CSGSOLID);
+    let element = leaky_decoder.decode_by_id(10).expect("decode the wall");
+    let _ = leaky.process_element(&element, &mut leaky_decoder);
+    // Deliberately NOT drained: draining is optional in the public API.
+
+    let (clean, mut clean_decoder) = router_for(CLEAN);
+    let clean_element = clean_decoder.decode_by_id(10).expect("decode the wall");
+    let _ = clean.process_element(&clean_element, &mut clean_decoder);
+    assert!(
+        clean.take_csg_failures().is_empty(),
+        "a second router on the same thread must not inherit the first router's records"
+    );
+
+    // And the records are not merely lost: the router that made them still has them.
+    assert_eq!(
+        unsupported_operand_types(&leaky),
+        vec!["IfcSectionedSpine".to_string()],
+        "the owning router must still be able to drain its own records"
     );
 }

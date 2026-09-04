@@ -87,8 +87,8 @@ fn jobs(decoder: &mut EntityDecoder) -> Vec<(u32, usize, usize, IfcType)> {
 
 /// Everything drained after `body` ran, as stable reason labels.
 fn drained(router: &GeometryRouter) -> Vec<String> {
-    // The thread-local escape hatch is folded in by `take_csg_failures`, so a
-    // leak through `CsgSolidProcessor`'s transient processor is caught too.
+    // `take_csg_failures` also sweeps the processors' own logs, so a failure
+    // from `CsgSolidProcessor`'s transient boolean processor is caught too.
     router
         .take_csg_failures()
         .values()

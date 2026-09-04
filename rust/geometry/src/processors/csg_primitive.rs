@@ -12,9 +12,10 @@
 
 use super::boolean::OperandPath;
 use crate::extrusion::apply_transform;
-use crate::{Error, Mesh, Result, TessellationQuality, Vector3};
+use crate::{BoolFailure, Error, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Point3;
+use std::cell::RefCell;
 
 use super::boolean::BooleanClippingProcessor;
 use super::sphere::SphereProcessor;
@@ -103,6 +104,12 @@ pub struct CsgSolidProcessor {
     /// [`BooleanClippingProcessor`] this wraps so a CSG tree shares one scoped
     /// value (see `BooleanClippingProcessor::skip_small_cuts`).
     skip_small_cuts: bool,
+    /// Failures from the TRANSIENT [`BooleanClippingProcessor`] built per
+    /// `TreeRootExpression` and dropped on return. Held here so they leave
+    /// through [`GeometryProcessor::take_bool_failures`] — i.e. through the
+    /// router that owns THIS processor — instead of a thread-local a
+    /// different router could drain (#3821).
+    failures: RefCell<Vec<BoolFailure>>,
 }
 
 impl CsgSolidProcessor {
@@ -113,7 +120,19 @@ impl CsgSolidProcessor {
     /// Construct with the per-build small-cut skip forwarded to the boolean
     /// processor at the root of the wrapped CSG tree.
     pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
-        Self { skip_small_cuts }
+        Self {
+            skip_small_cuts,
+            failures: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Drain what the transient boolean processors recorded. Public so the
+    /// TRANSIENT `CsgSolidProcessor` that `BooleanClippingProcessor` builds
+    /// for an `IfcCsgSolid` OPERAND — not registered on any router — can hand
+    /// its log back to the boolean processor that built it, the same way
+    /// `drain_clipper_failures` does for a transient `ClippingProcessor`.
+    pub fn take_failures(&self) -> Vec<BoolFailure> {
+        std::mem::take(&mut *self.failures.borrow_mut())
     }
 }
 
@@ -188,17 +207,17 @@ impl CsgSolidProcessor {
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // This boolean processor is TRANSIENT — built per tree root and
-                // dropped on return — so it is not in the router's processor
-                // table and `drain_processor_failures` cannot reach it. Hand
-                // its log to the thread-local escape hatch, which
-                // `take_csg_failures` folds in (#3821); otherwise every
-                // diagnostic from a boolean under an `IfcCsgSolid` is lost on
-                // the way out, exactly as the router-registered one was.
+                // dropped on return — so `drain_processor_failures` cannot
+                // reach it directly. Hand its log to THIS processor, which the
+                // router does hold, so the records leave through the router
+                // that produced them (#3821); otherwise every diagnostic from
+                // a boolean under an `IfcCsgSolid` is lost on the way out,
+                // exactly as the router-registered one was.
                 let boolean =
                     BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts);
                 let out =
                     boolean.process_with_depth(&root, decoder, schema, depth, quality, visited);
-                crate::diagnostics::push_pending_mapped_bool_failures(boolean.take_failures());
+                self.failures.borrow_mut().extend(boolean.take_failures());
                 out
             }
             IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
@@ -232,6 +251,10 @@ impl GeometryProcessor for CsgSolidProcessor {
 
     fn supported_types(&self) -> Vec<IfcType> {
         vec![IfcType::IfcCsgSolid]
+    }
+
+    fn take_bool_failures(&self) -> Vec<BoolFailure> {
+        self.take_failures()
     }
 }
 

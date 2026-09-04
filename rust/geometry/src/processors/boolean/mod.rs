@@ -830,8 +830,8 @@ impl BooleanClippingProcessor {
             // short-circuit here meant every CSG primitive cut (issue #780
             // bath, any `IfcCsgSolid` with a solid cutter) silently rendered
             // as the uncut host even when the operands were trivially small.
-            let (second_mesh, unsupported) =
-                self.process_operand_checked(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Difference, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
                 self.record_empty_second_operand(BoolOp::Difference, unsupported);
                 return Ok(mesh);
@@ -862,8 +862,8 @@ impl BooleanClippingProcessor {
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
         if operator == ".UNION." || operator == "UNION" {
-            let (second_mesh, unsupported) =
-                self.process_operand_checked(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Union, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
                 self.record_empty_second_operand(BoolOp::Union, unsupported);
                 return Ok(mesh);
@@ -877,8 +877,8 @@ impl BooleanClippingProcessor {
         // Handle INTERSECTION operation — a real intersection volume on the
         // pure-Rust exact kernel.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            let (second_mesh, unsupported) =
-                self.process_operand_checked(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
                 self.record_empty_second_operand(BoolOp::Intersection, unsupported);
                 return Ok(Mesh::new());

@@ -21,6 +21,12 @@ impl BooleanClippingProcessor {
     /// Process a solid operand with depth tracking. The mesh only; callers
     /// that must not double-record an unsupported operand's consequence use
     /// [`Self::process_operand_checked`].
+    ///
+    /// Records an unsupported operand under [`BoolOp::Unknown`]: every caller
+    /// here is meshing the BASE solid at the bottom of a left spine, which is
+    /// read before any node's operator is, and whose loss empties the chain
+    /// under every operator alike. Naming one node's operator would claim an
+    /// attribution this path does not have.
     pub(super) fn process_operand_with_depth(
         &self,
         operand: &DecodedEntity,
@@ -30,7 +36,7 @@ impl BooleanClippingProcessor {
         visited: &mut OperandPath,
     ) -> Result<Mesh> {
         Ok(self
-            .process_operand_checked(operand, decoder, depth, quality, visited)?
+            .process_operand_checked(BoolOp::Unknown, operand, decoder, depth, quality, visited)?
             .0)
     }
 
@@ -44,8 +50,15 @@ impl BooleanClippingProcessor {
     /// breaks ties alphabetically, the viewer's "top failure reason" would name
     /// `EmptyOperand`, the CONSEQUENCE, over `UnsupportedOperand`, the cause.
     /// Callers pass this to [`Self::record_empty_second_operand`].
+    ///
+    /// `op` is the operation whose operand this is, and it goes into the
+    /// `UnsupportedOperand` record. Since that record is then the ONLY one for
+    /// the dropped step, recording `Unknown` for an operand of an authored
+    /// `.DIFFERENCE.` would render "UNKNOWN failed" as the whole story a
+    /// consumer of `take_csg_failures` ever gets for it.
     pub(super) fn process_operand_checked(
         &self,
+        op: BoolOp,
         operand: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: u32,
@@ -89,17 +102,23 @@ impl BooleanClippingProcessor {
             // main, and would error as "depth 11 exceeds limit 10", dropping
             // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
             // hop instead, counting frames of both kinds.
-            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(
-                self.skip_small_cuts,
-            )
-            .process_with_boolean_cycle_guard(
-                operand,
-                decoder,
-                &self.schema,
-                0,
-                quality,
-                visited,
-            ),
+            IfcType::IfcCsgSolid => {
+                // Transient, like the `ClippingProcessor`s below: it is not on
+                // any router, so its log has to come back here or it dies with
+                // it. `self` IS router-held, so this is the whole route out
+                // (#3821) — no thread-local, no cross-router leak.
+                let csg = CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts);
+                let out = csg.process_with_boolean_cycle_guard(
+                    operand,
+                    decoder,
+                    &self.schema,
+                    0,
+                    quality,
+                    visited,
+                );
+                self.failures.borrow_mut().extend(csg.take_failures());
+                out
+            }
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
                 // Recursive case with depth tracking
                 self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
@@ -114,10 +133,7 @@ impl BooleanClippingProcessor {
             // the only base-operand drop in the whole boolean path left no
             // trace at all, not even in a debug build.
             other => {
-                self.record_failure(
-                    BoolOp::Unknown,
-                    BoolFailureReason::UnsupportedOperand(other.to_string()),
-                );
+                self.record_failure(op, BoolFailureReason::UnsupportedOperand(other.to_string()));
                 unsupported = true;
                 Ok(Mesh::new())
             }

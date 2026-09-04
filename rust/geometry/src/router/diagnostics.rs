@@ -105,17 +105,17 @@ impl GeometryRouter {
     ///  * Keyed by IFC product express id — the void-subtraction path
     ///    (multi-layer wall sub-meshes, single-mesh `apply_voids_to_mesh`),
     ///    which knows the host element whose opening / clip tripped a fallback.
-    ///  * Keyed by [`UNATTRIBUTED_PRODUCT_ID`] — the registered processors'
-    ///    own logs (swept by [`Self::drain_processor_failures`], #3821) and
-    ///    `PENDING_MAPPED_BOOL_FAILURES`. Standalone `IfcBooleanResult` chains
-    ///    DO flow here now; what they still lack is the owning product id.
-    ///    See `drain_processor_failures` for exactly what that costs.
+    ///  * Keyed by [`UNATTRIBUTED_PRODUCT_ID`] — the registered processors' own
+    ///    logs (swept by [`Self::drain_processor_failures`], #3821, including
+    ///    what the transient boolean under an `IfcCsgSolid` hands back to
+    ///    `CsgSolidProcessor`) and the producer-less hatch. Standalone
+    ///    `IfcBooleanResult` chains DO flow here now; what they still lack is
+    ///    the owning product id. See `drain_processor_failures` for the cost.
     pub fn take_csg_failures(&self) -> FxHashMap<u32, Vec<BoolFailure>> {
         // Sweep the processors' own logs, then fold in any failures from a
-        // context with no direct router handle (`PENDING_MAPPED_BOOL_FAILURES`
-        // — today `CsgSolidProcessor`'s transient boolean processor). Neither
-        // carries a product attribution, so both land in the unattributed
-        // bucket rather than inventing a fake host id.
+        // context with no router handle at all (`PENDING_MAPPED_BOOL_FAILURES`,
+        // which has no producer today). Neither carries a product attribution,
+        // so both land in the unattributed bucket, not a fake host id.
         self.drain_processor_failures();
         let pending = crate::diagnostics::take_pending_mapped_bool_failures();
         if !pending.is_empty() {

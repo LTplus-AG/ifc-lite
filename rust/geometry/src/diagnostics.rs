@@ -29,7 +29,11 @@ thread_local! {
     /// special-cased `IfcMappedItem` before it could ever be reached; see the
     /// D5 dead-code sweep), so nothing pushes into this today. Kept + still
     /// drained by `take_csg_failures` in case a future non-router boolean
-    /// context needs the same escape hatch.
+    /// context needs the same escape hatch. Think twice before adding one: a
+    /// thread-local is not scoped to a router, so records a router never
+    /// drains go to whichever router drains next on that thread. A transient
+    /// processor with a router-held PARENT has a better route out — see
+    /// `CsgSolidProcessor::take_failures` (#3821).
     static PENDING_MAPPED_BOOL_FAILURES: RefCell<Vec<BoolFailure>> =
         const { RefCell::new(Vec::new()) };
 }
@@ -38,18 +42,6 @@ thread_local! {
 /// `PENDING_MAPPED_BOOL_FAILURES`).
 pub fn take_pending_mapped_bool_failures() -> Vec<BoolFailure> {
     PENDING_MAPPED_BOOL_FAILURES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
-}
-
-/// Push failures from a boolean context the router cannot reach through its
-/// processor table — today `CsgSolidProcessor`, which builds a TRANSIENT
-/// `BooleanClippingProcessor` per `IfcCsgSolid.TreeRootExpression` and drops it
-/// on return, so its log has no other way out. `take_csg_failures` folds these
-/// in (bucketed under product id 0, like every other unattributed record).
-pub fn push_pending_mapped_bool_failures(failures: Vec<BoolFailure>) {
-    if failures.is_empty() {
-        return;
-    }
-    PENDING_MAPPED_BOOL_FAILURES.with(|cell| cell.borrow_mut().extend(failures));
 }
 
 /// Which boolean operation produced the failure.

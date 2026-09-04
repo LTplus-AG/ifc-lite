@@ -195,9 +195,10 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
 
       let entityIds: number[];
       if (descriptor.types && descriptor.types.length > 0) {
-        // Expand types to every schema-declared descendant, per this model's
-        // own schema version (e.g., IfcWall → IfcWallStandardCase on IFC4;
-        // IfcBuildingElement → its concrete leaves on any version).
+        // Expand types to every schema-declared descendant (IfcWall →
+        // IfcWallStandardCase, IfcBuildingElement → its concrete leaves).
+        // Resolved across the union of the bundled schemas, so the model's
+        // FILE_SCHEMA header cannot narrow what its own records answer.
         entityIds = [];
         for (const type of expandTypes(descriptor.types)) {
           const typeIds = model.ifcDataStore.entityIndex.byType.get(type) ?? [];

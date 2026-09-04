@@ -10,7 +10,8 @@
  * entity type, so that table had no row for it and querying by it silently
  * answered zero entities on a model full of matching elements. `expandTypes`
  * now delegates to `@ifc-lite/data`'s schema-driven descendant resolver,
- * keyed off the model's own `schemaVersion`.
+ * resolved across the union of the bundled schemas so a file's `FILE_SCHEMA`
+ * header cannot narrow what the same bytes answer.
  */
 
 import test from 'node:test';
@@ -85,7 +86,7 @@ test('queryEntities("IfcFooting") — a real IFC type with no instances in this 
   assert.equal(results.length, 0);
 });
 
-test('queryEntities("IfcBuiltElement") resolves per the model\'s own IFC4X3 schema', async () => {
+test('queryEntities("IfcBuiltElement") resolves the IFC4X3 rename of IfcBuildingElement', async () => {
   const dataStore = await parse(IFC4X3_MODEL);
   const adapter = createQueryAdapter(makeStore(dataStore));
   const results = adapter.entities({ modelId: 'default', types: ['IfcBuiltElement'] });

@@ -77,7 +77,7 @@ describe('byType resolves an abstract EXPRESS supertype to its concrete leaves (
   });
 });
 
-describe('byType resolves per the model\'s own schema version (IFC4X3)', () => {
+describe('byType resolves an IFC4X3-only supertype (IfcBuildingElement renamed)', () => {
   it('byType("IfcBuiltElement") resolves on an IFC4X3 model (renamed from IfcBuildingElement)', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'ifc-lite-mcp-supertype-4x3-'));
     try {

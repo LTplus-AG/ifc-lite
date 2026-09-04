@@ -55,7 +55,7 @@ describe('byType resolves an abstract EXPRESS supertype to its concrete leaves (
 const IFC4X3_MODEL = ifcFile(`#70= IFCWALL('WALL00000000000000000X',$,'Wall',$,$,$,$,'tag',$);
 #71= IFCCOURSE('CRSE00000000000000000X',$,'Course',$,$,$,$,'tag',$);`, 'IFC4X3');
 
-describe('byType resolves per the model\'s own schema version (IFC4X3)', () => {
+describe('byType resolves an IFC4X3-only supertype (IfcBuildingElement renamed)', () => {
   it('byType("IfcBuiltElement") resolves on an IFC4X3 model (renamed from IfcBuildingElement)', async () => {
     const bim = await loadInlineModel(IFC4X3_MODEL, 'supertype-ifc4x3');
     const result = bim.query().byType('IfcBuiltElement').toArray();

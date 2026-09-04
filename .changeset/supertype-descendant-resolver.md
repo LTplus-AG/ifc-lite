@@ -1,5 +1,21 @@
 ---
 '@ifc-lite/data': minor
+'@ifc-lite/parser': patch
+'@ifc-lite/cli': patch
+'@ifc-lite/mcp': patch
+'@ifc-lite/viewer': patch
 ---
 
-Added `expandTypeNamesToDescendants`, a per-schema-version descendant-closure resolver over the bundled `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/`ENTITIES_IFC4X3` tables: given a type name and the model's IFC schema version, it returns that type plus every type that has it as an ancestor (direct or indirect), matching only names that schema version actually declares. This backs `@ifc-lite/parser`'s `expandTypes`, which every `byType()` query surface (CLI, MCP, viewer SDK) shares.
+`byType()`, shared by `ifc-lite query --type`, MCP's `query_entities`/`count_entities` and the viewer SDK, expanded a caller's type through a fixed nine-entry table that only aliased `*StandardCase`/`*ElementedCase` pairs. An abstract EXPRESS supertype (`IfcBuildingElement`, `IfcElement`, `IfcBuiltElement`) is never a literal STEP entity type, so that table had no row for it and the query silently answered zero on a model full of walls, slabs and columns.
+
+`@ifc-lite/data` gains `expandTypeNamesToDescendants`, a descendant-closure resolver over the bundled `ENTITIES_IFC2X3`/`ENTITIES_IFC4`/`ENTITIES_IFC4X3` tables, and `@ifc-lite/parser`'s `expandTypes` delegates to it.
+
+Three things about the resolution are deliberate:
+
+- **It is the union across the bundled schemas, not one version at a time.** `entityIndex.byType` is keyed by the names a file contains, and those need not belong to the version its `FILE_SCHEMA` header claims: converters and hand-edits produce IFC4X3-headered files still carrying `IFCSLABSTANDARDCASE`. Resolving per header would have made `--type IfcSlab` answer 3 rows on one file and 1 on the same bytes re-headered. A name a file does not contain matches an empty bucket, so the union can only find records that are really there.
+- **Cross-schema renames and the aliased leaves resolve too.** `IfcBuildingElement` and `IfcBuiltElement` reach each other's subtypes, and `byType('IfcGeotechnicalStratum')` now finds `IfcSolidStratum`/`IfcVoidStratum`/`IfcWaterStratum`, which no bundled table declares.
+- **The expansion does not cross an `IfcRoot` branch.** Descending the whole hierarchy from `IfcRoot` or `IfcObjectDefinition` would answer with every rooted record in the file (property sets, relationships, type objects), which contradicts what the same backends answer for an unfiltered query and breaks `group_by: storey`. A type named explicitly is never gated, so `byType('IfcPropertySet')` still works.
+
+The expansion order is now the requested type followed by its descendants sorted, rather than depth-first traversal order: callers page these results with `offset`/`limit`, and traversal order would shift a caller's page whenever the generated schema tables were regenerated.
+
+IDS entity-facet matching is unchanged, per the buildingSMART IDS spec's no-automatic-inheritance rule (now cited in a code comment on `checkEntityFacet`).

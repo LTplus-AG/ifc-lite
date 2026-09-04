@@ -18,7 +18,13 @@
 
 import { describe, it, expect } from 'vitest';
 import { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
-import { RelationshipType } from '@ifc-lite/data';
+import {
+  RelationshipType,
+  ENTITIES_IFC2X3,
+  ENTITIES_IFC4X3,
+  ENTITY_NAME_ALIASES,
+  CROSS_SCHEMA_RENAMES,
+} from '@ifc-lite/data';
 import { SCHEMA_REGISTRY } from '../src/generated/schema-registry.js';
 
 describe('expandTypes', () => {
@@ -136,6 +142,85 @@ describe('IFC_SUBTYPES agrees with the generated schema registry', () => {
     const expanded = expandTypes(['IfcFurnishingElement']);
     expect(expanded).toContain('IFCFURNITURE');
     expect(expanded).toContain('IFCSYSTEMFURNITUREELEMENT');
+  });
+});
+
+/**
+ * The same drift check as above, in the two directions `SCHEMA_REGISTRY`
+ * cannot see.
+ *
+ * That registry is the IFC4_ADD2_TC1 codegen pin, so the block above pins
+ * `expandTypes` against IFC4 alone. `entityIndex.byType` is keyed by the names
+ * a FILE contains, and those need not belong to the version its header claims:
+ * `IfcCourse` is IFC4X3-only, `IfcElectricalElement` IFC2X3-only, and a
+ * resolver that consulted one table at a time answered a different set for
+ * each header on identical bytes. These read the bundled IFC2X3 and IFC4X3
+ * entity tables directly.
+ */
+describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () => {
+  /** Transitive descendants of `type` within one bundled entity table. */
+  function tableDescendants(list: readonly { name: string; parent?: string }[], type: string): string[] {
+    const children = new Map<string, string[]>();
+    for (const entity of list) {
+      if (!entity.parent) continue;
+      const parent = entity.parent.toUpperCase();
+      const bucket = children.get(parent) ?? [];
+      bucket.push(entity.name.toUpperCase());
+      children.set(parent, bucket);
+    }
+    const out: string[] = [];
+    const stack = [type.toUpperCase()];
+    const seen = new Set(stack);
+    while (stack.length > 0) {
+      for (const child of children.get(stack.pop() as string) ?? []) {
+        if (seen.has(child)) continue;
+        seen.add(child);
+        out.push(child);
+        stack.push(child);
+      }
+    }
+    return out.sort();
+  }
+
+  const BASES = ['IFCWALL', 'IFCSLAB', 'IFCFURNISHINGELEMENT', 'IFCBUILDINGELEMENT', 'IFCBUILTELEMENT'];
+
+  it.each([
+    ['IFC2X3', ENTITIES_IFC2X3],
+    ['IFC4X3', ENTITIES_IFC4X3],
+  ])('lists every subtype the %s table declares, for every base', (version, list) => {
+    // Anti-vacuity: at least one base has to have subtypes in this table, or
+    // the loop below would pass by finding nothing to compare.
+    expect(BASES.some((b) => tableDescendants(list, b).length > 0), version).toBe(true);
+    for (const base of BASES) {
+      const expanded = expandTypes([base]);
+      for (const sub of tableDescendants(list, base)) {
+        expect(expanded, `${version}: ${base} -> ${sub}`).toContain(sub);
+      }
+    }
+  });
+
+  it('reaches IfcCourse from IfcBuildingElement, the IFC4X3 rename of its own base', () => {
+    // IfcBuildingElement is absent from the IFC4X3 table and IfcBuiltElement
+    // from the IFC4 one, so the union of the tables alone leaves each spelling
+    // blind to the other version's leaves.
+    expect(expandTypes(['IfcBuildingElement'])).toContain('IFCCOURSE');
+    expect(expandTypes(['IfcBuiltElement'])).toContain('IFCWALLSTANDARDCASE');
+  });
+
+  it('honours the alias tables in the descendant direction, not just the ancestor one', () => {
+    // `resolveEntityNameAlias` has always resolved these leaves upward. The
+    // descendant direction did not, so `byType('IfcGeotechnicalStratum')`
+    // answered 0 on a file full of IFCSOLIDSTRATUM records.
+    expect(Object.keys(ENTITY_NAME_ALIASES).length).toBeGreaterThan(0);
+    for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
+      expect(expandTypes([supertype]), `${supertype} -> ${leaf}`).toContain(leaf.toUpperCase());
+    }
+    expect(CROSS_SCHEMA_RENAMES.length).toBeGreaterThan(0);
+    for (const [older, newer] of CROSS_SCHEMA_RENAMES) {
+      const a = expandTypes([older]).filter((n) => n !== older && n !== newer);
+      const b = expandTypes([newer]).filter((n) => n !== older && n !== newer);
+      expect(a.sort(), `${older} vs ${newer}`).toEqual(b.sort());
+    }
   });
 });
 

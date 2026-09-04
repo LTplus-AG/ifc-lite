@@ -287,3 +287,65 @@ fn worst_host_optional_fields_are_omitted_when_none_and_present_when_some() {
     let back: WorstHost = serde_json::from_value(legacy).unwrap();
     assert!(back.bbox.is_none() && back.triangle_count.is_none());
 }
+
+#[test]
+fn the_unattributed_bucket_counts_in_the_totals_but_is_not_a_product() {
+    // One real host plus one record swept in with no owner (a boolean
+    // processor's own log, or PENDING_MAPPED_BOOL_FAILURES). Id 0 is not a
+    // valid express id, so reporting it as a product would tell the user
+    // "2 products failed" for a model where one product failed and one failure
+    // has an unknown owner.
+    let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
+    csg.insert(
+        42,
+        vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost)],
+    );
+    csg.insert(
+        UNATTRIBUTED_PRODUCT_ID,
+        vec![BoolFailure::new(
+            BoolOp::Unknown,
+            BoolFailureReason::UnsupportedOperand("IfcSectionedSpine".to_string()),
+        )],
+    );
+
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &csg,
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+    );
+
+    assert_eq!(d.products_with_failures, 1, "the synthetic bucket is not a product");
+    assert_eq!(d.total_csg_failures, 2, "but its records still count as failures");
+    let reasons: Vec<&str> = d.failures_by_reason.iter().map(|r| r.reason.as_str()).collect();
+    assert!(
+        reasons.contains(&"UnsupportedOperand"),
+        "and still appear in the reason breakdown: {reasons:?}"
+    );
+}
+
+#[test]
+fn an_unattributed_only_pass_reports_zero_products_and_still_has_issues() {
+    // The boundary the count must not round the wrong way: failures exist, no
+    // product owns them. `has_issues` must still fire, or the pass would look
+    // clean to every caller that gates on it.
+    let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
+    csg.insert(
+        UNATTRIBUTED_PRODUCT_ID,
+        vec![BoolFailure::new(BoolOp::Union, BoolFailureReason::EmptyOperand)],
+    );
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &csg,
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+    );
+    assert_eq!(d.products_with_failures, 0);
+    assert_eq!(d.total_csg_failures, 1);
+    assert!(d.has_issues(), "an unowned failure is still a failure");
+    assert!(!d.is_empty(), "and must not be skipped as an empty diagnostic");
+}

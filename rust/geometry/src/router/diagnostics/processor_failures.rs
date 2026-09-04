@@ -7,6 +7,7 @@
 //! `take_csg_failures` is the single drain point every pipeline already calls.
 
 use super::super::GeometryRouter;
+use super::UNATTRIBUTED_PRODUCT_ID;
 use crate::BoolFailure;
 
 impl GeometryRouter {
@@ -23,17 +24,23 @@ impl GeometryRouter {
     /// degraded still reported a clean load: absence was indistinguishable from
     /// success.
     ///
-    /// Bucketed under product id 0 — the same "no attribution available"
-    /// bucket `take_csg_failures` already uses for
+    /// Bucketed under [`UNATTRIBUTED_PRODUCT_ID`] — the same "no attribution
+    /// available" bucket `take_csg_failures` already uses for
     /// `PENDING_MAPPED_BOOL_FAILURES`. A processor is registered once per
     /// router and reused across every item it meshes, so at drain time its log
-    /// is not attributable to one product from in here. The native and wasm
-    /// pipelines both drain PER ELEMENT (`produce_element_meshes` takes the
-    /// router's failures after each job), so the records are still scoped to
-    /// the right element in the aggregate — only the per-product `worst_hosts`
-    /// detail is unavailable for them. Per-item attribution would mean
-    /// threading the owning product id down to every `processor.process` call
-    /// site; that is a follow-up, not a reason to keep dropping the records.
+    /// is not attributable to one product from in here.
+    ///
+    /// What that bucket does and does NOT preserve, precisely: the native and
+    /// wasm pipelines both drain PER ELEMENT (`produce_element_meshes` takes
+    /// the router's failures after each job), so a record can never be
+    /// mis-attributed to a DIFFERENT element — it is attributed to none. The
+    /// element it came from is lost, so these records do not appear in the
+    /// per-product `worst_hosts` detail and are excluded from
+    /// `products_with_failures` (see [`super::count_attributed_products`]);
+    /// they do count towards the failure totals and the reason breakdown.
+    /// Real per-product attribution would mean threading the owning product id
+    /// down to every `processor.process` call site; that is a follow-up, not a
+    /// reason to keep dropping the records.
     ///
     /// `register` stores ONE `Arc` per processor under each supported IFC type
     /// (`IfcBooleanResult` and `IfcBooleanClippingResult` share an instance),
@@ -45,7 +52,11 @@ impl GeometryRouter {
             swept.extend(processor.take_bool_failures());
         }
         if !swept.is_empty() {
-            self.csg_failures.borrow_mut().entry(0).or_default().extend(swept);
+            self.csg_failures
+                .borrow_mut()
+                .entry(UNATTRIBUTED_PRODUCT_ID)
+                .or_default()
+                .extend(swept);
         }
     }
 }

@@ -31,7 +31,8 @@ renderer.loadGeometry(result.meshes);
 ## Auto-detect format
 
 ```typescript
-import { detectFormat } from '@ifc-lite/ifcx';
+import { detectFormat, parseIfcx } from '@ifc-lite/ifcx';
+import { IfcParser } from '@ifc-lite/parser';
 
 const format = detectFormat(buffer);
 // 'ifcx' | 'ifc' | 'glb' | 'unknown'
@@ -39,7 +40,7 @@ const format = detectFormat(buffer);
 if (format === 'ifcx') {
   await parseIfcx(buffer);
 } else if (format === 'ifc') {
-  await ifcParser.parse(buffer); // @ifc-lite/parser
+  await new IfcParser().parse(buffer);
 }
 ```
 
@@ -49,6 +50,12 @@ IFCX supports overlays — a base file with the geometry, plus one or more layer
 
 ```typescript
 import { parseFederatedIfcx } from '@ifc-lite/ifcx';
+
+const [baseBytes, psetOverlayBytes, scheduleOverlayBytes] = await Promise.all(
+  ['architecture.ifcx', 'fire-safety-overlay.ifcx', 'construction-schedule.ifcx'].map(
+    (name) => fetch(name).then((r) => r.arrayBuffer()),
+  ),
+);
 
 const result = await parseFederatedIfcx([
   { buffer: baseBytes, name: 'architecture.ifcx' },

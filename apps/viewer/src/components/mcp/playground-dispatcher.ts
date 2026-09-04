@@ -574,23 +574,24 @@ const IMPLS: Record<string, ToolImpl> = {
 
   async count_entities(m, args) {
     const groupBy = (args.group_by as string | undefined) ?? 'type';
+    const typeFilter = args.type as string | undefined; // narrows the universe first, like the Node MCP server
+    const universe = () => (typeFilter ? m.bim.query().byType(typeFilter) : m.bim.query()).toArray();
     const counts = new Map<string, number>();
     if (groupBy === 'type') {
-      // Same PascalCase normalization as model_info — keep user-facing
-      // type counts aligned with the rest of the surface.
-      for (const [storageType, ids] of m.store.entityIndex.byType) {
-        const pretty = (ids.length > 0 ? m.store.entities.getTypeName(ids[0]) : null) ?? storageType;
-        counts.set(pretty, ids.length);
+      // BIM products only (#3765): `entityIndex.byType` is every raw STEP record.
+      for (const e of universe()) {
+        const key = e.type || '(unknown)';
+        counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'storey') {
-      for (const e of m.bim.query().toArray()) {
+      for (const e of universe()) {
         const node = new EntityNode(m.store, e.ref.expressId);
         const storey = node.storey();
         const key = firstNonBlank(storey?.name) ?? '(no storey)';
         counts.set(key, (counts.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'material') {
-      for (const e of m.bim.query().toArray()) {
+      for (const e of universe()) {
         const mat = m.bim.materials(e.ref);
         const key = lensMaterialNames(mat)[0] ?? '(no material)';
         counts.set(key, (counts.get(key) ?? 0) + 1);

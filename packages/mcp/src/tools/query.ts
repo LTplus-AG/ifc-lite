@@ -16,9 +16,7 @@ import type { ComparisonOp, EntityData, QueryFilter } from '@ifc-lite/sdk';
 import type { Tool } from './types.js';
 import { findByGlobalId, okResult, paginate, resolveGlobalIds, resolveModel } from './util.js';
 import { materialFallbackName } from '../material-naming.js';
-import { IFC_ENTITY_NAMES } from '@ifc-lite/data';
-import { foldedTypeCounts, pendingMutationsField, pendingOverlay } from '../overlay.js';
-import { expandTypes } from '../backend-query.js';
+import { pendingMutationsField, pendingOverlay } from '../overlay.js';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
@@ -160,7 +158,7 @@ function shapeEntities(entities: EntityData[], fields?: string[]): unknown[] {
 
 const countEntities: Tool = {
   name: 'count_entities',
-  description: 'Count entities, optionally grouped by a key (type, storey, material). Returns aggregates rather than the full set.',
+  description: 'Count BIM entities (the same set `query_entities` returns), optionally grouped by a key (type, storey, material). Returns aggregates rather than the full set. For raw STEP record counts use `model_info`.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -175,14 +173,23 @@ const countEntities: Tool = {
     const m = resolveModel(ctx, input.model_id as string | undefined);
     const groupBy = input.group_by as 'type' | 'storey' | 'material' | undefined;
     const typeFilter = input.type as string | undefined;
-    // The type-keyed passes read `entityIndex.byType` directly rather than going
-    // through `bim.query()`, so they need the fold applied here (#2004).
     const overlay = pendingOverlay(m);
 
+    // One universe of "entity" for every grouping key (#3765): the BIM products
+    // `bim.query()` yields, which is what `query_entities`, `get_entity` and the
+    // CLI's `query --count` / `query --group-by type` all mean by "entity".
+    // `group_by: 'type'` and the ungrouped total used to fold
+    // `store.entityIndex.byType` instead — every raw STEP record,
+    // IfcCartesianPoint and IfcPropertySingleValue included — so the same tool
+    // answered 44,249 by type and 128 by storey on AC20-FZK-Haus. The raw-STEP
+    // count is still right for the file-stats tools (`model_info`,
+    // `model_audit`, CLI `info`), which keep `foldedTypeCounts`.
+    const entities = typeFilter
+      ? m.bim.query().byType(typeFilter).toArray()
+      : m.bim.query().toArray();
+
     if (!groupBy) {
-      const total = typeFilter
-        ? m.bim.query().byType(typeFilter).toArray().length
-        : [...foldedTypeCounts(m.store, overlay).values()].reduce((sum, count) => sum + count, 0);
+      const total = entities.length;
       return okResult(
         `${total.toLocaleString()} entities${typeFilter ? ` of type ${typeFilter}` : ''}.`,
         { total, ...pendingMutationsField(overlay) },
@@ -192,21 +199,16 @@ const countEntities: Tool = {
     const groups = new Map<string, number>();
 
     if (groupBy === 'type') {
-      // `type` narrows this branch too. It used to be ignored outright, so
-      // `count_entities({ type: 'IfcWall', group_by: 'type' })` returned every
-      // type in the model — and the filter has to expand subtypes, or asking for
-      // IfcWall misses every IFCWALLSTANDARDCASE, which is what `byType('IfcWall')`
-      // would have counted.
-      const wanted = typeFilter ? new Set(expandTypes([typeFilter])) : null;
-      for (const [type, count] of foldedTypeCounts(m.store, overlay)) {
-        if (wanted && !wanted.has(type)) continue;
-        // PascalCase, as `model_diff`'s type table reports it. Two tools naming
-        // the same class two ways is the defect, whichever spelling is right.
-        groups.set(IFC_ENTITY_NAMES[type] ?? type, count);
+      // `byType` already expanded subtypes above, so asking for IfcWall still
+      // counts every IFCWALLSTANDARDCASE. Keys come off `EntityData.type`, the
+      // same field `query_entities` reports and the CLI's `--group-by type`
+      // groups on.
+      for (const e of entities) {
+        const key = e.type || '(unknown)';
+        groups.set(key, (groups.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'storey') {
-      const targets = typeFilter ? m.bim.query().byType(typeFilter).toArray() : m.bim.query().toArray();
-      for (const e of targets) {
+      for (const e of entities) {
         // `m.bim.storey`, for the reason `in_storey` uses it: the raw EntityNode
         // walk reads the parsed graph and would file every entity this session
         // created under '(none)' even when it also queued the relationship that
@@ -216,8 +218,7 @@ const countEntities: Tool = {
         groups.set(key, (groups.get(key) ?? 0) + 1);
       }
     } else if (groupBy === 'material') {
-      const targets = typeFilter ? m.bim.query().byType(typeFilter).toArray() : m.bim.query().toArray();
-      for (const e of targets) {
+      for (const e of entities) {
         const mat = m.bim.materials(e.ref);
         const key = materialFallbackName(mat) ?? '(no material)';
         groups.set(key, (groups.get(key) ?? 0) + 1);

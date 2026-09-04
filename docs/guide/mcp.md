@@ -155,6 +155,14 @@ Tools are grouped by capability. Everything below is registered in the default t
     honours `type` on the `group_by: 'type'` branch now (it was ignored), and
     expands subtypes the way `query_entities` does.
 
+    **`count_entities` counts BIM products on every `group_by`.** It is the
+    aggregate form of `query_entities` and answers over the same set. The
+    ungrouped total and `group_by: 'type'` used to fold raw STEP records
+    instead — geometry and property-value lines included — so the same tool
+    answered 44,249 by type and 128 by storey for one model. For the raw STEP
+    record count, which is a file statistic rather than a query, use
+    `model_info` (the MCP analogue of `ifc-lite info`).
+
     **`pendingMutations` is a number wherever it appears, never an object.**
     `model_diff` used to publish a `{ base, head }` object under that name
     inside `contentDiff`; the per-side split now lives in

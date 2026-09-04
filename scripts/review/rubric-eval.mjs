@@ -45,6 +45,14 @@ import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-cont
 import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
 import { ensureEvalCommit } from './eval-commit.mjs';
 import { MAX_POSTED_FINDINGS } from './post-review.mjs';
+import { stripFence } from './validate-findings.mjs';
+import { notApplicableClasses } from './lib/defect-classes.mjs';
+// SCORING LIVES IN ./lib/eval-score.mjs and is RE-EXPORTED here, not moved out
+// of reach: `matches` and `score` are this harness's published surface and its
+// test drives them by name. The split is the module-size budget, not a change
+// of interface.
+import { matches, score } from './lib/eval-score.mjs';
+export { matches, score } from './lib/eval-score.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CASE_DIR = join(HERE, 'eval-cases');
@@ -82,15 +90,6 @@ export { validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT } from './eval-valida
 
 
 /**
- * Did the review surface this known finding?
- *
- * Matched on PATH plus any distinctive term from the description, not on exact
- * wording: two reviewers describing the same defect will not phrase it alike,
- * and demanding they do would score paraphrase rather than recall.
- *
- * @returns {{ hit: boolean, by: string|null }}
- */
-/**
  * Judge output the eval echoes. `JUDGE[: ]` and not `JUDGE (DROPPED|...)`,
  * because a judge that ran and removed nothing prints only `JUDGE: n in, n out`
  * -- under the narrower pattern a clean judging produced no output at all and the
@@ -100,104 +99,27 @@ export { validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT } from './eval-valida
  */
 export const JUDGE_LOG_RE = /JUDGE[: ]|CAPPED/;
 
-export function matches(expected, findings, body = null) {
-  const sameFile = findings.filter((f) => f.path === expected.path);
-  if (sameFile.length === 0) return { hit: false, by: null };
-
-  // MATCHED ON `body` AND `class`, NEVER ON `quote`. `quote` is verbatim source
-  // from the diff under review, so folding it in made the finding's own evidence
-  // count as agreement: PR #3598's hunks literally contain `REMEDY: re-run the
-  // review job` and `exemption`, so ANY finding anchored near those lines scored
-  // as recall of the contradictory-remedy defect. A harness that credits a
-  // reviewer for quoting the diff is measuring nothing.
-  const blobOf = (f) => `${f.body ?? ''} ${f.class ?? ''}`.toLowerCase();
-
-  // STEMS BOTH WAYS. A 7-character prefix of the EXPECTED word, matched as a
-  // substring of the finding, fails on inflection in the direction that hurts
-  // most: "throws" does not appear in "Throwing", "reddeni" does not appear in
-  // "reddens", so a finding naming the defect exactly scored as a MISS -- and a
-  // miss is what gets a good rubric reverted. Stemming both sides to 5 and
-  // comparing prefixes matches word FORMS without matching different words.
-  const stem = (w) => w.toLowerCase().slice(0, 5);
-
-  // GENERIC REVIEW VOCABULARY IS NOT EVIDENCE. `output`, `prints`, `remedy`,
-  // `should` and friends appear in half this repository's prose, and two of them
-  // co-occurring in an unrelated finding scored as a hit on a shipped case.
-  const GENERIC = new Set(
-    ['output', 'print', 'remed', 'shoul', 'becau', 'witho', 'nothi', 'canno', 'sayin', 'along',
-     'happe', 'somet', 'chang', 'retur', 'value', 'metho', 'funct', 'callи'].map(stem),
-  );
-  // WORDS THE PR BODY ALREADY SUPPLIES ARE NOT EVIDENCE EITHER, for exactly the
-  // reason `quote` is excluded above: the body is handed to the reviewer, so
-  // crediting it for repeating the body measures copying, not review. It matters
-  // on the one case whose defect IS a body/diff contradiction -- there the body
-  // supplied 6 of 13 expected terms, and two are enough to score, so a reviewer
-  // that paraphrased the description and never opened the file scored a hit.
-  // What survives is the vocabulary only the CODE can supply.
-  // ONE TOKENIZER. This expression appeared three times, differing only in the
-  // minimum length, and the relationship that makes the body exclusion sound --
-  // the body must be tokenized at least as permissively as the expected terms --
-  // was held by nothing but the lines being adjacent. Raising the body's minimum
-  // to 5 would have silently stopped the exclusion catching anything, with every
-  // test still green.
-  const tokens = (text, min) =>
-    new Set((String(text ?? '').match(new RegExp(`[A-Za-z_][A-Za-z0-9_]{${min - 1},}`, 'g')) || []).map(stem));
-
-  const fromBody = tokens(body, 5);
-  const terms = [...tokens(expected.what, 6)].filter((t) => !GENERIC.has(t) && !fromBody.has(t));
-
-  for (const f of sameFile) {
-    const words = tokens(blobOf(f), 5);
-    const hits = terms.filter((t) => words.has(t));
-    if (hits.length >= 2) return { hit: true, by: `${f.path}:${f.line} (${hits.slice(0, 3).join(', ')})` };
+/**
+ * The classes THIS review declared inapplicable, read back off the raw model
+ * output (#3831).
+ *
+ * Read from the raw file rather than from `findings.json`, because
+ * `validate-findings.mjs` deliberately does not carry `class_pass` through to
+ * the poster -- it is proof of work for the lane, not something a human reads on
+ * a PR -- so the eval takes it from the same text the validator did. Fenced
+ * exactly the way the model fences everything else, hence `stripFence`.
+ *
+ * FAILS SOFT TO `[]`, and that direction is deliberate: this feeds a diagnostic
+ * line, never the recall number, so a raw file that cannot be re-read must not
+ * take down a scored run. `[]` attributes nothing, which reads as an ordinary
+ * miss -- the answer the harness gave before this existed.
+ */
+function declaredNotApplicable(rawPath) {
+  try {
+    return notApplicableClasses(JSON.parse(stripFence(readFileSync(rawPath, 'utf8'))));
+  } catch {
+    return [];
   }
-  return { hit: false, by: null };
-}
-
-/** @returns {{ recall: string, hits: number, total: number, extra: number, lines: string[] }} */
-export function score(cases) {
-  const lines = [];
-  let hits = 0;
-  let total = 0;
-  let extra = 0;
-  for (const c of cases) {
-    lines.push(`  PR #${c.pr}: verdict=${c.verdict}, ${c.findings.length} finding(s)`);
-    // MATCHED ONCE. It used to be called here and again below with identical
-    // arguments, so threading the PR body through required editing both sites --
-    // and missing one would have been silent: `claimed` would have been built
-    // without the body exclusion, the EXTRA list would have quietly shrunk, and
-    // recall would have printed the same number either way.
-    const ms = c.expected.map((e) => matches(e, c.findings, c.body));
-    for (const [i, e] of c.expected.entries()) {
-      total += 1;
-      const m = ms[i];
-      if (m.hit) hits += 1;
-      lines.push(`    ${m.hit ? '✅ FOUND   ' : '❌ MISSED  '} ${e.path}: ${e.what.slice(0, 88)}`);
-      if (m.hit) lines.push(`               via ${m.by}`);
-    }
-    // BUILT FROM WHAT ACTUALLY MATCHED, not from the expected paths. The first
-    // version excluded every finding in a file that HELD an expected finding, so
-    // a second, genuinely different defect in that same file was neither a hit,
-    // nor an extra, nor printed -- silently dropped, in exactly the files a rubric
-    // change is most likely to produce new findings in. The docblock's promise
-    // that "the harness prints each one so a human decides" failed precisely
-    // where it mattered.
-    const claimed = new Set(
-      ms.map((m) => m.by).filter(Boolean).map((by) => by.split(' ')[0]),
-    );
-    const others = c.findings.filter((f) => !claimed.has(`${f.path}:${f.line}`));
-    extra += others.length;
-    for (const o of others) {
-      lines.push(`    ➕ EXTRA   ${o.path}:${o.line} ${String(o.body ?? '').slice(0, 70)}`);
-    }
-  }
-  return {
-    recall: total === 0 ? 'n/a' : `${hits}/${total} (${Math.round((hits / total) * 100)}%)`,
-    hits,
-    total,
-    extra,
-    lines,
-  };
 }
 
 function main() {
@@ -348,7 +270,12 @@ function main() {
         // the description, and a diff-only run carries none at all -- scoring
         // against text the reviewer never received excludes vocabulary it could
         // not have copied, and that reads as a false miss.
-        const failed = { pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] };
+        // `notApplicable: []` and not the raw file's contents: a review the
+        // validator refused declared nothing this harness may rely on, and
+        // CLASS_PASS_INCOMPLETE is precisely the refusal whose `class_pass` is
+        // the thing that failed. Reading it back would attribute a class skip to
+        // a document already judged unusable.
+        const failed = { pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [], notApplicable: [] };
         validatedResults.push(failed);
         results.push(failed);
         continue;
@@ -371,12 +298,14 @@ function main() {
       // mutates it. Without this, a final miss cannot be attributed to the
       // generator/validator or to suppression; live #3609 required manually
       // reconstructing that distinction from log fragments.
+      const notApplicable = declaredNotApplicable(outPath);
       validatedResults.push({
         pr: c.pr,
         body: c.input.contextPack?.body ?? null,
         expected: c.expected,
         verdict: parsed.verdict,
         findings: parsed.findings ?? [],
+        notApplicable,
       });
       // Nothing to judge costs no process. `judge()` short-circuits on an empty
       // list anyway, so this only saves a node start -- but four of the fixtures
@@ -422,7 +351,7 @@ function main() {
       }
       // Same rule as the failure record above: the exclusion is keyed to what
       // the reviewer RECEIVED, `c.input.contextPack?.body`, never the fixture.
-      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted });
+      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted, notApplicable });
     }
 
     const validatedScore = score(validatedResults);
@@ -439,6 +368,12 @@ function main() {
       console.log(`  ...over ${results.length} cases, of which ${noReview} PRODUCED NO USABLE REVIEW and scored zero.`);
     }
     console.log(`  POSTED extra findings (look at these, do not minimise them): ${s.extra}`);
+    // WHICH KIND OF MISS. A defect the reviewer looked for and did not see, and a
+    // defect whose whole class the reviewer waved off as inapplicable, are the
+    // same number in `recall` and need opposite fixes (#3831). Printed
+    // unconditionally, including as `0`: a line that appears only when it is
+    // non-zero cannot tell "none of these" from "this build does not measure it".
+    console.log(`  MISSES whose defect class the review declared NOT-APPLICABLE: ${s.skippedClass} of ${s.total - s.hits}`);
     console.log('\n  Compare against the same command on the other rubric. A change that lowers');
     console.log('  recall is a regression whatever it does to EXTRA.\n');
     ok = true;

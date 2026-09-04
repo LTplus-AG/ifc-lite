@@ -388,7 +388,6 @@
    980 scripts/moonshot/m5-constrained-decoding/tasks-tier2.mjs
    680 scripts/review/build-context-pack.mjs
    679 scripts/review/build-review-input.mjs
-   451 scripts/review/rubric-eval.mjs
    562 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs

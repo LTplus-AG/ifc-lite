@@ -42,8 +42,12 @@
     {
       "path": "scripts/check-review-posted.mjs",
       "what": "the output prints REMEDY: re-run alongside an exemption saying no re-run can clear it: two contradictory remedies",
-      "evidence": ["if (exemption.exempt && /^\\s*REMEDY:/.test(l)) continue;"],
-      "fixedEvidence": ["'   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low ' +"]
+      "evidence": [
+        "if (exemption.exempt && /^\\s*REMEDY:/.test(l)) continue;"
+      ],
+      "fixedEvidence": [
+        "'   REMEDY: re-run the review job. If it recurs, read the run log for `Posted 0/N` or a low ' +"
+      ]
     }
   ]
 }

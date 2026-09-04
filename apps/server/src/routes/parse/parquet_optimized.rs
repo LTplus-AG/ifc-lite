@@ -43,6 +43,20 @@ pub struct OptimizedParquetMetadataHeader {
     pub vertex_multiplier: f32,
 }
 
+/// Read a cache entry, treating an unreadable one as absent.
+///
+/// A corrupt entry must look like a miss to every caller on the replay path,
+/// or the route answers 500 forever for that file.
+async fn readable_entry(state: &AppState, key: &str) -> Option<Vec<u8>> {
+    match state.cache.get_bytes(key).await {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            tracing::warn!(error = %e, cache_key = %key, "Unreadable cache entry; re-parsing");
+            None
+        }
+    }
+}
+
 /// The optimized route's wire response, built in ONE place.
 ///
 /// The live parse and the cache replay must be indistinguishable to a client,
@@ -73,8 +87,14 @@ fn optimized_parquet_response(
 ///
 /// The stored metadata is the response header VERBATIM, so nothing here
 /// deserializes `OptimizedParquetMetadataHeader` and a replay reports the same
-/// `optimization_stats` the live parse did. A header that is not valid UTF-8
-/// (a corrupt entry) is a miss, not a 500.
+/// `optimization_stats` the live parse did.
+///
+/// EVERY way an entry can be unusable is a miss, never an error: a read that
+/// fails, and a header that is not valid UTF-8. cacache verifies content on
+/// read, so a truncated or orphaned blob (interrupted write, partial GC) comes
+/// back as an error -- and propagating it would 500 this file's every future
+/// request, because the parse that would overwrite the bad entry is the thing
+/// the error skips. A miss re-parses and rewrites it.
 ///
 /// The symbolic gate is not optional: this route's parse also writes the
 /// symbolic sidecar, so replaying past a missing one leaves the client's
@@ -87,10 +107,8 @@ async fn try_cached_optimized_parquet(
         return Ok(None);
     }
 
-    let Some(cached_metadata_json) = state
-        .cache
-        .get_bytes(&parquet_optimized_metadata_cache_key(cache_key))
-        .await?
+    let Some(cached_metadata_json) =
+        readable_entry(state, &parquet_optimized_metadata_cache_key(cache_key)).await
     else {
         return Ok(None);
     };
@@ -103,10 +121,7 @@ async fn try_cached_optimized_parquet(
         return Ok(None);
     };
 
-    let Some(cached_body) = state
-        .cache
-        .get_bytes(&parquet_optimized_cache_key(cache_key))
-        .await?
+    let Some(cached_body) = readable_entry(state, &parquet_optimized_cache_key(cache_key)).await
     else {
         return Ok(None);
     };

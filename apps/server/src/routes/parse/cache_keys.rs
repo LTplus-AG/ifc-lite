@@ -112,10 +112,14 @@ pub(crate) fn parquet_metadata_cache_key(
 /// so a hit on one must never satisfy the other.
 ///
 /// `v1` is the ara3d BOS payload as it stands after #3595 (rotation-aware
-/// instancing). Bump on EVERY change to the optimized payload's columns or to
-/// what one of them means, for the same reason the other suffixes bump: a warm
-/// cache otherwise replays a pre-change blob that the decoder reads cleanly,
-/// and the change is silently absent.
+/// instancing). Bump on EVERY change to the optimized payload's columns, to
+/// what one of them means, OR to the geometry pipeline behind them -- this key
+/// covers `process_geometry_filtered_with_quality` output just as
+/// [`parquet_cache_key`] does, and that key's own `v3` -> `v4` bump was a
+/// pipeline change with no column change at all. In practice: a bump of
+/// `-parquet-v5` almost always needs a bump here too. Otherwise a warm cache
+/// replays a pre-change blob that the decoder reads cleanly, and the change is
+/// silently absent.
 pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
     format!("{cache_key}-parquet-optimized-v1")
 }

@@ -543,7 +543,8 @@ Cache keys are derived from file content:
 
 # POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
 # payload is quantized and deduplicated, so a hit on one route must never
-# satisfy the other.
+# satisfy the other. Both pairs are built from the same geometry pipeline, so
+# a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v1.
 {SHA256}-{filter}-parquet-optimized-v1          # Optimized geometry
 {SHA256}-{filter}-parquet-optimized-metadata-v1 # Optimized metadata header
 ```

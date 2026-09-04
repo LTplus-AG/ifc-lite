@@ -188,8 +188,8 @@
    792 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
   1058 packages/bcf/src/reader.ts
-   588 packages/bcf/src/viewpoint.ts
-   878 packages/bcf/src/writer.ts
+   595 packages/bcf/src/viewpoint.ts
+   896 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
@@ -308,7 +308,7 @@
    609 packages/provenance/src/node-hash.ts
    535 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
-   672 packages/renderer/src/camera.ts
+   684 packages/renderer/src/camera.ts
   3759 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts

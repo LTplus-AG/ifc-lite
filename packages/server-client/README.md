@@ -31,7 +31,19 @@ for await (const event of client.parseStream(file)) {
       console.log(`${event.processed}/${event.total}`);
       break;
     case 'batch':
-      renderer.appendMeshes(event.meshes); // first triangles ~300ms in
+      // Server meshes are snake_case; map them onto the renderer's MeshData.
+      renderer.addMeshes(
+        event.meshes.map((m) => ({
+          expressId: m.express_id,
+          ifcType: m.ifc_type,
+          positions: m.positions,
+          normals: m.normals,
+          indices: m.indices,
+          color: m.color,
+          origin: m.origin,
+        })),
+        true, // streaming: throttle batch rebuilds — first triangles ~300ms in
+      );
       break;
     case 'complete':
       console.log(`Done: ${event.stats.total_meshes} meshes`);

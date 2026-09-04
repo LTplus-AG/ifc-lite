@@ -72,7 +72,43 @@ const ROOT = join(HERE, '..', '..');
 const GLOBALS_SRC = join(HERE, 'doc-samples-globals.d.ts');
 const EXTERNALS_SRC = join(HERE, 'doc-samples-externals.d.ts');
 
-/** Docs whose ts/typescript snippets are typechecked. */
+/**
+ * Every published (non-private) package under `packages/`, as
+ * `{ dir, pkg }`.
+ *
+ * "Published" is decided exactly as check-package-readmes.mjs decides it —
+ * a non-dotfile directory carrying a package.json whose `private` is not
+ * `true` — so the set of READMEs that gate REQUIRES to exist is the same
+ * set this gate TYPECHECKS. The rule is restated rather than imported:
+ * both gates are copied file-by-file into synthetic trees by their
+ * regression harnesses, so neither may import outside node builtins (see
+ * the note on `existsOrFail` in check-package-readmes.mjs).
+ */
+function publishedPackages() {
+  const packagesDir = join(ROOT, 'packages');
+  const out = [];
+  for (const dir of readdirSync(packagesDir).sort()) {
+    // Same reason as check-package-readmes.mjs: `packages/*` never matches a
+    // leading dot, and statting `.DS_Store/package.json` raises ENOTDIR.
+    if (dir.startsWith('.')) continue;
+    const pkgJson = join(packagesDir, dir, 'package.json');
+    if (!existsSync(pkgJson)) continue;
+    const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'));
+    if (pkg.private === true || !pkg.name) continue;
+    out.push({ dir, pkg });
+  }
+  return out;
+}
+
+/**
+ * Docs whose ts/typescript snippets are typechecked: the root README, the
+ * guides and tutorials, and every published package's README.
+ *
+ * The package READMEs were absent from this list until #3846, which is how
+ * packages/cache/README.md shipped a quickstart with two TS2345 errors
+ * (#3759). A package README is the npm landing page — the single most
+ * copy-pasted code in the repo — so it is checked exactly like a guide.
+ */
 function targetDocs() {
   const files = ['README.md'];
   for (const dir of ['guide', 'tutorials']) {
@@ -80,6 +116,12 @@ function targetDocs() {
     for (const f of readdirSync(abs).sort()) {
       if (f.endsWith('.md')) files.push(join('docs', dir, f));
     }
+  }
+  for (const { dir } of publishedPackages()) {
+    const rel = join('packages', dir, 'README.md');
+    // A missing README is check-package-readmes.mjs's verdict to report,
+    // not this gate's; it would fail here as an unreadable path instead.
+    if (existsSync(join(ROOT, rel))) files.push(rel);
   }
   return files;
 }
@@ -128,11 +170,7 @@ function extractBlocks(relPath) {
 function buildPaths() {
   const paths = {};
   const packagesDir = join(ROOT, 'packages');
-  for (const dir of readdirSync(packagesDir).sort()) {
-    const pkgJson = join(packagesDir, dir, 'package.json');
-    if (!existsSync(pkgJson)) continue;
-    const pkg = JSON.parse(readFileSync(pkgJson, 'utf-8'));
-    if (pkg.private === true || !pkg.name) continue;
+  for (const { dir, pkg } of publishedPackages()) {
     // @ifc-lite/wasm ships a committed .d.ts (no src/index.ts).
     if (pkg.name === '@ifc-lite/wasm') {
       paths['@ifc-lite/wasm'] = ['packages/wasm/pkg/ifc-lite.d.ts'];

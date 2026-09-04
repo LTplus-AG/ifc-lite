@@ -49,7 +49,7 @@ const README = ['# Sample', '', '```ts', 'const n: number = 1;', '```', ''].join
  * snippet, and `node_modules/.bin/tsc` written from `tscShim` (pass `null` to
  * leave the binary out entirely).
  */
-function makeTree(tscShim, { readme = README } = {}) {
+function makeTree(tscShim, { readme = README, packages = [] } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'doc-samples-'));
   mkdirSync(join(root, 'scripts', 'docs'), { recursive: true });
   mkdirSync(join(root, 'docs', 'guide'), { recursive: true });
@@ -65,6 +65,20 @@ function makeTree(tscShim, { readme = README } = {}) {
     copyFileSync(join(HERE, f), join(root, 'scripts', 'docs', f));
   }
   writeFileSync(join(root, 'README.md'), readme, 'utf8');
+
+  // `packages` entries are `{ dir, name, private?, readme? }`. A package with
+  // no `readme` ships none at all, which is check-package-readmes.mjs's
+  // verdict to report, not this gate's.
+  for (const p of packages) {
+    const dir = join(root, 'packages', p.dir);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'package.json'),
+      `${JSON.stringify({ name: p.name, version: '0.0.0', private: p.private === true })}\n`,
+      'utf8',
+    );
+    if (p.readme !== undefined) writeFileSync(join(dir, 'README.md'), p.readme, 'utf8');
+  }
 
   if (tscShim !== null) {
     const bin = join(root, 'node_modules', '.bin', 'tsc');
@@ -274,6 +288,108 @@ test('a non-zero exit with only out-of-scope diagnostics is still a clean run', 
       status: 2,
     }),
   );
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 0, `expected exit 0, got ${status}: ${out}`);
+    assert.match(out, /Doc code samples typecheck clean \(1 snippet compiled/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// #3846: package READMEs are in the target set.
+//
+// `targetDocs()` used to return the root README plus docs/guide and
+// docs/tutorials only, so every packages/*/README.md - the npm landing pages,
+// the most copy-pasted code in the repo - was the one class of docs with no
+// typecheck at all. That is how packages/cache/README.md shipped a quickstart
+// with two TS2345 errors (#3759): check-package-readmes.mjs asserted the file
+// EXISTED and nothing looked inside it.
+//
+// These three drive the gate over a synthetic tree holding a package, rather
+// than asserting on the shape of `targetDocs()`, because inclusion in the list
+// is not the property that matters - being COMPILED is, and the gate reports
+// on the files tsc named, not the files it wrote (see #3200 above).
+// ---------------------------------------------------------------------------
+
+/** A package README with a snippet whose error the shim will report. */
+const PKG_README = ['# @scope/thing', '', '```ts', 'const s: string = 1;', '```', ''].join('\n');
+
+test("a published package's README is compiled, not merely required to exist", () => {
+  // A tsc that exits 0 having compiled nothing names every snippet the gate
+  // put in the program, so this is a positive assertion about MEMBERSHIP: had
+  // targetDocs() left package READMEs out, the package snippet would not be
+  // among the ones reported never-compiled, and the count would be 1, not 2.
+  const root = makeTree('#!/bin/sh\nexit 0\n', {
+    packages: [{ dir: 'thing', name: '@scope/thing', readme: PKG_README }],
+  });
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /confirmed only 0 of 2 snippets/);
+    assert.match(
+      out,
+      /never compiled: packages[/\\]thing[/\\]README\.md:4 \(fence #0\)/,
+      'the package README must be in the program at all',
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a broken snippet in a package README is REPORTED against that README", () => {
+  // The gate's whole purpose, aimed at the file class it used to skip. The
+  // root README's snippet is snippet-000; the package README's is snippet-001,
+  // because targetDocs() appends packages after the root README and the guides.
+  const root = makeTree(
+    workingTsc({
+      extraLines: [
+        "__TMP__/snippet-001.ts(1,7): error TS2322: Type 'number' is not assignable to type 'string'.",
+      ],
+      status: 2,
+    }),
+    { packages: [{ dir: 'thing', name: '@scope/thing', readme: PKG_README }] },
+  );
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /failed to typecheck \(1 error\)/);
+    assert.match(out, /packages[/\\]thing[/\\]README\.md:4 \(fence #0\)/);
+    assert.match(out, /TS2322/);
+    assert.doesNotMatch(out, /typecheck clean/, 'a rejected snippet must never read as clean');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a PRIVATE package\'s README is not in the target set', () => {
+  // Pins the half of the rule that says which READMEs are in scope. It is
+  // check-package-readmes.mjs's rule verbatim - `private: true` is not
+  // published - and the two gates must cover the same set: a README that gate
+  // does not require to exist is not one this gate can insist compiles.
+  // Without this, "include every packages/*/README.md" would look identical.
+  const root = makeTree('#!/bin/sh\nexit 0\n', {
+    packages: [{ dir: 'inner', name: '@scope/inner', private: true, readme: PKG_README }],
+  });
+  try {
+    const { status, out } = run(root);
+    assert.equal(status, 1, `expected exit 1, got ${status}: ${out}`);
+    assert.match(out, /confirmed only 0 of 1 snippets/, 'only the root README snippet is in scope');
+    assert.doesNotMatch(out, /packages[/\\]inner/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a published package with no README is left to check-package-readmes', () => {
+  // targetDocs() must not hand a nonexistent path to extractBlocks: that would
+  // be an ENOENT stack trace from this gate over a condition the README gate
+  // reports properly, and a crash here reads as "the docs check is broken"
+  // rather than "a package is missing its landing page".
+  const root = makeTree(workingTsc(), {
+    packages: [{ dir: 'bare', name: '@scope/bare' }],
+  });
   try {
     const { status, out } = run(root);
     assert.equal(status, 0, `expected exit 0, got ${status}: ${out}`);

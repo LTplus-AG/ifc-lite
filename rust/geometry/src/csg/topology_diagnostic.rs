@@ -200,6 +200,15 @@ impl ClippingProcessor {
     ///
     /// With neither feature on, both operands are the always-`false` stubs and
     /// this compiles away to `false`, exactly as the two do individually.
+    ///
+    /// What this buys is the FAILURE LIST, not the label. With both features
+    /// on, a mesh that trips both records two `BoolFailure`s and
+    /// `router::diagnostics::first_failure_label` still names only
+    /// `failures[0]` — which, since the manifold gate is called first here, is
+    /// `NonManifoldRejected` even for a mesh whose open topology is the more
+    /// interesting half. A census that wants the split has to read
+    /// `take_csg_failures`, which is the channel it already reads. No build in
+    /// the workspace enables both today; this is a note for the one that does.
     pub(crate) fn accept_gates_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
         let manifold_rejected = self.manifold_gate_reject(op, mesh);
         let topology_rejected = self.topology_gate_reject(op, mesh);

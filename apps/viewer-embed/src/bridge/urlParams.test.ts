@@ -12,6 +12,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { EmbedUrlParams } from '@ifc-lite/embed-protocol';
 import { assertFetchableUrl, parseUrlParams } from './urlParams.js';
 
 function setSearch(search: string, origin = 'https://embed.example') {
@@ -259,5 +260,65 @@ describe('parseUrlParams', () => {
     expect(parseUrlParams().parentOrigin).toBe('https://host.example');
     setSearch('?parentOrigin=host.example');
     expect(parseUrlParams().parentOrigin).toBeUndefined();
+  });
+});
+
+/**
+ * Parity between `EmbedUrlParams` (the public, documented surface) and what
+ * `parseUrlParams` actually produces.
+ *
+ * #2934 was eight fields declared here, parsed, and never applied. The
+ * protocol's own doc comment states the rule in prose -- "a new field owes its
+ * own applying call site and a test that observes the effect" -- and nothing
+ * enforced the first half of it: a field could be added to `EmbedUrlParams`
+ * and the parser would simply never emit it, with no build failure and no
+ * test failure, which is how three of the eight drifted in the first place.
+ *
+ * `QUERY_FOR_FIELD` is typed `Record<keyof EmbedUrlParams, string>`, so the
+ * two directions fail differently and both fail loudly:
+ *
+ *  - a field ADDED to `EmbedUrlParams` and not parsed -> `tsc` errors on the
+ *    missing key here, naming it;
+ *  - a field listed here that the parser does not emit for its own query
+ *    string -> the runtime assertion below fails, naming it.
+ *
+ * The APPLYING half of the rule is not this file's to check; each param's
+ * effect is observed by the tests in `../components` (`EmbedViewer.urlParams`,
+ * `.autoLoad`, `.overlays`, `.modelView`), every one of which was confirmed to
+ * fail when its wiring is deleted.
+ */
+describe('EmbedUrlParams parity', () => {
+  const QUERY_FOR_FIELD: Record<keyof EmbedUrlParams, string> = {
+    modelUrl: 'modelUrl=https://cdn.example/m.ifc',
+    theme: 'theme=dark',
+    bg: 'bg=ff0000',
+    controls: 'controls=none',
+    autoLoad: 'autoLoad=false',
+    hideAxis: 'hideAxis=true',
+    hideScale: 'hideScale=true',
+    select: 'select=42',
+    isolate: 'isolate=43',
+    hideTypes: 'hideTypes=IfcSpace',
+    camera: 'camera=45,30',
+    view: 'view=front',
+  };
+
+  it('emits every field the public type declares', () => {
+    const missing: string[] = [];
+    for (const [field, query] of Object.entries(QUERY_FOR_FIELD)) {
+      setSearch(`?${query}`);
+      if (parseUrlParams()[field as keyof EmbedUrlParams] === undefined) missing.push(field);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it('emits nothing the type does not declare, beyond the viewer-only security knobs', () => {
+    // `allowOrigins`/`parentOrigin` are deliberately off the public protocol
+    // (see `EmbedViewerUrlParams`), so they are the only permitted extras.
+    setSearch(`?${Object.values(QUERY_FOR_FIELD).join('&')}`);
+    const extra = Object.keys(parseUrlParams()).filter(
+      (k) => !(k in QUERY_FOR_FIELD) && k !== 'allowOrigins' && k !== 'parentOrigin',
+    );
+    expect(extra).toEqual([]);
   });
 });

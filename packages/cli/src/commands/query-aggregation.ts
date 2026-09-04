@@ -82,6 +82,58 @@ export function getQuantityValue(bim: any, ref: any, quantityName: string): numb
   return null;
 }
 
+/** The numeric reductions `query --group-by`'s aggregation mode and `schedule --subtotals` share. */
+export type NumericAggMode = 'sum' | 'avg' | 'min' | 'max';
+
+/**
+ * Reduce a list of numbers to a single sum/avg/min/max, skipping every
+ * non-finite entry (`Infinity`, `-Infinity`, `NaN`) so one poisoned value can
+ * neither dominate a min/max nor turn a sum into `NaN`. Returns `null` when no
+ * finite value was seen (an empty list, or one that is all non-finite), which
+ * the caller renders as a blank cell / `null` rather than a fabricated `0`.
+ *
+ * This is the single numeric core `query --group-by`'s aggregation mode
+ * (`outputGroupBy` in `query-output.ts`) and `schedule --subtotals`
+ * (`schedule-aggregate.ts`) share, so the two cannot drift from each other.
+ *
+ * It is NOT what protects the flat, ungrouped `query --sum/--avg/--min/--max`
+ * (`outputSum`/`outputAggregation`) from a poisoned value — those read
+ * straight from `getQuantityValue`, which already substitutes `0` for a
+ * non-finite value at the source, before this function (or its caller) ever
+ * sees it. `outputGroupBy` calls `getQuantityValue` too, so by the time its
+ * values reach `aggregateFinite` here they have ALREADY been zeroed, not
+ * dropped. `schedule-aggregate.ts`'s `computeValues` pre-filters the same
+ * way with its own `cellToNumber` (also `Number.isFinite`-guarded) before
+ * ever building the array passed in here. In both of today's call sites
+ * this function's own `!Number.isFinite(v)` guard is consequently
+ * unreachable in practice — a defence in depth, exercised directly by this
+ * function's own unit tests, not currently by either caller's inputs.
+ */
+export function aggregateFinite(values: number[], mode: NumericAggMode): number | null {
+  let sum = 0;
+  let count = 0;
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (!Number.isFinite(v)) continue;
+    sum += v;
+    count++;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (count === 0) return null;
+  switch (mode) {
+    case 'sum':
+      return sum;
+    case 'avg':
+      return sum / count;
+    case 'min':
+      return min;
+    case 'max':
+      return max;
+  }
+}
+
 /**
  * F7: Sort entities by quantity, attribute, or property value.
  * Supports: quantity names, entity attributes (name/type/globalId), PsetName.PropName

@@ -198,11 +198,12 @@ const ifcx = new Ifc5Exporter(store, geometryResult).export({ includeGeometry: t
 
 ## Work from the terminal
 
-The [`ifc-lite` CLI](https://ifclite.dev/docs/guide/cli/) covers the full toolkit: inspect, query, validate, export, create, diff, clash-check, merge, convert, and script IFC models without writing a line of app code.
+The [`ifc-lite` CLI](https://ifclite.dev/docs/guide/cli/) covers the full toolkit: inspect, query, schedule, validate, export, create, diff, clash-check, merge, convert, and script IFC models without writing a line of app code.
 
 ```bash
 ifc-lite info model.ifc                                  # schema, entities, storeys
 ifc-lite query model.ifc --type IfcWall --json           # entities with properties
+ifc-lite schedule model.ifc --preset door                # door schedule, csv/json/md/html
 ifc-lite ids model.ifc requirements.ids                  # IDS validation
 ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip   # clash detection to BCF
 ifc-lite diff model-v1.ifc model-v2.ifc                  # model comparison

@@ -9,7 +9,7 @@
 
 import { findPropertyInSets } from '@ifc-lite/query';
 import { printJson, formatTable, hasFlag, fatal, firstNonBlank } from '../output.js';
-import { getQuantityValue } from './query-aggregation.js';
+import { getQuantityValue, aggregateFinite } from './query-aggregation.js';
 
 /** Valid built-in grouping keys */
 export const VALID_GROUP_BY_KEYS = ['type', 'storey', 'material'];
@@ -230,23 +230,13 @@ export function outputGroupBy(entities: any[], groupByKey: string, sumQuantity: 
   const groupAgg = new Map<string, number>();
   if (sumQuantity) {
     for (const [key, groupEntities] of groups) {
-      let sum = 0;
-      let count = 0;
-      let minVal = Infinity;
-      let maxVal = -Infinity;
+      const vals: number[] = [];
       for (const e of groupEntities) {
         const val = getQuantityValue(bim, e.ref, sumQuantity);
-        if (val !== null) {
-          sum += val;
-          count++;
-          if (val < minVal) minVal = val;
-          if (val > maxVal) maxVal = val;
-        }
+        if (val !== null) vals.push(val);
       }
-      if (mode === 'avg') groupAgg.set(key, count > 0 ? sum / count : 0);
-      else if (mode === 'min') groupAgg.set(key, count > 0 ? minVal : 0);
-      else if (mode === 'max') groupAgg.set(key, count > 0 ? maxVal : 0);
-      else groupAgg.set(key, sum);
+      // Shared finite-guarded reduction; an empty group stays 0 here.
+      groupAgg.set(key, aggregateFinite(vals, mode) ?? 0);
     }
   }
 

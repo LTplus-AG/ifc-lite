@@ -18,9 +18,10 @@ use super::{closed_or_hairline, directed_closed, edge_multiplicity_defects};
 use crate::mesh::Mesh;
 
 /// Build a mesh from raw vertex positions and triangle indices. Flat list, no
-/// welding: the predicates quantize to a 0.1 mm grid themselves, so coincident
-/// vertices spelled as separate entries are the same point to them (which is
-/// exactly the production situation — the kernel's output is flat-shaded).
+/// welding: `edge_multiplicity_defects` keys on the coordinates themselves, so
+/// a vertex spelled twice with identical numbers is one point to it (which is
+/// the production situation — the kernel's output is flat-shaded, and its
+/// interner makes a shared corner bit-identical at every use).
 fn mesh_of(positions: &[[f64; 3]], tris: &[[u32; 3]]) -> Mesh {
     let mut mesh = Mesh::new();
     for p in positions {
@@ -47,6 +48,62 @@ fn tetrahedron() -> Mesh {
             [0.0, 0.0, 1.0],
         ],
         &[[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]],
+    )
+}
+
+/// A closed, correctly wound square bipyramid (octahedron) whose equator sits
+/// at `z_base`, so two of them can be stacked a chosen distance apart.
+fn bipyramid(z_base: f64) -> Mesh {
+    let z = z_base;
+    mesh_of(
+        &[
+            [1.0, 0.0, z],
+            [0.0, 1.0, z],
+            [-1.0, 0.0, z],
+            [0.0, -1.0, z],
+            [0.0, 0.0, z + 1.0],
+            [0.0, 0.0, z - 1.0],
+        ],
+        &[
+            [0, 1, 4],
+            [1, 2, 4],
+            [2, 3, 4],
+            [3, 0, 4],
+            [1, 0, 5],
+            [2, 1, 5],
+            [3, 2, 5],
+            [0, 3, 5],
+        ],
+    )
+}
+
+/// A closed, correctly wound unit-square slab of thickness `t`.
+fn slab(t: f64) -> Mesh {
+    mesh_of(
+        &[
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+            [0.0, 1.0, 0.0],
+            [0.0, 0.0, t],
+            [1.0, 0.0, t],
+            [1.0, 1.0, t],
+            [0.0, 1.0, t],
+        ],
+        &[
+            [0, 2, 1],
+            [0, 3, 2], // bottom
+            [4, 5, 6],
+            [4, 6, 7], // top
+            [0, 1, 5],
+            [0, 5, 4], // -Y
+            [1, 2, 6],
+            [1, 6, 5], // +X
+            [2, 3, 7],
+            [2, 7, 6], // +Y
+            [3, 0, 4],
+            [3, 4, 7], // -X
+        ],
     )
 }
 
@@ -85,7 +142,10 @@ fn an_edge_used_by_three_triangles_is_over_used() {
 /// The case that motivates the whole predicate: a DOUBLED coincident surface.
 /// Every edge is used four times, two each way, so the signed tally cancels
 /// exactly and BOTH existing predicates call this closed. Only the unsigned
-/// multiplicity sweep sees it.
+/// multiplicity sweep sees it. The two shells are bit-identical here, which is
+/// what makes them one surface twice rather than two surfaces near each other
+/// — see `two_solids_a_hair_apart_are_not_one_non_manifold_solid` below for
+/// the case this must NOT be confused with.
 ///
 /// If this test ever goes green on the `directed_closed` assertion below, the
 /// signed predicate changed meaning and this module's justification needs
@@ -152,28 +212,62 @@ fn an_open_boundary_is_not_a_multiplicity_defect() {
     );
 }
 
-/// Degenerate triangles (all three corners on one grid cell) are skipped by the
-/// signed predicates; the multiplicity sweep must skip them identically, or a
-/// mesh the closure audit calls clean would be rejected here for edges that
-/// audit never counted.
+/// A triangle with two corners at the SAME point bounds nothing; its uses must
+/// not be counted. (Its neighbours here are the tetrahedron's, so if the skip
+/// were missing they would show up as extra uses on a real edge.)
 #[test]
-fn degenerate_triangles_are_skipped_exactly_as_the_signed_predicates_skip_them() {
+fn a_triangle_with_two_coincident_corners_is_skipped() {
     let mut m = tetrahedron();
-    // A sliver whose three corners quantize to the same 0.1 mm cell, sharing
-    // two of its vertices with a real edge of the solid.
     let base = (m.positions.len() / 3) as u32;
-    for p in [[0.0, 0.0, 0.0], [1.0e-6, 0.0, 0.0], [0.0, 1.0e-6, 0.0]] {
+    for p in [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 0.0]] {
         m.positions.push(p[0]);
         m.positions.push(p[1]);
         m.positions.push(p[2]);
         m.normals.extend_from_slice(&[0.0, 0.0, 1.0]);
     }
-    m.indices
-        .extend_from_slice(&[base, base + 1, base + 2]);
+    m.indices.extend_from_slice(&[base, base + 1, base + 2]);
 
-    assert!(directed_closed(&m), "the signed audit skips the degenerate");
     assert!(
         edge_multiplicity_defects(&m).is_clean(),
-        "the multiplicity sweep must skip the same degenerate"
+        "a zero-area triangle must contribute no edge uses"
+    );
+}
+
+/// The regression this predicate's EXACT keying exists for. Two closed,
+/// perfectly manifold bipyramids sitting 0.03 mm apart — closer than the
+/// 0.1 mm cell the sibling predicates snap to. Under a snapped key their
+/// vertices collide, their edges fuse, and the fused entries report four uses
+/// apiece: `over_used = 12` (measured by re-instating the snapped key), every
+/// one of it invented. Under exact keys they are what they are, two separate
+/// solids.
+///
+/// 0.03 mm is not arbitrary: it has to be under the sibling predicates' cell
+/// so the assertion below distinguishes the two keyings rather than agreeing
+/// with both.
+#[test]
+fn two_solids_a_hair_apart_are_not_one_non_manifold_solid() {
+    let mut m = bipyramid(0.0);
+    let offset = bipyramid(0.000_03);
+    m.merge(&offset);
+
+    let d = edge_multiplicity_defects(&m);
+    assert!(
+        d.is_clean(),
+        "two manifold solids 0.03 mm apart are still two manifold solids, got {d:?}"
+    );
+}
+
+/// The same failure in the other geometry that trips it: a single slab thinner
+/// than the sibling predicates' cell. Snap it and the two faces land on one
+/// plane, the diagonal is used by four triangles (`over_used = 1`, measured the
+/// same way), and a perfectly good thin layer reads as non-manifold. Real
+/// models are full of these — a finish layer, a gasket, a sheet-metal fold.
+#[test]
+fn a_slab_thinner_than_the_snap_cell_carries_no_defect() {
+    let m = slab(0.000_05);
+    let d = edge_multiplicity_defects(&m);
+    assert!(
+        d.is_clean(),
+        "a 0.05 mm-thick closed slab is manifold, got {d:?}"
     );
 }

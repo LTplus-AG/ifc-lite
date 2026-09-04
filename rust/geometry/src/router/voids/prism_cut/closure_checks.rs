@@ -242,9 +242,8 @@ pub(crate) fn closed_or_hairline(mesh: &Mesh) -> bool {
 /// That is a doubled coincident surface, not a solid boundary, and no amount of
 /// tolerance tuning on a signed tally can see it.
 ///
-/// So this counts UNSIGNED uses per undirected edge, on the same 0.1 mm grid
-/// and with the same degenerate-triangle skip, and reports the two defects a
-/// signed tally cannot represent:
+/// So this counts UNSIGNED uses per undirected edge and reports the two
+/// defects a signed tally cannot represent:
 ///
 /// * `over_used` — an undirected edge with MORE than two triangle uses
 ///   (non-manifold: a fin, a doubled skin, or self-intersecting output).
@@ -257,6 +256,34 @@ pub(crate) fn closed_or_hairline(mesh: &Mesh) -> bool {
 /// and it is the reading that T-junction tessellation trips constantly. Keeping
 /// it out is what lets a caller gate on this without inheriting that class's
 /// false-positive rate.
+///
+/// # Why this one is EXACT and its neighbours are not
+///
+/// The two predicates above snap vertices to a 0.1 mm grid. That is right for
+/// them: they ask whether a surface CLOSES, and two corners a hair apart
+/// should close. It is wrong here, and not by a little. Snapping merges two
+/// distinct vertices closer than a grid cell into one key, and the moment two
+/// distinct edges collapse onto one key their uses ADD — so two perfectly
+/// manifold surfaces sitting 0.03 mm apart report a four-use edge that exists
+/// in neither of them. Measured on the snapped key this replaced: the two
+/// closed bipyramids in `closure_checks_tests.rs`, offset 0.03 mm, report
+/// `over_used = 12`, and the 0.05 mm slab there reports `over_used = 1` — both
+/// entirely manufactured by the snap, and both clean under exact keys.
+///
+/// That failure mode is fatal for a REJECTION predicate in a way it is not for
+/// a closure one. A snap that wrongly closes a hairline gap errs toward
+/// accepting; a snap that wrongly fuses two surfaces errs toward throwing away
+/// geometry that was never wrong. So the keys here are the vertex coordinates
+/// EXACTLY, bit for bit (with `-0.0` folded to `0.0` so the two spellings of
+/// zero are one point). Two positions are the same point only if they are the
+/// same position.
+///
+/// The cost is a miss, not a false positive: a genuine non-manifold edge whose
+/// endpoints differ in the last bit reads as two separate edges and is not
+/// reported. That is the right trade for a predicate whose job is to discard a
+/// kernel result — and it is cheap in practice, because the kernel interns
+/// coincident corners, so a real shared edge in its output is bit-identical at
+/// both ends.
 // The three items below are consumed by `csg::topology_diagnostic`'s
 // `manifold_gate_reject`, which only exists under `csg_manifold_gate`, and by
 // this module's own tests. `allow(dead_code)` rather than a `cfg` on the
@@ -281,13 +308,19 @@ impl EdgeMultiplicityDefects {
 }
 
 /// Count the [`EdgeMultiplicityDefects`] of `mesh`. O(triangles) hash sweep,
-/// the same shape and cost as [`directed_closed`].
+/// the same shape and cost as [`directed_closed`] — but keyed EXACTLY, for the
+/// reason spelled out on [`EdgeMultiplicityDefects`].
 #[cfg_attr(not(feature = "csg_manifold_gate"), allow(dead_code))]
 pub(crate) fn edge_multiplicity_defects(mesh: &Mesh) -> EdgeMultiplicityDefects {
-    type K = (i64, i64, i64);
+    // Exact vertex identity: the raw f32 bits of the three coordinates, with
+    // `-0.0` normalised to `0.0` (they compare equal but have different bit
+    // patterns, and they are the same point). Non-finite coordinates cannot
+    // reach here — every caller runs `validate_mesh` first — so no NaN key can
+    // split a vertex from itself.
+    type K = (u32, u32, u32);
     let key = |i: u32| -> K {
         let b = i as usize * 3;
-        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
+        let q = |v: f32| (if v == 0.0 { 0.0f32 } else { v }).to_bits();
         (
             q(mesh.positions[b]),
             q(mesh.positions[b + 1]),
@@ -298,6 +331,10 @@ pub(crate) fn edge_multiplicity_defects(mesh: &Mesh) -> EdgeMultiplicityDefects 
     let mut edges: FxHashMap<(K, K), (u32, u32)> = FxHashMap::default();
     for tri in mesh.indices.chunks_exact(3) {
         let (ka, kb, kc) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        // A triangle with two corners at the SAME point contributes a
+        // zero-length edge and two coincident ones; it bounds no area and its
+        // uses would be noise. Skipped, matching what the signed predicates do
+        // with their own (grid-scale) degenerates.
         if ka == kb || kb == kc || kc == ka {
             continue;
         }

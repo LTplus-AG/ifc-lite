@@ -172,7 +172,31 @@ export function computeCameraFromBounds(
  * leaving the third grouping permanently unwritable, and the refusal below
  * would be naming a remedy that does not work for it.
  */
-export function unionBounds(
+/**
+ * The union of the boxes for EVERY key given, or `undefined` if any key has
+ * none.
+ *
+ * All-or-nothing for the reason {@link unionBounds} documents: the
+ * per-specification viewpoint frames a whole group of entities, and a union
+ * over the subset that happened to have bounds is a camera that leaves the
+ * rest off screen while looking entirely plausible. `undefined` leaves the
+ * viewpoint camera-less, which {@link requireCamerasForVersion} turns into a
+ * 3.0 refusal naming the topic and the missing option (#3849).
+ */
+export function unionBoundsForEveryKey(
+  keys: readonly string[],
+  entityBounds: Map<string, EntityBoundsInput> | undefined,
+): EntityBoundsInput | undefined {
+  const boxes: EntityBoundsInput[] = [];
+  for (const key of keys) {
+    const box = entityBounds?.get(key);
+    if (!box) return undefined;
+    boxes.push(box);
+  }
+  return unionBounds(boxes);
+}
+
+function unionBounds(
   boxes: readonly EntityBoundsInput[],
 ): EntityBoundsInput | undefined {
   if (boxes.length === 0) return undefined;

@@ -28,7 +28,7 @@ import {
   computeCameraFromBounds,
   requireAspectRatioOption,
   requireCamerasForVersion,
-  unionBounds,
+  unionBoundsForEveryKey,
 } from './ids-camera.js';
 import type { EntityBoundsInput } from './ids-camera.js';
 
@@ -359,6 +359,11 @@ function addTruncationNoticeTopic(
 // Per-entity grouping (default — recommended)
 // ============================================================================
 
+/** How `entityBounds` and `entitySnapshots` are keyed. */
+function boundsKeyOf(entity: IDSEntityResultInput): string {
+  return `${entity.modelId}:${entity.expressId}`;
+}
+
 interface BuildOptions {
   author: string;
   includePassingEntities?: boolean;
@@ -428,7 +433,7 @@ function buildTopicsPerEntity(
       // Viewpoint MUST be created first so comments can reference it via viewpointGuid
       let viewpointGuid: string | undefined;
       if (entity.globalId) {
-        const boundsKey = `${entity.modelId}:${entity.expressId}`;
+        const boundsKey = boundsKeyOf(entity);
         const bounds = opts.entityBounds?.get(boundsKey);
         const snapshot = opts.entitySnapshots?.get(boundsKey);
         const viewpoint = buildEntityViewpoint(
@@ -499,7 +504,7 @@ function buildTopicsPerSpecification(
       const viewpoint = buildMultiEntityViewpoint(
         failedGuids,
         opts.failureColor,
-        boundsForEveryEntity(failedEntities, opts.entityBounds),
+        unionBoundsForEveryKey(failedEntities.map(boundsKeyOf), opts.entityBounds),
         opts.aspectRatio,
       );
       topic.viewpoints.push(viewpoint);
@@ -590,7 +595,7 @@ function buildTopicsPerRequirement(
         // Viewpoint for single entity (must be first for comment linking)
         let viewpointGuid: string | undefined;
         if (entity.globalId) {
-          const boundsKey = `${entity.modelId}:${entity.expressId}`;
+          const boundsKey = boundsKeyOf(entity);
           const bounds = opts.entityBounds?.get(boundsKey);
           const snapshot = opts.entitySnapshots?.get(boundsKey);
           const viewpoint = buildEntityViewpoint(
@@ -689,29 +694,6 @@ function buildRequirementComment(req: IDSRequirementResultInput): string {
   }
 
   return lines.join('\n');
-}
-
-/**
- * The union of the group's bounds, or `undefined` if ANY of its entities has
- * none.
- *
- * All-or-nothing because the per-specification viewpoint frames the whole
- * group: unioning whichever boxes happened to be supplied puts the rest off
- * screen and says nothing about it. Returning `undefined` instead leaves the
- * viewpoint camera-less, which `requireCamerasForVersion` turns into a 3.0
- * refusal that names the topic and the missing option (#3849).
- */
-function boundsForEveryEntity(
-  entities: readonly IDSEntityResultInput[],
-  entityBounds: Map<string, EntityBoundsInput> | undefined,
-): EntityBoundsInput | undefined {
-  const boxes: EntityBoundsInput[] = [];
-  for (const entity of entities) {
-    const box = entityBounds?.get(`${entity.modelId}:${entity.expressId}`);
-    if (!box) return undefined;
-    boxes.push(box);
-  }
-  return unionBounds(boxes);
 }
 
 // ============================================================================

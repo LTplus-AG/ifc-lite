@@ -181,7 +181,7 @@
    497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
-   662 apps/viewer/src/utils/serverDataModel.ts
+   619 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts

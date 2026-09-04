@@ -21,13 +21,13 @@ import {
   comparePropertyValues,
   findStoreyByElevation,
   IfcTypeEnum,
-  RelationshipType,
   IfcTypeEnumFromString,
   IfcTypeEnumToString,
   PropertyValueType,
   QuantityType,
   isBuildingLikeSpatialType,
   isStoreyLikeSpatialType,
+  RelationshipGraphBuilder,
   type SpatialHierarchy,
   type SpatialNode,
   type RelationshipGraph,
@@ -276,8 +276,14 @@ function buildRelationships(
   entityToPsets: Map<number, Array<any>>;
   entityToQsets: Map<number, Array<ServerQuantitySet>>;
 } {
-  const forwardEdges = new Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>();
-  const inverseEdges = new Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>();
+  // Feed the same builder the WASM path uses (#3827). Building real CSR
+  // columns is what makes every `offsets`/`counts` walk downstream — the
+  // Parquet Relationships table, the DuckDB relationships table — see the
+  // server path's edges at all, and it is what makes the builder's
+  // repeated-edge handling apply here instead of only to locally parsed
+  // models. `build()` derives the inverse half from the same edge list, so
+  // only the forward direction is added below.
+  const graphBuilder = new RelationshipGraphBuilder();
   const entityToPsets = new Map<number, Array<any>>();
   const entityToQsets = new Map<number, Array<ServerQuantitySet>>();
   // Type-owned sets (issue #1751): the server emits synthetic TYPEHASPROPERTYSETS
@@ -322,17 +328,9 @@ function buildRelationships(
       continue;
     }
 
-    // Forward: relating -> related
-    if (!forwardEdges.has(rel.relating_id)) {
-      forwardEdges.set(rel.relating_id, []);
-    }
-    forwardEdges.get(rel.relating_id)!.push({ target: rel.related_id, type: relType, relationshipId: 0 });
-
-    // Inverse: related -> relating
-    if (!inverseEdges.has(rel.related_id)) {
-      inverseEdges.set(rel.related_id, []);
-    }
-    inverseEdges.get(rel.related_id)!.push({ target: rel.relating_id, type: relType, relationshipId: 0 });
+    // The server payload carries no IfcRel express id, so every edge gets 0 —
+    // the same placeholder the hand-rolled facade used.
+    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, 0);
   }
 
   if (unmappedRelTypes.size > 0) {
@@ -357,47 +355,7 @@ function buildRelationships(
   mergeOwnFirst(typeOwnPsets, entityToPsets, (s) => s.pset_name ?? '');
   mergeOwnFirst(typeOwnQsets, entityToQsets, (s) => s.qset_name ?? '');
 
-  const createEdgeAccessor = (edges: Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>) => ({
-    offsets: new Map<number, number>(),
-    counts: new Map<number, number>(),
-    edgeTargets: new Uint32Array(0),
-    edgeTypes: new Uint16Array(0),
-    edgeRelIds: new Uint32Array(0),
-    getEdges: (entityId: number, type?: RelationshipType) => {
-      const e = edges.get(entityId) || [];
-      return type !== undefined ? e.filter((edge) => edge.type === type) : e;
-    },
-    getTargets: (entityId: number, type?: RelationshipType) => {
-      const e = edges.get(entityId) || [];
-      const filtered = type !== undefined ? e.filter((edge) => edge.type === type) : e;
-      return filtered.map((edge) => edge.target);
-    },
-    hasAnyEdges: (entityId: number) => (edges.get(entityId)?.length ?? 0) > 0,
-  });
-
-  const relationships: RelationshipGraph = {
-    forward: createEdgeAccessor(forwardEdges),
-    inverse: createEdgeAccessor(inverseEdges),
-    getRelated: (entityId, relType, direction) => {
-      const edgeMap = direction === 'forward' ? forwardEdges : inverseEdges;
-      const edges = edgeMap.get(entityId) || [];
-      return edges.filter((e) => e.type === relType).map((e) => e.target);
-    },
-    hasRelationship: (sourceId, targetId, relType) => {
-      const edges = forwardEdges.get(sourceId) || [];
-      return edges.some((e) => e.target === targetId && (relType === undefined || e.type === relType));
-    },
-    getRelationshipsBetween: (sourceId, targetId) => {
-      const edges = forwardEdges.get(sourceId) || [];
-      return edges
-        .filter((e) => e.target === targetId)
-        .map((e) => ({
-          relationshipId: e.relationshipId,
-          type: e.type,
-          typeName: RelationshipType[e.type] || 'Unknown',
-        }));
-    },
-  };
+  const relationships = graphBuilder.build();
 
   return { relationships, entityToPsets, entityToQsets };
 }

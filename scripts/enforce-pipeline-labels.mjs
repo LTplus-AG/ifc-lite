@@ -78,8 +78,40 @@ export function enforceLabelEvent(payload, { cfg, repo, spawn = spawnSync }) {
     throw new LabelAuthorityError('BAD_REPO', `Invalid GITHUB_REPOSITORY ${JSON.stringify(repo)}.`);
   }
 
-  const endpoint = `repos/${repo}/issues/${decision.number}/labels/${encodeURIComponent(decision.label)}`;
-  const result = spawn('gh', ['api', '--method', 'DELETE', endpoint], {
+  const eventsEndpoint = `repos/${repo}/issues/${decision.number}/events?per_page=100`;
+  const history = spawn('gh', ['api', '--paginate', '--slurp', eventsEndpoint], {
+    encoding: 'utf8',
+    env: process.env,
+  });
+  if (history.error || history.status !== 0) {
+    throw new LabelAuthorityError(
+      'REVALIDATE_FAILED',
+      `Could not revalidate ${JSON.stringify(decision.label)} on #${decision.number}: ` +
+        `${history.error?.message ?? (String(history.stderr ?? '').trim() || `exit ${history.status}`)}`,
+    );
+  }
+
+  let pages;
+  try {
+    pages = JSON.parse(history.stdout);
+  } catch (error) {
+    throw new LabelAuthorityError('REVALIDATE_FAILED', `Label history is not JSON: ${error.message}`);
+  }
+  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
+    throw new LabelAuthorityError('REVALIDATE_FAILED', 'Label history does not contain paginated event arrays.');
+  }
+  const relevant = pages.flat().filter((entry) =>
+    (entry?.event === 'labeled' || entry?.event === 'unlabeled') &&
+    typeof entry.label?.name === 'string' &&
+    entry.label.name.toLowerCase() === decision.label.toLowerCase());
+  const latest = relevant.at(-1);
+  const latestActor = normaliseLogin(latest?.actor?.login);
+  if (latest?.event !== 'labeled' || latestActor !== decision.sender) {
+    return { action: 'keep-newer-state', label: decision.label, sender: decision.sender, number: decision.number };
+  }
+
+  const labelEndpoint = `repos/${repo}/issues/${decision.number}/labels/${encodeURIComponent(decision.label)}`;
+  const result = spawn('gh', ['api', '--method', 'DELETE', labelEndpoint], {
     encoding: 'utf8',
     env: process.env,
   });
@@ -109,6 +141,8 @@ function main() {
     );
   } else if (decision.action === 'keep') {
     console.log(`KEPT: @${decision.sender} is authorised to apply protected label ${JSON.stringify(decision.label)}.`);
+  } else if (decision.action === 'keep-newer-state') {
+    console.log(`KEPT: ${JSON.stringify(decision.label)} changed after @${decision.sender}'s stale event.`);
   } else {
     console.log(`IGNORED: ${decision.reason}.`);
   }

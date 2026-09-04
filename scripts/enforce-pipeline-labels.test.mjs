@@ -25,21 +25,42 @@ test('#3876: a maintainer-applied protected label remains attached', () => {
 });
 
 test('#3876: an unauthorized protected label is removed from the exact issue', () => {
-  let call;
+  const calls = [];
   const result = enforceLabelEvent(event('unqueued', 'BIMvoice', 73), {
     cfg,
     repo: 'LTplus-AG/ifc-lite',
     spawn: (...args) => {
-      call = args;
+      calls.push(args);
+      if (calls.length === 1) {
+        return { status: 0, stdout: '[[{"event":"labeled","label":{"name":"unqueued"},"actor":{"login":"BIMvoice"}}]]', stderr: '' };
+      }
       return { status: 0, stdout: '', stderr: '' };
     },
   });
   assert.equal(result.action, 'remove');
   assert.equal(result.sender, 'bimvoice');
-  assert.deepEqual(call.slice(0, 2), [
+  assert.deepEqual(calls[1].slice(0, 2), [
     'gh',
     ['api', '--method', 'DELETE', 'repos/LTplus-AG/ifc-lite/issues/73/labels/unqueued'],
   ]);
+});
+
+test('#3876: a stale unauthorized event cannot remove a maintainer reapplication', () => {
+  let calls = 0;
+  const result = enforceLabelEvent(event('ready', 'BIMvoice', 73), {
+    cfg,
+    repo: 'LTplus-AG/ifc-lite',
+    spawn: () => {
+      calls += 1;
+      return {
+        status: 0,
+        stdout: '[[{"event":"labeled","label":{"name":"ready"},"actor":{"login":"BIMvoice"}},{"event":"unlabeled","label":{"name":"ready"},"actor":{"login":"louistrue"}},{"event":"labeled","label":{"name":"ready"},"actor":{"login":"louistrue"}}]]',
+        stderr: '',
+      };
+    },
+  });
+  assert.equal(result.action, 'keep-newer-state');
+  assert.equal(calls, 1, 'the DELETE call must not happen');
 });
 
 test('ordinary labels are outside this narrow authority policy', () => {
@@ -63,11 +84,17 @@ test('the guard cannot silently survive its authority policy being disabled', ()
 });
 
 test('a removal API failure is visible and never reported as enforcement', () => {
+  let calls = 0;
   assert.throws(
     () => enforceLabelEvent(event('ready', 'BIMvoice'), {
       cfg,
       repo: 'LTplus-AG/ifc-lite',
-      spawn: () => ({ status: 1, stdout: '', stderr: 'forbidden' }),
+      spawn: () => {
+        calls += 1;
+        return calls === 1
+          ? { status: 0, stdout: '[[{"event":"labeled","label":{"name":"ready"},"actor":{"login":"BIMvoice"}}]]', stderr: '' }
+          : { status: 1, stdout: '', stderr: 'forbidden' };
+      },
     }),
     (error) => error instanceof LabelAuthorityError && error.reason === 'REMOVE_FAILED' && /forbidden/.test(error.message),
   );

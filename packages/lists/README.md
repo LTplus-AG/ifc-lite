@@ -14,7 +14,9 @@ npm install @ifc-lite/lists
 import { executeList, listResultToCSV, LIST_PRESETS } from '@ifc-lite/lists';
 import type { ListDataProvider } from '@ifc-lite/lists';
 
-const provider: ListDataProvider = createMyProvider(myData);
+// Bridge your data source (IfcDataStore, a server API, IndexedDB, ...)
+// to the engine by implementing ListDataProvider.
+declare const provider: ListDataProvider;
 
 // LIST_PRESETS includes ready-made schedules (for example a Wall Schedule)
 const result = executeList(LIST_PRESETS[0], provider);

@@ -55,6 +55,8 @@ const ifcx = snapshotToIfcx(session.doc, { author: 'louis' });
 
 ## Public API
 
+<!-- Reason: signature listing, not runnable code - bare member paths and `→` arrows. -->
+<!-- docs-check: skip -->
 ```ts
 createCollabSession(opts) → CollabSession
 session.doc            // Y.Doc

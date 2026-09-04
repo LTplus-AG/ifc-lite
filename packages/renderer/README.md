@@ -88,6 +88,10 @@ renderer.requestRender();
 ```typescript
 import { federationRegistry } from '@ifc-lite/renderer';
 
+// The highest expressId in each model decides the offset spacing
+const maxArchExpressId = 500_000;
+const maxStructExpressId = 250_000;
+
 // Register each model with a unique ID offset
 federationRegistry.registerModel('arch', maxArchExpressId);
 federationRegistry.registerModel('struct', maxStructExpressId);

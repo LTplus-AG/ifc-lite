@@ -65,6 +65,8 @@ END_ENTITY;
 
 You get a TypeScript interface with full inheritance:
 
+<!-- Reason: shows generator OUTPUT; IfcBuildingElement and IfcWallTypeEnum only exist in the emitted files. -->
+<!-- docs-check: skip -->
 ```typescript
 export interface IfcWall extends IfcBuildingElement {
   PredefinedType?: IfcWallTypeEnum;
@@ -73,6 +75,8 @@ export interface IfcWall extends IfcBuildingElement {
 
 Plus runtime metadata for the same entity:
 
+<!-- Reason: shows generator OUTPUT; SCHEMA_REGISTRY lives in the emitted schema-registry.ts. -->
+<!-- docs-check: skip -->
 ```typescript
 SCHEMA_REGISTRY.IfcWall = {
   parent: 'IfcBuildingElement',

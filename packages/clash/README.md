@@ -38,6 +38,11 @@ space (as the viewer's loader does for every model past the first) while the
 can address the store correctly:
 
 ```ts
+import { elementsFromStep, type FederationLike } from '@ifc-lite/clash/step';
+
+declare const federation: FederationLike; // e.g. the renderer's FederationRegistry
+declare const model: { idOffset: number };
+
 elementsFromStep({ store, meshes, modelId, federation, meshIdOffset: model.idOffset });
 ```
 

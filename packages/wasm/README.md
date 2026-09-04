@@ -43,9 +43,14 @@ plus unit scale, RTC offset, void/style indices) followed by
 ```typescript
 import init, { IfcAPI } from '@ifc-lite/wasm';
 
+// Your renderer, and your own adapter from a wasm mesh to its mesh type.
+declare const scene: { add(m: unknown): void };
+declare function toThreeMesh(mesh: unknown): unknown;
+
 await init();
 const api = new IfcAPI();
-const bytes = new Uint8Array(await fetch('model.ifc').then(r => r.arrayBuffer()));
+const modelBuffer = await fetch('model.ifc').then(r => r.arrayBuffer());
+const bytes = new Uint8Array(modelBuffer);
 
 const pre = api.buildPrePassOnce(bytes);
 // Large-coordinate models: pre.needsShift / pre.rtcOffset give the RTC origin.

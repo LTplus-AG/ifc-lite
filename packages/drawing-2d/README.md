@@ -16,7 +16,7 @@ import { generateFloorPlan, exportToSVG, PAPER_SIZES, COMMON_SCALES } from '@ifc
 // Cut at 1.2 m above floor level (standard architectural plan height)
 const drawing = await generateFloorPlan(meshes, 1.2, {
   includeHiddenLines: true,
-  includeMaterialHatching: true,
+  includeProjection: true,
 });
 
 const svg = exportToSVG(drawing, {
@@ -39,7 +39,7 @@ import { generateSection, exportToSVG } from '@ifc-lite/drawing-2d';
 // Vertical section through plane x = 5
 const drawing = await generateSection(meshes, 'x', 5, {
   includeHiddenLines: false,
-  includeProjectionLines: true,
+  includeProjection: true,
 });
 
 const svg = exportToSVG(drawing);
@@ -56,8 +56,16 @@ await generator.initialize();
 const config = createSectionConfig('y', 2.5, { projectionDepth: 5, scale: 50 });
 const drawing = await generator.generate(meshes, config, {
   includeHiddenLines: true,
-  includeMaterialHatching: true,
+  includeEdges: true,
 });
+
+// Hatching is a separate pass, for callers rendering the drawing themselves:
+// it returns the cut polygons' hatch as DrawingLine[]. `exportToSVG`'s
+// `showHatching` does NOT consume these — it derives its own hatching layer
+// from `drawing.cutPolygons` (svg-exporter.ts:151), so passing both just
+// draws the same hatch twice.
+const hatchLines = generator.generateHatching(drawing);
+console.log(`${hatchLines.length} hatch lines`);
 
 generator.dispose();
 ```
@@ -85,7 +93,7 @@ const custom = createOverrideEngine([
     enabled: true,
     priority: 10,
     criteria: ifcTypeCriterion(['IfcWall', 'IfcWallStandardCase']),
-    style: { strokeColor: '#d62828', strokeWidth: 0.7 },
+    style: { strokeColor: '#d62828', lineWeight: 0.7 },
   },
 ]);
 
@@ -132,6 +140,7 @@ Import an existing DXF drawing (site plan, survey, coordination set) as a refere
 ```typescript
 import { importDxf, exportToSVG } from '@ifc-lite/drawing-2d';
 
+const dxfFileText = await fetch('site-plan.dxf').then((r) => r.text());
 const underlay = importDxf(dxfFileText, 'site-plan.dxf');
 // underlay.layers[n].paths / .fills / .texts, underlay.bounds, underlay.warnings
 

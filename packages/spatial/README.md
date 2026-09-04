@@ -24,6 +24,10 @@ const indexAsync = await buildSpatialIndexAsync(meshes);
 ## Raycast (entity picking)
 
 ```typescript
+import { buildSpatialIndex } from '@ifc-lite/spatial';
+
+const index = buildSpatialIndex(meshes);
+
 const origin: [number, number, number] = [0, 5, 10];
 const direction: [number, number, number] = [0, -1, 0];
 
@@ -38,10 +42,14 @@ if (hits.length > 0) {
 ## AABB query (region select)
 
 ```typescript
-const region = {
+import { buildSpatialIndex, type AABB } from '@ifc-lite/spatial';
+
+const index = buildSpatialIndex(meshes);
+
+const region: AABB = {
   min: [-5, 0, -5],
   max: [5, 3, 5],
-} as const;
+};
 
 const hits = index.queryAABB(region);
 // → expressIds of every mesh whose bounds intersect the box
@@ -52,9 +60,13 @@ console.log(`${hits.length} entities in region`);
 ## Frustum culling
 
 ```typescript
-import { FrustumUtils } from '@ifc-lite/spatial';
+import { buildSpatialIndex, FrustumUtils } from '@ifc-lite/spatial';
 
-// Build a frustum from a view-projection matrix (column-major 4×4)
+const index = buildSpatialIndex(meshes);
+
+// Your camera's view-projection matrix (column-major 4×4)
+declare const viewProjMatrix: Float32Array;
+
 const frustum = FrustumUtils.fromViewProjMatrix(viewProjMatrix);
 
 const visible = index.queryFrustum(frustum);

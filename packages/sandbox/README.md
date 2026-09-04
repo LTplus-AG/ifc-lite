@@ -12,9 +12,12 @@ npm install @ifc-lite/sandbox
 
 ```ts
 import { createSandbox } from '@ifc-lite/sandbox';
-import { createBimContext } from '@ifc-lite/sdk';
+import { createBimContext, type BimBackend } from '@ifc-lite/sdk';
 
-const bim = createBimContext({ backend: myBackend });
+// Your BimBackend — the viewer's store adapter, a server client, ...
+declare const backend: BimBackend;
+
+const bim = createBimContext({ backend });
 const sandbox = await createSandbox(bim, {
   permissions: { mutate: true },
   limits: { timeoutMs: 10_000 },
@@ -39,7 +42,10 @@ A script that exhausts the memory limit inside a *drained promise job* — the p
 **`dispose()` can throw, and that throw is the run's verdict.** It rejects with `SandboxAbortError`. The `eval()` that caused it already resolved normally — the reproducer returns `"started"` — so teardown is the *only* place the failure is observable. Treat a throwing `dispose()` as that run having failed, and settle the run's outcome after teardown rather than before it:
 
 ```ts
-import { SandboxAbortError, type ScriptResult } from '@ifc-lite/sandbox';
+import { SandboxAbortError, type Sandbox, type ScriptResult } from '@ifc-lite/sandbox';
+
+declare const sandbox: Sandbox;
+declare const code: string;
 
 let result: ScriptResult | null = await sandbox.eval(code);
 try {
@@ -54,6 +60,11 @@ try {
 **A long-lived sandbox must be discarded once `moduleRetired` is true.** The abort poisons the whole WASM module, so this package retires it and builds the next sandbox on a fresh one — 1-5 ms, no page reload, and nothing for a caller to do. But a host that *keeps* one sandbox across many runs (an extension runtime, a REPL) can be holding one whose module was retired by some other sandbox's abort. That sandbox still executes scripts, yet emscripten's `ABORT` latch is per module and has already fired on it: its own teardown can no longer report a failure, and it will silently leak whatever `JS_FreeRuntime` does not reach. Check before running, and replace rather than reuse:
 
 ```ts
+import { createSandbox, type Sandbox, type SandboxConfig } from '@ifc-lite/sandbox';
+
+declare let sandbox: Sandbox;
+declare const config: SandboxConfig;
+
 if (sandbox.moduleRetired) {
   sandbox.dispose();
   sandbox = await createSandbox(bim, config); // built on a fresh module

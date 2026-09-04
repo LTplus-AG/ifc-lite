@@ -15,28 +15,59 @@ import {
   xxhash64Hex,
   BinaryCacheReader,
   BinaryCacheWriter,
+  SchemaVersion,
+  type CacheDataStore,
 } from '@ifc-lite/cache';
+import { IfcParser } from '@ifc-lite/parser';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 
-const ifcBuffer = await file.arrayBuffer();
-const cacheKey = xxhash64Hex(ifcBuffer);
+// Your own persistence layer: IndexedDB, fs, S3, ...
+declare const myStorage: {
+  get(key: string): Promise<ArrayBuffer | undefined>;
+  put(key: string, value: ArrayBuffer): Promise<void>;
+};
 
-// Try cache first
-const cached = await myStorage.get(cacheKey); // your IndexedDB / fs / S3 lookup
-if (cached) {
-  const reader = new BinaryCacheReader();
-  const { geometry } = await reader.read(cached);
-  renderer.loadGeometry(geometry?.meshes ?? []);
-  return; // first triangles in milliseconds
+async function loadWithCache(file: File) {
+  const ifcBuffer = await file.arrayBuffer();
+  const cacheKey = xxhash64Hex(ifcBuffer);
+
+  // Try cache first
+  const cached = await myStorage.get(cacheKey);
+  if (cached) {
+    const reader = new BinaryCacheReader();
+    const { geometry } = await reader.read(cached);
+    renderer.loadGeometry(geometry?.meshes ?? []);
+    return; // first triangles in milliseconds
+  }
+
+  // Cold path — full parse + tessellation, then write the cache.
+  const dataStore = await new IfcParser().parseColumnar(ifcBuffer);
+  const geometry = await new GeometryProcessor().process(new Uint8Array(ifcBuffer));
+
+  // The writer takes the cache-format view of the parsed store.
+  const cacheDataStore: CacheDataStore = {
+    schema:
+      dataStore.schemaVersion === 'IFC4'
+        ? SchemaVersion.IFC4
+        : dataStore.schemaVersion === 'IFC4X3'
+          ? SchemaVersion.IFC4X3
+          : SchemaVersion.IFC2X3,
+    entityCount: dataStore.entityCount,
+    strings: dataStore.strings,
+    entities: dataStore.entities,
+    properties: dataStore.properties,
+    quantities: dataStore.quantities,
+    relationships: dataStore.relationships,
+    spatialHierarchy: dataStore.spatialHierarchy,
+    entityIndex: dataStore.entityIndex,
+  };
+
+  const writer = new BinaryCacheWriter();
+  const cacheBuffer = await writer.write(cacheDataStore, geometry, ifcBuffer, {
+    includeGeometry: true,
+  });
+  await myStorage.put(cacheKey, cacheBuffer);
 }
-
-// Cold path — full parse + tessellation, then write the cache.
-// dataStore comes from the parser; process() returns a GeometryResult.
-const dataStore = await parser.parseColumnar(new Uint8Array(ifcBuffer));
-const geometry = await geometryProcessor.process(new Uint8Array(ifcBuffer));
-
-const writer = new BinaryCacheWriter();
-const cacheBuffer = await writer.write(dataStore, geometry, ifcBuffer, { includeGeometry: true });
-await myStorage.put(cacheKey, cacheBuffer);
 ```
 
 ## Pure GLB read
@@ -46,11 +77,13 @@ If you already have a GLB blob (from a server, S3, etc.), skip the binary cache 
 ```typescript
 import { loadGLBToMeshData, parseGLB } from '@ifc-lite/cache';
 
-const meshes = loadGLBToMeshData(new Uint8Array(glbBuffer)); // synchronous
+declare const glbBytes: Uint8Array; // e.g. new Uint8Array(await res.arrayBuffer())
+
+const glbMeshes = loadGLBToMeshData(glbBytes); // synchronous
 // MeshData[] ready to feed into @ifc-lite/renderer
 
 // Or get the parsed GLB structure if you need lower-level access
-const { json, bin } = parseGLB(glbBuffer);
+const { json, bin } = parseGLB(glbBytes);
 ```
 
 ## Hashing utilities
@@ -75,8 +108,17 @@ The binary layout is versioned via the exported `FORMAT_VERSION` constant. Reade
 By default the header stores the full-file `xxhash64` of the source in `sourceHash`, and `reader.validate()` / `read({ sourceBuffer })` compare against it. Hashing a large source can be a multi-second main-thread cost, so a caller that validates the source **another way** (e.g. an application-layer content hash plus a file modified-time guard, as the viewer's source-decoupled cache tier does) can pass `omitSourceHash: true`:
 
 ```typescript
+import { BinaryCacheWriter, type CacheDataStore } from '@ifc-lite/cache';
+import type { GeometryResult } from '@ifc-lite/geometry';
+
+declare const cacheDataStore: CacheDataStore;
+declare const geometry: GeometryResult;
+declare const ifcBuffer: ArrayBuffer;
+
+const writer = new BinaryCacheWriter();
+
 // Skip the full-file hash; validate the source at the application layer instead.
-const cacheBuffer = await writer.write(dataStore, geometry, ifcBuffer, {
+const cacheBuffer = await writer.write(cacheDataStore, geometry, ifcBuffer, {
   includeGeometry: true,
   omitSourceHash: true,
 });

@@ -117,6 +117,8 @@ argument to drop overlay-deleted entities (and every row that references one) fr
 `Entities`, `Properties`, `Quantities` and `Relationships`:
 
 ```typescript
+import { ParquetExporter } from '@ifc-lite/export';
+
 const exporter = new ParquetExporter(store, geometryResult, mutationView);
 ```
 
@@ -158,7 +160,7 @@ const bytes = new Uint8Array(await file.arrayBuffer());
 const lod0 = await generateLod0(bytes);
 
 // LOD1 — meshes simplified to bounding boxes / convex hulls, returned as GLB
-const lod1 = await generateLod1(bytes, { quality: 'medium' });
+const lod1 = await generateLod1(bytes);
 //   { glb: Uint8Array, meta: { failedElements, mapping, ... } }
 
 // Falls back gracefully to box geometry if a complex element fails to mesh

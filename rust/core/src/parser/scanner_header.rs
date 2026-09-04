@@ -65,7 +65,10 @@ pub(super) fn data_section_start(bytes: &[u8]) -> usize {
             continue;
         }
         if b == b'/' && bytes.get(pos + 1) == Some(&b'*') {
-            match super::super::lexical::skip_step_comment(bytes, pos) {
+            // Bounded to the same cap as the marker search: a `*/` past the
+            // cap could not change the answer (pos would leave the loop at 0)
+            // and the unterminated arm already answers 0.
+            match super::super::lexical::skip_step_comment(&bytes[..limit], pos) {
                 Some(next) => {
                     pos = next;
                     continue;

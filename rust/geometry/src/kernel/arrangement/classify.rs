@@ -547,7 +547,7 @@ pub(super) fn boolean_vids_components(
         // does not pin down. Measured on `sweep_261`, where it keeps a needle
         // that its neighbour in the same flat face correctly drops, tearing the
         // mesh. Before changing anything here read the per-triangle regime table
-        // and the four measured (and rejected) fix shapes in
+        // and the seven measured (and rejected) fix shapes in
         // `issue_3353_vid_census_tests.rs` — the promising one costs 20 golden
         // census hosts.
         if let Some(n_other) = bc.surface_normal(c) {

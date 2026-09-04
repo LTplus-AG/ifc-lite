@@ -100,7 +100,7 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
     let tol = 25.0_f32;
 
     #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-    let mut gated_regressions: Vec<u32> = Vec::new();
+    let mut gated_regressions: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
     for (id, gid, want_zmin, want_zmax) in cases {
         let mut decoder = EntityDecoder::with_index(&content, entity_index.clone());
         let entity = decoder.decode_by_id(id).expect("decode wall");
@@ -136,7 +136,7 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
         //     walls that regress, asserted after the loop.
         #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
         if (id == 2152 || id == 5904) && (mx.z - 9850.0).abs() < tol {
-            gated_regressions.push(id);
+            gated_regressions.insert(id);
             continue;
         }
         assert!(
@@ -152,9 +152,9 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
         );
     }
     #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
-    let expected_regressions: &[u32] = &[5904];
+    let expected_regressions: std::collections::BTreeSet<u32> = [5904].into();
     #[cfg(feature = "csg_topology_gate")]
-    let expected_regressions: &[u32] = &[2152, 5904];
+    let expected_regressions: std::collections::BTreeSet<u32> = [2152, 5904].into();
     #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
     assert_eq!(
         gated_regressions, expected_regressions,

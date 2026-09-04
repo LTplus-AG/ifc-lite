@@ -251,6 +251,11 @@ jobs:
               - 'rust/processing/**'
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
+              # Workspace inputs the feature builds inherit: a root manifest or
+              # toolchain change can break the off-by-default gate builds that
+              # only the csg-accept-gates lane compiles.
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
               - '.github/workflows/test.yml'
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.
@@ -1571,6 +1576,111 @@ jobs:
           name: watertightness-census-rows
           path: target/watertightness_census.run.tsv
           if-no-files-found: warn
+  # The boolean accept gates' feature builds (#3871).
+  #
+  # `csg_manifold_gate` (#3440) and `csg_topology_gate` (#3717) are off by
+  # default and enabled by NOTHING downstream, so `cargo test --workspace` in
+  # `rust-tests` never COMPILES either gate, let alone runs it. That is the same
+  # dead-but-maintained shape the `parquet-bos` step in that job exists to
+  # reject, and it had already happened: `csg_topology_gate` was red on three
+  # targets from the day #3717 landed and no lane said so. This is the lane that
+  # says so.
+  #
+  # NOT on the aggregate `test` gate's `needs:` list, deliberately, and this is
+  # the one thing about this job that must not drift. What it asserts are pinned
+  # MEASUREMENTS of a fallback path known to be worse than the tear it replaces
+  # (issue_098_v5c, issue_960_segmented_roof_clip), for a configuration nothing
+  # ships. A number moving there is a thing to look at, not a thing to block a
+  # merge on. Adding this job to that `needs:` list, or to the `results` map
+  # beside it, turns a report into a gate.
+  #
+  # `geometry`, not `rust`: the same scope argument geometry-census above spells
+  # out. The gates live in rust/geometry, they sit downstream of rust/core's
+  # parse path, and the per-fixture numbers they pin move with the fixture
+  # corpus, so `tests/models/manifest.json` is in that filter too.
+  #
+  # PR-only, like geometry-census and viewer-e2e: three feature builds of the
+  # geometry crate and its test targets are not free, and a PR lane already
+  # catches the flip before it reaches main.
+  #
+  # ONE STEP PER FEATURE COMBINATION, not one `--all-features` run. The two
+  # gates read different defect classes and reject different hosts, so each
+  # combination lands on its own numbers -- issue_098_v5c measures 416 / 124 /
+  # 552 unpaired edges under manifold-only / topology-only / both. A single
+  # combined run would attribute every flip to whichever gate fired first, and
+  # would leave the other two combinations' pins asserted by nothing.
+  csg-accept-gates:
+    name: CSG accept gates (feature builds)
+    needs: changes
+    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    # This lane must not consume metered runner minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-csg-gates
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: node scripts/fixtures/fetch-fixtures.mjs
+
+      # Unconditional, for the reason spelled out in rust-tests: on a cache hit
+      # nothing else confirms the restored tree still matches the manifest, and
+      # every pin below is fixture-gated. A partial cache would make them all
+      # skip and report ok, which is precisely the absence this job exists to
+      # make visible.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
+
+      # Clippy first: a lint failure is cheaper to find than a 20-minute test
+      # run, and `--all-targets` type-checks the test targets the steps below
+      # then run.
+      - name: Clippy (csg_manifold_gate)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
+      - name: Clippy (csg_topology_gate)
+        run: cargo clippy -p ifc-lite-geometry --features csg_topology_gate --all-targets -- -D warnings
+      # The combined build selects code behind cfg(all(...)) that neither
+      # single-feature pass compiles, and `cargo test` does not make warnings
+      # fatal, so it needs its own -D warnings pass.
+      - name: Clippy (both gates)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --all-targets -- -D warnings
+
+      # `IFC_LITE_REQUIRE_FIXTURES` for the same reason rust-tests sets it:
+      # fixtures are fetched and verified above, so a missing one here is drift,
+      # not a legitimate local skip, and every pinned number in these targets is
+      # measured from a fixture.
+      - name: Rust tests (csg_manifold_gate)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate --no-fail-fast
+      - name: Rust tests (csg_topology_gate)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_topology_gate --no-fail-fast
+
+      # The combined build, because the third set of pins is asserted by nothing
+      # else: under both gates issue_098_v5c measures 552 unpaired edges and
+      # 24.103 m3, neither of which either single-feature leg above visits. It
+      # is also the configuration a census that has to attribute a rejection to
+      # one gate rather than the other runs in.
+      - name: Rust tests (both gates)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --no-fail-fast
+
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math
   # is written once in Plato and transpiled to Rust + TypeScript; the committed

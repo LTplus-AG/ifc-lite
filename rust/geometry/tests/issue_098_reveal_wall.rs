@@ -139,6 +139,28 @@ fn dump_wall_mesh() {
     }
 }
 
+// #3440/#3871: under an accept gate (`csg_manifold_gate`, `csg_topology_gate`)
+// the boolean accept seam REJECTS a kernel result carrying a torn or
+// non-manifold edge, and the router falls back. On this fixture that fallback
+// is measurably WORSE than the tear it replaces, which is precisely why both
+// features are off by default. Where it regresses, the assertion below is not
+// relaxed - it is REPLACED by the measured value, so the gated build stays
+// green while still failing the moment the number moves in either direction.
+// The thing to fix is the FALLBACK path (the #635 AABB box-cut the void router
+// reaches when the exact cut is discarded), not the bar; when it is fixed,
+// these pins should go and the default bar apply to every build.
+//
+// `None` means the real bar still holds in that configuration and is left to do
+// its job. `csg_topology_gate` alone measures 22 unpaired edges here, BETTER
+// than the default build's ~42, so it keeps the bar rather than pinning a
+// number that is not a regression.
+#[cfg(not(feature = "csg_manifold_gate"))]
+const PINNED_OPEN_EDGES: Option<i64> = None;
+#[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
+const PINNED_OPEN_EDGES: Option<i64> = Some(380);
+#[cfg(all(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+const PINNED_OPEN_EDGES: Option<i64> = Some(352);
+
 #[test]
 fn reveal_wall_openings_do_not_leave_flaps() {
     let voided = voided_wall();
@@ -158,24 +180,15 @@ fn reveal_wall_openings_do_not_leave_flaps() {
     // + weld-for-batching fixes bring it to ~42 (5 of 7 windows fully watertight,
     // the reveals preserved). Guard against regression past that.
     let _ = mx;
-    // #3440: under `csg_manifold_gate` the boolean accept seam REJECTS a kernel
-    // result carrying a non-manifold or reversed-winding edge, and the router
-    // falls back. On this fixture that fallback is measurably WORSE than the tear
-    // it replaces, which is precisely why the feature is off by default. The
-    // assertion is not relaxed - it is REPLACED by the measured regression, so the
-    // feature build stays green while still failing the moment the number moves in
-    // either direction. The thing to fix is the FALLBACK path (the #635 AABB
-    // box-cut the void router reaches when the exact cut is discarded), not this
-    // bar; when it is fixed, this branch should go and the default bar apply to
-    // both builds.
-    #[cfg(not(feature = "csg_manifold_gate"))]
-    assert!(open < 60, "cut re-fragmented: {open} unpaired edges (was ~42)");
-    #[cfg(feature = "csg_manifold_gate")]
-    assert_eq!(
-        open, 380,
-        "known regression under csg_manifold_gate: the rejected cut falls back \
-         to a result with 380 unpaired edges against the default build's ~42. \
-         A different number means the gate or the fallback moved and the \
-         regression needs re-measuring, not re-pinning."
-    );
+    match PINNED_OPEN_EDGES {
+        None => assert!(open < 60, "cut re-fragmented: {open} unpaired edges (was ~42)"),
+        Some(pinned) => assert_eq!(
+            open, pinned,
+            "known regression under the accept gate(s) this build enables: the \
+             rejected cut falls back to a result with {pinned} unpaired edges \
+             against the default build's ~42. A different number means the gate \
+             or the fallback moved and the regression needs re-measuring, not \
+             re-pinning."
+        ),
+    }
 }

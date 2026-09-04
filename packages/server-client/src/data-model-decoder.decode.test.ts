@@ -19,7 +19,6 @@
  */
 
 import { describe, it, expect, beforeAll } from 'vitest';
-import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { decodeDataModel } from './data-model-decoder.js';
 
@@ -31,22 +30,38 @@ let arrow: any;
 let parquet: any;
 
 beforeAll(async () => {
-  // `decodeDataModel` boots parquet-wasm via `ensureParquetInit()`, which
-  // fetches the .wasm asset by URL — a Vite/browser-only path that has no
-  // static server under plain `vitest run`. `initSync` with the wasm file's
-  // own bytes initializes the SAME cached module instance (parquet-wasm
-  // memoizes on its internal `wasm` binding, see arrow2.js's `__wbg_init`),
-  // so `ensureParquetInit()`'s later `parquet.default(url)` call short-
-  // circuits on the existing instance instead of re-fetching.
-  const require = createRequire(import.meta.url);
-  const jsPath = require.resolve('parquet-wasm/esm/arrow2.js');
-  const wasmPath = jsPath.replace(/arrow2\.js$/, 'arrow2_bg.wasm');
-  const wasmBytes = readFileSync(wasmPath);
-  parquet = await import('parquet-wasm/esm/arrow2.js');
-  parquet.initSync(wasmBytes);
+  // Same import `ensureParquetInit()` makes: the bare package entry, whose
+  // export map picks the self-initializing Node build under `vitest run`.
+  // (This used to deep-import `parquet-wasm/esm/arrow2.js` and hand-run
+  // `initSync` on the .wasm bytes, because that build initializes by
+  // FETCHING its asset, which has no server here. The deep path was dropped
+  // in parquet-wasm 0.6, see #3845 and `parquet-decoder.entry.test.ts`.)
+  parquet = await import('parquet-wasm');
 
   arrow = await import('apache-arrow');
 });
+
+/**
+ * Re-stamp every field of a table as nullable.
+ *
+ * `new arrow.Table({ col: vector })` always marks its fields NON-nullable,
+ * even for a vector that carries nulls. parquet-wasm 0.7's writer rejects
+ * that mismatch outright (`Column 'name' is declared as non-nullable but
+ * contains null values`), where 0.5 accepted it and silently wrote the nulls
+ * away. Only tables with genuinely nullable columns need this.
+ */
+function nullableTable(columns: Record<string, unknown>) {
+  const table = new arrow.Table(columns);
+  const schema = new arrow.Schema(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    table.schema.fields.map((f: any) => arrow.Field.new(f.name, f.type, true))
+  );
+  return new arrow.Table(
+    schema,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    table.batches.map((b: any) => new arrow.RecordBatch(schema, b.data))
+  );
+}
 
 /** Serialize an Arrow-JS Table to Parquet bytes via parquet-wasm, mirroring
  *  the server's writer path (packages/export/src/parquet-exporter.ts). */
@@ -123,7 +138,7 @@ function relationshipsTable(rows: { relType: string; relatingId: number; related
 
 function spatialNodesTable(rows: { id: number; parentId: number; level: number; path: string; type: string }[]) {
   const listType = new arrow.List(arrow.Field.new('item', new arrow.Uint32(), true));
-  return new arrow.Table({
+  return nullableTable({
     entity_id: arrow.vectorFromArray(rows.map((r) => r.id), new arrow.Uint32()),
     parent_id: arrow.vectorFromArray(rows.map((r) => r.parentId), new arrow.Uint32()),
     level: arrow.vectorFromArray(rows.map((r) => r.level), new arrow.Uint16()),
@@ -179,13 +194,15 @@ function emptyDocumentsTable() {
  * `__fixtures__/nodes-nullable-elevation.parquet` and
  * `__fixtures__/materials-nullable-thickness.parquet` are authored by
  * DuckDB (an independent Parquet writer, not this repo's own code), NOT via
- * this file's `toParquetBytes` helper: the locked `parquet-wasm@0.5.0`'s
- * `writeParquet` silently drops null-ness for a nullable Float64 column
- * written through the `apache-arrow` Table -> IPC -> `Table.fromIPCStream`
- * bridge (confirmed against DuckDB reading its own output back: the byte a
- * "null" row lands on decodes as a real `0`, not a null). That is a
- * write-side bug in the pinned `parquet-wasm` version, orthogonal to the
- * read-side bug under test here, and DuckDB's own writer does not share it.
+ * this file's `toParquetBytes` helper: when these fixtures were written the
+ * package resolved `parquet-wasm@0.5.0`, whose `writeParquet` silently drops
+ * null-ness for a nullable Float64 column written through the `apache-arrow`
+ * Table -> IPC -> `Table.fromIPCStream` bridge (confirmed against DuckDB
+ * reading its own output back: the byte a "null" row lands on decodes as a
+ * real `0`, not a null). 0.7.2 (what the package resolves now, see #3845)
+ * does round-trip those nulls, but the fixtures stay DuckDB-authored: an
+ * independent writer is the stronger oracle for a read-side bug, and it is
+ * the writer real payloads come from.
  *
  * Regenerate with DuckDB (`npm i --prefix /tmp/pq duckdb`, not a repo dep):
  *   COPY (SELECT CAST(row_id AS UINTEGER) entity_id, CAST(0 AS UINTEGER)

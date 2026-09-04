@@ -902,14 +902,20 @@ fn a_shared_sources_unsupported_item_counts_once_through_the_mapped_item_path_to
     );
 }
 
-/// The case no cache can cover: a source whose items ALL drop, so it meshes to
-/// EMPTY. Both cache inserts (`mapped_item.rs`, `instancing.rs`) guard on
-/// `!mesh.positions.is_empty()`, deliberately — a mesh short of the source's
-/// real geometry must not be published model-wide. The consequence was that a
-/// TOTAL-loss source is the one source re-walked by every occurrence, so the
-/// count it reported scaled with occurrences on BOTH paths. RED (pre-fix): 3
-/// and 3. GREEN: 1 and 1, from the recorded-sources set rather than from a
-/// cache that is correct to refuse it.
+/// The case the SHARED cache cannot cover: a source whose items ALL drop, so it
+/// meshes to EMPTY. Both shared-cache inserts (`mapped_item.rs`,
+/// `instancing.rs`) guard on `!mesh.positions.is_empty()`, deliberately — a
+/// mesh short of the source's real geometry must not be published model-wide.
+/// The consequence was that a TOTAL-loss source is the one source re-walked by
+/// every occurrence, so the count it reported scaled with occurrences on BOTH
+/// paths. RED (pre-fix): 3 and 3. GREEN: 1 and 1, from the recorded-sources set
+/// rather than from a cache that is correct to refuse it.
+///
+/// The fixture ARMS the shared cache (below) precisely because that is the
+/// configuration where the guards bite. `mapped_item.rs`'s per-router `RefCell`
+/// fallback, taken when no shared cache is armed, is deliberately UNGUARDED and
+/// caches the empty mesh, so on that path later occurrences never re-walk and
+/// the recorded-sources set is not what holds the count down.
 #[test]
 fn a_total_loss_source_counts_once_on_the_occurrence_path() {
     assert_total_loss_source_counts_once(true);
@@ -939,8 +945,8 @@ fn assert_total_loss_source_counts_once(use_submeshes: bool) {
     assert_eq!(
         unsupported.get("IfcGeometricSet"),
         Some(&1),
-        "an empty source is refused by both caches, so only the recorded-sources set keeps the \
-         count per SOURCE: {unsupported:?}"
+        "an empty source is refused by both SHARED cache inserts, so only the recorded-sources \
+         set keeps the count per SOURCE: {unsupported:?}"
     );
 }
 

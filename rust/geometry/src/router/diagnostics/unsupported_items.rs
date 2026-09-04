@@ -40,23 +40,41 @@ impl GeometryRouter {
     ///
     /// Two things are decided once, here, instead of at each write site beneath:
     ///
-    /// * **Per SOURCE, not per occurrence.** The contract this counter promises
-    ///   (`GeometryDiagnostics.totalUnsupportedItems`, and the drain doc below)
-    ///   is that a drop inside a source is counted ONCE however many
-    ///   `IfcMappedItem` occurrences reuse it. The mapped-item cache delivers
-    ///   that only for a source that produced geometry: a source whose items ALL
-    ///   drop meshes to empty, and the empty-mesh guard on both cache inserts
-    ///   (`mapped_item.rs`, `instancing.rs`) then skips it, so every occurrence
-    ///   re-walks and re-counted it. `unsupported_sources_recorded` closes that:
-    ///   the FIRST walk of a source claims it and records; later walks, by any
-    ///   path, record nothing.
+    /// * **Per SOURCE, not per occurrence — WITHIN THIS ROUTER.** A drop inside
+    ///   a source is counted once however many `IfcMappedItem` occurrences this
+    ///   router walks, not once each. The mapped-item cache already delivers
+    ///   that for a source that produced geometry; it cannot for a source whose
+    ///   items ALL drop, because that source meshes to empty and the two SHARED
+    ///   cache inserts (`mapped_item.rs`, `instancing.rs`) are guarded on
+    ///   non-empty, so every occurrence re-walks it. `sources_recorded` closes
+    ///   that gap: the first walk claims the source and records, later walks by
+    ///   any path record nothing.
+    ///
+    ///   Read the scope of "once" carefully — it is per router, and NO shipped
+    ///   path gives one router a whole model. The native pool builds one per
+    ///   element (`processor/jobs.rs`) and the wasm path one per batch, and both
+    ///   then SUM the drained maps, so a total-loss source shared by N elements
+    ///   still reports N natively and once per batch in the viewer. The wire
+    ///   docs on `GeometryDiagnostics::total_unsupported_items` say so; do not
+    ///   restate the rule there without that qualifier.
+    ///
+    ///   (`mapped_item.rs` has a THIRD insert, the per-router `RefCell` fallback
+    ///   taken when no shared cache is armed, and that one is deliberately
+    ///   unguarded — it caches the empty mesh, so later occurrences do not
+    ///   re-walk and `sources_recorded` is not what does the work on that path.)
     /// * **Body representations only.** A type's 2D 'FootPrint'/'Annotation' map
     ///   carries `IfcAnnotationFillArea`/`IfcGeometricCurveSet`, which have no
     ///   processor and are CORRECTLY absent from a 3D view; counting them warns
-    ///   on a clean model. `is_body` false suppresses every record beneath the
-    ///   scope and does NOT claim the source, so the same source reached later
-    ///   under a Body representation still counts. The caller hands over the
-    ///   source's `IfcShapeRepresentation` rather than a bool, so the four walks
+    ///   on a clean model. `is_body` false suppresses records beneath the scope
+    ///   and does NOT claim the source, so the same source reached later under a
+    ///   Body representation still counts. Suppression is INNERMOST-WINS, not
+    ///   sticky: `record_unsupported_item` reads only `scope.last()`, so a Body
+    ///   map nested inside a non-Body one records its own drops. That matches
+    ///   the attribution rule on `UnsupportedSourceScope` (a drop belongs to the
+    ///   innermost source walking it) and needs a FootPrint map that nests a
+    ///   Body map to observe at all, which no export in the corpus does. The
+    ///   caller hands over the source's `IfcShapeRepresentation` rather than a
+    ///   bool, so the four walks
     ///   cannot each spell the predicate differently — dropping the `is_none_or`
     ///   (a CATIA-style blank type is body, see `effective_rep_type`) or reaching
     ///   for `is_direct_body_representation` would compile and silently suppress
@@ -69,9 +87,10 @@ impl GeometryRouter {
     /// level down. A per-site gate at the mapped-item branch would never see it.
     ///
     /// Scoped to this router, like `mapped_item_cache`: the native pool builds a
-    /// fresh router per element, so two elements sharing a TOTAL-LOSS source
-    /// still contribute one each. Every source that yields any geometry is
-    /// shared model-wide through `shared_mapped_item_cache` and walked once.
+    /// fresh router per element and the wasm path one per batch, so two elements
+    /// sharing a TOTAL-LOSS source still contribute one each. Every source that
+    /// yields any geometry is shared model-wide through
+    /// `shared_mapped_item_cache` and walked once.
     pub(crate) fn enter_unsupported_source(
         &self,
         source_id: u32,

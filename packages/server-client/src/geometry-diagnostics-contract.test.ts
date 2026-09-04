@@ -35,10 +35,10 @@ import type { GeometryDiagnostics as WireCopy } from './geometry-diagnostics-typ
  * them there has not landed yet and this package's wire shape had to be written
  * not to collide with it.
  *
- * EMPTY, and that is the healthy state: #3691 landed
- * `totalUnsupportedItems` / `unsupportedItemsByType` on the canonical type, so
- * the two entries that used to sit here were deleted and the comparison below
- * now runs with nothing excused.
+ * EMPTY, and that is the healthy state: this PR (#3691) adds
+ * `totalUnsupportedItems` / `unsupportedItemsByType` to the canonical type, so
+ * the two entries that used to sit here are deleted in the same change and the
+ * comparison below now runs with nothing excused.
  *
  * This list is self-retiring: `AheadFieldsAreNotYetCanonical` below fails the
  * moment `@ifc-lite/geometry` gains one of these names, which is the signal to

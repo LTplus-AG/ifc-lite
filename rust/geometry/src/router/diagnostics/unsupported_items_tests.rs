@@ -19,12 +19,17 @@ fn map(pairs: &[(&str, u64)]) -> FxHashMap<String, u64> {
 /// extracting it fixed the drift but left nothing stopping the next one.
 #[test]
 fn the_breakdown_is_comma_space_separated_and_count_desc() {
+    // Count order and NAME order deliberately disagree here: sorted by name the
+    // string would read `IfcAnnotationFillArea=2, IfcGeometricSet=1,
+    // IfcPolyline=7`, so a pure name sort cannot produce the expectation below.
+    // The earlier fixture's alphabetical order happened to match its count
+    // order, which left the "count desc" half of this test's name unpinned.
     let s = format_unsupported_breakdown(&map(&[
-        ("IfcGeometricSet", 2),
-        ("IfcAnnotationFillArea", 7),
-        ("IfcPolyline", 1),
+        ("IfcGeometricSet", 1),
+        ("IfcAnnotationFillArea", 2),
+        ("IfcPolyline", 7),
     ]));
-    assert_eq!(s, "IfcAnnotationFillArea=7, IfcGeometricSet=2, IfcPolyline=1");
+    assert_eq!(s, "IfcPolyline=7, IfcAnnotationFillArea=2, IfcGeometricSet=1");
 }
 
 /// The tie-break is by NAME, so a tie cannot be ordered by `FxHashMap`

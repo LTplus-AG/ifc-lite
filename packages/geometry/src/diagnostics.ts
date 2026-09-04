@@ -122,7 +122,10 @@ type ReasonCount = { reason: string; count: number };
  * is load-bearing, not cosmetic: without it equal counts come out in Map
  * insertion order, so the same model could render a different string on two
  * runs. Shared by `failuresByReason` and `unsupportedItemsByType` so the two
- * cannot order themselves differently; matches the Rust `summarize`.
+ * cannot order themselves differently. Agrees with the Rust `summarize` for the
+ * ASCII `Ifc*` type names and reason labels that actually reach here; the two
+ * are not identical orderings in general, since Rust ties break on byte order
+ * and `localeCompare` does not.
  */
 function mergeReasonCounts(a: readonly ReasonCount[], b: readonly ReasonCount[]): ReasonCount[] {
   const byKey = new Map<string, number>();

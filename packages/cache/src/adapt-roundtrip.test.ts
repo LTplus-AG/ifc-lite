@@ -19,6 +19,7 @@ import { IfcParser, attachDataStoreAccessors, type IfcStoreData } from '@ifc-lit
 import { toCacheDataStore } from './adapt.js';
 import { BinaryCacheWriter } from './writer.js';
 import { BinaryCacheReader } from './reader.js';
+import { SchemaVersion } from './types.js';
 
 /** Pad to the 22-char width of an IFC GlobalId. */
 const gid = (seed: string): string => seed.padEnd(22, '0').slice(0, 22);
@@ -113,5 +114,37 @@ describe('toCacheDataStore -> BinaryCacheWriter -> BinaryCacheReader round trip'
     const wall = restored.getEntity(10);
     expect(wall, 'entity #10 resolvable from the restored index + retained source').toBeTruthy();
     expect(wall!.type.toUpperCase()).toBe('IFCWALL');
+  });
+
+  it('preserves schema, entityCount and the entity table across the round trip', async () => {
+    const { store, result } = await roundTrip('IFC4');
+
+    expect(result.dataStore.schema).toBe(SchemaVersion.IFC4);
+    expect(result.dataStore.entityCount).toBe(store.entityCount);
+    expect(result.dataStore.entities.count).toBe(store.entities.count);
+    expect(store.entities.count).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['IFC2X3', SchemaVersion.IFC2X3],
+    ['IFC4', SchemaVersion.IFC4],
+    ['IFC4X3', SchemaVersion.IFC4X3],
+  ] as const)('round-trips a %s source as its own SchemaVersion', async (schema, expected) => {
+    const { result } = await roundTrip(schema);
+    expect(result.dataStore.schema).toBe(expected);
+  });
+
+  it('round-trips an IFC5 source as SchemaVersion.IFC2X3, the documented fallback (the binary format predates IFC5)', async () => {
+    // No STEP file declares IFC5, so this exercises the adapter's documented
+    // fallback directly on the store shape the adapter accepts.
+    const { store, sourceBuffer } = await parse('IFC4');
+    const cacheBuffer = await new BinaryCacheWriter().write(
+      toCacheDataStore({ ...store, schemaVersion: 'IFC5' }),
+      undefined,
+      sourceBuffer,
+      { includeGeometry: false },
+    );
+    const result = await new BinaryCacheReader().read(cacheBuffer);
+    expect(result.dataStore.schema).toBe(SchemaVersion.IFC2X3);
   });
 });

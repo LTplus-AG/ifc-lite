@@ -223,7 +223,7 @@ export interface ProcessParallelOptions {
     ids: Uint32Array,
     starts: Uint32Array,
     lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
-    malformedRecordCount?: number, // #3790 the scan stopped, 0 or 1
+    malformedRecordCount?: number, // #3790 scan stopped: 0 or 1
   ) => void;
   /**
    * Issue #540 — "Merge Multilayer Walls" load-time toggle. When
@@ -475,9 +475,8 @@ export async function* processParallel(
           // Absent on an older wasm build: "does not report", which is not the
           // same claim as zero, but zero is all a host with no offsets can say.
           oversizedIdStarts: (msg.oversizedIdStarts as Uint32Array | undefined) ?? new Uint32Array(0),
-          // Absent means "this shard reported no stop". TODO(#3699): no wasm
-          // build sets it yet, so absent is currently ALL a host ever sees --
-          // which is not the same claim as "the scan ran clean".
+          // Absent = "this shard reported no stop". TODO(#3699): no wasm build
+          // sets it yet, so absent is all a host sees -- not "the scan ran clean".
           malformedStart: msg.malformedStart as number | undefined,
         };
         shardResultsRemaining--;
@@ -962,8 +961,8 @@ export async function* processParallel(
     // #3395: the parser worker builds the model from these columns alone, so
     // without the count it reports a clean load that is short by that many.
     oversizedIdCount: number,
-    // #3790: 0 or 1. A stop is worse than a refusal -- not "one record the
-    // parser will not find" but "every record from that byte on is missing".
+    // #3790: 0 or 1, and worse than a refusal -- not "one record the parser
+    // will not find" but "every record from that byte on is missing".
     malformedRecordCount: number,
   ) => {
     console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
@@ -1068,9 +1067,8 @@ export async function* processParallel(
     // refusals a discarded speculative prefix invented, which on a file with
     // nothing oversized in it is a warning about a file that is fine (#3430).
     const oversizedIdCount = stitched.oversizedIdCount;
-    // Same attribution, same reason (#3790): a shard that began inside a quoted
-    // value reports a stop the file does not contain, so the stitch decides,
-    // not the shards.
+    // Attributed by the stitch for the same reason (#3790): a shard that began
+    // inside a quoted value reports a stop the file does not contain.
     const malformedRecordCount = stitched.malformedRecordCount;
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
@@ -1355,13 +1353,11 @@ export async function* processParallel(
           // entity-index event); guard against double delivery regardless.
           console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
-          deliverEntityIndex(
-            ids, starts, lengths, 'prepass',
+          // TODO(#3699): the Rust pre-pass emits no malformed count yet, so
+          // that `?? 0` is "nothing reported", not "the scan ran clean".
+          deliverEntityIndex(ids, starts, lengths, 'prepass',
             (evt.oversizedIdCount as number | undefined) ?? 0,
-            // TODO(#3699): the Rust serial pre-pass does not emit this yet, so
-            // the `?? 0` is "nothing reported", not "the scan ran clean".
-            (evt.malformedRecordCount as number | undefined) ?? 0,
-          );
+            (evt.malformedRecordCount as number | undefined) ?? 0);
         }
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets

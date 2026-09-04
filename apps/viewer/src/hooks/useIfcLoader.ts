@@ -39,6 +39,7 @@ import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { forwardEntityIndexTo } from './entityIndexHandoff.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
@@ -1608,11 +1609,10 @@ export function useIfcLoader() {
               // worker so it skips a duplicate ~10 s WASM scan. Safe even
               // when the parser falls back to main-thread (instance is
               // null then; the callback no-ops).
-              // #3395: the refusal count travels with the columns, because a
-              // refused record is not IN them.
-              onEntityIndex: (ids, starts, lengths, oversizedIdCount) => {
-                workerParserInstance?.setEntityIndex(ids, starts, lengths, oversizedIdCount);
-              },
+              // #3395/#3790: the refusal count and the malformed-stop flag
+              // travel with the columns, because neither a refused record nor
+              // anything after a stop is IN them. See entityIndexHandoff.ts.
+              onEntityIndex: forwardEntityIndexTo(workerParserInstance),
               // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
               // count heuristic so the host's thermal sweet spot can be measured.
               // Still clamped to the memory budget by the engine. Geometry output

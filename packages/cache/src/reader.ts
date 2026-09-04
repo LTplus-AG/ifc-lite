@@ -123,7 +123,7 @@ export class BinaryCacheReader {
       throw new Error('Missing required Relationships section');
     }
     reader.position = relationshipsSection.offset;
-    const relationships = readRelationships(reader);
+    const relationships = readRelationships(reader, header.version);
 
     const dataStore: CacheDataStore = {
       schema: header.schema,

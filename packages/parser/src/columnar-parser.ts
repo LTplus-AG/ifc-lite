@@ -51,6 +51,12 @@ import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 // Re-export interfaces/types from extracted modules for public API compatibility
 export type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
 
+/** Appends `ref` to `map.get(objId)`, skipping a repeat — these maps win over the deduped graph (#3760/#3782). */
+function addOnDemandRef(map: Map<number, number[]>, objId: number, ref: number): void {
+    const list = map.get(objId) ?? map.set(objId, []).get(objId)!;
+    if (!list.includes(ref)) list.push(ref);
+}
+
 export interface IfcDataStore extends IfcStoreBase {
     parseTime: number;
 
@@ -647,9 +653,7 @@ export class ColumnarParser {
                     if (isPropSet || isQtySet) {
                         const targetMap = isPropSet ? onDemandPropertyMap : onDemandQuantityMap;
                         for (const objId of relatedObjects) {
-                            let list = targetMap.get(objId);
-                            if (!list) { list = []; targetMap.set(objId, list); }
-                            list.push(relatingDef);
+                            addOnDemandRef(targetMap, objId, relatingDef);
                         }
                     }
                 }
@@ -686,9 +690,7 @@ export class ColumnarParser {
 
                 if (typeUpper === 'IFCRELASSOCIATESCLASSIFICATION') {
                     for (const objId of relatedObjects) {
-                        let list = onDemandClassificationMap.get(objId);
-                        if (!list) { list = []; onDemandClassificationMap.set(objId, list); }
-                        list.push(relatingRef);
+                        addOnDemandRef(onDemandClassificationMap, objId, relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesClassification, ref.expressId);
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESMATERIAL') {
@@ -696,11 +698,10 @@ export class ColumnarParser {
                         let list = onDemandMaterialMap.get(objId);
                         let relIds = materialRelIds.get(objId);
                         if (!list || !relIds) {
-                            list = []; onDemandMaterialMap.set(objId, list);
-                            relIds = []; materialRelIds.set(objId, relIds);
+                            list = []; onDemandMaterialMap.set(objId, list); relIds = []; materialRelIds.set(objId, relIds);
                         }
-                        // Insert in rel-express-id order (lists are tiny) so
-                        // list[0] is the deterministic primary.
+                        // Deliberately NOT deduped (#3782 review): buildMaterialUsageIndex
+                        // already dedupes downstream (seenPerMaterial), per material-fraction-and-associations.test.ts.
                         let at = relIds.length;
                         while (at > 0 && relIds[at - 1] > ref.expressId) at--;
                         relIds.splice(at, 0, ref.expressId);
@@ -709,9 +710,7 @@ export class ColumnarParser {
                     }
                 } else if (typeUpper === 'IFCRELASSOCIATESDOCUMENT') {
                     for (const objId of relatedObjects) {
-                        let list = onDemandDocumentMap.get(objId);
-                        if (!list) { list = []; onDemandDocumentMap.set(objId, list); }
-                        list.push(relatingRef);
+                        addOnDemandRef(onDemandDocumentMap, objId, relatingRef);
                         relationshipGraphBuilder.addEdge(relatingRef, objId, RelationshipType.AssociatesDocument, ref.expressId);
                     }
                 }

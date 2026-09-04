@@ -130,8 +130,28 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  *   looks for v16. This is the ONE bump here that is deliberately destructive
  *   -- every existing entry re-meshes once -- because the alternative is a
  *   silent partial render on a bundle nobody can update.
+ *
+ * v16->v17: the QuantityTable gains a `qsetGlobalId` column (#3606),
+ *   mirroring PropertyTable's `psetGlobalId` — `QuantityTable.getForEntity`
+ *   now groups on (qsetName, qsetGlobalId) instead of qsetName alone, so
+ *   two distinct `IfcElementQuantity` instances sharing a literal name
+ *   (federated merge, or an exporter emitting the same Qto_ set twice)
+ *   stay separate instead of the second instance's quantities landing
+ *   under the first instance's GlobalId.
+ *
+ * v17->v18: the Relationships section gains a trailing shadowed-rel-ids
+ *   trailer per direction (#3782): `RelationshipGraphBuilder.addEdge` now
+ *   folds a repeat (source, target, type) triple into the surviving edge
+ *   instead of dropping it, keeping the extra `IfcRel*` express ids so a
+ *   delete of the surviving one doesn't erase a connection a sibling
+ *   instance still names. Appended AFTER `edgeRelIds` so the v17 prefix
+ *   stays byte-identical; a v18 reader handed a v17 section simply stops
+ *   there and never emits `shadowedRelationshipIds` — matches the pre-v18
+ *   in-memory behaviour exactly, since those graphs never tracked them
+ *   either. Not the destructive kind of bump: no existing cache entry is
+ *   wrong to read, only silent about a rare case until it is re-parsed.
  */
-export const FORMAT_VERSION = 17;
+export const FORMAT_VERSION = 18;
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a

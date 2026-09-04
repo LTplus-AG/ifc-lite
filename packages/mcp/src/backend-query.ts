@@ -59,6 +59,7 @@ import {
 } from '@ifc-lite/parser';
 import { attributeNamesForSchema } from './schema-tables.js';
 import { EntityNode } from '@ifc-lite/query';
+import { edgeSurvives } from '@ifc-lite/data';
 import { matchesPropertyFilter } from './property-filter-match.js';
 
 import { stepText, type CreatedEntity, type PendingOverlay } from './overlay.js';
@@ -443,9 +444,14 @@ export function createQueryAdapter(
         seen.add(expressId);
         out.push(expressId);
       };
+      // Two `IfcRel*` instances can name the same triple; the graph keeps
+      // only one as `relationshipId` and folds the rest into
+      // `shadowedRelationshipIds` (#3760). `edgeSurvives` (shared with the
+      // CLI backend, #3782 review) treats the connection as alive as long
+      // as any one of them still exists.
+      const isDeleted = pending ? (id: number) => pending.deleted.has(id) : () => false;
       for (const edge of half.getEdges(ref.expressId, relEnum)) {
-        if (pending?.deleted.has(edge.relationshipId)) continue;
-        take(edge.target);
+        if (edgeSurvives(edge, isDeleted)) take(edge.target);
       }
       for (const relation of pending?.queuedRelations(relType) ?? []) {
         if (direction === 'forward') {

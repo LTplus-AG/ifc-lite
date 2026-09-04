@@ -320,11 +320,10 @@ export function collectTransferables(payload: DataStoreTransport): Transferable[
     payload.quantities.formula,
   ]) push(arr.buffer);
 
-  // RelationshipGraphColumns
+  // RelationshipGraphColumns. shadowed* (#3782) are absent unless an edge
+  // collapsed more than one IfcRel* instance.
   for (const half of [payload.relationships.forward, payload.relationships.inverse]) {
-    push(half.edgeTargets.buffer);
-    push(half.edgeTypes.buffer);
-    push(half.edgeRelIds.buffer);
+    for (const arr of [half.edgeTargets, half.edgeTypes, half.edgeRelIds, half.shadowedEdgeIndex, half.shadowedGroupOffsets, half.shadowedRelIds]) if (arr) push(arr.buffer);
   }
 
   // De-duplicate: a typed array sliced from another aliases the same

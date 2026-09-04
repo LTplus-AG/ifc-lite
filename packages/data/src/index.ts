@@ -34,6 +34,8 @@ export type {
   Edge,
   RelationshipInfo,
 } from './relationship-graph.js';
+export { edgeSurvives, flattenRelationshipEdges, binarySearchU32 } from './relationship-graph-helpers.js';
+export type { FlattenedRelationshipEdge } from './relationship-graph-helpers.js';
 export * from './types.js';
 // Explicitly export const enums for runtime use
 export { IfcTypeEnum, PropertyValueType, QuantityType, RelationshipType, EntityFlags } from './types.js';

@@ -87,6 +87,7 @@ import {
   isQueryableObjectType,
 } from '@ifc-lite/parser';
 import { escapeCsvCell, exportToStep, StepExporter, type StepExportOptions } from '@ifc-lite/export';
+import { edgeSurvives } from '@ifc-lite/data';
 import { exportHbjson, exportDfjson } from './energy-export.js';
 import { foldQueuedRelated } from './query-overlay-relations.js';
 import { overlayEntityData, overlayProperties, overlayQuantities, foldNewEntities } from './query-overlay.js';
@@ -419,8 +420,14 @@ export class HeadlessBackend implements BimBackend {
           seen.add(id);
           out.push(id);
         };
+        // Two `IfcRel*` instances can name the same triple; the graph keeps
+        // only one as `relationshipId` and folds the rest into
+        // `shadowedRelationshipIds` (#3760). `edgeSurvives` (shared with the
+        // MCP backend, #3782 review) treats the connection as alive as long
+        // as any one of them still exists.
+        const isDeleted = view ? (id: number) => view.isDeleted(id) : () => false;
         for (const edge of half.getEdges(ref.expressId, relEnum)) {
-          if (!view?.isDeleted(edge.relationshipId)) take(edge.target);
+          if (edgeSurvives(edge, isDeleted)) take(edge.target);
         }
         if (view) for (const t of foldQueuedRelated(view.getNewEntities(), (id) => view.isDeleted(id), relType, direction, ref.expressId)) take(t);
         return out.map((expressId: number) => ({ modelId: ref.modelId, expressId }));

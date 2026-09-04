@@ -158,6 +158,72 @@ describe('ParquetExporter overlay deletions (#2046)', () => {
     expect(after).not.toContain('Wall2 (deleted)');
   });
 
+  // Nothing in EXPRESS forbids two `IfcRelContainedInSpatialStructure`
+  // instances from naming the same (storey, wall) pair (#3760). The graph
+  // dedupes the edge to one, keeping the second `IfcRel*`'s express id on
+  // `shadowedRelationshipIds` instead of dropping it — a real STEP record in
+  // the source file. `writeRelationships` used to walk `edgeRelIds` alone,
+  // so that shadowed `IfcRel*` never got its own `Relationships.parquet`
+  // row (#3782 review).
+  it('emits one Relationships.parquet row per shadowed IfcRel id, not just the survivor', async () => {
+    const dataStore = buildDataStore();
+    const relBuilder = new RelationshipGraphBuilder();
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 100);
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 102); // redundant IfcRel
+    dataStore.relationships = relBuilder.build();
+
+    const exporter = new ParquetExporter(dataStore);
+    const bytes = await exporter.exportTable('relationships');
+    const rows = decodeParquet(bytes);
+
+    const relIdsFor10to1 = rows
+      .filter((r) => r.SourceId === 10 && r.TargetId === 1)
+      .map((r) => r.RelId)
+      .sort();
+    expect(relIdsFor10to1).toEqual([100, 102]);
+  });
+
+  // The row's `RelId` names an `IfcRel*` entity, and an `IfcRel*` record IS a
+  // row in Entities.parquet (the columnar parser indexes it like any other
+  // line). `writeRelationships` filtered only the two endpoints, so deleting
+  // the relationship record itself left a `RelId` in Relationships.parquet
+  // pointing at an entity no other table has. A deleted survivor must drop
+  // its own row while a still-live shadowed `IfcRel*` keeps the connection —
+  // the same rule `edgeSurvives` applies in the CLI/MCP `related()` path.
+  it('drops a Relationships.parquet row whose own IfcRel entity is deleted, keeping a live shadowed one', async () => {
+    const dataStore = buildDataStore();
+    const relBuilder = new RelationshipGraphBuilder();
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 100);
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 102); // redundant IfcRel
+    dataStore.relationships = relBuilder.build();
+
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.deleteEntity(100); // delete the surviving IfcRel record, not an endpoint
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const rows = decodeParquet(await exporter.exportTable('relationships'));
+
+    const relIds = rows.filter((r) => r.SourceId === 10 && r.TargetId === 1).map((r) => r.RelId);
+    expect(relIds).toEqual([102]);
+  });
+
+  it('drops the edge entirely from Relationships.parquet once every IfcRel record naming it is deleted', async () => {
+    const dataStore = buildDataStore();
+    const relBuilder = new RelationshipGraphBuilder();
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 100);
+    relBuilder.addEdge(10, 1, RelationshipType.ContainsElements, 102);
+    dataStore.relationships = relBuilder.build();
+
+    const view = new LiveMutablePropertyView(null, 'm1');
+    view.deleteEntity(100);
+    view.deleteEntity(102);
+
+    const exporter = new ParquetExporter(dataStore, undefined, view);
+    const rows = decodeParquet(await exporter.exportTable('relationships'));
+
+    expect(rows.filter((r) => r.SourceId === 10 && r.TargetId === 1)).toEqual([]);
+  });
+
   it('still exports everything when no mutation view is supplied (back-compat)', async () => {
     const dataStore = buildDataStore();
     const exporter = new ParquetExporter(dataStore);

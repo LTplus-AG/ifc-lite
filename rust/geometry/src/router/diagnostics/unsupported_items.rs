@@ -11,22 +11,85 @@ use super::{GeometryRouter, ReasonCount};
 use rustc_hash::FxHashMap;
 
 impl GeometryRouter {
+    /// Enter a `RepresentationMap` source's item walk, returning a scope guard.
+    ///
+    /// Two things are decided once, here, instead of at each write site beneath:
+    ///
+    /// * **Per SOURCE, not per occurrence.** The contract this counter promises
+    ///   (`GeometryDiagnostics.totalUnsupportedItems`, and the drain doc below)
+    ///   is that a drop inside a source is counted ONCE however many
+    ///   `IfcMappedItem` occurrences reuse it. The mapped-item cache delivers
+    ///   that only for a source that produced geometry: a source whose items ALL
+    ///   drop meshes to empty, and the empty-mesh guard on both cache inserts
+    ///   (`mapped_item.rs`, `instancing.rs`) then skips it, so every occurrence
+    ///   re-walks and re-counted it. `unsupported_sources_recorded` closes that:
+    ///   the FIRST walk of a source claims it and records; later walks, by any
+    ///   path, record nothing.
+    /// * **Body representations only.** A type's 2D 'FootPrint'/'Annotation' map
+    ///   carries `IfcAnnotationFillArea`/`IfcGeometricCurveSet`, which have no
+    ///   processor and are CORRECTLY absent from a 3D view; counting them warns
+    ///   on a clean model. `is_body` false suppresses every record beneath the
+    ///   scope and does NOT claim the source, so the same source reached later
+    ///   under a Body representation still counts.
+    ///
+    /// Deciding it here rather than at each `record_unsupported_item` call is
+    /// what makes it hold on the OCCURRENCE path: a mapped source's unsupported
+    /// item is not recorded by the mapped-item branch at all, it is recorded by
+    /// `collect_submeshes_from_item_inner`'s own plain-item arm one recursion
+    /// level down. A per-site gate at the mapped-item branch would never see it.
+    ///
+    /// Scoped to this router, like `mapped_item_cache`: the native pool builds a
+    /// fresh router per element, so two elements sharing a TOTAL-LOSS source
+    /// still contribute one each. Every source that yields any geometry is
+    /// shared model-wide through `shared_mapped_item_cache` and walked once.
+    pub(crate) fn enter_unsupported_source(
+        &self,
+        source_id: u32,
+        is_body: bool,
+    ) -> UnsupportedSourceScope<'_> {
+        let record = is_body && self.unsupported_sources_recorded.borrow_mut().insert(source_id);
+        self.unsupported_source_scope.borrow_mut().push(record);
+        UnsupportedSourceScope { router: self }
+    }
+
     /// Record one dropped representation item (unsupported type, or its
     /// processor errored), keyed by `IfcType`.
     ///
-    /// Lower bound, not an exact instance count: a `RepresentationMap` source
-    /// is walked once and then served from the mapped-item cache, so a drop
-    /// inside that source is counted once no matter how many `IfcMappedItem`
-    /// occurrences reuse it. That is enough for "something was dropped, and of
-    /// this type", which is what this counter exists to answer; it must not be
-    /// read as the number of affected occurrences.
+    /// Suppressed while inside an [`enter_unsupported_source`] scope that
+    /// declined to record — a non-Body source, or one already counted. Outside
+    /// any scope (an element's own representation item) it always records.
+    ///
+    /// [`enter_unsupported_source`]: Self::enter_unsupported_source
     pub(crate) fn record_unsupported_item(&self, ifc_type: ifc_lite_core::IfcType) {
+        if self.unsupported_source_scope.borrow().last() == Some(&false) {
+            return;
+        }
         *self.unsupported_items.borrow_mut().entry(ifc_type.to_string()).or_insert(0) += 1;
     }
 
     /// Drain the dropped-item counts gathered since the last call.
+    ///
+    /// Does NOT clear `unsupported_sources_recorded`: the drain moves counts to
+    /// the caller, it does not un-see the sources already counted. That set is
+    /// cleared with the mapped-item cache it mirrors
+    /// (`set_tessellation_quality`), since a re-tessellation re-walks every
+    /// source.
     pub fn take_unsupported_items(&self) -> FxHashMap<String, u64> {
         std::mem::take(&mut *self.unsupported_items.borrow_mut())
+    }
+}
+
+/// Guard returned by [`GeometryRouter::enter_unsupported_source`]. Pops on drop,
+/// so a `?` out of the middle of a source walk cannot leave the scope stack
+/// unbalanced. Nested maps stack: a drop is attributed to the INNERMOST source
+/// being walked, which is the one that owns the item.
+pub(crate) struct UnsupportedSourceScope<'a> {
+    router: &'a GeometryRouter,
+}
+
+impl Drop for UnsupportedSourceScope<'_> {
+    fn drop(&mut self) {
+        self.router.unsupported_source_scope.borrow_mut().pop();
     }
 }
 

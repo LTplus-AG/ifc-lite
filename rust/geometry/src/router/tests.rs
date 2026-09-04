@@ -840,3 +840,156 @@ fn the_same_unsupported_item_under_a_body_representation_is_still_counted() {
          counted — the gate keys on the representation, not on the item type: {unsupported:?}"
     );
 }
+
+/// Three occurrences of ONE `IfcRepresentationMap` whose Body source holds a
+/// supported solid plus an unsupported `IfcGeometricSet`. The doc on
+/// `record_unsupported_item` and `GeometryDiagnostics.totalUnsupportedItems`
+/// both promise a per-SOURCE count ("counted once, not once per `IfcMappedItem`
+/// occurrence"). RED (pre-fix) on the OCCURRENCE path: 3.
+/// `collect_submeshes_from_item_inner` walks the source's items itself on every
+/// occurrence — it never consults the mapped-item cache — so the drop was
+/// re-counted per occurrence and the reported number was an occurrence count
+/// wearing a source count's documentation.
+#[test]
+fn a_shared_sources_unsupported_item_counts_once_not_once_per_occurrence() {
+    let mut decoder = EntityDecoder::new(MIXED_SHARED_SOURCE);
+    let router = GeometryRouter::new();
+    for wall_id in [15, 25, 35] {
+        let wall = decoder.decode_by_id(wall_id).unwrap();
+        let subs = router
+            .process_element_with_submeshes(&wall, &mut decoder)
+            .expect("each occurrence walks its mapped source without erroring");
+        assert!(
+            !subs.is_empty(),
+            "the supported solid must still mesh for occurrence #{wall_id} (behaviour unchanged)"
+        );
+    }
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.get("IfcGeometricSet"),
+        Some(&1),
+        "one source, one dropped item, three occurrences — the contract is per SOURCE: {unsupported:?}"
+    );
+}
+
+/// The same source and the same promise, reached through
+/// `process_mapped_item_cached` instead. The shared mapped-item cache is armed
+/// because that is the production wiring (#1623) and the half of the contract
+/// this exercises: a source that yields geometry is inserted once and later
+/// occurrences never re-walk it.
+#[test]
+fn a_shared_sources_unsupported_item_counts_once_through_the_mapped_item_path_too() {
+    let mut decoder = EntityDecoder::new(MIXED_SHARED_SOURCE);
+    let mut router = GeometryRouter::new();
+    router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+    for wall_id in [15, 25, 35] {
+        let wall = decoder.decode_by_id(wall_id).unwrap();
+        let mesh = router
+            .process_element(&wall, &mut decoder)
+            .expect("each occurrence walks its mapped source without erroring");
+        assert!(
+            !mesh.positions.is_empty(),
+            "the supported solid must still mesh for occurrence #{wall_id} (behaviour unchanged)"
+        );
+    }
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.get("IfcGeometricSet"),
+        Some(&1),
+        "the per-source contract must hold on the mapped-item path too: {unsupported:?}"
+    );
+}
+
+/// The case no cache can cover: a source whose items ALL drop, so it meshes to
+/// EMPTY. Both cache inserts (`mapped_item.rs`, `instancing.rs`) guard on
+/// `!mesh.positions.is_empty()`, deliberately — a mesh short of the source's
+/// real geometry must not be published model-wide. The consequence was that a
+/// TOTAL-loss source is the one source re-walked by every occurrence, so the
+/// count it reported scaled with occurrences on BOTH paths. RED (pre-fix): 3
+/// and 3. GREEN: 1 and 1, from the recorded-sources set rather than from a
+/// cache that is correct to refuse it.
+#[test]
+fn a_total_loss_source_counts_once_on_the_occurrence_path() {
+    assert_total_loss_source_counts_once(true);
+}
+
+/// The mapped-item leg of the same case. Split from the occurrence leg so a
+/// failure names the path it happened on instead of stopping at the first.
+#[test]
+fn a_total_loss_source_counts_once_on_the_mapped_item_path() {
+    assert_total_loss_source_counts_once(false);
+}
+
+fn assert_total_loss_source_counts_once(use_submeshes: bool) {
+    let mut decoder = EntityDecoder::new(TOTAL_LOSS_SHARED_SOURCE);
+    let mut router = GeometryRouter::new();
+    router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+    for wall_id in [15, 25, 35] {
+        let wall = decoder.decode_by_id(wall_id).unwrap();
+        if use_submeshes {
+            let _ = router.process_element_with_submeshes(&wall, &mut decoder);
+        } else {
+            let _ = router.process_element(&wall, &mut decoder);
+        }
+    }
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.get("IfcGeometricSet"),
+        Some(&1),
+        "an empty source is refused by both caches, so only the recorded-sources set keeps the \
+         count per SOURCE: {unsupported:?}"
+    );
+}
+
+/// One `IfcRepresentationMap` (#10) under a 'Body' representation carrying a
+/// supported `IfcExtrudedAreaSolid` and an unsupported `IfcGeometricSet`,
+/// instantiated by three walls (#15, #25, #35).
+const MIXED_SHARED_SOURCE: &str = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#2=IFCAXIS2PLACEMENT2D(#1,$);
+#3=IFCRECTANGLEPROFILEDEF(.AREA.,'P',#2,1000.,1000.);
+#4=IFCDIRECTION((0.,0.,1.));
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCEXTRUDEDAREASOLID(#3,#6,#4,1000.);
+#8=IFCGEOMETRICSET(());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('g1',$,$,$,$,$,#14,$);
+#22=IFCMAPPEDITEM(#10,#11);
+#23=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#22));
+#24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));
+#25=IFCWALL('g2',$,$,$,$,$,#24,$);
+#32=IFCMAPPEDITEM(#10,#11);
+#33=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#32));
+#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));
+#35=IFCWALL('g3',$,$,$,$,$,#34,$);
+"#;
+
+/// [`MIXED_SHARED_SOURCE`] with the supported solid removed, so the source
+/// meshes to EMPTY and neither cache will hold it.
+const TOTAL_LOSS_SHARED_SOURCE: &str = r#"
+#8=IFCGEOMETRICSET(());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('g1',$,$,$,$,$,#14,$);
+#22=IFCMAPPEDITEM(#10,#11);
+#23=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#22));
+#24=IFCPRODUCTDEFINITIONSHAPE($,$,(#23));
+#25=IFCWALL('g2',$,$,$,$,$,#24,$);
+#32=IFCMAPPEDITEM(#10,#11);
+#33=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#32));
+#34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));
+#35=IFCWALL('g3',$,$,$,$,$,#34,$);
+"#;

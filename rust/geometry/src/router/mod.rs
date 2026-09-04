@@ -236,6 +236,14 @@ pub struct GeometryRouter {
     /// Reset per batch. Unused in the native global mode.
     instanced_sources_materialized: RefCell<FxHashSet<u32>>,
     unsupported_items: RefCell<FxHashMap<String, u64>>, // dropped items (no processor / errored), by `IfcType`
+    /// `IfcRepresentationMap` source ids whose dropped items have already been
+    /// counted, so a source is counted ONCE however many `IfcMappedItem`
+    /// occurrences walk it — the per-source contract `unsupported_items`
+    /// promises. Mirrors `mapped_item_cache`'s scope and is cleared with it.
+    unsupported_sources_recorded: RefCell<FxHashSet<u32>>,
+    /// Stack of "record drops beneath this source?" decisions, one per
+    /// `GeometryRouter::enter_unsupported_source` scope currently open.
+    unsupported_source_scope: RefCell<Vec<bool>>,
 }
 
 impl GeometryRouter {
@@ -268,6 +276,8 @@ impl GeometryRouter {
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
             unsupported_items: RefCell::new(FxHashMap::default()),
+            unsupported_sources_recorded: RefCell::new(FxHashSet::default()),
+            unsupported_source_scope: RefCell::new(Vec::new()),
         };
 
         // Register default P0 processors
@@ -582,6 +592,10 @@ impl GeometryRouter {
         }
         self.tessellation_quality = quality;
         self.mapped_item_cache.get_mut().clear();
+        // Same reason: every source is re-walked at the new quality, so the
+        // "already counted this source" set has to forget them too, or the
+        // re-walk's drops would be suppressed as duplicates of the old pass.
+        self.unsupported_sources_recorded.get_mut().clear();
     }
 
     /// Get the current tessellation quality level

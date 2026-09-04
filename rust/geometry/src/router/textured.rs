@@ -111,8 +111,13 @@ impl GeometryRouter {
         //
         // Only the counting is gated, not the walk: a non-body map still runs
         // through the loop (merging nothing) so geometry output is byte-identical.
-        let counts_as_content_loss = super::effective_rep_type(&mapped_rep)
-            .is_none_or(super::is_body_representation);
+        // The scope also makes the count per SOURCE rather than per call — this
+        // map may already have been walked through `mapped_item.rs` — see
+        // `GeometryRouter::enter_unsupported_source`.
+        let _drop_scope = self.enter_unsupported_source(
+            rep_map.id,
+            super::effective_rep_type(&mapped_rep).is_none_or(super::is_body_representation),
+        );
 
         let mut untextured = Mesh::new();
         // One entry per textured item — keeps each item with its own image.
@@ -128,9 +133,7 @@ impl GeometryRouter {
                 match self.process_mapped_item_cached(&item, decoder) {
                     Ok(sub_mesh) => untextured.merge(&sub_mesh), // already scaled inside the cached path
                     Err(_e) => {
-                        if counts_as_content_loss {
-                            self.record_unsupported_item(item.ifc_type);
-                        }
+                        self.record_unsupported_item(item.ifc_type);
                         crate::diag::diag_debug!(
                             { item_id = item.id, error = %_e,
                               "skipping unsupported nested IfcMappedItem in representation map" }
@@ -174,9 +177,7 @@ impl GeometryRouter {
                         untextured.merge(&sub_mesh);
                     }
                     Err(_e) => {
-                        if counts_as_content_loss {
-                            self.record_unsupported_item(item.ifc_type);
-                        }
+                        self.record_unsupported_item(item.ifc_type);
                         crate::diag::diag_debug!(
                             { item_id = item.id, ifc_type = ?item.ifc_type,
                               error = %_e, "skipping unsupported representation-map item" }
@@ -191,9 +192,7 @@ impl GeometryRouter {
                     }
                 },
                 None => {
-                    if counts_as_content_loss {
-                            self.record_unsupported_item(item.ifc_type);
-                        }
+                    self.record_unsupported_item(item.ifc_type);
                     crate::diag::diag_debug!(
                         { item_id = item.id, ifc_type = ?item.ifc_type,
                           "skipping unsupported representation-map item (no processor)" }

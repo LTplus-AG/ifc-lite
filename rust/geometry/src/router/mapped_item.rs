@@ -154,17 +154,15 @@ impl GeometryRouter {
 
         let items = decoder.resolve_ref_list(items_attr)?;
 
-        // Same gate, same reason as `textured.rs`: only a BODY representation's
-        // dropped item is a content loss. A Revit furniture type whose
-        // MappedRepresentation is 'Annotation'/'FootPrint' carries
-        // `IfcAnnotationFillArea` / `IfcGeometricCurveSet`, which have no processor
-        // and are correctly absent from a 3D view — and this path runs PER
-        // OCCURRENCE, so counting them would scale one benign authoring choice into
-        // thousands of phantom "missing geometry" reports on a clean model.
-        // Gates the counting only; the walk and the geometry it produces are
-        // unchanged.
-        let counts_as_content_loss = super::effective_rep_type(&mapped_rep)
-            .is_none_or(super::is_body_representation);
+        // One scope for this source's whole walk: only a BODY representation's
+        // dropped item is a content loss, and this source's drops are counted the
+        // FIRST time any path walks it, not once per occurrence. See
+        // `GeometryRouter::enter_unsupported_source`. Gates the counting only;
+        // the walk and the geometry it produces are unchanged.
+        let _drop_scope = self.enter_unsupported_source(
+            source_id,
+            super::effective_rep_type(&mapped_rep).is_none_or(super::is_body_representation),
+        );
 
         // Process all items and merge. A nested MappedItem recurses (bounded by
         // `depth`/`visited` above) — it used to be skipped outright, which
@@ -193,9 +191,7 @@ impl GeometryRouter {
                         // `IfcMappedItem` (not the inner item's type) is deliberate —
                         // the inner walk errored before it could attribute anything,
                         // so this level names the item it actually lost.
-                        if counts_as_content_loss {
                         self.record_unsupported_item(sub_item.ifc_type);
-                    }
                         crate::diag::diag_debug!(
                             { item_id = sub_item.id, error = %_e,
                               "skipping nested IfcMappedItem" }
@@ -224,9 +220,7 @@ impl GeometryRouter {
                         mesh.merge(&sub_mesh);
                     }
                     Err(_e) => {
-                        if counts_as_content_loss {
                         self.record_unsupported_item(sub_item.ifc_type);
-                    }
                         crate::diag::diag_debug!(
                             { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
                               error = %_e, "skipping unsupported mapped-source item" }
@@ -241,9 +235,7 @@ impl GeometryRouter {
                     }
                 },
                 None => {
-                    if counts_as_content_loss {
-                        self.record_unsupported_item(sub_item.ifc_type);
-                    }
+                    self.record_unsupported_item(sub_item.ifc_type);
                     crate::diag::diag_debug!(
                         { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
                           "skipping unsupported mapped-source item (no processor)" }

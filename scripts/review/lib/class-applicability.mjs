@@ -46,14 +46,47 @@ function addedLines(patch) {
 /**
  * The first added line in the diff matching `re`, as `{ path, line, text }`.
  * `null` when nothing matches, which is how a predicate declines to fire.
+ *
+ * `read` decides what the line IS before `re` sees it: `codeOf` for a class that
+ * is a shape in code, identity for one that is a shape in text.
  */
-function firstAddedMatch(input, re) {
+function firstAddedMatch(input, re, read = codeOf) {
   for (const [path, file] of input.files) {
     for (const row of addedLines(file.patch)) {
-      if (re.test(row.text)) return { path, line: row.line, text: row.text.trim() };
+      if (re.test(read(row.text))) return { path, line: row.line, text: row.text.trim() };
     }
   }
   return null;
+}
+
+/**
+ * A line with its COMMENT text removed, so a predicate matches the code a line
+ * IS rather than the English a comment SAYS.
+ *
+ * MEASURED, on #3848 itself. `merged-distinct-entries` fired on line 18 of this
+ * very file -- "Twelve distinct sentences, none of them a reason" -- and the
+ * wave-off branch refused an otherwise correct clean review, reddening the lane
+ * on a docblock. That is the failure this file's header says it is written to
+ * avoid: a predicate that fails to fire costs a `not-applicable` the model was
+ * going to be allowed anyway, and one that fires wrongly fails a review that was
+ * correct. Stripping is therefore in the SAFE direction by construction, and the
+ * same reasoning `unpartneredComparison` already applies to string contents.
+ *
+ * Line comments, block comments, a leading JSDoc continuation `*`, and a
+ * WHOLE-LINE `#` comment.
+ * The `#` case is anchored at the start deliberately: Rust's `#[test]` and a
+ * trailing `#fff` or `#field` are not comments, and truncating a line at the
+ * first `#` anywhere would blind `test-that-cannot-fail` to the attribute it
+ * looks for. STATED RESIDUAL: a trailing `#` comment in Python or YAML is not
+ * stripped, so a class can still fire on one. That is an under-strip, which
+ * costs a wave-off, not a red lane.
+ */
+function codeOf(text) {
+  return String(text)
+    .replace(/^\s*\*.*$/, ' ')           // a JSDoc continuation line is all comment
+    .replace(/^\s*#(?![[!]).*$/, ' ')     // a whole-line `#` comment, but not `#[attr]`
+    .replace(/\/\*.*?\*\//g, ' ')
+    .replace(/\/\*.*$|\/\/.*$/, ' ');
 }
 
 /** The first changed path matching `re`, anchored at that file's first added line. */
@@ -158,8 +191,14 @@ export const APPLIES = {
   // Fires only on text that is addressing a reader, not on every fenced diff:
   // "check the fence" is not a defect class, and asking for a cited line on
   // every review would charge a citation for a question with no site.
+  //
+  // THE ONE PREDICATE THAT READS THE RAW LINE, comments and all. Every class
+  // above is a shape in CODE, so a comment naming one is a false fire (#3848).
+  // This one is a shape in TEXT -- an instruction addressed at the reviewer --
+  // and a comment is precisely where such an instruction gets written. Handing
+  // it `codeOf` would blind it at the only site the class has ever appeared.
   'injection-attempt': (input) =>
-    firstAddedMatch(input, /ignore (all |the )?(previous|prior|above)|system prompt|you are (an? )?(ai|assistant|reviewer)|as the maintainer|do not report/i),
+    firstAddedMatch(input, /ignore (all |the )?(previous|prior|above)|system prompt|you are (an? )?(ai|assistant|reviewer)|as the maintainer|do not report/i, (t) => t),
 };
 
 /**

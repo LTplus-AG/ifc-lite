@@ -9,6 +9,7 @@
  */
 
 import JSZip from 'jszip';
+import { topicEntryWriter, type TopicEntryWriter } from './topic-entry-writer.js';
 import type {
   BCFProject,
   BCFTopic,
@@ -192,8 +193,7 @@ async function writeTopicFolder(
   version: '2.1' | '3.0',
   usedFolderNames: Set<string>,
 ): Promise<void> {
-  const folder = zip.folder(sanitizeZipComponent(topic.guid, usedFolderNames, 'topic'));
-  if (!folder) return;
+  const folder = topicEntryWriter(zip, sanitizeZipComponent(topic.guid, usedFolderNames, 'topic'));
 
   // Sanitize each viewpoint GUID once, up front, so the markup <Viewpoint>
   // reference (written below) and the zip entry (written in
@@ -230,7 +230,7 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
 
 /** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
-  folder: JSZip,
+  folder: TopicEntryWriter,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   viewpointBaseNames: string[],
@@ -458,7 +458,7 @@ function writeMarkupFile(
  * Write viewpoint files (bcfv and snapshot)
  */
 async function writeViewpointFiles(
-  folder: JSZip,
+  folder: TopicEntryWriter,
   viewpoint: BCFViewpoint,
   baseName: string,
   version: '2.1' | '3.0',

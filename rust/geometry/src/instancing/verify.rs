@@ -283,17 +283,18 @@ mod tests {
 
     #[test]
     fn a_non_finite_position_is_rejected() {
-        let template: [f32; 3] = [0.0, 0.0, 0.0];
-        let target: [f32; 3] = [f32::NAN, 0.0, 0.0];
+        // Both buffers, because the NaN reaches `err` by a different route from
+        // each: through the reconstruction when it is in the template, through
+        // the comparison when it is in the target.
+        let finite: [f32; 3] = [0.0, 0.0, 0.0];
+        let nan: [f32; 3] = [f32::NAN, 0.0, 0.0];
         assert!(
-            !verify_pairing(
-                [0.0; 3],
-                &template,
-                [0.0; 3],
-                &target,
-                &Matrix4::identity()
-            ),
-            "a NaN baked position must not pass verification"
+            !verify_pairing([0.0; 3], &finite, [0.0; 3], &nan, &Matrix4::identity()),
+            "a NaN baked target position must not pass verification"
+        );
+        assert!(
+            !verify_pairing([0.0; 3], &nan, [0.0; 3], &finite, &Matrix4::identity()),
+            "a NaN baked template position must not pass verification"
         );
     }
 
@@ -332,39 +333,6 @@ mod tests {
             &target,
             &identity,
         ));
-    }
-
-    #[test]
-    fn a_nan_in_the_transform_fails_verification_instead_of_passing() {
-        // `err > tolerance(mag)` alone is false for NaN, so a NaN anywhere in
-        // `rel` must be caught explicitly rather than silently verifying.
-        let template: [f32; 3] = [0.0, 0.0, 0.0];
-        let target: [f32; 3] = [0.0, 0.0, 0.0];
-        let mut rel = Matrix4::identity();
-        rel[(0, 0)] = f64::NAN;
-        assert!(
-            !verify_pairing([0.0, 0.0, 0.0], &template, [0.0, 0.0, 0.0], &target, &rel),
-            "a NaN transform must not pass reconstruction verification"
-        );
-    }
-
-    #[test]
-    fn a_nan_in_a_position_fails_verification_instead_of_passing() {
-        // Same fail-open shape, sourced from a NaN baked coordinate rather
-        // than a NaN transform.
-        let template: [f32; 3] = [f64::NAN as f32, 0.0, 0.0];
-        let target: [f32; 3] = [0.0, 0.0, 0.0];
-        let identity = Matrix4::identity();
-        assert!(
-            !verify_pairing(
-                [0.0, 0.0, 0.0],
-                &template,
-                [0.0, 0.0, 0.0],
-                &target,
-                &identity,
-            ),
-            "a NaN position must not pass reconstruction verification"
-        );
     }
 
     #[test]

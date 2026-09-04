@@ -429,3 +429,35 @@ fn entity_scanner_does_not_treat_a_form_feed_inside_a_string_as_trivia() {
     assert_eq!(type_name, "IFCWALL");
     assert_eq!(&content[start..end], content);
 }
+
+/// An unterminated string literal causes the scan to stop at that entity and
+/// mark it as malformed (issue #3791). The scan returns None and
+/// `malformed_record_start()` reports the byte offset.
+#[test]
+fn entity_scanner_stops_on_unterminated_string() {
+    let content = "DATA;\n#1=IFCWALL('valid',$);\n#2=IFCDOOR('unterminated,;";
+    let mut scanner = EntityScanner::new(content);
+    // First entity parses fine
+    let (id1, type1, _, _) = scanner.next_entity().unwrap();
+    assert_eq!(id1, 1);
+    assert_eq!(type1, "IFCWALL");
+    // Second entity has unterminated string, scan stops
+    assert!(scanner.next_entity().is_none());
+    // malformed_record_start points to the start of #2
+    assert!(scanner.malformed_record_start().is_some());
+}
+
+/// An unterminated comment causes the scan to stop and mark it as malformed
+/// (issue #3791).
+#[test]
+fn entity_scanner_stops_on_unterminated_comment() {
+    let content = "DATA;\n#1=IFCWALL('a',$);\n#2=IFCDOOR('b',/* never closes;";
+    let mut scanner = EntityScanner::new(content);
+    // First entity parses fine
+    let (id1, _, _, _) = scanner.next_entity().unwrap();
+    assert_eq!(id1, 1);
+    // Second entity has unterminated comment, scan stops
+    assert!(scanner.next_entity().is_none());
+    // malformed_record_start is set
+    assert!(scanner.malformed_record_start().is_some());
+}

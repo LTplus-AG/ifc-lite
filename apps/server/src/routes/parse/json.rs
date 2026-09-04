@@ -202,6 +202,14 @@ pub async fn parse_metadata(
             }
         }
 
+        // Report any scan diagnostics (oversized ids, malformed records) so
+        // truncated or corrupted files don't silently come back short
+        // (issue #3791).
+        ifc_lite_core::parser::report_scan_diagnostics(
+            scanner.skipped_oversized_ids(),
+            scanner.malformed_record_start().is_some(),
+        );
+
         let schema_version = detect_schema_version(&content);
 
         (

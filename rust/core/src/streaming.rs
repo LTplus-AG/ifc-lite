@@ -166,6 +166,13 @@ impl<'a> ParserState<'a> {
             let Some((id, type_name, start, _end)) = self.scanner.next_entity() else {
                 // No more entities - emit Completed event and end stream
                 self.completed = true;
+                // Report any scan diagnostics (oversized ids, malformed records)
+                // before the Completed event so they appear in the logs in order
+                // (issue #3791).
+                crate::parser::report_scan_diagnostics(
+                    self.scanner.skipped_oversized_ids(),
+                    self.scanner.malformed_record_start().is_some(),
+                );
                 let duration_ms = get_timestamp() - self.start_time;
                 return Some(ParseEvent::Completed {
                     duration_ms,

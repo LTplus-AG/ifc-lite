@@ -20,6 +20,12 @@ pub struct EntityScanner<'a> {
     /// [`Self::skipped_oversized_id_starts`]. It never allocates on a file
     /// with nothing to refuse, which is every real file.
     skipped_oversized_id_starts: Vec<usize>,
+    /// Byte offset where a malformed record (unterminated string or comment)
+    /// was encountered, if any. Once set, the scan is terminal — `next_entity`
+    /// will return `None` on every subsequent call. This is the companion to
+    /// `skipped_oversized_id_starts`: oversized ids are skipped and the scan
+    /// resumes, but malformed input leaves no safe resume point.
+    malformed_record_start: Option<usize>,
 }
 
 impl<'a> EntityScanner<'a> {
@@ -38,6 +44,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: data_section_start(bytes),
             skipped_oversized_id_starts: Vec::new(),
+            malformed_record_start: None,
         }
     }
 
@@ -61,6 +68,7 @@ impl<'a> EntityScanner<'a> {
             bytes,
             position: clamped,
             skipped_oversized_id_starts: Vec::new(),
+            malformed_record_start: None,
         }
     }
 
@@ -97,6 +105,13 @@ impl<'a> EntityScanner<'a> {
     /// retained from that shard (issue #3395/#3430).
     pub fn skipped_oversized_id_starts(&self) -> &[usize] {
         &self.skipped_oversized_id_starts
+    }
+
+    /// Byte offset where the scan encountered a malformed record
+    /// (unterminated string or comment), if any. The scan is terminal once
+    /// this is set — no more entities are returned after this point.
+    pub fn malformed_record_start(&self) -> Option<usize> {
+        self.malformed_record_start
     }
 
     /// Scan for the next entity
@@ -157,8 +172,18 @@ impl<'a> EntityScanner<'a> {
                         // than silently consuming the rest of the file — see
                         // its doc comment for why that's the right call for a
                         // scanner (issue #3303).
-                        self.position = super::lexical::skip_step_comment(bytes, candidate)?;
-                        continue;
+                        match super::lexical::skip_step_comment(bytes, candidate) {
+                            Some(pos) => {
+                                self.position = pos;
+                                continue;
+                            }
+                            None => {
+                                // Unterminated comment before any entity. Mark
+                                // malformed and end scan (issue #3791, #3781).
+                                self.malformed_record_start = Some(candidate);
+                                return None;
+                            }
+                        }
                     }
                     // Lone '/' — not a comment. Skip past.
                     self.position = candidate + 1;
@@ -194,7 +219,19 @@ impl<'a> EntityScanner<'a> {
             // Find the end of the entity (semicolon) while respecting quoted strings
             // IFC strings use single quotes and can contain semicolons
             let line_content = &bytes[line_start..];
-            let end_offset = self.find_entity_end(line_content)?;
+            let end_offset = match self.find_entity_end(line_content) {
+                Some(offset) => offset,
+                None => {
+                    // An unterminated string or comment left the record with no
+                    // terminator. Mark this as malformed and end the scan — there
+                    // is no safe byte to resume from after an unterminated quote
+                    // or comment (issue #3791, #3781). The malformed_record_start
+                    // is already `None` here (the first malformation ends the scan),
+                    // so this assignment is only ever made once per scan.
+                    self.malformed_record_start = Some(line_start);
+                    return None;
+                }
+            };
             let line_end = line_start + end_offset + 1;
 
             // Parse entity ID — digit range already validated in the candidate loop.

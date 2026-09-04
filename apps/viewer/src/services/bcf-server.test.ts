@@ -63,6 +63,14 @@ function installFakeServer(): FakeServerState {
     });
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input));
+    // The API lives under /bcf; everything else is the web UI, which answers
+    // unknown paths with an HTML 404 (as a BIMcollab Nexus space does).
+    if (!url.pathname.startsWith('/bcf/')) {
+      return new Response('<!DOCTYPE html><html><title>space</title></html>', {
+        status: 404,
+        headers: { 'Content-Type': 'text/html' },
+      });
+    }
     if (url.pathname === '/bcf/2.1/auth') {
       return json({
         oauth2_auth_url: 'https://fake.example/bcf/oauth2/auth',
@@ -203,6 +211,45 @@ describe('signInToBcfServer', () => {
     await assert.rejects(
       signInToBcfServer('https://fake.example/bcf', 'tester@example.com', 'wrong'),
       /bad credentials/,
+    );
+    assert.equal(loadBcfServerConfig(), null);
+  });
+});
+
+describe('bare space URL (BIMcollab Nexus, issue #3900)', () => {
+  // Users are told to enter the space address, e.g.
+  // https://myspace.bimcollab.com, by BIMcollab and by Solibri's BCF
+  // connector. The API is served under /bcf, and the space answers
+  // /2.1/auth with an HTML 404, so sign-in used to die with
+  // "BCF request failed (HTTP 404)".
+  it('signs in with the password grant against the /bcf root', async () => {
+    installFakeServer();
+    const config = await signInToBcfServer('https://fake.example', 'tester@example.com', 'right');
+    assert.equal(config.serverUrl, 'https://fake.example/bcf');
+    const projects = await listBcfServerProjects();
+    assert.equal(projects[0]?.name, 'Project One');
+  });
+
+  it('signs in with a pasted access token against the /bcf root', async () => {
+    const server = installFakeServer();
+    server.validTokens.add('pasted-token');
+    const config = await signInWithToken('https://fake.example/', 'pasted-token');
+    assert.equal(config.serverUrl, 'https://fake.example/bcf');
+    assert.equal(config.userId, 'tester@example.com');
+  });
+
+  it('prepares the browser OAuth flow against the /bcf root', async () => {
+    installFakeServer();
+    const preparation = await prepareBcfOAuth('https://fake.example');
+    assert.equal(preparation.serverUrl, 'https://fake.example/bcf');
+    assert.equal(preparation.tokenUrl, 'https://fake.example/bcf/oauth2/token');
+  });
+
+  it('reports the URL the user entered when no candidate is a BCF server', async () => {
+    installFakeServer();
+    await assert.rejects(
+      signInToBcfServer('https://fake.example/wrong', 'tester@example.com', 'right'),
+      /HTTP 404.*https:\/\/fake\.example\/wrong\/2\.1\/auth/,
     );
     assert.equal(loadBcfServerConfig(), null);
   });

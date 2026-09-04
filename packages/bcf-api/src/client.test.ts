@@ -113,14 +113,16 @@ describe('BcfApiClient auth handling', () => {
     expect(apiError.message).toBe('Not authenticated');
   });
 
-  it('reports non-JSON error bodies by status line', async () => {
+  it('reports non-JSON error bodies by status line and request URL', async () => {
     const { fetchFn } = mockFetch(
       () => new Response('<html>gateway timeout</html>', { status: 504 }),
     );
     const client = new BcfApiClient({ baseUrl: 'https://host/bcf', fetchFn });
     const error = await client.getProjects().catch((e: unknown) => e);
     expect(error).toBeInstanceOf(BcfApiError);
-    expect((error as BcfApiError).message).toBe('BCF request failed (HTTP 504)');
+    expect((error as BcfApiError).message).toBe(
+      'BCF request failed (HTTP 504) at https://host/bcf/2.1/projects',
+    );
   });
 });
 

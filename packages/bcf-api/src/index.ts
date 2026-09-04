@@ -12,6 +12,9 @@
 export { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
 export type { BcfApiClientOptions, TopicQueryOptions } from './client.js';
 
+export { bcfBaseUrlCandidates, discoverBcfService, resolveBcfBaseUrl } from './discovery.js';
+export type { BcfServiceDiscovery, DiscoverBcfServiceOptions } from './discovery.js';
+
 export {
   exchangeAuthorizationCode,
   refreshAccessToken,

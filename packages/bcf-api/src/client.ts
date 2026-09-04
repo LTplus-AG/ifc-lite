@@ -125,7 +125,10 @@ export class BcfApiClient {
         parsed = undefined;
       }
       const detail = extractErrorDetail(parsed);
-      throw new BcfApiError(detail ?? `BCF request failed (HTTP ${response.status})`, {
+      // Without a server-supplied detail the status alone says nothing about
+      // WHICH request failed, and a wrong base URL is the common cause; name
+      // the URL so the message is actionable (and so bug reports carry it).
+      throw new BcfApiError(detail ?? `BCF request failed (HTTP ${response.status}) at ${url}`, {
         status: response.status,
         url,
         detail,

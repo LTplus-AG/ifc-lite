@@ -76,9 +76,7 @@ export async function signInToBcfServer(
   password: string,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  const anonymous = new api.BcfApiClient({ baseUrl });
-  const authInfo = await anonymous.getAuthInfo();
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const token = await api.requestPasswordToken({
     tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
     username,
@@ -98,8 +96,10 @@ export async function signInWithToken(
   accessToken: string,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  return completeSignIn(baseUrl, { access_token: accessToken.trim() });
+  const token = { access_token: accessToken.trim() };
+  // No `/auth` round-trip here: a pasted token needs no OAuth discovery, so
+  // `current-user` itself decides which candidate base URL is the service.
+  return api.resolveBcfBaseUrl(serverUrl, (baseUrl) => completeSignIn(baseUrl, token));
 }
 
 /** Path the popup returns to; must match what OAuth apps register. */
@@ -134,8 +134,7 @@ export async function prepareBcfOAuth(
   options: { clientId?: string; clientSecret?: string; scope?: string } = {},
 ): Promise<BcfOAuthPreparation> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  const authInfo = await new api.BcfApiClient({ baseUrl }).getAuthInfo();
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
   const authEndpoint = requireSecureOAuthUrl(authInfo.oauth2_auth_url, 'authorization endpoint');
 
@@ -220,9 +219,7 @@ export async function signInWithClientCredentials(
   clientSecret: string,
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
-  const baseUrl = api.normalizeBcfBaseUrl(serverUrl);
-  const anonymous = new api.BcfApiClient({ baseUrl });
-  const authInfo = await anonymous.getAuthInfo();
+  const { baseUrl, authInfo } = await api.discoverBcfService({ baseUrl: serverUrl });
   const token = await api.requestClientCredentialsToken({
     tokenUrl: requireSecureTokenUrl(authInfo.oauth2_token_url),
     clientId,

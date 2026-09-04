@@ -70,12 +70,7 @@ pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
     // RTC offset (metres) — `detect_rtc_offset_from_first_element` returns
     // (0,0,0) for models within 10 km of the origin, so this is a no-op for
     // local files and a true shift for georeferenced infrastructure.
-    // #3821: this router is NOT drained for boolean failures, and that is
-    // correct rather than an oversight. It is used only for RTC-offset detection; none of
-    // those methods touches `self.processors`, so no processor here ever
-    // meshes a representation item and none can record a `BoolFailure`.
-    // Draining it would always yield an empty list. The routers that DO mesh
-    // are the per-element ones, drained through `take_csg_failures`.
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_scale(unit_scale);
     let rtc = router.detect_rtc_offset_from_first_element(content, &mut decoder);
 

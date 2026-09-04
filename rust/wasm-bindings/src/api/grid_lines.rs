@@ -51,12 +51,7 @@ pub(crate) fn extract_grid_axes(content: &str) -> Vec<GridAxis3D> {
 
     // Reuse the geometry router for both unit-scale and the placement resolver,
     // exactly like the mesh pipeline (and the symbolic builder).
-    // #3821: this router is NOT drained for boolean failures, and that is
-    // correct rather than an oversight. It is used only for the unit scale, RTC-offset detection and grid placements; none of
-    // those methods touches `self.processors`, so no processor here ever
-    // meshes a representation item and none can record a `BoolFailure`.
-    // Draining it would always yield an empty list. The routers that DO mesh
-    // are the per-element ones, drained through `take_csg_failures`.
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale();
 

@@ -13,11 +13,13 @@ mod diagnostics;
 mod instancing;
 mod layers;
 mod processing;
+mod processor;
 mod rtc_offset;
 mod textured;
 pub(crate) mod transforms;
 pub(crate) mod voids;
 
+pub use processor::GeometryProcessor;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
@@ -50,28 +52,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-
-/// Geometry processor trait
-/// Each processor handles one type of IFC representation
-pub trait GeometryProcessor {
-    /// Process entity into mesh.
-    ///
-    /// `quality` selects tessellation detail; processors that approximate
-    /// curves derive their segment counts from it via
-    /// [`crate::tessellation::scale_segments`]. Processors with no curved
-    /// geometry ignore it. [`TessellationQuality::Medium`] reproduces the
-    /// engine's historical hardcoded behavior.
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
-        quality: TessellationQuality,
-    ) -> Result<Mesh>;
-
-    /// Get supported IFC types
-    fn supported_types(&self) -> Vec<IfcType>;
-}
 
 /// Shared content-dedup cache: maps a 128-bit structural item hash to the
 /// LOCAL (pre-placement, void-free, colour-free) item mesh PLUS its precomputed

@@ -109,6 +109,7 @@ impl GeometryRouter {
         // (see `PENDING_MAPPED_BOOL_FAILURES`). They have no product
         // attribution, so we bucket them under product id 0 — keeps the
         // diagnostics surface visible without inventing a fake host id.
+        self.drain_processor_failures();
         let pending = crate::diagnostics::take_pending_mapped_bool_failures();
         if !pending.is_empty() {
             self.csg_failures
@@ -273,37 +274,14 @@ impl GeometryRouter {
         let entry = log.entry(host_id).or_default();
         entry.csg_failure_count += failures.len();
         if entry.first_failure_label.is_none() {
-            // Short label for at-a-glance grouping. Full BoolFailure list
-            // remains in `csg_failures` for callers that want detail.
-            let label = match &failures[0].reason {
-                crate::diagnostics::BoolFailureReason::OperandTooLarge { .. } => "OperandTooLarge",
-                crate::diagnostics::BoolFailureReason::EmptyOperand => "EmptyOperand",
-                crate::diagnostics::BoolFailureReason::DegenerateOperand => "DegenerateOperand",
-                crate::diagnostics::BoolFailureReason::NoBoundsOverlap => "NoBoundsOverlap",
-                crate::diagnostics::BoolFailureReason::KernelOutputInvalid => "KernelOutputInvalid",
-                crate::diagnostics::BoolFailureReason::SolidSolidDifferenceSkipped => {
-                    "SolidSolidDifferenceSkipped"
-                }
-                crate::diagnostics::BoolFailureReason::PolygonalBoundedHalfSpaceFallback => {
-                    "PolygonalBoundedHalfSpaceFallback"
-                }
-                crate::diagnostics::BoolFailureReason::CutterUnionUnavailable => {
-                    "CutterUnionUnavailable"
-                }
-                crate::diagnostics::BoolFailureReason::UnknownBooleanOperator(_) => {
-                    "UnknownBooleanOperator"
-                }
-                crate::diagnostics::BoolFailureReason::ManifoldOutputDegenerate { .. } => {
-                    "ManifoldOutputDegenerate"
-                }
-                crate::diagnostics::BoolFailureReason::KernelError(_) => "KernelError",
-                crate::diagnostics::BoolFailureReason::DifferenceEmptiedHost => {
-                    "DifferenceEmptiedHost"
-                }
-                crate::diagnostics::BoolFailureReason::OpenTopologyRejected => {
-                    "OpenTopologyRejected"
-                }
-            };
+            // Short label for at-a-glance grouping, from the ONE home shared
+            // with the wasm console + native tracing summaries. A second copy
+            // of this match lived here and had to be extended in lockstep with
+            // every new `BoolFailureReason`; nothing but prose held them
+            // together, so a new variant could silently label differently on
+            // this surface. Full `BoolFailure` list remains in `csg_failures`
+            // for callers that want detail.
+            let label = failures[0].reason.label();
             entry.first_failure_label = Some(label.to_string());
         }
     }
@@ -590,6 +568,8 @@ pub fn aggregate_diagnostics(
         oversized_ref_drops,
     }
 }
+
+mod processor_failures;
 
 #[cfg(test)]
 mod diagnostics_contract_tests;

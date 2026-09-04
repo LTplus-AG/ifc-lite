@@ -1,0 +1,186 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+//! #3821: the router drains its processors' own boolean-failure logs.
+//!
+//! `BooleanClippingProcessor::take_failures` had no caller outside tests, so
+//! everything it recorded sat in a `RefCell` the pipeline never read. These
+//! tests exercise the route the pipeline actually uses — build a router, mesh
+//! an element, drain the router — rather than calling `take_failures` directly,
+//! which is what made the gap invisible for so long.
+
+use ifc_lite_core::EntityDecoder;
+use ifc_lite_geometry::{BoolFailureReason, GeometryRouter};
+
+fn router_for(content: &'static str) -> (GeometryRouter, EntityDecoder<'static>) {
+    let entity_index = ifc_lite_core::build_entity_index(content.as_bytes());
+    let mut decoder = EntityDecoder::with_index(content.as_bytes(), entity_index);
+    let router = GeometryRouter::with_units(content.as_bytes(), &mut decoder);
+    (router, decoder)
+}
+
+fn unsupported_operand_types(router: &GeometryRouter) -> Vec<String> {
+    let mut out: Vec<String> = router
+        .take_csg_failures()
+        .values()
+        .flatten()
+        .filter_map(|f| match &f.reason {
+            BoolFailureReason::UnsupportedOperand(ty) => Some(ty.clone()),
+            _ => None,
+        })
+        .collect();
+    out.sort();
+    out
+}
+
+/// A wall whose Body item is an `IfcBooleanResult` with an `IFCSECTIONEDSPINE`
+/// FIRST operand — no branch in the boolean operand dispatch, so the base solid
+/// meshes empty and the element's item silently disappears.
+const UNSUPPORTED_BASE_OPERAND: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('3821 direct boolean'),'2;1');
+FILE_NAME('d.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWALL('1DirectBooleanWall001',$,'Wall',$,$,#11,#12,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#30));
+#30=IFCBOOLEANRESULT(.DIFFERENCE.,#31,#33);
+#31=IFCSECTIONEDSPINE(#32,(#34),(#5));
+#32=IFCCOMPOSITECURVE((),$);
+#33=IFCEXTRUDEDAREASOLID(#34,#5,#35,1.0);
+#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.0,0.2);
+#35=IFCDIRECTION((0.,0.,1.));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// The same unsupported operand, one level deeper: the Body item is an
+/// `IfcCsgSolid` whose `TreeRootExpression` is the boolean. That boolean runs
+/// on a TRANSIENT processor `CsgSolidProcessor` builds and drops, so it is not
+/// in the router's processor table and needs the thread-local hand-off.
+const UNSUPPORTED_BASE_OPERAND_UNDER_CSGSOLID: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('3821 csgsolid boolean'),'2;1');
+FILE_NAME('e.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWALL('1CsgSolidBooleanWall1',$,'Wall',$,$,#11,#12,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#20));
+#20=IFCCSGSOLID(#30);
+#30=IFCBOOLEANRESULT(.DIFFERENCE.,#31,#33);
+#31=IFCSECTIONEDSPINE(#32,(#34),(#5));
+#32=IFCCOMPOSITECURVE((),$);
+#33=IFCEXTRUDEDAREASOLID(#34,#5,#35,1.0);
+#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,1.0,0.2);
+#35=IFCDIRECTION((0.,0.,1.));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// A clean wall: one extruded solid, no booleans at all. Without this control,
+/// "the drain reported something" would not distinguish a working drain from
+/// one that manufactures records.
+const CLEAN: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('3821 control'),'2;1');
+FILE_NAME('f.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWALL('1ControlPlainWall001',$,'Wall',$,$,#11,#12,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','SweptSolid',(#14));
+#14=IFCEXTRUDEDAREASOLID(#34,#5,#35,3.0);
+#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.0,0.3);
+#35=IFCDIRECTION((0.,0.,1.));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn unsupported_base_operand_reaches_the_routers_csg_failures() {
+    let (router, mut decoder) = router_for(UNSUPPORTED_BASE_OPERAND);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let mesh = router
+        .process_element(&element, &mut decoder)
+        .expect("an unsupported operand must not error the element");
+
+    // Behaviour is unchanged: the boolean still yields an empty mesh. Returning
+    // `Err` here would delete the host for the second-operand case, which is
+    // why the arm records instead of failing.
+    assert!(mesh.is_empty(), "the boolean result is still empty; this is observability, not a behaviour change");
+
+    assert_eq!(
+        unsupported_operand_types(&router),
+        vec!["IfcSectionedSpine".to_string()],
+        "the router must drain the boolean processor's log and name the operand type"
+    );
+}
+
+#[test]
+fn unsupported_operand_under_an_ifccsgsolid_reaches_the_router_too() {
+    let (router, mut decoder) = router_for(UNSUPPORTED_BASE_OPERAND_UNDER_CSGSOLID);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let _ = router.process_element(&element, &mut decoder);
+
+    assert_eq!(
+        unsupported_operand_types(&router),
+        vec!["IfcSectionedSpine".to_string()],
+        "a boolean run on CsgSolidProcessor's transient processor must still be reported"
+    );
+}
+
+#[test]
+fn a_clean_element_drains_nothing() {
+    let (router, mut decoder) = router_for(CLEAN);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let mesh = router
+        .process_element(&element, &mut decoder)
+        .expect("the control wall meshes");
+    assert!(!mesh.is_empty(), "control wall must produce geometry");
+    assert!(
+        router.take_csg_failures().is_empty(),
+        "a model with no booleans must drain no failures"
+    );
+}
+
+#[test]
+fn draining_twice_does_not_double_count() {
+    // The boolean processor is registered under BOTH IfcBooleanResult and
+    // IfcBooleanClippingResult as one shared Arc, so the sweep visits it twice.
+    let (router, mut decoder) = router_for(UNSUPPORTED_BASE_OPERAND);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let _ = router.process_element(&element, &mut decoder);
+
+    assert_eq!(unsupported_operand_types(&router).len(), 1, "one drop, one record");
+    assert!(
+        router.take_csg_failures().is_empty(),
+        "the drain is destructive: a second take must return nothing"
+    );
+}

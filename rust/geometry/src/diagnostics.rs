@@ -40,6 +40,18 @@ pub fn take_pending_mapped_bool_failures() -> Vec<BoolFailure> {
     PENDING_MAPPED_BOOL_FAILURES.with(|cell| std::mem::take(&mut *cell.borrow_mut()))
 }
 
+/// Push failures from a boolean context the router cannot reach through its
+/// processor table — today `CsgSolidProcessor`, which builds a TRANSIENT
+/// `BooleanClippingProcessor` per `IfcCsgSolid.TreeRootExpression` and drops it
+/// on return, so its log has no other way out. `take_csg_failures` folds these
+/// in (bucketed under product id 0, like every other unattributed record).
+pub fn push_pending_mapped_bool_failures(failures: Vec<BoolFailure>) {
+    if failures.is_empty() {
+        return;
+    }
+    PENDING_MAPPED_BOOL_FAILURES.with(|cell| cell.borrow_mut().extend(failures));
+}
+
 /// Which boolean operation produced the failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoolOp {
@@ -119,6 +131,17 @@ pub enum BoolFailureReason {
     /// viewers do in practice) and records this so the loss surfaces in
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
+    /// A boolean operand's `IfcRepresentationItem` type has no meshing branch
+    /// in `BooleanClippingProcessor::process_operand_with_depth`, so the operand
+    /// resolved to an EMPTY mesh. Carries the operand's IFC type name.
+    ///
+    /// As a FIRST operand this is a real element-geometry loss: the base solid
+    /// is empty, the whole boolean result is empty, and the element renders
+    /// nothing from that item. As a SECOND operand it means "unsupported
+    /// cutter" — the host renders un-cut, and the pre-existing `EmptyOperand`
+    /// record for the same step is also emitted (one record for the cause, one
+    /// for the consequence).
+    UnsupportedOperand(String),
     /// #3440 step 2: the kernel result passed `validate_mesh` (finite,
     /// in-bounds) but failed the directed-edge closure audit
     /// (`topology_gate_reject` — same predicate `KernelError`'s step-1
@@ -153,6 +176,7 @@ impl BoolFailureReason {
             BoolFailureReason::KernelError(_) => "KernelError",
             BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
             BoolFailureReason::OpenTopologyRejected => "OpenTopologyRejected",
+            BoolFailureReason::UnsupportedOperand(_) => "UnsupportedOperand",
         }
     }
 }
@@ -196,6 +220,9 @@ impl fmt::Display for BoolFailureReason {
             BoolFailureReason::OpenTopologyRejected => f.write_str(
                 "CSG kernel output passed validate_mesh but failed the closure audit; rejected under csg_topology_gate (#3440)",
             ),
+            BoolFailureReason::UnsupportedOperand(ty) => {
+                write!(f, "boolean operand type '{ty}' has no processor; operand meshed empty")
+            }
         }
     }
 }

@@ -23,6 +23,7 @@ use super::tessellated::TriangulatedFaceSetProcessor;
 use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
+mod operand;
 mod halfspace_cap;
 mod polygonal_prism;
 use cut_heuristics::{
@@ -148,70 +149,6 @@ impl BooleanClippingProcessor {
         }
         self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
         host
-    }
-
-    /// Process a solid operand with depth tracking
-    fn process_operand_with_depth(
-        &self,
-        operand: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: u32,
-        quality: TessellationQuality,
-        visited: &mut OperandPath,
-    ) -> Result<Mesh> {
-        match operand.ifc_type {
-            IfcType::IfcExtrudedAreaSolid => {
-                let processor = ExtrudedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcFacetedBrep => {
-                let processor = FacetedBrepProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcTriangulatedFaceSet => {
-                let processor = TriangulatedFaceSetProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcSweptDiskSolid => {
-                let processor = SweptDiskSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcRevolvedAreaSolid => {
-                let processor = RevolvedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcBlock => {
-                BlockProcessor::new().process(operand, decoder, &self.schema, quality)
-            }
-            // `CsgSolidProcessor::process` builds a FRESH BooleanClippingProcessor
-            // for a boolean TreeRootExpression, so routing through it used to reset
-            // both `depth` and the cycle guard. `#10 IfcBooleanResult -> FirstOperand
-            // #20 IfcCsgSolid -> TreeRootExpression #10` then recursed forever with
-            // depth never passing 1, and a Rust stack overflow ABORTS (#2866).
-            // `depth` restarts at 0 here, as it did before this guard existed
-            // (the hop built a fresh processor). Carrying it would tighten
-            // MAX_BOOLEAN_DEPTH, which #960 calibrated against a per-processor
-            // reset: 8 booleans + a CsgSolid + 8 more is valid, resolves on
-            // main, and would error as "depth 11 exceeds limit 10", dropping
-            // the element. MAX_OPERAND_PATH_NODES bounds the stack across the
-            // hop instead, counting frames of both kinds.
-            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(
-                self.skip_small_cuts,
-            )
-            .process_with_boolean_cycle_guard(
-                operand,
-                decoder,
-                &self.schema,
-                0,
-                quality,
-                visited,
-            ),
-            IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality, visited)
-            }
-            _ => Ok(Mesh::new()),
-        }
     }
 
     /// Parse IfcHalfSpaceSolid to get clipping plane
@@ -989,6 +926,15 @@ impl GeometryProcessor for BooleanClippingProcessor {
 
     fn supported_types(&self) -> Vec<IfcType> {
         vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
+    }
+
+    /// Hand this processor's failure log to the router (#3821). Same drain as
+    /// [`Self::take_failures`], which until now had no caller outside tests —
+    /// every unsupported operand, empty cutter and unknown operator recorded
+    /// here accumulated in a buffer nothing read, so the pipeline reported a
+    /// clean load for a model whose booleans had all degraded.
+    fn take_bool_failures(&self) -> Vec<BoolFailure> {
+        self.take_failures()
     }
 }
 

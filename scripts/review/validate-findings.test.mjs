@@ -53,6 +53,7 @@ import { addedLineRanges, OMITTED_FOR_PROMPT_REASON } from './build-review-input
 import { buildPrompt } from './run-reviewer.mjs';
 import { RETRYABLE_VALIDATION_REASONS } from './retry-prompt.mjs'; // #3777
 import { DEFECT_CLASSES, CLASS_VERDICTS } from './lib/defect-classes.mjs'; // #3831
+import { APPLIES, applicableClasses } from './lib/class-applicability.mjs'; // #3831 round 2
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -102,24 +103,58 @@ const INPUT = {
 const PROOF_LINE = 'const scaled = n * FACTOR;';
 
 /**
+ * The one class the shared fixture's diff can actually carry.
+ *
+ * PATCH_A adds `if (scaled > LIMIT) ...` at new-file line 3, a comparison with
+ * no partner bounding the other end. Nothing else in either patch trips a
+ * predicate: no test path, no changeset, no `export` on an ADDED line, no `.rs`
+ * beside the `.ts`, no sibling excerpt, no body. Written out rather than
+ * computed from `applicableClasses`, so a predicate that silently stopped firing
+ * fails these fixtures instead of quietly agreeing with itself -- and pinned
+ * against the real function by its own test below.
+ */
+const FIXTURE_APPLICABLE = ['one-ended-numeric-bound'];
+const FIXTURE_CITE = `${PATH_A}:3`;
+
+/**
  * A complete per-class pass (#3831), built FROM `DEFECT_CLASSES` rather than
  * hand-listed. Hand-listing it would make every test below green against a stale
  * copy of the list -- exactly the drift the one-source-of-truth module exists to
  * prevent -- and a class added there would then be enforced by the validator
  * while nothing in this file ever exercised it.
  *
- * Each `why` is DISTINCT because the validator requires it: twelve copies of one
- * sentence is one sentence. The index is what makes them distinct, so a fixture
- * that accidentally repeated a reason cannot pass.
+ * The applicable class is `clear` AND CITES A REAL ADDED LINE, because that is
+ * what the validator now requires of it; the rest are `not-applicable`, which is
+ * what the predicates allow for them. Each `why` is distinct, which the
+ * validator also still requires.
  */
 const classPass = (patch = []) => [
-  ...DEFECT_CLASSES.map((c, i) => ({
-    class: c,
-    verdict: 'clear',
-    why: `checked ${c} against the two changed hunks (${i}) and the sibling excerpts`,
-  })),
+  ...DEFECT_CLASSES.map((c, i) =>
+    (FIXTURE_APPLICABLE.includes(c)
+      ? { class: c, verdict: 'clear', why: `walked ${c} at ${FIXTURE_CITE}: LIMIT bounds the upper end only (${i})` }
+      : { class: c, verdict: 'not-applicable', why: `neither hunk can carry ${c} (${i})` })),
   ...patch,
 ];
+
+// A DOCS-ONLY DIFF, where no predicate fires and every class is legitimately
+// waved off. It is the control for the evasion tests: the same twelve sentences
+// that are refused on the fixture above must be ACCEPTED here, or the check is
+// refusing prose rather than refusing an unwalked class.
+const DOCS_PATCH = ['@@ -1,2 +1,4 @@', ' # Title', '+Some prose about the project.', '+More prose here.'].join('\n');
+const DOCS_PATH = 'docs/readme.md';
+const DOCS_INPUT = {
+  headSha: SHA,
+  files: [{ path: DOCS_PATH, patch: DOCS_PATCH, addedLineRanges: addedLineRanges(DOCS_PATCH) }],
+  unreviewable: [],
+};
+const docsResponse = (rows) => ({
+  verdict: 'clean',
+  files_reviewed: [DOCS_PATH],
+  riskiest_change: { path: DOCS_PATH, quoted_line: 'Some prose about the project.' },
+  findings: [],
+  class_pass: rows,
+  end: SENTINEL,
+});
 
 /** A response that passes everything, so each test can break exactly one thing. */
 const response = (patch = {}) => ({
@@ -1809,15 +1844,104 @@ test('#3831 FAIL: a class named twice cannot stand in for the class it displaced
   assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
 });
 
-test('#3831 PASS: "not-applicable" with a real reason is a legitimate per-class verdict', () => {
+test('#3831 PASS: "not-applicable" is legitimate for a class this diff cannot carry', () => {
   // The check must not push the model toward claiming it checked things the diff
-  // cannot contain. A docs-only change has no numeric bound to guard, and saying
-  // so is doing the work, not dodging it.
-  const mixed = classPass().map((row, i) =>
-    (i % 2 === 0 ? row : { ...row, verdict: 'not-applicable' }));
-  const r = run(response({ class_pass: mixed }));
+  // cannot contain. Eleven of the twelve classes have no site in these two
+  // hunks, and saying so is doing the work, not dodging it. `classPass()` is
+  // exactly that shape, and the PASS test at the top of this file runs it.
+  const r = run(response());
   assert.equal(r.code, 0, r.out);
   assert.equal(r.doc.verdict, 'clean');
+  assert.equal(
+    classPass().filter((row) => row.verdict === 'not-applicable').length,
+    DEFECT_CLASSES.length - FIXTURE_APPLICABLE.length,
+    'the accepted fixture must really be mostly not-applicable, or this proves nothing',
+  );
+});
+
+// ---- round 2: the verdict is bound to the DIFF, not to the sentence ----------
+//
+// THE TWO SHAPES THAT BROKE THE FIRST CUT. Both clear a "twelve distinct
+// sentences" bar while reviewing nothing, and both are real: they are what a
+// model produced when the only rule was that no two reasons may be identical.
+// Each is asserted TWICE -- refused on a diff that carries an applicable class,
+// accepted on a docs-only diff where none do -- because a check that refused
+// them everywhere would be refusing prose, not refusing an unwalked class.
+
+const EVASION_INDEXED = (classes) => classes.map((c, i) => ({ class: c, verdict: 'not-applicable', why: `no such code in diff (${i})` }));
+const EVASION_RESTATED = (classes) => classes.map((c) => ({ class: c, verdict: 'not-applicable', why: `${c} does not apply` }));
+
+test('#3831 round 2 FAIL: "no such code in diff (n)" cannot wave off a class the diff carries', () => {
+  const r = run(response({ class_pass: EVASION_INDEXED(DEFECT_CLASSES) }));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  assert.ok(r.out.includes('one-ended-numeric-bound'), `the refusal must name the class: ${r.out}`);
+  assert.ok(r.out.includes(PATH_A), `and the file that makes it applicable: ${r.out}`);
+});
+
+test('#3831 round 2 FAIL: "<class> does not apply" cannot either', () => {
+  const r = run(response({ class_pass: EVASION_RESTATED(DEFECT_CLASSES) }));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  assert.ok(r.out.includes('one-ended-numeric-bound'), r.out);
+});
+
+test('#3831 round 2 PASS: both shapes are accepted on a diff where NO class applies', () => {
+  // THE CONTROL, and the reason the predicates are written to under-fire. A
+  // docs-only change really cannot carry any of these, so a per-class pass that
+  // says so is correct however plainly it says it. Without this the two tests
+  // above are satisfied by a validator that refuses every clean verdict.
+  for (const rows of [EVASION_INDEXED(DEFECT_CLASSES), EVASION_RESTATED(DEFECT_CLASSES)]) {
+    const r = run(docsResponse(rows), { input: DOCS_INPUT });
+    assert.equal(r.code, 0, r.out);
+    assert.equal(r.doc.verdict, 'clean');
+  }
+});
+
+test('#3831 round 2 FAIL: an applicable class cleared with NO cited line is refused', () => {
+  // `clear` is the honest verdict for an applicable class, but on its own it is
+  // the same unfalsifiable sentence one word over. The citation is what makes it
+  // checkable.
+  const rows = classPass().map((row) =>
+    (row.class === 'one-ended-numeric-bound' ? { ...row, why: 'I checked the comparison and it is fine' } : row));
+  const r = run(response({ class_pass: rows }));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  assert.match(r.out, /cites no line/);
+});
+
+test('#3831 round 2 FAIL: a cited line that the diff did not ADD is not a citation', () => {
+  // Anchored by `lineIsAdded`, the same check a posted finding's line goes
+  // through. Line 1 of PATCH_A is context, not an added line, and line 99 does
+  // not exist -- so neither is evidence that anything was read.
+  for (const cite of [`${PATH_A}:1`, `${PATH_A}:99`, 'packages/x/never-sent.ts:2']) {
+    const rows = classPass().map((row) =>
+      (row.class === 'one-ended-numeric-bound' ? { ...row, why: `walked the comparison at ${cite}` } : row));
+    const r = run(response({ class_pass: rows }));
+    assert.equal(r.code, 1, `${cite} was accepted as a citation:\n${r.out}`);
+    assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  }
+});
+
+test('#3831 round 2: EVERY class has an applicability predicate, and no predicate is orphaned', () => {
+  // A class in `DEFECT_CLASSES` with no entry in `APPLIES` would be permanently
+  // waveable-off with no way to notice; a predicate keyed to a class that no
+  // longer exists would never run. Neither is visible from either file alone.
+  assert.deepEqual([...Object.keys(APPLIES)].sort(), [...DEFECT_CLASSES].sort());
+});
+
+test('#3831 round 2: the fixture\'s hand-written applicable set is what the predicates really say', () => {
+  // FIXTURE_APPLICABLE is written out rather than computed, so that a predicate
+  // which stopped firing would fail the fixtures instead of agreeing with
+  // itself. This is the one place the two are compared, and it is also the
+  // control on the docs-only input: if `applicableClasses` returned nothing for
+  // everything, the refusal tests above could not pass.
+  const asMap = (files) => ({
+    files: new Map(files.map((f) => [f.path, f])),
+    contextPack: null,
+  });
+  assert.deepEqual([...applicableClasses(asMap(INPUT.files)).keys()], FIXTURE_APPLICABLE);
+  assert.deepEqual([...applicableClasses(asMap(DOCS_INPUT.files)).keys()], []);
 });
 
 test('#3831 PASS: a FINDINGS verdict needs no per-class pass', () => {
@@ -1846,4 +1970,17 @@ test('#3831: the rubric names EVERY class the validator enforces, and no others'
     // @source-text-assertion-ok as above: the prompt must offer the vocabulary the validator accepts
     assert.ok(rubric.includes(`\`${v}\``), `rubric.md never offers the verdict \`${v}\``);
   }
+
+  // AND THE REVERSE. The loop above only catches a class the rubric FORGOT; a
+  // class the rubric INVENTS is the other half, and it is the worse one: the
+  // model would dutifully emit a row for it, `checkClassPass` would refuse the
+  // row as not one of the rubric's classes, and every clean review on the lane
+  // would fail with a message blaming the model for following the prompt.
+  // Scoped to the required list, which is the enumeration the model is told to
+  // reproduce, so ordinary backticked prose elsewhere in the file is not a
+  // claim about the contract.
+  const required = rubric.split('`class_pass` is required when `verdict` is `clean`')[1] ?? '';
+  const listed = [...required.split('\n\n')[1].matchAll(/`([a-z-]+)`/g)].map((m) => m[1]);
+  assert.ok(listed.length > 0, 'the required-class enumeration must be findable in rubric.md');
+  assert.deepEqual([...listed].sort(), [...DEFECT_CLASSES].sort(), 'the rubric asks for a different set than the validator enforces');
 });

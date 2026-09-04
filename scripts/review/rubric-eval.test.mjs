@@ -17,7 +17,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { matches, score, validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT, JUDGE_LOG_RE } from './rubric-eval.mjs';
 import { REASONS } from './validate-findings.mjs';
-import { DEFECT_CLASSES } from './lib/defect-classes.mjs'; // #3831
+import { DEFECT_CLASSES, notApplicableClasses } from './lib/defect-classes.mjs'; // #3831
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const EXPECTED = {
@@ -440,16 +440,22 @@ const fenced = (findings, verdict = 'findings', extra = {}) => '```json\n' + JSO
 /**
  * A complete per-class pass (#3831), built FROM `DEFECT_CLASSES` so a class
  * added there is exercised here instead of leaving this fixture green against a
- * stale list. `naFor` names the classes this fixture waves off as inapplicable;
- * everything else is `clear`.
+ * stale list.
+ *
+ * STUB_PATCH visibly carries two classes -- an unpartnered `n > 0` at src/f.ts:3
+ * and a `return 0;` at src/f.ts:4 -- so those two must be `clear` and must cite
+ * a real added line, which is what the validator requires of an applicable
+ * class. The rest are free to be `not-applicable`. `naFor` names extra classes
+ * to wave off, and it may only name classes outside that pair.
  */
+const STUB_APPLICABLE = { 'one-ended-numeric-bound': 3, 'absence-reads-as-success': 4 };
 const classPass = (naFor = []) => {
   const na = new Set(naFor);
-  return DEFECT_CLASSES.map((c, i) => ({
-    class: c,
-    verdict: na.has(c) ? 'not-applicable' : 'clear',
-    why: `walked ${c} over the one changed hunk (${i})`,
-  }));
+  return DEFECT_CLASSES.map((c, i) => (
+    c in STUB_APPLICABLE
+      ? { class: c, verdict: 'clear', why: `walked ${c} at src/f.ts:${STUB_APPLICABLE[c]} (${i})` }
+      : { class: c, verdict: na.has(c) ? 'not-applicable' : 'clear', why: `walked ${c} over the one changed hunk (${i})` }
+  ));
 };
 
 test('ONLY findings that survive validation are scored, and a FENCED response is read', (t) => {
@@ -631,17 +637,22 @@ test('#3831: a clean review that WAVED OFF the case\'s class is a NAMED miss, no
   evalCase(dir, {
     expected: [{
       path: 'src/f.ts',
-      class: 'one-ended-numeric-bound',
+      // `duplicate-site` ON PURPOSE: the applicability predicates cannot see a
+      // second site without a sibling excerpt, and this fixture has none. So the
+      // validator legitimately accepts `not-applicable` here -- and this residual
+      // between what the predicates can see and what the defect population
+      // really is, is exactly what CLASS SKIPPED exists to keep visible.
+      class: 'duplicate-site',
       what: 'Number(raw) returns NaN so the comparison falls through and closes the session',
     }],
   });
-  const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass(['one-ended-numeric-bound']) }));
+  const reviewer = stubReviewer(dir, fenced([], 'clean', { class_pass: classPass(['duplicate-site']) }));
   const r = runHarness(dir, reviewer);
   const said = `${r.stdout}${r.stderr}`;
 
   assert.equal(r.status, 0, said);
   assert.match(said, /CLASS SKIPPED/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
-  assert.match(said, /one-ended-numeric-bound/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
+  assert.match(said, /duplicate-site/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
   assert.match(said, /declared NOT-APPLICABLE: 1 of 1/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
 });
 
@@ -654,7 +665,7 @@ test('#3831: a clean review that WALKED the class is a plain miss, and the count
   evalCase(dir, {
     expected: [{
       path: 'src/f.ts',
-      class: 'one-ended-numeric-bound',
+      class: 'duplicate-site',
       what: 'Number(raw) returns NaN so the comparison falls through and closes the session',
     }],
   });
@@ -676,7 +687,7 @@ test('#3831: a clean review with NO per-class pass is refused, retried once, and
   evalCase(dir, {
     expected: [{
       path: 'src/f.ts',
-      class: 'one-ended-numeric-bound',
+      class: 'duplicate-site',
       what: 'Number(raw) returns NaN so the comparison falls through and closes the session',
     }],
   });
@@ -710,4 +721,35 @@ test('#3831: a clean review whose per-class pass is one sentence twelve times is
   assert.equal(r.status, 0, said);
   assert.match(said, /CLASS_PASS_INCOMPLETE/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
   assert.match(said, /scored ZERO/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
+});
+
+test('#3831 round 2: a per-class pass of "no such code in diff (n)" is refused through the real chain', (t) => {
+  // The evasion shape, end to end. STUB_PATCH carries an unpartnered comparison
+  // and a `return 0;`, so two classes visibly apply and cannot be waved off --
+  // and the eval must score the case zero rather than as a review that looked.
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [{ path: 'src/f.ts', what: 'Number(raw) returns NaN and the comparison falls through' }] });
+  const evasion = fenced([], 'clean', {
+    class_pass: DEFECT_CLASSES.map((c, i) => ({ class: c, verdict: 'not-applicable', why: `no such code in diff (${i})` })),
+  });
+  const reviewer = sequentialReviewer(dir, [evasion, evasion]);
+  const r = runHarness(dir, reviewer.path);
+  const said = `${r.stdout}${r.stderr}`;
+
+  assert.equal(r.status, 0, said);
+  assert.match(said, /CLASS_PASS_INCOMPLETE/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
+  assert.match(said, /scored ZERO/, said); // @source-text-assertion-ok asserts on the harness's own stdout from a real child process, not on any file's source text
+  assert.doesNotMatch(said, /CLASS SKIPPED/, 'a refused review declared nothing to attribute');
+});
+
+test('#3831 round 2: notApplicableClasses reads nothing off a verdict the pass never covered', () => {
+  // The docblock promised "[] for anything that is not a validated clean pass"
+  // while the code checked only that `class_pass` was an array. A `findings`
+  // verdict is exempt from the pass entirely, so a `class_pass` riding on one
+  // was never checked against anything and must not produce a skip.
+  const rows = [{ class: 'duplicate-site', verdict: 'not-applicable', why: 'a reason nothing validated' }];
+  assert.deepEqual(notApplicableClasses({ verdict: 'clean', class_pass: rows }), ['duplicate-site']);
+  assert.deepEqual(notApplicableClasses({ verdict: 'findings', class_pass: rows }), []);
+  assert.deepEqual(notApplicableClasses({ class_pass: rows }), []);
+  assert.deepEqual(notApplicableClasses({ verdict: 'clean' }), []);
 });

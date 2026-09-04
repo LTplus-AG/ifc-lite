@@ -215,7 +215,7 @@ export function validate({ response, input, onWarn = null }) {
   // and only once all three hold is "did it walk the rubric's classes" the most
   // useful thing to tell it. Ahead of proof of work, a model that never read the
   // diff at all would be sent away to write twelve paragraphs about it.
-  if (response.verdict === 'clean') checkClassPass(response);
+  if (response.verdict === 'clean') checkClassPass({ response, input });
 
   let kept = validateFindings({ response, input, warn });
   const survived = kept.length;

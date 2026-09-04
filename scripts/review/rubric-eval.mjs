@@ -114,7 +114,12 @@ export const JUDGE_LOG_RE = /JUDGE[: ]|CAPPED/;
  * take down a scored run. `[]` attributes nothing, which reads as an ordinary
  * miss -- the answer the harness gave before this existed.
  */
-function declaredNotApplicable(rawPath) {
+function declaredNotApplicable(rawPath, validatedVerdict) {
+  // GATED ON THE VALIDATED VERDICT, not on the raw response's own. `class_pass`
+  // is checked only on a clean verdict, so on any other outcome it is a field
+  // nothing verified -- and reading a skip off it would attribute one to a
+  // document the lane never accepted.
+  if (validatedVerdict !== 'clean') return [];
   try {
     return notApplicableClasses(JSON.parse(stripFence(readFileSync(rawPath, 'utf8'))));
   } catch {
@@ -298,7 +303,7 @@ function main() {
       // mutates it. Without this, a final miss cannot be attributed to the
       // generator/validator or to suppression; live #3609 required manually
       // reconstructing that distinction from log fragments.
-      const notApplicable = declaredNotApplicable(outPath);
+      const notApplicable = declaredNotApplicable(outPath, parsed.verdict);
       validatedResults.push({
         pr: c.pr,
         body: c.input.contextPack?.body ?? null,

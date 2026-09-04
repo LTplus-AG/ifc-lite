@@ -17,17 +17,32 @@
  * So `clean` now costs a per-class verdict with a stated reason, and this module
  * is the ONE place the class list lives. `rubric.md` prints the ids to the model
  * and `finding-schema.mjs` checks the answer against the same array, so the
- * prompt and the validator cannot ask for and enforce different lists --
- * `defect-classes.test.mjs` fails if an id here is missing from the rubric text.
+ * prompt and the validator cannot ask for and enforce different lists. The guard
+ * that holds them together is in `../validate-findings.test.mjs` ("the rubric
+ * names EVERY class the validator enforces"), which is where it has to live:
+ * `.github/workflows/test.yml` globs `scripts/review/*.test.mjs` and NOT
+ * `scripts/review/lib/`, so a test file next to this one would never run in CI.
  *
  * WHAT THIS IS NOT. It does not decide whether a finding is real, and it never
  * turns `clean` into `findings`: a reviewer that walks all twelve and reports
  * every one clear still gets a clean verdict posted. It refuses only the answer
  * that skipped the walk, which is the one the eval measured 13-14 times out of
  * 18.
+ *
+ * BOUND TO THE DIFF, NOT TO THE PROSE. The first cut of this check was lexical
+ * -- twelve rows, twelve distinct sentences -- and a lexical bar is cleared for
+ * free: `why: "no such code in diff (7)"` twelve times over, or
+ * `why: "<class> does not apply"` per class, are twelve distinct sentences and
+ * not one reason. So `not-applicable` is now allowed only for a class
+ * ./class-applicability.mjs says this diff cannot carry, and a class it CAN
+ * carry must be `clear` with a `path:line` from the diff in its reason, checked
+ * against the added ranges by the same `lineIsAdded` every finding is anchored
+ * with.
  */
 
 import { ValidateFindingsError } from './validate-findings-error.mjs';
+import { lineIsAdded } from '../quote-line-coupling.mjs';
+import { applicableClasses, APPLIES } from './class-applicability.mjs';
 
 /**
  * Every class `rubric.md` names under "What to look for", plus
@@ -78,15 +93,27 @@ const normaliseWhy = (v) => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
  * requiring twelve more paragraphs beside it would spend the output budget that
  * `RESPONSE_TRUNCATED` already fires on.
  *
- * THE DISTINCTNESS CHECK IS THE LOAD-BEARING HALF. Requiring twelve rows is
- * satisfied by writing one sentence twelve times, which is one sentence -- and
- * that is the cheapest way for a model to comply without doing the work, so it
- * is the shape this has to refuse. Two rows sharing a `why` verbatim means at
- * least one of them was not reasoned about separately.
+ * THE APPLICABILITY BINDING IS THE LOAD-BEARING HALF, and the distinctness rule
+ * below is not. Requiring twelve rows with twelve different sentences is cleared
+ * for free -- `"no such code in diff (0)".."(11)"`, or `"<class> does not
+ * apply"` per class, are twelve distinct sentences and not one reason -- so the
+ * verdict is checked against the DIFF instead:
  *
+ *   - a class ./class-applicability.mjs says this diff CAN carry may not be
+ *     `not-applicable`, and its `clear` must cite a `path:line` that is really
+ *     an added line of the diff;
+ *   - a class the predicates cannot see is free: `not-applicable` needs only a
+ *     reason, because the harness has nothing to contradict it with.
+ *
+ * The predicates under-fire on purpose (see that file), so this is a floor under
+ * `not-applicable`, never a claim that the classes it does not name are absent.
+ * The remaining gap is printed by the eval as CLASS SKIPPED rather than assumed
+ * away.
+ *
+ * @param {{ response: object, input: { files: Map<string, object>, contextPack?: object|null } }} args
  * @throws {ValidateFindingsError} CLASS_PASS_INCOMPLETE
  */
-export function checkClassPass(response) {
+export function checkClassPass({ response, input }) {
   const fail = (msg) => {
     throw new ValidateFindingsError(
       'CLASS_PASS_INCOMPLETE',
@@ -143,14 +170,59 @@ export function checkClassPass(response) {
     }
     byWhy.set(key, row.class);
   }
+
+  // THE DIFF HAS THE LAST WORD. Everything above is about the answer's shape;
+  // this is the only part a model cannot satisfy by writing better sentences.
+  const applicable = applicableClasses(input);
+  for (const [cls, site] of applicable) {
+    const row = seen.get(cls);
+    const where = site.path ? `\`${site.path}\`${site.line ? `:${site.line}` : ''}` : 'this diff';
+    if (row.verdict === 'not-applicable') {
+      fail(
+        `\`${cls}\` was declared not-applicable, but ${where} makes it applicable ` +
+          `(${JSON.stringify(String(site.text).slice(0, 90))}). Walk it and report \`clear\` with the ` +
+          'line you checked, or report the defect.',
+      );
+    }
+    const cited = citedAddedLine(row.why, input);
+    if (!cited) {
+      fail(
+        `\`${cls}\` applies to this diff (${where}) and its \`clear\` cites no line of it. ` +
+          'Name a `path:line` you actually checked, in the form `packages/x/y.ts:42`, where the line ' +
+          'is one the diff ADDED.',
+      );
+    }
+  }
+}
+
+/**
+ * The first `path:line` in `why` that is really an added line of the diff.
+ *
+ * ANCHORED BY `lineIsAdded`, the same check every posted finding's line goes
+ * through, and against `input.files` -- so a citation of a file the reviewer was
+ * never sent, or of a line this PR did not touch, is not a citation. Without
+ * that the rule would be "put a colon and a number in the sentence", which is
+ * the lexical bar this round exists to replace.
+ */
+function citedAddedLine(why, input) {
+  for (const m of String(why).matchAll(/([A-Za-z0-9_./@-]+\.[A-Za-z0-9]+):(\d+)/g)) {
+    const file = input.files.get(m[1]);
+    if (file && lineIsAdded(Number(m[2]), file.addedLineRanges)) return { path: m[1], line: Number(m[2]) };
+  }
+  return null;
 }
 
 /**
  * The classes this clean verdict declared inapplicable, for the eval to print.
- * Returns `[]` for anything that is not a validated clean pass, so a caller
- * never has to re-derive the shape `checkClassPass` already guarantees.
+ *
+ * Returns `[]` for anything that is not a clean verdict carrying a `class_pass`
+ * array. The VERDICT check is not decoration: a `findings` response is exempt
+ * from the pass entirely, so a `class_pass` sitting on one was never validated
+ * against anything, and attributing a class skip to it would be reading a field
+ * nothing checked. The docblock claimed this before the code did it.
  */
 export function notApplicableClasses(response) {
+  if (response?.verdict !== 'clean') return [];
   if (!Array.isArray(response?.class_pass)) return [];
   return response.class_pass
     .filter((r) => r && typeof r === 'object' && r.verdict === 'not-applicable' && DEFECT_CLASSES.includes(r.class))

@@ -82,7 +82,7 @@ pub(crate) fn check_u32_len(name: &str, len: usize) -> Result<(), ParquetError> 
 /// shared by the whole-model serializer and the incremental cache writer.
 /// Section lengths are u32 on the wire; fail loud instead of truncating a
 /// section over 4 GiB into a silently corrupt blob.
-fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
+pub(super) fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
     check_u32_len("mesh", mesh.len())?;
     check_u32_len("vertex", vertex.len())?;
     check_u32_len("index", index.len())?;
@@ -375,7 +375,15 @@ pub struct StreamingParquetCacheWriter {
 impl StreamingParquetCacheWriter {
     pub fn new() -> Result<Self, ParquetError> {
         fn writer(schema: Arc<Schema>) -> Result<ArrowWriter<Vec<u8>>, ParquetError> {
-            let props = writer_props(&schema);
+            // One `append` must produce exactly ONE row group per table, or
+            // the cached blob loses the batch boundaries
+            // `parquet_replay_batches` recovers on a cache hit (#3895):
+            // arrow-rs otherwise splits a `write` at 1,048,576 rows, which the
+            // vertex table crosses on large models. `append` flushes per batch.
+            let props = writer_props(&schema)
+                .into_builder()
+                .set_max_row_group_row_count(None)
+                .build();
             Ok(ArrowWriter::try_new(Vec::new(), schema, Some(props))?)
         }
         Ok(Self {
@@ -466,7 +474,7 @@ impl StreamingParquetCacheWriter {
 /// Write a RecordBatch to a Parquet buffer with LZ4 compression.
 /// Dictionary encoding is disabled for numeric columns (floats, integers) as they
 /// have high entropy and dictionary encoding provides no benefit while adding significant overhead.
-fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, ParquetError> {
+pub(super) fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, ParquetError> {
     let mut buffer = Vec::new();
     let cursor = Cursor::new(&mut buffer);
     let props = writer_props(&batch.schema());

@@ -11,6 +11,7 @@ pub mod parquet;
 pub mod parquet_data_model;
 mod parquet_schema;
 pub mod parquet_optimized;
+pub mod parquet_replay_batches;
 pub mod processor;
 pub mod streaming;
 

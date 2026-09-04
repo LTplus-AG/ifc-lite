@@ -6,6 +6,7 @@
 
 mod cache_keys;
 mod cached_replay;
+mod stream_progress;
 mod fetch;
 mod json;
 mod parquet;
@@ -277,6 +278,9 @@ mod cache_keys_tests;
 
 #[cfg(test)]
 mod cached_replay_tests;
+
+#[cfg(test)]
+mod cached_replay_batches_tests;
 
 #[cfg(test)]
 mod resolved_tessellation_quality_tests {

@@ -66,7 +66,10 @@
 # -60: #3442 review — union_mesh/union_meshes moved to csg/union.rs (85 lines, under
 # the house limit, no row) so the un-audited union_pair the #3440 census needs has
 # somewhere to live; budget refreshed downward.
-     611 rust/geometry/src/csg/mod.rs
+# -48: #3440 pre-flight — the four accept paths' repeated two-gate block collapsed
+# into ClippingProcessor::accept_gates_reject in csg/topology_diagnostic.rs (208
+# lines, under the house limit, no row); budget refreshed downward.
+     563 rust/geometry/src/csg/mod.rs
  # -73: #1806 watertight-extrude tests split out to extrusion_watertight_tests.rs (ratchet-exempt); budget refreshed downward.
 # +9: #1806 review — extrude_profile_watertight rejects < 3-vertex hole rings before
 # triangulation (triangulate_constrained drops them from the cap while create_side_walls

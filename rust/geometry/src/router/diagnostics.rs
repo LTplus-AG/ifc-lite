@@ -179,9 +179,13 @@ pub struct GeometryDiagnostics {
     /// Refs the content-hash pass refused (`u32::MAX`, #3421/#3752). Additive.
     #[serde(default)]
     pub oversized_ref_drops: u64,
-    /// Items dropped: no processor, or the processor errored. `_by_type` breaks it down.
-    #[serde(default)] pub total_unsupported_items: u64,
-    #[serde(default)] pub unsupported_items_by_type: Vec<ReasonCount>,
+    /// Items dropped: no processor, or the processor errored. Counted once per
+    /// `IfcRepresentationMap` source, not once per occurrence. Additive.
+    #[serde(default)]
+    pub total_unsupported_items: u64,
+    /// [`Self::total_unsupported_items`] broken down by IFC type, count-desc.
+    #[serde(default)]
+    pub unsupported_items_by_type: Vec<ReasonCount>,
 }
 
 impl Default for GeometryDiagnostics {
@@ -197,7 +201,8 @@ impl Default for GeometryDiagnostics {
             rect_fast: RectFastSummary::default(),
             worst_hosts: Vec::new(),
             oversized_ref_drops: 0,
-            total_unsupported_items: 0, unsupported_items_by_type: Vec::new(),
+            total_unsupported_items: 0,
+            unsupported_items_by_type: Vec::new(),
         }
     }
 }
@@ -262,7 +267,8 @@ pub fn aggregate_diagnostics(
     failures_by_reason
         .sort_by(|a, b| b.count.cmp(&a.count).then_with(|| a.reason.cmp(&b.reason)));
 
-    let (total_unsupported_items, unsupported_items_by_type) = unsupported_items::summarize(unsupported_items);
+    let (total_unsupported_items, unsupported_items_by_type) =
+        unsupported_items::summarize(unsupported_items);
 
     let silent_no_ops = host_diags
         .values()
@@ -322,7 +328,8 @@ pub fn aggregate_diagnostics(
         },
         worst_hosts,
         oversized_ref_drops,
-        total_unsupported_items, unsupported_items_by_type,
+        total_unsupported_items,
+        unsupported_items_by_type,
     }
 }
 

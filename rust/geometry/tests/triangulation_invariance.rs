@@ -126,6 +126,7 @@ mod census_golden;
 
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
@@ -506,6 +507,227 @@ fn max_abs_coord(mesh: &Mesh) -> f64 {
     mesh.positions.iter().fold(0.0f64, |m, &v| m.max((v as f64).abs()))
 }
 
+/// Signed enclosed volume in whole cm³, for [`HostRow::vol`] (#3422), which
+/// says where it is taken and why it is an integer. `kernel::mesh_volume`
+/// reads the same f32 positions `edge_stats` does, so one mesh is one integer.
+///
+/// The two do NOT read them at the same resolution, and
+/// [`a_sub_millimetre_crack_reads_watertight_but_shifts_the_volume`] measures
+/// what that costs. See [`HostRow::vol`] for why it is tolerable and why
+/// tightening the gate is not the remedy.
+fn volume_cm3(mesh: &Mesh) -> i64 {
+    (mesh_volume(mesh) * 1.0e6).round() as i64
+}
+
+/// A unit cube whose lid is a SEPARATE set of vertices, raised by `crack`
+/// metres above the walls' top edge, so the surface carries a slit of that
+/// width all the way round. The one shape that separates the census's
+/// watertightness reading from the closure `mesh_volume` actually needs.
+fn cracked_cube(crack: f32) -> Mesh {
+    let base = [[0.0f32, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]];
+    let mut positions: Vec<f32> = Vec::new();
+    for z in [0.0, 1.0, 1.0 + crack] {
+        for v in base {
+            positions.extend([v[0], v[1], z]);
+        }
+    }
+    let mut indices: Vec<u32> = vec![0, 2, 1, 0, 3, 2]; // floor, wound down
+    for k in 0..4u32 {
+        let (a, b) = (k, (k + 1) % 4);
+        indices.extend([a, b, b + 4, a, b + 4, a + 4]); // walls
+    }
+    indices.extend([8, 9, 10, 8, 10, 11]); // lid, off the RAISED copies
+    Mesh { positions, indices, ..Default::default() }
+}
+
+/// The blind spot [`HostRow::vol`]'s gate has, measured rather than asserted
+/// (#3422, raised in review on #3867).
+///
+/// `stats.open == 0` is the gate, and it is read off a walk that quantizes
+/// positions to a 1 mm GRID. `mesh_volume` integrates positions `mesh_to_tris`
+/// snapped to 1/65536 m. So a crack under half a snap bucket lands both of its
+/// sides in one grid cell, the edges pair, the host reads watertight — and the
+/// surface handed to the divergence sum is still open. The reading then carries
+/// the crack as an offset, and this test pins its size against the column's own
+/// 1 cm³ tolerance so nobody has to take the claim on trust.
+///
+/// The second arm is where the blind spot ENDS: at 0.9 mm the two sides fall in
+/// different cells, the walk sees the tear, and no volume is taken at all. The
+/// gap between the arms is the whole of the exposure — sub-half-bucket cracks,
+/// nothing wider.
+#[test]
+fn a_sub_millimetre_crack_reads_watertight_but_shifts_the_volume() {
+    let sealed = cracked_cube(0.0);
+    assert_eq!(edge_stats(&sealed).open, 0, "the sealed cube must be watertight");
+    let truth = volume_cm3(&sealed);
+    assert_eq!(truth, 1_000_000, "a unit cube is 1 m³");
+
+    // Under half the 1 mm bucket: invisible to the gate, visible in the sum.
+    let cracked = cracked_cube(0.0004);
+    assert_eq!(
+        edge_stats(&cracked).open,
+        0,
+        "a 0.4 mm slit is inside one snap bucket, so the census reads it watertight"
+    );
+    let off = (volume_cm3(&cracked) - truth).abs();
+    // Bounded ABOVE by the naive band term (the slit width times the lid area,
+    // 4e-4 m³ = 400 cm³), and far above the 1 cm³ tolerance this column diffs
+    // at — so the offset is real, not rounding, and its scale is the crack's.
+    assert!(
+        (100..=400).contains(&off),
+        "a 0.4 mm slit should shift the reading by ~a third of the 400 cm³ band term, got {off}"
+    );
+
+    // Over half the bucket: the gate catches it and takes no reading.
+    assert!(
+        edge_stats(&cracked_cube(0.0009)).open > 0,
+        "a 0.9 mm slit crosses the snap bucket, so the census must see it as torn"
+    );
+}
+
+/// One census row from a host's void-applied mesh. Every column that is a
+/// reading OF THAT MESH is derived here and nowhere else, so a test that
+/// builds a row from a mesh cannot drift from the sweep; `alt` and `pre` are
+/// second processing passes and stay with the caller, which has already read
+/// `stats` to decide whether `pre` is taken.
+fn row_from_mesh(
+    model: &str,
+    id: u32,
+    rep: String,
+    mesh: &Mesh,
+    stats: &EdgeStats,
+    alt: Option<usize>,
+    pre: PreVoid,
+) -> HostRow {
+    HostRow {
+        model: model.to_string(),
+        id,
+        rep,
+        open: stats.open,
+        strict: stats.strict,
+        tris: mesh.indices.len() / 3,
+        collapsed: stats.degenerate > 0,
+        far: max_abs_coord(mesh) >= F32_SAFE_MAGNITUDE,
+        alt,
+        pre,
+        // The mirror of `pre`: taken exactly where that one is not. Same
+        // SIGNED trigger, for the same reason.
+        vol: (stats.open == 0).then(|| volume_cm3(mesh)),
+    }
+}
+
+/// The golden a lane compares against, or that a bless overwrites.
+///
+/// Outside a bless an unreadable golden is fatal, whatever the reason: a lane
+/// that carried on would be measuring against nothing.
+///
+/// In bless mode exactly ONE failure is tolerated, and it is the one a
+/// column-adding change creates: [`census_golden::ParseError::Schema`], EVERY
+/// row on disk having exactly one column fewer than `parse` demands (#3397,
+/// #3422). `parse` identifies that shape positively rather than inferring it
+/// from any row-shape failure, so an arbitrary wrong column count — a
+/// truncated write, a mangled merge, one stray tab — is `Malformed` and stays
+/// fatal here.
+/// Its rows are intact but cannot be reused without inventing the new column,
+/// so the lane discards them and says so; every swept model is rewritten from
+/// this run, and a model NOT swept has no rows to keep, which the bless line's
+/// `kept` count shows. Before this the only way past the parse was the run
+/// report under `target/`, which the heavy lane does not write.
+///
+/// Every OTHER failure — a bad number, an unreadable flag, a truncated write,
+/// a mangled merge — is fatal in bless mode too. Treating it as an empty
+/// golden would be the absence-reads-as-success shape: in the heavy lane the
+/// two fixtures share one file and each blesses only its own model's rows, so
+/// a bless of ISSUE_053 against a file carrying one corrupt ISSUE_068 row
+/// would silently write a golden missing all 363 of that model's rows, taking
+/// the #3435 tear pin with them. `parse` separates the two classes so this
+/// function can refuse the second one.
+fn read_golden(path: &std::path::Path, bless: bool) -> Vec<HostRow> {
+    let text = std::fs::read_to_string(path).unwrap_or_default();
+    match census_golden::parse(&text) {
+        Ok(rows) => rows,
+        Err(e @ census_golden::ParseError::Schema { .. }) if bless => {
+            println!(
+                "\nBLESS WITHOUT COMPARISON: {} does not parse under the current golden \
+                 schema ({e}). Its rows cannot be compared or kept, so every swept model \
+                 is written from this run alone.",
+                path.display()
+            );
+            Vec::new()
+        }
+        Err(e @ census_golden::ParseError::Malformed(_)) => panic!(
+            "{} is CORRUPT, not merely on an older schema ({e}). A bless will not treat \
+             this as an empty golden: the rows it would silently drop include every model \
+             this run does not sweep. Fix or restore the file first.",
+            path.display()
+        ),
+        Err(e) => panic!("{} is unreadable: {e}", path.display()),
+    }
+}
+
+/// A golden one column short — the file every column-adding change leaves on
+/// disk. A measuring run must die on it (comparing against nothing certifies
+/// nothing); a bless must keep none of its rows, which cannot be reused
+/// without inventing the missing column. One fixture for both arms, so they
+/// cannot drift onto different inputs, removed before either assertion so a
+/// failure does not leak it.
+#[test]
+fn a_golden_one_column_short_kills_a_measuring_run_and_is_kept_by_no_bless() {
+    let path = std::env::temp_dir().join(format!("ifc-lite-3422-{}.tsv", std::process::id()));
+    std::fs::write(
+        &path,
+        "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\na.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\n",
+    )
+    .expect("write the old-schema golden");
+    let measuring = std::panic::catch_unwind(|| read_golden(&path, false));
+    let blessing = std::panic::catch_unwind(|| read_golden(&path, true));
+    let _ = std::fs::remove_file(&path);
+
+    let err = measuring.expect_err("a measuring run must die on a golden one column short");
+    let text = err.downcast_ref::<String>().cloned().unwrap_or_default();
+    assert!(text.contains("expected 11 columns, got 10"), "{text}");
+    let rows = blessing.expect("a bless must tolerate a golden one column short");
+    assert!(rows.is_empty(), "an old-schema row was kept: {rows:?}");
+}
+
+/// The other half of the same rule (#3422). A golden that is CORRUPT rather
+/// than merely on an older schema is fatal in BOTH modes: the rows a bless
+/// would discard include every model this run does not sweep, and in the heavy
+/// lane, where two fixtures share one file, that is 363 rows and the #3435
+/// tear pin.
+///
+/// The fixture is the schema-short row from the test above with the new column
+/// present and unreadable, so the ONLY difference between the two is the class
+/// of failure, not the file's shape. Without the split in
+/// `census_golden::ParseError` this test passes an empty `Vec` back and writes
+/// a golden missing the other model.
+#[test]
+fn a_bless_refuses_a_corrupt_golden_instead_of_treating_it_as_empty() {
+    let path =
+        std::env::temp_dir().join(format!("ifc-lite-3422-corrupt-{}.tsv", std::process::id()));
+    std::fs::write(
+        &path,
+        "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\tvol\n\
+         a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\tnot-a-number\n",
+    )
+    .expect("write the corrupt golden");
+    let measuring = std::panic::catch_unwind(|| read_golden(&path, false));
+    let blessing = std::panic::catch_unwind(|| read_golden(&path, true));
+    let _ = std::fs::remove_file(&path);
+
+    for (mode, outcome) in [("measuring", measuring), ("blessing", blessing)] {
+        let Err(err) = outcome else {
+            panic!("a corrupt golden must be fatal in {mode} mode");
+        };
+        let text = err.downcast_ref::<String>().cloned().unwrap_or_default();
+        assert!(text.contains("is CORRUPT, not merely on an older schema"), "{mode}: {text}");
+        assert!(text.contains("bad volume"), "{mode}: {text}");
+        // And it must NOT be described as a schema change, or the reader
+        // reaches for the bless command that would destroy the file.
+        assert!(!text.contains("BLESS WITHOUT COMPARISON"), "{mode}: {text}");
+    }
+}
+
 /// The host, then the reasons that moved it. The one definition of that shape
 /// for the four buckets that carry a [`Delta`], so their print lines and their
 /// failure texts cannot drift apart. `missing` and `added` carry a bare
@@ -517,6 +739,33 @@ fn fmt_delta(d: &Delta) -> String {
 /// One indented line per delta, for a failure message.
 fn fmt_deltas(ds: &[Delta]) -> String {
     ds.iter().map(|d| format!("  {}", fmt_delta(d))).collect::<Vec<_>>().join("\n")
+}
+
+/// Every bucket, each host named, in one place for both lanes: the census
+/// lane's comment above its call says why every bucket prints before any
+/// assert. One definition so adding a bucket is one edit, not one per lane.
+fn print_buckets(diff: &census_golden::Diff) {
+    for d in &diff.improved {
+        println!("  IMPROVED  {}", fmt_delta(d));
+    }
+    for d in &diff.regressed {
+        println!("  REGRESSED  {}", fmt_delta(d));
+    }
+    for r in &diff.missing {
+        println!("  COVERAGE LOSS  {}", fmt_host(r));
+    }
+    for d in &diff.retessellated {
+        println!("  RETESSELLATED  {}", fmt_delta(d));
+    }
+    for d in &diff.volume_moved {
+        println!("  VOLUME MOVED  {}", fmt_delta(d));
+    }
+    for r in &diff.added {
+        println!("  ADDED  {}", fmt_host(r));
+    }
+    for d in &diff.changed {
+        println!("  RECLASSIFIED  {}", fmt_delta(d));
+    }
 }
 
 fn fmt_host(r: &HostRow) -> String {
@@ -578,19 +827,34 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
                     None => PreVoid::Failed,
                 }
             };
-            rows.push(HostRow {
-                model: rel.clone(),
+            rows.push(row_from_mesh(
+                rel,
                 id,
-                rep: representation_type(&content, &lines, id),
-                open,
-                strict: stats.strict,
-                tris: base.indices.len() / 3,
-                collapsed: stats.degenerate > 0,
-                far: max_abs_coord(&base) >= F32_SAFE_MAGNITUDE,
-                alt: alt.as_ref().map(open_boundary_edges),
+                representation_type(&content, &lines, id),
+                &base,
+                &stats,
+                alt.as_ref().map(open_boundary_edges),
                 pre,
-            });
+            ));
         }
+    }
+
+    // #3422: the wiring rule, asserted on every row this walk produces so both
+    // lanes inherit it. A sweep that stopped taking the reading would diff
+    // `Some` against `None`, which `classify` reads as "one reading is not a
+    // comparison", so every watertight host would read unchanged and the
+    // column would go dark with nothing failing; the golden pin in
+    // `census_golden` only proves the reading was taken once.
+    for r in &rows {
+        assert!(
+            r.volume_is_wired(),
+            "{} #{}: vol {:?} with open {} — the sweep takes the reading exactly where \
+             the host is watertight",
+            r.model,
+            r.id,
+            r.vol,
+            r.open
+        );
     }
 
     (rows, swept_models)
@@ -837,16 +1101,13 @@ fn watertightness_census_and_triangulator_invariance() {
         run.hosts
     );
 
-    let golden_path = crate_dir().join(GOLDEN_PATH);
-    let golden_text = std::fs::read_to_string(&golden_path).unwrap_or_default();
-    let golden = census_golden::parse(&golden_text)
-        .unwrap_or_else(|e| panic!("{} is unreadable: {e}", golden_path.display()));
-
     let bless = census_golden::bless_mode(
         std::env::var_os(BLESS_ENV).is_some(),
         std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "0" && v != "false"),
     )
     .unwrap_or_else(|e| panic!("{e}"));
+    let golden_path = crate_dir().join(GOLDEN_PATH);
+    let golden = read_golden(&golden_path, bless);
 
     if bless {
         // Preserve the rows of models this run did NOT sweep, so blessing on a
@@ -904,36 +1165,22 @@ fn watertightness_census_and_triangulator_invariance() {
         "  ... called a re-tessellation, in any bucket: {}",
         diff.shrank_while_healing
     );
+    println!(
+        "volume moved (watertight both sides, enclosed volume differs): {}",
+        diff.volume_moved.len()
+    );
     println!("improved  : {}", diff.improved.len());
     // EVERY bucket names its hosts HERE, before any assert, `regressed`
     // included even though its assert happens to run first. The asserts run
-    // regressed -> missing -> retessellated -> added -> changed and the FIRST
-    // failure panics, so any bucket that only names its hosts inside its own
-    // assert is a bare count whenever an earlier one fails. Keeping all six in
-    // this block means reordering the asserts cannot silently cost a bucket its
-    // host names.
+    // one bucket at a time and the FIRST failure panics, so any bucket that
+    // only names its hosts inside its own assert is a bare count whenever an
+    // earlier one fails. Keeping every bucket in `print_buckets` means
+    // reordering the asserts cannot silently cost a bucket its host names.
     //
     // The run that motivated this is the one where several buckets are
     // non-empty at once: whatever stays in `regressed` panics first, and every
     // host that shrank while healing would otherwise show up only as a count.
-    for d in &diff.improved {
-        println!("  IMPROVED  {}", fmt_delta(d));
-    }
-    for d in &diff.regressed {
-        println!("  REGRESSED  {}", fmt_delta(d));
-    }
-    for r in &diff.missing {
-        println!("  COVERAGE LOSS  {}", fmt_host(r));
-    }
-    for d in &diff.retessellated {
-        println!("  RETESSELLATED  {}", fmt_delta(d));
-    }
-    for r in &diff.added {
-        println!("  ADDED  {}", fmt_host(r));
-    }
-    for d in &diff.changed {
-        println!("  RECLASSIFIED  {}", fmt_delta(d));
-    }
+    print_buckets(&diff);
 
     // Not a failure: `MIN_MODELS` sits under the corpus precisely so a failed
     // fixture fetch does not red the build, and a model that did not load has no
@@ -1000,12 +1247,28 @@ fn watertightness_census_and_triangulator_invariance() {
     // able to tell "this tore" from "this shrank while healing".
     assert!(
         diff.retessellated.is_empty(),
-        "{} host(s) RE-TESSELLATED: fewer triangles AND fewer open edges. Usually \
-         a cut that stopped over-extending, but the test is magnitude-blind - a \
-         near-total loss on a torn host also lands here, so CHECK THE SHRINK \
-         before blessing. If the shrink is intended, re-bless:\n  {BLESS_CMD}\n{}",
+        "{} host(s) RE-TESSELLATED: fewer triangles with fewer open edges on a \
+         torn host, or at unchanged enclosed volume on a watertight one. Usually \
+         a cut that stopped over-extending or a mesher change. On a TORN host the \
+         test is magnitude-blind - a near-total loss also lands here, so CHECK \
+         THE SHRINK before blessing. If the shrink is intended, re-bless:\n  \
+         {BLESS_CMD}\n{}",
         diff.retessellated.len(),
         fmt_deltas(&diff.retessellated)
+    );
+
+    // Separated from both of the above (#3422): the enclosed volume of a
+    // watertight host moved, which no count sees when the topology holds. The
+    // message carries why neither direction is a verdict.
+    assert!(
+        diff.volume_moved.is_empty(),
+        "{} host(s) moved in ENCLOSED VOLUME while watertight on both sides. \
+         Neither direction is a verdict: less volume is an over-cut growing or a \
+         void that was silently skipped now applying; more is a healed over-cut \
+         or a void that stopped applying. Read the percentage against what the \
+         change was meant to do, then re-bless:\n  {BLESS_CMD}\n{}",
+        diff.volume_moved.len(),
+        fmt_deltas(&diff.volume_moved)
     );
 
     assert!(
@@ -1122,6 +1385,58 @@ fn unit_cube() -> Mesh {
     m
 }
 
+/// `n` disjoint doubled sheets: one triangle and its reverse, side by side.
+///
+/// The shape the volume column cannot read (#3422). The signed balance
+/// certifies it watertight — every undirected edge is used once forward and
+/// once reverse — and the divergence sum over a surface that encloses nothing
+/// is exactly 0, so a census row for it carries `open = 0`, `strict = 0` and
+/// `vol = Some(0)`. Real hosts of this shape exist: a wall modelled as a
+/// zero-thickness face, a duplicated shell that cancels itself.
+fn doubled_sheets(n: usize) -> Mesh {
+    let mut m = Mesh::default();
+    for i in 0..n {
+        let (b, x) = ((m.positions.len() / 3) as u32, i as f32 * 4.0);
+        m.positions.extend_from_slice(&[x, 0.0, 0.0, x + 1.0, 0.0, 0.0, x, 1.0, 0.0]);
+        m.indices.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 1]);
+    }
+    m
+}
+
+/// #3422, the zero-volume hole in the volume column's own routing. A host that
+/// loses HALF its sheets is watertight on both sides and reads 0 cm³ on both,
+/// so "the enclosed volume did not change" is true and says nothing. Routing
+/// the triangle drop on it filed a vanished component as a friendly
+/// re-tessellation.
+///
+/// Measured through `row_from_mesh`, the sweep's own row builder, so the zero
+/// is the reading the sweep would take and not a synthetic one.
+#[test]
+fn a_watertight_host_reading_zero_volume_is_not_re_tessellated_when_it_shrinks() {
+    let swept: BTreeSet<String> = ["sheets.ifc".to_string()].into_iter().collect();
+    let row = |m: &Mesh| {
+        let s = edge_stats(m);
+        row_from_mesh("sheets.ifc", 1, "Brep".into(), m, &s, Some(s.open), PreVoid::NotTaken)
+    };
+    let (before, after) = (row(&doubled_sheets(2)), row(&doubled_sheets(1)));
+
+    // The premise: watertight by both rules on both sides, and zero volume on
+    // both, with half the mesh gone.
+    for (what, r) in [("before", &before), ("after", &after)] {
+        assert_eq!(r.open, 0, "{what}: the signed balance certifies a doubled sheet");
+        assert_eq!(r.strict, 0, "{what}: and so does the strict rule, on disjoint sheets");
+        assert_eq!(r.vol, Some(0), "{what}: a surface enclosing nothing reads 0 cm³");
+    }
+    assert_eq!((before.tris, after.tris), (4, 2), "half the mesh must be gone");
+
+    let d = census_golden::diff(&[before], &[after], &swept);
+    assert_eq!(d.regressed.len(), 1, "a vanished sheet is geometry lost");
+    assert!(d.retessellated.is_empty(), "not a re-tessellation: there is no volume to be unchanged");
+    assert!(d.volume_moved.is_empty(), "and 0 -> 0 is not a move either");
+    let reasons = d.regressed[0].reasons.join("; ");
+    assert!(reasons.contains("triangles 4 -> 2 (geometry lost)"), "{reasons}");
+}
+
 /// [`unit_cube`] with one existing face triangle re-emitted AND its reverse.
 ///
 /// Every position is already in the mesh, so this adds no boundary at all: the
@@ -1193,6 +1508,230 @@ fn a_snap_collapsed_triangle_is_skipped_by_both_readings() {
     assert_eq!(s.degenerate, 1, "the collapsed triangle is counted");
     assert_eq!(s.open, 0, "and contributes no unbalanced edge");
     assert_eq!(s.strict, 0, "nor any strict violation, or every far-field host would gain some");
+}
+
+/// One 2.0 x 0.1 x 3.0 m panel with one rectangular opening through it, twice:
+/// wall #50 with the opening as authored (0.5 x 1.0 m), wall #150 with the
+/// SAME opening scaled by `scale` in its own plane, centre unmoved. That is
+/// the #3219 shape as a fixture: an opening cut larger than authored, on a
+/// host that is watertight either way.
+fn over_cut_fixture(scale: f64) -> String {
+    let (w, h) = (0.5 * scale, 1.0 * scale);
+    let z0 = 1.5 - h / 2.0;
+    format!(
+        r##"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('#3422 over-cut census probe'),'2;1');
+FILE_NAME('overcut.ifc','2026-09-03T00:00:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#2=IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCDIRECTION((0.,0.,1.));
+#7=IFCDIRECTION((1.,0.,0.));
+#8=IFCAXIS2PLACEMENT3D(#5,#6,#7);
+#10=IFCUNITASSIGNMENT((#11));
+#11=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#8,$);
+#1=IFCPROJECT('0proj0000000000000001',#2,'P',$,$,$,$,(#20),#10);
+#30=IFCLOCALPLACEMENT($,#8);
+#40=IFCCARTESIANPOINT((0.,0.));
+#41=IFCDIRECTION((1.,0.));
+#42=IFCAXIS2PLACEMENT2D(#40,#41);
+/* --- wall #50: the panel, opening as authored --- */
+#43=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,2.,0.1);
+#44=IFCEXTRUDEDAREASOLID(#43,#8,#6,3.);
+#45=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#44));
+#46=IFCPRODUCTDEFINITIONSHAPE($,$,(#45));
+#50=IFCWALLSTANDARDCASE('authoredwall00000001',#2,'wall',$,$,#30,#46,'t1');
+/* opening 0.5 wide x 0.3 deep, z from 1.0 to 2.0: centre (0, 0, 1.5) */
+#60=IFCCARTESIANPOINT((0.,0.,1.));
+#61=IFCAXIS2PLACEMENT3D(#60,#6,#7);
+#62=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,0.5,0.3);
+#63=IFCEXTRUDEDAREASOLID(#62,#61,#6,1.);
+#64=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#63));
+#65=IFCPRODUCTDEFINITIONSHAPE($,$,(#64));
+#66=IFCOPENINGELEMENT('authoredopening00001',#2,'op',$,$,#30,#65,'t2');
+#70=IFCRELVOIDSELEMENT('authoredvoid0000001',#2,$,$,#50,#66);
+/* --- wall #150: the same panel, opening scaled about its centre --- */
+#143=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,2.,0.1);
+#144=IFCEXTRUDEDAREASOLID(#143,#8,#6,3.);
+#145=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#144));
+#146=IFCPRODUCTDEFINITIONSHAPE($,$,(#145));
+#150=IFCWALLSTANDARDCASE('overcutwall000000001',#2,'wall',$,$,#30,#146,'t3');
+#160=IFCCARTESIANPOINT((0.,0.,{z0:?}));
+#161=IFCAXIS2PLACEMENT3D(#160,#6,#7);
+#162=IFCRECTANGLEPROFILEDEF(.AREA.,'',#42,{w:?},0.3);
+#163=IFCEXTRUDEDAREASOLID(#162,#161,#6,{h:?});
+#164=IFCSHAPEREPRESENTATION(#20,'Body','SweptSolid',(#163));
+#165=IFCPRODUCTDEFINITIONSHAPE($,$,(#164));
+#166=IFCOPENINGELEMENT('overcutopening000001',#2,'op',$,$,#30,#165,'t4');
+#170=IFCRELVOIDSELEMENT('overcutvoid00000001',#2,$,$,#150,#166);
+ENDSEC;
+END-ISO-10303-21;"##
+    )
+}
+
+/// #3422. The census row vocabulary before this change (`open`, `strict`,
+/// `tris`, `coll`, `far`, `alt`, `pre`) is COUNTS and FLAGS over topology, and
+/// the golden is a ceiling: a host may get better for free. An opening cut
+/// larger than authored on a watertight host, the #3219 shape, reads one of
+/// two ways under that vocabulary, and both are green:
+///
+/// - at 1.4x every count holds and the pair is an IDENTICAL row;
+/// - at 1.6x the cutter emits MORE triangles, and a grown `tris` files under
+///   `improved`, which requires no bless.
+///
+/// Measured on the pipeline rather than on synthetic rows: both walls go
+/// through the `process` / `edge_stats` / `max_abs_coord` path the sweep uses,
+/// and the two rows are then diffed as golden and run. Only the enclosed
+/// volume separates them, and only the volume column makes the pair require a
+/// bless.
+///
+/// Runs in the default `cargo test`: it needs no fixture and no alternate
+/// triangulator.
+#[test]
+fn an_over_cut_on_a_watertight_host_requires_a_bless() {
+    let swept: BTreeSet<String> = ["overcut.ifc".to_string()].into_iter().collect();
+
+    for (scale, tris_grow) in [(1.4, false), (1.6, true)] {
+        let ifc = over_cut_fixture(scale);
+        let voids = void_index(&ifc);
+        let authored = process(&ifc, 50, &voids).expect("authored wall meshes");
+        let over_cut = process(&ifc, 150, &voids).expect("over-cut wall meshes");
+
+        let (a, b) = (edge_stats(&authored), edge_stats(&over_cut));
+        // The rows exactly as the sweep records a host, through the same
+        // builder, so this test measures the sweep's own row and not a copy.
+        let row = |mesh: &Mesh, s: &EdgeStats| {
+            row_from_mesh("overcut.ifc", 1, "SweptSolid".into(), mesh, s, Some(s.open), PreVoid::NotTaken)
+        };
+        let (wired_a, wired_b) = (row(&authored, &a), row(&over_cut, &b));
+        // Both must be WATERTIGHT, or this probes the torn-host rules instead.
+        assert_eq!(wired_a.open, 0, "{scale}x: authored wall must be watertight");
+        assert_eq!(wired_b.open, 0, "{scale}x: over-cut wall must be watertight");
+        assert_eq!(wired_a.strict, wired_b.strict, "{scale}x: strict");
+        assert_eq!(wired_a.collapsed, wired_b.collapsed, "{scale}x: collapsed");
+        assert_eq!(wired_a.far, wired_b.far, "{scale}x: far");
+        // The one count that CAN move, pinned per scale so the test says which
+        // green reading it is exercising. If either arm flips, the fixture has
+        // stopped demonstrating that reading and the test must say so rather
+        // than pass on the other one.
+        let (ta, tb) = (wired_a.tris, wired_b.tris);
+        if tris_grow {
+            assert!(tb > ta, "{scale}x: expected MORE triangles, got {ta} -> {tb}");
+        } else {
+            assert_eq!(ta, tb, "{scale}x: expected the same triangle count");
+        }
+
+        // The volume is what differs. Panel 2.0 x 0.1 x 3.0 = 0.6 m³, less the
+        // opening 0.5 x 0.1 x 1.0 = 0.05 m³ authored and 0.05 * scale² over-cut.
+        // Read to within the primitive's documented quantization floor —
+        // `mesh_to_tris` snaps every coordinate to 1/65536 m, so the reading
+        // drifts by up to surface_area * SNAP_GRID, about 14 m² * 15.3 µm =
+        // 210 cm³ here — never to the exact figure, which the 0.05 m faces
+        // (not grid-representable) would miss by a few tens of cm³.
+        const SNAP_NOISE_CM3: i64 = 250;
+        let (va, vb) = (
+            wired_a.vol.expect("watertight, so the sweep takes the reading"),
+            wired_b.vol.expect("watertight, so the sweep takes the reading"),
+        );
+        assert_eq!(va.signum(), vb.signum(), "{scale}x: both walls wound the same way");
+        assert!(
+            (va.abs() - 550_000).abs() <= SNAP_NOISE_CM3,
+            "{scale}x: authored 0.55 m³, read {va} cm³"
+        );
+        let want_drop = (50_000.0 * (scale * scale - 1.0)) as i64;
+        let drop = va.abs() - vb.abs();
+        assert!(
+            (drop - want_drop).abs() <= SNAP_NOISE_CM3,
+            "{scale}x: over-cut removes {want_drop} cm³ more, read {drop}"
+        );
+
+        // The pre-#3422 census: the over-cut requires no bless either way.
+        let blind = census_golden::diff(
+            &[HostRow { vol: None, ..wired_a.clone() }],
+            &[HostRow { vol: None, ..wired_b.clone() }],
+            &swept,
+        );
+        assert!(
+            !blind.requires_bless(),
+            "{scale}x: without a volume column the census sees nothing to bless"
+        );
+        if tris_grow {
+            assert_eq!(blind.improved.len(), 1, "{scale}x: and calls the over-cut an improvement");
+            let reasons = blind.improved[0].reasons.join("; ");
+            assert!(reasons.contains("(improved)"), "{reasons}");
+        } else {
+            assert!(blind.improved.is_empty(), "{scale}x: the over-cut is an identical row");
+        }
+
+        // With the column, the pair is a volume move and the golden must absorb it.
+        let seen = census_golden::diff(&[wired_a], &[wired_b], &swept);
+        assert!(
+            seen.requires_bless(),
+            "{scale}x: an opening cut larger than authored left the census green"
+        );
+        assert_eq!(seen.volume_moved.len(), 1, "{scale}x: the over-cut files as a volume move");
+        assert!(seen.regressed.is_empty() && seen.improved.is_empty(), "{scale}x");
+        let reasons = seen.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains(&format!("enclosed volume {va} -> {vb} cm³")), "{reasons}");
+    }
+}
+
+/// What ONE vertex rounding the other way costs the reading (#3422), measured
+/// rather than argued. `census_golden::volume_tolerance_cm3`'s doc invokes this
+/// difference to justify a tolerance, and the number it originally quoted ("a
+/// real cm³ or two") is an order of magnitude under what the shape actually
+/// gives, so the figure is pinned here instead of asserted there.
+///
+/// The shift from moving one vertex by one snap step is the incident triangle
+/// area times the step over three: it grows with the FACE, not with the host's
+/// volume, which is why the tolerance's 1e-6 relative term does not track it.
+///
+/// The second arm is the part that makes the first one meaningful: shifting
+/// EVERY vertex by the same step moves the reading by nothing, because a
+/// grid-aligned translation is exact. Only independent re-rounding costs
+/// anything, which is exactly the platform-difference case.
+#[test]
+fn one_vertex_rounding_the_other_way_moves_the_reading_by_more_than_the_tolerance() {
+    const STEP: f32 = 1.0 / 65536.0;
+    let ifc = over_cut_fixture(1.4);
+    let voids = void_index(&ifc);
+    let mesh = process(&ifc, 50, &voids).expect("authored wall meshes");
+    let base = volume_cm3(&mesh);
+
+    let mut worst = 0i64;
+    for v in 0..mesh.positions.len() / 3 {
+        for axis in 0..3 {
+            let mut m = mesh.clone();
+            m.positions[v * 3 + axis] += STEP;
+            worst = worst.max((volume_cm3(&m) - base).abs());
+        }
+    }
+    // The measurement, bounded on BOTH sides. Too small and the claim above is
+    // wrong in the other direction; too large and the panel has changed shape.
+    assert!(
+        (4..=40).contains(&worst),
+        "one vertex, one snap step, on a {base} cm³ panel: expected a shift of \
+         a few cm³, got {worst}"
+    );
+    // The point of the number: it is well OVER the tolerance the column diffs
+    // at, so this really is a way for the census lane to red with no defect.
+    assert!(
+        worst > census_golden::volume_tolerance_cm3(base),
+        "a single flipped vertex ({worst} cm³) must exceed the tolerance ({}) for the \
+         doc's correction to be the right one",
+        census_golden::volume_tolerance_cm3(base)
+    );
+
+    // A uniform shift is a translation, and the grid is closed under it.
+    let mut all = mesh.clone();
+    for x in all.positions.iter_mut() {
+        *x += STEP;
+    }
+    assert_eq!(volume_cm3(&all), base, "a grid-aligned translation must be exact");
 }
 
 /* -------------------------------------------------------------------- *
@@ -1375,16 +1914,13 @@ fn run_heavy_lane(model: &str, min_hosts: usize) -> Option<census_golden::Totals
         run.hosts
     );
 
-    let golden_path = crate_dir().join(HEAVY_GOLDEN_PATH);
-    let golden_text = std::fs::read_to_string(&golden_path).unwrap_or_default();
-    let golden = census_golden::parse(&golden_text)
-        .unwrap_or_else(|e| panic!("{} is unreadable: {e}", golden_path.display()));
-
     let bless = census_golden::bless_mode(
         std::env::var_os(BLESS_ENV).is_some(),
         std::env::var_os("CI").is_some_and(|v| !v.is_empty() && v != "0" && v != "false"),
     )
     .unwrap_or_else(|e| panic!("{e}"));
+    let golden_path = crate_dir().join(HEAVY_GOLDEN_PATH);
+    let golden = read_golden(&golden_path, bless);
 
     if bless {
         // Keeping the rows of models this run did not sweep is what lets the
@@ -1428,25 +1964,9 @@ fn run_heavy_lane(model: &str, min_hosts: usize) -> Option<census_golden::Totals
     // bucket can read 0 on the very run it exists for, when a reclassification
     // outranks it, and this tally is the only thing that says so.
     println!("  of which shrank while healing: {}", diff.shrank_while_healing);
+    println!("volume moved: {}", diff.volume_moved.len());
     println!("improved  : {}", diff.improved.len());
-    for d in &diff.improved {
-        println!("  IMPROVED  {}", fmt_delta(d));
-    }
-    for d in &diff.regressed {
-        println!("  REGRESSED  {}", fmt_delta(d));
-    }
-    for r in &diff.missing {
-        println!("  COVERAGE LOSS  {}", fmt_host(r));
-    }
-    for d in &diff.retessellated {
-        println!("  RETESSELLATED  {}", fmt_delta(d));
-    }
-    for r in &diff.added {
-        println!("  ADDED  {}", fmt_host(r));
-    }
-    for d in &diff.changed {
-        println!("  RECLASSIFIED  {}", fmt_delta(d));
-    }
+    print_buckets(&diff);
 
     assert!(
         diff.regressed.is_empty(),
@@ -1463,9 +1983,8 @@ fn run_heavy_lane(model: &str, min_hosts: usize) -> Option<census_golden::Totals
     );
     assert!(
         !diff.requires_bless(),
-        "the diff against {HEAVY_GOLDEN_PATH} requires a bless (added, reclassified, or \
-         re-tessellated rows present) — review the buckets printed above, then:\n  \
-         {HEAVY_BLESS_CMD}"
+        "the diff against {HEAVY_GOLDEN_PATH} requires a bless — review the buckets \
+         printed above, then:\n  {HEAVY_BLESS_CMD}"
     );
 
     Some(run)

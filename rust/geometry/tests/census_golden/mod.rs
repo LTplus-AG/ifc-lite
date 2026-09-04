@@ -125,9 +125,77 @@ pub struct HostRow {
     /// See [`PreVoid`]. Diagnostic: carried so the origin split and the
     /// closed-solid expectation are derivable from the golden, never compared.
     pub pre: PreVoid,
+    /// Signed enclosed volume in whole cm³ (#3422), the one MAGNITUDE the row
+    /// carries. `None` where the host is torn.
+    ///
+    /// Taken only where `open == 0`, the mirror of `pre`, which is taken only
+    /// where it is not. The divergence theorem the sum implements requires a
+    /// closed surface, so on a torn host the number is not a volume at all: it
+    /// is a function of where the boundary happens to be, and two such readings
+    /// compared say nothing about whether material left. Checking one in would
+    /// be bless churn with no interpretable verdict. NOT because it would be
+    /// translation-variant — `mesh_volume` sums about the mesh's own AABB
+    /// centre, and `mesh_volume_is_stable_far_from_the_world_origin_for_an_open_mesh`
+    /// pins that even an open reading holds to the snap-grid noise floor across
+    /// a 10 km offset.
+    ///
+    /// CLOSED HERE MEANS CLOSED AT THE CENSUS SNAP, which is weaker than closed
+    /// at the resolution the divergence sum runs at, and the gap is a real
+    /// exposure rather than a rounding detail (raised in review on #3867).
+    /// `edge_stats` pairs edges on a 1 mm position GRID; `mesh_volume`
+    /// integrates positions `mesh_to_tris` snapped to 1/65536 m. A crack under
+    /// half a snap bucket therefore lands both its sides in one cell, reads
+    /// `open == 0`, and still leaves the surface handed to the sum open, so the
+    /// reading carries that crack as an offset — measured, not asserted, by
+    /// `a_sub_millimetre_crack_reads_watertight_but_shifts_the_volume`, which
+    /// also pins where the blind spot ends.
+    ///
+    /// It is tolerable because this column is only ever read DIFFERENTIALLY:
+    /// golden against run, same host, same code path, through
+    /// `volume_reading_moved` and `volume_magnitude_cmp` and never as a claim
+    /// about the host's true volume. An unchanged crack cancels; a changed one
+    /// is a real change in the mesh, and it is REPORTED rather than absorbed.
+    ///
+    /// Gating on closure at the sum's own resolution is NOT the remedy, and the
+    /// reason is the same f32 limit `far` and `F32_SAFE_MAGNITUDE` are about.
+    /// `Mesh.positions` is f32, whose step is already ~0.12 mm at this census's
+    /// magnitude ceiling and ~3 cm at UTM scale — coarser than 1/65536 m either
+    /// way — so vertices meant to coincide cannot be relied on to agree any
+    /// closer than that. A 15 µm pairing rule would therefore read hosts as
+    /// torn for the storage format's reasons rather than the boolean's and take
+    /// the column dark on the population it exists to measure. (A derivation
+    /// from the f32 step, not a sweep: the corpus is not fetched here.) The
+    /// 1 mm grid is the finest topology these positions carry, which is why the
+    /// edge walk uses it and why the gate is stated at that resolution.
+    ///
+    /// On a surface closed at that resolution it is a real volume, and it
+    /// answers the question no count in this row can:
+    /// at `open 0 -> 0` a triangle drop is loss or a cut that stopped
+    /// over-removing, and an opening cut larger than authored — the #3219
+    /// shape — moves no count at all, or only grows `tris`, which is green.
+    ///
+    /// SIGNED because IFC winding is not reliably outward and the sweep does
+    /// not orient the host; an inward-wound solid reads negative. The magnitude
+    /// comparisons in `classify` use the absolute value, and a sign flip alone
+    /// is still a difference the golden must absorb.
+    ///
+    /// A whole cm³ rather than a float, so two platforms that produce the same
+    /// mesh produce the same integer and the golden diffs exactly. The reading
+    /// comes off `kernel::mesh_volume`, which sums about the mesh's own AABB
+    /// centre over the same f32 positions the edge walk reads, so on a
+    /// far-field host it carries that host's f32 quantization and nothing
+    /// else; `far` is named in the reason where it applies.
+    pub vol: Option<i64>,
 }
 
 impl HostRow {
+    /// The #3422 wiring rule, in one place: the volume reading exists exactly
+    /// where the host is watertight. `sweep` asserts it on every row it
+    /// produces, and the golden pin below asserts it on every row checked in.
+    pub fn volume_is_wired(&self) -> bool {
+        self.vol.is_some() == (self.open == 0)
+    }
+
     /// Does this host's watertightness depend on the triangulator's diagonal
     /// choice? A failed alternate pass counts as divergence — it is a difference
     /// in outcome, and the old census counted it as one too.
@@ -326,14 +394,18 @@ pub struct Diff {
     /// baking its centre into f32: 86 of 1170 rows are eligible, 17 of them
     /// far-field. 1005 have `open == 0` and at `0 -> 0` open cannot fall; of
     /// the 165 that are torn, 35 are open shells whose boundary edges are
-    /// structural. A shrink anywhere else still reads as geometry loss. The row
-    /// vocabulary genuinely cannot tell a
-    /// healed over-cut from a vanished component on a watertight host, and red
-    /// is the right answer while that is true. Separating those needs a volume
-    /// dimension the golden does not carry yet.
+    /// structural.
     ///
-    /// It over-fires in the other direction too, and for the same missing
-    /// dimension. A torn host that loses a whole solid item can land here: at
+    /// On a WATERTIGHT host the shrink is read against [`HostRow::vol`]
+    /// instead (#3422): at unchanged enclosed volume it files here as a plain
+    /// re-tessellation, with MORE enclosed volume it files under
+    /// [`Diff::volume_moved`] as a cut that removes less, and only with LESS
+    /// enclosed volume does it keep the "geometry lost" verdict. That is the
+    /// magnitude the triangle count was standing in for, and the 1005 rows
+    /// above are where it is read.
+    ///
+    /// On a TORN host there is no such reading, and this bucket still over-fires
+    /// there. A torn host that loses a whole solid item can land here: at
     /// golden `open=40 tris=800`, a run of `open=2 tris=400` has dropped half
     /// the mesh, yet tris is non-zero and open did fall, so it is filed as a
     /// re-tessellation and described as "less torn". Only the total vanish
@@ -342,8 +414,46 @@ pub struct Diff {
     /// event deserves and the exposure is a wrong BLESS. Do not add a
     /// proportionality heuristic to patch it: that is a second magnitude rule
     /// on a vocabulary with no magnitude in it, which is the same mistake as
-    /// reading a triangle count as damage. The volume dimension is the fix.
+    /// reading a triangle count as damage. The volume dimension cannot reach
+    /// it either: `vol` is not taken on a torn host (see [`HostRow::vol`]).
+    /// What would close it is the tear being fixed, at which point the host
+    /// gains a reading. The gap is pinned as a KNOWN GAP, asserting the
+    /// wrong-but-current verdict, by
+    /// `a_torn_host_that_loses_half_its_mesh_is_still_called_a_re_tessellation`
+    /// below, which also names the #3219 population it applies to.
     pub retessellated: Vec<Delta>,
+    /// Enclosed volume differs between two WATERTIGHT readings of the same host
+    /// (#3422), and nothing outranked it. Requires a bless, is never a
+    /// regression on its own, and is never good news on its own.
+    ///
+    /// Volume has no direction. Less volume is an over-cut growing, or a void
+    /// that was silently skipped now applying; more is a healed over-cut, or a
+    /// void that stopped applying. Each pair holds one defect and one fix, so
+    /// the bucket says HOW MUCH and which way and leaves the verdict to the
+    /// reviewer, the same way a reclassification does.
+    ///
+    /// What it catches that no count could: an opening cut larger than
+    /// authored in its own plane, the #3219 shape. Measured on a watertight
+    /// panel, a 1.4x cut leaves `open`, `strict`, `tris` and `coll` exactly
+    /// where they were, and a 1.6x cut only GROWS `tris`, which files under
+    /// `improved`; before this bucket the census read both as green. See
+    /// `an_over_cut_on_a_watertight_host_requires_a_bless`
+    /// in `triangulation_invariance.rs` for the measurement.
+    ///
+    /// What it does NOT catch, stated here so a reader landing on the bucket
+    /// does not over-read it:
+    ///
+    /// - The SAME over-cut on a TORN host. There is no reading on either side,
+    ///   so the pair is decided by the pre-#3422 rules and the
+    ///   [`Diff::retessellated`] over-fire is untouched. That is not a corner:
+    ///   all 32 hosts the candidate #3219 fix moves are torn. Pinned as a known
+    ///   gap by
+    ///   `a_torn_host_that_loses_half_its_mesh_is_still_called_a_re_tessellation`.
+    /// - The DEFECT THAT IS ALREADY THERE. A host over-cut on main today is
+    ///   blessed at its over-cut volume, the same way every other column blessed
+    ///   the state it found. This bucket makes the NEXT move in either direction
+    ///   cost a bless; it says nothing about whether today's number is right.
+    pub volume_moved: Vec<Delta>,
     /// Strictly better. Reported, never a failure.
     ///
     /// So the golden is a CEILING per host, not an equality snapshot, and a fix
@@ -362,7 +472,10 @@ pub struct Diff {
     /// pairs that reached `c.retessellated`, so the eligibility rules still
     /// apply. A shell whose 40 boundary edges became 12 while it shrank is NOT
     /// here, because that fall is not repair; nor is a total vanish. Those are
-    /// geometry loss and are counted as regressions.
+    /// geometry loss and are counted as regressions. Since #3422 the name is
+    /// one case short: a WATERTIGHT host that shrank at unchanged enclosed
+    /// volume reaches `c.retessellated` too, with nothing to heal, and is
+    /// counted here for the same reason.
     ///
     /// `retessellated` only holds the ones where nothing outranked it, and a
     /// reclassification does. A wall-cut change is what flips
@@ -382,6 +495,7 @@ impl Diff {
             || !self.added.is_empty()
             || !self.changed.is_empty()
             || !self.retessellated.is_empty()
+            || !self.volume_moved.is_empty()
     }
 }
 
@@ -461,10 +575,16 @@ struct Classified {
     /// without any count moving, and calling that a geometry regression would
     /// be the same misattribution in the opposite direction.
     worse_gated: Vec<String>,
-    /// The tris drop came with an open-edge drop. Routed here rather than to
-    /// `worse_counts`; see [`Diff::retessellated`] for why that distinction
-    /// exists and where it cannot fire.
+    /// The tris drop came with an open-edge drop, or with an unchanged enclosed
+    /// volume. Routed here rather than to `worse_counts`; see
+    /// [`Diff::retessellated`] for why that distinction exists and where it
+    /// cannot fire.
     retessellated: Vec<String>,
+    /// Both sides carry an enclosed-volume reading and they differ. See
+    /// [`Diff::volume_moved`]. A tris drop that came with MORE volume joins it
+    /// here rather than in `worse_counts`, because more material is not what
+    /// losing geometry looks like.
+    volume_moved: Vec<String>,
     better: Vec<String>,
 }
 
@@ -491,6 +611,105 @@ fn fall_note(g: &HostRow, r: &HostRow) -> &'static str {
         "improved; far-field, so the count is an f32 artifact"
     } else {
         "improved"
+    }
+}
+
+/// How far two readings of the same host may differ before the difference is a
+/// real move (#3422). Whichever is larger of 1 cm³ and 1e-6 of the golden's
+/// magnitude.
+///
+/// WHY A TOLERANCE AT ALL, given the column exists to compare exactly. The
+/// reading is a divergence sum over f32 positions that `mesh_to_tris` has
+/// already snapped to the kernel's 1/65536 m grid. That snap normally swallows
+/// the whole difference between one platform's fused multiply-add and
+/// another's: two builds of the same mesh land on the same grid points and so
+/// on the same integer. It swallows it EXCEPT on a boundary, where two
+/// coordinates a hair either side of a grid step round opposite ways and one
+/// vertex moves 15.26 µm. The goldens in this repo are blessed on arm64 and the
+/// census lane runs on x86_64, so a single such vertex is enough to red the
+/// lane on a change that touched no geometry.
+///
+/// WHY THESE TWO TERMS. The absolute one covers a small host, where 1e-6 of the
+/// magnitude is under the cm³ quantum and would be no tolerance at all. The
+/// relative one covers a large host, where a handful of boundary vertices can
+/// move more than a single cm³: at the corpus's largest readings (a few million
+/// cm³) it is a few cm³, still far under one grid step's worth of a real face.
+///
+/// AND IT DOES NOT COVER ONE FLIPPED VERTEX, which the paragraph above is
+/// wrong about and this one corrects (raised in review, then measured). The
+/// shift from moving one vertex by one grid step is the incident triangle area
+/// times the step over three, so it grows with the FACE, not with the host's
+/// volume, and the 1e-6 relative term does not track it. Measured on this PR's
+/// own over-cut fixture — a 2.0 x 0.1 x 3.0 m panel reading 550034 cm³, 108
+/// vertices, each nudged one step on each axis in turn — the worst single
+/// vertex moves the reading by 8 cm³ against a tolerance of 1. (A UNIFORM
+/// one-step shift of every vertex moves it by 0: a grid-aligned translation is
+/// exact, so only INDEPENDENT re-rounding costs anything.)
+///
+/// So the tolerance is not sized for the platform difference its first
+/// paragraph invokes, and if arm64 and x86_64 do disagree on a boundary vertex
+/// this column reds the census lane rather than absorbing it. That is left
+/// as-is deliberately: widening the gate to a measured worst case would have to
+/// be roughly two decades wider, and a gate that is too NARROW fails loudly on
+/// a run a reviewer can look at, while one that is too WIDE fails silently on
+/// the small real moves the column exists to catch. It has never been observed
+/// to fire — these goldens have not yet been read back on x86_64 at all — so
+/// the first CI run is the measurement, not this doc.
+///
+/// WHAT IT DOES NOT COST. Every move this column exists to catch is orders of
+/// magnitude above it: the 1.4x over-cut fixture moves 50000 cm³ against a
+/// tolerance of 1. A tolerance that admitted a real over-cut would have to be
+/// four decades wider than this one.
+pub fn volume_tolerance_cm3(golden: i64) -> i64 {
+    ((golden.unsigned_abs() as f64) * 1.0e-6).ceil().max(1.0) as i64
+}
+
+/// Did the reading move, beyond [`volume_tolerance_cm3`]? SIGNED, so a winding
+/// flip at equal magnitude is still a move.
+fn volume_reading_moved(from: i64, to: i64) -> bool {
+    to.saturating_sub(from).saturating_abs() > volume_tolerance_cm3(from)
+}
+
+/// Which way the MAGNITUDE moved, under the same tolerance. `Equal` means "the
+/// same volume as far as this reading can tell", which is what the
+/// re-tessellation verdict below rests on.
+fn volume_magnitude_cmp(from: i64, to: i64) -> std::cmp::Ordering {
+    let (a, b) = (from.abs(), to.abs());
+    if !volume_reading_moved(a, b) {
+        std::cmp::Ordering::Equal
+    } else {
+        b.cmp(&a)
+    }
+}
+
+/// The winding, said out loud (#3422). `vol` is SIGNED because IFC winding is
+/// not reliably outward and the sweep does not orient the host, so a negative
+/// reading is an inward-wound solid and not a negative volume.
+///
+/// Without this the only cue is a minus sign inside a number, and the two
+/// readings a reviewer most needs to tell apart look nearly identical in a
+/// bucket listing: `55000 -> -55000` is the SAME solid re-wound, a topological
+/// change with no material moved, while `55000 -> -47200` is a re-winding AND
+/// an over-cut. The percentage cannot say it either, since it is taken on the
+/// magnitude.
+fn winding_note(from: i64, to: i64) -> &'static str {
+    match (from < 0, to < 0) {
+        (false, true) => "; WINDING INVERTED (the host is now inward-wound)",
+        (true, false) => "; winding righted (the host is now outward-wound)",
+        (true, true) => "; both readings negative, so the host is inward-wound throughout",
+        (false, false) => "",
+    }
+}
+
+/// How a volume reading moved, as a percentage of the golden's MAGNITUDE.
+/// From zero there is no percentage to give, so it says so instead of
+/// dividing by it.
+fn volume_delta(from: i64, to: i64) -> String {
+    let (a, b) = (from.abs(), to.abs());
+    if a == 0 {
+        "from empty".to_string()
+    } else {
+        format!("{:+.2}%", (b - a) as f64 / a as f64 * 100.0)
     }
 }
 
@@ -527,9 +746,32 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
         ));
     }
 
+    // The one magnitude in the row (#3422). Read where BOTH sides are
+    // watertight, which is the only place either side has it, and reported
+    // whichever way it moved: see `Diff::volume_moved` for why neither
+    // direction is a verdict. Compared on the SIGNED integer, so a sign flip at
+    // equal magnitude is still a difference, and described on the magnitude,
+    // which is what "more" and "less" mean below.
+    let vol = g.vol.zip(r.vol);
+    if let Some((a, b)) = vol {
+        if volume_reading_moved(a, b) {
+            c.volume_moved.push(format!(
+                "enclosed volume {a} -> {b} cm³ ({}){}{}",
+                volume_delta(a, b),
+                winding_note(a, b),
+                if g.far || r.far { "; far-field, so the reading is f32-quantized" } else { "" }
+            ));
+        }
+    }
+
     // Triangles shrinking is the loss direction ONLY when the tearing did not
     // improve with it. An empty mesh is always a loss: it still returns `Ok` and
     // still reports `open == 0`, so nothing else here would catch it.
+    //
+    // Everything from here to the `if r.tris < g.tris` below describes the TORN
+    // route, the `None` arm of the match: where neither side carries a volume,
+    // the open counts are all there is and the paragraphs below are the rules
+    // for reading them. A watertight pair never reaches any of it.
     //
     // And only where both open counts are COMPARABLE, because `g.open` and
     // `r.open` only read as repair if each one measures the same kind of thing.
@@ -561,16 +803,52 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
     // Carrying the degenerate COUNT instead of a flag would
     // let the axis fire on an increase and is the better fix, but it changes the
     // golden's schema and so needs its own re-bless.
+    //
+    // #3422 LOOSENED that collapse guard on the watertight route, deliberately
+    // and without a comment until now. A host `coll=1` on BOTH sides that
+    // shrinks at `open 0 -> 0` used to be geometry lost, because
+    // `open_is_comparable` is false on a collapse and the old chain fell
+    // through; it now files as a re-tessellation, because the volume arm never
+    // asks. That is the right adjudicator on this route — `edge_stats` skips
+    // degenerate triangles, so they enclose nothing and cannot move the
+    // divergence sum — but it IS a change in verdict for the rows that are
+    // watertight AND collapsed (16 of 1005 in the default golden, 11 of 624 in
+    // the heavy one, counted at this commit), and it is a change the volume,
+    // not the collapse flag, is now answering for.
     if r.tris < g.tris {
         let msg = format!("triangles {} -> {}", g.tris, r.tris);
-        if r.tris == 0
-            || r.open >= g.open
-            || !g.open_is_comparable()
-            || !r.open_is_comparable()
-        {
-            c.worse_counts.push(format!("{msg} (geometry lost)"));
-        } else {
-            c.retessellated.push(format!("{msg} (fewer triangles, less torn)"));
+        // A vanished mesh is always a loss, whatever else moved: it still
+        // returns `Ok`, still reports `open == 0`, and reads a volume of 0.
+        // Otherwise, where both sides are watertight `open` cannot have fallen
+        // and the volume says whether material left with the triangles; where
+        // one side is torn, an open count that fell is the repair reading.
+        // Everything else is loss.
+        match vol {
+            _ if r.tris == 0 => c.worse_counts.push(format!("{msg} (geometry lost)")),
+            Some((a, b)) => match volume_magnitude_cmp(a, b) {
+                std::cmp::Ordering::Greater => {
+                    c.volume_moved.push(format!("{msg} (fewer triangles, more enclosed volume)"))
+                }
+                // ZERO is not a volume that can be unchanged. A watertight
+                // host reading 0 cm³ is a sheet, a doubled surface or a pair
+                // of cancelling shells — the signed balance certifies it and
+                // the divergence sum has nothing to say — so a triangle drop
+                // there carries exactly as much information as it did before
+                // this column existed, which is the `worse_counts` verdict.
+                // Without this guard a doubled sheet that loses half its
+                // triangles reads "enclosed volume unchanged" and files as a
+                // friendly re-tessellation.
+                std::cmp::Ordering::Equal if a != 0 => c
+                    .retessellated
+                    .push(format!("{msg} (fewer triangles, enclosed volume unchanged)")),
+                std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {
+                    c.worse_counts.push(format!("{msg} (geometry lost)"))
+                }
+            },
+            None if r.open < g.open && g.open_is_comparable() && r.open_is_comparable() => {
+                c.retessellated.push(format!("{msg} (fewer triangles, less torn)"))
+            }
+            _ => c.worse_counts.push(format!("{msg} (geometry lost)")),
         }
     } else if r.tris > g.tris {
         c.better.push(format!("triangles {} -> {} (improved)", g.tris, r.tris));
@@ -641,9 +919,15 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         // alternate triangulator: the divergence decides (regressed), but
         // dropping the shrink from the text makes the failure less informative
         // than it was before the retessellated split existed. A gained COLLAPSE
-        // is not the example any more, because `r.collapsed` now disqualifies
-        // the re-tessellation outright, so that pair cannot occur. `better` rides
-        // along for the same reason and not as good
+        // is the example again since #3422. It stopped being one while the only
+        // route into `c.retessellated` ran through `open_is_comparable`, which
+        // `r.collapsed` disqualifies; the watertight arm added below routes on
+        // the VOLUME and never consults it, so `open 0 -> 0` with fewer
+        // triangles at unchanged volume fills `worse_counts` ("gained
+        // snap-collapsed triangles") and `c.retessellated` at the same time.
+        // The verdict is unaffected — a worsened count outranks — but the
+        // shrink reason has to ride along, which is what this paragraph is
+        // about. `better` rides along for the same reason and not as good
         // news: the shrink reason SAYS "less torn", and the open-edge numbers
         // are the only thing in the output that lets a reviewer check it.
         //
@@ -671,13 +955,37 @@ pub fn diff(golden: &[HostRow], run: &[HostRow], swept_models: &BTreeSet<String>
         // reclassification would be the real change of meaning, filing a pure
         // relabel as a geometry regression — the misattribution #3366 landed to
         // stop, pinned by the reclassification tests below.
+        //
+        // A volume move (#3422) sits under the reclassification and above the
+        // re-tessellation. Under, because both are "review, then re-bless"
+        // verdicts and a relabel changes what the volume is a volume OF; above,
+        // because a shrink at unchanged volume is the friendly reading and a
+        // shrink with the volume moving is not. The two lists are NOT
+        // exclusive, and the order is what decides between them: a SIGN FLIP at
+        // equal magnitude fills both, since `volume_moved` is read on the
+        // signed integer and the shrink's routing on the magnitude, so
+        // `55000 -> -55000` with fewer triangles is "winding inverted" AND
+        // "enclosed volume unchanged". Filing it as a volume move is the right
+        // answer — the re-winding is the bigger news — and the re-tessellation
+        // reason rides along in the same text.
         if !c.worse_counts.is_empty() {
             out.regressed.push(delta(
-                [c.worse_counts, c.worse_gated, c.retessellated, reclassified, c.better].concat(),
+                [
+                    c.worse_counts,
+                    c.worse_gated,
+                    c.volume_moved,
+                    c.retessellated,
+                    reclassified,
+                    c.better,
+                ]
+                .concat(),
             ));
         } else if !reclassified.is_empty() {
-            out.changed
-                .push(delta([reclassified, c.worse_gated, c.retessellated, c.better].concat()));
+            out.changed.push(delta(
+                [reclassified, c.worse_gated, c.volume_moved, c.retessellated, c.better].concat(),
+            ));
+        } else if !c.volume_moved.is_empty() {
+            out.volume_moved.push(delta([c.volume_moved, c.retessellated, c.better].concat()));
         } else if !c.retessellated.is_empty() {
             out.retessellated.push(delta([c.retessellated, c.better].concat()));
         } else if !c.better.is_empty() {
@@ -719,7 +1027,10 @@ const HEADER: &str = "\
 # strict: undirected edges NOT used exactly once forward and once reverse. Always
 #        >= open, and sees what open cannot: a doubled sheet nets to zero on the
 #        signed balance. Gated as its own count; the defect population is open's.
-model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict";
+# vol:   signed enclosed volume in whole cm^3, or - if not taken. Taken only where
+#        open is 0: an open surface has no volume to read. A change here requires a
+#        bless in either direction; the reason says how much and which way.
+model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\tvol";
 
 fn pre_token(p: PreVoid) -> String {
     match p {
@@ -751,12 +1062,15 @@ pub fn render(rows: &[HostRow]) -> String {
     let mut out = String::from(HEADER);
     for r in rows {
         let alt = r.alt.map(|v| v.to_string()).unwrap_or_else(|| "x".to_string());
-        // `strict` is appended LAST rather than beside `open`, so `cut -f1-9`
-        // over this file still reproduces the pre-#3397 row byte for byte. That
-        // is what made the bless diff for the commit that added it readable:
-        // every existing column had to hold, and a moved one had to be visible.
+        // Each new column is appended LAST rather than beside the count it
+        // qualifies, so `cut -f1-9` over this file still reproduces the
+        // pre-#3397 row and `cut -f1-10` the pre-#3422 row, byte for byte.
+        // That is what makes the bless diff for the commit adding a column
+        // readable: every existing column had to hold, and a moved one had to
+        // be visible.
+        let vol = r.vol.map(|v| v.to_string()).unwrap_or_else(|| "-".to_string());
         out.push_str(&format!(
-            "\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
+            "\n{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}",
             r.model,
             r.id,
             r.rep,
@@ -767,42 +1081,119 @@ pub fn render(rows: &[HostRow]) -> String {
             alt,
             pre_token(r.pre),
             r.strict,
+            vol,
         ));
     }
     out.push('\n');
     out
 }
 
-pub fn parse(text: &str) -> Result<Vec<HostRow>, String> {
-    let mut out = Vec::new();
-    for (n, line) in text.lines().enumerate() {
-        // Skip comments, the column header and blank lines. `model\t` catches
-        // the header without also swallowing a fixture literally named "model".
-        if line.is_empty() || line.starts_with('#') || line.starts_with("model\t") {
-            continue;
+/// Why a golden could not be read. TWO classes, because a bless treats them
+/// differently and treating them alike loses rows silently (#3422).
+///
+/// [`ParseError::Schema`] is the file a column-adding change leaves on disk,
+/// POSITIVELY identified rather than assumed from any row-shape failure: EVERY
+/// data row exactly one column short, which is the only shape such a change
+/// produces. Those rows are intact under the OLD schema and cannot be reused
+/// without inventing the new column, so a bless discards them deliberately and
+/// says so. That is the sanctioned path.
+///
+/// [`ParseError::Malformed`] is anything else — a bad number, an unreadable
+/// flag, a truncated write, a merge that mangled one line. It is NOT a
+/// sanctioned bless input, and a bless must not treat it as an empty golden.
+/// The heavy lane is where that distinction has teeth: its two fixtures share
+/// one file and each blesses only its own model's rows, so a bless of
+/// ISSUE_053 against a file with one corrupt ISSUE_068 row would, under a
+/// single error class, silently drop all 363 of that model's rows and write a
+/// golden missing them. The next heavy run would then read them as 363
+/// `added` hosts and demand another bless, and the tear pin would be gone.
+#[derive(Debug)]
+pub enum ParseError {
+    /// EVERY data row is exactly one column short. Carries the first such line
+    /// so a stale golden names the schema it is on. An arbitrary wrong column
+    /// count is [`Self::Malformed`], not this.
+    Schema { line: usize, expected: usize, got: usize },
+    /// A field the schema DOES have could not be read.
+    Malformed(String),
+}
+
+impl std::fmt::Display for ParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // Wording preserved from when this was a bare String, because
+            // `read_golden`'s bless line and three tests match on it.
+            Self::Schema { line, expected, got } => {
+                write!(f, "line {line}: expected {expected} columns, got {got}")
+            }
+            Self::Malformed(m) => write!(f, "{m}"),
         }
-        let f: Vec<&str> = line.split('\t').collect();
-        // Exactly 10. A pre-#3397 nine-column row is an ERROR, not a row with
-        // an implied strict count: accepting it would have to invent one, and a
-        // fabricated zero is a clean-looking host that was never measured. A bad
-        // merge of this golden is then loud instead of silently under-gated.
-        if f.len() != 10 {
-            return Err(format!("line {}: expected 10 columns, got {}", n + 1, f.len()));
+    }
+}
+
+/// Columns a current row has. A pre-#3397 nine-column or pre-#3422 ten-column
+/// row is an ERROR, not a row with an implied strict count or volume: accepting
+/// one would have to invent the missing value, and a fabricated value is a
+/// clean-looking host that was never measured.
+pub const COLUMNS: usize = 11;
+
+pub fn parse(text: &str) -> Result<Vec<HostRow>, ParseError> {
+    // Data rows, paired with their 1-based line number. Comments, blank lines
+    // and the column header are skipped; `model\t` catches the header without
+    // also swallowing a fixture literally named "model".
+    let rows: Vec<(usize, Vec<&str>)> = text
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| !(l.is_empty() || l.starts_with('#') || l.starts_with("model\t")))
+        .map(|(n, l)| (n + 1, l.split('\t').collect()))
+        .collect();
+
+    // The file's SHAPE, decided over ALL rows before any field is read, because
+    // the two error classes are decided by shape and a bless treats them
+    // differently. `Schema` — the arm a bless tolerates as an empty golden — is
+    // reserved for the one file a column-adding change leaves: every data row
+    // exactly one column short. Classifying an ARBITRARY wrong count that way
+    // would hand a bless the very loss the split exists to prevent: a truncated
+    // write, a mangled merge or one stray tab would read as "obsolete schema",
+    // and in the heavy lane, where two fixtures share one file and each blesses
+    // only its own model's rows, the golden would come back missing the other
+    // model entirely. Uniformity is part of the identification: a single short
+    // row among current-schema rows is a mangled file, not a migration.
+    let odd: Vec<(usize, usize)> =
+        rows.iter().map(|(n, f)| (*n, f.len())).filter(|&(_, len)| len != COLUMNS).collect();
+    if let Some(&(line, got)) = odd.first() {
+        if odd.len() == rows.len() && odd.iter().all(|&(_, len)| len + 1 == COLUMNS) {
+            return Err(ParseError::Schema { line, expected: COLUMNS, got });
         }
-        let num = |i: usize| -> Result<usize, String> {
-            f[i].parse::<usize>().map_err(|_| format!("line {}: bad number {:?}", n + 1, f[i]))
+        return Err(ParseError::Malformed(format!(
+            "line {line}: expected {COLUMNS} columns, got {got}; this is a MANGLED file, \
+             not the uniformly one-column-short golden a column-adding change leaves"
+        )));
+    }
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (n, f) in rows {
+        // Every failure below is a field the schema HAS that could not be
+        // read, so all of them are `Malformed` and none is a bless input.
+        let bad = |m: String| ParseError::Malformed(format!("line {n}: {m}"));
+        let num = |i: usize| -> Result<usize, ParseError> {
+            f[i].parse::<usize>().map_err(|_| bad(format!("bad number {:?}", f[i])))
         };
         out.push(HostRow {
             model: f[0].to_string(),
-            id: f[1].parse().map_err(|_| format!("line {}: bad id {:?}", n + 1, f[1]))?,
+            id: f[1].parse().map_err(|_| bad(format!("bad id {:?}", f[1])))?,
             rep: f[2].to_string(),
             open: num(3)?,
             tris: num(4)?,
-            collapsed: parse_flag(f[5]).map_err(|e| format!("line {}: {e}", n + 1))?,
-            far: parse_flag(f[6]).map_err(|e| format!("line {}: {e}", n + 1))?,
+            collapsed: parse_flag(f[5]).map_err(bad)?,
+            far: parse_flag(f[6]).map_err(bad)?,
             alt: if f[7] == "x" { None } else { Some(num(7)?) },
-            pre: parse_pre(f[8]).map_err(|e| format!("line {}: {e}", n + 1))?,
+            pre: parse_pre(f[8]).map_err(bad)?,
             strict: num(9)?,
+            vol: if f[10] == "-" {
+                None
+            } else {
+                Some(f[10].parse::<i64>().map_err(|_| bad(format!("bad volume {:?}", f[10])))?)
+            },
         });
     }
     Ok(out)
@@ -835,6 +1226,10 @@ mod tests {
             // base geometry alone: two rows of the same host normally agree
             // here even when their void-applied counts differ.
             pre: if open == 0 { PreVoid::NotTaken } else { PreVoid::Open(7) },
+            // Taken if and only if `open == 0`, exactly as the sweep does, and
+            // FIXED for the same reason `pre` is: a reading, not a function of
+            // the counts. Tests that need it to move set it.
+            vol: if open == 0 { Some(55_000) } else { None },
         }
     }
 
@@ -1508,6 +1903,394 @@ mod tests {
         assert!(d2.requires_bless(), "a probe starting to run must also require a bless");
     }
 
+    #[test]
+    fn a_volume_move_with_every_count_unchanged_requires_a_bless() {
+        // #3422, the shape no count can see: an opening cut larger than
+        // authored in its own plane, the #3219 shape, which on a watertight
+        // host can leave open, strict, tris and coll exactly where they were
+        // (measured at 1.4x on the pipeline in `triangulation_invariance.rs`).
+        // Before this column such a pair was an IDENTICAL row.
+        let g = row("a.ifc", 1, 0, 800);
+        let r = HostRow { vol: Some(47_200), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.volume_moved.len(), 1, "a volume move must be filed as one");
+        assert!(d.regressed.is_empty(), "and is not a regression on its own");
+        assert!(d.improved.is_empty(), "nor an improvement");
+        assert!(d.requires_bless(), "but the golden must absorb it explicitly");
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("enclosed volume 55000 -> 47200 cm³ (-14.18%)"), "{reasons}");
+
+        // The same pair without the column is the pre-#3422 census, and it
+        // sees NOTHING. Pinned so the claim above stays a measurement.
+        let blind_g = HostRow { vol: None, ..g.clone() };
+        let blind_r = HostRow { vol: None, ..g };
+        let blind = diff(&[blind_g], &[blind_r], &swept(&["a.ifc"]));
+        assert!(!blind.requires_bless(), "without a volume the over-cut is invisible");
+    }
+
+    #[test]
+    fn volume_has_no_direction_so_both_ways_require_a_bless_and_neither_improves() {
+        // Less volume is an over-cut growing OR a skipped void now applying;
+        // more is a healed over-cut OR a void that stopped applying. Each
+        // direction holds a defect and a fix, so neither may file as
+        // `improved` (green) and neither as `regressed` on its own.
+        // Less is `a_volume_move_with_every_count_unchanged_requires_a_bless`
+        // above; this is the other direction, then the sign.
+        let g = row("a.ifc", 1, 0, 800);
+        let more = HostRow { vol: Some(60_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[more], &swept(&["a.ifc"]));
+        assert_eq!(d.volume_moved.len(), 1);
+        assert!(d.improved.is_empty() && d.regressed.is_empty(), "more volume is not a verdict");
+        assert!(d.requires_bless());
+        // A sign flip at equal magnitude is still a difference: the host was
+        // wound the other way, and the golden must say so before absorbing it.
+        let flipped = HostRow { vol: Some(-55_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[flipped], &swept(&["a.ifc"]));
+        assert_eq!(d.volume_moved.len(), 1, "a sign flip is a volume move");
+        assert!(d.volume_moved[0].reasons.join("; ").contains("55000 -> -55000"));
+    }
+
+    #[test]
+    fn a_watertight_shrink_is_read_against_the_volume_not_called_loss_by_default() {
+        // The `Diff::retessellated` blind spot as documented before #3422: at
+        // `open 0 -> 0` a triangle drop read as geometry loss whether a cut
+        // stopped over-removing or a component vanished. The volume is what
+        // separates the three cases, and each gets its own verdict.
+        let g = row("a.ifc", 1, 0, 800);
+
+        // MORE enclosed volume with fewer triangles: material came back, which
+        // is not what losing geometry looks like. Bless-requiring, not red as
+        // a regression.
+        let healed = HostRow { tris: 600, vol: Some(62_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[healed], &swept(&["a.ifc"]));
+        assert!(d.regressed.is_empty(), "more volume is not geometry lost");
+        assert_eq!(d.volume_moved.len(), 1);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("fewer triangles, more enclosed volume"), "{reasons}");
+        assert!(reasons.contains("enclosed volume 55000 -> 62000"), "{reasons}");
+        assert!(!reasons.contains("geometry lost"), "{reasons}");
+
+        // UNCHANGED volume with fewer triangles: the surface is the same
+        // surface, triangulated differently. The friendly bucket, still red.
+        let retess = HostRow { tris: 600, ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[retess], &swept(&["a.ifc"]));
+        assert!(d.regressed.is_empty(), "same volume is not geometry lost");
+        assert_eq!(d.retessellated.len(), 1);
+        let reasons = d.retessellated[0].reasons.join("; ");
+        assert!(reasons.contains("enclosed volume unchanged"), "{reasons}");
+        assert!(d.requires_bless());
+
+        // LESS enclosed volume with fewer triangles: something left. The
+        // original verdict, and the volume rides along as the evidence.
+        let lost = HostRow { tris: 600, vol: Some(30_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[lost], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "less volume with fewer triangles is loss");
+        let reasons = d.regressed[0].reasons.join("; ");
+        assert!(reasons.contains("geometry lost"), "{reasons}");
+        assert!(reasons.contains("enclosed volume 55000 -> 30000"), "{reasons}");
+
+        // And a vanished mesh is loss whatever the volume column says: it
+        // reads 0 there, which is "less", but the `tris == 0` rule decides it
+        // before the volume is consulted, exactly as on a torn host.
+        let gone = HostRow { tris: 0, vol: Some(0), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[gone], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1);
+        assert!(d.regressed[0].reasons[0].contains("geometry lost"));
+    }
+
+    #[test]
+    fn more_triangles_with_less_volume_is_no_longer_an_improvement() {
+        // The other silent case: an over-cut that grows can ADD triangles (a
+        // cutter now exits through one more face), and a grown `tris` filed
+        // under `improved`, green, with no bless. The volume outranks it.
+        let g = row("a.ifc", 1, 0, 800);
+        let r = HostRow { tris: 820, vol: Some(40_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[r], &swept(&["a.ifc"]));
+        assert!(d.improved.is_empty(), "a volume move must not read as a triangle gain");
+        assert_eq!(d.volume_moved.len(), 1);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        // The triangle gain is still REPORTED, as evidence beside the volume.
+        assert!(reasons.contains("triangles 800 -> 820"), "{reasons}");
+        assert!(reasons.contains("enclosed volume 55000 -> 40000"), "{reasons}");
+    }
+
+    #[test]
+    fn a_torn_host_carries_no_volume_and_keeps_its_pre_3422_verdicts() {
+        // The reading is not taken on an open surface, so nothing on a torn
+        // host changes: the shrink-and-heal rule still decides, and its stated
+        // over-fire (`Diff::retessellated`) is still there. Pinned so a later
+        // "improvement" cannot start reading a translation-variant number.
+        let g = row("a.ifc", 1, 40, 800);
+        assert_eq!(g.vol, None, "the helper mirrors the sweep: torn means not taken");
+        let d = diff(std::slice::from_ref(&g), &[row("a.ifc", 1, 12, 600)], &swept(&["a.ifc"]));
+        assert_eq!(d.retessellated.len(), 1);
+        assert!(d.volume_moved.is_empty());
+
+        // A torn golden against a watertight run: one side has no reading, so
+        // there is nothing to compare, and the pair is decided by the forced
+        // `pre` transition exactly as before.
+        let d = diff(std::slice::from_ref(&g), &[row("a.ifc", 1, 0, 600)], &swept(&["a.ifc"]));
+        assert!(d.volume_moved.is_empty(), "one reading is not a comparison");
+        assert_eq!(d.changed.len(), 1);
+    }
+
+    /// KNOWN GAP (#3422). The volume dimension does NOT close the
+    /// `Diff::retessellated` over-fire on a TORN host, and this test asserts
+    /// the wrong-but-known verdict rather than the right one, so that the day
+    /// it is fixed this test fails and has to be rewritten deliberately.
+    ///
+    /// The population is not hypothetical. Running the candidate #3219 cap fix
+    /// through the census moves 32 hosts, 23 regressed and 9 re-tessellated,
+    /// and EVERY one of the 32 is torn, with open counts from 11 to 1125. Not
+    /// one watertight host is among them. That is the exact population the
+    /// #3219 bless has to judge, and `vol` is deliberately not taken there, for
+    /// the reason [`HostRow::vol`] gives: on an open surface the divergence sum
+    /// is not a volume, so two readings compared say nothing about material.
+    /// #3422's own framing of this ("translation-variant, changing if the model
+    /// moved") does not hold against
+    /// `mesh_volume_is_stable_far_from_the_world_origin_for_an_open_mesh` in
+    /// `kernel/mesh_volume.rs`, which pins an OPEN reading stable across a
+    /// 10 km offset because the sum is AABB-centred. The conclusion is the same
+    /// and the reason is not, so the reason is corrected here rather than
+    /// inherited.
+    ///
+    /// What the gap costs, concretely: a host that loses HALF its mesh while
+    /// its tearing improves is filed as a re-tessellation and described as
+    /// "less torn". That is a bless-requiring bucket, so the event is not
+    /// silent, but it is misdescribed, and the exposure is a wrong bless by a
+    /// reviewer reading "less torn" and approving it.
+    ///
+    /// Closing it needs the tear fixed, at which point the host gains a
+    /// reading. Do NOT close it with a proportionality heuristic on `tris`:
+    /// that is a second magnitude rule on a vocabulary with no magnitude in it,
+    /// which is the mistake `Diff::retessellated` already documents.
+    #[test]
+    fn a_torn_host_that_loses_half_its_mesh_is_still_called_a_re_tessellation() {
+        let g = row("a.ifc", 1, 40, 800);
+        assert_eq!(g.vol, None, "torn, so there is no volume to adjudicate with");
+        let halved = row("a.ifc", 1, 2, 400);
+        assert_eq!(halved.vol, None, "still torn on the run side, so still no reading");
+
+        let d = diff(std::slice::from_ref(&g), &[halved], &swept(&["a.ifc"]));
+        // The WRONG verdict, pinned as the current behaviour. Half the mesh is
+        // gone; the census says the host got less torn.
+        assert_eq!(d.regressed.len(), 0, "KNOWN GAP #3422: this SHOULD be a regression");
+        assert_eq!(d.retessellated.len(), 1, "and is filed as a re-tessellation instead");
+        assert!(d.volume_moved.is_empty(), "no volume on either side, so nothing to compare");
+        let reasons = d.retessellated[0].reasons.join("; ");
+        assert!(reasons.contains("triangles 800 -> 400 (fewer triangles, less torn)"), "{reasons}");
+        // The one thing that is right about it: it is not GREEN. A reviewer is
+        // asked, with the wrong description.
+        assert!(d.requires_bless(), "the misdescribed event must at least require a bless");
+
+        // The same shrink on a WATERTIGHT host IS caught, which is what the
+        // column bought and what makes the gap a population boundary rather
+        // than a hole in the rule. Same 800 -> 400, volume falls with it.
+        let wg = row("a.ifc", 1, 0, 800);
+        let wr = HostRow { tris: 400, vol: Some(27_000), ..wg.clone() };
+        let d = diff(std::slice::from_ref(&wg), &[wr], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "watertight, so the volume says material left");
+        assert!(d.regressed[0].reasons.join("; ").contains("geometry lost"));
+    }
+
+    #[test]
+    fn a_volume_move_outranks_a_shrink_and_yields_to_a_reclassification() {
+        // Chain order, pinned per arm. A relabel changes what the volume is a
+        // volume OF, so it decides; the volume reason still has to reach the
+        // text, or the reviewer sees a relabel with no evidence of what moved.
+        let g = row("a.ifc", 1, 0, 800);
+        let relabelled = HostRow { rep: "Clipping".to_string(), vol: Some(47_200), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[relabelled], &swept(&["a.ifc"]));
+        assert_eq!(d.changed.len(), 1, "the relabel decides");
+        assert!(d.volume_moved.is_empty());
+        let reasons = d.changed[0].reasons.join("; ");
+        assert!(reasons.contains("representation SweptSolid -> Clipping"), "{reasons}");
+        assert!(reasons.contains("enclosed volume 55000 -> 47200"), "{reasons}");
+
+        // And a worsened count outranks the volume, with the volume carried.
+        let torn = HostRow { open: 3, strict: 3, vol: None, ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[torn], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1);
+        let collapsed = HostRow { collapsed: true, vol: Some(47_200), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[collapsed], &swept(&["a.ifc"]));
+        assert_eq!(d.regressed.len(), 1, "a gained collapse outranks the volume");
+        assert!(d.regressed[0].reasons.join("; ").contains("enclosed volume 55000 -> 47200"));
+    }
+
+    #[test]
+    fn a_reading_that_moves_by_less_than_the_platform_noise_is_not_a_move() {
+        // #3422. The goldens are blessed on arm64 and the census lane runs on
+        // x86_64. The 1/65536 m snap normally makes the two agree exactly, but
+        // a vertex sitting on a grid boundary can round the other way and move
+        // 15.26 µm, which is a real cm³ or two on a large host and no defect at
+        // all. Bounded by `volume_tolerance_cm3`: 1 cm³, or 1e-6 of the
+        // golden's magnitude, whichever is larger.
+        let all = swept(&["a.ifc"]);
+
+        // The boundary, both sides of it, on a small host where the absolute
+        // term rules: tolerance 1.
+        let g = HostRow { vol: Some(55_000), ..row("a.ifc", 1, 0, 800) };
+        assert_eq!(volume_tolerance_cm3(55_000), 1);
+        let d = diff(std::slice::from_ref(&g), &[HostRow { vol: Some(55_001), ..g.clone() }], &all);
+        assert!(d.volume_moved.is_empty(), "1 cm³ is inside the noise floor");
+        assert!(!d.requires_bless(), "and must not cost a bless");
+        let d = diff(std::slice::from_ref(&g), &[HostRow { vol: Some(55_002), ..g.clone() }], &all);
+        assert_eq!(d.volume_moved.len(), 1, "2 cm³ is outside it");
+
+        // And on a large host, where the relative term rules: 3 000 000 cm³
+        // gives a tolerance of 3.
+        let big = HostRow { vol: Some(3_000_000), ..row("a.ifc", 1, 0, 800) };
+        assert_eq!(volume_tolerance_cm3(3_000_000), 3);
+        let more = HostRow { vol: Some(3_000_003), ..big.clone() };
+        let d = diff(std::slice::from_ref(&big), &[more], &all);
+        assert!(d.volume_moved.is_empty(), "3 cm³ of 3 m³ is inside the noise floor");
+        let more = HostRow { vol: Some(3_000_004), ..big.clone() };
+        let d = diff(std::slice::from_ref(&big), &[more], &all);
+        assert_eq!(d.volume_moved.len(), 1, "4 cm³ of 3 m³ is outside it");
+
+        // The same tolerance decides the ROUTING of a triangle drop, not only
+        // whether the move is reported. A watertight shrink whose volume held
+        // to within the noise floor is a re-tessellation, and would otherwise
+        // be called geometry lost by a platform difference.
+        let shrank = HostRow { tris: 600, vol: Some(54_999), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[shrank], &all);
+        assert!(d.regressed.is_empty(), "1 cm³ of drift must not read as geometry lost");
+        assert_eq!(d.retessellated.len(), 1);
+        assert!(d.retessellated[0].reasons.join("; ").contains("enclosed volume unchanged"));
+
+        // What the tolerance costs, stated as a measurement: nothing this
+        // column exists to catch. The over-cut fixture moves 50 000 cm³.
+        assert!(volume_tolerance_cm3(550_000) < 50, "the tolerance must stay negligible");
+    }
+
+    #[test]
+    fn a_negative_reading_says_the_winding_is_inverted() {
+        // #3422. `vol` is signed because IFC winding is not reliably outward,
+        // so a negative reading is an inward-wound solid, not a negative
+        // volume. A minus sign inside a number is not a legible cue for that
+        // in a bucket listing, and the two readings a reviewer most needs to
+        // separate look nearly alike without one.
+        let all = swept(&["a.ifc"]);
+        let g = row("a.ifc", 1, 0, 800); // vol Some(55_000)
+
+        // The same solid, re-wound: no material moved at all.
+        let flipped = HostRow { vol: Some(-55_000), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[flipped], &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("55000 -> -55000"), "{reasons}");
+        assert!(reasons.contains("WINDING INVERTED"), "{reasons}");
+        // And the percentage still reads on the magnitude, which is 0%: the
+        // two cues together are what say "re-wound, nothing removed".
+        assert!(reasons.contains("(+0.00%)"), "{reasons}");
+
+        // Re-wound AND over-cut: the pair the cue exists to separate from the
+        // one above. Same sign change, a real magnitude drop with it.
+        let both = HostRow { vol: Some(-47_200), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[both], &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("WINDING INVERTED"), "{reasons}");
+        assert!(reasons.contains("(-14.18%)"), "{reasons}");
+
+        // Coming back the other way is not alarming, and does not shout.
+        let inward = HostRow { vol: Some(-55_000), ..row("a.ifc", 1, 0, 800) };
+        let d = diff(std::slice::from_ref(&inward), std::slice::from_ref(&g), &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("winding righted"), "{reasons}");
+        assert!(!reasons.contains("INVERTED"), "{reasons}");
+
+        // A host inward-wound on BOTH sides says so once, rather than reading
+        // as a flip on every row of a model that is wound that way throughout.
+        let deeper = HostRow { vol: Some(-47_200), ..inward.clone() };
+        let d = diff(std::slice::from_ref(&inward), &[deeper], &all);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("inward-wound throughout"), "{reasons}");
+        assert!(!reasons.contains("INVERTED"), "{reasons}");
+    }
+
+    #[test]
+    fn a_far_field_volume_move_names_its_quantization() {
+        // `far` is reported, never gated, and a volume read off absolute f32
+        // positions past that magnitude carries the f32 step. The move still
+        // requires a bless; the reason says what the number is worth.
+        let g = HostRow { far: true, ..row("a.ifc", 1, 0, 800) };
+        let r = HostRow { vol: Some(55_900), ..g.clone() };
+        let d = diff(std::slice::from_ref(&g), &[r], &swept(&["a.ifc"]));
+        assert_eq!(d.volume_moved.len(), 1);
+        let reasons = d.volume_moved[0].reasons.join("; ");
+        assert!(reasons.contains("f32-quantized"), "{reasons}");
+        assert!(reasons.contains("+1.64%"), "{reasons}");
+    }
+
+    #[test]
+    fn a_volume_move_from_an_empty_golden_has_no_percentage() {
+        // `volume_delta`'s zero guard: 83 watertight golden rows are empty
+        // meshes reading 0 cm³, and a host that gains material from there has
+        // no base to divide by.
+        let empty = HostRow { vol: Some(0), ..row("a.ifc", 1, 0, 800) };
+        let d = diff(&[empty], &[row("a.ifc", 1, 0, 800)], &swept(&["a.ifc"]));
+        assert!(d.volume_moved[0].reasons.join("; ").contains("(from empty)"));
+    }
+
+    #[test]
+    fn the_checked_in_golden_carries_a_volume_wherever_open_is_zero_and_nowhere_else() {
+        // The sweep-wiring property no synthetic row can carry (#3422), the
+        // same way `strict` is pinned above: `vol: None` everywhere, or
+        // `Some(0)` everywhere, would leave every routing test in this module
+        // green and the census green too, since a reading that never moves
+        // never requires a bless. A re-bless lands the dark column here.
+        //
+        // Both goldens: the heavy lane blesses its own file by hand and is
+        // `#[ignore]`d, so without this it would be the one place a dark
+        // column could be checked in with nothing reading it.
+        //
+        // The floors are DARKNESS floors, not population pins. A dark column
+        // reads ZERO non-zero volumes, so each floor sits far enough below the
+        // file's real population that a legitimate coverage change cannot
+        // reach it and a dark column cannot miss it. Measured at this commit:
+        // the default golden carries 1170 rows / 1005 watertight / 920
+        // non-zero, the heavy one 652 / 624 / 623. The floors below are set at
+        // roughly half of each, not one row under it. Pinning the population
+        // here would red the lane on any legitimate coverage change, which
+        // `MIN_VOID_HOSTS` and the heavy lane's own floors already gate.
+        //
+        // The heavy floor was 600 in the commit that added it, against 652
+        // actual. That contradicted this paragraph: a 53-row coverage change
+        // would have redded the lane and said "the column is dark", which is
+        // the wrong diagnosis by a wide margin (a dark column reads 0).
+        for (name, text, min_rows, min_nonzero) in [
+            (
+                "watertightness_census.tsv",
+                include_str!("../manifests/watertightness_census.tsv"),
+                600,
+                500,
+            ),
+            (
+                "watertightness_census_heavy.tsv",
+                include_str!("../manifests/watertightness_census_heavy.tsv"),
+                300,
+                300,
+            ),
+        ] {
+            let rows = parse(text).unwrap_or_else(|e| panic!("{name} must parse: {e}"));
+            assert!(rows.len() > min_rows, "{name} is under-populated: {} rows", rows.len());
+            for r in &rows {
+                assert!(
+                    r.volume_is_wired(),
+                    "{name} {} #{}: vol {:?} with open {}",
+                    r.model,
+                    r.id,
+                    r.vol,
+                    r.open
+                );
+            }
+            let nonzero = rows.iter().filter(|r| matches!(r.vol, Some(v) if v != 0)).count();
+            assert!(
+                nonzero > min_nonzero,
+                "{name}: only {nonzero} watertight rows carry a non-zero volume; the column is dark"
+            );
+        }
+    }
+
     /// Every `HostRow` shape that matters, for the exhaustive invariant below.
     fn variants() -> Vec<HostRow> {
         let mut out = Vec::new();
@@ -1530,18 +2313,29 @@ mod tests {
                                         PreVoid::Open(0),
                                         PreVoid::Open(2),
                                     ] {
-                                        out.push(HostRow {
-                                            model: "a.ifc".to_string(),
-                                            id: 1,
-                                            rep: rep.to_string(),
-                                            open,
-                                            strict,
-                                            tris,
-                                            collapsed,
-                                            far,
-                                            alt,
-                                            pre,
-                                        });
+                                        // Taken only where `open == 0`, as the
+                                        // sweep does; two values there so the
+                                        // cross product builds a move both
+                                        // ways, and `None` on a torn row, which
+                                        // is the only value the sweep can give
+                                        // it.
+                                        let vols: &[Option<i64>] =
+                                            if open == 0 { &[Some(100), Some(160)] } else { &[None] };
+                                        for &vol in vols {
+                                            out.push(HostRow {
+                                                model: "a.ifc".to_string(),
+                                                id: 1,
+                                                rep: rep.to_string(),
+                                                open,
+                                                strict,
+                                                tris,
+                                                collapsed,
+                                                far,
+                                                alt,
+                                                pre,
+                                                vol,
+                                            });
+                                        }
                                     }
                                 }
                             }
@@ -1614,6 +2408,15 @@ mod tests {
         // no shrink is ever checked, because every shrink requires a bless. The
         // additions are further growth pairs and equal-`tris` pairs. The exact
         // count is asserted below rather than described here.
+        //
+        // #3422 moved all three, and `detected` closes exactly. Every `open == 0`
+        // variant now carries two `vol` values, and a WATERTIGHT shrink at equal
+        // volume is detected as a re-tessellation where it used to file as
+        // geometry lost: 768 watertight variants become 1536, half of the
+        // 1536 x 1536 pairs agree on `vol`, and one `tris` combination in nine
+        // is the `5 -> 3` shrink, so 131072 new detections. The old 2304 healing
+        // pairs all land on a watertight run side and so double to 4608. Sum
+        // 135680. `checked` and `landed` are asserted as measured.
         let vs = variants();
         let all = swept(&["a.ifc"]);
         let mut checked = 0usize;
@@ -1642,12 +2445,12 @@ mod tests {
         }
         // Guard against the loop vacuously skipping everything.
         assert!(checked > vs.len(), "only {checked} clean pairs of {}", vs.len() * vs.len());
-        assert_eq!(checked, 37440, "clean pairs swept");
+        assert_eq!(checked, 63648, "clean pairs swept");
         // The two counts the comment above quotes, asserted rather than
         // recorded. The gap between them is the whole reason
         // `shrank_while_healing` exists, so it must not drift unnoticed.
-        assert_eq!(detected, 2304, "pairs DETECTED as a re-tessellation");
-        assert_eq!(landed, 312, "pairs that LAND in the retessellated bucket");
+        assert_eq!(detected, 135680, "pairs DETECTED as a re-tessellation");
+        assert_eq!(landed, 4368, "pairs that LAND in the retessellated bucket");
     }
 
     #[test]
@@ -1743,31 +2546,50 @@ mod tests {
         // `improved`.
         let vs = variants();
         let all = swept(&["a.ifc"]);
-        let (mut regressed, mut changed, mut retessellated, mut improved, mut unchanged) =
-            (0usize, 0, 0, 0, 0);
+        let mut regressed = 0usize;
+        let mut changed = 0usize;
+        let mut volume_moved = 0usize;
+        let mut retessellated = 0usize;
+        let mut improved = 0usize;
+        let mut unchanged = 0usize;
+        // The expected bucket counts when exactly bucket `i` fired. Captures
+        // nothing, so it is built once rather than per pair.
+        let only = |i: usize| {
+            let mut e = [0usize; 5];
+            e[i] = 1;
+            e
+        };
         for g in &vs {
             for r in &vs {
                 let c = classify(g, r);
                 let reclassified = reclassifications(g, r);
                 let d = diff(std::slice::from_ref(g), std::slice::from_ref(r), &all);
-                let got =
-                    (d.regressed.len(), d.changed.len(), d.retessellated.len(), d.improved.len());
+                // Exactly one bucket, and it is number `i`. An array rather
+                // than a tuple literal per arm, so adding a bucket is one
+                // edit here and a mistyped zero cannot pass for the wrong
+                // reason.
+                let got = [
+                    d.regressed.len(),
+                    d.changed.len(),
+                    d.volume_moved.len(),
+                    d.retessellated.len(),
+                    d.improved.len(),
+                ];
                 assert!(d.added.is_empty() && d.missing.is_empty(), "{g:?} -> {r:?}");
                 if !c.worse_counts.is_empty() {
-                    assert_eq!(got, (1, 0, 0, 0), "a worsened count must regress: {g:?} -> {r:?}");
+                    assert_eq!(got, only(0), "a worsened count must regress: {g:?} -> {r:?}");
                     regressed += 1;
                 } else if !reclassified.is_empty() {
-                    assert_eq!(got, (0, 1, 0, 0), "a reclassification must change: {g:?} -> {r:?}");
+                    assert_eq!(got, only(1), "a reclassification must change: {g:?} -> {r:?}");
                     changed += 1;
+                } else if !c.volume_moved.is_empty() {
+                    assert_eq!(got, only(2), "a volume move must file as one: {g:?} -> {r:?}");
+                    volume_moved += 1;
                 } else if !c.retessellated.is_empty() {
-                    assert_eq!(
-                        got,
-                        (0, 0, 1, 0),
-                        "a shrink that healed must re-tessellate: {g:?} -> {r:?}"
-                    );
+                    assert_eq!(got, only(3), "a shrink that healed must re-tessellate: {g:?} -> {r:?}");
                     retessellated += 1;
                 } else if !c.better.is_empty() {
-                    assert_eq!(got, (0, 0, 0, 1), "an improvement must improve: {g:?} -> {r:?}");
+                    assert_eq!(got, only(4), "an improvement must improve: {g:?} -> {r:?}");
                     improved += 1;
                 } else {
                     // Deleting the gated arm made this `else` a SILENT DROP for
@@ -1794,13 +2616,14 @@ mod tests {
                         c.worse_gated.is_empty(),
                         "a gated flip with nothing else moving would land in NO bucket: {g:?} -> {r:?}"
                     );
-                    assert_eq!(got, (0, 0, 0, 0), "an identical pair moves nothing: {g:?} -> {r:?}");
+                    assert_eq!(got, [0; 5], "an identical pair moves nothing: {g:?} -> {r:?}");
                     unchanged += 1;
                 }
             }
         }
         assert!(regressed > 0, "no pair reaches the regressed arm");
         assert!(changed > 0, "no pair reaches the changed arm");
+        assert!(volume_moved > 0, "no pair reaches the volume_moved arm");
         assert!(retessellated > 0, "no pair reaches the retessellated arm");
         assert!(improved > 0, "no pair reaches the improved arm");
         assert!(unchanged > 0, "no pair leaves the chain without a delta");
@@ -1897,6 +2720,7 @@ mod tests {
                 far: false,
                 alt: None,
                 pre: PreVoid::Open(3),
+                vol: None,
             },
             HostRow {
                 model: "vendor/a.ifc".to_string(),
@@ -1913,6 +2737,9 @@ mod tests {
                 far: true,
                 alt: Some(0),
                 pre: PreVoid::Failed,
+                // NEGATIVE, so the serializer is pinned on the sign the column
+                // is documented to carry and not only on a magnitude.
+                vol: Some(-1234),
             },
         ];
         let text = render(&rows);
@@ -1926,19 +2753,74 @@ mod tests {
     }
 
     #[test]
-    fn a_truncated_row_is_an_error_not_a_silently_short_golden() {
-        let header = "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\n";
-        let err = parse(&format!("{header}a.ifc\t1\tCSG\t0\t0\t0\t0\n"))
-            .expect_err("a 7-column row must not parse");
-        assert!(err.contains("expected 10 columns"), "{err}");
+    fn only_a_uniformly_one_column_short_golden_is_a_schema_error() {
+        let header = "model\tid\trep\topen\ttris\tcoll\tfar\talt\tpre\tstrict\tvol\n";
+        // Matched on the VARIANT, not on the message. The two classes are what
+        // `read_golden` branches on in bless mode (#3422), so a test that only
+        // read the text would stay green if a row-shape failure started
+        // reporting as `Malformed` — which would make a column-adding bless
+        // fatal — or, far worse, if a mangled row started reporting as
+        // `Schema`, which is the arm a bless treats as an empty golden.
+        let schema = |text: String, what: &str| match parse(&text) {
+            Err(ParseError::Schema { expected, got, .. }) => {
+                assert_eq!(expected, COLUMNS, "{what}");
+                got
+            }
+            other => panic!("{what} must be a Schema error, got {other:?}"),
+        };
+        let malformed = |text: String, what: &str| match parse(&text) {
+            Err(ParseError::Malformed(m)) => m,
+            other => panic!("{what} must be a Malformed error, got {other:?}"),
+        };
 
-        // And a COMPLETE pre-#3397 row is a truncation too, not a row with an
-        // implied strict count. Defaulting it would fabricate a clean-looking
-        // host for every line of a stale golden, which is the one way this
-        // column could go dark across the whole corpus at once.
-        let old = parse(&format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\n"))
-            .expect_err("a 9-column pre-#3397 row must not parse");
-        assert!(old.contains("expected 10 columns"), "{old}");
+        // The ONE tolerated shape, and the only one a bless may treat as an
+        // empty golden: EVERY data row exactly one column short, which is what
+        // a column-adding change leaves on disk and nothing else produces.
+        assert_eq!(
+            schema(
+                format!(
+                    "{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\n\
+                     a.ifc\t2\tCSG\t0\t12\t0\t0\t0\t-\t0\n"
+                ),
+                "a pre-#3422 golden"
+            ),
+            10
+        );
+
+        // Every OTHER column count is a MANGLED file, not an older schema, and
+        // so is fatal in bless mode too. A truncated write, a mangled merge or
+        // a stray tab lands here, and treating any of them as an empty golden
+        // is the loss this split exists to prevent: in the heavy lane the two
+        // fixtures share one file and each blesses only its own model's rows.
+        malformed(format!("{header}a.ifc\t1\tCSG\t0\t0\t0\t0\n"), "a 7-column row");
+        // Two schemas stale is not the sanctioned migration either. Its rows
+        // would need TWO columns invented, and a bless that discarded them
+        // silently would be indistinguishable from the mangled cases above.
+        malformed(format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\n"), "a pre-#3397 row");
+        malformed(
+            format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t55\t7\n"),
+            "a row one column too many"
+        );
+        // The heavy lane's actual hazard: ONE truncated row among rows that are
+        // on the current schema. Not uniform, so not a migration — and under a
+        // rule that only looked at the FIRST bad row's count it would have been
+        // one, taking the other model's rows with it.
+        malformed(
+            format!(
+                "{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t55\n\
+                 b.ifc\t2\tCSG\t0\t12\t0\t0\t0\t-\t0\n"
+            ),
+            "one short row among current-schema rows"
+        );
+
+        // A volume token that is neither `-` nor an integer is a CORRUPT row,
+        // not a missing reading and not an older schema: the column is there
+        // and unreadable. `Malformed` is what keeps a bless from swallowing it.
+        let bad = malformed(
+            format!("{header}a.ifc\t1\tCSG\t0\t12\t0\t0\t0\t-\t0\t1.5\n"),
+            "a float volume"
+        );
+        assert!(bad.contains("bad volume"), "{bad}");
     }
 
     #[test]

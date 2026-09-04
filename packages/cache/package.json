@@ -23,6 +23,7 @@
     "@ifc-lite/geometry": "workspace:^"
   },
   "devDependencies": {
+    "@ifc-lite/parser": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },

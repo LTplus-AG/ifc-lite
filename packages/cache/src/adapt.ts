@@ -10,7 +10,7 @@ import type {
   RelationshipGraph,
   SpatialHierarchy,
 } from '@ifc-lite/data';
-import { SchemaVersion, type CacheDataStore } from './types.js';
+import { SchemaVersion, type CacheDataStore, type CacheEntityIndex } from './types.js';
 
 /**
  * The subset of `@ifc-lite/parser`'s `IfcDataStore` (what `IfcParser.parseColumnar`
@@ -29,6 +29,16 @@ export interface ParsedIfcStore {
   quantities: QuantityTable;
   relationships: RelationshipGraph;
   spatialHierarchy?: SpatialHierarchy;
+  /**
+   * The parser's `entityIndex`. Its `byId` is an `EntityByIdIndex`, which
+   * already iterates `[number, EntityRef]`, and `EntityRef` is structurally a
+   * `CacheEntityRef` (same `expressId`/`type`/`byteOffset`/`byteLength`, plus a
+   * required rather than optional `lineNumber`) -- so it satisfies
+   * {@link CacheEntityIndex} as written, with no conversion and no cast. Typed
+   * as `CacheEntityIndex` here so the adapter stays free of a parser import;
+   * `byType` and the parser index's other members are simply ignored.
+   */
+  entityIndex?: CacheEntityIndex;
 }
 
 /**
@@ -61,21 +71,17 @@ function toSchemaVersion(schemaVersion: ParsedIfcStore['schemaVersion']): Schema
  * representation, so passing a parsed store straight to `write` doesn't
  * typecheck (issue #3759).
  *
- * Two things this does NOT do, because the source types genuinely differ:
- * - It does not carry over an entity index. The parser's `entityIndex.byId`
- *   is a live map keyed by parsed entity data; the cache format's
- *   `CacheEntityIndex.byId` is a serializable `Iterable<[number,
- *   CacheEntityRef]>` of byte offsets into the source. Nothing today
- *   produces the latter from the former, so the cache is written without an
- *   entity-index section (it's optional — {@link BinaryCacheWriter.write}
- *   skips that section entirely when absent) rather than papering over the
- *   mismatch with a cast.
- * - It does not materialize `properties`/`quantities`. For a STEP-parsed
- *   store those tables are empty by design — properties resolve lazily on
- *   demand — and this adapter serializes exactly what the store carries, so
- *   a cache written from a STEP parse has an empty property/quantity table
- *   too. See the `@ifc-lite/cache` package docs and `docs/guide/querying.md`
- *   for what that means for a cache-restored model.
+ * The one thing this does NOT do is materialize `properties`/`quantities`.
+ * For a STEP-parsed store those tables are empty by design — properties
+ * resolve lazily on demand — and this adapter serializes exactly what the
+ * store carries, so a cache written from a STEP parse has an empty
+ * property/quantity table too. See the `@ifc-lite/cache` package docs and
+ * `docs/guide/querying.md` for what that means for a cache-restored model.
+ *
+ * The entity index IS carried over: `store.entityIndex` already satisfies
+ * {@link CacheEntityIndex} structurally, so dropping it only cost callers the
+ * section (and with it the ability to re-attach lazy accessors on read, which
+ * is the very remedy the README recommends for the empty property tables).
  */
 export function toCacheDataStore(store: ParsedIfcStore): CacheDataStore {
   return {
@@ -87,5 +93,6 @@ export function toCacheDataStore(store: ParsedIfcStore): CacheDataStore {
     quantities: store.quantities,
     relationships: store.relationships,
     spatialHierarchy: store.spatialHierarchy,
+    entityIndex: store.entityIndex,
   };
 }

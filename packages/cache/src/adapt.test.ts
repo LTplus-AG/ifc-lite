@@ -76,7 +76,15 @@ describe('toCacheDataStore', () => {
     expect(cacheStore.relationships).toBe(store.relationships);
   });
 
-  it('leaves entityIndex undefined -- the parser and cache index shapes genuinely differ, so nothing is carried over', () => {
+  it('passes a present entityIndex straight through, so the write can emit an entity-index section', () => {
+    const entityIndex = {
+      byId: new Map([[1, { expressId: 1, type: 'IfcWall', byteOffset: 0, byteLength: 42, lineNumber: 1 }]]),
+    };
+    const cacheStore = toCacheDataStore(buildParsedStore({ entityIndex }));
+    expect(cacheStore.entityIndex).toBe(entityIndex);
+  });
+
+  it('leaves entityIndex undefined when the source has none', () => {
     const cacheStore = toCacheDataStore(buildParsedStore());
     expect(cacheStore.entityIndex).toBeUndefined();
   });

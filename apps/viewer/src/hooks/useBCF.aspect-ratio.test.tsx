@@ -34,6 +34,17 @@ import { useBCF } from './useBCF.js';
 
 /** 1600x900 viewport. A square one would not distinguish w/h from h/w. */
 const ASPECT = 16 / 9;
+/** What the viewport is resized to mid-capture in the ordering test. */
+const RESIZED_ASPECT = 4 / 3;
+
+/**
+ * The live ratio, so a test can resize the viewport the way the render loop
+ * does (`Renderer.resize` -> `camera.setAspect`) and watch what the capture
+ * path reads. Reset in `beforeEach`.
+ */
+let liveAspect = ASPECT;
+/** Runs while `captureSnapshot` awaits the GPU, i.e. between the two reads. */
+let duringGpuWait: (() => void) | null = null;
 
 const renderer = {
   getCamera: () => ({
@@ -41,8 +52,15 @@ const renderer = {
     getTarget: () => ({ x: 1, y: 2, z: 3 }),
     getUp: () => ({ x: 0, y: 1, z: 0 }),
     getFOV: () => Math.PI / 4,
-    getAspect: () => ASPECT,
+    getAspect: () => liveAspect,
     getDistance: () => 10,
+  }),
+  getGPUDevice: () => ({
+    queue: {
+      onSubmittedWorkDone: async () => {
+        duringGpuWait?.();
+      },
+    },
   }),
 } as unknown as Renderer;
 
@@ -90,6 +108,8 @@ async function captureViewpoint(): Promise<BCFViewpoint> {
 }
 
 beforeEach(async () => {
+  liveAspect = ASPECT;
+  duringGpuWait = null;
   useViewerStore.setState({
     models: new Map(),
     isolatedEntities: null,
@@ -125,5 +145,46 @@ describe('useBCF — captured viewpoints carry the viewport aspect ratio', () =>
   it('exports as BCF 3.0 instead of throwing away the whole archive', async () => {
     const blob = await writeBCF(projectAround(await captureViewpoint()));
     assert.ok(blob.size > 0, 'the export must produce an archive');
+  });
+
+  /**
+   * The PNG and the `AspectRatio` describe ONE frame, so they must be read
+   * from one drawing buffer. `captureSnapshot` awaits
+   * `queue.onSubmittedWorkDone()` before `toDataURL`, and the render loop
+   * resizes the canvas and calls `camera.setAspect` inside that wait
+   * (`packages/renderer/src/index.ts`, the `dimensionsChanged` branch). Read
+   * the camera first and the viewpoint claims a ratio the image it ships does
+   * not have. Reading it after closes the window: the continuation of the
+   * `await` is a microtask, and a rAF render is a task, so nothing can resize
+   * between `toDataURL` and the camera read.
+   */
+  it('reads the camera after the snapshot, so both describe one frame', async () => {
+    const canvas = {
+      toDataURL: () => `data:image/png;base64,${Buffer.from(String(liveAspect)).toString('base64')}`,
+    } as unknown as HTMLCanvasElement;
+    api!.setCanvasRef({ current: canvas });
+    duringGpuWait = () => {
+      liveAspect = RESIZED_ASPECT;
+    };
+
+    const captured: (BCFViewpoint | null)[] = [];
+    await act(async () => {
+      captured.push(await api!.createViewpointFromState({ includeSnapshot: true }));
+    });
+    const viewpoint = captured[0];
+    assert.ok(viewpoint, 'a viewpoint must be produced');
+
+    const snapshot = viewpoint.snapshot;
+    assert.ok(snapshot, 'the viewpoint must carry the snapshot it was asked for');
+    assert.equal(
+      Buffer.from(snapshot.split(',')[1] ?? snapshot, 'base64').toString(),
+      String(RESIZED_ASPECT),
+      'fixture sanity: the PNG is encoded from the post-resize buffer',
+    );
+    assert.equal(
+      viewpoint.perspectiveCamera?.aspectRatio,
+      RESIZED_ASPECT,
+      'BUG: the camera ratio was read before the snapshot, so it describes a frame the PNG is not',
+    );
   });
 });

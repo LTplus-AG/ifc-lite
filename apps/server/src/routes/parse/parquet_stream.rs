@@ -4,7 +4,7 @@
 
 //! SSE Parquet-batch streaming parse endpoint.
 
-use super::cache_keys::{cache_symbolic_data, request_cache_key};
+use super::cache_keys::{cache_symbolic_data, data_model_cache_key, request_cache_key};
 use super::parquet::ParquetMetadataHeader;
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
@@ -340,7 +340,7 @@ pub async fn parse_parquet_stream(
                     .await;
 
             if let Ok(Ok(parquet_data)) = serialize_result {
-                let dm_key = format!("{}-datamodel-v5", cache_key_for_dm);
+                let dm_key = data_model_cache_key(&cache_key_for_dm);
                 if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
                     tracing::error!(error = %e, "Failed to cache data model from stream");
                 } else {

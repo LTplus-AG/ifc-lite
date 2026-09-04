@@ -12,7 +12,7 @@
 //! combination — these tests cover each partial-cache-state branch, not just
 //! both-present and both-absent.
 
-use super::cache_keys::{parquet_cache_key, parquet_metadata_cache_key};
+use super::cache_keys::{data_model_cache_key, parquet_cache_key, parquet_metadata_cache_key};
 use crate::admission::{Admission, AdmissionCfg};
 use crate::config::Config;
 use crate::services::cache::DiskCache;
@@ -207,12 +207,35 @@ async fn get_data_model_returns_202_when_not_yet_cached() {
     assert_eq!(response.status(), StatusCode::ACCEPTED);
 }
 
+/// An entry written under the PREVIOUS payload version must not be served
+/// (issue #3860). The `rel_id` column was added to the relationships table, so
+/// a `v5` blob decodes cleanly and silently restores `RelId = 0` on every
+/// relationship row of a server-loaded model. The reader must miss it and let
+/// the file be re-parsed.
+#[tokio::test]
+async fn get_data_model_ignores_an_entry_written_under_the_previous_version() {
+    let state = test_state("data-model-stale").await;
+    let cache_key = "somehash-default";
+    state
+        .cache
+        .set_bytes(&format!("{cache_key}-datamodel-v5"), b"pre-rel_id-parquet")
+        .await
+        .unwrap();
+
+    let response = get(&state, &format!("/api/v1/parse/data-model/{cache_key}")).await;
+    assert_eq!(
+        response.status(),
+        StatusCode::ACCEPTED,
+        "a pre-bump data-model blob must not be served"
+    );
+}
+
 /// Cached data model -> 200 with the exact stored bytes as the body.
 #[tokio::test]
 async fn get_data_model_returns_200_with_cached_bytes() {
     let state = test_state("data-model-hit").await;
     let cache_key = "somehash-default";
-    let data_model_key = format!("{cache_key}-datamodel-v5");
+    let data_model_key = data_model_cache_key(cache_key);
     state
         .cache
         .set_bytes(&data_model_key, b"the-data-model-parquet")

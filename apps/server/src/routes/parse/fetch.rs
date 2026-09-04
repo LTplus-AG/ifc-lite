@@ -4,7 +4,9 @@
 
 //! GET cache fetch / check endpoints.
 
-use super::cache_keys::{parquet_cache_key, parquet_metadata_cache_key, symbolic_cache_key};
+use super::cache_keys::{
+    data_model_cache_key, parquet_cache_key, parquet_metadata_cache_key, symbolic_cache_key,
+};
 use super::ParseQuery;
 use crate::error::ApiError;
 use crate::AppState;
@@ -28,7 +30,7 @@ pub async fn get_data_model(
     State(state): State<AppState>,
     axum::extract::Path(cache_key): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
-    let data_model_cache_key = format!("{}-datamodel-v5", cache_key);
+    let data_model_cache_key = data_model_cache_key(&cache_key);
 
     match state.cache.get_bytes(&data_model_cache_key).await? {
         Some(data_model_parquet) => {

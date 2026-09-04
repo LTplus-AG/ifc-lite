@@ -88,6 +88,21 @@ pub(crate) fn parquet_metadata_cache_key(
     )
 }
 
+/// Build the data-model cache key for a given file cache key.
+///
+/// One definition for the writers (`parse_parquet`, `parse_parquet_stream`) and
+/// the reader (`get_data_model`): three separate literals could disagree, and a
+/// reader looking up a key nobody writes answers `202` forever.
+///
+/// The suffix bumps on EVERY change to the data-model payload's columns. `v6`
+/// with issue #3860: the relationships table gained `rel_id`. Without the bump
+/// a warm `CACHE_DIR` replays the pre-bump blob verbatim, the column is absent,
+/// the decoder correctly omits it, and the viewer's server path is back to
+/// `RelId = 0` on every exported relationship row with nothing saying so.
+pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-datamodel-v6")
+}
+
 /// Build the symbolic-data cache key for a given file cache key.
 ///
 /// The 2D symbol stream (`IfcAnnotation` + `IfcGrid`) is cached separately
@@ -336,6 +351,26 @@ mod tests {
         assert_ne!(other, request_cache_key(data, &default_query, TessellationQuality::default()));
     }
 
+    /// The data-model payload's columns changed (issue #3860), so the suffix
+    /// must have moved off `v5`: a warm cache would otherwise serve a blob
+    /// written before the `rel_id` column existed, and absence of the column
+    /// reads to the decoder exactly like an older server — silently correct,
+    /// silently wrong.
+    #[test]
+    fn data_model_cache_key_is_versioned_and_retires_the_previous_payload() {
+        let request_key = "0ab20f4e4014-default";
+        let key = data_model_cache_key(request_key);
+        assert_eq!(key, format!("{request_key}-datamodel-v6"));
+        assert_ne!(
+            key,
+            format!("{request_key}-datamodel-v5"),
+            "the v5 entries hold a relationships table with no rel_id column"
+        );
+        assert_ne!(key, request_key);
+        assert_ne!(key, symbolic_cache_key(request_key));
+        assert_ne!(key, json_response_cache_key(request_key));
+    }
+
     /// The derived keys are all distinct namespaces over the same seed, so a
     /// parquet blob can never be served where symbolic JSON or a typed
     /// `ParseResponse` is expected.
@@ -346,6 +381,7 @@ mod tests {
             seed.to_string(),
             json_response_cache_key(seed),
             symbolic_cache_key(seed),
+            data_model_cache_key(seed),
             parquet_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
             parquet_metadata_cache_key("0ab20f4e4014", OpeningFilterMode::Default, TessellationQuality::Medium),
         ];

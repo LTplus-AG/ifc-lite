@@ -4,7 +4,7 @@
 
 //! Binary Parquet parse endpoints.
 
-use super::cache_keys::{cache_symbolic_data, request_cache_key};
+use super::cache_keys::{cache_symbolic_data, data_model_cache_key, request_cache_key};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
@@ -182,7 +182,7 @@ pub async fn parse_parquet(
     );
 
     // Cache data model IMMEDIATELY (not in background) so it's ready when client polls
-    let data_model_cache_key = format!("{}-datamodel-v5", cache_key);
+    let data_model_cache_key = data_model_cache_key(&cache_key);
     if let Err(e) = state
         .cache
         .set_bytes(&data_model_cache_key, &data_model_parquet)

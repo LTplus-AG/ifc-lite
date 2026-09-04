@@ -106,34 +106,29 @@ export interface AggregationModelAccess {
 }
 
 /**
- * Replace every id in `globalIds` that has no renderable geometry with the
- * aggregated parts that do.
+ * Replace every id in `globalIds` that has no renderable geometry with ALL of
+ * its aggregated descendants.
  *
- * Framing, like the class trees, asks each selected id for a bounding box and
- * skips it when there is none — so selecting a geometry-less assembly and
- * pressing Frame moved the camera nowhere. Expanding here makes an assembly
- * frame as the union of its parts.
+ * Two use cases, both solved by the same full expansion:
  *
- * Ids that already have geometry pass through untouched and in order.
+ * 1. Framing: the class trees ask each selected id for a bounding box and skip
+ *    it when there is none — so selecting a geometry-less assembly and pressing
+ *    Frame moves the camera nowhere. Expanding makes an assembly frame as the
+ *    union of its parts.
  *
- * When NONE of an id's aggregated parts currently satisfy `hasGeometry`
- * either, this falls back to ALL of its aggregated descendants rather than
- * dropping the id (#3426, correcting #3382). `hasGeometry` here is a
- * point-in-time check — it reads whatever the caller's mesh/bounds lookup
- * currently has, which during streaming or behind a type-visibility filter
- * says "no" for a part that has geometry and simply hasn't rendered YET.
- * Dropping the id in that state and leaving the caller to isolate/highlight
- * nothing (or the parent's own geometry-less id) blanks the viewport for an
- * entity that unambiguously DOES have renderable content once its parts
- * arrive. Falling back to the full descendant set is free when they never
- * render (an id with no mesh simply never matches a renderer's whitelist,
- * same reasoning as `resolvePresentationIds`'s raw-id union) and self-heals the
- * moment streaming completes or the filter is toggled off.
+ * 2. Presentation channels (hide, isolate, colour): `hasGeometry` is a
+ *    point-in-time check — during streaming or behind a type-visibility filter,
+ *    it says "no" for a part that legitimately has geometry and simply hasn't
+ *    rendered YET (#3426, #3865). Persisting only currently-meshed parts means
+ *    parts that stream in later escape the presentation action. Always including
+ *    the full descendant set ensures the persisted action applies to all parts,
+ *    present and future. Carrying an id with no mesh is free: it simply never
+ *    matches a renderer's mesh whitelist.
  *
- * An id with neither geometry nor ANY aggregated descendant at all is still
- * dropped, exactly as the caller's own `continue` would have dropped it —
- * that is the one case this function genuinely cannot help with, because
- * there is nothing to expand to.
+ * Ids that already have geometry pass through untouched and in order. An id
+ * with neither geometry nor ANY aggregated descendant at all is dropped — that
+ * is the one case this function genuinely cannot help with, because there is
+ * nothing to expand to.
  *
  * Resolution stays inside one model: descendants are mapped back through the
  * SAME model's offset.
@@ -161,19 +156,14 @@ export function expandToGeometryBearingIds(
     const descendantGlobalIds = collectAggregatedDescendants(relationships, expressId).map(
       (descendant) => access.toGlobalId(modelId, descendant),
     );
-    let foundGeometry = false;
-    for (const partGlobalId of descendantGlobalIds) {
-      if (hasGeometry(partGlobalId)) {
-        push(partGlobalId);
-        foundGeometry = true;
-      }
-    }
-    if (!foundGeometry) {
-      // Not currently meshed doesn't mean never meshed (#3426) — carry every
-      // aggregated part forward so the caller has something durable to
-      // converge on, instead of silently losing the id.
-      for (const partGlobalId of descendantGlobalIds) push(partGlobalId);
-    }
+    // Include ALL aggregated descendants, regardless of current renderability
+    // (#3426, #3865). `hasGeometry` is a point-in-time check — during streaming,
+    // it says "no" for a part that has geometry and simply hasn't rendered YET.
+    // Including the full set ensures that parts streaming in after a
+    // presentation action (hide, isolate, colour) is applied are included in
+    // the persisted set and respect the action. Carrying an id with no mesh is
+    // free: it simply never matches a renderer's mesh whitelist.
+    for (const partGlobalId of descendantGlobalIds) push(partGlobalId);
   }
   return out;
 }

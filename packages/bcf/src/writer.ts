@@ -833,7 +833,21 @@ function writeBimSnippet(snippet: BCFBimSnippet, version: '2.1' | '3.0'): string
  * something.
  */
 function writeDocumentReference(docRef: BCFDocumentReference, version: '2.1' | '3.0'): string {
-  const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
+  // 2.1's markup.xsd declares `Guid` with no `use`, so it is optional there;
+  // 3.0's `DocumentReferenceAttributes` declares it `use="required"`, so
+  // omitting it made every 3.0 topic carrying a guid-less document reference
+  // write an invalid `markup.bcf` -- and markup.bcf IS the issue, so a viewer
+  // that rejects it drops the topic whole (#3612). Mint one rather than
+  // refuse: this guid names only itself (nothing in the archive refers to a
+  // DocumentReference the way `RelatedTopic` refers to a topic), so a
+  // generated value loses nothing, and `writeProjectFile` already fills a
+  // missing `projectId` the same way. Refusal is reserved for values that
+  // assert something only the caller knows -- `AspectRatio`, `TopicType` --
+  // and would fail the whole export over a field 2.1 says is optional. 2.1
+  // keeps the attribute absent: fabricating an identifier there buys no
+  // schema conformance at all.
+  const guid = version === '3.0' ? docRef.guid || generateUuid() : docRef.guid;
+  const guidAttr = guid ? ` Guid="${escapeXml(guid)}"` : '';
 
   if (version === '3.0') {
     let content = `\n    <DocumentReference${guidAttr}>`;

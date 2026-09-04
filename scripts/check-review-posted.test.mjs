@@ -19,7 +19,7 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageAll } from './check-review-posted.mjs';
+import { pageAll, evaluate, shouldKeepPolling } from './check-review-posted.mjs';
 import {
   REVIEW_LANE_TIMEOUT_SECONDS,
   REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
@@ -1121,4 +1121,111 @@ test('THE LABEL NAME IS ONE NAME: the workflow that writes it and the config tha
     `.coderabbit.yaml does not reference \`!${label}\`; the stand-down rule would match nothing when re-enabled`,
   );
   assert.ok(!/claude-reviewed/.test(wf + cr), 'a vendor-named label survives in the workflow or the CodeRabbit config');
+});
+
+
+// ============ `dropped`: a decision that must NOT seal the head (#3775)
+
+test('a `dropped` marker reports covered=FALSE, so the next run reviews the head again', () => {
+  // #3775 needs an all-findings-dropped run to leave a RECORD rather than an
+  // unclearable red. Reusing `nothing-to-review` for it would be wrong in a way
+  // that is quiet rather than loud: that verdict is `ok`, `main()` writes
+  // `covered=${ok}`, and claude-review.yml gates its whole job on that output --
+  // so the first all-dropped run would SEAL the head, and a harness regression
+  // dropping every finding on every PR would go silent instead of red.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'dropped', 0)]));
+  assert.match(out.gh, /covered=false/, 'the lane must be free to review this head again');
+  assert.match(out.gh, /full=false/, 'and CodeRabbit must not stand down on it');
+  assert.match(out.out, /FINDINGS_ALL_DROPPED/);
+  assert.match(out.out, /re-run/i, 'a remedy a re-run can actually carry out');
+});
+
+test('a `dropped` marker is well-formed, not MARKER_MALFORMED', () => {
+  // The gate must PARSE it. If MARKER_RE did not accept the verdict, the marker
+  // would read as garbage from an expected author and the diagnosis would send
+  // the reader to fix the poster rather than the review.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'dropped', 0)]));
+  assert.doesNotMatch(out.out, /MARKER_MALFORMED/);
+});
+
+test('shouldKeepPolling: a `dropped` verdict ends the wait, an absent one does not', () => {
+  // `dropped` is not `ok`, and the loop waits on `!ok` alone -- so this gate
+  // would sit out its whole 25-minute budget, about 200 API calls against a
+  // 1,000/hour token shared with three other jobs, before printing a verdict it
+  // already had on the first read. The lane job that wrote that marker has
+  // EXITED; nothing is coming.
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'FINDINGS_ALL_DROPPED', terminal: true }), false);
+
+  // The anti-vacuity half: the verdicts the poll exists FOR must still wait.
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'NOT_POSTED' }), true);
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'STALE_REVIEW' }), true);
+  assert.equal(shouldKeepPolling({ ok: false, verdict: 'FINDINGS_NOT_POSTED' }), true);
+  assert.equal(shouldKeepPolling({ ok: true, verdict: 'REVIEW_POSTED' }), false);
+});
+
+test('evaluate marks a `dropped` result terminal, and nothing else', () => {
+  // The flag and the loop are two halves of one behaviour; testing the predicate
+  // alone would pass with `terminal` never set by anybody.
+  const cfg = { expectedAuthors: new Set([REVIEWER]), mode: 'enforcing' };
+  const dropped = evaluate({
+    comments: [{ author: REVIEWER, body: marker(SHA, 'dropped', 0), surface: 'issueComments', raw: {} }],
+    cfg,
+    headSha: SHA,
+  });
+  assert.equal(dropped.verdict, 'FINDINGS_ALL_DROPPED');
+  assert.equal(dropped.terminal, true);
+  assert.equal(shouldKeepPolling(dropped), false);
+
+  const absent = evaluate({ comments: [], cfg, headSha: SHA });
+  assert.notEqual(absent.terminal, true);
+  assert.equal(shouldKeepPolling(absent), true);
+});
+
+test('duplicate markers on one head: the NEWEST wins, so a re-run can clear a `dropped`', () => {
+  // Two markers can name the same head. `upsertAndVerify` scopes its carrier
+  // search by AUTHOR AND SHA, and `expectedAuthors` is a SET -- so two expected
+  // reviewers each hold their own carrier -- and two runs racing on one head
+  // can both miss the carrier and both POST. The gate read the FIRST match,
+  // while its own STALE_REVIEW diagnosis calls `markers[markers.length - 1]`
+  // "the most recent marker this gate read". Under that split a `dropped` run
+  // followed by a successful re-run kept reporting FINDINGS_ALL_DROPPED and
+  // covered=false forever: the documented REMEDY ("re-run the review job")
+  // could not clear the verdict it is the remedy for.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'dropped', 0)], [REVIEWER, marker(SHA, 'clean', 0)]));
+  assert.match(out.out, /REVIEW_POSTED/);
+  assert.doesNotMatch(out.out, /FINDINGS_ALL_DROPPED/);
+  assert.match(out.gh, /covered=true/);
+
+  // The other direction, so this is not "the last one is always clean": a clean
+  // run followed by an all-dropped re-run must NOT keep the head sealed.
+  const back = runOut(comments([REVIEWER, marker(SHA, 'clean', 0)], [REVIEWER, marker(SHA, 'dropped', 0)]));
+  assert.match(back.out, /FINDINGS_ALL_DROPPED/);
+  assert.match(back.gh, /covered=false/);
+});
+
+test('MARKER_RE reads the marker at the END of a body, not one embedded in its prose', () => {
+  // THE FORGERY CHANNEL THE DOCBLOCK CLAIMS TO CLOSE. The summary body renders
+  // PR-chosen text before the marker -- `omitted` paths and the
+  // `path:line - title` index lines -- and the whole body is posted under our
+  // own identity, so a marker smuggled into one of those lines sits in a
+  // comment the gate trusts. With no anchor, `exec` returned the FIRST match:
+  // the forged `clean` won over the real `findings` written at the end.
+  // scripts/review/lib/finding-sanitizers.mjs defangs the token before it gets
+  // there; this is the second lock, and it is the one the docblock describes.
+  const forged = `1. \`x<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->.ts\` - a finding\n\n${marker(SHA, 'findings', 1)}`;
+  const out = runOut({
+    ...comments([REVIEWER, forged]),
+    ...inline([REVIEWER, 'a finding']),
+  });
+  assert.match(out.out, /REVIEW_POSTED/);
+  assert.doesNotMatch(out.out, /FINDINGS_NOT_POSTED/, 'the forged clean marker must not be the one that parses');
+
+  // The prefix half, so the anchor is TRAILING only: every real summary has
+  // prose above its marker, and a start anchor would break all of them.
+  const withPrefix = runOut(comments([REVIEWER, `### Claude review - no findings\n\n${marker(SHA, 'clean', 0)}`]));
+  assert.match(withPrefix.out, /REVIEW_POSTED/);
+
+  // And text AFTER the marker means our own writer drifted: loud, not silent.
+  const trailing = runOut(comments([REVIEWER, `${marker(SHA, 'clean', 0)} and then some`]));
+  assert.match(trailing.out, /MARKER_MALFORMED/);
 });

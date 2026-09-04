@@ -17,6 +17,9 @@ import { lineIsAdded, addedLinesMatching } from '../quote-line-coupling.mjs';
 import { sanitizeBody, sanitizeLabel, sanitizePath } from './finding-sanitizers.mjs';
 import { checkProofOfWork, siblingVerifies } from './finding-proof-of-work.mjs';
 import { isUnread } from '../build-review-input.mjs';
+// One spelling of the drop warning, shared with the sink that prefixes it and the
+// CLI that reads it back out of the log.
+import { DROPPED_LABEL } from './dropped-warning.mjs';
 
 /** @param {unknown} v */
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
@@ -97,7 +100,7 @@ function validateFindings({ response, input, warn }) {
   const kept = [];
   for (const [i, f] of response.findings.entries()) {
     const drop = (why) => {
-      warn(`DROPPED findings[${i}]: ${why}`);
+      warn(`${DROPPED_LABEL} findings[${i}]: ${why}`);
       return true;
     };
     if (f === null || typeof f !== 'object' || Array.isArray(f)) {
@@ -115,7 +118,7 @@ function validateFindings({ response, input, warn }) {
     }
     const file = input.files.get(f.path);
     if (!file) {
-      drop(`\`${f.path}\` was never sent to the model, so this finding is about code we did not review.`);
+      drop(`\`${sanitizePath(f.path)}\` was never sent to the model, so this finding is about code we did not review.`);
       continue;
     }
     if (typeof f.quote !== 'string' || f.quote.trim().length < MIN_FINDING_QUOTE_CHARS) {
@@ -127,7 +130,7 @@ function validateFindings({ response, input, warn }) {
     }
     if (!lineIsAdded(f.line, file.addedLineRanges)) {
       drop(
-        `\`line\` ${JSON.stringify(f.line)} is not inside an added range of \`${f.path}\` ` +
+        `\`line\` ${JSON.stringify(f.line)} is not inside an added range of \`${sanitizePath(f.path)}\` ` +
           `(${JSON.stringify(file.addedLineRanges)}). Commenting there would annotate code this PR ` +
           'did not touch.',
       );
@@ -144,10 +147,10 @@ function validateFindings({ response, input, warn }) {
     if (!matches.includes(f.line)) {
       drop(
         matches.length > 0
-          ? `\`quote\` is not the text at \`line\` ${f.line} of \`${f.path}\` -- it IS the text of added ` +
+          ? `\`quote\` is not the text at \`line\` ${f.line} of \`${sanitizePath(f.path)}\` -- it IS the text of added ` +
             `line(s) ${matches.join(', ')} instead. Posting at ${f.line} would anchor a real finding to ` +
             'the wrong line, which is worse than not posting it.'
-          : `\`quote\` is not the text of any added line of \`${f.path}\`: ` +
+          : `\`quote\` is not the text of any added line of \`${sanitizePath(f.path)}\`: ` +
             `${JSON.stringify(f.quote.slice(0, 120))}.`,
       );
       continue;
@@ -199,6 +202,11 @@ export function validate({ response, input, onWarn = null }) {
   }
 
   checkSchema(response);
+  // NO `warn` HERE. An earlier draft of #3769 passed one so checkProofOfWork
+  // could announce a mis-attributed riskiest-change path; #3825 answered that
+  // case with a better FAILURE MESSAGE instead, so there is no warning left to
+  // emit and the callee never destructured the argument. A parameter nothing
+  // reads is a claim that something happens.
   checkProofOfWork({ response, input });
 
   let kept = validateFindings({ response, input, warn });

@@ -58,11 +58,20 @@ function omittedSection(omitted) {
  * `mode: enforcing` that is a red row no re-run and no author action can ever
  * clear, on a class that recurs (PR #3558, a Cargo.lock-only dependabot bump),
  * with a printed remedy -- "re-run the review job" -- that cannot work.
+ *
+ * `allFindingsDropped` RENDERS A DIFFERENT BODY UNDER A DIFFERENT VERDICT
+ * (#3775). There the model DID run, was retried once, and every finding it
+ * produced was refused -- so the fixed sentence "the reviewer was NOT run" would
+ * be false, and the marker is `dropped` rather than `nothing-to-review`. The gate
+ * treats `dropped` as NOT covered, so the head stays open for a real review
+ * instead of being sealed by a run that posted nothing.
  */
-export function nothingToReviewBody(sha, why = null) {
+export function nothingToReviewBody(sha, why = null, { allFindingsDropped = false } = {}) {
   const short = sha.slice(0, 9);
   return [
-    `### Claude review - nothing to review for \`${short}\``,
+    allFindingsDropped
+      ? `### Claude review - every finding dropped for \`${short}\``
+      : `### Claude review - nothing to review for \`${short}\``,
     '',
     // WHY, NOT A GUESS AT WHY. This used to assert the cause -- "every changed
     // path is excluded: lockfiles, generated code, snapshots, fixtures and build
@@ -76,11 +85,23 @@ export function nothingToReviewBody(sha, why = null) {
       : 'Every changed path in this diff is excluded from review: lockfiles, generated\n' +
         'code, snapshots, fixtures and build output.',
     '',
-    'The reviewer was NOT run, so this is not a statement that the diff is fine -- it',
-    'is a statement that nothing here was read. Another reviewer must NOT stand down',
-    'on this head.',
+    ...(allFindingsDropped
+      ? [
+          // The reviewer ran and produced findings; none survived validation, so
+          // there is nothing to post and no verdict the model actually gave.
+          // Saying "the reviewer was NOT run" here would be false, and the reason
+          // above already names what was dropped.
+          'The reviewer DID run, and none of what it produced survived validation, so nothing on this',
+          'head has been reviewed to a posted conclusion. This is not a statement that the diff is',
+          'fine. Another reviewer must NOT stand down on this head.',
+        ]
+      : [
+          'The reviewer was NOT run, so this is not a statement that the diff is fine -- it',
+          'is a statement that nothing here was read. Another reviewer must NOT stand down',
+          'on this head.',
+        ]),
     '',
-    marker(sha, 'nothing-to-review', 0),
+    marker(sha, allFindingsDropped ? 'dropped' : 'nothing-to-review', 0),
   ].join('\n');
 }
 
@@ -140,7 +161,7 @@ export function readCappedCount(doc, shown) {
  * count is an observation and not a claim. Collapsing them into one number is
  * how the marker would quietly become a receipt for the model's own file again.
  */
-export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, omitted = [] }) {
+export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, omitted = [], resolutionIncomplete = false }) {
   const short = sha.slice(0, 9);
   const n = findings.length;
   // The partial-review block sits ABOVE the marker in both branches, and the
@@ -179,6 +200,20 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, 
       marker(sha, 'clean', 0, omitted.length),
     ].join('\n');
   }
+  // AN INCOMPLETE RESOLUTION WALK, SAID OUT LOUD. Failing closed keeps the count
+  // SAFE -- an unread thread stays standing -- but silently, and a count that may
+  // be too high for a reason nobody can see is the shape this lane exists to
+  // catch. It cannot be too low, so this is a disclosure, not a warning to act
+  // on. Not in the marker token: MARKER_RE is parsed strictly by the gate, and
+  // the fail-closed direction needs no machine consumer.
+  const resolutionNote = resolutionIncomplete
+    ? [
+        '',
+        'Note: the resolution of the review threads could not be read in full this run, so any thread ' +
+          'that could not be accounted for is counted as still standing. The count above can therefore ' +
+          'be too high, never too low.',
+      ]
+    : [];
   if (n === 0) {
     // `count > 0` with `n === 0`: this run found nothing while earlier findings
     // stand on the same commit. Without this branch the generic form below
@@ -193,8 +228,10 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, 
       '',
       'They stand. Two runs disagreed about the same code, and this note records that rather than ' +
         'resolving it by fiat: the marker below says `findings`, so nothing reads this as a pass. ' +
-        'If the earlier findings are wrong, delete those inline comments and re-run; the verdict ' +
-        'becomes `clean` on its own once they are gone.',
+        'If the earlier findings are wrong, RESOLVE their review threads and re-run; the verdict ' +
+        'becomes `clean` on its own once every one of them is resolved. Deleting the comments also ' +
+        'works and destroys the audit trail, which is why resolving is the documented way out (#3768).',
+      ...resolutionNote,
       '',
       marker(sha, 'findings', count),
     ].join('\n');
@@ -204,7 +241,14 @@ export function summaryBody({ sha, findings, count, judgedAway = 0, capped = 0, 
     '',
     ...findings.map((f, i) => indexLine(f, i + 1)),
     '',
-    `${count} inline comment${count === 1 ? '' : 's'} from this reviewer confirmed on this commit.`,
+    // "unless this run reported them again" is not a hedge. `standing` KEEPS a
+    // resolved thread whose finding this run produced again -- the comment is
+    // deduped rather than re-posted, and dropping it would report fewer standing
+    // findings than the run actually made. A reader reconciling this count
+    // against a thread they resolved needs the exception in the sentence.
+    `${count} inline comment${count === 1 ? '' : 's'} from this reviewer stand${count === 1 ? 's' : ''} ` +
+      'on this commit. Resolved threads are not counted, unless this run reported them again.',
+    ...resolutionNote,
     // THE CAP FIRES ROUTINELY NOW. Validation allows twelve and the rubric asks
     // the model for up to twelve, where the poster shows five -- so the slice
     // that used to be unreachable is the common path, and its only trace was a

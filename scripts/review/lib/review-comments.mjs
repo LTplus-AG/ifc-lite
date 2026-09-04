@@ -19,6 +19,7 @@ import { MARKER_RE, pageAll, normaliseLogin } from '../../check-review-posted.mj
 import { PostReviewError } from './post-review-error.mjs';
 import { marker, fingerprint } from './review-findings.mjs';
 import { nothingToReviewBody } from './review-summary.mjs';
+import { resolvedCommentIds } from './resolved-threads.mjs';
 
 /**
  * Walk one comment surface to exhaustion within a REAL page bound.
@@ -189,7 +190,8 @@ export function upsertAndVerify({ repo, pr, sha, author, body, want }) {
  * early-exit paths in `main()` (e.g. the STALE_REVIEW check on the findings
  * path) -- control never returns to the caller.
  */
-export function postNothingToReview({ repo, pr, sha, author, reason }) {
+export function postNothingToReview({ repo, pr, sha, author, reason, allFindingsDropped = false }) {
+  const verdictToken = allFindingsDropped ? 'dropped' : 'nothing-to-review';
   // A REAL VERDICT FOR THIS HEAD OUTRANKS THIS ONE. `upsertAndVerify` finds a
   // carrier by sha alone, so without this it would PATCH an existing
   // `verdict=findings count=3` summary into "nothing to review / count=0" --
@@ -197,6 +199,20 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
   // FINDINGS_NOT_POSTED cross-check that exists to catch exactly that gap.
   // Reachable only if the exclusion outcome flipped for one head, which needs
   // dedup to have failed; narrow, and a downgrade this file must never make.
+  //
+  // `dropped` IS ONE OF THE VERDICTS THAT OUTRANKS THIS ONE (#3775). It reads
+  // `covered=false` at the gate, `nothing-to-review` reads `covered=true`, so
+  // letting the second overwrite the first would flip the head from "nobody
+  // reviewed this, come back" to "the lane decided, skip it" with nothing
+  // reviewed in between -- the sealing #3775 exists to prevent, arriving through
+  // this guard instead of through the verdict. The two paths are chosen by
+  // DIFFERENT inputs for the same head (the exclusion outcome depends on config
+  // read from the BASE branch, which can change while the sha does not), so this
+  // is not merely theoretical ordering.
+  //
+  // Only `nothing-to-review` is overwritable, which also makes a repeat of THIS
+  // path a no-op rather than a rewrite: a second all-dropped run finds its own
+  // marker, reports below, and leaves it alone.
   const existing = fetchSurface(repo, pr, `issues/${pr}/comments`).find((c) => {
     const m = MARKER_RE.exec(String(c?.body ?? ''));
     return normaliseLogin(c?.user?.login) === author && m?.[1] === sha && m[2] !== 'nothing-to-review';
@@ -209,11 +225,18 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
     // ever clear it. That is precisely the unclearable-red class this branch
     // exists to remove, reintroduced by its own guard. Raised by CodeRabbit on
     // PR #3587.
+    const standingVerdict = MARKER_RE.exec(existing.body)[2];
     console.log(
-      `WOULD_DOWNGRADE_VERDICT: a \`${MARKER_RE.exec(existing.body)[2]}\` marker already stands for ` +
-        `${sha.slice(0, 9)}. Overwriting it with \`nothing-to-review\` would retract a real ` +
-        'verdict and orphan any inline findings under it, so nothing was posted. This head IS ' +
-        'covered and the gate reads it; there is nothing to do.',
+      `WOULD_DOWNGRADE_VERDICT: a \`${standingVerdict}\` marker already stands for ` +
+        `${sha.slice(0, 9)}. Overwriting it with \`${verdictToken}\` would retract that ` +
+        'verdict and orphan any inline findings under it, so nothing was posted.' +
+        // NOT "this head IS covered" unconditionally: `dropped` is deliberately
+        // NOT covered, and saying otherwise would tell the reader the opposite of
+        // what the gate is about to do.
+        (standingVerdict === 'dropped'
+          ? ' The standing marker says every finding was dropped, so this head is NOT covered and the' +
+            ' lane will review it again; there is nothing to do here.'
+          : ' This head IS covered and the gate reads it; there is nothing to do.'),
     );
     process.exit(0);
   }
@@ -227,10 +250,10 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
     pr,
     sha,
     author,
-    body: nothingToReviewBody(sha, reason),
-    want: marker(sha, 'nothing-to-review', 0),
+    body: nothingToReviewBody(sha, reason, { allFindingsDropped }),
+    want: marker(sha, verdictToken, 0),
   });
-  console.log(`Posted a nothing-to-review marker for ${sha.slice(0, 9)}.`);
+  console.log(`Posted a ${verdictToken} marker for ${sha.slice(0, 9)}.`);
   process.exit(0);
 }
 
@@ -244,7 +267,12 @@ export function postNothingToReview({ repo, pr, sha, author, reason }) {
  * deliberately STRONGER than "what this run sent" -- see the caller's own
  * comment on that choice.
  *
- * @returns {{ posted: number, skipped: number, confirmed: number }}
+ * @returns {{ posted: number, skipped: number, confirmed: number, standing: number,
+ *   resolutionIncomplete: boolean }}
+ *   `confirmed` is every finding of ours anchored to this head. `standing` is
+ *   the subset a reader should still act on: it drops the ones whose review
+ *   thread someone RESOLVED, which is the only question REST cannot answer
+ *   (#3768).
  */
 export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
   const before = fetchSurface(repo, pr, `pulls/${pr}/comments`);
@@ -263,7 +291,8 @@ export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
   }
 
   const after = fetchSurface(repo, pr, `pulls/${pr}/comments`);
-  const confirmed = confirmedOnHead(after, author, sha).length;
+  const confirmedRows = confirmedOnHead(after, author, sha);
+  const confirmed = confirmedRows.length;
 
   if (confirmed < findings.length) {
     throw new PostReviewError(
@@ -275,5 +304,54 @@ export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
         'attach the log to anthropics/claude-code-action#1679 rather than re-running indefinitely.',
     );
   }
-  return { posted, skipped, confirmed };
+
+  // WITHDRAWAL, THE ONE QUESTION REST CANNOT ANSWER (#3768). `commit_id`
+  // relocates onto every later head (#3729), and REST exposes no resolution
+  // state at all, so a PR that ever received a finding could never carry a
+  // `clean` marker again: RESOLVING the thread -- the intended, non-destructive
+  // act -- changed nothing a REST reader could see, and deleting the comment,
+  // which destroys the audit trail, was the only way out.
+  //
+  // CONSULTED ON EVERY RUN, not only on a clean one. Scoping it to the clean
+  // branch would keep this REST-only at the cost of a wrong count everywhere
+  // else: a run finding one new thing over two RESOLVED old findings would write
+  // `count=3` and tell the reader three comments stand when two were withdrawn.
+  //
+  // A RE-REPORTED FINDING COUNTS EVEN IF ITS THREAD IS RESOLVED. Its comment is
+  // deduped rather than re-posted, so excluding it would report fewer standing
+  // findings than this run actually produced. That is also what keeps
+  // `standing >= findings.length`: every finding here has a confirmed row
+  // carrying its fingerprint, by the READBACK_SHORT check just above.
+  //
+  // Fails CLOSED: a thread this cannot account for stays unresolved and keeps
+  // counting, so a GraphQL failure can only make the count too HIGH, never too
+  // low. Safe, and invisible -- so the caller discloses it.
+  let standing = confirmed;
+  let resolutionIncomplete = false;
+  if (confirmed > 0) {
+    const { ids, warnings, complete } = resolvedCommentIds(repo, pr);
+    // A WARNING IS A SHORTFALL, NOT ONLY AN UNFINISHED WALK. `complete` answers
+    // only "did the OUTER thread pagination finish". A RESOLVED thread with more
+    // than one page of comments leaves those ids out of the set while the outer
+    // walk ends normally -- `complete: true` over an answer that was partly
+    // unread. Those findings then stay standing (fail-closed, so the count can
+    // be too high) with no note saying why. Every shortfall this module reports
+    // is one, so the disclosure follows the warnings, not just the cursor.
+    // Raised by CodeRabbit on #3828.
+    resolutionIncomplete = !complete || warnings.length > 0;
+    for (const w of warnings) console.log(`WARN: ${w} Findings it could not account for still stand.`);
+    const reReported = new Set(findings.map((f) => fingerprint(f.path, f.line, f.body)));
+    // STRING COMPARISON on both sides. The GraphQL id is a `BigInt` serialised
+    // as a string and the REST id is a JSON number past 2^31; coercing either to
+    // the other's type is where a comparison silently stops matching.
+    standing = confirmedRows.filter(
+      (r) => !ids.has(String(r?.id)) || reReported.has(fingerprint(r.path, r.line, String(r.body ?? ''))),
+    ).length;
+    if (standing < confirmed) {
+      console.log(
+        `RESOLVED: ${confirmed - standing} of ${confirmed} standing finding(s) sit on a resolved review thread.`,
+      );
+    }
+  }
+  return { posted, skipped, confirmed, standing, resolutionIncomplete };
 }

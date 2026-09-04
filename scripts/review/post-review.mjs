@@ -148,13 +148,12 @@
  *      harness pins exactly that rule for its advisory notice. A deliberate
  *      deviation from the brief, stated rather than silently applied.
  */
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { GhError } from '../lib/gh.mjs';
 import { ReviewProvenanceError } from '../lib/review-provenance.mjs';
 import { normaliseLogin, readConfig, ReviewPostedError } from '../check-review-posted.mjs';
 import { PostReviewError } from './lib/post-review-error.mjs';
+import { parseArgs } from './lib/review-args.mjs';
 // readFindingsDoc/readFindings/readOmitted/marker/MAX_POSTED_FINDINGS moved to
 // ./lib/review-findings.mjs (module-size budget, #3795). Imported (not
 // `export ... from`) because main() below calls several of them itself, and
@@ -174,59 +173,7 @@ import { fetchHeadSha, upsertAndVerify, postNothingToReview, postFindingsAndConf
 // it is re-exported directly.
 import { summaryBody, readJudgedAway, readCappedCount } from './lib/review-summary.mjs';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const DEFAULT_CONFIG = join(HERE, '..', 'review-posted.config.json');
-
-/**
- * A Map, not an object literal, for the reason the sibling gate records: a
- * `{...}[name]` lookup reaches Object.prototype, so `--constructor x` returns a
- * truthy key, sails past the `!key` guard and writes a junk property instead of
- * refusing.
- */
-const FLAGS = new Map([
-  ['--pr', 'pr'],
-  ['--repo', 'repo'],
-  ['--sha', 'sha'],
-  ['--findings', 'findings'],
-  ['--author', 'author'],
-  ['--config', 'config'],
-  // The human half of a nothing-to-review marker. Optional, and PASSED THROUGH
-  // `sanitizeBody`: it reaches the comment body, and the only caller that sets
-  // it interpolates a build-input message that carries a PR-chosen file path.
-  ['--reason', 'reason'],
-]);
-
-/** Flags that take NO value. Kept separate so the value-consuming loop stays strict. */
-const BOOL_FLAGS = new Map([['--nothing-to-review', 'nothingToReview']]);
-
-/** @param {string[]} argv */
-export function parseArgs(argv) {
-  const out = {
-    pr: null,
-    repo: process.env.GITHUB_REPOSITORY || null,
-    sha: null,
-    findings: null,
-    author: null,
-    config: DEFAULT_CONFIG,
-    reason: null,
-    nothingToReview: false,
-  };
-  for (let i = 0; i < argv.length; i += 1) {
-    const boolKey = BOOL_FLAGS.get(argv[i]);
-    if (boolKey) {
-      out[boolKey] = true;
-      continue;
-    }
-    const key = FLAGS.get(argv[i]);
-    if (!key) throw new PostReviewError('BAD_ARGS', `Unrecognised argument \`${argv[i]}\`.`);
-    const v = argv[i + 1];
-    if (v === undefined) throw new PostReviewError('BAD_ARGS', `\`${argv[i]}\` needs a value.`);
-    out[key] = v;
-    i += 1;
-  }
-  return out;
-}
-
+export { parseArgs, DEFAULT_CONFIG } from './lib/review-args.mjs';
 export { PostReviewError };
 export { MAX_POSTED_FINDINGS, readFindingsDoc, readFindings, readOmitted, marker };
 export { fingerprint } from './lib/review-findings.mjs';
@@ -254,14 +201,30 @@ function main() {
         'here would let the marker name a commit different from the one the model was shown.',
     );
   }
-  if (!args.findings && !args.nothingToReview) {
-    throw new PostReviewError('BAD_ARGS', 'Pass `--findings <findings.json>` or `--nothing-to-review`.');
-  }
-  if (args.findings && args.nothingToReview) {
+  // ONE MARKER-ONLY PATH, TWO REASONS FOR TAKING IT. `--nothing-to-review` says
+  // the model was never run; `--all-findings-dropped` says it ran and nothing it
+  // produced survived. They post different bodies under different verdicts, and
+  // neither may be combined with `--findings`.
+  const markerOnly = args.nothingToReview || args.allFindingsDropped;
+  if (!args.findings && !markerOnly) {
     throw new PostReviewError(
       'BAD_ARGS',
-      '`--nothing-to-review` and `--findings` are mutually exclusive: one says the model never ran, the ' +
-        'other carries what it produced. Passing both means the caller does not know which happened.',
+      'Pass `--findings <findings.json>`, `--nothing-to-review`, or `--all-findings-dropped`.',
+    );
+  }
+  if (args.findings && markerOnly) {
+    throw new PostReviewError(
+      'BAD_ARGS',
+      '`--nothing-to-review`/`--all-findings-dropped` and `--findings` are mutually exclusive: one says ' +
+        'nothing reviewable reached a conclusion, the other carries what it produced. Passing both means ' +
+        'the caller does not know which happened.',
+    );
+  }
+  if (args.nothingToReview && args.allFindingsDropped) {
+    throw new PostReviewError(
+      'BAD_ARGS',
+      '`--nothing-to-review` and `--all-findings-dropped` are mutually exclusive: the first says the ' +
+        'model never ran, the second says it ran and everything it produced was refused.',
     );
   }
   if (!args.author) {
@@ -290,8 +253,15 @@ function main() {
   // are none by construction. Extracted to `postNothingToReview`
   // (lib/review-comments.mjs, module-size budget, #3795); every branch inside
   // it calls `process.exit(0)` itself, so control never returns here.
-  if (args.nothingToReview) {
-    postNothingToReview({ repo: args.repo, pr: args.pr, sha: args.sha, author, reason: args.reason });
+  if (markerOnly) {
+    postNothingToReview({
+      repo: args.repo,
+      pr: args.pr,
+      sha: args.sha,
+      author,
+      reason: args.reason,
+      allFindingsDropped: args.allFindingsDropped,
+    });
   }
 
   // Read BEFORE the first network call. A malformed findings file must refuse
@@ -316,7 +286,7 @@ function main() {
   // module-size budget, #3795): posts every not-yet-present finding, then
   // reads the surface back and confirms what is on the pull request. Throws
   // READBACK_SHORT with no marker written -- see that function's own comment.
-  const { posted, skipped, confirmed } = postFindingsAndConfirm({
+  const { posted, skipped, confirmed, standing, resolutionIncomplete } = postFindingsAndConfirm({
     repo: args.repo,
     pr: args.pr,
     sha: args.sha,
@@ -329,17 +299,17 @@ function main() {
   // disagreement between two runs is a fact to record, not a failure to post.
   // Withdrawal still needs a human but is no longer the only way out of a red
   // lane. Why this replaced a throw: see CLEAN_CONTRADICTED in the header.
-  if (findings.length === 0 && confirmed > 0) {
+  if (findings.length === 0 && standing > 0) {
     console.log(
-      `CONTRADICTED: this run found nothing, yet ${confirmed} inline finding(s) from ` +
+      `CONTRADICTED: this run found nothing, yet ${standing} unresolved inline finding(s) from ` +
         `\`${author}\` are anchored to ${args.sha.slice(0, 9)}. Those findings STAND: the marker ` +
         'records `findings`, not `clean`, so the gate does not read this as a pass. If they are ' +
-        'genuinely withdrawn, delete the inline comments and re-run.',
+        'genuinely withdrawn, RESOLVE their review threads and re-run (#3768).',
     );
   }
 
   // ------------------------------------------------------------------ STEP 4+5
-  const verdict = confirmed === 0 ? 'clean' : 'findings';
+  const verdict = standing === 0 ? 'clean' : 'findings';
   upsertAndVerify({
     repo: args.repo,
     pr: args.pr,
@@ -348,23 +318,24 @@ function main() {
     body: summaryBody({
       sha: args.sha,
       findings,
-      count: confirmed,
+      count: standing,
+      resolutionIncomplete,
       judgedAway: readJudgedAway(doc),
       capped: readCappedCount(doc, findings.length),
       omitted,
     }),
-    want: marker(args.sha, verdict, confirmed, omitted.length),
+    want: marker(args.sha, verdict, standing, omitted.length),
   });
 
   console.log(`Head: ${args.sha.slice(0, 9)}`);
   console.log(`Findings: ${findings.length} (posted ${posted}, already present ${skipped})`);
-  console.log(`Confirmed on this head: ${confirmed}`);
+  console.log(`Confirmed on this head: ${confirmed}${standing === confirmed ? '' : ` (${standing} unresolved)`}`);
   if (omitted.length > 0) {
     console.log(`PARTIAL: ${omitted.length} file(s) were never sent to the reviewer; the marker says so.`);
   }
   console.log('');
   console.log(
-    `✅ REVIEW_POSTED: wrote a ${verdict} marker for ${args.sha.slice(0, 9)} with count=${confirmed}, AFTER ` +
+    `✅ REVIEW_POSTED: wrote a ${verdict} marker for ${args.sha.slice(0, 9)} with count=${standing}, AFTER ` +
       'reading every finding back from the pull request.',
   );
   console.log('   The count is what GitHub handed back, never what the model claimed.');

@@ -12,6 +12,7 @@
 
 import { ValidateFindingsError } from './validate-findings-error.mjs';
 import { quoteAppearsIn, quotedLineFailureMessage } from '../quote-line-coupling.mjs';
+import { sanitizePath } from './finding-sanitizers.mjs';
 
 /** @param {unknown} v */
 const isNonEmptyString = (v) => typeof v === 'string' && v.trim() !== '';
@@ -55,8 +56,8 @@ export function checkProofOfWork({ response, input }) {
     throw new ValidateFindingsError(
       'PROOF_OF_WORK_FAILED',
       '`files_reviewed` is not the set of files that were sent.' +
-        (missing.length > 0 ? ` NOT REVIEWED: ${missing.join(', ')}.` : '') +
-        (extra.length > 0 ? ` NEVER SENT: ${extra.join(', ')}.` : '') +
+        (missing.length > 0 ? ` NOT REVIEWED: ${missing.map(sanitizePath).join(', ')}.` : '') +
+        (extra.length > 0 ? ` NEVER SENT: ${extra.map(sanitizePath).join(', ')}.` : '') +
         ' A model that stopped early cannot report on files it never opened, which is exactly what ' +
         'claude-code-action#1644 does while exiting 0. REMEDY: re-run; if it recurs, read `num_turns` ' +
         'in the review step\'s log rather than re-running indefinitely.',
@@ -68,7 +69,7 @@ export function checkProofOfWork({ response, input }) {
   if (!file) {
     throw new ValidateFindingsError(
       'PROOF_OF_WORK_FAILED',
-      `\`riskiest_change.path\` is \`${rc.path}\`, which was never sent. REMEDY: re-run.`,
+      `\`riskiest_change.path\` is \`${sanitizePath(rc.path)}\`, which was never sent. REMEDY: re-run.`,
     );
   }
   if (!quoteAppearsIn(file.patch, rc.quoted_line, MIN_PROOF_QUOTE_CHARS)) {
@@ -108,7 +109,7 @@ export function siblingVerifies(sibling, contextPack) {
   }
   const near = excerpts.filter((e) => e.path === path && Math.abs(e.line - line) <= 3);
   if (near.length === 0) {
-    return { ok: false, reason: `no excerpt from \`${path}\` near line ${line} was in the pack` };
+    return { ok: false, reason: `no excerpt from \`${sanitizePath(path)}\` near line ${line} was in the pack` };
   }
   if (isNonEmptyString(quote)) {
     const needle = quote.trim();
@@ -124,7 +125,7 @@ export function siblingVerifies(sibling, contextPack) {
     // honest direction. A quote longer than the excerpt is not evidence of
     // anything the harness put there.
     if (!near.some((e) => e.text.includes(needle))) {
-      return { ok: false, reason: `\`sibling.quote\` is not in the excerpt from \`${path}\`` };
+      return { ok: false, reason: `\`sibling.quote\` is not in the excerpt from \`${sanitizePath(path)}\`` };
     }
   }
   return { ok: true, reason: null };

@@ -99,6 +99,32 @@ const save = () => fs.writeFileSync(file, JSON.stringify(st, null, 2));
 const die = (msg) => { save(); process.stderr.write(msg); process.exit(1); };
 
 if (argv[0] !== 'api') die('fake gh: only \`gh api\` is modelled, got: ' + argv.join(' '));
+// GraphQL is a different shape entirely: one endpoint, the question in a
+// variable. It is modelled because review-thread RESOLUTION exists nowhere in
+// REST (#3768), so a fake that only speaks REST cannot tell a resolved finding
+// from a live one -- which is the whole distinction under test.
+if (argv[1] === 'graphql') {
+  st.calls.push('POST graphql');
+  if (st.graphqlFails) die('simulated GraphQL failure');
+  const resolved = new Set(st.resolvedCommentIds || []);
+  const nodes = (st.reviewComments || []).map((c) => ({
+    isResolved: resolved.has(c.id),
+    // fullDatabaseId is a GraphQL BigInt and comes back as a STRING. A fake that
+    // returned a number would let a Number/String mix-up pass here and fail live.
+    // \`threadCommentsTruncated\` models a RESOLVED thread with more than one
+    // page of comments. The outer walk still finishes, so \`complete\` is true
+    // while part of the answer was never read -- the shape the caller has to
+    // disclose.
+    comments: { pageInfo: { hasNextPage: !!st.threadCommentsTruncated }, nodes: [{ fullDatabaseId: String(c.id) }] },
+  }));
+  save();
+  process.stdout.write(JSON.stringify({
+    data: { repository: { pullRequest: { reviewThreads: {
+      pageInfo: { hasNextPage: false, endCursor: null }, nodes,
+    } } } },
+  }));
+  process.exit(0);
+}
 const full = argv[1];
 const url = full.split('?')[0];
 const q = new URLSearchParams(full.split('?')[1] || '');
@@ -211,7 +237,7 @@ function runPoster({ state = {}, findings = [], findingsRaw, findingsPath, args 
 
 
 /** The poster on the NOTHING-TO-REVIEW path: no findings file at all. */
-function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWER } = {}) {
+function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWER, ntr = true } = {}) {
   const dir = join(TMP, `ntr-${(seq += 1)}`);
   mkdirSync(dir);
   const statePath = join(dir, 'state.json');
@@ -231,7 +257,7 @@ function runNothingToReview({ state = {}, sha = SHA, args = [], author = REVIEWE
   );
   const r = spawnSync(
     process.execPath,
-    [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', sha, '--nothing-to-review', '--author', author, ...args],
+    [SCRIPT, '--pr', PR, '--repo', REPO, '--sha', sha, ...(ntr ? ['--nothing-to-review'] : []), '--author', author, ...args],
     { encoding: 'utf8', env: { ...process.env, PATH: `${BIN}:${process.env.PATH}`, FAKE_GH_STATE: statePath } },
   );
   return { code: r.status, out: `${r.stdout}${r.stderr}`, state: JSON.parse(readFileSync(statePath, 'utf8')) };
@@ -440,7 +466,7 @@ test('the marker count is what the READ-BACK sees, even when it EXCEEDS the find
   assert.match(body, /count=3 -->/, 'the marker counts the PR, not the file');
   assert.doesNotMatch(body, /count=2 -->/);
   assert.match(body, /### Claude review - 2 findings/, 'the heading and index describe what THIS run found');
-  assert.match(body, /3 inline comments from this reviewer confirmed on this commit\./);
+  assert.match(body, /3 inline comments from this reviewer stand on this commit/);
 });
 
 test('FAIL: an inline POST that FAILS aborts with no marker and no further posts', () => {
@@ -1488,3 +1514,270 @@ for (const legal of ['docs/ifc-lite-review-lane.md', 'docs/IFC-LITE-REVIEW.md'])
     assert.equal(got[0].path, legal, 'the path must survive verbatim');
   });
 }
+
+// ================================================= #3768 resolved review threads
+//
+// A finding posted at the CURRENT head and then RESOLVED used to contradict a
+// clean run forever: REST relocates `commit_id` onto every later head and
+// exposes no resolution state, so `confirmedOnHead` counted it and the marker
+// said `findings`. Resolving the thread -- the intended, non-destructive action
+// -- was silently insufficient, and deleting the comment was the only way out.
+
+test('#3768: a clean run whose prior findings are all RESOLVED writes a clean marker', () => {
+  const first = runPoster({ findings: [finding(1), finding(2)] });
+  assert.equal(first.code, 0, first.out);
+  assert.match(allBodies(first.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=findings count=2/);
+
+  // Both threads resolved, then a run that finds nothing.
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const clean = rerunPoster(first.statePath, []);
+  assert.equal(clean.code, 0, clean.out);
+  assert.match(allBodies(clean.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=clean count=0/);
+  assert.doesNotMatch(clean.out, /CONTRADICTED/);
+  // The comments are still there: the audit trail survives the clean verdict.
+  assert.equal(clean.state.reviewComments.length, 2);
+});
+
+test('#3768: one UNRESOLVED thread still blocks the clean verdict', () => {
+  const first = runPoster({ findings: [finding(1), finding(2)] });
+  assert.equal(first.code, 0, first.out);
+  first.state.resolvedCommentIds = [first.state.reviewComments[0].id];
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const clean = rerunPoster(first.statePath, []);
+  assert.equal(clean.code, 0, clean.out);
+  assert.match(allBodies(clean.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=findings count=1/);
+  assert.match(clean.out, /CONTRADICTED/);
+});
+
+test('#3768: a GraphQL failure fails CLOSED — the findings still stand', () => {
+  const first = runPoster({ findings: [finding(1)] });
+  assert.equal(first.code, 0, first.out);
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  first.state.graphqlFails = true;
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const clean = rerunPoster(first.statePath, []);
+  assert.equal(clean.code, 0, clean.out);
+  assert.match(allBodies(clean.state), /verdict=findings count=1/);
+  assert.match(clean.out, /Could not read review-thread resolution/);
+});
+
+test('#3768: resolution is read ONCE per run, and only when something is confirmed', () => {
+  // It is consulted on every run now, because the marker COUNT has to exclude
+  // resolved threads whatever the verdict (round 2). What is still bounded is how
+  // often: once, after the read-back, and not at all when there is nothing on the
+  // head to classify.
+  const withFindings = runPoster({ findings: [finding(1)] });
+  assert.equal(withFindings.code, 0, withFindings.out);
+  assert.equal(withFindings.state.calls.filter((c) => c === 'POST graphql').length, 1);
+
+  const clean = runPoster({ findings: [] });
+  assert.equal(clean.code, 0, clean.out);
+  assert.deepEqual(
+    clean.state.calls.filter((c) => c === 'POST graphql'),
+    [],
+    'nothing is confirmed on this head, so there is nothing to ask about',
+  );
+});
+
+
+// ============ resolution is consulted on EVERY run, not only on a clean one
+
+test('#3768 round 2: a run WITH new findings does not count the resolved old ones', () => {
+  // Resolution used to be consulted only when this run found nothing, so a run
+  // that found one new thing over two RESOLVED old findings wrote `count=3`. The
+  // summary then told the reader that three inline comments stand on this commit
+  // when two of them had been withdrawn, and the standing-findings text promises
+  // the verdict clears itself once every thread is resolved -- a promise the
+  // count has to be measured the same way to keep.
+  const first = runPoster({ findings: [finding(1), finding(2)] });
+  assert.equal(first.code, 0, first.out);
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+
+  const second = rerunPoster(first.statePath, [finding(3)]);
+  assert.equal(second.code, 0, second.out);
+  assert.match(allBodies(second.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=findings count=1/);
+});
+
+test('#3768 round 2: a finding RE-REPORTED this run counts even though its thread is resolved', () => {
+  // The floor under the count. A resolved thread whose finding the model reports
+  // AGAIN is live again: the comment is deduped rather than re-posted, so
+  // excluding it would report fewer standing findings than the run actually
+  // produced -- a marker under-claiming what is on the PR.
+  const first = runPoster({ findings: [finding(1)] });
+  assert.equal(first.code, 0, first.out);
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+
+  const second = rerunPoster(first.statePath, [finding(1)]);
+  assert.equal(second.code, 0, second.out);
+  assert.match(allBodies(second.state), /ifc-lite-review sha=[0-9a-f]{40} verdict=findings count=1/);
+});
+
+test('#3768 round 2: an incomplete resolution walk is visible in the posted summary', () => {
+  // Failing closed keeps the COUNT safe -- an unread thread stays standing -- but
+  // silently. If the walk could not finish, the reader is told, because a count
+  // that may be too high for a reason nobody can see is the absence-reads-as-
+  // -success shape one layer along.
+  const first = runPoster({ findings: [finding(1)] });
+  first.state.graphqlFails = true;
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const second = rerunPoster(first.statePath, [finding(1)]);
+  assert.equal(second.code, 0, second.out);
+  assert.match(allBodies(second.state), /resolution of the review threads could not be read in full/i);
+});
+
+
+test('#3768 round 3: the count line does not claim resolved threads are always excluded', () => {
+  // `standing` deliberately KEEPS a resolved thread whose finding this run
+  // reported again, so "(resolved threads are not counted)" was false in exactly
+  // the case the line above it is describing. The text has to carry the
+  // exception, or a reader reconciling a count of 1 against a resolved thread is
+  // told the code does something it does not.
+  const first = runPoster({ findings: [finding(1)] });
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const second = rerunPoster(first.statePath, [finding(1)]);
+  assert.equal(second.code, 0, second.out);
+  const body = allBodies(second.state);
+  assert.match(body, /verdict=findings count=1/);
+  assert.match(body, /unless this run reported them again/);
+  assert.doesNotMatch(body, /\(resolved threads are not counted\)/);
+});
+
+
+// ============ #3775: every finding dropped, so the head carries a MARKER not a red
+//
+// A finding citing a file that was never sent is correctly dropped, and a run
+// with nothing left correctly refuses to invent a verdict. #3801 gave that shape
+// a retry. What is left over is what happens when the RETRY is refused too: the
+// PR then has no path to a verdict on that commit at all -- a red `Claude review`
+// whose printed remedy ("read the DROPPED warnings") is addressed to a human
+// reading logs, and a cascade into `STALE_REVIEW` from `Review posted` waiting
+// out its full poll budget with no independent cause. #3801's own message names
+// this as the follow-on it does not fix.
+
+test('#3775: --all-findings-dropped posts a `dropped` marker, which does NOT cover the head', () => {
+  const why = '⚠️  DROPPED findings[0]: `rust/processing/src/lib.rs` was never sent to the model.\n❌ VALIDATION_EMPTY: 1 finding(s), NONE survived.';
+  const r = runNothingToReview({ args: ['--all-findings-dropped', '--reason', why], ntr: false });
+  assert.equal(r.code, 0, r.out);
+  const body = allBodies(r.state);
+  // `dropped`, NOT `nothing-to-review`. The gate reads the latter as covered, so
+  // reusing it would have sealed the head against ever being reviewed.
+  assert.match(body, /ifc-lite-review sha=[0-9a-f]{40} verdict=dropped count=0/);
+  // The dropped reasons travel to the PR, so the remedy is readable where the
+  // problem is rather than only in a log nobody opens.
+  assert.match(body, /rust\/processing\/src\/lib\.rs/);
+  // And the body must NOT assert the reviewer was never run, because it was.
+  assert.doesNotMatch(body, /The reviewer was NOT run/);
+  assert.match(body, /must NOT stand down/, 'the stand-down warning still has to be there');
+});
+
+test('#3775: THE GATE agrees — a `dropped` marker leaves the head uncovered', () => {
+  // The poster and the gate are two files that must agree about one token. Prose
+  // cannot keep them in step, so the marker this poster actually wrote is fed to
+  // the real gate.
+  const r = runNothingToReview({ args: ['--all-findings-dropped', '--reason', 'x'], ntr: false });
+  assert.equal(r.code, 0, r.out);
+  const g = runGate(r.state);
+  assert.notEqual(g.code, 0, g.out);
+  assert.match(g.out, /FINDINGS_ALL_DROPPED/);
+});
+
+test('#3775: the plain nothing-to-review marker still says the reviewer was never run', () => {
+  const r = runNothingToReview();
+  assert.equal(r.code, 0, r.out);
+  const body = allBodies(r.state);
+  assert.match(body, /The reviewer was NOT run/);
+  assert.match(body, /verdict=nothing-to-review/);
+});
+
+test('#3775: the two marker-only flags are mutually exclusive', () => {
+  const r = runNothingToReview({ args: ['--all-findings-dropped'] });
+  assert.notEqual(r.code, 0);
+  assert.match(r.out, /mutually exclusive/);
+});
+
+test('#3775 THE WIRING: the marker path is reachable, and the decision is a SCRIPT', () => {
+  // MINIMAL ON PURPOSE. What to do after the retry -- post, fail, or leave a
+  // `dropped` marker -- is decided by scripts/review/lib/retry-outcome.mjs and
+  // tested by EXECUTING it there, with all four inputs the step can produce. This
+  // asserts only the two things that script cannot assert about itself: that the
+  // workflow calls it, and that the step it feeds is wired to the flag it sets.
+  //
+  // Everything this test used to do -- string ordering, `revalidated=1`
+  // placement, which grep sits where -- was a source-text assertion: it passed
+  // when the step was reworded into something broken and failed when it was
+  // reformatted into something correct. Deleted rather than tightened.
+  const wf = readFileSync(join(HERE, '..', '..', '.github/workflows/claude-review.yml'), 'utf8');
+  const validate = wf.split('- name: Validate the findings')[1].split('- name:')[0];
+  assert.match(validate, /scripts\/review\/lib\/retry-outcome\.mjs/, 'the step must call the decision script');
+
+  // BOUNDED AT THE NEXT STEP, like the two slices around it. Running to the end
+  // of the file let ANY later step satisfy the `--all-findings-dropped` match,
+  // so removing the flag from THIS step would keep the test green. Raised by
+  // CodeRabbit on #3828.
+  const ntr = wf.split('- name: Say so when there was nothing to review')[1].split('\n      - name:')[0];
+  assert.match(ntr.split('run:')[0], /steps\.validate\.outputs\.uncovered == 'true'/);
+  assert.match(ntr, /--all-findings-dropped/, 'the marker must not claim the model never ran, nor cover the head');
+
+  // The steps that would act on a findings.json that does not exist must be off.
+  for (const other of ['Judge the findings', 'Post the review']) {
+    const s2 = wf.split(`- name: ${other}`)[1].split('run:')[0];
+    assert.match(s2, /steps\.validate\.outputs\.uncovered != 'true'/, `${other} must be excluded on the uncovered path`);
+  }
+});
+
+test('#3775: a `dropped` marker is NOT downgraded by a later nothing-to-review run', () => {
+  // `dropped` is covered=FALSE; `nothing-to-review` is covered=TRUE. Letting the
+  // second overwrite the first flips the head from "nobody reviewed this, come
+  // back" to "the lane decided, skip it" with nothing reviewed in between -- the
+  // exact sealing #3775 exists to prevent, arriving through the downgrade guard
+  // instead of through the verdict.
+  //
+  // Reachable because the two paths read DIFFERENT inputs for the same head: the
+  // nothing-to-review path is chosen by build-review-input's exclusion outcome,
+  // which depends on config read from the BASE branch and can change while the
+  // head sha does not.
+  const first = runNothingToReview({ args: ['--all-findings-dropped', '--reason', 'everything dropped'], ntr: false });
+  assert.equal(first.code, 0, first.out);
+  assert.match(allBodies(first.state), /verdict=dropped count=0/);
+  const before = JSON.stringify(first.state.issueComments);
+
+  const second = runNothingToReview({ state: first.state });
+  assert.equal(second.code, 0, second.out);
+  assert.match(second.out, /WOULD_DOWNGRADE_VERDICT/);
+  assert.deepEqual(second.state.issueComments, JSON.parse(before), 'the marker must be left exactly as it was');
+  assert.match(allBodies(second.state), /verdict=dropped count=0/);
+  assert.doesNotMatch(allBodies(second.state), /verdict=nothing-to-review/);
+});
+
+test('#3775: re-running the dropped path over its own marker is a no-op, not a rewrite', () => {
+  // The other direction of the same guard. A second all-dropped run on the same
+  // head has nothing to add, and must not churn the comment.
+  const first = runNothingToReview({ args: ['--all-findings-dropped', '--reason', 'everything dropped'], ntr: false });
+  const before = JSON.stringify(first.state.issueComments);
+  const second = runNothingToReview({ state: first.state, args: ['--all-findings-dropped', '--reason', 'again'], ntr: false });
+  assert.equal(second.code, 0, second.out);
+  assert.deepEqual(second.state.issueComments, JSON.parse(before));
+});
+
+test('#3768: a resolved thread longer than one comment page is disclosed too', () => {
+  // `resolvedCommentIds` returns `complete: true` once the OUTER thread walk
+  // ends, even when a resolved thread had comment pages it never read. Those
+  // ids are absent, so `standing` fails closed and keeps counting them -- safe,
+  // and silent. `resolutionIncomplete = !complete` alone missed exactly this
+  // case, so the summary asserted a count with no note that it can be too high.
+  // Raised by CodeRabbit on #3828.
+  const first = runPoster({ findings: [finding(1)] });
+  // The nested-page warning only fires on a RESOLVED thread, so the thread has
+  // to be one. The finding is re-reported, which keeps it standing -- the count
+  // is right, and the point is that the note appears beside it anyway.
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  first.state.threadCommentsTruncated = true;
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const second = rerunPoster(first.statePath, [finding(1)]);
+  assert.equal(second.code, 0, second.out);
+  assert.match(allBodies(second.state), /resolution of the review threads could not be read in full/i);
+});

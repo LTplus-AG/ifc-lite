@@ -46,7 +46,7 @@
  * THE ONE THING IT DOES ACCEPT is a marker the reviewer writes at the END of a
  * successful post, naming the exact commit it reviewed:
  *
- *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n> -->
+ *     <!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review|dropped count=<n> -->
  *
  *     An optional trailing ` omitted=<n>` (present only when n > 0) records how
  *     many changed files were too large to fit the model prompt and were NOT
@@ -105,6 +105,8 @@ import { isMainEntry } from './lib/is-main-entry.mjs';
 import { gh, GhError } from './lib/gh.mjs';
 // ONE HOME FOR "which commit did this row see" (#3729), shared with post-review.
 import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
+import { droppedVerdict, shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
+import { MARKER_RE, MARKER_SHAPE } from './lib/review-marker.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -140,12 +142,8 @@ const COMMENT_KEYS = ['issueComments', 'reviewComments', 'reviews'];
 const MAX_PAGES = 10;
 const PER_PAGE = 100;
 
-/**
- * The marker the reviewer writes at the END of a successful post. Anchored at
- * both ends and tolerant of surrounding whitespace only -- a loose pattern here
- * would let a contributor hand-write a passing marker into a PR comment.
- */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review)\s+count=(\d+)(?:\s+omitted=(\d+))?\s*-->/;
+export { shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
+export { MARKER_RE } from './lib/review-marker.mjs';
 
 /** Block the runner without a dependency. This job's whole purpose is to wait. */
 function sleepSync(ms) {
@@ -403,28 +401,30 @@ export function evaluate({ comments, cfg, headSha }) {
       '   Treated as absence rather than as a pass, on purpose.',
       '   REMEDY: ' +
         (sawUnparseable
-          ? 'fix the reviewer\'s marker writer; the expected form is ' +
-            '`<!-- ifc-lite-review sha=<40-hex> verdict=clean|findings|nothing-to-review count=<n>' +
-            '[ omitted=<n>] -->`.'
+          ? `fix the reviewer's marker writer; the expected form is ${MARKER_SHAPE}.`
           : 're-run the review job.'),
     );
     return { ok: false, full: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
   }
 
-  const match = markers.find((m) => m.sha === headSha);
+  // THE NEWEST MARKER FOR THIS HEAD, NOT THE FIRST -- fetch order, the sense STALE_REVIEW below
+  // already uses. Reading the first let a `dropped` marker outrank the re-run that cleared it (#3828).
+  const match = markers.findLast((m) => m.sha === headSha);
   if (!match) {
     lines.push(
       `❌ STALE_REVIEW: the most recent marker this gate read names ${markers[markers.length - 1].sha.slice(0, 9)}, ` +
         `but this PR's head is ${headSha.slice(0, 9)}.`,
       '   A review of an earlier head has not reviewed this diff. A comment\'s `commit_id` cannot',
       '   settle this either: GitHub relocates that field onto a later head (#3729), with or without',
-      '   a force-push, so only the marker the',
-      '   reviewer wrote at review time says which commit it read. ("Most recent" is fetch order, not',
-      '   timestamp: this gate reads no timestamp at all, so it does not claim one.)',
+      '   a force-push, so only the marker the reviewer wrote at review time says which commit it',
+      '   read. ("Most recent" is fetch order, not timestamp: this gate reads none, so it claims none.)',
       '   REMEDY: re-run the review job against the current head.',
     );
     return { ok: false, full: false, verdict: 'STALE_REVIEW', lines };
   }
+
+  // #3775, and the one verdict that is not `ok`. See lib/review-dropped-verdict.mjs.
+  if (match.verdict === 'dropped') return droppedVerdict(headSha);
 
   // THE #1679 CROSS-CHECK. A marker claiming `verdict=findings count=N` while N
   // findings never reached the PR is precisely the shape #1679 describes: the
@@ -709,7 +709,7 @@ function main() {
   let comments = normaliseComments(payload);
   let result = evaluate({ comments, cfg, headSha: args.sha });
   let waited = 0;
-  while (!result.ok && !args.stateFile && Date.now() < deadline) {
+  while (shouldKeepPolling(result) && !args.stateFile && Date.now() < deadline) {
     sleepSync(POLL_SECONDS * 1000);
     waited += POLL_SECONDS;
     // ONE call per tick, not three. The marker lands on the issue-comment

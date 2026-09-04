@@ -166,6 +166,7 @@ import { readText, stripFence, parseRaw, readInput } from './lib/review-input-re
 // itself, and re-exported so every existing import of these four names from
 // this file keeps working unchanged.
 import { SENTINEL, MAX_FINDINGS, validate, omittedForPromptPaths } from './lib/finding-schema.mjs';
+import { WARN_PREFIX } from './lib/dropped-warning.mjs';
 // MAX_BODY_CHARS/sanitizeBody/sanitizeLabel/sanitizePath moved to
 // ./lib/finding-sanitizers.mjs (module-size budget, #3795). Re-exported below.
 import { MAX_BODY_CHARS, sanitizeBody, sanitizeLabel, sanitizePath } from './lib/finding-sanitizers.mjs';
@@ -231,6 +232,8 @@ export function parseArgs(argv) {
 
 
 export { quotableLines, quoteAppearsIn, lineIsAdded, addedLinesMatching, quotedLineFailureMessage };
+// Re-exported where the tests and the retry CLI already look for it.
+export { DROPPED_LOG_PREFIX } from './lib/dropped-warning.mjs';
 
 export { ValidateFindingsError };
 export { stripFence, readInput };
@@ -252,7 +255,7 @@ function main() {
 
   const input = readInput(args.input);
   const response = parseRaw(readText(args.raw, 'raw'));
-  const result = validate({ response, input, onWarn: (w) => console.log(`⚠️  ${w}`) });
+  const result = validate({ response, input, onWarn: (w) => console.log(`${WARN_PREFIX}${w}`) });
 
   const doc = {
     headSha: input.headSha,

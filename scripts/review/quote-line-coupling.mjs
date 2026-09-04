@@ -22,6 +22,14 @@
 // must agree, computed twice, agreeing with each other only until a hunk that
 // does not start at line 1 shows they never did. See `addedLinesMatching` below.
 import { newFileLines } from './build-review-input.mjs';
+// The SAME classifier `newFileLines` uses (#3802). Two independent answers to
+// "is this line a file header" is the shape one layer up from the one this file
+// exists to close.
+import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
+// Paths reach a log the workflow greps with anchored patterns, and a git path may
+// contain any byte but NUL and `/` -- a newline included. `sanitizePath`'s
+// whitespace collapse is what stops one forging a reason line (see below).
+import { sanitizePath } from './lib/finding-sanitizers.mjs';
 
 /**
  * The lines of a unified diff a quote may legitimately come from, each with its
@@ -39,12 +47,23 @@ import { newFileLines } from './build-review-input.mjs';
  */
 export function quotableLines(patch) {
   const out = [];
+  // BY POSITION, NOT BY PREFIX. `---`/`+++` are file headers only BEFORE the
+  // first `@@`; after it they are content that happens to start the same way --
+  // a deleted `-- old sql comment` is the raw line `--- old sql comment`, and an
+  // added `++ new sql comment` is `+++ new sql comment`. #3802 moved
+  // `newFileLines` onto this rule and left this function on the prefix, so the
+  // two halves of one check disagreed about the same diff: `addedLinesMatching`
+  // would anchor a finding that `quoteAppearsIn` then refused as metadata.
+  let insideHunk = false;
   for (const line of String(patch).split(/\r?\n/)) {
     // Hunk headers, file headers and the no-newline note are diff METADATA. A
     // model that quotes one has demonstrated nothing about the code.
-    if (line.startsWith('@@') || line.startsWith('+++ ') || line.startsWith('--- ') || line.startsWith('\\')) {
+    const kind = unifiedDiffLineKind(line, insideHunk);
+    if (kind === 'hunk') {
+      insideHunk = true;
       continue;
     }
+    if (kind === 'metadata' || kind === 'header') continue;
     const marker = line[0];
     const body = marker === '+' || marker === '-' || marker === ' ' ? line.slice(1) : line;
     const trimmed = body.trim();
@@ -119,28 +138,40 @@ export function addedLinesMatching(patch, quote) {
  * Diagnostic only: the caller has already rejected the quote against its
  * claimed patch. Finding it elsewhere improves the one corrective retry but
  * never weakens the proof-of-work decision.
+ *
+ * THE SEARCH IS OVER ADDED LINES, not `quoteAppearsIn`. That helper answers "is
+ * this a line of the patch", CONTEXT and REMOVED lines included -- text the PR
+ * did not add. Naming a file on that basis produces a CONFIDENT remedy pointing
+ * at the wrong hunk ("the correct `riskiest_change.path` is X" about a line X
+ * never added), which is worse for the one corrective retry than the plain
+ * refusal it falls back to. `addedLinesMatching` is the predicate the
+ * per-finding anchor already uses, so the diagnosis and the anchor agree; the
+ * length floor is applied here because that helper has none.
  */
 export function quotedLineFailureMessage(files, claimedPath, quote, minChars) {
   const claimedKey = normalizePathForSelfMatch(claimedPath);
   const elsewhere = [];
+  const longEnough = String(quote).trim().length >= minChars;
   for (const [path, file] of files) {
+    if (!longEnough) break;
     if (normalizePathForSelfMatch(path) === claimedKey) continue;
-    if (quoteAppearsIn(file.patch, quote, minChars)) elsewhere.push(path);
+    if (addedLinesMatching(file.patch, quote).length > 0) elsewhere.push(path);
   }
   const base =
-    `\`riskiest_change.quoted_line\` is not a line of \`${claimedPath}\`'s patch (or is shorter than ` +
+    `\`riskiest_change.quoted_line\` is not a line of \`${sanitizePath(claimedPath)}\`'s patch (or is shorter than ` +
     `${minChars} characters, which would not be evidence of anything): ` +
     `${JSON.stringify(String(quote).slice(0, 120))}.`;
   if (elsewhere.length === 1) {
     return (
-      `${base} This exact line IS in \`${elsewhere[0]}\`'s patch instead -- the file attribution is wrong, ` +
-      `not the quote. REMEDY: re-run; the correct \`riskiest_change.path\` is \`${elsewhere[0]}\`.`
+      `${base} This exact line IS an added line of \`${sanitizePath(elsewhere[0])}\`'s patch instead -- the ` +
+      `file attribution is wrong, not the quote. REMEDY: re-run; the correct \`riskiest_change.path\` is ` +
+      `\`${sanitizePath(elsewhere[0])}\`.`
     );
   }
   if (elsewhere.length > 1) {
-    const named = elsewhere.map((path) => `\`${path}\``).join(', ');
+    const named = elsewhere.map((path) => `\`${sanitizePath(path)}\``).join(', ');
     return (
-      `${base} This exact line IS in ${elsewhere.length} other reviewed files' patches instead (${named}) ` +
+      `${base} This exact line IS an added line of ${elsewhere.length} other reviewed files instead (${named}) ` +
       '-- the file attribution is wrong, but which one it belongs to cannot be told from the quote alone. ' +
       'REMEDY: re-run and name the specific file the quote came from.'
     );

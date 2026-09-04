@@ -363,6 +363,10 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set +e
+          # Did a RETRY actually re-run the validator? Not "was a retry attempted"
+          # -- the downgrade below reads validate.log, and only a second validate
+          # rewrites it (#3775).
+          revalidated=0
           node "$GITHUB_WORKSPACE/scripts/review/validate-findings.mjs" \
             --raw "$RUNNER_TEMP/raw-review.txt" \
             --input "$RUNNER_TEMP/review-input.json" \
@@ -386,11 +390,32 @@ jobs:
                 --input "$RUNNER_TEMP/review-input.json" \
                 --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
               rc=${PIPESTATUS[0]}
+              revalidated=1
             else
+              # THE RETRY REVIEWER CRASHED, so validate.log still holds the FIRST
+              # attempt's text -- including its reason line. Leaving `revalidated`
+              # at 0 is what stops the block below reading that stale line as this
+              # attempt's verdict and posting a marker asserting the retry refused
+              # everything, when the retry never produced an answer at all. A model
+              # call that could not be made is a harness failure and fails the job.
+              echo "::warning::The retry reviewer exited ${reviewer_rc} without producing an answer; failing the step rather than posting a marker about a retry that never ran."
               rc=$reviewer_rc
             fi
           fi
-          exit "$rc"
+
+          # THE DECISION IS A SCRIPT, NOT AN `if` HERE (#3775). What to do after
+          # the retry -- post, fail, or leave a `dropped` marker -- is testable
+          # by EXECUTION in scripts/review/lib/retry-outcome.test.mjs; an `if` in
+          # this file could only ever be tested by reading the YAML as text.
+          #
+          # `revalidated` is the input that matters: validate.log is rewritten by
+          # the second VALIDATE, not by the attempt, so a retry whose reviewer
+          # crashed leaves the FIRST attempt's reason line in the file.
+          node "$GITHUB_WORKSPACE/scripts/review/lib/retry-outcome.mjs" \
+            --rc "$rc" \
+            $([ "$revalidated" -eq 1 ] && echo --revalidated) \
+            --log "$RUNNER_TEMP/validate.log" \
+            --reason-out "$RUNNER_TEMP/skip-reason.txt"
 
       # The second half of the precision/recall inversion. The generator is now
       # told to report what it cannot rule out (up to twelve), the validator has
@@ -403,7 +428,7 @@ jobs:
       # indistinguishable from a clean PR. It costs precision when it is down,
       # never recall.
       - name: Judge the findings
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true' && steps.validate.outputs.uncovered != 'true'
         # EMPTY CWD, exactly like the reviewer step above, and for a sharper
         # reason. Without it this step inherits $GITHUB_WORKSPACE -- the PR's own
         # checkout -- and the CLI loads CLAUDE.md and AGENTS.md from there as
@@ -452,12 +477,24 @@ jobs:
       # says "re-run the review job". PR #3558 (a Cargo.lock-only dependabot
       # bump) is a live instance of the class.
       #
-      # It posts `verdict=nothing-to-review`, NOT `verdict=clean`. The model was
-      # never run here, so "there was nothing to review" and "reviewed it and
-      # found nothing" are different statements, and a `clean` marker would make
-      # an exclusion-list bug certify every PR it swallowed as reviewed.
+      # NEITHER VERDICT IT POSTS IS `clean`, and this step now has TWO callers.
+      #
+      #   `nothing-to-review` -- the input step skipped, so the model was never
+      #     run. "There was nothing to review" and "reviewed it and found nothing"
+      #     are different statements, and a `clean` marker would make an
+      #     exclusion-list bug certify every PR it swallowed as reviewed. The gate
+      #     reads this as COVERED: the lane reached a conclusion for the head and
+      #     no re-run can produce a different one.
+      #
+      #   `dropped` -- the validate step ran the model, retried once, and every
+      #     finding was still refused (#3775). The gate reads this as NOT covered
+      #     and NOT full, so the next run reviews the head again rather than the
+      #     first all-dropped run sealing it forever.
+      #
+      # The two are mutually exclusive at the poster, so the flag is chosen rather
+      # than added, and the step's name is now narrower than what it does.
       - name: Say so when there was nothing to review
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip == 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && (steps.input.outputs.skip == 'true' || steps.validate.outputs.uncovered == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -465,7 +502,7 @@ jobs:
             --repo "${{ github.repository }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha }}" \
-            --nothing-to-review \
+            ${{ steps.validate.outputs.uncovered == 'true' && '--all-findings-dropped' || '--nothing-to-review' }} \
             --reason "$(cat "$RUNNER_TEMP/skip-reason.txt" 2>/dev/null || true)" \
             --author github-actions \
             --config "${{ steps.basecfg.outputs.path }}"
@@ -473,7 +510,7 @@ jobs:
       # The marker is written LAST, and only after the inline comments have been
       # read back off the PR. That ordering is the whole answer to #1679.
       - name: Post the review
-        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true'
+        if: steps.head.outputs.proceed == 'true' && steps.dedup.outputs.covered != 'true' && steps.input.outputs.skip != 'true' && steps.validate.outputs.uncovered != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

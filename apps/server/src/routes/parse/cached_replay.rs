@@ -18,11 +18,14 @@
 //! still monotonic and still ends at its own stated total.
 
 use super::cache_keys::{
-    has_current_data_model, load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
+    cache_key_from_parts, has_current_data_model, has_parquet_metadata, is_file_digest,
+    load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
 };
+use super::ParseQuery;
+use ifc_lite_processing::TessellationQuality;
 use crate::services::ParquetLayout;
 use super::parquet::ParquetMetadataHeader;
-use super::parquet_stream::ParquetStreamEvent;
+use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::load_stream_progress;
 use crate::error::ApiError;
 use crate::services::parquet_replay_batches::split_into_batches;
@@ -31,6 +34,83 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::convert::Infallible;
+
+/// Serve `POST /api/v1/parse/parquet-stream` from a client-supplied file hash,
+/// with no request body at all (issue #3901).
+///
+/// The upload used to be unavoidable on a hit: the cache key is the SHA-256 of
+/// the RECEIVED bytes, so `extract_file` had to finish before the cache could
+/// be consulted, and on a 40 MB model over a real connection that upload was
+/// the whole cost of the hit. A client that hashes locally can name the entry
+/// instead.
+///
+/// The hash SELECTS; it never asserts. Everything the replay needs has to be on
+/// disk under that key already, which is exactly what [`try_cached_replay`]
+/// checks (geometry body, metadata header, a data model at the current payload
+/// version, plus whatever it later adds). Delegating to it rather than
+/// re-listing those entries here is what makes "a hash-only hit replays the
+/// same events as an upload hit" true by construction instead of by two lists
+/// agreeing. A miss answers `404`, the status
+/// `GET /api/v1/cache/check/{hash}` already uses for "upload it", and the
+/// client uploads.
+///
+/// A MISS costs no admission slot. The probe answers it from two small reads
+/// (the metadata header and the data-model marker) before touching the gate,
+/// because the common miss is a file the server has never seen and charging a
+/// parse slot for a disk lookup would mean every cold-cache client wins
+/// admission twice, probe then upload, and could be shed on the probe rather
+/// than queueing for the upload that would have succeeded.
+///
+/// A HIT does take one, around the replay BUILD, dropped before the response is
+/// returned. That is what the body-carrying hit path does, and for the same
+/// reason: `try_cached_replay` reads the whole geometry blob into memory,
+/// base64-encodes every batch, and materializes the full event vector before a
+/// byte is sent, which is several times the model's geometry resident at once.
+/// Leaving that window unbounded would make the cheapest request a client can
+/// send the cheapest way to exhaust the server. Draining the finished stream
+/// needs no slot.
+pub(super) async fn replay_by_client_hash(
+    state: &AppState,
+    query: &ParseQuery,
+    quality: TessellationQuality,
+    sha256: &str,
+) -> Result<axum::response::Response, ApiError> {
+    if !is_file_digest(sha256) {
+        return Err(ApiError::BadRequest(
+            "sha256 must be a 64-character lowercase hex SHA-256 digest".to_string(),
+        ));
+    }
+    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
+
+    let replay = if has_parquet_metadata(&state.cache, &cache_key).await
+        && has_current_data_model(&state.cache, &cache_key).await
+    {
+        let admission_guard = state
+            .admission
+            .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+            .await?;
+        let replay = try_cached_replay(state, &cache_key, query.parquet_layout).await;
+        drop(admission_guard);
+        replay?
+    } else {
+        None
+    };
+
+    if let Some(response) = replay {
+        tracing::info!(
+            cache_key = %cache_key,
+            "Streaming cache HIT by client-supplied hash - no upload"
+        );
+        return Ok(response);
+    }
+    tracing::debug!(
+        cache_key = %cache_key,
+        "Hash-only stream request has nothing cached; asking the client to upload"
+    );
+    Err(ApiError::NotFound(format!(
+        "Nothing cached for sha256 {sha256} under this opening_filter / tessellation_quality / parquet_layout. Resend the request with the multipart file body."
+    )))
+}
 
 /// Return the geometry slice from a cached combined-Parquet blob, framed as
 /// `[geometry_len: u32-LE][geometry_data][data_model_len: u32]...`. Returns

@@ -20,13 +20,23 @@
 
 import type { ParseRequestOptions } from './client.js';
 
-export function parseQuery(options?: ParseRequestOptions, flatLayout = false): string {
+export function parseQuery(
+  options?: ParseRequestOptions,
+  flatLayout = false,
+  sha256?: string
+): string {
   const params = new URLSearchParams();
   if (options?.tessellationQuality && options.tessellationQuality !== 'medium') {
     params.set('tessellation_quality', options.tessellationQuality);
   }
   if (flatLayout) {
     params.set('parquet_layout', 'shared-shapes');
+  }
+  // The hash-only stream probe (#3901). It belongs here, beside the rest of the
+  // cache identity, because the entry it names is the one THIS query selects:
+  // a hash paired with the wrong layout or quality asks about a different blob.
+  if (sha256) {
+    params.set('sha256', sha256);
   }
   const qs = params.toString();
   return qs ? `?${qs}` : '';

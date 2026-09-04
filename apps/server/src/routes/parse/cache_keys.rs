@@ -37,6 +37,24 @@ pub(crate) fn cache_key_from_parts(
     )
 }
 
+/// Whether `hash` has the shape [`DiskCache::generate_key`] produces: 64
+/// lowercase hex characters.
+///
+/// Lives beside [`cache_key_from_parts`] because that is what it protects. The
+/// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
+/// the namespace suffix (`-parquet-v5`, `-datamodel-v6`, ...) is appended after
+/// it, so a caller-shaped string is a caller-shaped cache key. Checking the
+/// shape keeps the value to the one job it has, naming a file.
+///
+/// Applied by the hash-only stream probe (#3901). The two older hash-taking
+/// endpoints, `check_cache` and `get_cached_geometry`, do NOT call it yet: a
+/// malformed hash there names a key nobody wrote and gets a 404, which is a
+/// correct answer by a different route. Tightening them is a behaviour change
+/// to a published surface and is deliberately not part of #3901.
+pub(crate) fn is_file_digest(hash: &str) -> bool {
+    hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
 /// Request-level cache key: file hash + opening-filter suffix + quality suffix.
 pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
     cache_key_from_parts(
@@ -185,6 +203,22 @@ pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
 /// A cache read error answers `false`: re-parsing is the safe direction.
 pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -> bool {
     has_entry(cache, &data_model_cache_key(cache_key)).await
+}
+
+/// Whether the Parquet metadata header is cached for `cache_key`.
+///
+/// The cheap half of "is this replayable": the header is a few hundred bytes,
+/// where the geometry blob is the whole model. The hash-only stream probe
+/// (#3901) asks this, plus [`has_current_data_model`], BEFORE it takes an
+/// admission slot, so the common miss (a file the server has never seen) is
+/// answered by two small reads rather than by charging a parse slot for a disk
+/// lookup. It is a pre-filter, never the decision: [`try_cached_replay`] still
+/// makes that, and a metadata entry present here with no geometry beside it
+/// falls through to the same 404.
+///
+/// [`try_cached_replay`]: super::cached_replay::try_cached_replay
+pub(crate) async fn has_parquet_metadata(cache: &DiskCache, cache_key: &str) -> bool {
+    has_entry(cache, &parquet_metadata_key(cache_key)).await
 }
 
 /// Whether `key` has a readable entry.

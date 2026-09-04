@@ -267,9 +267,18 @@ fn request_cache_key_separates_content_filter_and_quality() {
                 opening_filter: mode,
                 tessellation_quality: None,
                 parquet_layout: ParquetLayout::Flat,
+                // A client-supplied hash is a SELECTOR for the hash-only
+                // stream probe (#3901); it is not part of the cache identity
+                // a body-carrying request builds. Set to a value that would
+                // be visible if it leaked in.
+                sha256: Some("f".repeat(64)),
             };
             let key = request_cache_key(data, &query, quality);
             assert!(key.starts_with(&hash), "the file hash must lead the key: {key}");
+            assert!(
+                !key.contains(&"f".repeat(64)),
+                "request_cache_key must key off the bytes, never the query hash: {key}"
+            );
             assert!(
                 seen.insert(key.clone()),
                 "collision: {mode:?}/{quality:?} reuses an existing key {key}"

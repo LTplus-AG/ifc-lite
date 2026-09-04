@@ -555,18 +555,19 @@ test('REFUSE: a changeset whose frontmatter cannot be parsed', () => {
 
 // --- the shipped configuration ----------------------------------------------
 
-test('the real repository passes, and the run is not vacuous', () => {
+test('the real repository passes, and the run reports its baseline', () => {
   const res = spawnSync(process.execPath, [CHECKER], { cwd: ROOT, encoding: 'utf8' });
   const out = `${res.stdout}${res.stderr}`;
   assert.equal(res.status, 0, out);
-  // Anti-vacuity: the tree really does carry an unreleased shrink
-  // (bcd716a0b unexported Scene, PickingManager and Section2DOverlayRenderer),
-  // so a run reporting zero shrinks here would mean the baseline derivation had
-  // silently stopped finding anything to compare against.
-  assert.match(out, /pending changeset\(s\)/);
-  // And the SHRINK RESULT itself, not merely that a changeset was found. Without
-  // this the test still passes if baseline derivation silently stops comparing
-  // API surfaces and reports zero shrunk packages: a green run over a check that
-  // did nothing, which is the shape this gate exists to prevent.
-  assert.match(out, /1 package\(s\) shrank/);
+  // Anti-vacuity, without pinning live repository state: the summary must
+  // say how many changesets it read and which baseline it compared against.
+  // An earlier version required "1 package(s) shrank" from a specific
+  // unreleased shrink, which turned red the moment a release consumed the
+  // changesets (main after #3357, 2026-09-04): a released tree legitimately
+  // has 0 pending and nothing shrank. Whether the checker DETECTS a shrink is
+  // pinned by the synthetic RED/GREEN cases above, which do not depend on
+  // what happens to be unreleased today.
+  assert.match(out, /\d+ pending changeset\(s\)/);
+  assert.match(out, /since [0-9a-f]{7,}:scripts\/api-surface\.json/);
 });
+

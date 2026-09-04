@@ -86,23 +86,43 @@ describe('toCacheDataStore -> BinaryCacheWriter -> BinaryCacheReader round trip'
     // [number, EntityRef] and EntityRef is assignable to CacheEntityRef.
     expect(result.entityIndex, 'entity-index section written and read back').toBeDefined();
 
-    const sourceIds = [...store.entityIndex.byId.keys()].sort((a, b) => a - b);
-    const readIds = [...result.entityIndex!.ids].sort((a, b) => a - b);
-    expect(readIds).toEqual(sourceIds);
+    // The index is a payload, not just a key set. Comparing the `ids` column
+    // alone would still pass with every `type`, `byteOffset` and `byteLength`
+    // corrupt, so compare each source EntityRef against its decoded row.
+    const index = result.entityIndex!;
+    const rowOf = (id: number, i: number) => ({
+      expressId: id,
+      type: index.typeNames[index.typeIndices[i]],
+      byteOffset: index.byteOffsets[i],
+      byteLength: index.byteLengths[i],
+    });
+    const byExpressId = (a: { expressId: number }, b: { expressId: number }) =>
+      a.expressId - b.expressId;
+
+    const sourceRefs = [...store.entityIndex.byId]
+      .map(([id, ref]) => ({
+        // writeEntityIndex normalizes exactly this way before encoding.
+        expressId: ref.expressId || id,
+        type: String(ref.type).toUpperCase(),
+        byteOffset: ref.byteOffset,
+        byteLength: ref.byteLength,
+      }))
+      .sort(byExpressId);
+    const readRefs = [...index.ids].map(rowOf).sort(byExpressId);
+
+    // Guard the comparison against being trivially satisfiable: an all-zero
+    // payload on both sides would match without proving anything.
+    expect(sourceRefs.length, 'the parse produced index rows to compare').toBeGreaterThan(0);
+    expect(
+      sourceRefs.every((ref) => ref.byteOffset > 0 && ref.byteLength > 0),
+      'source rows carry non-zero offsets and lengths',
+    ).toBe(true);
+    expect(readRefs, 'every entity-index row survives the round trip intact').toEqual(sourceRefs);
 
     // The README's remedy: retain the source, re-attach the lazy accessors on
     // read, and entity lookups work against the restored index.
     const byId = new Map(
-      [...result.entityIndex!.ids].map((id, i) => [
-        id,
-        {
-          expressId: id,
-          type: result.entityIndex!.typeNames[result.entityIndex!.typeIndices[i]],
-          byteOffset: result.entityIndex!.byteOffsets[i],
-          byteLength: result.entityIndex!.byteLengths[i],
-          lineNumber: 0,
-        },
-      ]),
+      [...index.ids].map((id, i) => [id, { ...rowOf(id, i), lineNumber: 0 }]),
     );
     const restored = attachDataStoreAccessors({
       ...result.dataStore,

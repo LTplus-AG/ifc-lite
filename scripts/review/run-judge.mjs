@@ -273,13 +273,18 @@ export function main(argv, {
     // it did. A field means what it says; prose does not.
     judged: result.ran === true,
     // THE PER-CLASS PASS FLAG (#3862), RESTATED AS A BOOLEAN rather than left to
-    // the spread above. The spread carries it when the validator wrote one, and
-    // a findings.json from before the field existed -- or the one
-    // claude-review.yml's crash backstop copies verbatim -- carries nothing, so
-    // the spread alone would hand the poster `undefined` on exactly the runs
-    // where something has already gone wrong. judged.json is a contract: the
-    // field is PRESENT and it is a boolean, and the poster's rule is `=== true`,
-    // which is the direction that refuses a flag nobody set.
+    // the spread above. The spread carries it when the validator wrote one; a
+    // document that predates the field, or one written by hand, carries nothing,
+    // and the spread alone would then hand the poster `undefined`. judged.json
+    // is a contract: the field is PRESENT and it is a boolean, and the poster's
+    // rule is `=== true`, which is the direction that refuses a flag nobody set.
+    //
+    // NOT claude-review.yml's crash backstop, which an earlier draft of this
+    // comment cited. That path is `cp findings.json judged.json` at the shell
+    // layer and never reaches this file at all -- and what it copies is the
+    // validator's own output, which writes the flag on every run. The gap this
+    // closes is narrower than that, and saying otherwise would have sent a
+    // reader to check a path where nothing can go wrong.
     //
     // This file never SETS the flag true, and could not: only the validator ran
     // the class pass. It can only carry one forward.

@@ -1,5 +1,15 @@
 # @ifc-lite/lens
 
+## 1.19.1
+
+### Patch Changes
+
+- [#3563](https://github.com/LTplus-AG/ifc-lite/pull/3563) [`de9d10a`](https://github.com/LTplus-AG/ifc-lite/commit/de9d10af48cc8051456ec368394ab0daffaf1c9e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `matchesCriteria` treating an absent property/attribute as if it equalled the empty string under `equals`/`contains`. `matchesProperty` and `matchesAttribute` checked `contains`/`equals` before checking whether the value was present, so `String(value ?? '')` coerced a missing property/attribute to `''`, and `''.includes('')` / `'' === ''` made a rule like `{ propertyName: 'FireRating', operator: 'equals', propertyValue: '' }` match every entity that never had `FireRating` at all — the same class of "absent value satisfies a comparison it shouldn't" that the numeric operators and `ne` already guard against. `matchesQuantity` already checked presence before any operator and never had this hole; `matchesProperty`/`matchesAttribute` now check presence first too, so absence never satisfies `equals`/`contains` either, matching `matchesQuantity`'s existing behaviour. A property/attribute whose value genuinely is the empty string is unaffected.
+
+- [#3483](https://github.com/LTplus-AG/ifc-lite/pull/3483) [`fc68d01`](https://github.com/LTplus-AG/ifc-lite/commit/fc68d01be55aa630a3817a28943d88ff33386b25) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `IFC_SUBTYPE_TO_BASE`, the map `matchesIfcType` uses so a lens rule against a base type (e.g. `IfcDoor`) also matches its StandardCase variant, only covered 4 of IFC4's 9 `*StandardCase` entities (Wall/Slab/Column/Beam). Door, Window, Member, Plate, and Opening were missing, so a rule written against those base types silently failed to match entities exported as the StandardCase variant — no error, the entity was just left unmatched and ghosted. The map now covers every `*StandardCase` entity across IFC2X3/IFC4/IFC4X3, guarded by a schema-parity test that re-derives the set from the generated entity tables.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
 ## 1.19.0
 
 ### Minor Changes

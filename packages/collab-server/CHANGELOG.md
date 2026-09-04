@@ -1,5 +1,28 @@
 # @ifc-lite/collab-server
 
+## 0.7.0
+
+### Minor Changes
+
+- [#3579](https://github.com/LTplus-AG/ifc-lite/pull/3579) [`b50283e`](https://github.com/LTplus-AG/ifc-lite/commit/b50283e99b4e34a8a28b69f35497ad9379c4565b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `Principal.expiresAt` is now enforced, not just carried. It was documented in `auth.ts` as "checked again every 5 minutes per spec", populated from a room token's `exp` claim, and never read anywhere on any post-connect path ([#3441](https://github.com/LTplus-AG/ifc-lite/issues/3441)): an established WebSocket session kept write access indefinitely after its credential's stated expiry, since `verifyRoomToken` only checks expiry at connect and nothing re-examined it afterward.
+  
+  Two enforcement paths, covering different exposure:
+  
+  - `Room`'s write-gate (`preCheckWriteFrame`) now denies a sync write-frame with reason `expired` once `Date.now()` passes `principal.expiresAt` (plus the same clock-skew tolerance `verifyRoomToken` applies at connect).
+  - A new periodic sweep, `Room.sweepExpiredPrincipals` / `RoomManager.sweepExpiredPrincipals`, closes any connection whose principal has expired — every 5 minutes by default, matching the documented interval — so read and presence access stop too, not only writes. It reuses the same close-and-let-`ws.on('close', ...)`-clean-up path as an explicit admin kick.
+
+- [#3470](https://github.com/LTplus-AG/ifc-lite/pull/3470) [`ac00630`](https://github.com/LTplus-AG/ifc-lite/commit/ac0063028517e471b58e741c2018b21b37509a63) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `/metrics` reporting a stale, permanent peer count for a room after it unloads.
+  
+  `peersGauge` is keyed by `roomId`, an identifier the connecting peer picks (the websocket URL path). Every scrape re-`set` the gauge for each currently-loaded room, but nothing ever removed a series for a room that had since unloaded, so `collab_room_peers{room="<id>"}` kept reporting that room's last-known (non-zero) peer count forever, and the registry grew one label series per distinct room id that was loaded at the time of some scrape over the life of a long-running server rather than tracking only currently-loaded rooms. `MetricsRegistry`'s gauge now exposes `reset()`, and the `/metrics` handler resets `peersGauge` before repopulating it from the live room list on each scrape.
+
+### Patch Changes
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`53a92b1`](https://github.com/LTplus-AG/ifc-lite/commit/53a92b1f7cc5770f164dc4867fc2adc33470e245), [`cebcb21`](https://github.com/LTplus-AG/ifc-lite/commit/cebcb2133ef672e9199ee2f158578499d449d9e0), [`e986c81`](https://github.com/LTplus-AG/ifc-lite/commit/e986c81bf6d28fec57f1953fa53bf315dbd80a3a), [`8c181c9`](https://github.com/LTplus-AG/ifc-lite/commit/8c181c99f91964402ad352aead36d9619af5b427), [`6e48c4c`](https://github.com/LTplus-AG/ifc-lite/commit/6e48c4c5f441e8a42e4cc55440cf747ad8679f0a), [`8f08715`](https://github.com/LTplus-AG/ifc-lite/commit/8f087158a662a02c01a21dd2546fb863bb24e665), [`9b709c5`](https://github.com/LTplus-AG/ifc-lite/commit/9b709c51480fbabb68167aa4892f7e4c87b0e4e6), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`32b31bc`](https://github.com/LTplus-AG/ifc-lite/commit/32b31bc8501f04e110733289bde0389b9899bc76), [`c78ce8c`](https://github.com/LTplus-AG/ifc-lite/commit/c78ce8c3f1da3b8b2c6fa0f982595adc8c48b7d6), [`4735f1c`](https://github.com/LTplus-AG/ifc-lite/commit/4735f1cbb6635016e83c7890f670e615bbdc48c3), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e)]:
+  - @ifc-lite/collab@0.6.1
+  - @ifc-lite/ifcx@4.0.0
+  - @ifc-lite/merge@0.4.5
+
 ## 0.6.1
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @ifc-lite/provenance
 
+## 0.2.0
+
+### Minor Changes
+
+- [#3564](https://github.com/LTplus-AG/ifc-lite/pull/3564) [`6b577f6`](https://github.com/LTplus-AG/ifc-lite/commit/6b577f647661b24ec40fa9a47b1dd2935ff4bc63) Thanks [@BIMvoice](https://github.com/BIMvoice)! - A commutation certificate minted with a weakened `epsilonMm` can now be caught at verification time: `verifyCommutationCertificate` accepts a new `expectedEpsilonMm` option and fails with `epsilon-mismatch` when the certificate's own epsilon doesn't match it, the same protection `expectedTrustRoot`/`expectedClientA`/`expectedClientB` already give the other unbindable fields.
+
 ## 0.1.1
 
 ### Patch Changes

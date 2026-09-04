@@ -1,5 +1,46 @@
 # @ifc-lite/codegen
 
+## 1.15.12
+
+### Patch Changes
+
+- [#3565](https://github.com/LTplus-AG/ifc-lite/pull/3565) [`140a6d8`](https://github.com/LTplus-AG/ifc-lite/commit/140a6d8541224341835c98028dc75e6a5ccd605d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the EXPRESS code generator dropping a `UNIQUE` collection constraint into
+  the element type instead of stripping it.
+  
+  EXPRESS allows `UNIQUE` directly in front of a collection's element type
+  (e.g. `LIST [1:?] OF UNIQUE IfcGridAxis`, real syntax from `IfcGrid.UAxes` in
+  both `IFC4_ADD2_TC1.exp` and `IFC4X3.exp`) — it constrains the collection's
+  elements, it is not part of the element type name. `parseNestedCollection`
+  never stripped it, so the parsed attribute type carried the leftover keyword
+  verbatim (`type: 'UNIQUE IfcGridAxis'`), and a collection nested one level
+  under a `UNIQUE` (`LIST [1:?] OF UNIQUE LIST [1:2] OF IfcLengthMeasure`)
+  fell through the "ends with Measure" heuristic entirely and lost an array
+  dimension (`number[]` instead of `IfcLengthMeasure[][]`).
+  
+  Eight IFC4 attributes and two additional IFC4X3-only attributes were affected
+  (`IfcTypeProduct.RepresentationMaps`, `IfcGrid.{UAxes,VAxes,WAxes}`,
+  `IfcIndexedPolygonalFaceWithVoids.InnerCoordIndices`, `IfcPath.EdgeList`,
+  `IfcPolyLoop.Polygon`, `IfcPropertyEnumeration.EnumerationValues`,
+  `IfcPropertyTableValue.DefiningValues`, `IfcVirtualGridIntersection.IntersectingAxes`,
+  `IfcStructuralLoadConfiguration.Locations`, plus IFC4X3's
+  `IfcTriangulatedFaceSet.Faces` and `IfcIndexedPolygonalTextureMap.InnerTexCoordIndices`).
+  `packages/codegen/generated/ifc4/entities.ts` and `generated/ifc4x3/entities.ts`
+  carried the bug outright (invalid TypeScript, e.g. `UAxes: UNIQUE IfcGridAxis[];`);
+  `packages/parser/src/generated/entities.ts` had it hand-patched to valid syntax
+  in one prior commit without ever touching the generator, so
+  `schema-registry.ts` — which carries the same attribute type as a plain
+  string, so `tsc` never flagged it — kept shipping `type: 'UNIQUE IfcGridAxis'`
+  as runtime metadata in every published `@ifc-lite/parser` release.
+  
+  Regenerated and committed `packages/codegen/generated/{ifc4,ifc4x3}/{entities,schema-registry}.ts`
+  and `packages/parser/src/generated/{entities,schema-registry}.ts` to match the
+  fixed generator; a fresh regeneration against the committed `.exp` schemas is
+  now byte-identical to what's committed.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`bcbe7b9`](https://github.com/LTplus-AG/ifc-lite/commit/bcbe7b9afa38e8dafb5900e73575c71a8fd96012), [`1000dce`](https://github.com/LTplus-AG/ifc-lite/commit/1000dce72e9ec75c59848efefc1f709d01172e72), [`89c4cf2`](https://github.com/LTplus-AG/ifc-lite/commit/89c4cf22e83d76115035f7dcbf6e34f9c06dd091), [`a1aebc8`](https://github.com/LTplus-AG/ifc-lite/commit/a1aebc822b819221258f4759edf4c82ff0d140f7), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`1060a30`](https://github.com/LTplus-AG/ifc-lite/commit/1060a30187c8f6bb327f9e356056f2364568e8ff), [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0)]:
+  - @ifc-lite/data@4.0.0
+
 ## 1.15.11
 
 ### Patch Changes

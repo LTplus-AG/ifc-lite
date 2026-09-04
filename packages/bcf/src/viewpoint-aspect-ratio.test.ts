@@ -24,10 +24,13 @@
  * `project.version` from the imported `bcf.version`, so importing another
  * tool's 3.0 archive, adding a topic, and exporting hit exactly this.
  *
- * The reverse direction is here for the same reason: `extractViewpointState`
- * is how a viewpoint is loaded back into the viewer, and a state that drops
- * the aspect ratio turns "apply then re-capture" into a lossy step that
- * re-creates the unwritable camera.
+ * The reverse direction is here so the conversion pair is lossless both ways.
+ * A caller that reads a viewpoint, edits the camera state and writes it back
+ * (`perspectiveToCamera` -> `cameraToPerspective`) would otherwise drop the
+ * field and produce a camera that cannot be written as BCF 3.0. This is a
+ * library-level round trip, NOT the viewer's apply path: `useBCF`'s
+ * `applyCameraState` never pushes an aspect ratio into the renderer (the
+ * viewport owns it) and `getCameraState` reads a fresh one.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -150,7 +153,7 @@ describe('viewer camera aspect ratio reaches a BCF 3.0 camera', () => {
     expect(topic?.viewpoints[0]?.perspectiveCamera?.aspectRatio).toBe(ASPECT);
   });
 
-  describe('the reverse direction keeps it, so apply-then-recapture is not lossy', () => {
+  describe('the reverse direction keeps it, so the conversion pair is lossless', () => {
     it('perspectiveToCamera returns the aspect ratio', () => {
       const bcf = cameraToPerspective(CAMERA);
       expect(perspectiveToCamera(bcf).aspectRatio).toBe(ASPECT);
@@ -161,7 +164,7 @@ describe('viewer camera aspect ratio reaches a BCF 3.0 camera', () => {
       expect(orthogonalToCamera(bcf).aspectRatio).toBe(ASPECT);
     });
 
-    it('extractViewpointState surfaces it, and re-capturing still writes', async () => {
+    it('extractViewpointState surfaces it, and re-writing that state still validates', async () => {
       const viewpoint = createViewpoint({ camera: CAMERA });
       const state = extractViewpointState(viewpoint);
       expect(state.camera?.aspectRatio).toBe(ASPECT);

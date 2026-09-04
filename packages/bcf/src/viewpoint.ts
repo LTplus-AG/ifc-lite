@@ -247,7 +247,14 @@ export function perspectiveToCamera(
     up: viewerUp,
     fov,
     isOrthographic: false,
-    // Carried back so apply-then-recapture is not what loses it.
+    // Carried back so the conversion pair is lossless in both directions.
+    // NOT for the viewer's apply path: `useBCF`'s `applyCameraState` never
+    // pushes an aspect ratio into the renderer (the viewport owns that) and
+    // `getCameraState` reads a fresh one, so nothing there depends on this.
+    // It matters for a caller that reads a viewpoint, edits the camera state,
+    // and writes it back -- `perspectiveToCamera` -> `cameraToPerspective`
+    // would otherwise silently drop the field and make the result unwritable
+    // as BCF 3.0. The tests pin the round trip, not a viewer scenario.
     ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }

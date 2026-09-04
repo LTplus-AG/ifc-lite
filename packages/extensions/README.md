@@ -60,13 +60,14 @@ import {
 import { loadBundleFromDirectory } from '@ifc-lite/extensions/node';
 
 // Validate a manifest
+const manifestJson: unknown = await fetch('/my-extension/manifest.json').then((r) => r.json());
 const result = validateManifest(manifestJson);
-if (result.ok) {
-  console.log(result.value.id);
-} else {
+if (result.ok === false) {
   for (const err of result.errors) {
     console.error(`${err.path}: ${err.message}`);
   }
+} else {
+  console.log(result.value.id);
 }
 ```
 

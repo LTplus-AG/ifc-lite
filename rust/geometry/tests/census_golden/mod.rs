@@ -740,10 +740,21 @@ fn classify(g: &HostRow, r: &HostRow) -> Classified {
                 std::cmp::Ordering::Greater => {
                     c.volume_moved.push(format!("{msg} (fewer triangles, more enclosed volume)"))
                 }
-                std::cmp::Ordering::Equal => c
+                // ZERO is not a volume that can be unchanged. A watertight
+                // host reading 0 cm³ is a sheet, a doubled surface or a pair
+                // of cancelling shells — the signed balance certifies it and
+                // the divergence sum has nothing to say — so a triangle drop
+                // there carries exactly as much information as it did before
+                // this column existed, which is the `worse_counts` verdict.
+                // Without this guard a doubled sheet that loses half its
+                // triangles reads "enclosed volume unchanged" and files as a
+                // friendly re-tessellation.
+                std::cmp::Ordering::Equal if a != 0 => c
                     .retessellated
                     .push(format!("{msg} (fewer triangles, enclosed volume unchanged)")),
-                std::cmp::Ordering::Less => c.worse_counts.push(format!("{msg} (geometry lost)")),
+                std::cmp::Ordering::Equal | std::cmp::Ordering::Less => {
+                    c.worse_counts.push(format!("{msg} (geometry lost)"))
+                }
             },
             None if r.open < g.open && g.open_is_comparable() && r.open_is_comparable() => {
                 c.retessellated.push(format!("{msg} (fewer triangles, less torn)"))

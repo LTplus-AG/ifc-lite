@@ -1318,6 +1318,58 @@ fn unit_cube() -> Mesh {
 /// makes it a doubling rather than a hole: a copy that drifted would leave the
 /// superset test below asserting `strict >= open` over some other mesh, and
 /// passing.
+/// `n` disjoint doubled sheets: one triangle and its reverse, side by side.
+///
+/// The shape the volume column cannot read (#3422). The signed balance
+/// certifies it watertight — every undirected edge is used once forward and
+/// once reverse — and the divergence sum over a surface that encloses nothing
+/// is exactly 0, so a census row for it carries `open = 0`, `strict = 0` and
+/// `vol = Some(0)`. Real hosts of this shape exist: a wall modelled as a
+/// zero-thickness face, a duplicated shell that cancels itself.
+fn doubled_sheets(n: usize) -> Mesh {
+    let mut m = Mesh::default();
+    for i in 0..n {
+        let (b, x) = ((m.positions.len() / 3) as u32, i as f32 * 4.0);
+        m.positions.extend_from_slice(&[x, 0.0, 0.0, x + 1.0, 0.0, 0.0, x, 1.0, 0.0]);
+        m.indices.extend_from_slice(&[b, b + 1, b + 2, b, b + 2, b + 1]);
+    }
+    m
+}
+
+/// #3422, the zero-volume hole in the volume column's own routing. A host that
+/// loses HALF its sheets is watertight on both sides and reads 0 cm³ on both,
+/// so "the enclosed volume did not change" is true and says nothing. Routing
+/// the triangle drop on it filed a vanished component as a friendly
+/// re-tessellation.
+///
+/// Measured through `row_from_mesh`, the sweep's own row builder, so the zero
+/// is the reading the sweep would take and not a synthetic one.
+#[test]
+fn a_watertight_host_reading_zero_volume_is_not_re_tessellated_when_it_shrinks() {
+    let swept: BTreeSet<String> = ["sheets.ifc".to_string()].into_iter().collect();
+    let row = |m: &Mesh| {
+        let s = edge_stats(m);
+        row_from_mesh("sheets.ifc", 1, "Brep".into(), m, &s, Some(s.open), PreVoid::NotTaken)
+    };
+    let (before, after) = (row(&doubled_sheets(2)), row(&doubled_sheets(1)));
+
+    // The premise: watertight by both rules on both sides, and zero volume on
+    // both, with half the mesh gone.
+    for (what, r) in [("before", &before), ("after", &after)] {
+        assert_eq!(r.open, 0, "{what}: the signed balance certifies a doubled sheet");
+        assert_eq!(r.strict, 0, "{what}: and so does the strict rule, on disjoint sheets");
+        assert_eq!(r.vol, Some(0), "{what}: a surface enclosing nothing reads 0 cm³");
+    }
+    assert_eq!((before.tris, after.tris), (4, 2), "half the mesh must be gone");
+
+    let d = census_golden::diff(&[before], &[after], &swept);
+    assert_eq!(d.regressed.len(), 1, "a vanished sheet is geometry lost");
+    assert!(d.retessellated.is_empty(), "not a re-tessellation: there is no volume to be unchanged");
+    assert!(d.volume_moved.is_empty(), "and 0 -> 0 is not a move either");
+    let reasons = d.regressed[0].reasons.join("; ");
+    assert!(reasons.contains("triangles 4 -> 2 (geometry lost)"), "{reasons}");
+}
+
 fn doubled_face_cube() -> Mesh {
     let mut m = unit_cube();
     m.indices.extend_from_slice(&[0, 3, 2, 0, 2, 3]);

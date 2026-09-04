@@ -69,6 +69,10 @@ is unambiguously REAL-backed, a whole-number value is serialized with the
 decimal point automatically, so the natural call just works:
 
 ```typescript
+const profile = editor.addEntity('IfcRectangleProfileDef', [
+  '.AREA.', null, '#34', 0.6, 0.4,
+]);
+
 editor.setPositionalAttribute(profile.expressId, 3, 1);  // XDim → 1.  (dotted)
 ```
 
@@ -77,6 +81,8 @@ For the rare slot that a bare value genuinely can't disambiguate — a
 the number in the write-only `{ real }` marker to force a REAL literal:
 
 ```typescript
+const unitRef = '#34';  // STEP reference to an IfcNamedUnit
+
 editor.addEntity('IfcQuantityLength', ['L', null, unitRef, { real: 3 }]); // → IFCLENGTHMEASURE-safe 3.
 ```
 
@@ -88,6 +94,12 @@ type-QUALIFIED — `IFCBOOLEAN(.T.)`, not a bare `.T.`, in an
 the member is unambiguous, so the natural call just works:
 
 ```typescript
+// IfcBoundaryNodeCondition: Name, TranslationalStiffnessX/Y/Z,
+//                           RotationalStiffnessX/Y/Z
+const condition = editor.addEntity('IfcBoundaryNodeCondition', [
+  'Pinned', null, null, null, null, null, null,
+]);
+
 // TranslationalStiffnessX : SELECT(IfcBoolean, IfcLinearStiffnessMeasure)
 editor.setPositionalAttribute(condition.expressId, 1, true);  // → IFCBOOLEAN(.T.)
 editor.setPositionalAttribute(condition.expressId, 1, 1000);  // → IFCLINEARSTIFFNESSMEASURE(1000.)
@@ -146,6 +158,8 @@ To carry a created entity across, call `restoreNewEntity()` with its
 view) **before** calling `importMutations`:
 
 ```typescript
+const json = view.exportMutations();
+
 const created = view.getNewEntity(expressId)!;
 mutationView.restoreNewEntity(created);
 mutationView.importMutations(json); // dependent property/attribute/quantity mutations now replay
@@ -188,7 +202,23 @@ console.log(`Updated ${result.affectedEntityCount} walls`);
 Preview without applying:
 
 ```typescript
-const preview = engine.preview(query);
+import { BulkQueryEngine, type BulkQuery } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
+
+const engine = new BulkQueryEngine(store.entities, view);
+
+const bulkQuery: BulkQuery = {
+  select: { propertyFilters: [{ propName: 'IsExternal', operator: '=', value: true }] },
+  action: {
+    type: 'SET_PROPERTY',
+    psetName: 'Pset_WallCommon',
+    propName: 'ThermalTransmittance',
+    value: 0.18,
+    valueType: PropertyValueType.Real,
+  },
+};
+
+const preview = engine.preview(bulkQuery);
 console.log(`Would update ${preview.matchedCount} entities`);
 ```
 
@@ -201,6 +231,8 @@ import { CsvConnector } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 
 const connector = new CsvConnector(store.entities, view);
+
+const csvText = await file.text();  // or any string of CSV
 
 const stats = connector.import(csvText, {
   matchStrategy: { type: 'globalId', column: 'GlobalId' },

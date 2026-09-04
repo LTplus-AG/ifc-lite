@@ -14,6 +14,7 @@
 
 export * from './types.js';
 export { matchesSelector } from './selectors.js';
+export { clashMemberKey, clashMemberSet, inClashSet } from './members.js';
 export {
   DISCIPLINES,
   CLASH_RULE_PRESETS,
@@ -49,6 +50,7 @@ export {
   summarizeClashes,
   ruleHadNoMatch,
   classifyRuleCoverage,
+  describeEmptyRuleSides,
   type ClashSortBy,
   type RuleCoverageOutcome,
 } from './analysis.js';

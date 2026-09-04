@@ -16,7 +16,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Settings2, Plus, Pencil, Trash2, RotateCcw, Upload, Download, Check, X,
+  Settings2, Plus, Pencil, Trash2, RotateCcw, Upload, Download,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -33,6 +33,13 @@ import { toast } from '@/components/ui/toast';
 import { useViewerStore } from '@/store';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
 import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
+import { ClashRuleDraftEditor, type ClashRuleDraft } from '@/components/viewer/ClashRuleDraftEditor';
+import {
+  CLASH_SET_FILTER_SELECTOR,
+  activeClashSetFilter,
+  describeClashSetFilter,
+  type ClashSetFilter,
+} from '@/lib/clash/set-filter';
 import { setClashSettingsSaveReporter } from '@/lib/clash/settings-save-notice';
 
 const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
@@ -42,14 +49,6 @@ const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
   info: { label: 'Info', color: '#7aa2f7' },
 };
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
-
-interface Draft {
-  id: string | null; // null = new custom rule
-  name: string;
-  selectorA: string;
-  selectorB: string;
-  severity: ClashSeverity;
-}
 
 interface ClashSettingsDialogProps {
   trigger?: React.ReactNode;
@@ -83,7 +82,7 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const resetPresets = useViewerStore((s) => s.resetClashPresets);
   const importClashPresets = useViewerStore((s) => s.importClashPresets);
 
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<ClashRuleDraft | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Detection settings commit optimistically and persist in the background, so
@@ -106,24 +105,32 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
   const startAdd = () =>
     setDraft({ id: null, name: '', selectorA: '', selectorB: '', severity: 'major' });
+  /** The stand-in is not something to show the user — it reads as an empty box. */
+  const editableSelector = (selector: string) =>
+    selector === CLASH_SET_FILTER_SELECTOR ? '' : selector;
   const startEdit = (p: ClashPreset) =>
-    setDraft({ id: p.id, name: p.name, selectorA: p.selectorA, selectorB: p.selectorB, severity: p.severity });
+    setDraft({
+      id: p.id,
+      name: p.name,
+      selectorA: editableSelector(p.selectorA),
+      selectorB: editableSelector(p.selectorB),
+      severity: p.severity,
+      filterA: p.filterA,
+      filterB: p.filterB,
+    });
 
   const saveDraft = useCallback(() => {
     if (!draft) return;
-    const result = draft.id
-      ? updatePreset(draft.id, {
-          name: draft.name,
-          selectorA: draft.selectorA,
-          selectorB: draft.selectorB,
-          severity: draft.severity,
-        })
-      : createPreset({
-          name: draft.name,
-          severity: draft.severity,
-          selectorA: draft.selectorA,
-          selectorB: draft.selectorB,
-        });
+    // `id` is the draft's own "new vs edit" flag, never a preset field. A side
+    // the user defined with a filter needs no hand-typed selector and gets the
+    // fail-closed stand-in (see CLASH_SET_FILTER_SELECTOR).
+    const { id, ...fields } = draft;
+    const saved = {
+      ...fields,
+      selectorA: fields.selectorA.trim() || CLASH_SET_FILTER_SELECTOR,
+      selectorB: fields.selectorB.trim() || CLASH_SET_FILTER_SELECTOR,
+    };
+    const result = id ? updatePreset(id, saved) : createPreset(saved);
     if (result.ok) {
       setDraft(null);
     } else {
@@ -131,8 +138,14 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
     }
   }, [draft, createPreset, updatePreset]);
 
+  /** A side is defined once it has either a type selector or a filter. */
+  const sideValid = (selector: string, filter: ClashSetFilter | undefined) =>
+    selector.trim().length > 0 || activeClashSetFilter(filter) !== undefined;
   const draftValid =
-    !!draft && draft.name.trim().length > 0 && draft.selectorA.trim().length > 0 && draft.selectorB.trim().length > 0;
+    !!draft &&
+    draft.name.trim().length > 0 &&
+    sideValid(draft.selectorA, draft.filterA) &&
+    sideValid(draft.selectorB, draft.filterB);
 
   const onImport = useCallback(
     async (file: File) => {
@@ -305,7 +318,9 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                         {!p.builtin && <span className="ml-1.5 text-[10px] text-muted-foreground">custom</span>}
                       </div>
                       <div className="truncate text-[10px] text-muted-foreground">
-                        {p.selectorA} <span className="opacity-60">×</span> {p.selectorB}
+                        <SetSummary selector={p.selectorA} filter={p.filterA} />
+                        <span className="opacity-60"> × </span>
+                        <SetSummary selector={p.selectorB} filter={p.filterB} />
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit" onClick={() => startEdit(p)}>
@@ -324,60 +339,29 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
             </div>
 
             {draft && (
-              <div className="rounded-md border border-[#f7768e]/40 bg-muted/30 p-2.5 space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-medium">{draft.id ? 'Edit rule' : 'New rule'}</span>
-                  <button onClick={() => setDraft(null)} className="text-muted-foreground hover:text-foreground" title="Cancel">
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-                <input
-                  value={draft.name}
-                  onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder="Rule name (e.g. Ducts vs Beams)"
-                  className="h-8 w-full rounded-md border border-border bg-transparent px-2.5 text-sm"
-                />
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                  <SelectorField
-                    value={draft.selectorA}
-                    onChange={(v) => setDraft({ ...draft, selectorA: v })}
-                    count={matchCount(draft.selectorA)}
-                    hasModel={classes !== null}
-                    placeholder="IfcDuct*|IfcPipe*"
-                  />
-                  <span className="text-xs text-muted-foreground">×</span>
-                  <SelectorField
-                    value={draft.selectorB}
-                    onChange={(v) => setDraft({ ...draft, selectorB: v })}
-                    count={matchCount(draft.selectorB)}
-                    hasModel={classes !== null}
-                    placeholder="IfcWall*|IfcSlab"
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Select value={draft.severity} onValueChange={(v) => setDraft({ ...draft, severity: v as ClashSeverity })}>
-                    <SelectTrigger className="h-8 w-32"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {SEVERITIES.map((s) => (
-                        <SelectItem key={s} value={s}>{SEVERITY[s].label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button size="sm" className="ml-auto h-8" disabled={!draftValid} onClick={saveDraft}>
-                    <Check className="h-3.5 w-3.5 mr-1" /> {draft.id ? 'Save' : 'Add'}
-                  </Button>
-                </div>
-                <p className="text-[10px] text-muted-foreground leading-snug">
-                  Selectors: <code>IfcWall</code>, <code>IfcPipe*</code>, <code>IfcWall|IfcSlab</code>, <code>!IfcSpace</code>, <code>*</code>.
-                  Leave B equal to A for a self-clash within one group.
-                </p>
-              </div>
+              <ClashRuleDraftEditor
+                draft={draft}
+                severities={SEVERITIES}
+                severityLabel={(sev) => SEVERITY[sev].label}
+                matchCount={matchCount}
+                hasModel={classes !== null}
+                onChange={setDraft}
+                onCancel={() => setDraft(null)}
+                onSave={saveDraft}
+                canSave={draftValid}
+              />
             )}
           </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
   );
+}
+
+/** How one side of a rule reads in the list: its filter, or its selector. */
+function SetSummary({ selector, filter }: { selector: string; filter?: ClashSetFilter }) {
+  const active = activeClashSetFilter(filter);
+  return active ? <em>{describeClashSetFilter(active)}</em> : <>{selector}</>;
 }
 
 function SettingRow({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {
@@ -407,31 +391,6 @@ function NumberField({
         className="h-8 w-24 rounded-md border border-border bg-transparent px-2 text-sm tabular-nums text-right"
       />
       {suffix && <span className="text-xs text-muted-foreground">{suffix}</span>}
-    </div>
-  );
-}
-
-/** Type-selector input with a live "matches N classes" hint. */
-function SelectorField({
-  value, onChange, count, hasModel, placeholder,
-}: { value: string; onChange: (v: string) => void; count: number | null; hasModel: boolean; placeholder: string }) {
-  return (
-    <div className="min-w-0">
-      <input
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        className="h-8 w-full rounded-md border border-border bg-transparent px-2 text-xs font-mono"
-      />
-      <div className="mt-0.5 h-3 text-[10px] text-muted-foreground truncate">
-        {!hasModel
-          ? 'load a model to preview'
-          : count === null
-            ? ' '
-            : count > 0
-              ? `✓ matches ${count} class${count === 1 ? '' : 'es'}`
-              : 'matches no classes'}
-      </div>
     </div>
   );
 }

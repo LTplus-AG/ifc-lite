@@ -12,7 +12,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useViewerStore } from '@/store';
-import type { ClashFocusMode } from '@/store/slices/clashSlice';
+import type { ClashFocusMode, ClashPreset } from '@/store/slices/clashSlice';
 import {
   createClashEngine,
   rulesFromPresets,
@@ -20,7 +20,6 @@ import {
   groupDuplicateSets,
   findDuplicates,
   clashReviewKey,
-  summarizeClashes,
   type Clash,
   type ClashElement,
   type ClashElementRef,
@@ -33,7 +32,7 @@ import {
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
-import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/clash/contact';
+import { contactClusters } from '@ifc-lite/clash/contact';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { withInstancedMeshes } from '@/utils/instancedExport';
@@ -45,6 +44,9 @@ import {
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
+import { contactLineList } from '@/lib/clash/contact-lines';
+import { filterResultBySeverity } from '@/lib/clash/severity-filter';
+import { withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
@@ -57,7 +59,7 @@ import {
 } from '@/lib/clash/federation-identity';
 import { posthog } from '@/lib/analytics';
 import { errorCaptureProps } from '@/lib/load-errors';
-import { downloadBlob } from '@/lib/export/download';
+import { downloadBlob, dataUrlToBytes } from '@/lib/export/download';
 import { nextFrameOrTimeout } from '@/utils/frameWait';
 
 /**
@@ -129,39 +131,6 @@ interface SelectionRef {
 }
 
 /**
- * Flatten contact clusters into a world-frame line-list (x,y,z per endpoint, two
- * per segment) for the focused-clash overlay. Prefer the shared-FACE polygon
- * outlines when any surface contact exists (flush/coincident members); otherwise
- * the intersection LINES (angled crossings); otherwise small crosses at POINT
- * contacts. This is the real contact interface, not an AABB box (#1402).
- */
-function contactLineList(clusters: readonly SharedFaceCluster[]): number[] {
-  const surfaces = clusters.filter((c) => c.kind === 'surface' && c.boundary.length >= 3);
-  const lines = clusters.filter((c) => c.kind === 'line' && c.boundary.length >= 2);
-  const points = clusters.filter((c) => c.kind === 'point');
-  const out: number[] = [];
-  const seg = (p: Vec3, q: Vec3) => out.push(p[0], p[1], p[2], q[0], q[1], q[2]);
-  // Shared-face polygon outlines (the contact patches) and intersection lines
-  // (penetration boundary) together describe the contact; render both so a thin
-  // patch still reads. Points only matter when there is no surface or line.
-  for (const c of surfaces) {
-    const b = c.boundary;
-    for (let i = 0; i < b.length; i += 1) seg(b[i], b[(i + 1) % b.length]);
-  }
-  for (const c of lines) seg(c.boundary[0], c.boundary[1]);
-  if (surfaces.length === 0 && lines.length === 0) {
-    const s = 0.05;
-    for (const c of points) {
-      const [x, y, z] = c.centroid;
-      seg([x - s, y, z], [x + s, y, z]);
-      seg([x, y - s, z], [x, y + s, z]);
-      seg([x, y, z - s], [x, y, z + s]);
-    }
-  }
-  return out;
-}
-
-/**
  * How the rest of the model is shown when a clash is focused (#1275):
  * - `highlight`: everything stays visible, the pair is just selected/framed;
  * - `isolate`:   everything else is hidden;
@@ -191,31 +160,6 @@ export interface ClashBcfConfig {
 
 /** Dark, neutral background for offscreen snapshot captures (Tokyo Night base). */
 const SNAPSHOT_CLEAR_COLOR: [number, number, number, number] = [0.04, 0.05, 0.1, 1];
-
-/** Decode a `data:image/png;base64,...` URL into raw PNG bytes for the BCF zip. */
-function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {
-  const comma = dataUrl.indexOf(',');
-  if (comma < 0) return undefined;
-  try {
-    const binary = atob(dataUrl.slice(comma + 1));
-    const bytes = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Drop clashes whose severity is not selected, rebuilding the WHOLE summary
- * (not just `total`): this feeds `exportBcf`/`bcfPreview`, and a stale
- * `byTypePair`/`byRule`/`bySeverity` would still advertise buckets the filter
- * just removed.
- */
-export function filterResultBySeverity(result: ClashResult, severities: Set<ClashSeverity>): ClashResult {
-  const clashes = result.clashes.filter((c) => severities.has(c.severity));
-  return { ...result, clashes, summary: summarizeClashes(clashes) };
-}
 
 export function useClash() {
   const result = useViewerStore((s) => s.clashResult);
@@ -580,6 +524,41 @@ export function useClash() {
     [gatherElements, discardSolidPresentation, publishClashResult, stillWanted],
   );
 
+  /** Run rules built from PRESETS, resolving each side's optional advanced
+   *  filter (#3902) against the loaded models first. A side with no filter is
+   *  left to its type selector, so a rule set from before filters existed runs
+   *  through here exactly as it did. */
+  const runPresets = useCallback(
+    async (presets: ClashPreset[]): Promise<void> => {
+      const state = useViewerStore.getState();
+      const models = [...state.models].map(([id, m]) => ({ id, store: m.ifcDataStore }));
+      const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
+      // Resolving the filters is a federation scan that happens BEFORE `run()`
+      // takes over the epoch and the running/error state. Take an epoch here
+      // anyway: without it a second, filterless run started during the scan
+      // would enter `run()` first and then be overwritten by this older one
+      // (#2802's ordering, which only holds while every start bumps). The
+      // running flag is set for the same window, so the panel says it is
+      // working instead of looking idle for the length of the scan.
+      const myEpoch = ++runEpochRef.current;
+      state.setClashError(null);
+      state.setClashRunning(true);
+      let resolved: ClashRule[];
+      try {
+        resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId);
+      } catch (err) {
+        // A refused filter reports itself here or nothing on screen changes.
+        if (!stillWanted(myEpoch)) return;
+        state.setClashError(err instanceof Error ? err.message : String(err));
+        state.setClashRunning(false);
+        return;
+      }
+      if (!stillWanted(myEpoch)) return;
+      return run(resolved);
+    },
+    [run, mode, clearance, reportTouch, stillWanted],
+  );
+
   /**
    * Run the user's ENABLED rule set (built-in discipline rules they've kept on,
    * plus any custom presets). With no enabled rules, surface a clear message
@@ -591,8 +570,8 @@ export function useClash() {
       useViewerStore.getState().setClashError('All rules are disabled — enable at least one in Clash settings (⚙).');
       return Promise.resolve();
     }
-    return run(rulesFromPresets(enabled, mode, mode === 'clearance' ? clearance : undefined, reportTouch));
-  }, [run, mode, clearance, reportTouch, clashPresets]);
+    return runPresets(enabled);
+  }, [runPresets, clashPresets]);
 
   /**
    * Detect ALL clashes in the loaded geometry — a single self-clash rule over
@@ -619,9 +598,9 @@ export function useClash() {
     (presetId: string): Promise<void> => {
       const preset = useViewerStore.getState().clashPresets.find((p) => p.id === presetId);
       if (!preset) return Promise.resolve();
-      return run(rulesFromPresets([preset], mode, mode === 'clearance' ? clearance : undefined, reportTouch));
+      return runPresets([preset]);
     },
-    [run, mode, clearance, reportTouch],
+    [runPresets],
   );
 
   /**

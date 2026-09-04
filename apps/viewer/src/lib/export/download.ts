@@ -161,3 +161,23 @@ export function downloadDataUrl(dataUrl: string, filename: string): void {
   if (!canDownload()) return;
   clickDownloadAnchor(dataUrl, filename);
 }
+
+/**
+ * Decode a `data:...;base64,...` URL into raw bytes — the other half of an
+ * export that has to EMBED what a canvas produced (a BCF viewpoint snapshot)
+ * rather than hand it to the browser. Undefined for anything that is not a
+ * decodable data URL, so a failed capture drops the image instead of the
+ * export.
+ */
+export function dataUrlToBytes(dataUrl: string): Uint8Array | undefined {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return undefined;
+  try {
+    const binary = atob(dataUrl.slice(comma + 1));
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } catch {
+    return undefined;
+  }
+}

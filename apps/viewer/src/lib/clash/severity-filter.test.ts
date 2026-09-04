@@ -13,7 +13,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Clash, ClashElementRef, ClashResult } from '@ifc-lite/clash';
-import { filterResultBySeverity } from './useClash.js';
+import { filterResultBySeverity } from './severity-filter.js';
 
 function ref(key: string, tag: string): ClashElementRef {
   return { model: 'm1', key, tag, ref: 0 };

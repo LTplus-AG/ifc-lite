@@ -16,9 +16,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { CLASH_RULE_PRESETS } from '@ifc-lite/clash';
+import { serializeClashConfig, deserializeClashConfig } from './persistence.flavor.js';
 import {
-  serializeClashConfig,
-  deserializeClashConfig,
   defaultPresets,
   DEFAULT_CLASH_SETTINGS,
   type ClashPreset,

@@ -13,7 +13,7 @@
  * the geometric dimension (depth) so the two can be combined when prioritising.
  */
 
-import type { Clash, ClashResult, ClashRuleCoverage, ClashSeverity, ClashSummary } from './types.js';
+import type { Clash, ClashResult, ClashRule, ClashRuleCoverage, ClashSeverity, ClashSummary } from './types.js';
 
 /**
  * Tally a clash list into a {@link ClashSummary}: totals per rule, per sorted
@@ -149,6 +149,28 @@ export function ruleHadNoMatch(coverage: ClashRuleCoverage): boolean {
  *                 presenting the summary count alone.
  */
 export type RuleCoverageOutcome = 'clean' | 'partial' | 'no-match' | 'unknown';
+
+/**
+ * Why a single rule found nothing, in words: which of its sides matched no
+ * element, and whether that side was described by a type selector or by an
+ * explicit member set (a filter resolved by the caller). Naming a selector for
+ * a side a filter defined would be a false explanation — the selector is not
+ * what ran.
+ */
+export function describeEmptyRuleSides(
+  rule: Pick<ClashRule, 'a' | 'b'> | undefined,
+  coverage: ClashRuleCoverage,
+): string {
+  if (!rule) return coverage.rule;
+  const sides: string[] = [];
+  if (coverage.matchedA === 0) {
+    sides.push(coverage.fromMembersA ? 'the filter for set A' : `selector A ("${rule.a}")`);
+  }
+  if (coverage.matchedB === 0) {
+    sides.push(coverage.fromMembersB ? 'the filter for set B' : `selector B ("${rule.b}")`);
+  }
+  return `${sides.length > 0 ? sides.join(' and ') : 'a selector'} matched 0 elements`;
+}
 
 export function classifyRuleCoverage(result: Pick<ClashResult, 'ruleCoverage'>): RuleCoverageOutcome {
   const coverage = result.ruleCoverage;

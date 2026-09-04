@@ -711,6 +711,68 @@ describe('two --subtotals aggregations targeting the same column do not collide'
   });
 });
 
+/**
+ * The residual case `chooseLabelCol` cannot solve by moving the label: every
+ * declared column is itself an aggregation target, so there is no free slot.
+ * The label then takes the only cell, and `idx === labelCol` used to drop the
+ * aggregations that targeted it — CSV/Markdown/HTML printed a bare `Total`
+ * while JSON still reported sum/avg. The values must survive inside the label
+ * cell instead.
+ */
+describe('every column is an aggregation target: the label cell keeps the values', () => {
+  const columns = [{ header: 'Area', path: 'Area' }];
+  const total = {
+    kind: 'total' as const,
+    groupValues: [],
+    values: [
+      { spec: 'sum:Area', value: 30 },
+      { spec: 'avg:Area', value: 15 },
+    ],
+  };
+
+  it('subtotalCells appends the aggregations to the label instead of dropping them', () => {
+    const cells = subtotalCells(columns, total);
+    expect(cells).toHaveLength(1);
+    const cell = String(cells[0]);
+    expect(cell).toContain('Total');
+    expect(cell).toContain('sum: 30');
+    expect(cell).toContain('avg: 15');
+  });
+
+  it('CSV/Markdown/HTML all keep the values, agreeing with JSON', () => {
+    const rows: ScheduleRow[] = [[10], [20]];
+    const plan = { rows, groups: [], total };
+
+    const json = renderScheduleJsonWithSubtotals(columns, plan);
+    const jsonTotal = json[json.length - 1];
+    expect(jsonTotal['sum:Area']).toBe(30);
+    expect(jsonTotal['avg:Area']).toBe(15);
+
+    const csvTotal = renderScheduleCsvWithSubtotals(columns, plan).split('\n').pop()!;
+    expect(csvTotal).toContain('30');
+    expect(csvTotal).toContain('15');
+
+    const mdTotal = renderScheduleMarkdownWithSubtotals(columns, plan).split('\n').pop()!;
+    expect(mdTotal).toContain('30');
+    expect(mdTotal).toContain('15');
+
+    const html = renderScheduleHtmlWithSubtotals(columns, plan);
+    expect(html).toContain('30');
+    expect(html).toContain('15');
+  });
+
+  it('a single aggregation on the label column also survives', () => {
+    const singleTotal = {
+      kind: 'total' as const,
+      groupValues: [],
+      values: [{ spec: 'sum:Area', value: 30 }],
+    };
+    const cell = String(subtotalCells(columns, singleTotal)[0]);
+    expect(cell).toContain('Total');
+    expect(cell).toContain('sum: 30');
+  });
+});
+
 // ── PR-3: presets ───────────────────────────────────────────────────────────
 
 /** Header row produced by rendering a preset's declared columns, no data. */

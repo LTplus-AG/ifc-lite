@@ -110,6 +110,13 @@ function chooseLabelCol(columns: ScheduleColumn[], data: SubtotalRowData): numbe
  * first. A single aggregation on a column keeps rendering as its bare value
  * (a number, same as before) so the common case is unaffected.
  *
+ * When every declared column is an aggregation target there is no free slot
+ * for the label at all (`--columns Area --subtotals sum:Area`), so the label
+ * takes a targeted column. Those displaced aggregations are appended to the
+ * label cell as `Total (sum: 30, avg: 15)` rather than dropped, which is what
+ * used to happen: the tabular formats printed a bare `Total` while JSON still
+ * reported the values.
+ *
  * Exported so the Markdown/HTML renderers (`schedule-render-md.ts`,
  * `schedule-render-html.ts`) lay out subtotal/total rows identically to CSV —
  * same label, same column placement — instead of re-deriving the shape.
@@ -117,33 +124,44 @@ function chooseLabelCol(columns: ScheduleColumn[], data: SubtotalRowData): numbe
 export function subtotalCells(columns: ScheduleColumn[], data: SubtotalRowData): unknown[] {
   const cells: unknown[] = columns.map(() => '');
   const labelCol = chooseLabelCol(columns, data);
-  cells[labelCol] = subtotalLabel(data);
 
   // Group every non-count aggregation by its target column index so a
-  // collision can be detected before any cell is written.
+  // collision can be detected before any cell is written. Aggregations
+  // targeting the label's own column are kept too (under `labelCol`), to be
+  // folded into the label text rather than dropped.
   const byIdx = new Map<number, SubtotalValue[]>();
   for (const v of data.values) {
     if (v.spec === 'count') continue;
     const header = v.spec.slice(v.spec.indexOf(':') + 1);
     const idx = columns.findIndex(c => c.header === header);
-    if (idx === -1 || idx === labelCol) continue; // no free column existed — the label wins this one cell
+    if (idx === -1) continue; // header is not a declared column: nowhere to put it
     const bucket = byIdx.get(idx);
     if (bucket) bucket.push(v);
     else byIdx.set(idx, [v]);
   }
 
+  const label = subtotalLabel(data);
+  const displaced = byIdx.get(labelCol);
+  cells[labelCol] = displaced ? `${label} (${joinAggValues(displaced)})` : label;
+
   for (const [idx, values] of byIdx) {
+    if (idx === labelCol) continue; // already folded into the label cell
     if (values.length === 1) {
       cells[idx] = values[0].value == null ? '' : values[0].value;
       continue;
     }
     // Two-plus aggregations on one column: join as "mode: value" pairs so
     // every value survives instead of the last one winning.
-    cells[idx] = values
-      .map(v => `${v.spec.slice(0, v.spec.indexOf(':'))}: ${v.value == null ? '' : v.value}`)
-      .join(', ');
+    cells[idx] = joinAggValues(values);
   }
   return cells;
+}
+
+/** `sum:Area`/`avg:Area` values as the shared `"sum: 30, avg: 15"` cell text. */
+function joinAggValues(values: SubtotalValue[]): string {
+  return values
+    .map(v => `${v.spec.slice(0, v.spec.indexOf(':'))}: ${v.value == null ? '' : v.value}`)
+    .join(', ');
 }
 
 /**

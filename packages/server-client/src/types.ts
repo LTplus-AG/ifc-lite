@@ -272,10 +272,10 @@ export interface MetadataResponse {
   schema_version: string;
   /** File size in bytes */
   file_size: number;
-  /** Records refused for a `u32`-overflowing instance name (#3395): `entity_count` is short by this many. */
-  oversized_id_count: number;
-  /** The scan stopped at a record with no terminating `;` (#3695), so `entity_count` covers only the bytes before it. */
-  malformed_record_found: boolean;
+  /** Records refused for a `u32`-overflowing name (#3395). Absent on older servers: "not scanned for", never "clean". */
+  oversized_id_count?: number;
+  /** The scan stopped at a record with no `;` (#3695), so `entity_count` is partial. Absent on older servers, as above. */
+  malformed_record_found?: boolean;
 }
 
 /** Health check response. */

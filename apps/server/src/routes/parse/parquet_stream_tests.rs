@@ -338,3 +338,6 @@ async fn a_cache_hit_reports_the_same_progress_numbers_as_the_miss() {
     assert_eq!(total_estimate(&replay), total_estimate(&live));
     assert_eq!(total_estimate(&replay), live_total);
 }
+
+#[path = "parquet_stream_hash_only_tests.rs"]
+mod hash_only;

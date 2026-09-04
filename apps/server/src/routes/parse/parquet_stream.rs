@@ -9,55 +9,18 @@ use super::cache_keys::{
     request_cache_key,
 };
 use super::parquet::ParquetMetadataHeader;
+use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
-use crate::types::{ModelMetadata, ProcessingStats, StreamEvent};
+use crate::types::StreamEvent;
 use crate::AppState;
 use axum::{
     extract::{Multipart, Query, State},
     response::sse::{Event, KeepAlive, Sse},
 };
-use ifc_lite_processing::SymbolicData;
-use serde::Serialize;
 use std::convert::Infallible;
-
-/// SSE event types for Parquet streaming.
-// Variant sizes differ because the payload events carry buffers; boxing them
-// would complicate the SSE serialization path for no runtime benefit here.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum ParquetStreamEvent {
-    /// Initial event with estimated totals.
-    Start {
-        total_estimate: usize,
-        cache_key: String,
-    },
-    /// Progress update.
-    Progress { processed: usize, total: usize },
-    /// Batch of geometry data as base64-encoded Parquet.
-    Batch {
-        /// Base64-encoded Parquet data containing this batch's meshes.
-        data: String,
-        /// Number of meshes in this batch.
-        mesh_count: usize,
-        /// Batch sequence number (1-indexed).
-        batch_number: usize,
-    },
-    /// Processing complete.
-    Complete {
-        stats: ProcessingStats,
-        metadata: ModelMetadata,
-        /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
-        /// entities — parity with `POST /api/v1/parse` (issue #900).
-        #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
-        symbolic_data: SymbolicData,
-    },
-    /// Error occurred.
-    Error { message: String },
-}
 
 /// POST /api/v1/parse/parquet-stream - Streaming parse with Parquet batches.
 ///
@@ -72,16 +35,50 @@ pub enum ParquetStreamEvent {
 /// - `error`: Error event with `message`
 ///
 /// After `complete`, client should fetch data model via `/api/v1/data-model/{cache_key}`.
+///
+/// ## Two ways to ask
+///
+/// With a multipart `file` body: the normal path. The cache key is the SHA-256
+/// of the RECEIVED bytes, so the upload always completes first, and a `sha256`
+/// query parameter sent alongside a body is IGNORED - the bytes on the wire
+/// decide which entry is read and written, never the client's claim about them.
+///
+/// With `?sha256={hex}` and no body: a probe (issue #3901). It replays the
+/// cached stream if, and only if, every entry the replay needs already exists
+/// under that key, and otherwise answers `404` meaning "upload it". See
+/// [`cached_replay::replay_by_client_hash`]. This is what lets a 40 MB cache
+/// hit cost no upload.
 pub async fn parse_parquet_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
-    mut multipart: Multipart,
+    multipart: Option<Multipart>,
 ) -> Result<axum::response::Response, ApiError> {
     use crate::services::{serialize_batch_with_layout, StreamingParquetCacheWriter};
     use axum::response::IntoResponse;
     use base64::{engine::general_purpose::STANDARD, Engine};
     use futures::StreamExt;
     use std::sync::{Arc, Mutex};
+
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+
+    // Hash-only probe: no body was sent, so there is nothing to extract and
+    // nothing to parse. Checked BEFORE the admission gate because this path
+    // buffers no upload and runs no geometry work.
+    let Some(mut multipart) = multipart else {
+        let Some(sha256) = query.sha256.as_deref() else {
+            // No body and no hash: there is nothing to identify a file with.
+            // `MissingFile` (400) is what a body with no `file` field already
+            // answers, and it says the same thing here.
+            return Err(ApiError::MissingFile);
+        };
+        return super::cached_replay::replay_by_client_hash(
+            &state,
+            &query,
+            tessellation_quality,
+            sha256,
+        )
+        .await;
+    };
 
     // Extract file
     // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
@@ -94,8 +91,10 @@ pub async fn parse_parquet_stream(
         .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
-    // Generate cache key before processing (include opening filter + quality)
-    let tessellation_quality = query.resolved_tessellation_quality()?;
+    // Generate cache key before processing (include opening filter + quality).
+    // From the RECEIVED BYTES, always: a `sha256` parameter that arrived
+    // alongside a body has no say here, so a client whose claimed hash does not
+    // describe what it uploaded still reads and writes the entry its bytes name.
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
     let cache_key_clone = cache_key.clone();
     // This route SHARES nothing -- a per-batch writer cannot see across a batch

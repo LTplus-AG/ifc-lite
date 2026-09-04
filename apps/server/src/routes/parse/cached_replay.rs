@@ -18,11 +18,14 @@
 //! still monotonic and still ends at its own stated total.
 
 use super::cache_keys::{
-    has_current_data_model, load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
+    cache_key_from_parts, has_current_data_model, load_cached_symbolic, parquet_geometry_key,
+    parquet_metadata_key,
 };
+use super::ParseQuery;
+use ifc_lite_processing::TessellationQuality;
 use crate::services::ParquetLayout;
 use super::parquet::ParquetMetadataHeader;
-use super::parquet_stream::ParquetStreamEvent;
+use super::stream_event::ParquetStreamEvent;
 use super::stream_progress::load_stream_progress;
 use crate::error::ApiError;
 use crate::services::parquet_replay_batches::split_into_batches;
@@ -31,6 +34,69 @@ use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::IntoResponse;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::convert::Infallible;
+
+/// Whether `hash` has the shape `DiskCache::generate_key` produces: 64
+/// lowercase hex characters.
+///
+/// This is a GUARD, not a validation nicety. The hash goes straight into
+/// `cache_key_from_parts`, which builds `{hash}-{filter}{quality}`, and the
+/// namespace suffix (`-parquet-v5`, `-datamodel-v6`, ...) is appended after
+/// that. A caller-shaped string is therefore a caller-shaped cache key.
+/// Rejecting anything that is not a bare digest keeps the parameter to the one
+/// job it has, naming a file, and no other.
+fn is_file_digest(hash: &str) -> bool {
+    hash.len() == 64 && hash.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+}
+
+/// Serve `POST /api/v1/parse/parquet-stream` from a client-supplied file hash,
+/// with no request body at all (issue #3901).
+///
+/// The upload used to be unavoidable on a hit: the cache key is the SHA-256 of
+/// the RECEIVED bytes, so `extract_file` had to finish before the cache could
+/// be consulted, and on a 40 MB model over a real connection that upload was
+/// the whole cost of the hit. A client that hashes locally can name the entry
+/// instead.
+///
+/// The hash SELECTS; it never asserts. Everything the replay needs has to be on
+/// disk under that key already, which is exactly what [`try_cached_replay`]
+/// checks (geometry body, metadata header, a data model at the current payload
+/// version, plus whatever it later adds). Delegating to it rather than
+/// re-listing those entries here is what makes "a hash-only hit replays the
+/// same events as an upload hit" true by construction instead of by two lists
+/// agreeing. A miss answers `404`, the status
+/// `GET /api/v1/cache/check/{hash}` already uses for "upload it", and the
+/// client uploads.
+///
+/// No admission guard: there is no upload to buffer and no parse to run, and
+/// the body-carrying hit path drops its own guard before returning a replay for
+/// that same reason.
+pub(super) async fn replay_by_client_hash(
+    state: &AppState,
+    query: &ParseQuery,
+    quality: TessellationQuality,
+    sha256: &str,
+) -> Result<axum::response::Response, ApiError> {
+    if !is_file_digest(sha256) {
+        return Err(ApiError::BadRequest(
+            "sha256 must be a 64-character lowercase hex SHA-256 digest".to_string(),
+        ));
+    }
+    let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
+    if let Some(response) = try_cached_replay(state, &cache_key, query.parquet_layout).await? {
+        tracing::info!(
+            cache_key = %cache_key,
+            "Streaming cache HIT by client-supplied hash - no upload"
+        );
+        return Ok(response);
+    }
+    tracing::debug!(
+        cache_key = %cache_key,
+        "Hash-only stream request has nothing cached; asking the client to upload"
+    );
+    Err(ApiError::NotFound(format!(
+        "Nothing cached for sha256 {sha256} under this opening_filter / tessellation_quality / parquet_layout. Resend the request with the multipart file body."
+    )))
+}
 
 /// Return the geometry slice from a cached combined-Parquet blob, framed as
 /// `[geometry_len: u32-LE][geometry_data][data_model_len: u32]...`. Returns

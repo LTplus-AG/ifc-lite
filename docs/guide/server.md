@@ -129,7 +129,7 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
 | `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller) |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
-| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE) |
+| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
 
 All parse endpoints that return geometry also surface the 2D symbol stream
@@ -589,6 +589,14 @@ reaches one or the other according to its `parquet_layout` parameter (below).
 They never cross-serve, because the shared-shape layout renders incorrectly on
 a client that does not know to apply its rotation columns.
 
+The `{SHA256}` half is what a client can supply itself, and two endpoints let
+it: `GET /api/v1/cache/check/{hash}` and `POST /api/v1/parse/parquet-stream?sha256=`
+(above). A client-supplied hash is a SELECTOR for entries that already exist and
+nothing more. It is required to be 64 lowercase hex characters, because it is
+concatenated into the keys above and a caller-shaped hash would otherwise be a
+caller-shaped key; it never causes a write; and on a request that also carries a
+file body it is discarded in favour of hashing that body.
+
 Each suffix is bumped whenever the payload it names changes shape: a column
 added to or removed from its tables, or a change in what an existing column
 means. Without the bump a warm cache replays the old blob, the client decodes
@@ -745,6 +753,49 @@ sequenceDiagram
     Server->>Cache: Store data model
     Server->>Client: SSE: complete {stats, metadata}
 ```
+
+### Skipping the upload on a cache hit
+
+The cache key is the SHA-256 of the bytes the server receives, so the upload
+used to finish before the cache could be consulted: a hit on a 40 MB model
+still paid for 40 MB on the wire. `POST /api/v1/parse/parquet-stream` therefore
+accepts the hash on its own (issue #3901):
+
+```bash
+# No body. The hash names the entry; the query names which entry.
+curl -X POST "$SERVER/api/v1/parse/parquet-stream?sha256=$SHA&parquet_layout=shared-shapes"
+```
+
+- **200** with the SSE stream: everything the replay needs was cached, and it
+  replays exactly the events a live parse emits, batch by batch.
+- **404**: nothing cached under that key. Resend the request with the multipart
+  `file` body, which is the normal path. This is the same status
+  `GET /api/v1/cache/check/{hash}` uses for "upload it".
+- **400**: the `sha256` value is not 64 lowercase hex characters.
+
+Two rules keep the parameter honest:
+
+- **A hash sent alongside a body is ignored.** The received bytes decide which
+  entry is read and written, always. A client cannot store one file's geometry
+  under another file's key.
+- **The hash only selects.** It can not cause anything to be parsed or written;
+  a key with nothing behind it is a 404, never a parse.
+
+Send the same `opening_filter`, `tessellation_quality` and `parquet_layout` you
+would send with the file. They are part of the cache identity, so a hash paired
+with a different layout asks about a different entry.
+
+`@ifc-lite/server-client` does this for you: `parseParquetStream` hashes the
+file locally, probes, and uploads on the 404. Pass `{ skipCacheProbe: true }`
+to go straight to the upload.
+
+!!! note "Compressed uploads never hit the probe"
+
+    The server keys on the bytes it parses, which is what it receives after
+    unwrapping `.ifcZIP` or gzip. A probe carrying the hash of a still-packed
+    file names a key nothing was written under, so it answers 404 and the
+    client uploads. That is correct, just not a saving. `GET /cache/check`
+    behaves the same way, for the same reason.
 
 ### Client-Side Streaming
 

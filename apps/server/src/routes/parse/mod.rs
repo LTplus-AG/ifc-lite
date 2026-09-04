@@ -6,6 +6,7 @@
 
 mod cache_keys;
 mod cached_replay;
+mod stream_event;
 mod stream_progress;
 mod fetch;
 mod json;
@@ -45,6 +46,23 @@ pub struct ParseQuery {
     /// takes this struct, so the signal travels with the cache identity.
     #[serde(default)]
     pub parquet_layout: ParquetLayout,
+    /// SHA-256 of the file the client is asking about, hex, lowercase (#3901).
+    ///
+    /// Only `POST /api/v1/parse/parquet-stream` reads it, and only when the
+    /// request carries NO multipart body: it turns that route into a
+    /// replay-or-404 probe so a cache hit costs no upload. It lives here
+    /// rather than in a header so it travels with the rest of the cache
+    /// identity (`opening_filter`, `tessellation_quality`, `parquet_layout`)
+    /// through the one struct every parse route already parses -- a hash
+    /// paired with the wrong layout names a different entry, and splitting
+    /// the identity across two transports is how those pairings drift apart.
+    ///
+    /// NEVER trusted for anything but SELECTING entries that already exist:
+    /// it names a cache key, and a key that misses answers 404. It can not
+    /// cause anything to be written, and when a body IS present it is ignored
+    /// outright in favour of hashing the received bytes.
+    #[serde(default)]
+    pub sha256: Option<String>,
 }
 
 impl ParseQuery {

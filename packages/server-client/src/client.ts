@@ -6,36 +6,24 @@ import type {
   ErrorResponse,
   HealthResponse,
   MetadataResponse,
-  ModelMetadata,
   OptimizedParquetMetadataHeader,
   OptimizedParquetParseResponse,
   ParquetBatch,
   ParquetMetadataHeader,
   ParquetParseResponse,
-  ParquetStreamEvent,
   ParquetStreamResult,
   ParseResponse,
-  ProcessingStats,
   ServerConfig,
   StreamEvent,
   SymbolicData,
 } from './types.js';
 import { decodeParquetGeometry, decodeOptimizedParquetGeometry, isParquetAvailable } from './parquet-decoder.js';
 import { parseQuery } from './parse-query.js';
+import {
+  consumeParquetStream,
+  STREAM_ENDED_WITHOUT_TERMINAL_EVENT,
+} from './parquet-stream-events.js';
 
-/**
- * Raised when an SSE parse stream ends with no terminal event.
- *
- * Shared by `parseStream` and `parseStreamToParquet` so the two cannot drift
- * apart by an article. The wording has to hold on BOTH paths, which it does:
- * `parseStreamToParquet` throws on an `error` event at its own `case 'error'`,
- * so it can only reach its `!stats || !metadata` check in the same state
- * `parseStream`'s `!terminated` describes — the stream stopped without ever
- * saying why. Not exported: it is an internal guarantee about two call sites,
- * not part of the published surface.
- */
-const STREAM_ENDED_WITHOUT_TERMINAL_EVENT =
-  'Stream ended without a complete event (connection dropped or the server failed mid-parse)';
 
 /**
  * Compress a file or ArrayBuffer using gzip compression.
@@ -96,6 +84,21 @@ export interface ParseRequestOptions {
    * server cache entries.
    */
   tessellationQuality?: 'lowest' | 'low' | 'medium' | 'high' | 'highest';
+}
+
+/**
+ * Options for {@link IfcServerClient.parseParquetStream}.
+ */
+export interface ParseStreamOptions extends ParseRequestOptions {
+  /**
+   * Skip the hash-only cache probe and upload straight away (#3901).
+   *
+   * The probe costs one round trip plus a local SHA-256 of the file, and saves
+   * the entire upload when the server already has the model. Turn it off when
+   * you know the server is cold, or when hashing locally is the expensive part
+   * (a very large file behind a fast link).
+   */
+  skipCacheProbe?: boolean;
 }
 
 /** Build the query string shared by the parse endpoints. */
@@ -245,11 +248,22 @@ export class IfcServerClient {
 
   /**
    * Parse IFC file with streaming Parquet response for progressive rendering.
-   * 
+   *
    * Returns an async generator that yields geometry batches as they're processed.
    * Use this for large files (>50MB) to show geometry progressively.
-   * 
+   *
    * After streaming completes, fetch the data model via `fetchDataModel(cacheKey)`.
+   *
+   * **Cache-aware, without paying the upload.** The file is hashed locally and
+   * the hash is presented to `/parse/parquet-stream` on its own, with no body
+   * (issue #3901). A warm server replays the cached stream immediately; a cold
+   * one answers `404` and this method uploads. Either way the SSE events are
+   * read by the same code, so a hit and a miss render identically.
+   *
+   * The probe replaced a two-request `cache/check` + `cache/geometry` dance
+   * that fetched the whole model as ONE batch on a hit, i.e. no progressive
+   * rendering exactly when the data was already there. Set
+   * `skipCacheProbe: true` to go straight to the upload.
    *
    * @param file - IFC file to parse (File or ArrayBuffer)
    * @param onBatch - Callback for each geometry batch (for immediate rendering)
@@ -263,7 +277,7 @@ export class IfcServerClient {
    *     scene.add(createMesh(mesh));
    *   }
    * });
-   * 
+   *
    * // After geometry is complete, fetch data model for properties panel
    * const dataModel = await client.fetchDataModel(result.cache_key);
    * ```
@@ -271,7 +285,7 @@ export class IfcServerClient {
   async parseParquetStream(
     file: File | ArrayBuffer,
     onBatch: (batch: ParquetBatch) => void,
-    options?: ParseRequestOptions
+    options?: ParseStreamOptions
   ): Promise<ParquetStreamResult> {
     const parquetReady = await isParquetAvailable();
     if (!parquetReady) {
@@ -284,60 +298,39 @@ export class IfcServerClient {
     const fileSize = file instanceof File ? file.size : file.byteLength;
     const fileName = file instanceof File ? file.name : 'model.ifc';
 
-    // Step 1: Compute hash and check cache first (even for streaming)
-    const hashStart = performance.now();
-    const hash = await computeFileHash(file);
-    const hashTime = performance.now() - hashStart;
-    console.log(`[client] Stream: computed hash in ${hashTime.toFixed(0)}ms: ${hash.substring(0, 16)}...`);
+    if (!options?.skipCacheProbe) {
+      // Hash locally and ask by hash. On a hit this is the WHOLE request: the
+      // 40 MB the upload would have cost never leaves the machine.
+      const hashStart = performance.now();
+      const hash = await computeFileHash(file);
+      console.log(`[client] Stream: computed hash in ${(performance.now() - hashStart).toFixed(0)}ms: ${hash.substring(0, 16)}...`);
 
-    // Step 2: Check if already cached
-    const cacheCheckStart = performance.now();
-    const cacheCheck = await fetch(`${this.baseUrl}/api/v1/cache/check/${hash}${parseQuery(options, true)}`, {
-      method: 'GET',
-      headers: this.authHeaders(),
-      signal: AbortSignal.timeout(5000),
-    });
-    const cacheCheckTime = performance.now() - cacheCheckStart;
+      const probeStart = performance.now();
+      const probe = await fetch(
+        `${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options, true, hash)}`,
+        {
+          method: 'POST',
+          headers: this.authHeaders(),
+          signal: AbortSignal.timeout(this.timeout),
+        }
+      );
 
-    if (cacheCheck.ok) {
-      // CACHE HIT - fetch all geometry at once (much faster than re-parsing)
-      console.log(`[client] Stream: Cache HIT (check: ${cacheCheckTime.toFixed(0)}ms) - fetching cached geometry`);
-
-      // Pass options: `/cache/geometry/:hash` keys on the same parse query, so
-      // omitting them would fetch default `medium` geometry (or 404) even
-      // though the option-scoped cache-check above hit the requested variant.
-      const cachedResult = await this.fetchCachedGeometry(hash, options);
-
-      // Send all meshes as a single batch to the callback
-      const decodeStart = performance.now();
-      onBatch({
-        meshes: cachedResult.meshes,
-        batch_number: 1,
-        decode_time_ms: performance.now() - decodeStart,
-      });
-
-      // Symbolic data isn't in the cached geometry payload — fetch it by key
-      // so the cache-HIT path reaches the same parity as the live stream.
-      // Symbols are supplementary, so a fetch failure must not fail the geometry
-      // load: log and continue without them (fetchSymbolic surfaces real errors).
-      let cachedSymbolic: SymbolicData | null = null;
-      try {
-        cachedSymbolic = await this.fetchSymbolic(cachedResult.cache_key);
-      } catch (error) {
-        console.warn('[client] Symbolic fetch failed on cache hit; continuing without symbols:', error);
+      if (probe.ok) {
+        console.log(`[client] Stream: cache HIT by hash (${(performance.now() - probeStart).toFixed(0)}ms) - replaying without upload`);
+        return consumeParquetStream(probe, onBatch, probeStart);
       }
 
-      return {
-        cache_key: cachedResult.cache_key,
-        total_meshes: cachedResult.meshes.length,
-        stats: cachedResult.stats,
-        metadata: cachedResult.metadata,
-        symbolic_data: cachedSymbolic ?? undefined,
-      };
+      // 404 is the server's "nothing cached under that hash, send the body".
+      // Anything else is a real failure and must surface rather than being
+      // retried as a full upload.
+      if (probe.status !== 404) {
+        throw await this.handleError(probe);
+      }
+      await probe.body?.cancel();
+      console.log(`[client] Stream: cache MISS by hash (${(performance.now() - probeStart).toFixed(0)}ms) - uploading`);
     }
 
-    // CACHE MISS - use streaming for progressive rendering
-    console.log(`[client] Stream: Cache MISS (check: ${cacheCheckTime.toFixed(0)}ms) - starting stream for ${fileName} (${(fileSize / 1024 / 1024).toFixed(1)}MB)`);
+    console.log(`[client] Stream: starting upload for ${fileName} (${(fileSize / 1024 / 1024).toFixed(1)}MB)`);
 
     const formData = new FormData();
     formData.append('file', file instanceof File ? file : new Blob([file]), fileName);
@@ -354,113 +347,7 @@ export class IfcServerClient {
       throw await this.handleError(response);
     }
 
-    if (!response.body) {
-      throw new Error('No response body for streaming');
-    }
-
-    // Parse SSE stream
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let cache_key = '';
-    let total_meshes = 0;
-    let stats: ProcessingStats | null = null;
-    let metadata: ModelMetadata | null = null;
-    let symbolic_data: SymbolicData | undefined;
-
-    // A thrown 'error' event (or any other exception mid-loop) must not
-    // leave the reader locked on `response.body` — mirrors the try/finally
-    // `parseStream` already uses for the same SSE-reading shape.
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete SSE events
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line in buffer
-
-        for (const line of lines) {
-          if (!line.startsWith('data:')) continue;
-
-          const jsonStr = line.slice(5).trim();
-          if (!jsonStr) continue;
-
-          try {
-            const event: ParquetStreamEvent = JSON.parse(jsonStr);
-
-            switch (event.type) {
-              case 'start':
-                cache_key = event.cache_key;
-                console.log(`[client] Stream started: ${event.total_estimate} entities, cache_key: ${cache_key.substring(0, 16)}...`);
-                break;
-
-              case 'progress':
-                // Progress events can be used for UI feedback
-                break;
-
-              case 'batch': {
-                const decodeStart = performance.now();
-                // Decode base64 Parquet data
-                const binaryStr = atob(event.data);
-                const bytes = new Uint8Array(binaryStr.length);
-                for (let i = 0; i < binaryStr.length; i++) {
-                  bytes[i] = binaryStr.charCodeAt(i);
-                }
-
-                // Decode Parquet to meshes
-                const meshes = await decodeParquetGeometry(bytes.buffer);
-                const decodeTime = performance.now() - decodeStart;
-
-                total_meshes += meshes.length;
-                console.log(`[client] Batch #${event.batch_number}: ${meshes.length} meshes, decode: ${decodeTime.toFixed(0)}ms`);
-
-                // Call the batch callback for immediate rendering
-                onBatch({
-                  meshes,
-                  batch_number: event.batch_number,
-                  decode_time_ms: decodeTime,
-                });
-                break;
-              }
-
-              case 'complete':
-                stats = event.stats;
-                metadata = event.metadata;
-                symbolic_data = event.symbolic_data;
-                const totalTime = performance.now() - uploadStart;
-                console.log(`[client] Stream complete: ${total_meshes} meshes in ${totalTime.toFixed(0)}ms`);
-                break;
-
-              case 'error':
-                throw new Error(`Stream error: ${event.message}`);
-            }
-          } catch (e) {
-            if (e instanceof SyntaxError) {
-              console.warn('[client] Failed to parse SSE event:', jsonStr);
-            } else {
-              throw e;
-            }
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-
-    if (!stats || !metadata) {
-      throw new Error(STREAM_ENDED_WITHOUT_TERMINAL_EVENT);
-    }
-
-    return {
-      cache_key,
-      total_meshes,
-      stats,
-      metadata,
-      symbolic_data,
-    };
+    return consumeParquetStream(response, onBatch, uploadStart);
   }
 
   /**

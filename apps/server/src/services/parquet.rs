@@ -82,7 +82,7 @@ pub(crate) fn check_u32_len(name: &str, len: usize) -> Result<(), ParquetError> 
 /// shared by the whole-model serializer and the incremental cache writer.
 /// Section lengths are u32 on the wire; fail loud instead of truncating a
 /// section over 4 GiB into a silently corrupt blob.
-fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
+pub(super) fn frame_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<Bytes, ParquetError> {
     check_u32_len("mesh", mesh.len())?;
     check_u32_len("vertex", vertex.len())?;
     check_u32_len("index", index.len())?;
@@ -466,7 +466,7 @@ impl StreamingParquetCacheWriter {
 /// Write a RecordBatch to a Parquet buffer with LZ4 compression.
 /// Dictionary encoding is disabled for numeric columns (floats, integers) as they
 /// have high entropy and dictionary encoding provides no benefit while adding significant overhead.
-fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, ParquetError> {
+pub(super) fn write_parquet_buffer(batch: &RecordBatch) -> Result<Vec<u8>, ParquetError> {
     let mut buffer = Vec::new();
     let cursor = Cursor::new(&mut buffer);
     let props = writer_props(&batch.schema());

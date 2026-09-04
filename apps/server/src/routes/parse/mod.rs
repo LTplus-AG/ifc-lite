@@ -279,6 +279,9 @@ mod cache_keys_tests;
 mod cached_replay_tests;
 
 #[cfg(test)]
+mod cached_replay_batches_tests;
+
+#[cfg(test)]
 mod resolved_tessellation_quality_tests {
     use super::*;
     use crate::error::ApiError;

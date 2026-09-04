@@ -466,11 +466,12 @@ test('a judge answering with NO indices is not a successful judging', () => {
 // ==================================== 5. the class-pass flag crosses this file (#3862)
 
 test('#3862 the class-pass flag reaches judged.json when the judge drops EVERY finding', () => {
-  // THE CASE THE WHOLE CHANGE IS ABOUT. The reviewer said `findings`, so nothing
-  // ever asked it for a per-class pass; the judge then removes all of them, and
-  // judged.json is what the poster reads. If the flag stopped here, the poster
-  // would see an empty findings array and no way to tell this from a clean
-  // review that walked the twelve classes.
+  // THE ROUND TRIP, and only that. It pins the shape the poster reads on the run
+  // that matters -- reviewer said `findings`, so nothing asked it for a
+  // per-class pass; the judge then removed all of them -- but the mechanism it
+  // exercises is the `{...doc}` spread, which carried the field before this
+  // change made the carry explicit. The restatement itself is pinned by the
+  // absent-field test below, which is the one that went red.
   const doc = { ...docOf(2), classPass: false };
   const { written } = run(doc, spawnSaying(verdicts([{ index: 0, keep: false }, { index: 1, keep: false }])));
   assert.equal(written.findings.length, 0, 'fixture precondition: the judge emptied it');
@@ -479,17 +480,19 @@ test('#3862 the class-pass flag reaches judged.json when the judge drops EVERY f
 });
 
 test('#3862 a clean review\'s class-pass flag survives judging untouched', () => {
+  // The other direction of the same round trip: `true` must not be lost either,
+  // or every clean review would post the weaker verdict. Also the spread.
   const { written } = run({ verdict: 'clean', findings: [], classPass: true }, spawnSaying(verdicts([])));
   assert.equal(written.classPass, true);
 });
 
 test('#3862 an input with NO class-pass field is normalised to false, never left undefined', () => {
-  // The crash backstop in claude-review.yml does `cp findings.json judged.json`,
-  // and a findings.json written before this field existed carries no flag at
-  // all. judged.json is a contract, so this file states the flag as a BOOLEAN
-  // rather than passing a hole through: `undefined` and `false` read the same in
-  // a truthiness test and differently in `=== false`, and the poster's rule is
-  // the strict one.
+  // THE ONE THE RESTATEMENT EXISTS FOR, and the only one of these three that a
+  // `{...doc}` spread does not already satisfy. A document that predates the
+  // field, or one written by hand, carries no flag; judged.json is a contract,
+  // so this file states it as a BOOLEAN rather than passing a hole through.
+  // `undefined` and `false` read the same in a truthiness test and differently
+  // under `===`, and the poster's rule is the strict one.
   const { written } = run(docOf(1), spawnSaying(verdicts([{ index: 0, keep: true }])));
   assert.equal(written.classPass, false);
   assert.equal(Object.hasOwn(written, 'classPass'), true, 'the field must be PRESENT, not merely falsy');

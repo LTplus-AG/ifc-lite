@@ -222,7 +222,9 @@ pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
     // subtract starts tripped and `arrange` bails at its first pair.
     super::budget::begin();
     let a = orient_outward(mesh_to_tris(a));
-    let b = orient_outward(mesh_to_tris(b));
+    let mut b = mesh_to_tris(b);
+    promote_cutter_verts_onto_host_faces(&mut b, &a);
+    let b = orient_outward(b);
     let (out, conforming) = boolean_with_conformity(&a, &b, BoolOp::Union);
     // On a trip `out` is PARTIAL: discard it, return empty — the graceful fallback callers
     // handle (`csg::union_mesh` merges plainly; #960 goes sequential), never a poisoned

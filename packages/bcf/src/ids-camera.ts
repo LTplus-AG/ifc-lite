@@ -38,6 +38,36 @@ export interface EntityBoundsInput {
  */
 export const DEFAULT_ASPECT_RATIO = 16 / 9;
 
+/** How {@link DEFAULT_ASPECT_RATIO} reads in an error message. */
+const DEFAULT_ASPECT_RATIO_TEXT = '16/9';
+
+/**
+ * Refuse an `aspectRatio` export option that no camera could carry.
+ *
+ * `visinfo.xsd` types `AspectRatio` as `PositiveDouble` -- `xs:double` with
+ * `minExclusive value="0"` -- so `0`, a negative number, `NaN` and `Infinity`
+ * are all invalid, and `writer-camera.ts` already rejects them. It can only
+ * name the viewpoint GUID it was writing, though: a value this package
+ * generated, for whichever topic came first, traceable to nothing the caller
+ * typed. Checking the option where the caller set it is the difference
+ * between "fix this argument" and "bisect your report".
+ *
+ * Checked for BOTH versions even though 2.1 emits no `AspectRatio`: the value
+ * is still wrong, it still lands on every camera in the project, and
+ * `readBCF` + re-export is how a 2.1 project becomes a 3.0 one.
+ */
+export function requireAspectRatioOption(aspectRatio: number): number {
+  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+    throw new Error(
+      `createBCFFromIDSReport's aspectRatio option must be a finite number ` +
+        `greater than 0 (got ${aspectRatio}). BCF 3.0's visinfo.xsd types ` +
+        `AspectRatio as PositiveDouble, so this value could not be written; ` +
+        `omit the option to use the ${DEFAULT_ASPECT_RATIO_TEXT} default.`,
+    );
+  }
+  return aspectRatio;
+}
+
 /**
  * Compute a BCF perspective camera from entity bounds.
  *

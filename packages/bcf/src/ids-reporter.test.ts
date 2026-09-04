@@ -903,6 +903,34 @@ describe('IDS BCF Reporter', () => {
       expect(vp.perspectiveCamera).toBeUndefined();
     });
 
+    for (const bad of [0, Number.NaN, -2, Number.POSITIVE_INFINITY]) {
+      it(`refuses aspectRatio ${bad} at the option boundary`, () => {
+        let thrown: Error | undefined;
+        try {
+          createBCFFromIDSReport(createMockReport(), {
+            version: '3.0',
+            aspectRatio: bad,
+            entityBounds: boundsFor('model-1:100', 'model-1:200'),
+          });
+        } catch (e) {
+          thrown = e as Error;
+        }
+        expect(thrown).toBeDefined();
+        // Named at the option the caller passed, not at a generated viewpoint
+        // GUID deep inside writeBCF.
+        expect(thrown!.message).toContain('aspectRatio');
+        expect(thrown!.message).toContain(String(bad));
+      });
+    }
+
+    it('refuses a bad aspectRatio for 2.1 too, where it is never written', () => {
+      // 2.1 emits no AspectRatio, but the option is still a number the caller
+      // got wrong, and it is what a later 3.0 re-export would carry.
+      expect(() =>
+        createBCFFromIDSReport(createMockReport(), { aspectRatio: 0 }),
+      ).toThrow(/aspectRatio/);
+    });
+
     it('refuses a 3.0 per-requirement report with no bounds', () => {
       expect(() =>
         createBCFFromIDSReport(createMockReport(), {

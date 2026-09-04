@@ -26,6 +26,7 @@ import { generateUuid } from '@ifc-lite/encoding';
 import {
   DEFAULT_ASPECT_RATIO,
   computeCameraFromBounds,
+  requireAspectRatioOption,
   requireCamerasForVersion,
   unionBounds,
 } from './ids-camera.js';
@@ -243,10 +244,14 @@ export function createBCFFromIDSReport(
     passTopicType = DEFAULT_PASS_TOPIC_TYPE,
     maxTopics = DEFAULT_MAX_TOPICS,
     failureColor = DEFAULT_FAILURE_COLOR,
-    aspectRatio = DEFAULT_ASPECT_RATIO,
+    aspectRatio: requestedAspectRatio = DEFAULT_ASPECT_RATIO,
     entityBounds,
     entitySnapshots,
   } = options;
+
+  // Checked here, where the caller set it, rather than left to writeBCF --
+  // which can only name a viewpoint GUID this file generated (#3849).
+  const aspectRatio = requireAspectRatioOption(requestedAspectRatio);
 
   const project = createProject(projectName ?? report.title, version);
 

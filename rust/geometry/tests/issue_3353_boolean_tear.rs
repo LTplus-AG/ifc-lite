@@ -39,6 +39,21 @@
 //! the detector disagreement in `classify.rs` and re-validating with the
 //! full `triangulation_invariance` census (see AGENTS.md).
 //!
+//! ## Not fixed by the #3353 near-coplanar weld, and why
+//!
+//! `issue_3353_near_coplanar_rotated_overlap.rs` fixed a DIFFERENT half of
+//! #3353: two operand faces landing a few `SNAP_GRID` steps apart because
+//! `mesh_bridge` snaps per axis, which `union_with_conformity` now reconciles
+//! by welding the operands onto shared planes before the arrangement. That
+//! closed a 9464-union sweep of the rotated corner-overlap family.
+//!
+//! This case is untouched by it — measured, not assumed: it still fails
+//! identically with the weld in place. Its operands are not a near-coplanar
+//! pair, so the weld has nothing to move; the mechanism stated above (two
+//! coincident-face detectors disagreeing) is unrelated to the snap. Do not
+//! read the near-coplanar fix as having addressed this, and do not re-open
+//! the near-coplanar work when attacking it.
+//!
 //! The case below was found by a local seeded sweep of rotated/overlapping
 //! box pairs through `ClippingProcessor::union_mesh` (seed 6 of a
 //! splitmix64-seeded run), independent of and smaller than the original
@@ -122,11 +137,14 @@ fn open_edges(m: &Mesh) -> Result<usize, String> {
 /// `c_on_or_near_a` / `BComponents::surface_normal` disagreement described
 /// above), not a passing invariant. Un-ignore only once that disagreement
 /// is reconciled AND the full `triangulation_invariance` census is clean.
+/// The #3353 near-coplanar weld does NOT reach it; see the module doc.
 #[test]
-#[ignore = "known open defect, issue #3353: classify.rs's two coincident-face \
-            detectors (c_on_or_near_a vs BComponents::surface_normal) disagree \
-            on a near-degenerate rotated overlap, leaving a redundant triangle \
-            on both operands and a non-manifold shared edge"]
+#[ignore = "known open defect, issue #3353 (consolidation half): classify.rs's two \
+            coincident-face detectors (c_on_or_near_a vs BComponents::surface_normal) \
+            disagree on a near-degenerate rotated overlap, leaving a redundant triangle \
+            on both operands and a non-manifold shared edge. NOT the near-coplanar half \
+            fixed by issue_3353_near_coplanar_rotated_overlap.rs, whose weld leaves this \
+            case unchanged"]
 fn a_rotated_overlapping_union_stays_manifold() {
     let clipper = ClippingProcessor::new();
 

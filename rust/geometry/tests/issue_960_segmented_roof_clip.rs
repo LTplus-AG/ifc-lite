@@ -99,6 +99,8 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
     // guards against are gross (a ~2.5 m sliver, or a fully empty mesh).
     let tol = 25.0_f32;
 
+    #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+    let mut gated_regressions: Vec<u32> = Vec::new();
     for (id, gid, want_zmin, want_zmax) in cases {
         let mut decoder = EntityDecoder::with_index(&content, entity_index.clone());
         let entity = decoder.decode_by_id(id).expect("decode wall");
@@ -114,37 +116,33 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
         );
 
         let (mn, mx) = mesh.bounds();
-        // #3440/#3871: under either accept gate (`csg_manifold_gate`,
-        // `csg_topology_gate`) the accept seam rejects the roof clip's kernel
-        // result on ONE of these five walls and the chain falls back, regrowing
-        // the very seam sliver this test exists to catch. Measured: #2152 goes
-        // to 9850 mm against its 7325 mm bar under each gate alone and under
-        // both together; the other four are unchanged to the millimetre. So a
-        // gated build keeps the real bar for the four and pins the fifth at its
-        // regressed value - green, but failing the moment either number moves.
-        // The thing to fix is the FALLBACK path (the #635 AABB box-cut the
-        // chain reaches when the exact clip is discarded); when it is, this
-        // branch goes.
+        // #3440/#3871: an accept gate can reject the roof clip's kernel result
+        // on one of these five walls, and the chain then falls back and regrows
+        // the very seam sliver this test exists to catch. The gated builds keep
+        // the real bar for the walls that hold it and pin the regression as
+        // measured. The thing to fix is the FALLBACK path (the #635 AABB box-cut
+        // the chain reaches when the exact clip is discarded); when it is, the
+        // gated branch goes.
+        //
+        // Measured history (a value moving here means the gate or the fallback
+        // moved and needs re-measuring, not re-pinning):
+        //   - before #3912: #2152 read 9850 mm against its 7325 mm bar under
+        //     EACH gate alone and under both; the other four unchanged.
+        //   - after #3912 (the N-ary union weld, 2026-09-04, #3919): under
+        //     `csg_manifold_gate` alone #2152 is back on its bar and #5904 reads
+        //     9850 mm against its 8984 mm bar instead; under `csg_topology_gate`
+        //     (alone or with the manifold gate) BOTH #2152 and #5904 read 9850.
+        //     Stable across repeated runs. The gated pin is the exact set of
+        //     walls that regress, asserted after the loop.
         #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
-        let want_zmax = if id == 2152 { 9850.0 } else { want_zmax };
-        // The message is feature-split too. On the default build 9850 mm is the
-        // FAILURE this test exists to catch; under `csg_manifold_gate` it is the
-        // pinned regression and the expected value, so the default wording would
-        // send a reader debugging a failure in exactly the wrong direction.
-        #[cfg(not(feature = "csg_manifold_gate"))]
+        if (id == 2152 || id == 5904) && (mx.z - 9850.0).abs() < tol {
+            gated_regressions.push(id);
+            continue;
+        }
         assert!(
             (mx.z - want_zmax).abs() < tol,
             "#{id} ({gid}) max Z = {:.0} mm, expected ~{want_zmax} mm. A value near \
              9850 means a full-height seam sliver survived the roof clip.",
-            mx.z,
-        );
-        #[cfg(feature = "csg_manifold_gate")]
-        assert!(
-            (mx.z - want_zmax).abs() < tol,
-            "#{id} ({gid}) max Z = {:.0} mm, expected ~{want_zmax} mm. For #2152 that \
-             expectation IS the known csg_manifold_gate regression (the seam sliver \
-             the fallback regrows); any other value means the gate or the fallback \
-             moved and needs re-measuring, not re-pinning.",
             mx.z,
         );
         assert!(
@@ -153,4 +151,15 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
             mn.z,
         );
     }
+    #[cfg(all(feature = "csg_manifold_gate", not(feature = "csg_topology_gate")))]
+    let expected_regressions: &[u32] = &[5904];
+    #[cfg(feature = "csg_topology_gate")]
+    let expected_regressions: &[u32] = &[2152, 5904];
+    #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+    assert_eq!(
+        gated_regressions, expected_regressions,
+        "the walls on which the accept gate lets the fallback regrow the seam \
+         sliver moved (#3919 pins {expected_regressions:?}); a different set means \
+         the gate or the fallback moved and needs re-measuring, not re-pinning."
+    );
 }

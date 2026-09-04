@@ -54,7 +54,12 @@ const url = URL.createObjectURL(blob);
 ## Add a viewpoint with selection
 
 ```typescript
-import { createViewpoint, addViewpointToTopic } from '@ifc-lite/bcf';
+import { createBCFTopic, createViewpoint, addViewpointToTopic } from '@ifc-lite/bcf';
+
+const topic = createBCFTopic({
+  title: 'Missing fire rating on east-facade walls',
+  author: 'reviewer@example.com',
+});
 
 const viewpoint = createViewpoint({
   camera: {

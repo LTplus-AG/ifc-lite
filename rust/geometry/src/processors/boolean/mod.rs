@@ -23,6 +23,7 @@ use super::tessellated::TriangulatedFaceSetProcessor;
 use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
+mod failures;
 mod operand;
 mod halfspace_cap;
 mod polygonal_prism;
@@ -103,23 +104,6 @@ impl BooleanClippingProcessor {
             failures: RefCell::new(Vec::new()),
             skip_small_cuts,
         }
-    }
-
-    /// Drain the boolean-failure log accumulated since this processor was
-    /// created (or the last `take_failures` call).
-    pub fn take_failures(&self) -> Vec<BoolFailure> {
-        std::mem::take(&mut *self.failures.borrow_mut())
-    }
-
-    fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
-        self.failures.borrow_mut().push(BoolFailure::new(op, reason));
-    }
-
-    /// Move every failure from `clipper` into this processor's log. Used
-    /// after a transient `ClippingProcessor` instance is about to drop.
-    fn drain_clipper_failures(&self, clipper: &ClippingProcessor) {
-        let mut log = self.failures.borrow_mut();
-        log.extend(clipper.take_failures());
     }
 
     /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
@@ -846,10 +830,10 @@ impl BooleanClippingProcessor {
             // short-circuit here meant every CSG primitive cut (issue #780
             // bath, any `IfcCsgSolid` with a solid cutter) silently rendered
             // as the uncut host even when the operands were trivially small.
-            let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) =
+                self.process_operand_checked(&second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Difference, unsupported);
                 return Ok(mesh);
             }
             // Small-cut skip: a cutter far smaller than its host (a steel
@@ -878,9 +862,10 @@ impl BooleanClippingProcessor {
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
         if operator == ".UNION." || operator == "UNION" {
-            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) =
+                self.process_operand_checked(&second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Union, unsupported);
                 return Ok(mesh);
             }
             let clipper = ClippingProcessor::new();
@@ -892,10 +877,10 @@ impl BooleanClippingProcessor {
         // Handle INTERSECTION operation — a real intersection volume on the
         // pure-Rust exact kernel.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality, visited)?;
+            let (second_mesh, unsupported) =
+                self.process_operand_checked(&second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Intersection, unsupported);
                 return Ok(Mesh::new());
             }
             let clipper = ClippingProcessor::new();

@@ -18,7 +18,9 @@ use crate::{Mesh, Result, TessellationQuality};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 impl BooleanClippingProcessor {
-    /// Process a solid operand with depth tracking
+    /// Process a solid operand with depth tracking. The mesh only; callers
+    /// that must not double-record an unsupported operand's consequence use
+    /// [`Self::process_operand_checked`].
     pub(super) fn process_operand_with_depth(
         &self,
         operand: &DecodedEntity,
@@ -27,7 +29,31 @@ impl BooleanClippingProcessor {
         quality: TessellationQuality,
         visited: &mut OperandPath,
     ) -> Result<Mesh> {
-        match operand.ifc_type {
+        Ok(self
+            .process_operand_checked(operand, decoder, depth, quality, visited)?
+            .0)
+    }
+
+    /// Process a solid operand, reporting whether its type had NO meshing
+    /// branch here.
+    ///
+    /// The flag exists because one dropped operand must produce ONE record. An
+    /// unsupported SECOND operand meshes empty, so the `EmptyOperand` arm at
+    /// the caller would fire straight after the `UnsupportedOperand` record
+    /// below, counting the same step twice — and since the reason breakdown
+    /// breaks ties alphabetically, the viewer's "top failure reason" would name
+    /// `EmptyOperand`, the CONSEQUENCE, over `UnsupportedOperand`, the cause.
+    /// Callers pass this to [`Self::record_empty_second_operand`].
+    pub(super) fn process_operand_checked(
+        &self,
+        operand: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut OperandPath,
+    ) -> Result<(Mesh, bool)> {
+        let mut unsupported = false;
+        let mesh = match operand.ifc_type {
             IfcType::IfcExtrudedAreaSolid => {
                 let processor = ExtrudedAreaSolidProcessor::new(self.schema.clone());
                 processor.process(operand, decoder, &self.schema, quality)
@@ -92,8 +118,11 @@ impl BooleanClippingProcessor {
                     BoolOp::Unknown,
                     BoolFailureReason::UnsupportedOperand(other.to_string()),
                 );
+                unsupported = true;
                 Ok(Mesh::new())
             }
-        }
+        }?;
+        Ok((mesh, unsupported))
     }
+
 }

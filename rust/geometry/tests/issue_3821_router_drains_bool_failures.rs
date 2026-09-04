@@ -20,6 +20,17 @@ fn router_for(content: &'static str) -> (GeometryRouter, EntityDecoder<'static>)
     (router, decoder)
 }
 
+fn all_reason_labels(router: &GeometryRouter) -> Vec<String> {
+    let mut out: Vec<String> = router
+        .take_csg_failures()
+        .values()
+        .flatten()
+        .map(|f| f.reason.label().to_string())
+        .collect();
+    out.sort();
+    out
+}
+
 fn unsupported_operand_types(router: &GeometryRouter) -> Vec<String> {
     let mut out: Vec<String> = router
         .take_csg_failures()
@@ -182,5 +193,103 @@ fn draining_twice_does_not_double_count() {
     assert!(
         router.take_csg_failures().is_empty(),
         "the drain is destructive: a second take must return nothing"
+    );
+}
+
+/// The same unsupported type as the SECOND operand (an unsupported cutter).
+/// The host renders un-cut, which is correct; what must not happen is TWO
+/// records for one dropped step. Before the one-record rule, the arm recorded
+/// `UnsupportedOperand` and the caller then recorded `EmptyOperand` on top of
+/// it, inflating `total_csg_failures` and — because the reason breakdown breaks
+/// count ties alphabetically — making the viewer name `EmptyOperand`, the
+/// consequence, as the top failure reason instead of the cause.
+const UNSUPPORTED_SECOND_OPERAND: &str = r"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('3821 unsupported cutter'),'2;1');
+FILE_NAME('g.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWALL('1UnsupportedCutter01',$,'Wall',$,$,#11,#12,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#30));
+#30=IFCBOOLEANRESULT(.DIFFERENCE.,#33,#31);
+#31=IFCSECTIONEDSPINE(#32,(#34),(#5));
+#32=IFCCOMPOSITECURVE((),$);
+#33=IFCEXTRUDEDAREASOLID(#34,#5,#35,3.0);
+#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.0,0.3);
+#35=IFCDIRECTION((0.,0.,1.));
+ENDSEC;
+END-ISO-10303-21;
+";
+
+/// A cutter of a SUPPORTED type that meshes to nothing. The control for the
+/// one-record rule: suppressing the `EmptyOperand` consequence of an
+/// UNSUPPORTED operand must not suppress `EmptyOperand` where it is the only
+/// thing anyone recorded.
+const EMPTY_SUPPORTED_CUTTER: &str = r"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('3821 empty supported cutter'),'2;1');
+FILE_NAME('h.ifc','2026-09-04T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6e',$,'P',$,$,$,$,(#2),#3);
+#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
+#3=IFCUNITASSIGNMENT((#6));
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#10=IFCWALL('1EmptySupportedCut01',$,'Wall',$,$,#11,#12,$,$);
+#11=IFCLOCALPLACEMENT($,#5);
+#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#13=IFCSHAPEREPRESENTATION(#2,'Body','CSG',(#30));
+#30=IFCBOOLEANRESULT(.DIFFERENCE.,#33,#36);
+#33=IFCEXTRUDEDAREASOLID(#34,#5,#35,3.0);
+#34=IFCRECTANGLEPROFILEDEF(.AREA.,$,$,4.0,0.3);
+#35=IFCDIRECTION((0.,0.,1.));
+#36=IFCEXTRUDEDAREASOLID(#37,#5,#35,1.0);
+#37=IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#38);
+#38=IFCPOLYLINE(());
+ENDSEC;
+END-ISO-10303-21;
+";
+
+#[test]
+fn an_unsupported_cutter_yields_exactly_one_record_naming_the_cause() {
+    let (router, mut decoder) = router_for(UNSUPPORTED_SECOND_OPERAND);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let mesh = router
+        .process_element(&element, &mut decoder)
+        .expect("an unsupported cutter must not error the element");
+
+    // The host still renders, un-cut — the correct recovery, and the reason the
+    // operand arm must not return `Err`.
+    assert!(!mesh.is_empty(), "the host must survive an unsupported cutter");
+
+    assert_eq!(
+        all_reason_labels(&router),
+        vec!["UnsupportedOperand".to_string()],
+        "one dropped step must produce ONE record, naming the cause and not the \
+         EmptyOperand consequence"
+    );
+}
+
+#[test]
+fn a_genuinely_empty_cutter_still_records_emptyoperand() {
+    let (router, mut decoder) = router_for(EMPTY_SUPPORTED_CUTTER);
+    let element = decoder.decode_by_id(10).expect("decode the wall");
+    let _ = router.process_element(&element, &mut decoder);
+    assert_eq!(
+        all_reason_labels(&router),
+        vec!["EmptyOperand".to_string()],
+        "an empty cutter of a SUPPORTED type must still record EmptyOperand"
     );
 }

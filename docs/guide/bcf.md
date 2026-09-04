@@ -185,17 +185,22 @@ Beyond `.bcfzip` files, the `@ifc-lite/bcf-api` package connects to [buildingSMA
 ```typescript
 import {
   BcfApiClient,
-  normalizeBcfBaseUrl,
+  discoverBcfService,
   requestPasswordToken,
   fetchProjectAsBCF,
 } from '@ifc-lite/bcf-api';
 
-const baseUrl = normalizeBcfBaseUrl('https://example.com/bcf');
+// Normalizes the address and fetches the server's `/auth` document. Vendors
+// tell users to enter the bare space or instance URL (BIMcollab:
+// https://myspace.bimcollab.com) while serving the API under a path, so a
+// pathless address is also tried at `/bcf`; `baseUrl` is whichever answered.
+const { baseUrl, authInfo } = await discoverBcfService({
+  baseUrl: 'https://example.com/bcf',
+});
 
-// Discover the token endpoint, then sign in with the OAuth2 password grant
-const auth = await new BcfApiClient({ baseUrl }).getAuthInfo();
+// Then sign in with the OAuth2 password grant against the discovered endpoint
 const token = await requestPasswordToken({
-  tokenUrl: auth.oauth2_token_url!,
+  tokenUrl: authInfo.oauth2_token_url!,
   username: 'you@example.com',
   password: 'secret',
 });

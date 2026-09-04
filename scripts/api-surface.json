@@ -90,6 +90,7 @@
     "BcfProjectDto: interface",
     "BcfProjectFetchResult: interface",
     "BcfSelectionResponse: interface",
+    "BcfServiceDiscovery: interface",
     "BcfSyncProgress: interface",
     "BcfTokenProvider: type",
     "BcfTokenResponse: interface",
@@ -100,6 +101,7 @@
     "BcfVisibilityDto: interface",
     "BcfVisibilityResponse: interface",
     "ClientCredentialsGrantOptions: interface",
+    "DiscoverBcfServiceOptions: interface",
     "FetchLike: type",
     "FetchProjectOptions: interface",
     "PasswordGrantOptions: interface",
@@ -107,13 +109,15 @@
     "RegisterClientOptions: interface",
     "RegisteredClient: interface",
     "TopicQueryOptions: interface",
+    "discoverBcfService: function",
     "exchangeAuthorizationCode: function",
     "fetchProjectAsBCF: function",
     "normalizeBcfBaseUrl: function",
     "refreshAccessToken: function",
     "registerBcfClient: function",
     "requestClientCredentialsToken: function",
-    "requestPasswordToken: function"
+    "requestPasswordToken: function",
+    "resolveBcfBaseUrl: function"
   ],
   "@ifc-lite/cache": [
     "BinaryCacheReader: class",

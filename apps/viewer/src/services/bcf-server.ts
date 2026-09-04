@@ -99,6 +99,8 @@ export async function signInWithToken(
   const token = { access_token: accessToken.trim() };
   // No `/auth` round-trip here: a pasted token needs no OAuth discovery, so
   // `current-user` itself decides which candidate base URL is the service.
+  // Safe as a probe because completeSignIn persists nothing until that call
+  // has returned, so a candidate that turns out wrong saves no session.
   return api.resolveBcfBaseUrl(serverUrl, (baseUrl) => completeSignIn(baseUrl, token));
 }
 
@@ -277,8 +279,9 @@ async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
         url: config.serverUrl,
       });
     }
-    const anonymous = new api.BcfApiClient({ baseUrl: config.serverUrl });
-    const authInfo = await anonymous.getAuthInfo();
+    // The stored URL was already resolved at sign-in, so this re-discovers
+    // nothing: a path-bearing base yields exactly one candidate.
+    const { authInfo } = await api.discoverBcfService({ baseUrl: config.serverUrl });
     const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
     // OAuth-app sessions must present the app credentials on the refresh
     // grant too; token servers that never issued a client ignore them.

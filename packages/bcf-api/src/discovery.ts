@@ -8,18 +8,21 @@ import { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
 import { BcfApiError } from './errors.js';
 import type { BcfAuthInfo, FetchLike } from './types.js';
 
-/** Path vendors mount the BCF API at when the user is given a bare host. */
+/** The one path worth guessing: what vendors mount the BCF API at. */
 const CONVENTIONAL_BCF_PATH = '/bcf';
 
 /**
  * Base URLs to try for a user-entered BCF server address, in order.
  *
- * Vendors serve the API under a path (`/bcf` on BIMcollab, `/api/bcf` on
- * OpenProject) but tell users to enter the bare space or instance address
- * — Solibri's and the BCF managers' BIMcollab setup is literally
- * "https://myspace.bimcollab.com". A host with no path of its own is
- * therefore ambiguous, so it yields a second candidate with `/bcf`
- * appended; anything that already names a path is taken at its word.
+ * Vendors serve the API under a path but tell users to enter the bare space
+ * or instance address — Solibri's and the BCF managers' BIMcollab setup is
+ * literally "https://myspace.bimcollab.com", while the API answers under
+ * `/bcf`. A host with no path of its own is therefore ambiguous, so it
+ * yields a second candidate with `/bcf` appended; anything that already
+ * names a path is taken at its word.
+ *
+ * Only `/bcf` is guessed. Vendors that mount elsewhere (OpenProject's
+ * `/api/bcf`) still need the full URL, which is what their preset asks for.
  */
 export function bcfBaseUrlCandidates(input: string): string[] {
   const base = normalizeBcfBaseUrl(input);
@@ -31,7 +34,7 @@ export function bcfBaseUrlCandidates(input: string): string[] {
     // with the address the user actually entered.
     return [base];
   }
-  if (url.pathname !== '/' && url.pathname !== '') return [base];
+  if (url.pathname !== '/') return [base];
   return [base, `${base}${CONVENTIONAL_BCF_PATH}`];
 }
 
@@ -54,6 +57,10 @@ export interface BcfServiceDiscovery {
  * Run `probe` against each candidate base URL until one succeeds, and hand
  * back what it returned. Any failure means "no BCF service here": a wrong
  * base answers with a 404, or with an SPA's HTML index that fails to parse.
+ *
+ * A probe may therefore run against a base URL that turns out to be wrong,
+ * so it must not commit anything (persist a session, register a client)
+ * before the request that proves the address is right has succeeded.
  *
  * When every candidate fails, a rejected-credentials error wins — that is
  * the user's likelier mistake, and it proves the address was right —

@@ -77,6 +77,20 @@ function store(relationships: DataModel['relationships']) {
   return convertServerDataModel(dataModel(relationships), parseResult, { size: 1 }, []);
 }
 
+/** Run `fn` with `console.warn` captured, then restore it. */
+function withCapturedWarnings<T>(fn: () => T): T & { warnings: string[] } {
+  const warnings: string[] = [];
+  const original = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(' '));
+  };
+  try {
+    return { ...fn(), warnings };
+  } finally {
+    console.warn = original;
+  }
+}
+
 describe('server-loaded relationship ids', () => {
   it('carries the IfcRel express id on every edge, in both directions', () => {
     const { relationships } = store([...EDGES]);
@@ -113,14 +127,35 @@ describe('server-loaded relationship ids', () => {
     assert.equal(relationships.forward.getEdges(1)[0].type, RelationshipType.Aggregates);
   });
 
-  it('falls back to 0 when the server sends no rel_id (older payload)', () => {
+  it('falls back to 0 when the server sends no rel_id (older payload), and says so once', () => {
     // An older server omits the column, so `rel_id` is absent. The edge must
-    // still be built; it just has no id to name.
+    // still be built; it just has no id to name. Absence has to LOOK different
+    // from success: id 0 on every row is indistinguishable from a real graph
+    // unless something names the missing column.
     const older = EDGES.map(({ rel_type, relating_id, related_id }) => ({ rel_type, relating_id, related_id }));
-    const { relationships } = store(older);
+    const { relationships, warnings } = withCapturedWarnings(() => store(older));
 
     const between = relationships.getRelationshipsBetween(1, 2);
     assert.equal(between.length, 1, 'edge must still exist without a rel_id');
     assert.equal(between[0].relationshipId, 0, 'absent rel_id reads as 0');
+
+    const named = warnings.filter((w) => w.includes('rel_id'));
+    assert.equal(named.length, 1, `exactly one warning naming rel_id, got: ${JSON.stringify(warnings)}`);
+    assert.match(named[0], /serverDataModel/, 'warning must name its source');
+  });
+
+  it('stays quiet when the server does send rel_id', () => {
+    const { warnings } = withCapturedWarnings(() => store([...EDGES]));
+    assert.deepEqual(
+      warnings.filter((w) => w.includes('rel_id')),
+      [],
+      'a v6 payload must not warn about a column it carries',
+    );
+  });
+
+  it('stays quiet when there are no relationships at all', () => {
+    // Nothing to be missing an id: an empty table must not look like an old server.
+    const { warnings } = withCapturedWarnings(() => store([]));
+    assert.deepEqual(warnings.filter((w) => w.includes('rel_id')), []);
   });
 });

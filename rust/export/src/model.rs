@@ -278,6 +278,9 @@ pub fn stream_export_model_with_options(
     // they cannot forget to ask.
     let units = resolve_unit_scales(content, project_id, &mut decoder);
 
+    // Not drained for boolean failures (#3821): `resolve_scaled_placement` is
+    // the only method called on it and it never reaches `self.processors`, so
+    // no processor here meshes anything that could record a `BoolFailure`.
     // Built with the file's scale, NOT `GeometryRouter::new()`: `new` defaults
     // `unit_scale` to 1.0 and `scale_transform` only scales when it was given
     // the real one, so the difference is silently-millimetre translations.

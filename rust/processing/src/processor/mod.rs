@@ -1041,6 +1041,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         unit_scales.length_unit_scale,
         unit_scales.plane_angle_to_radians,
     );
+    // Placements + RTC only; never reaches `self.processors`, so it meshes nothing and has no boolean failures to drain (#3821).
     let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
     router.set_tessellation_quality(options.tessellation_quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans

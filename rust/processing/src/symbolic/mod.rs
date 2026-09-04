@@ -127,6 +127,12 @@ where
     let mut decoder = EntityDecoder::with_index(content, entity_index);
 
     // Reuse the geometry router for both unit-scale and the RTC offset.
+    // #3821: this router is NOT drained for boolean failures, and that is
+    // correct rather than an oversight. It is used only for the unit scale and RTC-offset detection; none of
+    // those methods touches `self.processors`, so no processor here ever
+    // meshes a representation item and none can record a `BoolFailure`.
+    // Draining it would always yield an empty list. The routers that DO mesh
+    // are the per-element ones, drained through `take_csg_failures`.
     let router = ifc_lite_geometry::GeometryRouter::with_units(content, &mut decoder);
     let unit_scale = router.unit_scale() as f32;
 

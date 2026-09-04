@@ -34,6 +34,9 @@ export function bcfBaseUrlCandidates(input: string): string[] {
     // with the address the user actually entered.
     return [base];
   }
+  // Safe to append: normalizeBcfBaseUrl has already dropped any query or
+  // fragment, which would otherwise swallow the suffix ('https://host?x=1'
+  // plus '/bcf' parses as the query 'x=1/bcf' on path '/').
   if (url.pathname !== '/') return [base];
   return [base, `${base}${CONVENTIONAL_BCF_PATH}`];
 }
@@ -62,10 +65,13 @@ export interface BcfServiceDiscovery {
  * so it must not commit anything (persist a session, register a client)
  * before the request that proves the address is right has succeeded.
  *
- * When every candidate fails, a rejected-credentials error wins — that is
- * the user's likelier mistake, and it proves the address was right —
- * otherwise the FIRST candidate's error is thrown, so the message names the
- * URL the user entered rather than a guess they never made.
+ * When every candidate fails, the error thrown is the most actionable one
+ * available, in this order: a rejected-credentials error (the user's
+ * likelier mistake, and it proves the address was right), then any error
+ * naming a status and URL, then the first candidate's — so the message
+ * describes what the user entered rather than a guess they never made. The
+ * middle rung matters because a cross-origin probe that CORS blocks rejects
+ * with a bare TypeError carrying neither status nor URL.
  */
 export async function resolveBcfBaseUrl<T>(
   input: string,
@@ -79,7 +85,12 @@ export async function resolveBcfBaseUrl<T>(
       errors.push(error);
     }
   }
-  throw errors.find((error) => error instanceof BcfApiError && error.isAuthError) ?? errors[0];
+  const isApiError = (error: unknown): error is BcfApiError => error instanceof BcfApiError;
+  throw (
+    errors.find((error) => isApiError(error) && error.isAuthError) ??
+    errors.find(isApiError) ??
+    errors[0]
+  );
 }
 
 /**
@@ -97,4 +108,18 @@ export function discoverBcfService(
     });
     return { baseUrl, authInfo: await client.getAuthInfo() };
   });
+}
+
+/**
+ * Resolve a user-entered address to its BCF service base URL WITHOUT
+ * sending credentials, for callers holding a token or password: probing
+ * with the secret itself would send it to a candidate not yet known to be a
+ * BCF service. An unambiguous address resolves with no request at all.
+ */
+export async function resolveBcfServiceBaseUrl(
+  options: DiscoverBcfServiceOptions,
+): Promise<string> {
+  const candidates = bcfBaseUrlCandidates(options.baseUrl);
+  if (candidates.length === 1) return candidates[0];
+  return (await discoverBcfService(options)).baseUrl;
 }

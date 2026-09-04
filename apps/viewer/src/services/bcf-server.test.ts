@@ -245,11 +245,22 @@ describe('bare space URL (BIMcollab Nexus, issue #3900)', () => {
     assert.equal(preparation.tokenUrl, 'https://fake.example/bcf/oauth2/token');
   });
 
-  it('reports the URL the user entered when no candidate is a BCF server', async () => {
+  it('names the address the user entered when it is not a BCF server', async () => {
     installFakeServer();
     await assert.rejects(
       signInToBcfServer('https://fake.example/wrong', 'tester@example.com', 'right'),
       /HTTP 404.*https:\/\/fake\.example\/wrong\/2\.1\/auth/,
+    );
+    assert.equal(loadBcfServerConfig(), null);
+  });
+
+  it('stores nothing when a token sign-in on a bare host is rejected', async () => {
+    // The resolved base is only reached with the token AFTER anonymous
+    // discovery, so a rejected token must leave no session behind.
+    installFakeServer();
+    await assert.rejects(
+      signInWithToken('https://fake.example', 'made-up-token'),
+      /Not authenticated/,
     );
     assert.equal(loadBcfServerConfig(), null);
   });

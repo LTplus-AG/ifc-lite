@@ -117,7 +117,7 @@
     "registerBcfClient: function",
     "requestClientCredentialsToken: function",
     "requestPasswordToken: function",
-    "resolveBcfBaseUrl: function"
+    "resolveBcfServiceBaseUrl: function"
   ],
   "@ifc-lite/cache": [
     "BinaryCacheReader: class",

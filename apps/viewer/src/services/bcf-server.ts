@@ -97,11 +97,14 @@ export async function signInWithToken(
 ): Promise<BcfServerConfig> {
   const api = await loadApi();
   const token = { access_token: accessToken.trim() };
-  // No `/auth` round-trip here: a pasted token needs no OAuth discovery, so
-  // `current-user` itself decides which candidate base URL is the service.
-  // Safe as a probe because completeSignIn persists nothing until that call
-  // has returned, so a candidate that turns out wrong saves no session.
-  return api.resolveBcfBaseUrl(serverUrl, (baseUrl) => completeSignIn(baseUrl, token));
+  // Resolve the base ANONYMOUSLY before the token is used. Probing with the
+  // token itself would send the user's secret to a candidate not yet known
+  // to be a BCF service — for a Nexus space, its public web UI — so an
+  // ambiguous address costs one unauthenticated `/auth` request and the
+  // token then goes to exactly one address. An address that already names a
+  // path is unambiguous and skips discovery entirely.
+  const baseUrl = await api.resolveBcfServiceBaseUrl({ baseUrl: serverUrl });
+  return completeSignIn(baseUrl, token);
 }
 
 /** Path the popup returns to; must match what OAuth apps register. */
@@ -279,8 +282,8 @@ async function refreshStoredToken(config: BcfServerConfig): Promise<string> {
         url: config.serverUrl,
       });
     }
-    // The stored URL was already resolved at sign-in, so this re-discovers
-    // nothing: a path-bearing base yields exactly one candidate.
+    // The stored URL was already resolved at sign-in, so the candidate it
+    // needs is the one tried first and no extra request is made.
     const { authInfo } = await api.discoverBcfService({ baseUrl: config.serverUrl });
     const tokenUrl = requireSecureTokenUrl(authInfo.oauth2_token_url);
     // OAuth-app sessions must present the app credentials on the refresh

@@ -104,7 +104,7 @@ export const BCF_SERVER_PRESETS: readonly BcfServerPreset[] = [
     label: 'BIMcollab',
     baseUrl: '',
     authMethods: ['oauth', 'token'],
-    note: 'Your space URL, e.g. https://myspace.bimcollab.com — the same address you give Solibri or a BCF manager.',
+    note: 'Your space URL, e.g. https://myspace.bimcollab.com. The same address you give Solibri or a BCF manager.',
   },
   {
     id: 'bimdata',

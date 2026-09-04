@@ -305,3 +305,7 @@ pub fn intersection(a: &Mesh, b: &Mesh) -> Mesh {
 #[cfg(test)]
 #[path = "mesh_bridge_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "issue_3913_sweep_tests.rs"]
+mod issue_3913_sweep_tests;

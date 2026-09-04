@@ -373,3 +373,51 @@ fn no_offset_within_the_snap_band_tears_the_corner_overlap() {
         torn.iter().take(5).cloned().collect::<Vec<_>>().join("\n")
     );
 }
+
+/// The mutual weld does NOT always reach a fixed point, so `MAX_WELD_PASSES`
+/// is a terminator and not merely a safety margin.
+///
+/// Review round 3 asked for the cap to be removed in favour of "iterate until
+/// a pass reports `moved == 0`". That would hang. Re-running
+/// `promote_operands_mutually` UNCAPPED over 80,000 randomised near-coplanar
+/// box pairs (arbitrary rotation axis, angle in ±90°, edges 0.3–3.0, Z offsets
+/// −6..+6 snap steps) left 40 of them moving the SAME vertex count on every
+/// one of 64 passes and still going — the oscillation the cap exists to bound,
+/// a vertex alternating between two planes equidistant within the band. A
+/// further 8 converged, but only after 5 to 13 moving passes. The pinned
+/// corner-overlap sweep above never exceeds two, which is why the cap looked
+/// unreachable when it was written; that measurement was true of that sweep
+/// and not of the operand space.
+///
+/// The pair below is the first non-convergent case that hunt found (seed
+/// 0x5DEECE66D). It is pinned as a REGRESSION GUARD ON THE CAP: with the cap
+/// this test finishes in milliseconds, and any change that iterates to a fixed
+/// point instead hangs here rather than in a user's model.
+#[test]
+fn the_weld_pass_cap_is_load_bearing_because_the_weld_can_oscillate() {
+    let a = boxed([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
+    let bmin = [-0.121564, -0.506766, 0.5224210351562499];
+    let sz = [1.4774241000000001, 2.6912361, 1.6436199];
+    let axis = Vector3::new(0.321974, 0.47062000000000004, 0.603912);
+    let about = [
+        bmin[0] + sz[0] / 2.0,
+        bmin[1] + sz[1] / 2.0,
+        bmin[2] + sz[2] / 2.0,
+    ];
+    let b = boxed(bmin, sz, Some((axis, -0.8068835155553489, about)));
+    assert_eq!(open_edges(&a), Ok(0), "operand A must be closed going in");
+    assert_eq!(open_edges(&b), Ok(0), "operand B must be closed going in");
+    let clipper = ClippingProcessor::new();
+    // Both orders, and the assertion is that each RETURNS at all: an uncapped
+    // weld never gets here.
+    for (order, out) in [
+        ("A then B", clipper.union_mesh(&a, &b)),
+        ("B then A", clipper.union_mesh(&b, &a)),
+    ] {
+        let out = out.expect("union must not error");
+        assert!(
+            !out.is_empty(),
+            "the capped weld must still produce a union ({order})"
+        );
+    }
+}

@@ -209,6 +209,7 @@ fn relationship_columns_do_not_swap_relating_and_related() {
     let mut dm = empty_data_model();
     dm.relationships = vec![Relationship {
         rel_type: "IfcRelAggregates".into(),
+        rel_id: 30,
         relating_id: 10,
         related_id: 20,
     }];
@@ -240,6 +241,34 @@ fn relationship_columns_do_not_swap_relating_and_related() {
 
     assert_eq!(relating.value(0), 10, "relating_id must carry the relating entity");
     assert_eq!(related.value(0), 20, "related_id must carry the related entity");
+}
+
+/// The relationships table must ship the `IfcRel*` express id (issue #3860):
+/// the client's relationship graph and every Parquet/DuckDB export downstream
+/// read `RelId` from this column, and without it a server-loaded model exports
+/// `RelId = 0` on every row. The value (30) differs from both id columns, so
+/// neither a constant nor a copy of a neighbour passes.
+#[test]
+fn relationships_table_writes_the_ifcrel_express_id() {
+    let mut dm = empty_data_model();
+    dm.relationships = vec![Relationship {
+        rel_type: "IfcRelAggregates".into(),
+        rel_id: 30,
+        relating_id: 10,
+        related_id: 20,
+    }];
+
+    let payload = serialize_data_model_to_parquet(&dm).expect("serialize");
+    let sections = split_sections(&payload);
+    let batch = read_section(&sections[3]);
+
+    let rel_ids = batch
+        .column_by_name("rel_id")
+        .expect("rel_id column (data-model v6 payload)")
+        .as_any()
+        .downcast_ref::<arrow::array::UInt32Array>()
+        .expect("u32 column");
+    assert_eq!(rel_ids.value(0), 30, "rel_id must carry the IfcRel express id");
 }
 
 /// `has_geometry` is the only boolean the entities table carries, and no test

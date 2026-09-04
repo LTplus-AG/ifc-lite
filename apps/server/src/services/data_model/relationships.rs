@@ -45,7 +45,7 @@ pub(super) fn extract_relationships(
                 EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
-            extract_relationship(&entity, &job.type_name)
+            extract_relationship(&entity, &job.type_name, job.id)
         })
         .flatten()
         .collect();
@@ -98,6 +98,9 @@ fn extract_type_property_links(
                         if let Some(set_id) = set_ref.as_entity_ref() {
                             out.push(Relationship {
                                 rel_type: "TYPEHASPROPERTYSETS".to_string(),
+                                // Synthetic: read off IfcTypeObject.HasPropertySets,
+                                // so there is no IfcRel entity to name here.
+                                rel_id: 0,
                                 relating_id: set_id,
                                 related_id: type_id,
                             });
@@ -111,7 +114,11 @@ fn extract_type_property_links(
 }
 
 /// Extract relationship from entity (may return multiple if related[] has multiple items).
-fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<Relationship>> {
+fn extract_relationship(
+    entity: &DecodedEntity,
+    type_name: &str,
+    rel_id: u32,
+) -> Option<Vec<Relationship>> {
     let type_upper = type_name.to_uppercase();
 
     // IfcRelVoidsElement / IfcRelFillsElement carry a SINGLE related ref, not a
@@ -125,6 +132,7 @@ fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<R
         let related_id = entity.get_ref(5)?;
         return Some(vec![Relationship {
             rel_type: type_name.to_string(),
+            rel_id,
             relating_id,
             related_id,
         }]);
@@ -163,6 +171,7 @@ fn extract_relationship(entity: &DecodedEntity, type_name: &str) -> Option<Vec<R
             .into_iter()
             .map(|related_id| Relationship {
                 rel_type: type_name.to_string(),
+                rel_id,
                 relating_id,
                 related_id,
             })

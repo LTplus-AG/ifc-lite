@@ -190,6 +190,15 @@ fn extracts_type_relationship_and_resolves_typed_property_values() {
         })
     };
     assert!(type_link(210), "TYPEHASPROPERTYSETS #210->#200 missing");
+    // Synthetic edges: no IfcRel entity produced them, so `rel_id` is 0 rather
+    // than a borrowed id (issue #3860).
+    assert!(
+        dm.relationships
+            .iter()
+            .filter(|r| r.rel_type == "TYPEHASPROPERTYSETS")
+            .all(|r| r.rel_id == 0),
+        "synthetic type-set edges must not claim an IfcRel express id"
+    );
     assert!(
         type_link(220),
         "TYPEHASPROPERTYSETS #220->#200 missing (qset)"
@@ -681,4 +690,46 @@ fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
     assert_eq!(sh.element_to_building.len(), 1);
     assert_eq!(sh.element_to_storey.len(), 1);
     assert_eq!(sh.element_to_space.len(), 1);
+}
+
+/// Every relationship row must carry the express id of the `IfcRel*` entity it
+/// came from (issue #3860). Without it the viewer's server path fed the
+/// relationship graph id 0 and a Parquet/DuckDB export wrote `RelId = 0` on
+/// every row, so a server-loaded model and a locally parsed one disagreed on
+/// the same relationship. The three association rels here have distinct express
+/// ids (#35 / #42 / #51) that are also distinct from their relating and related
+/// ids, so neither a constant nor a copy of a neighbouring column passes.
+#[test]
+fn relationships_carry_the_ifcrel_express_id() {
+    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let rel_id_of = |ty: &str, relating: u32, related: u32| -> u32 {
+        dm.relationships
+            .iter()
+            .find(|r| {
+                r.rel_type.eq_ignore_ascii_case(ty)
+                    && r.relating_id == relating
+                    && r.related_id == related
+            })
+            .unwrap_or_else(|| panic!("{ty} ({relating} -> {related}) missing"))
+            .rel_id
+    };
+    assert_eq!(rel_id_of("IFCRELASSOCIATESMATERIAL", 34, 28), 35);
+    assert_eq!(rel_id_of("IFCRELASSOCIATESCLASSIFICATION", 41, 28), 42);
+    assert_eq!(rel_id_of("IFCRELASSOCIATESDOCUMENT", 50, 28), 51);
+}
+
+/// The single-ref voids/fills path builds its `Relationship` in a separate arm
+/// from the list path, so it can lose `rel_id` on its own.
+#[test]
+fn voids_and_fills_carry_the_ifcrel_express_id() {
+    let dm = extract_data_model(VOID_FILL_IFC);
+    let rel_id_of = |ty: &str| -> u32 {
+        dm.relationships
+            .iter()
+            .find(|r| r.rel_type.eq_ignore_ascii_case(ty))
+            .unwrap_or_else(|| panic!("{ty} missing"))
+            .rel_id
+    };
+    assert_eq!(rel_id_of("IFCRELVOIDSELEMENT"), 40);
+    assert_eq!(rel_id_of("IFCRELFILLSELEMENT"), 50);
 }

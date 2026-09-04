@@ -19,50 +19,45 @@
  * fixed for the byte scanners; a new trivia matcher should not reintroduce
  * it under a different name.
  *
- * Both alternatives are written so the outer `(?:A|B)*` has exactly one way
- * to partition any given input into iterations — there is nothing left for
- * the engine to backtrack over:
+ * ## Why each alternative is shaped the way it is
  *
- * - The comment body is `(?:[^*]|\*(?!/))*`, not `[\s\S]*?`. A lazy
- *   `[\s\S]*?` looks unambiguous locally, but when the *overall* pattern
- *   fails past a comment, the engine retries the lazy body against every
- *   later `*​/` in the string, so one comment can absorb subsequent ones and
- *   the two alternatives (comment vs. whitespace) start overlapping on the
- *   same span. That overlap is what makes `(?:A|B)*` exponential: with N
- *   well-formed, back-to-back `/**​/` comments there are ~2^N ways to
- *   group them into "one comment eats the rest" vs. "N separate comments",
- *   and a failing suffix forces the engine to try all of them. Measured
- *   with the OLD (lazy-body) pattern against `'#5=IFCWALL' + '/**​/'.repeat(n)`
- *   with no closing `(`: n=25 ~0.1s, n=28 ~0.8s, n=30 ~3s+ (machine-
- *   dependent, but the doubling-per-comment growth is the signature).
- *   `(?:[^*]|\*(?!/))*` forbids that: every `*` inside the body must NOT be
- *   followed by `/`, so the body has exactly one maximal extent for a given
- *   start position — no shorter match is ever retried, and one comment can
- *   never swallow the next.
- * - The whitespace alternative is `[ \t\n\r\x0b\x0c]+`, not a bare
- *   character class. A single-char alternative has no quantifier of its own
- *   so it does not carry the same exponential risk by itself (measured:
- *   with the comment body already unambiguous, restoring the single-char
- *   class stays linear even against 200k whitespace characters) — but `+`
- *   still removes a second, cheaper redundancy: without it the outer `*`
- *   has many ways to split one whitespace run into N single-character
- *   iterations, all recombined on backtracking. `+` collapses a run to one
- *   iteration, so there is only one partition to consider there too.
+ * The outer `(?:A|B)*` must have exactly ONE way to partition any input into
+ * iterations. Where it has more than one, a failing suffix makes the engine
+ * enumerate them, which is exponential in the length of the trivia run. Both
+ * alternatives below are written to keep that count at one, and BOTH shapes
+ * have been measured — the two axes fail independently, so neither is
+ * theoretical:
  *
- * Both changes preserve the language exactly: still any run, in any order,
- * of STEP whitespace and paired `/* ... *​/` comments. Only the matching
- * *path* changed, verified with a ~111k-case fuzz comparison of the old and
- * new patterns over well-formed whitespace/comment combinations (0
- * mismatches) plus the two-way rejection and adversarial-input suites in
- * `wrapped-type-paren-adjacency.test.ts` and the trivia timing test.
+ * - The comment body is `(?:[^*]|\*(?!/))*`, NOT a lazy `[\s\S]*?`. A lazy
+ *   body looks unambiguous locally, but when the overall pattern fails past
+ *   a comment the engine retries it against every later `*​/`, so one comment
+ *   can absorb the ones after it and the two alternatives start overlapping
+ *   on the same span. Requiring every `*` in the body to not be followed by
+ *   `/` gives the body exactly one maximal extent, so a comment can never
+ *   swallow the next one.
+ * - The whitespace alternative is a SINGLE-CHARACTER class, NOT `[...]+`.
+ *   This is the counter-intuitive half: `+` looks like it collapses a run
+ *   into one iteration, but the outer `*` can still split an n-character run
+ *   into any composition of `+` matches (2^(n-1) of them) and walks all of
+ *   them on failure — the textbook `(?:A+|B)*` blowup. A single-character
+ *   class has exactly one partition: n iterations of one character each.
  *
- * An unpaired, unterminated `/*` (no matching `*​/` anywhere after it) still
- * correctly fails to match rather than hanging: `(?:[^*]|\*(?!/))*` simply
- * runs out of input, backtracking is O(1) per position (no ambiguity to
- * explore), and the required `\*​/` after the body never appears. Note this
- * corrects an earlier version of this comment, which reasoned that an
- * exponential blowup "requires an already-malformed file" — that was wrong:
- * the measurement above uses only well-formed, correctly paired comments;
- * malformed input was never required to trigger it.
+ * Both hazards are pinned by `packages/parser/test/step-trivia-redos.test.ts`,
+ * one case per axis, and the test comment there carries the measurements.
+ * Change either alternative only with that test in front of you.
+ *
+ * ## Relation to the byte scanners
+ *
+ * The comment body also brings this pattern into line with
+ * `skip_step_trivia`, which stops a comment at its FIRST `*​/`. A lazy body
+ * did not: on backtracking it would accept `/* a *​/ *​/` as one comment,
+ * where Rust reads a comment followed by junk and refuses the record. The
+ * shared vector "reject: comments do not nest, so the trailing `*​/` is junk"
+ * in `rust/core/tests/fixtures/type_paren_trivia_vectors.json` pins that
+ * agreement, so this is a deliberate narrowing, not an accident.
+ *
+ * An unpaired, unterminated `/*` still fails to match rather than hanging:
+ * the body runs out of input, backtracking is O(1) per position, and the
+ * required `\*​/` after it never appears.
  */
-export const STEP_TRIVIA = '(?:[ \\t\\n\\r\\x0b\\x0c]+|/\\*(?:[^*]|\\*(?!/))*\\*/)*';
+export const STEP_TRIVIA = '(?:[ \\t\\n\\r\\x0b\\x0c]|/\\*(?:[^*]|\\*(?!/))*\\*/)*';

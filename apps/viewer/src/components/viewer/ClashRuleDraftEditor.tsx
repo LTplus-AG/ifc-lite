@@ -114,8 +114,9 @@ export function ClashRuleDraftEditor({
       </div>
       <p className="text-[10px] text-muted-foreground leading-snug">
         Selectors: <code>IfcWall</code>, <code>IfcPipe*</code>, <code>IfcWall|IfcSlab</code>, <code>!IfcSpace</code>, <code>*</code>.
-        Leave B equal to A for a self-clash within one group. Add filter rules to a
-        side to select by property, attribute, storey or quantity instead.
+        Leave B equal to A for a self-clash within one group. Give a side filter rules
+        instead to select it by property, attribute, storey or quantity — its selector
+        is then unnecessary and can be left empty.
       </p>
     </div>
   );

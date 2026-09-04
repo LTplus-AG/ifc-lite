@@ -11,6 +11,7 @@
  * what is under test is WHICH elements each side collected.
  */
 
+import assert from 'node:assert/strict';
 import { describe, expect, it } from 'vitest';
 import { runClash } from './engine-ts/orchestrator.js';
 import { clashMemberKey, clashMemberSet, inClashSet } from './members.js';
@@ -110,6 +111,21 @@ describe('runClash: rule membership', () => {
     });
     expect(coverage.matchedA).toBe(1);
     expect(coverage.matchedB).toBe(2);
+  });
+
+  it('reports the run WITHOUT the resolved membership', async () => {
+    // `rulesRun` is kept in viewer store state and cloned into the script
+    // sandbox; a member list is run state, and a big federation would drag a
+    // quarter-million strings per side through both.
+    const result = await runClash(
+      ELEMENTS,
+      [{ ...RULE, membersA: [clashMemberKey('m', 1)], membersB: [] }],
+      {},
+      new EmptyKernel(),
+    );
+    assert.deepEqual(result.rulesRun, [RULE]);
+    // The coverage counts still say what each side matched.
+    expect(result.ruleCoverage![0]).toEqual({ rule: 'r', matchedA: 1, matchedB: 0 });
   });
 
   it('leaves a selector-only rule exactly as it was', async () => {

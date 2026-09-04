@@ -135,7 +135,12 @@ export async function runClash(
   const result: ClashResult = {
     clashes,
     summary: summarizeClashes(clashes),
-    rulesRun: rules,
+    // Without the resolved membership: `rulesRun` is the DESCRIPTION of what
+    // ran, kept in store state and structured-cloned into the script sandbox,
+    // while a member list is run state that can hold a quarter-million strings
+    // per side. `ruleCoverage` reports how many elements each side matched,
+    // which is the part a reader of a finished run wants.
+    rulesRun: rules.map(withoutMembership),
     ruleCoverage,
     settings: { tolerance, excludeVoidsAndHosts },
   };
@@ -143,6 +148,13 @@ export async function runClash(
     result.truncated = { reason: 'maxCandidatePairs', droppedPairs };
   }
   return result;
+}
+
+/** A rule as it is reported back: config only, no resolved membership. */
+function withoutMembership(rule: ClashRule): ClashRule {
+  if (!rule.membersA && !rule.membersB) return rule;
+  const { membersA: _a, membersB: _b, ...config } = rule;
+  return config;
 }
 
 function toRef(el: ClashElement): ClashElementRef {

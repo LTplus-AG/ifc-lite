@@ -39,9 +39,16 @@ export interface ClashSetFilter {
  */
 export const CLASH_SET_FILTER_LIMIT = 250_000;
 
-/** A filter with no rules is not a filter — the side's selector still decides. */
-export function clashSetFilterIsActive(filter: ClashSetFilter | undefined): boolean {
-  return !!filter && filter.rules.length > 0;
+/**
+ * The filter if it has anything to say, otherwise undefined — a filter with no
+ * rules is not a filter, and the side's selector still decides. The ONE
+ * spelling of "does this side have a filter", used by the resolver and by
+ * anything that displays one.
+ */
+export function activeClashSetFilter(
+  filter: ClashSetFilter | undefined,
+): ClashSetFilter | undefined {
+  return filter && filter.rules.length > 0 ? filter : undefined;
 }
 
 /** One-line summary for the rule list ("2 rules · OR"). */
@@ -94,38 +101,59 @@ export async function resolveClashSetFilter(
   return matched.map((m) => clashMemberKey(m.modelId, toGlobalId(m.modelId, m.expressId)));
 }
 
-/** The A/B filters a rule was built from, keyed by rule (= preset) id. */
+/** The A/B filters of one clash set definition. */
 export type ClashSetFilters = { filterA?: ClashSetFilter; filterB?: ClashSetFilter };
 
 /**
  * Resolve every filtered side of `rules` into explicit membership, leaving
  * unfiltered sides — and every rule with no filters at all — untouched.
  *
+ * `sources` are the preset definitions the rules were built from, matched by
+ * id (`rulesFromPresets` gives a rule its preset's id; `set-filter.test.ts`
+ * pins that, because a rule that failed to find its filter would quietly run
+ * its selector over everything instead).
+ *
  * A filter that matches nothing resolves to an EMPTY member list rather than
  * to `undefined`: the engine reads the two apart (`members.ts`), and rounding
  * "matched nothing" up to "no filter" would silently run the rule over every
  * element its selector covers.
+ *
+ * Identical filters resolve ONCE. One filter is a full federation scan that
+ * can parse property sets on demand, and reusing "external walls" as the A
+ * side of five rules is the normal way a rule set is written.
  */
 export async function withResolvedClashSetFilters(
   rules: readonly ClashRule[],
-  filtersByRuleId: ReadonlyMap<string, ClashSetFilters>,
+  sources: readonly (ClashSetFilters & { id: string })[],
   models: readonly ClashFilterModel[],
   toGlobalId: (modelId: string, expressId: number) => number,
   options: { signal?: AbortSignal } = {},
 ): Promise<ClashRule[]> {
+  const byId = new Map(sources.map((s) => [s.id, s]));
+  const resolved = new Map<string, Promise<string[]>>();
+  const membersOf = (filter: ClashSetFilter): Promise<string[]> => {
+    const key = JSON.stringify(filter);
+    let pending = resolved.get(key);
+    if (!pending) {
+      pending = resolveClashSetFilter(models, filter, toGlobalId, options);
+      resolved.set(key, pending);
+    }
+    return pending;
+  };
+
   const out: ClashRule[] = [];
   for (const rule of rules) {
-    const filters = filtersByRuleId.get(rule.id);
-    const a = clashSetFilterIsActive(filters?.filterA) ? filters!.filterA! : null;
-    const b = clashSetFilterIsActive(filters?.filterB) ? filters!.filterB! : null;
+    const source = byId.get(rule.id);
+    const a = activeClashSetFilter(source?.filterA);
+    const b = activeClashSetFilter(source?.filterB);
     if (!a && !b) {
       out.push(rule);
       continue;
     }
     out.push({
       ...rule,
-      ...(a ? { membersA: await resolveClashSetFilter(models, a, toGlobalId, options) } : {}),
-      ...(b ? { membersB: await resolveClashSetFilter(models, b, toGlobalId, options) } : {}),
+      ...(a ? { membersA: await membersOf(a) } : {}),
+      ...(b ? { membersB: await membersOf(b) } : {}),
     });
   }
   return out;

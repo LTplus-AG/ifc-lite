@@ -566,9 +566,8 @@ export function useClash() {
     async (presets: ClashPreset[]): Promise<void> => {
       const state = useViewerStore.getState();
       const models = [...state.models].map(([id, m]) => ({ id, store: m.ifcDataStore }));
-      const filters = new Map(presets.map((p) => [p.id, { filterA: p.filterA, filterB: p.filterB }]));
       const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
-      return run(await withResolvedClashSetFilters(rules, filters, models, state.toGlobalId));
+      return run(await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId));
     },
     [run, mode, clearance, reportTouch],
   );

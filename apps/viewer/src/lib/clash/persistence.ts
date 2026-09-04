@@ -193,6 +193,27 @@ export function isValidStoredPreset(p: unknown): p is ClashPreset {
   );
 }
 
+/**
+ * The one projection from a validated stored preset to a live one. Every read
+ * path — localStorage, file import, flavor restore — goes through it, so a
+ * field added to `ClashPreset` cannot survive on some of them and vanish on
+ * the others (#3902 added two and would otherwise have had to edit three
+ * near-identical literals in two files).
+ */
+export function storedPresetToPreset(p: ClashPreset, builtin: boolean): ClashPreset {
+  return {
+    id: p.id,
+    name: p.name,
+    description: typeof p.description === 'string' ? p.description : '',
+    severity: p.severity,
+    selectorA: p.selectorA,
+    selectorB: p.selectorB,
+    enabled: p.enabled !== false,
+    builtin,
+    ...parseClashSetFilters(p),
+  };
+}
+
 /** Read stored presets, accepting the versioned wrapper or a legacy bare array. */
 function readStoredPresets(): ClashPreset[] {
   try {
@@ -207,17 +228,7 @@ function readStoredPresets(): ClashPreset[] {
         : [];
     return list
       .filter(isValidStoredPreset)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: typeof p.description === 'string' ? p.description : '',
-        severity: p.severity,
-        selectorA: p.selectorA,
-        selectorB: p.selectorB,
-        enabled: p.enabled !== false,
-        builtin: builtinPresetIds().has(p.id),
-        ...parseClashSetFilters(p),
-      }));
+      .map((p) => storedPresetToPreset(p, builtinPresetIds().has(p.id)));
   } catch (err) {
     onReadFailure(PRESETS_KEY, err);
     return [];
@@ -609,14 +620,8 @@ export async function importPresets(file: File): Promise<ClashPreset[]> {
       ? (parsed as { presets: unknown[] }).presets
       : [];
   return list.filter(isValidStoredPreset).map((p) => ({
+    ...storedPresetToPreset(p, false),
     id: `custom-${crypto.randomUUID()}`,
     name: p.name.slice(0, MAX_NAME),
-    description: typeof p.description === 'string' ? p.description : '',
-    severity: p.severity,
-    selectorA: p.selectorA,
-    selectorB: p.selectorB,
-    enabled: p.enabled !== false,
-    builtin: false,
-    ...parseClashSetFilters(p),
   }));
 }

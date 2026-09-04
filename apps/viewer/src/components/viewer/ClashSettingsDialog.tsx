@@ -34,7 +34,7 @@ import { useViewerStore } from '@/store';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
 import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
 import { ClashRuleDraftEditor, type ClashRuleDraft } from '@/components/viewer/ClashRuleDraftEditor';
-import { describeClashSetFilter } from '@/lib/clash/set-filter';
+import { activeClashSetFilter, describeClashSetFilter, type ClashSetFilter } from '@/lib/clash/set-filter';
 import { setClashSettingsSaveReporter } from '@/lib/clash/settings-save-notice';
 
 const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
@@ -113,9 +113,17 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
   const saveDraft = useCallback(() => {
     if (!draft) return;
-    // `id` is the draft's own "new vs edit" flag, never a preset field.
+    // `id` is the draft's own "new vs edit" flag, never a preset field. A side
+    // the user defined with a filter needs no hand-typed selector, so it is
+    // stored as `*` — honest (the filter decides that side) and still valid for
+    // every path that reads selectors.
     const { id, ...fields } = draft;
-    const result = id ? updatePreset(id, fields) : createPreset(fields);
+    const saved = {
+      ...fields,
+      selectorA: fields.selectorA.trim() || '*',
+      selectorB: fields.selectorB.trim() || '*',
+    };
+    const result = id ? updatePreset(id, saved) : createPreset(saved);
     if (result.ok) {
       setDraft(null);
     } else {
@@ -123,8 +131,14 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
     }
   }, [draft, createPreset, updatePreset]);
 
+  /** A side is defined once it has either a type selector or a filter. */
+  const sideValid = (selector: string, filter: ClashSetFilter | undefined) =>
+    selector.trim().length > 0 || activeClashSetFilter(filter) !== undefined;
   const draftValid =
-    !!draft && draft.name.trim().length > 0 && draft.selectorA.trim().length > 0 && draft.selectorB.trim().length > 0;
+    !!draft &&
+    draft.name.trim().length > 0 &&
+    sideValid(draft.selectorA, draft.filterA) &&
+    sideValid(draft.selectorB, draft.filterB);
 
   const onImport = useCallback(
     async (file: File) => {
@@ -297,9 +311,9 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
                         {!p.builtin && <span className="ml-1.5 text-[10px] text-muted-foreground">custom</span>}
                       </div>
                       <div className="truncate text-[10px] text-muted-foreground">
-                        {p.filterA ? <em>{describeClashSetFilter(p.filterA)}</em> : p.selectorA}
+                        <SetSummary selector={p.selectorA} filter={p.filterA} />
                         <span className="opacity-60"> × </span>
-                        {p.filterB ? <em>{describeClashSetFilter(p.filterB)}</em> : p.selectorB}
+                        <SetSummary selector={p.selectorB} filter={p.filterB} />
                       </div>
                     </div>
                     <Button variant="ghost" size="icon" className="h-6 w-6" title="Edit" onClick={() => startEdit(p)}>
@@ -335,6 +349,12 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
       </DialogContent>
     </Dialog>
   );
+}
+
+/** How one side of a rule reads in the list: its filter, or its selector. */
+function SetSummary({ selector, filter }: { selector: string; filter?: ClashSetFilter }) {
+  const active = activeClashSetFilter(filter);
+  return active ? <em>{describeClashSetFilter(active)}</em> : <>{selector}</>;
 }
 
 function SettingRow({ label, hint, children }: { label: string; hint: string; children: React.ReactNode }) {

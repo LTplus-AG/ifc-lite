@@ -15,27 +15,26 @@
  * coverage, both kernels — is untouched.
  *
  * The identity is `(model, ref)`, not `key`. `ref` is what a caller holding a
- * `(modelId, expressId)` pair can compute directly (it is exactly what the
- * adapter derives it from), while `key` is built inside the adapter out of the
- * stored GlobalId plus an occurrence suffix and cannot be reconstructed from
- * the store alone. Two GPU-instanced occurrences of one entity share a `ref`
- * and both land in the set, which is the intended reading of "this entity is
- * in set A".
+ * `(modelId, expressId)` pair can compute directly, while `key` is built inside
+ * the adapter out of the stored GlobalId plus an occurrence suffix and cannot
+ * be reconstructed from the store alone. Two GPU-instanced occurrences of one
+ * entity share a `ref` and both land in the set, which is the intended reading
+ * of "this entity is in set A".
  *
- * An EMPTY member list is not the same as an absent one: `[]` means the filter
- * resolved to nothing and the side matches no element, while `undefined` means
- * no filter was given and the selector decides. Anything else would turn a
- * filter that matched nothing into a run over everything.
+ * An EMPTY member list is not an absent one — see `ClashRule.membersA`.
  */
 
+import { qualifiedKey } from './exclude.js';
 import { matchesSelector } from './selectors.js';
 import type { ClashElement } from './types.js';
 
-/** The membership identity of one element: its model plus its `ref`. */
+/**
+ * The membership identity of one element: its model plus its `ref`, encoded
+ * with the engine's existing model-qualified scheme (`qualifiedKey`) so there
+ * is one such encoding in this package rather than two.
+ */
 export function clashMemberKey(model: string, ref: number): string {
-  // NUL separates: a model id can hold any character but this one, so no two
-  // distinct (model, ref) pairs can collide on one string.
-  return `${model}\u0000${ref}`;
+  return qualifiedKey(model, String(ref));
 }
 
 /** Index a rule's member list; `null` when the side has no explicit members. */

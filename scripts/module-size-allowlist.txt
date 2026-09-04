@@ -130,7 +130,7 @@
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    496 apps/viewer/src/hooks/useSymbolicAnnotations.ts
    633 apps/viewer/src/lib/analytics-scrub.ts
-   622 apps/viewer/src/lib/clash/persistence.ts
+   627 apps/viewer/src/lib/clash/persistence.ts
    427 apps/viewer/src/lib/collab/geometry-sync.ts
    445 apps/viewer/src/lib/compare/buildFingerprints.ts
    436 apps/viewer/src/lib/compare/worldPlacement.ts

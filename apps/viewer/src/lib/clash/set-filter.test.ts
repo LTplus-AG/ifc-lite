@@ -19,11 +19,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { clashMemberKey, type ClashRule } from '@ifc-lite/clash';
+import { clashMemberKey, rulesFromPresets, type ClashRule } from '@ifc-lite/clash';
 import { Rule } from '../search/filter-rules.js';
 import {
   parseClashSetFilter,
-  clashSetFilterIsActive,
+  activeClashSetFilter,
   describeClashSetFilter,
   resolveClashSetFilter,
   withResolvedClashSetFilters,
@@ -116,7 +116,7 @@ describe('withResolvedClashSetFilters', () => {
   it('replaces only the sides that carry a filter', async () => {
     const [out] = await withResolvedClashSetFilters(
       [rule],
-      new Map([['r1', { filterA: filter('AND', Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')) }]]),
+      [{ id: 'r1', filterA: filter('AND', Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')) }],
       await models(),
       toGlobalId,
     );
@@ -126,7 +126,7 @@ describe('withResolvedClashSetFilters', () => {
   });
 
   it('leaves a rule with no filters byte-for-byte alone', async () => {
-    const [out] = await withResolvedClashSetFilters([rule], new Map(), await models(), toGlobalId);
+    const [out] = await withResolvedClashSetFilters([rule], [], await models(), toGlobalId);
     assert.deepEqual(out, rule);
   });
 
@@ -135,17 +135,57 @@ describe('withResolvedClashSetFilters', () => {
     // not run over nothing.
     const [out] = await withResolvedClashSetFilters(
       [rule],
-      new Map([['r1', { filterA: filter('AND') }]]),
+      [{ id: 'r1', filterA: filter('AND') }],
       await models(),
       toGlobalId,
     );
     assert.equal(out.membersA, undefined);
   });
 
+  it('resolves one filter ONCE however many sides reuse it', async () => {
+    // Reusing "external walls" as the A side of several rules is how a rule
+    // set is written; each resolution is a full federation scan that parses
+    // property sets on demand. The shared array is the observable proof.
+    const shared = filter('AND', Rule.ifcType(['IfcWall']));
+    const out = await withResolvedClashSetFilters(
+      [rule, { ...rule, id: 'r2' }],
+      [
+        { id: 'r1', filterA: shared, filterB: shared },
+        { id: 'r2', filterA: { combinator: 'AND', rules: [Rule.ifcType(['IfcWall'])] } },
+      ],
+      await models(),
+      toGlobalId,
+    );
+    assert.equal(out[0].membersA, out[0].membersB, 'both sides of one rule share the filter');
+    assert.equal(out[0].membersA, out[1].membersA, 'an equal filter on another rule resolves once too');
+  });
+
+  it('matches a rule to its preset by the id rulesFromPresets carries over', async () => {
+    // The join is by id; if `rulesFromPresets` ever stopped copying the preset
+    // id onto the rule, every filter would silently fail open to its selector.
+    const preset = {
+      id: 'custom-1',
+      name: 'External walls vs ducts',
+      description: '',
+      severity: 'major' as const,
+      selectorA: 'IfcWall',
+      selectorB: 'IfcDuct*',
+    };
+    const [built] = rulesFromPresets([preset], 'hard');
+    assert.equal(built.id, preset.id);
+    const [out] = await withResolvedClashSetFilters(
+      [built],
+      [{ ...preset, filterA: filter('AND', Rule.property('Pset_WallCommon', 'IsExternal', 'eq', 'true')) }],
+      await models(),
+      toGlobalId,
+    );
+    assert.deepEqual(out.membersA, [clashMemberKey('m1', 100)]);
+  });
+
   it('carries an unsatisfiable filter through as an empty member list', async () => {
     const [out] = await withResolvedClashSetFilters(
       [rule],
-      new Map([['r1', { filterA: filter('AND', Rule.ifcType(['IfcNoSuchThing'])) }]]),
+      [{ id: 'r1', filterA: filter('AND', Rule.ifcType(['IfcNoSuchThing'])) }],
       await models(),
       toGlobalId,
     );
@@ -189,8 +229,9 @@ describe('describeClashSetFilter', () => {
   });
 
   it('reports an inactive filter as no filter', () => {
-    assert.equal(clashSetFilterIsActive(undefined), false);
-    assert.equal(clashSetFilterIsActive(filter('AND')), false);
-    assert.equal(clashSetFilterIsActive(filter('AND', Rule.ifcType(['IfcWall']))), true);
+    assert.equal(activeClashSetFilter(undefined), undefined);
+    assert.equal(activeClashSetFilter(filter('AND')), undefined);
+    const active = filter('AND', Rule.ifcType(['IfcWall']));
+    assert.equal(activeClashSetFilter(active), active);
   });
 });

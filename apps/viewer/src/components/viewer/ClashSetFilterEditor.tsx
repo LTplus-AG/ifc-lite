@@ -38,10 +38,12 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
   const ruleOptions = useFilterRuleOptions(rules);
 
   const commit = useCallback(
-    (nextRules: FilterRule[], nextCombinator = combinator) => {
+    (nextRules: readonly FilterRule[], nextCombinator = combinator) => {
       // No rules is no filter — never an empty filter, which the resolver
       // would (correctly) read as "this side matches nothing".
-      onChange(nextRules.length === 0 ? undefined : { combinator: nextCombinator, rules: nextRules });
+      onChange(
+        nextRules.length === 0 ? undefined : { combinator: nextCombinator, rules: [...nextRules] },
+      );
     },
     [combinator, onChange],
   );
@@ -53,7 +55,7 @@ export function ClashSetFilterEditor({ label, filter, onChange }: ClashSetFilter
           {label}
         </span>
         {rules.length > 1 && (
-          <CombinatorToggle value={combinator} onChange={(c) => commit(rules.slice(), c)} />
+          <CombinatorToggle value={combinator} onChange={(c) => commit(rules, c)} />
         )}
         <AddRuleMenu onAdd={(kind) => commit([...rules, blankRuleOfKind(kind)])} label="Add filter rule" />
         {rules.length > 0 && (

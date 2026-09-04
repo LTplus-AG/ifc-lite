@@ -17,10 +17,10 @@ import {
   mergeStoredPresets,
   normalizeSettings,
   presetsToStore,
+  storedPresetToPreset,
   type ClashGlobalSettings,
   type ClashPreset,
 } from './persistence.js';
-import { parseClashSetFilters } from './set-filter.js';
 
 /** Plain-JSON snapshot of clash config stored in a flavor. */
 export interface ClashFlavorConfig {
@@ -43,16 +43,8 @@ export function deserializeClashConfig(blob: unknown): { presets: ClashPreset[];
   if (!blob || typeof blob !== 'object') return null;
   const b = blob as Partial<ClashFlavorConfig>;
   const storedRaw = Array.isArray(b.presets) ? b.presets : [];
-  const stored = storedRaw.filter(isValidStoredPreset).map((p) => ({
-    id: p.id,
-    name: p.name,
-    description: typeof p.description === 'string' ? p.description : '',
-    severity: p.severity,
-    selectorA: p.selectorA,
-    selectorB: p.selectorB,
-    enabled: p.enabled !== false,
-    builtin: builtinPresetIds().has(p.id),
-    ...parseClashSetFilters(p),
-  }));
+  const stored = storedRaw
+    .filter(isValidStoredPreset)
+    .map((p) => storedPresetToPreset(p, builtinPresetIds().has(p.id)));
   return { presets: mergeStoredPresets(stored), settings: normalizeSettings(b.settings) };
 }

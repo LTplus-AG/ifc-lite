@@ -8,10 +8,13 @@
  *
  * Lifted out of `SearchModal.filter.builder.tsx` when the clash panel started
  * building filter rows of its own (#3902). Discovery is cached in the search
- * slice per model, so two mounted builders share one scan; the lazy passes
- * (pset/qto and value discovery) still only fire once a rule that needs them
- * exists — in EITHER builder, which is the point of caching in the slice
- * rather than in a component.
+ * slice per model, so several mounted builders share one scan — the clash rule
+ * form alone mounts two of this hook (set A and set B) and the search modal can
+ * be open behind it. Each effect therefore re-reads the cache from the LIVE
+ * store rather than from the render's captured copy: instances that commit in
+ * the same pass all see the same pre-update map, and the whole-model pset/qto
+ * and value scans (which parse property sets on demand) would run once per
+ * instance.
  */
 
 import { useEffect, useMemo } from 'react';
@@ -58,15 +61,14 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
   // Cheap schema discovery — runs once per active model.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
-    if (schemaMap.has(activeModelId)) return;
+    if (useViewerStore.getState().searchFilterSchema.has(activeModelId)) return;
     setFilterSchema(activeModelId, discoverFilterSchema(activeStore));
   }, [activeModelId, activeStore, schemaMap, setFilterSchema]);
 
   // Lazy pset/qto schema — fired the first time a property/quantity rule appears.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.psetQto) return;
+    if (useViewerStore.getState().searchFilterSchema.get(activeModelId)?.psetQto) return;
     const needs = rules.some((r) => r.kind === 'property' || r.kind === 'quantity');
     if (!needs) return;
     setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
@@ -77,8 +79,7 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
   // a rule that benefits from them appears.
   useEffect(() => {
     if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.values) return;
+    if (useViewerStore.getState().searchFilterSchema.get(activeModelId)?.values) return;
     const needs = rules.some(
       (r) =>
         r.kind === 'property' ||

@@ -43,18 +43,11 @@ jobs:
         with:
           lfs: false
           persist-credentials: false
-          # NO fetch-depth: 0, and the reason is worth recording so nobody adds
-          # it back. It was added here on the theory that the cases' historical
-          # head shas need full history. They are not reachable either way:
-          # measured, 0 of 18 case head shas are ancestors of origin/main -- every
-          # one was squash-merged -- refs/pull/N/head has since moved to each PR's
-          # current head, and two cases carry synthetic shas. A full-history
-          # clone of this monorepo would buy the eval nothing and cost minutes.
-          #
-          # So the eval scores siblings (retrieved with `--base HEAD`, which
-          # resolves at depth 1) and the PR description, but NOT whole-file
-          # evidence for historical heads. rubric-eval.mjs says so per case rather
-          # than reporting a number for a pack it could not assemble.
+          # NO fetch-depth: 0. Historical PR heads were squash-merged and are not
+          # ancestors of main, so a full clone still does not contain them. The
+          # scorer fetches each exact pinned 40-hex object at depth 1 instead and
+          # refuses if one remains unavailable; that supplies whole-file evidence
+          # without paying for repository history that cannot reach these tips.
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:

@@ -42,6 +42,8 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
+import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
+import { ensureEvalCommit } from './eval-commit.mjs';
 import { MAX_POSTED_FINDINGS } from './post-review.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -76,33 +78,7 @@ const CASE_DIR = join(HERE, 'eval-cases');
  * requires every reason to be classified exactly once. So a reason added there
  * cannot be silently scored as "the reviewer found nothing".
  */
-export const REVIEWER_FAULT = new Set([
-  'RAW_UNPARSEABLE',
-  'RESPONSE_TRUNCATED',
-  'SCHEMA_INVALID',
-  'VERDICT_CONTRADICTS_FINDINGS',
-  'PROOF_OF_WORK_FAILED',
-  'VALIDATION_EMPTY',
-]);
-
-export const INSTRUMENT_FAULT = new Set([
-  'BAD_ARGS',
-  'NO_RAW',
-  'NO_INPUT',
-  'NO_OUT',
-  'RAW_UNREADABLE',
-  'RAW_EMPTY',
-  'INPUT_UNREADABLE',
-  'INPUT_INVALID',
-  'OUT_UNWRITABLE',
-]);
-
-export function validatorReason(said) {
-  // [A-Z0-9_] to match the reason alphabet. Narrower here, a reason with a
-  // digit parsed as null at run time while the guard test happily classified it
-  // -- the eval would abort every case blaming the harness, with green tests.
-  return /(?:^|\n)\u274c ([A-Z0-9_]+):/.exec(String(said))?.[1] ?? null;
-}
+export { validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT } from './eval-validation.mjs';
 
 
 /**
@@ -258,6 +234,7 @@ function main() {
     if (files.length === 0) throw new Error('No eval cases found; the harness would report a vacuous 0/0.');
 
     const results = [];
+    const validatedResults = [];
     for (const f of files) {
       const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
       // THE CONTEXT PACK, built per case so the eval measures the pipeline the
@@ -265,6 +242,7 @@ function main() {
     // the tree siblings are retrieved from; without it the eval measures the
     // old behaviour, which is exactly what the baseline run did.
     if (baseRef) {
+      ensureEvalCommit(c.input.headSha);
       try {
         // `body` MATTERS, and its absence was not merely an untested prompt
         // section. pr-3389's expected defect IS "the PR body describes a null
@@ -322,15 +300,29 @@ function main() {
       // the reviewer for findings that would have been dropped for quoting a line
       // that is not in the diff.
       const findingsPath = join(tmp, `${f}.findings.json`);
-      const v = spawnSync(
-        process.execPath,
-        [join(HERE, 'validate-findings.mjs'), '--raw', outPath, '--input', inputPath, '--out', findingsPath],
-        { encoding: 'utf8' },
-      );
+      const validation = validateWithOneRetry({
+        reviewer,
+        rubric,
+        inputPath,
+        outPath,
+        findingsPath,
+        model,
+        validatePath: join(HERE, 'validate-findings.mjs'),
+        retryLogPath: join(tmp, `${f}.validate.log`),
+      });
+      const v = validation.processResult;
       // A non-zero exit is not one thing: see REVIEWER_FAULT above for which
       // refusals are the model answering badly (scored zero, the eval carries on)
       // and which mean the harness broke (stop).
-      const said = `${v.stdout || ''}${v.stderr || ''}`.trim();
+      const said = validation.said;
+      if (validation.attempts === 2) {
+        console.log(`  ${f}: ${validatorReason(validation.said) ?? 'validation failure'} on the first attempt; corrective retry ran once.`);
+      }
+      if (validation.reviewerFailure) {
+        const failed = validation.reviewerFailure;
+        console.error(`${failed.stdout || ''}${failed.stderr || ''}`.trim());
+        throw new Error(`Case ${f} corrective retry did not run; the score is not computable.`);
+      }
       if (v.status !== 0) {
         // FROM STDERR ONLY. `said` concatenates stdout, and stdout carries the
         // per-finding DROPPED warnings, which interpolate the model's own `path`
@@ -338,7 +330,7 @@ function main() {
         // line ahead of the real one, and `.exec` takes the first match -- turning
         // a reviewer fault into a fabricated instrument fault that aborts the run.
         // validate-findings prints exactly one reason line, always on stderr.
-        const reason = validatorReason(v.stderr || '');
+        const reason = validation.reason;
         if (!REVIEWER_FAULT.has(reason)) {
           console.error(said);
           throw new Error(
@@ -356,7 +348,9 @@ function main() {
         // the description, and a diff-only run carries none at all -- scoring
         // against text the reviewer never received excludes vocabulary it could
         // not have copied, and that reads as a false miss.
-        results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] });
+        const failed = { pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [] };
+        validatedResults.push(failed);
+        results.push(failed);
         continue;
       }
       // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
@@ -373,6 +367,17 @@ function main() {
       // the generator alone, which is how you tell "the reviewer missed it" from "the
       // judge threw it away".
       let parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
+      // Record what survived mechanical validation before the optional judge
+      // mutates it. Without this, a final miss cannot be attributed to the
+      // generator/validator or to suppression; live #3609 required manually
+      // reconstructing that distinction from log fragments.
+      validatedResults.push({
+        pr: c.pr,
+        body: c.input.contextPack?.body ?? null,
+        expected: c.expected,
+        verdict: parsed.verdict,
+        findings: parsed.findings ?? [],
+      });
       // Nothing to judge costs no process. `judge()` short-circuits on an empty
       // list anyway, so this only saves a node start -- but four of the fixtures
       // expect zero findings and more come back clean in practice.
@@ -420,17 +425,20 @@ function main() {
       results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted });
     }
 
+    const validatedScore = score(validatedResults);
     const s = score(results);
     console.log(`\nRubric: ${rubric}   model: ${model}`);
     for (const l of s.lines) console.log(l);
     // A case whose review never validated contributes zero to recall, and a recall
     // number is not readable without knowing how many of those there were.
     const noReview = results.filter((r) => r.verdict === null).length;
-    console.log(`\n  RECALL of known findings: ${s.recall}`);
+    console.log(`\n  VALIDATED recall before judge/cap: ${validatedScore.recall}`);
+    console.log(`  VALIDATED extra findings: ${validatedScore.extra}`);
+    console.log(`  POSTED recall after judge/cap: ${s.recall}`);
     if (noReview) {
       console.log(`  ...over ${results.length} cases, of which ${noReview} PRODUCED NO USABLE REVIEW and scored zero.`);
     }
-    console.log(`  EXTRA findings (look at these, do not minimise them): ${s.extra}`);
+    console.log(`  POSTED extra findings (look at these, do not minimise them): ${s.extra}`);
     console.log('\n  Compare against the same command on the other rubric. A change that lowers');
     console.log('  recall is a regression whatever it does to EXTRA.\n');
     ok = true;

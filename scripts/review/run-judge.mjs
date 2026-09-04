@@ -161,7 +161,13 @@ export function applyVerdicts(findings, raw) {
   const dropped = [];
   findings.forEach((f, i) => {
     const v = byIndex.get(i);
-    if (v && v.keep === false) dropped.push({ ...f, why: String(v.why ?? '').replace(/[\r\n]+/g, ' ').slice(0, 200) });
+    // A sibling reaches here only after the validator proved that its path,
+    // line and quote came from the base-tree context pack. The live judge twice
+    // inverted that evidence and called the untouched parallel site proof that
+    // the work was "already owned" (#3609, runs 33817317055/33820560852).
+    // Model prose cannot reliably protect this class from another model, so the
+    // optional precision filter is not allowed to suppress it.
+    if (v && v.keep === false && !f.sibling) dropped.push({ ...f, why: String(v.why ?? '').replace(/[\r\n]+/g, ' ').slice(0, 200) });
     else kept.push(f);
   });
   return { kept, dropped, note: null, ran: true };

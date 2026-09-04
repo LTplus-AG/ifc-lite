@@ -5,16 +5,27 @@
 /**
  * @ifc-lite/cache - Binary cache format for fast model loading
  *
- * The .ifc-lite format provides 5-10x faster loading compared to parsing
- * IFC files directly, by pre-computing all data structures.
+ * The .ifc-lite format skips re-running the parse + tessellation pipeline on
+ * a warm load: entities, relationships, spatial hierarchy and geometry are
+ * all pre-computed and read back directly. That's where the 5-10x is real.
+ *
+ * Properties and quantities are the exception: `write()` serializes whatever
+ * the store's property/quantity tables already hold. A STEP-parsed
+ * `IfcDataStore` resolves those lazily on demand and never populates the
+ * tables, so a cache written straight from a STEP parse has EMPTY property
+ * and quantity tables — a restored model queries properties exactly as slow
+ * as a fresh parse, unless the caller separately retains the source buffer
+ * and re-attaches on-demand extraction (see `docs/guide/querying.md`).
  *
  * @example
  * ```typescript
- * import { BinaryCacheWriter, BinaryCacheReader } from '@ifc-lite/cache';
+ * import { BinaryCacheWriter, BinaryCacheReader, toCacheDataStore } from '@ifc-lite/cache';
  *
- * // Write cache
+ * // Write cache — toCacheDataStore adapts a parser IfcDataStore
+ * // (string schemaVersion) to the format writer.write() requires
+ * // (numeric SchemaVersion enum).
  * const writer = new BinaryCacheWriter();
- * const cacheBuffer = await writer.write(dataStore, geometry, sourceBuffer);
+ * const cacheBuffer = await writer.write(toCacheDataStore(dataStore), geometry, sourceBuffer);
  *
  * // Read cache
  * const reader = new BinaryCacheReader();
@@ -26,6 +37,9 @@ export { BinaryCacheWriter } from './writer.js';
 export type { GeometryData } from './writer.js';
 
 export { BinaryCacheReader } from './reader.js';
+
+export { toCacheDataStore } from './adapt.js';
+export type { ParsedIfcStore } from './adapt.js';
 
 export {
   MAGIC,

@@ -666,6 +666,9 @@ importers:
         specifier: workspace:^
         version: link:../geometry
     devDependencies:
+      '@ifc-lite/parser':
+        specifier: workspace:^
+        version: link:../parser
       typescript:
         specifier: ^6.0.3
         version: 6.0.3

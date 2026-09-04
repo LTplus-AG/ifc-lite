@@ -125,7 +125,7 @@
   1359 apps/viewer/src/hooks/useDrawingExport.ts
   1036 apps/viewer/src/hooks/useDrawingGeneration.ts
   1416 apps/viewer/src/hooks/useIDS.ts
-   591 apps/viewer/src/hooks/useIfcCache.ts
+   586 apps/viewer/src/hooks/useIfcCache.ts
    681 apps/viewer/src/hooks/useIfcFederation.ts
   2243 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts

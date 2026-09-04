@@ -20,6 +20,7 @@ import {
   openGeometryChunksV13,
   readInstancedShards,
   BufferReader,
+  toCacheDataStore,
   type CachedEntityIndexColumns,
   type CacheDataStore,
   type GeometryData,
@@ -535,18 +536,12 @@ export function useIfcCache() {
       console.log(`[useIfcCache] Starting cache write for: ${fileName} (persistSource=${persistSource})`);
       const writer = new BinaryCacheWriter();
 
-      // Adapt dataStore to cache format
-      const cacheDataStore: CacheDataStore = {
-        schema: dataStore.schemaVersion === 'IFC4' ? 1 : dataStore.schemaVersion === 'IFC4X3' ? 2 : 0,
-        entityCount: dataStore.entityCount || dataStore.entities?.count || 0,
-        strings: dataStore.strings,
-        entities: dataStore.entities,
-        properties: dataStore.properties,
-        quantities: dataStore.quantities,
-        relationships: dataStore.relationships,
-        spatialHierarchy: dataStore.spatialHierarchy,
-        entityIndex: dataStore.entityIndex,
-      };
+      // Adapt dataStore to cache format. `toCacheDataStore` is the package's
+      // own runtime→cache adapter and now the ONLY schemaVersion→SchemaVersion
+      // mapping: this hook used to keep an inline copy that spelled the enum
+      // out as bare 1/2/0 literals, so the two could drift apart silently.
+      // It carries the same entityCount fallback the inline copy had.
+      const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
       // Compute the true full-file validation hash off the main thread (runs in
       // parallel with the cache-buffer serialization below). ONLY for the

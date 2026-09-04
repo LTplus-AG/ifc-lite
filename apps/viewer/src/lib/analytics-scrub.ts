@@ -411,12 +411,6 @@ const tagErrorKind = (
   if (typeof event.properties.error_kind === 'string') return;
   const message = exceptionMessage(event.properties);
   if (message === undefined) return;
-  // The event's own `context` travels into the classifier. All it gates is the
-  // one WebKit wording that a message cannot settle on its own ("The object can
-  // not be found here." is Safari's text for BOTH a vanished file and the
-  // removeChild/insertBefore reconciler crash). Autocaptured exceptions carry
-  // no context, so they keep the honest `unknown` and stay out of the
-  // file-picker issue.
   const kind = classifyLoadError(message, event.properties.context);
   // Only tag recognised families — never stamp `unknown` onto an unrelated
   // exception (that would mislabel it as a triaged load error).
@@ -560,19 +554,9 @@ const stampFingerprint = (
 // with it. If a WebGLRenderer is ever constructed outside that guard again, the
 // throw would arrive here benign; the guard is the thing keeping this honest.
 //
-// `file_unreadable` meets the same bar and joins them: the file the user picked
-// moved, was renamed, deleted or evicted by a cloud-sync client between the
-// pick and the read, which is user-side and transient, nothing in the app
-// failed, the toast already says to select the file again, and no code change
-// of ours can alter it. It stays captured, kept and fingerprinted, so a spike
-// is still a real signal about (say) a sync client evicting files mid-load; it
-// just stops competing with genuine breakage on an error-level list.
-//
-// This is only safe BECAUSE of the load-context gate on the WebKit wording:
-// while "The object can not be found here." was claimed unconditionally, a
-// Safari React reconciler crash classified as `file_unreadable`, and a downgrade
-// would have hidden a hard crash behind a warning. It classifies `unknown` now
-// and keeps its `error` level, which the severity test pins alongside this.
+// `file_unreadable` meets the same bar and joins them, and is safe here ONLY
+// because the ambiguous WebKit wording is context-gated -- the argument, and
+// what breaks without it, are in ./file-not-found-errors.ts.
 const BENIGN_ERROR_KINDS = new Set<string>([
   'network_unavailable', 'cancelled', 'webgl_unavailable', 'file_unreadable',
 ]);

@@ -126,9 +126,10 @@ impl ClippingProcessor {
         if !self.validate_mesh(&mesh) {
             return mesh;
         }
-        if self.manifold_gate_reject(BoolOp::Union, &mesh)
-            || self.topology_gate_reject(BoolOp::Union, &mesh)
-        {
+        // Both gates run; see `subtract_mesh` for why this is not `||`.
+        let manifold_rejected = self.manifold_gate_reject(BoolOp::Union, &mesh);
+        let topology_rejected = self.topology_gate_reject(BoolOp::Union, &mesh);
+        if manifold_rejected | topology_rejected {
             return fallback();
         }
         self.record_topology_tear(BoolOp::Union, &mesh);

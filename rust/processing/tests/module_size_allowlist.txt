@@ -17,7 +17,6 @@
      758 rust/core/src/georef.rs
      445 rust/core/src/model_bounds.rs
      601 rust/core/src/parser/scanner.rs
-     463 rust/core/src/parser/tokenizer.rs
 # +3: Arc<Vec<AttributeValue>> so DecodedEntity clone is a refcount bump not a deep attribute-tree clone (perf/decode-churn).
     553 rust/core/src/schema_gen.rs
 # schema_helpers.rs row removed: the merged upstream #1969 split its tests into

@@ -253,7 +253,16 @@ export class ParquetExporter {
             // An edge naming a tombstoned entity on either end no longer
             // has a live entity to relate — drop the row rather than
             // leave a dangling SourceId/TargetId in the export.
-            if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId))) continue;
+            //
+            // `relationshipId` gets the same treatment: an `IfcRel*` record
+            // is itself a row in Entities.parquet (the columnar parser
+            // indexes it like any other line), so emitting a RelId for a
+            // deleted one leaves a dangling reference too. Because each
+            // shadowed id is its own row here, this drops exactly the
+            // deleted record and keeps a live sibling — the same rule
+            // `edgeSurvives` applies to the CLI/MCP `related()` path
+            // (#3782 review).
+            if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId) || effective.isDeleted(row.relationshipId))) continue;
             sourceIds.push(row.sourceId);
             targetIds.push(row.targetId);
             relTypes.push(RelationshipTypeToString(row.type));

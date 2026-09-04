@@ -162,3 +162,97 @@ describe('SDK visibility adapter: isolate() and #3338 assembly expansion', () =>
     );
   });
 });
+
+/**
+ * #3338, the SAME gap in the SIBLING channels of the `isolate()` fixed above.
+ *
+ * `hide()` and `show()` write `hiddenEntities`, which the renderer matches
+ * against MESH ids exactly as it matches `isolatedEntities`. A geometry-less
+ * `IfcElementAssembly` id owns no mesh, so `hide([assemblyRef])` adds an id
+ * nothing ever matches: the assembly's parts stay fully visible and the call
+ * is a silent no-op. Quieter than the blank viewport `isolate()` produced,
+ * and wrong in the same way and for the same reason.
+ *
+ * `show()` has to expand for a second reason on top of that one: once `hide()`
+ * expands, `hiddenEntities` holds the PARTS, so a `show()` that only removes
+ * the parent id can never undo its own `hide()`.
+ */
+describe('SDK visibility adapter: hide()/show() and #3338 assembly expansion', () => {
+  const MODEL_ID = 'm1';
+  const ASSEMBLY_EXPRESS_ID = 42;
+  const ASSEMBLY_GLOBAL_ID = 42; // idOffset 0
+  const PART_A_GLOBAL_ID = 9001;
+  const PART_B_GLOBAL_ID = 9002;
+
+  const assemblyResolver = (ids: number[]) =>
+    ids.flatMap((id) => (id === ASSEMBLY_GLOBAL_ID ? [PART_A_GLOBAL_ID, PART_B_GLOBAL_ID] : [id]));
+
+  function makeStore(resolveHighlightIds?: (ids: number[]) => number[]) {
+    const hideCalls: number[][] = [];
+    const showCalls: number[][] = [];
+    const state = {
+      models: new Map([[MODEL_ID, {
+        id: MODEL_ID,
+        name: 'model',
+        ifcDataStore: null,
+        schemaVersion: 'IFC4',
+        fileSize: 0,
+        loadedAt: 0,
+        idOffset: 0,
+        maxExpressId: 1000,
+      }]]),
+      hideEntities: (ids: number[]) => { hideCalls.push(ids); },
+      showEntities: (ids: number[]) => { showCalls.push(ids); },
+      showAllInAllModels: () => {},
+      cameraCallbacks: { ...(resolveHighlightIds ? { resolveHighlightIds } : {}) },
+    } as unknown as ViewerState;
+
+    const store: StoreApi = { getState: () => state, subscribe: () => () => {} };
+    return { store, hideCalls, showCalls };
+  }
+
+  it('hiding a geometry-less assembly ref hides its geometry-bearing parts (RED without the fix)', () => {
+    const { store, hideCalls } = makeStore(assemblyResolver);
+    createVisibilityAdapter(store).hide([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
+
+    assert.equal(hideCalls.length, 1, 'hide() must call hideEntities exactly once');
+    assert.deepEqual(
+      [...hideCalls[0]].sort((a, b) => a - b),
+      [ASSEMBLY_GLOBAL_ID, PART_A_GLOBAL_ID, PART_B_GLOBAL_ID],
+      'hide() must route through the same presentation resolver isolate() uses — hiding the ' +
+      'bare assembly id hides nothing, because no mesh carries that id',
+    );
+  });
+
+  it('showing a geometry-less assembly ref shows the parts a hide() put away (RED without the fix)', () => {
+    const { store, showCalls } = makeStore(assemblyResolver);
+    createVisibilityAdapter(store).show([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
+
+    assert.equal(showCalls.length, 1, 'show() must call showEntities exactly once');
+    assert.deepEqual(
+      [...showCalls[0]].sort((a, b) => a - b),
+      [ASSEMBLY_GLOBAL_ID, PART_A_GLOBAL_ID, PART_B_GLOBAL_ID],
+      'show() must expand too, or it can never undo the hide() above: hiddenEntities holds the ' +
+      'PARTS, and removing only the parent id leaves every one of them hidden',
+    );
+  });
+
+  it('a plain element ref is untouched by the expansion (no over-reach)', () => {
+    const { store, hideCalls } = makeStore(assemblyResolver);
+    createVisibilityAdapter(store).hide([{ modelId: MODEL_ID, expressId: PART_A_GLOBAL_ID }]);
+
+    assert.deepEqual(hideCalls[0], [PART_A_GLOBAL_ID], 'a mesh-bearing id resolves to itself');
+  });
+
+  it('with no resolver wired, hide() still hides the raw ids rather than nothing', () => {
+    const { store, hideCalls } = makeStore(undefined);
+    createVisibilityAdapter(store).hide([{ modelId: MODEL_ID, expressId: ASSEMBLY_EXPRESS_ID }]);
+
+    assert.deepEqual(
+      hideCalls[0],
+      [ASSEMBLY_GLOBAL_ID],
+      'before the renderer mounts there is nothing to resolve against; the union policy keeps ' +
+      'the raw ids so the call is never silently dropped',
+    );
+  });
+});

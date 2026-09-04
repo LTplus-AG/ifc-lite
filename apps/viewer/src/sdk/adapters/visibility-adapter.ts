@@ -63,7 +63,11 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         globalIds.push(toGlobalIdForRef(state.models, ref));
       }
       if (globalIds.length > 0) {
-        state.hideEntities(globalIds);
+        // #3338: `hiddenEntities` is matched against MESH ids, so a
+        // geometry-less `IfcElementAssembly` ref hides nothing at all unless
+        // it becomes its `IfcRelAggregates` parts first. Same resolver, same
+        // union policy as `isolate()` below.
+        state.hideEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },
@@ -75,7 +79,10 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         globalIds.push(toGlobalIdForRef(state.models, ref));
       }
       if (globalIds.length > 0) {
-        state.showEntities(globalIds);
+        // #3338: must expand for the reason `hide()` does, plus one of its
+        // own — after `hide()` expands, `hiddenEntities` holds the PARTS, so
+        // a `show()` that removed only the parent id could never undo it.
+        state.showEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },

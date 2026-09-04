@@ -76,6 +76,22 @@ describe('toCacheDataStore', () => {
     expect(cacheStore.relationships).toBe(store.relationships);
   });
 
+  it('falls back to entities.count when entityCount is 0, so a store that never set it still writes a real count', () => {
+    // The viewer's write path carried this fallback inline
+    // (`dataStore.entityCount || dataStore.entities?.count || 0`) before it
+    // moved onto this adapter. Without it, migrating the viewer here would
+    // have started writing entityCount 0 for any store that leaves the field
+    // unset -- a header field the reader hands straight back to callers.
+    const store = buildParsedStore({ entityCount: 0 });
+    expect(store.entities.count).toBeGreaterThan(0);
+    expect(toCacheDataStore(store).entityCount).toBe(store.entities.count);
+  });
+
+  it('prefers the store\'s own entityCount when it is set', () => {
+    const store = buildParsedStore({ entityCount: 7 });
+    expect(toCacheDataStore(store).entityCount).toBe(7);
+  });
+
   it('passes a present entityIndex straight through, so the write can emit an entity-index section', () => {
     const entityIndex = {
       byId: new Map([[1, { expressId: 1, type: 'IfcWall', byteOffset: 0, byteLength: 42, lineNumber: 1 }]]),

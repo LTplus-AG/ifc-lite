@@ -78,6 +78,11 @@ function toSchemaVersion(schemaVersion: ParsedIfcStore['schemaVersion']): Schema
  * property/quantity table too. See the `@ifc-lite/cache` package docs and
  * `docs/guide/querying.md` for what that means for a cache-restored model.
  *
+ * `entityCount` falls back to `entities.count` when the store leaves it at 0.
+ * It is a header field the reader hands straight back to callers, and the
+ * viewer's write path carried exactly this fallback inline before it moved
+ * onto this adapter.
+ *
  * The entity index IS carried over: `store.entityIndex` already satisfies
  * {@link CacheEntityIndex} structurally, so dropping it only cost callers the
  * section (and with it the ability to re-attach lazy accessors on read, which
@@ -86,7 +91,7 @@ function toSchemaVersion(schemaVersion: ParsedIfcStore['schemaVersion']): Schema
 export function toCacheDataStore(store: ParsedIfcStore): CacheDataStore {
   return {
     schema: toSchemaVersion(store.schemaVersion),
-    entityCount: store.entityCount,
+    entityCount: store.entityCount || store.entities.count,
     strings: store.strings,
     entities: store.entities,
     properties: store.properties,

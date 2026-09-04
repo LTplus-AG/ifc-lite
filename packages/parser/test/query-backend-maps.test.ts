@@ -18,7 +18,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
-import { RelationshipType, ENTITIES_IFC2X3, ENTITIES_IFC4X3 } from '@ifc-lite/data';
+import { RelationshipType, ENTITIES_IFC2X3, ENTITIES_IFC4, ENTITIES_IFC4X3 } from '@ifc-lite/data';
 import { ENTITY_NAME_ALIASES } from '../src/ifc-schema.js';
 import { SCHEMA_REGISTRY } from '../src/generated/schema-registry.js';
 
@@ -193,6 +193,41 @@ describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () 
         expect(expanded, `${version}: ${base} -> ${sub}`).toContain(sub);
       }
     }
+  });
+
+  /**
+   * The other direction, and the one nothing else states: every name the
+   * expansion returns that the file's own schema DECLARES has to be a
+   * descendant of the base in that same table.
+   *
+   * The positive check above cannot see an over-match, and the union this
+   * replaces failed exactly here: `IfcReinforcingBar` is declared by the IFC4
+   * table under `IfcElementComponent`, so it was in the expansion of
+   * `IfcBuildingElement` on IFC4 and no assertion in this file objected. Names
+   * the schema does NOT declare are rule (b)'s business and are excluded from
+   * the check by construction; the rename pair is the one reasoned exception,
+   * since neither spelling is declared by both tables.
+   */
+  it.each([
+    ['IFC2X3', ENTITIES_IFC2X3],
+    ['IFC4', ENTITIES_IFC4],
+    ['IFC4X3', ENTITIES_IFC4X3],
+  ])('adds no name %s declares under a different parent', (version, list) => {
+    const declared = new Set(list.map((e) => e.name.toUpperCase()));
+    let checked = 0;
+    for (const base of BASES) {
+      const allowed = new Set([base, ...RENAME_PAIR, ...tableDescendants(list, base)]);
+      // The rename pair's own subtree is legitimate under either spelling.
+      for (const other of RENAME_PAIR) for (const d of tableDescendants(list, other)) allowed.add(d);
+      for (const name of expandTypes([base], version)) {
+        if (!declared.has(name)) continue; // rule (b): this schema has no opinion
+        checked++;
+        expect(allowed, `${version}: ${base} must not reach ${name}`).toContain(name);
+      }
+    }
+    // Anti-vacuity: without this the test passes on an empty expansion, or on
+    // one where every name happens to be outside the table.
+    expect(checked, `${version} had declared names to check`).toBeGreaterThan(BASES.length);
   });
 
   it.each(['IFC2X3', 'IFC4', 'IFC4X3'])('reaches across the IfcBuiltElement rename on %s', (version) => {

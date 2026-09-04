@@ -59,7 +59,20 @@ export const IFC_SUBTYPES: Record<string, string[]> = {
  */
 type RootBranch = 'object' | 'typeObject' | 'propertyDefinition' | 'relationship' | 'other';
 
+// Cached per name: `rootBranchOf` and `isQueryableObjectType` both walk the
+// inheritance chain, and the gate calls one of them once per descendant. On
+// `byType('IfcRoot')` that is 294 uncached walks for one query.
+const rootBranchCache = new Map<string, RootBranch>();
+
 function rootBranchOf(type: string): RootBranch {
+  const cached = rootBranchCache.get(type);
+  if (cached !== undefined) return cached;
+  const branch = computeRootBranch(type);
+  rootBranchCache.set(type, branch);
+  return branch;
+}
+
+function computeRootBranch(type: string): RootBranch {
   const chain = getInheritanceChain(type);
   if (chain.includes('IfcRelationship')) return 'relationship';
   if (chain.includes('IfcPropertyDefinition')) return 'propertyDefinition';
@@ -103,8 +116,26 @@ function rootBranchOf(type: string): RootBranch {
  * much as `byType('IfcBuildingElement')` does. The requested names themselves
  * are never gated: a caller who spells out `IfcPropertySet` said what they
  * wanted.
+ *
+ * Memoized on (schemaVersion, type list). Every `byType()` call goes through
+ * here, and `validate` now calls it twice per store; the closure plus the gate
+ * cost 0.78 ms for `IfcRoot` on IFC4, which the caches take to a Map lookup.
+ * The key keeps the caller's order rather than sorting it: the output order is
+ * contractual — each requested type ahead of its own descendants — so two
+ * different orders are two different answers and must not share an entry.
  */
+const expandCache = new Map<string, readonly string[]>();
+
 export function expandTypes(types: string[], schemaVersion: string | undefined): string[] {
+  const key = `${schemaVersion ?? ''}\u0000${types.join('\u0000')}`;
+  const cached = expandCache.get(key);
+  if (cached) return [...cached];
+  const result = computeExpandTypes(types, schemaVersion);
+  expandCache.set(key, result);
+  return [...result];
+}
+
+function computeExpandTypes(types: string[], schemaVersion: string | undefined): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
   for (const type of types) {

@@ -63,6 +63,43 @@ describe('expandTypes', () => {
   });
 });
 
+describe('expandTypes is memoized without leaking its cache', () => {
+  it('a repeated call returns an equal but separate array', () => {
+    const a = expandTypes(['IfcWall'], 'IFC4');
+    const b = expandTypes(['IfcWall'], 'IFC4');
+    expect(b).toEqual(a);
+    expect(b).not.toBe(a);
+  });
+
+  it('mutating a returned array does not poison the next answer', () => {
+    // Callers do `new Set(expandTypes(...))` and `for (const t of ...)`, but a
+    // cache that handed out its own array would turn any future `.push`/`.sort`
+    // at a call site into a silent, permanent change to what byType matches.
+    const first = expandTypes(['IfcSlab'], 'IFC4');
+    const length = first.length;
+    first.push('IFCNOTATHING');
+    first.sort();
+    const second = expandTypes(['IfcSlab'], 'IFC4');
+    expect(second).toHaveLength(length);
+    expect(second).not.toContain('IFCNOTATHING');
+    expect(second[0]).toBe('IFCSLAB');
+  });
+
+  it('keys on the schema version, not just the type list', () => {
+    // IFCPROJECT is an IfcObject in IFC2X3 and an IfcContext from IFC4 on. A
+    // cache keyed on the types alone would answer the second call from the
+    // first schema's entry.
+    expect(expandTypes(['IfcObject'], 'IFC2X3')).toContain('IFCPROJECT');
+    expect(expandTypes(['IfcObject'], 'IFC4')).not.toContain('IFCPROJECT');
+    expect(expandTypes(['IfcObject'], 'IFC2X3')).toContain('IFCPROJECT');
+  });
+
+  it('keys on the order of the type list, which the output preserves', () => {
+    expect(expandTypes(['IfcBeam', 'IfcRoof'], 'IFC4')).toEqual(['IFCBEAM', 'IFCBEAMSTANDARDCASE', 'IFCROOF']);
+    expect(expandTypes(['IfcRoof', 'IfcBeam'], 'IFC4')).toEqual(['IFCROOF', 'IFCBEAM', 'IFCBEAMSTANDARDCASE']);
+  });
+});
+
 describe('IFC_SUBTYPES', () => {
   it('is keyed and valued entirely in uppercase', () => {
     // A PascalCase key would never match, because expandTypes uppercases its

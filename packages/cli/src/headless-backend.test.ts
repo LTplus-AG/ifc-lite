@@ -12,37 +12,37 @@ import {
 
 describe('expandTypes', () => {
   it('expands IfcWall to include subtypes', () => {
-    const result = expandTypes(['IfcWall']);
+    const result = expandTypes(['IfcWall'], 'IFC4');
     expect(result).toContain('IFCWALL');
     expect(result).toContain('IFCWALLSTANDARDCASE');
     expect(result).toContain('IFCWALLELEMENTEDCASE');
   });
 
   it('expands IfcSlab with 3 subtypes', () => {
-    const result = expandTypes(['IfcSlab']);
+    const result = expandTypes(['IfcSlab'], 'IFC4');
     expect(result).toContain('IFCSLAB');
     expect(result).toContain('IFCSLABSTANDARDCASE');
     expect(result).toContain('IFCSLABELEMENTEDCASE');
   });
 
   it('handles types without subtypes', () => {
-    const result = expandTypes(['IfcRoof']);
+    const result = expandTypes(['IfcRoof'], 'IFC4');
     expect(result).toEqual(['IFCROOF']);
   });
 
   it('handles multiple input types', () => {
-    const result = expandTypes(['IfcWall', 'IfcRoof']);
+    const result = expandTypes(['IfcWall', 'IfcRoof'], 'IFC4');
     expect(result).toContain('IFCWALL');
     expect(result).toContain('IFCWALLSTANDARDCASE');
     expect(result).toContain('IFCROOF');
   });
 
   it('handles empty input', () => {
-    expect(expandTypes([])).toEqual([]);
+    expect(expandTypes([], 'IFC4')).toEqual([]);
   });
 
   it('is case-insensitive', () => {
-    const result = expandTypes(['ifcwall']);
+    const result = expandTypes(['ifcwall'], 'IFC4');
     expect(result).toContain('IFCWALL');
     expect(result).toContain('IFCWALLSTANDARDCASE');
   });

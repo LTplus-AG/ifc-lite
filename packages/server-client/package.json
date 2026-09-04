@@ -20,7 +20,7 @@
   },
   "peerDependencies": {
     "apache-arrow": ">=14.0.0",
-    "parquet-wasm": "^0.7.0"
+    "parquet-wasm": "^0.7.2"
   },
   "peerDependenciesMeta": {
     "apache-arrow": {

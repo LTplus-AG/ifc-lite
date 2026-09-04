@@ -34,7 +34,12 @@ import { useViewerStore } from '@/store';
 import { matchesSelector, type ClashSeverity } from '@ifc-lite/clash';
 import { exportPresets, importPresets, type ClashPreset, type SaveResult } from '@/lib/clash/persistence';
 import { ClashRuleDraftEditor, type ClashRuleDraft } from '@/components/viewer/ClashRuleDraftEditor';
-import { activeClashSetFilter, describeClashSetFilter, type ClashSetFilter } from '@/lib/clash/set-filter';
+import {
+  CLASH_SET_FILTER_SELECTOR,
+  activeClashSetFilter,
+  describeClashSetFilter,
+  type ClashSetFilter,
+} from '@/lib/clash/set-filter';
 import { setClashSettingsSaveReporter } from '@/lib/clash/settings-save-notice';
 
 const SEVERITY: Record<ClashSeverity, { label: string; color: string }> = {
@@ -100,12 +105,15 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
 
   const startAdd = () =>
     setDraft({ id: null, name: '', selectorA: '', selectorB: '', severity: 'major' });
+  /** The stand-in is not something to show the user — it reads as an empty box. */
+  const editableSelector = (selector: string) =>
+    selector === CLASH_SET_FILTER_SELECTOR ? '' : selector;
   const startEdit = (p: ClashPreset) =>
     setDraft({
       id: p.id,
       name: p.name,
-      selectorA: p.selectorA,
-      selectorB: p.selectorB,
+      selectorA: editableSelector(p.selectorA),
+      selectorB: editableSelector(p.selectorB),
       severity: p.severity,
       filterA: p.filterA,
       filterB: p.filterB,
@@ -114,14 +122,13 @@ export function ClashSettingsDialog({ trigger }: ClashSettingsDialogProps) {
   const saveDraft = useCallback(() => {
     if (!draft) return;
     // `id` is the draft's own "new vs edit" flag, never a preset field. A side
-    // the user defined with a filter needs no hand-typed selector, so it is
-    // stored as `*` — honest (the filter decides that side) and still valid for
-    // every path that reads selectors.
+    // the user defined with a filter needs no hand-typed selector and gets the
+    // fail-closed stand-in (see CLASH_SET_FILTER_SELECTOR).
     const { id, ...fields } = draft;
     const saved = {
       ...fields,
-      selectorA: fields.selectorA.trim() || '*',
-      selectorB: fields.selectorB.trim() || '*',
+      selectorA: fields.selectorA.trim() || CLASH_SET_FILTER_SELECTOR,
+      selectorB: fields.selectorB.trim() || CLASH_SET_FILTER_SELECTOR,
     };
     const result = id ? updatePreset(id, saved) : createPreset(saved);
     if (result.ok) {

@@ -14,6 +14,7 @@
 import assert from 'node:assert/strict';
 import { describe, expect, it } from 'vitest';
 import { runClash } from './engine-ts/orchestrator.js';
+import { describeEmptyRuleSides } from './analysis.js';
 import { clashMemberKey, clashMemberSet, inClashSet } from './members.js';
 import { fromPositions } from './math/aabb.js';
 import type { ClashKernel, RuleDetection } from './engine-ts/kernel.js';
@@ -124,13 +125,57 @@ describe('runClash: rule membership', () => {
       new EmptyKernel(),
     );
     assert.deepEqual(result.rulesRun, [RULE]);
-    // The coverage counts still say what each side matched.
-    expect(result.ruleCoverage![0]).toEqual({ rule: 'r', matchedA: 1, matchedB: 0 });
+    // The coverage still says what each side matched, and that both sides
+    // were resolved from membership — which is what a caller explaining an
+    // empty side needs once `rulesRun` no longer carries the member lists.
+    expect(result.ruleCoverage![0]).toEqual({
+      rule: 'r',
+      matchedA: 1,
+      matchedB: 0,
+      fromMembersA: true,
+      fromMembersB: true,
+    });
   });
 
   it('leaves a selector-only rule exactly as it was', async () => {
     const coverage = await coverageOf(RULE);
+    expect(coverage).toEqual({ rule: 'r', matchedA: 2, matchedB: 2 });
+  });
+
+  it('honours membersB on a rule with no b selector instead of self-clashing', async () => {
+    // The public API takes membership per side; keying the second side on the
+    // `b` SELECTOR alone would silently drop it and run A against itself.
+    const coverage = await coverageOf({
+      id: 'r',
+      name: 'r',
+      a: 'IfcWall',
+      mode: 'hard',
+      membersB: [clashMemberKey('m', 3)],
+    });
     expect(coverage.matchedA).toBe(2);
-    expect(coverage.matchedB).toBe(2);
+    expect(coverage.matchedB).toBe(1);
+  });
+
+  it('describes an empty side by what actually defined it', async () => {
+    // Naming a selector for a side a filter defined would explain the empty
+    // result with something that never ran — the rule's stored selector for a
+    // filtered side is typically "*".
+    const filtered = await runClash(
+      ELEMENTS,
+      [{ ...RULE, a: '*', membersA: [] }],
+      {},
+      new EmptyKernel(),
+    );
+    expect(describeEmptyRuleSides(filtered.rulesRun[0], filtered.ruleCoverage![0]))
+      .toBe('the filter for set A matched 0 elements');
+
+    const selectorOnly = await runClash(
+      ELEMENTS,
+      [{ ...RULE, a: 'IfcNoSuchThing' }],
+      {},
+      new EmptyKernel(),
+    );
+    expect(describeEmptyRuleSides(selectorOnly.rulesRun[0], selectorOnly.ruleCoverage![0]))
+      .toBe('selector A ("IfcNoSuchThing") matched 0 elements');
   });
 });

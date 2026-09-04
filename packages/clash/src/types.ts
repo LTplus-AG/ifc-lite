@@ -235,6 +235,15 @@ export interface ClashRuleCoverage {
   rule: string;
   matchedA: number;
   matchedB: number | null;
+  /**
+   * Whether each side was resolved from explicit membership (`membersA` /
+   * `membersB`) rather than from its type selector. A caller explaining an
+   * empty side needs it and cannot recover it from `rulesRun`, which
+   * deliberately drops the resolved member lists. Absent on a result recorded
+   * before this existed — which is the same thing as "by selector".
+   */
+  fromMembersA?: boolean;
+  fromMembersB?: boolean;
 }
 
 export interface ClashResult {

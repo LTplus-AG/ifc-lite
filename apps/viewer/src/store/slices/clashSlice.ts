@@ -60,6 +60,7 @@ import {
   CLASH_BOUNDS,
   clampToBounds,
   DEFAULT_CLASH_SETTINGS,
+  storedPresetToPreset,
   type ClashPreset,
   type ClashGlobalSettings,
   type ClashSettingsGroupBy,
@@ -729,16 +730,15 @@ export const createClashSlice: StateCreator<ClashSlice, [], [], ClashSlice> = (s
       if (!name || !selectorA || !selectorB) {
         return { ok: false, reason: 'serialize', message: 'Name and both selectors are required.' };
       }
-      const preset: ClashPreset = {
-        ...input,
-        id: `custom-${crypto.randomUUID()}`,
-        name,
-        description: input.description?.trim() ?? '',
-        selectorA,
-        selectorB,
-        enabled: true,
-        builtin: false,
-      };
+      // Built through the same projection every READ path uses, so a preset
+      // created here and read back serializes to identical bytes —
+      // `presetsStoreIdentically` compares those bytes, key order included.
+      const id = `custom-${crypto.randomUUID()}`;
+      const description = input.description?.trim() ?? '';
+      const preset = storedPresetToPreset(
+        { ...input, id, name, description, selectorA, selectorB, enabled: true, builtin: false },
+        false,
+      );
       const next = [...get().clashPresets, preset];
       const result = savePresets(next);
       if (result.ok) set({ clashPresets: next });

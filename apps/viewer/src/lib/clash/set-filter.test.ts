@@ -19,16 +19,16 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
-import { clashMemberKey, rulesFromPresets, type ClashRule } from '@ifc-lite/clash';
+import { clashMemberKey, matchesSelector, rulesFromPresets, type ClashRule } from '@ifc-lite/clash';
 import { Rule } from '../search/filter-rules.js';
 import {
+  CLASH_SET_FILTER_SELECTOR,
   parseClashSetFilter,
   activeClashSetFilter,
   describeClashSetFilter,
-  resolveClashSetFilter,
-  withResolvedClashSetFilters,
   type ClashSetFilter,
 } from './set-filter.js';
+import { resolveClashSetFilter, withResolvedClashSetFilters } from './set-filter-resolve.js';
 
 const FIXTURE = `ISO-10303-21;
 HEADER;
@@ -227,6 +227,16 @@ describe('parseClashSetFilter (persisted shape)', () => {
   it('defaults an unknown combinator to AND', () => {
     const parsed = parseClashSetFilter({ combinator: 'XOR', rules: [{ kind: 'name', op: 'contains', value: 'a' }] });
     assert.equal(parsed?.combinator, 'AND');
+  });
+});
+
+describe('CLASH_SET_FILTER_SELECTOR', () => {
+  it('matches NOTHING, so a lost filter cannot turn into "everything"', () => {
+    // The whole reason this stand-in exists rather than "*". Asserted against
+    // the engine's own selector matcher, not against the string.
+    for (const tag of ['IfcWall', 'IfcDuctSegment', 'IfcSpace', '']) {
+      assert.equal(matchesSelector(tag, CLASH_SET_FILTER_SELECTOR), false, tag);
+    }
   });
 });
 

@@ -56,7 +56,10 @@ export async function runClash(
       }
 
       const groupA: number[] = [];
-      const groupB: number[] | null = rule.b ? [] : null;
+      // A second side exists when the rule names one — by selector OR by
+      // membership. Keying only on `b` would silently drop a `membersB` the
+      // caller gave without a selector and turn the rule into a self-clash.
+      const groupB: number[] | null = rule.b !== undefined || rule.membersB ? [] : null;
       // Membership when the rule carries one, type selector otherwise — the
       // ONE place a rule's sides are resolved, so both kernels see the same
       // partition and every later stage is unaware there are two ways in.
@@ -65,12 +68,14 @@ export async function runClash(
       for (let i = 0; i < elements.length; i += 1) {
         const el = elements[i];
         if (inClashSet(el, rule.a, membersA)) groupA.push(i);
-        if (groupB && inClashSet(el, rule.b!, membersB)) groupB.push(i);
+        if (groupB && inClashSet(el, rule.b ?? '', membersB)) groupB.push(i);
       }
       ruleCoverage.push({
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
+        ...(membersA ? { fromMembersA: true } : {}),
+        ...(membersB ? { fromMembersB: true } : {}),
       });
 
       const ruleTolerance = rule.tolerance ?? tolerance;

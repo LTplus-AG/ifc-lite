@@ -50,6 +50,7 @@ export {
   summarizeClashes,
   ruleHadNoMatch,
   classifyRuleCoverage,
+  describeEmptyRuleSides,
   type ClashSortBy,
   type RuleCoverageOutcome,
 } from './analysis.js';

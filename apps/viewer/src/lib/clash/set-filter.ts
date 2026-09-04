@@ -7,21 +7,21 @@
  *
  * A clash rule used to describe each of its two sets with one type-name
  * selector (`IfcDuct*|IfcPipe*`), which cannot say "external walls" or
- * "elements whose Pset_Revit_Phase.Phase is Existing". This module lets a
- * clash set be the SAME thing the viewer's advanced filter already is — a list
- * of `FilterRule`s combined with AND/OR — and resolves it with the SAME
- * evaluator (`evaluateFilterRulesFederated`). There is deliberately no second
- * predicate implementation to drift from the first: everything here is
- * plumbing between that evaluator and `ClashRule.membersA` / `membersB`.
+ * "elements whose Pset_Revit_Phase.Phase is Existing". A set may instead be
+ * the SAME thing the viewer's advanced filter already is — a list of
+ * `FilterRule`s combined with AND/OR.
+ *
+ * This half is the DEFINITION: the shape, its persisted form, and how it
+ * reads. `set-filter-resolve.ts` turns one into element membership, and is
+ * deliberately a separate module because it pulls in the search evaluator (and
+ * with it the parser) — `persistence.ts` needs only the parsing here, and is
+ * imported by the store slice on the boot path.
  *
  * The type selector stays on the rule and stays authoritative for any side
  * with NO filter, so every preset saved before this existed runs exactly as it
  * did.
  */
 
-import type { IfcDataStore } from '@ifc-lite/parser';
-import { clashMemberKey, type ClashRule } from '@ifc-lite/clash';
-import { evaluateFilterRulesFederated } from '../search/filter-evaluate.js';
 import { parseFilterRules, type Combinator, type FilterRule } from '../search/filter-rules.js';
 
 /** One side of a clash rule, expressed the way the advanced filter is. */
@@ -78,104 +78,22 @@ export function parseClashSetFilter(raw: unknown): ClashSetFilter | undefined {
   return { combinator: r.combinator === 'OR' ? 'OR' : 'AND', rules };
 }
 
-export interface ResolveClashSetFilterOptions {
-  signal?: AbortSignal;
-  /** Largest set that may resolve; defaults to {@link CLASH_SET_FILTER_LIMIT}. */
-  limit?: number;
-}
-
-/** The subset of a loaded model this module needs. */
-export interface ClashFilterModel {
-  id: string;
-  store: IfcDataStore | null;
-}
-
 /**
- * Resolve one filter to `ClashRule` member keys.
+ * The selector stored for a side whose definition is its FILTER.
  *
- * The evaluator answers in `(modelId, expressId)` pairs — the LOCAL id space
- * of each store — while a `ClashElement.ref` is the FEDERATED id. `toGlobalId`
- * is the viewer's own mapping between them (`useViewerStore.toGlobalId`), the
- * same one `elementsFromStep` is handed, so the two sides agree by
- * construction rather than by both computing an offset.
+ * A rule always stores a type selector (every reader, validator and older app
+ * version expects one), so a filtered side needs a stand-in. It is
+ * "match nothing", not `*`: if the filter is ever lost — cleared in the
+ * editor, unreadable in storage, opened by a build that does not know about
+ * filters — the side then matches NOTHING and the run says so loudly
+ * ("matched 0 elements", and `classifyRuleCoverage` reports `no-match`),
+ * instead of quietly clashing every element in the model against the other
+ * side. `!*` is the selector grammar's own spelling of that (`selectors.ts`).
  */
-export async function resolveClashSetFilter(
-  models: readonly ClashFilterModel[],
-  filter: ClashSetFilter,
-  toGlobalId: (modelId: string, expressId: number) => number,
-  options: ResolveClashSetFilterOptions = {},
-): Promise<string[]> {
-  const limit = options.limit ?? CLASH_SET_FILTER_LIMIT;
-  const matched = await evaluateFilterRulesFederated(models, filter.rules, filter.combinator, {
-    limit,
-    signal: options.signal,
-  });
-  if (matched.length >= limit) {
-    throw new Error(
-      `A clash set filter matched more than ${limit.toLocaleString()} elements. ` +
-        'Narrow it — a run over a truncated set would report fewer clashes than the model has.',
-    );
-  }
-  return matched.map((m) => clashMemberKey(m.modelId, toGlobalId(m.modelId, m.expressId)));
-}
+export const CLASH_SET_FILTER_SELECTOR = '!*';
 
 /** The A/B filters of one clash set definition. */
 export type ClashSetFilters = { filterA?: ClashSetFilter; filterB?: ClashSetFilter };
-
-/**
- * Resolve every filtered side of `rules` into explicit membership, leaving
- * unfiltered sides — and every rule with no filters at all — untouched.
- *
- * `sources` are the preset definitions the rules were built from, matched by
- * id (`rulesFromPresets` gives a rule its preset's id; `set-filter.test.ts`
- * pins that, because a rule that failed to find its filter would quietly run
- * its selector over everything instead).
- *
- * A filter that matches nothing resolves to an EMPTY member list rather than
- * to `undefined`: the engine reads the two apart (`members.ts`), and rounding
- * "matched nothing" up to "no filter" would silently run the rule over every
- * element its selector covers.
- *
- * Identical filters resolve ONCE. One filter is a full federation scan that
- * can parse property sets on demand, and reusing "external walls" as the A
- * side of five rules is the normal way a rule set is written.
- */
-export async function withResolvedClashSetFilters(
-  rules: readonly ClashRule[],
-  sources: readonly (ClashSetFilters & { id: string })[],
-  models: readonly ClashFilterModel[],
-  toGlobalId: (modelId: string, expressId: number) => number,
-  options: ResolveClashSetFilterOptions = {},
-): Promise<ClashRule[]> {
-  const byId = new Map(sources.map((s) => [s.id, s]));
-  const resolved = new Map<string, Promise<string[]>>();
-  const membersOf = (filter: ClashSetFilter): Promise<string[]> => {
-    const key = JSON.stringify(filter);
-    let pending = resolved.get(key);
-    if (!pending) {
-      pending = resolveClashSetFilter(models, filter, toGlobalId, options);
-      resolved.set(key, pending);
-    }
-    return pending;
-  };
-
-  const out: ClashRule[] = [];
-  for (const rule of rules) {
-    const source = byId.get(rule.id);
-    const a = activeClashSetFilter(source?.filterA);
-    const b = activeClashSetFilter(source?.filterB);
-    if (!a && !b) {
-      out.push(rule);
-      continue;
-    }
-    out.push({
-      ...rule,
-      ...(a ? { membersA: await membersOf(a) } : {}),
-      ...(b ? { membersB: await membersOf(b) } : {}),
-    });
-  }
-  return out;
-}
 
 /**
  * Read both persisted side filters off a stored preset, omitting whichever is

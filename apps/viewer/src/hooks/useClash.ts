@@ -32,7 +32,7 @@ import {
 } from '@ifc-lite/clash';
 import { elementsFromStep } from '@ifc-lite/clash/step';
 import { createBCFFromClashResult } from '@ifc-lite/clash/bcf';
-import { contactClusters, type SharedFaceCluster, type Vec3 } from '@ifc-lite/clash/contact';
+import { contactClusters } from '@ifc-lite/clash/contact';
 import { writeBCF } from '@ifc-lite/bcf';
 import { getGlobalRenderer } from '@/hooks/useBCF';
 import { withInstancedMeshes } from '@/utils/instancedExport';
@@ -44,8 +44,9 @@ import {
   type ClashExclusionRule,
 } from '@/lib/clash/exclusions';
 import { clashFramingBounds } from '@/lib/clash/clash-framing';
+import { contactLineList } from '@/lib/clash/contact-lines';
 import { filterResultBySeverity } from '@/lib/clash/severity-filter';
-import { withResolvedClashSetFilters } from '@/lib/clash/set-filter';
+import { withResolvedClashSetFilters } from '@/lib/clash/set-filter-resolve';
 import { computeClashIntersectionSolid } from '@/lib/clash/intersection-solid';
 import { restoreOverridesForGhosting } from '@/lib/clash/ghost-color-overrides';
 import { releaseOwnedClashVisibility } from '@/lib/clash/visibility-ownership';
@@ -127,39 +128,6 @@ export const CLASH_REF_UNRESOLVED_MESSAGE =
 interface SelectionRef {
   modelId: string;
   expressId: number;
-}
-
-/**
- * Flatten contact clusters into a world-frame line-list (x,y,z per endpoint, two
- * per segment) for the focused-clash overlay. Prefer the shared-FACE polygon
- * outlines when any surface contact exists (flush/coincident members); otherwise
- * the intersection LINES (angled crossings); otherwise small crosses at POINT
- * contacts. This is the real contact interface, not an AABB box (#1402).
- */
-function contactLineList(clusters: readonly SharedFaceCluster[]): number[] {
-  const surfaces = clusters.filter((c) => c.kind === 'surface' && c.boundary.length >= 3);
-  const lines = clusters.filter((c) => c.kind === 'line' && c.boundary.length >= 2);
-  const points = clusters.filter((c) => c.kind === 'point');
-  const out: number[] = [];
-  const seg = (p: Vec3, q: Vec3) => out.push(p[0], p[1], p[2], q[0], q[1], q[2]);
-  // Shared-face polygon outlines (the contact patches) and intersection lines
-  // (penetration boundary) together describe the contact; render both so a thin
-  // patch still reads. Points only matter when there is no surface or line.
-  for (const c of surfaces) {
-    const b = c.boundary;
-    for (let i = 0; i < b.length; i += 1) seg(b[i], b[(i + 1) % b.length]);
-  }
-  for (const c of lines) seg(c.boundary[0], c.boundary[1]);
-  if (surfaces.length === 0 && lines.length === 0) {
-    const s = 0.05;
-    for (const c of points) {
-      const [x, y, z] = c.centroid;
-      seg([x - s, y, z], [x + s, y, z]);
-      seg([x, y - s, z], [x, y + s, z]);
-      seg([x, y, z - s], [x, y, z + s]);
-    }
-  }
-  return out;
 }
 
 /**
@@ -565,19 +533,30 @@ export function useClash() {
       const state = useViewerStore.getState();
       const models = [...state.models].map(([id, m]) => ({ id, store: m.ifcDataStore }));
       const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
+      // Resolving the filters is a federation scan that happens BEFORE `run()`
+      // takes over the epoch and the running/error state. Take an epoch here
+      // anyway: without it a second, filterless run started during the scan
+      // would enter `run()` first and then be overwritten by this older one
+      // (#2802's ordering, which only holds while every start bumps). The
+      // running flag is set for the same window, so the panel says it is
+      // working instead of looking idle for the length of the scan.
+      const myEpoch = ++runEpochRef.current;
+      state.setClashError(null);
+      state.setClashRunning(true);
       let resolved: ClashRule[];
       try {
-        state.setClashError(null);
         resolved = await withResolvedClashSetFilters(rules, presets, models, state.toGlobalId);
       } catch (err) {
-        // Resolution happens BEFORE `run()` owns the running/error state, so a
-        // refused filter reports itself here or nothing on screen changes.
+        // A refused filter reports itself here or nothing on screen changes.
+        if (!stillWanted(myEpoch)) return;
         state.setClashError(err instanceof Error ? err.message : String(err));
+        state.setClashRunning(false);
         return;
       }
+      if (!stillWanted(myEpoch)) return;
       return run(resolved);
     },
-    [run, mode, clearance, reportTouch],
+    [run, mode, clearance, reportTouch, stillWanted],
   );
 
   /**

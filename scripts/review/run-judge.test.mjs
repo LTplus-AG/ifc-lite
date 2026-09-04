@@ -97,6 +97,17 @@ test('the judge removes what it rejects and keeps the rest', () => {
   assert.equal(written.counts.dropped, 1);
 });
 
+test('#3837: the optional judge cannot suppress a mechanically verified sibling finding', () => {
+  const doc = docOf(1);
+  doc.findings[0].sibling = { path: 'src/twin.ts', line: 9, quote: 'return raw;' };
+  const { written } = run(doc, spawnSaying(verdicts([
+    { index: 0, keep: false, why: 'the sibling means this is already owned' },
+  ])));
+  assert.equal(written.findings.length, 1);
+  assert.equal(written.counts.dropped, 0);
+  assert.deepEqual(written.findings[0].sibling, doc.findings[0].sibling);
+});
+
 test('a judge that emptied the list leaves the verdict alone', () => {
   // It used to rewrite `findings` -> `clean` here. Nothing reads that field:
   // post-review.mjs computes the marker's verdict from what it reads back off the

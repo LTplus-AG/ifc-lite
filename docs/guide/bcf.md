@@ -81,7 +81,7 @@ import { createViewpoint } from '@ifc-lite/bcf';
 
 // Create a viewpoint from current viewer state
 const viewpoint = createViewpoint({
-  camera: currentCameraState,   // { position, target, up, fov, isOrthographic?, orthoScale? }
+  camera: currentCameraState,   // { position, target, up, fov, aspectRatio?, isOrthographic?, orthoScale? }
   selectedGuids: selectedGuids, // IFC GlobalIds of selected entities
   hiddenGuids: hiddenGuids,     // IFC GlobalIds of hidden entities
   visibleGuids: visibleGuids,   // IFC GlobalIds for isolation mode (optional)
@@ -89,6 +89,17 @@ const viewpoint = createViewpoint({
   snapshot: base64Image,        // Screenshot as base64 (optional)
 });
 ```
+
+`aspectRatio` is the viewport's width divided by its height, and it is
+**required for BCF 3.0**. `v3_0/visinfo.xsd` makes `<AspectRatio>` a mandatory
+child of both camera types, and `@ifc-lite/bcf` will not invent one, so
+`writeBCF` throws for the whole archive on the first camera that lacks it. It
+must be finite and greater than zero. BCF 2.1 has no such element, so leave it
+unset when writing 2.1 rather than assert a viewport nobody had.
+
+Note that a project's version is not always chosen in your own code:
+`readBCF` sets `project.version` from the imported `bcf.version`, so importing
+another tool's 3.0 archive and adding a viewpoint lands on the 3.0 rule.
 
 ### Restoring Viewpoints
 

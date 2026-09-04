@@ -6,11 +6,10 @@
 //! which mesh row draws which block of vertex/index rows.
 //!
 //! Split out of `parquet.rs`, which keeps the wire framing and the writers.
-//! The seam is the plan: everything above it decides what to emit, everything
-//! below it packs columns. `-parquet-v5` was the case where that decision is
-//! the identity (row `i` owns block `i`); `-parquet-v6` (issue #3888) adds the
-//! case where several rows share one block and a per-row rotation places each
-//! of them.
+//! The seam is the plan: above it decides what to emit, below it packs
+//! columns. `-parquet-v5` is the case where that decision is the identity (row
+//! `i` owns block `i`); `-parquet-v6` (#3888) adds the case where several rows
+//! share one block and a per-row rotation places each of them.
 
 use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
 use crate::services::parquet::ParquetError;
@@ -41,11 +40,10 @@ pub(super) struct PlannedRow {
 
 /// Which shapes get their vertices written, and how each mesh row reaches one.
 ///
-/// `Identity` carries NO data on purpose. Its plan is a function of the mesh
-/// index alone (row `i` owns block `i`, placed by its own origin with no
-/// rotation), so materializing it would allocate ~80 bytes per mesh — on every
-/// streamed batch, for a writer that never shares anything — to store `i` and
-/// nine repeated constants.
+/// `Identity` carries NO data on purpose: its plan is a function of the mesh
+/// index alone, so materializing it would allocate ~80 bytes per mesh — on
+/// every streamed batch, for a writer that never shares anything — to store
+/// `i` and nine repeated constants.
 pub(super) enum ShapePlan {
     /// The `-parquet-v5` layout: every mesh writes its own geometry. What the
     /// streaming cache writer and the per-batch stream blobs use — sharing
@@ -111,8 +109,7 @@ impl ShapePlan {
         Self::Shared { shapes, rows }
     }
 
-    /// The meshes whose geometry is emitted, in emission order. One entry per
-    /// input mesh under `Identity`; one per distinct shape under `Shared`.
+    /// The meshes whose geometry is emitted, in emission order.
     fn shape_meshes<'a>(&self, meshes: &'a [MeshData]) -> Vec<&'a MeshData> {
         match self {
             Self::Identity => meshes.iter().collect(),
@@ -120,11 +117,9 @@ impl ShapePlan {
         }
     }
 
-    /// Mesh row `i`'s slot in [`Self::shape_meshes`] and the placement that
-    /// maps that slot's geometry onto this occurrence.
-    ///
-    /// Computed rather than stored under `Identity`: the answer there is `i`,
-    /// the mesh's own swapped origin, and the identity rotation.
+    /// Mesh row `i`'s slot in [`Self::shape_meshes`] and the placement mapping
+    /// that slot's geometry onto this occurrence. Computed, not stored, under
+    /// `Identity`.
     fn row(&self, meshes: &[MeshData], i: usize) -> (usize, [f64; 3], [f32; 9]) {
         match self {
             Self::Identity => (i, zup_to_yup_f64(meshes[i].origin), IDENTITY_ROTATION),
@@ -132,6 +127,14 @@ impl ShapePlan {
                 let row = &rows[i];
                 (row.shape_slot, row.origin_yup, row.rotation)
             }
+        }
+    }
+
+    /// The mesh count this plan was built for; `None` fits any slice.
+    fn row_count(&self) -> Option<usize> {
+        match self {
+            Self::Identity => None,
+            Self::Shared { rows, .. } => Some(rows.len()),
         }
     }
 
@@ -157,6 +160,13 @@ pub(super) fn build_mesh_tables(
     base_vertex_offset: u32,
     base_index_offset: u32,
 ) -> Result<(RecordBatch, RecordBatch, RecordBatch), ParquetError> {
+    // A `Shared` plan indexes the exact slice it was planned from, and nothing
+    // in the signature ties the two together: a plan applied to a different
+    // slice reads as plausible geometry, not as a failure.
+    debug_assert!(
+        plan.row_count().is_none_or(|n| n == meshes.len()),
+        "shape plan was built from a different mesh slice"
+    );
     let shape_meshes = plan.shape_meshes(meshes);
     let total_vertices: usize = shape_meshes.iter().map(|m| m.positions.len() / 3).sum();
     let total_triangles: usize = shape_meshes.iter().map(|m| m.indices.len() / 3).sum();

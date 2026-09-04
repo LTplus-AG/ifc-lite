@@ -115,7 +115,7 @@ export function applyInstanceRotation(
   const r = rot.map((col) => col[index]);
   if (!r.every(Number.isFinite)) {
     throw new Error(
-      `Malformed optimized Parquet geometry: non-finite rotation value for instance ${index} (rot=[${r.join(', ')}])`
+      `Malformed Parquet geometry: non-finite rotation value for row ${index} (rot=[${r.join(', ')}])`
     );
   }
   rotateTriplets(positions, r);

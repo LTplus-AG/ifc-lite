@@ -73,12 +73,26 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
 /// `v6`, not `v5`: #3888 gave the flat mesh table rotation-aware SHAPE SHARING
 /// -- several rows point at one block of vertices, placed by `origin + R * p`,
 /// with `rot0..rot8` added to carry the R (see `mesh_schema()` in
-/// `services/parquet_schema.rs` for the layout). A v5 blob decodes cleanly
-/// under a v6 decoder, which is exactly why the key has to move: the two
-/// layouts are indistinguishable on the wire, so nothing else can stop a
-/// pre-#3888 client being handed a v6 blob and drawing every occurrence of a
-/// shared shape at the template's coordinates. `v5`, not `v4`, was #3215
-/// adding the two source-id columns, where absence read exactly like success.
+/// `services/parquet_schema.rs` for the layout).
+///
+/// What the bump BUYS, stated precisely, because the obvious answer is wrong:
+/// it retires the v5 entries so already-cached models are re-serialised into
+/// the smaller layout. Without it every model parsed before the deploy would
+/// replay its old full-size blob forever and never see the change at all.
+///
+/// What it does NOT buy is protection for an old CLIENT. A cache key
+/// namespaces server-side entries; it has no bearing on which client is
+/// asking. A client pinned to a `@ifc-lite/server-client` that predates #3888
+/// posts to this route, gets a freshly generated v6 blob, ignores
+/// `rot0..rot8` because it does not know they exist, and stacks every
+/// occurrence of a shared shape at the template's placement -- and no cache
+/// key can stop that, because the blob was never in the cache. The flat wire
+/// carries no version byte to fail loud on either (unlike `/optimized`, see
+/// `optimized_wire_version`). That exposure is real and is carried by the
+/// `@ifc-lite/server-client` version bump, not by this string.
+///
+/// `v5`, not `v4`, was #3215 adding the two source-id columns, where absence
+/// read exactly like success.
 ///
 /// ONE key covers the non-streaming and the streaming route. Only the
 /// non-streaming one SHARES shapes -- the streaming writer serializes one

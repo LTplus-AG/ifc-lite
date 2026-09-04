@@ -19,9 +19,17 @@ use rustc_hash::FxHashMap;
 /// Maximum reconstructed-vertex residual (metres) a rotation-aware instance
 /// placement may carry and still be trusted (issue #3575). Compared against
 /// the ORIGINAL f32/f64 positions, before quantization, so it is independent
-/// of `VERTEX_MULTIPLIER`; 0.1mm is the quantization grain itself (see
-/// `quantize_position` in `parquet_optimized.rs`), so anything under it is
-/// already invisible on the wire. A group whose residual exceeds this falls
+/// of `VERTEX_MULTIPLIER`.
+///
+/// On `/optimized` a residual under this bound is invisible on the wire, since
+/// 0.1mm is that route's quantization grain itself (`quantize_position` in
+/// `parquet_optimized.rs`). That argument does NOT carry to the flat route
+/// (#3888), which ships unquantized `Float32` metres and has no grain to hide
+/// behind: there, a residual just under tolerance is a real displacement of a
+/// repeated element, up to 0.1mm per vertex against the bit-exact geometry the
+/// route used to emit. Kept at one bound for both because 0.1mm is below any
+/// BIM tolerance the downstream consumers work to, but it is a bound, not an
+/// invisibility. A group whose residual exceeds this falls
 /// back to the pre-#3575 content-hash dedup (each occurrence keeps its own
 /// baked mesh) instead of shipping a placement nobody verified.
 const RECOMPOSITION_TOLERANCE_M: f64 = 1e-4;

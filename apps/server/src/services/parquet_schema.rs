@@ -37,9 +37,14 @@ use std::sync::Arc;
 /// `instance_schema()`.
 ///
 /// Two consequences for a decoder, both load-bearing:
-/// - `origin_x/y/z` was zero on every row of every v5 flat blob (the placement
-///   was baked into the vertices). On v6 it carries real values wherever a
-///   shape is shared, so reading it is MANDATORY, not optional.
+/// - `origin_x/y/z` was zero on every row of a v5 flat blob from a DEFAULT
+///   native server (the placement was baked into the vertices), so a decoder
+///   that ignored it was accidentally correct. Only on a default one:
+///   `local_frame_enabled` in `rust/geometry/src/router/transforms/mod.rs` is
+///   opt-in on native via `IFC_LITE_LOCAL_FRAME`, and a deployment that sets
+///   it has emitted non-zero origins here since #1841. On v6 the column
+///   carries real values wherever a shape is shared, on every deployment, so
+///   reading it is MANDATORY rather than merely recommended.
 /// - `rot0..rot8` are absent on a v5 blob. Absent means identity, which is
 ///   exactly v5's behaviour; a v6 writer always emits them, identity included.
 pub(super) fn mesh_schema() -> Arc<Schema> {

@@ -111,7 +111,11 @@ if (argv[1] === 'graphql') {
     isResolved: resolved.has(c.id),
     // fullDatabaseId is a GraphQL BigInt and comes back as a STRING. A fake that
     // returned a number would let a Number/String mix-up pass here and fail live.
-    comments: { pageInfo: { hasNextPage: false }, nodes: [{ fullDatabaseId: String(c.id) }] },
+    // \`threadCommentsTruncated\` models a RESOLVED thread with more than one
+    // page of comments. The outer walk still finishes, so \`complete\` is true
+    // while part of the answer was never read -- the shape the caller has to
+    // disclose.
+    comments: { pageInfo: { hasNextPage: !!st.threadCommentsTruncated }, nodes: [{ fullDatabaseId: String(c.id) }] },
   }));
   save();
   process.stdout.write(JSON.stringify({
@@ -1710,7 +1714,11 @@ test('#3775 THE WIRING: the marker path is reachable, and the decision is a SCRI
   const validate = wf.split('- name: Validate the findings')[1].split('- name:')[0];
   assert.match(validate, /scripts\/review\/lib\/retry-outcome\.mjs/, 'the step must call the decision script');
 
-  const ntr = wf.split('- name: Say so when there was nothing to review')[1];
+  // BOUNDED AT THE NEXT STEP, like the two slices around it. Running to the end
+  // of the file let ANY later step satisfy the `--all-findings-dropped` match,
+  // so removing the flag from THIS step would keep the test green. Raised by
+  // CodeRabbit on #3828.
+  const ntr = wf.split('- name: Say so when there was nothing to review')[1].split('\n      - name:')[0];
   assert.match(ntr.split('run:')[0], /steps\.validate\.outputs\.uncovered == 'true'/);
   assert.match(ntr, /--all-findings-dropped/, 'the marker must not claim the model never ran, nor cover the head');
 
@@ -1753,4 +1761,23 @@ test('#3775: re-running the dropped path over its own marker is a no-op, not a r
   const second = runNothingToReview({ state: first.state, args: ['--all-findings-dropped', '--reason', 'again'], ntr: false });
   assert.equal(second.code, 0, second.out);
   assert.deepEqual(second.state.issueComments, JSON.parse(before));
+});
+
+test('#3768: a resolved thread longer than one comment page is disclosed too', () => {
+  // `resolvedCommentIds` returns `complete: true` once the OUTER thread walk
+  // ends, even when a resolved thread had comment pages it never read. Those
+  // ids are absent, so `standing` fails closed and keeps counting them -- safe,
+  // and silent. `resolutionIncomplete = !complete` alone missed exactly this
+  // case, so the summary asserted a count with no note that it can be too high.
+  // Raised by CodeRabbit on #3828.
+  const first = runPoster({ findings: [finding(1)] });
+  // The nested-page warning only fires on a RESOLVED thread, so the thread has
+  // to be one. The finding is re-reported, which keeps it standing -- the count
+  // is right, and the point is that the note appears beside it anyway.
+  first.state.resolvedCommentIds = first.state.reviewComments.map((c) => c.id);
+  first.state.threadCommentsTruncated = true;
+  writeFileSync(first.statePath, JSON.stringify(first.state));
+  const second = rerunPoster(first.statePath, [finding(1)]);
+  assert.equal(second.code, 0, second.out);
+  assert.match(allBodies(second.state), /resolution of the review threads could not be read in full/i);
 });

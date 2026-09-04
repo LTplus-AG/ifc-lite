@@ -355,7 +355,6 @@ export function normaliseComments(payload) {
  *   are nonetheless `ok`: `nothing-to-review`, because nothing read the diff at
  *   all, and any marker carrying `omitted>0` (#3679), because nothing read the
  *   omitted files.
-
  */
 export function evaluate({ comments, cfg, headSha }) {
   const lines = [];
@@ -408,16 +407,17 @@ export function evaluate({ comments, cfg, headSha }) {
     return { ok: false, full: false, verdict: sawUnparseable ? 'MARKER_MALFORMED' : 'NOT_POSTED', lines };
   }
 
-  const match = markers.find((m) => m.sha === headSha);
+  // THE NEWEST MARKER FOR THIS HEAD, NOT THE FIRST -- fetch order, the sense STALE_REVIEW below
+  // already uses. Reading the first let a `dropped` marker outrank the re-run that cleared it (#3828).
+  const match = markers.findLast((m) => m.sha === headSha);
   if (!match) {
     lines.push(
       `❌ STALE_REVIEW: the most recent marker this gate read names ${markers[markers.length - 1].sha.slice(0, 9)}, ` +
         `but this PR's head is ${headSha.slice(0, 9)}.`,
       '   A review of an earlier head has not reviewed this diff. A comment\'s `commit_id` cannot',
       '   settle this either: GitHub relocates that field onto a later head (#3729), with or without',
-      '   a force-push, so only the marker the',
-      '   reviewer wrote at review time says which commit it read. ("Most recent" is fetch order, not',
-      '   timestamp: this gate reads no timestamp at all, so it does not claim one.)',
+      '   a force-push, so only the marker the reviewer wrote at review time says which commit it',
+      '   read. ("Most recent" is fetch order, not timestamp: this gate reads none, so it claims none.)',
       '   REMEDY: re-run the review job against the current head.',
     );
     return { ok: false, full: false, verdict: 'STALE_REVIEW', lines };

@@ -330,7 +330,15 @@ export function postFindingsAndConfirm({ repo, pr, sha, author, findings }) {
   let resolutionIncomplete = false;
   if (confirmed > 0) {
     const { ids, warnings, complete } = resolvedCommentIds(repo, pr);
-    resolutionIncomplete = !complete;
+    // A WARNING IS A SHORTFALL, NOT ONLY AN UNFINISHED WALK. `complete` answers
+    // only "did the OUTER thread pagination finish". A RESOLVED thread with more
+    // than one page of comments leaves those ids out of the set while the outer
+    // walk ends normally -- `complete: true` over an answer that was partly
+    // unread. Those findings then stay standing (fail-closed, so the count can
+    // be too high) with no note saying why. Every shortfall this module reports
+    // is one, so the disclosure follows the warnings, not just the cursor.
+    // Raised by CodeRabbit on #3828.
+    resolutionIncomplete = !complete || warnings.length > 0;
     for (const w of warnings) console.log(`WARN: ${w} Findings it could not account for still stand.`);
     const reReported = new Set(findings.map((f) => fingerprint(f.path, f.line, f.body)));
     // STRING COMPARISON on both sides. The GraphQL id is a `BigInt` serialised

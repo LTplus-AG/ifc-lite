@@ -21,11 +21,23 @@
  */
 
 /**
- * The marker the reviewer writes at the END of a successful post. Anchored at
- * both ends and tolerant of surrounding whitespace only -- a loose pattern here
- * would let a contributor hand-write a passing marker into a PR comment.
+ * The marker the reviewer writes at the END of a successful post, and the `\s*$`
+ * says END rather than merely describing it.
+ *
+ * ANCHORED AT THE TAIL ONLY, and the missing head anchor is deliberate: every
+ * real summary carries prose above its marker, so `^` would reject all of them.
+ * The tail anchor is what closes the forgery channel the writers already defang
+ * from the other side. The summary body renders PR-chosen text BEFORE the
+ * marker -- `omitted` paths and the `path:line - title` index lines -- under our
+ * own identity, in a comment the gate trusts by author. Unanchored, `exec`
+ * returned the FIRST match, so a marker smuggled into one of those lines
+ * outranked the real one written at the end. scripts/review/lib/
+ * finding-sanitizers.mjs breaks the token before it can get there; this is the
+ * second lock on the same door. Text after the marker now fails to parse, which
+ * the gate reports as MARKER_MALFORMED -- loud, and pointed at the writer that
+ * would have to have drifted for it to happen. Raised by CodeRabbit on #3828.
  */
-export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review|dropped)\s+count=(\d+)(?:\s+omitted=(\d+))?\s*-->/;
+export const MARKER_RE = /<!--\s*ifc-lite-review\s+sha=([0-9a-f]{40})\s+verdict=(clean|findings|nothing-to-review|dropped)\s+count=(\d+)(?:\s+omitted=(\d+))?\s*-->\s*$/;
 
 /** The shape a malformed-marker diagnosis should tell the reader to produce. */
 export const MARKER_SHAPE =

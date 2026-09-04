@@ -18,13 +18,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { IFC_SUBTYPES, expandTypes, QUERY_REL_TYPE_MAP } from '../src/query-backend-maps.js';
-import {
-  RelationshipType,
-  ENTITIES_IFC2X3,
-  ENTITIES_IFC4X3,
-  ENTITY_NAME_ALIASES,
-  CROSS_SCHEMA_RENAMES,
-} from '@ifc-lite/data';
+import { RelationshipType, ENTITIES_IFC2X3, ENTITIES_IFC4X3 } from '@ifc-lite/data';
+import { ENTITY_NAME_ALIASES } from '../src/ifc-schema.js';
 import { SCHEMA_REGISTRY } from '../src/generated/schema-registry.js';
 
 describe('expandTypes', () => {
@@ -183,6 +178,7 @@ describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () 
   }
 
   const BASES = ['IFCWALL', 'IFCSLAB', 'IFCFURNISHINGELEMENT', 'IFCBUILDINGELEMENT', 'IFCBUILTELEMENT'];
+  const RENAME_PAIR = ['IFCBUILDINGELEMENT', 'IFCBUILTELEMENT'];
 
   it.each([
     ['IFC2X3', ENTITIES_IFC2X3],
@@ -215,12 +211,13 @@ describe('expandTypes agrees with the bundled IFC2X3 and IFC4X3 tables too', () 
     for (const [leaf, supertype] of Object.entries(ENTITY_NAME_ALIASES)) {
       expect(expandTypes([supertype]), `${supertype} -> ${leaf}`).toContain(leaf.toUpperCase());
     }
-    expect(CROSS_SCHEMA_RENAMES.length).toBeGreaterThan(0);
-    for (const [older, newer] of CROSS_SCHEMA_RENAMES) {
-      const a = expandTypes([older]).filter((n) => n !== older && n !== newer);
-      const b = expandTypes([newer]).filter((n) => n !== older && n !== newer);
-      expect(a.sort(), `${older} vs ${newer}`).toEqual(b.sort());
-    }
+    // The one rename pair, spelled out rather than read off the resolver's own
+    // table: deriving the expectation from the thing under test would pass on
+    // an empty table.
+    const a = expandTypes(['IfcBuildingElement']).filter((n) => !RENAME_PAIR.includes(n));
+    const b = expandTypes(['IfcBuiltElement']).filter((n) => !RENAME_PAIR.includes(n));
+    expect(a.sort()).toEqual(b.sort());
+    expect(a.length).toBeGreaterThan(0);
   });
 });
 

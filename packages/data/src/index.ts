@@ -103,7 +103,6 @@ export {
   RESERVED_PSET_PREFIXES,
 } from './ifc-schema/index.js';
 export { expandTypeNamesToDescendants } from './ifc-schema/descendants.js';
-export { ENTITY_NAME_ALIASES, CROSS_SCHEMA_RENAMES } from './ifc-schema/entity-aliases.js';
 
 // Raw bundled entity tables — exposed so synchronous consumers (parser
 // categorizer, geometry routers) can walk the inheritance chain across

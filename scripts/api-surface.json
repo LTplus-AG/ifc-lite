@@ -997,12 +997,10 @@
   ],
   "@ifc-lite/data": [
     "BUILDING_LIKE_SPATIAL_TYPE_ENUMS: const",
-    "CROSS_SCHEMA_RENAMES: const",
     "DecompositionRelationships: interface",
     "ENTITIES_IFC2X3: const",
     "ENTITIES_IFC4: const",
     "ENTITIES_IFC4X3: const",
-    "ENTITY_NAME_ALIASES: const",
     "Edge: interface",
     "EntityFlags: enum",
     "EntityRef: interface",

@@ -19,6 +19,12 @@
  *   other's subtree, or a file's `FILE_SCHEMA` header decides whether a
  *   caller's own spelling works.
  *
+ * This is the descendant-direction copy. `packages/parser/src/ifc-schema.ts`
+ * holds the ancestor-direction one and cannot be imported here, because the
+ * dependency runs parser -> data. `query-backend-maps.test.ts` pins every row
+ * of the parser copy against this one's observable behaviour, which is what
+ * keeps the two from drifting.
+ *
  * `rust/core/src/legacy_entities.rs` is the third home for this knowledge and
  * carries both relations mixed together, because the Rust side only ever needs
  * "what modern type do I treat this record as". Its rows that name a leaf

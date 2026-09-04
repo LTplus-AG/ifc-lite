@@ -440,7 +440,7 @@ fn subtract_many_disjoint_openings_matches_sequential() {
     );
 }
 
-/// Issue #3353, the N-ary half — a KNOWN-OPEN defect, pinned and `#[ignore]`d.
+/// Issue #3353, the N-ary half.
 ///
 /// `union_many` reaches the same broadphase, `near_coplanar` guard and
 /// classifier as the binary union, so the per-axis snap that leaves two flush
@@ -448,25 +448,37 @@ fn subtract_many_disjoint_openings_matches_sequential() {
 /// PRIMARY union in the pipeline (`processors/boolean` builds the cutter union
 /// with it, `coaxial_union` behind that), not a side path.
 ///
-/// # Why the binary fix does not simply extend here
+/// # Why the binary fix did not simply extend here, and what was actually wrong
 ///
 /// Applying `promote_operands_mutually` in `union_many` DOES help this family:
 /// a three-box near-coplanar sweep (49 corner placements x 3 snap offsets)
 /// tears 105 of 147 without it and 36 of 147 with it, and this fixture goes
 /// from 20 unmatched directed edges to 0.
 ///
-/// It also breaks `tests/issue_960_segmented_roof_clip.rs`. The weld's gate is
-/// PLANE-level, not footprint-level, which is sound for two operands and scales
-/// badly with more: on #960's segmented-roof cutter union it moved 624 vertices
-/// across 11 operands, perturbing seams the analytic prisms had already built
-/// consistently, and wall #4148 came back 9850 mm tall against an expected
-/// ~8984 mm — the sequential fallback's full-height seam sliver, the exact
-/// defect #960 removed.
-///
-/// So the N-ary half is not a matter of calling the same function in one more
-/// place. It needs the many-operand plane-gate interaction understood first,
-/// which is its own change with its own evidence. Do not un-ignore this without
-/// `issue_960_segmented_roof_clip` staying green and a clean census.
+/// Naively applying it also broke `tests/issue_960_segmented_roof_clip.rs`:
+/// wall #4148 came back 9850 mm tall against an expected ~8984 mm — the
+/// sequential fallback's full-height seam sliver, the exact defect #960
+/// removed. The mechanism (confirmed by instrumenting a debug build against
+/// the #960 fixture, not inferred): the roof-segment cutter prisms are
+/// authored analytically and already share BIT-IDENTICAL vertices at their
+/// true adjacency seams — no reconciliation needed there. But
+/// `promote_cutter_verts_onto_host_faces`'s per-vertex plane search
+/// deliberately EXCLUDES a vertex's own exact-match plane from candidacy
+/// (`d == 0.0 { continue }`, load-bearing for the tunnel-wall jamb-corner
+/// case elsewhere in this module) and then searches every OTHER host face
+/// within band for a nearer one. With `host` pooling many roof segments that
+/// share the same pitch (hence near-parallel planes), that search finds a
+/// spurious near-match on an unrelated, non-adjacent operand's plane and
+/// nudges the vertex a few µm off its true neighbour — measured on the #960
+/// fixture's four `union_many` calls: the count of bit-identical vertex pairs
+/// shared between operand pairs drops from (148, 4, 12, 248) pre-weld to
+/// (88, 4, 5, 159) post-weld. The weld was actively DESTROYING pre-existing
+/// exact seams, not merely reconciling noisy ones. The fix
+/// (`promote_cutter_verts_onto_host_faces` in `plane_weld.rs`) skips any
+/// cutter vertex that is already bit-identical to some host vertex — safe
+/// everywhere, since a genuinely-imprecise cutter vertex (the tunnel-wall
+/// case this guard was designed around) is by construction never in that
+/// set.
 ///
 /// These live in-crate rather than beside
 /// `tests/issue_3353_near_coplanar_rotated_overlap.rs` because the production
@@ -569,9 +581,6 @@ mod issue_3353_nary_near_coplanar {
     /// reached `union_many`, closed after. `dz = 0` is the control — exactly
     /// flush was always clean, which is what names the near-coplanar regime.
     #[test]
-    #[ignore = "known-open #3353 N-ary half: union_many has no near-coplanar weld, \
-                because the two-operand weld regresses issue_960_segmented_roof_clip \
-                (see the module doc). Verified to fail at 20 unmatched edges."]
     fn a_three_operand_near_coplanar_union_stays_closed() {
         for dz in [SG, 0.0] {
             let [a, b, c] = three_boxes(dz);

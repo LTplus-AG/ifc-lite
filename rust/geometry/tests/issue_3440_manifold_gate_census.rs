@@ -88,6 +88,7 @@ fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 
 #[derive(Default)]
 struct Tally {
+    models_with_voids: usize,
     hosts_swept: usize,
     hosts_rejected: usize,
     rejections_by_op: FxHashMap<&'static str, usize>,
@@ -125,6 +126,7 @@ fn manifold_gate_census_over_the_fixture_corpus() {
         if voids.is_empty() {
             continue;
         }
+        t.models_with_voids += 1;
         let ei = build_entity_index(&content);
         for &host_id in voids.keys() {
             let mut decoder = EntityDecoder::with_index(&content, ei.clone());
@@ -204,6 +206,11 @@ fn manifold_gate_census_over_the_fixture_corpus() {
         t.hosts_rejected
     );
     println!(
+        "  {} of {} fixtures carry voids",
+        t.models_with_voids,
+        models.len()
+    );
+    println!(
         "  by defect class: {} rejection(s) cite a >2-use edge ({} edges), \
          {} cite a same-direction pair ({} edges)",
         t.rejections_with_over_used,
@@ -228,10 +235,56 @@ fn manifold_gate_census_over_the_fixture_corpus() {
         println!("  e.g. {ex}");
     }
 
+    // The corpus this was measured against: `tests/models/manifest.json` at
+    // blob 5f99633144 (last changed by bf3349d9f, 2026-08-20), fetched with
+    // `node scripts/fixtures/fetch-fixtures.mjs`. Pin the numbers, do not just
+    // print them - a census that only prints is a number nobody re-reads, and
+    // the whole argument for keeping this gate opt-in rests on the 110.
+    //
+    // Every figure below is EXACT on purpose. The sweep is deterministic (the
+    // exact kernel is, and the gate's keys are bit-exact), so a range would
+    // only hide movement. If one of these fails, the gate's reach changed:
+    // re-measure and re-state the reason, do not widen the assertion.
     assert!(
         t.hosts_swept >= 1000,
         "swept only {} void hosts — the corpus looks partially fetched, \
          this run's reject count is not the full-corpus number",
         t.hosts_swept
+    );
+    assert_eq!(
+        (models.len(), t.hosts_swept),
+        (115, 2071),
+        "the corpus itself moved; every number below was measured over 115 \
+         fixtures / 2071 void hosts and means nothing over a different set \
+         ({} of those fixtures carry voids)",
+        t.models_with_voids
+    );
+    assert_eq!(
+        t.hosts_rejected, 110,
+        "the gate's host-level reach moved from the measured 110"
+    );
+    assert_eq!(
+        (
+            t.rejections_with_over_used,
+            t.over_used_edges,
+            t.rejections_with_same_direction,
+            t.same_direction_edges
+        ),
+        (288, 3436, 120, 917),
+        "the flip set's split by defect class moved from what was measured"
+    );
+    // The half that decided the default. Every rejected host must still be cut
+    // by SOMETHING downstream: a gate that silently returned un-voided hosts
+    // would be a worse bug than the tear it rejects, and this is the assertion
+    // that would catch it. (It is not sufficient on its own — see the module
+    // header — but it is necessary.)
+    assert_eq!(
+        (
+            t.rejected_but_still_cut,
+            t.rejected_and_left_un_cut,
+            t.rejected_and_errored
+        ),
+        (110, 0, 0),
+        "a rejected host stopped being cut by a downstream fallback"
     );
 }

@@ -293,22 +293,30 @@
             .collect();
 
         let tail = |cols: &[String]| -> Vec<String> { cols[cols.len() - shared.len()..].to_vec() };
+        // BOTH schemas append the nine rotation columns AFTER the shared block
+        // (issue #3575 for `instance_schema()`, #3888 for `mesh_schema()` --
+        // see either doc comment for why they aren't folded into
+        // `shared_trailing_fields` itself), so strip those before comparing the
+        // shared tail. The optimized one omits them entirely on a v2-shaped
+        // payload, which this single non-instanced mesh produces, so strip by
+        // NAME rather than by count.
+        let without_rotation = |cols: &[String]| -> Vec<String> {
+            cols.iter().filter(|name| !name.starts_with("rot")).cloned().collect()
+        };
         assert_eq!(
-            tail(&standard),
+            tail(&without_rotation(&standard)),
             shared,
             "mesh_schema() stopped composing shared_trailing_fields()"
         );
-        // The instance schema appends nine rotation columns AFTER the shared
-        // block (issue #3575, `/optimized`-only -- see `instance_schema()`'s
-        // doc comment for why they aren't folded into `shared_trailing_fields`
-        // itself), so strip those before comparing the shared tail. They are
-        // absent entirely from a v2-shaped payload, which this single
-        // non-instanced mesh produces, so strip by NAME rather than by count.
-        let instance_without_rotation: Vec<String> = instance
-            .iter()
-            .filter(|name| !name.starts_with("rot"))
-            .cloned()
-            .collect();
+        // Anti-vacuity for the strip itself: the flat schema must actually
+        // CARRY the rotation tail (#3888). Without this the filter above would
+        // hide a mesh_schema() that had quietly dropped it.
+        assert_eq!(
+            standard.len() - without_rotation(&standard).len(),
+            9,
+            "mesh_schema() must carry rot0..rot8 (issue #3888): {standard:?}"
+        );
+        let instance_without_rotation = without_rotation(&instance);
         assert_eq!(
             tail(&instance_without_rotation),
             shared,

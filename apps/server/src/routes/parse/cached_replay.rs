@@ -50,7 +50,7 @@ pub(super) async fn try_cached_replay(
     state: &AppState,
     cache_key: &str,
 ) -> Result<Option<axum::response::Response>, ApiError> {
-    let parquet_cache_key = format!("{}-parquet-v5", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v6", cache_key);
     let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
 
     let (Some(cached_parquet), Some(cached_metadata_json)) = (

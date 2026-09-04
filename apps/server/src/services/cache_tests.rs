@@ -123,7 +123,7 @@
 
     /// `DELETE /api/v1/cache/{hash}` (issue #3636) must remove every entry
     /// fanned out under one hash -- the bare request key plus the `-json-v2`,
-    /// `-parquet-v5`, `-symbolic-v1`-shaped suffixes a real parse writes --
+    /// `-parquet-v6`, `-symbolic-v1`-shaped suffixes a real parse writes --
     /// while a DIFFERENT hash's entries (the control) survive untouched.
     #[tokio::test]
     async fn remove_by_key_prefix_deletes_every_suffixed_entry_for_one_hash_only() {
@@ -138,7 +138,7 @@
             .await
             .unwrap();
         cache
-            .set_bytes(&format!("{hash}-default-parquet-v5"), b"parquet-entry")
+            .set_bytes(&format!("{hash}-default-parquet-v6"), b"parquet-entry")
             .await
             .unwrap();
         cache
@@ -162,7 +162,7 @@
             .unwrap()
             .is_none());
         assert!(cache
-            .get_bytes(&format!("{hash}-default-parquet-v5"))
+            .get_bytes(&format!("{hash}-default-parquet-v6"))
             .await
             .unwrap()
             .is_none());

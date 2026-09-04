@@ -1,0 +1,11 @@
+---
+'@ifc-lite/server-bin': minor
+---
+
+`POST /api/v1/parse/parquet` now shares geometry between occurrences of one shape, under the cache key `-parquet-v6` (#3888). The flat writer emitted one full copy of the vertices per occurrence, so a model built from repeated furniture, pipe runs or structural members paid for every repeat. `/optimized` has deduplicated those since #3595; the flat route, which is the one the viewer replays from cache on every open after the first, was scoped out of that work.
+
+The mesh table gains `rot0..rot8` (row-major 3x3, Float32) and its `vertex_start`/`vertex_count`/`index_start`/`index_count` stop being one-to-one with the blocks they name: several rows can point at one block, each placed by `world = origin + R * p` in the same Y-up metres frame the positions are already in. The grouping is `collate_rotation_aware_placements` reused verbatim, so the flat route can never share a shape the optimized route would have refused to: same representation-identity grouping, same per-vertex residual check against the occurrence's own baked geometry, same all-or-nothing per group. On `S_Office_Integrated Design Archi.ifc` the blob goes from 23,579,243 to 4,933,969 bytes, 20.9% of the previous size; a model with nothing to share is byte-identical to what v5 produced apart from the nine identity rotation columns.
+
+Two consequences worth stating plainly. **Reading `origin_x/y/z` becomes mandatory** for this route: it was zero on every row of every flat blob before this change, because the placement was baked into the vertices, so a decoder that ignored it was accidentally correct and is now wrong wherever a shape is shared. And the cache key moves to `-parquet-v6` because the two layouts are indistinguishable on the wire — a v5 blob decodes cleanly under a v6 decoder — so nothing but the key can stop a pre-#3888 client being handed a v6 blob and drawing every occurrence of a shared shape at the template's coordinates. The bump costs one re-parse per file.
+
+The streaming route (`POST /api/v1/parse/parquet/stream`) shares nothing: it serializes one batch at a time, where sharing could only be batch-local. It writes the same v6 schema with identity rotations, under the same key, which the two routes have always shared — so either route's cache entry stays a valid payload for the other to replay.

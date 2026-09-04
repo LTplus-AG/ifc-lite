@@ -3,7 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 /**
- * Per-instance rotation for the optimized Parquet transport (issue #3575).
+ * Per-instance rotation, shared by both Parquet transports (issues #3575, #3888).
  *
  * Split out of `parquet-tables.ts` to stay under that file's module-size
  * budget (see `parquet-columns.ts` for the same reasoning applied to the
@@ -12,7 +12,10 @@
  * The server dedupes rotated `IfcMappedItem` / shared-`IfcRepresentationMap`
  * occurrences by storing ONE template mesh in a canonical/local frame and
  * carrying each instance's rotation (row-major 3x3, `rot0..rot8`) alongside
- * its `origin_x/y/z`. Reconstruction contract:
+ * its `origin_x/y/z`. The optimized transport has done this since #3575 and the
+ * flat one since `-parquet-v6` (#3888); the columns, the frame and the
+ * reconstruction are identical, which is why this module is shared rather than
+ * copied. Reconstruction contract:
  * `world = origin + R * template_position` — the SAME `origin`-only contract
  * as before (#1841) when `R` is the identity, which is what the server emits
  * for every instance it did not verify a rotation-aware placement for.
@@ -25,9 +28,15 @@ import { numericColumn } from './parquet-columns.js';
 export type RotationColumns = ArrayLike<number>[];
 
 /**
- * Read the rotation columns, or `undefined` when the payload predates #3575
- * (server version 2) — callers then fall back to the identity rotation,
- * which is exactly the pre-#3575 behaviour.
+ * Read the rotation columns, or `undefined` when the payload predates them —
+ * optimized wire version 2 (#3575), or a flat `-parquet-v5` blob (#3888).
+ * Callers then fall back to the identity rotation, which is exactly the
+ * behaviour those payloads were written for.
+ *
+ * The flat transport always passes the default `wireVersion` of 2: it has no
+ * version byte on the wire, so a truncated v6 mesh table and a genuine v5 one
+ * are indistinguishable there, and identity is the reading that is right for
+ * the v5 case and no worse than throwing for the other.
  *
  * `wireVersion` (default 2, the pre-#3575 shape) distinguishes that
  * legitimate absence from a MALFORMED v3 payload: format v3 defines

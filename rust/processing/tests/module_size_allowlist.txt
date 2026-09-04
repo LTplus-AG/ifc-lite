@@ -8,7 +8,6 @@
 # Regenerated against the branch's merge base; refresh on rebase if a listed
      756 apps/server/src/services/parquet_data_model.rs
      581 apps/server/src/services/parquet_optimized.rs
-     522 apps/server/src/services/parquet.rs
 # +8: add set_entity_index setter so the processor can install its inline-built index (perf/single-scan).
 # +50: add the per-worker placement-transform memo (field + take/set/get/cache methods), mirroring point_cache (perf/placement-cache).
     1064 rust/core/src/decoder.rs

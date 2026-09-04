@@ -9,12 +9,9 @@
 //! - JSON: ~30KB per mesh with ~500 vertices
 //! - Parquet: ~2KB per mesh (15x smaller)
 
-use crate::services::axis::zup_to_yup;
-use crate::services::parquet_schema::{
-    index_schema, mesh_schema, vertex_schema, MeshRow, ABSENT_SOURCE_ID,
-};
+use crate::services::parquet_mesh_tables::{build_mesh_tables, ShapePlan};
+use crate::services::parquet_schema::{index_schema, mesh_schema, vertex_schema};
 use crate::types::MeshData;
-use arrow::array::{Float32Array, Float64Array, StringArray, UInt8Array, UInt32Array};
 use arrow::datatypes::{DataType, Schema};
 use arrow::record_batch::RecordBatch;
 use bytes::Bytes;
@@ -22,7 +19,6 @@ use parquet::arrow::ArrowWriter;
 use parquet::basic::Compression;
 use parquet::file::properties::WriterProperties;
 use parquet::schema::types::ColumnPath;
-use rayon::prelude::*;
 use std::io::Cursor;
 use std::sync::Arc;
 use thiserror::Error;
@@ -49,11 +45,28 @@ pub enum ParquetError {
 ///
 /// This format is compatible with ara3d BOS and provides excellent compression
 /// for geometry data through columnar storage and dictionary encoding.
-// The per-mesh column tuple type is explicit on purpose; aliasing it would hide
-// the parallel (positions, normals, colors, ...) column layout.
-#[allow(clippy::type_complexity)]
 pub fn serialize_to_parquet(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
-    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, 0, 0)?;
+    serialize_with_plan(meshes, &ShapePlan::identity(meshes))
+}
+
+/// Serialize mesh data to the `-parquet-v6` flat layout: occurrences of one
+/// shape share a single block of vertices, each mesh row carrying the rotation
+/// that places it (`world = origin + R * p`). Issue #3888.
+///
+/// Same three tables, same framing, same columns as [`serialize_to_parquet`]
+/// plus the `rot0..rot8` tail — only the mesh rows' `vertex_start` /
+/// `index_start` stop being one-to-one with the blocks they name. A model with
+/// nothing to share produces the v5 layout with identity rotations.
+///
+/// Separate from [`serialize_to_parquet`] rather than replacing it: the
+/// streaming route serializes ONE BATCH at a time, where sharing could only
+/// ever be batch-local, so it keeps calling the identity-plan serializer.
+pub fn serialize_to_parquet_shared_shapes(meshes: &[MeshData]) -> Result<Bytes, ParquetError> {
+    serialize_with_plan(meshes, &ShapePlan::shared_shapes(meshes))
+}
+
+fn serialize_with_plan(meshes: &[MeshData], plan: &ShapePlan) -> Result<Bytes, ParquetError> {
+    let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(meshes, plan, 0, 0)?;
 
     // Write to a custom binary format with multiple Parquet sections
     // Format: [mesh_parquet_len:u32][mesh_parquet][vertex_parquet_len:u32][vertex_parquet][index_parquet_len:u32][index_parquet]
@@ -124,238 +137,6 @@ fn frame_combined_sections(mesh: &[u8], vertex: &[u8], index: &[u8]) -> Result<B
     Ok(Bytes::from(output))
 }
 
-/// Build the three Arrow tables (mesh metadata / vertices / indices) for a
-/// slice of meshes. `base_vertex_offset` / `base_index_offset` seed the
-/// mesh-table `vertex_start` / `index_start` columns so an incremental caller
-/// (the streaming cache writer) emits GLOBAL whole-model offsets while the
-/// per-batch client blobs keep batch-local ones (bases 0/0). The Z-up to Y-up
-/// transform lives here, in one place, for both paths.
-// The per-mesh column tuple type is explicit on purpose; aliasing it would hide
-// the parallel (positions, normals, colors, ...) column layout.
-#[allow(clippy::type_complexity)]
-fn build_mesh_tables(
-    meshes: &[MeshData],
-    base_vertex_offset: u32,
-    base_index_offset: u32,
-) -> Result<(RecordBatch, RecordBatch, RecordBatch), ParquetError> {
-    // Calculate totals for pre-allocation
-    let total_vertices: usize = meshes.iter().map(|m| m.positions.len() / 3).sum();
-    let total_triangles: usize = meshes.iter().map(|m| m.indices.len() / 3).sum();
-    let mesh_count = meshes.len();
-
-    // Phase 1: Compute cumulative offsets (must be sequential)
-    let mut vertex_offsets = Vec::with_capacity(mesh_count);
-    let mut index_offsets = Vec::with_capacity(mesh_count);
-    let mut vertex_offset: u32 = base_vertex_offset;
-    let mut index_offset: u32 = base_index_offset;
-
-    for mesh in meshes {
-        vertex_offsets.push(vertex_offset);
-        index_offsets.push(index_offset);
-        vertex_offset += (mesh.positions.len() / 3) as u32;
-        index_offset += mesh.indices.len() as u32;
-    }
-
-    // Phase 2: Extract mesh metadata in parallel
-    let metadata: Vec<_> = meshes
-        .par_iter()
-        .zip(vertex_offsets.par_iter())
-        .zip(index_offsets.par_iter())
-        .map(|((mesh, &v_start), &i_start)| {
-            MeshRow::new(mesh, v_start, i_start)
-        })
-        .collect();
-
-    // Unpack metadata into separate vectors
-    let mut express_ids = Vec::with_capacity(mesh_count);
-    let mut ifc_types: Vec<&str> = Vec::with_capacity(mesh_count);
-    let mut vertex_starts = Vec::with_capacity(mesh_count);
-    let mut vertex_counts = Vec::with_capacity(mesh_count);
-    let mut index_starts = Vec::with_capacity(mesh_count);
-    let mut index_counts = Vec::with_capacity(mesh_count);
-    let mut color_r = Vec::with_capacity(mesh_count);
-    let mut color_g = Vec::with_capacity(mesh_count);
-    let mut color_b = Vec::with_capacity(mesh_count);
-    let mut color_a = Vec::with_capacity(mesh_count);
-    let mut origin_x = Vec::with_capacity(mesh_count);
-    let mut origin_y = Vec::with_capacity(mesh_count);
-    let mut origin_z = Vec::with_capacity(mesh_count);
-    let mut geometry_class = Vec::with_capacity(mesh_count);
-    let mut geometry_item_ids: Vec<u32> = Vec::with_capacity(mesh_count);
-    let mut material_ids: Vec<u32> = Vec::with_capacity(mesh_count);
-
-    for m in metadata {
-        express_ids.push(m.express_id);
-        ifc_types.push(m.ifc_type);
-        vertex_starts.push(m.v_start);
-        vertex_counts.push(m.vert_count);
-        index_starts.push(m.i_start);
-        index_counts.push(m.index_count);
-        color_r.push(m.color[0]);
-        color_g.push(m.color[1]);
-        color_b.push(m.color[2]);
-        color_a.push(m.color[3]);
-        origin_x.push(m.origin[0]);
-        origin_y.push(m.origin[1]);
-        origin_z.push(m.origin[2]);
-        geometry_class.push(m.geometry_class);
-        geometry_item_ids.push(m.geometry_item_id.unwrap_or(ABSENT_SOURCE_ID));
-        material_ids.push(m.material_id.unwrap_or(ABSENT_SOURCE_ID));
-    }
-
-    // Phase 3: Extract vertex and index data in parallel chunks
-    // Process meshes in parallel, then flatten results
-    // OPTIMIZATION: Apply Z-up to Y-up coordinate transform server-side
-    // This eliminates per-vertex loops on the client (IFC uses Z-up, WebGL uses Y-up)
-    // Transform: X stays same, new Y = old Z, new Z = -old Y
-    let vertex_data: Vec<(Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>)> = meshes
-        .par_iter()
-        .map(|mesh| {
-            let vert_count = mesh.positions.len() / 3;
-            let mut px = Vec::with_capacity(vert_count);
-            let mut py = Vec::with_capacity(vert_count);
-            let mut pz = Vec::with_capacity(vert_count);
-            let mut nx = Vec::with_capacity(vert_count);
-            let mut ny = Vec::with_capacity(vert_count);
-            let mut nz = Vec::with_capacity(vert_count);
-
-            // Some IFC pipelines (e.g. advanced_brep) yield meshes with positions
-            // but no normals. The schema below requires non-null normal columns,
-            // so pad with zeros and let the client recompute them from positions.
-            let has_normals = mesh.normals.len() == mesh.positions.len();
-            if !has_normals && !mesh.normals.is_empty() {
-                tracing::warn!(
-                    express_id = mesh.express_id,
-                    ifc_type = %mesh.ifc_type,
-                    positions = mesh.positions.len(),
-                    normals = mesh.normals.len(),
-                    "Mesh normals length mismatch; emitting zero normals"
-                );
-            }
-
-            for i in 0..vert_count {
-                let (x, y, z) = zup_to_yup(
-                    mesh.positions[i * 3],
-                    mesh.positions[i * 3 + 1],
-                    mesh.positions[i * 3 + 2],
-                );
-                px.push(x);
-                py.push(y);
-                pz.push(z);
-
-                if has_normals {
-                    let (x, y, z) = zup_to_yup(
-                        mesh.normals[i * 3],
-                        mesh.normals[i * 3 + 1],
-                        mesh.normals[i * 3 + 2],
-                    );
-                    nx.push(x);
-                    ny.push(y);
-                    nz.push(z);
-                } else {
-                    nx.push(0.0);
-                    ny.push(0.0);
-                    nz.push(0.0);
-                }
-            }
-            (px, py, pz, nx, ny, nz)
-        })
-        .collect();
-
-    // Flatten vertex data
-    let mut pos_x = Vec::with_capacity(total_vertices);
-    let mut pos_y = Vec::with_capacity(total_vertices);
-    let mut pos_z = Vec::with_capacity(total_vertices);
-    let mut norm_x = Vec::with_capacity(total_vertices);
-    let mut norm_y = Vec::with_capacity(total_vertices);
-    let mut norm_z = Vec::with_capacity(total_vertices);
-
-    for (px, py, pz, nx, ny, nz) in vertex_data {
-        pos_x.extend(px);
-        pos_y.extend(py);
-        pos_z.extend(pz);
-        norm_x.extend(nx);
-        norm_y.extend(ny);
-        norm_z.extend(nz);
-    }
-
-    // Extract index data in parallel
-    let index_data: Vec<(Vec<u32>, Vec<u32>, Vec<u32>)> = meshes
-        .par_iter()
-        .map(|mesh| {
-            let tri_count = mesh.indices.len() / 3;
-            let mut i0 = Vec::with_capacity(tri_count);
-            let mut i1 = Vec::with_capacity(tri_count);
-            let mut i2 = Vec::with_capacity(tri_count);
-
-            for i in 0..tri_count {
-                i0.push(mesh.indices[i * 3]);
-                i1.push(mesh.indices[i * 3 + 1]);
-                i2.push(mesh.indices[i * 3 + 2]);
-            }
-            (i0, i1, i2)
-        })
-        .collect();
-
-    // Flatten index data
-    let mut idx_0 = Vec::with_capacity(total_triangles);
-    let mut idx_1 = Vec::with_capacity(total_triangles);
-    let mut idx_2 = Vec::with_capacity(total_triangles);
-
-    for (i0, i1, i2) in index_data {
-        idx_0.extend(i0);
-        idx_1.extend(i1);
-        idx_2.extend(i2);
-    }
-
-    // Create record batches
-    let mesh_batch = RecordBatch::try_new(
-        mesh_schema(),
-        vec![
-            Arc::new(UInt32Array::from(express_ids)),
-            Arc::new(StringArray::from(ifc_types)),
-            Arc::new(UInt32Array::from(vertex_starts)),
-            Arc::new(UInt32Array::from(vertex_counts)),
-            Arc::new(UInt32Array::from(index_starts)),
-            Arc::new(UInt32Array::from(index_counts)),
-            Arc::new(Float32Array::from(color_r)),
-            Arc::new(Float32Array::from(color_g)),
-            Arc::new(Float32Array::from(color_b)),
-            Arc::new(Float32Array::from(color_a)),
-            Arc::new(Float64Array::from(origin_x)),
-            Arc::new(Float64Array::from(origin_y)),
-            Arc::new(Float64Array::from(origin_z)),
-            Arc::new(UInt8Array::from(geometry_class)),
-            Arc::new(UInt32Array::from(geometry_item_ids)),
-            Arc::new(UInt32Array::from(material_ids)),
-        ],
-    )?;
-
-    let vertex_batch = RecordBatch::try_new(
-        vertex_schema(),
-        vec![
-            Arc::new(Float32Array::from(pos_x)),
-            Arc::new(Float32Array::from(pos_y)),
-            Arc::new(Float32Array::from(pos_z)),
-            Arc::new(Float32Array::from(norm_x)),
-            Arc::new(Float32Array::from(norm_y)),
-            Arc::new(Float32Array::from(norm_z)),
-        ],
-    )?;
-
-    let index_batch = RecordBatch::try_new(
-        index_schema(),
-        vec![
-            Arc::new(UInt32Array::from(idx_0)),
-            Arc::new(UInt32Array::from(idx_1)),
-            Arc::new(UInt32Array::from(idx_2)),
-        ],
-    )?;
-
-    Ok((mesh_batch, vertex_batch, index_batch))
-}
-
-
 /// Incremental whole-model cache writer for the streaming endpoint: each
 /// batch's columns are appended as one Parquet row group per table, so no
 /// `MeshData` has to be retained past the batch that produced it (previously
@@ -402,8 +183,12 @@ impl StreamingParquetCacheWriter {
         if meshes.is_empty() {
             return Ok(());
         }
-        let (mesh_batch, vertex_batch, index_batch) =
-            build_mesh_tables(meshes, self.vertex_offset, self.index_offset)?;
+        let (mesh_batch, vertex_batch, index_batch) = build_mesh_tables(
+            meshes,
+            &ShapePlan::identity(meshes),
+            self.vertex_offset,
+            self.index_offset,
+        )?;
         self.mesh_w.write(&mesh_batch)?;
         self.mesh_w.flush()?;
         self.vert_w.write(&vertex_batch)?;

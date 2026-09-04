@@ -16,15 +16,15 @@ use crate::services::OpeningFilterMode;
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
 /// Regression test for #587: the reader (`check_cache`) used to look up
-/// `{hash}-parquet-v5`, while the writer (`parse_parquet`) stored
-/// `{hash}-{opening_filter}-parquet-v5`, so the check always returned 404.
+/// `{hash}-parquet-{version}`, while the writer (`parse_parquet`) stored
+/// `{hash}-{opening_filter}-parquet-{version}`, so the check always returned 404.
 /// The shared helper must produce the same key the writer stores under.
 #[test]
 fn parquet_cache_key_matches_writer_format() {
     let hash = "0ab20f4e4014";
 
     // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
-    // `format!("{cache_key}-parquet-v5")`. The helper must produce the same string.
+    // `format!("{cache_key}-parquet-v6")`. The helper must produce the same string.
     for mode in [
         OpeningFilterMode::Default,
         OpeningFilterMode::IgnoreAll,
@@ -41,7 +41,7 @@ fn parquet_cache_key_matches_writer_format() {
                 mode.cache_key_suffix(),
                 quality_cache_suffix(quality)
             );
-            let writer_parquet_key = format!("{}-parquet-v5", writer_cache_key);
+            let writer_parquet_key = format!("{}-parquet-v6", writer_cache_key);
             let writer_metadata_key = format!("{}-parquet-metadata-v4", writer_cache_key);
 
             assert_eq!(parquet_cache_key(hash, mode, quality), writer_parquet_key);
@@ -53,14 +53,49 @@ fn parquet_cache_key_matches_writer_format() {
     }
 }
 
+/// A `-parquet-v5` entry must never be served as v6 (issue #3888).
+///
+/// v6 gave the flat mesh table rotation-aware shape sharing: several rows point
+/// at one block of vertices, placed by `origin + R * p`. A v5 blob decodes
+/// CLEANLY under a v6 decoder (no rotation columns means identity, and its rows
+/// share nothing), so nothing downstream can tell the two apart — the hazard
+/// runs the other way, a pre-#3888 client handed a v6 blob drawing every
+/// occurrence of a shared shape on top of the template. Either way the two
+/// layouts must never share a cache slot, and the only thing separating them is
+/// this suffix.
+///
+/// Asserted as "the key does not end in -parquet-v5" rather than "it ends in
+/// -parquet-v6": the next bump must not quietly satisfy this test by moving
+/// both sides of an equality, and re-using v5 is the specific mistake.
+#[test]
+fn a_v5_entry_is_never_served_as_v6() {
+    for mode in [
+        OpeningFilterMode::Default,
+        OpeningFilterMode::IgnoreAll,
+        OpeningFilterMode::IgnoreOpaque,
+    ] {
+        for quality in [TessellationQuality::Medium, TessellationQuality::Highest] {
+            let key = parquet_cache_key("deadbeef", mode, quality);
+            assert!(
+                !key.ends_with("-parquet-v5"),
+                "the shared-shape layout must not read or write the v5 slot: {key}"
+            );
+            assert!(
+                key.ends_with("-parquet-v6"),
+                "the flat geometry key must name the layout it holds: {key}"
+            );
+        }
+    }
+}
+
 /// The default (medium) level maps to the LEGACY key shape — pre-existing
 /// cache entries written before the quality knob stay valid.
 #[test]
 fn parquet_cache_key_default_filter_uses_default_suffix() {
     let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::Medium);
-    assert_eq!(key, "abc-default-parquet-v5");
+    assert_eq!(key, "abc-default-parquet-v6");
     let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::High);
-    assert_eq!(key, "abc-default-qhigh-parquet-v5");
+    assert_eq!(key, "abc-default-qhigh-parquet-v6");
 }
 
 /// The JSON `ParseResponse` cache must NOT be keyed by the bare request key
@@ -287,7 +322,7 @@ ENDSEC;";
 /// The optimized-Parquet route got a key of its own with #3889. Its whole
 /// point is that it is a DIFFERENT namespace from the flat route's: the two
 /// emit different payloads, so a hit on one must never satisfy the other.
-/// Deriving the optimized key from the flat one (or reusing `-parquet-v5`)
+/// Deriving the optimized key from the flat one (or reusing `-parquet-v6`)
 /// would put a quantized, deduplicated payload where a client expecting flat
 /// meshes reads it.
 #[test]

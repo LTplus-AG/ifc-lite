@@ -79,7 +79,7 @@ async fn miss_when_only_parquet_key_is_cached() {
     let cache_key = "only-parquet";
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[1, 2, 3]))
+        .set_bytes(&format!("{cache_key}-parquet-v6"), &well_framed_blob(&[1, 2, 3]))
         .await
         .unwrap();
     let result = try_cached_replay(&state, cache_key).await;
@@ -116,7 +116,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &[1, 2, 3]) // < 4 bytes
+        .set_bytes(&format!("{cache_key}-parquet-v6"), &[1, 2, 3]) // < 4 bytes
         .await
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
@@ -143,7 +143,7 @@ async fn corrupt_metadata_json_is_an_error_not_a_miss() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[9, 9]))
+        .set_bytes(&format!("{cache_key}-parquet-v6"), &well_framed_blob(&[9, 9]))
         .await
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
@@ -181,7 +181,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[7, 7, 7]))
+        .set_bytes(&format!("{cache_key}-parquet-v6"), &well_framed_blob(&[7, 7, 7]))
         .await
         .unwrap();
     state
@@ -213,7 +213,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
         .unwrap();
     state
         .cache
-        .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&geometry))
+        .set_bytes(&format!("{cache_key}-parquet-v6"), &well_framed_blob(&geometry))
         .await
         .unwrap();
     // A replay also requires a current data model beside the geometry (#3869).

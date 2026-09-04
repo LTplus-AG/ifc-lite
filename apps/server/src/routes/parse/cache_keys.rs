@@ -78,12 +78,31 @@ pub(crate) fn parquet_cache_key(
     quality: TessellationQuality,
 ) -> String {
     format!(
-        // v5, not v4: #3215 added the two source-id columns to the mesh
+        // v6, not v5: #3888 gave the flat mesh table rotation-aware SHAPE
+        // SHARING -- several rows point at one block of vertices and are placed
+        // by `origin + R * p`, with `rot0..rot8` added to carry the R. A v5 blob
+        // decodes cleanly under the v6 decoder (no rotation columns means
+        // identity, and its rows share nothing), which is exactly why the key
+        // has to move: without a bump the two layouts are indistinguishable on
+        // the wire, and the CLIENTS differ, not the payloads. A pre-#3888
+        // client handed a v6 blob draws every occurrence of a shared shape at
+        // the template's coordinates. The bump costs one re-parse per file.
+        //
+        // v5, not v4, was #3215: it added the two source-id columns to the mesh
         // schema. Without a bump a model parsed before that deploy replays its
         // OLD blob verbatim, the columns are absent, the decoder correctly omits
         // them, and drill-to-source stays dead over the binary transport with
         // nothing saying so -- absence reading exactly like success.
-        "{}-parquet-v5",
+        //
+        // ONE key covers both the non-streaming and the streaming route: they
+        // read and write the same entry (`parse_parquet`, `parse_parquet_stream`
+        // and `try_cached_replay` all build this same string), so they bump
+        // together. Only the non-streaming route SHARES shapes -- the streaming
+        // writer serializes one batch at a time, where sharing would be
+        // batch-local -- but it emits the same v6 schema with identity
+        // rotations, so either route's entry is a valid v6 payload for the
+        // other to replay.
+        "{}-parquet-v6",
         cache_key_from_parts(hash, opening_filter, quality)
     )
 }
@@ -107,7 +126,7 @@ pub(crate) fn parquet_metadata_cache_key(
 /// file while the flat route beside it replayed from disk (issue #3889). This
 /// is that key.
 ///
-/// Deliberately a DIFFERENT namespace from `-parquet-v5`: the two routes emit
+/// Deliberately a DIFFERENT namespace from `-parquet-v6`: the two routes emit
 /// different payloads (quantized vertices, deduplicated shapes, byte colours),
 /// so a hit on one must never satisfy the other.
 ///
@@ -117,7 +136,7 @@ pub(crate) fn parquet_metadata_cache_key(
 /// covers `process_geometry_filtered_with_quality` output just as
 /// [`parquet_cache_key`] does, and that key's own `v3` -> `v4` bump was a
 /// pipeline change with no column change at all. In practice: a bump of
-/// `-parquet-v5` almost always needs a bump here too. Otherwise a warm cache
+/// `-parquet-v6` almost always needs a bump here too. Otherwise a warm cache
 /// replays a pre-change blob that the decoder reads cleanly, and the change is
 /// silently absent.
 pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {

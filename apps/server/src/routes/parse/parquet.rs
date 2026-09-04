@@ -9,7 +9,9 @@ use super::cache_keys::{
 };
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
-use crate::services::{extract_data_model, serialize_data_model_to_parquet, serialize_to_parquet};
+use crate::services::{
+    extract_data_model, serialize_data_model_to_parquet, serialize_to_parquet_shared_shapes,
+};
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use axum::{
@@ -75,7 +77,7 @@ pub async fn parse_parquet(
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     // Check cache first (before any processing)
-    let parquet_cache_key = format!("{}-parquet-v5", cache_key);
+    let parquet_cache_key = format!("{}-parquet-v6", cache_key);
     let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
 
     // The cached-geometry short-circuit skips the parse, and the parse is what
@@ -156,7 +158,7 @@ pub async fn parse_parquet(
             // Second: serialize BOTH geometry and data model in parallel
             // This way data model is ready by the time client needs it
             let (geo_parquet, dm_parquet) = rayon::join(
-                || serialize_to_parquet(&geometry_result.meshes),
+                || serialize_to_parquet_shared_shapes(&geometry_result.meshes),
                 || serialize_data_model_to_parquet(&data_model),
             );
 
@@ -228,7 +230,7 @@ pub async fn parse_parquet(
     // Cache the results for future requests. `Bytes` makes the cache task's
     // copy an O(1) refcount bump instead of duplicating the whole payload.
     let combined_parquet = bytes::Bytes::from(combined_parquet);
-    let parquet_cache_key = format!("{}-parquet-v5", cache_key_clone);
+    let parquet_cache_key = format!("{}-parquet-v6", cache_key_clone);
     let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();
     let metadata_json_clone = metadata_json.clone();

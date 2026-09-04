@@ -107,12 +107,6 @@ export interface GeometryDiagnostics {
    * Representation items dropped from the mesh output because no processor is
    * registered for the item's type, or the registered processor errored (#3691).
    * Optional: absent on payloads from producers predating the counter.
-   *
-   * AHEAD OF THE CANONICAL TYPE. #3691 is still open at the time of writing, so
-   * `@ifc-lite/geometry` does not carry these two fields yet. They are declared
-   * here so that PR and this one do not collide over the server wire shape; the
-   * contract test allowlists exactly these two names and fails once the
-   * canonical type gains them, at which point the allowlist entry is deleted.
    */
   totalUnsupportedItems?: number;
   /** `totalUnsupportedItems` broken down by IFC type, sorted desc by count. */

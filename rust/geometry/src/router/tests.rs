@@ -993,3 +993,66 @@ const TOTAL_LOSS_SHARED_SOURCE: &str = r#"
 #34=IFCPRODUCTDEFINITIONSHAPE($,$,(#33));
 #35=IFCWALL('g3',$,$,$,$,$,#34,$);
 "#;
+
+/// The occurrence-path half of the Body gate. Its sibling
+/// `a_non_body_representations_unsupported_item_is_not_counted_as_content_loss`
+/// drives `process_element` (the mapped-item walk); this drives
+/// `process_element_with_submeshes`, which walks the source's items itself and
+/// records the drop one recursion level down, in
+/// `collect_submeshes_from_item_inner`'s plain-item arm. That arm has no
+/// representation in hand and cannot gate on one, so this path counted a 2D
+/// 'FootPrint' map as lost 3D content while the other path did not — the same
+/// clean-model false positive, through the door the first fix did not cover.
+#[test]
+fn a_footprint_source_is_not_counted_on_the_occurrence_path_either() {
+    let footprint = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#8=IFCANNOTATIONFILLAREA(#1,());
+#9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('guid',$,$,$,$,$,#14,$);
+"#;
+    let mut decoder = EntityDecoder::new(footprint);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(15).unwrap();
+    let _ = router.process_element_with_submeshes(&wall, &mut decoder);
+
+    let unsupported = router.take_unsupported_items();
+    assert!(
+        unsupported.is_empty(),
+        "a 2D 'FootPrint' source carries no 3D content to lose on this path either: {unsupported:?}"
+    );
+}
+
+/// The other half, on the same path: the identical item under a Body source is
+/// still a real loss and must still be counted, so the gate above cannot be
+/// satisfied by counting nothing.
+#[test]
+fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
+    let body = r#"
+#1=IFCCARTESIANPOINT((0.,0.));
+#8=IFCANNOTATIONFILLAREA(#1,());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+#10=IFCREPRESENTATIONMAP($,#9);
+#11=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,$,$,$);
+#12=IFCMAPPEDITEM(#10,#11);
+#13=IFCSHAPEREPRESENTATION($,'Body','MappedRepresentation',(#12));
+#14=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
+#15=IFCWALL('guid',$,$,$,$,$,#14,$);
+"#;
+    let mut decoder = EntityDecoder::new(body);
+    let router = GeometryRouter::new();
+    let wall = decoder.decode_by_id(15).unwrap();
+    let _ = router.process_element_with_submeshes(&wall, &mut decoder);
+
+    let unsupported = router.take_unsupported_items();
+    assert_eq!(
+        unsupported.values().sum::<u64>(),
+        1,
+        "the gate keys on the representation, not on the item type: {unsupported:?}"
+    );
+}

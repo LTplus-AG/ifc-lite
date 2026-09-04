@@ -130,6 +130,95 @@ mod tests {
     use crate::router::GeometryRouter;
     use ifc_lite_core::EntityDecoder;
 
+    /// A Body source whose two items both fail to mesh: `#8` has no registered
+    /// processor at all (the `None` arm), `#7` has one that errors on a null
+    /// profile/placement (the `Err` arm). `ensure_shared_mapped_source` is the
+    /// don't-bake path's own flat walk of a source, structurally separate from
+    /// `mapped_item.rs`'s, and its two drop arms had no test: deleting both
+    /// `record_unsupported_item` calls left the whole suite green, so the one
+    /// place a don't-bake occurrence's loss is visible was unguarded.
+    const TWO_FAILING_ITEMS: &str = r#"
+#7=IFCEXTRUDEDAREASOLID($,$,$,0.);
+#8=IFCGEOMETRICSET(());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#7,#8));
+"#;
+
+    #[test]
+    fn both_drop_arms_of_the_shared_source_walk_are_recorded() {
+        let mut decoder = EntityDecoder::new(TWO_FAILING_ITEMS);
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let rep = decoder.decode_by_id(9).expect("decode #9");
+        router.ensure_shared_mapped_source(&rep, 100, &mut decoder);
+
+        assert_eq!(
+            router.mapped_shared_unique_count(),
+            0,
+            "a source that meshes to nothing must not be published (unchanged)"
+        );
+        let unsupported = router.take_unsupported_items();
+        assert_eq!(
+            unsupported.get("IfcGeometricSet"),
+            Some(&1),
+            "the None arm (no processor for the type) must record: {unsupported:?}"
+        );
+        assert_eq!(
+            unsupported.get("IfcExtrudedAreaSolid"),
+            Some(&1),
+            "the Err arm (processor ran and failed) must record: {unsupported:?}"
+        );
+    }
+
+    /// The Body gate, on this walk. `plan_type_geometry` selects a type's
+    /// RepresentationMaps by reference and instantiation only, so a 2D
+    /// 'FootPrint'/'Annotation' map reaches the don't-bake path exactly as it
+    /// reaches the other three, carrying items no processor handles and which
+    /// are CORRECTLY absent from a 3D view. Counting them warns on a clean
+    /// model. The other three walks already gated; this one did not.
+    #[test]
+    fn a_footprint_source_records_nothing_on_the_shared_source_walk() {
+        let footprint = r#"
+#8=IFCANNOTATIONFILLAREA($,());
+#9=IFCSHAPEREPRESENTATION($,'FootPrint','Annotation2D',(#8));
+"#;
+        let mut decoder = EntityDecoder::new(footprint);
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let rep = decoder.decode_by_id(9).expect("decode #9");
+        router.ensure_shared_mapped_source(&rep, 101, &mut decoder);
+
+        let unsupported = router.take_unsupported_items();
+        assert!(
+            unsupported.is_empty(),
+            "a 2D representation carries no 3D content to lose: {unsupported:?}"
+        );
+    }
+
+    /// The other half of that gate, so it cannot be satisfied by never counting:
+    /// the identical item under a Body representation IS a content loss.
+    #[test]
+    fn the_same_item_under_a_body_source_is_still_recorded_on_the_shared_source_walk() {
+        let body = r#"
+#8=IFCANNOTATIONFILLAREA($,());
+#9=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#8));
+"#;
+        let mut decoder = EntityDecoder::new(body);
+        let mut router = GeometryRouter::new();
+        router.enable_shared_mapped_item_cache(GeometryRouter::new_mapped_item_cache());
+
+        let rep = decoder.decode_by_id(9).expect("decode #9");
+        router.ensure_shared_mapped_source(&rep, 102, &mut decoder);
+
+        let unsupported = router.take_unsupported_items();
+        assert_eq!(
+            unsupported.values().sum::<u64>(),
+            1,
+            "the gate keys on the representation, not on the item type: {unsupported:?}"
+        );
+    }
+
     fn fixture() -> String {
         std::fs::read_to_string("tests/fixtures/nested_mapped_item.ifc")
             .expect("read tests/fixtures/nested_mapped_item.ifc")

@@ -56,10 +56,11 @@ So a `clean` verdict carries `class_pass`: one row per class, each with its own
 verdict and its own reason. Take them one at a time, against the changed
 behaviour in the diff and against each sibling excerpt you were given.
 
-- `clear`: you looked for it here and it holds. **Cite a `path:line` you
-  actually checked**, in the form `packages/x/y.ts:42`, and the line must be one
-  the diff ADDED. It is checked against the diff, so a path or line that is not
-  there fails the review.
+- `clear`: you looked for it here and it holds. Cite the `path:line` you
+  checked if you have one, in the form `packages/x/y.ts:42` or the line of a
+  sibling excerpt. That is welcome, not required. What is required is that a
+  citation you DO give is real: an invented one fails the review, where none at
+  all would have passed.
 - `not-applicable`: this diff cannot carry the class at all. Allowed only where
   the harness agrees. It runs its own cheap check per class, and if it can see a
   site in the diff, `not-applicable` is refused and names the file that made the
@@ -204,7 +205,7 @@ commentary before or after:
   "riskiest_change": { "path": "<path>", "quoted_line": "<a verbatim line from that file's patch>" },
   "class_pass": [
     { "class": "<a class name below>", "verdict": "clear" | "not-applicable",
-      "why": "<clear: what you checked, with a path:line from the diff. not-applicable: what rules the class out here>" }
+      "why": "<what you checked, or what rules the class out here; a real path:line is welcome>" }
   ],
   "findings": [
     { "path": "<path>", "line": <a line number inside an added range>,
@@ -232,8 +233,8 @@ these twelve class names, each exactly once:
 
 Omit it on a `findings` verdict. A clean verdict without it, short a class, with
 a reason repeated, with a `not-applicable` on a class the diff visibly carries,
-or with a `clear` citing no added line, fails the review outright and posts
-nothing, the same way a missing `riskiest_change` does.
+or with a citation that resolves to nothing you were shown, fails the review
+outright and posts nothing, the same way a missing `riskiest_change` does.
 
 **Nominate a `riskiest_change.quoted_line` you can reproduce EXACTLY.** It is
 checked character for character against the patch, and a line long enough that

@@ -100,10 +100,13 @@ const normaliseWhy = (v) => String(v).trim().toLowerCase().replace(/\s+/g, ' ');
  * verdict is checked against the DIFF instead:
  *
  *   - a class ./class-applicability.mjs says this diff CAN carry may not be
- *     `not-applicable`, and its `clear` must cite a `path:line` that is really
- *     an added line of the diff;
+ *     `not-applicable`;
  *   - a class the predicates cannot see is free: `not-applicable` needs only a
  *     reason, because the harness has nothing to contradict it with.
+ *
+ * ONLY THE WAVE-OFF. `clear` is accepted with or without a cited line -- see the
+ * measured red lane in `checkClassPass` below -- and a citation is checked only
+ * when one is offered.
  *
  * The predicates under-fire on purpose (see that file), so this is a floor under
  * `not-applicable`, never a claim that the classes it does not name are absent.
@@ -171,8 +174,19 @@ export function checkClassPass({ response, input }) {
     byWhy.set(key, row.class);
   }
 
-  // THE DIFF HAS THE LAST WORD. Everything above is about the answer's shape;
-  // this is the only part a model cannot satisfy by writing better sentences.
+  // THE DIFF HAS THE LAST WORD, IN ONE DIRECTION ONLY. Everything above is about
+  // the answer's shape; this is the only part a model cannot satisfy by writing
+  // better sentences. It refuses a WAVE-OFF and nothing else.
+  //
+  // MEASURED: it used to also require a `path:line` on every `clear` for a
+  // firing class, and that failed a correct review twice in a row on PR #3848 --
+  // the lane reviewing this very change reported clean, cited nothing, and was
+  // refused with "`duplicate-site` applies ... and its `clear` cites no line of
+  // it", both attempts, so the job went red and nothing was posted. A check that
+  // reddens a lane for a review that did the work is worse than the gap it
+  // closes: `clear` is a claim the model DID look, and there is no evidence that
+  // demanding a citation makes that claim truer. Citations are asked for in
+  // rubric.md and welcomed here; they are not the price of answering.
   const applicable = applicableClasses(input);
   for (const [cls, site] of applicable) {
     const row = seen.get(cls);
@@ -180,36 +194,49 @@ export function checkClassPass({ response, input }) {
     if (row.verdict === 'not-applicable') {
       fail(
         `\`${cls}\` was declared not-applicable, but ${where} makes it applicable ` +
-          `(${JSON.stringify(String(site.text).slice(0, 90))}). Walk it and report \`clear\` with the ` +
-          'line you checked, or report the defect.',
+          `(${JSON.stringify(String(site.text).slice(0, 90))}). Walk it and report \`clear\`, ` +
+          'or report the defect.',
       );
     }
-    const cited = citedAddedLine(row.why, input);
-    if (!cited) {
+    // A citation that was OFFERED still has to be real. Accepting an
+    // unresolvable one would make the encouragement worse than silence: the
+    // model would learn that inventing `some/file.ts:42` reads as evidence.
+    const cite = citationState(row.why, input);
+    if (cite === 'unresolved') {
       fail(
-        `\`${cls}\` applies to this diff (${where}) and its \`clear\` cites no line of it. ` +
-          'Name a `path:line` you actually checked, in the form `packages/x/y.ts:42`, where the line ' +
-          'is one the diff ADDED.',
+        `\`${cls}\`'s \`clear\` cites a \`path:line\` that is not in what you were shown. ` +
+          'A citation is optional here, but an invented one is worse than none: cite a line the diff ' +
+          'ADDED, or a sibling excerpt you were given, or cite nothing.',
       );
     }
   }
 }
 
 /**
- * The first `path:line` in `why` that is really an added line of the diff.
+ * Whether `why` offers a `path:line`, and whether it is real.
  *
- * ANCHORED BY `lineIsAdded`, the same check every posted finding's line goes
- * through, and against `input.files` -- so a citation of a file the reviewer was
- * never sent, or of a line this PR did not touch, is not a citation. Without
- * that the rule would be "put a colon and a number in the sentence", which is
- * the lexical bar this round exists to replace.
+ *   'none'        no `path:line` was offered. Accepted: citing is optional.
+ *   'resolved'    at least one resolves to something the reviewer was shown.
+ *   'unresolved'  one or more were offered and none resolves.
+ *
+ * SIBLING EXCERPTS COUNT, and leaving them out was a live defect in waiting: the
+ * evidence for `duplicate-site` is by definition in a file the PR did not
+ * change, so a reviewer citing the excerpt it was handed would have been told it
+ * had invented the path. Anchored the same two ways those claims always are --
+ * `lineIsAdded` against the reviewed patches, and the same three-line window
+ * `siblingVerifies` uses against the pack.
  */
-function citedAddedLine(why, input) {
+function citationState(why, input) {
+  let offered = false;
+  const excerpts = input.contextPack?.siblings ?? [];
   for (const m of String(why).matchAll(/([A-Za-z0-9_./@-]+\.[A-Za-z0-9]+):(\d+)/g)) {
+    offered = true;
+    const line = Number(m[2]);
     const file = input.files.get(m[1]);
-    if (file && lineIsAdded(Number(m[2]), file.addedLineRanges)) return { path: m[1], line: Number(m[2]) };
+    if (file && lineIsAdded(line, file.addedLineRanges)) return 'resolved';
+    if (excerpts.some((e) => e.path === m[1] && Math.abs(e.line - line) <= 3)) return 'resolved';
   }
-  return null;
+  return offered ? 'unresolved' : 'none';
 }
 
 /**

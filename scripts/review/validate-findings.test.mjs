@@ -1871,7 +1871,7 @@ test('#3831 PASS: "not-applicable" is legitimate for a class this diff cannot ca
 const EVASION_INDEXED = (classes) => classes.map((c, i) => ({ class: c, verdict: 'not-applicable', why: `no such code in diff (${i})` }));
 const EVASION_RESTATED = (classes) => classes.map((c) => ({ class: c, verdict: 'not-applicable', why: `${c} does not apply` }));
 
-test('#3831 round 2 FAIL: "no such code in diff (n)" cannot wave off a class the diff carries', () => {
+test('#3831 round 2 FAIL: "no such code in diff (n)" cannot WAVE OFF a class the diff carries', () => {
   const r = run(response({ class_pass: EVASION_INDEXED(DEFECT_CLASSES) }));
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
@@ -1879,7 +1879,7 @@ test('#3831 round 2 FAIL: "no such code in diff (n)" cannot wave off a class the
   assert.ok(r.out.includes(PATH_A), `and the file that makes it applicable: ${r.out}`);
 });
 
-test('#3831 round 2 FAIL: "<class> does not apply" cannot either', () => {
+test('#3831 round 2 FAIL: "<class> does not apply" cannot WAVE OFF one either', () => {
   const r = run(response({ class_pass: EVASION_RESTATED(DEFECT_CLASSES) }));
   assert.equal(r.code, 1, r.out);
   assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
@@ -1898,29 +1898,88 @@ test('#3831 round 2 PASS: both shapes are accepted on a diff where NO class appl
   }
 });
 
-test('#3831 round 2 FAIL: an applicable class cleared with NO cited line is refused', () => {
-  // `clear` is the honest verdict for an applicable class, but on its own it is
-  // the same unfalsifiable sentence one word over. The citation is what makes it
-  // checkable.
+test('#3831 round 3 PASS: an applicable class cleared with NO cited line is ACCEPTED', () => {
+  // MEASURED, on PR #3848: requiring a `path:line` on every `clear` for a firing
+  // class refused a real clean review of this very branch, twice, and reddened
+  // the lane with nothing posted. `clear` is a claim the model looked, and
+  // nothing shows that charging it a citation makes the claim truer. Citing is
+  // encouraged in rubric.md and welcomed here; it is not the price of answering.
   const rows = classPass().map((row) =>
     (row.class === 'one-ended-numeric-bound' ? { ...row, why: 'I checked the comparison and it is fine' } : row));
   const r = run(response({ class_pass: rows }));
-  assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
-  assert.match(r.out, /cites no line/);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
 });
 
-test('#3831 round 2 FAIL: a cited line that the diff did not ADD is not a citation', () => {
-  // Anchored by `lineIsAdded`, the same check a posted finding's line goes
-  // through. Line 1 of PATCH_A is context, not an added line, and line 99 does
-  // not exist -- so neither is evidence that anything was read.
+test('#3831 round 3 FAIL: a citation that was OFFERED must be real', () => {
+  // The other half of making citing optional. If an unresolvable `path:line`
+  // read the same as none at all, the model would learn that inventing
+  // `some/file.ts:42` looks like evidence -- which is worse than the silence it
+  // replaced. Line 1 of PATCH_A is context rather than added, line 99 does not
+  // exist, and the third file was never sent.
   for (const cite of [`${PATH_A}:1`, `${PATH_A}:99`, 'packages/x/never-sent.ts:2']) {
     const rows = classPass().map((row) =>
       (row.class === 'one-ended-numeric-bound' ? { ...row, why: `walked the comparison at ${cite}` } : row));
     const r = run(response({ class_pass: rows }));
     assert.equal(r.code, 1, `${cite} was accepted as a citation:\n${r.out}`);
     assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+    assert.match(r.out, /invented one is worse than none/);
   }
+});
+
+test('#3831 round 3 PASS: a SIBLING excerpt is a citation, because that is where a second site lives', () => {
+  // `duplicate-site` fires only when the harness retrieved a sibling, and the
+  // evidence for it is by definition in a file this PR did not change. Resolving
+  // citations against the reviewed patches alone would have told a reviewer
+  // citing the excerpt it was handed that it had invented the path -- the same
+  // red-lane shape as #3848, one class over.
+  const pack = { siblings: [{ path: 'packages/other/glb.ts', line: 40, text: 'copies baseColorFactor raw' }] };
+  const input = { ...INPUT, contextPack: pack };
+  const rows = classPass().map((row) =>
+    (row.class === 'duplicate-site'
+      ? { class: 'duplicate-site', verdict: 'clear', why: 'the sibling at packages/other/glb.ts:41 still has the old shape, and this diff does not change it' }
+      : row));
+  const r = run(response({ class_pass: rows }), { input });
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
+
+  // THE #3848 REPRO, exactly: pack present so `duplicate-site` fires, `clear`,
+  // no citation anywhere. This is the response the live lane produced on this
+  // branch and was refused for, twice, and it must pass now.
+  const uncited = classPass().map((row) =>
+    (row.class === 'duplicate-site'
+      ? { class: 'duplicate-site', verdict: 'clear', why: 'the sibling excerpt already carries the same shape as the change' }
+      : row));
+  const live = run(response({ class_pass: uncited }), { input });
+  assert.equal(live.code, 0, live.out);
+
+  // And the control: with the pack present, waving `duplicate-site` off is refused.
+  const wavedOff = classPass().map((row) =>
+    (row.class === 'duplicate-site'
+      ? { class: 'duplicate-site', verdict: 'not-applicable', why: 'no second site anywhere in this change' }
+      : row));
+  const bad = run(response({ class_pass: wavedOff }), { input });
+  assert.equal(bad.code, 1, bad.out);
+  assert.match(bad.out, /CLASS_PASS_INCOMPLETE/);
+  assert.ok(bad.out.includes('duplicate-site'), bad.out);
+});
+
+test('#3831 round 3 PASS, AND THIS IS THE RESIDUAL: twelve `clear` rows of filler are accepted', () => {
+  // Said out loud rather than left implicit. Now that only the wave-off is
+  // bound to the diff, a model can answer `clear` twelve times with reasons that
+  // say nothing and the validator will take it -- the mechanical layer cannot
+  // tell a walked class from a claimed one, and #3848 is the measurement saying
+  // what it costs to pretend otherwise.
+  //
+  // WHAT MEASURES THIS IS THE EVAL, NOT THE VALIDATOR: `rubric-eval.mjs`'s
+  // recall line is the only instrument that can say whether the pass is being
+  // walked, because a reviewer that fills in twelve rows and misses the defect
+  // scores the miss. Tightening the validator further without that number
+  // moving is how #3848 happened.
+  const filler = DEFECT_CLASSES.map((c, i) => ({ class: c, verdict: 'clear', why: `looked for ${c} (${i})` }));
+  const r = run(response({ class_pass: filler }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
 });
 
 test('#3831 round 2: EVERY class has an applicability predicate, and no predicate is orphaned', () => {

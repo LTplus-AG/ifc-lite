@@ -119,12 +119,40 @@ describe('reportDeviceLost', () => {
     reportDeviceLost({ message: vulkan, reason: 'unknown' });
     const second = scrubEvent({ event: '$exception', properties: { ...(captures[1].props ?? {}) } });
 
-    assert.equal(first?.properties?.$exception_fingerprint, 'ifc-lite:device_lost');
-    assert.equal(second?.properties?.$exception_fingerprint, 'ifc-lite:device_lost');
+    assert.equal(first?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:unknown');
+    assert.equal(second?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:unknown');
     // The driver text is not lost to the grouping - it stays queryable inside
     // the one issue, which is the whole trade.
     assert.equal(first?.properties?.device_lost_detail, d3d12);
     assert.equal(second?.properties?.device_lost_detail, vulkan);
+  });
+
+  it('separates loss reasons, and caps how many groups an engine can mint', () => {
+    // The reason discriminates: a driver-side loss and Safari's synchronous
+    // frame throw are different bugs with different fixes.
+    reportDeviceLost({ message: SAFARI_LOST, reason: 'render-exception' });
+    const safari = scrubEvent({ event: '$exception', properties: { ...(captures[0].props ?? {}) } });
+    assert.equal(safari?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:render-exception');
+
+    // But `info.reason` is half browser-supplied, and an unbounded fingerprint
+    // is the bug this whole change exists to fix. Anything off the allowlist -
+    // a future spec value, a non-conforming engine, a vendor putting driver
+    // text where a reason belongs - folds into one bucket instead of minting a
+    // group per wording.
+    resetDeviceLossReportForTests();
+    reportDeviceLost({ message: SAFARI_LOST, reason: 'GPUDevice was removed: 0x887A0006 (vendor text)' });
+    const rogue = scrubEvent({ event: '$exception', properties: { ...(captures[1].props ?? {}) } });
+    assert.equal(rogue?.properties?.$exception_fingerprint, 'ifc-lite:device_lost:other');
+    assert.doesNotMatch(
+      String(rogue?.properties?.$exception_fingerprint),
+      /887A0006|vendor text/,
+      'no engine-supplied text may ever reach a fingerprint',
+    );
+    // The raw reason still travels, so the fold costs nothing to triage.
+    assert.equal(
+      rogue?.properties?.device_lost_reason,
+      'GPUDevice was removed: 0x887A0006 (vendor text)',
+    );
   });
 
   it('carries the GPU detail THROUGH the real privacy scrubber, not just to the capture call', () => {

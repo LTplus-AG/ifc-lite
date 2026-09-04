@@ -5,6 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import { createBCFFromIDSReport } from './ids-reporter.js';
 import type { IDSReportInput, EntityBoundsInput } from './ids-reporter.js';
+import { FRAMING_PADDING } from './ids-camera.js';
 
 type Vec3 = { x: number; y: number; z: number };
 const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
@@ -950,11 +951,11 @@ describe('IDS BCF Reporter', () => {
      * `fieldOfView` rather than from the numbers that produced them, so a
      * framing that agrees with itself but not with the geometry still fails.
      */
-    function cornersOutsideFrustum(
+    function cornerFills(
       cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
       box: EntityBoundsInput,
       aspectRatio: number,
-    ): string[] {
+    ): { label: string; fill: number }[] {
       // BCF FieldOfView is the VERTICAL angle; the horizontal one follows
       // from the aspect ratio.
       const halfV = (cam.fieldOfView * Math.PI) / 360;
@@ -964,7 +965,7 @@ describe('IDS BCF Reporter', () => {
       const right = normalize(cross(d, cam.cameraUpVector));
       const up = cross(right, d);
 
-      const outside: string[] = [];
+      const fills: { label: string; fill: number }[] = [];
       for (const x of [box.min.x, box.max.x]) {
         for (const y of [box.min.y, box.max.y]) {
           for (const z of [box.min.z, box.max.z]) {
@@ -975,15 +976,71 @@ describe('IDS BCF Reporter', () => {
               z: y - cam.cameraViewPoint.z,
             };
             const depth = dot(v, d);
-            const h = Math.abs(dot(v, right)) / depth;
-            const vt = Math.abs(dot(v, up)) / depth;
-            if (depth <= 0 || h > Math.tan(halfH) || vt > Math.tan(halfV)) {
-              outside.push(`(${x}, ${y}, ${z}) h=${h.toFixed(3)} v=${vt.toFixed(3)}`);
+            if (depth <= 0) {
+              fills.push({ label: `(${x}, ${y}, ${z}) behind the camera`, fill: Infinity });
+              continue;
             }
+            const h = Math.abs(dot(v, right)) / depth / Math.tan(halfH);
+            const vt = Math.abs(dot(v, up)) / depth / Math.tan(halfV);
+            fills.push({
+              label: `(${x}, ${y}, ${z}) h=${h.toFixed(3)} v=${vt.toFixed(3)}`,
+              fill: Math.max(h, vt),
+            });
           }
         }
       }
-      return outside;
+      return fills;
+    }
+
+    /** The corners that miss the frustum, labelled with how far they miss by. */
+    function cornersOutsideFrustum(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+      aspectRatio: number,
+    ): string[] {
+      return cornerFills(cam, box, aspectRatio)
+        .filter(corner => corner.fill > 1)
+        .map(corner => corner.label);
+    }
+
+    /** How much of the frustum the worst corner fills; 1 is exactly the edge. */
+    function worstCornerFill(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+      aspectRatio: number,
+    ): number {
+      return Math.max(...cornerFills(cam, box, aspectRatio).map(corner => corner.fill));
+    }
+
+    /**
+     * The same camera with the framing padding taken back out.
+     *
+     * `cornersOutsideFrustum` is monotone in distance -- a camera parked twice
+     * as far away passes it too -- so on its own it cannot tell a fit from an
+     * over-frame. Pulling the standoff back to the unpadded fit and finding
+     * the worst corner exactly ON the edge is what pins the fit as tight.
+     *
+     * `FRAMING_PADDING` is imported rather than copied, so changing the
+     * padding does not fail twelve tests that assert nothing about it.
+     */
+    function withoutPadding(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+    ): NonNullable<ReturnType<typeof perspectiveCameraOf>> {
+      // Box centre in BCF coords, the point the camera stands off from.
+      const centre = {
+        x: (box.min.x + box.max.x) / 2,
+        y: -(box.min.z + box.max.z) / 2,
+        z: (box.min.y + box.max.y) / 2,
+      };
+      return {
+        ...cam,
+        cameraViewPoint: {
+          x: centre.x + (cam.cameraViewPoint.x - centre.x) / FRAMING_PADDING,
+          y: centre.y + (cam.cameraViewPoint.y - centre.y) / FRAMING_PADDING,
+          z: centre.z + (cam.cameraViewPoint.z - centre.z) / FRAMING_PADDING,
+        },
+      };
     }
 
     function perspectiveCameraOf(project: ReturnType<typeof createBCFFromIDSReport>) {
@@ -1001,36 +1058,63 @@ describe('IDS BCF Reporter', () => {
       });
     }
 
-    it('keeps a wide entity inside the frustum at a portrait aspect ratio', () => {
-      // fieldOfView is VERTICAL, so at 9/16 the HORIZONTAL half-angle is the
-      // narrower one. A distance derived from the vertical angle alone crops
-      // a box that is much wider than it is tall.
-      const aspectRatio = 9 / 16;
-      const box: EntityBoundsInput = {
-        min: { x: -5, y: -0.5, z: -0.5 },
-        max: { x: 5, y: 0.5, z: 0.5 },
+    // Every corner of each box, at the three aspect ratios a report is
+    // realistically written at. Framing off the vertical half-angle alone
+    // cropped a wide box at a portrait ratio (#3864); framing off the largest
+    // SIDE cropped a cube at any ratio, because down the isometric axis a box
+    // projects wider than any of its sides (#3882).
+    const CORNER_FIT_BOXES: ReadonlyArray<readonly [string, EntityBoundsInput]> = [
+      ['a unit cube', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }],
+      ['a wide box', { min: { x: -6, y: -0.25, z: -0.25 }, max: { x: 6, y: 0.25, z: 0.25 } }],
+      ['a tall box', { min: { x: -0.25, y: -6, z: -0.25 }, max: { x: 0.25, y: 6, z: 0.25 } }],
+      ['a flat wide slab', { min: { x: -3, y: -0.5, z: -3 }, max: { x: 3, y: 0.5, z: 3 } }],
+    ];
+
+    for (const [aspectName, aspectRatio] of [
+      ['16/9', 16 / 9],
+      ['1/1', 1],
+      ['9/16', 9 / 16],
+    ] as const) {
+      for (const [boxName, box] of CORNER_FIT_BOXES) {
+        it(`fits every corner of ${boxName} inside the frustum at ${aspectName}`, () => {
+          const cam = perspectiveCameraOf(frameOneBox(box, aspectRatio))!;
+          expect(cornersOutsideFrustum(cam, box, aspectRatio)).toEqual([]);
+        });
+
+        it(`frames ${boxName} tightly at ${aspectName}, not merely from far away`, () => {
+          // Take the padding back out: the fit is the SMALLEST standoff that
+          // works, so the worst corner then sits exactly on the frustum edge.
+          const cam = perspectiveCameraOf(frameOneBox(box, aspectRatio))!;
+          expect(worstCornerFill(withoutPadding(cam, box), box, aspectRatio))
+            .toBeCloseTo(1, 9);
+        });
+      }
+    }
+
+    it('stands a degenerate box off rather than sitting inside it', () => {
+      // A point fits the frustum at every distance including zero, so the
+      // corner walk returns 0 and only the floor keeps the camera out of the
+      // entity. Nothing else in this suite exercises that branch.
+      const point: EntityBoundsInput = {
+        min: { x: 3, y: 4, z: 5 },
+        max: { x: 3, y: 4, z: 5 },
       };
+      const cam = perspectiveCameraOf(frameOneBox(point, 16 / 9))!;
 
-      const cam = perspectiveCameraOf(frameOneBox(box, aspectRatio))!;
-      expect(cornersOutsideFrustum(cam, box, aspectRatio)).toEqual([]);
-    });
-
-    it('keeps a tall entity inside the frustum at a landscape aspect ratio', () => {
-      // The other direction, so a fix that merely swapped which angle is used
-      // fails here instead of passing both.
-      const aspectRatio = 16 / 9;
-      const box: EntityBoundsInput = {
-        min: { x: -0.5, y: -5, z: -0.5 },
-        max: { x: 0.5, y: 5, z: 0.5 },
-      };
-
-      const cam = perspectiveCameraOf(frameOneBox(box, aspectRatio))!;
-      expect(cornersOutsideFrustum(cam, box, aspectRatio)).toEqual([]);
+      // BCF centre of the point is (3, -5, 4).
+      const standoff = Math.sqrt(
+        (cam.cameraViewPoint.x - 3) ** 2 +
+        (cam.cameraViewPoint.y - -5) ** 2 +
+        (cam.cameraViewPoint.z - 4) ** 2,
+      );
+      expect(standoff).toBeCloseTo(0.1 * FRAMING_PADDING, 9);
     });
 
     it('does not move the camera at all for a 16/9 cube', () => {
-      // The narrower half-angle at 16/9 IS the vertical one, so the widening
-      // must be inert here -- a landscape export frames exactly as before.
+      // A cube's projection down the isometric axis is taller than it is
+      // wide, so the VERTICAL half-angle binds at 16/9 and at 1/1 alike, and
+      // the wider horizontal angle at 16/9 changes nothing. Pins that a
+      // landscape export of a cube frames exactly as a square one does.
       const box: EntityBoundsInput = { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 2, z: 2 } };
       const wide = perspectiveCameraOf(frameOneBox(box, 16 / 9))!;
       const square = perspectiveCameraOf(frameOneBox(box, 1))!;

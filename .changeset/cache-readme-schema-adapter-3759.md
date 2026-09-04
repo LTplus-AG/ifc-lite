@@ -1,5 +1,5 @@
 ---
-'@ifc-lite/cache': patch
+'@ifc-lite/cache': minor
 ---
 
 Fix the README quickstart, which didn't typecheck (issue #3759): `parseColumnar` takes the raw `ArrayBuffer`, not a `Uint8Array` view of it, and `BinaryCacheWriter.write` needs a `CacheDataStore` (`schema: SchemaVersion`, a numeric enum) — not the parser's `IfcDataStore` (`schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5'`, a string union), and nothing converted between them.

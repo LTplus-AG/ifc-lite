@@ -205,6 +205,22 @@ pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -
     has_entry(cache, &data_model_cache_key(cache_key)).await
 }
 
+/// Whether the Parquet metadata header is cached for `cache_key`.
+///
+/// The cheap half of "is this replayable": the header is a few hundred bytes,
+/// where the geometry blob is the whole model. The hash-only stream probe
+/// (#3901) asks this, plus [`has_current_data_model`], BEFORE it takes an
+/// admission slot, so the common miss (a file the server has never seen) is
+/// answered by two small reads rather than by charging a parse slot for a disk
+/// lookup. It is a pre-filter, never the decision: [`try_cached_replay`] still
+/// makes that, and a metadata entry present here with no geometry beside it
+/// falls through to the same 404.
+///
+/// [`try_cached_replay`]: super::cached_replay::try_cached_replay
+pub(crate) async fn has_parquet_metadata(cache: &DiskCache, cache_key: &str) -> bool {
+    has_entry(cache, &parquet_metadata_key(cache_key)).await
+}
+
 /// Whether `key` has a readable entry.
 ///
 /// Reads the value rather than asking `DiskCache::has`, which is an index

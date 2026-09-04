@@ -789,8 +789,14 @@ would send with the file. They are part of the cache identity, so a hash paired
 with a different layout asks about a different entry.
 
 `@ifc-lite/server-client` does this for you: `parseParquetStream` hashes the
-file locally, probes, and uploads on the 404. Pass `{ skipCacheProbe: true }`
-to go straight to the upload.
+file locally, probes, and uploads on the 404. It also uploads when the probe is
+not answered at all, which is what a server built before this change does (its
+route still requires a multipart body, so a bodyless POST is rejected as a bad
+boundary), when a proxy refuses the shape, when admission sheds the probe, or
+when it times out. A probe gets a 5 second budget for its headers, not the
+client's full request timeout, because a probe that is not fast is not worth
+the upload it is delaying. Pass `{ skipCacheProbe: true }` to go straight to
+the upload.
 
 !!! note "Compressed uploads never hit the probe"
 

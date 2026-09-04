@@ -62,8 +62,10 @@ pub async fn parse_parquet_stream(
     let tessellation_quality = query.resolved_tessellation_quality()?;
 
     // Hash-only probe: no body was sent, so there is nothing to extract and
-    // nothing to parse. Checked BEFORE the admission gate because this path
-    // buffers no upload and runs no geometry work.
+    // nothing to parse. It is checked before the gate below only because that
+    // gate reserves an upload that does not exist. The probe takes admission
+    // itself, on the hit path where it has real work to bound -- see
+    // `replay_by_client_hash`.
     let Some(mut multipart) = multipart else {
         let Some(sha256) = query.sha256.as_deref() else {
             // No body and no hash: there is nothing to identify a file with.

@@ -14,6 +14,8 @@ file". A hash that arrives alongside a body is ignored, so the received bytes
 still decide which entry is read and written.
 
 `parseParquetStream` in `@ifc-lite/server-client` hashes the file locally and
-probes before uploading. This also makes a hit progressive: it used to fetch the
+probes before uploading. The probe degrades to the upload whenever it is not
+answered, so pointing an upgraded client at a server that predates this change
+still works. This also makes a hit progressive: it used to fetch the
 whole model through `/cache/geometry` and hand it over as one batch. Pass
 `{ skipCacheProbe: true }` to upload straight away.

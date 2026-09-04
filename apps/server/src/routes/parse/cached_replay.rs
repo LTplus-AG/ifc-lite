@@ -18,8 +18,8 @@
 //! still monotonic and still ends at its own stated total.
 
 use super::cache_keys::{
-    cache_key_from_parts, has_current_data_model, is_file_digest, load_cached_symbolic,
-    parquet_geometry_key, parquet_metadata_key,
+    cache_key_from_parts, has_current_data_model, has_parquet_metadata, is_file_digest,
+    load_cached_symbolic, parquet_geometry_key, parquet_metadata_key,
 };
 use super::ParseQuery;
 use ifc_lite_processing::TessellationQuality;
@@ -54,14 +54,21 @@ use std::convert::Infallible;
 /// `GET /api/v1/cache/check/{hash}` already uses for "upload it", and the
 /// client uploads.
 ///
-/// Admission is acquired around the replay BUILD, then dropped before the
-/// response is returned. That is what the body-carrying hit path does, and for
-/// the same reason: `try_cached_replay` is not free. It reads the whole
-/// geometry blob into memory, base64-encodes every batch, and materializes the
-/// full event vector before a byte is sent, which is several times the model's
-/// geometry resident at once. A probe is the cheapest request a client can
-/// send, so leaving that window unbounded would make it the cheapest way to
-/// exhaust the server. Draining the finished stream needs no slot.
+/// A MISS costs no admission slot. The probe answers it from two small reads
+/// (the metadata header and the data-model marker) before touching the gate,
+/// because the common miss is a file the server has never seen and charging a
+/// parse slot for a disk lookup would mean every cold-cache client wins
+/// admission twice, probe then upload, and could be shed on the probe rather
+/// than queueing for the upload that would have succeeded.
+///
+/// A HIT does take one, around the replay BUILD, dropped before the response is
+/// returned. That is what the body-carrying hit path does, and for the same
+/// reason: `try_cached_replay` reads the whole geometry blob into memory,
+/// base64-encodes every batch, and materializes the full event vector before a
+/// byte is sent, which is several times the model's geometry resident at once.
+/// Leaving that window unbounded would make the cheapest request a client can
+/// send the cheapest way to exhaust the server. Draining the finished stream
+/// needs no slot.
 pub(super) async fn replay_by_client_hash(
     state: &AppState,
     query: &ParseQuery,
@@ -74,13 +81,22 @@ pub(super) async fn replay_by_client_hash(
         ));
     }
     let cache_key = cache_key_from_parts(sha256, query.opening_filter, quality);
-    let admission_guard = state
-        .admission
-        .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
-        .await?;
-    let replay = try_cached_replay(state, &cache_key, query.parquet_layout).await;
-    drop(admission_guard);
-    if let Some(response) = replay? {
+
+    let replay = if has_parquet_metadata(&state.cache, &cache_key).await
+        && has_current_data_model(&state.cache, &cache_key).await
+    {
+        let admission_guard = state
+            .admission
+            .acquire(state.config.max_file_size_mb as u64 * 1024 * 1024)
+            .await?;
+        let replay = try_cached_replay(state, &cache_key, query.parquet_layout).await;
+        drop(admission_guard);
+        replay?
+    } else {
+        None
+    };
+
+    if let Some(response) = replay {
         tracing::info!(
             cache_key = %cache_key,
             "Streaming cache HIT by client-supplied hash - no upload"

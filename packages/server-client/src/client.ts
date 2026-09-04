@@ -25,6 +25,34 @@ import {
 } from './parquet-stream-events.js';
 
 /**
+ * How long the hash-only cache probe may take to answer with its HEADERS
+ * before the client gives up and uploads (issue #3901).
+ *
+ * Short on purpose, and short of `timeout`, which covers the replay body once
+ * the headers have arrived. The probe's whole value is being cheaper than the
+ * upload; a probe that is not cheap has to get out of the way of it. Matches
+ * the 5s the `/cache/check` request it replaced used, for the same reason.
+ */
+const PROBE_HEADER_TIMEOUT_MS = 5000;
+
+/**
+ * Probe statuses that mean "no cached replay, send the file", as opposed to a
+ * failure worth surfacing.
+ *
+ * `404` is the server saying it looked and found nothing. The rest are a
+ * server that does not understand the probe at all: `@ifc-lite/server-client`
+ * is published to npm and pointed at a user-supplied `baseUrl`, so a client
+ * upgraded ahead of a self-hosted server is ordinary. On a server built before
+ * #3901 the route's `Multipart` extractor rejects a bodyless POST with `400`
+ * (axum's InvalidBoundary); `405`/`415`/`501` cover a proxy or a future server
+ * refusing the shape. Treating those as a failure would take the streaming
+ * path from working to broken on every such deployment, when uploading is
+ * right there and always correct. `503` is admission shedding: queueing for
+ * the upload is the older, better behaviour.
+ */
+const PROBE_NOT_ANSWERED = new Set([400, 404, 405, 415, 501, 503]);
+
+/**
  * Compress a file or ArrayBuffer using gzip compression.
  * Uses the browser's CompressionStream API for efficient compression.
  *
@@ -304,29 +332,52 @@ export class IfcServerClient {
       const hash = await computeFileHash(file);
       console.log(`[client] Stream: computed hash in ${(performance.now() - hashStart).toFixed(0)}ms: ${hash.substring(0, 16)}...`);
 
+      // Two budgets on one signal. The probe's HEADERS must arrive fast or the
+      // probe is not worth waiting for — the upload it is trying to avoid
+      // would already be in flight. Once they do, the same request is the
+      // replay, and draining it gets the full request timeout. Without the
+      // split, a server that is slow to answer burns `this.timeout` (5 min by
+      // default) and then rejects with an AbortError that never reaches the
+      // fallback below, so the load dies instead of uploading.
+      const controller = new AbortController();
+      let timer = setTimeout(() => controller.abort(), PROBE_HEADER_TIMEOUT_MS);
       const probeStart = performance.now();
-      const probe = await fetch(
-        `${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options, true, hash)}`,
-        {
-          method: 'POST',
-          headers: this.authHeaders(),
-          signal: AbortSignal.timeout(this.timeout),
-        }
-      );
 
-      if (probe.ok) {
-        console.log(`[client] Stream: cache HIT by hash (${(performance.now() - probeStart).toFixed(0)}ms) - replaying without upload`);
-        return consumeParquetStream(probe, onBatch, probeStart);
+      let probe: Response | null = null;
+      try {
+        probe = await fetch(
+          `${this.baseUrl}/api/v1/parse/parquet-stream${parseQuery(options, true, hash)}`,
+          {
+            method: 'POST',
+            headers: this.authHeaders(),
+            signal: controller.signal,
+          }
+        );
+      } catch (error) {
+        // A probe that times out or fails to connect is not an answer about
+        // the cache. Upload, which is what would have happened without it.
+        console.warn('[client] Stream: hash probe failed; uploading instead:', error);
+      } finally {
+        clearTimeout(timer);
       }
 
-      // 404 is the server's "nothing cached under that hash, send the body".
-      // Anything else is a real failure and must surface rather than being
-      // retried as a full upload.
-      if (probe.status !== 404) {
+      if (probe?.ok) {
+        console.log(`[client] Stream: cache HIT by hash (${(performance.now() - probeStart).toFixed(0)}ms) - replaying without upload`);
+        timer = setTimeout(() => controller.abort(), this.timeout);
+        try {
+          return await consumeParquetStream(probe, onBatch, probeStart);
+        } finally {
+          clearTimeout(timer);
+        }
+      }
+
+      if (probe && !PROBE_NOT_ANSWERED.has(probe.status)) {
+        // A real server-side failure. Surfacing it beats silently spending the
+        // upload the probe exists to avoid.
         throw await this.handleError(probe);
       }
-      await probe.body?.cancel();
-      console.log(`[client] Stream: cache MISS by hash (${(performance.now() - probeStart).toFixed(0)}ms) - uploading`);
+      await probe?.body?.cancel();
+      console.log(`[client] Stream: no cached replay (${(performance.now() - probeStart).toFixed(0)}ms) - uploading`);
     }
 
     console.log(`[client] Stream: starting upload for ${fileName} (${(fileSize / 1024 / 1024).toFixed(1)}MB)`);

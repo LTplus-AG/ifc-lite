@@ -240,10 +240,9 @@ export interface Relationship {
   rel_type: string;
   relating_id: number;
   related_id: number;
-  /** Express id of the `IfcRel*` entity this row came from. Data-model v6
-   *  payload (issue #3860); `undefined` for older servers, which sent no such
-   *  column. `0` on the synthetic `TYPEHASPROPERTYSETS` rows, which no IFC
-   *  entity declares. */
+  /** Express id of the `IfcRel*` entity this row came from. v6 payload (issue
+   *  #3860); `undefined` for older servers. `0` on the synthetic
+   *  `TYPEHASPROPERTYSETS` rows, which no IFC entity declares. */
   rel_id?: number;
 }
 
@@ -554,9 +553,8 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const relatingIds = relationshipsArrow.getChild('relating_id')?.toArray() as Uint32Array;
   const relatedIds = relationshipsArrow.getChild('related_id')?.toArray() as Uint32Array;
   // rel_id arrives with the v6 payload (issue #3860). An older server sends no
-  // such column: leave the field absent rather than defaulting it to 0, so a
-  // caller can tell "no id on the wire" from "id 0" (the synthetic
-  // TYPEHASPROPERTYSETS rows).
+  // such column: leave the field absent rather than defaulting to 0, so a
+  // caller can tell "no id on the wire" from the genuine 0 on synthetic rows.
   const relIds = relationshipsArrow.getChild('rel_id')?.toArray() as Uint32Array | undefined;
 
   // Pre-allocate array for better performance

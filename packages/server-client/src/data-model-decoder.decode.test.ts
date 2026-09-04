@@ -119,15 +119,16 @@ function relationshipsTable(
   rows: { relType: string; relatingId: number; relatedId: number; relId?: number }[],
   opts: { withRelId?: boolean } = {}
 ) {
-  const columns: Record<string, arrow.Vector> = {
+  const columns = {
     rel_type: arrow.vectorFromArray(rows.map((r) => r.relType), new arrow.Utf8()),
     relating_id: arrow.vectorFromArray(rows.map((r) => r.relatingId), new arrow.Uint32()),
     related_id: arrow.vectorFromArray(rows.map((r) => r.relatedId), new arrow.Uint32()),
   };
-  if (opts.withRelId) {
-    columns.rel_id = arrow.vectorFromArray(rows.map((r) => r.relId ?? 0), new arrow.Uint32());
-  }
-  return new arrow.Table(columns);
+  if (!opts.withRelId) return new arrow.Table(columns);
+  return new arrow.Table({
+    ...columns,
+    rel_id: arrow.vectorFromArray(rows.map((r) => r.relId ?? 0), new arrow.Uint32()),
+  });
 }
 
 function spatialNodesTable(rows: { id: number; parentId: number; level: number; path: string; type: string }[]) {

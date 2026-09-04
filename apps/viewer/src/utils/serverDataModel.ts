@@ -328,9 +328,9 @@ function buildRelationships(
       continue;
     }
 
-    // The server payload carries no IfcRel express id, so every edge gets 0 —
-    // the same placeholder the hand-rolled facade used.
-    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, 0);
+    // The IfcRel express id (#3860). Absent only against a server older than
+    // the column; 0 is then the placeholder every edge used to get.
+    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, rel.rel_id ?? 0);
   }
 
   if (unmappedRelTypes.size > 0) {

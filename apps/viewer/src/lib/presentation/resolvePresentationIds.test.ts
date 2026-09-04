@@ -4,7 +4,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { hasNoRenderableTarget } from './resolveIsolationIds.js';
+import { hasNoRenderableTarget } from './resolvePresentationIds.js';
 
 /** `hasGeometry` stand-in: exactly the ids whose mesh is on screen right now. */
 const rendering = (...ids: number[]) => {

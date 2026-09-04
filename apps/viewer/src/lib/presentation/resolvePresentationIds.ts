@@ -3,15 +3,24 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The one place that says what an isolate call site installs into the
- * isolation channel, given the raw ids it was asked to isolate and whatever
+ * The one place that says which ids a PRESENTATION channel installs into the
+ * renderer, given the raw ids a user (or a host script) picked and whatever
  * `cameraCallbacks.resolveHighlightIds` answers for them.
+ *
+ * A presentation channel is any channel whose ids end up matched against MESH
+ * ids: isolate (`isolatedEntities`), hide/show (`hiddenEntities`), and colour
+ * (`updateMeshColors` / `pendingColorUpdates`). All three share one failure
+ * mode — a geometry-less `IfcElementAssembly` id owns no mesh, so isolating it
+ * blanks the viewport and hiding or colouring it does nothing at all — and all
+ * three are fixed by the same expansion. That is why this module is named for
+ * the class of channel rather than for isolation: a `hide` handler written
+ * against a module called "isolation ids" learns nothing, which is exactly the
+ * "one call site every channel has to remember" shape #3338 is about.
  *
  * The policy is #3382's, unchanged: the resolved ids are UNIONED with the raw
  * ids, never substituted for them (#2680). What this module adds is a single
  * named home for it, so `scripts/check-isolate-expansion-routing.mjs` can
- * require every isolation channel to route through the same call — the "one
- * call site every channel has to remember" shape #3338 is about.
+ * require every isolation channel to route through the same call.
  *
  * Why union rather than replace, and why an empty resolve still installs the
  * raw ids: `resolveHighlightIds` bounds-checks against the type-visibility
@@ -54,7 +63,7 @@
  * graph — so the signal for it lives in `resolveRenderableIds`
  * (`Viewport.tsx`), which warns once streaming has finished.
  */
-export function resolveIsolationIds(
+export function resolvePresentationIds(
   resolver: ((ids: number[]) => number[]) | undefined,
   rawIds: readonly number[],
 ): number[] {

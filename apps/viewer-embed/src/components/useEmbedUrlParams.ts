@@ -35,7 +35,7 @@
  */
 
 import { useEffect, useMemo, useRef } from 'react';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds.js';
 import { useViewerStore } from '@/store';
 import { toHostHiddenIfcTypes } from '@/lib/host-hidden-ifc-types.js';
 import type { EmbedViewerUrlParams } from '../bridge/urlParams.js';
@@ -98,7 +98,7 @@ export function useEmbedUrlParams(urlParams: EmbedViewerUrlParams, modelReady: b
       // uses (`bridge/handler.ts`) before assigning -- the raw ids are kept
       // when no renderer has registered a resolver yet, or when it resolves
       // to nothing.
-      const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, urlParams.isolate);
+      const isolateIds = resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, urlParams.isolate);
       state.setIsolatedEntities(new Set(isolateIds));
     }
   }, [modelReady, urlParams.select, urlParams.isolate]);

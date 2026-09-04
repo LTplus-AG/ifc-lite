@@ -353,28 +353,28 @@ describe('check-isolate-expansion-routing: end-to-end -- a commented-out routing
     }
   });
 
-  it('ROUTING_MARKERS recognises resolveIsolationIds( (#3338: the shared expansion wrapper)', () => {
+  it('ROUTING_MARKERS recognises resolvePresentationIds( (#3338: the shared expansion wrapper)', () => {
     assert.equal(
-      ROUTING_MARKERS.test('const isolateIds = resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, ids);'),
+      ROUTING_MARKERS.test('const isolateIds = resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, ids);'),
       true,
       'a channel that switched to the shared wrapper no longer contains a literal resolveHighlightIds( call',
     );
     assert.equal(
-      ROUTING_MARKERS.test('setIsolatedEntities(new Set(resolveIsolationIds(resolver, rawIds)));'),
+      ROUTING_MARKERS.test('setIsolatedEntities(new Set(resolvePresentationIds(resolver, rawIds)));'),
       true,
       'the assigning channels (useBCF, usePreviewIsolation) route through the same wrapper',
     );
     assert.equal(
-      ROUTING_MARKERS.test('// resolveIsolationIds handles this -- see #3338'),
+      ROUTING_MARKERS.test('// resolvePresentationIds handles this -- see #3338'),
       false,
       'naming the wrapper in prose without calling it must not satisfy the gate',
     );
   });
 
-  it('GREEN: a REQUIRES_ROUTING_MARKER file routed via resolveIsolationIds passes', () => {
+  it('GREEN: a REQUIRES_ROUTING_MARKER file routed via resolvePresentationIds passes', () => {
     const relPath = [...REQUIRES_ROUTING_MARKER][0];
     const compliant = `
-      const isolationIds = resolveIsolationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
+      const isolationIds = resolvePresentationIds(cameraCallbacks.resolveHighlightIds, matchingIds);
       isolateEntities(isolationIds);
     `;
     const verdict = classifyFile(relPath, compliant);

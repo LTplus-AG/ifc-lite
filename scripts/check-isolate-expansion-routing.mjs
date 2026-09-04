@@ -217,7 +217,7 @@ export const PROPERTY_ALIAS_PATTERN =
 
 /** The resolvers that actually perform `IfcRelAggregates` expansion, or read
  *  from a resolver that does, called as real code (not merely named in prose).
- *  `resolveIsolationIds` (`apps/viewer/src/lib/isolation/resolveIsolationIds.ts`,
+ *  `resolvePresentationIds` (`apps/viewer/src/lib/presentation/resolvePresentationIds.ts`,
  *  #3338) is the shared policy wrapper most isolation channels now
  *  call INSTEAD of `resolveHighlightIds` directly -- it takes the resolver
  *  as its first argument rather than invoking it inline, so a channel that
@@ -226,7 +226,7 @@ export const PROPERTY_ALIAS_PATTERN =
  *  `SearchModal.filter.tsx` still call the resolver inline on purpose, each
  *  with its own reason in the source -- both spellings must keep passing.) */
 export const ROUTING_MARKERS =
-  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolveIsolationIds)\b\s*\?{0,1}\.{0,1}\s*\(/;
+  /\b(resolveHighlightIds|expandToGeometryBearingIds|expandFilterRowsThroughAggregation|resolvePresentationIds)\b\s*\?{0,1}\.{0,1}\s*\(/;
 
 /**
  * Channels that MUST show a `ROUTING_MARKERS` call in the same file. Paths
@@ -256,7 +256,7 @@ export const REQUIRES_ROUTING_MARKER = new Set([
   // same shape as LensPanel/SearchModal.filter's rule-matched ids.
   'apps/viewer/src/hooks/useIDS.ts',
   // The SDK/MCP isolate() channel: #3382 landed the routing fix and #3338
-  // moved its union policy into the shared `resolveIsolationIds`, so this
+  // moved its union policy into the shared `resolvePresentationIds`, so this
   // now genuinely routes and belongs here instead of NO_MARKER_REQUIRED.
   'apps/viewer/src/sdk/adapters/visibility-adapter.ts',
 ]);

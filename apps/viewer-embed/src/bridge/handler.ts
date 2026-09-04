@@ -22,7 +22,7 @@ import {
   type ViewPreset,
   type SectionAxis,
 } from '@ifc-lite/embed-protocol';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds.js';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds.js';
 import { toGlobalIdFromModels, type ViewerState } from '@/store/index.js';
 import { aroundDestructiveLoad, offerHostPose } from './cameraIntent.js';
 import { applyInitConfig } from './initConfig.js';
@@ -343,7 +343,7 @@ async function handleCommand(type: InboundCommandType, data: unknown, requestId?
 
     case 'ISOLATE': {
       const payload = data as InboundPayloads['ISOLATE']; // #3338: expand assemblies, matching LensPanel/PropertiesPanel/SearchModal/SDK.
-      state.isolateEntities(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
+      state.isolateEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, payload.ids));
       if (requestId) emitToParent(createResponse(requestId));
       return;
     }

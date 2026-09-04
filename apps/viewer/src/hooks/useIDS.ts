@@ -50,7 +50,7 @@ import {
   buildRestoreColorUpdates,
 } from './ids/idsColorSystem';
 import { releaseOwnedIdsFocusVisibility } from '@/lib/ids/visibility-ownership';
-import { resolveIsolationIds } from '@/lib/isolation/resolveIsolationIds';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import type { ColorTuple } from './ids/idsColorSystem';
 import { downloadReportJSON, downloadReportHTML } from './ids/idsExportService';
@@ -675,7 +675,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     const state = useViewerStore.getState();
     // #3338: an IDS applicability filter matches any class, so the focused
     // row can be a geometry-less assembly whose bare id draws nothing.
-    state.setIsolatedEntities(new Set(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, [...ids])));
+    state.setIsolatedEntities(new Set(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, [...ids])));
     const installed = useViewerStore.getState().isolatedEntities;
     state.setIdsFocusVisibilityOwned(installed ? { channel: 'isolate', ids: installed } : null);
   }, []);
@@ -881,7 +881,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const installSetIsolation = useCallback((ids: Set<number> | null) => {
     // #3338: same for the failed/passed/involved sets; `null` only clears.
     const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
-    setIsolatedEntities(ids === null ? null : new Set(resolveIsolationIds(resolver, [...ids])));
+    setIsolatedEntities(ids === null ? null : new Set(resolvePresentationIds(resolver, [...ids])));
     useViewerStore.getState().setIdsFocusVisibilityOwned(null);
   }, [setIsolatedEntities]);
 

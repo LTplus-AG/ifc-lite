@@ -8,7 +8,7 @@ import { getModelForRef, type ModelLike } from './model-compat.js';
 import { collectSpatialSubtreeElementsWithIfcSpace } from '../../store/basketVisibleSet.js';
 import { toGlobalIdForRef, toGlobalIdFromModels } from '../../store/globalId.js';
 import type { AggregationRelationships } from '../../utils/aggregation.js';
-import { resolveIsolationIds } from '../../lib/isolation/resolveIsolationIds.js';
+import { resolvePresentationIds } from '../../lib/presentation/resolvePresentationIds.js';
 import { isSpaceLikeSpatialTypeName, isSpatialStructureTypeName, type SpatialNode } from '@ifc-lite/data';
 
 function findDescendantNode(root: SpatialNode, expressId: number): SpatialNode | null {
@@ -99,11 +99,11 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         // geometry-bearing `IfcRelAggregates` parts, or the viewport isolates
         // an id with nothing to render and shows an empty scene.
         //
-        // #3382's union policy, now via the shared `resolveIsolationIds` so
+        // #3382's union policy, now via the shared `resolvePresentationIds` so
         // `check-isolate-expansion-routing.mjs` can require every channel to
         // use the same one: the resolved ids are unioned with the raw ids, and
         // an empty resolve keeps the raw ids rather than isolating nothing.
-        state.isolateEntities?.(resolveIsolationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
+        state.isolateEntities?.(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },

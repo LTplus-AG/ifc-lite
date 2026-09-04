@@ -260,9 +260,9 @@ fn volume_complaint(out: &Mesh, expected: f64, merged: f64, what: &str) -> Optio
 /// A unit box at the origin, and a unit box rotated 30 degrees about Z placed
 /// so it overlaps the first one's `+X+Y` corner, with `z_offset` added to the
 /// rotated box's Z span.
-fn corner_overlap_pair(z_offset: f64, b_height: f64) -> (Mesh, Mesh) {
+fn corner_overlap_pair(dx: f64, dy: f64, z_offset: f64, b_height: f64) -> (Mesh, Mesh) {
     let a = boxed([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
-    let b_min = [0.5, 0.5, z_offset];
+    let b_min = [dx, dy, z_offset];
     let about = [b_min[0] + 0.5, b_min[1] + 0.5, b_min[2] + b_height / 2.0];
     let b = boxed(
         b_min,
@@ -277,7 +277,7 @@ fn corner_overlap_pair(z_offset: f64, b_height: f64) -> (Mesh, Mesh) {
 /// `union_mesh(a, b)` came back closed while `union_mesh(b, a)` on the same
 /// two meshes still had 8 unmatched directed edges.
 fn assert_union_is_closed(z_offset: f64, b_height: f64, what: &str) {
-    let (a, b) = corner_overlap_pair(z_offset, b_height);
+    let (a, b) = corner_overlap_pair(0.5, 0.5, z_offset, b_height);
     assert_eq!(open_edges(&a), Ok(0), "operand A must be closed going in");
     assert_eq!(open_edges(&b), Ok(0), "operand B must be closed going in");
     let clipper = ClippingProcessor::new();
@@ -337,14 +337,9 @@ fn no_offset_within_the_snap_band_tears_the_corner_overlap() {
             for i in 0..13 {
                 for j in 0..13 {
                     let (dx, dy) = (0.5 + f64::from(i) * 0.04, 0.5 + f64::from(j) * 0.04);
-                    let a = boxed([0.0, 0.0, 0.0], [1.0, 1.0, 1.0], None);
-                    let b_min = [dx, dy, b_z + dz];
-                    let about = [b_min[0] + 0.5, b_min[1] + 0.5, b_min[2] + b_h / 2.0];
-                    let b = boxed(
-                        b_min,
-                        [1.0, 1.0, b_h],
-                        Some((Vector3::z(), 30.0f64.to_radians(), about)),
-                    );
+                    // The SAME builder the single-case assertions use, so the
+                    // sweep cannot drift away from the pinned fixtures.
+                    let (a, b) = corner_overlap_pair(dx, dy, b_z + dz, b_h);
                     // BOTH orders: `a ∪ b` and `b ∪ a` are the same solid, and
                     // on `main` the two orders tore 2090 and 2388 times here.
                     let expected = expected_union_volume(dx, dy, b_z + dz, b_h);

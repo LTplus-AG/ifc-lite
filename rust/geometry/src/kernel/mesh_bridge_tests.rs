@@ -476,7 +476,6 @@ fn subtract_many_disjoint_openings_matches_sequential() {
 /// T-junctions that consolidation is expected to close (at `dz = 0` this same
 /// three-box fixture is 26 open edges raw and 0 consolidated), so a raw
 /// assertion would fail on geometry that is fine.
-#[cfg(test)]
 mod issue_3353_nary_near_coplanar {
     use super::*;
     use crate::csg::ClippingProcessor;

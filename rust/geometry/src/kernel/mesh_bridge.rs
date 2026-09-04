@@ -34,11 +34,9 @@ fn snap(c: f64) -> f64 {
     (c / SNAP_GRID).round() * SNAP_GRID
 }
 
-// The near-coplanar perpendicular band lives in `super::near_band`: it keeps
-// the operand extent PER AXIS and projects it onto the plane normal actually
-// being tested. `tritri`, `classify` and `plane_weld` all size their
-// near-coplanar/scatter bands with that ONE type rather than mirroring the
-// expression.
+// The cross-operand near-coincidence weld lives in `super::plane_weld`: it was
+// split out of this module when #3353 made it a boolean-wide concern rather
+// than a subtraction-only one, and this module was at its size budget.
 use super::plane_weld::{promote_cutter_verts_onto_host_faces, promote_operands_mutually};
 
 /// `Mesh` → the kernel's triangle list (f32 → f64, snapped to the reconcile
@@ -120,14 +118,13 @@ pub(crate) fn orient_outward(mut tris: Vec<Tri>) -> Vec<Tri> {
     tris
 }
 
-
 /// `host − cutter` as a `Mesh`.
 pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     #[cfg(feature = "csg_capture")]
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
-    let _ = promote_cutter_verts_onto_host_faces(&mut c, &h);
+    promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
@@ -152,7 +149,7 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            let _ = promote_cutter_verts_onto_host_faces(&mut c, &h);
+            promote_cutter_verts_onto_host_faces(&mut c, &h);
             orient_outward(c)
         })
         .collect();
@@ -225,10 +222,10 @@ pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
     // the arrangement (#3353). Mutual, not cutter-onto-host: union has no host,
     // and the one-directional form left `union_mesh(b, a)` tearing on the same
     // fixture `union_mesh(a, b)` handled. See `promote_operands_mutually`.
-    let mut operands = vec![mesh_to_tris(a), mesh_to_tris(b)];
-    let _ = promote_operands_mutually(&mut operands);
-    let b = orient_outward(operands.pop().expect("two operands"));
-    let a = orient_outward(operands.pop().expect("two operands"));
+    let mut operands = [mesh_to_tris(a), mesh_to_tris(b)];
+    promote_operands_mutually(&mut operands);
+    let [ta, tb] = operands;
+    let (a, b) = (orient_outward(ta), orient_outward(tb));
     let (out, conforming) = boolean_with_conformity(&a, &b, BoolOp::Union);
     // On a trip `out` is PARTIAL: discard it, return empty — the graceful fallback callers
     // handle (`csg::union_mesh` merges plainly; #960 goes sequential), never a poisoned
@@ -248,16 +245,11 @@ pub fn union_many(meshes: &[&Mesh]) -> Mesh {
     // count, per-element accumulator preserved (see `union`).
     super::budget::begin();
     // NO near-coplanar weld here, unlike the binary `union` (#3353). The root
-    // cause does reach this path — `union_many` runs the identical broadphase /
-    // `near_coplanar` / classify stack, and a three-box near-coplanar sweep
-    // tears 105 of 147 without a weld and 36 of 147 with one. But the weld's
-    // gate is PLANE-level, not footprint-level, and that scales badly with
-    // operand count: on #960's segmented-roof cutter union it moved 624
-    // vertices across 11 operands, perturbing seams the analytic prisms had
-    // already built consistently, and `issue_960_segmented_roof_clip` failed
-    // (wall #4148 max Z 9850 mm against an expected ~8984 mm — the sequential
-    // fallback's sliver). Closing the N-ary half needs that interaction
-    // understood first; see `issue_3353_nary_near_coplanar` for the pin.
+    // cause DOES reach this path, and the weld does help it — but its gate is
+    // PLANE-level rather than footprint-level, which scales badly with operand
+    // count and regressed `issue_960_segmented_roof_clip`. The measurements and
+    // the pin are in `mesh_bridge_tests::issue_3353_nary_near_coplanar`, kept
+    // there rather than restated here so the numbers have one home.
     let tri_lists: Vec<Vec<Tri>> =
         meshes.iter().map(|m| orient_outward(mesh_to_tris(m))).collect();
     let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();

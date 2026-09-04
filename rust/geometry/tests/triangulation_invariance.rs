@@ -127,7 +127,7 @@ mod census_golden;
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
-use ifc_lite_geometry::kernel::plane_weld::take_plane_weld_stats;
+use ifc_lite_geometry::take_plane_weld_stats;
 use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
@@ -792,6 +792,14 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
     // that moves with the corpus would make the golden re-baseline on every
     // fixture change. Zero in a default build (see `take_plane_weld_stats`),
     // so this is only meaningful under `--features debug_geometry`.
+    //
+    // READ ONLY THE `all callers` COLUMN HERE. This corpus records ZERO unions
+    // (see `plane_weld::promote_operands_mutually`), so `union only` prints
+    // 0/0/0 by construction on every model, in every build — it is not
+    // evidence that the union weld does not fire, because nothing here calls
+    // it. Measuring the union caller needs a corpus that contains unions.
+    // The counters are also process-global while other tests in this file run
+    // concurrently, so per-model attribution is indicative, not exact.
     let mut weld_totals: Vec<(String, [(u64, u64, u64); 2])> = Vec::new();
     let _ = take_plane_weld_stats(); // discard anything earlier tests accrued
 
@@ -865,7 +873,10 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
         );
     }
 
-    println!("\n=== plane-weld telemetry (#3353; zero without --features debug_geometry) ===");
+    println!(
+        "\n=== plane-weld telemetry (#3353; zero without --features debug_geometry; \
+         'union only' is 0 by construction here, this corpus has no unions) ==="
+    );
     let mut all = (0u64, 0u64, 0u64);
     let mut uni = (0u64, 0u64, 0u64);
     for (model, [a, u]) in &weld_totals {

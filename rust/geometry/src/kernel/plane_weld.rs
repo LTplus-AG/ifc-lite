@@ -23,45 +23,33 @@ pub use diag::take_plane_weld_stats;
 /// Weld telemetry (#3353): how often the promotion actually MOVES anything.
 ///
 /// It exists because the #3353 fix landed with a byte-identical
-/// `triangulation_invariance` golden, and "the golden did not move" has two
-/// readings that matter very differently: the weld fires on real IFC and
-/// changes nothing measurable, or it never fires on real IFC at all. Inferring
-/// which from an unchanged number is the shape this repo keeps rediscovering,
-/// so the count is measured instead. Same feature gating and relaxed-atomic
-/// pattern as `router/voids/prism_cut.rs`'s prism stats.
+/// `triangulation_invariance` golden, and "the golden did not move" reads two
+/// very different ways: the weld fires on real IFC and changes nothing
+/// measurable, or it never fires at all. Inferring which from an unchanged
+/// number is the shape this repo keeps rediscovering, so the count is measured.
+/// Same gating and relaxed-atomic pattern as `router/voids/prism_cut.rs`.
 #[cfg(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry"))]
 mod diag {
     use std::sync::atomic::{AtomicU64, Ordering};
 
-    // Two independent tallies, because they answer different questions and a
-    // single one cannot be read. The low-level weld has been running on every
-    // `subtract` since #1007; only the UNION tally is new in #3353, and only it
-    // measures that change's blast radius. Summing them would let subtract's
-    // long-standing traffic stand in for evidence about the new caller.
+    // Two tallies, because a single one cannot be read: the low-level weld has
+    // run on every `subtract` since #1007, so subtract's long-standing traffic
+    // would stand in for evidence about the UNION caller that is new in #3353.
+    // They NEST rather than partition — a mutual promotion bumps UNION once and
+    // ALL once per low-level call inside it, welded vertices counted in both —
+    // so `ALL - UNION` is NOT subtract's share.
     static CALLS: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
     static FIRED: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
     static VERTS: [AtomicU64; 2] = [AtomicU64::new(0), AtomicU64::new(0)];
 
     /// `CALLS[ALL]` etc.: every call to the low-level weld, whatever the caller.
-    const ALL: usize = 0;
-    /// `CALLS[UNION]` etc.: only calls made through the union's mutual
-    /// promotion.
-    const UNION: usize = 1;
+    pub(super) const ALL: usize = 0;
+    /// `CALLS[UNION]` etc.: only the union's mutual promotions.
+    pub(super) const UNION: usize = 1;
 
-    /// Record one low-level promotion call and the vertices it moved.
+    /// Record one promotion call into `slot`, and the vertices it moved.
     #[inline]
-    pub(super) fn record(welded: usize) {
-        bump(ALL, welded);
-    }
-
-    /// Record one MUTUAL (union) promotion and the vertices it moved in total.
-    #[inline]
-    pub(super) fn record_union(welded: usize) {
-        bump(UNION, welded);
-    }
-
-    #[inline]
-    fn bump(slot: usize, welded: usize) {
+    pub(super) fn record(slot: usize, welded: usize) {
         CALLS[slot].fetch_add(1, Ordering::Relaxed);
         if welded > 0 {
             FIRED[slot].fetch_add(1, Ordering::Relaxed);
@@ -85,10 +73,10 @@ mod diag {
 
 #[cfg(not(any(feature = "observability", feature = "csg_capture", feature = "debug_geometry")))]
 mod diag {
+    pub(super) const ALL: usize = 0;
+    pub(super) const UNION: usize = 1;
     #[inline]
-    pub(super) fn record(_welded: usize) {}
-    #[inline]
-    pub(super) fn record_union(_welded: usize) {}
+    pub(super) fn record(_slot: usize, _welded: usize) {}
     /// Telemetry disabled in the default build; a caller that wants real counts
     /// must enable `debug_geometry` (or another observability feature).
     pub fn take_plane_weld_stats() -> [(u64, u64, u64); 2] {
@@ -120,18 +108,23 @@ mod diag {
 /// earlier operands re-reconcile against what the later ones settled on, and
 /// that is what closes the case one pass opens.
 ///
+/// Only PARTLY, and the limit is invisible from here: [`exact_on_plane_weld`]
+/// emits the moved vertex on the 2⁻³⁶ grid while its host gate refuses any
+/// triangle off the 2⁻¹⁶ operand grid, so a just-welded triangle is silently
+/// REFUSED as a host for the rest of the call. The reverse direction and every
+/// later pass reconcile only against faces that did NOT move. That is why this
+/// works at all (most faces do not move) and why it is less than the full
+/// both-directions reconciliation the name suggests. Lifting it moves welded
+/// coordinates, hence the determinism manifests: its own change.
+///
 /// So passes run until one welds nothing, capped by [`MAX_WELD_PASSES`] — a
-/// TERMINATOR, not a safety margin. The 9464-union sweep in
-/// `issue_3353_near_coplanar_rotated_overlap.rs` never exceeds two moving
-/// passes, which an earlier note generalised into "terminates on its own for
-/// every case measured": true of that sweep, false of the operand space. Run
-/// UNCAPPED over 80,000 randomised near-coplanar box pairs (arbitrary axis,
-/// angle ±90°, edges 0.3–3.0, Z offsets −6..+6 snap steps), 40 still moved the
-/// same vertex count on all 64 passes and 8 converged only after 5 to 13, so
-/// iterating to `moved == 0` HANGS (pinned by
-/// `the_weld_pass_cap_is_load_bearing_because_the_weld_can_oscillate`). Those
-/// cases reach `boolean_with_conformity` only partly reconciled — an output
-/// `union_pair` still validates and can fall back on — in exchange for
+/// TERMINATOR, not a safety margin: the weld does NOT reach a fixed point on
+/// every input, so iterating to `moved == 0` HANGS. The 80,000-pair hunt and
+/// the non-convergent pair it found are recorded on
+/// `the_weld_pass_cap_is_load_bearing_because_the_weld_can_oscillate` in
+/// `issue_3353_near_coplanar_rotated_overlap.rs`, which pins the cap. Capped
+/// cases reach `boolean_with_conformity` only partly reconciled (an output
+/// `union_pair` still validates and can fall back on) in exchange for
 /// terminating at all.
 ///
 /// # What this does and does not make commutative
@@ -150,25 +143,31 @@ mod diag {
 /// 4800 each 39.7 → 571. Quadratic, and blind to whether the operands touch.
 /// Deliberate: a per-face AABB reject contradicts the gate being PLANE-level
 /// (see [`promote_cutter_verts_onto_host_faces`]), and a whole-operand one is
-/// not a no-op either, a plane being infinite. The lever that would work is
-/// keying host faces by PLANE, but that moves which triangle supplies
-/// [`exact_on_plane_weld`]'s edge basis, hence welded coordinates, hence the
-/// determinism manifests and the parity reference: its own change. Exposure is
-/// meanwhile narrow — the CSG census records ZERO unions on AC20-FZK-Haus,
-/// ISSUE_129, ISSUE_053 and FM_ARC_DigitalHub, and only an explicit `.UNION.`
-/// IfcBooleanResult reaches it with unbounded operands.
+/// not a no-op either, a plane being infinite. The lever that would work,
+/// keying host faces by PLANE, moves which triangle supplies
+/// [`exact_on_plane_weld`]'s edge basis — hence welded coordinates, hence the
+/// determinism manifests: its own change. Exposure is NOT as narrow as the
+/// census (zero unions on AC20-FZK-Haus, ISSUE_129, ISSUE_053, FM_ARC_DigitalHub)
+/// suggests: besides an explicit `.UNION.` IfcBooleanResult, `build_cutter_union`
+/// falls back to `csg::union_meshes` when `union_many` returns empty, folding
+/// pairwise through `union_pair` → `union` and paying this quadratic weld
+/// against a GROWING accumulator each step — triggered by a budget trip, so on
+/// models already heavy. The weld also sits OUTSIDE the #1109 budget bounding
+/// every other kernel stage; wiring it in is deferred, not judged unnecessary.
 ///
-/// Returns the number of vertices moved, in total, across every pass.
+/// Vertices moved go to [`take_plane_weld_stats`]'s union tally, its only
+/// reader. No return value: a partly-reconciled pair is still a valid
+/// `boolean_with_conformity` input, so no caller would branch on the count.
 ///
-/// DETERMINISM: fixed index order, fixed pass order, and each step is the same
-/// FMA-free f64 [`promote_cutter_verts_onto_host_faces`] ⇒ byte-identical
-/// native == wasm.
-pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) -> usize {
+/// DETERMINISM: fixed index order, fixed pass order, each step the same
+/// FMA-free f64 [`promote_cutter_verts_onto_host_faces`] ⇒ native == wasm.
+pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) {
     let n = operands.len();
-    if n < 2 {
-        return 0;
-    }
     let mut welded = 0usize;
+    if n < 2 {
+        diag::record(diag::UNION, welded); // a call with nothing to do is still a call
+        return;
+    }
     let mut host: Vec<Tri> = Vec::new();
     for _pass in 0..MAX_WELD_PASSES {
         let mut moved = 0usize;
@@ -186,12 +185,16 @@ pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) -> usize {
             break;
         }
     }
-    diag::record_union(welded);
-    welded
+    diag::record(diag::UNION, welded);
 }
 
 /// Pass cap for [`promote_operands_mutually`] and the only thing that makes it
 /// terminate: an uncapped weld does NOT converge on every input (see there).
+///
+/// The VALUE 4 is headroom, not a convergence bound. The pinned sweep never
+/// needs more than 2 moving passes and the stragglers need 5 to 13, which no
+/// cap serves without also admitting the pairs that never converge; the two
+/// spare passes cover operands the sweep does not, and claim nothing further.
 const MAX_WELD_PASSES: usize = 4;
 
 /// Cross-operand near-coincidence promotion: weld every CUTTER vertex that
@@ -252,9 +255,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
     band.observe_tris(host);
 
     struct Face {
-        t0: [f64; 3],
-        t1: [f64; 3],
-        t2: [f64; 3],
+        /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
+        /// edge basis.
+        t: Tri,
         n: [f64; 3], // raw (unnormalised) plane normal
         nn: f64,     // |n|²
         /// Squared PERPENDICULAR band for THIS face's plane. `NearBand`
@@ -279,7 +282,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                 return None; // degenerate host triangle
             }
             let band2 = band.scaled_band2(n, nn) / nn;
-            Some(Face { t0: t[0], t1: t[1], t2: t[2], n, nn, band2 })
+            Some(Face { t: *t, n, nn, band2 })
         })
         .collect();
 
@@ -294,9 +297,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // Ties → first in face order (deterministic).
             let mut best: Option<(f64, &Face)> = None; // (perp-dist², face)
             for f in &faces {
-                let d = (v[0] - f.t0[0]) * f.n[0]
-                    + (v[1] - f.t0[1]) * f.n[1]
-                    + (v[2] - f.t0[2]) * f.n[2];
+                let d = (v[0] - f.t[0][0]) * f.n[0]
+                    + (v[1] - f.t[0][1]) * f.n[1]
+                    + (v[2] - f.t[0][2]) * f.n[2];
                 if d == 0.0 {
                     continue; // already exactly on this plane
                 }
@@ -304,12 +307,9 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
                 if d2 > f.band2 {
                     continue; // outside the snap-scatter band
                 }
-                if let Some((bd2, _)) = best {
-                    if d2 >= bd2 {
-                        continue;
-                    }
+                if best.is_none_or(|(bd2, _)| d2 < bd2) {
+                    best = Some((d2, f));
                 }
-                best = Some((d2, f));
             }
             // EXACT-PLANE LIFT (the crack-family fix): re-express the foot of
             // the perpendicular in the host triangle's EDGE BASIS and recombine
@@ -326,7 +326,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             // off every grid and force the BigRational tier on every predicate
             // that sees it.
             if let Some((_, f)) = best {
-                if let Some(w) = exact_on_plane_weld(*v, f.t0, f.t1, f.t2) {
+                if let Some(w) = exact_on_plane_weld(*v, f.t) {
                     if w != *v {
                         welded += 1;
                     }
@@ -335,7 +335,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
             }
         }
     }
-    diag::record(welded);
+    diag::record(diag::ALL, welded);
     welded
 }
 
@@ -357,7 +357,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 ///
 /// DETERMINISM: FMA-free f64 + integer ops, fixed iteration order ⇒
 /// byte-identical native==wasm.
-fn exact_on_plane_weld(v: [f64; 3], t0: [f64; 3], t1: [f64; 3], t2: [f64; 3]) -> Option<[f64; 3]> {
+fn exact_on_plane_weld(v: [f64; 3], [t0, t1, t2]: Tri) -> Option<[f64; 3]> {
     const Q: f64 = 1_048_576.0; // 2^20 — α,β quantization
     const S16: f64 = 65_536.0; // the operand snap grid (1/SNAP_GRID)
     const S36: f64 = 68_719_476_736.0; // 2^36 = S16 · Q — the welded-vertex grid

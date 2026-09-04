@@ -52,6 +52,7 @@ import { addedLineRanges, OMITTED_FOR_PROMPT_REASON } from './build-review-input
 // #3652: the retry prompt this file's own tests exercise below.
 import { buildPrompt } from './run-reviewer.mjs';
 import { RETRYABLE_VALIDATION_REASONS } from './retry-prompt.mjs'; // #3777
+import { DEFECT_CLASSES, CLASS_VERDICTS } from './lib/defect-classes.mjs'; // #3831
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -100,12 +101,33 @@ const INPUT = {
 // four added lines, 6 is the trailing context. PROOF_LINE is the first of them.
 const PROOF_LINE = 'const scaled = n * FACTOR;';
 
+/**
+ * A complete per-class pass (#3831), built FROM `DEFECT_CLASSES` rather than
+ * hand-listed. Hand-listing it would make every test below green against a stale
+ * copy of the list -- exactly the drift the one-source-of-truth module exists to
+ * prevent -- and a class added there would then be enforced by the validator
+ * while nothing in this file ever exercised it.
+ *
+ * Each `why` is DISTINCT because the validator requires it: twelve copies of one
+ * sentence is one sentence. The index is what makes them distinct, so a fixture
+ * that accidentally repeated a reason cannot pass.
+ */
+const classPass = (patch = []) => [
+  ...DEFECT_CLASSES.map((c, i) => ({
+    class: c,
+    verdict: 'clear',
+    why: `checked ${c} against the two changed hunks (${i}) and the sibling excerpts`,
+  })),
+  ...patch,
+];
+
 /** A response that passes everything, so each test can break exactly one thing. */
 const response = (patch = {}) => ({
   verdict: 'clean',
   files_reviewed: [PATH_A, PATH_B],
   riskiest_change: { path: PATH_A, quoted_line: PROOF_LINE },
   findings: [],
+  class_pass: classPass(),
   end: SENTINEL,
   ...patch,
 });
@@ -963,6 +985,7 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
     './lib/finding-schema.mjs',
     './lib/finding-proof-of-work.mjs',
     './lib/review-input-reader.mjs',
+    './lib/defect-classes.mjs',
   ]
     .map((p) => readFileSync(new URL(p, import.meta.url), 'utf8'))
     .join('\n');
@@ -1032,7 +1055,7 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
 });
 
-test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY} (#3777, #3775)', () => {
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE} (#3777, #3775, #3831)', () => {
   // Mutation-tested shape: this must fail if the set grows to include a fourth
   // reason (e.g. a genuine VERDICT_CONTRADICTS_FINDINGS "papers over a real
   // failure with a retry"), and must fail if it shrinks. Exact-set comparison,
@@ -1049,9 +1072,16 @@ test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TR
   // shape as RESPONSE_TRUNCATED, not a verdict about the code. The throw
   // itself is unchanged: a retry that also drops everything still fails
   // loudly, never downgrades to clean, never passes through empty.
+  //
+  // CLASS_PASS_INCOMPLETE belongs here (#3831) for the same reason and with the
+  // same limit: it fires on the SHAPE of a clean answer, never on the code, and
+  // the retry prose says outright that clean is still a real answer -- so a
+  // second attempt cannot be a quieter one. The throw is unchanged: a retry that
+  // again claims clean without the walk still fails loudly, and no path
+  // anywhere turns it into a posted verdict.
   assert.deepEqual(
     [...RETRYABLE_VALIDATION_REASONS].sort(),
-    ['PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
+    ['CLASS_PASS_INCOMPLETE', 'PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
   );
   // Every retryable reason must be a real one -- catches a typo'd string that
   // would silently never match anything real REASONS raises.
@@ -1131,6 +1161,10 @@ test('PROOF_OF_WORK_FAILED names a remedy the model can actually carry out', () 
     files_reviewed: ['src/a.ts'],
     riskiest_change: { path: 'src/a.ts', quoted_line: long.trim().slice(0, 120) },
     findings: [],
+    // #3831: a clean verdict carries the per-class pass. Present on the REFUSED
+    // fixture too, so the reason below is unambiguously the quote and not a
+    // missing pass -- the accepting half a few lines down reuses this object.
+    class_pass: classPass(),
     end: 'ifc-lite-review-v1',
   };
   let err;
@@ -1700,4 +1734,116 @@ test('THE COUPLING: the prefix the retry decision selects on is the one the vali
   const dropped = r.out.split('\n').filter((l) => l.startsWith(DROPPED_LOG_PREFIX));
   assert.equal(dropped.length, 1, r.out);
   assert.match(dropped[0], /never\/sent\.ts/);
+});
+
+// =========================== the per-class pass a clean verdict has to show (#3831)
+//
+// THE MEASURED FAILURE. Three live evaluations scored 1-3/15 recall over 18 real
+// pull requests, 13-14 of them returning `clean` with zero findings, and Opus
+// scored the same 2/15 -- so the lane was not short of model capacity, it was
+// short of any requirement to walk the list before answering. A skipped walk and
+// a completed one produced byte-identical output, which is the shape this
+// repository calls "absence reads as success": nothing downstream could tell
+// them apart, so nothing downstream could refuse one.
+//
+// BOTH DIRECTIONS, like every other class in this file. Each refusal below has
+// its accepting twin -- `PASS: a clean verdict with real proof of work` above
+// runs the same fixture with the pass intact -- because a check only ever seen
+// to refuse has not been seen to work.
+
+test('#3831 FAIL: a clean verdict with NO per-class pass is CLASS_PASS_INCOMPLETE', () => {
+  // The exact shape the eval measured 13-14 times out of 18: a well-formed clean
+  // answer, real proof of work, and no evidence the classes were ever walked.
+  const { class_pass, ...noPass } = response();
+  const r = run(noPass);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  assert.equal(r.wrote, false, 'nothing may be written for a verdict the lane refuses');
+});
+
+test('#3831 FAIL: a per-class pass that SKIPS one class names the class it skipped', () => {
+  // Missing one, not missing all -- the harder half, and the one a `length`
+  // check would catch while a `.some()` would not. The message must NAME it, or
+  // the remedy is "look again at twelve classes" for a single missing row.
+  const skipped = DEFECT_CLASSES[3];
+  const r = run(response({ class_pass: classPass().filter((row) => row.class !== skipped) }));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  assert.ok(r.out.includes(skipped), `the refusal must name the skipped class; said: ${r.out}`);
+});
+
+test('#3831 FAIL: twelve rows carrying ONE repeated sentence is not a per-class pass', () => {
+  // THE CHEAPEST WAY TO COMPLY WITHOUT DOING THE WORK, and therefore the shape
+  // that decides whether this check is worth anything. A row count alone is
+  // satisfied by one sentence pasted twelve times; that is one sentence.
+  const r = run(response({
+    class_pass: DEFECT_CLASSES.map((c) => ({ class: c, verdict: 'clear', why: 'nothing of this kind in the diff' })),
+  }));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+  assert.match(r.out, /SAME reason/);
+});
+
+test('#3831 FAIL: a verdict of "checked" or a one-word reason is not a verdict or a reason', () => {
+  const bad = classPass();
+  bad[0] = { class: DEFECT_CLASSES[0], verdict: 'checked', why: bad[0].why };
+  const r1 = run(response({ class_pass: bad }));
+  assert.equal(r1.code, 1, r1.out);
+  assert.match(r1.out, /CLASS_PASS_INCOMPLETE/);
+
+  const thin = classPass();
+  thin[1] = { class: DEFECT_CLASSES[1], verdict: 'clear', why: 'n/a' };
+  const r2 = run(response({ class_pass: thin }));
+  assert.equal(r2.code, 1, r2.out);
+  assert.match(r2.out, /CLASS_PASS_INCOMPLETE/);
+  assert.match(r2.out, /checkbox/);
+});
+
+test('#3831 FAIL: a class named twice cannot stand in for the class it displaced', () => {
+  // Duplicating a row keeps the COUNT right while leaving a real class
+  // unanswered, so a check that counted rows would pass this.
+  const dupes = classPass().filter((row) => row.class !== DEFECT_CLASSES[5]);
+  dupes.push({ class: DEFECT_CLASSES[0], verdict: 'clear', why: 'a second, differently worded pass over the first class' });
+  const r = run(response({ class_pass: dupes }));
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /CLASS_PASS_INCOMPLETE/);
+});
+
+test('#3831 PASS: "not-applicable" with a real reason is a legitimate per-class verdict', () => {
+  // The check must not push the model toward claiming it checked things the diff
+  // cannot contain. A docs-only change has no numeric bound to guard, and saying
+  // so is doing the work, not dodging it.
+  const mixed = classPass().map((row, i) =>
+    (i % 2 === 0 ? row : { ...row, verdict: 'not-applicable' }));
+  const r = run(response({ class_pass: mixed }));
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.verdict, 'clean');
+});
+
+test('#3831 PASS: a FINDINGS verdict needs no per-class pass', () => {
+  // Deliberate asymmetry. A findings verdict already carries evidence the model
+  // engaged with the diff, and twelve more paragraphs beside it spend the output
+  // budget RESPONSE_TRUNCATED already fires on. Exercised, not argued: the
+  // fixture below has no `class_pass` at all.
+  const { class_pass, ...noPass } = response({ verdict: 'findings', findings: [finding()] });
+  const r = run(noPass);
+  assert.equal(r.code, 0, r.out);
+  assert.equal(r.doc.findings.length, 1);
+});
+
+test('#3831: the rubric names EVERY class the validator enforces, and no others', () => {
+  // TWO COPIES HELD TOGETHER BY NOTHING BUT PROSE is this repository's own named
+  // failure. `rubric.md` is what the model is asked for; `DEFECT_CLASSES` is what
+  // the validator refuses it over. A class present in one and absent from the
+  // other is a permanent CLASS_PASS_INCOMPLETE on every clean review, or a class
+  // nothing ever asks about.
+  const rubric = readFileSync(join(HERE, 'rubric.md'), 'utf8');
+  for (const c of DEFECT_CLASSES) {
+    // @source-text-assertion-ok rubric.md is the model's PROMPT, not this test's subject's source; its text is the artefact
+    assert.ok(rubric.includes(`\`${c}\``), `rubric.md never names the class \`${c}\` the validator requires`);
+  }
+  for (const v of CLASS_VERDICTS) {
+    // @source-text-assertion-ok as above: the prompt must offer the vocabulary the validator accepts
+    assert.ok(rubric.includes(`\`${v}\``), `rubric.md never offers the verdict \`${v}\``);
+  }
 });

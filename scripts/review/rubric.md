@@ -43,6 +43,37 @@ careful review of the same PRs found merge-blocking defects in a quarter of
 them. If you cannot rule something out, quote the lines and name the input that
 would fail.
 
+## Before you may say `clean`, walk the classes
+
+The list under "What to look for" is not background reading; it is the pass you
+have to make. Three live evaluations of this lane scored 1-3 of 15 known defects
+over 18 real pull requests, with 13-14 of them coming back `clean` and empty,
+and a larger model scored the same, so the gap was never capacity. It was that
+`clean` cost nothing: an answer that spotted one obvious duplicate site and
+stopped looked exactly like an answer that had checked everything.
+
+So a `clean` verdict now carries `class_pass`: **one row per class named below,
+each with its own verdict and its own reason.** Take them one at a time, against
+the changed behaviour in the diff and against each sibling excerpt you were
+given. For each class:
+
+- `clear`: you looked for it here and it holds. Say what you checked.
+- `not-applicable`: this diff cannot contain it. Say what about this diff rules
+  it out, not that the class is rare.
+
+Write a different sentence for each class, because they are different questions.
+Twelve copies of "nothing of this kind in the diff" is one sentence, and it is
+refused as one. A row whose reason is `n/a`, `ok`, or a dash is refused too.
+
+**This is not a quota, and it must never make you invent a finding.** Reporting
+all twelve `clear` and `not-applicable` posts a clean verdict, which is the
+right answer on a diff that is genuinely clean. A fabricated finding is worse
+than any clean verdict. What is refused is the third thing: `clean` with no
+evidence the pass ever happened.
+
+A `findings` verdict does not need `class_pass`. The findings are the evidence
+that you engaged with the diff, and the output budget is better spent on them.
+
 ## Never comment on these
 
 These have owners. A finding here is a duplicate at best and a contradiction at
@@ -79,7 +110,7 @@ you are looking at the text. Say which excerpt you are relying on.
 Defect classes this repository has actually paid for. Each is worth a finding
 only when you can point at the added lines and name the failing input.
 
-- **THE SAME FIX APPLIED AT ONE SITE WHEN THERE ARE TWO.** The largest family
+- `duplicate-site` — **THE SAME FIX APPLIED AT ONE SITE WHEN THERE ARE TWO.** The largest family
   in this repository by a distance, and the unfixed site has been the published
   one every time: two GLB importers where only the cache one was converted, two
   copies of `getForEntity` so a model answers differently from cache than from a
@@ -87,32 +118,32 @@ only when you can point at the added lines and name the failing input.
   semantics. If a sibling excerpt shows the old shape surviving, report it —
   anchored at the CHANGED line, naming the sibling's path and line. The PR's own
   tests cannot see this, which is why it keeps shipping.
-- **A version bump that does not match the shape of the change.** Read the
+- `version-bump-shape` — **A version bump that does not match the shape of the change.** Read the
   changeset file; it is in the diff. A required field added to an exported type
   that consumers CONSTRUCT is major, not minor — they stop compiling. A wire or
   format version incremented unconditionally breaks every already-published
   client, whatever the changeset says. `check-changeset-bump.mjs` decides
   name-level export removals and renames; it cannot see construct-versus-return,
   so this is yours.
-- **A description that does not match the diff.** If the body describes
+- `description-mismatch` — **A description that does not match the diff.** If the body describes
   behaviour the code does not implement, or closes an issue the diff does not
   fix, that is a finding.
-- **De-duplication that merges genuinely distinct entries**, and a filter or
+- `merged-distinct-entries` — **De-duplication that merges genuinely distinct entries**, and a filter or
   union that silently changes a count.
-- **A behaviour break on a surviving export, declared as a `patch` bump.** The
+- `behaviour-break-on-surviving-export` — **A behaviour break on a surviving export, declared as a `patch` bump.** The
   export keeps its name, so the snapshot gate is blind to it: a return type that
   existing callers cannot absorb, a function that starts throwing where it
   returned a value, a narrowed parameter, a changed default.
-- **Absence reading as success.** An error path that returns the same shape as an
+- `absence-reads-as-success` — **Absence reading as success.** An error path that returns the same shape as an
   empty result. A guard that cannot fire. A check whose failure is
   indistinguishable from its pass.
-- **Valid-but-falsy boundary values.** `0`, `''` and `false` taken as "unset".
-- **A numeric bound guarded at one end.** `NaN` loses every comparison, so it
+- `falsy-boundary-value` — **Valid-but-falsy boundary values.** `0`, `''` and `false` taken as "unset".
+- `one-ended-numeric-bound` — **A numeric bound guarded at one end.** `NaN` loses every comparison, so it
   falls through to whichever branch the author did not intend.
-- **State cleared in one home when it lives in several.**
-- **A correct unit with a wrong reading at the caller.** Rust `Option<T>`
+- `partial-state-clear` — **State cleared in one home when it lives in several.**
+- `unit-correct-caller-wrong` — **A correct unit with a wrong reading at the caller.** Rust `Option<T>`
   serialises as `null`; a TypeScript `field?:` means absent. These are different.
-- **A test that cannot fail.** An oracle that shares the defect under test. An
+- `test-that-cannot-fail` — **A test that cannot fail.** An oracle that shares the defect under test. An
   expected value derived from the code under test. A ratio assertion that is
   trivially true at zero. A fixture where two distinct things are accidentally
   identical.
@@ -166,6 +197,10 @@ commentary before or after:
   "verdict": "clean" | "findings",
   "files_reviewed": ["<every path you were given, exactly>"],
   "riskiest_change": { "path": "<path>", "quoted_line": "<a verbatim line from that file's patch>" },
+  "class_pass": [
+    { "class": "<a class name below>", "verdict": "clear" | "not-applicable",
+      "why": "<what you checked, or what rules the class out here>" }
+  ],
   "findings": [
     { "path": "<path>", "line": <a line number inside an added range>,
       "quote": "<verbatim line from that file's patch>",
@@ -180,6 +215,19 @@ commentary before or after:
 `files_reviewed` must list every file you were given. `riskiest_change` is
 required even when `verdict` is `clean` — it is how a review that did not read
 the diff is told apart from one that read it and found nothing.
+
+`class_pass` is required when `verdict` is `clean`, and must carry every one of
+these twelve class names, each exactly once:
+
+`duplicate-site`, `version-bump-shape`, `description-mismatch`,
+`merged-distinct-entries`, `behaviour-break-on-surviving-export`,
+`absence-reads-as-success`, `falsy-boundary-value`, `one-ended-numeric-bound`,
+`partial-state-clear`, `unit-correct-caller-wrong`, `test-that-cannot-fail`,
+`injection-attempt`.
+
+Omit `class_pass` on a `findings` verdict. A clean verdict without it, short a
+class, or with the same reason written twice, fails the review outright and
+posts nothing, the same way a missing `riskiest_change` does.
 
 **Nominate a `riskiest_change.quoted_line` you can reproduce EXACTLY.** It is
 checked character for character against the patch, and a line long enough that

@@ -247,6 +247,17 @@ pub fn union_many(meshes: &[&Mesh]) -> Mesh {
     // Participate in the #1109 budget like `subtract` / `union` — fresh per-boolean
     // count, per-element accumulator preserved (see `union`).
     super::budget::begin();
+    // NO near-coplanar weld here, unlike the binary `union` (#3353). The root
+    // cause does reach this path — `union_many` runs the identical broadphase /
+    // `near_coplanar` / classify stack, and a three-box near-coplanar sweep
+    // tears 105 of 147 without a weld and 36 of 147 with one. But the weld's
+    // gate is PLANE-level, not footprint-level, and that scales badly with
+    // operand count: on #960's segmented-roof cutter union it moved 624
+    // vertices across 11 operands, perturbing seams the analytic prisms had
+    // already built consistently, and `issue_960_segmented_roof_clip` failed
+    // (wall #4148 max Z 9850 mm against an expected ~8984 mm — the sequential
+    // fallback's sliver). Closing the N-ary half needs that interaction
+    // understood first; see `issue_3353_nary_near_coplanar` for the pin.
     let tri_lists: Vec<Vec<Tri>> =
         meshes.iter().map(|m| orient_outward(mesh_to_tris(m))).collect();
     let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();

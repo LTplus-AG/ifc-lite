@@ -471,11 +471,18 @@ describe('an IDS-derived archive validates entry by entry', () => {
         });
         const entries = await entriesOf(project);
 
-        // Guard against a vacuous pass: no viewpoint entry means the camera
-        // rules this test exists for were never reached.
+        // Guard against a vacuous pass with the EXACT counts each grouping
+        // owes for this report -- one specification, two failing entities, one
+        // failing requirement each -- the way the plainExport arm above does.
+        // "At least one" is satisfied by an export that dropped a topic or its
+        // viewpoint, which is precisely how the camera rules under test would
+        // stop being reached.
+        const expectedTopics = topicGrouping === 'per-specification' ? 1 : 2;
         const kinds = [...entries.keys()].map((n) => n.replace(/^[^/]+\//, ''));
         expect(kinds).toContain('bcf.version');
-        expect(kinds.filter((n) => n.endsWith('.bcfv')).length).toBeGreaterThan(0);
+        expect(kinds).toContain('project.bcfp');
+        expect(kinds.filter((n) => n === 'markup.bcf')).toHaveLength(expectedTopics);
+        expect(kinds.filter((n) => n.endsWith('.bcfv'))).toHaveLength(expectedTopics);
 
         const failures: string[] = [];
         for (const [name, xml] of entries) {

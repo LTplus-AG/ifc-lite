@@ -100,3 +100,43 @@ export const MARKER_SHAPE =
  * @param {string} verdict
  */
 export const certifiesDiff = (verdict) => verdict === 'clean' || verdict === 'findings';
+
+/**
+ * The gate's green block for a marker that names the head it is judging.
+ *
+ * HERE, NOT IN THE GATE, because what a verdict MEANS and what a verdict BUYS
+ * are the same question, and the answer to the second (`certifiesDiff`) is two
+ * lines up. The gate rendered its own prose from a chain of verdict
+ * comparisons, so a fifth token would have needed the list edited in two files
+ * that never mention each other.
+ *
+ * @param {{ verdict: string, count: number }} match - the parsed marker.
+ * @param {string} headSha
+ * @returns {string[]}
+ */
+export function verdictLines(match, headSha) {
+  const short = headSha.slice(0, 9);
+  const headline = {
+    'nothing-to-review':
+      `✅ REVIEW_POSTED: the reviewer reached ${short} and reported NOTHING TO REVIEW — the comment ` +
+      'itself says why (every changed path excluded, or no part of the diff fitting the model prompt). ' +
+      'That is a decision the lane made and POSTED, not a statement that the diff was read and is fine. ' +
+      'The distinction is the point: a `clean` marker here would certify these PRs as reviewed, and an ' +
+      'exclusion-list bug would then do it silently for every PR it swallowed.',
+    'clean-by-judge':
+      `✅ REVIEW_POSTED: the reviewer reached ${short}, reported FINDINGS, and the judge then dropped ` +
+      'every one of them (#3862). Nothing is on the pull request, and nothing walked the defect classes ' +
+      '-- a `findings` response is exempt from the per-class pass, so no pass stands behind this head. ' +
+      'The lane ran and posted, so it is covered; it certified nothing, so it is not full.',
+  }[match.verdict] ??
+    `✅ REVIEW_POSTED: an expected reviewer posted a ${match.verdict} verdict for ${short}` +
+      `${match.verdict === 'findings' ? ` with ${match.count} finding(s)` : ''}.`;
+  return [
+    headline,
+    certifiesDiff(match.verdict)
+      ? '   This proves a review REACHED the pull request for this exact commit.'
+      : '   FULL=FALSE, though: nothing here certifies the diff, so CodeRabbit must NOT stand down on it.',
+    '   It proves nothing about whether the review was any good; precision is a separate',
+    '   instrument.',
+  ];
+}

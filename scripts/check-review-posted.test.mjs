@@ -675,6 +675,32 @@ test('nothing-to-review PASSES but reports full=FALSE, so CodeRabbit does not st
   assert.match(out.out, /FULL=FALSE/);
 });
 
+test('#3862 `clean-by-judge` is COVERED but NOT full, so it never grants llm-reviewed', () => {
+  // The verdict the poster writes when nothing reached the pull request and no
+  // per-class pass stands behind it: the reviewer answered `findings`, which is
+  // exempt from the class pass, and the judge then dropped every one of them.
+  //
+  // BOTH HALVES MATTER, and they pull in opposite directions. `covered` must be
+  // TRUE -- the lane ran and posted for this head, and claude-review.yml dedups
+  // on that output, so a false one would re-run the model on every trigger.
+  // `full` must be FALSE -- nothing walked the twelve defect classes, so
+  // standing CodeRabbit down here would leave the diff reviewed by nobody,
+  // which is the whole reason this token exists rather than reusing `clean`.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'clean-by-judge', 0)]));
+  assert.equal(out.code, 0, out.out);
+  assert.match(out.gh, /covered=true/, 'the lane posted for this head; dedup must hold');
+  assert.match(out.gh, /full=false/, 'nothing here earned the stand-down');
+  assert.match(out.out, /REVIEW_POSTED/);
+});
+
+test('#3862 `clean-by-judge` says on the RUN LOG why it is not a pass', () => {
+  // A gate that prints a green tick and a silently weaker output teaches the
+  // reader that the two are the same. The reason for the missing label has to
+  // be readable where the verdict is.
+  const out = runOut(comments([REVIEWER, marker(SHA, 'clean-by-judge', 0)]));
+  assert.match(out.out, /FULL=FALSE/);
+});
+
 test('a REAL clean review reports full=true, or the stand-down never happens at all', () => {
   // The anti-vacuity pair: if `full` were false for everything, the test above
   // would pass while the whole stand-down mechanism was dead.

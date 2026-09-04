@@ -1,5 +1,6 @@
 ---
 '@ifc-lite/viewer': patch
+'@ifc-lite/viewer-embed': patch
 '@ifc-lite/mcp': patch
 ---
 

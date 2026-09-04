@@ -477,10 +477,7 @@ impl GeometryRouter {
             // site would never see the case it exists for. Body-only, and once
             // per source rather than once per occurrence; see
             // `GeometryRouter::enter_unsupported_source`.
-            let _drop_scope = self.enter_unsupported_source(
-                source_id,
-                super::effective_rep_type(&mapped_repr).is_none_or(super::is_body_representation),
-            );
+            let _drop_scope = self.enter_unsupported_source(source_id, &mapped_repr);
 
             // Get items from the mapped representation
             if let Some(items_attr) = mapped_repr.get(3) {

@@ -13,6 +13,15 @@ import type { GeometryDiagnostics } from '@ifc-lite/geometry';
 export const NO_DIAGNOSTICS_LINE =
   'No CSG / opening diagnostics recorded (no openings cut, no failures).';
 
+/**
+ * Append one right-aligned `count  reason` row per entry. Shared by the
+ * failures-by-reason and dropped-items sections so the column width is defined
+ * once and the two tables cannot drift apart.
+ */
+function pushCountRows(lines: string[], rows: ReadonlyArray<{ reason: string; count: number }>): void {
+  for (const r of rows) lines.push(`  ${r.count.toString().padStart(6)}  ${r.reason}`);
+}
+
 export function formatGeometryReport(d: GeometryDiagnostics): string {
   const lines: string[] = [];
   lines.push('Geometry diagnostics');
@@ -31,9 +40,7 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
   if (d.failuresByReason.length > 0) {
     lines.push('');
     lines.push('Failures by reason:');
-    for (const r of d.failuresByReason) {
-      lines.push(`  ${r.count.toString().padStart(6)}  ${r.reason}`);
-    }
+    pushCountRows(lines, d.failuresByReason);
   }
 
   const rf = d.rectFast;
@@ -48,9 +55,7 @@ export function formatGeometryReport(d: GeometryDiagnostics): string {
   if ((d.totalUnsupportedItems ?? 0) > 0) {
     lines.push('');
     lines.push(`Dropped representation items: ${d.totalUnsupportedItems} (no processor, or the processor failed)`);
-    for (const r of d.unsupportedItemsByType ?? []) {
-      lines.push(`  ${r.count.toString().padStart(6)}  ${r.reason}`);
-    }
+    pushCountRows(lines, d.unsupportedItemsByType ?? []);
   }
 
   if (d.worstHosts.length > 0) {

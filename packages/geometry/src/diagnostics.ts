@@ -110,6 +110,24 @@ export interface GeometryDiagnostics {
 /** Cap on the merged worst-hosts detail list (matches the Rust WORST_HOSTS_LIMIT). */
 const WORST_HOSTS_LIMIT = 16;
 
+/** One reason/type and how many times it was seen. */
+type ReasonCount = { reason: string; count: number };
+
+/**
+ * Sum two reason-keyed lists by key, count-desc then reason-asc. The tie-break
+ * is load-bearing, not cosmetic: without it equal counts come out in Map
+ * insertion order, so the same model could render a different string on two
+ * runs. Shared by `failuresByReason` and `unsupportedItemsByType` so the two
+ * cannot order themselves differently; matches the Rust `summarize`.
+ */
+function mergeReasonCounts(a: readonly ReasonCount[], b: readonly ReasonCount[]): ReasonCount[] {
+  const byKey = new Map<string, number>();
+  for (const r of [...a, ...b]) byKey.set(r.reason, (byKey.get(r.reason) ?? 0) + r.count);
+  return [...byKey.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
+}
+
 /**
  * Merge two GeometryDiagnostics (per-batch -> per-load, or per-worker ->
  * per-model). Scalars sum; classification + rectFast sum field-wise;
@@ -125,12 +143,7 @@ export function mergeGeometryDiagnostics(
 
   const schemaVersion = Math.max(a.schemaVersion ?? 0, b.schemaVersion ?? 0);
 
-  const reasons = new Map<string, number>();
-  for (const r of a.failuresByReason) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + r.count);
-  for (const r of b.failuresByReason) reasons.set(r.reason, (reasons.get(r.reason) ?? 0) + r.count);
-  const failuresByReason = [...reasons.entries()]
-    .map(([reason, count]) => ({ reason, count }))
-    .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
+  const failuresByReason = mergeReasonCounts(a.failuresByReason, b.failuresByReason);
 
   // Fold by productId first (a host whose geometry spans batches/workers can
   // appear in both operands' lists) before re-ranking and capping, mirroring the
@@ -156,14 +169,6 @@ export function mergeGeometryDiagnostics(
     .sort((x, y) => y.csgFailures - x.csgFailures || x.productId - y.productId)
     .slice(0, WORST_HOSTS_LIMIT);
 
-  const unsupportedByType = new Map<string, number>();
-  for (const r of [...(a.unsupportedItemsByType ?? []), ...(b.unsupportedItemsByType ?? [])]) {
-    unsupportedByType.set(r.reason, (unsupportedByType.get(r.reason) ?? 0) + r.count);
-  }
-  const unsupportedItemsByType = [...unsupportedByType.entries()]
-    .map(([reason, count]) => ({ reason, count }))
-    .sort((x, y) => y.count - x.count || x.reason.localeCompare(y.reason));
-
   // Whether EITHER operand actually carried the counter. Folding an absent field
   // to 0 here would hand back `totalUnsupportedItems: 0` on a payload still
   // labelled `schemaVersion: 2` — "we counted, and nothing was dropped" built out
@@ -178,7 +183,10 @@ export function mergeGeometryDiagnostics(
   const unsupportedFields = countedUnsupported
     ? {
         totalUnsupportedItems: (a.totalUnsupportedItems ?? 0) + (b.totalUnsupportedItems ?? 0),
-        unsupportedItemsByType,
+        unsupportedItemsByType: mergeReasonCounts(
+          a.unsupportedItemsByType ?? [],
+          b.unsupportedItemsByType ?? [],
+        ),
       }
     : {};
 

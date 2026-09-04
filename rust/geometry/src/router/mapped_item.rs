@@ -159,10 +159,7 @@ impl GeometryRouter {
         // FIRST time any path walks it, not once per occurrence. See
         // `GeometryRouter::enter_unsupported_source`. Gates the counting only;
         // the walk and the geometry it produces are unchanged.
-        let _drop_scope = self.enter_unsupported_source(
-            source_id,
-            super::effective_rep_type(&mapped_rep).is_none_or(super::is_body_representation),
-        );
+        let _drop_scope = self.enter_unsupported_source(source_id, &mapped_rep);
 
         // Process all items and merge. A nested MappedItem recurses (bounded by
         // `depth`/`visited` above) — it used to be skipped outright, which

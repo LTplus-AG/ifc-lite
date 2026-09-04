@@ -77,30 +77,34 @@ export function buildModelLoadedGeometryProps(
 }
 
 /**
- * Surface a concise main-thread summary when the streaming `complete` event's
- * diagnostics recorded CSG failures or silent no-ops. `fileName` disambiguates
- * the primary model from a federated add.
+ * Surface the main-thread console summary for a streaming `complete` event's
+ * geometry diagnostics: CSG failures / silent no-ops as info, and dropped
+ * representation items (unsupported type or failed geometry, so the affected
+ * elements are missing or incomplete) as a warning. Each half is independently
+ * guarded, so a load with only one kind of trouble reports only that one.
+ *
+ * One entry point rather than one per surface, so the caller in `useIfcLoader`
+ * does not have to know how many surfaces there are: adding a third is a change
+ * here, not in the hook whose module-size budget put these functions in this
+ * file in the first place. `fileName` disambiguates the primary model from a
+ * federated add.
  */
-export function warnCsgFailures(fileName: string, diagnostics: GeometryDiagnostics): void {
-  if (diagnostics.totalCsgFailures <= 0 && diagnostics.silentNoOps <= 0) return;
-  console.info(
-    `[useIfc] ${fileName} geometry diagnostics: ${diagnostics.totalCsgFailures} CSG failure(s) ` +
-      `across ${diagnostics.productsWithFailures} product(s), ${diagnostics.silentNoOps} silent no-op(s)`,
-    diagnostics,
-  );
-}
-
-/**
- * Surface a concise main-thread warning when the streaming `complete` event's
- * diagnostics recorded dropped representation items (unsupported type or
- * failed geometry) — the affected elements are missing or incomplete.
- * `fileName` disambiguates the primary model from a federated add.
- */
-export function warnUnsupportedItems(fileName: string, diagnostics: GeometryDiagnostics): void {
-  if ((diagnostics.totalUnsupportedItems ?? 0) <= 0) return;
-  console.warn(
-    `[useIfc] ${fileName}: ${diagnostics.totalUnsupportedItems} representation item(s) dropped ` +
-      `(unsupported type or failed geometry) — these elements are missing or incomplete`,
-    diagnostics.unsupportedItemsByType,
-  );
+export function warnGeometryDiagnostics(
+  fileName: string,
+  diagnostics: GeometryDiagnostics,
+): void {
+  if (diagnostics.totalCsgFailures > 0 || diagnostics.silentNoOps > 0) {
+    console.info(
+      `[useIfc] ${fileName} geometry diagnostics: ${diagnostics.totalCsgFailures} CSG failure(s) ` +
+        `across ${diagnostics.productsWithFailures} product(s), ${diagnostics.silentNoOps} silent no-op(s)`,
+      diagnostics,
+    );
+  }
+  if ((diagnostics.totalUnsupportedItems ?? 0) > 0) {
+    console.warn(
+      `[useIfc] ${fileName}: ${diagnostics.totalUnsupportedItems} representation item(s) dropped ` +
+        `(unsupported type or failed geometry) — these elements are missing or incomplete`,
+      diagnostics.unsupportedItemsByType,
+    );
+  }
 }

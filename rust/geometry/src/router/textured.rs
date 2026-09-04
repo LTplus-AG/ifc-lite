@@ -114,10 +114,7 @@ impl GeometryRouter {
         // The scope also makes the count per SOURCE rather than per call — this
         // map may already have been walked through `mapped_item.rs` — see
         // `GeometryRouter::enter_unsupported_source`.
-        let _drop_scope = self.enter_unsupported_source(
-            rep_map.id,
-            super::effective_rep_type(&mapped_rep).is_none_or(super::is_body_representation),
-        );
+        let _drop_scope = self.enter_unsupported_source(rep_map.id, &mapped_rep);
 
         let mut untextured = Mesh::new();
         // One entry per textured item — keeps each item with its own image.

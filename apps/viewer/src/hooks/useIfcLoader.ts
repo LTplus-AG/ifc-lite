@@ -17,8 +17,7 @@ import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store'
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
 import {
   buildModelLoadedGeometryProps,
-  warnCsgFailures,
-  warnUnsupportedItems,
+  warnGeometryDiagnostics,
 } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
@@ -1863,8 +1862,7 @@ export function useIfcLoader() {
                 const d = event.diagnostics;
                 loadDiagnostics = event.diagnostics;
                 finalCsgFailures = d.totalCsgFailures;
-                warnCsgFailures(file.name, d);
-                warnUnsupportedItems(file.name, d);
+                warnGeometryDiagnostics(file.name, d);
               }
 
               if (target.kind === 'primary') {

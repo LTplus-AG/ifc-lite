@@ -8,6 +8,7 @@
 //! for the wire shape this feeds.
 
 use super::{GeometryRouter, ReasonCount};
+use ifc_lite_core::DecodedEntity;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 /// All dropped-representation-item state, behind one `RefCell` on the router:
@@ -54,7 +55,12 @@ impl GeometryRouter {
     ///   processor and are CORRECTLY absent from a 3D view; counting them warns
     ///   on a clean model. `is_body` false suppresses every record beneath the
     ///   scope and does NOT claim the source, so the same source reached later
-    ///   under a Body representation still counts.
+    ///   under a Body representation still counts. The caller hands over the
+    ///   source's `IfcShapeRepresentation` rather than a bool, so the four walks
+    ///   cannot each spell the predicate differently — dropping the `is_none_or`
+    ///   (a CATIA-style blank type is body, see `effective_rep_type`) or reaching
+    ///   for `is_direct_body_representation` would compile and silently suppress
+    ///   real drops.
     ///
     /// Deciding it here rather than at each `record_unsupported_item` call is
     /// what makes it hold on the OCCURRENCE path: a mapped source's unsupported
@@ -69,8 +75,10 @@ impl GeometryRouter {
     pub(crate) fn enter_unsupported_source(
         &self,
         source_id: u32,
-        is_body: bool,
+        mapped_repr: &DecodedEntity,
     ) -> UnsupportedSourceScope<'_> {
+        let is_body = crate::router::effective_rep_type(mapped_repr)
+            .is_none_or(crate::router::is_body_representation);
         let mut state = self.unsupported.borrow_mut();
         let record = is_body && state.sources_recorded.insert(source_id);
         state.scope.push(record);
@@ -90,7 +98,17 @@ impl GeometryRouter {
         if state.scope.last() == Some(&false) {
             return;
         }
-        *state.counts.entry(ifc_type.to_string()).or_insert(0) += 1;
+        // `name()` is `&'static str` and `entry` takes the key BY VALUE, so
+        // `entry(ifc_type.to_string())` would allocate on every hit, not just on
+        // first insert — once per dropped item, on exactly the models that drop
+        // many. `get_mut` first keeps it to one allocation per distinct type.
+        let name = ifc_type.name();
+        match state.counts.get_mut(name) {
+            Some(count) => *count += 1,
+            None => {
+                state.counts.insert(name.to_string(), 1);
+            }
+        }
     }
 
     /// Drain the dropped-item counts gathered since the last call.

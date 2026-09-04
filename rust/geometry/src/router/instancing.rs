@@ -74,11 +74,7 @@ impl GeometryRouter {
         // which is exactly this function, since the insert below is skipped for a
         // total-loss (empty) source and every later occurrence lands here again.
         // See `GeometryRouter::enter_unsupported_source`.
-        let _drop_scope = self.enter_unsupported_source(
-            source_id,
-            crate::router::effective_rep_type(mapped_repr)
-                .is_none_or(crate::router::is_body_representation),
-        );
+        let _drop_scope = self.enter_unsupported_source(source_id, mapped_repr);
         let mut mesh = Mesh::new();
         if let Some(items_attr) = mapped_repr.get(3) {
             if let Ok(items) = decoder.resolve_ref_list(items_attr) {

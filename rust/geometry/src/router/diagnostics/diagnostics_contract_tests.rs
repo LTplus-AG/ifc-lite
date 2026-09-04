@@ -336,6 +336,7 @@ fn the_unattributed_bucket_counts_in_the_totals_but_is_not_a_product() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
 
     assert_eq!(d.products_with_failures, 1, "the synthetic bucket is not a product");
@@ -364,9 +365,55 @@ fn an_unattributed_only_pass_reports_zero_products_and_still_has_issues() {
         RectFastStats::default(),
         16,
         0,
+        &FxHashMap::default(),
     );
     assert_eq!(d.products_with_failures, 0);
     assert_eq!(d.total_csg_failures, 1);
     assert!(d.has_issues(), "an unowned failure is still a failure");
     assert!(!d.is_empty(), "and must not be skipped as an empty diagnostic");
+}
+
+/// RED for the #3691 counter, mirroring #3752's pair above: a model whose ONLY
+/// diagnostic-worthy event is a dropped representation item must still be
+/// surfaced. `is_empty()` gates whether `processor/mod.rs` attaches the
+/// diagnostics object at all — `(!diag.is_empty()).then_some(diag)` — so
+/// deleting the `total_unsupported_items == 0` arm does not merely loosen a
+/// predicate, it throws the whole object away on exactly the models this
+/// counter was added for. Nothing failed when that arm was deleted.
+#[test]
+fn unsupported_items_pass_through_and_defeat_is_empty() {
+    let mut unsupported: FxHashMap<String, u64> = FxHashMap::default();
+    unsupported.insert("IfcGeometricSet".to_string(), 2);
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &unsupported,
+    );
+    assert_eq!(d.total_unsupported_items, 2);
+    assert_eq!(d.unsupported_items_by_type[0].reason, "IfcGeometricSet");
+    assert!(
+        !d.is_empty(),
+        "a nonzero total_unsupported_items must defeat is_empty, or processor/mod.rs drops the \
+         diagnostics object and the drop is invisible again"
+    );
+}
+
+/// Control: no dropped items is genuinely empty, so the arm above cannot be
+/// satisfied by making `is_empty` always false.
+#[test]
+fn zero_unsupported_items_stays_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
+    assert!(d.is_empty());
 }

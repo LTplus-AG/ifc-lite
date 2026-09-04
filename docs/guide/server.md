@@ -488,11 +488,18 @@ Cache keys are derived from file content:
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
 # quality appends a "-q{level}" suffix after it
-{SHA256}-{filter}-parquet-v4          # Geometry
+{SHA256}-{filter}-parquet-v5          # Geometry
 {SHA256}-{filter}-parquet-metadata-v4 # Metadata header
-{SHA256}-{filter}-datamodel-v2        # Properties & hierarchy
+{SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v1         # 2D symbol stream
 ```
+
+Each suffix is bumped whenever the payload it names changes shape: a column
+added to or removed from its tables, or a change in what an existing column
+means. Without the bump a warm cache replays the old blob, the client decodes
+it cleanly as if an older server had answered, and the change is silently
+absent. The keys above are built in `apps/server/src/routes/parse/cache_keys.rs`;
+that module is the single definition of each one.
 
 ### Cache Flow
 

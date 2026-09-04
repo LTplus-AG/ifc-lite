@@ -46,10 +46,11 @@ function makeMat4(): Mat4 {
 }
 
 /**
- * A state whose view matrix is the identity, which makes
- * `frameBoundsTarget`'s "forward is the negative Z column" read out as
- * `(0, 0, -1)` — a well-defined direction, so the fit takes its primary path
- * rather than either fallback.
+ * A state looking down -Z from 100 units away, on an identity view matrix.
+ *
+ * Since #3892 the fits derive their basis from the pose through `viewBasis`
+ * rather than reading the view matrix, so what makes the direction here
+ * well-defined is `position` / `target` / `up`, not the matrix.
  */
 function makeState(aspect: number, mode: 'perspective' | 'orthographic' = 'perspective'): CameraInternalState {
   const camera: CameraType = {
@@ -155,13 +156,19 @@ describe('fit distance honours the horizontal field of view (#2500)', () => {
     );
   });
 
-  it('anti-mutation: a landscape viewport is bit-for-bit unchanged', () => {
+  it('anti-mutation: a landscape viewport takes the vertical field alone', () => {
     // The vertical field is the binding one for every `aspect >= 1`, so the
     // aspect term must contribute exactly nothing there. If this drifts, the
     // fix has changed the framing of every desktop viewport rather than only
     // the portrait one it was for.
+    //
+    // The value moved with #3892, which is the only pin in this file that did:
+    // the fit is now the smallest standoff that puts every CORNER inside the
+    // half-angles, and the near face of the cube is `CUBE_SIZE / 2` closer
+    // than the centre the old side-based rule measured from. Head-on and
+    // axis-aligned as this state is, that near half is the whole difference.
     for (const aspect of [1, 4 / 3, 16 / 9, 21 / 9]) {
-      const vertical = (CUBE_SIZE / 2) / Math.tan(FOV / 2);
+      const vertical = (CUBE_SIZE / 2) / Math.tan(FOV / 2) + CUBE_SIZE / 2;
       for (const [label, pick, padding] of [
         ['frameBounds', frameBoundsTarget, 1.2],
         ['zoomExtent', zoomExtentTarget, 1.5],
@@ -206,7 +213,8 @@ describe('zoomExtent keeps a view direction for a degenerate box (#2500)', () =>
   it('anti-mutation: an ordinary box still fits to the FOV distance, not the current offset', () => {
     const fit = zoomExtentTarget(makeState(16 / 9), CUBE_MIN, CUBE_MAX);
     assert.ok(fit, 'fit expected');
-    const expected = (CUBE_SIZE / 2) / Math.tan(FOV / 2) * 1.5;
+    // Same corner-fit value as the landscape pin above (#3892), 1.5x padded.
+    const expected = ((CUBE_SIZE / 2) / Math.tan(FOV / 2) + CUBE_SIZE / 2) * 1.5;
     assert.ok(
       Math.abs(distanceBetween(fit.position, fit.target) - expected) < 1e-6,
       'a non-degenerate box must still take the FOV path, not the degenerate one',
@@ -233,10 +241,10 @@ describe('the fit direction floors reject Infinity, not only NaN (#2500)', () =>
     }
   });
 
-  it('frameBounds falls back to the isometric direction for an overflowed pose', () => {
-    // A zeroed view matrix is what pushes `frameBoundsTarget` past its primary
-    // (view-matrix) direction onto the pose-derived fallback that carries the
-    // floor. `MathUtils.lookAt` produces one for a pose it cannot orient from.
+  it('frameBounds keeps a finite pose for an overflowed one', () => {
+    // Since #3892 the direction comes from `viewBasis`, which scrubs the
+    // overflowed coordinate rather than dividing by it. The zeroed view matrix
+    // is left in place to show the fit no longer reads it at all.
     const state = makeState(16 / 9);
     state.viewMatrix = { m: new Float32Array(16) };
     state.camera.position = { ...OVERFLOWED };
@@ -248,10 +256,10 @@ describe('the fit direction floors reject Infinity, not only NaN (#2500)', () =>
   });
 
   it('anti-mutation: a finite pose still steers both fits', () => {
-    // The floors must reject only unusable lengths. If they rejected
-    // everything, both fits would silently snap to the isometric fallback and
-    // the tests above would pass against a camera that had stopped honouring
-    // the view direction at all.
+    // The scrubbing must apply only to unusable coordinates. If it applied to
+    // everything, both fits would silently snap to a substitute basis and the
+    // tests above would pass against a camera that had stopped honouring the
+    // view direction at all.
     const zoom = zoomExtentTarget(makeState(16 / 9), CUBE_MIN, CUBE_MAX);
     assert.ok(zoom, 'fit expected');
     // The state looks down -Z, so the fit sits on +Z of the centre.
@@ -263,7 +271,7 @@ describe('the fit direction floors reject Infinity, not only NaN (#2500)', () =>
     const framed = frameBoundsTarget(framedState, CUBE_MIN, CUBE_MAX);
     assert.ok(framed, 'fit expected');
     assert.ok(Math.abs(framed.position.x) < 1e-9 && Math.abs(framed.position.y) < 1e-9,
-      `frameBounds should fall back to the pose direction, got ${JSON.stringify(framed.position)}`);
+      `frameBounds should keep the pose direction, got ${JSON.stringify(framed.position)}`);
   });
 });
 

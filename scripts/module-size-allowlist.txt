@@ -119,7 +119,7 @@
    458 apps/viewer/src/hooks/ingest/pointCloudAlignment.ts
    545 apps/viewer/src/hooks/ingest/pointCloudIngest.ts
    551 apps/viewer/src/hooks/useAnnotation2D.ts
-   684 apps/viewer/src/hooks/useBCF.ts
+   690 apps/viewer/src/hooks/useBCF.ts
   1374 apps/viewer/src/hooks/useClash.ts
    482 apps/viewer/src/hooks/useCompare.ts
   1359 apps/viewer/src/hooks/useDrawingExport.ts
@@ -189,7 +189,7 @@
    495 packages/bcf/src/overlay-renderer.ts
   1058 packages/bcf/src/reader.ts
    595 packages/bcf/src/viewpoint.ts
-   896 packages/bcf/src/writer.ts
+   900 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts

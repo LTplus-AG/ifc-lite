@@ -319,15 +319,13 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         includeHidden = true,
       } = opts;
 
-      // Snapshot FIRST, camera after. The PNG and the camera's `aspectRatio`
-      // describe one frame, so they have to be read from one drawing buffer.
+      // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
+      // describe one frame, so they must come from one drawing buffer.
       // `captureSnapshot` awaits `queue.onSubmittedWorkDone()` before
       // `toDataURL`, and the render loop resizes the canvas and calls
-      // `camera.setAspect` inside that wait (`packages/renderer/src/index.ts`,
-      // the `dimensionsChanged` branch), so a camera read before the await can
-      // ship a ratio the image does not have. Reading it after closes the
-      // window: the continuation of an `await` is a microtask and a rAF render
-      // is a task, so nothing resizes between `toDataURL` and this read.
+      // `camera.setAspect` inside that wait (`renderer/src/index.ts`, the
+      // `dimensionsChanged` branch). Reading the camera after closes the
+      // window: an `await` resumes in a microtask, a rAF render is a task.
       let snapshot: string | undefined;
       if (includeSnapshot) {
         const captured = await captureSnapshot();

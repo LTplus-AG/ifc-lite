@@ -7,7 +7,7 @@
 //! Progressive parsing with event callbacks for real-time processing.
 
 use crate::generated::IfcType;
-use crate::parser::EntityScanner;
+use crate::parser::{report_scan_diagnostics, EntityScanner};
 use futures_core::Stream;
 use futures_util::stream;
 use std::pin::Pin;
@@ -164,7 +164,22 @@ impl<'a> ParserState<'a> {
         // and could overflow the stack on a long run of skip-listed records.
         loop {
             let Some((id, type_name, start, _end)) = self.scanner.next_entity() else {
-                // No more entities - emit Completed event and end stream
+                // No more entities - emit Completed event and end stream.
+                //
+                // `None` here means one of two things, and only one of them is
+                // "the file ended": the scanner also stops on a record with no
+                // terminator (#3695), and it silently skips one whose instance
+                // name does not fit `u32` (#3395). Either way this stream is
+                // short of what the file declares while `Completed` still
+                // reads like a clean finish, so report both before ending —
+                // the same one-line call every other whole-file walk in this
+                // workspace makes (`columnar_index.rs`, `decoder.rs`,
+                // `processor/mod.rs`). Runs exactly once: the `completed`
+                // guard above returns `None` on every later poll (#3791).
+                report_scan_diagnostics(
+                    self.scanner.skipped_oversized_ids(),
+                    self.scanner.malformed_record_start().is_some(),
+                );
                 self.completed = true;
                 let duration_ms = get_timestamp() - self.start_time;
                 return Some(ParseEvent::Completed {

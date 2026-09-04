@@ -83,6 +83,14 @@ impl GeometryRouter {
                         // Unreachable via the only caller (see the doc above).
                         // Skipping it would leave `mesh` short of the source's real
                         // geometry, and the insert below would publish that model-wide.
+                        //
+                        // If it ever becomes reachable, note the second cost: the
+                        // scope above has already CLAIMED `source_id` in
+                        // `sources_recorded`, so a later, complete walk of the same
+                        // source through `mapped_item.rs` would find it claimed and
+                        // record nothing — losing its drops rather than duplicating
+                        // them. Releasing the claim belongs with whatever makes this
+                        // branch reachable.
                         return;
                     }
                     // A missing processor or a failing one leaves `mesh` short of
@@ -105,9 +113,35 @@ impl GeometryRouter {
                                 self.scale_mesh(&mut sub_mesh);
                                 mesh.merge(&sub_mesh);
                             }
-                            Err(_e) => self.record_unsupported_item(sub_item.ifc_type),
+                            Err(_e) => {
+                                self.record_unsupported_item(sub_item.ifc_type);
+                                crate::diag::diag_debug!(
+                                    { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
+                                      error = %_e, "skipping unsupported shared-source item" }
+                                    else {
+                                        #[cfg(debug_assertions)]
+                                        eprintln!(
+                                            "[ifc-lite] Skipping unsupported shared-source item #{} ({:?}): {}",
+                                            sub_item.id, sub_item.ifc_type, _e
+                                        );
+                                    }
+                                );
+                            }
                         },
-                        None => self.record_unsupported_item(sub_item.ifc_type),
+                        None => {
+                            self.record_unsupported_item(sub_item.ifc_type);
+                            crate::diag::diag_debug!(
+                                { item_id = sub_item.id, ifc_type = ?sub_item.ifc_type,
+                                  "skipping unsupported shared-source item (no processor)" }
+                                else {
+                                    #[cfg(debug_assertions)]
+                                    eprintln!(
+                                        "[ifc-lite] Skipping unsupported shared-source item #{} ({:?}): no processor",
+                                        sub_item.id, sub_item.ifc_type
+                                    );
+                                }
+                            );
+                        }
                     }
                 }
             }

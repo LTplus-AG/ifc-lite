@@ -106,10 +106,17 @@ pub(super) fn drain_unsupported_items(
     if unsupported.is_empty() {
         return;
     }
-    if let Ok(mut acc) = collector.lock() {
-        for (ifc_type, count) in unsupported {
-            *acc.entry(ifc_type).or_insert(0) += count;
-        }
+    // Recover from a poisoned lock rather than `if let Ok(..)`, like the drains
+    // in `collate` above: `take_unsupported_items` has ALREADY emptied the
+    // router, so a dropped lock here loses the counts for good. Elsewhere in
+    // the pass a poisoned sink costs a batch of telemetry; here it would silently
+    // erase the drops the counter exists to report, on the one run that already
+    // had a panic worth explaining.
+    let mut acc = collector
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    for (ifc_type, count) in unsupported {
+        *acc.entry(ifc_type).or_insert(0) += count;
     }
 }
 

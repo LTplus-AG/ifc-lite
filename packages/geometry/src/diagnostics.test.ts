@@ -61,6 +61,17 @@ describe('mergeGeometryDiagnostics', () => {
     expect(m.rectFast).toEqual({ fired: 4, openingsCut: 7, deferHostNotBox: 1, deferNotThrough: 4, deferOffFace: 1, deferNearEdge: 2, deferNoOpenings: 3, deferTooManyOpenings: 7 });
   });
 
+  it('sums oversizedRefDrops, treating an absent counter as 0 (pre-#3752 payloads)', () => {
+    // The Rust producer always serializes `oversizedRefDrops`, but a payload
+    // from a build predating #3752 has no such key. Absent must fold as 0
+    // rather than turning the merged value into NaN or dropping the field.
+    expect(mergeGeometryDiagnostics(make({ oversizedRefDrops: 2 }), make({ oversizedRefDrops: 3 }))!
+      .oversizedRefDrops).toBe(5);
+    expect(mergeGeometryDiagnostics(make({ oversizedRefDrops: 4 }), make())!
+      .oversizedRefDrops).toBe(4);
+    expect(mergeGeometryDiagnostics(make(), make())!.oversizedRefDrops).toBe(0);
+  });
+
   it('merges failuresByReason by reason and re-sorts desc by count', () => {
     const a = make({ failuresByReason: [{ reason: 'DifferenceEmptiedHost', count: 2 }, { reason: 'KernelError', count: 1 }] });
     const b = make({ failuresByReason: [{ reason: 'DifferenceEmptiedHost', count: 3 }, { reason: 'NoBoundsOverlap', count: 5 }] });

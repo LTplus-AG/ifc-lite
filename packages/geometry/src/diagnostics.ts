@@ -59,6 +59,13 @@ export interface GeometryDiagnostics {
     /** Optional: absent on payloads produced before this counter existed (#1649). */
     deferTooManyOpenings?: number;
   };
+  /**
+   * Content-hash references the geometry pass refused because they exceeded
+   * `u32::MAX` (#3421 / #3752). Nonzero means some instancing was skipped, not
+   * that geometry is wrong. Optional: absent on payloads from producers
+   * predating the counter.
+   */
+  oversizedRefDrops?: number;
   /** Bounded top-N worst-failing hosts (opt-in per-product detail). */
   worstHosts: Array<{
     productId: number;
@@ -147,6 +154,7 @@ export function mergeGeometryDiagnostics(
       deferNoOpenings: a.rectFast.deferNoOpenings + b.rectFast.deferNoOpenings,
       deferTooManyOpenings: (a.rectFast.deferTooManyOpenings ?? 0) + (b.rectFast.deferTooManyOpenings ?? 0),
     },
+    oversizedRefDrops: (a.oversizedRefDrops ?? 0) + (b.oversizedRefDrops ?? 0),
     worstHosts,
   };
 }

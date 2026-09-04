@@ -337,7 +337,9 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return Ok(host_mesh.clone());
         }
-        if self.topology_gate_reject(BoolOp::Difference, &result) {
+        if self.manifold_gate_reject(BoolOp::Difference, &result)
+            || self.topology_gate_reject(BoolOp::Difference, &result)
+        {
             return Ok(host_mesh.clone());
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
@@ -413,7 +415,9 @@ impl ClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
                 return Ok(host_mesh.clone());
             }
-            if self.topology_gate_reject(BoolOp::Difference, &next) {
+            if self.manifold_gate_reject(BoolOp::Difference, &next)
+                || self.topology_gate_reject(BoolOp::Difference, &next)
+            {
                 return Ok(host_mesh.clone());
             }
             result = next;
@@ -440,7 +444,9 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Intersection, BoolFailureReason::KernelOutputInvalid);
             return Ok(Mesh::new());
         }
-        if self.topology_gate_reject(BoolOp::Intersection, &result) {
+        if self.manifold_gate_reject(BoolOp::Intersection, &result)
+            || self.topology_gate_reject(BoolOp::Intersection, &result)
+        {
             return Ok(Mesh::new());
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Intersection, m))

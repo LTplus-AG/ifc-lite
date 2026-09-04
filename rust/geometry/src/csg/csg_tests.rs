@@ -765,3 +765,143 @@ fn topology_gate_rejects_every_torn_boolean_result_when_enabled() {
 // imports via `crate::csg::`, so the attachment depth does not matter.
 #[path = "world_frame_tests.rs"]
 mod world_frame_tests;
+
+/// A closed unit box carrying a FIN: one extra triangle hung off the box's
+/// `(min.x,min.y,min.z)-(max.x,min.y,min.z)` edge. That edge is now used by
+/// three triangles, so `edge_multiplicity_defects` reports `over_used = 1`
+/// while the signed closure tally still nets the shell to zero.
+///
+/// A doubled coincident FACE was the first fixture tried here and does not
+/// work: the exact kernel's vertex interner collapses the duplicate and the
+/// output comes back clean. A fin survives, which is what makes it usable as
+/// an end-to-end fixture rather than a direct call to the predicate.
+fn finned_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
+    let mut mesh = aabb_to_mesh(min, max);
+    add_triangle_to_mesh(
+        &mut mesh,
+        &Triangle::new(
+            Point3::new(min.x, min.y, min.z),
+            Point3::new(max.x, min.y, min.z),
+            Point3::new(
+                0.5 * (min.x + max.x),
+                min.y - 0.5 * (max.y - min.y),
+                0.5 * (min.z + max.z),
+            ),
+        ),
+    );
+    mesh
+}
+
+/// #3440 step 3: the always-on half of the gate. A kernel result carrying an
+/// edge-multiplicity defect must be REJECTED at the accept seam, in the
+/// DEFAULT build (no `csg_topology_gate`), and each op must fall back the way
+/// it already falls back for `KernelOutputInvalid` — un-cut host or plain
+/// merge — never an `Err` that would drop the element.
+///
+/// Driving the public ops rather than `manifold_gate_reject` directly is the
+/// point: the call sites are the change, so reverting any one of them has to
+/// turn this red.
+///
+/// `intersection_mesh` is covered by the sibling test below instead of here.
+/// Its call site is wired identically, but no fixture reaches it: the exact
+/// kernel's intersection re-derives orientation from the arrangement, so it
+/// returned a CLEAN mesh for every torn operand tried (fin host, reversed-face
+/// host, either argument order, self-intersection). A test asserting rejection
+/// there would have to fake the mesh, and one asserting acceptance would pass
+/// with the call site deleted.
+#[test]
+fn manifold_gate_rejects_a_non_manifold_result_at_the_accept_seam() {
+    let host = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
+
+    let p = ClippingProcessor::new();
+    let subtract = p.subtract_mesh(&host, &through_cutter).unwrap();
+    let batched = p.subtract_mesh_many(&host, &[&through_cutter]).unwrap();
+    let union = p.union_mesh(&host, &overlapping).unwrap();
+
+    assert_eq!(
+        subtract.indices, host.indices,
+        "subtract_mesh must fall back to the un-cut host"
+    );
+    assert_eq!(
+        batched.indices, host.indices,
+        "subtract_mesh_many must fall back to the un-cut host"
+    );
+    let mut expected_union_merge = host.clone();
+    expected_union_merge.merge(&overlapping);
+    assert_eq!(
+        union.triangle_count(),
+        expected_union_merge.triangle_count(),
+        "union_mesh must fall back to the plain merge"
+    );
+
+    let rejected: Vec<BoolOp> = p
+        .take_failures()
+        .iter()
+        .filter(|f| matches!(f.reason, BoolFailureReason::NonManifoldRejected { .. }))
+        .map(|f| f.op)
+        .collect();
+    assert_eq!(
+        rejected,
+        vec![BoolOp::Difference, BoolOp::Difference, BoolOp::Union],
+        "each accept path must reject and record NonManifoldRejected exactly once"
+    );
+}
+
+/// The intersection seam's gate, exercised directly because no operand pair
+/// makes the exact kernel emit a torn intersection (see the test above). This
+/// pins the predicate + the recorded reason + the `true` return that
+/// `intersection_mesh`'s call site branches on; it cannot pin the call site
+/// itself.
+#[test]
+fn manifold_gate_reports_the_intersection_op_when_it_rejects() {
+    let torn = finned_box_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let p = ClippingProcessor::new();
+    assert!(
+        p.manifold_gate_reject(BoolOp::Intersection, &torn),
+        "a finned mesh must be rejected"
+    );
+    assert_eq!(
+        p.take_failures()
+            .iter()
+            .map(|f| (f.op, f.reason.clone()))
+            .collect::<Vec<_>>(),
+        vec![(
+            BoolOp::Intersection,
+            BoolFailureReason::NonManifoldRejected {
+                over_used: 1,
+                same_direction: 0,
+            }
+        )],
+        "the rejection must be attributed to the op that was passed in, with its counts"
+    );
+}
+
+/// The other direction: a CLEAN boolean result must sail through the always-on
+/// gate untouched. Without this the tests above are satisfied by a gate that
+/// rejects everything, which would be a far worse bug than the one being
+/// fixed.
+#[test]
+fn manifold_gate_accepts_a_clean_boolean_result() {
+    let host = aabb_to_mesh(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+    let through_cutter = aabb_to_mesh(Point3::new(0.4, 0.4, -0.1), Point3::new(0.6, 0.6, 1.1));
+    let overlapping = aabb_to_mesh(Point3::new(0.5, 0.5, 0.5), Point3::new(1.5, 1.5, 1.5));
+
+    let p = ClippingProcessor::new();
+    let cut = p.subtract_mesh(&host, &through_cutter).unwrap();
+    let union = p.union_mesh(&host, &overlapping).unwrap();
+    let intersection = p.intersection_mesh(&host, &overlapping).unwrap();
+
+    assert!(
+        cut.triangle_count() > host.triangle_count(),
+        "the clean cut must be the kernel result, not the un-cut host"
+    );
+    assert!(!union.is_empty() && !intersection.is_empty());
+    assert!(
+        p.take_failures()
+            .iter()
+            .all(|f| !matches!(f.reason, BoolFailureReason::NonManifoldRejected { .. })),
+        "clean results must record no multiplicity rejection"
+    );
+}

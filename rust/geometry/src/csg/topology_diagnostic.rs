@@ -10,7 +10,9 @@
 use super::ClippingProcessor;
 use crate::diagnostics::{BoolFailureReason, BoolOp};
 use crate::mesh::Mesh;
-use crate::router::voids::prism_cut::closure_checks::{closed_or_hairline, directed_closed};
+use crate::router::voids::prism_cut::closure_checks::{
+    closed_or_hairline, directed_closed, edge_multiplicity_defects,
+};
 
 /// Message carried by the [`BoolFailureReason::KernelError`] record this
 /// module emits.
@@ -106,5 +108,50 @@ impl ClippingProcessor {
     #[inline(always)]
     pub(crate) fn topology_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
         false
+    }
+    /// #3440 step 3: the ALWAYS-ON half of the accept gate.
+    ///
+    /// `topology_gate_reject` above stays behind `csg_topology_gate` because
+    /// its predicate reads OPEN edges, and a tessellated host routinely
+    /// carries those from T-junction subdivision alone — flipping it on would
+    /// reroute a population this crate has documented as largely benign
+    /// (`prism_cut.rs` accepts exactly that class at every one of its own
+    /// gates). This one reads a strictly different defect class:
+    /// [`edge_multiplicity_defects`], the per-edge UNSIGNED use count that a
+    /// signed closure tally cannot represent at all.
+    ///
+    /// That distinction is the whole reason this can gate by default. A
+    /// T-junction leaves edges used ONCE, which this predicate ignores. An
+    /// edge used four times, or twice the same way round, is not something a
+    /// differently-subdivided shared boundary can produce — it is a doubled
+    /// skin, a fin, or a flipped neighbour. Neither `validate_mesh` (finite +
+    /// in-bounds) nor `directed_closed` (signed, so 2-forward/2-reverse
+    /// cancels to zero) can observe it, which is precisely the silent-accept
+    /// this issue is about.
+    ///
+    /// Same call-site discipline as its siblings: run it on the mesh the op is
+    /// about to RETURN, never an intermediate. On a hit it records
+    /// [`BoolFailureReason::NonManifoldRejected`] and returns `true`, so the
+    /// caller discards the kernel result and falls back exactly like an
+    /// existing `KernelOutputInvalid` — un-cut host, empty mesh, or plain
+    /// merge, whichever that site already does. Never an `Err`: the element
+    /// keeps its geometry, it just keeps the UN-cut version, with a diagnostic
+    /// saying so.
+    pub(crate) fn manifold_gate_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
+        if mesh.is_empty() {
+            return false;
+        }
+        let defects = edge_multiplicity_defects(mesh);
+        if defects.is_clean() {
+            return false;
+        }
+        self.record_failure(
+            op,
+            BoolFailureReason::NonManifoldRejected {
+                over_used: defects.over_used,
+                same_direction: defects.same_direction,
+            },
+        );
+        true
     }
 }

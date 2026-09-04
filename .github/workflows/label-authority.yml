@@ -16,7 +16,21 @@ on:
 
 permissions:
   contents: read
+  # BOTH SCOPES, and `pull-requests: write` is not redundant with `issues:
+  # write`. Measured on this repo 2026-08-31: `issues: write` alone returns 403
+  # when the target is a PULL REQUEST, on the REST
+  # `DELETE /repos/{o}/{r}/issues/{n}/labels/{name}` endpoint this script uses
+  # as well as through GraphQL. A label is an issue resource; a pull request is
+  # not enough of an issue for it. GitHub's
+  # `x-accepted-github-permissions: issues=write; pull_requests=write` reads
+  # like OR and does not behave like it.
+  #
+  # This matters most where the job matters most: `escapeLabel` (`unqueued`) is
+  # applied to PULL REQUESTS to waive the queue, so without this line the
+  # enforcer 403s on precisely the label with the highest blast radius, reports
+  # REMOVE_FAILED, and leaves the label attached.
   issues: write
+  pull-requests: write
 
 concurrency:
   group: label-authority-${{ github.event.issue.number || github.event.pull_request.number }}

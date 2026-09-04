@@ -389,6 +389,16 @@ export class Camera {
   }
 
   /**
+   * Get the viewport aspect ratio (width / height) the projection is using.
+   * Always finite and positive -- {@link setAspect} rejects anything else --
+   * which is what lets `useBCF` hand it straight to a BCF 3.0 `<AspectRatio>`,
+   * whose schema type is `PositiveDouble` (#3612).
+   */
+  getAspect(): number {
+    return this.state.camera.aspect;
+  }
+
+  /**
    * Get distance from camera position to target.
    *
    * Deliberately **unsanitized**: it reports the pose as it actually is, so a

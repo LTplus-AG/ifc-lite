@@ -37,6 +37,16 @@ export interface ViewerCameraState {
   isOrthographic?: boolean;
   /** Orthographic scale (view-to-world) */
   orthoScale?: number;
+  /**
+   * Viewport aspect ratio (width / height). REQUIRED to write BCF 3.0:
+   * v3_0/visinfo.xsd makes `<AspectRatio>` a mandatory child of both camera
+   * types and `writer-camera.ts` refuses to invent one, so without this field
+   * no viewpoint this package produced could be written as 3.0 at all -- and
+   * `writeBCF` throws for the whole archive on the first such camera, so one
+   * captured viewpoint meant no export (#3612). Optional because 2.1 has no
+   * such element; leave it unset rather than assert a view nobody had.
+   */
+  aspectRatio?: number;
 }
 
 export interface ViewerSectionPlane {
@@ -144,6 +154,7 @@ export function cameraToPerspective(camera: ViewerCameraState): BCFPerspectiveCa
     cameraDirection: direction,
     cameraUpVector: upVector,
     fieldOfView: Math.max(1, Math.min(179, fieldOfView)), // Clamp to valid range
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 
@@ -184,6 +195,7 @@ export function cameraToOrthogonal(
     cameraDirection: direction,
     cameraUpVector: upVector,
     viewToWorldScale,
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 
@@ -235,6 +247,8 @@ export function perspectiveToCamera(
     up: viewerUp,
     fov,
     isOrthographic: false,
+    // Carried back so apply-then-recapture is not what loses it.
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 
@@ -269,6 +283,7 @@ export function orthogonalToCamera(
     fov: Math.PI / 4, // Default FOV for ortho (not used)
     isOrthographic: true,
     orthoScale: camera.viewToWorldScale,
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 

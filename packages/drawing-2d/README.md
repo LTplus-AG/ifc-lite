@@ -59,9 +59,13 @@ const drawing = await generator.generate(meshes, config, {
   includeEdges: true,
 });
 
-// Hatching for the cut polygons is a separate pass; `exportToSVG`'s
-// `showHatching` option draws the lines it returns.
+// Hatching is a separate pass, for callers rendering the drawing themselves:
+// it returns the cut polygons' hatch as DrawingLine[]. `exportToSVG`'s
+// `showHatching` does NOT consume these — it derives its own hatching layer
+// from `drawing.cutPolygons` (svg-exporter.ts:151), so passing both just
+// draws the same hatch twice.
 const hatchLines = generator.generateHatching(drawing);
+console.log(`${hatchLines.length} hatch lines`);
 
 generator.dispose();
 ```

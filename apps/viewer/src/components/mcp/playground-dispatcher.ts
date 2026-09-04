@@ -574,19 +574,11 @@ const IMPLS: Record<string, ToolImpl> = {
 
   async count_entities(m, args) {
     const groupBy = (args.group_by as string | undefined) ?? 'type';
-    // `type` narrows the universe before any grouping, as the Node MCP
-    // server's count_entities does (packages/mcp/src/tools/query.ts); without
-    // it a `type: 'IfcWall'` request still folded every BIM product.
-    const typeFilter = args.type as string | undefined;
+    const typeFilter = args.type as string | undefined; // narrows the universe first, like the Node MCP server
     const universe = () => (typeFilter ? m.bim.query().byType(typeFilter) : m.bim.query()).toArray();
     const counts = new Map<string, number>();
     if (groupBy === 'type') {
-      // Same universe as `query_entities`/`get_entity` and the Node MCP
-      // server's `count_entities` (#3765): the BIM products `m.bim.query()`
-      // yields. `m.store.entityIndex.byType` is every raw STEP record —
-      // geometry, relationships, properties included — which is what this
-      // branch used to fold, so the playground reported a different total
-      // than the installed MCP server for the same model.
+      // BIM products only (#3765): `entityIndex.byType` is every raw STEP record.
       for (const e of universe()) {
         const key = e.type || '(unknown)';
         counts.set(key, (counts.get(key) ?? 0) + 1);

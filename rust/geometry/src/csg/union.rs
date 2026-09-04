@@ -27,10 +27,10 @@ impl ClippingProcessor {
     /// spurious `NonManifoldRejected` lands in both the public failure list
     /// and the census the flip decision is read off.
     pub fn union_mesh(&self, mesh_a: &Mesh, mesh_b: &Mesh) -> Result<Mesh> {
-        if mesh_a.is_empty() || mesh_b.is_empty() {
-            return self.union_pair(mesh_a, mesh_b);
-        }
         let result = self.union_pair(mesh_a, mesh_b)?;
+        if mesh_a.is_empty() || mesh_b.is_empty() {
+            return Ok(result);
+        }
         Ok(self.audit_and_gate_union(result, || {
             let mut merged = mesh_a.clone();
             merged.merge(mesh_b);
@@ -126,21 +126,18 @@ impl ClippingProcessor {
     /// result remains the legacy return value and the existing invalid-output
     /// record from `union_pair` remains the only failure record added there.
     ///
-    /// #3440 step 2: also the ONE place union gates. `topology_gate_reject`
-    /// itself records on a hit, so when it does this returns `fallback()`
-    /// WITHOUT also calling `record_topology_tear` — recording both would
-    /// double-count the same tear as two unrelated incidents. Without the
-    /// `csg_topology_gate` feature `topology_gate_reject` is the zero-cost
-    /// always-`false` stub, so this is exactly the step-1 behaviour above,
-    /// unchanged.
+    /// #3440 steps 2 and 3: also the ONE place union gates. Each gate inside
+    /// `accept_gates_reject` records on its own hit, so when one does this
+    /// returns `fallback()` WITHOUT also calling `record_topology_tear` —
+    /// recording both would double-count the same tear as two unrelated
+    /// incidents. Without either gate feature `accept_gates_reject` is the
+    /// zero-cost always-`false` stub, so this is exactly the step-1 behaviour
+    /// above, unchanged.
     fn audit_and_gate_union(&self, mesh: Mesh, fallback: impl FnOnce() -> Mesh) -> Mesh {
         if !self.validate_mesh(&mesh) {
             return mesh;
         }
-        // Both gates run; see `subtract_mesh` for why this is not `||`.
-        let manifold_rejected = self.manifold_gate_reject(BoolOp::Union, &mesh);
-        let topology_rejected = self.topology_gate_reject(BoolOp::Union, &mesh);
-        if manifold_rejected | topology_rejected {
+        if self.accept_gates_reject(BoolOp::Union, &mesh) {
             return fallback();
         }
         self.record_topology_tear(BoolOp::Union, &mesh);

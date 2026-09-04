@@ -788,15 +788,6 @@ mod world_frame_tests;
 /// work: the exact kernel's vertex interner collapses the duplicate and the
 /// output comes back clean. A fin survives, which is what makes it usable as
 /// an end-to-end fixture rather than a direct call to the predicate.
-// Used by the `csg_manifold_gate` tests and by the default build's no-op pin.
-// With only `csg_topology_gate` on, neither compiles and this would warn.
-#[cfg_attr(
-    all(
-        feature = "csg_topology_gate",
-        not(feature = "csg_manifold_gate")
-    ),
-    allow(dead_code)
-)]
 fn finned_box_mesh(min: Point3<f64>, max: Point3<f64>) -> Mesh {
     let mut mesh = aabb_to_mesh(min, max);
     add_triangle_to_mesh(

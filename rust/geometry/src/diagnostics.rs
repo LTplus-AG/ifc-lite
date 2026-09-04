@@ -160,10 +160,9 @@ pub enum BoolFailureReason {
     /// reasons.
     ///
     /// The gate reads a defect class benign tessellation cannot produce, so it
-    /// was tried as a default. It rejects 110 of 2071 corpus void hosts, all
-    /// still cut by a downstream fallback — but that fallback is worse than
-    /// the tear it replaces on this repo's pinned quality fixtures. See
-    /// `csg_manifold_gate` in `Cargo.toml`, and the corpus measurement in
+    /// was tried as a default; the fallback a rejection reaches turned out to
+    /// be worse than the tear it replaces. The numbers behind that live in one
+    /// place — `csg_manifold_gate` in `Cargo.toml` — with the corpus sweep in
     /// `tests/issue_3440_manifold_gate_census.rs`.
     ///
     /// Carries the two counts (as `OperandTooLarge` carries its operand sizes)

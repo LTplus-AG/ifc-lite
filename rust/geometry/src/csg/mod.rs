@@ -337,15 +337,7 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
             return Ok(host_mesh.clone());
         }
-        // Both gates run, and `|` rather than `||` is the point: they read
-        // different defect classes behind different features, and a
-        // short-circuit would silently drop the second one's record whenever
-        // the first fired. The census that decides whether either may ever be
-        // default-on has to attribute a rejection to a class, which it cannot
-        // do if one gate's verdict depends on the other's.
-        let manifold_rejected = self.manifold_gate_reject(BoolOp::Difference, &result);
-        let topology_rejected = self.topology_gate_reject(BoolOp::Difference, &result);
-        if manifold_rejected | topology_rejected {
+        if self.accept_gates_reject(BoolOp::Difference, &result) {
             return Ok(host_mesh.clone());
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Difference, m))
@@ -421,10 +413,7 @@ impl ClippingProcessor {
                 self.record_failure(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid);
                 return Ok(host_mesh.clone());
             }
-            // Both gates run; see `subtract_mesh` for why this is not `||`.
-            let manifold_rejected = self.manifold_gate_reject(BoolOp::Difference, &next);
-            let topology_rejected = self.topology_gate_reject(BoolOp::Difference, &next);
-            if manifold_rejected | topology_rejected {
+            if self.accept_gates_reject(BoolOp::Difference, &next) {
                 return Ok(host_mesh.clone());
             }
             result = next;
@@ -451,10 +440,7 @@ impl ClippingProcessor {
             self.record_failure(BoolOp::Intersection, BoolFailureReason::KernelOutputInvalid);
             return Ok(Mesh::new());
         }
-        // Both gates run; see `subtract_mesh` for why this is not `||`.
-        let manifold_rejected = self.manifold_gate_reject(BoolOp::Intersection, &result);
-        let topology_rejected = self.topology_gate_reject(BoolOp::Intersection, &result);
-        if manifold_rejected | topology_rejected {
+        if self.accept_gates_reject(BoolOp::Intersection, &result) {
             return Ok(Mesh::new());
         }
         Ok(result).inspect(|m| self.record_topology_tear(BoolOp::Intersection, m))

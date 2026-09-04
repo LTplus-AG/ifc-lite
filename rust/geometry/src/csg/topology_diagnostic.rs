@@ -150,15 +150,13 @@ impl ClippingProcessor {
     /// saying so.
     ///
     /// It is NOT on by default, and the reason is measured rather than
-    /// cautious. Over the fixture corpus it rejects 110 of 2071 void hosts and
-    /// every one of them is still cut by a downstream fallback — but on this
-    /// repo's own pinned quality fixtures that fallback is WORSE than the tear
-    /// it replaces: `issue_098_reveal_wall` goes from ~42 to 380 unpaired
-    /// edges, `issue_098_v5c` from ~108 to 416, and
-    /// `issue_960_segmented_roof_clip` grows back the full-height seam sliver
-    /// it exists to catch. Rejecting a torn result only helps if what replaces
-    /// it is better. Here it is not, so the fallback path is what has to be
-    /// fixed before this flips.
+    /// cautious: rejecting a torn result only helps if what replaces it is
+    /// better, and on this repo's own pinned quality fixtures the fallback is
+    /// worse than the tear. The measurement itself — corpus reach, and the
+    /// per-fixture regressions — is stated ONCE, on the `csg_manifold_gate`
+    /// feature in `rust/geometry/Cargo.toml`. Do not copy the numbers here:
+    /// they move when the fallback path is fixed, and a second copy is a
+    /// second thing to keep true.
     #[cfg(feature = "csg_manifold_gate")]
     pub(crate) fn manifold_gate_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
         if mesh.is_empty() {
@@ -185,5 +183,26 @@ impl ClippingProcessor {
     #[inline(always)]
     pub(crate) fn manifold_gate_reject(&self, _op: BoolOp, _mesh: &Mesh) -> bool {
         false
+    }
+
+    /// Run BOTH accept gates over `mesh` and report whether either rejected
+    /// it. The single entry point every accept path uses, so the rule below is
+    /// stated once instead of being re-derived at each site.
+    ///
+    /// `|`, not `||`, and that is the whole reason this is a function rather
+    /// than three lines repeated at four call sites. The two gates read
+    /// different defect classes behind different features and each records its
+    /// own `BoolFailureReason`; a short-circuit would silently drop the second
+    /// one's record whenever the first fired. The census that decides whether
+    /// either may ever be default-on has to attribute a rejection to a class,
+    /// which it cannot do if one gate's verdict depends on the other's.
+    /// Written here, that cannot be "tidied" into `||` at one site only.
+    ///
+    /// With neither feature on, both operands are the always-`false` stubs and
+    /// this compiles away to `false`, exactly as the two do individually.
+    pub(crate) fn accept_gates_reject(&self, op: BoolOp, mesh: &Mesh) -> bool {
+        let manifold_rejected = self.manifold_gate_reject(op, mesh);
+        let topology_rejected = self.topology_gate_reject(op, mesh);
+        manifold_rejected | topology_rejected
     }
 }

@@ -106,16 +106,16 @@ fn v5c_dense_reveal_wall_not_torn() {
     let open = open_edges(&voided);
     let vol = mesh_volume(&voided);
     println!("[V5C] tris={} vol={vol:.3} openEdges={open}", voided.triangle_count());
-// #3440: under `csg_manifold_gate` the boolean accept seam REJECTS a kernel
-// result carrying a non-manifold or reversed-winding edge, and the router
-// falls back. On this fixture that fallback is measurably WORSE than the tear
-// it replaces, which is precisely why the feature is off by default. The
-// assertion is not relaxed - it is REPLACED by the measured regression, so the
-// feature build stays green while still failing the moment the number moves in
-// either direction. The thing to fix is the FALLBACK path (the #635 AABB
-// box-cut the void router reaches when the exact cut is discarded), not this
-// bar; when it is fixed, this branch should go and the default bar apply to
-// both builds.
+    // #3440: under `csg_manifold_gate` the boolean accept seam REJECTS a kernel
+    // result carrying a non-manifold or reversed-winding edge, and the router
+    // falls back. On this fixture that fallback is measurably WORSE than the tear
+    // it replaces, which is precisely why the feature is off by default. The
+    // assertion is not relaxed - it is REPLACED by the measured regression, so the
+    // feature build stays green while still failing the moment the number moves in
+    // either direction. The thing to fix is the FALLBACK path (the #635 AABB
+    // box-cut the void router reaches when the exact cut is discarded), not this
+    // bar; when it is fixed, this branch should go and the default bar apply to
+    // both builds.
     #[cfg(not(feature = "csg_manifold_gate"))]
     assert!(open < 160, "V5C re-fragmented: {open} unpaired edges (was ~108)");
     #[cfg(feature = "csg_manifold_gate")]

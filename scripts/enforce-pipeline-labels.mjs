@@ -13,7 +13,7 @@ import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
-import { normaliseLogin, readConfig } from './check-issue-queue.mjs';
+import { normaliseLogin, readConfig, IssueQueueError } from './check-issue-queue.mjs';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(ROOT, 'issue-queue.config.json');
@@ -24,6 +24,26 @@ export class LabelAuthorityError extends Error {
     this.name = 'LabelAuthorityError';
     this.reason = reason;
   }
+}
+
+/**
+ * Is this sender an app rather than the person of the same name?
+ *
+ * `normaliseLogin` folds `app/x`, `x[bot]` and `x` onto one key, which is what
+ * identifying dependabot across three APIs needs and the opposite of what an
+ * authority lookup needs: an app whose slug matches a login in
+ * `labelAuthorities` would fold onto that login and inherit the authority to
+ * steer the queue. So the fold stays for case, and a bot-shaped sender is
+ * refused before the lookup, whatever it folds to.
+ *
+ * Any of the three spellings is enough. Requiring all three would mean a
+ * spelling this repo has not seen yet reads as human.
+ */
+function isBotSender(sender) {
+  if (!sender || typeof sender !== 'object') return false;
+  if (sender.type === 'Bot') return true;
+  const login = typeof sender.login === 'string' ? sender.login.trim() : '';
+  return /\[bot\]$/i.test(login) || /^app\//i.test(login);
 }
 
 export function decideLabelEvent(payload, cfg) {
@@ -57,7 +77,7 @@ export function decideLabelEvent(payload, cfg) {
       `Protected label ${JSON.stringify(canonical)} was applied without a readable sender.`,
     );
   }
-  if (cfg.labelAuthorities.has(sender)) {
+  if (!isBotSender(payload.sender) && cfg.labelAuthorities.has(sender)) {
     return { action: 'keep', label: canonical, sender };
   }
 
@@ -128,7 +148,12 @@ export function enforceLabelEvent(payload, { cfg, repo, spawn = spawnSync }) {
 function main() {
   const eventPath = process.env.GITHUB_EVENT_PATH;
   if (!eventPath) throw new LabelAuthorityError('BAD_EVENT', 'GITHUB_EVENT_PATH is unset.');
-  const payload = JSON.parse(readFileSync(eventPath, 'utf8'));
+  let payload;
+  try {
+    payload = JSON.parse(readFileSync(eventPath, 'utf8'));
+  } catch (error) {
+    throw new LabelAuthorityError('BAD_EVENT', `Could not read the webhook payload at ${eventPath}: ${error.message}`);
+  }
   const cfg = readConfig(DEFAULT_CONFIG);
   const decision = enforceLabelEvent(payload, {
     cfg,
@@ -152,7 +177,13 @@ if (isMainEntry(import.meta.url)) {
   try {
     main();
   } catch (error) {
-    if (error instanceof LabelAuthorityError) {
+    // BOTH ERROR CLASSES. The config is read through the queue gate's own
+    // `readConfig`, so it throws IssueQueueError, not this file's error.
+    // Guarding on one class left the single most likely failure -- a typo in
+    // the one config file both halves read -- escaping as an uncaught stack
+    // trace, which reads as a crashed removal rather than a config nobody can
+    // parse. Both carry `.reason`, so the same line formats both.
+    if (error instanceof LabelAuthorityError || error instanceof IssueQueueError) {
       console.error(`❌ ${error.reason}: ${error.message}`);
       process.exit(1);
     }

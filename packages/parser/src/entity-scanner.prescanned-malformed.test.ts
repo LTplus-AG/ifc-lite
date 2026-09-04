@@ -91,6 +91,24 @@ describe('scanIfcEntities: a pre-scanned index that stopped at a malformed recor
     expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(false);
   });
 
+  it('reports BOTH when the stop and an unreported refusal count apply', async () => {
+    // #3790 round 2: these were chained with `else if`, which was safe only
+    // while the pre-scanned path could not set `malformedRecordCount` at all.
+    // Once it could, the one load that needs both warnings -- a pre-pass that
+    // stopped early AND does not report refusals -- got only the first, and
+    // the #3395 warning went missing on exactly the path it was written for.
+    const diagnostics: string[] = [];
+    await scanIfcEntities(BUFFER, {
+      disableWorkerScan: true,
+      // No `oversizedIdCount`: this producer does not report refusals.
+      preScannedEntityIndex: { ...columnsForFirstRecordOnly(), malformedRecordCount: 1 },
+      onDiagnostic: (m) => diagnostics.push(m),
+    });
+
+    expect(diagnostics.some((m) => m.includes('stopped early'))).toBe(true);
+    expect(diagnostics.some((m) => m.includes('does not report refused'))).toBe(true);
+  });
+
   it('does not turn an UNREPORTED stop into a claim, in either direction', async () => {
     // A producer that sends no flag has said nothing, and that is the state on
     // main today (#3699 unlanded). `EntityScanResult.malformedRecordCount` is

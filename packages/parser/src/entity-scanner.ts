@@ -235,7 +235,15 @@ export async function scanIfcEntities(
       'returned may be an incomplete view of this file';
     console.warn(`[IfcParser] ${message}`);
     options.onDiagnostic?.(message);
-  } else if (preScanCountUnreported && scanPath === 'pre-scanned') {
+  }
+
+  // Independent of the branch above, not chained onto it (#3790 round 2).
+  // These two say different things about different numbers, and both can be
+  // true at once: a pre-pass that stopped at a malformed record AND reports
+  // no refusal count. The `else if` this replaces was safe only while the
+  // pre-scanned path had no way to set `malformedRecordCount` at all -- the
+  // moment it did, the load that most needs both warnings got exactly one.
+  if (preScanCountUnreported && scanPath === 'pre-scanned') {
     // Absence has to look different from success. This producer sent the
     // columns without a refusal count, so a zero here is not evidence of
     // none, say that, rather than returning a result that reads like a clean

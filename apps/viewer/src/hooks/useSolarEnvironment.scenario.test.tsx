@@ -54,10 +54,28 @@ async function mountHook(georef: SolarEnvironmentGeoref | null): Promise<Root> {
   document.body.appendChild(container);
   const root = createRoot(container);
   await act(async () => { root.render(<Harness />); });
-  // computeCesiumModelOrigin resolves proj4 (EPSG lookup + async import)
-  // before the hook's origin effect settles; flush past that.
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
   return root;
+}
+
+/**
+ * The hook publishes only AFTER its origin effect settles: `origin` starts
+ * `null`, and `computeCesiumModelOrigin` awaits a proj4 EPSG lookup behind an
+ * async import. Reading the store straight after mount therefore races the
+ * effect (issue #3850: 2 of 6 runs failed on a fixed 50ms flush). Poll the
+ * published value instead, bounded, the way
+ * `useSymbolicAnnotationsForDrawing.classGate.test.tsx` waits on its harness.
+ */
+async function waitForSunDirection(timeoutMs = 10_000): Promise<readonly number[]> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const published = useViewerStore.getState().solarSunDirection;
+    if (published) return published;
+    if (Date.now() >= deadline) break;
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  }
+  throw new Error(
+    `the hook must publish a sun direction for an enabled solar study (none within ${timeoutMs}ms)`,
+  );
 }
 
 const originalState = useViewerStore.getState();
@@ -70,8 +88,7 @@ describe('useSolarEnvironment (real hook call site, #2534 review gap)', () => {
 
     const root = await mountHook({ mapConversion, projectedCRS, coordinateInfo, lengthUnitScale: 1 });
     try {
-      const published = useViewerStore.getState().solarSunDirection;
-      assert.ok(published, 'the hook must publish a sun direction for an enabled solar study');
+      const published = await waitForSunDirection();
 
       // Independently reconstruct the origin (lat/lon/gamma) the SAME way
       // the hook's own effect does — `computeCesiumModelOrigin` already
@@ -89,11 +106,11 @@ describe('useSolarEnvironment (real hook call site, #2534 review gap)', () => {
       const dist = (a: readonly number[], b: readonly number[]) =>
         Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
       assert.ok(
-        dist(published!, authoredAxisDirection) > 0.1,
+        dist(published, authoredAxisDirection) > 0.1,
         `published direction must not match the authored-rotation prediction: published=${published}, authored=${authoredAxisDirection}`,
       );
       assert.ok(
-        dist(published!, identityAxisDirection) < 1e-6,
+        dist(published, identityAxisDirection) < 1e-6,
         `published direction must match the identity-axis (guard-neutralised) prediction: published=${published}, identity=${identityAxisDirection}`,
       );
     } finally {

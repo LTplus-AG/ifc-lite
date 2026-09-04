@@ -96,21 +96,6 @@ export interface IDSSpecResultInput {
   passedCount: number;
   failedCount: number;
   entityResults: IDSEntityResultInput[];
-  /**
-   * Present when the specification declares minOccurs/maxOccurs. A
-   * cardinality-only failure (e.g. a required entity type entirely
-   * absent from the model) has `applicableCount === 0` and an empty
-   * `entityResults` — there is no entity to attach a per-entity topic
-   * to, so grouping strategies that iterate `entityResults` must fall
-   * back to this to avoid dropping the failure silently.
-   */
-  cardinalityResult?: {
-    passed: boolean;
-    actualCount: number;
-    minExpected?: number;
-    maxExpected?: number | 'unbounded';
-    message: string;
-  };
 }
 
 /** Entity result — structurally matches IDSEntityResult */
@@ -247,6 +232,7 @@ export function createBCFFromIDSReport(
         failureColor,
         entityBounds,
         entitySnapshots,
+        version,
       });
       break;
     case 'per-specification':
@@ -257,6 +243,7 @@ export function createBCFFromIDSReport(
         failureColor,
         entityBounds,
         entitySnapshots,
+        version,
       });
       break;
     case 'per-requirement':
@@ -267,61 +254,12 @@ export function createBCFFromIDSReport(
         failureColor,
         entityBounds,
         entitySnapshots,
+        version,
       });
       break;
   }
 
   return project;
-}
-
-/**
- * Build the topic for a specification that FAILED on cardinality alone
- * (its applicability matched zero entities and minOccurs required at
- * least one). There is no entity to attach a per-entity or
- * per-requirement topic to, so grouping strategies that iterate
- * `entityResults` need this fallback or the failure never appears in
- * the exported BCF file at all.
- */
-function createCardinalityFailureTopic(
-  specResult: IDSSpecResultInput,
-  author: string,
-  failureTopicType: string,
-): BCFTopic {
-  const message = specResult.cardinalityResult?.message ?? 'Cardinality requirement not satisfied';
-  return createTopic({
-    title: `${specResult.specification.name}: cardinality requirement not met`,
-    description: `Specification: ${specResult.specification.name}\n${specResult.specification.description ?? ''}\n\n${message} (0 applicable entities matched).`,
-    author,
-    topicType: failureTopicType,
-    topicStatus: 'Open',
-    priority: 'High',
-    labels: ['IDS', specResult.specification.name, 'cardinality'],
-  });
-}
-
-/**
- * Add a synthetic "Info" topic recording that `maxTopics` cut off `remaining`
- * further items. Without this, a large model silently drops entities past
- * the cap with no trace in the exported BCF file — the same silent-loss
- * shape `MAX_COMMENTS_PER_TOPIC`'s "... and N more" comment exists to avoid
- * for comments within one topic.
- */
-function addTruncationNoticeTopic(
-  project: BCFProject,
-  author: string,
-  remaining: number,
-  itemLabel: string,
-): void {
-  if (remaining <= 0) return;
-  const topic = createTopic({
-    title: `... and ${remaining} more ${itemLabel}${remaining === 1 ? '' : 's'} (truncated at maxTopics)`,
-    description: `The IDS validation report contained more ${itemLabel}s than the configured maxTopics limit. ${remaining} additional ${remaining === 1 ? 'entry was' : 'entries were'} not exported as BCF topics.`,
-    author,
-    topicType: 'Info',
-    topicStatus: 'Open',
-    labels: ['IDS', 'truncated'],
-  });
-  project.topics.set(topic.guid, topic);
 }
 
 // ============================================================================
@@ -337,6 +275,7 @@ interface BuildOptions {
   failureColor: string;
   entityBounds?: Map<string, EntityBoundsInput>;
   entitySnapshots?: Map<string, string>;
+  version?: '2.1' | '3.0';
 }
 
 function buildTopicsPerEntity(
@@ -345,30 +284,15 @@ function buildTopicsPerEntity(
   opts: BuildOptions,
 ): void {
   let topicCount = 0;
-  let qualifyingCount = 0;
 
   for (const specResult of report.specificationResults) {
     if (specResult.status === 'not_applicable') continue;
 
-    // A cardinality-only failure (required entity type matched zero
-    // times) has no entities to iterate below — without this branch the
-    // failure is invisible in per-entity grouping.
-    if (specResult.status === 'fail' && specResult.entityResults.length === 0) {
-      qualifyingCount++;
-      if (topicCount < opts.maxTopics) {
-        const topic = createCardinalityFailureTopic(specResult, opts.author, opts.failureTopicType);
-        project.topics.set(topic.guid, topic);
-        topicCount++;
-      }
-      continue;
-    }
-
     for (const entity of specResult.entityResults) {
+      if (topicCount >= opts.maxTopics) return;
+
       // Skip passing entities unless requested
       if (entity.passed && !opts.includePassingEntities) continue;
-
-      qualifyingCount++;
-      if (topicCount >= opts.maxTopics) continue;
 
       const failedReqs = entity.requirementResults.filter(r => r.status === 'fail');
       const totalReqs = entity.requirementResults.filter(r => r.status !== 'not_applicable').length;
@@ -404,6 +328,7 @@ function buildTopicsPerEntity(
           isFailed ? opts.failureColor : undefined,
           bounds,
           snapshot,
+          opts.version,
         );
         topic.viewpoints.push(viewpoint);
         viewpointGuid = viewpoint.guid;
@@ -423,8 +348,6 @@ function buildTopicsPerEntity(
       topicCount++;
     }
   }
-
-  addTruncationNoticeTopic(project, opts.author, qualifyingCount - topicCount, 'entity');
 }
 
 // ============================================================================
@@ -437,12 +360,10 @@ function buildTopicsPerSpecification(
   opts: Omit<BuildOptions, 'includePassingEntities' | 'passTopicType'>,
 ): void {
   let topicCount = 0;
-  let qualifyingCount = 0;
 
   for (const specResult of report.specificationResults) {
     if (specResult.status !== 'fail') continue;
-    qualifyingCount++;
-    if (topicCount >= opts.maxTopics) continue;
+    if (topicCount >= opts.maxTopics) return;
 
     const failedEntities = specResult.entityResults.filter(e => !e.passed);
 
@@ -498,8 +419,6 @@ function buildTopicsPerSpecification(
     project.topics.set(topic.guid, topic);
     topicCount++;
   }
-
-  addTruncationNoticeTopic(project, opts.author, qualifyingCount - topicCount, 'specification');
 }
 
 // ============================================================================
@@ -512,31 +431,16 @@ function buildTopicsPerRequirement(
   opts: Omit<BuildOptions, 'includePassingEntities' | 'passTopicType'>,
 ): void {
   let topicCount = 0;
-  let qualifyingCount = 0;
 
   for (const specResult of report.specificationResults) {
     if (specResult.status !== 'fail') continue;
-
-    // Cardinality-only failure — no entity/requirement to attach a topic
-    // to below. Same fallback as buildTopicsPerEntity, for the same
-    // reason: otherwise the failure has no BCF topic anywhere.
-    if (specResult.entityResults.length === 0) {
-      qualifyingCount++;
-      if (topicCount < opts.maxTopics) {
-        const topic = createCardinalityFailureTopic(specResult, opts.author, opts.failureTopicType);
-        project.topics.set(topic.guid, topic);
-        topicCount++;
-      }
-      continue;
-    }
 
     for (const entity of specResult.entityResults) {
       if (entity.passed) continue;
 
       for (const req of entity.requirementResults) {
         if (req.status !== 'fail') continue;
-        qualifyingCount++;
-        if (topicCount >= opts.maxTopics) continue;
+        if (topicCount >= opts.maxTopics) return;
 
         const entityLabel = entity.entityName || `#${entity.expressId}`;
 
@@ -555,7 +459,7 @@ function buildTopicsPerRequirement(
           const boundsKey = `${entity.modelId}:${entity.expressId}`;
           const bounds = opts.entityBounds?.get(boundsKey);
           const snapshot = opts.entitySnapshots?.get(boundsKey);
-          const viewpoint = buildEntityViewpoint(entity.globalId, opts.failureColor, bounds, snapshot);
+          const viewpoint = buildEntityViewpoint(entity.globalId, opts.failureColor, bounds, snapshot, opts.version);
           topic.viewpoints.push(viewpoint);
           viewpointGuid = viewpoint.guid;
         }
@@ -573,8 +477,6 @@ function buildTopicsPerRequirement(
       }
     }
   }
-
-  addTruncationNoticeTopic(project, opts.author, qualifyingCount - topicCount, 'requirement failure');
 }
 
 // ============================================================================
@@ -662,6 +564,7 @@ function buildRequirementComment(req: IDSRequirementResultInput): string {
  *
  * Camera is placed at a southeast-isometric angle from the entity center,
  * at a distance that frames the entity's bounding box with padding.
+ * Includes aspectRatio for BCF 3.0 compliance.
  */
 function computeCameraFromBounds(bounds: EntityBoundsInput): BCFPerspectiveCamera {
   // Center in viewer coords (Y-up)
@@ -707,6 +610,26 @@ function computeCameraFromBounds(bounds: EntityBoundsInput): BCFPerspectiveCamer
     },
     cameraUpVector: { x: 0, y: 0, z: 1 }, // BCF Z-up
     fieldOfView: 60,
+    aspectRatio: 16 / 9, // Standard 16:9 aspect ratio for BCF 3.0 compliance
+  };
+}
+
+/**
+ * Create a default perspective camera when no bounds are available.
+ * Used for BCF 3.0 compliance, which requires exactly one camera per viewpoint.
+ * Camera is positioned at a standard isometric angle from the origin.
+ */
+function createDefaultCamera(): BCFPerspectiveCamera {
+  return {
+    cameraViewPoint: { x: 10, y: 10, z: 10 },
+    cameraDirection: {
+      x: -1 / Math.sqrt(3),
+      y: -1 / Math.sqrt(3),
+      z: -1 / Math.sqrt(3),
+    },
+    cameraUpVector: { x: 0, y: 0, z: 1 }, // BCF Z-up
+    fieldOfView: 60,
+    aspectRatio: 16 / 9, // Standard 16:9 aspect ratio
   };
 }
 
@@ -718,12 +641,14 @@ function computeCameraFromBounds(bounds: EntityBoundsInput): BCFPerspectiveCamer
  * Build a viewpoint for a single entity: selected, isolated, colored.
  * Optionally includes a perspective camera computed from entity bounds,
  * and a snapshot image if provided.
+ * For BCF 3.0, includes a default camera when no bounds are available.
  */
 function buildEntityViewpoint(
   globalId: string,
   failureColor: string | undefined,
   bounds?: EntityBoundsInput,
   snapshot?: string,
+  bcfVersion?: '2.1' | '3.0',
 ): BCFViewpoint {
   // Create independent component objects to prevent mutation side effects
   const viewpoint: BCFViewpoint = {
@@ -749,6 +674,9 @@ function buildEntityViewpoint(
   // Compute camera from bounds (viewer Y-up → BCF Z-up)
   if (bounds) {
     viewpoint.perspectiveCamera = computeCameraFromBounds(bounds);
+  } else if (bcfVersion === '3.0') {
+    // BCF 3.0 requires exactly one camera per viewpoint
+    viewpoint.perspectiveCamera = createDefaultCamera();
   }
 
   // Attach snapshot

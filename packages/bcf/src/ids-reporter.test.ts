@@ -875,6 +875,34 @@ describe('IDS BCF Reporter', () => {
       expect(cam.cameraViewPoint.x).toBeGreaterThan(centerX + 5);
     });
 
+    it('refuses per-specification grouping when only some entities have bounds', () => {
+      // The viewpoint frames every failing entity at once, so a partial union
+      // is a frame that silently leaves the uncovered entity off screen.
+      const bounds = new Map<string, EntityBoundsInput>();
+      bounds.set('model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } });
+
+      expect(() =>
+        createBCFFromIDSReport(createMockReport(), {
+          version: '3.0',
+          topicGrouping: 'per-specification',
+          entityBounds: bounds,
+        }),
+      ).toThrow(/entityBounds/);
+    });
+
+    it('leaves the per-specification camera unset when bounds are partial', () => {
+      const bounds = new Map<string, EntityBoundsInput>();
+      bounds.set('model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } });
+
+      const project = createBCFFromIDSReport(createMockReport(), {
+        topicGrouping: 'per-specification',
+        entityBounds: bounds,
+      });
+
+      const vp = [...project.topics.values()][0].viewpoints[0];
+      expect(vp.perspectiveCamera).toBeUndefined();
+    });
+
     it('refuses a 3.0 per-requirement report with no bounds', () => {
       expect(() =>
         createBCFFromIDSReport(createMockReport(), {

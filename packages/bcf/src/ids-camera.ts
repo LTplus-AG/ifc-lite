@@ -108,6 +108,14 @@ export function computeCameraFromBounds(
 /**
  * The box containing every bound given, or `undefined` when none were.
  *
+ * CONTRACT: the caller must pass a box for EVERY entity the viewpoint frames.
+ * A union over a subset is not a smaller mistake than no camera at all -- it
+ * is a camera that looks convincing and leaves the uncovered entities off
+ * screen, with nothing in the file saying so. `buildTopicsPerSpecification`
+ * therefore passes `undefined` unless it has bounds for all of them, which
+ * makes {@link requireCamerasForVersion} refuse the 3.0 export by name rather
+ * than write a partial frame.
+ *
  * Per-specification grouping puts many entities in ONE viewpoint, so no single
  * entity's box is the right frame for it. Framing the union is what lets that
  * grouping produce a 3.0-writable camera at all -- otherwise `entityBounds`

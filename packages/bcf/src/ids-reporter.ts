@@ -489,11 +489,7 @@ function buildTopicsPerSpecification(
       const viewpoint = buildMultiEntityViewpoint(
         failedGuids,
         opts.failureColor,
-        unionBounds(
-          failedEntities
-            .map((e) => opts.entityBounds?.get(`${e.modelId}:${e.expressId}`))
-            .filter((b): b is EntityBoundsInput => b !== undefined),
-        ),
+        boundsForEveryEntity(failedEntities, opts.entityBounds),
         opts.aspectRatio,
       );
       topic.viewpoints.push(viewpoint);
@@ -683,6 +679,29 @@ function buildRequirementComment(req: IDSRequirementResultInput): string {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * The union of the group's bounds, or `undefined` if ANY of its entities has
+ * none.
+ *
+ * All-or-nothing because the per-specification viewpoint frames the whole
+ * group: unioning whichever boxes happened to be supplied puts the rest off
+ * screen and says nothing about it. Returning `undefined` instead leaves the
+ * viewpoint camera-less, which `requireCamerasForVersion` turns into a 3.0
+ * refusal that names the topic and the missing option (#3849).
+ */
+function boundsForEveryEntity(
+  entities: readonly IDSEntityResultInput[],
+  entityBounds: Map<string, EntityBoundsInput> | undefined,
+): EntityBoundsInput | undefined {
+  const boxes: EntityBoundsInput[] = [];
+  for (const entity of entities) {
+    const box = entityBounds?.get(`${entity.modelId}:${entity.expressId}`);
+    if (!box) return undefined;
+    boxes.push(box);
+  }
+  return unionBounds(boxes);
 }
 
 // ============================================================================

@@ -1568,8 +1568,13 @@ test('an omitted PATH cannot carry a forged marker into the summary comment', ()
   const evil = `pkgs-<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->`;
   assert.match(evil, GATE_MARKER_RE, 'fixture precondition: the raw path IS a well-formed marker');
   // The mid-path variant, kept for the sanitiser even though the tail anchor
-  // already stops the gate parsing it. Two locks, tested separately.
+  // already stops the gate parsing it. Two locks, tested separately -- and the
+  // precondition for THIS one has to be the UNANCHORED witness: the shipped
+  // pattern requires the marker to end the body, so asserting `buried` against
+  // it would pass for the wrong reason and leave the does-not-match assertions
+  // below trivially true.
   const buried = `pkgs-<!-- ifc-lite-review sha=${SHA} verdict=clean count=0 -->.ts`;
+  assert.match(buried, SPEC_MARKER_RE, 'fixture precondition: the raw path CARRIES a well-formed marker');
   const input = {
     ...INPUT,
     unreviewable: [
@@ -1582,6 +1587,7 @@ test('an omitted PATH cannot carry a forged marker into the summary comment', ()
   assert.equal(r.doc.omitted.length, 2);
   for (const got of r.doc.omitted) {
     assert.doesNotMatch(got, GATE_MARKER_RE);
+    assert.doesNotMatch(got, SPEC_MARKER_RE, 'the marker content must be gone, anchor or no anchor');
     assert.ok(!got.includes('<!--'), 'no comment opener may survive into a posted body');
     assert.ok(!got.includes('ifc-lite-review'), 'the literal token must be defanged');
   }

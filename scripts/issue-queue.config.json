@@ -21,11 +21,11 @@
     "waiver\"). The earlier note here said neither existed, measured 2026-08-30, and used that",
     "to argue the gate must stay advisory; that argument is spent.",
     "",
-    "THIS GATE IS STILL NOT A REQUIRED STATUS CHECK. Measured 2026-09-02, the `main` ruleset",
-    "(id 11806334) requires exactly three contexts -- `Build + WASM + Rust + Node`, `parity",
-    "(in-tree fixtures, committed reference)` and `PR review signal`. `Issue queue` is not",
-    "among them, so `enforcing` turns the row RED and blocks no merge. Making it required is",
-    "a separate, deliberate act in repository settings, not a side effect of this file."
+    "THIS GATE IS A REQUIRED STATUS CHECK. Since 2026-09-04, the `main` ruleset (id 11806334)",
+    "requires `Issue queue` alongside `Build + WASM + Rust + Node`, `parity (in-tree fixtures,",
+    "committed reference)` and `PR review signal`. The workflow's `enforcing` mode therefore",
+    "blocks unqueued work rather than merely painting a red row. The repository ruleset is the",
+    "authoritative live state; this note records why the context belongs there."
   ],
   "$readyLabelComment": [
     "READY_LABEL: the label on an ISSUE that says the maintainer wants this built.",

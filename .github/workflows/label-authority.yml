@@ -1,0 +1,47 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Label authority
+
+# GitHub rulesets protect branches and Git tags, not issue/PR labels. This
+# trusted-base workflow supplies the missing per-label ACL for the two labels
+# that steer the issue queue. `pull_request_target` is safe here because it
+# checks out and executes only the default branch and never PR code.
+on:
+  issues:
+    types: [labeled]
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: label-authority-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  enforce:
+    name: Label authority
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+          lfs: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Test the guard
+        run: node --test scripts/enforce-pipeline-labels.test.mjs
+
+      - name: Enforce protected-label authority
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/enforce-pipeline-labels.mjs

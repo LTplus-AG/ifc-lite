@@ -96,6 +96,38 @@ describe('stitchShards malformed-stop attribution', () => {
     expect(Array.from(stitched!.starts)).toEqual([0, 50]);
   });
 
+  it('attributes a stop in the MIDDLE of three shards, and drops the tail with it', () => {
+    // N=2 cannot separate "the stop was in the last used shard" from "the stop
+    // ended the merge loop", because those are the same shard there. With
+    // three, shard 1 stops at byte 160 (inside the region it owns, which begins
+    // at the 100 shard 0 validated), so its own handoff is -1 and shard 2 never
+    // gets stitched in -- its records go, exactly as a serial scan's would, and
+    // the caller has to be told why rather than being handed a short index.
+    const stitched = stitchShards([
+      shard([0, 50], 100),
+      shard([100, 150], -1, 160),
+      shard([200, 250], -1),
+    ]);
+
+    expect(stitched!.malformedRecordCount).toBe(1);
+    expect(Array.from(stitched!.starts)).toEqual([0, 50, 100, 150]);
+  });
+
+  it('does not let a middle shard invent a stop out of its speculative prefix', () => {
+    // The N=3 counterpart of the two-shard artefact case: shard 1's stop at 80
+    // is below the 100 it resynchronised at, so it came from the prefix this
+    // stitch drops. Shard 1 hands off normally, shard 2 is stitched in, and
+    // nothing is reported -- a file that is fine must not warn.
+    const stitched = stitchShards([
+      shard([0, 50], 100),
+      shard([80, 100, 150], 200, 80),
+      shard([200, 250], -1),
+    ]);
+
+    expect(stitched!.malformedRecordCount).toBeUndefined();
+    expect(Array.from(stitched!.starts)).toEqual([0, 50, 100, 150, 200, 250]);
+  });
+
   it('reads undefined from a producer that reports no stop offset at all', () => {
     // The state on `main` today: the Rust sharded scan has no such offset to
     // give (#3699 is still open), so every shard omits it. That has to reach

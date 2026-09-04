@@ -13,6 +13,7 @@ use crate::admission::{Admission, AdmissionCfg};
 use crate::config::Config;
 use crate::routes::parse::parquet::ParquetMetadataHeader;
 use crate::services::cache::DiskCache;
+use crate::services::ParquetLayout;
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -67,7 +68,7 @@ fn sample_metadata_header(cache_key: &str, total_meshes: usize) -> ParquetMetada
 #[tokio::test]
 async fn miss_when_neither_key_is_cached() {
     let state = test_state("miss-neither").await;
-    let result = try_cached_replay(&state, "no-such-key").await;
+    let result = try_cached_replay(&state, "no-such-key", ParquetLayout::Flat).await;
     assert!(matches!(result, Ok(None)), "expected a plain cache miss");
 }
 
@@ -82,7 +83,7 @@ async fn miss_when_only_parquet_key_is_cached() {
         .set_bytes(&format!("{cache_key}-parquet-v5"), &well_framed_blob(&[1, 2, 3]))
         .await
         .unwrap();
-    let result = try_cached_replay(&state, cache_key).await;
+    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
     assert!(matches!(result, Ok(None)), "expected a miss with only parquet cached");
 }
 
@@ -97,7 +98,7 @@ async fn miss_when_only_metadata_key_is_cached() {
         .set_bytes(&format!("{cache_key}-parquet-metadata-v4"), &metadata_bytes)
         .await
         .unwrap();
-    let result = try_cached_replay(&state, cache_key).await;
+    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
     assert!(matches!(result, Ok(None)), "expected a miss with only metadata cached");
 }
 
@@ -121,7 +122,7 @@ async fn corrupt_parquet_blob_falls_back_to_miss_not_error() {
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
 
-    let result = try_cached_replay(&state, cache_key).await;
+    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
     assert!(
         matches!(result, Ok(None)),
         "a corrupt cached blob must be treated as a miss, got {:?}",
@@ -148,7 +149,7 @@ async fn corrupt_metadata_json_is_an_error_not_a_miss() {
         .unwrap();
     seed_current_data_model(&state, cache_key).await;
 
-    let result = try_cached_replay(&state, cache_key).await;
+    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
     assert!(result.is_err(), "unparseable cached metadata must be an error");
 }
 
@@ -190,7 +191,7 @@ async fn miss_when_the_cached_data_model_predates_the_current_version() {
         .await
         .unwrap();
 
-    let result = try_cached_replay(&state, cache_key).await;
+    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
     assert!(
         matches!(result, Ok(None)),
         "a geometry hit with a stale data model must re-parse, not replay"
@@ -219,7 +220,7 @@ async fn valid_cache_hit_round_trips_the_geometry_in_the_sse_body() {
     // A replay also requires a current data model beside the geometry (#3869).
     seed_current_data_model(&state, cache_key).await;
 
-    let result = try_cached_replay(&state, cache_key).await;
+    let result = try_cached_replay(&state, cache_key, ParquetLayout::Flat).await;
     let response = match result {
         Ok(Some(response)) => response,
         other => panic!("expected a cache hit response, got {:?}", other.map(|r| r.is_some())),

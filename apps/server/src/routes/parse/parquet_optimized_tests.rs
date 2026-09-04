@@ -20,7 +20,7 @@ use super::cache_keys::{
 use super::ParseQuery;
 use crate::config::Config;
 use crate::services::cache::DiskCache;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
@@ -175,6 +175,7 @@ async fn a_cached_flat_response_does_not_satisfy_the_optimized_route() {
         &hash,
         OpeningFilterMode::Default,
         TessellationQuality::default(),
+        ParquetLayout::Flat,
     );
     let flat_metadata_key = parquet_metadata_cache_key(
         &hash,

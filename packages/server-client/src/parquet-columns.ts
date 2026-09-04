@@ -14,6 +14,7 @@
  * `apps/server/src/services/parquet_schema.rs`.
  */
 
+import type { MeshData } from './types.js';
 import type { ArrowTableLike } from './parquet-tables.js';
 
 /**
@@ -86,3 +87,48 @@ export function readSourceId(column: ArrayLike<number> | undefined, index: numbe
   return v && v !== ABSENT_SOURCE_ID ? v : undefined;
 }
 
+/**
+ * The canonical per-mesh transform metadata, spread into the `MeshData` literal.
+ *
+ * `origin` is omitted when the frame IS the world origin and `geometry_class`
+ * when it is 0 (occurrence), so a world-baked mesh decodes to exactly the shape
+ * it had before these columns existed — and to the same shape on every
+ * transport (JSON, standard Parquet, optimized Parquet).
+ */
+export function transformFields(
+  index: number,
+  cols: {
+    originX?: ArrayLike<number>;
+    originY?: ArrayLike<number>;
+    originZ?: ArrayLike<number>;
+    geometryClass?: ArrayLike<number>;
+    geometryItemId?: ArrayLike<number>;
+    materialId?: ArrayLike<number>;
+  }
+): Partial<MeshData> {
+  // A usable column can still carry a non-finite VALUE at this row. `||` alone
+  // misses it: an all-NaN triplet is already dropped, but a PARTIAL one
+  // (`[NaN, 5, 0]`) is truthy and the NaN would poison bounds math. Not a
+  // throw -- this file throws only for STRUCTURAL malformation.
+  const ox = cols.originX?.[index];
+  const oy = cols.originY?.[index];
+  const oz = cols.originZ?.[index];
+  const originFinite = Number.isFinite(ox) && Number.isFinite(oy) && Number.isFinite(oz);
+  const origin =
+    originFinite && (ox || oy || oz) ? ([ox, oy, oz] as [number, number, number]) : undefined;
+  const geometry_class = cols.geometryClass?.[index] || undefined;
+
+  // Sentinel, not null (#3215): a nullable column's values buffer is undefined
+  // at null rows and parquet-wasm 0.7.x leaks the NEIGHBOURING row's id into it
+  // -- a material-less mesh decoded as `material_id: 902`, a real-looking id
+  // for another entity. Non-nullable means no validity bitmap to leak.
+  const geometry_item_id = readSourceId(cols.geometryItemId, index);
+  const material_id = readSourceId(cols.materialId, index);
+
+  return {
+    ...(origin ? { origin } : {}),
+    ...(geometry_class ? { geometry_class } : {}),
+    ...(geometry_item_id ? { geometry_item_id } : {}),
+    ...(material_id ? { material_id } : {}),
+  };
+}

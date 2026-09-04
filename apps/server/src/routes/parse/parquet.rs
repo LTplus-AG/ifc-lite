@@ -5,11 +5,28 @@
 //! Binary Parquet parse endpoints.
 
 use super::cache_keys::{
-    cache_symbolic_data, data_model_cache_key, has_current_data_model, request_cache_key,
+    cache_symbolic_data, data_model_cache_key, has_current_data_model, parquet_geometry_key,
+    parquet_metadata_key, request_cache_key,
 };
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
-use crate::services::{extract_data_model, serialize_data_model_to_parquet, serialize_to_parquet};
+use crate::services::{
+    extract_data_model, serialize_data_model_to_parquet, serialize_to_parquet,
+    serialize_to_parquet_shared_shapes, ParquetError, ParquetLayout,
+};
+
+/// Serialize the whole model under the layout the client asked for. Only
+/// `SharedShapes` runs the shape-sharing planner; a default request gets the
+/// pre-#3888 bytes, which is what lets a pinned client keep working (#3888).
+fn serialize_for_layout(
+    meshes: &[crate::types::MeshData],
+    layout: ParquetLayout,
+) -> Result<bytes::Bytes, ParquetError> {
+    match layout {
+        ParquetLayout::SharedShapes => serialize_to_parquet_shared_shapes(meshes),
+        ParquetLayout::Flat => serialize_to_parquet(meshes),
+    }
+}
 use crate::types::{ModelMetadata, ProcessingStats};
 use crate::AppState;
 use axum::{
@@ -75,8 +92,9 @@ pub async fn parse_parquet(
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
 
     // Check cache first (before any processing)
-    let parquet_cache_key = format!("{}-parquet-v5", cache_key);
-    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key);
+    let layout = query.parquet_layout;
+    let parquet_cache_key = parquet_geometry_key(&cache_key, layout);
+    let metadata_cache_key = parquet_metadata_key(&cache_key);
 
     // The cached-geometry short-circuit skips the parse, and the parse is what
     // writes the data model. A geometry entry that outlived a data-model
@@ -156,7 +174,7 @@ pub async fn parse_parquet(
             // Second: serialize BOTH geometry and data model in parallel
             // This way data model is ready by the time client needs it
             let (geo_parquet, dm_parquet) = rayon::join(
-                || serialize_to_parquet(&geometry_result.meshes),
+                || serialize_for_layout(&geometry_result.meshes, layout),
                 || serialize_data_model_to_parquet(&data_model),
             );
 
@@ -228,8 +246,8 @@ pub async fn parse_parquet(
     // Cache the results for future requests. `Bytes` makes the cache task's
     // copy an O(1) refcount bump instead of duplicating the whole payload.
     let combined_parquet = bytes::Bytes::from(combined_parquet);
-    let parquet_cache_key = format!("{}-parquet-v5", cache_key_clone);
-    let metadata_cache_key = format!("{}-parquet-metadata-v4", cache_key_clone);
+    let parquet_cache_key = parquet_geometry_key(&cache_key_clone, layout);
+    let metadata_cache_key = parquet_metadata_key(&cache_key_clone);
     let combined_parquet_clone = combined_parquet.clone();
     let metadata_json_clone = metadata_json.clone();
     let cache = state.cache.clone();

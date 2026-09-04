@@ -56,7 +56,7 @@ const ALLOWLIST: &str = include_str!("module_size_allowlist.txt");
 /// explicitly NOT guaranteed stable across Rust releases - a toolchain bump
 /// would rewrite the digest and fail CI for no reason.
 const ALLOWLIST_DIGESTS: &[(&str, u64)] = &[
-    ("apps/server", 12409080334009393247),
+    ("apps/server", 4114979320796990468),
     ("rust/core", 218310759456605933),
     ("rust/export", 15791359419451037914),
     ("rust/geometry", 17164311728163718683),

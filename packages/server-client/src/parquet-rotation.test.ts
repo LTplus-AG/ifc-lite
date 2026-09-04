@@ -103,7 +103,7 @@ describe('buildMeshesFromOptimizedTables rotation (#3575)', () => {
 
   it('throws on a v3 payload missing its rot0..rot8 columns instead of silently decoding identity', () => {
     // Format v3 defines rot0..rot8 as present whenever the server ran the
-    // rotation-aware path (see optimized_wire_version in parquet_optimized_instancing.rs).
+    // rotation-aware path (see optimized_wire_version in parquet_instancing.rs).
     // A v3 payload with the columns missing/short is truncated wire data, not
     // an older format — decoding it as identity would place a genuinely
     // rotated occurrence at the wrong orientation with no signal why.

@@ -6,7 +6,7 @@
 
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
 /// Cache-key segment for a tessellation level. Empty for the default level so
@@ -61,31 +61,55 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
     format!("{cache_key}-json-v2")
 }
 
-/// Build the parquet geometry cache key for a given file hash and opening filter.
+/// The flat Parquet geometry entry for a request cache key, under the LAYOUT
+/// the client asked for.
 ///
-/// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
-/// which derives the same suffix from `OpeningFilterMode::cache_key_suffix()`.
+/// THE definition of that suffix. It used to be a `format!` literal repeated in
+/// `parse_parquet` (twice), `parse_parquet_stream`, `try_cached_replay` and
+/// here, kept equal by a comment saying they bump together -- four writers and
+/// readers of one cache slot held together by prose, where a missed bump gives
+/// a reader looking up a key nobody writes, or worse a writer storing under a
+/// version an old reader still serves.
 ///
-/// Version bumped `v2` → `v3` with issue #900 (symbolic sidecar), and `v3` → `v4`
-/// with the alignment audit: the server default path switched to per-item
-/// sub-meshes, streamed geometry now comes from the canonical pipeline
-/// (material chain + indexed colours + aggregate void propagation), and
-/// native builds compute normals — entries cached by the old pipelines
-/// would serve visibly different meshes.
+/// The two layouts get SEPARATE namespaces (`-parquet-v5` / `-parquet-v6`,
+/// from `ParquetLayout::cache_suffix`) rather than one versioned slot, and the
+/// reason is that a version bump cannot do the job here. A cache key
+/// namespaces server-side entries; it has no bearing on which client is
+/// asking. Bumping one shared key would have retired the v5 entries and then
+/// handed every client -- including one pinned to a `@ifc-lite/server-client`
+/// that predates #3888 -- a freshly generated v6 blob it decodes without error
+/// and draws wrong. Two namespaces plus an opt-in signal means a client that
+/// did not ask for the shared layout can never be served it, from cache or
+/// from a live parse, and the two entries coexist instead of evicting each
+/// other on every request.
+///
+/// `-parquet-v5` is unchanged from before #3888 on purpose: a default request
+/// must still hit the entries already on disk. `v5`, not `v4`, was #3215
+/// adding the two source-id columns, where absence read exactly like success.
+pub(crate) fn parquet_geometry_key(cache_key: &str, layout: ParquetLayout) -> String {
+    format!("{cache_key}-{}", layout.cache_suffix())
+}
+
+/// The flat Parquet metadata entry (the `X-IFC-Metadata` header) for a request
+/// cache key. THE definition of that suffix, for the same reason as above.
+///
+/// NOT keyed by layout, and not versioned alongside the geometry: it holds the
+/// metadata header, whose shape #3888 did not touch and which is identical for
+/// both layouts of the same file. A hit needs the geometry entry too, so the
+/// layouts still cannot cross-serve.
+pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-metadata-v4")
+}
+
+/// Build the parquet geometry cache key from a file hash and opening filter,
+/// for the endpoints that receive a bare hash rather than the bytes.
 pub(crate) fn parquet_cache_key(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layout: ParquetLayout,
 ) -> String {
-    format!(
-        // v5, not v4: #3215 added the two source-id columns to the mesh
-        // schema. Without a bump a model parsed before that deploy replays its
-        // OLD blob verbatim, the columns are absent, the decoder correctly omits
-        // them, and drill-to-source stays dead over the binary transport with
-        // nothing saying so -- absence reading exactly like success.
-        "{}-parquet-v5",
-        cache_key_from_parts(hash, opening_filter, quality)
-    )
+    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality), layout)
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
@@ -94,10 +118,7 @@ pub(crate) fn parquet_metadata_cache_key(
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
 ) -> String {
-    format!(
-        "{}-parquet-metadata-v4",
-        cache_key_from_parts(hash, opening_filter, quality)
-    )
+    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality))
 }
 
 /// Build the optimized-Parquet body cache key for a given file cache key.
@@ -107,7 +128,7 @@ pub(crate) fn parquet_metadata_cache_key(
 /// file while the flat route beside it replayed from disk (issue #3889). This
 /// is that key.
 ///
-/// Deliberately a DIFFERENT namespace from `-parquet-v5`: the two routes emit
+/// Deliberately a DIFFERENT namespace from `-parquet-v6`: the two routes emit
 /// different payloads (quantized vertices, deduplicated shapes, byte colours),
 /// so a hit on one must never satisfy the other.
 ///
@@ -117,7 +138,7 @@ pub(crate) fn parquet_metadata_cache_key(
 /// covers `process_geometry_filtered_with_quality` output just as
 /// [`parquet_cache_key`] does, and that key's own `v3` -> `v4` bump was a
 /// pipeline change with no column change at all. In practice: a bump of
-/// `-parquet-v5` almost always needs a bump here too. Otherwise a warm cache
+/// `-parquet-v6` almost always needs a bump here too. Otherwise a warm cache
 /// replays a pre-change blob that the decoder reads cleanly, and the change is
 /// silently absent.
 pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {

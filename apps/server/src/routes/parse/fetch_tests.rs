@@ -18,7 +18,7 @@ use super::cache_keys::{
 use crate::admission::{Admission, AdmissionCfg};
 use crate::config::Config;
 use crate::services::cache::DiskCache;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
@@ -85,7 +85,7 @@ async fn check_cache_returns_404_when_uncached() {
 async fn check_cache_returns_200_when_parquet_cached() {
     let state = test_state("check-cache-hit").await;
     let hash = "abc123hash";
-    let key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state.cache.set_bytes(&key, b"parquet-bytes").await.unwrap();
     // A hit also requires a data model at the current payload version (#3869).
     seed_current_data_model(&state, hash, OpeningFilterMode::Default).await;
@@ -116,7 +116,7 @@ async fn check_cache_misses_when_the_data_model_predates_the_current_version() {
     let state = test_state("check-cache-stale-datamodel").await;
     let hash = "staledmhash";
     let geometry_key =
-        parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+        parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state
         .cache
         .set_bytes(&geometry_key, b"parquet-bytes")
@@ -145,7 +145,7 @@ async fn check_cache_misses_when_no_data_model_is_cached_at_all() {
     let state = test_state("check-cache-no-datamodel").await;
     let hash = "nodmhash";
     let geometry_key =
-        parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+        parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state
         .cache
         .set_bytes(&geometry_key, b"parquet-bytes")
@@ -162,7 +162,12 @@ async fn check_cache_misses_when_no_data_model_is_cached_at_all() {
 async fn check_cache_is_scoped_to_opening_filter() {
     let state = test_state("check-cache-filter-scoped").await;
     let hash = "def456hash";
-    let key = parquet_cache_key(hash, OpeningFilterMode::IgnoreAll, TessellationQuality::default());
+    let key = parquet_cache_key(
+        hash,
+        OpeningFilterMode::IgnoreAll,
+        TessellationQuality::default(),
+        ParquetLayout::Flat,
+    );
     state.cache.set_bytes(&key, b"parquet-bytes").await.unwrap();
 
     // Default filter (no query param) must still miss.
@@ -189,7 +194,7 @@ async fn check_cache_is_scoped_to_opening_filter() {
 async fn get_cached_geometry_returns_full_payload_when_both_present() {
     let state = test_state("geometry-both-present").await;
     let hash = "fullhash1";
-    let parquet_key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let parquet_key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     let metadata_key =
         parquet_metadata_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
     state
@@ -223,7 +228,7 @@ async fn get_cached_geometry_returns_full_payload_when_both_present() {
 async fn get_cached_geometry_404s_when_metadata_missing() {
     let state = test_state("geometry-metadata-missing").await;
     let hash = "partialhash1";
-    let parquet_key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default());
+    let parquet_key = parquet_cache_key(hash, OpeningFilterMode::Default, TessellationQuality::default(), ParquetLayout::Flat);
     state
         .cache
         .set_bytes(&parquet_key, b"the-parquet-bytes")

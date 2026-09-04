@@ -135,7 +135,12 @@ pub async fn check_cache(
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
     let quality = query.resolved_tessellation_quality()?;
-    let parquet_cache_key = parquet_cache_key(&hash, query.opening_filter, quality);
+    // Answers for the LAYOUT the client asked about (#3888). A client that
+    // does not send `parquet_layout` is asking about v5, and a v6 entry sitting
+    // beside it must NOT report a hit: the client would skip the upload and
+    // then fetch a blob it draws wrong.
+    let parquet_cache_key =
+        parquet_cache_key(&hash, query.opening_filter, quality, query.parquet_layout);
     // A geometry entry alone is not enough: the client skips the upload on a
     // hit, so a data model at the current payload version has to exist too, or
     // nothing will ever write one (issue #3869).
@@ -183,10 +188,13 @@ pub async fn get_cached_geometry(
     Query(query): Query<ParseQuery>,
     axum::extract::Path(hash): axum::extract::Path<String>,
 ) -> Result<Response, ApiError> {
+    // Same layout signal as the cache check and the parse routes, so this can
+    // only ever hand back the layout the caller declared it understands.
     let parquet_cache_key = parquet_cache_key(
         &hash,
         query.opening_filter,
         query.resolved_tessellation_quality()?,
+        query.parquet_layout,
     );
     let metadata_cache_key = parquet_metadata_cache_key(
         &hash,

@@ -1,0 +1,13 @@
+---
+'@ifc-lite/server-bin': minor
+---
+
+`POST /api/v1/parse/parquet` can now share geometry between occurrences of one shape, behind the opt-in `?parquet_layout=shared-shapes` (#3888). The flat writer emitted one full copy of the vertices per occurrence, so a model built from repeated furniture, pipe runs or structural members paid for every repeat. `/optimized` has deduplicated those since #3595; the flat route, which is the one a viewer replays from cache on every open after the first, was scoped out of that work.
+
+Under the new layout the mesh table gains `rot0..rot8` (row-major 3x3, Float32) and its `vertex_start`/`vertex_count`/`index_start`/`index_count` stop being one-to-one with the blocks they name: several rows can point at one block, each placed by `world = origin + R * p` in the same Y-up metres frame the positions are already in. The grouping is `collate_rotation_aware_placements` reused verbatim, so the flat route can never share a shape the optimized route would have refused to: same representation-identity grouping, same per-vertex residual check against the occurrence's own baked geometry, same all-or-nothing per group. On `S_Office_Integrated Design Archi.ifc` the blob goes from 23,577,415 to 4,923,656 bytes, 20.9% of the previous size.
+
+**It is opt-in, and a request that does not ask for it gets byte-identical output to before.** The layout renders incorrectly on a client that does not apply the rotation — every occurrence of a shared shape lands at the template's placement — and the flat Parquet wire carries no version marker such a client could fail loud on, unlike `/optimized`. A server cannot tell those clients apart, so producing the new layout by default would silently draw the wrong building for anyone pinned to an older `@ifc-lite/server-client`. A cache-key bump would not have helped: a key namespaces server-side entries and has no bearing on which client is asking.
+
+The two layouts are cached under separate keys, `-parquet-v5` (unchanged, so entries already on disk still hit) and `-parquet-v6`, and never cross-serve. `GET /api/v1/cache/check/{hash}` and `GET /api/v1/cache/geometry/{hash}` take the same `parquet_layout` parameter and answer for the layout the caller asked about, so a default client cannot be told "cached" about an entry it would draw wrong.
+
+`POST /api/v1/parse/parquet-stream` honours the parameter too, but shares nothing under either value: it serializes one batch at a time, where sharing could only be batch-local. There the parameter decides only whether the mesh table carries identity rotation columns, which keeps everything under the v6 key a v6 payload.

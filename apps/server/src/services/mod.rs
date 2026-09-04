@@ -9,14 +9,24 @@ pub mod cache;
 pub mod data_model;
 pub mod parquet;
 pub mod parquet_data_model;
+mod parquet_instancing;
+mod parquet_layout;
+pub mod parquet_mesh_tables;
 mod parquet_schema;
+mod parquet_vertex_columns;
+#[cfg(test)]
+mod parquet_test_fixtures;
 pub mod parquet_optimized;
 pub mod parquet_replay_batches;
 pub mod processor;
 pub mod streaming;
 
 pub use data_model::extract_data_model;
-pub use parquet::{serialize_to_parquet, ParquetError, StreamingParquetCacheWriter};
+pub use parquet::{
+    serialize_batch_with_layout, serialize_to_parquet, serialize_to_parquet_shared_shapes,
+    ParquetError, StreamingParquetCacheWriter,
+};
+pub use parquet_layout::ParquetLayout;
 pub use parquet_data_model::serialize_data_model_to_parquet;
 pub use parquet_optimized::{
     serialize_to_parquet_optimized_with_stats, OptimizedStats, VERTEX_MULTIPLIER,

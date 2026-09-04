@@ -89,7 +89,7 @@
 
         let one_shot = serialize_to_parquet(&meshes).unwrap();
 
-        let mut writer = StreamingParquetCacheWriter::new().unwrap();
+        let mut writer = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
         // Uneven batches on purpose: 2 + 4 + 1.
         writer.append(&meshes[0..2]).unwrap();
         writer.append(&meshes[2..6]).unwrap();
@@ -129,7 +129,7 @@
 
         // Old path: finish() the inner geometry blob, then wrap it a second
         // time exactly like the route used to (before finish_combined()).
-        let mut writer_old = StreamingParquetCacheWriter::new().unwrap();
+        let mut writer_old = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
         writer_old.append(&meshes[0..2]).unwrap();
         writer_old.append(&meshes[2..5]).unwrap();
         let geometry_parquet = writer_old.finish().unwrap();
@@ -139,7 +139,7 @@
         old_combined.extend_from_slice(&0u32.to_le_bytes());
 
         // New path: finish_combined() builds the same outer framing in one pass.
-        let mut writer_new = StreamingParquetCacheWriter::new().unwrap();
+        let mut writer_new = StreamingParquetCacheWriter::new(ParquetLayout::Flat).unwrap();
         writer_new.append(&meshes[0..2]).unwrap();
         writer_new.append(&meshes[2..5]).unwrap();
         let new_combined = writer_new.finish_combined().unwrap();
@@ -249,7 +249,7 @@
         // Anti-vacuity: an empty tail would make every assertion below pass.
         assert!(shared.len() >= 6, "expected the full shared block, got {shared:?}");
 
-        let standard: Vec<String> = mesh_schema()
+        let standard: Vec<String> = mesh_schema(true)
             .fields()
             .iter()
             .map(|f| f.name().clone())
@@ -293,22 +293,30 @@
             .collect();
 
         let tail = |cols: &[String]| -> Vec<String> { cols[cols.len() - shared.len()..].to_vec() };
+        // BOTH schemas append the nine rotation columns AFTER the shared block
+        // (issue #3575 for `instance_schema()`, #3888 for `mesh_schema()` --
+        // see either doc comment for why they aren't folded into
+        // `shared_trailing_fields` itself), so strip those before comparing the
+        // shared tail. The optimized one omits them entirely on a v2-shaped
+        // payload, which this single non-instanced mesh produces, so strip by
+        // NAME rather than by count.
+        let without_rotation = |cols: &[String]| -> Vec<String> {
+            cols.iter().filter(|name| !name.starts_with("rot")).cloned().collect()
+        };
         assert_eq!(
-            tail(&standard),
+            tail(&without_rotation(&standard)),
             shared,
             "mesh_schema() stopped composing shared_trailing_fields()"
         );
-        // The instance schema appends nine rotation columns AFTER the shared
-        // block (issue #3575, `/optimized`-only -- see `instance_schema()`'s
-        // doc comment for why they aren't folded into `shared_trailing_fields`
-        // itself), so strip those before comparing the shared tail. They are
-        // absent entirely from a v2-shaped payload, which this single
-        // non-instanced mesh produces, so strip by NAME rather than by count.
-        let instance_without_rotation: Vec<String> = instance
-            .iter()
-            .filter(|name| !name.starts_with("rot"))
-            .cloned()
-            .collect();
+        // Anti-vacuity for the strip itself: the flat schema must actually
+        // CARRY the rotation tail (#3888). Without this the filter above would
+        // hide a mesh_schema() that had quietly dropped it.
+        assert_eq!(
+            standard.len() - without_rotation(&standard).len(),
+            9,
+            "mesh_schema() must carry rot0..rot8 (issue #3888): {standard:?}"
+        );
+        let instance_without_rotation = without_rotation(&instance);
         assert_eq!(
             tail(&instance_without_rotation),
             shared,

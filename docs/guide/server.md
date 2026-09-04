@@ -497,6 +497,39 @@ The server uses Apache Parquet for efficient binary serialization.
 - **Vertex Table**: x, y, z (Float32), nx, ny, nz (Float32)
 - **Index Table**: i0, i1, i2 (Uint32 triangle indices)
 
+#### Shared-shape layout (opt-in)
+
+`POST /api/v1/parse/parquet` and `/parse/parquet-stream` accept
+`?parquet_layout=shared-shapes`. Occurrences of one shape — repeated furniture,
+pipe runs, structural members — then share a single block of vertices instead of
+each carrying a full copy, and the mesh table gains nine `rot0..rot8` columns
+(row-major 3x3, Float32) placing each occurrence:
+
+```text
+world_vertex = origin + R * position
+```
+
+Both values in the same Y-up metres frame as the positions. On a model with
+repeats this is typically 2.4x to 4.8x smaller; a model with nothing to share is
+unchanged apart from the identity rotation columns.
+
+**It is opt-in, and it must stay that way.** The layout renders incorrectly on a
+client that does not apply the rotation — every occurrence of a shared shape
+lands at the template's placement — and this format carries no version marker
+such a client could reject, so the server cannot produce it unless the request
+says the client understands it. Omit the parameter and you get the layout above,
+byte for byte.
+
+Two further consequences:
+
+- **`origin_x/y/z` must be read.** On the default layout from a stock server it
+  is zero on every row, so a decoder could ignore it and be accidentally right.
+  Under `shared-shapes` it carries the placement.
+- **Send the same parameter to `/cache/check/{hash}` and
+  `/cache/geometry/{hash}`.** The two layouts are cached separately
+  (`-parquet-v5` / `-parquet-v6`) and never cross-serve, so a check that omits
+  it answers about the other entry. `@ifc-lite/server-client` does this for you.
+
 ### Optimized Format
 
 ```text
@@ -537,7 +570,8 @@ Cache keys are derived from file content:
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
 # quality appends a "-q{level}" suffix after it
-{SHA256}-{filter}-parquet-v5          # Geometry
+{SHA256}-{filter}-parquet-v5          # Geometry (default layout)
+{SHA256}-{filter}-parquet-v6          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v4 # Metadata header
 {SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v1         # 2D symbol stream
@@ -549,6 +583,11 @@ Cache keys are derived from file content:
 {SHA256}-{filter}-parquet-optimized-v1          # Optimized geometry
 {SHA256}-{filter}-parquet-optimized-metadata-v1 # Optimized metadata header
 ```
+
+The two geometry keys are LAYOUTS, not versions: they coexist, and a request
+reaches one or the other according to its `parquet_layout` parameter (below).
+They never cross-serve, because the shared-shape layout renders incorrectly on
+a client that does not know to apply its rotation columns.
 
 Each suffix is bumped whenever the payload it names changes shape: a column
 added to or removed from its tables, or a change in what an existing column

@@ -15,7 +15,7 @@
  */
 
 import type { MeshData } from './types.js';
-import { meshColumns, numericColumn, readSourceId } from './parquet-columns.js';
+import { meshColumns, numericColumn, transformFields } from './parquet-columns.js';
 import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
 
 /**
@@ -34,56 +34,19 @@ export interface ArrowTableLike {
 }
 
 /**
- * The canonical per-mesh transform metadata, spread into the `MeshData` literal.
- *
- * `origin` is omitted when the frame IS the world origin and `geometry_class`
- * when it is 0 (occurrence), so a world-baked mesh decodes to exactly the shape
- * it had before these columns existed — and to the same shape on every
- * transport (JSON, standard Parquet, optimized Parquet).
- */
-function transformFields(
-  index: number,
-  cols: {
-    originX?: ArrayLike<number>;
-    originY?: ArrayLike<number>;
-    originZ?: ArrayLike<number>;
-    geometryClass?: ArrayLike<number>;
-    geometryItemId?: ArrayLike<number>;
-    materialId?: ArrayLike<number>;
-  }
-): Partial<MeshData> {
-  // A usable column can still carry a non-finite VALUE at this row. `||` alone
-  // misses it: an all-NaN triplet is already dropped, but a PARTIAL one
-  // (`[NaN, 5, 0]`) is truthy and the NaN would poison bounds math. Not a
-  // throw -- this file throws only for STRUCTURAL malformation.
-  const ox = cols.originX?.[index];
-  const oy = cols.originY?.[index];
-  const oz = cols.originZ?.[index];
-  const originFinite = Number.isFinite(ox) && Number.isFinite(oy) && Number.isFinite(oz);
-  const origin =
-    originFinite && (ox || oy || oz) ? ([ox, oy, oz] as [number, number, number]) : undefined;
-  const geometry_class = cols.geometryClass?.[index] || undefined;
-
-  // Sentinel, not null (#3215): a nullable column's values buffer is undefined
-  // at null rows and parquet-wasm 0.7.x leaks the NEIGHBOURING row's id into it
-  // -- a material-less mesh decoded as `material_id: 902`, a real-looking id
-  // for another entity. Non-nullable means no validity bitmap to leak.
-  const geometry_item_id = readSourceId(cols.geometryItemId, index);
-  const material_id = readSourceId(cols.materialId, index);
-
-  return {
-    ...(origin ? { origin } : {}),
-    ...(geometry_class ? { geometry_class } : {}),
-    ...(geometry_item_id ? { geometry_item_id } : {}),
-    ...(material_id ? { material_id } : {}),
-  };
-}
-
-/**
- * Rebuild `MeshData[]` from the standard (non-instanced) three-table layout.
+ * Rebuild `MeshData[]` from the standard three-table layout.
  *
  * Positions/normals are already Y-up metres — the server applies the axis swap
  * once, in `services::axis` (issue #1841), so every transport agrees.
+ *
+ * "Non-instanced" until `-parquet-v6` (issue #3888): several mesh rows can now
+ * name the SAME `vertex_start`/`index_start` block, each placed by its own
+ * `origin_x/y/z` plus a `rot0..rot8` rotation (`world = origin + R * p`) — the
+ * rotation-aware sharing the optimized transport has carried since #3575. Two
+ * things follow, and both are what keeps a `-parquet-v5` blob decoding here
+ * unchanged: the rotation columns are ABSENT on v5, and absent means identity;
+ * and `origin` was zero on every v5 flat row, so folding it in was a no-op
+ * there and is load-bearing here.
  */
 export function buildMeshesFromTables(
   meshArrow: ArrowTableLike,
@@ -146,6 +109,10 @@ export function buildMeshesFromTables(
   // from servers predating them, where origin defaults to [0,0,0] and the
   // source ids simply do not appear.
   const cols = meshColumns(meshArrow, meshCount);
+  // Absent on every pre-#3888 payload. The flat transport has no version byte
+  // to tell a truncated v6 from a genuine v5, so absence reads as the identity
+  // it is on a v5 blob (see `readRotationColumns`).
+  const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
   const meshes: MeshData[] = new Array(meshCount);
 
   // Only consume the additive origin/geometry_class columns when all three
@@ -193,6 +160,11 @@ export function buildMeshesFromTables(
       normals[v * 3 + 1] = normY[srcIdx];
       normals[v * 3 + 2] = normZ[srcIdx];
     }
+
+    // Rotate the shared block onto THIS occurrence before `origin` translates
+    // it (`world = origin + R * p`). A no-op on an identity row, which is every
+    // row of a v5 payload and every unshared row of a v6 one.
+    if (rotationCols) applyInstanceRotation(positions, normals, rotationCols, i);
 
     // Reconstruct triangle indices from columnar format.
     const triangleCount = indexCount / 3, triangleStart = indexStart / 3;
@@ -318,7 +290,13 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const cols = meshColumns(instanceArrow, instanceCount);
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
-  const rotationCols = readRotationColumns(instanceArrow, instanceCount, tables.wireVersion); // #3575
+  // Wire version 3 states the columns are there (#3575), so absence is
+  // truncated data, not an older payload; version 2 predates them.
+  const rotationCols = readRotationColumns(
+    instanceArrow,
+    instanceCount,
+    tables.wireVersion === 3 ? 'throw' : 'identity'
+  );
 
   // Additive per-instance origin/geometry_class columns (issue #1841): consume
   // only when present AND parallel to the instance rows.

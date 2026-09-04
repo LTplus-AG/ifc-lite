@@ -85,6 +85,83 @@ describe('buildMeshesFromTables (standard format)', () => {
     expect(Array.from(meshes[0].positions.slice(0, 3))).toEqual([0, 0, 0]);
   });
 
+  /**
+   * `-parquet-v6` (issue #3888): two mesh rows naming the SAME vertex block,
+   * each placed by its own origin and rotation. Before v6 the flat writer gave
+   * every occurrence its own copy of the vertices, so this layout could not
+   * occur; decoding it without applying `rot0..rot8` draws both occurrences
+   * unrotated.
+   *
+   * The rotation here is 90 degrees about Y (the up axis in the wire frame):
+   * `(x, y, z) -> (z, y, -x)`, chosen because it moves x into z and back, so a
+   * decoder that applied the transpose, or applied nothing, gives a different
+   * answer on the very first vertex.
+   */
+  it('applies rot0..rot8 to a shared vertex block (v6)', () => {
+    const rotY90 = [0, 0, 1, 0, 1, 0, -1, 0, 0];
+    const rotationColumns: Record<string, ArrayLike<number>> = {};
+    for (let i = 0; i < 9; i++) {
+      // Row 0 identity, row 1 rotated: one payload must be able to carry both.
+      rotationColumns[`rot${i}`] = new Float32Array([[1, 0, 0, 0, 1, 0, 0, 0, 1][i], rotY90[i]]);
+    }
+    const meshes = buildMeshesFromTables(
+      meshTable(2, {
+        origin_x: new Float64Array([0, 10]),
+        origin_y: new Float64Array([0, 0]),
+        origin_z: new Float64Array([0, 5]),
+        ...rotationColumns,
+      }),
+      vertexTable,
+      indexTable
+    );
+
+    // Both rows point at vertex_start 0 — the shared block.
+    expect(Array.from(meshes[0].positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0]);
+    // (x, y, z) -> (z, y, -x): (1,0,0) -> (0,0,-1), (1,1,0) -> (0,1,-1).
+    expect(Array.from(meshes[1].positions)).toEqual([0, 0, 0, 0, 0, -1, 0, 1, -1]);
+    // Normals get the same rotation: (0,1,0) is on the rotation axis here, so
+    // it must come back unchanged rather than being dropped or zeroed.
+    expect(Array.from(meshes[1].normals)).toEqual([0, 1, 0, 0, 1, 0, 0, 1, 0]);
+    // The origin is what puts the rotated shape in the world; it is NOT baked
+    // into the positions above.
+    expect(meshes[1].origin).toEqual([10, 0, 5]);
+  });
+
+  /**
+   * A `-parquet-v5` blob has no `rot0..rot8` at all, and must decode exactly as
+   * it did before #3888. Absent means identity, which is the same contract the
+   * optimized decoder uses for a wire-version-2 payload.
+   */
+  it('decodes a v5 blob unchanged when the rotation columns are absent', () => {
+    const [mesh] = buildMeshesFromTables(
+      meshTable(1, {
+        origin_x: new Float64Array([7]),
+        origin_y: new Float64Array([8]),
+        origin_z: new Float64Array([9]),
+      }),
+      vertexTable,
+      indexTable
+    );
+    expect(Array.from(mesh.positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0]);
+    expect(Array.from(mesh.normals)).toEqual([0, 1, 0, 0, 1, 0, 0, 1, 0]);
+    expect(mesh.origin).toEqual([7, 8, 9]);
+  });
+
+  /**
+   * A PARTIAL rotation block (some columns present, some not) is truncated wire
+   * data, not an older format. `readRotationColumns` returns undefined for it,
+   * so the decode falls back to identity rather than reading `undefined` into
+   * the matrix and writing NaN over every vertex.
+   */
+  it('falls back to identity when only some rotation columns are present', () => {
+    const [mesh] = buildMeshesFromTables(
+      meshTable(1, { rot0: new Float32Array([0]), rot1: new Float32Array([1]) }),
+      vertexTable,
+      indexTable
+    );
+    expect(Array.from(mesh.positions)).toEqual([0, 0, 0, 1, 0, 0, 1, 1, 0]);
+  });
+
   it('omits both fields when the columns are absent (pre-#1841 server)', () => {
     const [mesh] = buildMeshesFromTables(meshTable(1), vertexTable, indexTable);
     expect('origin' in mesh).toBe(false);

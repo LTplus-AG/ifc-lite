@@ -2,14 +2,15 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Rotation-aware instancing for the `/optimized` Parquet route (issue #3575).
+//! Rotation-aware instancing, shared by both Parquet transports (issues #3575,
+//! #3888).
 //!
-//! Split out of `parquet_optimized.rs` to keep that module under the house
-//! module-size budget: content-hash dedup and wire assembly stay there,
-//! this file is the ONE place that groups occurrences by representation
-//! identity, verifies each occurrence's derived rigid placement against its
-//! own baked geometry, and converts a verified placement into the Y-up
-//! origin + rotation the instance table emits.
+//! The ONE place that groups occurrences by representation identity, verifies
+//! each occurrence's derived rigid placement against its own baked geometry,
+//! and converts a verified placement into the Y-up origin + rotation a table
+//! emits. Split out of `parquet_optimized.rs` when it was `/optimized`-only;
+//! a sibling of both writers since the flat route started sharing shapes, so
+//! the module neither transport owns is not named after either of them.
 
 use crate::types::MeshData;
 use ifc_lite_geometry::{collate_refs, InstanceMeshRef};
@@ -18,9 +19,17 @@ use rustc_hash::FxHashMap;
 /// Maximum reconstructed-vertex residual (metres) a rotation-aware instance
 /// placement may carry and still be trusted (issue #3575). Compared against
 /// the ORIGINAL f32/f64 positions, before quantization, so it is independent
-/// of `VERTEX_MULTIPLIER`; 0.1mm is the quantization grain itself (see
-/// `quantize_position` in `parquet_optimized.rs`), so anything under it is
-/// already invisible on the wire. A group whose residual exceeds this falls
+/// of `VERTEX_MULTIPLIER`.
+///
+/// On `/optimized` a residual under this bound is invisible on the wire, since
+/// 0.1mm is that route's quantization grain itself (`quantize_position` in
+/// `parquet_optimized.rs`). That argument does NOT carry to the flat route
+/// (#3888), which ships unquantized `Float32` metres and has no grain to hide
+/// behind: there, a residual just under tolerance is a real displacement of a
+/// repeated element, up to 0.1mm per vertex against the bit-exact geometry the
+/// route used to emit. Kept at one bound for both because 0.1mm is below any
+/// BIM tolerance the downstream consumers work to, but it is a bound, not an
+/// invisibility. A group whose residual exceeds this falls
 /// back to the pre-#3575 content-hash dedup (each occurrence keeps its own
 /// baked mesh) instead of shipping a placement nobody verified.
 const RECOMPOSITION_TOLERANCE_M: f64 = 1e-4;
@@ -28,12 +37,12 @@ const RECOMPOSITION_TOLERANCE_M: f64 = 1e-4;
 /// A verified rotation-aware placement for one occurrence: which unique mesh
 /// (identified by the index of its TEMPLATE occurrence in the input slice) it
 /// draws, and the origin/rotation (Z-up, pre-Y-up-swap) that places it there.
-pub(super) struct RotatedPlacement {
-    pub(super) template_mesh_index: usize,
-    pub(super) origin_zup: [f64; 3],
+pub(crate) struct RotatedPlacement {
+    pub(crate) template_mesh_index: usize,
+    pub(crate) origin_zup: [f64; 3],
     /// Row-major 3x3, Z-up frame (converted to Y-up at emission time via
     /// [`rotation_zup_to_yup`]).
-    pub(super) rotation_zup: [f64; 9],
+    pub(crate) rotation_zup: [f64; 9],
 }
 
 /// Row-major 3x3 apply: `R * p + t`.
@@ -119,7 +128,7 @@ fn mat3_mul(a: &[[f64; 3]; 3], b: &[[f64; 3]; 3]) -> [[f64; 3]; 3] {
 /// Conjugate a Z-up rotation into the Y-up wire frame: `P * R * P^T`. The swap
 /// is linear (`zup_to_yup`), so this is the same identity `mesh_to_yup_in_place`
 /// relies on for positions/origin, applied to a 3x3 instead of a 3-vector.
-pub(super) fn rotation_zup_to_yup(rotation_zup: &[f64; 9]) -> [f32; 9] {
+pub(crate) fn rotation_zup_to_yup(rotation_zup: &[f64; 9]) -> [f32; 9] {
     let r = [
         [rotation_zup[0], rotation_zup[1], rotation_zup[2]],
         [rotation_zup[3], rotation_zup[4], rotation_zup[5]],
@@ -155,7 +164,7 @@ pub(super) fn rotation_zup_to_yup(rotation_zup: &[f64; 9]) -> [f32; 9] {
 /// The argument is the rotation data actually emitted, NOT "the model has
 /// instance metadata" or "the feature is on": translation-only reuse runs the
 /// whole rotation-aware dedup and still produces identity everywhere.
-pub(super) fn optimized_wire_version(has_rotation: bool) -> u8 {
+pub(crate) fn optimized_wire_version(has_rotation: bool) -> u8 {
     if has_rotation {
         3
     } else {
@@ -163,7 +172,7 @@ pub(super) fn optimized_wire_version(has_rotation: bool) -> u8 {
     }
 }
 
-pub(super) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+pub(crate) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
 
 /// Group instanceable meshes by representation identity (`collate_refs`) and
 /// verify each occurrence's derived rigid placement against its own baked
@@ -181,7 +190,7 @@ pub(super) const IDENTITY_ROTATION: [f32; 9] = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.
 /// decoding a lossless-looking mesh table. Only exact-bit groups (the
 /// `IfcMappedItem` / shared-`IfcRepresentationMap` case the issue reports)
 /// are deduplicated this way.
-pub(super) fn collate_rotation_aware_placements(
+pub(crate) fn collate_rotation_aware_placements(
     meshes: &[MeshData],
 ) -> FxHashMap<usize, RotatedPlacement> {
     let refs: Vec<InstanceMeshRef> = meshes

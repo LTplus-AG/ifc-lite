@@ -26,7 +26,36 @@ use arrow::datatypes::{DataType, Field, Schema};
 pub(super) const ABSENT_SOURCE_ID: u32 = 0xFFFF_FFFF;
 use std::sync::Arc;
 
-pub(super) fn mesh_schema() -> Arc<Schema> {
+/// The flat transport's mesh table.
+///
+/// `-parquet-v6` (issue #3888): the `vertex_start`/`vertex_count` and
+/// `index_start`/`index_count` columns no longer name a block this row OWNS.
+/// Several rows can point at ONE shared block — the rotation-aware shape
+/// sharing `/optimized` has carried since #3575, brought to the flat route —
+/// and the `rot0..rot8` tail below is what places each of them:
+/// `world = origin + R * p`, the same contract and the same Y-up frame as
+/// `instance_schema()`.
+///
+/// Two consequences for a decoder, both load-bearing:
+/// - `origin_x/y/z` was zero on every row of a v5 flat blob from a DEFAULT
+///   native server (the placement was baked into the vertices), so a decoder
+///   that ignored it was accidentally correct. Only on a default one:
+///   `local_frame_enabled` in `rust/geometry/src/router/transforms/mod.rs` is
+///   opt-in on native via `IFC_LITE_LOCAL_FRAME`, and a deployment that sets
+///   it has emitted non-zero origins here since #1841. On v6 the column
+///   carries real values wherever a shape is shared, on every deployment, so
+///   reading it is MANDATORY rather than merely recommended.
+/// - `rot0..rot8` are absent on a v5 blob. Absent means identity, which is
+///   exactly v5's behaviour; a v6 writer always emits them, identity included.
+///
+/// `include_rotation` follows the LAYOUT the client asked for
+/// (`ParquetLayout`), not whether anything was actually shared: a v5 request
+/// must come back byte-identical to what this route emitted before #3888, and
+/// a v6 request must carry the columns even from the streaming writer, which
+/// shares nothing. That is why this is a parameter rather than being derived
+/// from the payload, unlike `instance_schema`, whose transport HAS a version
+/// byte to disambiguate an absent block from a truncated one.
+pub(super) fn mesh_schema(include_rotation: bool) -> Arc<Schema> {
     Arc::new(Schema::new(
         vec![
             Field::new("express_id", DataType::UInt32, false),
@@ -42,6 +71,7 @@ pub(super) fn mesh_schema() -> Arc<Schema> {
         ]
         .into_iter()
         .chain(shared_trailing_fields())
+        .chain(if include_rotation { rotation_fields() } else { Vec::new() })
         .collect::<Vec<_>>(),
     ))
 }
@@ -92,26 +122,48 @@ pub(super) struct MeshRow<'a> {
     pub geometry_class: u8,
     pub geometry_item_id: Option<u32>,
     pub material_id: Option<u32>,
+    /// Row-major 3x3, Y-up, placing the SHARED block this row points at:
+    /// `world = origin + R * p`. Identity for a row that owns its geometry.
+    pub rotation: [f32; 9],
+}
+
+/// Where one mesh row's geometry lives and how it is placed. Separate from the
+/// mesh because on `-parquet-v6` the two come apart: the ranges belong to a
+/// shape the occurrence may only borrow.
+pub(super) struct RowPlacement {
+    pub v_start: u32,
+    pub i_start: u32,
+    /// Y-up metres, already swapped by the caller.
+    pub origin: [f64; 3],
+    /// Row-major 3x3, Y-up.
+    pub rotation: [f32; 9],
 }
 
 impl<'a> MeshRow<'a> {
-    /// Build one row from a mesh and its precomputed buffer offsets.
+    /// Build one row from an occurrence, the shape it draws, and the placement
+    /// that maps one onto the other.
     ///
     /// Here rather than at the call site so the field order is stated once,
-    /// next to the schema whose column order it feeds.
-    pub fn new(mesh: &'a crate::types::MeshData, v_start: u32, i_start: u32) -> Self {
+    /// next to the schema whose column order it feeds. `shape` is `mesh` itself
+    /// on every unshared row, which is every row of a `-parquet-v5` payload.
+    pub fn new(
+        mesh: &'a crate::types::MeshData,
+        shape: &crate::types::MeshData,
+        placement: RowPlacement,
+    ) -> Self {
         Self {
             express_id: mesh.express_id,
             ifc_type: mesh.ifc_type.as_str(),
-            v_start,
-            vert_count: (mesh.positions.len() / 3) as u32,
-            i_start,
-            index_count: mesh.indices.len() as u32,
+            v_start: placement.v_start,
+            vert_count: (shape.positions.len() / 3) as u32,
+            i_start: placement.i_start,
+            index_count: shape.indices.len() as u32,
             color: mesh.color,
-            origin: crate::services::axis::zup_to_yup_f64(mesh.origin),
+            origin: placement.origin,
             geometry_class: mesh.geometry_class,
             geometry_item_id: mesh.geometry_item_id,
             material_id: mesh.material_id,
+            rotation: placement.rotation,
         }
     }
 }
@@ -172,12 +224,13 @@ pub(super) fn shared_trailing_fields() -> Vec<Field> {
 /// `express_id`). It was inline in `parquet_optimized.rs`, which is how the
 /// pair drifted by hand in the first place.
 ///
-/// The `rot0..rot8` tail (issue #3575) is `/optimized`-ONLY, appended after
-/// the columns shared with `mesh_schema()` rather than folded into
-/// `shared_trailing_fields()` — the flat `/parquet` route's mesh table has no
-/// per-row rotation to offer (its dedup is content-hash only, never
-/// rotation-aware), so adding the column there would be dead weight on a
-/// route the issue explicitly scoped out. A row-major 3x3, in the SAME Y-up
+/// The `rot0..rot8` tail (issue #3575) is appended after the columns shared
+/// with `mesh_schema()` rather than folded into `shared_trailing_fields()`,
+/// because the two schemas gate it independently: this one omits it entirely
+/// when no non-identity rotation was written (wire version 2), while
+/// `mesh_schema()` always emits it from `-parquet-v6` on. It was
+/// `/optimized`-ONLY until #3888 brought rotation-aware sharing to the flat
+/// route. A row-major 3x3, in the SAME Y-up
 /// frame as `origin_x/y/z`: `world = origin + R * template_position`. Nine
 /// plain columns (not a quaternion) because the underlying transform can carry
 /// non-uniform scale/shear baked in by an `IfcCartesianTransformationOperator`,
@@ -205,8 +258,9 @@ pub(super) fn instance_schema(include_rotation: bool) -> Arc<Schema> {
     ))
 }
 
-/// The nine row-major rotation columns appended to `instance_schema()` (see
-/// its doc comment for the coordinate-frame contract).
+/// The nine row-major rotation columns appended to `instance_schema()` and, as
+/// of `-parquet-v6` (#3888), to `mesh_schema()` too (see either doc comment for
+/// the coordinate-frame contract).
 fn rotation_fields() -> Vec<Field> {
     (0..9)
         .map(|i| Field::new(format!("rot{i}"), DataType::Float32, false))

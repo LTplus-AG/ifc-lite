@@ -6,18 +6,13 @@
 //! request's geometry + metadata are already cached, replay them as a
 //! three-event stream (Start / one Batch / Complete) without re-parsing.
 
-use super::cache_keys::{
-    has_cached_symbolic, has_current_data_model, load_cached_symbolic,
-    parquet_optimized_cache_key, parquet_optimized_metadata_cache_key,
-};
+use super::cache_keys::{has_current_data_model, load_cached_symbolic};
 use super::parquet::ParquetMetadataHeader;
 use super::parquet_stream::ParquetStreamEvent;
 use crate::error::ApiError;
 use crate::AppState;
-use axum::body::Body;
-use axum::http::{header, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
-use axum::response::{IntoResponse, Response};
+use axum::response::IntoResponse;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use std::convert::Infallible;
 
@@ -148,70 +143,4 @@ pub(super) async fn try_cached_replay(
             .keep_alive(KeepAlive::default())
             .into_response(),
     ))
-}
-
-/// Try to serve a `parse_parquet_optimized` request from the cache (issue
-/// #3889). Returns `Ok(Some(response))` on a usable hit (the caller returns it
-/// as-is and never parses), `Ok(None)` on anything else, which falls through to
-/// the live parse and rewrites the entries.
-///
-/// The stored metadata is the response header VERBATIM, so nothing here has to
-/// deserialize `OptimizedParquetMetadataHeader` -- a replay reports the same
-/// `optimization_stats` and `cache_key` the live parse did. A header that is
-/// not valid UTF-8 (a corrupt entry) is a miss, not a 500.
-///
-/// The symbolic gate is not optional: the optimized parse also writes the
-/// symbolic sidecar, and replaying past a missing one leaves the client's
-/// `GET /api/v1/parse/symbolic/{cache_key}` polling a key nobody writes.
-pub(super) async fn try_cached_optimized_parquet(
-    state: &AppState,
-    cache_key: &str,
-) -> Result<Option<axum::response::Response>, ApiError> {
-    let (Some(cached_body), Some(cached_metadata_json)) = (
-        state
-            .cache
-            .get_bytes(&parquet_optimized_cache_key(cache_key))
-            .await?,
-        state
-            .cache
-            .get_bytes(&parquet_optimized_metadata_cache_key(cache_key))
-            .await?,
-    ) else {
-        return Ok(None);
-    };
-
-    if !has_cached_symbolic(&state.cache, cache_key).await {
-        tracing::info!(
-            cache_key = %cache_key,
-            "Optimized Parquet cached but the symbolic sidecar is missing; re-parsing"
-        );
-        return Ok(None);
-    }
-
-    let Ok(metadata_json) = String::from_utf8(cached_metadata_json) else {
-        tracing::warn!(
-            cache_key = %cache_key,
-            "Cached optimized metadata is not valid UTF-8; ignoring cache and re-parsing"
-        );
-        return Ok(None);
-    };
-
-    tracing::info!(
-        cache_key = %cache_key,
-        payload_size = cached_body.len(),
-        "Optimized Parquet cache HIT - returning cached response"
-    );
-
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-parquet-geometry-optimized",
-        )
-        .header("X-IFC-Metadata", metadata_json)
-        .header(header::CONTENT_LENGTH, cached_body.len())
-        .body(Body::from(cached_body))
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
-
-    Ok(Some(response))
 }

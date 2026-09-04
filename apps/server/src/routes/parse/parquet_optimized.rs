@@ -7,10 +7,9 @@
 //! (issue #3889) so neither module crosses the 400-line ratchet.
 
 use super::cache_keys::{
-    cache_symbolic_data, parquet_optimized_cache_key, parquet_optimized_metadata_cache_key,
-    request_cache_key,
+    cache_symbolic_data, has_cached_symbolic, parquet_optimized_cache_key,
+    parquet_optimized_metadata_cache_key, request_cache_key,
 };
-use super::cached_replay::try_cached_optimized_parquet;
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{
@@ -42,6 +41,83 @@ pub struct OptimizedParquetMetadataHeader {
     pub optimization_stats: OptimizedStats,
     /// Vertex multiplier for dequantization (10,000 = 0.1mm precision)
     pub vertex_multiplier: f32,
+}
+
+/// The optimized route's wire response, built in ONE place.
+///
+/// The live parse and the cache replay must be indistinguishable to a client,
+/// and two hand-copied builders are indistinguishable only for as long as
+/// nobody edits one of them.
+fn optimized_parquet_response(
+    metadata_json: String,
+    body: bytes::Bytes,
+) -> Result<Response, ApiError> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(
+            header::CONTENT_TYPE,
+            "application/x-parquet-geometry-optimized",
+        )
+        .header("X-IFC-Metadata", metadata_json)
+        .header(header::CONTENT_LENGTH, body.len())
+        .body(Body::from(body))
+        .map_err(|e| ApiError::Internal(e.to_string()))
+}
+
+/// Try to serve this request from the cache (issue #3889). `Ok(Some(_))` is a
+/// usable hit the caller returns as-is without parsing; anything else falls
+/// through to the live parse, which rewrites the entries.
+///
+/// Ordered cheapest-gate-first: the body is the only large read, so it comes
+/// last, once the hit is otherwise known good.
+///
+/// The stored metadata is the response header VERBATIM, so nothing here
+/// deserializes `OptimizedParquetMetadataHeader` and a replay reports the same
+/// `optimization_stats` the live parse did. A header that is not valid UTF-8
+/// (a corrupt entry) is a miss, not a 500.
+///
+/// The symbolic gate is not optional: this route's parse also writes the
+/// symbolic sidecar, so replaying past a missing one leaves the client's
+/// `GET /api/v1/parse/symbolic/{cache_key}` polling a key nobody writes.
+async fn try_cached_optimized_parquet(
+    state: &AppState,
+    cache_key: &str,
+) -> Result<Option<Response>, ApiError> {
+    if !has_cached_symbolic(&state.cache, cache_key).await {
+        return Ok(None);
+    }
+
+    let Some(cached_metadata_json) = state
+        .cache
+        .get_bytes(&parquet_optimized_metadata_cache_key(cache_key))
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    let Ok(metadata_json) = String::from_utf8(cached_metadata_json) else {
+        tracing::warn!(
+            cache_key = %cache_key,
+            "Cached optimized metadata is not valid UTF-8; ignoring cache and re-parsing"
+        );
+        return Ok(None);
+    };
+
+    let Some(cached_body) = state
+        .cache
+        .get_bytes(&parquet_optimized_cache_key(cache_key))
+        .await?
+    else {
+        return Ok(None);
+    };
+
+    tracing::info!(
+        cache_key = %cache_key,
+        payload_size = cached_body.len(),
+        "Optimized Parquet cache HIT - returning cached response"
+    );
+
+    optimized_parquet_response(metadata_json, cached_body.into()).map(Some)
 }
 
 /// POST /api/v1/parse/parquet/optimized - Full parse with ara3d BOS-optimized Parquet format.
@@ -141,28 +217,15 @@ pub async fn parse_parquet_optimized(
     let metadata_json = serde_json::to_string(&metadata_header)?;
 
     // Store body and metadata BEFORE responding, not in a background task like
-    // the flat route (issue #3889). This payload is the small one -- that is the
-    // whole point of the route -- so the write is cheap, and a background write
-    // races the client's very next request, which is exactly the request the
-    // cache exists to serve. A write failure is logged and the response still
-    // goes out: the parse succeeded, only the replay is lost.
-    if let Err(e) = state
-        .cache
-        .set_bytes(&parquet_optimized_cache_key(&cache_key), &parquet_data)
-        .await
+    // the flat route (issue #3889): a background write races the client's very
+    // next request, which is the request the cache exists to serve, and this
+    // payload is the small one so the write is cheap. Metadata is written only
+    // after the body lands, so it can never sit under a key with no body behind
+    // it. A write failure is logged and the response still goes out: the parse
+    // succeeded, only the replay is lost.
+    if let Err(e) = cache_optimized_response(&state, &cache_key, &parquet_data, &metadata_json).await
     {
-        tracing::error!(error = %e, "Failed to cache optimized Parquet bytes");
-    } else if let Err(e) = state
-        .cache
-        .set_bytes(
-            &parquet_optimized_metadata_cache_key(&cache_key),
-            metadata_json.as_bytes(),
-        )
-        .await
-    {
-        // Reached only when the body landed, so a failure here cannot leave
-        // metadata sitting alone under a key with no body behind it.
-        tracing::error!(error = %e, "Failed to cache optimized Parquet metadata");
+        tracing::error!(error = %e, cache_key = %cache_key, "Failed to cache optimized Parquet response");
     } else {
         tracing::info!(
             cache_key = %cache_key,
@@ -171,17 +234,26 @@ pub async fn parse_parquet_optimized(
         );
     }
 
-    // Build response with binary body and metadata header
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .header(
-            header::CONTENT_TYPE,
-            "application/x-parquet-geometry-optimized",
-        )
-        .header("X-IFC-Metadata", metadata_json)
-        .header(header::CONTENT_LENGTH, parquet_data.len())
-        .body(Body::from(parquet_data))
-        .map_err(|e| ApiError::Internal(e.to_string()))?;
+    optimized_parquet_response(metadata_json, parquet_data)
+}
 
-    Ok(response)
+/// Write the optimized body and then its metadata, stopping at the first
+/// failure so metadata never outlives a body that was never stored.
+async fn cache_optimized_response(
+    state: &AppState,
+    cache_key: &str,
+    body: &[u8],
+    metadata_json: &str,
+) -> Result<(), ApiError> {
+    state
+        .cache
+        .set_bytes(&parquet_optimized_cache_key(cache_key), body)
+        .await?;
+    state
+        .cache
+        .set_bytes(
+            &parquet_optimized_metadata_cache_key(cache_key),
+            metadata_json.as_bytes(),
+        )
+        .await
 }

@@ -159,10 +159,19 @@ pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
 ///
 /// A cache read error answers `false`: re-parsing is the safe direction.
 pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -> bool {
-    matches!(
-        cache.get_bytes(&data_model_cache_key(cache_key)).await,
-        Ok(Some(_))
-    )
+    has_entry(cache, &data_model_cache_key(cache_key)).await
+}
+
+/// Whether `key` has a readable entry.
+///
+/// Reads the value rather than asking `DiskCache::has`, which is an index
+/// lookup only: an index row whose content is gone would answer `true` here
+/// while every real reader still gets nothing, and a gate that reports present
+/// for an entry nobody can read is worse than no gate.
+///
+/// A read error answers `false`: re-parsing is the safe direction.
+async fn has_entry(cache: &DiskCache, key: &str) -> bool {
+    matches!(cache.get_bytes(key).await, Ok(Some(_)))
 }
 
 /// Build the symbolic-data cache key for a given file cache key.
@@ -208,13 +217,8 @@ pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symb
 /// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicData::default()`
 /// for an absent entry and for a model with no 2D symbols alike, so absence
 /// there is indistinguishable from success.
-///
-/// A cache read error answers `false`: re-parsing is the safe direction.
 pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> bool {
-    matches!(
-        cache.get_bytes(&symbolic_cache_key(cache_key)).await,
-        Ok(Some(_))
-    )
+    has_entry(cache, &symbolic_cache_key(cache_key)).await
 }
 
 /// Load cached symbolic data for `cache_key`, defaulting to empty when the

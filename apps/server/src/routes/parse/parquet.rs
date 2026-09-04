@@ -234,7 +234,11 @@ pub async fn parse_parquet(
     let metadata_json_clone = metadata_json.clone();
     let cache = state.cache.clone();
 
-    // Cache in background (don't block response)
+    // Cache in background (don't block response). Deliberately NOT the
+    // optimized route's synchronous write (#3889): this payload is the large
+    // one, so blocking the response on it costs the client real time. The
+    // trade is a window where an immediate repeat request re-parses because
+    // the write has not landed yet.
     tokio::spawn(async move {
         if let Err(e) = cache
             .set_bytes(&parquet_cache_key, &combined_parquet_clone)

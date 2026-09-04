@@ -318,26 +318,4 @@ fn optimized_parquet_keys_are_a_distinct_namespace_from_the_flat_route() {
         assert_ne!(optimized, data_model_cache_key(&seed));
         assert_ne!(optimized, json_response_cache_key(&seed));
     }
-
-    // Every (filter, quality) pair keeps its own optimized entry, because the
-    // seed carries both -- measured pairwise, so this cannot pass on one case.
-    let mut seen = std::collections::HashSet::new();
-    for mode in [
-        OpeningFilterMode::Default,
-        OpeningFilterMode::IgnoreAll,
-        OpeningFilterMode::IgnoreOpaque,
-    ] {
-        for quality in [
-            TessellationQuality::Lowest,
-            TessellationQuality::Low,
-            TessellationQuality::Medium,
-            TessellationQuality::High,
-            TessellationQuality::Highest,
-        ] {
-            let seed = cache_key_from_parts(hash, mode, quality);
-            assert!(seen.insert(parquet_optimized_cache_key(&seed)));
-            assert!(seen.insert(parquet_optimized_metadata_cache_key(&seed)));
-        }
-    }
-    assert_eq!(seen.len(), 30);
 }

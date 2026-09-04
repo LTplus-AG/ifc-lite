@@ -13,12 +13,14 @@
 //! read them off disk; one that parses answers with real Parquet instead.
 
 use super::cache_keys::{
-    data_model_cache_key, parquet_optimized_cache_key, parquet_optimized_metadata_cache_key,
-    request_cache_key, symbolic_cache_key,
+    data_model_cache_key, parquet_cache_key, parquet_metadata_cache_key,
+    parquet_optimized_cache_key, parquet_optimized_metadata_cache_key, request_cache_key,
+    symbolic_cache_key,
 };
 use super::ParseQuery;
 use crate::config::Config;
 use crate::services::cache::DiskCache;
+use crate::services::OpeningFilterMode;
 use crate::{build_router, AppState};
 use axum::body::{to_bytes, Body};
 use axum::http::{header, Request, StatusCode};
@@ -165,10 +167,23 @@ async fn a_cached_flat_response_does_not_satisfy_the_optimized_route() {
     let content = MINIMAL_IFC.as_bytes();
     let cache_key = request_cache_key(content, &ParseQuery::default(), TessellationQuality::default());
 
-    // Everything the FLAT route's cache hit needs, and nothing else.
+    // Everything the FLAT route's cache hit needs, and nothing else. Built
+    // from the shared key helpers, so a flat-suffix bump moves this fixture
+    // with the route instead of leaving it seeding a dead key.
+    let hash = DiskCache::generate_key(content);
+    let flat_key = parquet_cache_key(
+        &hash,
+        OpeningFilterMode::Default,
+        TessellationQuality::default(),
+    );
+    let flat_metadata_key = parquet_metadata_cache_key(
+        &hash,
+        OpeningFilterMode::Default,
+        TessellationQuality::default(),
+    );
     for (key, value) in [
-        (format!("{cache_key}-parquet-v5"), b"FLAT-GEOMETRY".as_slice()),
-        (format!("{cache_key}-parquet-metadata-v4"), b"{}".as_slice()),
+        (flat_key, b"FLAT-GEOMETRY".as_slice()),
+        (flat_metadata_key, b"{}".as_slice()),
         (data_model_cache_key(&cache_key), b"FLAT-DATA-MODEL".as_slice()),
         (symbolic_cache_key(&cache_key), b"{}".as_slice()),
     ] {

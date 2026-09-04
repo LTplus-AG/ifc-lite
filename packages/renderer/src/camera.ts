@@ -389,6 +389,28 @@ export class Camera {
   }
 
   /**
+   * The aspect ratio (width / height) the projection is currently built from.
+   *
+   * This is the DRAWING BUFFER's ratio, not the CSS box's: the render loop
+   * floors the canvas width to a multiple of 64 for WebGPU's 256-byte texture
+   * row alignment before calling {@link setAspect}, so on a viewport whose CSS
+   * width is not a multiple of 64 the two differ by up to 63 pixels.
+   *
+   * That is the right one for BCF (#3612). A viewpoint's snapshot PNG comes
+   * from `canvas.toDataURL()`, which encodes that same drawing buffer, so the
+   * `<AspectRatio>` written beside it describes the image actually in the
+   * archive; the CSS ratio would describe an image nobody has. It is also the
+   * ratio the projection matrix used, so a viewer restoring the camera
+   * reproduces the framing rather than one 63 pixels wider.
+   *
+   * Always finite and positive -- {@link setAspect} rejects anything else --
+   * which is what BCF 3.0's `PositiveDouble` schema type requires.
+   */
+  getAspect(): number {
+    return this.state.camera.aspect;
+  }
+
+  /**
    * Get distance from camera position to target.
    *
    * Deliberately **unsanitized**: it reports the pose as it actually is, so a

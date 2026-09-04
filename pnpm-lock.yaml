@@ -678,6 +678,9 @@ importers:
       '@ifc-lite/bcf':
         specifier: workspace:^
         version: link:../bcf
+      '@ifc-lite/encoding':
+        specifier: workspace:^
+        version: link:../encoding
       '@ifc-lite/geometry':
         specifier: workspace:^
         version: link:../geometry

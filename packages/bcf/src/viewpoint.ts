@@ -37,6 +37,16 @@ export interface ViewerCameraState {
   isOrthographic?: boolean;
   /** Orthographic scale (view-to-world) */
   orthoScale?: number;
+  /**
+   * Viewport aspect ratio (width / height). REQUIRED to write BCF 3.0:
+   * v3_0/visinfo.xsd makes `<AspectRatio>` a mandatory child of both camera
+   * types and `writer-camera.ts` refuses to invent one, so without this field
+   * no viewpoint this package produced could be written as 3.0 at all -- and
+   * `writeBCF` throws for the whole archive on the first such camera, so one
+   * captured viewpoint meant no export (#3612). Optional because 2.1 has no
+   * such element; leave it unset rather than assert a view nobody had.
+   */
+  aspectRatio?: number;
 }
 
 export interface ViewerSectionPlane {
@@ -144,6 +154,7 @@ export function cameraToPerspective(camera: ViewerCameraState): BCFPerspectiveCa
     cameraDirection: direction,
     cameraUpVector: upVector,
     fieldOfView: Math.max(1, Math.min(179, fieldOfView)), // Clamp to valid range
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 
@@ -184,6 +195,7 @@ export function cameraToOrthogonal(
     cameraDirection: direction,
     cameraUpVector: upVector,
     viewToWorldScale,
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 
@@ -235,6 +247,15 @@ export function perspectiveToCamera(
     up: viewerUp,
     fov,
     isOrthographic: false,
+    // Carried back so the conversion pair is lossless in both directions.
+    // NOT for the viewer's apply path: `useBCF`'s `applyCameraState` never
+    // pushes an aspect ratio into the renderer (the viewport owns that) and
+    // `getCameraState` reads a fresh one, so nothing there depends on this.
+    // It matters for a caller that reads a viewpoint, edits the camera state,
+    // and writes it back -- `perspectiveToCamera` -> `cameraToPerspective`
+    // would otherwise silently drop the field and make the result unwritable
+    // as BCF 3.0. The tests pin the round trip, not a viewer scenario.
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 
@@ -269,6 +290,7 @@ export function orthogonalToCamera(
     fov: Math.PI / 4, // Default FOV for ortho (not used)
     isOrthographic: true,
     orthoScale: camera.viewToWorldScale,
+    ...(camera.aspectRatio === undefined ? {} : { aspectRatio: camera.aspectRatio }),
   };
 }
 

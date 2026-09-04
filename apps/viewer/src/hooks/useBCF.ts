@@ -259,6 +259,11 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     const target = camera.getTarget();
     const up = camera.getUp();
     const fov = camera.getFOV();
+    // BCF 3.0 requires <AspectRatio> on every camera and `@ifc-lite/bcf`
+    // refuses to invent one, so a viewpoint captured without it makes the
+    // WHOLE export throw -- what a user hit after importing another tool's
+    // 3.0 archive (readBCF keeps its version) and adding a topic (#3612).
+    const aspectRatio = camera.getAspect();
 
     return {
       position,
@@ -266,6 +271,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       up, // Use actual camera up vector
       fov,
       isOrthographic: false,
+      aspectRatio,
     };
   }, [getRenderer]);
 
@@ -313,19 +319,25 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         includeHidden = true,
       } = opts;
 
-      const cameraState = getCameraState();
-      if (!cameraState) {
-        console.warn('[useBCF] Cannot create viewpoint: no camera state');
-        return null;
-      }
-
-      // Get snapshot if requested
+      // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
+      // describe one frame, so they must come from one drawing buffer.
+      // `captureSnapshot` awaits `queue.onSubmittedWorkDone()` before
+      // `toDataURL`, and the render loop resizes the canvas and calls
+      // `camera.setAspect` inside that wait (`renderer/src/index.ts`, the
+      // `dimensionsChanged` branch). Reading the camera after closes the
+      // window: an `await` resumes in a microtask, a rAF render is a task.
       let snapshot: string | undefined;
       if (includeSnapshot) {
         const captured = await captureSnapshot();
         if (captured) {
           snapshot = captured;
         }
+      }
+
+      const cameraState = getCameraState();
+      if (!cameraState) {
+        console.warn('[useBCF] Cannot create viewpoint: no camera state');
+        return null;
       }
 
       // Convert section plane state

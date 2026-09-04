@@ -13,6 +13,7 @@ export {
   isValidUuid,
 } from './guid.js';
 export type { RandomSource } from './guid.js';
+export { uuidFromSeed } from './deterministic-uuid.js';
 export { isWhollyNumeric } from './numeric-literal.js';
 export { parsePropertyValue } from './property-value.js';
 export type { ParsedPropertyValue } from './property-value.js';

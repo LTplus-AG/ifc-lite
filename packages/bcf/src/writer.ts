@@ -41,7 +41,7 @@ import {
   xsdOptionalDateTime,
   xsdRequiredString,
 } from './xsd-required-string.js';
-import { generateUuid } from '@ifc-lite/encoding';
+import { generateUuid, uuidFromSeed } from '@ifc-lite/encoding';
 
 /**
  * Write a BCFProject to a .bcfzip file
@@ -353,8 +353,8 @@ function writeMarkupFile(
     // <DocumentReferences> element, while 2.1 repeats <DocumentReference>
     // directly under <Topic> (buildingSMART/BCF-XML markup.xsd, Topic).
     if (version === '3.0') content += `\n    <DocumentReferences>`;
-    for (const docRef of topic.documentReferences) {
-      content += writeDocumentReference(docRef, version);
+    for (let i = 0; i < topic.documentReferences.length; i++) {
+      content += writeDocumentReference(topic.documentReferences[i], version, topic.guid, i);
     }
     if (version === '3.0') content += `\n    </DocumentReferences>`;
   }
@@ -832,8 +832,46 @@ function writeBimSnippet(snippet: BCFBimSnippet, version: '2.1' | '3.0'): string
  * the 2.1-shaped fallback so 2.1-authored data written as 3.0 still emits
  * something.
  */
-function writeDocumentReference(docRef: BCFDocumentReference, version: '2.1' | '3.0'): string {
-  const guidAttr = docRef.guid ? ` Guid="${escapeXml(docRef.guid)}"` : '';
+function writeDocumentReference(
+  docRef: BCFDocumentReference,
+  version: '2.1' | '3.0',
+  topicGuid: string,
+  index: number,
+): string {
+  // 2.1's markup.xsd declares `Guid` with no `use`, so it is optional there;
+  // 3.0's `DocumentReferenceAttributes` declares it `use="required"`, so
+  // omitting it made every 3.0 topic carrying a guid-less document reference
+  // write an invalid `markup.bcf` -- and markup.bcf IS the issue, so a viewer
+  // that rejects it drops the topic whole (#3612). Mint one rather than
+  // refuse: this guid names only itself (nothing in the archive refers to a
+  // DocumentReference the way `RelatedTopic` refers to a topic), so a
+  // generated value loses nothing. Refusal is reserved for values that assert
+  // something only the caller knows -- `AspectRatio`, `TopicType` -- and would
+  // fail the whole export over a field 2.1 says is optional. 2.1 keeps the
+  // attribute absent: fabricating an identifier there buys no schema
+  // conformance at all, and would put an identifier the caller never chose
+  // into the file a user downloads.
+  //
+  // DERIVED, not random. `generateUuid()` here would make two exports of one
+  // unchanged project differ in bytes -- and differ again on every subsequent
+  // write, because nothing kept the value. `uuidFromSeed` is the same
+  // generator `@ifc-lite/clash` anchors its topic guids with, so the guid is a
+  // pure function of the topic, the document pointed at, and the position
+  // within the topic; all three are in the seed because two references under
+  // one topic can name the same document, and one document can appear under
+  // two topics. `docKey` names the document in the SAME precedence the 3.0
+  // body below uses -- seeding from the url alone left every `documentGuid`
+  // reference on the empty string, so its guid ignored the document entirely
+  // and two references naming different documents could collide. The result
+  // is written back onto `docRef` so the in-memory project agrees with the
+  // file rather than reporting no guid at all.
+  const docKey = docRef.documentGuid ?? docRef.url ?? docRef.referencedDocument ?? '';
+  const guid =
+    version === '3.0'
+      ? docRef.guid || uuidFromSeed(`${topicGuid}|${docKey}|${index}`)
+      : docRef.guid;
+  if (version === '3.0' && !docRef.guid) docRef.guid = guid;
+  const guidAttr = guid ? ` Guid="${escapeXml(guid)}"` : '';
 
   if (version === '3.0') {
     let content = `\n    <DocumentReference${guidAttr}>`;

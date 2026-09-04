@@ -39,12 +39,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@ifc-lite/spatial": "workspace:^",
+    "@ifc-lite/bcf": "workspace:^",
+    "@ifc-lite/encoding": "workspace:^",
     "@ifc-lite/geometry": "workspace:^",
+    "@ifc-lite/ifcx": "workspace:^",
     "@ifc-lite/parser": "workspace:^",
     "@ifc-lite/query": "workspace:^",
-    "@ifc-lite/bcf": "workspace:^",
-    "@ifc-lite/ifcx": "workspace:^",
+    "@ifc-lite/spatial": "workspace:^",
     "@ifc-lite/wasm": "workspace:^"
   },
   "devDependencies": {

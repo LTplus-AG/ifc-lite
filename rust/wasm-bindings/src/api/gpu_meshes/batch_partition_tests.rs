@@ -472,3 +472,24 @@ fn the_reported_occurrence_count_equals_what_reaches_the_shard() {
     // which is what makes the subtraction load-bearing rather than defensive.
     assert_ne!(refs.len() - rejected.len(), shipped);
 }
+
+#[test]
+fn take_back_rejected_counts_pushes_not_the_length_of_its_input() {
+    // The caller subtracts the return from the occurrence count it reports, so
+    // it has to be what happened, not what was asked for. Index 5 is past the
+    // end of `instanced`: the loop never reaches it, so it is not a push, and
+    // returning `rejected.len()` would say three meshes left the shard when
+    // only two did — undercounting the shard's instances while the mesh stayed
+    // in it.
+    let instanced = vec![plain_mesh(), plain_mesh()];
+    let rejected = [0usize, 1, 5];
+    let mut collection = MeshCollection::new();
+    let taken = take_back_rejected(instanced, &rejected, &mut collection);
+    assert_eq!(taken, 2, "only the two in-range entries were pushed");
+    assert_eq!(collection.length(), 2, "and the collection holds exactly those");
+    assert_ne!(
+        taken,
+        rejected.len(),
+        "the return must not be a restatement of the input's length"
+    );
+}

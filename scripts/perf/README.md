@@ -175,7 +175,7 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
-- **Native cold-load working set:** immutable schema classification replaces
+- **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates
   and discovery reads unrelated property sets without retaining them. Large

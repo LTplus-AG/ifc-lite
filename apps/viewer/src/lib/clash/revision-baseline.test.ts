@@ -71,7 +71,15 @@ describe('clash revision baseline persistence (#3928)', () => {
 
   it('a corrupted stored value is treated as absent, not thrown', () => {
     (g.localStorage as MemoryStorage).setItem('ifc-lite-clash-revision-baseline', '{not json');
-    assert.strictEqual(loadRevisionBaseline(), null);
+    const previousWarn = console.warn;
+    let reported = false;
+    console.warn = () => { reported = true; };
+    try {
+      assert.strictEqual(loadRevisionBaseline(), null);
+    } finally {
+      console.warn = previousWarn;
+    }
+    assert.strictEqual(reported, true);
   });
 
   it('a structurally-thin baseline (result missing clashes) is rejected, not accepted as valid (#3947)', () => {

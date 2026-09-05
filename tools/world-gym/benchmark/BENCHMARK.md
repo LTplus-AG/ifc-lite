@@ -1,7 +1,7 @@
 # World Gym Benchmark - spec v1.2.0
 
-The public benchmark face of the M2 World Gym (docs/vision/moonshots-execution-plan.md,
-B2.2). One sentence: given procedurally generated IFC building models with
+The public benchmark face of the World Gym. One sentence: given procedurally
+generated IFC building models with
 known-by-construction ground truth, score a system on detecting planted
 defects, estimating quantities, and triaging models by severity - with the
 answer key regenerable by anyone from seed arithmetic, and reference
@@ -121,7 +121,7 @@ scorer). No deployment configures one, because there is no deployment. So:
   corrupted model in a hundred instead of all of them. Handed the salt it
   returns to 1.000, so it is the secret doing the work. An honest submitter
   reading the served bytes is unaffected. Numbers, arms and controls:
-  `scripts/moonshot/b43-benchmark-salt/`.
+  `tools/world-gym/benchmark/attacks/`.
 - the **trust model** is not in force. Without a hosted scorer there is no
   channel that delivers salted bytes to a submitter and no scorer that holds a
   salt, so **today's test rows remain self-reported and carry no integrity
@@ -191,7 +191,7 @@ rather than a warning. Two tiers, both in `lib/salt.mjs`:
   oracle the salt exists to stop - guess, regenerate, compare to the bytes you
   were served - so it is rejected outright. A readable label around the random
   run is fine, which is how the published exam salts of
-  `scripts/moonshot/b43-benchmark-salt/` are spelled.
+  `tools/world-gym/benchmark/attacks/` are spelled.
 - a **deployment** salt - the one `WORLD_GYM_SALT_TEST` carries into
   `saltForSplit` - must additionally be *exactly* 64 lowercase hex characters,
   i.e. the output of the command above and nothing else. That second tier exists
@@ -439,4 +439,4 @@ benchmark/
 
 The salt's own evidence - the before/after measurement, the with-salt control,
 the uninformed-reference distribution and the honest-baseline arm - lives in
-`scripts/moonshot/b43-benchmark-salt/` and is re-runnable in about a minute.
+`tools/world-gym/benchmark/attacks/` and is re-runnable in about a minute.

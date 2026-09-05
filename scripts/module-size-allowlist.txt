@@ -366,24 +366,6 @@
    518 scripts/lib/revert-oracle.mjs
    494 scripts/lib/rust-source-text-detect.mjs
   1165 scripts/lib/vitest-timeout-audit.mjs
-  1304 scripts/moonshot/b45-m1-midterm/run.mjs
-   422 scripts/moonshot/b51-real-merge-traces/identifier-guard.mjs
-   617 scripts/moonshot/b51-real-merge-traces/run.mjs
-   790 scripts/moonshot/b52-foreign-ifc/build-scorecard.mjs
-   605 scripts/moonshot/b55-scan-to-parametric/extract-rooms.mjs
-   889 scripts/moonshot/ci/assert-b35-golden.mjs
-   402 scripts/moonshot/ci/b55-pipeline-regression.mjs
-  1363 scripts/moonshot/ci/check-report-numerals.mjs
-   408 scripts/moonshot/diff-spike/trajectory.mjs
-   511 scripts/moonshot/g0-certificate-demo.mjs
-   533 scripts/moonshot/g1-memoized-recompute.mjs
-   465 scripts/moonshot/g2-footprint-tightness.mjs
-   515 scripts/moonshot/g2-merge-soundness.mjs
-   807 scripts/moonshot/gpu-predicates/b25-page-main.mjs
-   626 scripts/moonshot/gpu-predicates/harness.mjs
-   415 scripts/moonshot/m5-constrained-decoding/dsl.mjs
-   621 scripts/moonshot/m5-constrained-decoding/run-tier2.mjs
-   980 scripts/moonshot/m5-constrained-decoding/tasks-tier2.mjs
    680 scripts/review/build-context-pack.mjs
    679 scripts/review/build-review-input.mjs
    562 scripts/review/run-reviewer.mjs

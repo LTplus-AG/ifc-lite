@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Scalar abstraction for the mesher (B4.4, M3 kernel-adjoint spike).
+//! Scalar abstraction for the mesher and its adjoint validation.
 //!
 //! The extrusion mesher used to be written directly against `f64`. It is now
 //! written against [`GeomScalar`], with `f64` as the production instantiation.
@@ -13,7 +13,7 @@
 //! copies of the pre-refactor functions.
 //!
 //! The point of the abstraction is that a second instantiation (a forward-mode
-//! dual number, see `b44_battery`) can run the *same* mesher and carry
+//! dual number, see `scalar_adjoint_battery`) can run the *same* mesher and carry
 //! derivatives of every emitted vertex coordinate with respect to design
 //! parameters. Nothing in the production build pays for it: there is exactly
 //! one non-test instantiation, and monomorphisation erases the trait.
@@ -23,7 +23,7 @@
 //! staircase function of the inputs and therefore not differentiable; the dual
 //! sink stores the scalar unrounded. That quantisation is the *only* difference
 //! between the two instantiations, and it is measured rather than assumed (see
-//! `scripts/moonshot/b44-kernel-adjoint/DESIGN.md`).
+//! `scalar_adjoint_tests.rs`).
 
 use nalgebra::{Matrix4, Point3, Vector3};
 use std::fmt::Debug;

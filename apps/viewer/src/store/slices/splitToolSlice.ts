@@ -10,7 +10,7 @@
  * cut distance, click commits via `MutationSlice.splitWallAtDistance`.
  *
  * Bigger surface (slab cut-line, multi-element plane split, beam /
- * column / member) is in `docs/design/element-splitting.md` and
+ * column / member) is in `docs/architecture/element-splitting.md` and
  * arrives in subsequent phases. The slice is shaped to grow without
  * a breaking rename — `splitMode` covers the future modes;
  * `splitHoverPoint` and `splitTargetExpressId` will be reused.

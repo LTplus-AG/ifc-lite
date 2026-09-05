@@ -4,7 +4,7 @@
 
 /**
  * Spatially coupled merge semantics (Bet B4.2, closing the G2 red-team
- * finding in docs/vision/reviews/g2-red-team-2026-07-24.md §4).
+ * finding in packages/provenance/test/merge-battery.test.ts §4).
  *
  * The finding: merge-model.ts v0 applied every op purely per-node, so
  * node-disjoint ops commuted BY CONSTRUCTION and the spatial half of the

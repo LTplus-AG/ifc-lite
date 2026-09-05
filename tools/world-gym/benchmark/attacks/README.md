@@ -148,7 +148,7 @@ the served bytes.
 
 **v1.2 built the salt half and measured it against this attack.** See
 BENCHMARK.md sections 1a (status) and 1b (rotation), and
-`scripts/moonshot/b43-benchmark-salt/` for the run. Three things about that
+`tools/world-gym/benchmark/attacks/` for the run. Three things about that
 result matter on this page:
 
 - **This attack is not weakened, retired or special-cased.** It stays committed

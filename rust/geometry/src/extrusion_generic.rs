@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! The extrusion mesher, generic over the scalar (B4.4).
+//! The extrusion mesher, generic over the scalar.
 //!
 //! `extrusion::extrude_profile` and `extrusion::apply_transform` are the `f64`
 //! instantiations of the functions here, and are the only non-test
@@ -19,8 +19,8 @@ use nalgebra::{Matrix4, Point2, Point3, Vector3};
 /// The body of [`extrude_profile`], generic over the scalar and the mesh sink.
 ///
 /// This is the production extrusion mesher; `extrude_profile` is the `f64`
-/// instantiation of it and nothing else. The generic form exists so the B4.4
-/// kernel-adjoint spike can run the *same* code with a forward-mode dual
+/// instantiation of it and nothing else. The generic form exists so the
+/// scalar-adjoint tests can run the *same* code with a forward-mode dual
 /// number and obtain exact derivatives of every emitted vertex coordinate.
 /// Every branch is taken on the primal value, so the `f64` monomorphisation is
 /// bit-identical to the pre-generic code (asserted in `byte_identity_tests`).

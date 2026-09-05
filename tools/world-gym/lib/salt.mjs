@@ -26,7 +26,7 @@
  * learns the salt can therefore sweep 2^32 candidate stream states per seed,
  * confirm against the bytes they were served, recover the parameters, rebuild
  * the clean twin exactly and rerun the twin diff. See
- * `scripts/moonshot/b43-benchmark-salt/` for the measured cost of that sweep.
+ * `tools/world-gym/benchmark/attacks/` for the measured cost of that sweep.
  * So the salted path is KEYED rather than hashed: HMAC-SHA256(salt, streamKey)
  * expanded into a 128-bit sfc32 state (`lib/rng.mjs`). The unsalted path is
  * left byte-for-byte alone, because the whole committed corpus depends on it.
@@ -86,7 +86,7 @@ export const SALT_GEN_COMMAND =
  * Two tiers, because the two populations are genuinely different:
  *
  * 1. UNIVERSAL FLOOR (`normalizeSalt`, applied to every salt anywhere,
- *    including the published exam salts of scripts/moonshot/b43-benchmark-salt):
+ *    including the published exam salts of tools/world-gym/benchmark/attacks):
  *    printable ASCII with no whitespace, and it must carry a contiguous run of
  *    at least MIN_HEX_RUN lowercase hex characters - 128 bits of
  *    machine-generated material. A human-readable label around that run is

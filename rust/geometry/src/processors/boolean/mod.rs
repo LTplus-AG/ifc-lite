@@ -743,7 +743,7 @@ impl BooleanClippingProcessor {
         // clock cost is comparable. CSG cost scales with operand polygon
         // count, not operation count.
         //
-        // See docs/research/csg-clipping-fidelity.md for the full
+        // See docs/architecture/geometry-pipeline.md for the full
         // side-by-side comparison with the reference implementations.
 
         // Get second operand

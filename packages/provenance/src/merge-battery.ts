@@ -3,11 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * The M4 midterm property battery (Bet B2.1, docs/vision/
- * moonshots-execution-plan.md section 2 M4 exams: "soundness property test,
- * 1,000 randomized two-client op schedules, zero unsound auto-merges (an
- * auto-merge whose replay differs from sequential application), with
- * conflict rate reported").
+ * Property battery for merge soundness: randomized two-client operation
+ * schedules must produce zero unsound auto-merges, while still reporting the
+ * conflict rate.
  *
  * Every schedule: build a randomized base model (seeded PRNG -- mulberry32,
  * the same generator dag-engine.test.ts and g2-footprint-tightness.mjs use;
@@ -41,7 +39,7 @@
  *
  * ## Spatial decomposition (Bet B4.2)
  *
- * The G2 red-team review (docs/vision/reviews/g2-red-team-2026-07-24.md §4)
+ * The G2 red-team review (packages/provenance/test/merge-battery.test.ts §4)
  * showed that under the v0 op model the SPATIAL half of the conflict
  * predicate could not produce a true conflict at all: application was purely
  * per-node, so node-disjoint ops always commuted byte-identically, and every
@@ -61,7 +59,7 @@
  *
  * ## The ablation (G4 review item 6)
  *
- * The G4 red-team review (docs/vision/reviews/g4-red-team-2026-07-29.md §2,
+ * The G4 red-team review (packages/provenance/test/merge-battery.test.ts §2,
  * §7 item 6) pointed out that the whole soundness argument for the coupled
  * semantics *depends* on the spatial rule, and that an argument of that shape
  * should be tested by removing the rule rather than by counting what it

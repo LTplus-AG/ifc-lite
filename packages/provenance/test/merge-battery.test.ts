@@ -5,7 +5,7 @@
 /**
  * merge-battery.ts (Bet B2.1): the M4 midterm property battery at reduced
  * schedule count for CI (the full 1,000-schedule run is the gate script,
- * scripts/moonshot/g2-merge-soundness.mjs). Asserts the exam invariant
+ * packages/provenance/test/merge-battery.test.ts). Asserts the exam invariant
  * (zero unsound auto-merges), determinism under a fixed seed, and that the
  * generator actually exercises both sides of the predicate (some schedules
  * merge, some are flagged, and both true and false conflicts occur).

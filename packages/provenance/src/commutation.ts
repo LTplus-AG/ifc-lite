@@ -3,10 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Commutation certificates for the M4 merge soundness contract (Bet B2.1,
- * docs/vision/moonshots-execution-plan.md Phase 2; docs/vision/
- * moonshots-tech.md M4: "an auto-merge is emitted only with a certificate
- * that the ops commute").
+ * Commutation certificates for the merge-soundness contract: an auto-merge
+ * is emitted only with a certificate that the operations commute.
  *
  * Given a base state and two concurrent op sets A and B (one per client),
  * {@link createCommutationCertificate}:

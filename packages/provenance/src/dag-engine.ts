@@ -3,13 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Incremental DAG engine for node-hash-v0 (docs/vision/spec/node-hash-v0.md,
+ * Incremental DAG engine for node-hash-v0 (packages/provenance/SPEC.md,
  * Bet B1.1, M1 midterm: "memoized recompute through the void-router graph;
  * cache-hit telemetry on real edit traces").
  *
  * `ProvenanceDag` is a thin, store-agnostic wrapper over {@link computeNodeHash}
  * (`./node-hash.js`) that adds the piece G0's demo hand-rolled per-script
- * (`scripts/moonshot/g0-certificate-demo.mjs`'s `propagateStoreyAndRoot` /
+ * (`packages/provenance/test/certificate.test.ts`'s `propagateStoreyAndRoot` /
  * `applyElementEdit`): a general dependency graph so a caller doesn't have to
  * hand-write "which ancestors does this leaf feed" propagation logic for
  * every DAG shape.

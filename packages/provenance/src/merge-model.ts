@@ -4,7 +4,7 @@
 
 /**
  * Minimal deterministic op model for the M4 merge soundness contract
- * (Bet B2.1, docs/vision/moonshots-execution-plan.md Phase 2; M4 midterm
+ * (Bet B2.1, packages/provenance/README.md Phase 2; M4 midterm
  * exam: "soundness property test, 1,000 randomized two-client op schedules,
  * zero unsound auto-merges").
  *
@@ -34,7 +34,7 @@
  * v0 of this model applied every op purely per-node: an op read and wrote one
  * node's payload and nothing else. That made node-disjoint ops commute
  * BY CONSTRUCTION -- no schedule could ever fail because of geometry -- which
- * the G2 red-team review (docs/vision/reviews/g2-red-team-2026-07-24.md §4)
+ * the G2 red-team review (packages/provenance/test/merge-battery.test.ts §4)
  * showed empirically: in 1,000 schedules the spatial half of the conflict
  * predicate produced 35 false conflicts and ZERO true ones, because the op
  * model could not represent the hazard the rule exists for.
@@ -77,7 +77,7 @@
  * An earlier version of this docstring called lazy cuts "exactly as in every
  * BIM authoring kernel" and containment "an invariant, not a convention".
  * Neither survives contact with the schema or with this repository, and the
- * G4 red-team review (docs/vision/reviews/g4-red-team-2026-07-29.md section 2)
+ * G4 red-team review (packages/provenance/test/merge-battery.test.ts section 2)
  * was right to say so. The claims are withdrawn:
  *
  * - **IFC does not impose containment.** `IfcRelVoidsElement` relates a

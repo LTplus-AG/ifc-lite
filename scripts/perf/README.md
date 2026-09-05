@@ -142,6 +142,25 @@ baseline. **Lesson:** qualify the browser's actual detail settings too; native
 full-detail identity alone does not establish browser identity.
 
 ### Shipped wins
+- **Native cold-load working set (#3967):** immutable schema classification replaces
+  contended global caches; completed BREP signatures are shared within one
+  immutable source; the geometry scan supplies ordered georeferencing candidates
+  and discovery reads unrelated property sets without retaining them. Large
+  sources with `u32` offsets build compact rows in fixed pages, then select a
+  direct-address index only when its allocation fits within compact columns.
+  Intermediate rows have a source-based budget; unusually dense record streams
+  switch to hash coalescing so duplicate records cannot keep growing staging.
+  Sparse IDs keep sorted columns; wider sources and supplied hash indexes retain
+  their existing representation. Duplicate IDs still resolve to their last
+  authored span. Interleaved fresh-process comparisons covered large MEP,
+  architecture, sanitary, CSG, structural and bridge models from multiple
+  exporters and schemas, including the small guard fixtures: all full-load
+  medians improved and every ordered geometry fingerprint matched. Large-model
+  peak RSS fell; small-model RSS ranges overlapped. **Lesson:** measure the
+  whole call including final metadata and teardown, and measure the index's
+  working set, not just time attributed to the scanner. Bounded parallel typed
+  scan windows passed scanner parity but added too little end-to-end benefit
+  to retain; the compact-index change produced the material gain.
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
   record-not-gate closure audit adds a strict directed-edge hash sweep and only
   runs the hairline sweep when strict closure fails. On `140a6d854` versus the

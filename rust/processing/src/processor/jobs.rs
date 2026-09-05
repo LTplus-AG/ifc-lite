@@ -98,7 +98,7 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
 pub(super) fn process_entity_job(
     job: &EntityJob,
     content: &[u8],
-    entity_index_arc: &Arc<EntityIndex>,
+    entity_index_arc: &ProcessingIndex,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
     // Pre-resolved scales seeded into this job's decoder so arc tessellation and
@@ -122,6 +122,7 @@ pub(super) fn process_entity_job(
     diag: &super::diagnostics::DiagnosticCollectors,
     // Model-wide content-dedup cache shared by every per-job router (#1109).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
+    brep_signature_cache: &ifc_lite_geometry::SharedBrepSignatureCache,
     // Model-wide IfcMappedItem source cache so a RepresentationMap source shared
     // across owning elements is meshed once model-wide, not once per element — #1623.
     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
@@ -156,7 +157,7 @@ pub(super) fn process_entity_job(
         return Vec::new();
     }
 
-    let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+    let mut local_decoder = entity_index_arc.decoder(content);
     // Adopt this worker's persistent point cache so faceted-brep polyloop points
     // shared across elements are served from memory instead of re-parsed per element.
     local_decoder.set_point_cache(std::mem::take(worker_point_cache));
@@ -184,6 +185,7 @@ pub(super) fn process_entity_job(
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
     local_router.set_rtc_offset(rtc_offset);
     local_router.enable_content_dedup_shared(item_dedup_cache.clone());
+    local_router.enable_shared_brep_signature_cache(brep_signature_cache.clone());
     local_router.enable_shared_mapped_item_cache(mapped_item_cache.clone());
     // #1623 Phase 2: arm the don't-bake plan so single-solid occurrences of a repeated
     // mapped source emit instance placeholders instead of full meshes.
@@ -357,9 +359,9 @@ pub(super) fn build_color_updates_for_jobs(
     jobs: &[EntityJob],
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     content: &[u8],
-    entity_index: &Arc<EntityIndex>,
+    entity_index: &ProcessingIndex,
 ) -> Vec<(u32, [f32; 4])> {
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+    let mut decoder = entity_index.decoder(content);
     let mut updates: Vec<(u32, [f32; 4])> = Vec::new();
 
     for job in jobs {

@@ -8,6 +8,57 @@
 
 use super::*;
 
+/// Cold-load classification must retain the canonical inheritance/legacy
+/// answers when removing the per-entity read locks. Exercise the whole schema,
+/// not a primitive allow-list that could silently exclude a future product.
+#[test]
+fn immutable_classification_matches_predicates_for_entire_schema_and_legacy_catalog() {
+    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
+        .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
+    {
+        let expected = (
+            compute_has_geometry(name),
+            compute_is_representationless_spatial_container(name),
+            compute_is_simple(name),
+        );
+        let mixed: String = name.chars().enumerate().map(|(i, ch)| {
+            if i % 2 == 0 { ch.to_ascii_lowercase() } else { ch }
+        }).collect();
+        for spelling in [name.to_owned(), name.to_ascii_lowercase(), mixed] {
+            assert_eq!(
+                (
+                    has_geometry_by_name(&spelling),
+                    is_representationless_spatial_container_by_name(&spelling),
+                    is_simple_geometry_type(&spelling),
+                ),
+                expected,
+                "classification changed for {spelling}",
+            );
+        }
+    }
+}
+
+/// Unknown exporter extensions preserve reinforcement fallback behavior and
+/// cannot grow the process-wide table with names supplied by the file.
+#[test]
+fn unknown_classification_preserves_fallback_without_retaining_names() {
+    let table_len = classifications().len();
+    for (name, geometry) in [
+        ("IfcReinforcingVendorExtension", true),
+        ("IfcReinforcedVendorExtension", true),
+        ("IfcVendorReinforcingExtension", false),
+        ("IfcVendorGeometry", false),
+        ("", false),
+        ("IfcVéndor", false),
+    ] {
+        assert_eq!(has_geometry_by_name(name), geometry, "{name}");
+        assert!(!is_representationless_spatial_container_by_name(name), "{name}");
+        assert!(is_simple_geometry_type(name), "{name}");
+        assert!(!classifications().contains_key(name.to_ascii_uppercase().as_str()));
+    }
+    assert_eq!(classifications().len(), table_len);
+}
+
 #[test]
 fn building_elements_have_geometry() {
     for name in [
@@ -625,4 +676,3 @@ fn every_legacy_key_is_unknown_to_the_generated_enum() {
         );
     }
 }
-

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! B4.4 safety net: the generic-over-scalar extrusion mesher must be
+//! Safety net: the generic-over-scalar extrusion mesher must be
 //! **bit-for-bit** the code it replaced when instantiated at `f64`.
 //!
 //! `reference` below is a verbatim copy of `extrude_profile` and its helpers as
@@ -381,7 +381,7 @@ fn assert_mesh_bit_identical(a: &Mesh, b: &Mesh, what: &str) {
 /// CW and CCW windings, holes, duplicate vertices, extreme aspect ratios.
 fn random_profile(rng: &mut Rng, kind: usize) -> Profile2D {
     match kind % 8 {
-        // Rectangle (the B4.4 family).
+        // Rectangle (the rectangle family).
         0 => crate::profile::create_rectangle(rng.range(0.1, 10.0), rng.range(0.1, 10.0)),
         // Reversed (CW) rectangle.
         1 => {

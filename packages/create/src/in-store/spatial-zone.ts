@@ -7,7 +7,7 @@
  * that is not bounded by physical elements (issue #2508 item 3).
  *
  * A location zone is a construction section or takt area a user drew against
- * the rendered scene. `docs/design/zone-emission.md` argues why it must NOT be
+ * the rendered scene. `docs/architecture/spatial-zone-emission.md` argues why it must NOT be
  * emitted as an `IfcZone`: that type groups SPACES, its `IsGroupedBy` admits
  * only `IfcSpace` / `IfcSpatialZone` / nested `IfcZone`, and this repo's own
  * reader (`extractGroupMembersOnDemand`) describes an `IfcZone`'s members that

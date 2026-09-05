@@ -24,7 +24,7 @@
  *   4. **No execution.** This is pure static analysis. We do not run the
  *      script during inference.
  *
- * Spec: docs/architecture/ai-customization/09-implementation-plan.md
+ * Spec: docs/architecture/ai-customization/04-ai-authoring.md
  * task P1.T10.
  */
 

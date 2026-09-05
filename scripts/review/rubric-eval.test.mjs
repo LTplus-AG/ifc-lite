@@ -508,6 +508,22 @@ test('a response where NOTHING survives scores ZERO and the eval CARRIES ON', (t
   assert.match(said, /PRODUCED NO USABLE REVIEW/, 'the recall line must say how many cases produced nothing'); // @source-text-assertion-ok `said` is the harness process stdout+stderr, not a source file
 });
 
+test('#3936: missing findings after the retry scores an unusable review instead of aborting evaluation', (t) => {
+  const dir = tmpCase(t);
+  evalCase(dir, { expected: [{ path: 'src/f.ts', what: 'Number(raw) returns NaN and the comparison falls through, closing the session' }] });
+  // JSON serialization omits the undefined findings field; the real validator
+  // and evaluation classifier process both malformed responses.
+  const malformed = fenced(undefined);
+  const reviewer = sequentialReviewer(dir, [malformed, malformed]);
+  const r = runHarness(dir, reviewer.path);
+  const said = `${r.stdout}${r.stderr}`;
+  assert.equal(r.status, 0, said);
+  assert.equal(readFileSync(reviewer.count, 'utf8'), '2', 'one corrective retry, then finish the evaluation');
+  assert.match(said, /FINDINGS_INVALID/, said); // @source-text-assertion-ok child-process runtime output
+  assert.match(said, /scored ZERO/, said); // @source-text-assertion-ok child-process runtime output
+  assert.match(said, /PRODUCED NO USABLE REVIEW/, said); // @source-text-assertion-ok child-process runtime output
+});
+
 test('#3829: a retryable validation failure gets exactly the production corrective retry', (t) => {
   const dir = tmpCase(t);
   evalCase(dir, { expected: [{ path: 'src/f.ts', what: 'Number(raw) returns NaN and the comparison falls through, closing the session' }] });

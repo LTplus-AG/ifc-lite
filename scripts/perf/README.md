@@ -313,6 +313,9 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   reduction claim. Actual section-tool activation produced identical cut
   geometry on small and large models. Single-to-federated loading preserved
   selection, properties and spatial hierarchy; metadata-only input still settled.
+  Active drawing requests share one queue: geometry, plane and visibility
+  changes keep only the newest pending inputs, and superseded cuts cannot
+  publish. Parser-worker-unavailable loads do not retain a deferred handoff.
   An interleaved ablation across MEP, CSG, structural, bridge and small models
   found no material full-load or RSS benefit from retaining WASM batch decoder
   memos, including completed BREP signatures. That extra WASM cache machinery

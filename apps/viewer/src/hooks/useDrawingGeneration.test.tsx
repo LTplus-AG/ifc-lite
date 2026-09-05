@@ -22,10 +22,10 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act, useCallback, useState } from 'react';
+import { act, StrictMode, useCallback, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
-import type { Drawing2D } from '@ifc-lite/drawing-2d';
+import { Drawing2DGenerator, type Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { useDrawingGeneration } from './useDrawingGeneration.js';
 
@@ -217,7 +217,7 @@ const OVERLAY_OPTIONS: DrawingInputs['displayOptions'] = {
   scale: 50, showConstructionProjection: false,
 };
 
-async function drawingActivityHarness() {
+async function drawingActivityHarness(initial: Partial<DrawingInputs> = {}, strict = false) {
   let inputs: DrawingInputs = {
     geometryResult: null,
     ifcDataStore: null,
@@ -227,8 +227,10 @@ async function drawingActivityHarness() {
     combinedHiddenIds: new Set(), combinedIsolatedIds: null, computedIsolatedIds: null,
     models: new Map([['m0', { id: 'm0', visible: true }]]),
     panelVisible: false, activeTool: 'select',
+    ...initial,
   };
   let published: Drawing2D | null = null;
+  const publications: Set<number>[] = [];
   let starts = 0;
   let run: (() => Promise<void>) | undefined;
   const status = (value: string) => { if (value === 'generating') starts++; };
@@ -237,6 +239,7 @@ async function drawingActivityHarness() {
     const [drawing, setLocalDrawing] = useState<Drawing2D | null>(null);
     const publish = useCallback((next: Drawing2D | null) => {
       published = next;
+      if (next) publications.push(entityIds(next));
       setLocalDrawing(next);
     }, []);
     const { generateDrawing } = useDrawingGeneration({
@@ -251,7 +254,10 @@ async function drawingActivityHarness() {
   const root = createRoot(container);
   const update = async (patch: Partial<DrawingInputs>) => {
     inputs = { ...inputs, ...patch };
-    await act(async () => { root.render(<Harness value={inputs} />); });
+    await act(async () => {
+      const view = <Harness value={inputs} />;
+      root.render(strict ? <StrictMode>{view}</StrictMode> : view);
+    });
   };
   await update({});
   return {
@@ -267,6 +273,28 @@ async function drawingActivityHarness() {
         assert.equal(starts, 1, 'panel auto-opening must reuse the in-flight section drawing');
       });
     },
+    async replaceGeometryInFlight() {
+      await act(async () => {
+        for (const id of [100, 200, 300]) {
+          inputs = { ...inputs, geometryResult: activityGeometry(id), panelVisible: true };
+          flushSync(() => root.render(<Harness value={inputs} />));
+          assert.equal(starts, 1, 'PR #3921: geometry changes queue behind the running cut');
+        }
+      });
+    },
+    async replaceAfterCutStarted(started: Promise<void>, release: () => void) {
+      await act(async () => {
+        inputs = { ...inputs, geometryResult: activityGeometry(), panelVisible: true };
+        flushSync(() => root.render(<Harness value={inputs} />));
+        await started;
+        try {
+          inputs = { ...inputs, geometryResult: activityGeometry(400) };
+          flushSync(() => root.render(<Harness value={inputs} />));
+          assert.equal(starts, 1, 'new input must wait for the running generator');
+        } finally { release(); }
+      });
+    },
+    get publications() { return publications; },
     get drawing() { return published; },
     get starts() { return starts; },
     async generate() { await act(async () => { assert.ok(run); await run(); }); },
@@ -359,4 +387,63 @@ describe('useDrawingGeneration active drawing demand', () => {
       } finally { await h.dispose(); }
     });
   }
+});
+
+// PR #3921 review: automatic geometry and filter changes must use current inputs.
+describe('useDrawingGeneration latest inputs (#3921)', () => {
+  it('serializes geometry replacements and coalesces them to the newest real cut', async () => {
+    const h = await drawingActivityHarness();
+    try {
+      await h.replaceGeometryInFlight();
+      assert.equal(h.starts, 2, 'only the running cut and newest replacement run');
+      assert.deepEqual(entityIds(h.drawing), new Set([300, 301]));
+    } finally { await h.dispose(); }
+  });
+
+  it('refreshes active hiding and both isolation inputs without moving the plane', async () => {
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ geometryResult: activityGeometry(), panelVisible: true });
+      await h.update({ combinedHiddenIds: new Set([100]) });
+      assert.deepEqual(entityIds(h.drawing), new Set([101]));
+      await h.update({ combinedHiddenIds: new Set(), combinedIsolatedIds: new Set([100]) });
+      assert.deepEqual(entityIds(h.drawing), new Set([100]));
+      await h.update({ combinedIsolatedIds: null, computedIsolatedIds: new Set([101]) });
+      assert.deepEqual(entityIds(h.drawing), new Set([101]));
+    } finally { await h.dispose(); }
+  });
+});
+
+// Hold a REAL cutter result at its async boundary, rather than fabricating meshes.
+it('never publishes a superseded cut that completes after replacement (#3921)', async () => {
+  const original = Drawing2DGenerator.prototype.generate;
+  let signal!: () => void;
+  let release!: () => void;
+  const started = new Promise<void>(resolve => { signal = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  let calls = 0;
+  Drawing2DGenerator.prototype.generate = async function (...args) {
+    const first = ++calls === 1;
+    const result = await original.call(this, ...args);
+    if (first) { signal(); await held; }
+    return result;
+  };
+  const h = await drawingActivityHarness();
+  try {
+    await h.replaceAfterCutStarted(started, release);
+    assert.equal(calls, 2);
+    assert.deepEqual(h.publications, [new Set([400, 401])], 'the completed old cut must not publish');
+  } finally {
+    release();
+    Drawing2DGenerator.prototype.generate = original;
+    await h.dispose();
+  }
+});
+
+it('restarts active drawing demand after StrictMode effect cleanup (#3921)', async () => {
+  const h = await drawingActivityHarness({ geometryResult: activityGeometry(), panelVisible: true }, true);
+  try {
+    assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
+    assert.deepEqual(h.publications, [new Set([100, 101])]);
+  } finally { await h.dispose(); }
 });

@@ -1446,7 +1446,7 @@ export function useIfcLoader() {
       // Scale the geometry head start with metadata work; bound the wait on
       // geometry-heavy files, and keep small files immediate.
       const parserWaitBudgetMs = Math.min(10_000, Math.max(1_000, fileSizeMB * 8));
-      const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, fileSizeMB >= 32, parserWaitBudgetMs);
+      const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, useParserWorker && fileSizeMB >= 32, parserWaitBudgetMs);
 
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the

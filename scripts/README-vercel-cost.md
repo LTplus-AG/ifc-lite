@@ -208,8 +208,25 @@ Consequences to know about:
   <deployment-url>`, or promote a previous deployment in the dashboard. It
   re-points the alias at a build that already exists, so it takes seconds
   instead of minutes, which is what you actually want when the site is broken.
-- **A bad commit is live for up to 24h**, not the ~20 minutes it used to be.
-  The cron fires just before the Zurich workday for exactly this reason.
+- **The nightly deploys the newest KNOWN-GOOD commit, not the tip.** A batch of
+  ~40 merges goes live for 24h, so shipping a red tip costs a day rather than
+  the ~20 minutes it did when every commit deployed. The run walks back from
+  `main` and takes the newest commit whose `Build + WASM + Rust + Node` check
+  succeeded; a commit whose gate is still running counts as not-yet-known-good
+  and is skipped, which is routine for a tip that is minutes old.
+  - It gates on that one composite check, not on "nothing failed anywhere":
+    unrelated housekeeping lanes fail routinely (`4e08fe835` shipped fine with
+    a red *Scan open PRs for CI-silent heads*), so the stricter rule would
+    never find a deployable commit.
+  - It reads **check runs**, not `commits/{sha}/status`. The combined Statuses
+    API reported `success` for `4e08fe835` while its check runs held a failure.
+  - Because of this, `behind` is now a NORMAL outcome: right after a deploy,
+    production is usually ahead of the newest *known-good* commit while the
+    tip's gate is still running. That is a quiet no-op, not a stuck branch.
+  - `workflow_dispatch` exposes `require_green`; unchecking it deploys the ref
+    as-is and says so with a warning. Scheduled runs always gate.
+- **A bad commit that IS green is still live for up to 24h.** The cron fires
+  just before the Zurich workday for exactly this reason.
 - **`ifc-lite-git-main-ltplus.vercel.app` goes stale** — `main` is a preview
   branch now and previews are skipped. Use the production domains.
 - The dashboard **Ignored Build Step is unchanged** on all three projects. It

@@ -14,11 +14,9 @@ import { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import {
-  buildModelLoadedGeometryProps,
-  warnGeometryDiagnostics,
-} from './modelLoadedGeometryProps.js';
+import { buildModelLoadedGeometryProps, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
 import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
+import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
@@ -539,7 +537,7 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
         // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
         // closed over: the WASM streaming section's `allInstancedShards` is
         // declared ~800 lines below this closure, so a plain closure read would
@@ -682,6 +680,7 @@ export function useIfcLoader() {
             pointCloudHandleId: patch?.pointCloudHandleId,
             preAlignment,
             federationAlignmentStatus,
+            ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
           // Spatial index AFTER id offset + alignment (final ids + world positions)
@@ -718,6 +717,7 @@ export function useIfcLoader() {
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
           pointCloudHandleId: patch?.pointCloudHandleId,
+          ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
       };
       const getSchemaVersion = (dataStore: IfcDataStore | null): 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5' => {
@@ -967,7 +967,7 @@ export function useIfcLoader() {
           setIfcDataStore(ingest.dataStore);
         }
         await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
-          pointCloudHandleId: ingest.rendererHandle.id,
+          pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
         });
         setProgress({ phase: 'Complete', percent: 100 });
         // Snapshot: points, not meshes - the ingest GeometryResult's zero
@@ -1002,7 +1002,7 @@ export function useIfcLoader() {
             setGeometryResult(result.geometryResult);
             setIfcDataStore(result.dataStore);
           }
-          await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
+          await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'wasm' });
 
           setProgress({ phase: 'Complete', percent: 100 });
           captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
@@ -1049,8 +1049,7 @@ export function useIfcLoader() {
           // ids + register the model (matches the old addModel GLB path).
           await finalizeModel(
             target.kind === 'federated' ? result.dataStore : null,
-            result.geometryResult,
-            result.schemaVersion,
+            result.geometryResult, result.schemaVersion, { loadPath: 'wasm' },
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
@@ -1196,8 +1195,8 @@ export function useIfcLoader() {
             if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
               await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
-                loadState: 'complete',
-                cacheState: 'hit',
+                loadState: 'complete', cacheState: 'hit',
+                loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
               // Geometry attribution (#2388) on a cache HIT: `loadTessellationTier`/
@@ -1269,7 +1268,7 @@ export function useIfcLoader() {
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
-          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
+          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
           // Geometry attribution (#2388), server row: `is_resource_retry` and
           // ONLY that. The retry re-enters `loadFile`, so a first attempt that
@@ -1959,7 +1958,7 @@ export function useIfcLoader() {
                       : {}),
                   };
                   await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
-                    loadState: 'complete',
+                    loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                   }, allInstancedShards);
                   return;
                 }
@@ -1968,7 +1967,7 @@ export function useIfcLoader() {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached
                   // under the current plan (respects the size bands + kill switch).
-                  cacheState: cachePlan.shouldCache ? 'writing' : 'none',
+                  cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
                 }, allInstancedShards);
                 // Build spatial index from meshes in time-sliced chunks (non-blocking).
                 // Previously this was synchronous inside requestIdleCallback, blocking

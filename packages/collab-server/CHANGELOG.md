@@ -433,7 +433,7 @@
   already closed in prior batches.
 
 - [#616](https://github.com/louistrue/ifc-lite/pull/616) [`2fc15b4`](https://github.com/louistrue/ifc-lite/commit/2fc15b45fbd06ebb57120d87db9a0ab06ed18142) Thanks [@louistrue](https://github.com/louistrue)! - Big reach-for-the-stars batch. Closes (or near-closes) the remaining
-  substantial items in `docs/architecture/collab-plan.md` for v0.2,
+  substantial items in `docs/architecture/collaboration.md` for v0.2,
   v0.5, v0.7, and v1.0. **+21 tests, total 140 passing.**
 
   `@ifc-lite/collab`
@@ -633,7 +633,7 @@ name, buckets, help)` accumulates observations into upper-bound
   end-to-end sync through the websocket server, undo isolation, and
   per-user layer extraction.
 
-  See `docs/architecture/collab-plan.md` for the v0.1 → v1.0 roadmap.
+  See `docs/architecture/collaboration.md` for the v0.1 → v1.0 roadmap.
 
 - [#616](https://github.com/louistrue/ifc-lite/pull/616) [`2fc15b4`](https://github.com/louistrue/ifc-lite/commit/2fc15b45fbd06ebb57120d87db9a0ab06ed18142) Thanks [@louistrue](https://github.com/louistrue)! - Continuing the v0.1 → v1.0 plan. Lands foundational pieces of v0.3
   (geometry), v0.4 (federation), and v0.6 (MCP) so each upstack consumer

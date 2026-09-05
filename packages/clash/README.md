@@ -68,7 +68,7 @@ and the SDK `clash` namespace.
 
 See the [ifc-lite docs](https://ifclite.dev/docs/) and the design
 rationale in
-[clash-detection-plan.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/clash-detection-plan.md).
+[Clash-detection architecture](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/clash-detection.md).
 
 ## License
 

@@ -299,7 +299,7 @@ test('reach follows CODE only — naming a file in a comment does not run it', (
  * UNQUOTED, and the reference scan only ever matched quoted tokens, so it was
  * green either side of the comment-blanking. This repo's comment convention is
  * BACKTICKS around filenames — `check-test-wiring.mjs`'s own header names
- * `scripts/moonshot/diff-spike/verify-common.mjs` that way — and a backtick is
+ * `scripts/lib/server-bin-tag-read.mjs` that way — and a backtick is
  * a quote. One line of prose in any already-wired script would otherwise buy an
  * unwired gate a pass.
  */

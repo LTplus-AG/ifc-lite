@@ -8,7 +8,7 @@
  * Owns the live `CollabSession`, the local ephemeral identity, the resolved
  * access role, and the presence roster. This is the viewer-side counterpart
  * to `@ifc-lite/collab`; see `docs/guide/collaboration.md` for the feature and
- * `docs/architecture/collab-plan.md` for the design.
+ * `docs/architecture/collaboration.md` for the design.
  *
  * What this scaffolding wires up today:
  *   - identity bootstrap (accountless, persisted handle + color),

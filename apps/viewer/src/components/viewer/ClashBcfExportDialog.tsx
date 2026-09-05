@@ -5,7 +5,7 @@
 /**
  * "Export to BCF" dialog for clash results.
  *
- * The headline requirement (see docs/architecture/clash-detection-plan.md §6) is
+ * The headline requirement (see docs/architecture/clash-detection.md §6) is
  * a *manageable* BCF: 1,000 clashes must never become 1,000 topics. This dialog
  * puts that control in the user's hands — choose how clashes collapse into
  * topics, filter by severity, cap the count, pick the initial status, and

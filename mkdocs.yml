@@ -7,6 +7,10 @@ repo_name: LTplus-AG/ifc-lite
 edit_uri: edit/main/docs/
 use_directory_urls: true
 
+validation:
+  nav:
+    omitted_files: warn
+
 theme:
   name: material
   custom_dir: docs/overrides
@@ -141,9 +145,8 @@ nav:
     - Clash Detection: guide/clash-detection.md
     - Model Diff: guide/model-diff.md
     - Real-Time Collaboration: guide/collaboration.md
-    - Collab Engine (API): guide/collab.md
+    - Collab Engine (API): guide/collaboration-api.md
     - Collaboration Server: guide/collab-server.md
-    - Testing Collaboration: guide/collab-testing.md
     - Lens Visualization: guide/lens.md
     - Lists & Schedules: guide/lists.md
     - Schedule Import: guide/schedule-import.md
@@ -162,6 +165,22 @@ nav:
     - Rendering Pipeline: architecture/rendering-pipeline.md
     - Coordinate Handling: architecture/coordinate-handling.md
     - Federation: architecture/federation.md
+    - Collaboration: architecture/collaboration.md
+    - Clash Detection: architecture/clash-detection.md
+    - Element Splitting: architecture/element-splitting.md
+    - Spatial Zone Emission: architecture/spatial-zone-emission.md
+    - Mesh Determinism: architecture/mesh-determinism.md
+    - CSG Threading: architecture/csg-threading-design.md
+    - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md
+    - Plato Code Generation: architecture/plato-codegen.md
+    - Extension System:
+        - Extension Model: architecture/ai-customization/01-extension-model.md
+        - Security Model: architecture/ai-customization/02-security.md
+        - UI Surface: architecture/ai-customization/03-ui-surface.md
+        - AI Authoring: architecture/ai-customization/04-ai-authoring.md
+        - Flavors and Sharing: architecture/ai-customization/05-flavors-and-sharing.md
+        - Self-Improvement Loops: architecture/ai-customization/06-self-improvement.md
+        - Registry and Signing: architecture/ai-customization/10-registry-and-signing.md
     - Layer PRs:
         - Overview: architecture/layer-prs/index.md
         - Concepts: architecture/layer-prs/01-concepts.md
@@ -174,8 +193,6 @@ nav:
         - Review Workflow: architecture/layer-prs/08-review.md
         - CLI & CI: architecture/layer-prs/09-cli.md
         - Registry: architecture/layer-prs/10-registry.md
-        - Standards & Ecosystem: architecture/layer-prs/11-standards-ecosystem.md
-        - Roadmap: architecture/layer-prs/12-roadmap.md
   - API Reference:
     - TypeScript API: api/typescript.md
     - Rust API: api/rust.md
@@ -190,5 +207,5 @@ nav:
   - Contributing:
     - Development Setup: contributing/setup.md
     - Testing: contributing/testing.md
+    - Collaboration Testing: contributing/collaboration-testing.md
     - Release Process: contributing/release.md
-

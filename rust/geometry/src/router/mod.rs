@@ -7,6 +7,7 @@
 //! Routes IFC representation entities to appropriate processors based on type.
 
 mod caching;
+mod brep_signatures;
 mod rep_filter;
 mod content_hash;
 mod diagnostics;
@@ -22,6 +23,7 @@ pub(crate) mod transforms;
 pub(crate) mod voids;
 
 pub use processor::GeometryProcessor;
+pub use brep_signatures::SharedBrepSignatureCache;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
@@ -139,16 +141,13 @@ pub struct GeometryRouter {
     /// `geometry_id` (colour/palette/texture), voids and placement are applied by
     /// the caller, so reuse never changes an instance's appearance.
     ///
-    /// `Arc<Mutex<_>>` so ONE cache outlives any single router and is shared across
-    /// the native rayon pool's per-element routers AND a wasm worker's per-batch
-    /// routers (re-injected each batch). A hit skips the expensive build entirely,
+    /// Shared across native per-element and wasm per-batch routers. A hit skips building;
     /// so the lock is held only for a map get/clone (hit) or insert (miss); the
     /// build runs outside it. `None` ⇒ dedup disabled (e.g. `new()` in tests).
     item_dedup_cache: Option<ItemDedupCache>,
-    /// Per-router memo for the per-item structural hash (shared sub-entities
-    /// hashed once). Kept LOCAL so the recursive DAG walk never contends the
-    /// shared cache's lock; recomputing it per router is cheap next to meshing.
+    /// Generic recursive hashes stay local: depth/cycle context may differ.
     content_sig_memo: RefCell<FxHashMap<u32, u128>>,
+    shared_brep_signatures: Option<SharedBrepSignatureCache>,
     /// Content-hash refs refused above `u32::MAX` (#3421/#3752); diagnostic only.
     content_hash_oversized_ref_drops: RefCell<usize>,
     /// Unit scale factor (e.g., 0.001 for millimeters -> meters), applied to
@@ -254,6 +253,7 @@ impl GeometryRouter {
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
             content_sig_memo: RefCell::new(FxHashMap::default()),
+            shared_brep_signatures: None,
             content_hash_oversized_ref_drops: RefCell::new(0),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset

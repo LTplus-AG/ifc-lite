@@ -24,6 +24,8 @@ use std::sync::Arc;
 
 mod color_layer;
 mod diagnostics;
+mod entity_index;
+use entity_index::{IndexBuilder, ProcessingIndex};
 pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
@@ -503,11 +505,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // index is installed before the first ref-resolving call (`resolve_prepass`).
     let provided_index = options.entity_index.clone();
     let building_index = provided_index.is_none();
-    let mut inline_index: EntityIndex = if building_index {
-        FxHashMap::with_capacity_and_hasher(content.len() / 50, Default::default())
-    } else {
-        FxHashMap::default()
-    };
+    let mut inline_index = IndexBuilder::new(content.len(), building_index);
     let mut decoder = match &provided_index {
         Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()),
         None => EntityDecoder::new(content),
@@ -532,6 +530,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // Collect geometry entities
     let mut scanner = EntityScanner::new(content);
+    let mut georeferencing_candidates = Vec::new();
     let mut entity_jobs: Vec<EntityJob> = Vec::with_capacity(2000);
     // #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
     // set of RepresentationMaps already instantiated by an IfcMappedItem. After
@@ -591,6 +590,9 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
+        if let Some(ifc_type) = crate::georeferencing::georeferencing_candidate_type(type_name) {
+            georeferencing_candidates.push((id, ifc_type));
+        }
         if building_index {
             inline_index.insert(id, (start, end));
         }
@@ -855,14 +857,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     // the same scanner. Install it into the decoder so `resolve_prepass` and the
     // downstream phases resolve refs against it, and expose it (as before) to the
     // geometry workers further down.
-    let entity_index: Arc<EntityIndex> = match provided_index {
-        Some(idx) => idx,
-        None => {
-            let arc = Arc::new(inline_index);
-            decoder.set_entity_index(arc.clone());
-            arc
-        }
+    let entity_index = match provided_index {
+        Some(idx) => ProcessingIndex::Hash(idx),
+        None => inline_index.finish(),
     };
+    entity_index.install(&mut decoder);
 
     // ── Shared post-scan resolution (`crate::prepass`) ──
     // Styled items (orphan vs attached, defer-aware), IfcIndexedColourMap,
@@ -1113,7 +1112,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // PARALLEL GEOMETRY PROCESSING
     let geometry_start = Clock::now();
-    let entity_index_arc = entity_index; // Already Arc from above
+    let entity_index_arc = entity_index; // Immutable and shared across jobs.
     let unit_scale = router.unit_scale();
     let rtc_offset = router.rtc_offset();
     // Resolve the plane-angle scale ONCE on the warm shared decoder, then seed
@@ -1175,6 +1174,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // IfcMappedItem (Tekla parts) is meshed once across the pool, not once per
     // element. The lock is held only for a hash get/insert; meshing runs outside it.
     let item_dedup_cache = GeometryRouter::new_dedup_cache();
+    let brep_signature_cache = GeometryRouter::new_brep_signature_cache();
 
     // Shared IfcMappedItem source cache for the whole model (#1623): every per-job
     // router meshes each RepresentationMap source once against it, instead of once
@@ -1302,7 +1302,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     return;
                 }
                 let mut local_decoder =
-                    EntityDecoder::with_arc_index(content, entity_index_for_meta.clone());
+                    entity_index_for_meta.decoder(content);
                 let Ok(entity) = local_decoder.decode_at(job.start, job.end) else {
                     return;
                 };
@@ -1425,6 +1425,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                     site_local_rotation,
                     &diag_collectors,
                     &item_dedup_cache,
+                    &brep_signature_cache,
                     &mapped_item_cache,
                     instancing_plan.as_ref(),
                     indexed_colour_split_ids.as_ref(),
@@ -1463,7 +1464,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 // block, so deferred and up-front resolution cannot drift.
                 let mut rebuilt_styles = {
                     let mut style_decoder =
-                        EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+                        entity_index_arc.decoder(content);
                     crate::prepass::resolve_styled_item_spans(
                         &deferred_styled_item_positions,
                         &mut style_decoder,
@@ -1584,7 +1585,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                 is_geo_referenced: has_rtc_offset,
             },
             length_unit_scale: Some(unit_scale),
-            georeferencing: crate::extract_georeferencing_with_index(content, &entity_index_arc),
+            georeferencing: crate::georeferencing::extract_georeferencing_from_candidates(
+                &mut entity_index_arc.decoder(content), &georeferencing_candidates,
+            ),
         },
         stats: ProcessingStats {
             total_meshes,

@@ -16,6 +16,25 @@ use super::EntityDecoder;
 use crate::DecodedEntity;
 
 impl EntityDecoder<'_> {
+    /// Read an indexed entity, honoring existing memoized values but retaining
+    /// no new value. Linear discovery passes must not fill the geometry cache
+    /// with every unrelated property set they inspect once.
+    pub(crate) fn decode_by_id_transient(&mut self, id: u32) -> crate::Result<DecodedEntity> {
+        if let Some(entity) = self.cache.get(&id) {
+            return Ok(entity.as_ref().clone());
+        }
+        self.build_index();
+        let (start, end) = self.entity_index.as_ref().and_then(|index| index.lookup(id))
+            .ok_or_else(|| crate::Error::parse(0, format!("Entity #{} not found", id)))?;
+        let entity = self.decode_at_uncached(start, end)?;
+        // Match decode_at's parsed-id cache lookup, including caller-supplied
+        // indexes whose key differs from the id declared at that span.
+        Ok(match self.cache.get(&entity.id) {
+            Some(cached) => cached.as_ref().clone(),
+            None => entity,
+        })
+    }
+
     /// Drain the populated cache out of this decoder for sharing across
     /// rayon tasks. After calling this, the decoder is empty (cache
     /// moved out); callers typically then drop the decoder.

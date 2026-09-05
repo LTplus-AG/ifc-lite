@@ -23,6 +23,9 @@ const PASS_IFC = resolve(corpus, 'pass-systems_should_match_exactly_1_5.ifc');
 const PASS_IDS = resolve(corpus, 'pass-systems_should_match_exactly_1_5.ids');
 const FAIL_IFC = resolve(corpus, 'fail-systems_should_match_exactly_2_5.ifc');
 const FAIL_IDS = resolve(corpus, 'fail-systems_should_match_exactly_2_5.ids');
+const idsCorpus = resolve(here, '../../../ids/src/__corpus__/buildingsmart-ids/ids');
+const PROHIBITED_PASS_IFC = resolve(idsCorpus, 'pass-prohibited_specifications_passes_if_the_applicability_does_not_matches.ifc');
+const PROHIBITED_PASS_IDS = resolve(idsCorpus, 'pass-prohibited_specifications_passes_if_the_applicability_does_not_matches.ids');
 
 function silenceOutput() {
   const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
@@ -78,6 +81,44 @@ const BROKEN_IFC = [
   "#1=IFCPROJECT('0Project_GUID_000001',$,'Project',$,$,$,$,$,$);",
   'ENDSEC;',
   'END-ISO-10303-21;',
+  '',
+].join('\n');
+
+// A spec whose applicability matches ZERO entities in CLEAN_IFC (which
+// declares no IfcFurnishingElement at all) with minOccurs="0" — the spec is
+// declared optional, so nothing being present is not a violation, but
+// nothing was ever evaluated either. Regression for the adversarial review
+// on #3934: this used to report `pass` by falling through the raw
+// validator's passed/failed cardinality bucketing, never reaching `error`.
+const VACUOUS_IDS = [
+  '<?xml version="1.0" encoding="utf-8"?>',
+  '<ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns="http://standards.buildingsmart.org/IDS">',
+  '  <specifications>',
+  '    <specification name="Furnishing elements must have a Tag" ifcVersion="IFC4">',
+  '      <applicability minOccurs="0" maxOccurs="unbounded">',
+  '        <entity><name><simpleValue>IFCFURNISHINGELEMENT</simpleValue></name></entity>',
+  '      </applicability>',
+  '      <requirements>',
+  '        <attribute><name><simpleValue>Tag</simpleValue></name></attribute>',
+  '      </requirements>',
+  '    </specification>',
+  '  </specifications>',
+  '</ids>',
+  '',
+].join('\n');
+
+// Same applicability, but at the DEFAULT (required, minOccurs=1) cardinality:
+// matching zero entities is a genuine cardinality failure, not a vacuous
+// check, so this must report `fail` (not `error`, not `pass`).
+const REQUIRED_BUT_ABSENT_IDS = VACUOUS_IDS.replace('minOccurs="0"', '');
+
+// An IDS document declaring zero <specification> elements at all.
+const ZERO_SPEC_IDS = [
+  '<?xml version="1.0" encoding="utf-8"?>',
+  '<ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns="http://standards.buildingsmart.org/IDS">',
+  '  <specifications>',
+  '  </specifications>',
+  '</ids>',
   '',
 ].join('\n');
 
@@ -250,6 +291,119 @@ describe('deliveryCommand', () => {
     const failReport = jsonWritten(w2) as { verdict: string; checks: Array<{ status: string }> };
     expect(failReport.verdict).toBe('fail');
     expect(failReport.checks[0].status).toBe('fail');
+    process.exitCode = 0;
+  });
+
+  it('an IDS spec whose applicability matches nothing (minOccurs="0") reports error, never pass (#3934)', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    writeFileSync(join(dir, 'vacuous.ids'), VACUOUS_IDS);
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], ids: ['vacuous.ids'] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as { verdict: string; checks: Array<{ status: string; type: string }> };
+    expect(report.checks[0].type).toBe('ids');
+    expect(report.checks[0].status).toBe('error'); // nothing was ever evaluated
+    expect(report.verdict).toBe('fail');
+    process.exitCode = 0;
+  });
+
+  it('the same applicability at default (required) cardinality reports fail, not error or pass (#3934)', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    writeFileSync(join(dir, 'required.ids'), REQUIRED_BUT_ABSENT_IDS);
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], ids: ['required.ids'] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as { verdict: string; checks: Array<{ status: string }> };
+    expect(report.checks[0].status).toBe('fail'); // a required spec matching zero entities is a real failure
+    process.exitCode = 0;
+  });
+
+  it('a maxOccurs="0" prohibition satisfied by zero matches still reports pass, not error (#3934)', async () => {
+    // Distinct from VACUOUS_IDS above: a `maxOccurs="0"` bound COULD have
+    // been violated by a nonzero applicable count, so finding zero is real
+    // evidence, not a vacuous result. Real buildingSMART corpus fixture.
+    const recipePath = writeRecipe(tmpDir(), { models: [PROHIBITED_PASS_IFC], ids: [PROHIBITED_PASS_IDS] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as { verdict: string; checks: Array<{ status: string }> };
+    expect(report.checks[0].status).toBe('pass');
+    expect(report.verdict).toBe('pass');
+    process.exitCode = 0;
+  });
+
+  it('an IDS document declaring zero specifications still reports error', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    writeFileSync(join(dir, 'empty.ids'), ZERO_SPEC_IDS);
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], ids: ['empty.ids'] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as { checks: Array<{ status: string }> };
+    expect(report.checks[0].status).toBe('error');
+    process.exitCode = 0;
+  });
+
+  it('entity-level evidence (totalEntities/passedEntities/failedEntities) actually renders for a real failing IDS check (#3934)', async () => {
+    const dir = tmpDir();
+    const recipePath = writeRecipe(dir, { models: [FAIL_IFC], ids: [FAIL_IDS] });
+    const write = silenceOutput();
+    await deliveryCommand([recipePath, '--json']);
+    const report = jsonWritten(write) as {
+      checks: Array<{ status: string; totalEntities?: number; passedEntities?: number; failedEntities?: number }>;
+    };
+    const check = report.checks[0];
+    expect(check.status).toBe('fail');
+    // These fields must actually be present with the validator's real field
+    // names, not silently undefined behind a hand-built interface that
+    // never matched the runtime shape.
+    expect(check.totalEntities).toBeGreaterThan(0);
+    expect(check.failedEntities).toBeGreaterThan(0);
+    expect(check.totalEntities).toBe((check.passedEntities ?? 0) + (check.failedEntities ?? 0));
+    process.exitCode = 0;
+  });
+
+  it('the failing check\'s HTML report actually renders the "X/Y entities failed" line (#3934)', async () => {
+    const dir = tmpDir();
+    const recipePath = writeRecipe(dir, { models: [FAIL_IFC], ids: [FAIL_IDS] });
+    const htmlPath = join(dir, 'report.html');
+    silenceOutput();
+    await deliveryCommand([recipePath, '--json', '--html', htmlPath]);
+    const html = await readFile(htmlPath, 'utf-8');
+    expect(html).toMatch(/\d+\/\d+ entities failed/);
+    process.exitCode = 0;
+  });
+
+  it('a model path containing a literal <script> tag is HTML-escaped, not injected', async () => {
+    const dir = tmpDir();
+    // A literal "/" would be a real path separator on disk, so this uses an
+    // HTML-injection payload that stays within a single filename component.
+    const modelName = '<img src=x onerror=alert(1)>.ifc';
+    writeFileSync(join(dir, modelName), CLEAN_IFC);
+    const recipePath = writeRecipe(dir, { models: [modelName], structural: true });
+    const htmlPath = join(dir, 'report.html');
+    silenceOutput();
+    await deliveryCommand([recipePath, '--json', '--html', htmlPath]);
+    const html = await readFile(htmlPath, 'utf-8');
+    expect(html).not.toContain('<img src=x onerror=alert(1)>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    process.exitCode = 0;
+  });
+
+  it('an IDS parse-error message containing model/IDS-derived markup is escaped in the HTML evidence column', async () => {
+    const dir = tmpDir();
+    writeFileSync(join(dir, 'model.ifc'), CLEAN_IFC);
+    // Not well-formed XML, so `ids.parse` throws with a message that may
+    // echo back a fragment of the offending content -- that message ends
+    // up as `check.error`, rendered into the HTML "Evidence" column.
+    writeFileSync(join(dir, 'bad.ids'), '<ids><specification name="<script>alert(1)</script>"></ids>');
+    const recipePath = writeRecipe(dir, { models: ['model.ifc'], ids: ['bad.ids'] });
+    const htmlPath = join(dir, 'report.html');
+    silenceOutput();
+    await deliveryCommand([recipePath, '--json', '--html', htmlPath]);
+    const html = await readFile(htmlPath, 'utf-8');
+    expect(html).not.toMatch(/<script>alert\(1\)/);
     process.exitCode = 0;
   });
 

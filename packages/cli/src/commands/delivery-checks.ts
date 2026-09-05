@@ -134,6 +134,115 @@ export interface IdsCheckResult {
 }
 
 /**
+ * Shape of `bim.ids.validate()`'s real return value that this file needs.
+ * `ids.validate` is typed `Promise<unknown>` (the SDK namespace stays
+ * decoupled from `@ifc-lite/ids` at compile time), so this is the minimal
+ * structural contract this file relies on — kept narrow deliberately so a
+ * real shape mismatch (see below on why that bit us before) fails to
+ * compile rather than silently reading `undefined` off the wrong field
+ * names.
+ */
+interface IdsSpecificationResult {
+  status?: 'pass' | 'fail' | 'not_applicable';
+  entityResults: Array<{ passed: boolean }>;
+  /** Present whenever the specification declares `minOccurs`/`maxOccurs`. */
+  cardinalityResult?: {
+    actualCount: number;
+    minExpected?: number;
+    maxExpected?: number | 'unbounded';
+  };
+}
+
+interface IdsValidateReport {
+  specificationResults: IdsSpecificationResult[];
+}
+
+/**
+ * A specification counts as genuinely evaluated only when its cardinality
+ * bound could actually have been violated by SOME entity count, or it
+ * checked at least one entity's requirements. `minOccurs="0"` with no
+ * finite upper bound (the IDS "optional, if present" cardinality) is
+ * satisfied by zero matches for every possible model — no entity count
+ * could ever fail it — so treating that as `pass` reports success for a
+ * rule that could not possibly have failed and checked nothing. That is
+ * distinct from a `maxOccurs="0"` prohibition ("must not exist"), which a
+ * nonzero applicable count WOULD have violated, so zero matches there is
+ * real evidence, not a vacuous result — `@ifc-lite/ids`'s own corpus fixture
+ * `pass-prohibited_specifications_passes_if_the_applicability_does_not_matches.ids`
+ * exercises exactly this and must keep reading `pass`.
+ */
+function isVacuousSpecification(spec: IdsSpecificationResult): boolean {
+  if (spec.status === 'not_applicable') return true;
+  const c = spec.cardinalityResult;
+  if (!c || c.actualCount !== 0) return false;
+  return c.minExpected === 0 && (c.maxExpected === undefined || c.maxExpected === 'unbounded');
+}
+
+interface IdsReportSummary {
+  totalSpecifications: number;
+  passedSpecifications: number;
+  failedSpecifications: number;
+  notApplicableSpecifications: number;
+  totalEntities: number;
+  passedEntities: number;
+  failedEntities: number;
+}
+
+/**
+ * Summarize a real `IDSValidationReport` for the delivery checker.
+ *
+ * This intentionally does NOT call `bim.ids.summarize()` (`@ifc-lite/sdk`)
+ * for the specification-level bucketing: that helper defers entirely to
+ * the validator's own per-specification `status`, and the validator marks
+ * a `minOccurs="0"`/unbounded-`maxOccurs` specification `pass` whenever it
+ * matches zero entities (see `isVacuousSpecification` above) — correct IDS
+ * semantics for an "optional" clause, but exactly the vacuous-check defect
+ * a delivery checker must not fold into `pass`. Entity counts ARE summed
+ * directly here for the same reason `bim.ids.summarize()` would need
+ * `includePassingEntities: true` to get them right: that option controls
+ * whether PASSING entities are even present in `entityResults`, and this
+ * file used to call `validate()` with it `false`, which is harmless for the
+ * raw validator's own `summary.totalEntitiesChecked` (computed from each
+ * specification's `passedCount`/`failedCount`, not from `entityResults`)
+ * but would silently undercount any per-entity tally derived from
+ * `entityResults` directly, `bim.ids.summarize()` included.
+ */
+function summarizeIdsReport(report: IdsValidateReport): IdsReportSummary {
+  let passedSpecifications = 0;
+  let failedSpecifications = 0;
+  let notApplicableSpecifications = 0;
+  let totalEntities = 0;
+  let passedEntities = 0;
+  let failedEntities = 0;
+
+  for (const spec of report.specificationResults) {
+    for (const entity of spec.entityResults) {
+      totalEntities++;
+      if (entity.passed) passedEntities++;
+      else failedEntities++;
+    }
+
+    if (spec.status === 'fail') {
+      failedSpecifications++;
+    } else if (isVacuousSpecification(spec)) {
+      notApplicableSpecifications++;
+    } else {
+      passedSpecifications++;
+    }
+  }
+
+  return {
+    totalSpecifications: report.specificationResults.length,
+    passedSpecifications,
+    failedSpecifications,
+    notApplicableSpecifications,
+    totalEntities,
+    passedEntities,
+    failedEntities,
+  };
+}
+
+/**
  * Run one IDS rule file against one already-loaded model.
  *
  * `status` is `error` when the IDS file itself could not be read/parsed, or
@@ -141,10 +250,10 @@ export interface IdsCheckResult {
  * reporting that as `pass` would hide an empty ruleset behind a green
  * check). Otherwise `fail` iff at least one specification failed; a
  * specification whose applicability matched no entities counts as neither
- * pass nor fail (`notApplicableSpecifications`, mirrored from the IDS
- * summary) — if EVERY specification lands there (nothing was definitively
- * satisfied OR violated), the check reports `error` rather than a `pass`
- * that would rest on zero actual evidence.
+ * pass nor fail (`notApplicableSpecifications`) — if EVERY specification
+ * lands there (nothing was definitively satisfied OR violated), the check
+ * reports `error` rather than a `pass` that would rest on zero actual
+ * evidence.
  */
 export async function runIdsCheck(modelPath: string, store: IfcDataStore, idsPath: string): Promise<IdsCheckResult> {
   const base = { type: 'ids' as const, model: modelPath, source: idsPath };
@@ -165,29 +274,19 @@ export async function runIdsCheck(modelPath: string, store: IfcDataStore, idsPat
   }
 
   const accessor = createDataAccessor(store);
-  let report: {
-    summary: {
-      totalSpecifications: number;
-      passedSpecifications: number;
-      failedSpecifications: number;
-      notApplicableSpecifications: number;
-      totalEntities: number;
-      passedEntities: number;
-      failedEntities: number;
-    };
-  };
+  let report: IdsValidateReport;
   try {
     report = (await ids.validate(idsDoc, {
       accessor,
       modelInfo: { schemaVersion: store.schemaVersion },
       locale: 'en',
-      includePassingEntities: false,
-    })) as typeof report;
+      includePassingEntities: true,
+    })) as IdsValidateReport;
   } catch (err) {
     return { ...base, status: 'error', error: `validation failed: ${(err as Error).message}` };
   }
 
-  const s = report.summary;
+  const s = summarizeIdsReport(report);
   if (s.totalSpecifications === 0) {
     return { ...base, status: 'error', error: 'declares zero specifications', ...s };
   }

@@ -10,7 +10,7 @@
  */
 
 import { Issue, List, Compare, Layer, Clash, Check, Script, Schedule, Coloring } from '@/icons';
-import { Box as ZoneBox } from 'lucide-react';
+import { Box as ZoneBox, FileWarning } from 'lucide-react';
 import { useViewerStore } from '@/store';
 import { useWorkspacePanelControls } from '../../toolbar/useWorkspacePanelControls';
 import {
@@ -90,6 +90,14 @@ export function AnalyzeTab() {
           tooltip="Location zones (sections / takt areas)"
           active={activeWorkspacePanels.has('zones')}
           onClick={() => useViewerStore.getState().toggleWorkspacePanel('zones')}
+        />
+        {/* Per-model load report (#3927): actionable geometry warnings. */}
+        <RibbonLargeButton
+          icon={FileWarning}
+          label="Load Report"
+          tooltip="Per-model load report and geometry warnings"
+          active={activeWorkspacePanels.has('loadReport')}
+          onClick={() => useViewerStore.getState().toggleWorkspacePanel('loadReport')}
         />
       </RibbonGroup>
 

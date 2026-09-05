@@ -463,7 +463,7 @@ export interface CameraCallbacks {
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { CoordinateInfo, EntityWorldAabb, GeometryResult, MeshData } from '@ifc-lite/geometry';
-
+import type { ModelLoadReportFields } from '../lib/loadReport'; // #3927 load report
 /**
  * Compound identifier for entities across multiple models.
  *
@@ -554,7 +554,7 @@ export interface PreAlignmentSnapshot {
   instancedGeometryAabbs: Map<number, EntityWorldAabb> | undefined;
 }
 
-export interface FederatedModel {
+export interface FederatedModel extends ModelLoadReportFields {
   /** Unique identifier (UUID generated on load) */
   id: string;
   /** Display name (filename by default, user can rename) */

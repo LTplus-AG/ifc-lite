@@ -42,6 +42,7 @@ import {
   FileCode2,
   MessageSquare,
   ClipboardCheck,
+  FileWarning,
   FileSpreadsheet,
   Palette,
   Puzzle,
@@ -220,7 +221,7 @@ function recordUsage(id: string) {
  *  owns the single-tenant + re-dock + detach semantics; a second activation closes
  *  the panel back to the Information fallback. Closing any active analysis extension
  *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones' | 'loadReport') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
@@ -287,6 +288,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => {
           window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
         } },
+      // #3930 portable federation setup — handlers live in `FederationSetupControls` (mounted from `useFileCommands`, ShareDialog's pattern).
+      { id: 'file:save-federation-setup', label: 'Save Federation Setup', keywords: 'federation setup save export portable models order alignment anchor', category: 'File', icon: Save, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); } },
+      { id: 'file:open-federation-setup', label: 'Open Federation Setup', keywords: 'federation setup restore reopen import portable models order alignment anchor', category: 'File', icon: FolderOpen, immediate: true, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-federation-setup')); } },
     );
     for (const rf of recentFiles) {
       const fileName = rf.name;
@@ -473,6 +477,8 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('sources'); } },
       { id: 'panel:zones', label: 'Location Zones', keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
         action: () => { activateRightPanel('zones'); } },
+      { id: 'panel:loadReport', label: 'Load Report', keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
+        action: () => { activateRightPanel('loadReport'); } },
       ...(isCollabEnabled()
         ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
             action: () => { activateRightPanel('collab'); } }]

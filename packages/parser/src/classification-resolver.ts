@@ -59,7 +59,28 @@ export function extractClassificationsOnDemand(
     }
 
     if (!classRefIds || classRefIds.length === 0) return [];
-    if (!store.source?.length) return [];
+    if (!store.source?.length) {
+        // Server-parsed store: no source bytes to decode the classification
+        // reference's own attributes. The relationship graph above already
+        // proved this entity (or its type) carries a classification
+        // association; if the server also forwarded the resolved attributes
+        // (issue #3955), return those instead of silently reporting "no
+        // classification" for an entity that IS classified. Roll up the
+        // entity's own row plus its type's (mirroring the classRefIds
+        // roll-up above) so a type-level classification is not dropped.
+        if (store.resolvedClassifications) {
+            const resolved: ClassificationInfo[] = [...(store.resolvedClassifications.get(entityId) || [])];
+            if (store.relationships) {
+                const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
+                for (const typeId of typeIds) {
+                    const typeResolved = store.resolvedClassifications.get(typeId);
+                    if (typeResolved) resolved.push(...typeResolved);
+                }
+            }
+            if (resolved.length > 0) return resolved;
+        }
+        return [];
+    }
 
     const extractor = new EntityExtractor(store.source);
     const results: ClassificationInfo[] = [];

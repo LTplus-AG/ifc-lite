@@ -7,6 +7,9 @@ import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { IfcTypeEnum, QuantityType, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { EntityQuery } from '@ifc-lite/query';
+import { extractClassificationsOnDemand } from '@ifc-lite/parser';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
+import { checkClassificationFacet } from '@ifc-lite/ids';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
 const parseResult: ServerParseResult = {
@@ -455,5 +458,133 @@ describe('convertServerDataModel', () => {
     );
 
     assert.equal(findByPropertyCalls, 0, 'server store must not take the columnar table path');
+  });
+});
+
+describe('convertServerDataModel classification wiring (#3955)', () => {
+  /**
+   * Build a realistic server DataModel: a wall (4) associated to an
+   * IfcClassificationReference (100) which the server has already resolved
+   * (system/identification/name walked server-side, per
+   * apps/server/src/services/data_model/classifications.rs), a second wall
+   * (5) with NO classification at all (control), plus the general
+   * IFCRELASSOCIATESCLASSIFICATION relationship edge the server always emits
+   * regardless of the dedicated `classifications` field.
+   */
+  function buildClassifiedDataModel(includeClassifications: boolean): DataModel {
+    return {
+      entities: ServerEntityIndex.fromRows([
+        { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'p', name: 'Project', has_geometry: false },
+        { entity_id: 4, type_name: 'IFCWALL', global_id: 'w-classified', name: 'Classified Wall', has_geometry: true },
+        { entity_id: 5, type_name: 'IFCWALL', global_id: 'w-plain', name: 'Plain Wall', has_geometry: true },
+        { entity_id: 100, type_name: 'IFCCLASSIFICATIONREFERENCE', global_id: '', name: 'EF_25_10', has_geometry: false },
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map(),
+      relationships: [
+        // The server emits this edge unconditionally (relationships.rs), so
+        // the relationship graph proves entity 4 is classified independent
+        // of whether `classifications` below is populated.
+        { rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 100, related_id: 4 },
+      ],
+      classifications: includeClassifications
+        ? [
+            {
+              element_id: 4,
+              system_name: 'Uniclass 2015',
+              identification: 'EF_25_10',
+              name: 'Walls',
+              location: undefined,
+            },
+          ]
+        : [],
+      materials: [],
+      documents: [],
+      spatialHierarchy: {
+        nodes: [
+          { entity_id: 1, parent_id: 0, level: 0, path: 'Project', type_name: 'IFCPROJECT', name: 'Project', children_ids: [], element_ids: [4, 5] },
+        ],
+        project_id: 1,
+        element_to_storey: new Map(),
+        element_to_building: new Map(),
+        element_to_site: new Map(),
+        element_to_space: new Map(),
+      },
+    };
+  }
+
+  const systemFacet = {
+    type: 'classification' as const,
+    system: { type: 'simpleValue' as const, value: 'Uniclass 2015' },
+  };
+
+  it('resolves a system-constrained classification facet from DataModel.classifications on a server-parsed store', () => {
+    const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
+
+    // extractClassificationsOnDemand — the parser primitive the IDS bridge
+    // and the properties panel both call — now returns the server-resolved
+    // attributes instead of [] (no source bytes to decode from directly).
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info.length, 1);
+    assert.equal(info[0].system, 'Uniclass 2015');
+    assert.equal(info[0].identification, 'EF_25_10');
+
+    // End-to-end through the real IDS bridge + facet checker (not a
+    // hand-built accessor): a system-constrained facet now PASSES instead of
+    // reporting the entity as unclassified.
+    const accessor = createDataAccessor(store);
+    const result = checkClassificationFacet(systemFacet, 4, accessor);
+    assert.equal(result.passed, true);
+  });
+
+  it('control: a genuinely unclassified entity still reports CLASSIFICATION_MISSING, distinguishably', () => {
+    const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
+    const accessor = createDataAccessor(store);
+
+    const result = checkClassificationFacet(systemFacet, 5, accessor);
+    assert.equal(result.passed, false);
+    assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
+  });
+
+  it('mutation: dropping DataModel.classifications from the payload reverts to CLASSIFICATION_MISSING, never a false pass', () => {
+    // The relationship graph edge (IFCRELASSOCIATESCLASSIFICATION) is still
+    // present — the graph proves entity 4 IS classified — but the resolved
+    // attribute payload is empty, as it would be from an older server/cache
+    // that predates the `classifications` field. This must not silently
+    // manufacture a passing result for data that never arrived.
+    const store = convertServerDataModel(buildClassifiedDataModel(false), parseResult, { size: 1 }, []);
+
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.deepEqual(info, []);
+
+    const accessor = createDataAccessor(store);
+    const result = checkClassificationFacet(systemFacet, 4, accessor);
+    assert.equal(result.passed, false);
+    assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
+  });
+
+  it('mutation: an attribute the server never sent (location) stays undefined, never fabricated', () => {
+    const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info[0].location, undefined);
+  });
+
+  it('mutation: a graph/payload disagreement (id present in payload for an entity the graph does not link) never surfaces as a false positive for the unlinked entity', () => {
+    // entity 5 has no IFCRELASSOCIATESCLASSIFICATION edge at all, so
+    // classRefIds is empty for it regardless of what `classifications`
+    // carries — resolvedClassifications must never be consulted independent
+    // of relationship-graph presence.
+    const dataModel = buildClassifiedDataModel(true);
+    // Inject a payload row for entity 5 the graph does NOT corroborate.
+    dataModel.classifications.push({ element_id: 5, system_name: 'Uniclass 2015', identification: 'EF_25_10', name: 'Walls' });
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+
+    const info = extractClassificationsOnDemand(store, 5);
+    assert.deepEqual(info, []);
+
+    const accessor = createDataAccessor(store);
+    const result = checkClassificationFacet(systemFacet, 5, accessor);
+    assert.equal(result.passed, false);
+    assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
   });
 });

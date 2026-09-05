@@ -13,10 +13,7 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
-import {
-  REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
-  EMPTY_SOURCE_BYTES,
-} from '@ifc-lite/parser';
+import { REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP, EMPTY_SOURCE_BYTES, type ClassificationInfo } from '@ifc-lite/parser';
 import {
   comparePropertyValues,
   findStoreyByElevation,
@@ -261,7 +258,6 @@ function buildSpatialHierarchy(
   };
 }
 
-
 // ============================================================================
 // Relationship Graph Building
 // ============================================================================
@@ -392,6 +388,9 @@ export function convertServerDataModel(
 ): IfcDataStore {
   const strings = new StringTable();
 
+  // Regroup server-resolved classifications by element_id (#3955).
+  const resolvedClassifications = new Map<number, ClassificationInfo[]>();
+  for (const c of dataModel.classifications ?? []) resolvedClassifications.set(c.element_id, [...(resolvedClassifications.get(c.element_id) ?? []), { system: c.system_name, identification: c.identification, name: c.name, location: c.location }]);
   // Build relationships first (needed for property/quantity mappings)
   const { relationships, entityToPsets, entityToQsets } = buildRelationships(dataModel);
 
@@ -617,6 +616,7 @@ export function convertServerDataModel(
     properties,
     quantities,
     relationships,
+    resolvedClassifications,
     spatialHierarchy,
     spatialIndex,
     // IfcStoreBase accessors: server-parsed models carry pre-built property/

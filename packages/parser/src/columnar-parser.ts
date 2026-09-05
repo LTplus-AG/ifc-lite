@@ -99,6 +99,7 @@ export interface IfcDataStore extends IfcStoreBase {
      * Built from IfcRelAssociatesClassification relationships during parsing.
      */
     onDemandClassificationMap?: Map<number, number[]>;
+    /** Pre-resolved classification attrs, server-parsed path only — #3955. */ resolvedClassifications?: Map<number, import('./classification-resolver.js').ClassificationInfo[]>;
 
     /**
      * On-demand material lookup: entityId -> associated material definition expressIds.

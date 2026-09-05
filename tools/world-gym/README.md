@@ -1,6 +1,6 @@
 # World Gym - procedural building generator + deterministic labeler + benchmark
 
-M2 (docs/vision/moonshots-execution-plan.md): a procedural generator +
+M2 (tools/world-gym/benchmark/BENCHMARK.md): a procedural generator +
 deterministic labeling pipeline over `packages/create`, now at the M2
 midterm bar - **100k generated models, 100% labeled, mixed positive and
 negative label classes, labels spot-validated against the IfcOpenShell
@@ -431,8 +431,7 @@ caught the duplicated IfcProject silently doubling as an unplanned GUID dup
   adversary regenerates the served bytes rather than requesting them. The
   trusted channel v1.1 declares is a per-split secret salt mixed into every
   RNG stream, delivered by a hosted scorer. **v1.2 implements the salt and
-  measures it** (`lib/salt.mjs`, `benchmark/splits.mjs#saltForSplit`,
-  evidence in `scripts/moonshot/b43-benchmark-salt/`): against a salted
+  measures it** (`lib/salt.mjs`, `benchmark/splits.mjs#saltForSplit`): against a salted
   reporting split the same attack collapses from 1.000 to the level of a
   submission that knows nothing about the split, while an honest baseline
   reading the served bytes is unaffected. **The delivery half is still

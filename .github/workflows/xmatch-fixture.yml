@@ -40,7 +40,7 @@
 # COST. Deliberately cheap and non-blocking; it MUST NOT become a required
 # check:
 #   - weekly `schedule` + on-demand `workflow_dispatch`, the same profile as
-#     determinism.yml / wide-arithmetic.yml / moonshot.yml;
+#     determinism.yml / wide-arithmetic.yml;
 #   - `push`/`pull_request` ONLY on the paths that can invalidate the result:
 #     the diff engine, the geometry kernel and the wasm bundle it is measured
 #     through, the CLI adapter that builds the fingerprints, and the harness

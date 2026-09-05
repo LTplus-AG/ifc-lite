@@ -377,7 +377,7 @@ function resolveRef(dir, token) {
  * one-line historical note in any already-wired script would otherwise confer
  * reach on a gate nothing runs, which is the exact absence this file exists to
  * find. `check-test-wiring.mjs`'s own header names
- * `scripts/moonshot/diff-spike/verify-common.mjs` that way.
+ * `scripts/lib/server-bin-tag-read.mjs` that way.
  *
  * Strings are tracked so a `'https://…'` is not mistaken for a comment. Regex
  * literals are not, which can only DROP a reference (a red), never invent one.
@@ -469,8 +469,8 @@ function directlyWired(rel, { workflows, pkgScripts, reachedNames, tasks, worksp
  * (`check-changesets.mjs` <- `lint` <- the Lint job), one layer down, and the
  * recursive scan makes it necessary rather than optional: below the top level,
  * `check-`/`verify-` names belong to library modules and worker entrypoints at
- * least as often as to gates. `scripts/moonshot/diff-spike/verify-common.mjs`
- * is a module the workflow-wired `verify-trajectory.mjs` imports, and demanding
+ * least as often as to gates. `scripts/lib/server-bin-tag-read.mjs`
+ * is a module the workflow-wired release gate imports, and demanding
  * a workflow step of it would be a false positive, not a finding. A file a
  * running gate imports does run.
  *

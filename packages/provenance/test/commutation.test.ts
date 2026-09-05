@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * commutation.ts (Bet B2.1): certificate creation for genuinely-independent
+ * commutation.ts (merge-soundness validation): certificate creation for genuinely-independent
  * op sets, the typed conflict refusal, and a verifier that trusts nothing --
  * tampered commitments, mismatched op sets, and conflicting inputs must all
  * fail verification.

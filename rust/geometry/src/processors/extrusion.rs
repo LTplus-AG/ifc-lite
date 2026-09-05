@@ -17,7 +17,7 @@ use crate::router::GeometryProcessor;
 use crate::scalar::{magnitude_squared3, GeomScalar};
 
 /// Local (pre-`Position`) transform an `IfcExtrudedAreaSolid` needs for its
-/// `ExtrudedDirection`, generic over the scalar (B4.4).
+/// `ExtrudedDirection`, generic over the scalar.
 ///
 /// `direction` is the raw (unnormalised) ratio triple; callers reject the
 /// zero-length case before calling.

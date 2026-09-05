@@ -4,7 +4,7 @@
 
 /**
  * `@ifc-lite/provenance` — prototype certificate library for node-hash-v0
- * (docs/vision/spec/node-hash-v0.md, M1 "Proof-carrying buildings").
+ * (packages/provenance/SPEC.md, M1 "Proof-carrying buildings").
  *
  * Pure and store-agnostic, like `@ifc-lite/diff`: this package never touches
  * a parser, WASM, or a renderer. Callers supply node payloads (extracted

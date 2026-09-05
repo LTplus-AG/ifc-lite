@@ -122,43 +122,74 @@ function noMatchRuleIdSet(result: ClashResult): Set<string> {
   return ids;
 }
 
+/** Per rule id, the durable keys the CURRENT run's rule matched on each side,
+ *  kept SEPARATE (never unioned) — see `elementsReexamined`, which is the
+ *  reason this exists in this shape. `sideB === null` marks a self-clash rule
+ *  (no `b` selector/`membersB`): there is only one group, and `a` and `b` on
+ *  a `Clash` from that rule are two members of that SAME group, not two
+ *  distinct roles. */
+interface RuleKeys {
+  sideA: Set<string>;
+  sideB: Set<string> | null;
+}
+
 /**
- * Per rule id, the set of durable keys the CURRENT run's rule actually
- * matched on either side (`matchedKeysA` ∪ `matchedKeysB`) — element-level
- * membership, not a count. A rule id is deliberately absent from the returned
- * map (rather than mapped to an empty set) whenever it cannot be verified:
- * the rule didn't run this time (dropped from `ruleCoverage` entirely), or the
- * coverage entry predates key-tracking (`matchedKeysA` undefined — an older
- * result or a hand-built fixture). Callers must read "absent" as "unknown",
- * never as "matched nothing" — see `elementsReexamined`.
+ * Per rule id, the sets of durable keys the CURRENT run's rule actually
+ * matched, one set per side — element-level membership, not a count. A rule
+ * id is deliberately absent from the returned map (rather than mapped to an
+ * empty set) whenever it cannot be verified: the rule didn't run this time
+ * (dropped from `ruleCoverage` entirely), or the coverage entry predates
+ * key-tracking (`matchedKeysA` undefined — an older result or a hand-built
+ * fixture). Callers must read "absent" as "unknown", never as "matched
+ * nothing" — see `elementsReexamined`.
  */
-function ruleMatchedKeys(result: ClashResult): Map<string, Set<string>> {
-  const map = new Map<string, Set<string>>();
+function ruleMatchedKeys(result: ClashResult): Map<string, RuleKeys> {
+  const map = new Map<string, RuleKeys>();
   for (const coverage of result.ruleCoverage ?? []) {
     if (coverage.matchedKeysA === undefined) continue; // untracked: leave unmapped, not empty
-    const keys = new Set(coverage.matchedKeysA);
-    for (const key of coverage.matchedKeysB ?? []) keys.add(key);
-    map.set(coverage.rule, keys);
+    const sideA = new Set(coverage.matchedKeysA);
+    const sideB = coverage.matchedKeysB === null ? null : new Set(coverage.matchedKeysB);
+    map.set(coverage.rule, { sideA, sideB });
   }
   return map;
 }
 
 /**
- * Whether BOTH of a clash's elements are confirmed, by durable key, to still
- * be matched by this SAME rule in the current run. False whenever that cannot
- * be confirmed — the rule didn't run, its coverage isn't key-tracked, or
- * either element's key is simply absent from what the rule matched this time
- * (a narrowed selector/filter that dropped just this element, or the key
- * itself vanished between exports, e.g. a re-minted GlobalId — #3928's own
- * admitted gap). This subsumes the coarser "rule skipped" / "rule matched
- * nothing" conditions: either one leaves the rule out of (or matching nothing
- * into) `ruleMatchedKeys`'s per-rule set, so no clash from that rule can ever
- * pass this check.
+ * Whether a clash's two elements are confirmed, by durable key, to still be
+ * matched by this SAME rule in the current run, in the roles the ORCHESTRATOR
+ * (`engine-ts/orchestrator.ts`) actually assigns them.
+ *
+ * Role-qualified, not order-independent, for a two-sided rule: `groupA`/
+ * `groupB` there are resolved once from `rule.a`/`membersA` and `rule.b`/
+ * `membersB`, and the broad phase only ever pairs `groupA[i] x groupB[j]` — a
+ * `NarrowRecord`'s `a` is always a global index drawn from `groupA`, `b`
+ * always from `groupB` (`broad.ts`). So `clash.a` is always "the element that
+ * matched side A" and `clash.b` always "the element that matched side B" for
+ * that rule, even when the two member sets overlap (the same physical element
+ * can appear as `a` in one clash instance and `b` in another, but never both
+ * within ONE clash record). Requiring the opposite assignment to also count
+ * would let a wall that moved from role A to role B alone — with its actual
+ * former partner never re-paired against it — read as "still matched",
+ * exactly the false `resolved` this module exists to prevent (the
+ * `matchedKeysA`/`matchedKeysB` union this replaces made precisely that
+ * mistake).
+ *
+ * `clashReviewKey` (review.ts) is order-independent, but that is a statement
+ * about MATCHING two `Clash` records across runs as "the same real-world
+ * clash" (so a and b can be seen in either order there without losing the
+ * pairing) — it says nothing about whether a role SWAP within one clash
+ * instance is safe to treat as "re-examined". It is not, here: the roles are
+ * fixed by the rule's own selector/membership resolution, not interchangeable.
+ *
+ * For a self-clash rule (`sideB === null`, no `b` side at all: `a` and `b` on
+ * such a clash are just two members of the one group, symmetric by
+ * construction), both elements are checked against the single set.
  */
-function elementsReexamined(clash: Clash, matchedKeys: Map<string, Set<string>>): boolean {
+function elementsReexamined(clash: Clash, matchedKeys: Map<string, RuleKeys>): boolean {
   const keys = matchedKeys.get(clash.rule);
   if (!keys) return false;
-  return keys.has(clash.a.key) && keys.has(clash.b.key);
+  if (keys.sideB === null) return keys.sideA.has(clash.a.key) && keys.sideA.has(clash.b.key);
+  return keys.sideA.has(clash.a.key) && keys.sideB.has(clash.b.key);
 }
 
 /** How many distinct model ids share each display name — a plain `Set` of

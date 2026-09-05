@@ -315,6 +315,84 @@ describe('compareClashRevisions — per-element granularity (#3947)', () => {
   });
 });
 
+describe('compareClashRevisions — role-qualified matching (#3947 follow-up)', () => {
+  it('1d: an element dropped from role A but still present in role B must not credit a cross-role match as resolved', async () => {
+    // wall sits in BOTH membersA and membersB; duct-1 is A-only, duct-2 is
+    // B-only. The kernel finds wall(A) x duct-2(B).
+    const wall = element('wall-1', 'IfcWall', 'm');
+    const duct1 = element('duct-1', 'IfcDuct', 'm');
+    const duct2 = element('duct-2', 'IfcDuct', 'm');
+    const elements = [wall, duct1, duct2];
+    const ruleWithMembers = (aRefs: number[], bRefs: number[]): ClashRule => ({
+      id: 'arch-mep-members',
+      name: 'Arch/MEP (membership)',
+      a: '', // ignored: membersA replaces the selector entirely (members.ts)
+      mode: 'hard',
+      membersA: aRefs.map((ref) => clashMemberKey('m', ref)),
+      membersB: bRefs.map((ref) => clashMemberKey('m', ref)),
+    });
+
+    const previous = await runClash(
+      elements,
+      [ruleWithMembers([wall.ref, duct1.ref], [wall.ref, duct2.ref])],
+      {},
+      new FixedKernel([record(0, 2)]), // wall (A) x duct-2 (B)
+    );
+    expect(previous.ruleCoverage?.[0]).toMatchObject({
+      matchedKeysA: ['duct-1', 'wall-1'],
+      matchedKeysB: ['duct-2', 'wall-1'],
+    });
+
+    // Next run: the coordinator edits membersA to drop wall entirely, but
+    // membersB is untouched — wall is now B-only, duct-2 is still B-only.
+    // Under real A×B pairing, they are never tested against each other again.
+    const next = await runClash(
+      elements,
+      [ruleWithMembers([duct1.ref], [wall.ref, duct2.ref])],
+      {},
+      new FixedKernel([]),
+    );
+    expect(next.ruleCoverage?.[0]).toMatchObject({
+      matchedKeysA: ['duct-1'],
+      matchedKeysB: ['duct-2', 'wall-1'],
+    });
+
+    const cmp = compareClashRevisions(
+      side(previous, { m: 'building.ifc' }),
+      side(next, { m: 'building.ifc' }),
+    );
+
+    expect(cmp.resolved).toHaveLength(0);
+    expect(cmp.unretested).toHaveLength(1);
+  });
+
+  it('1e: a self-clash rule (no B side) treats both elements symmetrically within the single matched set', async () => {
+    const wall1 = element('wall-1', 'IfcWall', 'm');
+    const wall2 = element('wall-2', 'IfcWall', 'm');
+    const elements = [wall1, wall2];
+    const selfClashRule: ClashRule = { id: 'self-wall', name: 'Wall self-clash', a: 'IfcWall', mode: 'hard' };
+
+    const previous = await runClash(elements, [selfClashRule], {}, new FixedKernel([record(0, 1)]));
+    expect(previous.ruleCoverage?.[0]).toMatchObject({
+      matchedKeysA: ['wall-1', 'wall-2'],
+      matchedKeysB: null,
+    });
+
+    // Both elements are still matched by the same (single) group next run —
+    // a genuinely resolved self-clash must still read as resolved regardless
+    // of which element the kernel happened to label `a` vs `b`.
+    const next = await runClash(elements, [selfClashRule], {}, new FixedKernel([]));
+
+    const cmp = compareClashRevisions(
+      side(previous, { m: 'building.ifc' }),
+      side(next, { m: 'building.ifc' }),
+    );
+
+    expect(cmp.resolved).toHaveLength(1);
+    expect(cmp.unretested).toHaveLength(0);
+  });
+});
+
 describe('compareClashRevisions — controls', () => {
   it('a run compared to itself: everything persists, nothing new or resolved', async () => {
     const elements = [

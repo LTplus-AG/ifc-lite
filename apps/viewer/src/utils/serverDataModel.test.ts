@@ -587,4 +587,81 @@ describe('convertServerDataModel classification wiring (#3955)', () => {
     assert.equal(result.passed, false);
     assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
   });
+
+  it('aggregates multiple classifications on a single element, preserving all in payload order (#3959)', () => {
+    // An element carrying multiple classifications (e.g., Uniclass and an
+    // in-house system) is realistic. The resolvedClassifications aggregation
+    // loop must exercise the `existing.push(info)` branch when an element
+    // has two or more rows in DataModel.classifications. This pins that the
+    // loop does not lose, merge, deduplicate, or reorder classifications.
+    const dataModel: DataModel = {
+      entities: ServerEntityIndex.fromRows([
+        { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'p', name: 'Project', has_geometry: false },
+        { entity_id: 4, type_name: 'IFCWALL', global_id: 'w-multi', name: 'Multi-classified Wall', has_geometry: true },
+        { entity_id: 100, type_name: 'IFCCLASSIFICATIONREFERENCE', global_id: '', name: 'EF_25_10', has_geometry: false },
+        { entity_id: 101, type_name: 'IFCCLASSIFICATIONREFERENCE', global_id: '', name: 'IN-HOUSE-A1', has_geometry: false },
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map(),
+      relationships: [
+        // Two IFCRELASSOCIATESCLASSIFICATION edges for element 4, one per system.
+        { rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 100, related_id: 4 },
+        { rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 101, related_id: 4 },
+      ],
+      classifications: [
+        // First classification (Uniclass): must survive.
+        {
+          element_id: 4,
+          system_name: 'Uniclass 2015',
+          identification: 'EF_25_10',
+          name: 'Walls',
+          location: undefined,
+        },
+        // Second classification (in-house system): must also survive and NOT
+        // overwrite or merge with the first. The loop's existing.push(info)
+        // branch must be exercised.
+        {
+          element_id: 4,
+          system_name: 'In-House System',
+          identification: 'A1',
+          name: 'Structural Element',
+          location: 'Level 1',
+        },
+      ],
+      materials: [],
+      documents: [],
+      spatialHierarchy: {
+        nodes: [
+          { entity_id: 1, parent_id: 0, level: 0, path: 'Project', type_name: 'IFCPROJECT', name: 'Project', children_ids: [], element_ids: [4] },
+        ],
+        project_id: 1,
+        element_to_storey: new Map(),
+        element_to_building: new Map(),
+        element_to_site: new Map(),
+        element_to_space: new Map(),
+      },
+    };
+
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+
+    // Both classifications must survive, in payload order.
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info.length, 2, 'element 4 must have exactly 2 classifications, not 1 or 0');
+
+    // First classification (Uniclass): assert on actual values, not just count.
+    // A count-only check would pass even if both entries were the same object.
+    assert.equal(info[0].system, 'Uniclass 2015', 'first classification system must be preserved');
+    assert.equal(info[0].identification, 'EF_25_10', 'first classification identification must be preserved');
+    assert.equal(info[0].name, 'Walls', 'first classification name must be preserved');
+    assert.equal(info[0].location, undefined, 'first classification location must be undefined');
+
+    // Second classification (In-House System): distinct fields intact.
+    assert.equal(info[1].system, 'In-House System', 'second classification system must be preserved');
+    assert.equal(info[1].identification, 'A1', 'second classification identification must be preserved');
+    assert.equal(info[1].name, 'Structural Element', 'second classification name must be preserved');
+    assert.equal(info[1].location, 'Level 1', 'second classification location must be preserved');
+
+    // Verify they are not deduplicated or merged: the objects must be distinct.
+    assert.notEqual(info[0], info[1], 'classifications must be separate objects, not merged');
+  });
 });

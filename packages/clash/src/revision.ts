@@ -31,6 +31,22 @@
  * a clash EXISTS in `next`, which the geometry backs directly; `resolved`
  * asserts an ABSENCE, which a run can manufacture for reasons that have
  * nothing to do with the model getting better.
+ *
+ * The condition-level checks above reason at RULE/MODEL granularity, but
+ * clash identity is per-ELEMENT. A rule can keep matching non-zero elements
+ * on both sides while silently dropping the ONE element a specific baseline
+ * clash depended on (a narrowed selector, or a re-scoped `membersA`/`membersB`
+ * filter) — invisible to a count-only coverage check. And a durable key can
+ * vanish entirely between exports (a re-minted GlobalId) — `compareClashRuns`
+ * correctly can't match old to new, so it reports a `resolved` half and an
+ * `added` half for what is really one still-live clash. Both cases are the
+ * SAME question in disguise: "was this clash's specific element actually
+ * re-examined in `next`, under this same rule?" — so `elementsReexamined`
+ * below answers that directly from `ruleCoverage[].matchedKeysA/B` (the
+ * durable keys the current run's rule actually matched), rather than from the
+ * coarser rule/model conditions. A rule with no tracked keys (an older result,
+ * or a hand-built fixture) cannot be verified and is treated as unsafe — the
+ * fail-safe direction this whole module exists to take.
  */
 
 import { ruleHadNoMatch } from './analysis.js';
@@ -107,6 +123,56 @@ function noMatchRuleIdSet(result: ClashResult): Set<string> {
 }
 
 /**
+ * Per rule id, the set of durable keys the CURRENT run's rule actually
+ * matched on either side (`matchedKeysA` ∪ `matchedKeysB`) — element-level
+ * membership, not a count. A rule id is deliberately absent from the returned
+ * map (rather than mapped to an empty set) whenever it cannot be verified:
+ * the rule didn't run this time (dropped from `ruleCoverage` entirely), or the
+ * coverage entry predates key-tracking (`matchedKeysA` undefined — an older
+ * result or a hand-built fixture). Callers must read "absent" as "unknown",
+ * never as "matched nothing" — see `elementsReexamined`.
+ */
+function ruleMatchedKeys(result: ClashResult): Map<string, Set<string>> {
+  const map = new Map<string, Set<string>>();
+  for (const coverage of result.ruleCoverage ?? []) {
+    if (coverage.matchedKeysA === undefined) continue; // untracked: leave unmapped, not empty
+    const keys = new Set(coverage.matchedKeysA);
+    for (const key of coverage.matchedKeysB ?? []) keys.add(key);
+    map.set(coverage.rule, keys);
+  }
+  return map;
+}
+
+/**
+ * Whether BOTH of a clash's elements are confirmed, by durable key, to still
+ * be matched by this SAME rule in the current run. False whenever that cannot
+ * be confirmed — the rule didn't run, its coverage isn't key-tracked, or
+ * either element's key is simply absent from what the rule matched this time
+ * (a narrowed selector/filter that dropped just this element, or the key
+ * itself vanished between exports, e.g. a re-minted GlobalId — #3928's own
+ * admitted gap). This subsumes the coarser "rule skipped" / "rule matched
+ * nothing" conditions: either one leaves the rule out of (or matching nothing
+ * into) `ruleMatchedKeys`'s per-rule set, so no clash from that rule can ever
+ * pass this check.
+ */
+function elementsReexamined(clash: Clash, matchedKeys: Map<string, Set<string>>): boolean {
+  const keys = matchedKeys.get(clash.rule);
+  if (!keys) return false;
+  return keys.has(clash.a.key) && keys.has(clash.b.key);
+}
+
+/** How many distinct model ids share each display name — a plain `Set` of
+ *  names cannot tell "this name still has a model" from "this name has a
+ *  DIFFERENT model than before", which is exactly what two same-named models
+ *  (a common federation setup: several disciplines all exported as
+ *  `mep.ifc`-style filenames) needs. */
+function nameCounts(modelNames: Readonly<Record<string, string>>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const name of Object.values(modelNames)) counts.set(name, (counts.get(name) ?? 0) + 1);
+  return counts;
+}
+
+/**
  * Compare a saved baseline run to a current run, safely.
  *
  * Pure and deterministic: depends only on the two inputs. `resolved` only
@@ -124,21 +190,34 @@ export function compareClashRevisions(
   const previousRuleIds = ruleIdSet(previous.result);
   const nextRuleIds = ruleIdSet(next.result);
   const skippedRuleIds = [...previousRuleIds].filter((id) => !nextRuleIds.has(id)).sort();
-  const skipped = new Set(skippedRuleIds);
 
   const noMatch = noMatchRuleIdSet(next.result);
+  const matchedKeys = ruleMatchedKeys(next.result);
 
-  const nextNames = new Set(Object.values(next.modelNames));
-  const missingModelNames = [...new Set(Object.values(previous.modelNames))]
-    .filter((name) => !nextNames.has(name))
+  // A name's count DROPPING between runs means at least one model under it is
+  // genuinely gone, and — because two models sharing a name are otherwise
+  // indistinguishable by anything this module is given — WHICH one cannot be
+  // known. Every previous model under that name is therefore treated as lost,
+  // which over-flags the survivor(s) too (a false `unretested`, the safe
+  // direction) rather than risk crediting a genuinely-gone model's clash as
+  // `resolved` (a false confirmation, the direction this module exists to
+  // prevent). A name whose count held steady or grew is NOT flagged: every
+  // previous model under it still has as many same-named counterparts as
+  // before, which is the best this heuristic can say without a firmer signal
+  // (content or size — see #3945's federation matcher for that fuller sense
+  // of "identity", not available here from a bare id→name map).
+  const previousCounts = nameCounts(previous.modelNames);
+  const nextCounts = nameCounts(next.modelNames);
+  const missingModelNames = [...previousCounts.keys()]
+    .filter((name) => (nextCounts.get(name) ?? 0) < (previousCounts.get(name) ?? 0))
     .sort();
   const missing = new Set(missingModelNames);
 
-  /** A previous-run model id is "lost" if it maps to a name the current run
-   *  no longer has ANY model under. An id `previous.modelNames` never named is
+  /** A previous-run model id is "lost" if it maps to a name whose count
+   *  dropped in the current run. An id `previous.modelNames` never named is
    *  not lost — it just means the caller gave us nothing to say about it, and
    *  "unknown" must never manufacture a false confirmation either, so such a
-   *  clash is left in `resolved` (see the risk note below). */
+   *  clash is left to the element-level check below. */
   const modelLost = (modelId: string): boolean => {
     const name = previous.modelNames[modelId];
     return name !== undefined && missing.has(name);
@@ -147,7 +226,12 @@ export function compareClashRevisions(
   const resolved: Clash[] = [];
   const unretested: Clash[] = [];
   for (const clash of diff.resolved) {
-    const unsafe = skipped.has(clash.rule) || noMatch.has(clash.rule) || modelLost(clash.a.model) || modelLost(clash.b.model);
+    const unsafe =
+      skippedRuleIds.includes(clash.rule) ||
+      noMatch.has(clash.rule) ||
+      modelLost(clash.a.model) ||
+      modelLost(clash.b.model) ||
+      !elementsReexamined(clash, matchedKeys);
     (unsafe ? unretested : resolved).push(clash);
   }
 

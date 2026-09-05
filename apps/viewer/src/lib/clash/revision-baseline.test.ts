@@ -73,6 +73,41 @@ describe('clash revision baseline persistence (#3928)', () => {
     (g.localStorage as MemoryStorage).setItem('ifc-lite-clash-revision-baseline', '{not json');
     assert.strictEqual(loadRevisionBaseline(), null);
   });
+
+  it('a structurally-thin baseline (result missing clashes) is rejected, not accepted as valid (#3947)', () => {
+    // `body.result` here IS a plain object, so a check that only asks
+    // `typeof result === 'object'` accepts it — then `compareClashRuns`'s
+    // `for (const clash of run.clashes)` throws on `undefined`, uncaught, in
+    // the compare dialog's click handler.
+    (g.localStorage as MemoryStorage).setItem(
+      'ifc-lite-clash-revision-baseline',
+      JSON.stringify({ schemaVersion: 1, baseline: { result: {}, modelNames: {}, takenAt: 1 } }),
+    );
+    assert.strictEqual(loadRevisionBaseline(), null);
+  });
+
+  it('a baseline whose result.clashes is present but not an array is rejected', () => {
+    (g.localStorage as MemoryStorage).setItem(
+      'ifc-lite-clash-revision-baseline',
+      JSON.stringify({ schemaVersion: 1, baseline: { result: { clashes: 'nope' }, modelNames: {}, takenAt: 1 } }),
+    );
+    assert.strictEqual(loadRevisionBaseline(), null);
+  });
+
+  it('a baseline stored under an unrecognized schema version is rejected, not trusted as-is (#3947)', () => {
+    const validBody = { result: result([clash('m1')]), modelNames: { m1: 'building.ifc' }, takenAt: 1000 };
+    (g.localStorage as MemoryStorage).setItem(
+      'ifc-lite-clash-revision-baseline',
+      JSON.stringify({ schemaVersion: 999, baseline: validBody }),
+    );
+    assert.strictEqual(loadRevisionBaseline(), null);
+  });
+
+  it('a baseline with no schemaVersion at all is rejected', () => {
+    const validBody = { result: result([clash('m1')]), modelNames: { m1: 'building.ifc' }, takenAt: 1000 };
+    (g.localStorage as MemoryStorage).setItem('ifc-lite-clash-revision-baseline', JSON.stringify({ baseline: validBody }));
+    assert.strictEqual(loadRevisionBaseline(), null);
+  });
 });
 
 describe('captureModelNames (#3928)', () => {

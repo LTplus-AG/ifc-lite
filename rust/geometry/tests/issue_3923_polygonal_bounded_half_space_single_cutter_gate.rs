@@ -157,10 +157,11 @@ fn min_z(mesh: &ifc_lite_geometry::Mesh) -> f32 {
 fn ungated_single_cutter_clips_the_open_host() {
     let mesh = process_single_cutter();
     assert!(!mesh.indices.is_empty(), "expected a non-empty clipped mesh");
+    let lo = min_z(&mesh);
     let hi = max_z(&mesh);
     assert!(
-        hi <= 501.0,
-        "ungated: expected the clip to remove z > 500, got max z = {hi}"
+        lo >= -0.5 && hi <= 501.0,
+        "ungated: expected the clip to remove z > 500, got z in [{lo}, {hi}]"
     );
 }
 
@@ -177,12 +178,13 @@ fn ungated_single_cutter_clips_the_open_host() {
 fn topology_gate_rejection_falls_through_to_half_space_fallback() {
     let mesh = process_single_cutter();
     assert!(!mesh.indices.is_empty(), "expected a non-empty fallback-clipped mesh");
+    let lo = min_z(&mesh);
     let hi = max_z(&mesh);
     assert!(
-        hi <= 501.0,
+        lo >= -0.5 && hi <= 501.0,
         "a gate rejection must fall through to clip_mesh_with_half_space \
-         (real cut, max z ~500), not accept the un-cut host — got max z = {hi} \
-         (the un-cut open host's un-clipped top would read ~1000)"
+         (real cut, z in [0, ~500]), not accept the un-cut host — got z in [{lo}, {hi}] \
+         (the un-cut open host's un-clipped extent would read [0, ~1000])"
     );
 }
 

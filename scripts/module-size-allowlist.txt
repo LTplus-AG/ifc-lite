@@ -363,7 +363,7 @@
   1113 scripts/lib/pr-review-signal.mjs
    443 scripts/lib/prepass-class-boundary.mjs
    734 scripts/lib/refwalk-classify.mjs
-   518 scripts/lib/revert-oracle.mjs
+   528 scripts/lib/revert-oracle.mjs
    494 scripts/lib/rust-source-text-detect.mjs
   1165 scripts/lib/vitest-timeout-audit.mjs
    680 scripts/review/build-context-pack.mjs

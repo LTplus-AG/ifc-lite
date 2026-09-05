@@ -70,7 +70,11 @@ function checkSchema(response) {
     fail('`riskiest_change` must be an object with non-empty `path` and `quoted_line` strings.');
   }
   if (!Array.isArray(response.findings)) {
-    fail('`findings` must be an array (empty on a clean verdict, never omitted).');
+    throw new ValidateFindingsError(
+      'FINDINGS_INVALID',
+      '`findings` must be an array (empty on a clean verdict, never omitted). ' +
+        'REMEDY: retry once with an explicit empty array for a clean verdict.',
+    );
   }
   if (response.verdict === 'clean' && response.findings.length > 0) {
     throw new ValidateFindingsError(

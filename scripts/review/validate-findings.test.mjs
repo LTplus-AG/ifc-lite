@@ -356,10 +356,11 @@ test('riskiest_change is required ON A CLEAN VERDICT TOO', () => {
   assert.match(r.out, /riskiest_change/);
 });
 
-test('FAIL: `findings` of the wrong TYPE is fatal (there is nothing to iterate)', () => {
+test('#3919 FAIL: `findings` of the wrong TYPE is FINDINGS_INVALID, never defaulted', () => {
   const r = run(response({ findings: 'none' }));
   assert.equal(r.code, 1, r.out);
-  assert.match(r.out, /SCHEMA_INVALID/);
+  assert.match(r.out, /FINDINGS_INVALID/);
+  assert.ok(!existsSync(r.outPath), 'a malformed findings field must never produce a postable output');
 });
 
 test('FAIL: verdict "clean" carrying findings is VERDICT_CONTRADICTS_FINDINGS', () => {
@@ -1117,7 +1118,7 @@ test('REASONS covers EVERY raise site in this file, and names nothing that is no
   assert.deepEqual(phantom, [], 'these are in REASONS but are never raised');
 });
 
-test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE} (#3777, #3775, #3831)', () => {
+test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED, VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE, FINDINGS_INVALID} (#3777, #3775, #3831, #3919)', () => {
   // Mutation-tested shape: this must fail if the set grows to include a fourth
   // reason (e.g. a genuine VERDICT_CONTRADICTS_FINDINGS "papers over a real
   // failure with a retry"), and must fail if it shrinks. Exact-set comparison,
@@ -1143,7 +1144,7 @@ test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TR
   // anywhere turns it into a posted verdict.
   assert.deepEqual(
     [...RETRYABLE_VALIDATION_REASONS].sort(),
-    ['CLASS_PASS_INCOMPLETE', 'PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
+    ['CLASS_PASS_INCOMPLETE', 'FINDINGS_INVALID', 'PROOF_OF_WORK_FAILED', 'RESPONSE_TRUNCATED', 'VALIDATION_EMPTY'],
   );
   // Every retryable reason must be a real one -- catches a typo'd string that
   // would silently never match anything real REASONS raises.
@@ -1162,6 +1163,7 @@ test('RETRYABLE_VALIDATION_REASONS is EXACTLY {PROOF_OF_WORK_FAILED, RESPONSE_TR
   }
   assert.ok(!RETRYABLE_VALIDATION_REASONS.has('VERDICT_CONTRADICTS_FINDINGS'), 'a contradicted verdict is a real failure, never retried');
   assert.ok(!RETRYABLE_VALIDATION_REASONS.has('SCHEMA_INVALID'), 'malformed output is a prompt/harness problem, never retried');
+  assert.ok(RETRYABLE_VALIDATION_REASONS.has('FINDINGS_INVALID'), 'a missing findings array is a retryable model-output shape (#3919)');
   assert.ok(RETRYABLE_VALIDATION_REASONS.has('VALIDATION_EMPTY'), 'every finding dropped is transient and IS retried (#3775)');
 });
 

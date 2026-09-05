@@ -65,7 +65,7 @@
    531 apps/viewer/src/components/viewer/GLBExportDialog.tsx
   1424 apps/viewer/src/components/viewer/hierarchy/treeDataBuilder.ts
    435 apps/viewer/src/components/viewer/hierarchy/useHierarchyTree.ts
-  1159 apps/viewer/src/components/viewer/HierarchyPanel.tsx
+  1155 apps/viewer/src/components/viewer/HierarchyPanel.tsx
   1198 apps/viewer/src/components/viewer/IDSPanel.tsx
    569 apps/viewer/src/components/viewer/KeyboardShortcutsDialog.tsx
    534 apps/viewer/src/components/viewer/layers/LayerMergeSection.tsx
@@ -125,7 +125,7 @@
   1416 apps/viewer/src/hooks/useIDS.ts
    586 apps/viewer/src/hooks/useIfcCache.ts
    681 apps/viewer/src/hooks/useIfcFederation.ts
-  2243 apps/viewer/src/hooks/useIfcLoader.ts
+  2240 apps/viewer/src/hooks/useIfcLoader.ts
    436 apps/viewer/src/hooks/useIfcServer.ts
    488 apps/viewer/src/hooks/useKeyboardShortcuts.ts
    496 apps/viewer/src/hooks/useSymbolicAnnotations.ts
@@ -286,7 +286,7 @@
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
   1189 packages/parser/src/columnar-parser.ts
-   478 packages/parser/src/compact-entity-index.ts
+   474 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
   1004 packages/parser/src/on-demand-extractors.ts

@@ -199,7 +199,8 @@ it('prepares render metadata before publishing partial and complete stores (#398
   expect(messages).toHaveLength(2);
   for (const { payload } of messages) {
     const source = contiguousSourceBytes(new Uint8Array(sharedSource()), payload.sourceContentKey ?? undefined);
-    expect(payload.sourceContentKey).toBe(contiguousSourceBytes(new TextEncoder().encode(IFC)).contentKey);
+    // Full-fixture FNV-1a, independently calculated with Python integer arithmetic.
+    expect(payload.sourceContentKey).toBe('16b-6d79a917');
     // toTransferable does not compute a key: this proves it arrived pre-seeded.
     expect(source.toTransferable().contentKey).toBe(payload.sourceContentKey);
     const store = fromTransport(structuredClone(payload), source);

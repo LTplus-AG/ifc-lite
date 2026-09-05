@@ -30,7 +30,6 @@ import { beforeAll, afterEach, describe, expect, it } from 'vitest';
 
 import { IfcParser } from '../src/index.js';
 import { WorkerParser } from '../src/worker-parser.js';
-import { contiguousSourceBytes } from '../src/source-bytes.js';
 import { toTransport } from '../src/data-store-transport.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 
@@ -117,7 +116,7 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
     // worker posts two independent DataStoreTransports, and reusing one object
     // would be a shape the product never produces.
     const earlyPayload = toTransport(parsed).payload;
-    if (prepared) earlyPayload.sourceContentKey = contiguousSourceBytes(new Uint8Array(sab)).contentKey;
+    if (prepared) earlyPayload.sourceContentKey = 'worker-precomputed-source-key';
     worker.deliver({ id, type: 'partial-store', payload: earlyPayload });
     worker.deliver({ id, type: 'complete', payload: toTransport(parsed).payload, memory: undefined });
 
@@ -128,7 +127,7 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
 
   it('retains the worker fingerprint without hashing on first UI read (#3983)', async () => {
     const { partial, final } = await runStreamingParse(true);
-    const expected = contiguousSourceBytes(new Uint8Array(64)).contentKey;
+    const expected = 'worker-precomputed-source-key';
     expect(partial.source.toTransferable().contentKey).toBe(expected);
     expect(final.source).toBe(partial.source);
     expect(final.source.toTransferable().contentKey).toBe(expected);

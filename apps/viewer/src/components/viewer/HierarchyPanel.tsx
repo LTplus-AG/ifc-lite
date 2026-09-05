@@ -801,6 +801,7 @@ export function HierarchyPanel() {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
       ? (singleModel.loadError || 'Model details failed to load.')
+      : singleModel.loadState === 'complete' ? 'No hierarchy available for this model.'
       : 'Building the hierarchy. You can explore the geometry while model details load.';
     return (
       <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">

@@ -23,39 +23,13 @@ pub(super) fn build_spatial_hierarchy(
     let entity_map: FxHashMap<u32, &EntityMetadata> =
         entities.iter().map(|e| (e.entity_id, e)).collect();
 
-    // Separate spatial relationships from element containment
-    // IFCRELAGGREGATES: spatial parent -> spatial child (Project -> Site -> Building -> Storey)
-    // IFCRELCONTAINEDINSPATIALSTRUCTURE: spatial container -> element (Storey -> Wall, Door, etc.)
-    let mut spatial_children_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-    let mut element_containment_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
-
-    for rel in relationships {
-        let rel_type_upper = rel.rel_type.to_uppercase();
-        if rel_type_upper == "IFCRELAGGREGATES" {
-            // Spatial hierarchy: parent -> child spatial nodes
-            spatial_children_map
-                .entry(rel.relating_id)
-                .or_default()
-                .push(rel.related_id);
-        } else if rel_type_upper == "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
-            // Element containment: spatial container -> elements
-            element_containment_map
-                .entry(rel.relating_id)
-                .or_default()
-                .push(rel.related_id);
-        }
-    }
-
-    // Find project (root)
-    let project_id = entities
-        .iter()
-        .find(|e| e.type_name.to_uppercase() == "IFCPROJECT")
-        .map(|e| e.entity_id)
-        .unwrap_or(0);
-
-    // Build all spatial nodes with full information
-    let mut nodes_map: FxHashMap<u32, SpatialNode> = FxHashMap::default();
-
+    // Types treated as spatial-structure nodes, mirroring
+    // packages/data/src/spatial-types.ts's SPATIAL_STRUCTURE_TYPE_ENUMS. IFCSPATIALZONE,
+    // IFCMARINEPART and IFCFACILITYPARTCOMMON were missing here (#3965): the TS side has
+    // carried them since #1075 (IfcSpatialZone) and #3248/#3249 (the IFC4X3 pair), so an
+    // aggregated instance of any of the three already built a node via
+    // build_spatial_nodes_recursive's blind children_ids walk - only the orphan-fill loop
+    // below and the containment promotion added by #3965 depend on this list.
     let is_spatial_type = |type_name: &str| {
         matches!(
             type_name.to_uppercase().as_str(),
@@ -64,8 +38,10 @@ pub(super) fn build_spatial_hierarchy(
                 | "IFCBUILDING"
                 | "IFCBUILDINGSTOREY"
                 | "IFCSPACE"
+                | "IFCSPATIALZONE"
                 | "IFCFACILITY"
                 | "IFCFACILITYPART"
+                | "IFCFACILITYPARTCOMMON"
                 | "IFCBRIDGE"
                 | "IFCBRIDGEPART"
                 | "IFCROAD"
@@ -73,6 +49,7 @@ pub(super) fn build_spatial_hierarchy(
                 | "IFCRAILWAY"
                 | "IFCRAILWAYPART"
                 | "IFCMARINEFACILITY"
+                | "IFCMARINEPART"
         )
     };
     let is_building_like_spatial_type = |type_name: &str| {
@@ -86,6 +63,67 @@ pub(super) fn build_spatial_hierarchy(
                 | "IFCMARINEFACILITY"
         )
     };
+    // Space-like: bucket into element_to_space, mirroring
+    // packages/data/src/spatial-types.ts's isSpaceLikeSpatialType (IfcSpace and
+    // IfcSpatialZone roll their contained elements up the same way there).
+    let is_space_like_spatial_type =
+        |type_upper: &str| matches!(type_upper, "IFCSPACE" | "IFCSPATIALZONE");
+
+    // Separate spatial relationships from element containment
+    // IFCRELAGGREGATES: spatial parent -> spatial child (Project -> Site -> Building -> Storey)
+    // IFCRELCONTAINEDINSPATIALSTRUCTURE: spatial container -> elements (Storey -> Wall, Door,
+    // etc.), EXCEPT when the target is itself a spatial-structure type: an IfcSpace or
+    // IfcSpatialZone placed under its storey via containment instead of aggregation (the
+    // common Revit Family / Dynamo export pattern, #1075) is a tree NODE, not a leaf
+    // element, so it is promoted into spatial_children_map instead - mirroring
+    // packages/parser/src/spatial-hierarchy-builder.ts's addSpatialChild, which merges
+    // aggregated and contained spatial children into one deduped set (#3965).
+    let mut spatial_children_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let mut element_containment_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+
+    for rel in relationships {
+        let rel_type_upper = rel.rel_type.to_uppercase();
+        if rel_type_upper == "IFCRELAGGREGATES" {
+            // Spatial hierarchy: parent -> child spatial nodes
+            spatial_children_map
+                .entry(rel.relating_id)
+                .or_default()
+                .push(rel.related_id);
+        } else if rel_type_upper == "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
+            let target_is_spatial = entity_map
+                .get(&rel.related_id)
+                .map(|e| {
+                    let target_type_upper = e.type_name.to_uppercase();
+                    is_spatial_type(&target_type_upper) && target_type_upper != "IFCPROJECT"
+                })
+                .unwrap_or(false);
+            if target_is_spatial {
+                // Promote: a contained spatial child becomes a tree node. Dedup against
+                // an IfcRelAggregates edge to the same parent so a space that is both
+                // aggregated and contained under the same parent isn't listed twice.
+                let children = spatial_children_map.entry(rel.relating_id).or_default();
+                if !children.contains(&rel.related_id) {
+                    children.push(rel.related_id);
+                }
+            } else {
+                // Element containment: spatial container -> elements
+                element_containment_map
+                    .entry(rel.relating_id)
+                    .or_default()
+                    .push(rel.related_id);
+            }
+        }
+    }
+
+    // Find project (root)
+    let project_id = entities
+        .iter()
+        .find(|e| e.type_name.to_uppercase() == "IFCPROJECT")
+        .map(|e| e.entity_id)
+        .unwrap_or(0);
+
+    // Build all spatial nodes with full information
+    let mut nodes_map: FxHashMap<u32, SpatialNode> = FxHashMap::default();
 
     // Collect all supported spatial entity IDs, including IFC4.3 facility hierarchies.
     let spatial_entity_ids: Vec<u32> = entities
@@ -156,6 +194,21 @@ pub(super) fn build_spatial_hierarchy(
             let spatial_id = rel.relating_id;
             let element_id = rel.related_id;
 
+            // Skip a target that was promoted to a spatial-structure node above: it is
+            // not a leaf element, so it has no place in these element_to_* lookups
+            // (mirrors containedElements excluding containedSpatialChildren in
+            // packages/parser/src/spatial-hierarchy-builder.ts).
+            let target_is_spatial = entity_map
+                .get(&element_id)
+                .map(|e| {
+                    let target_type_upper = e.type_name.to_uppercase();
+                    is_spatial_type(&target_type_upper) && target_type_upper != "IFCPROJECT"
+                })
+                .unwrap_or(false);
+            if target_is_spatial {
+                continue;
+            }
+
             if let Some(spatial_node) = nodes_map.get(&spatial_id) {
                 let type_upper = spatial_node.type_name.to_uppercase();
                 if type_upper == "IFCBUILDINGSTOREY" {
@@ -164,7 +217,7 @@ pub(super) fn build_spatial_hierarchy(
                     element_to_building.push((element_id, spatial_id));
                 } else if type_upper == "IFCSITE" {
                     element_to_site.push((element_id, spatial_id));
-                } else if type_upper == "IFCSPACE" {
+                } else if is_space_like_spatial_type(&type_upper) {
                     element_to_space.push((element_id, spatial_id));
                 }
             }

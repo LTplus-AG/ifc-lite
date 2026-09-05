@@ -733,3 +733,158 @@ fn voids_and_fills_carry_the_ifcrel_express_id() {
     assert_eq!(rel_id_of("IFCRELVOIDSELEMENT"), 40);
     assert_eq!(rel_id_of("IFCRELFILLSELEMENT"), 50);
 }
+
+/// #3965: an `IfcSpace` placed under its storey via `IfcRelContainedInSpatialStructure`
+/// only (the common Revit Family / Dynamo export pattern, historically reported at
+/// #1075) must be promoted into its own `SpatialNode`, exactly like an aggregated one -
+/// not left as a flat leaf in `element_ids` with no parent link.
+const CONTAINED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_contained_not_aggregated_space_is_promoted_to_its_own_node() {
+    let dm = extract_data_model(CONTAINED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey = sh
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 3)
+        .expect("storey node");
+    assert_eq!(
+        storey.children_ids,
+        vec![5],
+        "the contained space must be linked as the storey's child, not dropped"
+    );
+
+    let space = sh
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 5)
+        .expect("the contained IfcSpace must have its own SpatialNode");
+    assert_eq!(space.parent_id, 3, "space's parent must be the storey that contains it");
+    assert_eq!(space.type_name.to_uppercase(), "IFCSPACE");
+    assert_eq!(space.level, storey.level + 1);
+
+    // Reachable-from-project walk (what the client's buildSpatialNodeTree/hierarchy
+    // panel actually does) must find the space, not just nodes_map containing it.
+    let mut reachable = std::collections::HashSet::new();
+    let mut stack = vec![sh.project_id];
+    while let Some(id) = stack.pop() {
+        if !reachable.insert(id) {
+            continue;
+        }
+        if let Some(n) = sh.nodes.iter().find(|n| n.entity_id == id) {
+            stack.extend(n.children_ids.iter().copied());
+        }
+    }
+    assert!(
+        reachable.contains(&5),
+        "the contained space must be reachable from project_id via children_ids"
+    );
+
+    // It must NOT also linger as a plain leaf element on the storey.
+    assert!(
+        !storey.element_ids.contains(&5),
+        "a promoted spatial child must not remain in element_ids as a leaf too"
+    );
+}
+
+/// A space that is BOTH aggregated AND contained under the SAME parent (some
+/// authoring tools emit both relationships for the same edge) must appear as
+/// exactly one node with exactly one children_ids entry - not twice.
+const DOUBLE_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_both_aggregated_and_contained_under_the_same_parent_is_not_duplicated() {
+    let dm = extract_data_model(DOUBLE_LINKED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey");
+    assert_eq!(
+        storey.children_ids,
+        vec![5],
+        "the doubly-linked space must appear exactly once in children_ids"
+    );
+
+    let space_nodes: Vec<_> = sh.nodes.iter().filter(|n| n.entity_id == 5).collect();
+    assert_eq!(space_nodes.len(), 1, "exactly one SpatialNode for the space, not two");
+}
+
+/// #3965's narrower gap: `IFCSPATIALZONE` was entirely absent from the spatial
+/// type list, so a zone contained (not aggregated) under its storey never got a
+/// node - and, per the issue's own scratch repro, anything the zone in turn
+/// contained (a wall here) vanished from the hierarchy entirely, not even
+/// surfacing as a leaf. `IFCMARINEPART` and `IFCFACILITYPARTCOMMON` (the
+/// IFC4X3 pair the TS side carries since #3248/#3249) get the same treatment
+/// under a facility.
+const CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#6=IFCSPATIALZONE('Zone0000000000000000001',$,'MyZone',$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000001',$,'ZoneWall',$,$,$,$,$,$);
+#7=IFCFACILITY('Faci0000000000000000001',$,'MyFacility',$,$,$,$,$,$,$,$,$);
+#8=IFCMARINEPART('Mari0000000000000000001',$,'MyMarinePart',$,$,$,$,$,$,$,$,$,$);
+#9=IFCFACILITYPARTCOMMON('Comm0000000000000000001',$,'MyCommonPart',$,$,$,$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#3,#7));
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#6),#3);
+#112=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#12),#6);
+#113=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000003',$,$,$,(#8),#7);
+#114=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000004',$,$,$,(#9),#7);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn contained_spatial_zone_and_ifc4x3_facility_parts_are_promoted_to_nodes() {
+    let dm = extract_data_model(CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC);
+    let sh = &dm.spatial_hierarchy;
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
+
+    let zone = node(6).expect("contained IfcSpatialZone must get its own node");
+    assert_eq!(zone.parent_id, 3);
+    assert_eq!(zone.type_name.to_uppercase(), "IFCSPATIALZONE");
+    assert!(
+        zone.element_ids.contains(&12),
+        "the wall the zone contains must not be lost from the hierarchy"
+    );
+
+    let marine_part = node(8).expect("contained IfcMarinePart must get its own node");
+    assert_eq!(marine_part.parent_id, 7);
+    assert_eq!(marine_part.type_name.to_uppercase(), "IFCMARINEPART");
+
+    let facility_part_common =
+        node(9).expect("contained IfcFacilityPartCommon must get its own node");
+    assert_eq!(facility_part_common.parent_id, 7);
+    assert_eq!(facility_part_common.type_name.to_uppercase(), "IFCFACILITYPARTCOMMON");
+}

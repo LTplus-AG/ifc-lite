@@ -1022,3 +1022,79 @@ END-ISO-10303-21;
     );
 }
 
+/// #3973 follow-up: a chain nested past `MAX_SPATIAL_TREE_DEPTH` (100) must
+/// have its excluded subtree dropped CLEANLY, not resurrected as corrupted
+/// fake roots. The pre-fix "orphan-fill" loop only checked `nodes_map`, which
+/// is empty both for a depth-capped entity and for its never-visited
+/// descendants, so it reinserted every one of them at `parent_id: 0, level:
+/// 0` while the last surviving ancestor's `children_ids` still (for the
+/// entity directly at the boundary) named the dropped id as a child - two
+/// representations of the same entity's place in the tree disagreeing, and
+/// exactly the shape `apps/server/src/services/parquet_data_model.rs` reads
+/// `parent_id` as authoritative for, so the exported Parquet spatial table
+/// would show spurious extra roots instead of a dropped subtree.
+#[test]
+fn entities_past_the_depth_cap_are_dropped_cleanly_not_resurrected_as_fake_roots() {
+    // Chain of 110 nested IFCBUILDINGSTOREY entities, each aggregated under
+    // the previous one, starting from IFCPROJECT (#1). Project is level 0,
+    // so entity id 2+i sits at level i+1; the cap (level > 100) first excludes
+    // id 102 (level 101).
+    let mut data = String::new();
+    data.push_str("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n");
+    data.push_str("#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);\n");
+    let n = 110u32;
+    for i in 0..n {
+        let id = 2 + i;
+        data.push_str(&format!(
+            "#{id}=IFCBUILDINGSTOREY('Stor{id:0>19}',$,'Storey{id}',$,$,$,$,$,$,$);\n"
+        ));
+    }
+    let mut rel_id = 1000u32;
+    data.push_str(&format!(
+        "#{rel_id}=IFCRELAGGREGATES('Agg{rel_id:0>19}',$,$,$,#1,(#2));\n"
+    ));
+    for i in 0..(n - 1) {
+        rel_id += 1;
+        let parent = 2 + i;
+        let child = 3 + i;
+        data.push_str(&format!(
+            "#{rel_id}=IFCRELAGGREGATES('Agg{rel_id:0>19}',$,$,$,#{parent},(#{child}));\n"
+        ));
+    }
+    data.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+
+    let dm = extract_data_model(&data);
+    let sh = &dm.spatial_hierarchy;
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
+
+    let last_kept = node(101).expect("the last node within the depth cap must survive");
+    assert_eq!(last_kept.level, 100);
+    assert!(
+        last_kept.children_ids.is_empty(),
+        "the depth-capped child (102) must not remain in its parent's children_ids: {:?}",
+        last_kept.children_ids
+    );
+
+    for dropped_id in [102u32, 103, 110, 111] {
+        assert!(
+            node(dropped_id).is_none(),
+            "entity {dropped_id} is past the depth cap and must not appear as a node at all \
+             (in particular, never as a fake root with parent_id 0)"
+        );
+    }
+
+    // No node anywhere may reference a child that has no SpatialNode of its own.
+    let existing_ids: std::collections::HashSet<u32> =
+        sh.nodes.iter().map(|n| n.entity_id).collect();
+    for node in &sh.nodes {
+        for &child in &node.children_ids {
+            assert!(
+                existing_ids.contains(&child),
+                "node {} (level {}) lists child {child}, which has no SpatialNode",
+                node.entity_id,
+                node.level
+            );
+        }
+    }
+}
+

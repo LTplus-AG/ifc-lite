@@ -175,9 +175,13 @@ pub(super) fn build_spatial_hierarchy(
         .map(|e| e.entity_id)
         .collect();
 
-    // Build nodes recursively starting from project
+    // Build nodes recursively starting from project. `visited` tracks every
+    // entity the walk actually reached, including one excluded for depth
+    // (see build_spatial_nodes_recursive) - it survives the call so the
+    // orphan-fill loop below can tell "reached and deliberately excluded"
+    // apart from "never reached at all".
+    let mut visited: FxHashSet<u32> = FxHashSet::default();
     if project_id != 0 {
-        let mut visited: FxHashSet<u32> = FxHashSet::default();
         build_spatial_nodes_recursive(
             project_id,
             0,
@@ -193,8 +197,26 @@ pub(super) fn build_spatial_hierarchy(
         );
     }
 
-    // Also process any spatial nodes not reachable from project (shouldn't happen, but be safe)
+    // Also process any spatial nodes genuinely unreachable from project - not
+    // merely absent from `nodes_map`. Two other cases are also absent from it
+    // and must NOT be rescued here:
+    //   - `visited` but excluded (a depth-capped node itself, or a cyclic
+    //     revisit) - it was reached and deliberately dropped, not orphaned;
+    //   - named as someone's child in `canonical_parent` but never reached
+    //     (a descendant of a depth-capped node: the recursion never got far
+    //     enough to even visit it, since it stops before descending past the
+    //     cap) - it still structurally belongs to a parent, so leaving the
+    //     whole subtree dropped is consistent, not a dangling reference. Only
+    //     an entity that is spatial-typed AND has no parent relationship
+    //     anywhere in the file is a genuine orphan worth rescuing as a root.
+    // Rescuing either of the first two would reinsert a fake root (parent_id:
+    // 0, level: 0) while its real parent's children_ids either still names it
+    // as a child, or the parent chain above it was intentionally truncated -
+    // two representations of the same entity's place in the tree disagreeing.
     for &entity_id in &spatial_entity_ids {
+        if visited.contains(&entity_id) || canonical_parent.contains_key(&entity_id) {
+            continue;
+        }
         if let std::collections::hash_map::Entry::Vacant(e) = nodes_map.entry(entity_id) {
             if let Some(entity) = entity_map.get(&entity_id) {
                 let name = entity
@@ -308,12 +330,25 @@ fn build_spatial_nodes_recursive(
     if visited.contains(&entity_id) {
         return;
     }
+    // Mark as visited (considered) BEFORE the depth check below, not after: a
+    // node excluded for being too deep must still count as "reached" for the
+    // orphan-fill loop's purposes (see build_spatial_hierarchy). Marking it
+    // only on the success path left `visited` unable to distinguish "the walk
+    // never found this entity at all" (genuinely orphaned, worth rescuing)
+    // from "the walk found it and deliberately excluded it" (must stay
+    // excluded) - the orphan-fill loop only checked `nodes_map`, which is
+    // empty for both cases, so it reinserted every depth-capped entity as a
+    // fake root (parent_id: 0, level: 0) with its real children_ids intact -
+    // producing a node whose own parent/level said "root" while its parent's
+    // children_ids still named it as a child, and letting the Parquet export
+    // (which reads `parent_id` as authoritative) render it as a spurious
+    // extra root instead of the dropped subtree it actually is.
+    visited.insert(entity_id);
     // Guard against a pathologically deep but acyclic chain, mirroring
     // `MAX_SPATIAL_TREE_DEPTH` in `apps/viewer/src/utils/serverDataModel.ts`.
     if level > MAX_SPATIAL_TREE_DEPTH {
         return;
     }
-    visited.insert(entity_id);
 
     let entity = match entity_map.get(&entity_id) {
         Some(e) => e,
@@ -375,6 +410,23 @@ fn build_spatial_nodes_recursive(
             visited,
             length_unit_scale,
         );
+    }
+
+    // A child that hit the depth cap (or, in principle, any other early
+    // return above) is `visited` but was never inserted into `nodes_map`, so
+    // it must not remain in this node's own `children_ids` - otherwise this
+    // node would point at a child with no SpatialNode of its own, the exact
+    // dangling-reference shape the orphan-fill skip above exists to avoid.
+    // Two passes (read then write) rather than `retain` because the check
+    // needs `nodes_map` immutably while updating this node's own entry in it.
+    if let Some(existing_children) = nodes_map.get(&entity_id).map(|n| n.children_ids.clone()) {
+        let filtered: Vec<u32> = existing_children
+            .into_iter()
+            .filter(|child_id| nodes_map.contains_key(child_id))
+            .collect();
+        if let Some(node) = nodes_map.get_mut(&entity_id) {
+            node.children_ids = filtered;
+        }
     }
 }
 

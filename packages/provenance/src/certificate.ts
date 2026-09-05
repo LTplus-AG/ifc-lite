@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Certificate v0 (docs/vision/spec/node-hash-v0.md §Step 3 / M1
- * "proof-carrying changes", docs/vision/moonshots-tech.md §M1).
+ * Certificate v0 (packages/provenance/SPEC.md §Step 3,
+ * "proof-carrying changes").
  *
  * A certificate ships alongside a model change: the set of DAG node hashes
  * it read, the set it wrote, and a list of machine-checkable claims about

@@ -28,20 +28,11 @@ scripts/docs/generate-docs-sections.mjs tests/benchmark/* # `tests` prefix fragm
 scripts/docs/generate-docs-sections.mjs tests/extensions # `tests` prefix fragment; sdk-canary.yml carries tests/extensions/canaries/** in its own paths
 scripts/docs/generate-docs-sections.mjs tests/models # `tests` prefix fragment; the corpus input tests/models/manifest.json is in the rust, geometry and frontend filters
 scripts/docs/check-package-readmes.test.mjs docs # `docs` fragment; the gate reads packages/*/README.md
-# The two below are prefix-test literals, not walked trees: check-report-numerals.mjs
-# carries `relRaw.startsWith('scripts/') || relRaw.startsWith('docs/')`, and the
-# derivation keeps the bare `scripts` and `docs` those normalise to. Its REAL roots
-# are `const VISION_DIR = 'docs/vision'` and the bet directories under
-# scripts/moonshot, and moonshot.yml's own `on.pull_request.paths` carries
-# `docs/vision/**` AND `scripts/moonshot/**`. So this is not a hole in moonshot.yml.
-scripts/moonshot/ci/check-report-numerals.mjs docs/* # `docs` fragment from a startsWith() prefix test; the real root docs/vision is in moonshot.yml's paths
-scripts/moonshot/ci/check-report-numerals.mjs scripts/* # same fragment; the real roots under scripts/moonshot are in moonshot.yml's paths
 scripts/docs/check-package-readmes.test.mjs README.md # root README fragment; the gate reads per-package READMEs
 scripts/check-swallowed-push.test.mjs README.md # fragment from the harness's fixture root, not an input
 scripts/typecheck-tests.test.mjs README.md # same fragment
 scripts/typecheck-tests.test.mjs demo # `demo` is not a typecheck target; the gate reads tsconfig project references
 scripts/generate-plato-clash.mjs tools/* # `tools` fragment; the generator reads tools/plato, which the plato filter carries
-scripts/moonshot/ci/assert-b35-golden.mjs scripts/build-wasm.sh # named in prose as the build the golden came from, not read
 
 # ---------------------------------------------------------------------------
 # 2. apps/landing AND THE FOUR TREE-WALKERS. `check-module-size`,

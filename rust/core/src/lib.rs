@@ -64,6 +64,7 @@
 
 pub mod columnar_index;
 pub mod decoder;
+pub mod dense_index;
 pub mod error;
 pub mod express_id;
 pub mod fast_parse;
@@ -83,6 +84,7 @@ pub mod units;
 
 pub use columnar_index::ColumnarEntityIndex;
 pub use decoder::{build_entity_index, EntityDecoder, EntityIndex};
+pub use dense_index::DenseEntityIndex;
 pub use error::{Error, Result};
 pub use fast_parse::{
     extract_coordinate_list_from_entity, extract_entity_refs_from_list, extract_entity_type_name,

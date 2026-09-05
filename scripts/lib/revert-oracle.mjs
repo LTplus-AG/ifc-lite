@@ -49,6 +49,15 @@ const IGNORED_EXACT = new Set([
 ]);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
+/**
+ * Vercel deploy config: read by Vercel's build pipeline, imported by nothing
+ * here, so no test can observe it — the same reason `.github/` is ignored.
+ * Anchored on the basename on purpose; a blanket `scripts/**` or `*.sh` would
+ * swallow `scripts/lib/*.mjs`, which is real tested logic. Both directions are
+ * pinned in revert-oracle.test.mjs, which carries the full rationale.
+ */
+const DEPLOY_CONFIG_RE = /(^|\/)(vercel\.json|\.vercelignore|vercel-[a-z0-9-]*\.sh)$/;
+
 /** A file that IS a test. */
 const TEST_FILE_RE = /(^|\/)[^/]*\.(test|spec)\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
 /** Directories whose entire contents are test scaffolding, not production. */
@@ -69,6 +78,7 @@ export function classifyPath(path) {
   if (IGNORED_EXACT.has(path)) return 'ignored';
   for (const p of IGNORED_PREFIXES) if (path.startsWith(p)) return 'ignored';
   for (const s of IGNORED_SUFFIXES) if (path.endsWith(s)) return 'ignored';
+  if (DEPLOY_CONFIG_RE.test(path)) return 'ignored';
   if (TEST_FILE_RE.test(path)) return 'test';
   if (TEST_DIR_RE.test(path)) return 'test';
   if (TEST_SEGMENT_RE.test(path)) return 'test';

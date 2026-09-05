@@ -426,6 +426,50 @@ test('classifyPath: ignored non-code', () => {
   assert.equal(classifyPath('docs/guide/x.ts'), 'ignored');
 });
 
+// WHY DEPLOY CONFIG IS `ignored` (the rule these two tests pin).
+//
+// The oracle asks: if this branch's production hunks were reverted, would its
+// tests notice? For Vercel config the answer is structurally no — the files
+// are read by Vercel's build pipeline and imported by nothing in this repo,
+// so there is no test to run against them. Classifying them as production
+// made the oracle ABORT on every deploy-config PR with "changes production
+// code and adds/changes NO test file", which is a false positive, not a
+// finding.
+//
+// Ignoring them opens no miss: a gate cannot lose coverage it never had.
+// Verified when the rule was added — no test in the repo IMPORTS, EXECUTES, or
+// asserts on the BEHAVIOUR of `vercel.json`, `.vercelignore`, or any
+// `vercel-*.sh`, so the oracle never had a test to run against them. (The
+// cases below do name those paths, but only as classifier INPUT STRINGS: they
+// exercise this module, not the deploy files.)
+//
+// The rule is anchored on the BASENAME rather than a blanket `scripts/**` or
+// `*.sh`, because `scripts/lib/*.mjs` (this module included) is real, tested
+// logic that must stay production. THAT would have been the miss, which is
+// why the second test below exists.
+test('classifyPath: Vercel deploy config is ignored, not production', () => {
+  assert.equal(classifyPath('vercel.json'), 'ignored');
+  assert.equal(classifyPath('apps/landing/vercel.json'), 'ignored');
+  assert.equal(classifyPath('apps/viewer-embed/vercel.json'), 'ignored');
+  assert.equal(classifyPath('.vercelignore'), 'ignored');
+  assert.equal(classifyPath('scripts/vercel-build.sh'), 'ignored');
+  assert.equal(classifyPath('scripts/vercel-install.sh'), 'ignored');
+  assert.equal(classifyPath('scripts/vercel-ignore-build.sh'), 'ignored');
+  assert.equal(classifyPath('apps/landing/vercel-ignore.sh'), 'ignored');
+});
+
+test('classifyPath: the deploy-config rule does not swallow neighbouring code', () => {
+  // The rule is anchored on the basename, so a directory called `vercel` or a
+  // file merely mentioning it stays production. `scripts/lib/*.mjs` is real,
+  // tested logic and must never be ignored — that would be the miss.
+  assert.equal(classifyPath('scripts/lib/revert-oracle.mjs'), 'production');
+  assert.equal(classifyPath('scripts/build-wasm.sh'), 'production');
+  assert.equal(classifyPath('packages/core/src/vercel.ts'), 'production');
+  assert.equal(classifyPath('packages/core/src/vercel-client.ts'), 'production');
+  assert.equal(classifyPath('apps/viewer/src/vercel/deploy.ts'), 'production');
+  assert.equal(classifyPath('vercel.json.ts'), 'production');
+});
+
 test('classifyDiff splits a real branch shape and never puts a test in production', () => {
   const entries = parseNameStatus(
     [

@@ -365,7 +365,6 @@ class IDSTranslationServiceImpl implements TranslationService {
     }
   }
 
-
   /**
    * Describe a failure in human-readable form
    */
@@ -497,6 +496,9 @@ class IDSTranslationServiceImpl implements TranslationService {
           expected: expected || '?',
         });
 
+      case 'CLASSIFICATION_UNRESOLVED':
+        return t.classificationUnresolved;
+
       // Material failures
       case 'MATERIAL_MISSING':
         return t.materialMissing;
@@ -596,9 +598,7 @@ class IDSTranslationServiceImpl implements TranslationService {
       .replace(/^Doit/i, 'Devrait');
   }
 
-  /**
-   * Get status text
-   */
+  /** Get status text */
   getStatusText(status: 'pass' | 'fail' | 'not_applicable'): string {
     return this.translations.status[status];
   }

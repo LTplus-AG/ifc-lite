@@ -490,12 +490,11 @@ impl GeoRefExtractor {
             if *ifc_type != IfcType::IfcPropertySet {
                 continue;
             }
-            let entity = decoder.decode_by_id(*id)?;
+            let entity = decoder.decode_by_id_transient(*id)?;
             if let Some(name) = entity.get_string(2) {
-                let lower = name.to_ascii_lowercase();
-                if lower == "epset_mapconversion" && map_conversion_pset.is_none() {
+                if name.eq_ignore_ascii_case("ePSet_MapConversion") && map_conversion_pset.is_none() {
                     map_conversion_pset = Some(*id);
-                } else if lower == "epset_projectedcrs" && projected_crs_pset.is_none() {
+                } else if name.eq_ignore_ascii_case("ePSet_ProjectedCRS") && projected_crs_pset.is_none() {
                     projected_crs_pset = Some(*id);
                 }
             }

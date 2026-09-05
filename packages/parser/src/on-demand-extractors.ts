@@ -22,7 +22,7 @@ import type { GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
 export { extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from './classification-resolver.js';
-export type { ClassificationInfo } from './classification-resolver.js';
+export type { ClassificationInfo, ClassificationSystemNames } from './classification-resolver.js';
 
 export { extractMaterialsOnDemand, extractAllMaterialsOnDemand } from './material-resolver.js';
 export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialConstituentInfo } from './material-resolver.js';

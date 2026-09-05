@@ -54,7 +54,7 @@
    418 apps/viewer/src/components/viewer/chat/ExecutableCodeBlock.tsx
   1802 apps/viewer/src/components/viewer/ChatPanel.tsx
   1314 apps/viewer/src/components/viewer/ClashPanel.tsx
-   849 apps/viewer/src/components/viewer/CommandPalette.tsx
+   752 apps/viewer/src/components/viewer/CommandPalette.tsx
    410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
   1842 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx

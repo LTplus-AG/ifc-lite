@@ -50,6 +50,27 @@
  * VACUITY GUARD, per concept: both extractors must return a non-empty set.
  * Two empty sets are "equal", so a broken extractor (source moved, regex
  * anchor drifted) would otherwise pass silently instead of reporting drift.
+ * ONE EXCEPTION: `tsPropertyTypes` unconditionally seeds its result with
+ * `IFCPROPERTYSINGLEVALUE` (see that function's doc comment — the TS
+ * `default` switch arm has no quoted literal for a regex to find), so
+ * `properties` TS-side can never be empty and that half of this guard can
+ * never fire for that one concept. This is deliberate — the seed is correct
+ * behaviour, not a bug to "fix" by removing it — but it means the guard is
+ * NOT actually bilateral for `properties`: only the Rust side can trip it
+ * there. Every other concept's guard is bilateral as documented.
+ *
+ * UNDER-READ GUARD, relationships only: `rustRelationshipTypes` and
+ * `tsRelationshipTypes` each read ONE bounded region (`rel_types`; the three
+ * `*_REL_TYPES` Sets) and throw `ExtractorUnderReadError` — caught below and
+ * reported as a third failure category, distinct from vacuity — if a SIBLING
+ * binding that looks like it carries more IFC type literals exists in the
+ * same file. This closes a silent-pass shape found in review: a later patch
+ * adding types via a new `let extra_rel_types = [...]` array (or a fourth
+ * `*_REL_TYPES` Set) alongside the existing one would otherwise never be
+ * read by this extractor, and the stale allowlist would keep the gate quiet
+ * about it. See `scripts/lib/server-browser-type-extractors.mjs` for the
+ * detector and its scoping rationale (why it does not also fire on this
+ * file's other, unrelated `*_TYPES` sets).
  *
  * THE ALLOWLIST is the mechanism that keeps this gate from being either
  * useless (allowlisting everything) or naggy (failing on every open fix in
@@ -79,6 +100,7 @@ import {
   tsQuantityTypes,
   rustMaterialTypes,
   tsMaterialTypes,
+  ExtractorUnderReadError,
 } from './lib/server-browser-type-extractors.mjs';
 
 const rootFlag = process.argv.indexOf('--root');
@@ -220,13 +242,24 @@ const CONCEPTS = [
 ];
 
 /**
- * @returns {{failures: string[], vacuous: boolean}} failures empty means
- * parity holds (given the allowlist); vacuous means at least one side's
- * extractor returned nothing, so no comparison was actually made.
+ * @returns {{failures: string[], vacuous: boolean, underRead: boolean}}
+ * failures empty means parity holds (given the allowlist); vacuous means at
+ * least one side's extractor returned nothing, so no comparison was actually
+ * made; underRead means an extractor detected a sibling binding it cannot be
+ * sure it read (see `ExtractorUnderReadError`) and refused to compare rather
+ * than silently under-reporting.
  */
 export function checkConcept(concept) {
-  const rust = concept.rust();
-  const ts = concept.ts();
+  let rust, ts;
+  try {
+    rust = concept.rust();
+    ts = concept.ts();
+  } catch (e) {
+    if (e instanceof ExtractorUnderReadError) {
+      return { failures: [`[${concept.name}] ${e.message}`], vacuous: false, underRead: true };
+    }
+    throw e;
+  }
   const failures = [];
 
   if (rust.size === 0) {
@@ -239,7 +272,7 @@ export function checkConcept(concept) {
       `[${concept.name}] no types extracted from ${concept.tsLabel} — the extractor has drifted from the TS source`,
     );
   }
-  if (failures.length > 0) return { failures, vacuous: true };
+  if (failures.length > 0) return { failures, vacuous: true, underRead: false };
 
   const isAllowlisted = (t) => Object.hasOwn(ALLOWLIST, `${concept.name}:${t}`);
 
@@ -256,7 +289,7 @@ export function checkConcept(concept) {
       `[${concept.name}] the TS parser (${concept.tsLabel}) handles ${missingFromRust.map((t) => `\`${t}\``).join(', ')} but the Rust server (${concept.rustLabel}) does not`,
     );
   }
-  return { failures, vacuous: false };
+  return { failures, vacuous: false, underRead: false };
 }
 
 /** Every allowlist entry must carry a recognized status — an unstructured or
@@ -281,16 +314,18 @@ if (process.argv[1] && process.argv[1].endsWith('check-server-browser-type-parit
 
   let anyFailed = false;
   let anyVacuous = false;
+  let anyUnderRead = false;
   const okLines = [];
 
   for (const concept of CONCEPTS) {
-    const { failures, vacuous } = checkConcept(concept);
+    const { failures, vacuous, underRead } = checkConcept(concept);
     if (failures.length === 0) {
       okLines.push(`  ${concept.name}: OK`);
       continue;
     }
     anyFailed = true;
     if (vacuous) anyVacuous = true;
+    if (underRead) anyUnderRead = true;
     console.error(`\ncheck-server-browser-type-parity: ${concept.name} drifted\n`);
     for (const f of failures) console.error(`  ${f}`);
   }
@@ -304,6 +339,17 @@ here: the source shape moved under this file's regexes, or the type really
 was removed from that file. Read the named file and decide which, then fix
 that — the extractor in scripts/check-server-browser-type-parity.mjs, or the
 source.
+`);
+    }
+    if (anyUnderRead) {
+      console.error(`
+An extractor above found a SIBLING binding it does not know how to read,
+alongside the one it does — the extractor may be under-reading, so its
+result cannot be trusted as complete and this gate refused to compare it.
+This is not the vacuity case (the extractor did find types); it is the
+"secondary array/set added later" shape found in review. Read the named
+file, decide whether the new binding needs to be read too, and update the
+extractor in scripts/lib/server-browser-type-extractors.mjs accordingly.
 `);
     }
     console.error(`

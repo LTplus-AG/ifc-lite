@@ -20,9 +20,70 @@ export function stripComments(src) {
   return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 }
 
-/** Extracts the bounded `let rel_types = [ ... ];` array in relationships.rs. */
+/** Thrown by an extractor that has detected a shape it cannot be sure it read
+ * completely (see below) — a distinct failure mode from "found zero types"
+ * (the existing vacuity guard): the extractor DID find types, but a sibling
+ * binding it does not know how to read exists alongside the one it does, so
+ * its result may silently be missing whatever that sibling carries. Caught
+ * by `checkConcept` in the parent script and reported loudly rather than
+ * compared as if it were complete. */
+export class ExtractorUnderReadError extends Error {}
+
+/**
+ * Guards the exact silent-pass shape found in review of #3979: the Rust
+ * `rel_types` extractor (and its TS mirror, the three `*_REL_TYPES` Sets
+ * below) only reads ONE bounded region. A later patch that adds a genuinely
+ * new set of types via a SIBLING binding — e.g.
+ * `let extra_rel_types = [...]` next to `let rel_types = [...]` — is
+ * syntactically ordinary and would compile/run fine, but this extractor
+ * would never see the new types at all: verified in an isolated repro
+ * (`--root /tmp/parity-test2`) that adding such a sibling array stays GREEN
+ * even though the server now genuinely handles a type the allowlist still
+ * lists as a Rust-side gap. Rather than parsing Rust properly (out of
+ * scope), this scans the WHOLE stripped source for any OTHER binding that
+ * matches `bindingPattern`, is not in `recognizedNames`, and whose captured
+ * body contains at least one string literal shaped like an IFC type name —
+ * and refuses to guess by throwing instead of silently under-reporting.
+ *
+ * `nameFilter` narrows `bindingPattern` matches to those actually worth
+ * inspecting (e.g. only names containing `REL_TYPES`): several *_TYPES sets
+ * in these same files are legitimately unrelated concepts (geometry types,
+ * spatial types, property container types), and scanning every binding for
+ * "contains an uppercase quoted literal" would flag all of them, which would
+ * make the real, unmutated tree fail this check — the one control this
+ * hardening must never break.
+ */
+export function assertNoUnrecognizedSiblingBindings(
+  code,
+  { bindingPattern, valuePattern, nameFilter, recognizedNames, label },
+) {
+  for (const m of code.matchAll(bindingPattern)) {
+    const name = m[1];
+    const body = m[2];
+    if (recognizedNames.includes(name)) continue;
+    if (nameFilter && !nameFilter.test(name)) continue;
+    if (valuePattern.test(body)) {
+      throw new ExtractorUnderReadError(
+        `${label}: found a binding \`${name}\` alongside the recognized one(s) (${recognizedNames.join(', ')}) that looks like it carries IFC type name literals this extractor does not read. The extractor may be under-reading; update it.`,
+      );
+    }
+  }
+}
+
+/** Extracts the bounded `let rel_types = [ ... ];` array in relationships.rs.
+ * See `assertNoUnrecognizedSiblingBindings` above: also refuses to guess if a
+ * sibling `let X = [...]` binding carrying IFC-looking literals exists
+ * alongside `rel_types` — a shape this bounded regex would otherwise never
+ * see. */
 export function rustRelationshipTypes(src) {
   const code = stripComments(src);
+  assertNoUnrecognizedSiblingBindings(code, {
+    bindingPattern: /let\s+(\w+)\s*=\s*\[([\s\S]*?)\];/g,
+    valuePattern: /"[A-Z][A-Z0-9]{3,}"/,
+    nameFilter: /types/i,
+    recognizedNames: ['rel_types'],
+    label: 'rustRelationshipTypes',
+  });
   const m = /let rel_types = \[([\s\S]*?)\];/.exec(code);
   if (!m) return new Set();
   return new Set([...m[1].matchAll(/"([A-Z0-9]+)"/g)].map((x) => x[1]));
@@ -36,8 +97,22 @@ export function rustRelationshipTypes(src) {
  * IfcRel* type the parser is willing to route to a relationship extractor. */
 export function tsRelationshipTypes(src) {
   const code = stripComments(src);
+  const RECOGNIZED = ['HIERARCHY_REL_TYPES', 'PROPERTY_REL_TYPES', 'ASSOCIATION_REL_TYPES'];
+  // Mirrors the Rust-side guard above: a future 4th `export const
+  // SOMETHING_REL_TYPES = new Set([...])` added alongside these three would
+  // otherwise be silently invisible to this union (the same shape as the
+  // `extra_rel_types` repro, on the TS side). Narrowed to names containing
+  // `REL_TYPES` so it does not fire on this file's other, unrelated `*_TYPES`
+  // sets (GEOMETRY_TYPES, SPATIAL_TYPES, PROPERTY_ENTITY_TYPES, ...).
+  assertNoUnrecognizedSiblingBindings(code, {
+    bindingPattern: /export const (\w+) = new Set\(\[([\s\S]*?)\]\);/g,
+    valuePattern: /'[A-Z][A-Z0-9]{3,}'/,
+    nameFilter: /REL_TYPES/,
+    recognizedNames: RECOGNIZED,
+    label: 'tsRelationshipTypes',
+  });
   const found = new Set();
-  for (const name of ['HIERARCHY_REL_TYPES', 'PROPERTY_REL_TYPES', 'ASSOCIATION_REL_TYPES']) {
+  for (const name of RECOGNIZED) {
     const m = new RegExp(`export const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\);`).exec(code);
     if (!m) continue;
     for (const x of m[1].matchAll(/'([A-Z0-9]+)'/g)) found.add(x[1]);

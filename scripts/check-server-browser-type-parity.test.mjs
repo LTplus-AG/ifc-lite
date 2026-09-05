@@ -342,3 +342,129 @@ test('checkConcept() reports no failures when both sides agree exactly', () => {
   assert.equal(vacuous, false);
   assert.deepEqual(failures, []);
 });
+
+// -- under-read guard (review finding: a "secondary array" refactor of
+// relationships.rs, or a 4th TS `*_REL_TYPES` Set, is otherwise invisible to
+// the bounded extractors and produces a SILENT PASS rather than a failure) --
+
+test('RELATIONSHIPS UNDER-READ: RED when a sibling `let extra_rel_types = [...]` array appears alongside `rel_types`', () => {
+  // Reproduces the review-verified silent pass: a later patch that adds
+  // genuinely new relationship types via a second bounded array, rather than
+  // extending the one this extractor reads, must not compare as clean.
+  const rust = replaceOnce(
+    real.RUST_REL,
+    'let rel_types = [',
+    'let extra_rel_types = ["IFCRELASSIGNSTOPRODUCT"];\n    let rel_types = [',
+  );
+  const { status, out } = runOn({ RUST_REL: rust });
+  assert.equal(status, 1, out);
+  assert.match(out, /rustRelationshipTypes: found a binding `extra_rel_types`/);
+  assert.match(out, /extractor may be under-reading; update it/);
+  assert.match(out, /this gate refused to compare it/);
+});
+
+test('RELATIONSHIPS UNDER-READ: a sibling array whose name does not look like a types binding does not false-positive', () => {
+  // `nameFilter: /types/i` should not fire on an unrelated helper array that
+  // happens to also be bounded by `let NAME = [ ... ];`.
+  const rust = replaceOnce(
+    real.RUST_REL,
+    'let rel_types = [',
+    'let unrelated_helper = ["not an ifc type", "also not one"];\n    let rel_types = [',
+  );
+  const { status, out } = runOn({ RUST_REL: rust });
+  assert.equal(status, 0, out);
+});
+
+test('RELATIONSHIPS UNDER-READ: RED when a 4th `*_REL_TYPES` Set appears on the TS side alongside the recognized three', () => {
+  const ts = replaceOnce(
+    real.TS_REL_INDEXES,
+    "export const HIERARCHY_REL_TYPES = new Set([",
+    "export const PORT_REL_TYPES = new Set([\n    'IFCRELCONNECTSPORTS',\n]);\nexport const HIERARCHY_REL_TYPES = new Set([",
+  );
+  const { status, out } = runOn({ TS_REL_INDEXES: ts });
+  assert.equal(status, 1, out);
+  assert.match(out, /tsRelationshipTypes: found a binding `PORT_REL_TYPES`/);
+  assert.match(out, /extractor may be under-reading; update it/);
+});
+
+test('RELATIONSHIPS UNDER-READ: an unrelated `*_TYPES` Set (not `*_REL_TYPES`) does not false-positive on the TS side', () => {
+  // GEOMETRY_TYPES/SPATIAL_TYPES/etc. already coexist in this file with
+  // uppercase IFC-looking literals; the nameFilter must not treat them as an
+  // unread relationship-types sibling, or the real tree would fail this gate.
+  assert.ok(real.TS_REL_INDEXES.includes('export const GEOMETRY_TYPES = new Set(['));
+  const { status } = runOn({});
+  assert.equal(status, 0);
+});
+
+test('mutation control: disabling the under-read detector lets the same silent-pass repro go green again', () => {
+  // Directly verifies the guard is load-bearing: with the detector's body
+  // replaced by an early return (simulating it being disabled/deleted), the
+  // exact same sibling-array mutation that RED above must go GREEN again.
+  const libPath = join(SCRIPTS, 'lib', 'server-browser-type-extractors.mjs');
+  const libSrc = readFileSync(libPath, 'utf8');
+  const anchor =
+    "export function assertNoUnrecognizedSiblingBindings(\n  code,\n  { bindingPattern, valuePattern, nameFilter, recognizedNames, label },\n) {\n";
+  // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+  assert.ok(libSrc.includes(anchor), 'assertNoUnrecognizedSiblingBindings signature drifted');
+  const mutatedLib = libSrc.replace(anchor, `${anchor}  return; // mutated: detector disabled\n`);
+
+  const dir = mkdtempSync(join(tmpdir(), 'server-browser-type-parity-mutation-'));
+  try {
+    for (const [key, rel] of Object.entries(FILES)) {
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, real[key]);
+    }
+    // Overwrite the checker's own lib copy is not possible via --root (the
+    // checker always imports its OWN scripts/lib, not one under --root), so
+    // this test instead runs the checker's real entry point but against a
+    // temp copy of the WHOLE scripts dir with the mutated lib swapped in.
+    const scriptsCopy = join(dir, '__scripts__');
+    mkdirSync(scriptsCopy, { recursive: true });
+    mkdirSync(join(scriptsCopy, 'lib'), { recursive: true });
+    writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), readFileSync(CHECKER, 'utf8'));
+    writeFileSync(join(scriptsCopy, 'lib', 'server-browser-type-extractors.mjs'), mutatedLib);
+
+    const relMutated = replaceOnce(
+      real.RUST_REL,
+      'let rel_types = [',
+      'let extra_rel_types = ["IFCRELASSIGNSTOPRODUCT"];\n    let rel_types = [',
+    );
+    for (const [key, rel] of Object.entries(FILES)) {
+      const content = key === 'RUST_REL' ? relMutated : real[key];
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, content);
+    }
+
+    const r = spawnSync(
+      process.execPath,
+      [join(scriptsCopy, 'check-server-browser-type-parity.mjs'), '--root', dir],
+      { encoding: 'utf8' },
+    );
+    assert.equal(r.status, 0, `${r.stdout}${r.stderr}`);
+    assert.match(`${r.stdout}${r.stderr}`, /check-server-browser-type-parity: OK/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// -- vacuity guard claim correction (review finding: the header claims BOTH
+// sides are guarded for every concept; `properties` TS-side never can be,
+// because tsPropertyTypes seeds IFCPROPERTYSINGLEVALUE unconditionally) ------
+
+test('PROPERTIES VACUITY: emptying the Rust side alone still fires the vacuity guard', () => {
+  const { status, out } = runOn({ RUST_PROPS: '// nothing\n' });
+  assert.equal(status, 1, out);
+  assert.match(out, /no types extracted from apps\/server\/src\/services\/data_model\/properties\.rs/);
+});
+
+test('PROPERTIES VACUITY (documents the corrected claim): emptying the TS side alone does NOT fire the vacuity guard, because the extractor unconditionally seeds IFCPROPERTYSINGLEVALUE', () => {
+  const { status, out } = runOn({ TS_PROPS: '// nothing\n' });
+  // ts.size can never be 0 for this concept, so the vacuity guard's TS half
+  // can never trip here — the real (non-silent) failure mode this decays to
+  // is a plain "Rust has these types, TS does not" divergence instead.
+  assert.equal(status, 1, out);
+  assert.doesNotMatch(out, /no types extracted from packages\/parser\/src\/property-value-parser\.ts/);
+  assert.match(out, /the TS parser .* does not/);
+});

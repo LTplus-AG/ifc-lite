@@ -222,7 +222,7 @@ pub use router::{
     GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION, FACETED_BREP_DEDUP_FACE_LIMIT,
     ClassificationSummary, GeometryDiagnostics, GeometryProcessor, GeometryRouter,
     HostOpeningDiagnostic, ItemDedupCache, MappedInstancePlan, OpeningDiagnostic, OpeningKindDiag,
-    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, WorstHost,
+    ReasonCount, RectFastSummary, RectParam, SharedMappedItemCache, SharedBrepSignatureCache, WorstHost,
 };
 
 /// The streaming / needs-shift large-coordinate threshold (metres): a world

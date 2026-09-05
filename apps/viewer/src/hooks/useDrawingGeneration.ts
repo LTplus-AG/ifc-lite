@@ -113,6 +113,7 @@ interface UseDrawingGenerationParams {
   computedIsolatedIds?: Set<number> | null;
   models: Map<string, { id: string; visible: boolean; idOffset?: number }>;
   panelVisible: boolean;
+  activeTool: string;
   drawing: Drawing2D | null;
   // Store actions
   setDrawing: (d: Drawing2D | null) => void;
@@ -138,6 +139,7 @@ export function useDrawingGeneration({
   computedIsolatedIds,
   models,
   panelVisible,
+  activeTool,
   drawing,
   setDrawing,
   setDrawingStatus,
@@ -873,60 +875,54 @@ export function useDrawingGeneration({
     setDrawingError,
   ]);
 
-  // Track panel visibility and geometry for detecting changes
-  const prevPanelVisibleRef = useRef(false);
-  const prevOverlayEnabledRef = useRef(false);
+  // Match useRenderUpdates: a saved overlay preference only consumes drawings
+  // while the section tool is active. Panel/export generation is independent.
+  const overlayActive = activeTool === 'section' && displayOptions.show3DOverlay;
+  const drawingActive = panelVisible || overlayActive;
+  const drawingActiveRef = useRef(drawingActive);
+  drawingActiveRef.current = drawingActive;
+  const prevDrawingActiveRef = useRef(false);
+  const pendingAutomaticGenerationRef = useRef<Promise<void> | null>(null);
   const prevMeshCountRef = useRef(0);
+  const prevGeometryResultRef = useRef(geometryResult);
   const prevTypeVisibilityRef = useRef(typeVisibility);
 
-  // Auto-generate when panel opens (or 3D overlay is enabled) and no drawing exists
-  // Also regenerate when geometry changes significantly (e.g., models hidden/shown)
+  // Activation always refreshes, including inputs changed while both views hid.
   useEffect(() => {
-    const wasVisible = prevPanelVisibleRef.current;
-    const wasOverlayEnabled = prevOverlayEnabledRef.current;
+    const justActivated = drawingActive && !prevDrawingActiveRef.current;
     const prevMeshCount = prevMeshCountRef.current;
     const currentMeshCount = geometryResult?.meshes?.length ?? 0;
     const hasGeometry = currentMeshCount > 0;
 
-    // Track panel visibility separately from overlay
-    const panelJustOpened = panelVisible && !wasVisible;
-    const overlayJustEnabled = displayOptions.show3DOverlay && !wasOverlayEnabled;
-    const isNowActive = panelVisible || displayOptions.show3DOverlay;
-    const geometryChanged = currentMeshCount !== prevMeshCount;
-    // Flipping a class toggle changes the drawing's input without changing the
-    // mesh count, so `geometryChanged` never fires for it (issue #2060). The
-    // store replaces the whole `typeVisibility` object on every toggle, so an
-    // identity compare is enough — this hook's own tests can't prove that on
-    // their own, since they pass their own object literals; it's pinned by
-    // `visibilitySlice.test.ts`'s "replaces the typeVisibility object identity
-    // on every toggle" case, which fails if `toggleTypeVisibility` is
-    // refactored to structural sharing (#2070 review).
+    const geometryChanged = currentMeshCount !== prevMeshCount || geometryResult !== prevGeometryResultRef.current;
+    // Class toggles change input without changing mesh count (#2060).
+    // visibilitySlice.test.ts pins replacement identity on every toggle (#2070).
     const typeVisibilityChanged = prevTypeVisibilityRef.current !== typeVisibility;
 
     // Always update refs
-    prevPanelVisibleRef.current = panelVisible;
-    prevOverlayEnabledRef.current = displayOptions.show3DOverlay;
+    prevDrawingActiveRef.current = drawingActive;
     prevMeshCountRef.current = currentMeshCount;
+    prevGeometryResultRef.current = geometryResult;
     prevTypeVisibilityRef.current = typeVisibility;
 
-    if (isNowActive) {
+    if (drawingActive) {
       if (!hasGeometry) {
         // No geometry available - clear the drawing
         if (drawing) {
           setDrawing(null);
           setDrawingStatus('idle');
         }
-      } else if (panelJustOpened || overlayJustEnabled || !drawing || geometryChanged || typeVisibilityChanged) {
-        // Generate if:
-        // 1. Panel just opened, OR
-        // 2. Overlay just enabled, OR
-        // 3. No drawing exists, OR
-        // 4. Geometry changed significantly (models hidden/shown), OR
-        // 5. A class-visibility toggle flipped (issue #2060)
-        generateDrawing();
+      } else if (justActivated || geometryChanged || typeVisibilityChanged || (!drawing && !pendingAutomaticGenerationRef.current)) {
+        // Opening the panel after enabling the section overlay is still the
+        // same demand, including while the first drawing is being generated.
+        const generation = generateDrawing();
+        pendingAutomaticGenerationRef.current = generation;
+        void generation.finally(() => {
+          if (pendingAutomaticGenerationRef.current === generation) pendingAutomaticGenerationRef.current = null;
+        });
       }
     }
-  }, [panelVisible, displayOptions.show3DOverlay, drawing, geometryResult, typeVisibility, generateDrawing, setDrawing, setDrawingStatus]);
+  }, [drawingActive, drawing, geometryResult, typeVisibility, generateDrawing, setDrawing, setDrawingStatus]);
 
   // Auto-regenerate when section plane changes
   // Strategy: INSTANT - no debounce, but prevent overlapping computations
@@ -975,12 +971,12 @@ export function useDrawingGeneration({
 
       // Check if section changed while we were generating
       const current = latestSectionRef.current;
-      if (
+      if (drawingActiveRef.current && (
         current.axis !== targetSection.axis ||
         current.position !== targetSection.position ||
         current.flipped !== targetSection.flipped ||
         current.customKey !== targetSection.customKey
-      ) {
+      )) {
         // Position changed during generation - regenerate immediately with latest
         // Use microtask to avoid blocking
         queueMicrotask(() => doRegenerate());
@@ -1017,13 +1013,13 @@ export function useDrawingGeneration({
       customKey: customKeyValue,
     };
 
-    // If panel is visible OR 3D overlay is enabled, and we have geometry, regenerate INSTANTLY
-    if ((panelVisible || displayOptions.show3DOverlay) && geometryResult?.meshes) {
+    // Regenerate only while a drawing consumer is active.
+    if (drawingActive && geometryResult?.meshes) {
       // Start immediately - no debounce
       // doRegenerate handles preventing overlaps and will auto-regenerate with latest when done
       doRegenerate();
     }
-  }, [panelVisible, displayOptions.show3DOverlay, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, customKeyValue, geometryResult, combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds, doRegenerate]);
+  }, [drawingActive, sectionPlane.axis, sectionPlane.position, sectionPlane.flipped, customKeyValue, geometryResult, combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds, doRegenerate]);
 
   return {
     generateDrawing,

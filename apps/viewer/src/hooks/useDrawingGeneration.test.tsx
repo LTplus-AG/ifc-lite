@@ -22,7 +22,8 @@
 import '@/test/setup-dom.js';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useCallback, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { createRoot, type Root } from 'react-dom/client';
 import type { Drawing2D } from '@ifc-lite/drawing-2d';
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
@@ -89,6 +90,7 @@ async function generate(geometryResult: GeometryResult): Promise<Drawing2D | nul
 
   function Harness(): null {
     const { generateDrawing } = useDrawingGeneration({
+      activeTool: 'select',
       geometryResult,
       ifcDataStore: null,
       sectionPlane: { axis: 'down', position: 50, flipped: false },
@@ -203,4 +205,158 @@ describe('useDrawingGeneration type-library geometry (#2058)', () => {
     assert.ok(ids.has(OCCURRENCE_ID), 'occurrence geometry must still be drawn');
     assert.ok(!ids.has(TYPE_ID), 'orphan type-library geometry must not be drawn alongside it');
   });
+});
+
+// Cold loads must not cut an invisible drawing merely because the user's
+// persisted 3D-overlay preference is enabled. These exercise the real cutter.
+type DrawingInputs = Omit<Parameters<typeof useDrawingGeneration>[0],
+  'drawing' | 'setDrawing' | 'setDrawingStatus' | 'setDrawingProgress' | 'setDrawingError'>;
+
+const OVERLAY_OPTIONS: DrawingInputs['displayOptions'] = {
+  showHiddenLines: false, useSymbolicRepresentations: false, show3DOverlay: true,
+  scale: 50, showConstructionProjection: false,
+};
+
+async function drawingActivityHarness() {
+  let inputs: DrawingInputs = {
+    geometryResult: null,
+    ifcDataStore: null,
+    sectionPlane: { axis: 'down', position: 50, flipped: false },
+    displayOptions: OVERLAY_OPTIONS,
+    typeVisibility: { spaces: true, spatialZones: true, openings: true, virtualElements: true, site: true, ifcAnnotations: true },
+    combinedHiddenIds: new Set(), combinedIsolatedIds: null, computedIsolatedIds: null,
+    models: new Map([['m0', { id: 'm0', visible: true }]]),
+    panelVisible: false, activeTool: 'select',
+  };
+  let published: Drawing2D | null = null;
+  let starts = 0;
+  let run: (() => Promise<void>) | undefined;
+  const status = (value: string) => { if (value === 'generating') starts++; };
+  const noop = () => {};
+  function Harness({ value }: { value: DrawingInputs }) {
+    const [drawing, setLocalDrawing] = useState<Drawing2D | null>(null);
+    const publish = useCallback((next: Drawing2D | null) => {
+      published = next;
+      setLocalDrawing(next);
+    }, []);
+    const { generateDrawing } = useDrawingGeneration({
+      ...value, drawing, setDrawing: publish, setDrawingStatus: status,
+      setDrawingProgress: noop, setDrawingError: noop,
+    });
+    run = generateDrawing;
+    return null;
+  }
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  const update = async (patch: Partial<DrawingInputs>) => {
+    inputs = { ...inputs, ...patch };
+    await act(async () => { root.render(<Harness value={inputs} />); });
+  };
+  await update({});
+  return {
+    update,
+    async activateSectionThenOpenPanel() {
+      await act(async () => {
+        inputs = { ...inputs, activeTool: 'section' };
+        flushSync(() => root.render(<Harness value={inputs} />));
+        assert.equal(starts, 1, 'section activation begins the real generation');
+        assert.equal(published, null, 'exercise panel opening while generation is in flight');
+        inputs = { ...inputs, panelVisible: true };
+        flushSync(() => root.render(<Harness value={inputs} />));
+        assert.equal(starts, 1, 'panel auto-opening must reuse the in-flight section drawing');
+      });
+    },
+    get drawing() { return published; },
+    get starts() { return starts; },
+    async generate() { await act(async () => { assert.ok(run); await run(); }); },
+    async dispose() { await act(async () => root.unmount()); container.remove(); },
+  };
+}
+
+function activityGeometry(firstId = 100) {
+  return geometry([
+    box(firstId, 'IfcWall', 0, [0, 0, 0], [2, 3, 0.2]),
+    box(firstId + 1, 'IfcWall', 0, [4, 0, 0], [6, 3, 0.2]),
+  ], [6, 3, 0.2]);
+}
+
+describe('useDrawingGeneration active drawing demand', () => {
+  it('shares one generation when section activation auto-opens the panel', async () => {
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ geometryResult: activityGeometry() });
+      await h.activateSectionThenOpenPanel();
+      assert.equal(h.starts, 1);
+      assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
+      await h.update({ panelVisible: false });
+      await h.update({ panelVisible: true });
+      assert.equal(h.starts, 1, 'opening a second consumer of the finished drawing also needs no duplicate');
+      await h.update({ geometryResult: activityGeometry(200) });
+      assert.equal(h.starts, 2, 'same-count geometry replacement remains a real input change');
+      assert.deepEqual(entityIds(h.drawing), new Set([200, 201]));
+    } finally { await h.dispose(); }
+  });
+  it('does no automatic cutting during a normal load with the overlay preference enabled', async () => {
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ geometryResult: activityGeometry() });
+      await h.update({ geometryResult: activityGeometry(200), sectionPlane: { axis: 'down', position: 25, flipped: false } });
+      assert.equal(h.starts, 0, 'an invisible section must not begin generating');
+      assert.equal(h.drawing, null);
+      await h.generate();
+      assert.equal(h.starts, 1, 'explicit generation/export remains available while hidden');
+      assert.deepEqual(entityIds(h.drawing), new Set([200, 201]));
+    } finally { await h.dispose(); }
+  });
+
+  it('generates when the panel opens even with the overlay disabled', async () => {
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ geometryResult: activityGeometry(), displayOptions: { ...OVERLAY_OPTIONS, show3DOverlay: false } });
+      assert.equal(h.starts, 0);
+      await h.update({ panelVisible: true });
+      assert.equal(h.starts, 1);
+      assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
+    } finally { await h.dispose(); }
+  });
+
+  it('generates for an active section overlay as geometry arrives and respects its toggle', async () => {
+    const h = await drawingActivityHarness();
+    try {
+      await h.update({ activeTool: 'section' });
+      assert.equal(h.starts, 0, 'section activation without geometry does no cutting');
+      await h.update({ geometryResult: activityGeometry() });
+      assert.equal(h.starts, 1);
+      assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
+      await h.update({ displayOptions: { ...OVERLAY_OPTIONS, show3DOverlay: false } });
+      await h.update({ geometryResult: activityGeometry(200) });
+      assert.equal(h.starts, 1, 'disabled overlay with closed panel does no cutting');
+      await h.update({ displayOptions: OVERLAY_OPTIONS });
+      assert.equal(h.starts, 2);
+      assert.deepEqual(entityIds(h.drawing), new Set([200, 201]));
+    } finally { await h.dispose(); }
+  });
+
+  for (const activation of ['panel', 'section'] as const) {
+    it(`refreshes hidden input changes when the ${activation} becomes active again`, async () => {
+      const h = await drawingActivityHarness();
+      try {
+        const on = activation === 'panel' ? { panelVisible: true } : { activeTool: 'section' };
+        await h.update({ geometryResult: activityGeometry(), ...on });
+        assert.deepEqual(entityIds(h.drawing), new Set([100, 101]));
+        await h.update({ panelVisible: false, activeTool: 'select' });
+        const starts = h.starts;
+        await h.update({
+          geometryResult: activityGeometry(300), // same mesh count, different model input
+          combinedHiddenIds: new Set([300]),
+          sectionPlane: { axis: 'down', position: 25, flipped: false },
+        });
+        assert.equal(h.starts, starts, 'hidden geometry changes must remain deferred');
+        await h.update(on);
+        assert.equal(h.starts, starts + 1);
+        assert.deepEqual(entityIds(h.drawing), new Set([301]), 'activation must replace stale geometry and honor current visibility');
+      } finally { await h.dispose(); }
+    });
+  }
 });

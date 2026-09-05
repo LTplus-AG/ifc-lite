@@ -23,7 +23,11 @@
  * per-test and why the hook timeout is generous.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { fromTransport, type DataStoreTransport } from './data-store-transport.js';
+import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
+import { contiguousSourceBytes } from './source-bytes.js';
 
 const postedMessages: unknown[] = [];
 let originalSelf: unknown;
@@ -44,6 +48,7 @@ const IFC = [
   'DATA;',
   "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);",
   "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+  "#3=IFCSITE('0000000000000000000003',$,'Site',$,$,$,$,$,.ELEMENT.,(47,0,0),(8,0,0),0.,$,$);",
   'ENDSEC;',
   'END-ISO-10303-21;',
   '',
@@ -120,7 +125,8 @@ beforeEach(async () => {
   originalPostMessage = g.postMessage;
   g.self = globalThis;
   g.postMessage = (msg: unknown) => postedMessages.push(msg);
-  await import('./parser.worker.js?t=' + ++importCounter);
+  importCounter += 1;
+  await import('./parser.worker.js?t=' + importCounter);
 }, WORKER_IMPORT_HOOK_TIMEOUT_MS);
 
 afterEach(() => {
@@ -176,3 +182,34 @@ describe('parser.worker.ts and the #3790 set-entity-index handoff', () => {
     expect(diagnostics().some((m) => m.includes('stopped early'))).toBe(false);
   }, 30_000);
 });
+
+// #3983: execute the real worker handler; verify the receiver needs no entity
+// lookups for its first georeference read (including the early spatial store).
+it('prepares render metadata before publishing partial and complete stores (#3983)', async () => {
+  const records = [...IFC.matchAll(/#(\d+)=[^;]+;/g)];
+  post({ type: 'set-entity-index',
+    ids: Uint32Array.from(records, r => Number(r[1])),
+    starts: Uint32Array.from(records, r => r.index!),
+    lengths: Uint32Array.from(records, r => r[0].length),
+  });
+  startParse();
+  await settle();
+  assertParsed();
+  const messages = postedMessages.filter((m): m is { type: string; payload: DataStoreTransport } =>
+    ['partial-store', 'complete'].includes((m as { type: string }).type));
+  expect(messages).toHaveLength(2);
+  for (const { payload } of messages) {
+    const source = contiguousSourceBytes(new Uint8Array(sharedSource()), payload.sourceContentKey ?? undefined);
+    // Full-fixture FNV-1a, independently calculated with Python integer arithmetic.
+    expect(payload.sourceContentKey).toBe('16b-6d79a917');
+    // toTransferable does not compute a key: this proves it arrived pre-seeded.
+    expect(source.toTransferable().contentKey).toBe(payload.sourceContentKey);
+    const store = fromTransport(structuredClone(payload), source);
+    const lookups = vi.spyOn(store.entityIndex.byId, 'get');
+    const georef = extractGeoreferencingOnDemand(store);
+    expect(georef?.source).toBe('siteLocation');
+    expect(georef?.projectedCRS?.name).toBe('EPSG:4326');
+    expect(lookups).not.toHaveBeenCalled();
+    lookups.mockRestore();
+  }
+}, 30_000);

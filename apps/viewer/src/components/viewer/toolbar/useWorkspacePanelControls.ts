@@ -247,6 +247,7 @@ export function useWorkspacePanelControls() {
     if (layersPanelVisible) panels.add('layers');
     if (collabPanelVisible) panels.add('collab');
     if (sidebarActivePanel === 'zones') panels.add('zones');
+    if (sidebarActivePanel === 'loadReport') panels.add('loadReport');
     if (analysisExtensionState.activeId) panels.add(analysisExtensionState.activeId);
     return panels;
   }, [
@@ -286,6 +287,7 @@ export function useWorkspacePanelControls() {
     if (activeWorkspacePanels.has('layers')) return 'Layer Stack';
     if (activeWorkspacePanels.has('collab')) return 'Collaboration Room';
     if (activeWorkspacePanels.has('zones')) return 'Location Zones';
+    if (activeWorkspacePanels.has('loadReport')) return 'Load Report';
     return activeAnalysisExtension?.label ?? 'Analysis';
   }, [activeAnalysisExtension?.label, activeWorkspacePanels]);
 

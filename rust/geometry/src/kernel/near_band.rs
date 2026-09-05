@@ -185,8 +185,8 @@ pub(crate) fn vertex_bits(v: &[f64; 3]) -> [u64; 3] {
 
 /// The set of every vertex position in `tris`, as [`vertex_bits`] keys.
 ///
-/// Used only by the N-ary union weld to skip a cutter vertex already
-/// bit-identical to a host vertex (not by ordinary subtraction): with
+/// Used by `plane_weld::promote_cutter_verts_onto_host_faces` (#3353 N-ary
+/// half) to skip a cutter vertex already bit-identical to a host vertex: with
 /// `host` pooling several operands (`promote_operands_mutually`), the
 /// per-plane search there can otherwise pull an already-exact shared vertex a
 /// few µm onto an unrelated operand's near-parallel plane. Measured on the

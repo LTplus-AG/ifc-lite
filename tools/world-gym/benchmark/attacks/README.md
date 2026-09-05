@@ -147,9 +147,8 @@ twin stays computable from the unsalted family/param streams and diffs against
 the served bytes.
 
 **v1.2 built the salt half and measured it against this attack.** See
-BENCHMARK.md sections 1a (status) and 1b (rotation), and
-`scripts/moonshot/b43-benchmark-salt/` for the run. Three things about that
-result matter on this page:
+BENCHMARK.md sections 1a (status) and 1b (rotation). Three things about that
+historical result matter on this page:
 
 - **This attack is not weakened, retired or special-cased.** It stays committed
   and unchanged in substance; it keeps scoring an exact 1.000 on dev, which is

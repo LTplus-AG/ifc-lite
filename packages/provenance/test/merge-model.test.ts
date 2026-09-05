@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * merge-model.ts (Bet B2.1): op application semantics, canonical-bytes
+ * merge-model.ts (merge-soundness validation): op application semantics, canonical-bytes
  * order-insensitivity (the "deterministic kernel model" stand-in), Merkle
  * commitment behaviour, and footprint derivation per op kind -- including
  * the entity-add path that bypasses computeFootprint because its target ids

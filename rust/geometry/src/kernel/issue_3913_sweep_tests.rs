@@ -306,14 +306,11 @@ fn run_sweep() -> Vec<Verdict> {
     out
 }
 
-/// #3925 measured 124 / 882 torn after conditional union repair, versus
-/// #3912's 136 and the pre-weld 498. By order: ABC=16, ACB=31, BAC=31,
-/// BCA=0, CAB=34, CBA=12. Reproduce with `cargo test -p ifc-lite-geometry
-/// --lib union_many_nary_sweep_regression_gate -- --nocapture`.
-/// This preserves the measured repair gain; it does not solve the residual
-/// operand-order defect tracked separately in #3917. Lower with new evidence,
-/// never raise this ceiling to force a pass.
-const KNOWN_TORN_CEILING: usize = 124;
+/// The shipped #3912 N-ary weld measured 136 / 882 torn configurations.
+/// #3925 preserves that union path; the unshipped raw-first experiment improved
+/// this synthetic sweep but regressed real large-model cuts and was discarded.
+/// Tighten the pre-weld ceiling of 498 to the measured shipped result.
+const KNOWN_TORN_CEILING: usize = 136;
 
 /// The primary #3913 deliverable: a committed, deterministic, CI-run sweep
 /// over the exact 882-configuration shape (7x7 corner grid x 3 dz x 6

@@ -124,11 +124,14 @@
 
 mod census_golden;
 
+#[path = "census_rtc/mod.rs"]
+mod census_rtc;
+
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
 use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use ifc_lite_geometry::take_plane_weld_stats;
-use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter, Mesh};
+use ifc_lite_geometry::{propagate_voids_to_parts, Mesh};
 use rustc_hash::FxHashMap;
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -245,7 +248,7 @@ fn process_no_voids(content: &str, host_id: u32) -> Option<Mesh> {
     let ei = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, ei);
     let entity = decoder.decode_by_id(host_id).ok()?;
-    let router = GeometryRouter::with_units(content, &mut decoder);
+    let router = census_rtc::router(content, &mut decoder);
     router.process_element(&entity, &mut decoder).ok()
 }
 
@@ -253,7 +256,7 @@ fn process(content: &str, host_id: u32, voids: &FxHashMap<u32, Vec<u32>>) -> Opt
     let ei = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, ei);
     let entity = decoder.decode_by_id(host_id).ok()?;
-    let router = GeometryRouter::with_units(content, &mut decoder);
+    let router = census_rtc::router(content, &mut decoder);
     router.process_element_with_voids(&entity, &mut decoder, voids).ok()
 }
 
@@ -1817,7 +1820,8 @@ const ISSUE_068_MODEL: &str = "ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc";
 /// Checked against the checked-in golden with no fixture and no sweep by
 /// [`the_heavy_golden_pins_the_known_3435_tear_population`], so the value
 /// cannot drift from the file it describes.
-const ISSUE_068_KNOWN_TORN_HOSTS: usize = 28;
+// #3925: independently remeasured on pre-#3912 code with the loader frame.
+const ISSUE_068_KNOWN_TORN_HOSTS: usize = 26;
 
 /// Coverage floors, one per heavy fixture, bounding BOTH the checked-in golden
 /// and every sweep that gates or blesses against it. [`MIN_VOID_HOSTS`]'s job,
@@ -2159,30 +2163,41 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
     }
 }
 
-// #3925: fast real-file witnesses for the two weld regressions. Keep the
-// production triangulator selected while reading these baseline measurements.
-// Optional accept gates intentionally reject other cuts on this fixture and
-// exercise different fallback geometry; these bars are for the shipped default.
+// #3925: independent IfcOpenShell 0.8.2 volume is 0.03938 m³. The old
+// unre-based census collapsed corners and pinned approximately 0.03844 m³.
 #[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
 #[test]
-fn shared_vertex_and_union_repair_preserve_real_coverings_3925() {
+fn census_rebases_real_covering_before_f32_geometry_3925() {
     let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     set_alt(false);
     let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
     if !path.exists() {
-        eprintln!("Skipping #3925 real covering witnesses: run pnpm fixtures");
+        eprintln!("Skipping #3925 covering oracle: run pnpm fixtures");
         return;
     }
     let content = std::fs::read_to_string(path).expect("read rvt01 fixture");
-    let voids = void_index(&content);
-    let wall = process(&content, 6073, &voids).expect("mesh wall with openings");
-    let stats = edge_stats(&wall);
-    assert!(stats.open <= 8 && stats.strict <= 39,
-        "a shared cutter corner must not break the original boundary: open={} strict={}", stats.open, stats.strict);
-    let covering = process(&content, 11232, &voids).expect("mesh thin covering with openings");
-    assert_eq!(edge_stats(&covering).open, 0);
-    // Existing census volume, independently retained when the cutter union
-    // preserves its input. Unconditional promotion reduces it to 38439 cm³.
-    assert!((volume_cm3(&covering) - 38443).abs() <= 1,
-        "union repair must not over-cut the thin covering: {} cm³", volume_cm3(&covering));
+    let mesh = process(&content, 11232, &void_index(&content)).expect("mesh covering");
+    assert_eq!(edge_stats(&mesh).strict, 0, "covering must remain closed without doubled edges");
+    assert!((39_200..=39_500).contains(&volume_cm3(&mesh)),
+        "covering volume must agree with the independent solid: {} cm³", volume_cm3(&mesh));
+}
+
+// #3925: the one reviewed torn-to-closed reference migration. Independent
+// IfcOpenShell 0.8.2 gives 0.0756966 m³; both existing loader and repaired census
+// preserve that thin solid. An open mesh's signed volume alone is insufficient.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn repaired_office_covering_matches_independent_solid_3925() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    set_alt(false);
+    let path = crate_dir().join("../../tests/models/ara3d/S_Office_Integrated Design Archi.ifc");
+    if !path.exists() {
+        eprintln!("Skipping #3925 office oracle: run pnpm fixtures");
+        return;
+    }
+    let content = std::fs::read_to_string(path).expect("read office fixture");
+    let mesh = process(&content, 91291, &void_index(&content)).expect("mesh office covering");
+    assert_eq!(edge_stats(&mesh).strict, 0);
+    assert!((75_500..=75_900).contains(&volume_cm3(&mesh)),
+        "office covering volume must agree with the independent solid: {} cm³", volume_cm3(&mesh));
 }

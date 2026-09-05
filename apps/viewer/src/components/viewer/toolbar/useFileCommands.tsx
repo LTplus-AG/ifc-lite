@@ -24,6 +24,7 @@ import { toast } from '@/components/ui/toast';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { ingestDxfFiles, splitDxfFiles } from '@/hooks/ingest/dxfIngest';
 import { ShareDialog } from '../ShareDialog';
+import { FederationSetupControls } from '../FederationSetupControls';
 
 import { FILE_ACCEPT, isSupportedModelFile } from '@/services/supported-model-files';
 
@@ -374,6 +375,7 @@ export function useFileCommands(): FileCommands {
         className="hidden"
       />
       {collabEnabled && <ShareDialog open={shareDialogOpen} onOpenChange={setShareDialogOpen} />}
+      <FederationSetupControls />
     </>
   );
 

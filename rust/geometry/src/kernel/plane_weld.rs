@@ -178,7 +178,7 @@ pub(crate) fn promote_operands_mutually(operands: &mut [Vec<Tri>]) {
                     host.extend_from_slice(o);
                 }
             }
-            moved += promote_cutter_verts_onto_host_faces(&mut operands[i], &host, n > 2);
+            moved += promote_cutter_verts_onto_host_faces(&mut operands[i], &host);
         }
         welded += moved;
         if moved == 0 {
@@ -242,16 +242,16 @@ const MAX_WELD_PASSES: usize = 4;
 /// whole point there is a near-coplanar operand pair, and the weld fires on
 /// every one of the 9464 unions in
 /// `tests/issue_3353_near_coplanar_rotated_overlap.rs`.
-/// `preserve_shared_vertices` protects exact seams only when the host pools
-/// multiple union operands. Subtraction must reconcile the whole cutter face:
-/// freezing a shared corner alone leaves its other corners on a different plane.
-pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri], preserve_shared_vertices: bool) -> usize {
+/// Returns the number of vertices actually MOVED, so callers (and the #3353
+/// census run) can measure whether the promotion fires at all rather than
+/// inferring it from an unchanged golden.
+pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[Tri]) -> usize {
     if cutter.is_empty() || host.is_empty() {
         return 0;
     }
     let (mut welded, mut band) = (0usize, NearBand::default());
     [cutter as &[Tri], host].into_iter().for_each(|t| band.observe_tris(t));
-    let host_verts = preserve_shared_vertices.then(|| super::near_band::exact_vertex_set(host));
+    let host_verts = super::near_band::exact_vertex_set(host); // #3353 N-ary half
 
     struct Face {
         /// `t[0]` anchors the plane; all three are [`exact_on_plane_weld`]'s
@@ -287,7 +287,7 @@ pub(crate) fn promote_cutter_verts_onto_host_faces(cutter: &mut [Tri], host: &[T
 
     for t in cutter.iter_mut() {
         for v in t.iter_mut() {
-            if host_verts.as_ref().is_some_and(|vs| vs.contains(&super::near_band::vertex_bits(v))) { continue; }
+            if host_verts.contains(&super::near_band::vertex_bits(v)) { continue; } // #3353
             // Nearest host plane the vertex is within the band of but NOT
             // exactly on (d == 0 planes are already reconciled — and must not
             // shadow a second, still-noisy plane: in the repro the jamb verts

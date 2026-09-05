@@ -469,7 +469,7 @@ impl BooleanClippingProcessor {
             // otherwise retain the original result and its failure records.
             let refs: Vec<&Mesh> = prisms.iter().collect();
             let repaired = ClippingProcessor::consolidate_coplanar(
-                crate::kernel::mesh_bridge::union_many_reconciled(&refs));
+                crate::kernel::mesh_bridge::union_many(&refs));
             if !repaired.is_empty() {
                 let candidate = Self::subtract_checked(&clipper, &base_mesh, &repaired);
                 let candidate_failures = clipper.take_failures();
@@ -736,8 +736,8 @@ impl BooleanClippingProcessor {
         // clock cost is comparable. CSG cost scales with operand polygon
         // count, not operation count.
         //
-        // See docs/research/csg-clipping-fidelity.md for the full
-        // side-by-side comparison with the reference implementations.
+        // This keeps each operation bounded to one small cutter and preserves
+        // IFC operand order.
 
         // Get second operand
         let second_operand_attr = entity

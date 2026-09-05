@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * footprint.ts (Bet B1.4): the crux ancestor-exclusion rule (structural
+ * footprint.ts (footprint validation): the crux ancestor-exclusion rule (structural
  * conflicts), the spatial epsilon rule, and the soundness invariant
  * (writtenNodes intersection must ALWAYS report a conflict, regardless of
  * region state — see footprint.ts's module docstring for the full rationale).
@@ -208,7 +208,7 @@ describe('conflictPredicate: structural conflicts', () => {
     // would pull the host into the opening's writtenNodes, and every edit
     // anywhere below the voids relationship would then structurally conflict
     // with every edit on the host: exactly the false-conflict blowup the crux
-    // rule exists to prevent (the M4 kill criterion).
+    // rule exists to prevent (the soundness criterion).
     const dag = new ProvenanceDag();
     const specs: AnyNodeSpec[] = [
       { id: 'openMesh', kind: 'geometry-mesh', payload: mesh(400) },
@@ -347,10 +347,10 @@ describe('conflictPredicate: spatial conflicts', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* The ablation knob (G4 review item 6)                                  */
+/* The spatial-rule ablation                                         */
 /* ------------------------------------------------------------------ */
 
-describe("conflictPredicate: spatialRule: 'disabled' (the B4.2 ablation)", () => {
+describe("conflictPredicate: spatialRule: 'disabled' (the spatial-rule ablation)", () => {
   it('drops the spatial half: overlapping regions on structurally disjoint ops no longer conflict', async () => {
     const dag = buildFixedDag();
     await dag.build();

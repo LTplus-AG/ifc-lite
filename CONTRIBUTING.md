@@ -8,6 +8,24 @@ of published `@ifc-lite/*` packages plus a CLI, MCP server, and HTTP server.
 conventions ("house rules"). Read it before a non-trivial change. This file is
 the short version for getting set up and opening a PR.
 
+## Documentation
+
+Keep committed documentation durable and owned by the code it describes:
+
+- `docs/guide` and `docs/tutorials` explain current user workflows.
+- `docs/architecture` records current system boundaries and design constraints.
+- `docs/contributing` contains active contributor and release procedures.
+- A versioned compatibility contract belongs beside its owning package as
+  `SPEC.md`.
+- Planned work belongs in an issue or project, not a checked-in task tracker.
+- Generated benchmark output and investigation transcripts belong in CI
+  artifacts or the originating issue. Git history is the archive; do not add
+  an `archive`, `research-notes`, or completed-plan directory.
+
+Every page under `docs/` must appear in `mkdocs.yml`. Run `pnpm docs:build`,
+`pnpm docs:check-samples`, and `pnpm docs:check-generated` for documentation
+changes.
+
 ## Setup
 
 ```bash

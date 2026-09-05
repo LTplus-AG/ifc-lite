@@ -330,9 +330,12 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   was removed; the native shared signature cache remains independently useful.
   Clearing local reference variables and delaying only until the first mesh
   batch did not reliably reduce whole-load memory either.
-  An earlier discarded candidate had a renderer trap during the style pre-pass.
-  Diagnostic replays and the final matrix did not reproduce it; its preserved
-  crash dump does not establish a cause or a claimed crash fix.
+  Rare Chrome ARM64 renderer SIGILLs occurred during the style pre-pass on
+  both the performance candidate and the unoptimized corrected baseline.
+  Preserve failed runs alongside successful timing samples; successful replays
+  do not establish a fix or equal failure rates. Follow-up #3975 carries the
+  crash dumps, reproduction conditions and bounded engine/application diagnosis.
+  This change does not claim to fix that shared reliability defect.
   Geometry-only events and truncated worker-memory summaries cannot settle it.
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as

@@ -91,6 +91,9 @@
  *   SCHEMA_INVALID  A required top-level field is missing or wrongly typed.
  *                   REMEDY: fix the prompt. (An individual BAD FINDING is dropped,
  *                   not fatal -- see below.)
+ *   FINDINGS_INVALID `findings` is missing or is not an array. This one top-level
+ *                   shape is retried once with a focused correction; it is never
+ *                   defaulted, so a second malformed response still fails.
  *   VERDICT_CONTRADICTS_FINDINGS  `verdict: "clean"` with a non-empty findings
  *                   array. Self-contradictory, and both ways of resolving it are
  *                   wrong: trusting the verdict drops real findings, trusting the
@@ -199,6 +202,7 @@ export const REASONS = new Set([
   'RESPONSE_TRUNCATED',
   'INPUT_INVALID',
   'SCHEMA_INVALID',
+  'FINDINGS_INVALID',
   'VERDICT_CONTRADICTS_FINDINGS',
   'CLASS_PASS_INCOMPLETE',
   'PROOF_OF_WORK_FAILED',

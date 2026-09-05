@@ -10,7 +10,7 @@
  * than ten (no `CompositionType`, since a zone is not part of the containment
  * hierarchy), and elements attached by REFERENCE rather than by containment.
  * A test that only checked "an entity was emitted" would pass on the very
- * shape `docs/design/zone-emission.md` argues against.
+ * shape `docs/architecture/spatial-zone-emission.md` argues against.
  */
 
 import { describe, expect, it } from 'vitest';

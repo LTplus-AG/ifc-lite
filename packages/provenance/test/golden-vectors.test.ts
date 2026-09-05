@@ -4,7 +4,7 @@
 
 /**
  * Golden wire-format vectors for node-hash-v0 (FROZEN 2026-07-25, spec
- * version node-hash-v0 / 1.0.0, docs/vision/spec/node-hash-v0.md).
+ * version node-hash-v0 / 1.0.0, packages/provenance/SPEC.md).
  *
  * Regression suite for the freeze itself, landed by PR #1886 -- the PR whose
  * merge IS the freeze act. The ps-unicode vectors trace to findings F4/F5 of
@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest';
 import { computeNodeHash, type NodeKind, type PayloadForKind } from '../src/index.js';
 
 const FREEZE_POLICY =
-  'node-hash-v0 wire format is FROZEN (1.0.0, 2026-07-25 — docs/vision/spec/node-hash-v0.md). ' +
+  'node-hash-v0 wire format is FROZEN (1.0.0, 2026-07-25 — packages/provenance/SPEC.md). ' +
   'A golden-vector mismatch means the wire format changed. If this change is intentional it ' +
   'requires node-hash-v1: a new versioned spec file plus a major version bump of ' +
   '@ifc-lite/provenance. Never "fix" this by regenerating the vectors under the v0 name.';

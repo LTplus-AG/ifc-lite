@@ -223,6 +223,10 @@ commentary before or after:
 required even when `verdict` is `clean` — it is how a review that did not read
 the diff is told apart from one that read it and found nothing.
 
+`findings` is required on **every** verdict and is always an array. When the
+verdict is `clean`, emit `"findings": []` exactly; never omit the field, use
+`null`, or replace it with an object.
+
 `class_pass` is required when `verdict` is `clean`, and must carry every one of
 these twelve class names, each exactly once:
 

@@ -6,8 +6,8 @@
  * `ifc-lite gym (--model <file.ifc> | --seed <n>) [--checks schema,clash,ids] [--ids <rules.xml>]`
  *
  * A reset/step/reward environment loop over the existing headless checks:
- * the skeleton of an RLVR environment for buildings (docs/vision/moonshots-tech.md
- * M2, docs/vision/moonshots-execution-plan.md B0.4). The environment wraps a
+ * the skeleton of an RLVR environment for buildings (tools/world-gym/README.md
+ * M2, tools/world-gym/benchmark/BENCHMARK.md B0.4). The environment wraps a
  * model - either a fixed file (`--model`) or a procedurally generated World
  * Gym episode (`--seed`, see `gym/episode.ts`) - and lets an agent apply
  * data-mutation ops, scoring each step against the same schema/clash/ids

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * ProvenanceDag (Bet B1.1, M1 midterm): correctness (incremental recompute
+ * ProvenanceDag (incremental DAG validation): correctness (incremental recompute
  * must be byte-identical to a from-scratch rebuild) and telemetry accuracy
  * (recomputed/cacheHits/hitRate must match the actual dirty-ancestor set).
  *

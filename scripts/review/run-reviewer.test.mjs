@@ -407,6 +407,15 @@ test('buildPrompt: retryReason RESPONSE_TRUNCATED gets truthful wording, never t
   assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
 });
 
+test('buildPrompt: retryReason FINDINGS_INVALID requires an array without defaulting it (#3919)', () => {
+  const p = buildPrompt('R', INPUT, { retryNote: '❌ FINDINGS_INVALID: findings must be an array.', retryReason: 'FINDINGS_INVALID' });
+  assert.match(p, /`findings`\s+MUST always be an array/);
+  assert.match(p, /`"findings": \[\]`/);
+  assert.match(p, /Do not omit\s+the field, use null, or substitute an object/);
+  assert.doesNotMatch(p, /failed proof-of-work/);
+  assert.doesNotMatch(p, /terminal sentinel/);
+});
+
 test('buildPrompt: retryReason VALIDATION_EMPTY gets truthful wording, never proof-of-work or truncation text (#3775)', () => {
   const p = buildPrompt('R', INPUT, { retryNote: '❌ VALIDATION_EMPTY: The model reported 1 finding(s) and NONE survived validation.', retryReason: 'VALIDATION_EMPTY' });
   assert.match(p, /## This is a RETRY/);

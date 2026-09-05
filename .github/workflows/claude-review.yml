@@ -308,7 +308,8 @@ jobs:
       # laundering a forged marker through our own trusted identity.
       #
       # ONE RETRY, ONLY ON PROOF_OF_WORK_FAILED, RESPONSE_TRUNCATED,
-      # VALIDATION_EMPTY OR CLASS_PASS_INCOMPLETE (#3652, #3777, #3775, #3831).
+      # VALIDATION_EMPTY, CLASS_PASS_INCOMPLETE OR FINDINGS_INVALID (#3652,
+      # #3777, #3775, #3831, #3919).
       # Every other reason here
       # (SCHEMA_INVALID, VERDICT_CONTRADICTS_FINDINGS, ...) reflects the prompt
       # or the harness, not a fixable shape of model output, and re-running the
@@ -384,7 +385,7 @@ jobs:
             --out "$RUNNER_TEMP/findings.json" 2>&1 | tee "$RUNNER_TEMP/validate.log"
           rc=${PIPESTATUS[0]}
 
-          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED|VALIDATION_EMPTY|CLASS_PASS_INCOMPLETE):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
+          retry_reason=$(grep -oE '^❌ (PROOF_OF_WORK_FAILED|RESPONSE_TRUNCATED|VALIDATION_EMPTY|CLASS_PASS_INCOMPLETE|FINDINGS_INVALID):' "$RUNNER_TEMP/validate.log" | head -n1 | sed -E 's/^❌ ([A-Z_]+):.*/\1/')
           if [ "$rc" -ne 0 ] && [ -n "$retry_reason" ]; then
             echo "::notice::${retry_reason} on the first attempt; retrying once."
             node "$GITHUB_WORKSPACE/scripts/review/run-reviewer.mjs" \

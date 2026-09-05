@@ -124,7 +124,7 @@ pub fn subtract(host: &Mesh, cutter: &Mesh) -> Mesh {
     crate::csg_capture::record_single(host, cutter);
     let h = orient_outward(mesh_to_tris(host));
     let mut c = mesh_to_tris(cutter);
-    promote_cutter_verts_onto_host_faces(&mut c, &h, false);
+    promote_cutter_verts_onto_host_faces(&mut c, &h);
     let c = orient_outward(c);
     tris_to_mesh(&boolean(&h, &c, BoolOp::Difference))
 }
@@ -149,7 +149,7 @@ pub fn subtract_many(host: &Mesh, cutters: &[&Mesh]) -> Option<Mesh> {
         .iter()
         .map(|m| {
             let mut c = mesh_to_tris(m);
-            promote_cutter_verts_onto_host_faces(&mut c, &h, false);
+            promote_cutter_verts_onto_host_faces(&mut c, &h);
             orient_outward(c)
         })
         .collect();
@@ -239,7 +239,7 @@ pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
 #[path = "nary_union.rs"]
 mod nary_union;
 pub use nary_union::union_many;
-pub(crate) use nary_union::{union_many_preserving_coordinates, union_many_reconciled};
+pub(crate) use nary_union::union_many_preserving_coordinates;
 
 /// `a ∩ b` as the kernel's own exact f64 triangles, WITHOUT the `Mesh` round-trip.
 ///

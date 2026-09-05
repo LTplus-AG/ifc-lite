@@ -114,26 +114,24 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### N-ary repair validation (#3925)
 
-Coordinate-moving union repair must preserve the consumer's volume contract.
-The 3D cutter path assumes unchanged input solids; a closed promoted union can
-still over-cut a thin covering. Keep that consumer on the shared arrangement
-without promotion. For other N-ary consumers, preserve a closed original and
-accept a repair only after checking the emitted, consolidated mesh. The
-ordinary subtraction weld must not freeze isolated shared corners.
+Rebase before measuring geometry. The old direct-router census converted survey
+coordinates to f32 before subtracting an origin; its apparent covering regressions
+were measurements of already-collapsed inputs. Disabling shared-corner protection
+to satisfy that census regressed valid large-model cuts. A raw-first union also
+improved a synthetic sweep while damaging those cuts. Both were discarded.
 
-For a repaired roof cutter, a bounding-box check only limits under-removal;
-also cap removed volume by the sum of the clean individual trial removals.
-A diagnostic-only trial cannot certify that cap. Making every such diagnostic
-defer the entire original union instead was rejected by the real-file census:
-it loses existing closed cuts when the sequential fallback tears.
+Preserve an accepted production union. For an unusable 3D opening union, try one
+coordinate-preserving candidate before sequential subtraction. Roof chains need
+their own actual-cut checks and a removed-volume upper bound from clean individual
+trials; a bounding box alone cannot detect over-removal. Making every diagnostic
+trial reject the original path also lost existing cuts and was discarded.
 
-Discarded trials: protecting whole operands did not restore all cutter cases;
-raw exact-coordinate closure rejected useful repairs that the existing
-resolution-specific audit accepts; a permissive hairline acceptance lost
-near-coplanar sweep coverage. Validation of repair on a copy adds work, so the
-performance verdict must include actual worker-pool and native full loads,
-not just a synthetic union timing. See
-[the implementation rationale](../../docs/research/nary-union-repair.md).
+The census coordinate migration uses a reference generated on pre-regression
+code, with one independently checked torn-to-closed row recorded separately.
+Neither arbitrary golden updates nor local closure scores establish correctness.
+Keep real loader output and independent solid measurements in the comparison.
+See [the implementation and reference provenance](../../docs/research/nary-union-repair.md).
+The final performance verdict requires native and worker-pool full loads.
 
 ### Shipped wins
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The

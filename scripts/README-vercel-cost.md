@@ -6,19 +6,19 @@ file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 # CI/CD cost playbook (Vercel · Depot · GitHub Actions)
 
-`ifc-lite` is a **public** repo with very high activity (~100 merged PRs and
-~250 commits to `main` per month). That combination makes CI/CD spend the
-dominant infra cost. This doc records why the spend happens and the levers
-that control it. It is referenced from `scripts/vercel-ignore-build.sh` and
-`.github/workflows/test.yml`.
+`ifc-lite` is a **public** repo with very high activity — 1,233 merges to
+`main` in the 30 days to 2026-09-05, measured in §3a. That combination makes
+CI/CD spend the dominant infra cost. This doc records why the spend happens
+and the levers that control it.
 
-Snapshot that triggered this work (June 2026):
+Snapshot that triggered this work (June 2026). **Superseded for Vercel by §3**,
+which is measured rather than estimated; kept for the Depot/Actions picture:
 
 | Provider | ~Monthly | Why |
 |---|---|---|
 | Depot (GitHub Actions runners + cache) | ~$147 | Heavy CI jobs run on **paid** Depot runners; cache grew to 173 GB |
 | GitHub Actions | **$0** | Public repo → standard runners are free + unlimited |
-| Vercel (builds) | ~$165 | 3 repo-linked projects rebuild on **every** commit; 1 was on the 30-core Turbo machine |
+| Vercel (builds) | ~$165 | 3 repo-linked projects rebuilt on **every** commit; 1 was on the 30-core Turbo machine. Re-measured at $269.04 in §3, and fixed in §3a-fix |
 
 ---
 
@@ -120,52 +120,138 @@ instead of emulation.
 
 ## 3. Vercel builds — the real picture
 
-Three repo-linked projects, all building on **every** push (preview + prod),
-because Vercel's monorepo default deploys every connected project per commit:
+**Measured 2026-09-05, billing cycle 2026-08-06 → 09-06.** Vercel's bill is one
+line item and everything else is noise:
 
-| Project | Domain | Build machine | What it builds |
-|---|---|---|---|
-| `ifc-lite` | ifc-lite-ltplus.vercel.app | Standard 4-core ✅ | Viewer (Rust+WASM from source) |
-| `ifc-lite-viewer-embed` | embed.ifclite.com | Standard 4-core ✅ | Embed (Rust+WASM from source) |
-| `ifc-lite-dev` | **ifclite.dev** (landing) | **Turbo 30-core** 🔴 | Static landing — `0 tasks, 182 ms` |
+| SKU | Cycle total |
+|---|---|
+| **Build CPU Minutes** | **$269.04** |
+| Edge Middleware Invocations | $0.65 |
+| Fluid Active CPU + Provisioned Memory | $1.00 |
+| Fast Origin Transfer | $0.36 |
+| Web Analytics / Functions / Blob / ISR | $1.00 combined |
 
-Two structural problems:
+So the only question that matters for Vercel spend is *how many builds run*.
 
-1. **No per-project scoping.** A pure-geometry Rust PR rebuilt the *landing
-   page*; a landing copy-edit could spin up the *viewer*. Fixed in code:
-   `scripts/vercel-ignore-build.sh` now takes a scope arg (see §3a).
-2. **The landing page runs on the 30-core Turbo machine** ($0.126/min — 9× the
-   Standard $0.014/min rate) to copy static files. Pure waste; fix in dashboard.
+### 3a. What drove it: one production build per commit, ×3 projects
 
-### 3a. Set each project's Ignored Build Step (dashboard → Settings → Git)
+`main` takes **1,233 squash merges per 30 days (~41/day)**, and each one fired a
+production deploy on all three repo-linked projects. Preview deployments were
+already free — each project's Ignored Build Step is
+`if [ "$VERCEL_ENV" == "production" ]; then exit 1; else exit 0; fi`, which
+cancelled 4,747 preview deployments over the same window before they built.
+The deployment RECORD still exists — Vercel creates it, then marks it
+`CANCELED` — so what is skipped, and never billed, is the build. Production
+was the whole bill:
 
-GOTCHA — Vercel runs the Ignored Build Step from each project's **Root
-Directory**, not the repo root. So the command path is relative to that root.
-The viewer's root is `./`; embed's is `apps/viewer-embed` (hence `../../`);
-landing's is `apps/landing` (so it just checks `.`, its own folder).
+| Project | Root dir | Machine | Prod builds / 30d | Wall min | Median | Est. share |
+|---|---|---|---|---|---|---|
+| `ifc-lite` (viewer) | `./` | standard, fixed | 751 | 3,304 | 3.7 min | ~$125 |
+| `ifc-lite-viewer-embed` | `apps/viewer-embed` | standard, fixed | 702 | 1,852 | 2.5 min | ~$140 |
+| `ifc-lite-dev` (landing) | `apps/landing` | standard, elastic | 45 | 22 | 0.5 min | ~$4 |
 
+(1,230 production deployments were *created* on each of the three projects. For
+viewer and embed the gap to their 751 and 702 builds is Vercel auto-cancelling
+a queued deploy when a newer commit supersedes it. Landing's 45 is a far wider
+gap and a different mechanism entirely: its own `apps/landing/vercel.json` set
+`ignoreCommand`, which overrides the dashboard step and path-scoped it. Cost
+split assumes standard = 4 vCPU; the totals reconcile to $269 at
+~$0.0094/CPU-min.)
+
+**Path scoping is not the lever, and measuring it is what proved that.** A
+`scripts/vercel-ignore-build.sh` once existed to scope each project to the paths
+it consumes. It was never wired into any project, and replaying its pathspecs
+over the 1,233 real commits shows why it would not have helped much: **87% touch
+viewer-relevant paths and 69% touch embed-relevant paths**, because
+`packages/**`, `rust/**` and the lockfiles are inputs to both apps. It bought
+~13% / ~31% per commit.
+
+And once builds are batched daily (§3a-fix) even that disappears. Replaying the
+same pathspecs **per day** rather than per commit: every one of the 31 days in
+the window contains at least one viewer-relevant commit, and at least one
+embed-relevant commit. Path scoping would skip **0 of 31** nightly builds for
+the two projects that are 98% of the bill. (Landing is the exception — relevant
+on 21/31 days — but at 0.5 min a build that is about 3 cents a month.) The
+script has been deleted rather than fixed; there is nothing left for it to
+compose with. See §3a-fix.
+
+### 3a-fix. The fix: `main` is no longer the Production Branch
+
+All three projects now deploy from a **`production`** branch, and
+`.github/workflows/deploy-nightly.yml` fast-forwards `production` to `main`
+once a day at 05:45 UTC. That is one push a day, so one build per project per
+day: **~1,500 builds/month → ~90**, roughly a 94% cut.
+
+```text
+main       ──●──●──●──●──●──●──●──●──  41/day, now PREVIEWS → skipped, $0
+                ╲
+production ──────●──────────────────●  1/day, fast-forward → 3 builds
+            05:45 UTC          05:45 UTC
 ```
-ifc-lite (root ./)                  →  bash scripts/vercel-ignore-build.sh viewer
-ifc-lite-viewer-embed (apps/viewer-embed) →  bash ../../scripts/vercel-ignore-build.sh embed
-ifc-lite-dev (apps/landing)         →  git diff HEAD^ HEAD --quiet -- .
-```
 
-The landing page is static and depends only on `apps/landing`, so the plain
-`git diff -- .` (`.` = the landing folder, since the step runs from there) is
-simpler than the script. viewer/embed need the script because their relevant
-inputs span `rust/**`, `packages/**`, and config.
+Consequences to know about:
 
-After this, `ifc-lite-dev` skips ~all commits (only rebuilds when
-`apps/landing` changes), and viewer/embed stop rebuilding for each other.
+- **`www.ifclite.com` can lag `main` by up to 24h.** That is the trade being
+  made. To ship sooner, run the workflow manually (Actions → *Nightly Vercel
+  Deploy* → Run workflow). That is the only hotfix path, deliberately.
+- **A hotfix must land on `main` first.** The manual run takes a ref, but the
+  workflow refuses one that is not already reachable from `main`, and the
+  refusal is the point: deploying a side branch would put `production` on a
+  commit `main` never contains — squash-merging that branch produces a
+  *different* commit — so every later nightly would see `diverged`, refuse, and
+  freeze all three sites until someone reconciled by hand.
+- **This workflow cannot roll production backwards.** An older `main` commit
+  passes the reachability check and then fails the fast-forward check as
+  `behind`, on purpose: moving `production` back would break the
+  fast-forward-only invariant and force a full rebuild of an old commit. To
+  revert production fast, use Vercel's instant rollback — `vercel rollback
+  <deployment-url>`, or promote a previous deployment in the dashboard. It
+  re-points the alias at a build that already exists, so it takes seconds
+  instead of minutes, which is what you actually want when the site is broken.
+- **A bad commit is live for up to 24h**, not the ~20 minutes it used to be.
+  The cron fires just before the Zurich workday for exactly this reason.
+- **`ifc-lite-git-main-ltplus.vercel.app` goes stale** — `main` is a preview
+  branch now and previews are skipped. Use the production domains.
+- The dashboard **Ignored Build Step is unchanged** on all three projects. It
+  still reads `VERCEL_ENV`, and it is now what makes `main` pushes free.
+  Landing is the one real behaviour change: `apps/landing/vercel.json` used to
+  set `ignoreCommand`, which overrides the dashboard step, so landing was the
+  only project running a path-scoped check (45 production builds against
+  viewer/embed's 751/702) and the only one still building previews (190 of
+  them). That override is deleted, so landing now rebuilds on every nightly
+  whether or not `apps/landing` changed, and skips previews like the other two.
+  At 0.5 min a build that is a few cents a month for one less special case.
+- **The ref moving is not the deploy.** If a project's Production Branch is
+  ever set back to `main`, it silently resumes building 41×/day and the saving
+  quietly stops; if its Ignored Build Step is edited, it silently stops
+  deploying. Both look like a green nightly, because the branch advances either
+  way. So the workflow asks Vercel whether a deployment for the pushed commit
+  actually exists, per project, and fails when one does not. That check needs a
+  `VERCEL_TOKEN` repo secret; without it the run says so as a warning rather
+  than passing quietly.
+- `production` must only ever be fast-forwarded. The workflow refuses a push
+  that is not a fast-forward rather than clobbering what is live.
 
-### 3b. Build machine + previews (dashboard, per project)
-- **`ifc-lite-dev` → Build machine: Standard or Elastic** (NOT Turbo). It's a
-  182 ms static build; 30 cores is pure cost.
-- **`ifc-lite-dev` → disable preview deployments** (Settings → Git → Deploy only
-  production, or ignore non-`main` refs). A landing page rarely needs PR previews.
-- `ifc-lite` and `ifc-lite-viewer-embed`: keep **Standard 4-core** (correct).
+### 3b. Build machines (dashboard, per project)
+
+All three are on **standard**. Two notes worth keeping:
+
+- The landing project's historical **Turbo 30-core** machine (9× the standard
+  rate for a 0.5 min static build) is long gone. It is standard/elastic now.
+- `ifc-lite-viewer-embed` had been auto-upgraded to **enhanced** by elastic
+  selection with reason `short-build-duration`. That is backwards for cost: it
+  had the *fastest* builds of the three (2.5 min median) and the *largest*
+  CPU-minute bill, because enhanced doubles the per-minute rate. It is pinned to
+  `standard` / `fixed` so elastic cannot re-upgrade it. If embed builds start
+  timing out or OOM-ing, that pin is the first thing to reconsider.
 
 ### 3c. Prebuilt-WASM fast path — IMPLEMENTED (option A) ✅
+
+> Since §3a-fix this barely fires on Vercel: a nightly build batches ~40 merges,
+> so it will almost always contain a Rust change and fall through to the
+> from-source path. The fast path still earns its keep in CI (§1a), where it is
+> per-PR, and on CLI previews. The paragraphs below describe the per-commit
+> world it was built for.
 Every viewer/embed build was re-provisioning the WASM toolchain from scratch —
 re-cloning emsdk and **re-downloading ~270 MB of wasm-binaries** + the Rust
 toolchain — *despite* "Restored build cache from previous deployment". The
@@ -204,12 +290,12 @@ needs cache-size investigation. Kept here in case (A)'s tag fetch proves flaky.
 
 ### 3d. On-demand previews via CLI
 
-Preview builds on the Rust+WASM projects are turned off through each project's
-**Ignored Build Step** (section 3a; dashboard `Settings > Git`), not the
+Preview builds are turned off on all three projects through each project's
+**Ignored Build Step** (dashboard `Settings > Git`), not the
 `previewDeploymentsDisabled` flag. So a PR-branch push does not spin up the
-~several-minute viewer/embed WASM preview. Most PRs never need a live preview;
-this is the largest remaining Vercel build-minute lever. `main` still deploys to
-**production**.
+~several-minute viewer/embed WASM preview. Since §3a-fix this also covers
+`main`, which is a preview branch now — production moves only when
+`.github/workflows/deploy-nightly.yml` advances the `production` branch.
 
 When a branch does need a preview, trigger one from the CLI:
 
@@ -248,4 +334,6 @@ vercel build && vercel deploy --prebuilt --archive=tgz
   runners always billed even on public repos (Linux 4-core $0.012, 8-core $0.022).
 - Vercel builds: Standard 4-core $0.014/min, Enhanced 8-core $0.03, Turbo 30-core
   $0.126, Elastic $0.0035/CPU-min. Remote Cache auto-enabled on Vercel builds.
-  "Skip unaffected projects" / Ignored Build Step is the monorepo cost lever.
+  Billed as the single `buildCpuMinutes` SKU. The Ignored Build Step gates
+  *which* deploys build; the Production Branch gates *how often* (§3a-fix), and
+  on a repo merging 41 PRs/day the second one is worth ~10× the first.

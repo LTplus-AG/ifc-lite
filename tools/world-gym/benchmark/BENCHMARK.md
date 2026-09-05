@@ -437,6 +437,5 @@ benchmark/
   attacks/            committed adversarial submissions, kept as regressions
 ```
 
-The salt's own evidence - the before/after measurement, the with-salt control,
-the uninformed-reference distribution and the honest-baseline arm - lives in
-`tools/world-gym/benchmark/attacks/` and is re-runnable in about a minute.
+The historical salt measurements are summarized in section 1a. The retained
+attack implementation documents the threat model in `benchmark/attacks/`.

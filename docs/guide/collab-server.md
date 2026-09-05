@@ -196,4 +196,4 @@ with the same env, behind TLS.
 
 - [Real-Time Collaboration](collaboration.md) — the user-facing feature.
 - [Testing collaboration](../contributing/collaboration-testing.md) — unit/integration/live test recipes.
-- [Architecture: collaboration plan](../architecture/collaboration.md) — the CRDT-on-IFCX design.
+- [Architecture: collaboration](../architecture/collaboration.md) — the CRDT-on-IFCX design.

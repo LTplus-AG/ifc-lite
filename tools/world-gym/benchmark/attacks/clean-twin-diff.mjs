@@ -40,7 +40,7 @@
  * `--salt-file`; a salt is never accepted in argv - see lib/salt.mjs), used
  * only by the B4.3 control run to demonstrate that handing the attack the
  * secret restores it to 1.000, i.e. that the collapse is the salt's doing and
- * not a broken harness. Measured numbers: tools/world-gym/benchmark/attacks/.
+ * not a broken harness. The historical result is summarized in BENCHMARK.md.
  *
  * It also keeps working, at full strength, on dev - which is deliberate. Dev is
  * open by design and carries no integrity claim.

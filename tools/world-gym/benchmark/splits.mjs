@@ -28,8 +28,8 @@
  * and the scorer threads it through ground-truth regeneration. The DELIVERY
  * half is still missing: no hosted scorer exists, so no salt is configured in
  * any deployment and `saltForSplit` returns the unsalted universe everywhere by
- * default. Read that precisely - the mechanism is implemented and measured
- * (tools/world-gym/benchmark/attacks/), the trust model is not yet in force.
+ * default. Read that precisely - the mechanism is implemented; the trust
+ * model is not yet in force.
  * See BENCHMARK.md section 1a (normative for the claim) and 1b (the salt's
  * lifecycle and rotation); do not restate either here.
  *

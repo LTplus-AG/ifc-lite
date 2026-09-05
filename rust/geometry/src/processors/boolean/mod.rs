@@ -743,8 +743,8 @@ impl BooleanClippingProcessor {
         // clock cost is comparable. CSG cost scales with operand polygon
         // count, not operation count.
         //
-        // See docs/architecture/geometry-pipeline.md for the full
-        // side-by-side comparison with the reference implementations.
+        // This keeps each operation bounded to one small cutter and preserves
+        // IFC operand order.
 
         // Get second operand
         let second_operand_attr = entity

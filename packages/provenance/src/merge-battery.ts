@@ -28,16 +28,16 @@
  * - `conflictRate`   = flaggedConflicts / schedules.
  * - `falseConflictRate` = falseConflicts / groundTruthConvergent, where
  *   groundTruthConvergent = autoMerged + falseConflicts (every schedule
- *   whose ground truth is "commutes"). This is the M4 kill-criterion
- *   quantity (plan section 5: below 20% or provable auto-merge is
+ *   whose ground truth is "commutes"). This is the soundness criterion
+ *   quantity (below 20%, or provable auto-merge is
  *   "technically true but practically annoying").
  *
  * A sample of issued certificates (every `verifyEvery`-th) is additionally
  * pushed through {@link verifyCommutationCertificate}; any failure is
- * reported (and fails the exam -- a certificate that does not verify is
+ * reported (and fails the validation -- a certificate that does not verify is
  * worthless).
  *
- * ## Spatial decomposition (Bet B4.2)
+ * ## Spatial decomposition (spatial-rule ablation)
  *
  * The G2 red-team review (packages/provenance/test/merge-battery.test.ts §4)
  * showed that under the v0 op model the SPATIAL half of the conflict
@@ -50,14 +50,14 @@
  *
  * To make the finding falsifiable rather than merely re-run, every flagged
  * schedule is classified by WHICH rule fired -- structural-only, spatial-only
- * or both -- and ground truth is tallied per class. The two numbers the B4.2
- * exam turns on are {@link MergeBatteryReport.spatialFiredFalseConflictRate}
+ * or both -- and ground truth is tallied per class. The two key numbers are
+ * {@link MergeBatteryReport.spatialFiredFalseConflictRate}
  * (over-approximation restricted to schedules where the spatial rule fired)
  * and {@link MergeBatteryReport.spatialOnlyTrueConflicts} (conflicts that
  * ONLY the spatial rule caught -- if that is zero, the rule earns nothing and
  * the pre-committed consequence is to delete it).
  *
- * ## The ablation (G4 review item 6)
+ * ## The spatial-rule ablation
  *
  * The G4 red-team review (packages/provenance/test/merge-battery.test.ts §2,
  * §7 item 6) pointed out that the whole soundness argument for the coupled
@@ -74,10 +74,10 @@
  * `createCommutationCertificate` replays both orders itself and refuses on
  * `apply-failed` / `non-commutative` regardless of what the predicate said.
  * The count is the number of times the PREDICATE -- the part of the scheme
- * that decides, and the part this bet is about -- was wrong in the unsafe
- * direction, which is exactly the quantity the M4 exam's "zero unsound
- * auto-merges" bar is stated over (see the head of this docstring). The
- * ablation is measured in the same units as the exam so the two are
+ * that decides -- was wrong in the unsafe direction, which is exactly the
+ * quantity the merge-soundness validation's "zero unsound auto-merges" bar
+ * is stated over (see the head of this docstring). The ablation is measured
+ * in the same units as the validation so the two are
  * comparable: 0 with the rule, N without it.
  *
  * Read the result honestly, in either direction:
@@ -561,7 +561,7 @@ export function generateClientOps(
 /* ------------------------------------------------------------------ */
 
 export interface MergeBatteryOptions {
-  /** Default 1000 (the M4 midterm count). */
+  /** Default 1000 (the merge-soundness validation count). */
   schedules?: number;
   /** Default 20260724 (same convention as g2-footprint-tightness.mjs). */
   seed?: number;
@@ -850,8 +850,8 @@ export interface SpatialAblationReport {
    *  overlap alone was enough). */
   flaggedConflicts: number;
   /**
-   * THE ablation number, in the same units as the M4 exam's "zero unsound
-   * auto-merges" bar: schedules where the structural-only predicate said
+   * THE ablation number, in the same units as the merge-soundness validation's
+   * "zero unsound auto-merges" bar: schedules where the structural-only predicate said
    * "safe" and the replay then FAILED or DIVERGED. No certificate is emitted
    * for these -- `createCommutationCertificate` replays both orders itself and
    * refuses -- so this counts the PREDICATE being wrong in the unsafe
@@ -896,7 +896,7 @@ export interface SpatialAblationReport {
 }
 
 /**
- * The B4.2 ablation (G4 review item 6): {@link runMergeBattery}'s schedules,
+ * The spatial-rule ablation: {@link runMergeBattery}'s schedules,
  * generator, seed and op model, with ONE variable changed -- the conflict
  * predicate's spatial half is switched off, so a cross pair conflicts only if
  * its `writtenNodes` intersect.

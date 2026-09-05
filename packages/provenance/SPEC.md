@@ -485,7 +485,7 @@ are `{ nodeId, hash }` pairs — the set of DAG nodes a change touched as inputs
 `subtree-untouched` claim names a set of node hashes that must recompute unchanged; verification
 walks from any claimed-unchanged ancestor down through the resolver only far enough to confirm
 its hash matches — it does not need to re-walk the whole DAG, which is the whole point (cheap
-subtree replay without re-walking the entire DAG.
+subtree replay without re-walking the entire DAG).
 
 ## 6. Appendix: design decisions (ALL RESOLVED by Louis, 2026-07-24)
 

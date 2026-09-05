@@ -107,7 +107,7 @@ export interface CommutationInput {
   clientB?: string;
   /**
    * Default `'enabled'`. `'disabled'` runs the cross-pair scan with the
-   * SPATIAL half of the predicate switched off — the B4.2 ablation. A
+   * SPATIAL half of the predicate switched off — the spatial-rule ablation. A
    * certificate issued under `'disabled'` is an experimental artifact and
    * says nothing about the shipping predicate: the certificate carries no
    * field recording the mode, deliberately, because the mode is not a wire
@@ -158,7 +158,7 @@ function analyzeCrossPairs(
 }
 
 /** Cross-pair conflict scan (see {@link analyzeCrossPairs}), conflicts only.
- *  `spatialRule` defaults to `'enabled'`; `'disabled'` is the B4.2 ablation
+ *  `spatialRule` defaults to `'enabled'`; `'disabled'` is the spatial-rule ablation
  *  (structural overlap only). */
 export function findCrossConflicts(
   base: ModelState,
@@ -293,7 +293,7 @@ export interface CommutationVerifyOptions {
    * sound choice for a real certificate -- verifier-supplied for the same
    * reason the client labels are: the certificate does not record it (see
    * {@link CommutationInput.spatialRule}), so deriving it from the artifact
-   * would let the artifact choose its own weaker rule. Only the B4.2 ablation
+   * would let the artifact choose its own weaker rule. Only the spatial-rule ablation
    * harness passes `'disabled'`, to re-check certificates it knowingly issued
    * under the ablated predicate.
    */

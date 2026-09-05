@@ -152,7 +152,7 @@ impl<const N: usize> GeomScalar for Dual<N> {
     /// No battery point reaches `v == 0`: family A/B draw `dirz >= 0.4` or
     /// `+/-1` so the direction is never null, and both profiles have 4 (or 4+4)
     /// boundary vertices, below the >= 20 gate on the circularity heuristic.
-    /// `b44_dual_sqrt_at_zero_is_finite` pins the convention regardless.
+    /// `dual_sqrt_at_zero_is_finite` pins the convention regardless.
     fn sqrt(self) -> Self {
         let s = self.v.sqrt();
         let k = if s > 0.0 { 0.5 / s } else { 0.0 };
@@ -506,7 +506,7 @@ struct Stats {
     /// (`|ad-fd| / max(|ad|,|fd|,1e-6) <= 1e-6`), including the invariant ones.
     passed_strict: usize,
     /// Points where every ACTIVE component passed the strict `diff-spike`
-    /// metric - the apples-to-apples comparison with B3.3's 97.7%.
+    /// metric used for the scalar-adjoint comparison.
     passed_strict_active: usize,
     /// Active (volume-bearing) components, graded by strict relative agreement
     /// with central finite differences. This is the headline number.
@@ -608,7 +608,7 @@ fn run_family<const N: usize>(seed: u64, npoints: usize, with_hole: bool, names:
             let a = ad[i];
             let diff = (a - fd).abs();
 
-            // Strict `diff-spike` metric, reported for comparability with B3.3.
+            // Strict scalar-adjoint comparison metric.
             if diff / a.abs().max(fd.abs()).max(1e-6) > TOL {
                 point_ok_strict = false;
                 if !inv[i] {
@@ -776,10 +776,10 @@ fn scalar_adjoint_battery() {
     for (label, st) in &runs {
         println!("{}", report(label, st));
     }
-    println!("B44_JSON_BEGIN");
+    println!("SCALAR_ADJOINT_JSON_BEGIN");
     let body: Vec<String> = runs.iter().map(|(l, s)| json(l, s)).collect();
     println!("[{}]", body.join(","));
-    println!("B44_JSON_END");
+    println!("SCALAR_ADJOINT_JSON_END");
 
     for (label, st) in &runs {
         let frac = st.passed as f64 / st.npoints as f64;
@@ -791,7 +791,7 @@ fn scalar_adjoint_battery() {
 /// positions **bit for bit** in its primal part - otherwise the adjoints belong
 /// to a different function than the one production computes.
 #[test]
-fn b44_dual_primal_is_bit_identical_to_f64_mesher() {
+fn dual_primal_is_bit_identical_to_f64_mesher() {
     let mut rng = Rng::new(4242);
     for with_hole in [false, true] {
         for _ in 0..200 {
@@ -844,7 +844,7 @@ fn b44_dual_primal_is_bit_identical_to_f64_mesher() {
 /// sees a `NaN`. The three call sites this protects are named there; the one a
 /// real model reaches is a zero-length `IfcDirection` on an `IfcExtrudedAreaSolid`.
 #[test]
-fn b44_dual_sqrt_at_zero_is_finite() {
+fn dual_sqrt_at_zero_is_finite() {
     // A zero-length direction: the norm's primal AND its derivative seed are 0,
     // which is exactly the `0 * inf` case.
     let z = Dual::<3>::variable(0.0, 0) * Dual::<3>::variable(0.0, 0);
@@ -896,7 +896,7 @@ fn b44_dual_sqrt_at_zero_is_finite() {
 /// re-orients), so this is a property of the raw mesher, not a shipped defect.
 /// Pinned here because the scalar-adjoint oracle depends on it.
 #[test]
-fn b44_holed_extrusion_is_winding_inconsistent() {
+fn holed_extrusion_is_winding_inconsistent() {
     let x = vec![
         4.0, 0.75, 6.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.1, -0.05, 1.0, 0.2,
     ];
@@ -919,7 +919,7 @@ fn b44_holed_extrusion_is_winding_inconsistent() {
 /// for the end-to-end cross-check against the real wasm pipeline
 /// in the cross-check below.
 #[test]
-fn b44_emit_cross_check_points() {
+fn emit_scalar_adjoint_cross_check_points() {
     let mut rng = Rng::new(20260727);
     let mut rows: Vec<String> = Vec::new();
     for _ in 0..24 {
@@ -936,7 +936,7 @@ fn b44_emit_cross_check_points() {
             production
         ));
     }
-    println!("B44_XCHECK_BEGIN");
+    println!("SCALAR_ADJOINT_XCHECK_BEGIN");
     println!("[{}]", rows.join(","));
-    println!("B44_XCHECK_END");
+    println!("SCALAR_ADJOINT_XCHECK_END");
 }

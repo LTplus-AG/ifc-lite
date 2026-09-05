@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * merge-battery.ts (Bet B2.1): the M4 midterm property battery at reduced
+ * merge-battery.ts (merge-soundness validation): the merge-soundness validation property battery at reduced
  * schedule count for CI (the full 1,000-schedule run is the gate script,
  * packages/provenance/test/merge-battery.test.ts). Asserts the exam invariant
  * (zero unsound auto-merges), determinism under a fixed seed, and that the
@@ -107,7 +107,7 @@ describe('runMergeBattery', () => {
 });
 
 /* ------------------------------------------------------------------ */
-/* The ablation (G4 red-team review item 6)                              */
+/* The ablation (spatial-ablation requirement)                              */
 /* ------------------------------------------------------------------ */
 
 describe('runSpatialAblation: the same schedules with the spatial rule DISABLED', () => {

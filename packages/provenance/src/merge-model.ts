@@ -3,9 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Minimal deterministic op model for the M4 merge soundness contract
- * (Bet B2.1, packages/provenance/README.md Phase 2; M4 midterm
- * exam: "soundness property test, 1,000 randomized two-client op schedules,
+ * Minimal deterministic op model for the merge-soundness contract
+ * (packages/provenance/README.md Phase 2): "soundness property test, 1,000 randomized two-client op schedules,
  * zero unsound auto-merges").
  *
  * footprint.ts declares WHAT an op touches (`EditOp`: target node ids plus an
@@ -29,7 +28,7 @@
  * directly from the op's own fresh node ids (two adds conflict iff they claim
  * the same ids or their regions collide -- exactly the right semantics).
  *
- * ## Spatially coupled semantics (Bet B4.2)
+ * ## Spatially coupled semantics (spatial-rule ablation)
  *
  * v0 of this model applied every op purely per-node: an op read and wrote one
  * node's payload and nothing else. That made node-disjoint ops commute
@@ -255,7 +254,7 @@ export class OpApplicationError extends Error {
  * containment invariant. A subclass of {@link OpApplicationError} so every
  * existing caller (replay, `attemptBothOrders`, the battery) treats it as a
  * clean, typed "this op does not apply here" -- but distinguishable, because
- * a spatial rejection is the whole point of Bet B4.2: it is an op failing
+ * a spatial rejection is the whole point of spatial-rule ablation: it is an op failing
  * because of state it does not write.
  */
 export class SpatialRejectionError extends OpApplicationError {
@@ -680,7 +679,7 @@ function canonicalMesh(payload: GeometryMeshPayload): unknown {
  * psets/meshes sorted by node id, properties sorted by name. Insertion order
  * never leaks into the output, so two replicas that hold the same logical
  * state produce byte-identical output regardless of the order edits arrived
- * in -- this string (UTF-8) IS the "model bytes" the M4 theorem quantifies
+ * in -- this string (UTF-8) IS the "model bytes" the merge-soundness contract quantifies
  * over in this prototype. (JSON.stringify normalizes -0 to "0", matching
  * node-hash.ts's own -0 normalization.)
  */

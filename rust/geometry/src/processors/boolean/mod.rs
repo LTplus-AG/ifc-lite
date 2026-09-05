@@ -397,19 +397,13 @@ impl BooleanClippingProcessor {
         let mut tight_min = Point3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
         let mut tight_max = Point3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
         for prism in &prisms {
-            let trial = match clipper.subtract_mesh(&base_mesh, prism) {
-                Ok(m) if !m.is_empty() => m,
-                // Empty or errored single cut — the sequential path's per-cutter
-                // fallback handles it better than a batched union would.
-                _ => {
-                    let _ = clipper.take_failures();
-                    return self.defer_after(mark);
-                }
-            };
-            if ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &trial) {
+            // `subtract_checked` folds in the #3919 accept-gate check: a
+            // rejection hands back the base UN-CUT, which would wrongly widen
+            // tight_min/tight_max, so it is treated like empty/errored/degenerate.
+            let Some(trial) = Self::subtract_checked(&clipper, &base_mesh, prism) else {
                 let _ = clipper.take_failures();
                 return self.defer_after(mark);
-            }
+            };
             let (tmn, tmx) = trial.bounds();
             tight_min = Point3::new(
                 tight_min.x.max(tmn.x),
@@ -448,18 +442,17 @@ impl BooleanClippingProcessor {
                 return Ok(None);
             }
         };
-        let result = clipper.subtract_mesh(&base_mesh, &combined);
+        // `subtract_checked` folds in the #3919 accept-gate check: a rejected
+        // gate hands back the base UN-CUT — the same shape as "nothing to
+        // cut", which `difference_result_looks_degenerate` can't catch — so
+        // it is treated like a kernel error and defers to the sequential
+        // per-cutter path (whose own accept-gate + #635 fallback handle it).
+        // Uncaught, the full-height base used to be accepted here and the
+        // issue-#960 seam sliver silently regrew.
+        let checked = Self::subtract_checked(&clipper, &base_mesh, &combined);
         self.absorb_failures(clipper.take_failures());
-        let clipped = match result {
-            Ok(m)
-                if !m.is_empty()
-                    && !ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &m) =>
-            {
-                m
-            }
-            // Kernel error or a degenerate union result — fall back to the
-            // sequential per-cutter path.
-            _ => return self.defer_after(mark),
+        let Some(clipped) = checked else {
+            return self.defer_after(mark);
         };
 
         // Reject a silently under-removing union: the result must fit inside the

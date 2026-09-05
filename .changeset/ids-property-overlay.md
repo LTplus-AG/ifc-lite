@@ -1,5 +1,6 @@
 ---
 '@ifc-lite/ids': minor
+'@ifc-lite/mutations': minor
 ---
 
 `createDataAccessor` (`@ifc-lite/ids/bridge`) now accepts an optional
@@ -16,3 +17,17 @@ instead of only ever validating the last parsed/exported bytes.
 
 No breaking change: the new parameter is optional and every existing call
 site is unaffected.
+
+Fixes a defect in the viewer's overlay resolver (not part of this package,
+but depends on the API below): after an undo, IDS re-validation kept
+reporting a corrected property as still overridden, because the resolver
+read `MutablePropertyView.getMutationsForEntity()` — the append-only
+`mutationHistory`, which undo does not pop (it re-applies the inverse
+mutation with `skipHistory=true`). `MutablePropertyView` gains
+`getPropertyMutation(entityId, psetName, propName)`, returning the live
+overlay's current `PropertyMutation` for that key (or `undefined` when the
+key carries no override right now) — the same live-overlay source
+`hasChanges()` / `getModifiedEntityCount()` already use instead of history,
+now exposed so a caller projecting the overlay onto an external base can
+tell "no override", "override is a DELETE", and "override is a SET to
+null" apart.

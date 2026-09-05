@@ -1655,6 +1655,39 @@ export class MutablePropertyView {
   }
 
   /**
+   * The live overlay's CURRENT property mutation for one entity's specific
+   * pset+prop, or `undefined` when that exact key carries no override right
+   * now.
+   *
+   * Reads `propertyMutations` directly (the same map `getPropertyValue` and
+   * `hasChanges` consult) — never `mutationHistory` (see `getMutationsForEntity`
+   * above), which is append-only and does not shrink on undo. Undo re-applies
+   * the inverse mutation with `skipHistory=true` (`mutationSlice.ts`, "to
+   * avoid polluting mutation history"): that inverse call still writes
+   * through `setProperty`/`deleteProperty`, so `propertyMutations` — and thus
+   * this method — reflects the reverted (or, after redo, re-applied) value
+   * immediately, while `getMutationsForEntity` keeps returning the stale
+   * pre-undo entry.
+   *
+   * Unlike `getPropertyValue` (which collapses "no override", "override
+   * value is null", and "override is a DELETE marker" all down to a bare
+   * `null`), this returns the raw `PropertyMutation` so a caller projecting
+   * the overlay onto an EXTERNAL base it doesn't otherwise share with this
+   * view (e.g. the IDS bridge's `PropertyOverlayResolver`, #3929) can tell
+   * "nothing to apply here" apart from "apply a DELETE" apart from "apply a
+   * SET to null". Unlike `getEffectiveChanges()`, this does not require the
+   * view's own `getBasePropertiesForEntity` to already know the pset —
+   * `setProperty` always writes `propertyMutations` regardless of whether the
+   * pset is new-in-session or pre-existing (see its "Always store in
+   * propertyMutations for tracking" comment), so this stays correct for a
+   * view with no base wired at all (a `MutablePropertyView` overlay used
+   * purely as a delta against someone else's separate base).
+   */
+  getPropertyMutation(entityId: number, psetName: string, propName: string): Readonly<PropertyMutation> | undefined {
+    return this.propertyMutations.get(propertyKey(entityId, psetName, propName));
+  }
+
+  /**
    * Check if an entity currently carries an overlay change.
    *
    * Reads the live overlay (same footprint as {@link hasPendingChanges}),

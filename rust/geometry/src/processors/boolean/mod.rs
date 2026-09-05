@@ -29,6 +29,7 @@ mod halfspace_cap;
 mod polygonal_prism;
 mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
+mod polygonal_union;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -451,8 +452,25 @@ impl BooleanClippingProcessor {
         // per-cutter path (whose own accept-gate + #635 fallback handle it).
         // Uncaught, the full-height base used to be accepted here and the
         // issue-#960 seam sliver silently regrew.
-        let checked = Self::subtract_checked(&clipper, &base_mesh, &combined);
-        self.absorb_failures(clipper.take_failures());
+        let mut checked = Self::subtract_checked(&clipper, &base_mesh, &combined);
+        let mut cut_failures = clipper.take_failures();
+        if checked.is_none() || !cut_failures.is_empty() {
+            // #3925: a rejected or diagnostically torn cut permits one moved
+            // candidate. Publish it only if its actual subtraction is clean;
+            // otherwise retain the original result and its failure records.
+            let refs: Vec<&Mesh> = prisms.iter().collect();
+            let repaired = ClippingProcessor::consolidate_coplanar(
+                crate::kernel::mesh_bridge::union_many_reconciled(&refs));
+            if !repaired.is_empty() {
+                let candidate = Self::subtract_checked(&clipper, &base_mesh, &repaired);
+                let candidate_failures = clipper.take_failures();
+                if candidate.is_some() && candidate_failures.is_empty() {
+                    checked = candidate;
+                    cut_failures = candidate_failures;
+                }
+            }
+        }
+        self.absorb_failures(cut_failures);
         let Some(clipped) = checked else {
             return self.defer_after(mark);
         };
@@ -477,50 +495,6 @@ impl BooleanClippingProcessor {
             return self.defer_after(mark);
         }
         Ok(Some(clipped))
-    }
-
-    /// Union the chained-clip cutter prisms into ONE watertight solid.
-    ///
-    /// The segmented-roof cutters are prisms that ABUT along shared, exactly-
-    /// coplanar faces (adjacent roof facets meeting at a hip/ridge/valley).
-    /// Unioning them into a single watertight cutter is what lets the chain be
-    /// subtracted ONCE (no seam fins, no deep-chain depth drops — issue #960).
-    ///
-    /// Returns `None` when no available kernel can produce a watertight union;
-    /// the caller then defers to the sequential per-cutter path. We never feed a
-    /// non-manifold mesh-merge into the subtract: the CSG kernel cannot classify
-    /// a non-watertight cutter and silently returns the host UNCHANGED, leaving
-    /// the gable-end wall at full extrusion height.
-    fn build_cutter_union(&self, clipper: &ClippingProcessor, prisms: &[Mesh]) -> Option<Mesh> {
-        if prisms.is_empty() {
-            return None;
-        }
-        if prisms.len() == 1 {
-            return Some(prisms[0].clone());
-        }
-
-        // Primary path: the pure-Rust kernel's N-ary union — ONE conforming
-        // arrangement of all cutter prisms over a shared interner, so coplanar
-        // seams shared by 3+ roof segments (and exactly-duplicated cutter prisms)
-        // dissolve without the tearing that left-deep pairwise accumulation
-        // produces. This makes the segmented-roof clip (#960) watertight on EVERY
-        // build. Exact + platform-deterministic.
-        {
-            let refs: Vec<&Mesh> = prisms.iter().collect();
-            let u = ClippingProcessor::consolidate_coplanar(
-                crate::kernel::mesh_bridge::union_many(&refs),
-            );
-            if !u.is_empty() {
-                return Some(u);
-            }
-        }
-
-        // Fallback: the kernel's sequential multi-mesh union. Returns
-        // `None` on empty/error so the caller defers to the per-cutter path.
-        match clipper.union_meshes(prisms) {
-            Ok(m) if !m.is_empty() => Some(m),
-            _ => None,
-        }
     }
 
     /// The node's operator enum as authored (the parser may strip the dots).

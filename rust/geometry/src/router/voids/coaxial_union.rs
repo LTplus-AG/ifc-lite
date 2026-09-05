@@ -481,7 +481,7 @@ impl GeometryRouter {
     }
 
     /// 3D overlap-safe fallback: extend every member cutter through the host,
-    /// union them with the exact N-ary `union_many`, and subtract the single
+    /// union them without coordinate-moving repair, and subtract the single
     /// watertight union mesh. Returns `true` (and updates `result`) only on a real,
     /// non-degenerate change.
     fn subtract_union3d(
@@ -496,7 +496,7 @@ impl GeometryRouter {
             .map(|&m| Self::extend_opening_mesh_through_host(&cands[m].mesh, result, cands[m].dir))
             .collect();
         let refs: Vec<&Mesh> = extended.iter().collect();
-        let union = ClippingProcessor::consolidate_coplanar(crate::kernel::mesh_bridge::union_many(
+        let union = ClippingProcessor::consolidate_coplanar(crate::kernel::mesh_bridge::union_many_preserving_coordinates(
             &refs,
         ));
         if union.is_empty() || !mesh_is_closed_exact(&union) {
@@ -507,8 +507,8 @@ impl GeometryRouter {
         let Ok(cut) = clipper.subtract_mesh(result, &union) else {
             return false;
         };
-        // The 3D union of the ACTUAL cutter solids is geometrically exact, so no
-        // over-cut bound applies here.
+        // #3925: only the coordinate-preserving arrangement justifies this
+        // unbounded acceptance. A closed, plane-promoted cutter can over-cut.
         accept_cut(result, cut, tri_before, vol_before, f64::INFINITY)
     }
 }

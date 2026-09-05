@@ -2158,3 +2158,31 @@ fn the_heavy_golden_pins_the_known_3435_tear_population() {
         );
     }
 }
+
+// #3925: fast real-file witnesses for the two weld regressions. Keep the
+// production triangulator selected while reading these baseline measurements.
+// Optional accept gates intentionally reject other cuts on this fixture and
+// exercise different fallback geometry; these bars are for the shipped default.
+#[cfg(not(any(feature = "csg_topology_gate", feature = "csg_manifold_gate")))]
+#[test]
+fn shared_vertex_and_union_repair_preserve_real_coverings_3925() {
+    let _serial = CENSUS_SWEEP_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    set_alt(false);
+    let path = crate_dir().join("../../tests/models/various/rvt01.ifc");
+    if !path.exists() {
+        eprintln!("Skipping #3925 real covering witnesses: run pnpm fixtures");
+        return;
+    }
+    let content = std::fs::read_to_string(path).expect("read rvt01 fixture");
+    let voids = void_index(&content);
+    let wall = process(&content, 6073, &voids).expect("mesh wall with openings");
+    let stats = edge_stats(&wall);
+    assert!(stats.open <= 8 && stats.strict <= 39,
+        "a shared cutter corner must not break the original boundary: open={} strict={}", stats.open, stats.strict);
+    let covering = process(&content, 11232, &voids).expect("mesh thin covering with openings");
+    assert_eq!(edge_stats(&covering).open, 0);
+    // Existing census volume, independently retained when the cutter union
+    // preserves its input. Unconditional promotion reduces it to 38439 cm³.
+    assert!((volume_cm3(&covering) - 38443).abs() <= 1,
+        "union repair must not over-cut the thin covering: {} cm³", volume_cm3(&covering));
+}

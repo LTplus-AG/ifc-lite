@@ -112,6 +112,23 @@ WASM-specific structural cost (not in the native probe, by design):
 
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
+### N-ary repair validation (#3925)
+
+Coordinate-moving union repair must preserve the consumer's volume contract.
+The 3D cutter path assumes unchanged input solids; a closed promoted union can
+still over-cut a thin covering. Keep that consumer on the shared arrangement
+without promotion. For other N-ary consumers, preserve a closed original and
+accept a repair only after checking the emitted, consolidated mesh. The
+ordinary subtraction weld must not freeze isolated shared corners.
+
+Discarded trials: protecting whole operands did not restore all cutter cases;
+raw exact-coordinate closure rejected useful repairs that the existing
+resolution-specific audit accepts; a permissive hairline acceptance lost
+near-coplanar sweep coverage. Validation of repair on a copy adds work, so the
+performance verdict must include actual worker-pool and native full loads,
+not just a synthetic union timing. See
+[the implementation rationale](../../docs/research/nary-union-repair.md).
+
 ### Shipped wins
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
   record-not-gate closure audit adds a strict directed-edge hash sweep and only

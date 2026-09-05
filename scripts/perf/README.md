@@ -146,7 +146,15 @@ code, with one independently checked torn-to-closed row recorded separately.
 Neither arbitrary golden updates nor local closure scores establish correctness.
 Keep real loader output and independent solid measurements in the comparison.
 See [the implementation and reference provenance](../../docs/architecture/nary-union-repair.md).
-The final performance verdict requires native and worker-pool full loads.
+Correctness-only native and worker-pool full-load comparisons across eleven
+models were broadly neutral in time and peak memory; the large target's browser
+load improved. Five interleaved fresh-process pairs were used per model and
+runtime, with OS file cache uncontrolled. Native geometry was byte-identical
+except for the intended CSG129 repair. Browser geometry was identical except for
+two already-open walls whose reference comparison is recorded in the linked
+note. The performance-only stack is evaluated separately against this corrected
+baseline. **Lesson:** qualify the browser's actual detail settings too; native
+full-detail identity alone does not establish browser identity.
 
 ### Cold-load validation notes
 

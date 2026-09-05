@@ -297,6 +297,20 @@ async function readTopics(zip: JSZip, budget: ExpansionBudget, versionId: '2.1' 
     try {
       const topic = await readTopic(zip, topicGuid, budget, versionId);
       if (topic) {
+        // A second topic folder whose internal Topic/@Guid collides with one
+        // already parsed must not silently overwrite it in the map -- that
+        // would drop a whole topic with no signal the caller could ever act
+        // on (#3960). Keep the first occurrence (folder set iteration order
+        // is insertion order, so this is deterministic) and warn, the same
+        // way every other "skip this piece, keep going" decision in this
+        // function is already reported.
+        if (topics.has(topic.guid)) {
+          console.warn(
+            `Duplicate topic Guid ${topic.guid}: folder "${topicGuid}" collides with an ` +
+              `already-read topic folder and is being dropped. Keeping the first one read.`,
+          );
+          continue;
+        }
         topics.set(topic.guid, topic);
       }
     } catch (error) {
@@ -387,7 +401,12 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
     topicType,
     topicStatus,
     priority,
-    index: index ? parseInt(index, 10) : undefined,
+    // `parseFiniteFloat`, not raw `parseInt`: every other numeric field this
+    // reader parses from untrusted XML text goes through that guard so a
+    // value that fails to parse becomes `undefined` rather than `NaN` typed
+    // as a valid `number` (#3961) -- see parsePoint/parsePerspectiveCamera
+    // above for the same pattern.
+    index: index ? parseFiniteFloat(index) : undefined,
     creationDate,
     creationAuthor,
     modifiedDate,

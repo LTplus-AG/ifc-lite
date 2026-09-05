@@ -205,12 +205,20 @@ async function writeTopicFolder(
     sanitizeZipComponent(vp.guid, usedViewpointNames, 'viewpoint'),
   );
 
+  // Resolve each viewpoint's snapshot ONCE, before markup.bcf is written, so
+  // the `<Snapshot>` reference and the archive entry it names are driven off
+  // the SAME decode attempt and can never disagree (#3962): previously the
+  // reference was written based on `viewpoint.snapshot`/`snapshotData`'s mere
+  // presence, and the actual file write -- which could fail decoding a
+  // malformed `data:` URL -- happened later, independently.
+  const snapshotBytes = topic.viewpoints.map((vp) => resolveSnapshotBytes(vp));
+
   // Write markup.bcf
-  writeMarkupFile(zip, folderName, topic, version, viewpointBaseNames);
+  writeMarkupFile(zip, folderName, topic, version, viewpointBaseNames, snapshotBytes);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
-    await writeViewpointFiles(zip, folderName, topic.viewpoints[i], viewpointBaseNames[i], version);
+    await writeViewpointFiles(zip, folderName, topic.viewpoints[i], viewpointBaseNames[i], version, snapshotBytes[i]);
   }
 }
 
@@ -228,12 +236,51 @@ function snapshotExt(viewpoint: BCFViewpoint): 'png' | 'jpg' {
   return 'png';
 }
 
+/**
+ * Resolve a viewpoint's snapshot to the exact bytes/string that will be
+ * written to the archive, or `undefined` when there is nothing writable --
+ * computed once, up front, so both the markup `<Snapshot>` reference and the
+ * zip entry are driven off this single result and can never disagree (#3962).
+ *
+ * A malformed `data:` URL still only drops that one viewpoint's snapshot
+ * rather than aborting the whole export, matching this file's existing
+ * "skip the one bad piece, keep going" policy -- but unlike before, the
+ * warning below now corresponds to an omitted markup reference too, not just
+ * an omitted file.
+ */
+function resolveSnapshotBytes(viewpoint: BCFViewpoint): Uint8Array | undefined {
+  if (viewpoint.snapshotData) {
+    return viewpoint.snapshotData;
+  }
+  if (viewpoint.snapshot && viewpoint.snapshot.startsWith('data:')) {
+    const base64Data = viewpoint.snapshot.split(',')[1];
+    if (!base64Data) return undefined;
+    try {
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+      return bytes;
+    } catch (e) {
+      console.warn(
+        `[BCF] Skipping malformed snapshot data URL for viewpoint "${viewpoint.guid}": ` +
+          `omitting both its <Snapshot> markup reference and its archive entry`,
+        e,
+      );
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
 /** Write markup.bcf -- buildingSMART standard format. */
 function writeMarkupFile(
   zip: JSZip, folderName: string,
   topic: BCFTopic,
   version: '2.1' | '3.0',
   viewpointBaseNames: string[],
+  snapshotBytes: (Uint8Array | undefined)[],
 ): void {
   // BCF 3.0's markup.xsd tightens `Topic/@TopicType` and `Topic/@TopicStatus`
   // from optional (2.1) to `use="required"`. Omitting the attribute -
@@ -418,7 +465,11 @@ function writeMarkupFile(
 
         let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(viewpoint.guid)}">`;
         v += `\n${indent}  <Viewpoint>${filename}</Viewpoint>`;
-        if (viewpoint.snapshot || viewpoint.snapshotData) {
+        // Driven off the ALREADY-resolved snapshot bytes (see
+        // writeTopicFolder), not off `viewpoint.snapshot`/`snapshotData`'s
+        // mere presence -- so this reference is only emitted when the entry
+        // it names is actually going into the archive (#3962).
+        if (snapshotBytes[i] !== undefined) {
           v += `\n${indent}  <Snapshot>${snapshotName}</Snapshot>`;
         }
         v += `\n${indent}</${viewpointEntryTag}>`;
@@ -462,6 +513,7 @@ async function writeViewpointFiles(
   viewpoint: BCFViewpoint,
   baseName: string,
   version: '2.1' | '3.0',
+  snapshot: Uint8Array | undefined,
 ): Promise<void> {
   // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv, but
   // the file name component is the sanitized base name (zip-slip guard) --
@@ -540,25 +592,12 @@ async function writeViewpointFiles(
 
   zip.file(`${folderName}/${filename}`, content, { createFolders: false });
 
-  // Write snapshot
-  if (viewpoint.snapshotData) {
-    zip.file(`${folderName}/${snapshotName}`, viewpoint.snapshotData, { createFolders: false });
-  } else if (viewpoint.snapshot && viewpoint.snapshot.startsWith('data:')) {
-    // Convert data URL to binary
-    const base64Data = viewpoint.snapshot.split(',')[1];
-    if (base64Data) {
-      try {
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
-        }
-        zip.file(`${folderName}/${snapshotName}`, bytes, { createFolders: false });
-      } catch (e) {
-        // Skip a single malformed snapshot data URL rather than aborting the export
-        console.warn('[BCF] Skipping malformed snapshot data URL:', e);
-      }
-    }
+  // Write the snapshot the caller already resolved (see writeTopicFolder /
+  // resolveSnapshotBytes) -- this function no longer decodes the `data:` URL
+  // itself, so it can never write a file that the markup reference (written
+  // earlier, off the same resolution) disagrees with (#3962).
+  if (snapshot !== undefined) {
+    zip.file(`${folderName}/${snapshotName}`, snapshot, { createFolders: false });
   }
 }
 

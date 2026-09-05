@@ -27,6 +27,8 @@ mod failures;
 mod operand;
 mod halfspace_cap;
 mod polygonal_prism;
+mod single_cutter_gate;
+use single_cutter_gate::SingleCutterSubtract;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -650,15 +652,20 @@ impl BooleanClippingProcessor {
             current = first;
         };
 
-        // Apply each spine node's operator + SecondOperand, innermost-first —
-        // exactly the order the recursive walk produced.
+        // Apply each spine node's operator + SecondOperand, innermost-first.
+        // `spine.len() == 1` is the true #3923 single-cutter shape (no other
+        // node shares the job); `> 1` means a longer chain's batching failed
+        // at every level, so each node here is a one-cutter-at-a-time
+        // fallback — see `single_cutter_gate.rs` for why that distinction
+        // matters to the gate-rejection fallback.
+        let solo_step = spine.len() == 1;
         for node in spine.iter().rev() {
             if mesh.is_empty() {
                 // An emptied intermediate ends the chain, matching the old
                 // per-level early-out (for every operator, UNION included).
                 return Ok(mesh);
             }
-            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited)?;
+            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited, solo_step)?;
         }
         Ok(mesh)
     }
@@ -696,6 +703,14 @@ impl BooleanClippingProcessor {
     /// (`build_cutter_union`, the exact kernel's N-ary `union_many`); when it
     /// can't produce one, the chain falls through to this path — never worse
     /// than pre-#960 (841_house_stack_overflow.ifc).
+    ///
+    /// `solo_step`: true when this is the ONLY node the caller's spine walk
+    /// deferred to (a genuine single-PBHS-cutter DIFFERENCE, #3923's target
+    /// shape); false when it's one of several nodes from a longer authored
+    /// chain that couldn't be batched at any level and is now being applied
+    /// one cutter at a time. See the `IfcPolygonalBoundedHalfSpace` branch
+    /// below for why that distinction gates the accept-gate-rejection
+    /// fallback.
     fn apply_boolean_step(
         &self,
         entity: &DecodedEntity,
@@ -704,6 +719,7 @@ impl BooleanClippingProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
+        solo_step: bool,
     ) -> Result<Mesh> {
         let operator = Self::boolean_operator(entity);
 
@@ -777,23 +793,11 @@ impl BooleanClippingProcessor {
                     plane_normal,
                     agreement,
                 ) {
-                    let clipper = ClippingProcessor::new();
-                    let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
-                    self.absorb_failures(clipper.take_failures());
-                    if let Ok(clipped) = subtract_result {
-                        // The bounded-prism subtract is fragile on coincident
-                        // faces: when the clip polygon spans the full host
-                        // cross-section, the prism's in-plane side walls land
-                        // exactly on the host's side faces and the CSG kernel
-                        // can collapse the host to a near-empty sliver
-                        // (duplex.ifc "Party Wall" segments #4287/#4399 —
-                        // 12-tri box → 2-tri quad on the deleted legacy BSP
-                        // kernel). When the result looks degenerate
-                        // we fall through to the robust unbounded plane clip
-                        // below: a strict superset of the bounded cut that is
-                        // exactly correct whenever the polygon already covers
-                        // the host's projected cross-section.
-                        if !ClippingProcessor::difference_result_looks_degenerate(&mesh, &clipped) {
+                    // See `single_cutter_gate.rs` for the #3919/#3923
+                    // accept-gate check and why a rejection's fallback
+                    // depends on `solo_step`.
+                    match self.resolve_single_cutter_subtract(&mesh, &bound_mesh, solo_step) {
+                        SingleCutterSubtract::Clipped(clipped) => {
                             return Ok(self.guard_against_full_host_removal(
                                 mesh,
                                 clipped,
@@ -801,6 +805,8 @@ impl BooleanClippingProcessor {
                                 plane_normal,
                             ));
                         }
+                        SingleCutterSubtract::KeepUncut => return Ok(mesh),
+                        SingleCutterSubtract::FallThrough => {}
                     }
                 }
 

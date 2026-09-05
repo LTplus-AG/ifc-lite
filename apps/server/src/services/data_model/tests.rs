@@ -733,3 +733,165 @@ fn voids_and_fills_carry_the_ifcrel_express_id() {
     assert_eq!(rel_id_of("IFCRELVOIDSELEMENT"), 40);
     assert_eq!(rel_id_of("IFCRELFILLSELEMENT"), 50);
 }
+
+/// Issue #3963 reporter's minimal fixture: a wall whose only `IfcPropertySet`
+/// ("Pset_Scratch") has, as its ONLY `HasProperties` member, an
+/// `IfcComplexProperty` wrapping one simple sub-property. Before the fix,
+/// `extract_property` has no arm for `IFCCOMPLEXPROPERTY` (falls to `_ =>
+/// None`), so `properties` ends up empty and the whole `PropertySet` is
+/// dropped — `dm.property_sets.len() == 0` even though the wall genuinely
+/// carries a property set in the file.
+const COMPLEX_PROPERTY_ONLY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000002',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#80=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#81=IFCCOMPLEXPROPERTY('ComplexName',$,'Usage',(#80));
+#82=IFCPROPERTYSET('Pst0000000000000000001',$,'Pset_Scratch',$,(#81));
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000001',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_whose_only_member_is_a_complex_property_is_not_dropped() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_ONLY_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("Pset_Scratch must survive — issue #3963");
+    assert_eq!(pset.pset_name, "Pset_Scratch");
+
+    // The complex property surfaces as ONE entry under its own Name, with the
+    // nested sub-property flattened into a "Name: value" display string —
+    // mirroring `resolveComplexPropertyValue` in
+    // packages/parser/src/property-value-parser.ts, which is the spec here.
+    let prop = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "ComplexName")
+        .expect("ComplexName entry missing");
+    assert_eq!(prop.property_value, "SubName: SubVal");
+    assert_eq!(prop.property_type, "string");
+    assert_eq!(
+        prop.values.as_deref(),
+        Some(&["SubVal".to_string()][..]),
+        "flat values candidate array must carry the nested display value"
+    );
+}
+
+/// A set mixing a simple and a complex member must yield BOTH — the complex
+/// arm must not crowd out (or be crowded out by) the existing simple-value
+/// arms in the same `match`.
+const MIXED_SIMPLE_AND_COMPLEX_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000003',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$,$);
+#90=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 60'),$);
+#91=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#92=IFCCOMPLEXPROPERTY('ComplexName',$,'Usage',(#91));
+#93=IFCPROPERTYSET('Pst0000000000000000002',$,'Pset_Mixed',$,(#90,#92));
+#94=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000002',$,$,$,(#28),#93);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_mixing_simple_and_complex_members_yields_both() {
+    let dm = extract_data_model(MIXED_SIMPLE_AND_COMPLEX_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 93)
+        .expect("Pset_Mixed must be extracted");
+    assert_eq!(pset.properties.len(), 2, "both members must survive");
+    let simple = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "FireRating")
+        .unwrap();
+    assert_eq!(simple.property_value, "REI 60");
+    let complex = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "ComplexName")
+        .unwrap();
+    assert_eq!(complex.property_value, "SubName: SubVal");
+}
+
+/// Nested `IfcComplexProperty` (a complex property whose own `HasProperties`
+/// contains another complex property) must recurse — mirroring
+/// `resolveComplexPropertyValue`'s self-recursion in property-value-parser.ts.
+const NESTED_COMPLEX_PROPERTY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000004',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$,$);
+#95=IFCPROPERTYSINGLEVALUE('Leaf',$,IFCLABEL('LeafVal'),$);
+#96=IFCCOMPLEXPROPERTY('Inner',$,'InnerUsage',(#95));
+#97=IFCCOMPLEXPROPERTY('Outer',$,'OuterUsage',(#96));
+#98=IFCPROPERTYSET('Pst0000000000000000003',$,'Pset_Nested',$,(#97));
+#99=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000003',$,$,$,(#28),#98);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn nested_complex_properties_recurse_two_levels_deep() {
+    let dm = extract_data_model(NESTED_COMPLEX_PROPERTY_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 98)
+        .expect("Pset_Nested must be extracted");
+    let outer = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "Outer")
+        .expect("Outer entry missing");
+    // Inner recurses to "Leaf: LeafVal", which is then wrapped as
+    // "Inner: Leaf: LeafVal" by the outer level.
+    assert_eq!(outer.property_value, "Inner: Leaf: LeafVal");
+}
+
+/// Control: a property set with no complex members at all — the displaced
+/// path, and the one that matters most — must still extract identically to
+/// before this change (issue #3963 must not touch simple-value handling).
+const SIMPLE_ONLY_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000005',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000004',$,'W4',$,$,$,$,$,$);
+#100=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
+#101=IFCPROPERTYSET('Pst0000000000000000004',$,'Pset_Simple',$,(#100));
+#102=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000004',$,$,$,(#28),#101);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_with_no_complex_members_is_unaffected() {
+    let dm = extract_data_model(SIMPLE_ONLY_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 101)
+        .expect("Pset_Simple must be extracted");
+    assert_eq!(pset.properties.len(), 1);
+    let m = &pset.properties[0];
+    assert_eq!(m.property_name, "Manufacturer");
+    assert_eq!(m.property_value, "ACME");
+    assert_eq!(m.property_type, "string");
+    assert_eq!(m.data_type.as_deref(), Some("IFCLABEL"));
+}

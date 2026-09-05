@@ -48,7 +48,15 @@ pub(super) fn extract_properties(
                 }
             }
 
-            if properties.is_empty() {
+            // A PropertySet with a real Name is real evidence the file links
+            // this element to it, even when every member failed to resolve
+            // (issue #3963): dropping it wholesale is indistinguishable from
+            // "this element was never linked to any pset via
+            // IfcRelDefinesByProperties" in the first place. Mirrors the
+            // browser/WASM path's keep condition (`columnar-parser.ts`:
+            // `properties.length > 0 || psetName`) — only an unnamed,
+            // fully-unresolved set is dropped.
+            if properties.is_empty() && pset_name.is_empty() {
                 return None;
             }
 
@@ -70,7 +78,7 @@ pub(super) fn extract_properties(
 /// the decoder stores as `AttributeValue::List([String(type), inner])`; the old
 /// code only matched bare `String`/`Float` and emitted `format!("{:?}")` Debug
 /// garbage for every text/boolean value — this resolves them properly.
-fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Option<Property> {
+fn extract_property(entity: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<Property> {
     use ifc_lite_core::AttributeValue;
     // All IfcProperty subtypes carry Name at attribute 0.
     let property_name = entity.get_string(0)?.to_string();
@@ -190,6 +198,18 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
             None => (String::new(), "null".into(), None, None),
         },
 
+        // [Name, Description, UsageName, HasProperties] — issue #3963. Mirrors
+        // `resolveComplexPropertyValue` in
+        // packages/parser/src/property-value-parser.ts, which IS the spec:
+        // flatten each resolvable nested property into a "Name: value" part,
+        // join with ", ", and fall back to the bare UsageName (or nothing)
+        // when no nested member resolves. Recurses into further nested
+        // IFCCOMPLEXPROPERTY members up to the same depth cap as the TS side.
+        "IFCCOMPLEXPROPERTY" => {
+            let (v, k, d, vs) = resolve_complex_property_value(entity, decoder, 0);
+            (v, k, d, vs)
+        }
+
         _ => return None,
     };
 
@@ -200,6 +220,95 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
         data_type,
         values,
     })
+}
+
+/// Guards `resolve_complex_property_value` against a pathological/cyclic
+/// `HasProperties` chain, mirroring the TS `MAX_COMPLEX_PROPERTY_DEPTH` in
+/// `packages/parser/src/property-value-parser.ts` exactly: real IFC nests
+/// `IfcComplexProperty` at most a couple of levels deep.
+const MAX_COMPLEX_PROPERTY_DEPTH: u8 = 8;
+
+/// Resolve an `IfcComplexProperty`'s nested `HasProperties` (EXPRESS:
+/// `[Name, Description, UsageName, HasProperties]`, index 3) into a display
+/// value plus a flat `values` candidate list, recursing into any further
+/// nested `IfcComplexProperty` — mirrors `resolveComplexPropertyValue`
+/// (`packages/parser/src/property-value-parser.ts`) member-for-member:
+///
+/// - Not a list, or the depth cap is hit: return the bare `UsageName` (or the
+///   "null" kind when it's absent/empty) with NO truncation flag — the TS
+///   side is silent about hitting the cap too, it just stops recursing.
+/// - Each nested member that resolves to a non-empty display becomes one
+///   `"Name: value"` part (or bare `value` when the nested member has no
+///   Name); a member that fails to resolve, or resolves to an empty display,
+///   is skipped — it does NOT poison the whole complex property.
+/// - Nested names are NEVER hoisted to the top level: the complex property
+///   still surfaces as ONE `Property` under its own Name (see
+///   `extract_property`'s call site), so a name collision between a nested
+///   property and a top-level sibling property cannot occur — same as the TS
+///   side, where `parsePropertyValueWithComplex` is called once per
+///   `HasProperties` member and only ever returns a single value for it.
+fn resolve_complex_property_value(
+    entity: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    depth: u8,
+) -> (String, String, Option<String>, Option<Vec<String>>) {
+    let usage_name = entity.get_string(2).map(|s| s.to_string());
+    let has_properties_list = if depth < MAX_COMPLEX_PROPERTY_DEPTH {
+        entity.get_list(3)
+    } else {
+        None
+    };
+
+    let refs: Vec<u32> = match has_properties_list {
+        Some(list) => list.iter().filter_map(|v| v.as_entity_ref()).collect(),
+        None => {
+            return match usage_name {
+                Some(u) if !u.is_empty() => (u, "string".into(), None, None),
+                _ => (String::new(), "null".into(), None, None),
+            };
+        }
+    };
+
+    let mut parts: Vec<String> = Vec::new();
+    let mut values: Vec<String> = Vec::new();
+
+    for prop_id in refs {
+        let nested_entity = match decoder.decode_by_id(prop_id) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        let nested_name = nested_entity
+            .get_string(0)
+            .map(|s| s.to_string())
+            .unwrap_or_default();
+        let nested_ty = nested_entity.ifc_type.as_str().to_uppercase();
+        let display = if nested_ty == "IFCCOMPLEXPROPERTY" {
+            resolve_complex_property_value(&nested_entity, decoder, depth + 1).0
+        } else {
+            match extract_property(&nested_entity, decoder) {
+                Some(p) => p.property_value,
+                None => continue,
+            }
+        };
+        if display.is_empty() {
+            continue;
+        }
+        if nested_name.is_empty() {
+            parts.push(display.clone());
+        } else {
+            parts.push(format!("{}: {}", nested_name, display));
+        }
+        values.push(display);
+    }
+
+    let value = if !parts.is_empty() {
+        parts.join(", ")
+    } else {
+        usage_name.unwrap_or_default()
+    };
+    let property_type = if value.is_empty() { "null" } else { "string" };
+    let values = if values.is_empty() { None } else { Some(values) };
+    (value, property_type.into(), None, values)
 }
 
 /// Stringify one member of an enumerated / list value, mirroring the WASM

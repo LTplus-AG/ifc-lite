@@ -903,6 +903,59 @@ fn contained_spatial_zone_and_ifc4x3_facility_parts_are_promoted_to_nodes() {
 /// relationship, so the aggregated parent (Storey A) wins deterministically
 /// over the merely-contained parent (Storey B); Storey B's children_ids must
 /// not reference a node that isn't actually its child.
+/// #3973's own comment claims aggregation-vs-containment precedence and
+/// first-file-order-wins-among-ties are never decided by relationship/HashMap
+/// iteration order. This is the direct check: the SAME cross-parent fixture
+/// as the test below, but with its two IFCRELAGGREGATES lines re-ordered
+/// relative to each other AND relative to the IFCRELCONTAINEDINSPATIALSTRUCTURE
+/// line, must produce the identical tree.
+const CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#5));
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2,#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn reordering_the_same_relationships_in_the_file_produces_an_identical_tree() {
+    let ordered = extract_data_model(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let reordered = extract_data_model(CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC);
+
+    let mut ordered_nodes = ordered.spatial_hierarchy.nodes.clone();
+    let mut reordered_nodes = reordered.spatial_hierarchy.nodes.clone();
+    ordered_nodes.sort_by_key(|n| n.entity_id);
+    reordered_nodes.sort_by_key(|n| n.entity_id);
+
+    assert_eq!(
+        ordered_nodes.len(),
+        reordered_nodes.len(),
+        "reordering relationship lines must not change how many nodes are built"
+    );
+    for (a, b) in ordered_nodes.iter().zip(reordered_nodes.iter()) {
+        assert_eq!(a.entity_id, b.entity_id);
+        assert_eq!(
+            a.parent_id, b.parent_id,
+            "entity {} got a different parent depending on file order",
+            a.entity_id
+        );
+        assert_eq!(a.level, b.level, "entity {} got a different level depending on file order", a.entity_id);
+        assert_eq!(
+            a.children_ids, b.children_ids,
+            "entity {} got different children_ids depending on file order",
+            a.entity_id
+        );
+    }
+}
+
 const CROSS_PARENT_DUAL_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
 HEADER;
 FILE_SCHEMA(('IFC4'));

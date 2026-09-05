@@ -120,12 +120,27 @@ export function tsRelationshipTypes(src) {
   return found;
 }
 
-/** Extracts the two `matches!(type_name.to_uppercase().as_str(), "A" | "B" | ...)`
- * arms in spatial.rs: is_spatial_type is the full set; is_building_like is a
- * SUBSET used for a different purpose (deciding a "building-like" root), not
- * an independent concept, so only the first is compared here. */
+/** Extracts the `matches!(type_name.to_uppercase().as_str(), "A" | "B" | ...)`
+ * arms in spatial.rs: is_spatial_type is the full set; is_building_like_spatial_type
+ * and is_space_like_spatial_type are SUBSETS used for different purposes
+ * (deciding a "building-like" or "space-like" root), not independent
+ * concepts, so only is_spatial_type is compared here.
+ *
+ * Same silent-pass shape as `rustRelationshipTypes` above: is_spatial_type is
+ * ONE bounded region, so a later patch recognizing a new spatial type only
+ * via a SIBLING closure (a 4th `let is_X_spatial_type = |type_name: &str| {
+ * matches!(...) }` alongside the three named/recognized ones) would never be
+ * read by this regex. Guarded the same way. */
 export function rustSpatialTypes(src) {
   const code = stripComments(src);
+  assertNoUnrecognizedSiblingBindings(code, {
+    bindingPattern:
+      /let\s+(\w+)\s*=\s*\|type_name: &str\|\s*\{\s*matches!\(\s*type_name\.to_uppercase\(\)\.as_str\(\),([\s\S]*?)\)\s*\};/g,
+    valuePattern: /"[A-Z][A-Z0-9]{3,}"/,
+    nameFilter: /spatial_type/i,
+    recognizedNames: ['is_spatial_type', 'is_building_like_spatial_type', 'is_space_like_spatial_type'],
+    label: 'rustSpatialTypes',
+  });
   const m = /let is_spatial_type = \|type_name: &str\| \{\s*matches!\(\s*type_name\.to_uppercase\(\)\.as_str\(\),([\s\S]*?)\)\s*\};/.exec(
     code,
   );
@@ -143,6 +158,23 @@ export function rustSpatialTypes(src) {
  * enum form, not a guess. */
 export function tsSpatialTypes(src) {
   const code = stripComments(src);
+  // Same silent-pass shape as `tsRelationshipTypes` above: SPATIAL_STRUCTURE_TYPE_ENUMS
+  // is ONE bounded region. A later patch adding a genuinely new spatial type
+  // only via a 5th `export const X_TYPE_ENUMS = [...] as const;` sibling
+  // (alongside the master list and its three known subset lists) would never
+  // be read here.
+  assertNoUnrecognizedSiblingBindings(code, {
+    bindingPattern: /export const (\w+) = \[([\s\S]*?)\] as const;/g,
+    valuePattern: /IfcTypeEnum\.Ifc[A-Za-z0-9]+/,
+    nameFilter: /_TYPE_ENUMS$/,
+    recognizedNames: [
+      'SPATIAL_STRUCTURE_TYPE_ENUMS',
+      'BUILDING_LIKE_SPATIAL_TYPE_ENUMS',
+      'STOREY_LIKE_SPATIAL_TYPE_ENUMS',
+      'SPACE_LIKE_SPATIAL_TYPE_ENUMS',
+    ],
+    label: 'tsSpatialTypes',
+  });
   const m = /export const SPATIAL_STRUCTURE_TYPE_ENUMS = \[([\s\S]*?)\] as const;/.exec(code);
   if (!m) return new Set();
   return new Set(
@@ -209,6 +241,18 @@ export function rustQuantityTypes(src) {
 export function tsQuantityTypes(mapSrc, collectSrc) {
   const found = new Set();
   const mapCode = stripComments(mapSrc);
+  // Same silent-pass shape as `tsRelationshipTypes`/`tsSpatialTypes` above:
+  // QUANTITY_TYPE_MAP is ONE bounded region in columnar-parser-indexes.ts. A
+  // later patch recognizing a new IfcQuantity* leaf type only via a sibling
+  // `export const X_QUANTITY_MAP = {...}` (or similarly named object)
+  // alongside it would never be read here.
+  assertNoUnrecognizedSiblingBindings(mapCode, {
+    bindingPattern: /export const (\w+)(?::[^=]+)?\s*=\s*\{([\s\S]*?)\};/g,
+    valuePattern: /'IFCQUANTITY[A-Z]+'/,
+    nameFilter: /QUANTITY/i,
+    recognizedNames: ['QUANTITY_TYPE_MAP'],
+    label: 'tsQuantityTypes',
+  });
   const m = /QUANTITY_TYPE_MAP[^{]*\{([\s\S]*?)\};/.exec(mapCode);
   if (m) {
     for (const x of m[1].matchAll(/'(IFCQUANTITY[A-Z]+)'/g)) found.add(x[1]);

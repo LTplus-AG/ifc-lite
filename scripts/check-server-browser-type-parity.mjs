@@ -59,18 +59,22 @@
  * NOT actually bilateral for `properties`: only the Rust side can trip it
  * there. Every other concept's guard is bilateral as documented.
  *
- * UNDER-READ GUARD, relationships only: `rustRelationshipTypes` and
- * `tsRelationshipTypes` each read ONE bounded region (`rel_types`; the three
- * `*_REL_TYPES` Sets) and throw `ExtractorUnderReadError` — caught below and
- * reported as a third failure category, distinct from vacuity — if a SIBLING
- * binding that looks like it carries more IFC type literals exists in the
- * same file. This closes a silent-pass shape found in review: a later patch
- * adding types via a new `let extra_rel_types = [...]` array (or a fourth
- * `*_REL_TYPES` Set) alongside the existing one would otherwise never be
- * read by this extractor, and the stale allowlist would keep the gate quiet
- * about it. See `scripts/lib/server-browser-type-extractors.mjs` for the
- * detector and its scoping rationale (why it does not also fire on this
- * file's other, unrelated `*_TYPES` sets).
+ * UNDER-READ GUARD: any extractor that reads exactly ONE bounded region
+ * throws `ExtractorUnderReadError` — caught below and reported as a third
+ * failure category, distinct from vacuity — if a SIBLING binding that looks
+ * like it carries more IFC type literals exists in the same file. This
+ * closes a silent-pass shape found in review of relationships (a later patch
+ * adding types via a new `let extra_rel_types = [...]` array, or a fourth
+ * `*_REL_TYPES` Set, alongside the existing one would otherwise never be
+ * read) — and the identical shape was found, unguarded, in spatialTypes
+ * (`is_spatial_type`; `SPATIAL_STRUCTURE_TYPE_ENUMS`) and the TS half of
+ * quantities (`QUANTITY_TYPE_MAP`), all three now guarded the same way.
+ * `properties`, `materials`, and the Rust half of `quantities` scan their
+ * WHOLE source with an unanchored `matchAll` rather than one bounded region,
+ * so they do not have this failure mode and are not guarded here. See
+ * `scripts/lib/server-browser-type-extractors.mjs` for each detector call
+ * and its scoping rationale (why it does not also fire on a file's other,
+ * unrelated bindings of the same syntactic shape).
  *
  * THE ALLOWLIST is the mechanism that keeps this gate from being either
  * useless (allowlisting everything) or naggy (failing on every open fix in

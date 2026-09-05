@@ -396,6 +396,54 @@ test('RELATIONSHIPS UNDER-READ: an unrelated `*_TYPES` Set (not `*_REL_TYPES`) d
   assert.equal(status, 0);
 });
 
+// -- under-read guard, extended to spatialTypes and quantities: the same
+// bounded-single-region shape existed for these two concepts too, unguarded,
+// until this hardening. Reproduces the identical silent-pass on each. --
+
+test('SPATIAL TYPES UNDER-READ: RED when a sibling `is_X_spatial_type` closure appears alongside `is_spatial_type` on the Rust side', () => {
+  const rust = replaceOnce(
+    real.RUST_SPATIAL,
+    'let is_spatial_type = |type_name: &str| {',
+    'let is_new_kind_spatial_type = |type_name: &str| {\n' +
+      '        matches!(type_name.to_uppercase().as_str(), "IFCNEWSPATIALKIND")\n' +
+      '    };\n' +
+      '    let is_spatial_type = |type_name: &str| {',
+  );
+  const { status, out } = runOn({ RUST_SPATIAL: rust });
+  assert.equal(status, 1, out);
+  assert.match(out, /rustSpatialTypes: found a binding `is_new_kind_spatial_type`/);
+  assert.match(out, /extractor may be under-reading; update it/);
+});
+
+test('SPATIAL TYPES UNDER-READ: RED when a 5th `*_TYPE_ENUMS` array appears on the TS side alongside the recognized four', () => {
+  const ts = replaceOnce(
+    real.TS_SPATIAL,
+    'export const SPATIAL_STRUCTURE_TYPE_ENUMS = [',
+    'export const MARINE_LIKE_SPATIAL_TYPE_ENUMS = [\n  IfcTypeEnum.IfcMarineFacility,\n] as const;\nexport const SPATIAL_STRUCTURE_TYPE_ENUMS = [',
+  );
+  const { status, out } = runOn({ TS_SPATIAL: ts });
+  assert.equal(status, 1, out);
+  assert.match(out, /tsSpatialTypes: found a binding `MARINE_LIKE_SPATIAL_TYPE_ENUMS`/);
+  assert.match(out, /extractor may be under-reading; update it/);
+});
+
+test('SPATIAL TYPES UNDER-READ: the real tree (master list plus its three known subset lists) does not false-positive', () => {
+  const { status, out } = runOn({});
+  assert.equal(status, 0, out);
+});
+
+test('QUANTITIES UNDER-READ: RED when a sibling quantity map appears alongside `QUANTITY_TYPE_MAP` on the TS side', () => {
+  const ts = replaceOnce(
+    real.TS_REL_INDEXES,
+    'export const QUANTITY_TYPE_MAP: Record<string, QuantityType> = {',
+    "export const LEGACY_QUANTITY_MAP: Record<string, QuantityType> = {\n    'IFCQUANTITYNUMBER': QuantityType.Number,\n};\nexport const QUANTITY_TYPE_MAP: Record<string, QuantityType> = {",
+  );
+  const { status, out } = runOn({ TS_REL_INDEXES: ts });
+  assert.equal(status, 1, out);
+  assert.match(out, /tsQuantityTypes: found a binding `LEGACY_QUANTITY_MAP`/);
+  assert.match(out, /extractor may be under-reading; update it/);
+});
+
 test('mutation control: disabling the under-read detector lets the same silent-pass repro go green again', () => {
   // Directly verifies the guard is load-bearing: with the detector's body
   // replaced by an early return (simulating it being disabled/deleted), the

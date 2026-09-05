@@ -326,7 +326,7 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
 
 /// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
 /// reconcile a union of parametric boxes against the meshed opening solid by volume.
-pub(super) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
+pub(crate) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
     let v = |i: u32| {
         let b = i as usize * 3;
         [

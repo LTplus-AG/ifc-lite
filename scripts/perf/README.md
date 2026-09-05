@@ -47,7 +47,22 @@ timings the pipeline already publishes (`ProcessingStats`) plus an isolated
 
 Flags: `--suite` (all catalogued heavy fixtures on disk), `--iters N`,
 `--census` (CSG op distribution), `--json` (stdout; table stays on stderr),
+`--fingerprint` (ordered mesh fingerprint, computed outside the timed interval),
 `OBS=1` env (build with `observability` to fill `faceted_brep_time_ms`).
+
+JSON `allWallMs` measures each complete `process_geometry` call, including final
+metadata assembly after the pipeline's `totalMs` timer stops. Use its median
+for full-load comparisons; `allTotalsMs` retains the narrower pipeline timer.
+For a cold application load, pass `--cold --iters 1` with exactly one fixture
+per process. This skips the isolated index scans and reports `fileReadMs` plus
+`fullLoadWallMs` (file reading and the complete processing call);
+`indexBuildMs` is `null`. Launch a new process for each sample. This does not
+purge the operating system's file cache, so report that limitation explicitly.
+With `--fingerprint`, `meshFingerprintsFnv1a64` records exact float bits and
+ordered mesh identifiers, geometry, color, transforms and bounds. It does not
+cover text metadata, material definitions, UV textures or instancing records;
+validate those surfaces separately. Alternate base and branch runs in fresh
+processes on an idle machine, with the same measurement harness on both sides.
 
 Why `--profile profiling`: release-grade opt but keeps symbols and
 `panic=unwind`, so `samply` gets a symbolized flamegraph and per-element
@@ -112,7 +127,73 @@ WASM-specific structural cost (not in the native probe, by design):
 
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
+### N-ary repair validation (#3925)
+
+Rebase before measuring geometry. The old direct-router census converted survey
+coordinates to f32 before subtracting an origin; its apparent covering regressions
+were measurements of already-collapsed inputs. Disabling shared-corner protection
+to satisfy that census regressed valid large-model cuts. A raw-first union also
+improved a synthetic sweep while damaging those cuts. Both were discarded.
+
+Preserve an accepted production union. For an unusable 3D opening union, try one
+coordinate-preserving candidate before sequential subtraction. Roof chains need
+their own actual-cut checks and a removed-volume upper bound from clean individual
+trials; a bounding box alone cannot detect over-removal. Making every diagnostic
+trial reject the original path also lost existing cuts and was discarded.
+
+The census coordinate migration uses a reference generated on pre-regression
+code, with one independently checked torn-to-closed row recorded separately.
+Neither arbitrary golden updates nor local closure scores establish correctness.
+Keep real loader output and independent solid measurements in the comparison.
+See [the implementation and reference provenance](../../docs/architecture/nary-union-repair.md).
+Correctness-only native and worker-pool full-load comparisons across eleven
+models were broadly neutral in time and peak memory; the large target's browser
+load improved. Five interleaved fresh-process pairs were used per model and
+runtime, with OS file cache uncontrolled. Native geometry was byte-identical
+except for the intended CSG129 repair. Browser geometry was identical except for
+two already-open walls whose reference comparison is recorded in the linked
+note. The performance-only stack is evaluated separately against this corrected
+baseline. **Lesson:** qualify the browser's actual detail settings too; native
+full-detail identity alone does not establish browser identity.
+
+### Cold-load validation notes
+
+A geometry-complete event does not imply an interactive viewer: metadata,
+renderer finalization and the store's loading state can finish later. Compare
+fresh browser processes with the target file loaded first, and stop the load
+timer only after all of these finish. Exercise GPU picking, visible property
+sets and spatial hierarchy afterwards; exercise section generation on demand
+and federation separately. Keep integrity extraction outside the timed interval.
+
+Worker memory summaries can finish before renderer finalization. They are not
+whole-load peak-memory measurements. Sample through full readiness and name the
+metric precisely: summing Chrome process RSS can double-count shared pages.
+Readiness polling quantizes short loads; capture the store's readiness event.
+Coarse RSS sampling can miss short-lived peaks, so also inspect OS process
+high-water marks and state whether they include browser startup.
+Preserve failed loads alongside successful samples. Listen for renderer crashes
+as well as JavaScript errors, and stop memory sampling on every exit path.
+
 ### Shipped wins
+- **Native cold-load working set (#3967):** immutable schema classification replaces
+  contended global caches; completed BREP signatures are shared within one
+  immutable source; the geometry scan supplies ordered georeferencing candidates
+  and discovery reads unrelated property sets without retaining them. Large
+  sources with `u32` offsets build compact rows in fixed pages, then select a
+  direct-address index only when its allocation fits within compact columns.
+  Intermediate rows have a source-based budget; unusually dense record streams
+  switch to hash coalescing so duplicate records cannot keep growing staging.
+  Sparse IDs keep sorted columns; wider sources and supplied hash indexes retain
+  their existing representation. Duplicate IDs still resolve to their last
+  authored span. Interleaved fresh-process comparisons covered large MEP,
+  architecture, sanitary, CSG, structural and bridge models from multiple
+  exporters and schemas, including the small guard fixtures: all full-load
+  medians improved and every ordered geometry fingerprint matched. Large-model
+  peak RSS fell; small-model RSS ranges overlapped. **Lesson:** measure the
+  whole call including final metadata and teardown, and measure the index's
+  working set, not just time attributed to the scanner. Bounded parallel typed
+  scan windows passed scanner parity but added too little end-to-end benefit
+  to retain; the compact-index change produced the material gain.
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
   record-not-gate closure audit adds a strict directed-edge hash sweep and only
   runs the hairline sweep when strict closure fails. On `140a6d854` versus the
@@ -214,6 +295,48 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
   bought is now ~0%. Another regime-rot casualty.
 
 ### Cold-start / CSG levers — mixed status (read each label)
+- **Viewer drawing demand, property-set discovery and parser scheduling (RETAINED, measured):** a saved
+  section-overlay preference does not imply an active drawing consumer. Match
+  the renderer's section-tool demand, preserve explicit export generation, and
+  refresh inputs when a consumer becomes active again. On large cold loads the
+  previous hidden section cut blocked metadata delivery and renderer readiness.
+  Sorted parser indexes also need no permutation; association-target discovery
+  was dead work once all references were indexed. A conservative resident-byte
+  ePSet filter skips only proven negatives, retaining the canonical decoder for
+  escaped names and possible matches. Disabling only the DXF caller did not
+  help: another required georeference consumer paid the same work later.
+  Parser reference arrays can overlap the geometry workers' peak allocation.
+  Giving geometry a bounded head start reduces that overlap: hand off the
+  already-built shared index when a worker finishes, at stream completion, or
+  at a source-size-scaled deadline. Always release it on iterator shutdown too.
+  Waiting only for worker completion regressed an architecture model; the
+  deadline bounds that tradeoff and avoids the parser's fallback scan timeout.
+  Keep smaller sources immediate: deferring a structural fixture increased its
+  renderer peak despite faster loading; immediate handoff removed that increase.
+  Final fresh-process comparisons across MEP, architecture, sanitary, CSG,
+  structural and bridge models improved every full-readiness median, with
+  matching geometry digests and real GPU picks, properties and spatial paths.
+  The large target reduced whole-browser RSS and renderer peak footprint;
+  smaller-model total RSS remained variable, so this is not a universal memory
+  reduction claim. Actual section-tool activation produced identical cut
+  geometry on small and large models. Single-to-federated loading preserved
+  selection, properties and spatial hierarchy; metadata-only input still settled.
+  Active drawing requests share one queue: geometry, plane and visibility
+  changes keep only the newest pending inputs, and superseded cuts cannot
+  publish. Parser-worker-unavailable loads do not retain a deferred handoff.
+  An interleaved ablation across MEP, CSG, structural, bridge and small models
+  found no material full-load or RSS benefit from retaining WASM batch decoder
+  memos, including completed BREP signatures. That extra WASM cache machinery
+  was removed; the native shared signature cache remains independently useful.
+  Clearing local reference variables and delaying only until the first mesh
+  batch did not reliably reduce whole-load memory either.
+  Rare Chrome ARM64 renderer SIGILLs occurred during the style pre-pass on
+  both the performance candidate and the unoptimized corrected baseline.
+  Preserve failed runs alongside successful timing samples; successful replays
+  do not establish a fix or equal failure rates. Follow-up #3975 carries the
+  crash dumps, reproduction conditions and bounded engine/application diagnosis.
+  This change does not claim to fix that shared reliability defect.
+  Geometry-only events and truncated worker-memory summaries cannot settle it.
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
 "all unshipped".

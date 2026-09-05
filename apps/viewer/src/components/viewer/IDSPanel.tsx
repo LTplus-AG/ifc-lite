@@ -40,6 +40,7 @@ import {
   FileCode,
   FileBox,
   Download,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -86,6 +87,7 @@ import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSAuditSummary } from './IDSAuditSummary';
 import { IDSExportDialog } from './IDSExportDialog';
 import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
+import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
 
 // ============================================================================
 // Types
@@ -157,6 +159,7 @@ interface SpecificationCardProps {
   onSelect: () => void;
   onEntityClick: (modelId: string, expressId: number) => void;
   filterMode: 'all' | 'failed' | 'passed';
+  onCorrect: () => void;
 }
 
 function SpecificationCard({
@@ -165,6 +168,7 @@ function SpecificationCard({
   onSelect,
   onEntityClick,
   filterMode,
+  onCorrect,
 }: SpecificationCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -197,6 +201,14 @@ function SpecificationCard({
   }, [requirementGroups, filterMode]);
   const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
 
+  // Only a scalar property requirement with an exact pset/property name is
+  // correctable (#3929) — computed lazily so a spec with no failures (or no
+  // correctable shape) never renders the action.
+  const hasCorrectable = useMemo(
+    () => result.failedCount > 0 && getCorrectableRequirements(result).length > 0,
+    [result]
+  );
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
@@ -205,13 +217,13 @@ function SpecificationCard({
           isActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
         )}
       >
-        {/* Specification Header */}
-        <CollapsibleTrigger asChild>
-          <button
-            className="w-full p-3 text-left"
-            onClick={onSelect}
-          >
-            <div className="flex items-start gap-2">
+        {/* Specification Header. The "Correct" action is a real interactive
+            control, so it lives OUTSIDE the collapse-toggle <button> as a
+            sibling rather than nested inside it (a <button> inside a
+            <button> is invalid HTML and breaks click targeting). */}
+        <div className="flex items-start gap-2 p-3">
+          <CollapsibleTrigger asChild>
+            <button className="flex-1 min-w-0 flex items-start gap-2 text-left" onClick={onSelect}>
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4 mt-0.5 shrink-0" />
               ) : (
@@ -253,9 +265,20 @@ function SpecificationCard({
                   </div>
                 )}
               </div>
-            </div>
-          </button>
-        </CollapsibleTrigger>
+            </button>
+          </CollapsibleTrigger>
+          {hasCorrectable && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 shrink-0"
+              onClick={onCorrect}
+            >
+              <Wrench className="h-3.5 w-3.5 mr-1" />
+              Correct
+            </Button>
+          )}
+        </div>
 
         {/* Requirement Breakdown */}
         <CollapsibleContent>
@@ -655,6 +678,12 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     // own model id so the picker reflects reality again.
     if (!loading) setPendingModelId(null);
   }, [loading]);
+
+  // Which specification's "Correct Property" dialog is open, if any (#3929).
+  const [correctionSpecId, setCorrectionSpecId] = useState<string | null>(null);
+  const correctionSpecResult = report?.specificationResults.find(
+    (s) => s.specification.id === correctionSpecId
+  );
 
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1099,6 +1128,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 isActive={activeSpecificationId === specResult.specification.id}
                 onSelect={() => setActiveSpecification(specResult.specification.id)}
                 onEntityClick={handleEntityClick}
+                onCorrect={() => setCorrectionSpecId(specResult.specification.id)}
                 filterMode={filterMode}
               />
             ))}
@@ -1193,6 +1223,16 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
         {renderDocumentLoaded()}
         {renderResults()}
       </div>
+
+      {report && correctionSpecResult && (
+        <IDSCorrectionDialog
+          open={correctionSpecId != null}
+          onOpenChange={(open) => { if (!open) setCorrectionSpecId(null); }}
+          specResult={correctionSpecResult}
+          modelId={report.modelInfo.modelId}
+          onRevalidate={runValidation}
+        />
+      )}
     </div>
   );
 }

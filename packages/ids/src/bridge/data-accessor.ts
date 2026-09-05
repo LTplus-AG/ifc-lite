@@ -54,6 +54,31 @@ const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
 };
 
 /**
+ * A single property write pending against an entity, layered on top of the
+ * store's own (immutable) property data. Mirrors the shape of a
+ * `MutablePropertyView` property mutation without this package taking a
+ * dependency on `@ifc-lite/mutations` — callers (the viewer) adapt their
+ * mutation view's per-entity mutation list into this shape.
+ */
+export interface PropertyOverride {
+  /** Property set name, exactly as written (case-sensitive). */
+  psetName: string;
+  /** Property name, exactly as written (case-sensitive). */
+  propName: string;
+  /** The corrected value, or `null`/`deleted` to remove the property. */
+  value: string | number | boolean | null;
+  /** True when the property was deleted rather than set. */
+  deleted?: boolean;
+}
+
+/**
+ * Resolves the pending property overrides for one entity, or `undefined`
+ * when the entity has none. Called on every property read, so it must be
+ * cheap (an O(1)/O(mutations-for-entity) map lookup, not a scan).
+ */
+export type PropertyOverlayResolver = (expressId: number) => PropertyOverride[] | undefined;
+
+/**
  * Bridge an `IfcDataStore` (produced by `@ifc-lite/parser`) into the
  * abstract `IFCDataAccessor` the IDS validator consumes. The single
  * canonical translation: viewer, MCP server, and the buildingSMART corpus
@@ -65,8 +90,18 @@ const PARTOF_REL_MAP: Record<PartOfRelation, readonly RelationshipType[]> = {
  * non-rooted resources, length unit conversion, predefined property-set
  * unwrapping, schema-driven attribute XSD types, USERDEFINED predicate
  * substitution, partOf transitivity, etc.
+ *
+ * `propertyOverlay` is optional and lets a caller with in-memory,
+ * not-yet-exported property edits (e.g. an IDS correction applied through
+ * the viewer's `MutablePropertyView`) have those edits reflected in
+ * `getPropertyValue`/`getPropertySets` immediately, without re-parsing the
+ * store. Every other read (attributes, classifications, materials, partOf)
+ * is unaffected — only the two property-reading methods below consult it.
  */
-export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
+export function createDataAccessor(
+  store: IfcDataStore,
+  propertyOverlay?: PropertyOverlayResolver
+): IFCDataAccessor {
   // Memoize per-entity attribute extraction. extractAllEntityAttributes
   // re-parses the entity from the raw source buffer on every call, and the
   // validator hits Name/GlobalId/Description/getAttribute(Names) for the same
@@ -97,6 +132,54 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
       if (a.name.toLowerCase() === lower) return a.value;
     }
     return undefined;
+  }
+
+  /**
+   * Property sets for `expressId`, with any pending overlay writes applied
+   * on top of the canonical (parsed) result. The canonical projection stays
+   * the single source of truth for pset unwrapping/unit conversion/merging
+   * — the overlay only patches the specific properties it names, so an
+   * entity with no overrides sees byte-identical output to the no-overlay
+   * path, and an entity WITH overrides keeps every other property untouched.
+   */
+  function getEffectivePropertySets(expressId: number): PropertySetInfo[] {
+    const base = collectAllPropertySets(store, expressId);
+    const overrides = propertyOverlay?.(expressId);
+    if (!overrides || overrides.length === 0) return base;
+
+    // Deep-clone only what we might mutate (psets/properties arrays), so the
+    // base projection's cached/shared objects are never touched.
+    const result = base.map((pset) => ({
+      ...pset,
+      properties: pset.properties.map((p) => ({ ...p })),
+    }));
+
+    for (const override of overrides) {
+      const pset = result.find((p) => p.name === override.psetName);
+
+      if (override.deleted) {
+        if (pset) {
+          pset.properties = pset.properties.filter((p) => p.name !== override.propName);
+        }
+        continue;
+      }
+
+      if (pset) {
+        const idx = pset.properties.findIndex((p) => p.name === override.propName);
+        if (idx >= 0) {
+          pset.properties[idx] = { ...pset.properties[idx], value: override.value };
+        } else {
+          pset.properties.push({ name: override.propName, value: override.value, dataType: '' });
+        }
+      } else {
+        result.push({
+          name: override.psetName,
+          properties: [{ name: override.propName, value: override.value, dataType: '' }],
+        });
+      }
+    }
+
+    return result;
   }
 
   const accessor: IFCDataAccessor = {
@@ -209,7 +292,7 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     ): PropertyValueResult | undefined {
       const psetLower = propertySetName.toLowerCase();
       const propLower = propertyName.toLowerCase();
-      const all = collectAllPropertySets(store, expressId);
+      const all = getEffectivePropertySets(expressId);
       for (const pset of all) {
         if (pset.name.toLowerCase() !== psetLower) continue;
         for (const prop of pset.properties || []) {
@@ -226,7 +309,7 @@ export function createDataAccessor(store: IfcDataStore): IFCDataAccessor {
     },
 
     getPropertySets(expressId: number): PropertySetInfo[] {
-      return collectAllPropertySets(store, expressId);
+      return getEffectivePropertySets(expressId);
     },
 
     getClassifications(expressId: number): ClassificationInfo[] {

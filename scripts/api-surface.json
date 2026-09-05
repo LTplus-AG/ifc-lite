@@ -2112,6 +2112,8 @@
     "validateIDS: function"
   ],
   "@ifc-lite/ids/bridge": [
+    "PropertyOverlayResolver: type",
+    "PropertyOverride: interface",
     "createDataAccessor: function",
     "narrowSchemaVersion: function"
   ],

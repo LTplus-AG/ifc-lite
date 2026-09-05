@@ -284,6 +284,9 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
   const idsPassedEntityIds = useViewerStore((s) => s.idsPassedEntityIds);
   const getFailedEntitiesForSpec = useViewerStore((s) => s.getFailedEntitiesForSpec);
   const getPassedEntitiesForSpec = useViewerStore((s) => s.getPassedEntitiesForSpec);
+  const getMutationView = useViewerStore((s) => s.getMutationView);
+  const registerMutationView = useViewerStore((s) => s.registerMutationView);
+  const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
 
   // Viewer state
   const models = useViewerStore((s) => s.models);
@@ -467,13 +470,28 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       let validationReport: IDSValidationReport | null = null;
 
+      // A model with in-memory property edits (e.g. an IDS correction
+      // applied through MutablePropertyView, #3929) must validate against
+      // THOSE edits, not the original parsed bytes. The worker only ever
+      // sees the raw source buffer, so it can't reflect an overlay that
+      // hasn't been exported/baked yet — force main-thread validation
+      // (which threads the mutation view into the data accessor below)
+      // whenever the target model has pending property mutations.
+      const mutationView = getMutationView(modelId);
+      const hasPendingPropertyEdits = !!mutationView?.hasPendingChanges();
+
       // Preferred path: validate in a Web Worker so the whole run is off
       // the main thread — the UI stays at full frame rate and progress
       // actually paints. Every other heavy stage (parse, geometry)
       // already runs in a worker; this brings validation in line. Falls
-      // back to in-process validation if the worker is unavailable or
-      // fails (e.g. no source bytes for non-STEP models).
-      const canUseWorker = idsWorkerSupported() && !!dataStore.source && dataStore.source.byteLength > 0;
+      // back to in-process validation if the worker is unavailable, the
+      // model has no source bytes, or (see above) it carries edits the
+      // worker can't see.
+      const canUseWorker =
+        !hasPendingPropertyEdits
+        && idsWorkerSupported()
+        && !!dataStore.source
+        && dataStore.source.byteLength > 0;
       if (canUseWorker) {
         try {
           validationReport = await runValidationInWorker({
@@ -492,7 +510,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
       }
 
       if (!validationReport) {
-        const accessor = createDataAccessor(dataStore, modelId);
+        const accessor = createDataAccessor(dataStore, modelId, mutationView);
         const modelInfo: IDSModelInfo = {
           modelId,
           schemaVersion,
@@ -551,6 +569,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
     activeModelId,
     translator,
     locale,
+    getMutationView,
     setIdsLoading,
     setIdsError,
     setIdsProgress,

@@ -86,6 +86,12 @@ const report = { base: baseLabel, branch: branchLabel, failures: failedRows.leng
 let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
+// Set when a fixture has zero comparable samples on one side (e.g. every
+// launch on that side threw and was archived as a failure) — distinct from
+// "no metric moved": no comparison happened for that fixture AT ALL, so
+// falling through to the calm "within noise" verdict below would print a
+// clean-looking pass for a fixture nothing was actually verified on.
+let anyIncomparableFixture = false;
 
 const lines = [];
 lines.push(`\nbrowser cold-load A/B  base=${baseLabel}  branch=${branchLabel}`);
@@ -119,6 +125,7 @@ for (const [fixture, sides] of byFixture) {
   }
   if (!baseVals.length || !branchVals.length) {
     lines.push(`    ⚠️  no comparable samples on one side — no verdict for this fixture.`);
+    anyIncomparableFixture = true;
     report.fixtures.push(fx);
     continue;
   }
@@ -155,6 +162,13 @@ if (rows.length === 0) {
   lines.push('VERDICT: ⚠️  machine too noisy (base TOTAL spread >20%) — close other load and re-run with more --iters before trusting any delta.');
 } else if (anyRealChange) {
   lines.push(`VERDICT: a metric moved beyond the noise floor (✅ faster / ⛔ slower). ${baseLabel} vs ${branchLabel}. totalMeshes matched across all rounds on every fixture with comparable samples.`);
+} else if (anyIncomparableFixture) {
+  // NOT the calm "within noise" message below: that message claims every
+  // fixture was actually compared. When one side of a fixture produced zero
+  // successful samples (e.g. every launch on that side threw), no
+  // comparison happened for it at all - falling through to "within noise"
+  // here would read as a clean pass for a fixture nothing was verified on.
+  lines.push('VERDICT: ⚠️  inconclusive — at least one fixture had no comparable samples on one side (see warnings above); this is NOT a clean "no regression" result.');
 } else {
   lines.push('VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds.');
 }
@@ -170,9 +184,15 @@ if (jsonOut) {
     fingerprintDrift: anyFingerprintDrift,
     tooNoisy: anyTooNoisy,
     realChange: anyRealChange,
+    incomparableFixture: anyIncomparableFixture,
   };
   writeFileSync(jsonOut, JSON.stringify(report, null, 2));
   console.log(`\n(machine-readable report → ${jsonOut})`);
 }
 
-process.exit(rows.length === 0 ? 1 : 0);
+// Nonzero on any harness fault: zero successful samples anywhere, OR at
+// least one fixture where one side never produced a single comparable
+// sample (the per-fixture version of the same fault - see anyIncomparableFixture
+// above). A real regression/improvement (anyRealChange) still exits 0: that
+// is a successful, trustworthy comparison reporting a result, not a fault.
+process.exit(rows.length === 0 || anyIncomparableFixture ? 1 : 0);

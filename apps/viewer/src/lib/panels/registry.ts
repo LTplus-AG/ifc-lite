@@ -33,6 +33,7 @@ import {
   Cloud,
   Layers as LayersIcon,
   Box,
+  FileWarning,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -56,7 +57,8 @@ export type WorkspacePanelId =
   | 'lists'
   | 'collab'
   | 'layers'
-  | 'zones';
+  | 'zones'
+  | 'loadReport';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -112,6 +114,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Location zones (construction sections / takt areas, #1810). APPENDED so
   // the frozen Alt+1..0 mapping stays intact (no Alt shortcut).
   { id: 'zones', title: 'Location zones', short: 'Zones', Icon: Box, group: 'review', region: 'side' },
+  // Flag-free like 'zones' above (#1869 precedent) — no dedicated
+  // `loadReportPanelVisible` boolean; `openWorkspacePanel`'s generic
+  // non-SIDEBAR_PANEL_FLAGS branch adopts it directly (issue #3927).
+  { id: 'loadReport', title: 'Load report', short: 'Load report', Icon: FileWarning, group: 'review', region: 'side' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter

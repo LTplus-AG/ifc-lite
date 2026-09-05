@@ -1354,10 +1354,8 @@ export function useIfcLoader() {
       // the geometry workers read the same memory zero-copy. When
       // `acquireFileBuffer` already streamed the file directly into a SAB
       // (large-file entry path, issue #600), reuse it — no second copy.
-      // `WorkerParser.isSupported()` rolls together: COI enabled, SAB
-      // available, AND TextDecoder accepts SAB-backed views (Firefox fails
-      // the third check; we skip the worker path entirely there so the
-      // SAB allocation isn't wasted).
+      // `WorkerParser.isSupported()` checks COI, SAB and Worker availability.
+      // The parser's UTF-8 reader handles SAB-backed views in Firefox too.
       const useParserWorker = WorkerParser.isSupported();
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {

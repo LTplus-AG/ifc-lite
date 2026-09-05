@@ -802,10 +802,8 @@ export function HierarchyPanel() {
   if (!ifcDataStore && singleModel) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
-      ? (singleModel.loadError || 'Native metadata failed to load.')
-      : metadataState === 'bootstrapping'
-        ? 'Native spatial metadata is loading.'
-        : 'Spatial metadata will appear once bootstrap completes.';
+      ? (singleModel.loadError || 'Model details failed to load.')
+      : 'Building the hierarchy. You can explore the geometry while model details load.';
     return (
       <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">

@@ -30,6 +30,7 @@ import { beforeAll, afterEach, describe, expect, it } from 'vitest';
 
 import { IfcParser } from '../src/index.js';
 import { WorkerParser } from '../src/worker-parser.js';
+import { contiguousSourceBytes } from '../src/source-bytes.js';
 import { toTransport } from '../src/data-store-transport.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 
@@ -93,7 +94,7 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
    * A fresh `toTransport` per message: the real worker posts two independent
    * payloads, so sharing one here would be a shape the product never produces.
    */
-  async function runStreamingParse(): Promise<{ partial: IfcDataStore; final: IfcDataStore }> {
+  async function runStreamingParse(prepared = false): Promise<{ partial: IfcDataStore; final: IfcDataStore }> {
     (globalThis as { Worker?: unknown }).Worker = StubWorker;
 
     const sab = new SharedArrayBuffer(64);
@@ -115,13 +116,23 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
     // A fresh payload per message, honouring the docblock above: the real
     // worker posts two independent DataStoreTransports, and reusing one object
     // would be a shape the product never produces.
-    worker.deliver({ id, type: 'partial-store', payload: toTransport(parsed).payload });
+    const earlyPayload = toTransport(parsed).payload;
+    if (prepared) earlyPayload.sourceContentKey = contiguousSourceBytes(new Uint8Array(sab)).contentKey;
+    worker.deliver({ id, type: 'partial-store', payload: earlyPayload });
     worker.deliver({ id, type: 'complete', payload: toTransport(parsed).payload, memory: undefined });
 
     const final = await done;
     if (partial === null) throw new Error('onSpatialReady never fired');
     return { partial, final };
   }
+
+  it('retains the worker fingerprint without hashing on first UI read (#3983)', async () => {
+    const { partial, final } = await runStreamingParse(true);
+    const expected = contiguousSourceBytes(new Uint8Array(64)).contentKey;
+    expect(partial.source.toTransferable().contentKey).toBe(expected);
+    expect(final.source).toBe(partial.source);
+    expect(final.source.toTransferable().contentKey).toBe(expected);
+  });
 
   it('hands the partial store and the final store the SAME accessor', async () => {
     const { partial, final } = await runStreamingParse();

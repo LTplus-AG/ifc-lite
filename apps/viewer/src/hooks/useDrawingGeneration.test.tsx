@@ -447,3 +447,26 @@ it('restarts active drawing demand after StrictMode effect cleanup (#3921)', asy
     assert.deepEqual(h.publications, [new Set([100, 101])]);
   } finally { await h.dispose(); }
 });
+
+// #3921: a new coplanar face pick changes the projection origin, not its normal.
+it('refreshes the real cut after a coplanar face pick changes its anchor (#3921)', async () => {
+  const custom: NonNullable<DrawingInputs['sectionPlane']['custom']> = {
+    normal: [0, 1, 0], distance: 1.5, pickedAt: [0, 1.5, 0],
+    tangent: [1, 0, 0], bitangent: [0, 0, 1],
+  };
+  const sectionPlane: DrawingInputs['sectionPlane'] = { axis: 'down', position: 50, flipped: false, custom };
+  const h = await drawingActivityHarness({ geometryResult: activityGeometry(), panelVisible: true, sectionPlane });
+  try {
+    const first = h.drawing;
+    assert.ok(first);
+    const firstX = Math.min(...first.lines.filter(line => line.category === 'cut').map(line => line.line.start.x));
+    assert.ok(Number.isFinite(firstX), 'the fixture must produce real cut lines');
+    await h.update({ sectionPlane: { ...sectionPlane, custom: { ...custom, pickedAt: [5, 1.5, 0] } } });
+    const second = h.drawing;
+    assert.ok(second);
+    const secondX = Math.min(...second.lines.filter(line => line.category === 'cut').map(line => line.line.start.x));
+    assert.equal(second.config.plane.customPlane?.origin.x, 5);
+    assert.equal(secondX, firstX - 5, 'cut coordinates must follow the new in-plane origin');
+    assert.deepEqual(entityIds(second), entityIds(first), 'moving the anchor must not change which solids are cut');
+  } finally { await h.dispose(); }
+});

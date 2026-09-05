@@ -901,7 +901,7 @@ export function useDrawingGeneration({
   }, [queue]);
   useEffect(() => {
     const plane = JSON.stringify([sectionPlane.axis, sectionPlane.position, sectionPlane.flipped,
-      sectionPlane.custom?.normal, sectionPlane.custom?.distance]);
+      sectionPlane.custom]);
     const inputs = [geometryResult, geometryResult?.meshes.length, ifcDataStore,
       displayOptions, typeVisibility, combinedHiddenIds, combinedIsolatedIds,
       computedIsolatedIds, models];

@@ -30,6 +30,7 @@ mod polygonal_prism;
 mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
 mod polygonal_union;
+mod polygonal_removal;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -399,6 +400,7 @@ impl BooleanClippingProcessor {
         //     coincident/duplicate cutters) and must not be trusted.
         let mut tight_min = Point3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
         let mut tight_max = Point3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut removal_bound = polygonal_removal::RemovalBound::new(&base_mesh);
         for prism in &prisms {
             // `subtract_checked` folds in the #3919 accept-gate check: a
             // rejection hands back the base UN-CUT, which would wrongly widen
@@ -407,6 +409,13 @@ impl BooleanClippingProcessor {
                 let _ = clipper.take_failures();
                 return self.defer_after(mark);
             };
+            if !clipper.take_failures().is_empty() {
+                // A diagnostic-only tear is not a default accept gate. It
+                // cannot certify a moved cutter's removal bound, either.
+                removal_bound.invalidate();
+            } else {
+                removal_bound.observe(&trial);
+            }
             let (tmn, tmx) = trial.bounds();
             tight_min = Point3::new(
                 tight_min.x.max(tmn.x),
@@ -454,7 +463,7 @@ impl BooleanClippingProcessor {
         // issue-#960 seam sliver silently regrew.
         let mut checked = Self::subtract_checked(&clipper, &base_mesh, &combined);
         let mut cut_failures = clipper.take_failures();
-        if checked.is_none() || !cut_failures.is_empty() {
+        if (checked.is_none() || !cut_failures.is_empty()) && removal_bound.is_valid() {
             // #3925: a rejected or diagnostically torn cut permits one moved
             // candidate. Publish it only if its actual subtraction is clean;
             // otherwise retain the original result and its failure records.
@@ -464,7 +473,8 @@ impl BooleanClippingProcessor {
             if !repaired.is_empty() {
                 let candidate = Self::subtract_checked(&clipper, &base_mesh, &repaired);
                 let candidate_failures = clipper.take_failures();
-                if candidate.is_some() && candidate_failures.is_empty() {
+                if candidate.as_ref().is_some_and(|m| removal_bound.allows(m))
+                    && candidate_failures.is_empty() {
                     checked = candidate;
                     cut_failures = candidate_failures;
                 }

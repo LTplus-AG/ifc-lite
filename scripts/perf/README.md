@@ -121,6 +121,12 @@ without promotion. For other N-ary consumers, preserve a closed original and
 accept a repair only after checking the emitted, consolidated mesh. The
 ordinary subtraction weld must not freeze isolated shared corners.
 
+For a repaired roof cutter, a bounding-box check only limits under-removal;
+also cap removed volume by the sum of the clean individual trial removals.
+A diagnostic-only trial cannot certify that cap. Making every such diagnostic
+defer the entire original union instead was rejected by the real-file census:
+it loses existing closed cuts when the sequential fallback tears.
+
 Discarded trials: protecting whole operands did not restore all cutter cases;
 raw exact-coordinate closure rejected useful repairs that the existing
 resolution-specific audit accepts; a permissive hairline acceptance lost

@@ -141,6 +141,7 @@ fn max_z(mesh: &ifc_lite_geometry::Mesh) -> f32 {
         .fold(f32::NEG_INFINITY, f32::max)
 }
 
+#[cfg(feature = "csg_topology_gate")]
 fn min_z(mesh: &ifc_lite_geometry::Mesh) -> f32 {
     mesh.positions
         .chunks_exact(3)

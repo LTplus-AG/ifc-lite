@@ -53,7 +53,11 @@ volume acceptance. The bounded prism and roof-chain consumers retain their
 existing downstream acceptance rules. The roof-chain path first subtracts the
 original union; a rejected or diagnostically torn subtraction permits one
 reconciled candidate. That candidate must pass the same subtraction acceptance
-and bounds checks without failure diagnostics. An unsuccessful repair retains
+and bounds checks without failure diagnostics. Its removed volume must not
+exceed the sum of the individual trial removals. A diagnostically invalid or
+numerically unusable trial disables this coordinate-moving repair: it cannot
+certify a removal bound. Overlap makes the sum an upper bound, not proof of the
+exact intended volume. An unsuccessful repair retains
 the original result and its diagnostics, or the existing sequential fallback
 when there was no acceptable original. Both native and WASM use
 these same Rust entry points.

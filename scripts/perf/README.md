@@ -99,6 +99,77 @@ WASM-specific structural cost (not in the native probe, by design):
 - **No wasm threads in the live path**: `init_thread_pool` exists only in the
   `threads` bundle (off by default); cross-worker parallelism is the JS pool.
 
+## Large-model browser cold-load A/B (#3978)
+
+`browser-cold-ab.sh` (wrapper) / `browser-cold-ab.mts` (harness) / `browser-ab-report.mjs`
+(reporter). Preserves the mechanism behind #3921's private large-model
+qualification (11 real IFC models, interleaved fresh-Chrome-process base/branch
+pairs) as a repeatable, in-repo tool, instead of that mechanism living only as
+one-off private scripts and a set of hardware-specific numbers pasted into a
+PR description.
+
+**DELIBERATELY MANUAL — NOT WIRED INTO CI.** `node scripts/check-test-wiring.mjs`
+does not require a `package.json`/workflow entry for anything under
+`scripts/perf/` (the same carve-out `ab.sh`/`probe.sh` already use); nothing
+here runs on a PR. It launches a real, dedicated Chromium process per sample
+and is meant to be pointed at private multi-hundred-MB models — neither
+belongs on a shared runner. `.github/workflows/benchmark.yml` is the separate,
+CI-wired, advisory-only sibling and is unaffected.
+
+```bash
+# public-fixture A/B, working tree only (repeatability check / no --base):
+scripts/perf/browser-cold-ab.sh --skip-branch-build --iters 3
+
+# real base-vs-branch (builds BASE in a throwaway git worktree):
+scripts/perf/browser-cold-ab.sh --base origin/main --iters 5
+
+# add private/large local models (never fetched or committed by this tool):
+cp scripts/perf/browser-corpus.example.json scripts/perf/browser-corpus.local.json
+# edit browser-corpus.local.json with real absolute paths, then:
+scripts/perf/browser-cold-ab.sh --corpus scripts/perf/browser-corpus.local.json
+```
+
+**What "cold" means, precisely:** each sample gets a brand-new
+`chromium.launch()` (no persistent profile) closed completely before the next
+one starts — fresh WASM instantiation, fresh geometry-worker pool startup, and
+an empty Cache API/localStorage/IndexedDB every time. It does **not** control
+the OS file cache (same caveat #3921's own qualification recorded). "Full
+readiness" (`totalWallClockMs`) and "first geometry" (`firstBatchWaitMs`/
+`firstVisibleGeometryMs`) are reported as separate rows, never collapsed.
+
+**Repeatability:** samples are interleaved (A, B, A, B, …), and the reporter
+only calls a delta "real" once it clears the base side's own round-to-round
+spread — the same noise-floor discipline as `ab-report.mjs` for the native
+probe. Two independent runs of the AC20-FZK-Haus public fixture (2 rounds
+each, working tree vs itself) landed at TOTAL 200ms both times, with the
+other four milestones within 1-2% — see the PR for the full transcript.
+
+**Drift detection:** there is no committed golden here to drift silently —
+every invocation prints its own base-vs-branch delta from that run's fresh
+samples, so a stale number is never read as current. A `totalMeshes` change
+between sides invalidates the timing comparison outright (printed as
+`OUTPUT CHANGED`, matching `ab-report.mjs`'s fingerprint rule) rather than
+being silently absorbed into "faster".
+
+**Verified detection (harness self-test):** `--fault-inject-ms`/
+`--fault-inject-side`/`--fault-inject-pattern` route-delay matching requests
+(default `\.wasm(\?|$)`) on one interleaved side, to prove the harness
+actually notices a regression rather than always reporting "within noise".
+A 4-second delay injected on `\.(wasm|js)` for AC20-FZK-Haus: TOTAL
+200ms → 4200ms (+2000%), every milestone flagged ⛔, `totalMeshes` unchanged
+(confirming it is a pure timing effect). Do not leave `--fault-inject-*` set
+for a real measurement — it exists only to validate the harness itself.
+
+**Failures are archived, never silently retried:** a sample that does not
+reach `streamCompleteMs` with `totalMeshes > 0` is recorded as failed (not
+retried), with a screenshot + console log + error message written to
+`scripts/perf/.browser-cold-ab-results/FAILED-*` (gitignored) — the equivalent
+of #3921/#3975's preserved failure evidence for renderer SIGILLs.
+
+**Raw cold IFC load only** — this drives the same `.ifc` parse/geometry path
+the viewer's real cold load takes, never a prepared-format reload (Fragments/
+XKT/XGF); that stays out of scope per the issue.
+
 ## Specialized harnesses (when the probe is too coarse)
 
 | Tool | Question it answers |

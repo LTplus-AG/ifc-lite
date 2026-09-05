@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Spatially coupled merge semantics (Bet B4.2, closing the G2 red-team
- * finding in docs/vision/reviews/g2-red-team-2026-07-24.md §4).
+ * Spatially coupled merge semantics (spatial-rule ablation, closing the G2 red-team
+ * finding in packages/provenance/test/merge-battery.test.ts §4).
  *
  * The finding: merge-model.ts v0 applied every op purely per-node, so
  * node-disjoint ops commuted BY CONSTRUCTION and the spatial half of the
@@ -445,7 +445,7 @@ describe('a host with SEVERAL meshes: recutHost writes every one of them', () =>
   });
 });
 
-describe('the ablation, at unit scale (G4 review item 6)', () => {
+describe('the ablation, at unit scale (spatial-ablation requirement)', () => {
   it('with the spatial rule DISABLED the predicate clears the headline non-commuting pair', async () => {
     const base = hostedState();
     const hostOp = moveHost('a0', 0.1, 0.1);

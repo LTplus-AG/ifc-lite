@@ -6,7 +6,7 @@ Real-time collaborative BIM via CRDT on IFCX. Built on [Yjs](https://github.com/
 > seed/snapshot round-trip, IndexedDB persistence, undo manager, websocket
 > provider, awareness/presence, conflict detection, per-user layer
 > extraction, branching, federation, and end-to-end encryption helpers. See
-> [collab-plan.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/collab-plan.md)
+> [Collaboration architecture](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/collaboration.md)
 > for the roadmap.
 
 ## Installation

@@ -32,8 +32,22 @@ pub(super) fn extract_properties(
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties
-            let pset_name = entity.get_string(2)?.to_string();
-            let has_properties = entity.get_list(4)?;
+            // `Name` is OPTIONAL per the schema (inherited from `IfcRoot`) —
+            // bailing the whole closure with `?` on a null/non-string Name
+            // would drop a pset with genuinely resolvable properties before
+            // the keep condition below ever runs, breaking the exact parity
+            // with the browser/WASM path's `typeof psetAttrs[2] === 'string'
+            // ? psetAttrs[2] : ''` (`columnar-parser.ts`), which always
+            // normalizes a missing Name to `''` rather than discarding the
+            // pset. Mirror that here instead of using `?`.
+            let pset_name = entity.get_string(2).unwrap_or_default().to_string();
+            // `HasProperties` is a mandatory, non-empty SET per the schema, so
+            // a `$`/malformed value here means the file itself is invalid —
+            // but the browser path still tolerates it (`Array.isArray` check,
+            // falling through with an empty `properties`) rather than
+            // discarding the pset outright. Match that: treat a missing/
+            // malformed list as empty rather than bailing on `?`.
+            let has_properties = entity.get_list(4).unwrap_or(&[]);
 
             let mut properties = Vec::new();
 

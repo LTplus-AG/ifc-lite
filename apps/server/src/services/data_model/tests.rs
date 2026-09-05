@@ -895,3 +895,67 @@ fn a_pset_with_no_complex_members_is_unaffected() {
     assert_eq!(m.property_type, "string");
     assert_eq!(m.data_type.as_deref(), Some("IFCLABEL"));
 }
+
+
+const NULL_NAME_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000006',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000005',$,'W5',$,$,$,$,$,$);
+#80=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#82=IFCPROPERTYSET('Pst0000000000000000005',$,$,$,(#80));
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000005',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// A pset with `Name = $` (OPTIONAL per the schema) but a genuinely
+/// resolvable property must still surface, exactly like the browser/WASM
+/// path's `typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''` (never
+/// discards a pset for a non-string Name). Before this fix, the early
+/// `entity.get_string(2)?` bailed the whole extraction closure before the
+/// `properties.is_empty() && pset_name.is_empty()` keep condition ever ran.
+#[test]
+fn a_pset_with_a_null_name_and_a_resolvable_property_is_not_dropped() {
+    let dm = extract_data_model(NULL_NAME_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("pset with Name=$ but a resolvable property must be extracted");
+    assert_eq!(pset.pset_name, "");
+    assert_eq!(pset.properties.len(), 1);
+    assert_eq!(pset.properties[0].property_name, "SubName");
+}
+
+const MALFORMED_HAS_PROPERTIES_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000007',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000006',$,'W6',$,$,$,$,$,$);
+#82=IFCPROPERTYSET('Pst0000000000000000006',$,'Pset_Malformed',$,$);
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000006',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// `HasProperties` is a mandatory, non-empty SET per the schema, so `$` here
+/// means the file is malformed — but a named pset is still real evidence the
+/// file links this element to it (same rationale as issue #3963's fix), so
+/// it must not be discarded outright just because the malformed attribute
+/// made the list unreadable.
+#[test]
+fn a_pset_with_a_named_but_malformed_has_properties_is_not_dropped() {
+    let dm = extract_data_model(MALFORMED_HAS_PROPERTIES_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("named pset with a malformed HasProperties must still be extracted");
+    assert_eq!(pset.pset_name, "Pset_Malformed");
+    assert!(pset.properties.is_empty());
+}

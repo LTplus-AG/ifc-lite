@@ -23,11 +23,12 @@
 //! # `u32` offsets
 //!
 //! `starts`/`lengths` are `u32`, which is only sound while the source file is
-//! < 4 GiB. This type is used **exclusively on the wasm ingestion path**
-//! (`setEntityIndex` and the wasm `cached_entity_index`), where the whole file
-//! already lives in the < 4 GiB wasm32 linear address space and the delivered
-//! columns are themselves `&[u32]`. Native / server paths that can exceed 4 GiB
-//! keep the `usize`-carrying [`EntityIndex`](crate::EntityIndex) hashmap.
+//! < 4 GiB. WASM ingestion (`setEntityIndex` and `cached_entity_index`) already
+//! lives in that linear address space and delivers `&[u32]` columns. The native
+//! processor also uses this representation for large sources with sparse ids,
+//! after checking their byte length fits `u32`; dense ids may use
+//! [`crate::DenseEntityIndex`]. Wider native sources keep the `usize`-carrying
+//! [`EntityIndex`](crate::EntityIndex) hashmap.
 //!
 //! # Duplicate express ids
 //!
@@ -111,8 +112,8 @@ impl ColumnarEntityIndex {
         // asymptotic peak once the vec fills.
         let mut rows: Vec<(u32, u32, u32)> = Vec::with_capacity(n);
         for (id, (start, end)) in map {
-            // u32 offsets are sound only under the wasm32 <4GiB address space
-            // (module docs); see `from_hashmap`.
+            // Offsets must fit u32, as required by the module contract;
+            // see `from_hashmap`.
             debug_assert!(end <= u32::MAX as usize, "entity offset exceeds the u32 column ceiling");
             rows.push((id, start as u32, (end - start) as u32));
         }
@@ -286,6 +287,7 @@ fn is_strictly_ascending(ids: &[u32]) -> bool {
 pub(crate) enum EntityIndexStore {
     Hash(Arc<EntityIndex>),
     Columnar(Arc<ColumnarEntityIndex>),
+    Dense(Arc<crate::DenseEntityIndex>),
 }
 
 impl EntityIndexStore {
@@ -295,6 +297,7 @@ impl EntityIndexStore {
         match self {
             EntityIndexStore::Hash(m) => m.get(&id).copied(),
             EntityIndexStore::Columnar(c) => c.lookup(id),
+            EntityIndexStore::Dense(d) => d.lookup(id),
         }
     }
 }

@@ -20,12 +20,11 @@
 //! `has_geometry_by_name`, `is_representationless_spatial_container_by_name`
 //! and `is_simple_geometry_type` are all on the hot path during scene
 //! construction, where the same ~50–100 distinct type names are queried
-//! thousands of times per file. We memoise per-name behind a
-//! `RwLock<FxHashMap<String, bool>>`: the first call for a name pays the
-//! full `IfcType::from_str` (a ~1300-arm match) + `is_subtype_of` traversal
-//! cost; subsequent calls take a read-lock and a single hash lookup.
+//! millions of times per file. An immutable, schema-derived table memoises
+//! all modern and legacy names without taking a read-lock for each entity.
+//! Unknown names use the same predicates without entering a growing cache.
 
-use std::sync::{OnceLock, RwLock};
+use std::sync::OnceLock;
 
 use rustc_hash::FxHashMap;
 
@@ -42,21 +41,28 @@ fn normalise_uppercase(type_name: &str) -> std::borrow::Cow<'_, str> {
     }
 }
 
-/// Look up a cached bool, or compute via `f` and insert.
-fn cached<F>(cache: &RwLock<FxHashMap<String, bool>>, key: &str, f: F) -> bool
-where
-    F: FnOnce() -> bool,
-{
-    if let Ok(read) = cache.read() {
-        if let Some(&v) = read.get(key) {
-            return v;
-        }
-    }
-    let value = f();
-    if let Ok(mut write) = cache.write() {
-        write.insert(key.to_owned(), value);
-    }
-    value
+#[derive(Clone, Copy)]
+struct TypeClassification {
+    has_geometry: bool,
+    representationless_spatial: bool,
+    simple_geometry: bool,
+}
+
+/// Build only from the finite schema catalog: file-supplied unknown names
+/// cannot retain memory here. Compute via the canonical predicates, including
+/// legacy overrides for names that also occur in the modern schema.
+fn classifications() -> &'static FxHashMap<&'static str, TypeClassification> {
+    static TABLE: OnceLock<FxHashMap<&'static str, TypeClassification>> = OnceLock::new();
+    TABLE.get_or_init(|| {
+        crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
+            .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
+            .map(|name| (name, TypeClassification {
+                has_geometry: compute_has_geometry(name),
+                representationless_spatial: compute_is_representationless_spatial_container(name),
+                simple_geometry: compute_is_simple(name),
+            }))
+            .collect()
+    })
 }
 
 /// Check if a type name (UPPERCASE STEP string) represents an `IfcProduct`
@@ -79,11 +85,10 @@ where
 /// 3. Reinforcement variants not covered above fall back to a substring
 ///    match (`REINFORCING…` / `REINFORCED…`).
 pub fn has_geometry_by_name(type_name: &str) -> bool {
-    static CACHE: OnceLock<RwLock<FxHashMap<String, bool>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| RwLock::new(FxHashMap::default()));
-
     let upper = normalise_uppercase(type_name);
-    cached(cache, upper.as_ref(), || compute_has_geometry(upper.as_ref()))
+    classifications().get(upper.as_ref()).map_or_else(
+        || compute_has_geometry(upper.as_ref()), |class| class.has_geometry,
+    )
 }
 
 fn compute_has_geometry(upper: &str) -> bool {
@@ -165,13 +170,11 @@ fn is_non_geometric_spatial(t: IfcType) -> bool {
 /// `rust/processing/src/processor/mod.rs` and
 /// `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`.
 pub fn is_representationless_spatial_container_by_name(type_name: &str) -> bool {
-    static CACHE: OnceLock<RwLock<FxHashMap<String, bool>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| RwLock::new(FxHashMap::default()));
-
     let upper = normalise_uppercase(type_name);
-    cached(cache, upper.as_ref(), || {
-        compute_is_representationless_spatial_container(upper.as_ref())
-    })
+    classifications().get(upper.as_ref()).map_or_else(
+        || compute_is_representationless_spatial_container(upper.as_ref()),
+        |class| class.representationless_spatial,
+    )
 }
 
 fn compute_is_representationless_spatial_container(upper: &str) -> bool {
@@ -264,11 +267,10 @@ fn trim_ascii(bytes: &[u8]) -> &[u8] {
 /// "secondary/complex" (openings, doors, windows, furniture, MEP/distribution
 /// elements, spaces, sites, annotations, virtual/proxy entities).
 pub fn is_simple_geometry_type(type_name: &str) -> bool {
-    static CACHE: OnceLock<RwLock<FxHashMap<String, bool>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| RwLock::new(FxHashMap::default()));
-
     let upper = normalise_uppercase(type_name);
-    cached(cache, upper.as_ref(), || compute_is_simple(upper.as_ref()))
+    classifications().get(upper.as_ref()).map_or_else(
+        || compute_is_simple(upper.as_ref()), |class| class.simple_geometry,
+    )
 }
 
 /// Resolve a STEP keyword to its `IfcType`, **legacy-aware**: a removed/renamed

@@ -156,17 +156,36 @@ jobs:
           for _ in $(seq 1 40); do
             [ -z "$CAND" ] && break
             [ "$CAND" = "$SHA" ] && SEEN=1
-            # Nothing older than the requested commit is a candidate; before we
-            # reach it we are only establishing that it IS on this line.
+            # Nothing NEWER than the requested commit is a candidate: the walk
+            # starts at main's tip and descends, so everything before we reach
+            # $SHA is above it, and those steps only establish that $SHA IS on
+            # this line.
             if [ "$SEEN" = "1" ] && [ "$REQUIRE_GREEN" = "true" ]; then
               # The LATEST run of that name decides. A commit that went green,
               # was re-run and failed must read as not-good; `map(select(success))`
               # would have called it good forever, and `filter=latest` is per
               # check-SUITE, so duplicate rows for one name do occur (130574027
               # carries two, 20 minutes apart).
-              VERDICT="$(gh api "repos/$REPO/commits/$CAND/check-runs?per_page=100" \
-                | jq -r --arg g "$CI_GATE" '[.check_runs[] | select(.name == $g)]
-                    | sort_by(.started_at) | last
+              # ASKS FOR ONE CHECK BY NAME, so there is no page to fall off.
+              # Reading all runs and filtering client-side meant a commit with
+              # more than 100 of them could have its green gate on page two and
+              # be reported `absent` — silently skipped as not-known-good, so
+              # the nightly would deploy an older commit or die claiming main
+              # had been red. Counts are 24-43 today, which is exactly the kind
+              # of headroom that disappears as lanes are added, and
+              # scripts/lib/pr-review-signal.mjs already pages this endpoint
+              # rather than trusting one read. `total_count` is asserted below
+              # so a future filter change cannot silently reintroduce it.
+              GATE_JSON="$(gh api --method GET "repos/$REPO/commits/$CAND/check-runs" \
+                -f "check_name=$CI_GATE" -F per_page=100)"
+              if [ "$(printf '%s' "$GATE_JSON" | jq -r '.total_count')" -gt \
+                   "$(printf '%s' "$GATE_JSON" | jq -r '.check_runs | length')" ]; then
+                echo "::error::More '$CI_GATE' runs on ${CAND:0:9} than one page returned."
+                echo "::error::Refusing to judge known-good from a partial read."
+                exit 1
+              fi
+              VERDICT="$(printf '%s' "$GATE_JSON" \
+                | jq -r '[.check_runs[]] | sort_by(.started_at) | last
                     | if . == null then "absent" else (.conclusion // .status // "pending") end')"
               if [ "$VERDICT" = "success" ]; then FOUND="$CAND"; break; fi
               echo "  skipping ${CAND:0:9} — '$CI_GATE' is $VERDICT"
@@ -425,7 +444,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. `main` has been red for 25 commits on its first-parent line, so no known-good commit was found. Check the `Build + WASM + Rust + Node` gate on recent commits — and that it still carries that name.\n2. Someone pushed to `production` directly, or `main` was rewritten, so `production` holds commits `main` does not. Reconcile the two branches by hand.\n3. A Vercel project no longer deploys from `production` (check its Production Branch and Ignored Build Step).\n4. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
+          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. `main` has been red for 40 commits on its first-parent line, so no known-good commit was found. Check the `Build + WASM + Rust + Node` gate on recent commits — and that it still carries that name.\n2. Someone pushed to `production` directly, or `main` was rewritten, so `production` holds commits `main` does not. Reconcile the two branches by hand.\n3. A Vercel project no longer deploys from `production` (check its Production Branch and Ignored Build Step).\n4. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
             "$(date -u +%FT%TZ)" "${{ job.status }}" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")"
           existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
             --label production-branch-stuck --limit 1 --json number --jq '.[0].number // empty')"

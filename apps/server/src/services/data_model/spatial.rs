@@ -3,18 +3,27 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 //! Spatial hierarchy extraction.
+//!
+//! Split across three files (#3965 follow-up, to stay under the module-size
+//! ratchet): this file builds the relationship maps (`canonical_parent`,
+//! `spatial_children_map`, `element_containment_map`) and drives the
+//! orphan-fill pass; `spatial_tree.rs` walks those maps into `SpatialNode`s
+//! with the cycle/depth guards; `spatial_elevation.rs` reads
+//! `IfcBuildingStorey.Elevation`. `spatial_tests.rs` stays attached to this
+//! file and exercises functions from all three via `use super::*` plus the
+//! re-exports below.
 
+#[path = "spatial_elevation.rs"]
+mod spatial_elevation;
+#[path = "spatial_tree.rs"]
+mod spatial_tree;
+
+use self::spatial_elevation::extract_elevation_if_storey;
+use self::spatial_tree::build_spatial_nodes_recursive;
 use super::types::{EntityMetadata, Relationship, SpatialHierarchyData, SpatialNode};
 use ifc_lite_core::EntityDecoder;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
-
-/// Maximum recursion depth for building the spatial tree, mirroring
-/// `MAX_SPATIAL_TREE_DEPTH` in `apps/viewer/src/utils/serverDataModel.ts`. This is
-/// a second guard beyond the visited set in `build_spatial_nodes_recursive`: a
-/// pathologically deep but acyclic aggregation/containment chain could still
-/// exhaust the stack even with cycles ruled out.
-const MAX_SPATIAL_TREE_DEPTH: u16 = 100;
 
 /// Build spatial hierarchy from relationships.
 pub(super) fn build_spatial_hierarchy(
@@ -299,211 +308,6 @@ pub(super) fn build_spatial_hierarchy(
         element_to_site,
         element_to_space,
     }
-}
-
-/// Recursively build spatial nodes with full information.
-// Threads the full recursion context (maps, caches, accumulators); grouping the
-// args into a struct would not change behavior and is out of scope here.
-#[allow(clippy::too_many_arguments)]
-fn build_spatial_nodes_recursive(
-    entity_id: u32,
-    parent_id: u32,
-    level: u16,
-    parent_path: &str,
-    spatial_children_map: &FxHashMap<u32, Vec<u32>>,
-    element_containment_map: &FxHashMap<u32, Vec<u32>>,
-    entity_map: &FxHashMap<u32, &EntityMetadata>,
-    decoder: &mut EntityDecoder,
-    nodes_map: &mut FxHashMap<u32, SpatialNode>,
-    visited: &mut FxHashSet<u32>,
-    length_unit_scale: f64,
-) {
-    // Guard against cyclic IfcRelAggregates / promoted-IfcRelContainedInSpatialStructure
-    // edges, mirroring `ctx.visited` in
-    // `packages/parser/src/spatial-hierarchy-builder.ts`: a revisited node is
-    // skipped (left as whatever was already built, if anything) rather than
-    // rebuilt and re-descended into, which would otherwise recurse without
-    // bound. Unlike the browser path, this recursion runs in a process with
-    // `panic = 'abort'`, so an unguarded cycle here is not a catchable panic -
-    // it is a stack overflow that SIGABRTs the whole server (#3973: Storey A
-    // aggregates Storey B, Storey B "contains" Storey A).
-    if visited.contains(&entity_id) {
-        return;
-    }
-    // Mark as visited (considered) BEFORE the depth check below, not after: a
-    // node excluded for being too deep must still count as "reached" for the
-    // orphan-fill loop's purposes (see build_spatial_hierarchy). Marking it
-    // only on the success path left `visited` unable to distinguish "the walk
-    // never found this entity at all" (genuinely orphaned, worth rescuing)
-    // from "the walk found it and deliberately excluded it" (must stay
-    // excluded) - the orphan-fill loop only checked `nodes_map`, which is
-    // empty for both cases, so it reinserted every depth-capped entity as a
-    // fake root (parent_id: 0, level: 0) with its real children_ids intact -
-    // producing a node whose own parent/level said "root" while its parent's
-    // children_ids still named it as a child, and letting the Parquet export
-    // (which reads `parent_id` as authoritative) render it as a spurious
-    // extra root instead of the dropped subtree it actually is.
-    visited.insert(entity_id);
-    // Guard against a pathologically deep but acyclic chain, mirroring
-    // `MAX_SPATIAL_TREE_DEPTH` in `apps/viewer/src/utils/serverDataModel.ts`.
-    if level > MAX_SPATIAL_TREE_DEPTH {
-        return;
-    }
-
-    let entity = match entity_map.get(&entity_id) {
-        Some(e) => e,
-        None => return,
-    };
-
-    let entity_name = entity
-        .name
-        .as_ref()
-        .cloned()
-        .unwrap_or_else(|| format!("{}#{}", entity.type_name, entity_id));
-
-    let path = if parent_path.is_empty() {
-        entity_name.clone()
-    } else {
-        format!("{}/{}", parent_path, entity_name)
-    };
-
-    // Extract elevation for storeys (with unit scale applied)
-    let elevation =
-        extract_elevation_if_storey(&entity.type_name, entity_id, decoder, length_unit_scale);
-
-    // Get children and elements
-    let children_ids = spatial_children_map
-        .get(&entity_id)
-        .cloned()
-        .unwrap_or_default();
-    let element_ids = element_containment_map
-        .get(&entity_id)
-        .cloned()
-        .unwrap_or_default();
-
-    let node = SpatialNode {
-        entity_id,
-        parent_id,
-        level,
-        path: path.clone(),
-        type_name: entity.type_name.clone(),
-        name: entity.name.clone(),
-        elevation,
-        children_ids: children_ids.clone(),
-        element_ids,
-    };
-
-    nodes_map.insert(entity_id, node);
-
-    // Recursively process children
-    for &child_id in &children_ids {
-        build_spatial_nodes_recursive(
-            child_id,
-            entity_id,
-            level + 1,
-            &path,
-            spatial_children_map,
-            element_containment_map,
-            entity_map,
-            decoder,
-            nodes_map,
-            visited,
-            length_unit_scale,
-        );
-    }
-
-    // A child that hit the depth cap (or, in principle, any other early
-    // return above) is `visited` but was never inserted into `nodes_map`, so
-    // it must not remain in this node's own `children_ids` - otherwise this
-    // node would point at a child with no SpatialNode of its own, the exact
-    // dangling-reference shape the orphan-fill skip above exists to avoid.
-    // Two passes (read then write) rather than `retain` because the check
-    // needs `nodes_map` immutably while updating this node's own entry in it.
-    if let Some(existing_children) = nodes_map.get(&entity_id).map(|n| n.children_ids.clone()) {
-        let filtered: Vec<u32> = existing_children
-            .into_iter()
-            .filter(|child_id| nodes_map.contains_key(child_id))
-            .collect();
-        if let Some(node) = nodes_map.get_mut(&entity_id) {
-            node.children_ids = filtered;
-        }
-    }
-}
-
-/// Attribute index of `IfcBuildingStorey.Elevation`, the same in IFC2X3 and IFC4:
-///
-/// ```text
-/// [0] GlobalId   [1] OwnerHistory    [2] Name            [3] Description
-/// [4] ObjectType [5] ObjectPlacement [6] Representation  [7] LongName
-/// [8] CompositionType                                    [9] Elevation
-/// ```
-///
-/// This MUST stay in step with `IFC_BUILDING_STOREY_ELEVATION_INDEX` in
-/// `packages/data/src/storey-elevation.ts` — the two paths must read the same
-/// slot (issue #1841). It previously read 8 (CompositionType, an enum) and fell
-/// back to 7 (LongName, a string): both yield no float, so every storey reported
-/// no elevation and the UI showed 0.
-const STOREY_ELEVATION_INDEX: usize = 9;
-
-/// Attribute index of `IfcBuildingStorey.ObjectPlacement`.
-const STOREY_PLACEMENT_INDEX: usize = 5;
-
-/// `IfcLocalPlacement.RelativePlacement` - the storey's own offset from its
-/// parent spatial container.
-const LOCAL_PLACEMENT_RELATIVE_INDEX: usize = 1;
-
-/// `IfcAxis2Placement3D.Location` - an `IfcCartesianPoint`.
-const AXIS_PLACEMENT_LOCATION_INDEX: usize = 0;
-
-/// Extract elevation from an IFCBUILDINGSTOREY entity, in metres.
-///
-/// Mirrors `SpatialHierarchyBuilder.extractElevation` in `@ifc-lite/parser`:
-/// read `Elevation`, and when it is null (common in Revit / ArchiCAD exports,
-/// #1289) fall back to the Z of the storey's own `ObjectPlacement`. Both results
-/// are raw IFC lengths, so the unit scale applies either way.
-fn extract_elevation_if_storey(
-    type_name: &str,
-    entity_id: u32,
-    decoder: &mut EntityDecoder,
-    length_unit_scale: f64,
-) -> Option<f64> {
-    if !type_name.eq_ignore_ascii_case("IFCBUILDINGSTOREY") {
-        return None;
-    }
-
-    let entity = decoder.decode_by_id(entity_id).ok()?;
-
-    // Read ONLY the Elevation slot. Scanning for "some attribute that parses as
-    // a number" would pick up entity references (bare express ids) as bogus
-    // elevations, which is the trap `@ifc-lite/parser` documents at #1289.
-    let raw = match entity.get_float(STOREY_ELEVATION_INDEX) {
-        Some(elevation) => elevation,
-        None => {
-            let placement_id = entity.get_ref(STOREY_PLACEMENT_INDEX)?;
-            extract_placement_elevation(placement_id, decoder)?
-        }
-    };
-
-    Some(raw * length_unit_scale)
-}
-
-/// Resolve a storey's Z from its `ObjectPlacement`, following
-/// `IfcLocalPlacement -> RelativePlacement (IfcAxis2Placement3D) -> Location
-/// (IfcCartesianPoint).Coordinates[2]`.
-///
-/// This is the placement RELATIVE to the parent spatial container, matching the
-/// semantics of the `Elevation` attribute — deliberately not the absolute world
-/// Z, so site-level georeferencing is not folded in. Returns the raw (unscaled)
-/// value, or `None` when the chain cannot be resolved.
-fn extract_placement_elevation(placement_id: u32, decoder: &mut EntityDecoder) -> Option<f64> {
-    let placement = decoder.decode_by_id(placement_id).ok()?;
-    let axis_id = placement.get_ref(LOCAL_PLACEMENT_RELATIVE_INDEX)?;
-
-    let axis = decoder.decode_by_id(axis_id).ok()?;
-    let location_id = axis.get_ref(AXIS_PLACEMENT_LOCATION_INDEX)?;
-
-    let (_x, _y, z) = decoder.get_cartesian_point_fast(location_id)?;
-    Some(z)
 }
 
 #[cfg(test)]

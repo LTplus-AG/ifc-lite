@@ -48,6 +48,44 @@ function clashLabel(c: Clash): string {
   return `${c.a.tag} × ${c.b.tag} (${c.rule})`;
 }
 
+/**
+ * The banner lines explaining why `comparison.unretested` is non-empty.
+ *
+ * `comparison.reasons` only covers the three RULE/MODEL-granularity
+ * conditions (revision.ts's module doc: a skipped rule, a rule that matched
+ * nothing, or a missing model). `compareClashRevisions` also reclassifies a
+ * clash via a finer, per-ELEMENT check (`elementsReexamined` — #3947: a
+ * narrowed selector or membership list that drops just the one element a
+ * clash depended on, while the rule and both models otherwise look fine to
+ * the three coarser checks). That path leaves all three `reasons` arrays
+ * empty, so a caller that renders a banner only when `reasons` has content
+ * would show nothing for it — silently, since `comparison.unretested` is
+ * still populated and rendered in its own bucket below, just without the
+ * explanation the banner exists to give. Exported standalone so this case is
+ * unit-testable without mounting the dialog.
+ */
+export function warningLines(comparison: ClashRevisionComparison | null): string[] {
+  if (!comparison) return [];
+  const { reasons } = comparison;
+  const lines: string[] = [];
+  if (reasons.skippedRuleIds.length > 0) {
+    lines.push(`Not re-run this time: ${reasons.skippedRuleIds.join(', ')}.`);
+  }
+  if (reasons.noMatchRuleIds.length > 0) {
+    lines.push(`Matched no elements this run: ${reasons.noMatchRuleIds.join(', ')}.`);
+  }
+  if (reasons.missingModelNames.length > 0) {
+    lines.push(`Model(s) no longer in the comparison: ${reasons.missingModelNames.join(', ')}.`);
+  }
+  if (lines.length === 0 && comparison.unretested.length > 0) {
+    lines.push(
+      'One or more elements a clash depended on were not matched by the same rule this run ' +
+        '(a narrowed selector or membership change) — it can no longer be confirmed as fixed.',
+    );
+  }
+  return lines;
+}
+
 interface BucketProps {
   title: string;
   clashes: Clash[];
@@ -114,21 +152,7 @@ export function ClashRevisionCompareDialog() {
     );
   }, [baseline, clashResult, models]);
 
-  const warnings = useMemo(() => {
-    if (!comparison) return [];
-    const { reasons } = comparison;
-    const lines: string[] = [];
-    if (reasons.skippedRuleIds.length > 0) {
-      lines.push(`Not re-run this time: ${reasons.skippedRuleIds.join(', ')}.`);
-    }
-    if (reasons.noMatchRuleIds.length > 0) {
-      lines.push(`Matched no elements this run: ${reasons.noMatchRuleIds.join(', ')}.`);
-    }
-    if (reasons.missingModelNames.length > 0) {
-      lines.push(`Model(s) no longer in the comparison: ${reasons.missingModelNames.join(', ')}.`);
-    }
-    return lines;
-  }, [comparison]);
+  const warnings = useMemo(() => warningLines(comparison), [comparison]);
 
   return (
     <Dialog onOpenChange={(open) => { if (!open) setComparison(null); }}>
@@ -187,7 +211,7 @@ export function ClashRevisionCompareDialog() {
 
           {comparison && (
             <div className="space-y-3 rounded-md border border-border p-2.5">
-              {warnings.length > 0 && (
+              {comparison.unretested.length > 0 && (
                 <div className="rounded-md bg-muted/50 p-2 text-[11px] text-muted-foreground space-y-0.5">
                   <div className="font-medium text-foreground">
                     {comparison.unretested.length} clash{comparison.unretested.length === 1 ? '' : 'es'} could not

@@ -949,6 +949,23 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # #3966: five defects in two days were the Rust server path and the
+      # TS/WASM path independently implementing the same extraction
+      # (relationships, spatial hierarchy, properties, quantities, materials)
+      # and drifting apart with nothing to notice, because each side stays
+      # internally self-consistent. This compares the two sides' TYPE-NAME
+      # SETS per concept, with a documented, reason-carrying allowlist for
+      # intentional or in-flight divergences. Same call as the clash-reason
+      # and legacy-entity-coverage gates above: reading two sources is banned
+      # in test files, so it is a lint here instead.
+      - name: Check server/browser type parity
+        run: node scripts/check-server-browser-type-parity.mjs
+      # Executable proof: a type removed from either side, in either
+      # direction, per concept, turns this red; the vacuity guard fires when
+      # an extractor is starved; the allowlist suppresses only the exact
+      # type/side it names, never a whole concept.
+      - name: Check server/browser type parity gate regressions
+        run: node --test scripts/check-server-browser-type-parity.test.mjs
       # `legacy_entities.rs` is the table every classification pass is told to
       # consult instead of a bare `IfcType::from_str`, and nothing checked it
       # was complete. Six concrete IFC2X3 products were missing (#3172), and a

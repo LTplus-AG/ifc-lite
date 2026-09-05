@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Node-hash v0 (docs/vision/spec/node-hash-v0.md).
+ * Node-hash v0 (packages/provenance/SPEC.md).
  *
  * `computeNodeHash(kind, payload)` — the one canonical hash function for
  * every node kind in the building DAG. Two algorithms, tagged in the output

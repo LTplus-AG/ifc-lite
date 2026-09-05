@@ -48,7 +48,7 @@ Global flags: `--json`, `--out <file>`, `--verbose`, `--quiet`, `--debug`, `--lo
 
 ## gym
 
-`ifc-lite gym` is a prototype reset/step/reward environment API over the existing headless checks: the skeleton of an RLVR environment for buildings (see [`docs/vision/moonshots-tech.md`](../../docs/vision/moonshots-tech.md) M2 and [`docs/vision/moonshots-execution-plan.md`](../../docs/vision/moonshots-execution-plan.md) B0.4). It wraps a model - either a fixed file (`--model`) or a procedurally generated World Gym episode (`--seed`) - and lets an agent apply data-mutation ops, scoring each step against the same schema/clash/ids checks the `validate`, `clash`, and `ids` commands already run.
+`ifc-lite gym` is a prototype reset/step/reward environment API over the existing headless checks: the skeleton of an RLVR environment for buildings (see [`tools/world-gym/README.md`](../../tools/world-gym/README.md) M2 and [`tools/world-gym/benchmark/BENCHMARK.md`](../../tools/world-gym/benchmark/BENCHMARK.md) B0.4). It wraps a model - either a fixed file (`--model`) or a procedurally generated World Gym episode (`--seed`) - and lets an agent apply data-mutation ops, scoring each step against the same schema/clash/ids checks the `validate`, `clash`, and `ids` commands already run.
 
 ```bash
 ifc-lite gym --model model.ifc --checks schema,clash

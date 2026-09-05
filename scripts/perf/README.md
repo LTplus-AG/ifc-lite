@@ -130,7 +130,7 @@ The census coordinate migration uses a reference generated on pre-regression
 code, with one independently checked torn-to-closed row recorded separately.
 Neither arbitrary golden updates nor local closure scores establish correctness.
 Keep real loader output and independent solid measurements in the comparison.
-See [the implementation and reference provenance](../../docs/research/nary-union-repair.md).
+See [the implementation and reference provenance](../../docs/architecture/nary-union-repair.md).
 The final performance verdict requires native and worker-pool full loads.
 
 ### Shipped wins

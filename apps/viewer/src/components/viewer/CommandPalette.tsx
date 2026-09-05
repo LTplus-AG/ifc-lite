@@ -287,6 +287,9 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => {
           window.dispatchEvent(new CustomEvent('ifc-lite:open-files'));
         } },
+      // #3930 portable federation setup — handlers live in `FederationSetupControls` (mounted from `useFileCommands`, ShareDialog's pattern).
+      { id: 'file:save-federation-setup', label: 'Save Federation Setup', keywords: 'federation setup save export portable models order alignment anchor', category: 'File', icon: Save, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:save-federation-setup')); } },
+      { id: 'file:open-federation-setup', label: 'Open Federation Setup', keywords: 'federation setup restore reopen import portable models order alignment anchor', category: 'File', icon: FolderOpen, immediate: true, action: () => { window.dispatchEvent(new CustomEvent('ifc-lite:open-federation-setup')); } },
     );
     for (const rf of recentFiles) {
       const fileName = rf.name;

@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-//! Profile helpers generic over the scalar (B4.4).
+//! Profile helpers generic over the scalar.
 //!
 //! `Profile2D::triangulate` and `create_rectangle` are the `f64`
 //! instantiations of the functions here. Split out of `profile.rs` to keep it
@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 use crate::scalar::GeomScalar;
 use nalgebra::Point2;
 
-/// The body of [`Profile2D::triangulate`], generic over the scalar (B4.4).
+/// The body of [`Profile2D::triangulate`], generic over the scalar.
 ///
 /// Ear clipping is a **discrete** map: its output is a list of integer indices,
 /// constant on an open neighbourhood of almost every input. It is therefore run
@@ -66,7 +66,7 @@ pub(crate) fn triangulate_rings<S: GeomScalar>(
 }
 
 /// Rectangle ring builder shared by [`create_rectangle`] and the
-/// `IfcRectangleProfileDef` processor, generic over the scalar (B4.4).
+/// `IfcRectangleProfileDef` processor, generic over the scalar.
 #[inline]
 pub(crate) fn rectangle_ring<S: GeomScalar>(width: S, height: S) -> Vec<Point2<S>> {
     let two = S::from_f64(2.0);

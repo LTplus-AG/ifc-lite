@@ -1,0 +1,316 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Nightly Vercel Deploy
+
+# Fast-forwards the `production` branch to `main` once a day. The Vercel
+# projects deploy from `production`, so this is the only thing that triggers a
+# billable build; pushes to `main` reach Vercel as previews, which each
+# project's Ignored Build Step skips for free.
+#
+# To ship before the next nightly, run this workflow manually (Actions →
+# Nightly Vercel Deploy → Run workflow). The ref it takes must already be
+# reachable from `main` — see "Resolve and validate" below for why a side
+# branch is refused rather than deployed.
+#
+# `production` only ever moves forward: the ref update is unforced, which
+# GitHub rejects unless it is a fast-forward.
+#
+# Why this exists, and the measurements behind the cadence:
+# scripts/README-vercel-cost.md §3.
+
+on:
+  schedule:
+    # 05:45 UTC, before the working day here, so the day's deploy is live and
+    # observed before the day's PRs start landing on top of it. Off the top of
+    # the hour for the reason .github/workflows/determinism.yml gives: the
+    # scheduler pileup there delays and drops cron runs, and a dropped tick
+    # here is a day with no production deploy. 05:4x is unused;
+    # review-lane-canary.yml holds 06:20.
+    - cron: '45 5 * * *'
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Branch, tag or SHA to deploy. Must be reachable from main.'
+        required: false
+        default: 'main'
+
+permissions:
+  # Moving refs/heads/production. Nothing else.
+  contents: write
+  # Opening the issue when production cannot advance — see "Report a stuck
+  # production branch".
+  issues: write
+
+concurrency:
+  # A manual hotfix run and the nightly must never race to move the same ref.
+  group: vercel-production-branch
+  cancel-in-progress: false
+
+jobs:
+  advance-production:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # No checkout. The job moves one ref, and every question it needs
+      # answered is answered server-side: `compare` decides reachability and
+      # whether the move is a fast-forward, and the ref update enforces the
+      # fast-forward a second time. Cloning this repo to run `merge-base`
+      # locally would pull ~187 MB nightly (a fresh full clone; most of it is
+      # the IFC fixtures under tests/models/, which nothing here reads) AND
+      # make the ancestry answer depend on fetch depth. That second part is
+      # the real hazard: a truncated history makes `--is-ancestor` return a
+      # WRONG answer rather than an error, and at ~41 commits/day the depth
+      # you would need is unbounded.
+      - name: Advance production
+        id: advance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REQUESTED_REF: ${{ inputs.ref || 'main' }}
+        run: |
+          set -euo pipefail
+
+          # ── Resolve and validate ────────────────────────────────────────
+          # Resolves a branch, a tag or a raw SHA uniformly, and 404s on
+          # anything else, so a typo'd manual input stops here.
+          TARGET="$(gh api "repos/$REPO/commits/$REQUESTED_REF" \
+            --jq '[.sha, (.commit.message | split("\n")[0])] | @tsv')"
+          SHA="$(printf '%s' "$TARGET" | cut -f1)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          printf 'Requested %s -> %s (%s)\n' \
+            "$REQUESTED_REF" "$SHA" "$(printf '%s' "$TARGET" | cut -f2-)"
+
+          # The commit MUST already be reachable from `main`, and a manual
+          # dispatch is the only way it could not be. Deploying a side branch
+          # would wedge this workflow permanently: production would then hold a
+          # commit `main` never contains — squash-merging the branch produces a
+          # DIFFERENT commit — so every later nightly sees `diverged`, refuses,
+          # and all three sites freeze until someone reconciles by hand. Land
+          # the hotfix on `main` first, then dispatch.
+          #
+          # This workflow CANNOT roll production backwards. An older `main`
+          # commit passes this reachability check and then fails the
+          # fast-forward check below as `behind` — deliberately: moving
+          # `production` back would break the fast-forward-only invariant AND
+          # force a full rebuild of an old commit. To revert production fast,
+          # use Vercel's instant rollback (`vercel rollback <deployment-url>`,
+          # or promote a previous deployment in the dashboard): it re-points
+          # the alias at a build that already exists, so it takes seconds
+          # rather than minutes, which is what you want when the site is
+          # broken.
+          REACH="$(gh api "repos/$REPO/compare/$SHA...main" --jq .status)"
+          case "$REACH" in
+            ahead|identical) ;;
+            *)
+              echo "::error::$REQUESTED_REF ($SHA) is not reachable from main ('$REACH')."
+              echo "::error::Merge it to main first, then re-run. Deploying it directly"
+              echo "::error::would leave production on a commit main never contains."
+              exit 1
+              ;;
+          esac
+
+          # ── Compare against what is live ────────────────────────────────
+          # `matching-refs` answers "does this branch exist" with 200 + [],
+          # never a 404, so a real API failure (500, rate limit, network) stays
+          # an error instead of being misread as "the branch is missing" and
+          # sending the operator to reconcile branches that are fine.
+          CURRENT="$(gh api "repos/$REPO/git/matching-refs/heads/production" \
+            --jq '.[] | select(.ref == "refs/heads/production") | .object.sha')"
+
+          if [ -z "$CURRENT" ]; then
+            echo "production does not exist yet — creating it at $SHA"
+            gh api -X POST "repos/$REPO/git/refs" \
+              -f ref=refs/heads/production -f sha="$SHA" >/dev/null
+            exit 0
+          fi
+
+          # `status` is the whole ancestry question in one call:
+          #   identical -> production is already there
+          #   ahead     -> fast-forward, the normal nightly
+          #   behind/diverged -> production holds commits the target does not,
+          #                      i.e. someone pushed to it directly or main was
+          #                      rewritten. Advancing would drop what is live.
+          STATUS="$(gh api "repos/$REPO/compare/$CURRENT...$SHA" --jq .status)"
+          echo "production is at $CURRENT; $CURRENT...$SHA is '$STATUS'"
+
+          case "$STATUS" in
+            identical)
+              echo "Nothing landed since the last nightly — no push, no build."
+              ;;
+            ahead)
+              gh api "repos/$REPO/compare/$CURRENT...$SHA" \
+                --jq '.commits[] | "  \(.sha[0:9]) \(.commit.message | split("\n")[0])"'
+              # force=false is the second, server-side fast-forward guarantee.
+              gh api -X PATCH "repos/$REPO/git/refs/heads/production" \
+                -f sha="$SHA" -F force=false >/dev/null
+              echo "Advanced production: $CURRENT -> $SHA"
+              ;;
+            *)
+              echo "::error::production ($CURRENT) cannot fast-forward to $SHA ('$STATUS')."
+              if [ "$STATUS" = "behind" ]; then
+                echo "::error::That is a ROLLBACK. This workflow only moves production"
+                echo "::error::forward. Use Vercel's instant rollback instead:"
+                echo "::error::  vercel rollback <deployment-url>  (or promote a previous"
+                echo "::error::  deployment in the dashboard) — seconds, and no rebuild."
+              else
+                echo "::error::production holds commits $SHA does not. Someone pushed to it"
+                echo "::error::directly, or main was rewritten. Reconcile by hand."
+              fi
+              exit 1
+              ;;
+          esac
+
+      # THE MOVE IS NOT THE DEPLOY. Advancing the ref proves nothing about
+      # Vercel: if a project's Production Branch is still `main`, it keeps
+      # building 41×/day and the saving silently never happens; if its Ignored
+      # Build Step is edited, it stops deploying and the site ages. Both read
+      # as a green run here, because the branch moved fine either way. So ask
+      # Vercel whether a deployment for this commit actually exists.
+      #
+      # Needs a VERCEL_TOKEN repo secret (Vercel → Account Settings → Tokens,
+      # scoped to the LTplus team, read access is enough). Without it the check
+      # cannot run and says so as a warning on every run rather than passing
+      # quietly — an unverifiable deploy must not look like a verified one.
+      - name: Verify Vercel picked it up
+        id: verify
+        if: steps.advance.outcome == 'success'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          SHA: ${{ steps.advance.outputs.sha }}
+          TEAM_ID: team_xdwayIMVKBKZcFLC0NiQTXIA
+        run: |
+          set -euo pipefail
+          # Default to NOT verified, so every path that fails to prove a
+          # deployment leaves it false rather than inheriting a pass.
+          echo "verified=false" >> "$GITHUB_OUTPUT"
+
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::warning::VERCEL_TOKEN is not set, so this run did NOT verify that"
+            echo "::warning::Vercel deployed $SHA. A project silently reverted to"
+            echo "::warning::deploying from main would look exactly like this."
+            exit 0
+          fi
+
+          # MATCHING ON THE SHA ALONE WOULD BE VACUOUS. The same commit was
+          # already pushed to `main`, where it produced a PREVIEW deployment
+          # that the Ignored Build Step cancelled — so a SHA-only match finds
+          # that cancelled preview and reports success even when the
+          # production build never ran. `target=production` excludes it, and
+          # CANCELED is rejected because that is exactly what an Ignored Build
+          # Step skip looks like on the production target too.
+          #
+          # `sha=` is a SERVER-side filter, not a scan of the newest N rows.
+          # That matters on the `identical` path — a re-run when nothing has
+          # landed, which is the recovery the stuck-branch issue tells you to
+          # perform — where the deployment being looked for is a day old and
+          # would fall outside any recent-rows window.
+          #
+          # QUEUED/BUILDING/READY all prove Vercel picked it up; waiting for
+          # READY would mean sitting through a ~4 min viewer compile.
+          pending="ifc-lite ifc-lite-viewer-embed ifc-lite-dev"
+          api_errors=""
+          for attempt in $(seq 1 8); do
+            still=""
+            api_errors=""
+            for project in $pending; do
+              # `|| true` and `--max-time`: a DNS blip or a 502 HTML body must
+              # retry, not abort the step under `set -e`. The single condition
+              # this loop exists to absorb is the one it must survive.
+              resp="$(curl -sS --max-time 30 -w '\n%{http_code}' \
+                -H "Authorization: Bearer $VERCEL_TOKEN" \
+                "https://api.vercel.com/v6/deployments?app=$project&teamId=$TEAM_ID&sha=$SHA&target=production&limit=5" \
+                2>/dev/null || true)"
+              code="$(printf '%s' "$resp" | tail -n1)"
+              body="$(printf '%s' "$resp" | sed '$d')"
+
+              if [ "$code" != "200" ]; then
+                # An auth or API failure is NOT a deploy-config regression, and
+                # reporting it as one sends the operator to check settings that
+                # are fine.
+                still="$still $project"; api_errors="$api_errors $project(HTTP ${code:-000})"
+                continue
+              fi
+
+              # Take a HEALTHY row if the commit has one, not merely the
+              # newest. A redeploy can leave an ERROR or CANCELED row in front
+              # of a READY one, and a build that succeeded is still what the
+              # alias serves. Falls back to the first row so a commit whose
+              # ONLY production deployment was cancelled still reports that.
+              state="$(printf '%s' "$body" \
+                | jq -r '[.deployments[]? | select(.target == "production")
+                          | (.readyState // .state // "UNKNOWN")] as $s
+                         | (($s | map(select(. != "CANCELED" and . != "ERROR")) | first)
+                            // ($s | first) // "")' 2>/dev/null || true)"
+              case "$state" in
+                ""|CANCELED|ERROR)
+                  still="$still $project"
+                  [ -n "$state" ] && echo "  $project: production deployment is $state"
+                  ;;
+                *) echo "  $project: production deployment $state" ;;
+              esac
+            done
+            pending="$(echo "$still" | xargs || true)"
+            [ -z "$pending" ] && break
+            [ "$attempt" -lt 8 ] && sleep 20 || true
+          done
+
+          if [ -n "$pending" ]; then
+            if [ -n "$api_errors" ]; then
+              echo "::error::Vercel API did not answer for:$api_errors"
+              echo "::error::That is an API/token problem, not necessarily a deploy-config one."
+            fi
+            echo "::error::No live production deployment for $SHA on:$pending"
+            echo "::error::If the API answered, check each project's Production Branch is"
+            echo "::error::'production' and its Ignored Build Step still exits 1 for production."
+            exit 1
+          fi
+          echo "verified=true" >> "$GITHUB_OUTPUT"
+          echo "All three projects have a live production deployment for $SHA."
+
+      # AN ISSUE, NOT A RED RUN, following the pattern in
+      # .github/workflows/review-lane-canary.yml: a failed scheduled workflow
+      # is a row in a tab nobody opens. Here that row means production stopped
+      # advancing, so every later nightly is a no-op too and the sites quietly
+      # age. `always()` rather than `failure()` so a job CANCELLED by
+      # `timeout-minutes` still reports, instead of hanging silently. (The
+      # concurrency group does not cancel anything — `cancel-in-progress` is
+      # false, so it only queues.) Updated in place, so a week of failures is
+      # one thread.
+      - name: Report a stuck production branch
+        if: always() && job.status != 'success' && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          body="$(printf 'The nightly Vercel deploy did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has deployed since it last succeeded, and every further nightly will behave the same way until this is resolved — the production sites are frozen at whatever `production` currently points to.\n\nUsual causes, in order:\n\n1. Someone pushed to `production` directly, or `main` was rewritten, so the move is no longer a fast-forward. Reconcile the two branches by hand.\n2. A Vercel project no longer deploys from `production` (check its Production Branch and Ignored Build Step).\n3. The job timed out or was cancelled.\n\nThen re-run this workflow. This issue is updated in place by each failing run, and it closes itself on the next successful run.\n' \
+            "$(date -u +%FT%TZ)" "${{ job.status }}" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")"
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --label production-branch-stuck --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh label create production-branch-stuck --repo "$GITHUB_REPOSITORY" \
+              --color b60205 --description "The nightly deploy cannot advance the production branch." 2>/dev/null || true
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Nightly deploy cannot advance production" \
+              --label production-branch-stuck --body "$body"
+          fi
+
+      # Closing the loop: an alert that only ever shouts is one people mute.
+      # NOT gated on the event — the issue tells the operator to "re-run this
+      # workflow", and a fresh manual run is what most people will do, so the
+      # all-clear has to fire there too.
+      - name: Clear a resolved stuck-branch issue
+        if: success() && steps.verify.outputs.verified == 'true' 
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --label production-branch-stuck --limit 1 --json number --jq '.[0].number // empty')"
+          if [ -n "$existing" ]; then
+            gh issue close "$existing" --repo "$GITHUB_REPOSITORY" \
+              --comment "The nightly deploy advanced \`production\` again and Vercel picked it up. Closing as resolved."
+          fi

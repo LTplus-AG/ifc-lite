@@ -3,20 +3,9 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Worker-boundary transport for `IfcDataStore`.
- *
- * `IfcDataStore` carries closures (`entities.getName`, `relationships.getRelated`,
- * `spatialHierarchy.getPath`, …) that the structured-clone algorithm strips
- * silently. This module separates the clone-safe column data from the
- * closures: `toTransport` returns a POJO + transferable list to ship across
- * a `postMessage` boundary; `fromTransport` reconstructs a live `IfcDataStore`
- * with closures rebuilt on the receiving thread.
- *
- * The `source` buffer is intentionally NOT included in the transferable list
- * because both the parser worker and the geometry workers read from the same
- * `SharedArrayBuffer` upstream of the parser. Callers are responsible for
- * keeping a `Uint8Array` view of that SAB on the main thread and supplying
- * it to `fromTransport`.
+ * Worker transport splits clone-safe columns from live store accessors.
+ * toTransport serializes columns; fromTransport rebuilds their closures.
+ * Source bytes stay in the shared buffer, supplied separately by the receiver.
  */
 
 import {
@@ -54,6 +43,8 @@ import type { EntityRef } from './types.js';
 import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import type { IfcDataStore, EntityByIdIndex } from './columnar-parser.js';
 import { attachDataStoreAccessors } from './data-store-accessors.js';
+import type { GeoreferenceInfo } from './georef-extractor.js';
+import { oncePerStore } from './on-demand-cache.js';
 
 export type { CompactEntityIndexColumns };
 
@@ -213,6 +204,9 @@ export interface ParserMemorySnapshot {
 // ────────────────────────────────────────────────────────────────────────────
 
 export interface DataStoreTransport {
+  /** Worker-prepared render data (#3983); absent on older transports. */
+  sourceContentKey?: string | null;
+  georeferencing?: GeoreferenceInfo | null;
   fileSize: number;
   schemaVersion: IfcDataStore['schemaVersion'];
   sourceHeader?: IfcDataStore['sourceHeader'];
@@ -447,7 +441,7 @@ export function fromTransport(
   const onDemandQuantityMap = new Map(payload.onDemandQuantityMap.map(([k, v]) => [k, [...v]]));
   // Lazy accessors are wired by the shared helper so the fresh-parse, transport,
   // and cache-restore paths can never drift (see data-store-accessors.ts).
-  return attachDataStoreAccessors({
+  const store = attachDataStoreAccessors({
     fileSize: payload.fileSize,
     schemaVersion: payload.schemaVersion,
     sourceHeader: payload.sourceHeader,
@@ -472,6 +466,10 @@ export function fromTransport(
     onDemandMaterialMap: new Map(payload.onDemandMaterialMap),
     onDemandDocumentMap: new Map(payload.onDemandDocumentMap.map(([k, v]) => [k, [...v]])),
   });
+  if (payload.georeferencing !== undefined) {
+    oncePerStore(store, 'georef', () => payload.georeferencing);
+  }
+  return store;
 }
 
 /**

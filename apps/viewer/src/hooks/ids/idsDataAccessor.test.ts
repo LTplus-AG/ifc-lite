@@ -64,9 +64,12 @@ describe('viewer createDataAccessor + MutablePropertyView overlay (#3929 re-vali
     const accessor = createDataAccessor(makeStore(), 'model-1', view);
     // Entity #2 has no override registered and no base data (getForEntity
     // returns the same fixture for any id here) — the overlay resolver
-    // must not apply entity #1's mutation to it.
-    const mutations = view.getMutationsForEntity(2);
-    assert.strictEqual(mutations.length, 0);
+    // must not apply entity #1's mutation to it: entity #2's read stays at
+    // the base fixture value, not entity #1's corrected 'F90'.
+    assert.strictEqual(
+      accessor.getPropertyValue(2, 'Pset_WallCommon', 'FireRating')?.value,
+      'NONE',
+    );
   });
 
   it('an unrelated attribute/quantity mutation on the same entity does not affect a property read', () => {

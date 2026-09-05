@@ -80,6 +80,33 @@ The accept-gate rejection work in #3922 remains a dependency.
 Neither candidate introduces a retry loop or resets the element work budget.
 These decisions live in shared Rust and apply to native and WASM consumers.
 
+## Browser detail settings are a separate control
+
+The full-load matrix covers eleven real models in native and browser consumers.
+The correctness-only native comparison preserves every mesh except the intended
+CSG129 repair. The browser's default low-detail path preserves every model's
+geometry digest except two `IfcWallStandardCase` products in a large architecture
+fixture, #235933 and #236415. Both were already non-watertight; neither becomes a
+certified solid. The performance-only comparison must use the corrected baseline
+rather than treating these correctness changes as performance changes.
+
+Raw browser positions and indices were compared with an independent
+IfcOpenShell 0.8.2 solid. Its surface area is approximately 19.857750 square metres
+for each wall. The first wall moves from 19.857307 to 19.857714 square metres;
+the second moves from 19.719556 to 19.892625. Both are closer to the reference,
+although the second still has excess surface area. Bounds differ by less than
+16 micrometres between the two ifc-lite revisions.
+
+A local diagnostic welds nearby vertices and splits edges at collinear vertices
+before counting unmatched directed segments. At 100-micrometre tolerance, total
+unmatched segment length falls from 5.538 to 0.117 metres and from 11.081 to
+5.491 metres, respectively. This is a diagnostic, not a closure guarantee:
+counting raw edges confounds additional T-junctions with larger holes, while
+signed volume on an open mesh depends on the chosen origin. Neither quantity
+alone certifies a repair. Both walls still need a separate watertightness fix.
+The load's CSG failures fall from 629 to 625, with the same 27 affected products
+and 13 silent no-ops. Private source geometry and raw comparisons remain local.
+
 ## Published work and its limits
 
 - [CGAL corefinement](https://doc.cgal.org/5.6.1/Polygon_mesh_processing/index.html#coref_def_subsec)

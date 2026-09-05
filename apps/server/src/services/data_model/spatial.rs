@@ -6,8 +6,15 @@
 
 use super::types::{EntityMetadata, Relationship, SpatialHierarchyData, SpatialNode};
 use ifc_lite_core::EntityDecoder;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
+
+/// Maximum recursion depth for building the spatial tree, mirroring
+/// `MAX_SPATIAL_TREE_DEPTH` in `apps/viewer/src/utils/serverDataModel.ts`. This is
+/// a second guard beyond the visited set in `build_spatial_nodes_recursive`: a
+/// pathologically deep but acyclic aggregation/containment chain could still
+/// exhaust the stack even with cycles ruled out.
+const MAX_SPATIAL_TREE_DEPTH: u16 = 100;
 
 /// Build spatial hierarchy from relationships.
 pub(super) fn build_spatial_hierarchy(
@@ -81,14 +88,42 @@ pub(super) fn build_spatial_hierarchy(
     let mut spatial_children_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
     let mut element_containment_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
 
+    // Each spatial child gets exactly ONE canonical parent. Without this, a
+    // space aggregated under one storey AND contained under a different one
+    // (a malformed but real cross-linked authoring-tool export, #3973) would
+    // end up in both parents' children_ids, while build_spatial_nodes_recursive
+    // only ever builds one SpatialNode for it (a single-visit walk keyed by
+    // entity id) - so one parent's children_ids referenced a node that both
+    // belonged to another parent AND carried that other parent's parent_id, and
+    // which parent "won" depended on relationship-list/HashMap iteration order,
+    // not a rule. IfcRelAggregates is the canonical spatial-hierarchy
+    // relationship (IFCRELCONTAINEDINSPATIALSTRUCTURE promotion below exists
+    // only to cover the case where NO aggregates edge exists at all, #1075), so
+    // it always wins; ties within a kind resolve to the first occurrence in
+    // file order (`relationships` preserves source/parse order), never a
+    // HashMap's iteration order.
+    let mut canonical_parent: FxHashMap<u32, u32> = FxHashMap::default();
+    for rel in relationships {
+        if rel.rel_type.to_uppercase() == "IFCRELAGGREGATES" {
+            canonical_parent
+                .entry(rel.related_id)
+                .or_insert(rel.relating_id);
+        }
+    }
+
     for rel in relationships {
         let rel_type_upper = rel.rel_type.to_uppercase();
         if rel_type_upper == "IFCRELAGGREGATES" {
-            // Spatial hierarchy: parent -> child spatial nodes
-            spatial_children_map
-                .entry(rel.relating_id)
-                .or_default()
-                .push(rel.related_id);
+            // Spatial hierarchy: parent -> child spatial nodes. Only the
+            // canonical (first-seen) aggregates edge feeds the tree; a
+            // duplicate aggregates edge naming a different parent for the same
+            // child is dropped rather than adding a second reference to it.
+            if canonical_parent.get(&rel.related_id) == Some(&rel.relating_id) {
+                spatial_children_map
+                    .entry(rel.relating_id)
+                    .or_default()
+                    .push(rel.related_id);
+            }
         } else if rel_type_upper == "IFCRELCONTAINEDINSPATIALSTRUCTURE" {
             let target_is_spatial = entity_map
                 .get(&rel.related_id)
@@ -98,12 +133,20 @@ pub(super) fn build_spatial_hierarchy(
                 })
                 .unwrap_or(false);
             if target_is_spatial {
-                // Promote: a contained spatial child becomes a tree node. Dedup against
-                // an IfcRelAggregates edge to the same parent so a space that is both
-                // aggregated and contained under the same parent isn't listed twice.
-                let children = spatial_children_map.entry(rel.relating_id).or_default();
-                if !children.contains(&rel.related_id) {
-                    children.push(rel.related_id);
+                // Promote: a contained spatial child becomes a tree node,
+                // unless an IfcRelAggregates edge already claimed it for a
+                // (possibly different) parent - aggregation always wins, per
+                // canonical_parent above. Dedup against an edge to the same
+                // parent so a space that is both aggregated and contained
+                // under the same parent isn't listed twice.
+                let winner = *canonical_parent
+                    .entry(rel.related_id)
+                    .or_insert(rel.relating_id);
+                if winner == rel.relating_id {
+                    let children = spatial_children_map.entry(rel.relating_id).or_default();
+                    if !children.contains(&rel.related_id) {
+                        children.push(rel.related_id);
+                    }
                 }
             } else {
                 // Element containment: spatial container -> elements
@@ -134,6 +177,7 @@ pub(super) fn build_spatial_hierarchy(
 
     // Build nodes recursively starting from project
     if project_id != 0 {
+        let mut visited: FxHashSet<u32> = FxHashSet::default();
         build_spatial_nodes_recursive(
             project_id,
             0,
@@ -144,6 +188,7 @@ pub(super) fn build_spatial_hierarchy(
             &entity_map,
             &mut decoder,
             &mut nodes_map,
+            &mut visited,
             length_unit_scale,
         );
     }
@@ -248,8 +293,28 @@ fn build_spatial_nodes_recursive(
     entity_map: &FxHashMap<u32, &EntityMetadata>,
     decoder: &mut EntityDecoder,
     nodes_map: &mut FxHashMap<u32, SpatialNode>,
+    visited: &mut FxHashSet<u32>,
     length_unit_scale: f64,
 ) {
+    // Guard against cyclic IfcRelAggregates / promoted-IfcRelContainedInSpatialStructure
+    // edges, mirroring `ctx.visited` in
+    // `packages/parser/src/spatial-hierarchy-builder.ts`: a revisited node is
+    // skipped (left as whatever was already built, if anything) rather than
+    // rebuilt and re-descended into, which would otherwise recurse without
+    // bound. Unlike the browser path, this recursion runs in a process with
+    // `panic = 'abort'`, so an unguarded cycle here is not a catchable panic -
+    // it is a stack overflow that SIGABRTs the whole server (#3973: Storey A
+    // aggregates Storey B, Storey B "contains" Storey A).
+    if visited.contains(&entity_id) {
+        return;
+    }
+    // Guard against a pathologically deep but acyclic chain, mirroring
+    // `MAX_SPATIAL_TREE_DEPTH` in `apps/viewer/src/utils/serverDataModel.ts`.
+    if level > MAX_SPATIAL_TREE_DEPTH {
+        return;
+    }
+    visited.insert(entity_id);
+
     let entity = match entity_map.get(&entity_id) {
         Some(e) => e,
         None => return,
@@ -307,6 +372,7 @@ fn build_spatial_nodes_recursive(
             entity_map,
             decoder,
             nodes_map,
+            visited,
             length_unit_scale,
         );
     }

@@ -128,3 +128,101 @@ fn applies_the_length_unit_scale() {
         Some(3000.0)
     );
 }
+
+/// Direct unit test of `build_spatial_nodes_recursive` itself, independent of
+/// how `spatial_children_map` gets built: entity #2 lists #3 as a child and
+/// entity #3 lists #2 right back - a hand-built cycle, the same shape
+/// `{A: [B], B: [A]}` the reported repro (Storey A aggregates Storey B, Storey
+/// B "contains" Storey A) produces. Before the visited-set/depth guard, this
+/// recurses without bound; since the server crate builds with `panic =
+/// 'abort'`, that is a stack overflow that SIGABRTs the whole process, not a
+/// catchable panic. A normal `#[test]` can't observe that (it would kill the
+/// test runner too), so this spawns the reproduction - on a small dedicated
+/// thread stack, so it overflows fast rather than eating gigabytes first - in
+/// a fresh child process and asserts the child exits successfully.
+#[test]
+fn build_spatial_nodes_recursive_does_not_abort_on_a_cyclic_children_map() {
+    const REPRO_ENV_VAR: &str = "IFC_LITE_SPATIAL_NODE_CYCLE_REPRO";
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let entity_a = EntityMetadata {
+                    entity_id: 2,
+                    type_name: "IFCBUILDING".to_string(),
+                    global_id: None,
+                    name: Some("A".to_string()),
+                    description: None,
+                    object_type: None,
+                    tag: None,
+                    predefined_type: None,
+                    has_geometry: false,
+                };
+                let entity_b = EntityMetadata {
+                    entity_id: 3,
+                    type_name: "IFCBUILDING".to_string(),
+                    global_id: None,
+                    name: Some("B".to_string()),
+                    description: None,
+                    object_type: None,
+                    tag: None,
+                    predefined_type: None,
+                    has_geometry: false,
+                };
+                let mut entity_map: FxHashMap<u32, &EntityMetadata> = FxHashMap::default();
+                entity_map.insert(2, &entity_a);
+                entity_map.insert(3, &entity_b);
+
+                let mut spatial_children_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+                spatial_children_map.insert(2, vec![3]);
+                spatial_children_map.insert(3, vec![2]);
+                let element_containment_map: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+
+                let mut decoder = EntityDecoder::new(
+                    b"ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n",
+                );
+                let mut nodes_map: FxHashMap<u32, SpatialNode> = FxHashMap::default();
+                let mut visited: FxHashSet<u32> = FxHashSet::default();
+
+                build_spatial_nodes_recursive(
+                    2,
+                    0,
+                    0,
+                    "",
+                    &spatial_children_map,
+                    &element_containment_map,
+                    &entity_map,
+                    &mut decoder,
+                    &mut nodes_map,
+                    &mut visited,
+                    1.0,
+                );
+                nodes_map.len()
+            })
+            .expect("failed to spawn repro thread");
+        let node_count = handle.join().expect("repro thread panicked/aborted");
+        eprintln!("cyclic children-map repro produced {node_count} nodes without aborting");
+        std::process::exit(0);
+    }
+
+    let exe = std::env::current_exe().expect("current test exe");
+    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_server::...`),
+    // while libtest's own `--exact` names are not (confirmed via `--list`).
+    let test_name = "services::data_model::spatial::spatial_tests::build_spatial_nodes_recursive_does_not_abort_on_a_cyclic_children_map";
+    let output = std::process::Command::new(exe)
+        .args([test_name, "--exact", "--nocapture"])
+        .env(REPRO_ENV_VAR, "1")
+        .output()
+        .expect("failed to spawn child test process");
+
+    assert!(
+        output.status.success(),
+        "a hand-built cyclic spatial_children_map ({{2: [3], 3: [2]}}) must not \
+         abort the process when walked by build_spatial_nodes_recursive; \
+         child exit status = {:?}\n--- child stdout ---\n{}\n--- child stderr ---\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}

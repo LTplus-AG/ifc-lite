@@ -888,3 +888,137 @@ fn contained_spatial_zone_and_ifc4x3_facility_parts_are_promoted_to_nodes() {
     assert_eq!(facility_part_common.parent_id, 7);
     assert_eq!(facility_part_common.type_name.to_uppercase(), "IFCFACILITYPARTCOMMON");
 }
+
+/// #3973: a space aggregated under Storey A (#2) but ALSO contained (not
+/// aggregated) under a DIFFERENT storey, Storey B (#3). Unlike the
+/// same-parent case above, cross-parent dedup was never handled at all:
+/// `spatial_children_map` is keyed per-parent, so both storeys' children_ids
+/// listed the space, while `build_spatial_nodes_recursive` has no
+/// already-inserted guard, so whichever branch the walk reached last silently
+/// overwrote `nodes_map`, deciding the space's `parent_id` by relationship-list
+/// iteration order rather than a rule. A client walking from Storey A would
+/// find the space id but render it with Storey B's parent linkage.
+///
+/// Fixed behaviour: IfcRelAggregates is the canonical spatial-hierarchy
+/// relationship, so the aggregated parent (Storey A) wins deterministically
+/// over the merely-contained parent (Storey B); Storey B's children_ids must
+/// not reference a node that isn't actually its child.
+const CROSS_PARENT_DUAL_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2,#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_aggregated_under_one_storey_and_contained_under_another_picks_one_canonical_parent() {
+    let dm = extract_data_model(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey_a = sh.nodes.iter().find(|n| n.entity_id == 2).expect("storey A");
+    let storey_b = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey B");
+
+    // Exactly one SpatialNode for the space, ever.
+    let space_nodes: Vec<_> = sh.nodes.iter().filter(|n| n.entity_id == 5).collect();
+    assert_eq!(
+        space_nodes.len(),
+        1,
+        "exactly one SpatialNode for the cross-parent space, not one per parent"
+    );
+
+    // The aggregation edge (Storey A) is the canonical relationship and must win,
+    // deterministically - never decided by relationship/HashMap iteration order.
+    assert_eq!(
+        space_nodes[0].parent_id, 2,
+        "the aggregated parent (Storey A) must win over the merely-contained parent (Storey B)"
+    );
+
+    assert_eq!(
+        storey_a.children_ids,
+        vec![5],
+        "Storey A (the real aggregation parent) must list the space as its child"
+    );
+    assert!(
+        !storey_b.children_ids.contains(&5),
+        "Storey B must not reference a node that is not actually its child - \
+         a dangling children_ids entry lets a client render the space with the wrong parent's data"
+    );
+}
+
+/// #3973: `Storey A` aggregates `Storey B` via `IfcRelAggregates`, and `Storey B`
+/// "contains" `Storey A` via `IfcRelContainedInSpatialStructure` (this PR's own
+/// promotion puts a contained spatial-structure target into
+/// `spatial_children_map`, same as an aggregated one). That produces
+/// `spatial_children_map == {A: [B], B: [A]}`, and the unguarded recursive walk
+/// in `build_spatial_nodes_recursive` recurses A -> B -> A -> B -> ... without
+/// bound. Because the crate builds with `panic = 'abort'`, the resulting stack
+/// overflow is not a catchable panic - it SIGABRTs the whole process. That
+/// cannot be observed with a normal `#[test]` (it would kill the test runner
+/// too), so this spawns the reproduction in a fresh child process and asserts
+/// the child exits successfully rather than being killed by a signal.
+#[test]
+fn cyclic_aggregate_and_containment_edges_do_not_abort_the_process() {
+    const CYCLIC_STOREY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#2),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    const REPRO_ENV_VAR: &str = "IFC_LITE_SPATIAL_CYCLE_REPRO";
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        // Child process: run the exact reproduction (on a small dedicated
+        // thread stack, so an unguarded cycle overflows fast rather than
+        // eating gigabytes of stack first) and exit cleanly if it survives.
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let dm = extract_data_model(CYCLIC_STOREY_IFC);
+                dm.spatial_hierarchy.nodes.len()
+            })
+            .expect("failed to spawn repro thread");
+        let node_count = handle.join().expect("repro thread panicked/aborted");
+        eprintln!("cyclic repro produced {node_count} spatial nodes without aborting");
+        std::process::exit(0);
+    }
+
+    let exe = std::env::current_exe().expect("current test exe");
+    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_server::...`),
+    // while libtest's own `--exact` names are not (confirmed via `--list`).
+    let test_name =
+        "services::data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
+    let output = std::process::Command::new(&exe)
+        .args([test_name, "--exact", "--nocapture"])
+        .env(REPRO_ENV_VAR, "1")
+        .output()
+        .expect("failed to spawn child test process");
+
+    assert!(
+        output.status.success(),
+        "a spatial hierarchy with a Storey-A-aggregates-Storey-B / \
+         Storey-B-contains-Storey-A cycle must not abort the process; \
+         child exit status = {:?}\n--- child stdout ---\n{}\n--- child stderr ---\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+

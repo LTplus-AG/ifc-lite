@@ -167,6 +167,7 @@ async function generate(options: HarnessOptions): Promise<Drawing2D | null> {
 
   function Harness(): null {
     const { generateDrawing } = useDrawingGeneration({
+      activeTool: 'select',
       geometryResult: options.geometryResult,
       ifcDataStore: options.ifcDataStore,
       sectionPlane: { axis: 'down', position: 50, flipped: false },

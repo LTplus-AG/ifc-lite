@@ -44,7 +44,7 @@ import {
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
 import { detectSchemaVersion, parseSourceHeader } from './source-header.js';
 
-import type { SpatialIndex, EntityByIdIndex } from './columnar-parser-indexes.js';
+import type { EntityByIdIndex } from './columnar-parser-indexes.js';
 
 import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import { getEntityRefFromStore, extractRootAttributesFromEntity, pickLongName } from './columnar-parser-root-attributes.js';
@@ -351,32 +351,6 @@ export class ColumnarParser {
 
         logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${propertyAtomRefs.length} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} group:${groupRefs.length} other:${otherRelevantRefs.length}`);
 
-        // Pre-scan association rels to discover relatingRef target IDs (e.g.
-        // IfcClassificationReference, IfcMaterial, IfcDocumentReference).  These
-        // entities are typically categorised as CAT_SKIP and would otherwise be
-        // missing from the compact index, making on-demand extraction fail.
-        const associationTargetIds = new Set<number>();
-        for (const ref of associationRelRefs) {
-            const result = extractPropertyRelFast(uint8Buffer, ref.byteOffset, ref.byteLength);
-            if (result) for (const id of result.relatingDefs) associationTargetIds.add(id);
-        }
-
-        // Collect EntityRefs for association targets that aren't already categorised.
-        // Single O(n) pass over entityRefs filtered to the (small) target ID set.
-        const alreadyIndexedIds = new Set<number>();
-        for (const arr of [spatialRefs, geometryRefs, relationshipRefs, propertyRelRefs,
-            propertyContainerRefs, associationRelRefs, typeObjectRefs, groupRefs, otherRelevantRefs,
-            ...(deferPropertyAtomIndex ? [] : [propertyAtomRefs])]) {
-            for (const r of arr) alreadyIndexedIds.add(r.expressId);
-        }
-        const extraAssocRefs: EntityRef[] = [];
-        for (const ref of entityRefs) {
-            if (associationTargetIds.has(ref.expressId) && !alreadyIndexedIds.has(ref.expressId)) {
-                extraAssocRefs.push(ref);
-            }
-        }
-        logPhase(`association target pre-scan: ${associationTargetIds.size} targets, ${extraAssocRefs.length} extra refs`);
-
         // ALL entity refs must be indexed in byId so that on-demand extraction
         // can look up any entity by expressId (e.g. IfcUnitAssignment,
         // IfcGeometricRepresentationContext, IfcSiUnit, IfcLocalPlacement, etc.).
@@ -388,12 +362,10 @@ export class ColumnarParser {
               })
             : entityRefs;
         emitDiagnostic(
-            `index input: indexedRefs=${indexedRefs.length} deferredPropertyAtoms=${deferPropertyAtomIndex ? propertyAtomRefs.length : 0} extraAssocTargets=${extraAssocRefs.length}`
+            `index input: indexedRefs=${indexedRefs.length} deferredPropertyAtoms=${deferPropertyAtomIndex ? propertyAtomRefs.length : 0}`
         );
 
-        // Build compact entity index from only the refs that survive lite parsing.
-        // This avoids spending huge-file startup time indexing millions of skipped
-        // representation/helper entities that the viewer never queries.
+        // Keep every indexed entity available for on-demand reference resolution.
         const compactByIdIndex = await buildCompactEntityIndexAsync(indexedRefs);
         logPhase('compact entity index');
 

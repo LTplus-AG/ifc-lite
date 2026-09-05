@@ -123,6 +123,74 @@ describe('forwardEntityIndexTo (#3790 pre-pass handoff)', () => {
   });
 });
 
+describe('deferred entity-index handoff for cold-load memory', () => {
+  it('keeps the original shared views and both refusal diagnostics until release', () => {
+    const { sink, calls } = recordingSink();
+    const handoff = forwardEntityIndexTo(() => sink, true);
+    handoff(IDS, STARTS, LENGTHS, 3, 1);
+    assert.equal(calls.length, 0, 'metadata must not allocate before the worker-completion signal');
+    handoff.release();
+    handoff.release();
+    assert.equal(calls.length, 1, 'completion followed by shutdown must not deliver twice');
+    assert.equal(calls[0][0], IDS, 'do not copy the shared index');
+    assert.equal(calls[0][1], STARTS);
+    assert.equal(calls[0][2], LENGTHS);
+    assert.deepEqual(calls[0].slice(3), [3, 1]);
+  });
+
+  it('forwards a late index when the geometry completion signal arrived first', () => {
+    const { sink, calls } = recordingSink();
+    const handoff = forwardEntityIndexTo(() => sink, true);
+    handoff.release();
+    handoff(IDS, STARTS, LENGTHS, 0, 0);
+    assert.deepEqual(calls, [[IDS, STARTS, LENGTHS, 0, 0]]);
+  });
+
+  it('uses the current parser when an empty or failed stream releases metadata', () => {
+    let parser: EntityIndexSink | null = null;
+    const handoff = forwardEntityIndexTo(() => parser, true);
+    handoff(IDS, STARTS, LENGTHS);
+    const { sink, calls } = recordingSink();
+    parser = sink;
+    handoff.release();
+    assert.deepEqual(calls, [[IDS, STARTS, LENGTHS, undefined, undefined]]);
+  });
+
+  it('does not retain an obsolete handoff after the parser falls back', () => {
+    let parser: EntityIndexSink | null = null;
+    const handoff = forwardEntityIndexTo(() => parser, true);
+    handoff(IDS, STARTS, LENGTHS, 3, 1);
+    handoff.release();
+    const { sink, calls } = recordingSink();
+    parser = sink;
+    handoff.release();
+    assert.equal(calls.length, 0);
+    handoff(IDS, STARTS, LENGTHS, 0, 0);
+    assert.deepEqual(calls, [[IDS, STARTS, LENGTHS, 0, 0]]);
+  });
+
+  it('releases a slow geometry stream before the parser needs its own fallback scan', { timeout: 2000 }, async () => {
+    const { sink, calls } = recordingSink();
+    await new Promise<void>(resolve => {
+      const handoff = forwardEntityIndexTo(() => ({
+        setEntityIndex(...args) { sink.setEntityIndex(...args); resolve(); },
+      }), true, 1);
+      handoff(IDS, STARTS, LENGTHS, 3, 1);
+    });
+    assert.deepEqual(calls, [[IDS, STARTS, LENGTHS, 3, 1]]);
+  });
+
+  it('reports delivery failure without retrying stale columns at shutdown', () => {
+    const failure = new Error('parser stopped');
+    let attempts = 0;
+    const handoff = forwardEntityIndexTo(() => ({ setEntityIndex() { attempts++; throw failure; } }), true);
+    handoff(IDS, STARTS, LENGTHS);
+    assert.throws(() => handoff.release(), failure);
+    handoff.release();
+    assert.equal(attempts, 1);
+  });
+});
+
 /**
  * The two ends of the hop, pinned as types. Compile-time; `pnpm typecheck`
  * is what runs them.

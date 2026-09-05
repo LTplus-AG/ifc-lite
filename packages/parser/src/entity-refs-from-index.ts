@@ -69,20 +69,20 @@ export function buildEntityRefsFromIndex(
   const refs: EntityRef[] = new Array(n);
   const intern = new Map<string, string>();
 
-  // The wasm pre-pass now emits sorted columnar ids (#1682), but this helper
-  // still sorts defensively: a third-party / older producer may still send
-  // unsorted columns. Downstream `buildCompactEntityIndexAsync` checks whether
-  // expressIds are ascending and pays an O(N log N) object sort if not
-  // — on 14 M entries that's ~8 s. Pre-sort an index permutation (typed
-  // array sort with comparator is ~1 s) so refs come out ID-ordered and
-  // the downstream check passes cheaply. Same end state, cost paid here
-  // once instead of as a slower object sort later.
-  const order = new Uint32Array(n);
-  for (let i = 0; i < n; i++) order[i] = i;
-  order.sort((a, b) => ids[a] - ids[b]);
+  // Current pre-pass columns are already ID-ordered (#1682). Only allocate
+  // and sort a permutation for producers that actually send unsorted IDs.
+  // Keep equal IDs in their input order, matching the stable typed-array sort.
+  let order: Uint32Array | undefined;
+  for (let i = 1; i < n; i++) {
+    if (ids[i] < ids[i - 1]) {
+      order = Uint32Array.from({ length: n }, (_, index) => index);
+      order.sort((a, b) => ids[a] - ids[b]);
+      break;
+    }
+  }
 
   for (let oi = 0; oi < n; oi++) {
-    const i = order[oi];
+    const i = order ? order[oi] : oi;
     const start = starts[i];
     const len = lengths[i];
     // Reject spans that walk off the end of the source. Clamping

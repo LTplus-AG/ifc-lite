@@ -44,6 +44,7 @@ import { extCommand } from './commands/ext.js';
 import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
+import { deliveryCommand } from './commands/delivery.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { readCliVersion } from './version.js';
@@ -109,6 +110,8 @@ const HELP = `
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
     gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
+    delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS) from a saved recipe
+              recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"]}, paths relative to the recipe file
 
   Options:
     --help, -h           Show help
@@ -355,6 +358,9 @@ async function main(): Promise<void> {
       break;
     case 'gym':
       await gymCommand(commandArgs);
+      break;
+    case 'delivery':
+      await deliveryCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

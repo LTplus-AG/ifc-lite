@@ -31,3 +31,19 @@ key carries no override right now) — the same live-overlay source
 now exposed so a caller projecting the overlay onto an external base can
 tell "no override", "override is a DELETE", and "override is a SET to
 null" apart.
+
+Also fixes a case-sensitivity mismatch in `resolveEffectivePropertySets`
+(the overlay merge behind `createDataAccessor`'s `propertyOverlay`
+parameter above): `getPropertyValue`/`getPropertySets` already match
+pset/property names case-insensitively (to tolerate real-world IFC files
+whose Pset/property names don't match the canonical casing), but the
+overlay merge matched exact-case only. When an override's target name
+differed only in case from the entity's actual (non-conformant) base
+property name, the merge appended the override as a SEPARATE,
+differently-cased property instead of replacing the existing one — and
+the case-insensitive read then returned the untouched base entry first,
+since it comes earlier in iteration order. A correction could read back
+as applied (its own write-then-verify check reads the exact key it just
+wrote) yet stay permanently invisible to a re-run of IDS validation
+through this same accessor. The merge now matches case-insensitively too,
+consistent with the read path it feeds.

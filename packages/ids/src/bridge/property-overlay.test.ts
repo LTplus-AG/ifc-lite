@@ -27,6 +27,23 @@ function makeStore(): IfcDataStore {
       ],
     ],
     [2, []],
+    // A wall whose base property name is cased differently than a spec's
+    // exact `FireRating` (real-world non-conformant IFC export). getPropertyValue/
+    // getPropertySets already tolerate this via a case-insensitive scan (#3943
+    // review) — the overlay merge must too, or a correction can be written and
+    // read back as `applied: true` yet remain permanently invisible to a
+    // case-insensitive re-validation of the SAME accessor.
+    [
+      3,
+      [
+        {
+          name: 'Pset_WallCommon',
+          properties: [
+            { name: 'FIRERATING', value: 'N/A', type: 0, dataType: 'IFCLABEL' },
+          ],
+        },
+      ],
+    ],
   ]);
 
   return {
@@ -98,5 +115,23 @@ describe('createDataAccessor property overlay (#3929)', () => {
   it('the resolver returning undefined (mutation-view-not-registered-for-model) behaves as no overlay', () => {
     const accessor = createDataAccessor(makeStore(), () => undefined);
     expect(accessor.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')?.value).toBe('NONE');
+  });
+
+  it('a correction targeting the spec-exact name overwrites a base property stored under a different casing, not a shadowed duplicate (#3943)', () => {
+    const overrides = new Map<number, PropertyOverride[]>([
+      [3, [{ psetName: 'Pset_WallCommon', propName: 'FireRating', value: 'F90' }]],
+    ]);
+    const accessor = createDataAccessor(makeStore(), (id) => overrides.get(id));
+
+    // getPropertyValue is case-insensitive (matches the pre-existing bridge
+    // contract) — it must see the CORRECTED value, not the stale base one.
+    expect(accessor.getPropertyValue(3, 'Pset_WallCommon', 'FireRating')?.value).toBe('F90');
+    expect(accessor.getPropertyValue(3, 'Pset_WallCommon', 'FIRERATING')?.value).toBe('F90');
+
+    // Exactly one property under Pset_WallCommon — the override must UPDATE
+    // the existing (differently-cased) entry, not sit alongside it as a
+    // second, differently-cased property that a case-insensitive scan could
+    // resolve to either one depending on array order.
+    expect(accessor.getPropertySets(3)[0].properties).toHaveLength(1);
   });
 });

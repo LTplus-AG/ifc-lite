@@ -40,6 +40,22 @@ export type PropertyOverlayResolver = (expressId: number) => PropertyOverride[] 
  * — the overlay only patches the specific properties it names, so an
  * entity with no overrides sees byte-identical output to the no-overlay
  * path, and an entity WITH overrides keeps every other property untouched.
+ *
+ * Pset/property name matching here is deliberately CASE-INSENSITIVE, to
+ * match `getPropertyValue`/`getPropertySets` in ./data-accessor.ts (both
+ * compare via `.toLowerCase()`, to tolerate real-world IFC files with
+ * inconsistent Pset/property-name casing). An exact-case `find`/`findIndex`
+ * here would silently miss a base property whose stored name differs only
+ * in case from the override's target: the override would land as a NEW,
+ * separately-cased property instead of replacing the existing one, and
+ * `getPropertyValue`'s case-insensitive scan would then return the OLD,
+ * uncorrected entry (it iterates in array order and the untouched base
+ * property comes first) — a correction that reads back as applied through
+ * this same accessor (case-insensitively) yet never becomes visible to a
+ * re-run of IDS validation through the very same accessor. Matching
+ * case-insensitively here, and preserving each existing entry's own
+ * stored casing on update, keeps this merge and the read path that
+ * consumes it in agreement.
  */
 export function resolveEffectivePropertySets(
   store: IfcDataStore,
@@ -58,18 +74,24 @@ export function resolveEffectivePropertySets(
   }));
 
   for (const override of overrides) {
-    const pset = result.find((p) => p.name === override.psetName);
+    const psetLower = override.psetName.toLowerCase();
+    const propLower = override.propName.toLowerCase();
+    const pset = result.find((p) => p.name.toLowerCase() === psetLower);
 
     if (override.deleted) {
       if (pset) {
-        pset.properties = pset.properties.filter((p) => p.name !== override.propName);
+        pset.properties = pset.properties.filter((p) => p.name.toLowerCase() !== propLower);
       }
       continue;
     }
 
     if (pset) {
-      const idx = pset.properties.findIndex((p) => p.name === override.propName);
+      const idx = pset.properties.findIndex((p) => p.name.toLowerCase() === propLower);
       if (idx >= 0) {
+        // Keep the property's OWN stored name/casing — only its value
+        // changes. Replacing it with `override.propName`'s casing would
+        // just move the duplicate-entry risk from "two properties" to
+        // "renamed property", with no benefit.
         pset.properties[idx] = { ...pset.properties[idx], value: override.value };
       } else {
         pset.properties.push({ name: override.propName, value: override.value, dataType: '' });

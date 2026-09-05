@@ -214,4 +214,24 @@ impl ClippingProcessor {
         let topology_rejected = self.topology_gate_reject(op, mesh);
         manifold_rejected | topology_rejected
     }
+
+    /// #3919: whether any failure recorded since `since` (a prior
+    /// `failure_count()`) was an accept-gate rejection
+    /// (`OpenTopologyRejected` / `NonManifoldRejected`). A rejection hands
+    /// back the operand UN-CUT — the same `Ok(host_mesh.clone())` shape
+    /// `subtract_mesh` uses for "nothing to cut here" — so a caller that only
+    /// checks emptiness can't tell the two apart. A caller that treats a gate
+    /// rejection like a kernel error (deferring to a fallback path) must
+    /// check this too.
+    pub(crate) fn has_accept_gate_rejection_since(&self, since: usize) -> bool {
+        let failures = self.failures.borrow();
+        let since = since.min(failures.len());
+        failures[since..].iter().any(|f| {
+            matches!(
+                f.reason,
+                BoolFailureReason::OpenTopologyRejected
+                    | BoolFailureReason::NonManifoldRejected { .. }
+            )
+        })
+    }
 }

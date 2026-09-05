@@ -122,6 +122,7 @@ interface HarnessProps {
 
 function Harness({ typeVisibility, panelVisible, drawing, setDrawing, onRun }: HarnessProps): null {
   const { generateDrawing } = useDrawingGeneration({
+      activeTool: 'select',
     geometryResult: GEOMETRY,
     ifcDataStore: null,
     sectionPlane: { axis: 'down', position: 50, flipped: false },

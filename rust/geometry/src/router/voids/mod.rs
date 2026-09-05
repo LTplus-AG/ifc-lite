@@ -15,7 +15,7 @@ use rustc_hash::FxHashMap;
 mod aabb_clip;
 mod bool2d_path;
 mod coaxial_union;
-mod geom;
+pub(crate) mod geom;
 pub(crate) mod prism_cut;
 mod probe;
 mod synthesis;

@@ -2616,6 +2616,7 @@
     "Classification: interface",
     "ClassificationInfo: interface",
     "ClassificationReference: interface",
+    "ClassificationSystemNames: interface",
     "ClassificationsData: interface",
     "ColumnarParser: class",
     "CompactEntityIndex: class",

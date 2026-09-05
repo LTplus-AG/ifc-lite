@@ -23,9 +23,9 @@ import { oncePerStore } from './on-demand-cache.js';
  *
  * Memoized per store. On models without an IfcMapConversion (e.g. IFC2x3 files
  * that carry CRS in ePSet_MapConversion / ePSet_ProjectedCRS) the underlying
- * scan decodes EVERY IfcPropertySet from the source buffer to match by name —
- * tens of thousands of decodes on property-heavy models. The viewer calls this
- * on the load/render path (ViewportContainer's Cesium-availability check), which
+ * scan considers every IfcPropertySet to match by name. A conservative resident
+ * byte filter skips ordinary names without decoding their property lists.
+ * The viewer calls this on the load/render path (ViewportContainer's Cesium-availability check), which
  * re-runs on every streamed geometry batch, so without caching the cost is
  * O(batches x propertySets) and can turn a multi-second load into minutes.
  * Caching collapses it to a single scan per store. Safe because the result is a
@@ -41,7 +41,8 @@ export function extractGeoreferencingOnDemand(store: IfcDataStore): Georeference
 function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
     if (!store.source?.length || !store.entityIndex) return null;
 
-    const extractor = new EntityExtractor(store.source);
+    const source = store.source;
+    const extractor = new EntityExtractor(source);
     const { byId, byType } = store.entityIndex;
 
     // Build a lightweight entity map for just the georef-related types
@@ -105,6 +106,7 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
             for (const id of psetIds) {
                 const ref = byId.get(id);
                 if (!ref) continue;
+                if (source.isResident && !mayContainGeorefName(source.slice(ref.byteOffset, ref.byteOffset + ref.byteLength))) continue;
                 const entity = extractor.extractEntity(ref);
                 if (!entity?.attributes) continue;
                 // IfcPropertySet: Name (2), HasProperties (4)
@@ -141,4 +143,23 @@ function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | 
 
     // Cast to IfcEntity (they share the same shape)
     return extractGeorefFromEntities(entityMap as Parameters<typeof extractGeorefFromEntities>[0], typeMap);
+}
+
+/**
+ * Negative filter only: both supported names contain ASCII `ePSet_`. Any STEP
+ * escape may encode part of that prefix, so a backslash always keeps the full
+ * decoder. Matches anywhere (including comments/other attributes) also keep it;
+ * only the canonical decoder decides whether Name actually identifies an ePSet.
+ * Compressed sources bypass this filter to avoid an extra inflation/read.
+ */
+function mayContainGeorefName(bytes: Uint8Array): boolean {
+    for (let i = 0; i < bytes.length; i++) {
+        const byte = bytes[i];
+        if (byte === 0x5c) return true;
+        if ((byte | 0x20) === 0x65 && i + 5 < bytes.length
+            && (bytes[i + 1] | 0x20) === 0x70 && (bytes[i + 2] | 0x20) === 0x73
+            && (bytes[i + 3] | 0x20) === 0x65 && (bytes[i + 4] | 0x20) === 0x74
+            && bytes[i + 5] === 0x5f) return true;
+    }
+    return false;
 }

@@ -7,7 +7,7 @@
 //! `intersection` here are what the `ClippingProcessor` seam calls.
 
 use super::arrangement::{
-    boolean, boolean_with_conformity, difference_all, difference_all_lenient, union_all, BoolOp,
+    boolean, boolean_with_conformity, difference_all, difference_all_lenient, BoolOp,
     Tri,
 };
 use super::signed_volume::signed_volume6;
@@ -236,43 +236,10 @@ pub fn union_with_conformity(a: &Mesh, b: &Mesh) -> (Mesh, bool) {
     (tris_to_mesh(&out), conforming)
 }
 
-/// `∪ meshes` as one watertight `Mesh` — the N-ary union, computed in a single
-/// conforming arrangement so coplanar seams shared by 3+ operands (the #960
-/// segmented-roof cutters) dissolve without the tearing that left-deep pairwise
-/// accumulation produces. Empty input ⇒ empty mesh.
-pub fn union_many(meshes: &[&Mesh]) -> Mesh {
-    // Participate in the #1109 budget like `subtract` / `union` — fresh per-boolean
-    // count, per-element accumulator preserved (see `union`).
-    super::budget::begin();
-    // Mutual near-coplanar weld, same as the binary `union` (#3353 N-ary
-    // half). An earlier attempt at this welded already bit-identical shared
-    // vertices onto a spurious nearby plane from an unrelated operand and
-    // regressed `issue_960_segmented_roof_clip`; the guard that fixes that
-    // (skip a cutter vertex already exactly matching a host vertex) lives in
-    // `promote_cutter_verts_onto_host_faces` (`plane_weld.rs`). The
-    // measurements are in `mesh_bridge_tests::issue_3353_nary_near_coplanar`,
-    // kept there rather than restated here so the numbers have one home.
-    let mut tri_lists: Vec<Vec<Tri>> =
-        meshes.iter().map(|m| mesh_to_tris(m)).collect();
-    promote_operands_mutually(&mut tri_lists);
-    let tri_lists: Vec<Vec<Tri>> = tri_lists.into_iter().map(orient_outward).collect();
-    let refs: Vec<&[Tri]> = tri_lists.iter().map(|t| t.as_slice()).collect();
-    let (out, conforming) = union_all(&refs);
-    // #1109 budget trip ⇒ `arrange_many` bailed and `out` is PARTIAL; return empty so
-    // `build_cutter_union` defers to the sequential per-cutter path instead of feeding
-    // a poisoned (non-watertight) cutter union into the subtract.
-    if super::budget::tripped() {
-        return Mesh::new();
-    }
-    // `!conforming` ⇒ an unrecovered constraint left the arrangement non-conforming —
-    // `union_all` now SURFACES the condition `difference_all` hard-rejects (vs the old
-    // silent discard). We deliberately trust the union anyway: the sole caller (#960
-    // `build_cutter_union`) verifies the downstream subtract, and the exact batched
-    // union — even a torn one — beats the sequential fallback that reintroduces the
-    // seam sliver #960 removed (wall #4148: exact → 8984 mm; fallback → 9850 mm).
-    let _ = conforming;
-    tris_to_mesh(&out)
-}
+#[path = "nary_union.rs"]
+mod nary_union;
+pub use nary_union::union_many;
+pub(crate) use nary_union::union_many_preserving_coordinates;
 
 /// `a ∩ b` as the kernel's own exact f64 triangles, WITHOUT the `Mesh` round-trip.
 ///

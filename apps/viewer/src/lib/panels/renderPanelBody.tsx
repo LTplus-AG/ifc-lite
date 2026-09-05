@@ -27,6 +27,7 @@ import { GanttPanel } from '@/components/viewer/schedule/GanttPanel';
 import { ListPanel } from '@/components/viewer/lists/ListPanel';
 import { RoomPanel } from '@/components/viewer/RoomPanel';
 import { ZonesPanel } from '@/components/viewer/ZonesPanel';
+import { LoadReportPanel } from '@/components/viewer/LoadReportPanel';
 // Lazy: the Layers panel pulls in @ifc-lite/merge (engine + blake3); a
 // dynamic chunk keeps it out of the initial bundle until first opened.
 const LayersPanel = lazy(() =>
@@ -60,6 +61,7 @@ export function renderPanelBody(id: WorkspacePanelId, onClose: () => void): Reac
     case 'lists': return <ListPanel onClose={onClose} />;
     case 'collab': return <RoomPanel onClose={onClose} />;
     case 'zones': return <ZonesPanel onClose={onClose} />;
+    case 'loadReport': return <LoadReportPanel onClose={onClose} />;
     case 'layers': return (
       <ChunkErrorBoundary label="Layers panel">
         <Suspense fallback={null}>

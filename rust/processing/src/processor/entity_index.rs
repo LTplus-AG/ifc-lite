@@ -37,7 +37,7 @@ const PAGE_ROWS: usize = 4096;
 
 pub(super) enum IndexBuilder {
     Hash(EntityIndex),
-    Compact { pages: Vec<Vec<Row>>, len: usize },
+    Compact { pages: Vec<Vec<Row>>, len: usize, max_rows: usize },
 }
 
 fn compact_eligible(content_len: usize) -> bool {
@@ -48,7 +48,10 @@ fn compact_eligible(content_len: usize) -> bool {
 impl IndexBuilder {
     pub(super) fn new(content_len: usize, build: bool) -> Self {
         if build && compact_eligible(content_len) {
-            Self::Compact { pages: Vec::new(), len: 0 }
+            // Reuse the old hash path's source-based capacity estimate as a
+            // hard staging budget. Short duplicate-heavy records must not
+            // retain one compact row per record indefinitely (#3921).
+            Self::Compact { pages: Vec::new(), len: 0, max_rows: content_len / 50 }
         } else {
             Self::Hash(FxHashMap::with_capacity_and_hasher(
                 if build { content_len / 50 } else { 0 }, Default::default()))
@@ -56,9 +59,20 @@ impl IndexBuilder {
     }
 
     pub(super) fn insert(&mut self, id: u32, span: (usize, usize)) {
+        if matches!(self, Self::Compact { len, max_rows, .. } if *len == *max_rows) {
+            let Self::Compact { pages, .. } = std::mem::replace(self, Self::Hash(FxHashMap::default())) else {
+                unreachable!("only the compact builder exhausts a row budget");
+            };
+            let Self::Hash(index) = self else { unreachable!("installed hash builder") };
+            for page in pages {
+                for (id, start, length) in page {
+                    index.insert(id, (start as usize, start as usize + length as usize));
+                }
+            }
+        }
         match self {
             Self::Hash(index) => { index.insert(id, span); }
-            Self::Compact { pages, len } => {
+            Self::Compact { pages, len, .. } => {
                 debug_assert!(span.0 <= span.1 && u32::try_from(span.1).is_ok());
                 if pages.last().is_none_or(|page| page.len() == PAGE_ROWS) {
                     pages.push(Vec::with_capacity(PAGE_ROWS));
@@ -73,7 +87,7 @@ impl IndexBuilder {
     pub(super) fn finish(self) -> ProcessingIndex {
         match self {
             Self::Hash(index) => ProcessingIndex::Hash(Arc::new(index)),
-            Self::Compact { pages, len } => {
+            Self::Compact { pages, len, .. } => {
                 // Fixed pages avoid geometric Vec over-allocation. At most
                 // two 12-byte representations overlap; release each consumed
                 // page as the contiguous sort input fills.

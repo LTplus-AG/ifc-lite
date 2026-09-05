@@ -259,6 +259,8 @@ missing IDs and empty spans. Install an index only on a decoder for the same
 source. Native loading selects this representation when suitable, uses compact
 sorted columns for sparse IDs, and retains the hash-index path for sources whose
 offsets exceed `u32`. Caller-supplied `Arc<EntityIndex>` values remain supported.
+Compact staging has a source-based row budget; denser record streams switch to
+hash indexing during the scan, coalescing duplicate IDs as they arrive.
 
 ### Streaming Module
 

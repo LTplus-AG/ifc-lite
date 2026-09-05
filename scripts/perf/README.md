@@ -175,6 +175,8 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
   and discovery reads unrelated property sets without retaining them. Large
   sources with `u32` offsets build compact rows in fixed pages, then select a
   direct-address index only when its allocation fits within compact columns.
+  Intermediate rows have a source-based budget; unusually dense record streams
+  switch to hash coalescing so duplicate records cannot keep growing staging.
   Sparse IDs keep sorted columns; wider sources and supplied hash indexes retain
   their existing representation. Duplicate IDs still resolve to their last
   authored span. Interleaved fresh-process comparisons covered large MEP,

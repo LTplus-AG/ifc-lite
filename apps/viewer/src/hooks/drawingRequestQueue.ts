@@ -15,7 +15,14 @@ export function createDrawingRequestQueue() {
       while (pending) {
         const next = pending;
         pending = undefined;
-        await next.run(() => next.revision === revision);
+        try {
+          await next.run(() => next.revision === revision);
+        } catch (error) {
+          if (!pending) throw error;
+          // All callers await the drain's newest request. An obsolete failure
+          // is reported, but must not discard newer work already waiting.
+          console.error('Superseded drawing request failed:', error);
+        }
       }
     } finally {
       pending = undefined;

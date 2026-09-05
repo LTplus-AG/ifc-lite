@@ -427,15 +427,7 @@ export function findDuplicates(elements: ClashElement[], options: DuplicateOptio
     clashes,
     summary: summarizeClashes(clashes),
     rulesRun: [DUPLICATES_RULE],
-    ruleCoverage: [
-      {
-        rule: DUPLICATES_RULE.id,
-        matchedA: elements.length,
-        matchedB: null,
-        matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(),
-        matchedKeysB: null,
-      },
-    ],
+    ruleCoverage: [{ rule: DUPLICATES_RULE.id, matchedA: elements.length, matchedB: null, matchedKeysA: [...new Set(elements.map((el) => el.key))].sort(), matchedKeysB: null }],
     settings: { tolerance: positionTolerance, excludeVoidsAndHosts: exclusions != null },
   };
 }

@@ -125,7 +125,8 @@ beforeEach(async () => {
   originalPostMessage = g.postMessage;
   g.self = globalThis;
   g.postMessage = (msg: unknown) => postedMessages.push(msg);
-  await import('./parser.worker.js?t=' + ++importCounter);
+  importCounter += 1;
+  await import('./parser.worker.js?t=' + importCounter);
 }, WORKER_IMPORT_HOOK_TIMEOUT_MS);
 
 afterEach(() => {

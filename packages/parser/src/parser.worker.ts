@@ -22,7 +22,6 @@ import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { WasmScanApi } from './entity-scanner.js';
 import {
-  collectTransferables,
   toTransport,
   transportByteSize,
   type DataStoreTransport,

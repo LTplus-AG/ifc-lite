@@ -71,8 +71,9 @@
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { browserStaticPath } from './browser-cold-server-path.js';
+import { prepareBrowserOutputs } from './browser-cold-outputs.js';
 import { createServer } from 'node:http';
-import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
+import { createReadStream, existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
@@ -135,6 +136,12 @@ const FAULT_MS = Number(flag('--fault-inject-ms') ?? '0');
 const FAULT_SIDE = flag('--fault-inject-side') ?? 'branch'; // 'base' | 'branch'
 const FAULT_PATTERN = flag('--fault-inject-pattern') ?? '\\.wasm(\\?|$)';
 const TIMEOUT_MS = Number(flag('--timeout-ms') ?? '180000');
+for (const [name, value, minimum] of [['--fault-inject-ms', FAULT_MS, 0], ['--timeout-ms', TIMEOUT_MS, 1]] as const) {
+  if (!Number.isFinite(value) || value < minimum) {
+    console.error(`browser-cold-ab: ${name} must be finite and at least ${minimum}`);
+    process.exit(2);
+  }
+}
 
 if (!existsSync(DIST_BRANCH)) {
   console.error(`browser-cold-ab: --dist-branch not found: ${DIST_BRANCH} (build it first, e.g. \`pnpm turbo build --filter=@ifc-lite/viewer\`)`);
@@ -175,7 +182,7 @@ if (fixtures.length === 0) {
   process.exit(2);
 }
 
-mkdirSync(RESULTS_DIR, { recursive: true });
+prepareBrowserOutputs(RESULTS_DIR, JSONL_OUT, REPORT_JSON);
 writeFileSync(JSONL_OUT, ''); // truncate; this run's results only
 
 // ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ test('#3978 static root rejects encoded traversal into a sibling with the same p
   assert.equal(browserStaticPath(root, '/'), resolve(root, 'index.html'));
   assert.equal(browserStaticPath(root, '/assets/app.js?q=1'), resolve(root, 'assets/app.js'));
 });
-for (const [flag, value, expected] of [['--port', '65536', /port must be an integer/], ['--iters', '1.5', /iters must/]]) {
+for (const [flag, value, expected] of [['--port', '65536', /port must be an integer/], ['--iters', '1.5', /iters must/], ['--fault-inject-ms', 'abc', /fault-inject-ms must/], ['--timeout-ms', 'abc', /timeout-ms must/], ['--timeout-ms', '-1', /timeout-ms must/], ['--fault-inject-ms', '-1', /fault-inject-ms must/]]) {
   test(`#3978 rejects ${flag} ${value} before opening a browser/server`, () => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', flag, value], { encoding: 'utf8' });
     assert.notEqual(result.status, 0);
@@ -49,4 +49,20 @@ test('#3978 strict manual loading starts observation without the legacy one-seco
   assert.deepEqual(events, ['manual.ifc']);
   await benchmark.loadFile('ci.ifc');
   assert.deepEqual(events, ['manual.ifc', 'ci.ifc', 1000]);
+});
+
+test('#3978 separate nested JSONL/report destinations are writable before browser startup', async () => {
+  const { mkdtempSync, writeFileSync, readFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { prepareBrowserOutputs } = await tsImport('./perf/browser-cold-outputs.ts', import.meta.url);
+  const root = mkdtempSync(resolve(tmpdir(), 'browser-outputs-'));
+  try {
+    const jsonl = resolve(root, 'new-jsonl/deep/runs.jsonl');
+    const report = resolve(root, 'other-report/deep/report.json');
+    prepareBrowserOutputs(resolve(root, 'screenshots'), jsonl, report);
+    writeFileSync(jsonl, 'retained sample\n');
+    writeFileSync(report, '{}');
+    assert.equal(readFileSync(jsonl, 'utf8'), 'retained sample\n');
+    assert.equal(readFileSync(report, 'utf8'), '{}');
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

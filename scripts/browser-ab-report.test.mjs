@@ -181,3 +181,15 @@ test('#3978 optional metrics require five matching finite round values', () => {
   assert.match(result.out, /insufficient paired samples/);
   assert.doesNotMatch(result.out, /spatial-ready/);
 });
+
+test('#3978 an entirely unavailable optional metric is omitted without invalidating complete metrics', () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ['A', 'B'].map(side => {
+    const row = sample({ side, fixture: 'absent-optional', round: i + 1 });
+    row.spatialReadyMs = null;
+    return row;
+  })).flat();
+  const result = run(rows);
+  assert.equal(result.code, 0);
+  assert.doesNotMatch(result.out, /spatial-ready|insufficient paired samples/);
+  assert.match(result.out, /VERDICT: no metric moved/);
+});

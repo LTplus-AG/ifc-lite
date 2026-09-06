@@ -118,4 +118,6 @@ else
   echo "browser-cold-ab.sh: no --base and no origin/main — running self-mode (repeatability only, no base build)." >&2
 fi
 
-exec npx tsx scripts/perf/browser-cold-ab.mts "${CMD_ARGS[@]}"
+status=0
+npx tsx scripts/perf/browser-cold-ab.mts "${CMD_ARGS[@]}" || status=$?
+exit "$status"

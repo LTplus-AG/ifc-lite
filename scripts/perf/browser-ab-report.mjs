@@ -160,9 +160,9 @@ for (const [fixture, sides] of byFixture) {
     const matchedRounds = [...baseValues.keys()].filter(round => branchValues.has(round));
     const bv = matchedRounds.map(round => baseValues.get(round));
     const brv = matchedRounds.map(round => branchValues.get(round));
+    if (!matchedRounds.length) continue;
     const metricSufficient = sufficient && matchedRounds.length >= 5;
     if (!metricSufficient) anyInsufficientSamples = true;
-    if (!bv.length || !brv.length) continue;
     const bMed = median(bv);
     const brMed = median(brv);
     const d = pct(brMed, bMed);

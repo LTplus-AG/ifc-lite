@@ -1,5 +1,5 @@
 ---
-"@ifc-lite/ids": patch
+"@ifc-lite/ids": minor
 ---
 
 The full IDS validator preserves `CLASSIFICATION_UNRESOLVED` as a nonpassing outcome for required, optional, and prohibited requirements. In particular, unknown classification presence cannot certify that a prohibition is satisfied.

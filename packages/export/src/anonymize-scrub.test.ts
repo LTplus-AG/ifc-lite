@@ -426,3 +426,108 @@ describe('applyScrub: return value', () => {
     expect(content).not.toContain('Wall A');
   });
 });
+
+/**
+ * `IfcComplexProperty` (#4042): `isNonRootNameExempt`'s
+ * `startsWith('IFCPROPERTY')` check is meant to exempt every `IfcProperty`
+ * subtype's `Name` from `pseudonymizeAllNames`'s non-root sweep — the
+ * exemption exists so property/quantity names stay legible under
+ * `keepPropertySets` (see the doc above `isNonRootNameExempt`). But
+ * `IfcComplexProperty` is a direct `IfcProperty` subtype in both the
+ * IFC4 and IFC4X3 EXPRESS schemas (`ENTITY IfcProperty ABSTRACT SUPERTYPE
+ * OF (ONEOF (IfcComplexProperty, IfcSimpleProperty))`) whose own name
+ * does not start with `IFCPROPERTY`, so it falls through to the sweep and
+ * gets pseudonymized instead of exempted — an over-scrub, not a leak: the
+ * composite property's real name is lost from the debugging repro the
+ * exemption exists for, but nothing extra escapes scrubbing.
+ *
+ * A minimal fixture with its own `IfcPropertySet` (kept via
+ * `keepPropertySets`, reached through `IfcWallType.HasPropertySets` the
+ * same way the shared fixture's #7/#8 are) holding one `IfcPropertySingleValue`
+ * (the control: already correctly exempt) and one `IfcComplexProperty` (the
+ * regression this issue is about).
+ */
+const COMPLEX_PROPERTY_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('complex-property-fixture.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('${guid(1)}',#10,'Project One',$,$,$,$,$,#61);
+#60=IFCMONETARYUNIT('NOK');
+#61=IFCUNITASSIGNMENT((#60));
+#4=IFCBUILDINGSTOREY('${guid(4)}',#10,'Storey One',$,$,$,$,$,$,0.);
+#5=IFCWALL('${guid(5)}',#10,'Wall A',$,$,$,$,'TAG-A');
+#6=IFCWALLTYPE('${guid(6)}',#10,'WallType A',$,$,(#7),$,$,$,.NOTDEFINED.);
+#7=IFCPROPERTYSET('${guid(7)}',#10,'Pset_Test',$,(#8,#9));
+#8=IFCPROPERTYSINGLEVALUE('SimpleProp',$,IFCLABEL('foo'),$);
+#9=IFCCOMPLEXPROPERTY('ComplexProp',$,'Usage',(#8));
+#10=IFCOWNERHISTORY(#13,#14,$,.NOCHANGE.,1700000001,$,$,1700000000);
+#11=IFCPERSON('IDENT-1','Doe','Jane',$,$,$,$,$);
+#12=IFCORGANIZATION($,'Acme Consulting','Structural Engineering',$,$);
+#13=IFCPERSONANDORGANIZATION(#11,#12,$);
+#14=IFCAPPLICATION(#12,'26.0.0 NOR FULL','ifc-lite','ifc-lite-export');
+#20=IFCRELCONTAINEDINSPATIALSTRUCTURE('${guid(20)}',#10,$,$,(#5),#4);
+#21=IFCRELDEFINESBYTYPE('${guid(21)}',#10,$,$,(#5),#6);
+#30=IFCRELAGGREGATES('${guid(30)}',#10,$,$,#1,(#4));
+ENDSEC;
+END-ISO-10303-21;`;
+
+// #7/#8/#9 (the property set and its two properties) are included explicitly
+// rather than relied on to arrive through the exporter's own forward
+// closure — whether a `HasPropertySets` reference is followed into that
+// closure is an orthogonal `visibleOnly`-style concern this test is not
+// about; it only needs #7-#9 to be present in the export so their pseudonym
+// (or lack of one) can be asserted.
+const COMPLEX_PROPERTY_INCLUDED_IDS = new Set([1, 4, 5, 6, 7, 8, 9, 20, 21, 30]);
+
+async function complexPropertyFixture() {
+  const store = await parse(COMPLEX_PROPERTY_MODEL);
+  const view = new MutablePropertyView(null, 'anonymize');
+  const index = getEffectiveEntityIndex(store, view, true);
+  return { store, view, index };
+}
+
+function exportComplexPropertyFixture(store: IfcDataStore, view: MutablePropertyView): string {
+  return decode(
+    new StepExporter(store, view).export({
+      schema: 'IFC4',
+      subsetEntityIds: COMPLEX_PROPERTY_INCLUDED_IDS,
+      author: '',
+      organization: '',
+      authorization: '',
+      timeStamp: '2024-01-01T00:00:00',
+    }).content,
+  );
+}
+
+describe('applyScrub: isNonRootNameExempt covers IfcComplexProperty (#4042)', () => {
+  it('exempts IfcComplexProperty.Name from pseudonymization, same as IfcPropertySingleValue.Name', async () => {
+    const { store, view, index } = await complexPropertyFixture();
+    applyScrub(store, index, COMPLEX_PROPERTY_INCLUDED_IDS, view, {
+      keepPropertySets: true,
+      guidRandom: seededRandom(1),
+    });
+    const content = exportComplexPropertyFixture(store, view);
+
+    // Control: IfcPropertySingleValue.Name is already correctly exempt.
+    expect(lineArgs(content, 8)[0]).toBe("'SimpleProp'");
+    // Regression: IfcComplexProperty.Name must be exempt too, not pseudonymized.
+    expect(lineArgs(content, 9)[0]).toBe("'ComplexProp'");
+  });
+
+  it('control: a type that should still be scrubbed (IfcPropertySet, an IfcRoot) still is', async () => {
+    const { store, view, index } = await complexPropertyFixture();
+    applyScrub(store, index, COMPLEX_PROPERTY_INCLUDED_IDS, view, {
+      keepPropertySets: true,
+      guidRandom: seededRandom(1),
+    });
+    const content = exportComplexPropertyFixture(store, view);
+
+    // IfcPropertySet is IfcRoot, not covered by isNonRootNameExempt at all —
+    // its Name is still pseudonymized under the root sweep regardless of
+    // this fix, proving the exemption did not widen too far.
+    expect(lineArgs(content, 7)[2]).toBe("'IfcPropertySet-1'");
+  });
+});

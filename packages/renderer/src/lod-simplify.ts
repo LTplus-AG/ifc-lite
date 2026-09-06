@@ -72,7 +72,8 @@ export function simplifyIndicesByClustering(
   // same population.
   const vertexCount = strideFloats > 0 ? (vertexData.length / strideFloats) | 0 : 0;
   const cellOf = new Int32Array(vertexCount).fill(-1); // vertexIndex -> representative, -1 = unset
-  const repOfCell = new Map<string, number>(); // cell key -> representative vertexIndex
+  const repOfCell = new Map<number | string, number>(); // exact cell key -> representative vertexIndex
+  let cellOrigin: readonly [number, number, number] | undefined;
 
   // Clustering is ENTITY-SCOPED: the per-vertex entityId lane (u32 bit-cast
   // at float offset 6 in the batch layout) joins the cell key, so co-located
@@ -93,7 +94,26 @@ export function simplifyIndicesByClustering(
     const cy = Math.floor(vertexData[base + 1] / cellSize);
     const cz = Math.floor(vertexData[base + 2] / cellSize);
     const entity = idLane ? idLane[base + 6] : 0;
-    const key = `${cx},${cy},${cz},${entity}`;
+    // #3991: normal LOD cells fit in a small neighborhood. Pack that exact
+    // neighborhood with the FULL u32 entity lane instead of allocating a key
+    // string per vertex. Keep generic tiny-cell/huge/nonfinite inputs exact.
+    let key: number | string;
+    if (Number.isSafeInteger(cx) && Number.isSafeInteger(cy) && Number.isSafeInteger(cz)) {
+      cellOrigin ??= [cx, cy, cz];
+      const dx = cx - cellOrigin[0];
+      const dy = cy - cellOrigin[1];
+      const dz = cz - cellOrigin[2];
+      if (dx >= -64 && dx < 64 && dy >= -64 && dy < 64 && dz >= -64 && dz < 64) {
+        // Safe integer coordinates and anchor make these bounded differences
+        // exact. 3 * 7 cell bits + 32 entity bits fit in 53 bits: the largest
+        // possible key is 2^53 - 1, with no rounding or dropped entity bits.
+        key = entity * 0x200000 + (dx + 64) * 0x4000 + (dy + 64) * 0x80 + dz + 64;
+      } else {
+        key = `${cx},${cy},${cz},${entity}`;
+      }
+    } else {
+      key = `${cx},${cy},${cz},${entity}`;
+    }
     const existing = repOfCell.get(key);
     let rep: number;
     if (existing === undefined) {

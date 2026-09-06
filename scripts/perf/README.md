@@ -643,3 +643,14 @@ moves compression off the interaction thread without removing its CPU or memory
 cost. Cumulative qualification must include cache completion, full-lifetime
 memory and actual cache reopening; raw IFC timing must not be replaced by a
 prepared reload. No isolated throughput gain is attributed to this layer.
+
+### Retained cold-load work: exact LOD keys (#3991)
+
+Bounded LOD cell neighborhoods use exact integer keys containing all three cell
+coordinates and the full entity ID. Inputs outside the proved range keep the
+existing string representation. The independent tuple oracle checks identical
+representatives and triangle order, including range boundaries, subviews,
+nonfinite coordinates and full-width entity IDs. This removes per-vertex key
+allocation; no isolated end-to-end speedup is attributed to this layer. The
+retained cold-load stack must carry its cumulative browser qualification,
+including picking and peak-memory observations, before landing.

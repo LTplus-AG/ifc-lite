@@ -163,19 +163,19 @@ pub(super) fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u
         parse_first_ref(bytes)?
     };
     let face_ids = decoder.get_entity_ref_list_fast(shell_id)?;
-
+    let (mut bound_ids, mut coords) = (Vec::new(), Vec::new());
     let mut acc = fold(0, FACETED_BREP_TAG);
     acc = fold(acc, face_ids.len() as u64);
     for face_id in face_ids {
-        let bound_ids = decoder.get_entity_ref_list_fast(face_id)?;
+        decoder.get_entity_ref_list_fast_into(face_id, &mut bound_ids)?;
         acc = fold(acc, bound_ids.len() as u64);
-        for bound_id in bound_ids {
+        for &bound_id in &bound_ids {
             let (loop_id, orientation, is_outer) = decoder.get_face_bound_fast(bound_id)?;
             acc = fold(acc, orientation as u64);
             acc = fold(acc, is_outer as u64);
-            let coords = decoder.get_polyloop_coords_cached(loop_id)?;
+            decoder.get_polyloop_coords_cached_into(loop_id, &mut coords)?;
             acc = fold(acc, coords.len() as u64);
-            for (x, y, z) in coords {
+            for &(x, y, z) in &coords {
                 acc = fold(acc, x.to_bits());
                 acc = fold(acc, y.to_bits());
                 acc = fold(acc, z.to_bits());
@@ -305,8 +305,8 @@ fn sig_entity(
     // net loss on procedural geometry (#1177) and kept the gate brep-only. Walk
     // the record bytes folding literals, and on each `#ref` recurse so the hash
     // stays structural + renumbering-invariant (the entity's own id is skipped).
-    let raw: Vec<u8> = match decoder.get_raw_bytes(id) {
-        Some(b) => b.to_vec(),
+    let raw = match decoder.get_raw_bytes(id) { // #3988: borrows source, not decoder state.
+        Some(b) => b,
         None => {
             // Unresolvable reference: a fixed sentinel (NOT the id, so structurally
             // identical-but-renumbered files still collide).
@@ -315,7 +315,7 @@ fn sig_entity(
             return s;
         }
     };
-    let acc = sig_walk_bytes(decoder, &raw, memo, depth, refused);
+    let acc = sig_walk_bytes(decoder, raw, memo, depth, refused);
     memo.insert(id, acc);
     acc
 }

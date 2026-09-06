@@ -604,3 +604,7 @@ Use reusable output buffers and a validated string projection where consumers di
 ### Retained canonical lexical and schema work (#4001)
 
 Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Retained as part of cumulative cold-load qualification; no isolated native or browser gain is claimed. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
+
+### Retained mesh bookkeeping and no-op copies (#3988)
+
+Orientation reuses deterministic edge adjacency, while triangle filters compact their existing index buffer and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Retained in cumulative cold-load qualification; do not extrapolate sampled leaf CPU to a per-layer throughput claim. Keep exact output and diagnostic oracles, including invalid/degenerate triangles and reused buffer capacity. Owned-weld, sliver-incidence and alternate meshing experiments are not included.

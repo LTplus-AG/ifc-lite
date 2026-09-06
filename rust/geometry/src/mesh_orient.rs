@@ -33,38 +33,11 @@ use crate::Mesh;
 use rustc_hash::FxHashMap;
 use std::cell::RefCell;
 
-/// Incident-triangle record for one undirected welded edge. A boundary edge has
-/// one incident triangle and a manifold edge exactly two, so the two triangle
-/// slots are stored INLINE — replacing the old per-edge heap `Vec<usize>`, which
-/// allocated ~1.5 tiny Vecs per triangle and dominated the allocator churn of
-/// this pass on mesh-heavy models. `count` is the TRUE incidence; a value > 2
-/// marks a non-manifold edge, which the propagation skips before ever reading
-/// the slots. Only the first two triangles are consulted, stored in ascending
-/// scan order (identical to the old `Vec` push order), so the BFS traversal —
-/// and therefore every flip decision — is byte-identical.
-#[derive(Clone, Copy, Default)]
-struct EdgeInc {
-    tris: [usize; 2],
-    count: u32,
-}
-
-impl EdgeInc {
-    #[inline]
-    fn push(&mut self, t: usize) {
-        if (self.count as usize) < 2 {
-            self.tris[self.count as usize] = t;
-        }
-        self.count += 1;
-    }
-
-    /// The incident triangles the propagation may consult (the first two, in
-    /// push order). Only reached for `count` of 1 or 2 — the `count > 2` path
-    /// `continue`s first — so this yields exactly what the old `Vec` iterated.
-    #[inline]
-    fn incident(&self) -> &[usize] {
-        &self.tris[..(self.count as usize).min(2)]
-    }
-}
+#[path = "mesh_orient_adjacency.rs"]
+mod adjacency;
+use adjacency::EdgeAdjacency;
+#[cfg(test)]
+use adjacency::EdgeInc;
 
 /// Vertex weld grid scale (reciprocal of a 10 µm grid, i.e. positions are
 /// quantized to `round(v * WELD_SCALE)`): fine enough not to merge distinct
@@ -76,7 +49,7 @@ const WELD_SCALE: f64 = 1.0e5;
 
 /// Per-worker reusable scratch for [`orient_mesh_outward`], cleared (never freed)
 /// between meshes. The pass runs once per assembled submesh (~109k times on a
-/// mesh-heavy model), so each fresh call's two `FxHashMap`s + six `Vec`s were
+/// mesh-heavy model), so each fresh call's two `FxHashMap`s + the traversal `Vec`s were
 /// ~4-6% of busy CPU on pure-brep/steel models; pooling makes it allocate-once,
 /// clear-many. BYTE-IDENTICAL: neither map is ever iterated — both are only
 /// `.entry()`-inserted (order fixed by the deterministic scan) and keyed-looked-up,
@@ -88,7 +61,7 @@ struct OrientScratch {
     vid_of: FxHashMap<(i64, i64, i64), u32>,
     vpos: Vec<[f64; 3]>,
     corner: Vec<u32>,
-    edge_tris: FxHashMap<(u32, u32), EdgeInc>,
+    edge_tris: EdgeAdjacency,
     flip: Vec<bool>,
     visited: Vec<bool>,
     comp: Vec<usize>,
@@ -221,9 +194,14 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
     corner.clear();
     corner.reserve(mesh.indices.len());
 
-    // Weld positions -> welded vertex id; record the welded vid of every corner.
+    // #3988: indexed corners repeatedly use the SAME source vertex. Reuse its
+    // welded id, keeping the original first-corner insertion order. Sparse meshes
+    // use corner slots instead, so scratch never exceeds the old corner budget.
+    let indexed = vertex_count < mesh.indices.len();
+    if indexed { corner.resize(vertex_count, u32::MAX); }
     let q = |v: f32| (v as f64 * WELD_SCALE).round() as i64;
     for &idx in &mesh.indices {
+        if indexed && corner[idx as usize] != u32::MAX { continue; }
         let b = idx as usize * 3;
         let key = (
             q(mesh.positions[b]),
@@ -239,22 +217,23 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
             ]);
             id
         });
-        corner.push(vid);
+        if indexed { corner[idx as usize] = vid; } else { corner.push(vid); }
     }
-    let tv = |t: usize| [corner[3 * t], corner[3 * t + 1], corner[3 * t + 2]];
+    let tv = |t: usize| std::array::from_fn::<_, 3, _>(|k| {
+        corner[if indexed { mesh.indices[3 * t + k] as usize } else { 3 * t + k }]
+    });
 
     // Undirected welded edge -> incident triangles. >2 incident ⇒ non-manifold.
     // A closed manifold has ~1.5 edges per triangle; reserve to skip rehashing.
-    edge_tris.clear();
-    edge_tris.reserve(ntri * 2);
+    edge_tris.reset(ntri);
     for t in 0..ntri {
         let v = tv(t);
-        for &(a, b) in &[(v[0], v[1]), (v[1], v[2]), (v[2], v[0])] {
+        for (slot, &(a, b)) in [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])].iter().enumerate() {
             if a == b {
                 continue; // welded-degenerate edge
             }
             let key = if a < b { (a, b) } else { (b, a) };
-            edge_tris.entry(key).or_default().push(t);
+            edge_tris.push(key, t * 3 + slot);
         }
     }
 
@@ -303,22 +282,16 @@ pub fn orient_mesh_outward_verdict(mesh: &mut Mesh) -> OrientVerdict {
             } else {
                 [(v[0], v[1]), (v[1], v[2]), (v[2], v[0])]
             };
-            for &(a, b) in &dirs {
+            for (slot, &(a, b)) in dirs.iter().enumerate() {
                 if a == b {
                     continue;
                 }
                 let key = if a < b { (a, b) } else { (b, a) };
-                let inc = &edge_tris[&key];
-                if inc.count != 2 {
-                    closed = false; // boundary (1) or non-manifold (>2) edge
-                }
-                if inc.count > 2 {
-                    continue; // ambiguous — don't propagate across a non-manifold edge
-                }
-                for &nb in inc.incident() {
-                    if nb == t {
-                        continue;
-                    }
+                let original_slot = if flip[t] { 2 - slot } else { slot };
+                let (closed_edge, neighbors) = edge_tris.neighbors(key, t * 3 + original_slot);
+                if !closed_edge { closed = false; }
+                for nb in neighbors {
+                    if nb == usize::MAX || nb == t { continue; }
                     // A consistent neighbour must traverse this edge as (b, a). Its
                     // UNFLIPPED winding has (a, b) iff it must flip to do so.
                     let nv = tv(nb);

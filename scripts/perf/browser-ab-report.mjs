@@ -155,16 +155,21 @@ for (const [fixture, sides] of byFixture) {
   lines.push(`    ${'metric'.padEnd(30)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of METRICS) {
-    const bv = baseVals.map((r) => r[key]).filter((x) => typeof x === 'number');
-    const brv = branchVals.map((r) => r[key]).filter((x) => typeof x === 'number');
+    const baseValues = new Map(baseVals.filter(row => Number.isFinite(row[key])).map(row => [row.round, row[key]]));
+    const branchValues = new Map(branchVals.filter(row => Number.isFinite(row[key])).map(row => [row.round, row[key]]));
+    const matchedRounds = [...baseValues.keys()].filter(round => branchValues.has(round));
+    const bv = matchedRounds.map(round => baseValues.get(round));
+    const brv = matchedRounds.map(round => branchValues.get(round));
+    const metricSufficient = sufficient && matchedRounds.length >= 5;
+    if (!metricSufficient) anyInsufficientSamples = true;
     if (!bv.length || !brv.length) continue;
     const bMed = median(bv);
     const brMed = median(brv);
     const d = pct(brMed, bMed);
-    const noise = sufficient ? spreadPct(bv) : null;
+    const noise = metricSufficient ? spreadPct(bv) : null;
     // Same rule as the native ab-report: a change only counts if it clears
     // both the base's own noise floor AND a small absolute ms floor.
-    const real = sufficient && noise != null && d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 5;
+    const real = metricSufficient && noise != null && d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 5;
     if (real) anyRealChange = true;
     if (key === 'metadataRenderReadyMs' && noise != null && noise > 20) anyTooNoisy = true;
     const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
@@ -181,6 +186,9 @@ if (rows.length === 0) {
   lines.push('VERDICT: ❌ no successful samples — see failures above. This is a harness fault, not a clean run.');
 } else if (anyFingerprintDrift) {
   lines.push('VERDICT: ⚠️  totalMeshes fingerprint changed — the timing delta is not like-for-like; state the output change or investigate before trusting any number here.');
+} else if (failedRows.length > 0) {
+  lines.push('VERDICT: failed samples invalidate this run; descriptive successful observations are not a clean performance qualification.');
+  if (anyIncomparableFixture) lines.push('VERDICT: inconclusive — at least one fixture had no comparable samples; this is NOT a clean "no regression" result.');
 } else if (anyTooNoisy) {
   lines.push('VERDICT: ⚠️  machine too noisy (base observed-readiness spread >20%) — close other load and re-run with more --iters before trusting any delta.');
 } else {

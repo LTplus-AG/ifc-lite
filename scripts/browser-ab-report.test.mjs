@@ -126,7 +126,8 @@ test('a real regression on one fixture and a crashed-on-one-side second fixture:
     sample({ side: 'B', fixture: 'crashed', round: 2 }),
   ]);
   assert.notEqual(r.code, 0, r.out);
-  assert.match(r.out, /VERDICT: a metric moved beyond the noise floor/);
+  assert.match(r.out, /VERDICT: failed samples invalidate/);
+  assert.doesNotMatch(r.out, /VERDICT: a metric moved beyond the noise floor/);
   assert.match(r.out, /VERDICT: .*inconclusive.*NOT a clean "no regression" result/);
 });
 
@@ -158,5 +159,25 @@ test('#3978 a failed round invalidates otherwise comparable successful samples',
   const rows = Array.from({ length: 5 }, (_, i) => ['A', 'B'].map(side =>
     sample({ side, fixture: 'same', round: i + 1 }))).flat();
   rows.push(sample({ side: 'A', fixture: 'same', round: 6, ok: false }));
-  assert.equal(run(rows).code, 1);
+  const result = run(rows);
+  assert.equal(result.code, 1);
+  assert.match(result.out, /VERDICT: failed samples invalidate/);
+  assert.doesNotMatch(result.out, /VERDICT: no metric moved/);
+});
+
+test('#3978 optional metrics require five matching finite round values', () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ['A', 'B'].map(side => {
+    const row = sample({ side, fixture: 'partial-optional', round: i + 1 });
+    row.firstVisibleGeometryMs = i === 0 ? (side === 'A' ? 100 : 1000) : null;
+    row.spatialReadyMs = (side === 'A' ? i === 0 : i === 1) ? 500 : null;
+    return row;
+  })).flat();
+  const result = run(rows);
+  assert.equal(result.code, 0);
+  const metricLine = result.out.split('\n').find(line => line.includes('first-visible (actual paint)'));
+  assert.match(metricLine, /n\/a/);
+  assert.doesNotMatch(metricLine, /±|✅|⛔/);
+  assert.doesNotMatch(result.out, /VERDICT: a metric moved|VERDICT: no metric moved/);
+  assert.match(result.out, /insufficient paired samples/);
+  assert.doesNotMatch(result.out, /spatial-ready/);
 });

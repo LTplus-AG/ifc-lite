@@ -114,6 +114,85 @@ WASM-specific structural cost (not in the native probe, by design):
 - **No wasm threads in the live path**: `init_thread_pool` exists only in the
   `threads` bundle (off by default); cross-worker parallelism is the JS pool.
 
+## Large-model browser cold-load A/B (#3978)
+
+`browser-cold-ab.sh` (wrapper) / `browser-cold-ab.mts` (harness) / `browser-ab-report.mjs`
+(reporter). Preserves the mechanism behind #3921's private large-model
+qualification (11 real IFC models, interleaved fresh-Chrome-process base/branch
+pairs) as a repeatable, in-repo tool, instead of that mechanism living only as
+one-off private scripts and a set of hardware-specific numbers pasted into a
+PR description.
+
+**DELIBERATELY MANUAL — NOT WIRED INTO CI.** `node scripts/check-test-wiring.mjs`
+does not require a `package.json`/workflow entry for anything under
+`scripts/perf/` (the same carve-out `ab.sh`/`probe.sh` already use); nothing
+here runs on a PR. It launches a real, dedicated Chromium process per sample
+and is meant to be pointed at private multi-hundred-MB models — neither
+belongs on a shared runner. `.github/workflows/benchmark.yml` is the separate,
+CI-wired, advisory-only sibling and is unaffected.
+
+```bash
+# public-fixture A/B, working tree only (repeatability check / no --base):
+scripts/perf/browser-cold-ab.sh --skip-branch-build --iters 5
+
+# real base-vs-branch (builds BASE in a throwaway git worktree):
+scripts/perf/browser-cold-ab.sh --base origin/main --iters 5
+
+# add private/large local models (never fetched or committed by this tool):
+cp scripts/perf/browser-corpus.example.json scripts/perf/browser-corpus.local.json
+# edit browser-corpus.local.json with real absolute paths, then:
+scripts/perf/browser-cold-ab.sh --corpus scripts/perf/browser-corpus.local.json
+```
+
+**What "cold" means, precisely:** each sample gets a brand-new
+`chromium.launch()` (no persistent profile) closed completely before the next
+one starts — fresh WASM instantiation, fresh geometry-worker pool startup, and
+an empty Cache API/localStorage/IndexedDB every time. It does **not** control
+the OS file cache (same caveat #3921's own qualification recorded). Observed metadata/render readiness (`metadataRenderReadyMs`) and "first geometry" (`firstBatchWaitMs`/
+`firstVisibleGeometryMs`) are reported as separate rows, never collapsed.
+
+**Repeatability:** samples are interleaved (A, B, A, B, …), and the reporter
+only calls a delta "real" once it clears the base side's own round-to-round
+spread — the same noise-floor discipline as `ab-report.mjs` for the native
+probe. Historical runs in the original PR used the app summary as TOTAL;
+that metric could precede metadata completion and does not qualify the new
+observed boundary. The existing CI `totalWallClockMs` remains unchanged and is
+reported separately; no CI baseline is silently regenerated. Old records without
+the new readiness field are refused by this manual reporter.
+
+The observed boundary requires metadata, geometry, renderer-summary and canvas
+signals, with finite timeout/error failures. It does not qualify search readiness,
+cache-tail memory, properties, spatial paths, GPU picking or Firefox. Those issue
+#3978 requirements remain follow-ups in this same harness, not implied coverage.
+The retained mesh count alone is not geometry-buffer identity.
+
+**Drift detection:** there is no committed golden here to drift silently —
+every invocation prints its own base-vs-branch delta from that run's fresh
+samples, so a stale number is never read as current. A `totalMeshes` change
+between sides invalidates the timing comparison outright (printed as
+`OUTPUT CHANGED`, matching `ab-report.mjs`'s fingerprint rule) rather than
+being silently absorbed into "faster".
+
+**Verified detection (harness self-test):** `--fault-inject-ms`/
+`--fault-inject-side`/`--fault-inject-pattern` route-delay matching requests
+(default `\.wasm(\?|$)`) on one interleaved side, to prove the harness
+actually notices a regression rather than always reporting "within noise".
+Historical request-delay runs verified the old metric's response to startup
+delay; they do not validate the new readiness metric. Deterministic delayed-
+metadata tests now exercise premature renderer summaries, delayed paint,
+metadata failure and timeout refusal without launching a benchmark. A browser
+functional smoke remains required before a new performance claim.
+
+**Failures are archived, never silently retried:** a sample that does not
+reach `streamCompleteMs` with `totalMeshes > 0` is recorded as failed (not
+retried), with a screenshot + console log + error message written to
+`scripts/perf/.browser-cold-ab-results/FAILED-*` (gitignored) — the equivalent
+of #3921/#3975's preserved failure evidence for renderer SIGILLs.
+
+**Raw cold IFC load only** — this drives the same `.ifc` parse/geometry path
+the viewer's real cold load takes, never a prepared-format reload (Fragments/
+XKT/XGF); that stays out of scope per the issue.
+
 ## Specialized harnesses (when the probe is too coarse)
 
 | Tool | Question it answers |
@@ -617,6 +696,33 @@ Source-session reuse, binding-owned index adoption and direct transfer of alread
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
 
+### Manual browser readiness boundary (#3978)
+
+The manual server matches deployed COOP/COEP (`same-origin` / `credentialless`)
+and records `crossOriginIsolated` plus SharedArrayBuffer availability, refusing
+samples without them. `--port` selects both server and shared benchmark-page
+origin; the default remains 3000 for CI compatibility.
+
+`metadataRenderReadyMs` is the first successful observation from a 100ms polling
+loop after file selection: metadata, geometry, renderer-completion logs and a
+canvas check. WebGPU falls back to nonzero canvas dimensions, so this is not a
+pixel-readback or exact paint timestamp. Screenshots are separate post-boundary
+artifacts. Polling and automation latency are included; differences on that
+scale cannot establish small-model causal gains. The manual path skips the
+legacy fixed one-second pre-observation sleep; CI keeps its original default.
+
+Manual runs default to five interleaved pairs. Fewer pairs remain available for
+functional smoke checks, but the reporter withholds noise estimates and performance
+verdicts. Any failed sample makes the report exit nonzero, including when other
+rounds completed. Renderer readiness requires the successful streaming-finalization
+log; the app summary and an allocated canvas do not establish GPU readiness.
+
+For local real-GPU Chrome qualification, pass `--headed --browser-executable
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to either manual
+entrypoint. The record includes the selected executable, browser version, headed
+mode and GPU arguments. The default remains bundled Chromium headless, which may
+not provide WebGPU on a particular host; renderer failure invalidates that sample.
+Never compare different launch modes or browser artifacts as a code A/B.
 ### Retained column-native metadata preparation (#3985)
 
 Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
@@ -681,3 +787,14 @@ moves compression off the interaction thread without removing its CPU or memory
 cost. Cumulative qualification must include cache completion, full-lifetime
 memory and actual cache reopening; raw IFC timing must not be replaced by a
 prepared reload. No isolated throughput gain is attributed to this layer.
+
+Explicit corpus entries are mandatory: missing files, duplicate fixture labels
+and colliding filename keys fail before launching a browser. Default outputs use
+a fresh per-run directory; existing JSONL/report/screenshot evidence is refused
+rather than overwritten. Ref comparisons require a source WASM build and verify
+the bundled viewer engine has the same hash after Turbo. They do not fetch a
+published engine as a substitute. Without wasm-pack, supply independently frozen
+distributions directly to the TypeScript entrypoint and retain their provenance.
+`--skip-branch-build` labels its input as supplied distribution, not a verified
+current-commit build. The wrapper retains the temporary base through child exit
+and then removes it while preserving the child failure status.

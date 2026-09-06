@@ -65,15 +65,31 @@ export async function runClash(
       // partition and every later stage is unaware there are two ways in.
       const membersA = clashMemberSet(rule.membersA);
       const membersB = clashMemberSet(rule.membersB);
+      // Durable keys of everything each side matched, for `compareClashRevisions`
+      // (revision.ts) to answer "was this SPECIFIC element re-examined?" — a
+      // count alone (`matchedA`/`matchedB`) cannot tell a narrowed selector that
+      // dropped one previously-matched element from one that kept it. Bounded by
+      // the same element set already held in memory for this run, so it costs
+      // nothing beyond the string references (deduplicated by `Set`).
+      const matchedKeysA = new Set<string>();
+      const matchedKeysB: Set<string> | null = groupB ? new Set<string>() : null;
       for (let i = 0; i < elements.length; i += 1) {
         const el = elements[i];
-        if (inClashSet(el, rule.a, membersA)) groupA.push(i);
-        if (groupB && inClashSet(el, rule.b ?? '', membersB)) groupB.push(i);
+        if (inClashSet(el, rule.a, membersA)) {
+          groupA.push(i);
+          matchedKeysA.add(el.key);
+        }
+        if (groupB && inClashSet(el, rule.b ?? '', membersB)) {
+          groupB.push(i);
+          matchedKeysB!.add(el.key);
+        }
       }
       ruleCoverage.push({
         rule: rule.id,
         matchedA: groupA.length,
         matchedB: groupB ? groupB.length : null,
+        matchedKeysA: [...matchedKeysA].sort(),
+        matchedKeysB: matchedKeysB ? [...matchedKeysB].sort() : null,
         ...(membersA ? { fromMembersA: true } : {}),
         ...(membersB ? { fromMembersB: true } : {}),
       });

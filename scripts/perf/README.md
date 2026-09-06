@@ -175,6 +175,18 @@ Preserve failed loads alongside successful samples. Listen for renderer crashes
 as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
+  missed an engine-dependent entity-cache eviction cost. Georeference discovery
+  runs through the property-set index during React rendering. Restarting a Map
+  iterator for each eviction repeatedly traversed its deleted prefix in Firefox;
+  a live eviction cursor preserves LRU ordering without restarting that walk.
+  Prepare the source fingerprint and georeferencing in the parser worker and
+  carry them with both store publications, so the first render does not rescan
+  the source. Deferred-property parses must wait for their complete index before
+  preparing georeferencing. **Lesson:** qualify Firefox as well as Chrome, record
+  event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
+  from uninstrumented timing. A worker-complete event alone cannot establish that
+  publishing its result leaves the UI responsive.
 - **Native cold-load working set (#3967):** immutable schema classification replaces
   contended global caches; completed BREP signatures are shared within one
   immutable source; the geometry scan supplies ordered georeferencing candidates

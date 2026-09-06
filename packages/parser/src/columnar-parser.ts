@@ -903,6 +903,7 @@ export { mergeInheritedPropertySets, mergeInheritedQuantitySets } from './proper
 
 export type {
     ClassificationInfo,
+    ClassificationSystemNames,
     MaterialInfo,
     MaterialLayerInfo,
     MaterialProfileInfo,

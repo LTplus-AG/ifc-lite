@@ -593,68 +593,6 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
 
-### Retained processor registry ownership (#3987)
-
-Built-in processor registrations now share immutable setup while each router keeps its own failure state and custom replacement behavior. Retained in the cumulative cold-load candidate; no isolated throughput gain is attributed to this layer. Native constructor profiles identify the mechanism, but native and actual browser-worker verdicts remain separate. Do not replace custom processors or share mutable diagnostics to reduce setup further.
-
-### Retained transient decoder ownership (#4000)
-
-Use reusable output buffers and a validated string projection where consumers discard full decoded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Retained with the cumulative cold-load candidate, without an isolated percentage claim. Full-call timing must include the disposal join and trailing metadata; summed worker high-water allocations do not establish retained or simultaneous memory.
-
-### Retained canonical lexical and schema work (#4001)
-
-Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Retained as part of cumulative cold-load qualification; no isolated native or browser gain is claimed. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
-
-### Retained mesh bookkeeping and no-op copies (#3988)
-
-Orientation reuses deterministic edge adjacency, while triangle filters compact their existing index buffer and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Retained in cumulative cold-load qualification; do not extrapolate sampled leaf CPU to a per-layer throughput claim. Keep exact output and diagnostic oracles, including invalid/degenerate triangles and reused buffer capacity. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
-
-### Source and buffer ownership during WASM prepass (#3989)
-
-Retained source-session reuse, binding-owned index adoption and direct transfer of
-already-owned mesh getter arrays as part of the qualified cold-load changes.
-The combined native/browser corpus evidence does not isolate a throughput gain
-for this layer; do not attribute the cumulative result to these copies alone.
-Installed-source methods retain byte-taking compatibility and reset on source
-replacement. Real WASM contracts verify returned buffers survive handle free,
-memory growth and transfer, including textures. Ownership must be established
-at the actual binding: a JavaScript view alone does not remove the copy into WASM,
-and borrowed views into WASM memory must not be transferred as owned output.
-
-### Retained column-native metadata preparation (#3985)
-
-Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
-
-### Retained parser publication and receiver ownership (#3985)
-
-Pack immutable type-index publication once and reuse partial columns on complete, retaining legacy transport and shared source access. Terminate the completed parser worker before receiver hydration and use the compact maximum ID during ingestion. Retained as cumulative cold-load work, with no isolated percentage attributed. Qualification must include full property/reference access, federation and memory through cache completion; worker completion alone is not readiness.
-
-### Retained prepass source fingerprint sharing (#3985)
-
-The existing prepass can publish the exact full-byte source key through a fresh per-load shared cell, including malformed tails. The parser uses it only when already ready; prior entry points and unavailable-cell fallback remain compatible without another source copy or worker. Retained cumulative qualification is not an isolated percentage claim. Record actual parser/prepass key origin when diagnosing overlap; an unavailable key can still pay the original parser hash.
-
-### Retained cold-load work: bounded cache compression (#4003)
-
-Geometry cache compression can run in one lazy module worker, using the same
-codec and bounded chunk window as the workerless writer. The viewer opts in;
-SDK callers retain the workerless default. Only fresh serialized chunks transfer,
-and worker failures reject the cache write with deterministic disposal. This
-moves compression off the interaction thread without removing its CPU or memory
-cost. Cumulative qualification must include cache completion, full-lifetime
-memory and actual cache reopening; raw IFC timing must not be replaced by a
-prepared reload. No isolated throughput gain is attributed to this layer.
-
-### Retained cold-load work: exact LOD keys (#3991)
-
-Bounded LOD cell neighborhoods use exact integer keys containing all three cell
-coordinates and the full entity ID. Inputs outside the proved range keep the
-existing string representation. The independent tuple oracle checks identical
-representatives and triangle order, including range boundaries, subviews,
-nonfinite coordinates and full-width entity IDs. This removes per-vertex key
-allocation; no isolated end-to-end speedup is attributed to this layer. The
-retained cold-load stack must carry its cumulative browser qualification,
-including picking and peak-memory observations, before landing.
-
 ### Retained cold-load work: search index ownership (#3993)
 
 The viewer shell owns search indexing for the lifetime of each loaded model.
@@ -689,3 +627,57 @@ prepared reload, a diagnostic profile nor an unrun experiment supplies a
 throughput gain. No universal absence of performance regressions or target
 corpus gain is claimed. Original failures and private exploratory work remain
 archived; the published projections identify their source records by hash.
+
+### Retained cold-load work: exact LOD keys (#3991)
+
+Bounded LOD cell neighborhoods use exact integer keys containing all three cell
+coordinates and the full entity ID. Inputs outside the proved range keep the
+existing string representation. The independent tuple oracle checks identical
+representatives and triangle order, including range boundaries, subviews,
+nonfinite coordinates and full-width entity IDs. This removes per-vertex key
+allocation; no isolated end-to-end speedup is attributed to this layer. The
+retained cold-load stack must carry its cumulative browser qualification,
+including picking and peak-memory observations, before landing.
+
+### Retained processor registry ownership (#3987)
+
+Built-in processor registrations share immutable setup while each router keeps its own failure state and custom replacement behavior. Own-layer native subset comparisons did not establish a meaningful full-load improvement; the cumulative result must not be attributed to this layer. Constructor profiles identify avoided setup work, not a throughput verdict. Keep custom processors and mutable diagnostics independent. Browser performance is a separate verdict; invalid Firefox cohorts and unrun follow-ups provide no supporting result.
+
+### Retained transient decoder ownership (#4000)
+
+Reusable output buffers and a validated string projection avoid building discarded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Own-layer native and actual Chrome worker-pool subset comparisons did not establish a meaningful full-load improvement. Keep the cumulative result separate, include the disposal join and trailing metadata in timing, and do not treat summed worker allocations as simultaneous memory. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded.
+
+### Retained canonical lexical and schema work (#4001)
+
+Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
+
+### Retained mesh bookkeeping and no-op copies (#3988)
+
+Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
+
+### Source and buffer ownership during WASM prepass (#3989)
+
+Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.
+
+### Retained column-native metadata preparation (#3985)
+
+Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
+
+### Retained parser publication and receiver ownership (#3985)
+
+Pack immutable type-index publication once and reuse partial columns on complete, retaining legacy transport and shared source access. Terminate the completed parser worker before receiver hydration and use the compact maximum ID during ingestion. Retained as cumulative cold-load work, with no isolated percentage attributed. Qualification must include full property/reference access, federation and memory through cache completion; worker completion alone is not readiness.
+
+### Retained prepass source fingerprint sharing (#3985)
+
+The existing prepass can publish the exact full-byte source key through a fresh per-load shared cell, including malformed tails. The parser uses it only when already ready; prior entry points and unavailable-cell fallback remain compatible without another source copy or worker. Retained cumulative qualification is not an isolated percentage claim. Record actual parser/prepass key origin when diagnosing overlap; an unavailable key can still pay the original parser hash.
+
+### Retained cold-load work: bounded cache compression (#4003)
+
+Geometry cache compression can run in one lazy module worker, using the same
+codec and bounded chunk window as the workerless writer. The viewer opts in;
+SDK callers retain the workerless default. Only fresh serialized chunks transfer,
+and worker failures reject the cache write with deterministic disposal. This
+moves compression off the interaction thread without removing its CPU or memory
+cost. Cumulative qualification must include cache completion, full-lifetime
+memory and actual cache reopening; raw IFC timing must not be replaced by a
+prepared reload. No isolated throughput gain is attributed to this layer.

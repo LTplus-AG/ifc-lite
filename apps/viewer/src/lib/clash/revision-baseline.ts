@@ -120,6 +120,30 @@ export function loadRevisionBaseline(): ClashRevisionBaseline | null {
   }
 }
 
+/**
+ * Drop the per-element key arrays #3947 added to `ClashRuleCoverage`
+ * (`matchedKeysA`/`matchedKeysB`) before a result is persisted as a baseline.
+ *
+ * They are unconditional and unbounded by rule breadth — a broad rule on a
+ * large federated model can duplicate every matched element's durable key
+ * into the stored baseline (#3953) — but `compareClashRevisions` (in
+ * `@ifc-lite/clash`'s `revision.ts`) never reads a BASELINE's own
+ * `matchedKeysA`/`matchedKeysB`: `ruleMatchedKeys` and `noMatchRuleIdSet` are
+ * only ever called on the CURRENT run passed to `compareClashRevisions`, and
+ * the viewer's only other consumer of a loaded baseline
+ * (`ClashRevisionCompareDialog`) reads just `result.clashes.length`. Stripping
+ * them here removes dead weight, not information the comparison needs —
+ * every other `ClashRuleCoverage` field (the match counts, `fromMembersA/B`)
+ * is small and kept.
+ */
+function stripUnusedCoverage(result: ClashResult): ClashResult {
+  if (!result.ruleCoverage) return result;
+  return {
+    ...result,
+    ruleCoverage: result.ruleCoverage.map(({ matchedKeysA: _a, matchedKeysB: _b, ...rest }) => rest),
+  };
+}
+
 /** Save (or clear, with `null`) the baseline. */
 export function saveRevisionBaseline(baseline: ClashRevisionBaseline | null): SaveResult {
   const storage = optionalLocalStorage();
@@ -129,7 +153,8 @@ export function saveRevisionBaseline(baseline: ClashRevisionBaseline | null): Sa
       storage.removeItem(BASELINE_KEY);
       return { ok: true };
     }
-    const payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, baseline });
+    const stored: ClashRevisionBaseline = { ...baseline, result: stripUnusedCoverage(baseline.result) };
+    const payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, baseline: stored });
     storage.setItem(BASELINE_KEY, payload);
     return { ok: true };
   } catch {

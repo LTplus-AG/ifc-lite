@@ -1,0 +1,87 @@
+{
+  "schema": 1,
+  "baseRef": "10fb52dede8e681e953d7156bff22372ab29b5db",
+  "candidate": "incremental affinity publication only; corrected combined-label provenance",
+  "baseWasmSha256": "6649d2c2a45db7f6372af7df5661b1e4efcabe13a02927a6b12d82a31e44491c",
+  "candidateWasmSha256": "a440110e49a6e06a1c12deb4460c26e7e268cf4af88640d62d5b4d61f9e5203b",
+  "browser": "Chrome 152.0.7977.76, headed WebGPU, fresh process and context per run",
+  "method": "Five pairs per model; pair order alternates. OS file cache uncontrolled. Median paired ratios, equal-model geometric mean.",
+  "limitations": [
+    "Five models, not the eleven-model corpus",
+    "No native or Firefox performance qualification",
+    "Sampled memory includes cache settlement",
+    "Geometry channels are not full mesh byte or closure identity",
+    "Spatial query order may differ",
+    "Pre-load analytics404 preserved in raw logs"
+  ],
+  "equalModelGeomeanReadinessReductionPercent": 1.7420594367768438,
+  "models": [
+    {
+      "model": "large-mep-1050",
+      "medianPairedReductionPercent": {
+        "readinessMs": 8.901052631578942,
+        "geometryMs": 12.945949170743344,
+        "physicalBytes": -3.8498613365433254
+      },
+      "readinessMedianMs": {
+        "base": 11763,
+        "candidate": 10577
+      },
+      "pairCount": 5
+    },
+    {
+      "model": "large-architecture-343",
+      "medianPairedReductionPercent": {
+        "readinessMs": -0.6161137440758191,
+        "geometryMs": 0.3511852502194879,
+        "physicalBytes": -0.1093347125193933
+      },
+      "readinessMedianMs": {
+        "base": 2070,
+        "candidate": 2117
+      },
+      "pairCount": 5
+    },
+    {
+      "model": "large-sanitary-ifc4-218",
+      "medianPairedReductionPercent": {
+        "readinessMs": -0.20847810979847115,
+        "geometryMs": -0.44887780548628076,
+        "physicalBytes": 0.8787733419324484
+      },
+      "readinessMedianMs": {
+        "base": 2878,
+        "candidate": 2884
+      },
+      "pairCount": 5
+    },
+    {
+      "model": "small-haus",
+      "medianPairedReductionPercent": {
+        "readinessMs": 0.46511627906976605,
+        "geometryMs": -1.6304347826086918,
+        "physicalBytes": -0.5101165722867007
+      },
+      "readinessMedianMs": {
+        "base": 215,
+        "candidate": 213
+      },
+      "pairCount": 5
+    },
+    {
+      "model": "csg-129",
+      "medianPairedReductionPercent": {
+        "readinessMs": -0.17921146953405742,
+        "geometryMs": -0.18939393939394478,
+        "physicalBytes": -0.2593360111009968
+      },
+      "readinessMedianMs": {
+        "base": 1116,
+        "candidate": 1113
+      },
+      "pairCount": 5
+    }
+  ],
+  "pairsFile": "initial-pairs.jsonl",
+  "phase": "Initial inline implementation before testable-helper extraction; not final landing binary"
+}

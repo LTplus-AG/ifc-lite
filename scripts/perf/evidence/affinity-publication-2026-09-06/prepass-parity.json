@@ -1,0 +1,69 @@
+{
+  "pass": true,
+  "fixtureSha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd",
+  "eventCount": 13,
+  "jobs": [
+    1024,
+    50000,
+    50000,
+    50000,
+    50000,
+    50000,
+    50000,
+    19646
+  ],
+  "events": [
+    [
+      "meta",
+      "df787d4b1e67a929ed922a81fc2873779ab47fa7619826df4649707eea177b11"
+    ],
+    [
+      "entity-index",
+      "1773a9a0205750617a3a6722244112114036e71caddcacf3a45a80f35f07eaad"
+    ],
+    [
+      "styles",
+      "8befa554d47f2f1661496a09331d4c2646f1875748245e6f6e5a94a2b3ff907f"
+    ],
+    [
+      "prepass-columns",
+      "d3c7b78e0e5e204970aee409b83ea24b85e57b7585b582e75ce94a7a06527eb0"
+    ],
+    [
+      "jobs",
+      "5a94b1e5bb5d6725a98942b8c95297ea4d88d356a4e15b21e107b6c58dee101c"
+    ],
+    [
+      "jobs",
+      "e95cc0f9c5ad727906a93b4963a46b955bffe923184f5ed2304e57a0c5034831"
+    ],
+    [
+      "jobs",
+      "d2de9cf046338b5f7365c22d81c19fa1380cc4c67b6e8eea20febd42ce2bfe4a"
+    ],
+    [
+      "jobs",
+      "fa02ccf424c5bfbefda546788b1dd2ea0b6136c8f2a59a4e72e9923873441b23"
+    ],
+    [
+      "jobs",
+      "b763a3bfa0d5a83f6bb25855aa377eafefa7834e6b502c50c3227d5b73378496"
+    ],
+    [
+      "jobs",
+      "49a971a55524b1e10c8a24788c39338bb60eb2b9968c3f63156e63fbe02fb9ae"
+    ],
+    [
+      "jobs",
+      "7cb9f317bb82f651ef80a0ffed75155e29482445b56bd5bc49043a6b71762489"
+    ],
+    [
+      "jobs",
+      "f341621e44d725348cc8b8d4276cf6f9b3dee8c00cb31d5807ca0562aaae3f55"
+    ],
+    [
+      "complete",
+      "6a3ba2ffbe1b8f8d7a4ff45983363d247089ebdde2bfe3b69820dbc0a10058d9"
+    ]
+  ]
+}

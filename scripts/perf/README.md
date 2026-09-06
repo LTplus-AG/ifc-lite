@@ -204,6 +204,20 @@ XKT/XGF); that stays out of scope per the issue.
 
 ## Lever ledger (read before spiking)
 
+### Incremental affinity publication (#4051)
+
+Publish each existing bulk job chunk after its routing keys are ready, keeping
+the shared decoder/signature memo and exact payload order. The
+[local evidence](./evidence/affinity-publication-2026-09-06/README.md) records a
+large-MEP readiness benefit and its memory tradeoff, with much smaller effects
+on the other measured models. This is not full-corpus or Firefox qualification.
+The separate per-batch map-cache experiment is archived, not retained or added
+to this candidate's savings. An intended combined build reused stale Cargo
+output after source restoration preserved older timestamps; its original labels
+are corrected explicitly in the evidence. Force actual Rust recompilation after
+variant restoration: forced Turbo execution and matching bundled hashes alone
+do not prove the restored source was compiled.
+
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### Retained processor registry ownership (#3987)

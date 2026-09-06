@@ -1,0 +1,524 @@
+{
+  "schema": 1,
+  "scope": "Local frozen browser artifact functional qualification, not deployed verification or throughput benchmark",
+  "wasmSha256": "88c4e3e5b06871c0c1d93bff418e0f427af9a90529229a29ea274a6b249ca508",
+  "coldChecks": [
+    {
+      "browser": "chrome",
+      "model": "large-mep-1050",
+      "success": true,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+        "crossOriginIsolated": true,
+        "hardwareConcurrency": 15,
+        "deviceMemory": 32,
+        "webgpu": true
+      },
+      "geometryIntegrity": {
+        "schema": 1,
+        "counts": {
+          "flatMeshes": 142853,
+          "flatVertices": 26737675,
+          "flatTriangles": 13770245,
+          "flatWithHash": 142853,
+          "flatWithAabb": 142853,
+          "flatWithVolume": 66787,
+          "instancedHashEntities": 28192,
+          "instancedWithAabb": 28192,
+          "instancedWithVolume": 13929,
+          "uniqueEntityIds": 126998,
+          "uniqueHashedEntityIds": 126998
+        },
+        "sha256": "a6d0afeb11e0a9e052464b9f437f327ac396e5aa11e4079bff0beb65ac9bbe00",
+        "channels": {
+          "hashSha256": "04c7993d7779ad39218c97d1f7935d73cd591c5681aad8085ea7f20769798bd2",
+          "aabbBitsSha256": "a087cbee989a7b55db4fd5102bd8112966a3eacee6c4fb48071ac871620b745c",
+          "volumeBitsSha256": "77ba6d113048e2720a0746ee7f3747871eef7ca09eac1449a20ecc60f757b4b1"
+        },
+        "inconsistentEntityIds": [],
+        "closure": {
+          "available": false,
+          "reason": "MeshData and retained instanced maps do not expose WASM geometryClosureFlags; this digest makes no closure-parity claim"
+        }
+      },
+      "matchesBaseDigest": true,
+      "uncaughtPageErrors": [],
+      "targetCrashes": [],
+      "rawFirefoxErrorCount": 0,
+      "firefoxExceptionKinds": [],
+      "ui": {
+        "hierarchyHeadingVisible": true,
+        "propertySetLabelVisible": true
+      },
+      "consoleErrorCount": 0,
+      "resultSha256": "2e8ab549b180f3346ecc7b0be7557208a537927c2ff6722d6a0eeb394136b422"
+    },
+    {
+      "browser": "chrome",
+      "model": "small-haus",
+      "success": true,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+        "crossOriginIsolated": true,
+        "hardwareConcurrency": 15,
+        "deviceMemory": 32,
+        "webgpu": true
+      },
+      "geometryIntegrity": {
+        "schema": 1,
+        "counts": {
+          "flatMeshes": 275,
+          "flatVertices": 56698,
+          "flatTriangles": 31986,
+          "flatWithHash": 243,
+          "flatWithAabb": 243,
+          "flatWithVolume": 28,
+          "instancedHashEntities": 42,
+          "instancedWithAabb": 42,
+          "instancedWithVolume": 42,
+          "uniqueEntityIds": 119,
+          "uniqueHashedEntityIds": 107
+        },
+        "sha256": "99db70b0b52c13039ec35fc238c4939bce3d27a2ae0b5a48e49f19c825fe322a",
+        "channels": {
+          "hashSha256": "dcd4ef698b960eeaa35943bc248e3707a43de7411455afc87f25e870b057e579",
+          "aabbBitsSha256": "1b16a2cdaa45cac84ea0fa23170169707b0c5c5ac6cd29c3bdc34eccd955f1d8",
+          "volumeBitsSha256": "4d91f6531e579c7754944a26c58708e51256a17e40c12e3a79eaec39b5e7d290"
+        },
+        "inconsistentEntityIds": [],
+        "closure": {
+          "available": false,
+          "reason": "MeshData and retained instanced maps do not expose WASM geometryClosureFlags; this digest makes no closure-parity claim"
+        }
+      },
+      "matchesBaseDigest": true,
+      "uncaughtPageErrors": [],
+      "targetCrashes": [],
+      "rawFirefoxErrorCount": 0,
+      "firefoxExceptionKinds": [],
+      "ui": {
+        "hierarchyHeadingVisible": true,
+        "propertySetLabelVisible": true
+      },
+      "consoleErrorCount": 0,
+      "resultSha256": "6267fd86baf4ec5c87738279bed65739f504b1981a580f1d295fc02152c5158d"
+    },
+    {
+      "browser": "chrome",
+      "model": "csg-129",
+      "success": true,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
+        "crossOriginIsolated": true,
+        "hardwareConcurrency": 15,
+        "deviceMemory": 32,
+        "webgpu": true
+      },
+      "geometryIntegrity": {
+        "schema": 1,
+        "counts": {
+          "flatMeshes": 1402,
+          "flatVertices": 215862,
+          "flatTriangles": 130582,
+          "flatWithHash": 1402,
+          "flatWithAabb": 1402,
+          "flatWithVolume": 1138,
+          "instancedHashEntities": 0,
+          "instancedWithAabb": 0,
+          "instancedWithVolume": 0,
+          "uniqueEntityIds": 1320,
+          "uniqueHashedEntityIds": 1320
+        },
+        "sha256": "d72139cf011a8e618fcfe092fcf96a3f8f082db86fcb2f88da94826d6a4af120",
+        "channels": {
+          "hashSha256": "0ed66d676d866cee803f8a7cca152ff662019fb721289a9e326e0988055b01e2",
+          "aabbBitsSha256": "e69037d07ddb5c94108ea2e939ebc7eea75296b7d2c7b79999d2e794809b4abf",
+          "volumeBitsSha256": "ad9f423223f4f4b357e74ce0a0ca2c21d9007ba126e09186c62cd2371d85ab0d"
+        },
+        "inconsistentEntityIds": [],
+        "closure": {
+          "available": false,
+          "reason": "MeshData and retained instanced maps do not expose WASM geometryClosureFlags; this digest makes no closure-parity claim"
+        }
+      },
+      "matchesBaseDigest": true,
+      "uncaughtPageErrors": [],
+      "targetCrashes": [],
+      "rawFirefoxErrorCount": 0,
+      "firefoxExceptionKinds": [],
+      "ui": {
+        "hierarchyHeadingVisible": true,
+        "propertySetLabelVisible": true
+      },
+      "consoleErrorCount": 0,
+      "resultSha256": "cfceb71757d6abc81c3c0b513f970f43fb4ee9a68168a3d5eeb78370e7329367"
+    },
+    {
+      "browser": "firefox",
+      "model": "large-mep-1050",
+      "success": true,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0",
+        "crossOriginIsolated": true,
+        "hardwareConcurrency": 15,
+        "deviceMemory": null,
+        "webgpu": true
+      },
+      "geometryIntegrity": {
+        "schema": 1,
+        "counts": {
+          "flatMeshes": 142853,
+          "flatVertices": 26737675,
+          "flatTriangles": 13770245,
+          "flatWithHash": 142853,
+          "flatWithAabb": 142853,
+          "flatWithVolume": 66787,
+          "instancedHashEntities": 28192,
+          "instancedWithAabb": 28192,
+          "instancedWithVolume": 13929,
+          "uniqueEntityIds": 126998,
+          "uniqueHashedEntityIds": 126998
+        },
+        "sha256": "a6d0afeb11e0a9e052464b9f437f327ac396e5aa11e4079bff0beb65ac9bbe00",
+        "channels": {
+          "hashSha256": "04c7993d7779ad39218c97d1f7935d73cd591c5681aad8085ea7f20769798bd2",
+          "aabbBitsSha256": "a087cbee989a7b55db4fd5102bd8112966a3eacee6c4fb48071ac871620b745c",
+          "volumeBitsSha256": "77ba6d113048e2720a0746ee7f3747871eef7ca09eac1449a20ecc60f757b4b1"
+        },
+        "inconsistentEntityIds": [],
+        "closure": {
+          "available": false,
+          "reason": "MeshData and retained instanced maps do not expose WASM geometryClosureFlags; this digest makes no closure-parity claim"
+        }
+      },
+      "matchesBaseDigest": true,
+      "uncaughtPageErrors": [],
+      "targetCrashes": [],
+      "rawFirefoxErrorCount": 0,
+      "firefoxExceptionKinds": [
+        "witness-installed"
+      ],
+      "ui": {
+        "hierarchyHeadingVisible": true,
+        "propertySetLabelVisible": true
+      },
+      "consoleErrorCount": 0,
+      "resultSha256": "b0a9dd9c996cf32df5a8b89504a75dc2c56708bd778cf8276e67e37343c0c38a"
+    },
+    {
+      "browser": "firefox",
+      "model": "small-haus",
+      "success": true,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0",
+        "crossOriginIsolated": true,
+        "hardwareConcurrency": 15,
+        "deviceMemory": null,
+        "webgpu": true
+      },
+      "geometryIntegrity": {
+        "schema": 1,
+        "counts": {
+          "flatMeshes": 275,
+          "flatVertices": 56698,
+          "flatTriangles": 31986,
+          "flatWithHash": 243,
+          "flatWithAabb": 243,
+          "flatWithVolume": 28,
+          "instancedHashEntities": 42,
+          "instancedWithAabb": 42,
+          "instancedWithVolume": 42,
+          "uniqueEntityIds": 119,
+          "uniqueHashedEntityIds": 107
+        },
+        "sha256": "99db70b0b52c13039ec35fc238c4939bce3d27a2ae0b5a48e49f19c825fe322a",
+        "channels": {
+          "hashSha256": "dcd4ef698b960eeaa35943bc248e3707a43de7411455afc87f25e870b057e579",
+          "aabbBitsSha256": "1b16a2cdaa45cac84ea0fa23170169707b0c5c5ac6cd29c3bdc34eccd955f1d8",
+          "volumeBitsSha256": "4d91f6531e579c7754944a26c58708e51256a17e40c12e3a79eaec39b5e7d290"
+        },
+        "inconsistentEntityIds": [],
+        "closure": {
+          "available": false,
+          "reason": "MeshData and retained instanced maps do not expose WASM geometryClosureFlags; this digest makes no closure-parity claim"
+        }
+      },
+      "matchesBaseDigest": true,
+      "uncaughtPageErrors": [],
+      "targetCrashes": [],
+      "rawFirefoxErrorCount": 0,
+      "firefoxExceptionKinds": [
+        "witness-installed"
+      ],
+      "ui": {
+        "hierarchyHeadingVisible": true,
+        "propertySetLabelVisible": true
+      },
+      "consoleErrorCount": 0,
+      "resultSha256": "9f05ce141390926ad3a3322b4bf8973bd20e82ff31c2f8e19baf19ada4d6e802"
+    },
+    {
+      "browser": "firefox",
+      "model": "csg-129",
+      "success": true,
+      "environment": {
+        "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0",
+        "crossOriginIsolated": true,
+        "hardwareConcurrency": 15,
+        "deviceMemory": null,
+        "webgpu": true
+      },
+      "geometryIntegrity": {
+        "schema": 1,
+        "counts": {
+          "flatMeshes": 1402,
+          "flatVertices": 215862,
+          "flatTriangles": 130582,
+          "flatWithHash": 1402,
+          "flatWithAabb": 1402,
+          "flatWithVolume": 1138,
+          "instancedHashEntities": 0,
+          "instancedWithAabb": 0,
+          "instancedWithVolume": 0,
+          "uniqueEntityIds": 1320,
+          "uniqueHashedEntityIds": 1320
+        },
+        "sha256": "d72139cf011a8e618fcfe092fcf96a3f8f082db86fcb2f88da94826d6a4af120",
+        "channels": {
+          "hashSha256": "0ed66d676d866cee803f8a7cca152ff662019fb721289a9e326e0988055b01e2",
+          "aabbBitsSha256": "e69037d07ddb5c94108ea2e939ebc7eea75296b7d2c7b79999d2e794809b4abf",
+          "volumeBitsSha256": "ad9f423223f4f4b357e74ce0a0ca2c21d9007ba126e09186c62cd2371d85ab0d"
+        },
+        "inconsistentEntityIds": [],
+        "closure": {
+          "available": false,
+          "reason": "MeshData and retained instanced maps do not expose WASM geometryClosureFlags; this digest makes no closure-parity claim"
+        }
+      },
+      "matchesBaseDigest": true,
+      "uncaughtPageErrors": [],
+      "targetCrashes": [],
+      "rawFirefoxErrorCount": 0,
+      "firefoxExceptionKinds": [
+        "witness-installed"
+      ],
+      "ui": {
+        "hierarchyHeadingVisible": true,
+        "propertySetLabelVisible": true
+      },
+      "consoleErrorCount": 0,
+      "resultSha256": "b8e0eed62ad75762d684d2e14b27c37a5c498a9ad39615d0e4baa77c87dca827"
+    }
+  ],
+  "federationCache": [
+    {
+      "browser": "chrome",
+      "success": true,
+      "failures": [],
+      "uncaughtOrConsoleErrors": [],
+      "stages": [
+        {
+          "stage": "single",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "writing",
+              "loadPath": "wasm",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": false
+        },
+        {
+          "stage": "federated",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "writing",
+              "loadPath": "wasm",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            },
+            {
+              "rows": 451,
+              "cacheState": null,
+              "loadPath": "wasm",
+              "propertySetCount": 3,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": true
+        },
+        {
+          "stage": "cached-single",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "hit",
+              "loadPath": "cache",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": false
+        },
+        {
+          "stage": "federated-after-primary-cache-hit",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "hit",
+              "loadPath": "cache",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            },
+            {
+              "rows": 451,
+              "cacheState": null,
+              "loadPath": "wasm",
+              "propertySetCount": 3,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": true
+        }
+      ],
+      "resultSha256": "63f4bdc750577ee6c03baa3d6131129616242a9f5ef3f5ee5a50f06182f25e04"
+    },
+    {
+      "browser": "firefox",
+      "success": true,
+      "failures": [],
+      "uncaughtOrConsoleErrors": [],
+      "stages": [
+        {
+          "stage": "single",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "writing",
+              "loadPath": "wasm",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": false
+        },
+        {
+          "stage": "federated",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "writing",
+              "loadPath": "wasm",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            },
+            {
+              "rows": 451,
+              "cacheState": null,
+              "loadPath": "wasm",
+              "propertySetCount": 3,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": true
+        },
+        {
+          "stage": "cached-single",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "hit",
+              "loadPath": "cache",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": false
+        },
+        {
+          "stage": "federated-after-primary-cache-hit",
+          "models": [
+            {
+              "rows": 1958,
+              "cacheState": "hit",
+              "loadPath": "cache",
+              "propertySetCount": 4,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            },
+            {
+              "rows": 451,
+              "cacheState": null,
+              "loadPath": "wasm",
+              "propertySetCount": 3,
+              "spatialPathLength": 4,
+              "searchResolvesExpectedEntity": true,
+              "gpuPickResolvesExpectedModel": true
+            }
+          ],
+          "overlappingIdCollisionChecked": true
+        }
+      ],
+      "resultSha256": "586719c31525d0b2d999574dfc5bb9c47ebce26d00e5b59e7f01a3193920eda1",
+      "repeatFirefoxDiagnostics": {
+        "uncaughtExceptions": 0,
+        "rawErrorEntries": 0,
+        "witnessInstalled": true
+      }
+    }
+  ],
+  "limitations": [
+    "Stock Firefox 155.0.1 and Chrome 152 functional spot checks; no Firefox corpus performance claim.",
+    "Geometry fingerprints cover counts, hash, AABB and volume channels, not closure or full vertex bytes.",
+    "First Chrome invocations omitted mandatory memory sampler and were rejected by harness; retained privately and rerun with MEMORY_RSS=1.",
+    "Initial Haus cache exercise was ineligible below 10 MB; retained failure and changed to cacheable primary.",
+    "Initial CSG/Haus federation had empty framed Haus at 238.8 km scale and failed picking; retained, same two pick failures reproduced on base; retained as pre-existing, not fixed.",
+    "Initial Firefox federation used unsupported adapter locator methods; retained failure; equivalent CSS selectors and DOM blur/count/text retrieval substituted without removing behavioral assertions.",
+    "Local static host returns 404 for Vercel analytics; initial cold runs retain this diagnostic. Federation host explicitly serves no-op analytics endpoint; application assets unchanged and console exceptions still fail exercise."
+  ],
+  "servedProvenance": {
+    "bundleWasm": "ifc-lite_bg-BlpD-6zi.wasm",
+    "fileSha256": "88c4e3e5b06871c0c1d93bff418e0f427af9a90529229a29ea274a6b249ca508",
+    "servedSha256": "88c4e3e5b06871c0c1d93bff418e0f427af9a90529229a29ea274a6b249ca508",
+    "urlOrigin": "http://localhost:3198",
+    "runtimeOverride": false,
+    "platformShim": "Only /_vercel/insights/script.js returns empty local analytics script; application assets unchanged."
+  },
+  "baselineFailureAttribution": {
+    "case": "CSG129 primary + Haus federation",
+    "baseSuccess": false,
+    "baseFailureClasses": [
+      "GPU pick does not resolve framed Haus in federation",
+      "GPU pick does not resolve framed Haus after primary cache hit"
+    ],
+    "candidateSameFailureClasses": true,
+    "uncaughtOrConsoleErrors": [],
+    "scope": "Both base and prior affinity artifact produce empty frame at geographic-scale scene; this demonstrates pre-existing test-case failure, not root cause or fix.",
+    "rawResultSha256": "cbc822d25e332e6d9520d3200e68c9362952b9f1283d9d4ebb81525cd5b253be"
+  },
+  "functionalVerdict": "PASS for six final cold checks and Chrome/Firefox Tekla-Haus federation/cache; known initial invalid checks and pre-existing failed case retained."
+}

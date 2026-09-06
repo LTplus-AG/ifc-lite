@@ -1,0 +1,67 @@
+{
+  "schema": 2,
+  "phase": "Final landing implementation with tested streaming helper",
+  "sourceCommit": "f4c406fbdd8dd7bfa04f44971501f61a69a5f7f4",
+  "sourceHashes": {
+    "rust/wasm-bindings/src/api/gpu_meshes/affinity_chunks.rs": "b33b3e7e26863b85a35257e35b4a2a30b1ea28625e84e17d4e5bbd0f1f7b6534",
+    "rust/wasm-bindings/src/api/gpu_meshes/affinity_chunks_tests.rs": "65d9e67bdf2e3f8331e153b1454d4992eb0a9960867059c21c7796dff1e084c6",
+    "rust/wasm-bindings/src/api/gpu_meshes/mod.rs": "1f2a4f634d706a4e781f94c1acbc71ecc61c413cbd7bef7b32ff09ee08bf7214",
+    "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs": "0b58c9e5ca3b7a82e1f29a4ced995c12bf32fe42374537bc224c571c92d7ecb4",
+    "scripts/lib/wasm-affinity-chunk-contract.mjs": "5739fe4e3b082bd027b68c888f8311d0f8ff63ccd4b7bb6fda1ade745c5a623d",
+    "scripts/lib/wasm-cold-load-contracts.mjs": "86f7a5d3f96a6d020c4839413c1abd26be578ba4a138b38edf77688d26ed0782"
+  },
+  "rustSourceAndBuildConfigDigest": {
+    "sha256": "d873459a6978484f0401a2f5977e0923522324cacba9040d1145b2fd86680907",
+    "fileCount": 751,
+    "method": "Sorted tracked Rust .rs files, Cargo manifests/lock, rust-toolchain.toml and .cargo/config.toml; each UTF-8 path + NUL + lowercase content SHA256 + NUL",
+    "selectionCommand": "git ls-files rust Cargo.toml Cargo.lock .cargo/config.toml rust-toolchain.toml",
+    "includeRule": "Keep paths ending in .rs, or with basename Cargo.toml, Cargo.lock or rust-toolchain.toml, or exactly .cargo/config.toml. Includes nested tracked Cargo.lock files under rust/."
+  },
+  "wasmSha256": "88c4e3e5b06871c0c1d93bff418e0f427af9a90529229a29ea274a6b249ca508",
+  "forcedRecompilation": {
+    "command": "cargo clean -p ifc-lite-wasm --release --target wasm32-unknown-unknown && bash scripts/build-wasm.sh",
+    "logSha256": "65b4384160af5a69d737812154c62d5e7441a5e0583348f95c913311b4f6a209",
+    "crateCompilationObserved": true,
+    "viewerBuildCommand": "pnpm turbo build --filter=@ifc-lite/viewer --force",
+    "viewerBuildLogSha256": "b6132fb9c15394ea8c6a346078e5d1eab4226250b3a9f5ab995ca59d5cd98774",
+    "bundledAndServedWasmMatch": true
+  },
+  "checks": {
+    "cargo test -p ifc-lite-wasm": {
+      "passed": 146,
+      "failed": 0,
+      "logSha256": "f41901cf7f51973685303c0990d79234c86389e7ae87b21f7b60c621e96b8851"
+    },
+    "cargo clippy --workspace --all-targets -- -D warnings": {
+      "status": "passed",
+      "logSha256": "39a2e608cb10733f8f481f3a5f36f61dc6ab6fdcc96984d907e64cc3618d804b"
+    },
+    "pnpm test:wasm-contract": {
+      "passed": 85,
+      "failed": 0,
+      "skipped": 2,
+      "skipReason": "Missing embedded/external texture fixtures",
+      "logSha256": "b3b8e370119d57905e6c14bbbd8b88fe0f2fae2405f18535e80547e4fb022689"
+    },
+    "streamingBehaviorMutation": {
+      "status": "old full-precompute behavior rejected by both ordering and callback-stop assertions",
+      "failedTests": 2,
+      "logSha256": "5bb731311353b89dd16d94ee52b911c7ca9a70cc9eb9fc1fce819705f73063ad",
+      "restoredTestsPassed": 3,
+      "restoredLogSha256": "c7a55e7886972d84ddcc9d06e0c29221ddbfca96d217f73d045e31464a4ff39c"
+    }
+  },
+  "functionalQualification": {
+    "report": "browser-qualification.json",
+    "sha256": "0882605d1dcb357d89ecd01f70590115bf355ffd0881883f219a079254cd9489",
+    "sixColdChecksPassed": true,
+    "chromeAndFirefoxFederationAndCachePassed": true
+  },
+  "notClaimed": [
+    "Full eleven-model performance corpus",
+    "Firefox performance comparison",
+    "Native processing speedup",
+    "Full vertex-buffer or closure parity",
+    "Repair of pre-existing CSG/Haus federation framing issue"
+  ]
+}

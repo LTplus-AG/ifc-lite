@@ -350,6 +350,8 @@ function unionByType(store: IfcDataStore, names: readonly string[]): number[] | 
  * expensive parse for entities that already fail/pass.
  */
 const RULE_COST: Record<FilterRule['kind'], number> = {
+  // Constant-time comparison against the entity's owning model.
+  model:          0,
   // Column-only — single TypedArray read.
   ifcType:        0,
   // Pre-built reverse-map lookup.
@@ -517,6 +519,9 @@ function evaluateRule(
   classFor: (() => readonly ClassificationInfo[]) | null,
 ): boolean {
   switch (rule.kind) {
+    case 'model': {
+      return setOpMatches(rule.op, ctx.modelId, rule.values);
+    }
     case 'storey': {
       // Exact-identity mode (refs present): Name isn't unique.
       if (rule.refs) {

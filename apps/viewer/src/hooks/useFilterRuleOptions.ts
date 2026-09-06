@@ -32,7 +32,7 @@ import type { RuleRowProps } from '@/components/viewer/SearchModal.filter.editor
 /** Exactly the option props `RuleRow` takes, so a caller can spread this. */
 export type FilterRuleOptions = Pick<
   RuleRowProps,
-  'ifcTypeOptions' | 'storeyOptions' | 'psetQto' | 'valueSchema'
+  'modelOptions' | 'ifcTypeOptions' | 'storeyOptions' | 'psetQto' | 'valueSchema'
 >;
 
 export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOptions {
@@ -98,6 +98,11 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
     return COMMON_IFC_TYPES.slice();
   }, [schemaEntry]);
 
+  const modelOptions = useMemo(
+    () => Array.from(models.values(), (model) => ({ label: model.name, value: model.id })),
+    [models],
+  );
+
   // The canonical IFC types the rules select (ifcType "is one of" rules).
   const selectedTypes = useMemo(() => {
     const set = new Set<string>();
@@ -126,6 +131,7 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
   }, [activeStore, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
 
   return {
+    modelOptions,
     ifcTypeOptions,
     storeyOptions: schemaEntry?.basic.storeys ?? [],
     psetQto,

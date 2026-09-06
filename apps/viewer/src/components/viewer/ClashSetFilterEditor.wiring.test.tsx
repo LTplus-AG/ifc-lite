@@ -14,6 +14,7 @@
 
 import '@/test/setup-dom.js';
 import { installLayout } from '@/test/dom-layout.js';
+import { act } from 'react';
 
 installLayout();
 
@@ -23,6 +24,7 @@ import { render, cleanup, click } from '@/test/render.js';
 import { Rule } from '@/lib/search/filter-rules';
 import type { ClashSetFilter } from '@/lib/clash/set-filter';
 import { ClashSetFilterEditor } from './ClashSetFilterEditor.js';
+import { RuleRow } from './SearchModal.filter.editors.js';
 
 const TWO_RULES: ClashSetFilter = {
   combinator: 'AND',
@@ -76,5 +78,40 @@ describe('ClashSetFilterEditor', () => {
     assert.ok(!labels.includes('AND'), 'a single-rule-less side has nothing to combine');
     assert.ok(!labels.includes('Clear'));
     assert.ok(labels.some((l) => l.includes('Add filter rule')));
+  });
+
+  it('shows loaded model names and commits the exact selected model id (#4019)', () => {
+    const commits: Array<ReturnType<typeof Rule.model>> = [];
+    const container = render(
+      <RuleRow
+        rule={Rule.model([])}
+        modelOptions={[
+          { label: 'Architecture.ifc', value: 'model-a' },
+          { label: 'Structure.ifc', value: 'model-b' },
+        ]}
+        ifcTypeOptions={[]}
+        storeyOptions={[]}
+        psetQto={null}
+        valueSchema={null}
+        onChange={(next) => {
+          if (next.kind === 'model') commits.push(next);
+        }}
+        onRemove={() => {}}
+      />,
+    );
+
+    const trigger = buttonByText(container, 'Pick values…');
+    act(() => {
+      trigger.dispatchEvent(new window.PointerEvent('pointerdown', {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+      }));
+    });
+    const option = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')]
+      .find((item) => item.textContent?.includes('Structure.ifc'));
+    assert.ok(option, 'the model picker must display the loaded model name');
+    click(option);
+    assert.deepEqual(commits, [Rule.model(['model-b'])]);
   });
 });

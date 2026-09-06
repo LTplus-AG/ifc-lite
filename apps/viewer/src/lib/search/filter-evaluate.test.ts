@@ -229,6 +229,32 @@ describe('evaluateFilterRulesFederated', () => {
     );
     assert.strictEqual(out.length, 3);
   });
+
+  it('selects one exact model in a federation (#4019)', async () => {
+    const a = buildStore(rows);
+    const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
+    const out = await evaluateFilterRulesFederated(
+      [{ id: 'architecture', store: a }, { id: 'structure', store: b }],
+      [Rule.model(['structure'])],
+      'AND',
+    );
+    assert.deepStrictEqual(new Set(out.map((r) => r.modelId)), new Set(['structure']));
+    assert.deepStrictEqual(out.map((r) => r.expressId), [1010, 1020, 1030, 1040]);
+  });
+
+  it('supports excluding a model while combining other rules (#4019)', async () => {
+    const a = buildStore(rows);
+    const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
+    const out = await evaluateFilterRulesFederated(
+      [{ id: 'architecture', store: a }, { id: 'structure', store: b }],
+      [Rule.model(['structure'], 'notIn'), Rule.ifcType(['IfcWall'])],
+      'AND',
+    );
+    assert.deepStrictEqual(out.map((r) => [r.modelId, r.expressId]), [
+      ['architecture', 10],
+      ['architecture', 20],
+    ]);
+  });
 });
 
 describe('flattenPsets / matchPropertyRule', () => {

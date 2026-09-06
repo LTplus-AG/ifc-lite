@@ -292,13 +292,11 @@ for (let iter = 1; iter <= ITERS; iter++) {
         // Separate visual artifact, captured after the observed timing boundary.
         await page.screenshot({ path: join(RESULTS_DIR,
           `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.png`) });
-        ok++;
         writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.console.log`), bp.getConsoleLogs().join('\n'));
       } catch (err) {
         // Never silently retry a product failure — record it, archive
         // whatever evidence exists, and move on. A retry-until-green loop
         // is exactly the shape that hid #3975's renderer SIGILLs.
-        failures++;
         const message = err instanceof Error ? err.message : String(err);
         record = { ...record, ok: false, error: message };
         const failBase = join(RESULTS_DIR, `FAILED-${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}-${Date.now()}`);
@@ -329,10 +327,10 @@ for (let iter = 1; iter <= ITERS; iter++) {
       if (record.ok && (record.contextCloseError || record.browserCloseError)) {
         record.ok = false;
         record.error = 'Owned browser cleanup failed; fresh-process qualification invalid';
-        failures++;
-        ok--;
       }
       writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.json`), JSON.stringify(record, null, 2));
+      if (record.ok) ok++;
+      else failures++;
       appendFileSync(JSONL_OUT, JSON.stringify(record) + '\n');
     }
   }

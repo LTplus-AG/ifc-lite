@@ -10,6 +10,7 @@ mod documents;
 mod materials;
 mod metadata;
 mod properties;
+mod property_value;
 mod quantities;
 mod relationships;
 mod spatial;

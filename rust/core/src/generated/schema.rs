@@ -1062,8 +1062,20 @@ impl IfcType {
     /// Parse IFC type from string (case-insensitive)
     #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
+        // #3987: recognized STEP names need no normalization scan.
+        if let Some(known) = Self::from_canonical_name(s) {
+            return known;
+        }
+        if s.bytes().all(|b| b.is_ascii() && !b.is_ascii_lowercase()) {
+            return Self::Unknown(crc32_hash(s));
+        }
+        // Keep Unicode uppercase expansion and the exact unknown-type CRC.
         let upper = s.to_uppercase();
-        match upper.as_str() {
+        Self::from_canonical_name(&upper).unwrap_or_else(|| Self::Unknown(crc32_hash(&upper)))
+    }
+
+    fn from_canonical_name(s: &str) -> Option<Self> {
+        Some(match s {
             "IFCACTIONREQUEST" => Self::IfcActionRequest,
             "IFCACTOR" => Self::IfcActor,
             "IFCACTORROLE" => Self::IfcActorRole,
@@ -1952,8 +1964,8 @@ impl IfcType {
             "IFCWORKTIME" => Self::IfcWorkTime,
             "IFCZSHAPEPROFILEDEF" => Self::IfcZShapeProfileDef,
             "IFCZONE" => Self::IfcZone,
-            _ => Self::Unknown(crc32_hash(&upper)),
-        }
+            _ => return None,
+        })
     }
 
     /// Parse from CRC32 type ID

@@ -103,25 +103,7 @@ import { processParallel } from './geometry-parallel.js';
  */
 export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
 
-interface ByteStreamingPrePassResult {
-  jobs: Uint32Array;
-  totalJobs: number;
-  unitScale: number;
-  rtcOffset?: Float64Array;
-  needsShift: boolean;
-  buildingRotation?: number | null;
-  voidKeys: Uint32Array;
-  voidCounts: Uint32Array;
-  voidValues: Uint32Array;
-  styleIds: Uint32Array;
-  styleColors: Uint8Array;
-  /** Prepass-resolved plane-angle→radians scale (additive wire field). */
-  planeAngleToRadians?: number;
-  /** #407/#913 §2.3 per-element material colour lists (flat encoding). */
-  materialElementIds?: Uint32Array;
-  materialColorCounts?: Uint32Array;
-  materialColors?: Uint8Array;
-}
+import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 
 export interface GeometryProcessorOptions {
   preferNative?: boolean; // Default: true in Tauri
@@ -776,6 +758,7 @@ export class GeometryProcessor {
      * process disjoint, deterministic element slices). Undefined ⇒ heuristic.
      */
     workerCountOverride?: number,
+    sourceFingerprint?: SharedArrayBuffer,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -784,6 +767,7 @@ export class GeometryProcessor {
 
     yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
       onEntityIndex,
+      sourceFingerprint,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -829,6 +813,8 @@ export class GeometryProcessor {
       sharedRtcOffset?: { x: number; y: number; z: number };
       /** Reuse a SAB already populated by the caller (parser worker, etc.). */
       existingSab?: SharedArrayBuffer;
+      /** Fresh per-load prepass fingerprint cell; optional optimization only. */
+      sourceFingerprint?: SharedArrayBuffer;
       /**
        * Callback fired when the streaming pre-pass exports its entity
        * index. Enables a peer worker (e.g. parser) to skip its own scan.
@@ -919,6 +905,7 @@ export class GeometryProcessor {
           options.onEntityIndex,
           options.wasmUrls,
           options.workerCountOverride,
+          options.sourceFingerprint,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);

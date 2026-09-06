@@ -6,17 +6,7 @@ use crate::api::IfcAPI;
 use js_sys::Function;
 use wasm_bindgen::prelude::*;
 
-/// Reduce a 128-bit geometry hash to the 32-bit worker-affinity key the job
-/// stream carries. Jobs with the SAME key are routed to the same geometry worker,
-/// so their (byte-identical) geometry is meshed once per model instead of once per
-/// worker — the win the per-worker content-dedup cache can't get across separate
-/// WASM realms. A 32-bit collision only co-locates two unrelated geometries on one
-/// worker (harmless: the cache still keys them apart), so xor-folding the lanes is
-/// plenty.
-#[inline]
-fn fold_u128_to_u32(h: u128) -> u32 {
-    (h as u32) ^ ((h >> 32) as u32) ^ ((h >> 64) as u32) ^ ((h >> 96) as u32)
-}
+use super::prepass_affinity::fold_u128_to_u32;
 
 // The per-submesh #858 palette split lives inside the canonical per-element
 // producer (`ifc_lite_processing::element`) — shared with the native pipeline.
@@ -186,6 +176,7 @@ impl IfcAPI {
             None,
             false,
             None,
+            false,
         )
     }
 
@@ -200,6 +191,7 @@ impl IfcAPI {
         prebuilt: Option<ifc_lite_core::ColumnarEntityIndex>,
         external_styles: bool,
         columns: Option<super::prepass_discovery::IndexColumns<'_>>,
+        compute_source_fingerprint: bool,
     ) -> Result<JsValue, JsValue> {
         let prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> =
             prebuilt.map(std::sync::Arc::new);
@@ -233,7 +225,13 @@ impl IfcAPI {
         // one-time cost) instead of a fatal up-front OOM. Ordinary (<2GB) files
         // are unaffected — their `len/50` estimate stays under the cap.
         const PREPASS_INDEX_RESERVE_CAP: usize = 40_000_000; // ~0.5GB reserved
-        let estimated = (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP);
+        // #3985: a prebuilt index serves every lookup and is retained below;
+        // its unused staging map must not reserve another source-sized table.
+        let estimated = if prebuilt_arc.is_some() {
+            0
+        } else {
+            (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP)
+        };
         let mut entity_index: rustc_hash::FxHashMap<u32, (usize, usize)> =
             rustc_hash::FxHashMap::with_capacity_and_hasher(estimated, Default::default());
 
@@ -771,27 +769,13 @@ impl IfcAPI {
         let done = js_sys::Object::new();
         crate::api::set_js_prop(&done, "type", &"complete".into());
         crate::api::set_js_prop(&done, "totalJobs", &(total_jobs as f64).into());
+        if compute_source_fingerprint {
+            // Whole original source, including malformed/unparsed trailing bytes.
+            let key = super::source_fingerprint::source_fingerprint(data);
+            crate::api::set_js_prop(&done, "sourceContentKey", &key.into());
+        }
         on_event.call1(&JsValue::NULL, &done.into())?;
 
         Ok(JsValue::UNDEFINED)
-    }
-}
-
-#[cfg(test)]
-mod affinity_tests {
-    use super::fold_u128_to_u32;
-
-    #[test]
-    fn fold_is_stable_and_mixes_all_lanes() {
-        // Identical hashes fold to identical keys (routing stickiness).
-        assert_eq!(fold_u128_to_u32(0x1234_5678_9abc_def0_1111_2222_3333_4444),
-                   fold_u128_to_u32(0x1234_5678_9abc_def0_1111_2222_3333_4444));
-        // A change confined to ANY single 32-bit lane changes the key — so two
-        // geometries differing only in their high bits still route apart.
-        let base = 0u128;
-        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 0)));
-        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 40)));
-        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 72)));
-        assert_ne!(fold_u128_to_u32(base), fold_u128_to_u32(base | (1u128 << 120)));
     }
 }

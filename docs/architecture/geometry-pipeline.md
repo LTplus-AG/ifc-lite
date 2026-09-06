@@ -27,6 +27,12 @@ prepass resolution exist exactly once, in `ifc-lite-processing`:
   incremental job emission), but they only span-stash — all semantics resolve
   in the shared module.
 
+The native scanner uses `ifc_lite_core::geometry_flags_by_name` to obtain
+`(has_geometry, representationless_spatial)` with one lookup of the existing
+immutable schema table. These are the same predicates exposed separately by
+`has_geometry_by_name` and `is_representationless_spatial_container_by_name`;
+the second still requires the instance's `Representation` to be present.
+
 Geometry/styling fixes belong in those two modules; re-inlining logic in
 `processor.rs` or `gpu_meshes.rs` re-creates the historic both-sides drift
 (#858, #913, #957, #961 each had to be fixed twice before the unification).

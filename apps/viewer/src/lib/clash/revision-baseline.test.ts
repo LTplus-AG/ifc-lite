@@ -4,13 +4,33 @@
 
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
-import type { Clash, ClashResult } from '@ifc-lite/clash';
+import type { Clash, ClashResult, ClashRuleCoverage } from '@ifc-lite/clash';
 import { captureModelNames, loadRevisionBaseline, saveRevisionBaseline } from './revision-baseline.js';
 
 class MemoryStorage {
   private store = new Map<string, string>();
   getItem(key: string): string | null { return this.store.get(key) ?? null; }
   setItem(key: string, value: string): void { this.store.set(key, value); }
+  removeItem(key: string): void { this.store.delete(key); }
+}
+
+/** Mirrors a real browser `localStorage`: `setItem` throws once the total
+ *  stored size would exceed `limit` (bytes, UTF-16 code units) — same
+ *  contract as `QuotaExceededError`, just without a DOM to get it from. */
+class QuotaLimitedStorage {
+  private store = new Map<string, string>();
+  constructor(private readonly limit: number) {}
+  getItem(key: string): string | null { return this.store.get(key) ?? null; }
+  setItem(key: string, value: string): void {
+    const existing = this.store.get(key)?.length ?? 0;
+    const projected = [...this.store.entries()].reduce((sum, [k, v]) => sum + (k === key ? 0 : v.length), 0)
+      + value.length;
+    if (projected > this.limit) {
+      throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+    }
+    void existing;
+    this.store.set(key, value);
+  }
   removeItem(key: string): void { this.store.delete(key); }
 }
 
@@ -115,6 +135,62 @@ describe('clash revision baseline persistence (#3928)', () => {
     const validBody = { result: result([clash('m1')]), modelNames: { m1: 'building.ifc' }, takenAt: 1000 };
     (g.localStorage as MemoryStorage).setItem('ifc-lite-clash-revision-baseline', JSON.stringify({ baseline: validBody }));
     assert.strictEqual(loadRevisionBaseline(), null);
+  });
+});
+
+/** A `ClashRuleCoverage` carrying the #3947 per-element key arrays, sized so
+ *  a handful of rules on a broad selector are enough to blow a small quota —
+ *  standing in for "a broad rule on a large federated model" from #3953. */
+function coverageWithKeys(
+  rule: string, matchedA: number, matchedB: number, fromMembersA: boolean, fromMembersB: boolean,
+): ClashRuleCoverage {
+  const keysA = Array.from({ length: matchedA }, (_, i) => `2N1SPBejP08uMKa3Ea${rule}${String(i).padStart(6, '0')}`);
+  const keysB = Array.from({ length: matchedB }, (_, i) => `1O2SPBejP08uMKa3Fb${rule}${String(i).padStart(6, '0')}`);
+  return { rule, matchedA, matchedB, fromMembersA, fromMembersB, matchedKeysA: keysA, matchedKeysB: keysB };
+}
+
+describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', () => {
+  beforeEach(() => {
+    g.localStorage = new QuotaLimitedStorage(20_000);
+  });
+
+  it(
+    'saves successfully under a quota that #3947\'s unstripped matchedKeysA/B would have exceeded, ' +
+      'because compareClashRevisions never reads a BASELINE\'s own matchedKeysA/B ' +
+      '(revision.ts: ruleMatchedKeys/noMatchRuleIdSet are only ever called on the CURRENT run) ' +
+      '— so they are safe to drop before the baseline is persisted',
+    () => {
+      const r: ClashResult = {
+        ...result([clash('m1')]),
+        ruleCoverage: [
+          coverageWithKeys('r1', 400, 300, true, false),
+          coverageWithKeys('r2', 200, 500, false, true),
+        ],
+      };
+      const outcome = saveRevisionBaseline({ result: r, modelNames: { m1: 'building.ifc' }, takenAt: 1000 });
+      assert.deepStrictEqual(outcome, { ok: true });
+
+      // And the coverage's small, still-useful fields (counts, fromMembers)
+      // survive the round trip — only the unbounded key arrays are gone.
+      const loaded = loadRevisionBaseline();
+      assert.ok(loaded);
+      const coverage = loaded.result.ruleCoverage;
+      assert.ok(coverage);
+      assert.deepStrictEqual(coverage, [
+        { rule: 'r1', matchedA: 400, matchedB: 300, fromMembersA: true, fromMembersB: false },
+        { rule: 'r2', matchedA: 200, matchedB: 500, fromMembersA: false, fromMembersB: true },
+      ]);
+      for (const entry of coverage) {
+        assert.strictEqual(Object.hasOwn(entry, 'matchedKeysA'), false);
+        assert.strictEqual(Object.hasOwn(entry, 'matchedKeysB'), false);
+      }
+    },
+  );
+
+  it('a baseline with no ruleCoverage at all still round-trips (nothing to strip)', () => {
+    const outcome = saveRevisionBaseline({ result: result([clash('m1')]), modelNames: { m1: 'building.ifc' }, takenAt: 1000 });
+    assert.deepStrictEqual(outcome, { ok: true });
+    assert.strictEqual(loadRevisionBaseline()?.result.ruleCoverage, undefined);
   });
 });
 

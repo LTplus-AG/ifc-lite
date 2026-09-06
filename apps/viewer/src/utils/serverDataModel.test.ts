@@ -546,21 +546,25 @@ describe('convertServerDataModel classification wiring (#3955)', () => {
     assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
   });
 
-  it('mutation: dropping DataModel.classifications from the payload reverts to CLASSIFICATION_MISSING, never a false pass', () => {
+  it('mutation: dropping DataModel.classifications from the payload reverts to CLASSIFICATION_UNRESOLVED, never a false pass', () => {
     // The relationship graph edge (IFCRELASSOCIATESCLASSIFICATION) is still
     // present — the graph proves entity 4 IS classified — but the resolved
     // attribute payload is empty, as it would be from an older server/cache
     // that predates the `classifications` field. This must not silently
-    // manufacture a passing result for data that never arrived.
+    // manufacture a passing result for data that never arrived, and — since
+    // #3951 — must not collapse to the same result as a genuinely
+    // unclassified entity (CLASSIFICATION_MISSING) either: the graph still
+    // proves classification, so the correct outcome is the distinct
+    // "classified, but unresolved" marker/failure.
     const store = convertServerDataModel(buildClassifiedDataModel(false), parseResult, { size: 1 }, []);
 
     const info = extractClassificationsOnDemand(store, 4);
-    assert.deepEqual(info, []);
+    assert.deepEqual(info, [{ unresolved: true }]);
 
     const accessor = createDataAccessor(store);
     const result = checkClassificationFacet(systemFacet, 4, accessor);
     assert.equal(result.passed, false);
-    assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
+    assert.equal(result.failure?.type, 'CLASSIFICATION_UNRESOLVED');
   });
 
   it('mutation: an attribute the server never sent (location) stays undefined, never fabricated', () => {

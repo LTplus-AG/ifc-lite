@@ -66,13 +66,34 @@ if [ -z "$FIXTURES_CSV" ]; then
 fi
 IFS=',' read -r -a FIXTURES <<< "$FIXTURES_CSV"
 
+# Source-based comparisons may not silently substitute a published engine.
+build_source_viewer() {
+  if ! command -v wasm-pack >/dev/null 2>&1 && [ ! -x "$HOME/.cargo/bin/wasm-pack" ]; then
+    echo "browser-cold-ab.sh: wasm-pack required for ref-matched builds; supply frozen distributions to browser-cold-ab.mts instead." >&2
+    return 2
+  fi
+  bash scripts/build-wasm.sh >&2
+  local built_wasm_sha
+  built_wasm_sha="$(node -p "require('crypto').createHash('sha256').update(require('fs').readFileSync('packages/wasm/pkg/ifc-lite_bg.wasm')).digest('hex')")"
+  test -n "$built_wasm_sha"
+  pnpm turbo build --filter=@ifc-lite/viewer >&2
+  if [ "$built_wasm_sha" != "$(node -p "require('crypto').createHash('sha256').update(require('fs').readFileSync('packages/wasm/pkg/ifc-lite_bg.wasm')).digest('hex')")" ]; then
+    echo "browser-cold-ab.sh: WASM changed after the source build; refusing mismatched artifacts" >&2
+    return 2
+  fi
+  local served_wasm_sha
+  served_wasm_sha="$(node -p "const fs=require('fs');const dir='apps/viewer/dist/assets/';const names=fs.readdirSync(dir).filter(n=>/^ifc-lite_bg-.*\\.wasm$/.test(n));if(names.length!==1)throw Error('expected one viewer IFC WASM asset');require('crypto').createHash('sha256').update(fs.readFileSync(dir+names[0])).digest('hex')")"
+  if [ "$built_wasm_sha" != "$served_wasm_sha" ]; then
+    echo "browser-cold-ab.sh: served viewer WASM differs from source-built engine" >&2
+    return 2
+  fi
+  echo "browser-cold-ab.sh: source-built and served WASM SHA256 $built_wasm_sha" >&2
+}
+
 # --- Branch (working tree) build --------------------------------------------
 if [ "$SKIP_BRANCH_BUILD" -eq 0 ]; then
   echo "browser-cold-ab.sh: building branch viewer bundle (working tree)…" >&2
-  if [ ! -d packages/wasm/pkg ]; then
-    node scripts/fetch-prebuilt-wasm.mjs >&2 || bash scripts/build-wasm.sh >&2
-  fi
-  pnpm turbo build --filter=@ifc-lite/viewer >&2
+  build_source_viewer
 fi
 if [ ! -d apps/viewer/dist ]; then
   echo "browser-cold-ab.sh: apps/viewer/dist missing after build — aborting." >&2
@@ -90,7 +111,7 @@ fi
 # what a repeatability check or a --fault-inject-ms harness self-test wants,
 # and it skips the second install+build entirely.
 if [ -n "$BASE_REF" ]; then
-  BASE_SHA="$(git rev-parse --short "$BASE_REF")"
+  BASE_SHA="$(git rev-parse "$BASE_REF")"
   echo "browser-cold-ab.sh: base=$BASE_SHA ($BASE_REF)  branch=$(git rev-parse --short HEAD)" >&2
 
   TMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ifc-browser-ab.XXXXXX")"
@@ -102,18 +123,19 @@ if [ -n "$BASE_REF" ]; then
   trap cleanup EXIT
 
   echo "browser-cold-ab.sh: building base viewer bundle @ $BASE_SHA in a throwaway worktree…" >&2
-  git worktree add --detach "$BASE_WT" "$BASE_REF" >&2
+  git worktree add --detach "$BASE_WT" "$BASE_SHA" >&2
   (
     cd "$BASE_WT"
     pnpm install --frozen-lockfile >&2
-    node scripts/fetch-prebuilt-wasm.mjs >&2 || bash scripts/build-wasm.sh >&2
-    pnpm turbo build --filter=@ifc-lite/viewer >&2
+    build_source_viewer
   )
   if [ ! -d "$BASE_WT/apps/viewer/dist" ]; then
     echo "browser-cold-ab.sh: base build produced no apps/viewer/dist — aborting." >&2
     exit 1
   fi
-  CMD_ARGS+=(--dist-base "$BASE_WT/apps/viewer/dist" --base-label "$BASE_SHA" --branch-label "$(git rev-parse --short HEAD)")
+  BRANCH_LABEL="$(git rev-parse HEAD)"
+  if [ "$SKIP_BRANCH_BUILD" -eq 1 ]; then BRANCH_LABEL="supplied-branch-dist"; fi
+  CMD_ARGS+=(--dist-base "$BASE_WT/apps/viewer/dist" --base-label "$BASE_SHA" --branch-label "$BRANCH_LABEL")
 else
   echo "browser-cold-ab.sh: no --base and no origin/main — running self-mode (repeatability only, no base build)." >&2
 fi

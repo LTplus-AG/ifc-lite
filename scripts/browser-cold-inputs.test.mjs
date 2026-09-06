@@ -66,3 +66,49 @@ test('#3978 separate nested JSONL/report destinations are writable before browse
     assert.equal(readFileSync(report, 'utf8'), '{}');
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('#3978 explicit corpus failures and colliding fixture labels reject before browser startup', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const root = mkdtempSync(resolve(tmpdir(), 'browser-cohort-'));
+  try {
+    const a = resolve(root, 'a/same.ifc');
+    const b = resolve(root, 'b/same.ifc');
+    mkdirSync(resolve(root, 'a')); mkdirSync(resolve(root, 'b'));
+    writeFileSync(a, 'fixture'); writeFileSync(b, 'fixture');
+    const corpus = resolve(root, 'corpus.json');
+    const cases = [
+      { entries: [{ name: 'present', path: a }, { name: 'missing', path: resolve(root, 'absent.ifc') }], expected: /Fixture missing/ },
+      { entries: [{ name: 'same', path: a }, { name: 'same', path: b }], expected: /Duplicate fixture label/ },
+      { entries: [{ name: 'a-b', path: a }, { name: 'a b', path: b }], expected: /Colliding fixture artifact key/ },
+    ];
+    for (const item of cases) {
+      writeFileSync(corpus, JSON.stringify(item.entries));
+      const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', '--dist-branch', root, '--corpus', corpus], { encoding: 'utf8' });
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, item.expected);
+    }
+    const positional = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', '--dist-branch', root, a, b], { encoding: 'utf8' });
+    assert.notEqual(positional.status, 0);
+    assert.match(positional.stderr, /Duplicate fixture label/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+test('#3978 previous JSONL, report and screenshot evidence is never overwritten', async () => {
+  const { mkdtempSync, writeFileSync, readFileSync, mkdirSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { prepareBrowserOutputs } = await tsImport('./perf/browser-cold-outputs.ts', import.meta.url);
+  const root = mkdtempSync(resolve(tmpdir(), 'browser-retained-'));
+  try {
+    for (const kind of ['jsonl', 'report', 'screenshot']) {
+      const folder = resolve(root, kind); mkdirSync(folder);
+      const results = resolve(folder, 'runs'); mkdirSync(results);
+      const jsonl = resolve(folder, 'old.jsonl');
+      const report = resolve(folder, 'report.json');
+      const retained = kind === 'jsonl' ? jsonl : kind === 'report' ? report : resolve(results, 'failed.png');
+      writeFileSync(retained, 'retained failure');
+      assert.throws(() => prepareBrowserOutputs(results, jsonl, report), /Refusing to overwrite/);
+      assert.equal(readFileSync(retained, 'utf8'), 'retained failure');
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

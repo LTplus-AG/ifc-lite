@@ -787,3 +787,14 @@ moves compression off the interaction thread without removing its CPU or memory
 cost. Cumulative qualification must include cache completion, full-lifetime
 memory and actual cache reopening; raw IFC timing must not be replaced by a
 prepared reload. No isolated throughput gain is attributed to this layer.
+
+Explicit corpus entries are mandatory: missing files, duplicate fixture labels
+and colliding filename keys fail before launching a browser. Default outputs use
+a fresh per-run directory; existing JSONL/report/screenshot evidence is refused
+rather than overwritten. Ref comparisons require a source WASM build and verify
+the bundled viewer engine has the same hash after Turbo. They do not fetch a
+published engine as a substitute. Without wasm-pack, supply independently frozen
+distributions directly to the TypeScript entrypoint and retain their provenance.
+`--skip-branch-build` labels its input as supplied distribution, not a verified
+current-commit build. The wrapper retains the temporary base through child exit
+and then removes it while preserving the child failure status.

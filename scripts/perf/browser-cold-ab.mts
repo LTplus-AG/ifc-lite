@@ -3,74 +3,25 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Browser cold-load A/B harness (#3978).
+/** Manual fresh-process browser A/B (#3978); see README for the full contract.
+ * Each sample uses an ephemeral browser and empty application caches; OS caches
+ * remain uncontrolled. Distinct geometry/metadata/renderer milestones and all
+ * failures are retained. Search, cache-tail memory, picking and Firefox remain
+ * outside this bounded harness. It is separate from the unchanged CI benchmark.
  *
- * DELIBERATELY MANUAL — NOT WIRED INTO CI. This launches a real, dedicated
- * Chromium process per sample and can drive multi-hundred-MB private models;
- * neither belongs on a shared PR runner. `.github/workflows/benchmark.yml`
- * (advisory, small public fixtures, one shared browser per worker) is the
- * CI-wired sibling of this tool and is unaffected by it. Nothing here is
- * invoked by any workflow — `node scripts/check-test-wiring.mjs` does not
- * expect a `package.json` script for a script under `scripts/perf/`, the same
- * carve-out `ab.sh`/`probe.sh` already use for their native counterparts.
+ * Supply --dist-base and --dist-branch for two frozen builds, or omit the base
+ * for a same-build functional/repeatability check. At least five matched pairs
+ * are required for noise-based reporting. Private corpus JSON is never fetched.
  *
- * WHAT "COLD" MEANS HERE, and what it does not:
- *   - Each sample gets a brand-new `chromium.launch()` with NO persistent
- *     profile, closed completely before the next sample starts. That forces
- *     a fresh WASM module instantiation, fresh geometry-worker pool startup,
- *     and an empty Cache API / localStorage / IndexedDB every time — the
- *     three things a warm second load in the SAME tab would short-circuit.
- *   - It does NOT control the OS file-cache: the IFC file and the served
- *     viewer bundle may already sit in the kernel page cache from a prior
- *     run. That is the same caveat #3921's own qualification recorded
- *     ("Fresh Chrome processes and empty application cache; OS file cache
- *     uncontrolled") — repeated here rather than silently assumed away.
- *   - Observed readiness (`metadataRenderReadyMs`: metadata +
- *     geometry + renderer) is reported SEPARATELY from "first geometry
- *     submitted" (`firstBatchWaitMs`/`firstVisibleGeometryMs`) — never
- *     collapsed into one number, per the ViewerBenchmarkMetrics shape this
- *     reuses from tests/benchmark/viewer-benchmark-page.ts. Search, cache-tail
- *     memory, property/picking witnesses and Firefox remain unqualified.
- *
- * REPEATABILITY: samples for base and branch are INTERLEAVED (base, branch,
- * base, branch, …), so a machine that drifts mid-run drags both sides
- * equally instead of faking a delta — the same discipline as
- * scripts/perf/ab.sh for the native probe. The reporter (browser-ab-report.mjs)
- * refuses to call a delta "real" unless it clears the base side's OWN
- * round-to-round spread (the measured noise floor for that run), and flags a
- * changed `totalMeshes` fingerprint as invalidating any timing comparison.
- *
- * TWO WAYS TO USE IT:
- *   1. Real base-vs-branch: build two viewer bundles (e.g. via
- *      `browser-cold-ab.sh`, which builds `--base <ref>` in a throwaway git
- *      worktree) and pass their `dist/` directories with --dist-base/--dist-branch.
- *   2. Self-mode (repeatability check / harness self-test): omit --dist-base.
- *      Both interleaved sides serve the SAME --dist-branch build. Add
- *      --fault-inject-ms/--fault-inject-side to prove the harness notices an
- *      artificial slowdown (see the README "Verifying this harness" section).
- *
- * PRIVATE/LARGE MODELS: pass --corpus <manifest.json>, a LOCAL, UNCOMMITTED
- * file of the shape `[{"name": "...", "path": "/abs/path/to/model.ifc"}]`.
- * Nothing here fetches, generates or commits large fixtures — see
- * scripts/perf/browser-corpus.example.json for the shape and .gitignore for
- * the local-manifest exclusion.
- *
- * Usage:
- *   npx tsx scripts/perf/browser-cold-ab.mts \
- *     tests/models/ara3d/AC20-FZK-Haus.ifc \
- *     "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc" \
- *     --dist-branch apps/viewer/dist --iters 5
- *
- *   # harness self-test: inject a 2s delay on the .wasm fetch for the
- *   # "branch" side of each interleaved pair and confirm it is flagged
- *   npx tsx scripts/perf/browser-cold-ab.mts tests/models/ara3d/AC20-FZK-Haus.ifc \
- *     --dist-branch apps/viewer/dist --iters 5 \
- *     --fault-inject-ms 2000 --fault-inject-side branch
+ * Example: npx tsx scripts/perf/browser-cold-ab.mts model.ifc
+ *   --dist-branch apps/viewer/dist --iters 5 --headed
+ *   --browser-executable /path/to/chrome
+ * Use --fault-inject-ms 2000 --fault-inject-side branch to exercise delay detection.
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { browserStaticPath } from './browser-cold-server-path.js';
+import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtures.js';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -129,9 +80,9 @@ if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
 }
 const BASE_LABEL = flag('--base-label') ?? (DIST_BASE ? 'base' : 'run-A');
 const BRANCH_LABEL = flag('--branch-label') ?? (DIST_BASE ? 'branch' : 'run-B');
-const JSONL_OUT = resolve(ROOT, flag('--jsonl') ?? 'scripts/perf/.browser-cold-ab-results/runs.jsonl');
+const RESULTS_DIR = resolve(ROOT, flag('--results-dir') ?? `scripts/perf/.browser-cold-ab-results/run-${Date.now()}-${process.pid}`);
+const JSONL_OUT = resolve(ROOT, flag('--jsonl') ?? join(RESULTS_DIR, 'runs.jsonl'));
 const REPORT_JSON = flag('--report-json') ? resolve(ROOT, flag('--report-json')!) : null;
-const RESULTS_DIR = resolve(ROOT, flag('--results-dir') ?? 'scripts/perf/.browser-cold-ab-results');
 const FAULT_MS = Number(flag('--fault-inject-ms') ?? '0');
 const FAULT_SIDE = flag('--fault-inject-side') ?? 'branch'; // 'base' | 'branch'
 const FAULT_PATTERN = flag('--fault-inject-pattern') ?? '\\.wasm(\\?|$)';
@@ -169,21 +120,16 @@ if (corpusPath) {
     process.exit(2);
   }
   const entries = JSON.parse(readFileSync(abs, 'utf-8')) as Fixture[];
-  for (const e of entries) {
-    if (!existsSync(e.path)) {
-      console.error(`browser-cold-ab: corpus entry missing on disk, skipping: ${e.name} -> ${e.path}`);
-      continue;
-    }
-    fixtures.push(e);
-  }
+  fixtures.push(...entries);
 }
 if (fixtures.length === 0) {
   console.error('browser-cold-ab: no fixtures. Pass fixture paths and/or --corpus <manifest.json>.');
   process.exit(2);
 }
 
+validateBrowserFixtures(fixtures);
+if (BASE_LABEL === BRANCH_LABEL) throw new Error('Base and branch labels must differ');
 prepareBrowserOutputs(RESULTS_DIR, JSONL_OUT, REPORT_JSON);
-writeFileSync(JSONL_OUT, ''); // truncate; this run's results only
 
 // ---------------------------------------------------------------------------
 // Minimal static server, root swappable between rounds without a restart —
@@ -298,15 +244,15 @@ for (let iter = 1; iter <= ITERS; iter++) {
         record = { ...record, ok: true, ...metrics };
         // Separate visual artifact, captured after the observed timing boundary.
         await page.screenshot({ path: join(RESULTS_DIR,
-          `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.png`) });
-        writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.console.log`), bp.getConsoleLogs().join('\n'));
+          `${label}-${browserFixtureKey(fixture.name)}-r${iter}.png`) });
+        writeFileSync(join(RESULTS_DIR, `${label}-${browserFixtureKey(fixture.name)}-r${iter}.console.log`), bp.getConsoleLogs().join('\n'));
       } catch (err) {
         // Never silently retry a product failure — record it, archive
         // whatever evidence exists, and move on. A retry-until-green loop
         // is exactly the shape that hid #3975's renderer SIGILLs.
         const message = err instanceof Error ? err.message : String(err);
         record = { ...record, ok: false, error: message };
-        const failBase = join(RESULTS_DIR, `FAILED-${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}-${Date.now()}`);
+        const failBase = join(RESULTS_DIR, `FAILED-${label}-${browserFixtureKey(fixture.name)}-r${iter}-${Date.now()}`);
         try {
           await page?.screenshot({ path: `${failBase}.png`, fullPage: false });
         } catch (archiveError) {
@@ -335,7 +281,7 @@ for (let iter = 1; iter <= ITERS; iter++) {
         record.ok = false;
         record.error = 'Owned browser cleanup failed; fresh-process qualification invalid';
       }
-      writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.json`), JSON.stringify(record, null, 2));
+      writeFileSync(join(RESULTS_DIR, `${label}-${browserFixtureKey(fixture.name)}-r${iter}.json`), JSON.stringify(record, null, 2));
       if (record.ok) ok++;
       else failures++;
       appendFileSync(JSONL_OUT, JSON.stringify(record) + '\n');

@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-test('#3978 base wrapper retains its build until child exits, then removes real worktree and preserves failure status', () => {
+for (const corruptServedWasm of [false, true]) test(`#3978 source build and cleanup preserve outcome (served WASM corrupted: ${corruptServedWasm})`, () => {
   const root = mkdtempSync(join(tmpdir(), 'browser-wrapper-'));
   const repo = join(root, 'repo');
   const bin = join(root, 'bin');
@@ -16,6 +16,7 @@ test('#3978 base wrapper retains its build until child exits, then removes real 
   mkdirSync(join(repo, 'apps/viewer/dist'), { recursive: true });
   mkdirSync(bin);
   copyFileSync(resolve('scripts/perf/browser-cold-ab.sh'), join(repo, 'scripts/perf/browser-cold-ab.sh'));
+  writeFileSync(join(repo, 'scripts/build-wasm.sh'), '#!/bin/sh\nmkdir -p packages/wasm/pkg\nprintf fixture-wasm > packages/wasm/pkg/ifc-lite_bg.wasm\n');
   const git = args => {
     const result = spawnSync('git', args, { cwd: repo, encoding: 'utf8' });
     assert.equal(result.status, 0, result.stderr);
@@ -26,8 +27,9 @@ test('#3978 base wrapper retains its build until child exits, then removes real 
     git(['add', '.']);
     git(['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-qm', 'fixture']);
     // Build tools are bounded stubs; git worktree registration and shell traps are real.
-    writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nmkdir -p apps/viewer/dist\n', { mode: 0o755 });
-    writeFileSync(join(bin, 'node'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'pnpm'), '#!/bin/sh\nif [ \"$1\" = install ]; then exit 0; fi\nmkdir -p apps/viewer/dist/assets\ncp packages/wasm/pkg/ifc-lite_bg.wasm apps/viewer/dist/assets/ifc-lite_bg-test.wasm\nif [ \"$WRAPPER_CORRUPT_WASM\" = 1 ]; then printf wrong-engine > apps/viewer/dist/assets/ifc-lite_bg-test.wasm; fi\n', { mode: 0o755 });
+    writeFileSync(join(bin, 'node'), `#!/bin/sh\nexec '${process.execPath}' \"$@\"\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'wasm-pack'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
     writeFileSync(join(bin, 'npx'), `#!/bin/sh
 previous=''
 for arg in "$@"; do
@@ -41,11 +43,16 @@ exit 17
 `, { mode: 0o755 });
     const marker = join(root, 'base-path');
     const result = spawnSync('bash', ['scripts/perf/browser-cold-ab.sh', '--base', 'HEAD', '--skip-branch-build', '--fixtures', 'fixture.ifc'], {
-      cwd: repo, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WRAPPER_BASE_MARKER: marker }, encoding: 'utf8',
+      cwd: repo, env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, WRAPPER_BASE_MARKER: marker, WRAPPER_CORRUPT_WASM: corruptServedWasm ? '1' : '0' }, encoding: 'utf8',
     });
-    assert.equal(result.status, 17, result.stderr);
-    assert.ok(existsSync(marker), 'child actually received a live base distribution');
-    assert.equal(existsSync(readFileSync(marker, 'utf8')), false, 'temporary base distribution was removed');
+    assert.equal(result.status, corruptServedWasm ? 2 : 17, result.stderr);
+    if (corruptServedWasm) {
+      assert.match(result.stderr, /served viewer WASM differs/);
+      assert.equal(existsSync(marker), false, 'mismatched artifacts must not launch the harness');
+    } else {
+      assert.ok(existsSync(marker), 'child actually received a live base distribution');
+      assert.equal(existsSync(readFileSync(marker, 'utf8')), false, 'temporary base distribution was removed');
+    }
     assert.equal(git(['worktree', 'list', '--porcelain']).split('\n').filter(line => line.startsWith('worktree ')).length, 1);
   } finally { rmSync(root, { recursive: true, force: true }); }
 });

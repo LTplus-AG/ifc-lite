@@ -72,6 +72,35 @@ describe('issue #3991 exact LOD cell keys', () => {
     });
   }
 
+  it('avoids per-cell string keys while simplifying an eligible finite mesh (#3991)', () => {
+    const { data, indices } = fixture([[0, 0, 0], [4, 0, 0], [0, 4, 4]]);
+    // Build the independent tuple oracle before observing the real simplifier:
+    // the oracle intentionally allocates string keys, unlike the eligible path.
+    const expected = stringCellOracle(data, 7, indices, 1);
+    assert.ok(expected);
+    const originalSet = Map.prototype.set;
+    let stringInsertions = 0;
+    let numericInsertions = 0;
+    let result: Uint32Array | null;
+    // Transparent, synchronous observation: preserve every key, value, receiver
+    // and return value. No await or assertion runs with the global hook installed.
+    Map.prototype.set = function <K, V>(this: Map<K, V>, key: K, value: V) {
+      if (typeof key === 'string') stringInsertions++;
+      if (typeof key === 'number') numericInsertions++;
+      return originalSet.call(this, key, value);
+    };
+    try {
+      result = simplifyIndicesByClustering(data, 7, indices, 1);
+    } finally {
+      Map.prototype.set = originalSet;
+    }
+    assert.ok(result, 'the observed call must produce an accepted LOD');
+    assert.equal(result.length, 120 * 3, 'the mesh must actually lose collapsed triangles');
+    assert.deepEqual(result, expected, 'numeric cells preserve first representatives and entity lanes');
+    assert.equal(numericInsertions, 6, 'three occupied cells for each of two full-u32 entity lanes');
+    assert.equal(stringInsertions, 0, 'eligible cells must use no string map keys');
+  });
+
   it('keeps coincident cells from different full-u32 entity lanes isolated', () => {
     const { data, indices } = fixture([[0, 0, 0], [4, 0, 0], [0, 4, 4]]);
     const result = simplifyIndicesByClustering(data, 7, indices, 1);

@@ -88,22 +88,43 @@ if (!canRun) {
   );
 }
 
-describe.skipIf(!canRun)('StepExporter output is schema-conformant per IfcOpenShell', () => {
-  it('validates the ORIGINAL fixtures as a control (a non-conformant input must not masquerade as a writer defect)', () => {
-    const inputs = FIXTURES.map((f) => resolve(MODELS_DIR, f));
-    expect(inputs.length).toBeGreaterThan(0);
-    runValidateOrThrow(inputs);
-  });
+// Each test below shells out to a cold Python process that imports
+// ifcopenshell.validate (which in turn imports ifcopenshell.express's
+// rule_executor, and through it pytest's assertion rewriter — see
+// validate_export.py's header) before it can check a single entity. That
+// import chain, plus running express_rules=True over two real fixtures, is
+// consistently 3-4s locally and measured at 7.5-7.6s on GitHub's shared
+// runners — comfortably over vitest's 5000ms default. It is not repeated
+// or wasted work (each test validates a different input: the original
+// fixtures as a control vs. this branch's StepExporter re-export), so the
+// fix is a longer timeout on these two tests specifically, not a smaller
+// one elsewhere.
+const IFCOPENSHELL_TEST_TIMEOUT_MS = 20_000;
 
-  it('validates the full-fidelity StepExporter re-export of both fixtures', async () => {
-    const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-'));
-    const outputs: string[] = [];
-    for (const fixture of FIXTURES) {
-      outputs.push(await reExport(fixture, outDir));
-    }
-    expect(outputs.length).toBe(FIXTURES.length);
-    runValidateOrThrow(outputs);
-  });
+describe.skipIf(!canRun)('StepExporter output is schema-conformant per IfcOpenShell', () => {
+  it(
+    'validates the ORIGINAL fixtures as a control (a non-conformant input must not masquerade as a writer defect)',
+    () => {
+      const inputs = FIXTURES.map((f) => resolve(MODELS_DIR, f));
+      expect(inputs.length).toBeGreaterThan(0);
+      runValidateOrThrow(inputs);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'validates the full-fidelity StepExporter re-export of both fixtures',
+    async () => {
+      const outDir = mkdtempSync(join(tmpdir(), 'ifc-lite-export-conformance-'));
+      const outputs: string[] = [];
+      for (const fixture of FIXTURES) {
+        outputs.push(await reExport(fixture, outDir));
+      }
+      expect(outputs.length).toBe(FIXTURES.length);
+      runValidateOrThrow(outputs);
+    },
+    IFCOPENSHELL_TEST_TIMEOUT_MS,
+  );
 });
 
 /**

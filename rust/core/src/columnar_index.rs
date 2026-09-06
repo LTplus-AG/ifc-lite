@@ -80,16 +80,19 @@ impl ColumnarEntityIndex {
                 lengths: Vec::new(),
             };
         }
-        if is_strictly_ascending(ids) {
-            // Already sorted AND unique — the common case once the producer
-            // emits sorted columns. No permutation, no dedup: just adopt them.
-            return Self {
-                ids: ids.to_vec(),
-                starts: starts.to_vec(),
-                lengths: lengths.to_vec(),
-            };
+        Self::from_owned_columns(ids.to_vec(), starts.to_vec(), lengths.to_vec())
+    }
+
+    /// Consume binding-owned columns without another full allocation (#3989).
+    /// Validation and last-in-input-order duplicate precedence match `from_columns`.
+    pub fn from_owned_columns(ids: Vec<u32>, starts: Vec<u32>, lengths: Vec<u32>) -> Self {
+        if ids.is_empty() || starts.len() != ids.len() || lengths.len() != ids.len() {
+            return Self { ids: Vec::new(), starts: Vec::new(), lengths: Vec::new() };
         }
-        Self::from_unsorted(ids.to_vec(), starts.to_vec(), lengths.to_vec())
+        if is_strictly_ascending(&ids) {
+            return Self { ids, starts, lengths };
+        }
+        Self::from_unsorted(ids, starts, lengths)
     }
 
     /// Build from an already-scanned [`EntityIndex`](crate::EntityIndex)

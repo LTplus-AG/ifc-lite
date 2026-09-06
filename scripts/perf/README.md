@@ -599,6 +599,10 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
   plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
   a different tree shape is output-equivalent and can be asserted as such.
 
+### Source and buffer ownership during WASM prepass (#3989)
+
+Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

@@ -66,14 +66,15 @@ const NON_ROOT_NAME_ATTRIBUTES = ['Name', 'LongName', 'Description', 'ProfileNam
  *  (kept by decision — it is debugging signal), and property / quantity
  *  names (`FireRating`, `Width`), which are only exported at all under
  *  `keepPropertySets` and are what a property-debugging repro needs. */
-function isNonRootNameExempt(typeUpper: string): boolean {
+export function isNonRootNameExempt(typeUpper: string): boolean {
   return typeUpper === 'IFCAPPLICATION'
     // Owner-history actors are `scrubOwnerHistory`'s job (their whole
     // attribute list, not just Name), and must stay untouched when it is off.
     || typeUpper === 'IFCPERSON'
     || typeUpper === 'IFCORGANIZATION'
     || typeUpper === 'IFCPERSONANDORGANIZATION'
-    || typeUpper.startsWith('IFCPROPERTY')
+    // #4042: IfcComplexProperty is a direct subtype whose name lacks the prefix.
+    || typeUpper.startsWith('IFCPROPERTY') || typeUpper === 'IFCCOMPLEXPROPERTY'
     || typeUpper.startsWith('IFCPHYSICAL')
     || typeUpper.startsWith('IFCQUANTITY');
 }

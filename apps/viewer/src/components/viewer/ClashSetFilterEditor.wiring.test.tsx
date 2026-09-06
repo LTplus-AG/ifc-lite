@@ -81,7 +81,8 @@ describe('ClashSetFilterEditor', () => {
   });
 
   it('shows model names and commits the selected durable source identity (#4019)', () => {
-    const commits: Array<ReturnType<typeof Rule.model>> = [];
+    type ModelRule = ReturnType<typeof Rule.model>;
+    const commits: ModelRule[] = [];
     const container = render(
       <RuleRow
         rule={Rule.model([])}

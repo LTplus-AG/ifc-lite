@@ -212,8 +212,11 @@ export async function evaluateFilterRulesFederated(
     const modelFilterIdentity = m.filterIdentity ?? m.id;
     if (
       combinator === 'AND'
-      && orderedRules.some((rule) => rule.kind === 'model'
-        && !setOpMatches(rule.op, modelFilterIdentity, rule.values))
+      && orderedRules.some((rule) => {
+        if (rule.kind !== 'model') return false;
+        const matchesModel = setOpMatches(rule.op, modelFilterIdentity, rule.values);
+        return !matchesModel;
+      })
     ) {
       continue;
     }

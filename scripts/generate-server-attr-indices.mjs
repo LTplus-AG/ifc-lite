@@ -5,7 +5,8 @@
 
 /**
  * Generates the Rust root-attribute index table the parse server uses to
- * extract Description / ObjectType / Tag / PredefinedType (issue #1765).
+ * extract GlobalId / Name / Description / ObjectType / Tag / PredefinedType
+ * (issue #1765; GlobalId/Name added by issue #3949).
  *
  * Parity by construction: the table is derived from the SAME schema registry
  * the in-browser (WASM/columnar) path resolves attribute names against —
@@ -45,13 +46,14 @@
  * (`allAttributes?: AttributeMetadata[]`) and `getAllAttributesForEntity`
  * returns `metadata?.allAttributes || []`, so a registry whose `entities` map
  * is fully populated while `allAttributes` stops being emitted yields a
- * healthy-looking 776 rows in which EVERY row is `[-1,-1,-1,-1]`. Measured on
- * exactly that shape: 776 arms written, exit 0, and `--check` blessing the
- * result from the next run on. Per the generated header, -1 means "known type
- * that does not declare the attribute (never fall back)", so the server-parse
- * path would report Description / ObjectType / Tag / PredefinedType as absent
- * for every entity while the browser resolves them normally — the same parity
- * break, reached by a different route. RESOLVED_FLOOR guards that level.
+ * healthy-looking 776 rows in which EVERY row is all-`-1`. Measured on
+ * exactly that shape (pre-#3949, four-field NAMES): 776 arms written, exit 0,
+ * and `--check` blessing the result from the next run on. Per the generated
+ * header, -1 means "known type that does not declare the attribute (never
+ * fall back)", so the server-parse path would report every one of GlobalId /
+ * Name / Description / ObjectType / Tag / PredefinedType as absent for every
+ * entity while the browser resolves them normally — the same parity break,
+ * reached by a different route. RESOLVED_FLOOR guards that level.
  *
  * Output: apps/server/src/services/data_model/generated/attr_indices.rs
  */
@@ -67,7 +69,7 @@ const { SCHEMA_REGISTRY, getAttributeNames } = await import(
   join(root, 'packages/parser/dist/index.js')
 );
 
-const NAMES = ['Description', 'ObjectType', 'Tag', 'PredefinedType'];
+const NAMES = ['GlobalId', 'Name', 'Description', 'ObjectType', 'Tag', 'PredefinedType'];
 
 /**
  * Lower bound on how many entity types the registry must yield before this
@@ -96,22 +98,26 @@ const ROW_FLOOR = 700;
 
 /**
  * Lower bound on how many of those rows must actually RESOLVE at least one of
- * the four attributes.
+ * the six attributes.
  *
  * The row count is necessary but not sufficient (see ANTI-VACUITY above): a
  * registry with a full `entities` map and no `allAttributes` produces 776 rows
- * that are every one of them `[-1,-1,-1,-1]` — a table that says "no known type
- * declares Description, ObjectType, Tag or PredefinedType", which is garbage
- * the row floor waves through.
+ * that are every one of them all-`-1` — a table that says "no known type
+ * declares GlobalId, Name, Description, ObjectType, Tag or PredefinedType",
+ * which is garbage the row floor waves through.
  *
- * MEASURED, not guessed: 488 of today's 776 rows resolve at least one
- * attribute; the other 288 legitimately declare none of the four (IfcCartesianPoint
- * and friends), so this can never be "all rows". The floor is 400 — under the
- * measured 488 with ~18% headroom for schema churn, and under the 412 that the
- * ROW_FLOOR boundary's worst case yields (a 700-row subset that keeps all 288
- * non-resolvers still costs only 700 - 288 = 412), so the two floors still
- * cannot contradict each other, just with a real margin of 12 rows (2.9%), not
- * the 44 a same-proportion read of 700/776 suggests.
+ * MEASURED, not guessed (after #3949 added GlobalId/Name to NAMES): 548 of
+ * today's 776 rows resolve at least one attribute; the other 228 legitimately
+ * declare none of the six (IfcCartesianPoint and friends), so this can never
+ * be "all rows". The floor is 400 — under the measured 548 with ~27% headroom
+ * for schema churn, and under the 472 that the ROW_FLOOR boundary's worst case
+ * yields (a 700-row subset that keeps all 228 non-resolvers still costs only
+ * 700 - 228 = 472), so the two floors still cannot contradict each other.
+ *
+ * Before #3949 (Description/ObjectType/Tag/PredefinedType only) the measured
+ * figure was 488 of 776; adding GlobalId/Name — which most `IfcRoot` and
+ * `IfcObjectDefinition` subtypes declare — only grew the resolved count, so
+ * this floor's margin got wider, not narrower.
  *
  * That margin only has to cover one of this generator's two failure shapes,
  * not both. At the generator level, `typescript-generator.ts` emits
@@ -122,15 +128,13 @@ const ROW_FLOOR = 700;
  * inheritance walk silently stops when a supertype name isn't found in
  * `schema.entities` — no error, no distinction from a legitimate root — so a
  * PARTIAL loss is reachable there, scoped to whichever ancestor's subtree lost
- * its parent link, and it is not bounded away from this floor's slack. Today's
- * registry has no such break, but measuring what one would cost: 201 of the
- * 488 resolved entities resolve ONLY through an inherited attribute, and the
- * single costliest ancestor is `IfcRoot` at 70 rows (`IfcRelationship` 47,
- * `IfcObject` 31, `IfcTypeProduct` 21, `IfcElement` 20) — every one of those
- * comfortably inside this floor's 88-row slack, so RESOLVED_FLOOR alone would
- * wave a loss that size through. `--check`'s semantic drift comparison against
- * the committed table is the actual backstop for this failure mode, not a
- * floor value.
+ * its parent link, and it is not bounded away from this floor's slack.
+ * (Pre-#3949 measurement of that scenario: 201 of the then-488 resolved
+ * entities resolved ONLY through an inherited attribute, costliest ancestor
+ * `IfcRoot` at 70 rows — comfortably inside this floor's slack even then, so
+ * RESOLVED_FLOOR alone would wave a loss that size through.) `--check`'s
+ * semantic drift comparison against the committed table is the actual
+ * backstop for this failure mode, not a floor value.
  */
 const RESOLVED_FLOOR = 400;
 
@@ -178,7 +182,7 @@ if (resolved < RESOLVED_FLOOR) {
   console.error(
     `❌ @ifc-lite/parser's SCHEMA_REGISTRY (${SCHEMA_REGISTRY.name}) yielded ${rows.length} entity type(s), ` +
       `but only ${resolved} of them resolve ANY of ${NAMES.join('/')} — the floor is ${RESOLVED_FLOOR} ` +
-      `(a healthy build resolves 488 of 776). Refusing to ${CHECK ? 'compare against' : 'emit'} an ` +
+      `(a healthy build resolves 548 of 776). Refusing to ${CHECK ? 'compare against' : 'emit'} an ` +
       'attribute-index table this blind.\n' +
       '   A row count alone cannot catch this: `allAttributes` is optional on the registry\'s entity ' +
       'metadata and `getAllAttributesForEntity` returns `metadata?.allAttributes || []`, so an `entities` ' +
@@ -194,7 +198,7 @@ if (resolved < RESOLVED_FLOOR) {
 }
 
 const arms = rows
-  .map(({ upper, idx }) => `        "${upper}" => Some(RootAttrIndices { description: ${idx[0]}, object_type: ${idx[1]}, tag: ${idx[2]}, predefined_type: ${idx[3]} }),`)
+  .map(({ upper, idx }) => `        "${upper}" => Some(RootAttrIndices { global_id: ${idx[0]}, name: ${idx[1]}, description: ${idx[2]}, object_type: ${idx[3]}, tag: ${idx[4]}, predefined_type: ${idx[5]} }),`)
   .join('\n');
 
 const out = `// This Source Code Form is subject to the terms of the Mozilla Public
@@ -206,17 +210,22 @@ const out = `// This Source Code Form is subject to the terms of the Mozilla Pub
 //! DO NOT EDIT — generated by \`scripts/generate-server-attr-indices.mjs\`
 //! from \`@ifc-lite/parser\`'s SCHEMA_REGISTRY (${SCHEMA_REGISTRY.name}), the same
 //! table the in-browser parse resolves attribute names against, so the
-//! server-parse path extracts Description / ObjectType / Tag / PredefinedType
-//! at IDENTICAL positions ('' / absent in exactly the same cases).
+//! server-parse path extracts GlobalId / Name / Description / ObjectType /
+//! Tag / PredefinedType at IDENTICAL positions ('' / absent in exactly the
+//! same cases) (issue #3949 extended this table to GlobalId/Name; it
+//! previously covered only the other four fields).
 //!
 //! Lookup key is the UPPERCASE STEP type name. \`None\` = type unknown to the
-//! registry — callers mirror the WASM fallback (Description 3, ObjectType 4,
-//! Tag 7, no PredefinedType). An index of -1 means the type is KNOWN and does
-//! not declare that attribute (never fall back for these).
+//! registry — callers mirror the WASM fallback (GlobalId 0, Name 2,
+//! Description 3, ObjectType 4, Tag 7, no PredefinedType). An index of -1
+//! means the type is KNOWN and does not declare that attribute (never fall
+//! back for these).
 
 /// Attribute positions for one entity type; -1 = not declared.
 #[derive(Debug, Clone, Copy)]
 pub struct RootAttrIndices {
+    pub global_id: i8,
+    pub name: i8,
     pub description: i8,
     pub object_type: i8,
     pub tag: i8,
@@ -258,11 +267,15 @@ if (CHECK) {
     const text = stripRustComments(rawText);
     const map = new Map();
     const dups = new Set();
-    const re = /"([A-Z0-9_]+)"\s*=>\s*Some\(RootAttrIndices\s*\{\s*description:\s*(-?\d+)\s*,\s*object_type:\s*(-?\d+)\s*,\s*tag:\s*(-?\d+)\s*,\s*predefined_type:\s*(-?\d+)\s*,?\s*\}\)/g;
+    const re = /"([A-Z0-9_]+)"\s*=>\s*Some\(RootAttrIndices\s*\{\s*global_id:\s*(-?\d+)\s*,\s*name:\s*(-?\d+)\s*,\s*description:\s*(-?\d+)\s*,\s*object_type:\s*(-?\d+)\s*,\s*tag:\s*(-?\d+)\s*,\s*predefined_type:\s*(-?\d+)\s*,?\s*\}\)/g;
     for (const m of text.matchAll(re)) {
       // Keep the FIRST arm's value (mirrors Rust dispatch); flag the rest.
       if (map.has(m[1])) dups.add(m[1]);
-      else map.set(m[1], [Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5])].join(','));
+      else
+        map.set(
+          m[1],
+          [Number(m[2]), Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6]), Number(m[7])].join(','),
+        );
     }
     return { map, dups };
   };

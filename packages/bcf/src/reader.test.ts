@@ -1445,4 +1445,75 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.documentReferences?.[0]?.isExternal).toBe(expected);
     });
   });
+
+  describe('AC20-FZK-Haus_BIMcollabZoom.bcf (BIMcollab Zoom, a second independent producer)', () => {
+    // Produced by importing an ifc-lite export into BIMcollab Zoom and
+    // re-exporting it -- a different tool than the iabi.BCF-produced
+    // PerspectiveCamera.bcf/OrthogonalCamera.bcf pair above. Its markup.bcf
+    // declares the one viewpoint BOTH ways BCF 2.1 allows: a nested
+    // `<Comment><Viewpoint Guid="..."/></Comment>` reference AND a top-level
+    // `<Viewpoints Guid="...">` entry naming viewpoint.bcfv/snapshot.png. The
+    // reader recovers the viewpoint through the ordinary top-level-entry (and
+    // topic-folder .bcfv glob) path in parseViewpoints -- that function has no
+    // code path keyed off a Comment's nested <Viewpoint> tag. What this
+    // archive exercises that neither our writer nor the existing
+    // PerspectiveCamera.bcf/OrthogonalCamera.bcf pair does is: a bare
+    // `<Comment>` element, generic `viewpoint.bcfv`/`snapshot.png` filenames
+    // (not our own Viewpoint_<guid>/Snapshot_<guid> convention), an explicit
+    // zero-length directory entry, and `TopicStatus="Active"`.
+    it('parses the archive and recovers the topic', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+
+      expect(project.version).toBe('2.1');
+      expect(project.topics.size).toBe(1);
+    });
+
+    it('recovers the viewpoint declared by the top-level <Viewpoints> entry', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+
+      expect(topic.viewpoints).toHaveLength(1);
+      expect(topic.viewpoints[0].guid).toBe('1b3f474c-f8c3-4e5e-be88-8a0ec919eb32');
+      expect(topic.viewpoints[0].perspectiveCamera).toBeDefined();
+      expect(topic.viewpoints[0].snapshot).toBeDefined();
+    });
+
+    it('copies the Comment-nested <Viewpoint Guid> onto comment.viewpointGuid, matching the recovered viewpoint', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+
+      expect(topic.comments).toHaveLength(1);
+      expect(topic.comments[0].viewpointGuid).toBe('1b3f474c-f8c3-4e5e-be88-8a0ec919eb32');
+      expect(topic.comments[0].viewpointGuid).toBe(topic.viewpoints[0].guid);
+    });
+  });
+
+  describe('AC20-FZK-Haus_BIMcollabZoom-CommentOnly.bcf (the same archive with <Viewpoints> removed)', () => {
+    // Derived from AC20-FZK-Haus_BIMcollabZoom.bcf above by deleting only its
+    // top-level `<Viewpoints Guid="...">` element (markup.xsd declares that
+    // element `minOccurs="0"`, confirmed schema-valid without it), leaving
+    // the Comment's nested `<Viewpoint Guid="..."/>` as the only markup.bcf
+    // mention of the viewpoint. viewpoint.bcfv and snapshot.png are still
+    // physically present in the topic folder. This does NOT exercise a
+    // comment-driven lookup -- parseViewpoints in reader.ts has none -- it
+    // pins that the topic-folder .bcfv glob fallback still recovers the
+    // viewpoint when markup.bcf makes no top-level declaration at all.
+    it('still recovers the viewpoint via the topic-folder glob fallback, not any comment-driven lookup', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom-CommentOnly.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+
+      expect(topic.viewpoints).toHaveLength(1);
+      expect(topic.viewpoints[0].guid).toBe('1b3f474c-f8c3-4e5e-be88-8a0ec919eb32');
+      expect(topic.comments).toHaveLength(1);
+      expect(topic.comments[0].viewpointGuid).toBe('1b3f474c-f8c3-4e5e-be88-8a0ec919eb32');
+    });
+  });
 });

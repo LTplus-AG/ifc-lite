@@ -134,7 +134,11 @@ if [ -n "$BASE_REF" ]; then
     exit 1
   fi
   BRANCH_LABEL="$(git rev-parse HEAD)"
-  if [ "$SKIP_BRANCH_BUILD" -eq 1 ]; then BRANCH_LABEL="supplied-branch-dist"; fi
+  if [ "$SKIP_BRANCH_BUILD" -eq 1 ]; then
+    BRANCH_LABEL="supplied-branch-dist"
+  elif [ -n "$(git status --porcelain)" ]; then
+    BRANCH_LABEL="${BRANCH_LABEL}-dirty"
+  fi
   CMD_ARGS+=(--dist-base "$BASE_WT/apps/viewer/dist" --base-label "$BASE_SHA" --branch-label "$BRANCH_LABEL")
 else
   echo "browser-cold-ab.sh: no --base and no origin/main — running self-mode (repeatability only, no base build)." >&2

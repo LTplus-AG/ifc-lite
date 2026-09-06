@@ -112,3 +112,15 @@ test('#3978 previous JSONL, report and screenshot evidence is never overwritten'
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+test('#3978 JSONL/report path aliases fail before creating any evidence', async () => {
+  const { mkdtempSync, existsSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const { prepareBrowserOutputs } = await tsImport('./perf/browser-cold-outputs.ts', import.meta.url);
+  const root = mkdtempSync(resolve(tmpdir(), 'browser-path-alias-'));
+  try {
+    const jsonl = resolve(root, 'runs.jsonl');
+    assert.throws(() => prepareBrowserOutputs(resolve(root, 'samples'), jsonl, `${root}/unused/../runs.jsonl`), /distinct paths/);
+    assert.equal(existsSync(jsonl), false);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});

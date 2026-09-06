@@ -592,3 +592,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
+
+### Retained processor registry ownership (#3987)
+
+Built-in processor registrations now share immutable setup while each router keeps its own failure state and custom replacement behavior. Retained in the cumulative cold-load candidate; no isolated throughput gain is attributed to this layer. Native constructor profiles identify the mechanism, but native and actual browser-worker verdicts remain separate. Do not replace custom processors or share mutable diagnostics to reduce setup further.

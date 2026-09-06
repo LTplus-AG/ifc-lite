@@ -181,8 +181,8 @@ describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', 
         { rule: 'r2', matchedA: 200, matchedB: 500, fromMembersA: false, fromMembersB: true },
       ]);
       for (const entry of coverage) {
-        assert.strictEqual(entry.matchedKeysA, undefined);
-        assert.strictEqual(entry.matchedKeysB, undefined);
+        assert.strictEqual(Object.hasOwn(entry, 'matchedKeysA'), false);
+        assert.strictEqual(Object.hasOwn(entry, 'matchedKeysB'), false);
       }
     },
   );

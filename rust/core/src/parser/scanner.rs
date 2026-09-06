@@ -250,26 +250,18 @@ impl<'a> EntityScanner<'a> {
                 continue;
             };
 
-            // `eq_pos` is the '=' the candidate loop validated, NOT the first
-            // '=' in the record. This used to `memchr` for one, which finds
-            // the one inside the comment in `#1 /* a=b */ = IFCWALL(…)` and
-            // reads `b` as the type name.
-            //
-            // Skip trivia between the '=' and the type name. The comments in
-            // this record all closed — `find_entity_end` above would have
-            // refused the record otherwise — so `None` is unreachable, and
-            // `line_end` is the conservative answer if it ever were not.
+            // Use the validated '=', not one inside `#1 /* a=b */ = IFCWALL`.
+            // Skip trivia before the type; find_entity_end already verified
+            // closed comments, with line_end as a conservative fallback.
             let type_start = super::lexical::skip_step_trivia(&self.bytes[..line_end], eq_pos + 1)
                 .unwrap_or(line_end);
 
             // Find end of type name (at '(', whitespace, or a comment opener:
             // `IFCWALL/* n */(…)` is legal and its type name is IFCWALL).
             //
-            // `super::lexical::is_step_space`, not `u8::is_ascii_whitespace`:
-            // the latter excludes vertical tab (see that function's doc
-            // comment), which would leave `IFCWALL\x0B(` reading a type name
-            // of "IFCWALL\x0B" instead of "IFCWALL".
+            // STEP whitespace includes vertical tab, unlike is_ascii_whitespace.
             let mut type_end = type_start;
+            let mut type_bytes_or = 0u8;
             while type_end < line_end {
                 let b = self.bytes[type_end];
                 if b == b'(' || super::lexical::is_step_space(b) {
@@ -278,11 +270,18 @@ impl<'a> EntityScanner<'a> {
                 if b == b'/' && self.bytes.get(type_end + 1) == Some(&b'*') {
                     break;
                 }
+                type_bytes_or |= b;
                 type_end += 1;
             }
 
-            // Use safe UTF-8 conversion - malformed input should not cause UB
-            let type_name = std::str::from_utf8(&self.bytes[type_start..type_end]).unwrap_or("UNKNOWN");
+            let type_bytes = &self.bytes[type_start..type_end];
+            let type_name = if type_bytes_or.is_ascii() {
+                // SAFETY: the loop ORs every byte in this exact slice; a clear
+                // high bit proves every byte is ASCII and therefore valid UTF-8.
+                unsafe { std::str::from_utf8_unchecked(type_bytes) }
+            } else {
+                std::str::from_utf8(type_bytes).unwrap_or("UNKNOWN")
+            };
 
             // Move position past this entity
             self.position = line_end;

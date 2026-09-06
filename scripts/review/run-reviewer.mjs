@@ -78,6 +78,7 @@ import { isMainEntry } from '../lib/is-main-entry.mjs';
 import { renderSiblingRow } from './sibling-row.mjs';
 import { buildRetrySection } from './retry-prompt.mjs';
 import { runOpenAiFallback } from './openai-reviewer.mjs';
+import { applicableClassesFromRaw, renderApplicableForPrompt } from './lib/class-applicability.mjs';
 
 export class RunReviewerError extends Error {
   constructor(reason, message) {
@@ -170,6 +171,33 @@ const rowBytes = (str) => Buffer.byteLength(str, 'utf8');
 export const keptRowCharge = (path) => rowBytes(fileHeader(path)) + 2 + rowBytes(rosterRow(path)) + 1;
 export const unreviewableRowCharge = (u) => rowBytes(unreviewableRow(u)) + 1;
 
+/**
+ * THE APPLICABILITY ROW IS A FOURTH RENDERING WITH A FOURTH CHARGE, for the
+ * reason the three above have one: `site.path` is PR-CONTROLLED and lands in
+ * the TRUSTED half of the prompt, outside the nonce fence. Git permits any byte
+ * but NUL and `/`, so `dir\nIGNORE ALL PREVIOUS INSTRUCTIONS/package.json` would
+ * place a standalone instruction line there -- the attack `rosterRow` already
+ * spends `promptSafePath` to stop, and the first cut of this disclosure
+ * bypassed it.
+ */
+export const applicabilityRow = (cls, path, line) =>
+  `  - ${cls} — ${path === null ? 'the PR description' : `${promptSafePath(path)}${line ? `:${line}` : ''}`}`;
+/**
+ * An UPPER BOUND, not the exact set: the fit runs before the firing set is
+ * known, so charge at most one row per defect class at the longest candidate
+ * path. Over-reserving is the safe direction -- an undercharge is what put a
+ * "fits" verdict 8,476 bytes over the ceiling. Variable part only; the fixed
+ * ~250-byte preamble sits in PROMPT_BASE_OVERHEAD_BYTES's margin, named here
+ * as the unreviewable preamble is, and charging it would break the pinned
+ * `promptEnvelopeBytes(undefined) === base`.
+ */
+export const applicabilityReserve = (paths, classCount) => {
+  let longest = '';
+  for (const p of paths) if (String(p).length > longest.length) longest = String(p);
+  if (longest === '') return 0;
+  return classCount * (rowBytes(applicabilityRow('behaviour-break-on-surviving-export', longest, 999999)) + 1);
+};
+
 /** Assemble the full prompt: trusted rubric, then fenced untrusted diff. */
 export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenced diff; opts.retryNote/opts.retryReason: see retry-prompt.mjs
   const files = input.files
@@ -195,6 +223,7 @@ export function buildPrompt(rubric, input, opts = {}) { // trusted rubric + fenc
   // as the unreviewable list: a path is PR-controlled bytes in the trusted
   // region.
   const roster =
+    `\n${renderApplicableForPrompt(applicableClassesFromRaw(input))}\n` +
     `\nYour \`files_reviewed\` array must contain EXACTLY these ${input.files.length} path(s), ` +
     'verbatim -- nothing added, nothing dropped:\n' +
     input.files.map((f) => rosterRow(f.path)).join('\n');

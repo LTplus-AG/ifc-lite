@@ -185,6 +185,8 @@ export const en = {
     classificationValueMismatch: 'Classification code "{actual}" does not match expected {expected}',
     classificationValueMissingAvailable: 'Classification code {expected} not found. Available: {available}',
     classificationProhibited: 'Prohibited classification "{actual}" exists in system "{system}"',
+    classificationUnresolved: 'Entity is classified, but classification details cannot be read from this data source',
+    classificationPresenceUnresolved: 'Whether this entity is classified cannot be determined from this data source',
 
     // Material failures
     materialMissing: 'No material assigned',

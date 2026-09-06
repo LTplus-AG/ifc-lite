@@ -10,7 +10,6 @@ import type {
   IDSDocument,
   IDSSpecification,
   IDSRequirement,
-  IDSFacet,
   IDSValidationReport,
   IDSSpecificationResult,
   IDSEntityResult,
@@ -194,7 +193,7 @@ export async function validateIDS(
   modelInfo: IDSModelInfo,
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
-  const { translator, onProgress, includePassingEntities = true } = options;
+  const { onProgress } = options;
 
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
@@ -519,11 +518,11 @@ function checkRequirement(
 ): IDSRequirementResult {
   const facetResult = checkFacet(requirement.facet, expressId, accessor);
 
-  // Apply optionality
+  // Unknown classifications must fail even a prohibition; keep its failure reason (#3996).
   let status: 'pass' | 'fail' | 'not_applicable';
   let failureReason: string | undefined;
 
-  switch (requirement.optionality) {
+  switch (facetResult.failure?.type === 'CLASSIFICATION_UNRESOLVED' ? 'required' : requirement.optionality) {
     case 'required':
       status = facetResult.passed ? 'pass' : 'fail';
       if (!facetResult.passed) {
@@ -712,7 +711,7 @@ function calculateSummary(
 /**
  * Format a failure reason without translation
  */
-function formatFailureReason(result: FacetCheckResult): string {
+export function formatFailureReason(result: FacetCheckResult): string {
   if (!result.failure) {
     return `Expected ${result.expectedValue}, got ${result.actualValue}`;
   }
@@ -748,6 +747,8 @@ function formatFailureReason(result: FacetCheckResult): string {
       return `Classification system "${actual}" does not match expected ${expected}`;
     case 'CLASSIFICATION_VALUE_MISMATCH':
       return `Classification value "${actual}" does not match expected ${expected}`;
+    case 'CLASSIFICATION_UNRESOLVED':
+      return field === 'presence' ? 'Whether this entity is classified cannot be determined from this data source' : 'Entity is classified, but classification details cannot be read from this data source';
     case 'MATERIAL_MISSING':
       return 'No material assigned';
     case 'MATERIAL_VALUE_MISMATCH':
@@ -765,9 +766,7 @@ function formatFailureReason(result: FacetCheckResult): string {
   }
 }
 
-/**
- * Format a requirement description without translation
- */
+/** Format a requirement description without translation */
 function formatRequirementDescription(requirement: IDSRequirement): string {
   const facet = requirement.facet;
   const optionality = requirement.optionality;

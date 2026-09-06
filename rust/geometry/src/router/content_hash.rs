@@ -5,12 +5,8 @@
 //! Structural content hash of an IFC representation ITEM subtree, for geometry
 //! deduplication of the meshing + CSG compute.
 //!
-//! Tekla (and other steel detailers) export thousands of geometrically identical
-//! parts — connection plates, bolts — each with its OWN representation item
-//! rather than sharing one via `IfcMappedItem`. The Manifold kernel chewed
-//! through the redundant booleans fast; the exact pure-Rust kernel (#1024) is
-//! ~20-40× slower per cut, so re-meshing+re-CSG'ing the duplicates dominates load
-//! time (a 19.5 MB Tekla model: 83% of 15k items are byte-duplicates).
+//! Repeated shapes reuse a local mesh after a structural signature match.
+//! Only completed fast BREP signatures may be shared between model routers.
 //!
 //! This hashes the FULLY RESOLVED item subtree (entity references followed to
 //! their values), so two geometrically identical items with different entity
@@ -20,12 +16,8 @@
 //! placement all live OUTSIDE the item and stay per-instance — the cache holds a
 //! colour-free local mesh that every instance reuses with its own attributes.
 //!
-//! The hash is 128-bit over the COMPLETE structure (every attribute value,
-//! recursively), unlike the sampled 64-bit mesh hash that collided in #833. The
-//! collision probability across a model's items is ~1e-30, so no post-mesh
-//! equality fallback is needed. Deterministic (integer splitmix64, no float
-//! ordering beyond the bit pattern), so native x86_64/aarch64 and wasm32 produce
-//! identical keys.
+//! Full 128-bit structural hashes avoid the sampled-hash collisions of #833.
+//! Integer splitmix64 and float bit patterns produce target-independent keys.
 
 use crate::geom_hash::mix64;
 use ifc_lite_core::{express_id::parse_express_id, EntityDecoder};
@@ -144,7 +136,7 @@ fn parse_first_ref(bytes: &[u8]) -> Option<u32> {
 /// `true` when the entity at `id` is an `IfcFacetedBrep`, peeked from its raw STEP
 /// bytes without decoding attributes.
 #[inline]
-fn is_faceted_brep(decoder: &mut EntityDecoder, id: u32) -> bool {
+pub(super) fn is_faceted_brep(decoder: &mut EntityDecoder, id: u32) -> bool {
     decoder
         .get_raw_bytes(id)
         .is_some_and(|b| type_token_is(b, b"IFCFACETEDBREP"))
@@ -161,7 +153,7 @@ fn is_faceted_brep(decoder: &mut EntityDecoder, id: u32) -> bool {
 /// Returns `None` on any structural surprise (missing ref, malformed loop) so the
 /// caller falls back to the generic recursive signature — correctness preserved,
 /// only the fast dedup is skipped for that one item.
-fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u32) -> Option<u128> {
+pub(super) fn try_faceted_brep_signature(decoder: &mut EntityDecoder, brep_id: u32) -> Option<u128> {
     // IfcFacetedBrep(#shell): a SINGLE bare ref, not a `((...))` list — so
     // `get_entity_ref_list_fast` (which expects a nested list) can't read it.
     // Parse the one shell ref straight from the brep's bytes. The shell, faces,
@@ -251,7 +243,14 @@ pub fn item_signature(
     memo: &mut FxHashMap<u32, u128>,
     refused: &mut usize,
 ) -> u128 {
-    sig_entity(decoder, root_id, memo, 0, refused)
+    sig_entity(decoder, root_id, memo, 0, refused, false)
+}
+
+/// Continue a root whose fast BREP traversal already failed, without repeating it.
+pub(super) fn item_signature_after_failed_brep(
+    decoder: &mut EntityDecoder, root_id: u32, memo: &mut FxHashMap<u32, u128>, refused: &mut usize,
+) -> u128 {
+    sig_entity(decoder, root_id, memo, 0, refused, true)
 }
 
 /// Combine the pure structural item hash with the router parameters that change
@@ -275,6 +274,7 @@ fn sig_entity(
     memo: &mut FxHashMap<u32, u128>,
     depth: u32,
     refused: &mut usize,
+    skip_fast_brep: bool,
 ) -> u128 {
     if let Some(&s) = memo.get(&id) {
         return s;
@@ -292,7 +292,7 @@ fn sig_entity(
     // part) — that is the measured ~8 s hash cost that made dedup a net loss. The
     // fast path mirrors the mesher's traversal with no decode; on any structural
     // surprise it falls through to the generic walk (correctness preserved).
-    if is_faceted_brep(decoder, id) {
+    if !skip_fast_brep && is_faceted_brep(decoder, id) {
         if let Some(s) = try_faceted_brep_signature(decoder, id) {
             memo.insert(id, s);
             return s;
@@ -373,7 +373,7 @@ fn sig_walk_bytes(
                 j += 1;
             }
             let child = match parse_express_id(&bytes[i + 1..j]) {
-                Some(rid) => sig_entity(decoder, rid, memo, depth + 1, refused),
+                Some(rid) => sig_entity(decoder, rid, memo, depth + 1, refused, false),
                 // A ref above `u32::MAX` refuses rather than wrapping onto a
                 // real low-numbered entity (issue #3421) — treated the same
                 // as an unresolvable reference: the fixed sentinel above,

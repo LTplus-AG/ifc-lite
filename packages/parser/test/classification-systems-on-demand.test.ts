@@ -68,7 +68,7 @@ describe('extractClassificationSystemsOnDemand', () => {
     const store = buildStoreFromStep([
       `#10=IFCWALL('guid',$,$,$,$,$,$,$,$);`,
     ]);
-    expect(extractClassificationSystemsOnDemand(store)).toEqual([]);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({ names: [], unresolved: false });
   });
 
   it('surfaces ALL classification systems present, not just the first', () => {
@@ -80,11 +80,10 @@ describe('extractClassificationSystemsOnDemand', () => {
       `#12=IFCCLASSIFICATION($,$,$,'DIN 276',$,$,$);`,
     ];
     const store = buildStoreFromStep(lines);
-    expect(extractClassificationSystemsOnDemand(store)).toEqual([
-      'DIN 276',
-      'OmniClass',
-      'Uniclass 2015',
-    ]);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({
+      names: ['DIN 276', 'OmniClass', 'Uniclass 2015'],
+      unresolved: false,
+    });
   });
 
   it('de-duplicates repeated system names', () => {
@@ -93,7 +92,10 @@ describe('extractClassificationSystemsOnDemand', () => {
       `#11=IFCCLASSIFICATION('CSI','2015',$,'Uniclass 2015',$,$,$);`,
     ];
     const store = buildStoreFromStep(lines);
-    expect(extractClassificationSystemsOnDemand(store)).toEqual(['Uniclass 2015']);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({
+      names: ['Uniclass 2015'],
+      unresolved: false,
+    });
   });
 
   it('skips IfcClassification entities with no name', () => {
@@ -101,7 +103,7 @@ describe('extractClassificationSystemsOnDemand', () => {
       `#10=IFCCLASSIFICATION($,$,$,$,$,$,$);`,
     ];
     const store = buildStoreFromStep(lines);
-    expect(extractClassificationSystemsOnDemand(store)).toEqual([]);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({ names: [], unresolved: false });
   });
 
   it('reads the second entity correctly when an earlier line contains non-ASCII bytes', () => {
@@ -113,9 +115,36 @@ describe('extractClassificationSystemsOnDemand', () => {
       `#11=IFCCLASSIFICATION('CSI','2018',$,'OmniClass',$,$,$);`,
     ];
     const store = buildStoreFromStep(lines);
-    expect(extractClassificationSystemsOnDemand(store)).toEqual([
-      'OmniClass',
-      'Straße Norm',
-    ]);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({
+      names: ['OmniClass', 'Straße Norm'],
+      unresolved: false,
+    });
+  });
+
+  it('signals unresolved (not "no systems") when the model has IfcClassification entities but no source bytes (#3948)', () => {
+    // Server-parsed shape: entityIndex knows about the IfcClassification
+    // entities (populated from the server's byType index), but `source` is
+    // empty — the server never sends raw STEP bytes.
+    const lines = [
+      `#10=IFCCLASSIFICATION('CSI','2015',$,'Uniclass 2015',$,$,$);`,
+    ];
+    const store = buildStoreFromStep(lines);
+    (store as unknown as { source: Uint8Array }).source = new Uint8Array(0);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({
+      names: [],
+      unresolved: true,
+    });
+  });
+
+  it('a genuinely classification-free server-parsed store reports [] with unresolved:false', () => {
+    const lines = [
+      `#10=IFCWALL('guid',$,$,$,$,$,$,$,$);`,
+    ];
+    const store = buildStoreFromStep(lines);
+    (store as unknown as { source: Uint8Array }).source = new Uint8Array(0);
+    expect(extractClassificationSystemsOnDemand(store)).toEqual({
+      names: [],
+      unresolved: false,
+    });
   });
 });

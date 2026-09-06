@@ -27,6 +27,10 @@ mod failures;
 mod operand;
 mod halfspace_cap;
 mod polygonal_prism;
+mod single_cutter_gate;
+use single_cutter_gate::SingleCutterSubtract;
+mod polygonal_union;
+mod polygonal_removal;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -396,19 +400,21 @@ impl BooleanClippingProcessor {
         //     coincident/duplicate cutters) and must not be trusted.
         let mut tight_min = Point3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
         let mut tight_max = Point3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut removal_bound = polygonal_removal::RemovalBound::new(&base_mesh);
         for prism in &prisms {
-            let trial = match clipper.subtract_mesh(&base_mesh, prism) {
-                Ok(m) if !m.is_empty() => m,
-                // Empty or errored single cut — the sequential path's per-cutter
-                // fallback handles it better than a batched union would.
-                _ => {
-                    let _ = clipper.take_failures();
-                    return self.defer_after(mark);
-                }
-            };
-            if ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &trial) {
+            // `subtract_checked` folds in the #3919 accept-gate check: a
+            // rejection hands back the base UN-CUT, which would wrongly widen
+            // tight_min/tight_max, so it is treated like empty/errored/degenerate.
+            let Some(trial) = Self::subtract_checked(&clipper, &base_mesh, prism) else {
                 let _ = clipper.take_failures();
                 return self.defer_after(mark);
+            };
+            if !clipper.take_failures().is_empty() {
+                // A diagnostic-only tear is not a default accept gate. It
+                // cannot certify a moved cutter's removal bound, either.
+                removal_bound.invalidate();
+            } else {
+                removal_bound.observe(&trial);
             }
             let (tmn, tmx) = trial.bounds();
             tight_min = Point3::new(
@@ -448,18 +454,35 @@ impl BooleanClippingProcessor {
                 return Ok(None);
             }
         };
-        let result = clipper.subtract_mesh(&base_mesh, &combined);
-        self.absorb_failures(clipper.take_failures());
-        let clipped = match result {
-            Ok(m)
-                if !m.is_empty()
-                    && !ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &m) =>
-            {
-                m
+        // `subtract_checked` folds in the #3919 accept-gate check: a rejected
+        // gate hands back the base UN-CUT — the same shape as "nothing to
+        // cut", which `difference_result_looks_degenerate` can't catch — so
+        // it is treated like a kernel error and defers to the sequential
+        // per-cutter path (whose own accept-gate + #635 fallback handle it).
+        // Uncaught, the full-height base used to be accepted here and the
+        // issue-#960 seam sliver silently regrew.
+        let mut checked = Self::subtract_checked(&clipper, &base_mesh, &combined);
+        let mut cut_failures = clipper.take_failures();
+        if (checked.is_none() || !cut_failures.is_empty()) && removal_bound.is_valid() {
+            // #3925: a rejected or diagnostically torn cut permits one moved
+            // candidate. Publish it only if its actual subtraction is clean;
+            // otherwise retain the original result and its failure records.
+            let refs: Vec<&Mesh> = prisms.iter().collect();
+            let repaired = ClippingProcessor::consolidate_coplanar(
+                crate::kernel::mesh_bridge::union_many(&refs));
+            if !repaired.is_empty() {
+                let candidate = Self::subtract_checked(&clipper, &base_mesh, &repaired);
+                let candidate_failures = clipper.take_failures();
+                if candidate.as_ref().is_some_and(|m| removal_bound.allows(m))
+                    && candidate_failures.is_empty() {
+                    checked = candidate;
+                    cut_failures = candidate_failures;
+                }
             }
-            // Kernel error or a degenerate union result — fall back to the
-            // sequential per-cutter path.
-            _ => return self.defer_after(mark),
+        }
+        self.absorb_failures(cut_failures);
+        let Some(clipped) = checked else {
+            return self.defer_after(mark);
         };
 
         // Reject a silently under-removing union: the result must fit inside the
@@ -482,50 +505,6 @@ impl BooleanClippingProcessor {
             return self.defer_after(mark);
         }
         Ok(Some(clipped))
-    }
-
-    /// Union the chained-clip cutter prisms into ONE watertight solid.
-    ///
-    /// The segmented-roof cutters are prisms that ABUT along shared, exactly-
-    /// coplanar faces (adjacent roof facets meeting at a hip/ridge/valley).
-    /// Unioning them into a single watertight cutter is what lets the chain be
-    /// subtracted ONCE (no seam fins, no deep-chain depth drops — issue #960).
-    ///
-    /// Returns `None` when no available kernel can produce a watertight union;
-    /// the caller then defers to the sequential per-cutter path. We never feed a
-    /// non-manifold mesh-merge into the subtract: the CSG kernel cannot classify
-    /// a non-watertight cutter and silently returns the host UNCHANGED, leaving
-    /// the gable-end wall at full extrusion height.
-    fn build_cutter_union(&self, clipper: &ClippingProcessor, prisms: &[Mesh]) -> Option<Mesh> {
-        if prisms.is_empty() {
-            return None;
-        }
-        if prisms.len() == 1 {
-            return Some(prisms[0].clone());
-        }
-
-        // Primary path: the pure-Rust kernel's N-ary union — ONE conforming
-        // arrangement of all cutter prisms over a shared interner, so coplanar
-        // seams shared by 3+ roof segments (and exactly-duplicated cutter prisms)
-        // dissolve without the tearing that left-deep pairwise accumulation
-        // produces. This makes the segmented-roof clip (#960) watertight on EVERY
-        // build. Exact + platform-deterministic.
-        {
-            let refs: Vec<&Mesh> = prisms.iter().collect();
-            let u = ClippingProcessor::consolidate_coplanar(
-                crate::kernel::mesh_bridge::union_many(&refs),
-            );
-            if !u.is_empty() {
-                return Some(u);
-            }
-        }
-
-        // Fallback: the kernel's sequential multi-mesh union. Returns
-        // `None` on empty/error so the caller defers to the per-cutter path.
-        match clipper.union_meshes(prisms) {
-            Ok(m) if !m.is_empty() => Some(m),
-            _ => None,
-        }
     }
 
     /// The node's operator enum as authored (the parser may strip the dots).
@@ -657,15 +636,20 @@ impl BooleanClippingProcessor {
             current = first;
         };
 
-        // Apply each spine node's operator + SecondOperand, innermost-first —
-        // exactly the order the recursive walk produced.
+        // Apply each spine node's operator + SecondOperand, innermost-first.
+        // `spine.len() == 1` is the true #3923 single-cutter shape (no other
+        // node shares the job); `> 1` means a longer chain's batching failed
+        // at every level, so each node here is a one-cutter-at-a-time
+        // fallback — see `single_cutter_gate.rs` for why that distinction
+        // matters to the gate-rejection fallback.
+        let solo_step = spine.len() == 1;
         for node in spine.iter().rev() {
             if mesh.is_empty() {
                 // An emptied intermediate ends the chain, matching the old
                 // per-level early-out (for every operator, UNION included).
                 return Ok(mesh);
             }
-            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited)?;
+            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited, solo_step)?;
         }
         Ok(mesh)
     }
@@ -703,6 +687,14 @@ impl BooleanClippingProcessor {
     /// (`build_cutter_union`, the exact kernel's N-ary `union_many`); when it
     /// can't produce one, the chain falls through to this path — never worse
     /// than pre-#960 (841_house_stack_overflow.ifc).
+    ///
+    /// `solo_step`: true when this is the ONLY node the caller's spine walk
+    /// deferred to (a genuine single-PBHS-cutter DIFFERENCE, #3923's target
+    /// shape); false when it's one of several nodes from a longer authored
+    /// chain that couldn't be batched at any level and is now being applied
+    /// one cutter at a time. See the `IfcPolygonalBoundedHalfSpace` branch
+    /// below for why that distinction gates the accept-gate-rejection
+    /// fallback.
     fn apply_boolean_step(
         &self,
         entity: &DecodedEntity,
@@ -711,6 +703,7 @@ impl BooleanClippingProcessor {
         depth: u32,
         quality: TessellationQuality,
         visited: &mut OperandPath,
+        solo_step: bool,
     ) -> Result<Mesh> {
         let operator = Self::boolean_operator(entity);
 
@@ -784,23 +777,11 @@ impl BooleanClippingProcessor {
                     plane_normal,
                     agreement,
                 ) {
-                    let clipper = ClippingProcessor::new();
-                    let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
-                    self.absorb_failures(clipper.take_failures());
-                    if let Ok(clipped) = subtract_result {
-                        // The bounded-prism subtract is fragile on coincident
-                        // faces: when the clip polygon spans the full host
-                        // cross-section, the prism's in-plane side walls land
-                        // exactly on the host's side faces and the CSG kernel
-                        // can collapse the host to a near-empty sliver
-                        // (duplex.ifc "Party Wall" segments #4287/#4399 —
-                        // 12-tri box → 2-tri quad on the deleted legacy BSP
-                        // kernel). When the result looks degenerate
-                        // we fall through to the robust unbounded plane clip
-                        // below: a strict superset of the bounded cut that is
-                        // exactly correct whenever the polygon already covers
-                        // the host's projected cross-section.
-                        if !ClippingProcessor::difference_result_looks_degenerate(&mesh, &clipped) {
+                    // See `single_cutter_gate.rs` for the #3919/#3923
+                    // accept-gate check and why a rejection's fallback
+                    // depends on `solo_step`.
+                    match self.resolve_single_cutter_subtract(&mesh, &bound_mesh, solo_step) {
+                        SingleCutterSubtract::Clipped(clipped) => {
                             return Ok(self.guard_against_full_host_removal(
                                 mesh,
                                 clipped,
@@ -808,6 +789,8 @@ impl BooleanClippingProcessor {
                                 plane_normal,
                             ));
                         }
+                        SingleCutterSubtract::KeepUncut => return Ok(mesh),
+                        SingleCutterSubtract::FallThrough => {}
                     }
                 }
 

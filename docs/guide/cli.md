@@ -1198,6 +1198,70 @@ clear error for `--seed` while `--model` keeps working. See the
 [`@ifc-lite/cli` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli#gym)
 for the full protocol reference.
 
+---
+
+### `delivery` — Repeatable Delivery Check
+
+Run a saved, versioned model-delivery check: structural validation (the same
+rules `validate` runs) and/or IDS validation (the same validator `ids`
+runs), against one or more models, in one invocation — with a consolidated
+JSON report and an optional standalone HTML report.
+
+```bash
+ifc-lite delivery recipe.json
+ifc-lite delivery recipe.json --json
+ifc-lite delivery recipe.json --json --html report.html
+ifc-lite delivery recipe.json --out report.json --html report.html
+```
+
+The recipe is a small JSON file, versioned alongside the models it checks:
+
+```json
+{
+  "models": ["model.ifc"],
+  "structural": true,
+  "ids": ["door-rules.ids"]
+}
+```
+
+`models` and `ids` paths resolve relative to the recipe file's own
+directory, not the current working directory. A recipe must declare at
+least one applicable check (`"structural": true` and/or a non-empty `"ids"`
+list) — a zero-check recipe is a fatal error rather than a silent "pass".
+
+Every check reports one of three outcomes, never folded together:
+
+- **`pass`** — the check ran and found nothing to report.
+- **`fail`** — the check ran and found a violation (a structural error, or a
+  failed IDS specification).
+- **`error`** — the check could **not** be run: an unreadable/empty/corrupt
+  model, an unreadable or unparsable IDS file, or an IDS document declaring
+  zero specifications. An unevaluable check is never counted as a pass.
+
+The overall **verdict** is `pass` only when every declared check on every
+declared model passed. An unreadable model, an empty IDS ruleset, or any
+failed check all produce a `fail` verdict — a delivery check can never
+report success on zero evidence.
+
+The consolidated report records, per model, its declared path and a SHA-256
+fingerprint of the bytes actually checked (or the load error, when
+unreadable); per check, the model, check type, source (the IDS file, for an
+`ids` check), status, and the underlying `validate`/`ids` evidence
+(issues / specification counts). Given the same recipe and the same bytes on
+disk, running `delivery` twice produces byte-identical `--json` output.
+
+A committed worked example — a passing model, a structurally-broken model,
+an unreadable model, and an IDS specification that fails — lives at
+[`packages/cli/examples/delivery/`](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/cli/examples/delivery).
+
+**Flags:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Print the consolidated report as JSON instead of a human-readable summary |
+| `--out <file>` | Write the JSON report to a file instead of stdout |
+| `--html <file>` | Additionally write a standalone HTML report to `<file>` |
+
 ## Output Modes
 
 Every command supports structured output:
@@ -1340,4 +1404,5 @@ Run `ifc-lite schema` to see the full API before writing eval expressions.
 | `layer` | Layered change tracking over a local store (.ifc-lite/) |
 | `ref` | Manage named refs in the layer store |
 | `gym` | reset/step/reward environment loop (JSONL over stdin/stdout) |
+| `delivery` | Repeatable delivery check (structural + IDS) from a saved recipe |
 <!-- END GENERATED: cli-commands -->

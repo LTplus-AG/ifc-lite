@@ -18,10 +18,10 @@
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { IfcParser } from './index.js';
+import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { WasmScanApi } from './entity-scanner.js';
 import {
-  collectTransferables,
   toTransport,
   transportByteSize,
   type DataStoreTransport,
@@ -244,9 +244,8 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
   try {
     // The SAB itself is shared by reference — both this worker and the
     // main thread (and the geometry workers) hold views of the same bytes.
-    // We never transfer or clone it. Runtimes that reject TextDecoder over
-    // SAB views (e.g. Firefox's timing-attack mitigation) are filtered out
-    // by the wrapper before this worker is even spawned.
+    // We never transfer or clone it. The parser's UTF-8 reader also supports
+    // runtimes that reject TextDecoder over SAB-backed views.
     //
     // Initialise the WASM scanner. `parseColumnar` prefers the WASM scan when
     // `wasmApi` is supplied (5–10× faster on huge files — a 14 M-entity, 986 MB
@@ -293,6 +292,7 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // index were somehow empty, the scanner falls through to the JS tokeniser.
     const wasmApi = wasmApiPromise ? await wasmApiPromise : undefined;
     const parser = new IfcParser();
+    let georeferencing: ReturnType<typeof extractGeoreferencingOnDemand> | undefined;
     // `source` is the SAB-backed payload — `parseColumnar` accepts
     // `ArrayBuffer | SharedArrayBuffer` so no cast is needed.
     const dataStore: IfcDataStore = await parser.parseColumnar(source, {
@@ -311,6 +311,13 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       onSpatialReady: (partialStore) => {
         try {
           const { payload } = toTransport(partialStore);
+          // #3983: overlays and Cesium availability read these during React
+          // rendering. Do the full-source/hash and property-set walks here.
+          payload.sourceContentKey = partialStore.source.contentKey;
+          if (!deferPropertyAtomIndex) {
+            georeferencing = extractGeoreferencingOnDemand(partialStore);
+            payload.georeferencing = georeferencing;
+          }
           // We intentionally do NOT transfer the partial typed-array
           // buffers. The worker keeps using them for the rest of the parse
           // (entityIndex.byId.get(...) etc. all read from these arrays).
@@ -327,6 +334,9 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       },
     });
     const { payload, transfers } = toTransport(dataStore);
+    payload.sourceContentKey = dataStore.source.contentKey;
+    payload.georeferencing = georeferencing === undefined
+      ? extractGeoreferencingOnDemand(dataStore) : georeferencing;
     // CRITICAL: every field here MUST be synchronous. Do NOT await on this path —
     // it gates the 'complete' message (the full data store) reaching the main thread.
     // This previously `await`ed performance.measureUserAgentSpecificMemory(); in a

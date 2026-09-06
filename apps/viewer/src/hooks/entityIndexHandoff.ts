@@ -78,3 +78,12 @@ export function forwardEntityIndexTo(
   if (deferUntilWorkerFinishes) timer = setTimeout(release, maximumWaitMs);
   return Object.assign(forward, { release });
 }
+
+/** One immutable-source fingerprint slot per load; never cache or reuse it. */
+export function createSourceFingerprintCell(source: SharedArrayBuffer | null | undefined, enabled: boolean): SharedArrayBuffer | undefined {
+  if (!enabled || !source) return undefined;
+  const cell = new SharedArrayBuffer(16), words = new Uint32Array(cell);
+  words[0] = source.byteLength >>> 0;
+  words[1] = Math.floor(source.byteLength / 0x100000000);
+  return cell;
+}

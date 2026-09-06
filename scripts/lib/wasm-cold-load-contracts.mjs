@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Source and owned-buffer contracts registered by the real WASM harness. */
 import { checkMeshGetterOwnershipContract } from './wasm-mesh-getter-ownership-contract.mjs';
+import { checkSourceFingerprintContract, checkPrepassReservationContract } from './wasm-source-fingerprint-contract.mjs';
 import { checkPrepassSourceContract } from './wasm-prepass-source-contract.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -38,6 +39,10 @@ export async function runColdLoadContracts({
     }
   });
 
+  test('prepass full-source fingerprint preserves old entry points and malformed tails (#3985)', () => {
+    checkSourceFingerprintContract(IfcAPI, new TextEncoder().encode(columnContent), true);
+  });
+
   // Optional retained baseline artifacts exercise a genuinely matched historical pair.
   if (process.env.IFC_WASM_BASE_JS || process.env.IFC_WASM_BASE_BINARY) {
     assert.ok(process.env.IFC_WASM_BASE_JS && process.env.IFC_WASM_BASE_BINARY,
@@ -47,8 +52,23 @@ export async function runColdLoadContracts({
     test('matched historical mesh getters preserve owned-buffer contract (#3989)', () => {
       checkMeshGetterOwnershipContract(baselineWasm.IfcAPI, baselineOwnershipExports.memory, new TextEncoder().encode(columnContent));
     });
+    test('matched historical JS/WASM retains its advertised fingerprint capability (#3985)', () => {
+      const probe = new baselineWasm.IfcAPI();
+      let enhanced;
+      try { enhanced = typeof probe.buildPrePassStreamingWithSourceFingerprint === 'function'; }
+      finally { probe.free(); }
+      checkSourceFingerprintContract(baselineWasm.IfcAPI, new TextEncoder().encode(columnContent), enhanced);
+    });
+    test('prebuilt and serial prepasses preserve retained-runtime jobs, styles and geometry (#3985)', () => {
+      const source = new TextEncoder().encode(columnContent);
+      const tail = new Uint8Array(source.length + 17);
+      tail.set(source); tail.set(new TextEncoder().encode('\n/* unclosed tail'), source.length);
+      const sources = [source, tail, new Uint8Array()];
+      if (SPACES_AVAILABLE) sources.push(new Uint8Array(readFileSync(SPACES_IFC)));
+      checkPrepassReservationContract(IfcAPI, baselineWasm.IfcAPI, sources);
+    });
   } else {
-    skip('matched historical mesh getter ownership', 'set IFC_WASM_BASE_JS and IFC_WASM_BASE_BINARY to one retained baseline build');
+    skip('matched historical fingerprint fallback', 'set IFC_WASM_BASE_JS and IFC_WASM_BASE_BINARY to one retained baseline build');
   }
 
   test('mesh getters own transferable backing after free and memory growth (#3989)', () => {

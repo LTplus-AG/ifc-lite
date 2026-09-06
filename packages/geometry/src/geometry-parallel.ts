@@ -1450,6 +1450,7 @@ export async function* processParallel(
       }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
+        sourceFingerprint: options?.sourceFingerprint,
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1462,6 +1463,7 @@ export async function* processParallel(
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',
+        sourceFingerprint: options?.sourceFingerprint,
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),

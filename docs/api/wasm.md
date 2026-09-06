@@ -524,3 +524,16 @@ bash scripts/build-wasm.sh
 | `bundler` | CommonJS | Webpack/Rollup |
 | `nodejs` | Node.js | Server-side |
 | `no-modules` | Global | Script tag |
+
+
+### Streaming prepass source fingerprints
+
+`IfcAPI.buildPrePassStreamingWithSourceFingerprint` and
+`IfcAPI.buildPrePassStreamingShardedWithSourceFingerprint` accept the same arguments
+as `buildPrePassStreaming` and `buildPrePassStreamingSharded`, respectively. They
+run the same prepass and add `sourceContentKey` to the final `complete` event. The
+key is the existing full-byte FNV-1a source identity, including comments and any
+unparsed tail. Existing methods and their Rust signatures remain unchanged and do
+not compute this extra key. Feature-detect the new methods when supporting older
+WASM builds. The viewer uses these methods only when a matching parser has a fresh
+fingerprint cell; no additional file-sized buffer is created.

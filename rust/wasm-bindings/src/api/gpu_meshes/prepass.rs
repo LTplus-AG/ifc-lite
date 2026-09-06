@@ -176,6 +176,7 @@ impl IfcAPI {
             None,
             false,
             None,
+            false,
         )
     }
 
@@ -190,6 +191,7 @@ impl IfcAPI {
         prebuilt: Option<ifc_lite_core::ColumnarEntityIndex>,
         external_styles: bool,
         columns: Option<super::prepass_discovery::IndexColumns<'_>>,
+        compute_source_fingerprint: bool,
     ) -> Result<JsValue, JsValue> {
         let prebuilt_arc: Option<std::sync::Arc<ifc_lite_core::ColumnarEntityIndex>> =
             prebuilt.map(std::sync::Arc::new);
@@ -223,7 +225,13 @@ impl IfcAPI {
         // one-time cost) instead of a fatal up-front OOM. Ordinary (<2GB) files
         // are unaffected — their `len/50` estimate stays under the cap.
         const PREPASS_INDEX_RESERVE_CAP: usize = 40_000_000; // ~0.5GB reserved
-        let estimated = (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP);
+        // #3985: a prebuilt index serves every lookup and is retained below;
+        // its unused staging map must not reserve another source-sized table.
+        let estimated = if prebuilt_arc.is_some() {
+            0
+        } else {
+            (content.len() / 50).min(PREPASS_INDEX_RESERVE_CAP)
+        };
         let mut entity_index: rustc_hash::FxHashMap<u32, (usize, usize)> =
             rustc_hash::FxHashMap::with_capacity_and_hasher(estimated, Default::default());
 
@@ -761,6 +769,11 @@ impl IfcAPI {
         let done = js_sys::Object::new();
         crate::api::set_js_prop(&done, "type", &"complete".into());
         crate::api::set_js_prop(&done, "totalJobs", &(total_jobs as f64).into());
+        if compute_source_fingerprint {
+            // Whole original source, including malformed/unparsed trailing bytes.
+            let key = super::source_fingerprint::source_fingerprint(data);
+            crate::api::set_js_prop(&done, "sourceContentKey", &key.into());
+        }
         on_event.call1(&JsValue::NULL, &done.into())?;
 
         Ok(JsValue::UNDEFINED)

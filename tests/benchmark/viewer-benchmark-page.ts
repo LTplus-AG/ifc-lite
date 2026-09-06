@@ -3,10 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
+import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
 
 export interface ViewerBenchmarkMetrics {
   // Wall-clock total time (what users actually experience)
   totalWallClockMs: number | null;
+  /** Manual-harness observed metadata/geometry/render boundary; not the CI app total. */
+  metadataRenderReadyMs?: number | null;
   // File read time
   fileReadMs: number | null;
   // Individual phase timings
@@ -322,7 +325,18 @@ export class ViewerBenchmarkPage {
     }
   }
 
-  async waitForCompletion(timeoutMs: number = 600000) {
+  async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
+    if (requireMetadataRender) {
+      this.loadEndTime = await waitForMetadataRenderReadiness({
+        logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
+        now: () => Date.now(), pause: () => this.page.waitForTimeout(100), timeoutMs,
+      });
+      this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;
+      this.metrics.renderCompleteMs = this.metrics.metadataRenderReadyMs;
+      this.metrics.canvasHasContent = true;
+      this.parseMetrics();
+      return;
+    }
     const startTime = Date.now();
     let renderCompleteTime: number | null = null;
 
@@ -596,6 +610,7 @@ export class ViewerBenchmarkPage {
   getMetrics(): ViewerBenchmarkMetrics {
     return {
       totalWallClockMs: this.metrics.totalWallClockMs ?? null,
+      metadataRenderReadyMs: this.metrics.metadataRenderReadyMs ?? null,
       fileReadMs: this.metrics.fileReadMs ?? null,
       modelOpenMs: this.metrics.modelOpenMs ?? null,
       firstBatchWaitMs: this.metrics.firstBatchWaitMs ?? null,

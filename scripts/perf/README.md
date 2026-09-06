@@ -133,16 +133,23 @@ scripts/perf/browser-cold-ab.sh --corpus scripts/perf/browser-corpus.local.json
 `chromium.launch()` (no persistent profile) closed completely before the next
 one starts — fresh WASM instantiation, fresh geometry-worker pool startup, and
 an empty Cache API/localStorage/IndexedDB every time. It does **not** control
-the OS file cache (same caveat #3921's own qualification recorded). "Full
-readiness" (`totalWallClockMs`) and "first geometry" (`firstBatchWaitMs`/
+the OS file cache (same caveat #3921's own qualification recorded). Observed metadata/render readiness (`metadataRenderReadyMs`) and "first geometry" (`firstBatchWaitMs`/
 `firstVisibleGeometryMs`) are reported as separate rows, never collapsed.
 
 **Repeatability:** samples are interleaved (A, B, A, B, …), and the reporter
 only calls a delta "real" once it clears the base side's own round-to-round
 spread — the same noise-floor discipline as `ab-report.mjs` for the native
-probe. Two independent runs of the AC20-FZK-Haus public fixture (2 rounds
-each, working tree vs itself) landed at TOTAL 200ms both times, with the
-other four milestones within 1-2% — see the PR for the full transcript.
+probe. Historical runs in the original PR used the app summary as TOTAL;
+that metric could precede metadata completion and does not qualify the new
+observed boundary. The existing CI `totalWallClockMs` remains unchanged and is
+reported separately; no CI baseline is silently regenerated. Old records without
+the new readiness field are refused by this manual reporter.
+
+The observed boundary requires metadata, geometry, renderer-summary and canvas
+signals, with finite timeout/error failures. It does not qualify search readiness,
+cache-tail memory, properties, spatial paths, GPU picking or Firefox. Those issue
+#3978 requirements remain follow-ups in this same harness, not implied coverage.
+The retained mesh count alone is not geometry-buffer identity.
 
 **Drift detection:** there is no committed golden here to drift silently —
 every invocation prints its own base-vs-branch delta from that run's fresh
@@ -155,10 +162,11 @@ being silently absorbed into "faster".
 `--fault-inject-side`/`--fault-inject-pattern` route-delay matching requests
 (default `\.wasm(\?|$)`) on one interleaved side, to prove the harness
 actually notices a regression rather than always reporting "within noise".
-A 4-second delay injected on `\.(wasm|js)` for AC20-FZK-Haus: TOTAL
-200ms → 4200ms (+2000%), every milestone flagged ⛔, `totalMeshes` unchanged
-(confirming it is a pure timing effect). Do not leave `--fault-inject-*` set
-for a real measurement — it exists only to validate the harness itself.
+Historical request-delay runs verified the old metric's response to startup
+delay; they do not validate the new readiness metric. Deterministic delayed-
+metadata tests now exercise premature renderer summaries, delayed paint,
+metadata failure and timeout refusal without launching a benchmark. A browser
+functional smoke remains required before a new performance claim.
 
 **Failures are archived, never silently retried:** a sample that does not
 reach `streamCompleteMs` with `totalMeshes > 0` is recorded as failed (not

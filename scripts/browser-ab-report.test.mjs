@@ -37,6 +37,7 @@ const METRICS = {
   spatialReadyMs: 450,
   metadataCompleteMs: 500,
   totalWallClockMs: 600,
+  metadataRenderReadyMs: 600,
 };
 
 function sample({ side, fixture, round, ok = true, totalMeshes = 1000, jitter = 0 }) {
@@ -91,18 +92,15 @@ test('THE HEALTHY CONTROL: two samples per side, no drift — ordinary verdict, 
   assert.match(r.out, /VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds\./);
 });
 
-test('totalMeshes mismatch between sides: flagged as output-changed, but does NOT itself fail the run', () => {
-  // Pinning actual behaviour, not assumed behaviour: the reporter's exit
-  // code is `rows.length === 0 || anyIncomparableFixture ? 1 : 0` — a
-  // fingerprint drift with comparable samples on both sides is a warning
-  // about like-for-like-ness, not a harness fault, so it exits 0.
+test('totalMeshes mismatch between sides: invalidates the timing comparison (#3978)', () => {
+  // A changed-output comparison must not return a successful timing verdict.
   const r = run([
     sample({ side: 'A', fixture: 'large-arch', round: 1, totalMeshes: 500 }),
     sample({ side: 'A', fixture: 'large-arch', round: 2, totalMeshes: 500 }),
     sample({ side: 'B', fixture: 'large-arch', round: 1, totalMeshes: 600 }),
     sample({ side: 'B', fixture: 'large-arch', round: 2, totalMeshes: 600 }),
   ]);
-  assert.equal(r.code, 0, r.out);
+  assert.equal(r.code, 1, r.out);
   assert.match(r.out, /OUTPUT CHANGED: totalMeshes 500→600/);
   assert.match(r.out, /VERDICT: .*totalMeshes fingerprint changed/);
 });
@@ -129,4 +127,28 @@ test('a real regression on one fixture and a crashed-on-one-side second fixture:
   assert.notEqual(r.code, 0, r.out);
   assert.match(r.out, /VERDICT: a metric moved beyond the noise floor/);
   assert.match(r.out, /VERDICT: .*inconclusive.*NOT a clean "no regression" result/);
+});
+
+test('#3978 refuses legacy or contradictory readiness without rewriting the app total', () => {
+  for (const readiness of [undefined, 200]) {
+    const a = sample({ side: 'A', fixture: 'late-metadata', round: 1 });
+    const b = sample({ side: 'B', fixture: 'late-metadata', round: 1 });
+    a.totalWallClockMs = b.totalWallClockMs = 200;
+    a.metadataCompleteMs = b.metadataCompleteMs = 265;
+    a.metadataRenderReadyMs = b.metadataRenderReadyMs = readiness;
+    const { code, out } = run([a, b]);
+    assert.equal(code, 1, out);
+    assert.match(out, /missing\/inconsistent observed/);
+    assert.doesNotMatch(out, /VERDICT: no metric moved/);
+  }
+});
+
+test('#3978 mesh drift never reports matching fingerprints or within-noise success', () => {
+  const { code, out } = run([
+    sample({ side: 'A', fixture: 'drift', round: 1, totalMeshes: 500 }),
+    sample({ side: 'B', fixture: 'drift', round: 1, totalMeshes: 600 }),
+  ]);
+  assert.equal(code, 1, out);
+  assert.match(out, /fingerprint changed/);
+  assert.doesNotMatch(out, /totalMeshes matched|VERDICT: no metric moved/);
 });

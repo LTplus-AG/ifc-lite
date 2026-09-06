@@ -36,10 +36,11 @@ const allRows = readFileSync(jsonlPath, 'utf-8')
   .filter(Boolean)
   .map((l) => JSON.parse(l));
 
-// These are the same six KPIs `viewer-benchmark.spec.ts` / `check-benchmark-
+// Preserve the legacy KPIs alongside observed readiness; do not relabel app summaries.
+// These legacy KPIs `viewer-benchmark.spec.ts` / `check-benchmark-
 // regression.js` treat as the CI-facing metrics — kept identical so a number
 // quoted from this tool means the same thing as one from the CI benchmark.
-// `totalWallClockMs` (full readiness) and `firstBatchWaitMs`/
+// `totalWallClockMs` (legacy app summary, not full readiness) and `firstBatchWaitMs`/
 // `firstVisibleGeometryMs` (first geometry) are DELIBERATELY both present and
 // never collapsed — that separation is the point (#3978).
 const METRICS = [
@@ -48,9 +49,12 @@ const METRICS = [
   ['streamCompleteMs', 'stream-complete'],
   ['spatialReadyMs', 'spatial-ready'],
   ['metadataCompleteMs', 'metadata-complete'],
-  ['totalWallClockMs', 'TOTAL (full readiness)'],
+  ['metadataRenderReadyMs', 'METADATA + RENDER (observed)'],
+  ['totalWallClockMs', 'app total (legacy CI metric)'],
 ];
 const FINGERPRINT = ['totalMeshes'];
+// Mesh count is a coarse witness, not payload/vertex identity. Search, cache-tail
+// memory, properties, picking and Firefox are not qualified by this report.
 
 const median = (xs) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -82,7 +86,8 @@ for (const r of rows) {
   }
 }
 
-const report = { base: baseLabel, branch: branchLabel, failures: failedRows.length, fixtures: [] };
+const coverage = 'Observed metadata/geometry/render only; search, cache-tail memory, properties, picking and Firefox unqualified.';
+const report = { coverage, base: baseLabel, branch: branchLabel, failures: failedRows.length, fixtures: [] };
 let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
@@ -93,7 +98,7 @@ let anyTooNoisy = false;
 // clean-looking pass for a fixture nothing was actually verified on.
 let anyIncomparableFixture = false;
 
-const lines = [];
+const lines = [coverage];
 lines.push(`\nbrowser cold-load A/B  base=${baseLabel}  branch=${branchLabel}`);
 if (failedRows.length > 0) {
   lines.push(`\n⚠️  ${failedRows.length} sample(s) FAILED and were excluded from the stats below (evidence archived under scripts/perf/.browser-cold-ab-results/FAILED-*):`);
@@ -129,6 +134,16 @@ for (const [fixture, sides] of byFixture) {
     report.fixtures.push(fx);
     continue;
   }
+  const invalidReadiness = [...baseVals, ...branchVals].some(row =>
+    !Number.isFinite(row.metadataRenderReadyMs) || row.metadataRenderReadyMs <= 0 ||
+    !Number.isFinite(row.metadataCompleteMs) || !Number.isFinite(row.streamCompleteMs) ||
+    row.metadataRenderReadyMs < Math.max(row.metadataCompleteMs, row.streamCompleteMs));
+  if (invalidReadiness) {
+    lines.push('    ⚠️ missing/inconsistent observed metadata-render readiness; legacy app-total records are not comparable.');
+    anyIncomparableFixture = true;
+    report.fixtures.push(fx);
+    continue;
+  }
   lines.push(`    ${'metric'.padEnd(30)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of METRICS) {
@@ -143,7 +158,7 @@ for (const [fixture, sides] of byFixture) {
     // both the base's own noise floor AND a small absolute ms floor.
     const real = d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 5;
     if (real) anyRealChange = true;
-    if (key === 'totalWallClockMs' && noise > 20) anyTooNoisy = true;
+    if (key === 'metadataRenderReadyMs' && noise > 20) anyTooNoisy = true;
     const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
     lines.push(
       `    ${label.padEnd(30)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${(sign(d) + (d == null ? '—' : d.toFixed(1)) + '%').padStart(7)}  ${('±' + noise.toFixed(0) + '%').padStart(6)}${tag}`
@@ -159,7 +174,7 @@ if (rows.length === 0) {
 } else if (anyFingerprintDrift) {
   lines.push('VERDICT: ⚠️  totalMeshes fingerprint changed — the timing delta is not like-for-like; state the output change or investigate before trusting any number here.');
 } else if (anyTooNoisy) {
-  lines.push('VERDICT: ⚠️  machine too noisy (base TOTAL spread >20%) — close other load and re-run with more --iters before trusting any delta.');
+  lines.push('VERDICT: ⚠️  machine too noisy (base observed-readiness spread >20%) — close other load and re-run with more --iters before trusting any delta.');
 } else {
   // anyRealChange and anyIncomparableFixture are independent facts about
   // DIFFERENT fixtures (a real move on one fixture says nothing about
@@ -209,4 +224,4 @@ if (jsonOut) {
 // sample (the per-fixture version of the same fault - see anyIncomparableFixture
 // above). A real regression/improvement (anyRealChange) still exits 0: that
 // is a successful, trustworthy comparison reporting a result, not a fault.
-process.exit(rows.length === 0 || anyIncomparableFixture ? 1 : 0);
+process.exit(rows.length === 0 || anyIncomparableFixture || anyFingerprintDrift ? 1 : 0);

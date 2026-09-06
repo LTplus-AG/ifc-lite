@@ -13,14 +13,14 @@
 # committed baseline.json, never a live base build.
 #
 # Usage:
-#   scripts/perf/browser-cold-ab.sh                                  # public fixtures, base=merge-base(origin/main)
+#   scripts/perf/browser-cold-ab.sh                                  # public fixtures, self-comparison
 #   scripts/perf/browser-cold-ab.sh --base origin/main --iters 5
 #   scripts/perf/browser-cold-ab.sh --corpus scripts/perf/browser-corpus.local.json
 #   scripts/perf/browser-cold-ab.sh --fixtures tests/models/ara3d/AC20-FZK-Haus.ifc
 #
 # Flags:
-#   --base <ref>       git ref for "before" (default: merge-base with
-#                       origin/main, else HEAD~1). Requires a second
+#   --base <ref>       git ref for "before" (default: self-comparison).
+#                       An explicit ref requires a second
 #                       `pnpm install` + viewer build in a throwaway worktree
 #                       — the same cost `.github/workflows/benchmark.yml`
 #                       already pays per PR, just run locally.

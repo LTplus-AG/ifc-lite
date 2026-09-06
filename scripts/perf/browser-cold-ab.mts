@@ -26,11 +26,12 @@
  *     run. That is the same caveat #3921's own qualification recorded
  *     ("Fresh Chrome processes and empty application cache; OS file cache
  *     uncontrolled") — repeated here rather than silently assumed away.
- *   - "Full readiness" (`totalWallClockMs`, everything settled: metadata +
+ *   - Observed readiness (`metadataRenderReadyMs`: metadata +
  *     geometry + renderer) is reported SEPARATELY from "first geometry
  *     submitted" (`firstBatchWaitMs`/`firstVisibleGeometryMs`) — never
  *     collapsed into one number, per the ViewerBenchmarkMetrics shape this
- *     reuses verbatim from tests/benchmark/viewer-benchmark-page.ts.
+ *     reuses from tests/benchmark/viewer-benchmark-page.ts. Search, cache-tail
+ *     memory, property/picking witnesses and Firefox remain unqualified.
  *
  * REPEATABILITY: samples for base and branch are INTERLEAVED (base, branch,
  * base, branch, …), so a machine that drifts mid-run drags both sides
@@ -69,6 +70,7 @@
  */
 
 import { chromium } from '@playwright/test';
+import { browserStaticPath } from './browser-cold-server-path.js';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { extname, isAbsolute, join, resolve } from 'node:path';
@@ -104,6 +106,10 @@ function isFlagValue(i: number): boolean {
 const fixtureArgs = argv.filter((a, i) => !a.startsWith('--') && !isFlagValue(i));
 
 const ITERS = Number(flag('--iters') ?? '3');
+if (!Number.isInteger(ITERS) || ITERS < 1) {
+  console.error(`browser-cold-ab: --iters must be a positive integer (got ${flag('--iters')})`);
+  process.exit(2);
+}
 const DIST_BRANCH = resolve(ROOT, flag('--dist-branch') ?? 'apps/viewer/dist');
 const DIST_BASE_ARG = flag('--dist-base');
 const DIST_BASE = DIST_BASE_ARG ? resolve(ROOT, DIST_BASE_ARG) : null;
@@ -111,6 +117,7 @@ const DIST_BASE = DIST_BASE_ARG ? resolve(ROOT, DIST_BASE_ARG) : null;
 // playwright.config.ts's e2e webServer), so this must match unless that file
 // changes too.
 const PORT = Number(flag('--port') ?? '3000');
+if (PORT !== 3000) throw new Error('--port must be 3000: benchmark page uses that origin');
 const BASE_LABEL = flag('--base-label') ?? (DIST_BASE ? 'base' : 'run-A');
 const BRANCH_LABEL = flag('--branch-label') ?? (DIST_BASE ? 'branch' : 'run-B');
 const JSONL_OUT = resolve(ROOT, flag('--jsonl') ?? 'scripts/perf/.browser-cold-ab-results/runs.jsonl');
@@ -129,10 +136,7 @@ if (DIST_BASE && !existsSync(DIST_BASE)) {
   console.error(`browser-cold-ab: --dist-base not found: ${DIST_BASE}`);
   process.exit(2);
 }
-if (!Number.isFinite(ITERS) || ITERS < 1) {
-  console.error(`browser-cold-ab: --iters must be a positive integer (got ${flag('--iters')})`);
-  process.exit(2);
-}
+
 
 // Fixtures: positional repo-relative/absolute paths, plus anything named in
 // a --corpus manifest (private, local-only, never committed).
@@ -186,11 +190,8 @@ const MIME: Record<string, string> = {
 };
 let currentRoot = DIST_BRANCH;
 const server = createServer((req, res) => {
-  const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
-  const rel = urlPath === '/' ? '/index.html' : urlPath;
-  const filePath = join(currentRoot, rel);
-  // No directory traversal outside the served root.
-  if (!filePath.startsWith(currentRoot)) {
+  const filePath = browserStaticPath(currentRoot, req.url ?? '/');
+  if (filePath === null) {
     res.writeHead(403).end();
     return;
   }
@@ -238,6 +239,7 @@ for (let iter = 1; iter <= ITERS; iter++) {
       const context = await browser.newContext();
       const page = await context.newPage();
 
+      const bp = new ViewerBenchmarkPage(page);
       let record: Record<string, unknown> = { side: label, fixture: fixture.name, round: iter, ok: false };
       try {
         if (injectHere) {
@@ -250,12 +252,11 @@ for (let iter = 1; iter <= ITERS; iter++) {
           });
         }
 
-        const bp = new ViewerBenchmarkPage(page);
         await bp.setup();
         const sizeMB = statSync(fixture.path).size / (1024 * 1024);
         const timeoutMs = Math.max(TIMEOUT_MS, sizeMB > 200 ? 600000 : sizeMB > 50 ? 300000 : TIMEOUT_MS);
         await bp.loadFile(fixture.path);
-        await bp.waitForCompletion(timeoutMs);
+        await bp.waitForCompletion(timeoutMs, true);
         const metrics = bp.getMetrics();
         if (metrics.streamCompleteMs == null || !metrics.totalMeshes) {
           throw new Error('load did not reach streamCompleteMs / produced 0 meshes');
@@ -278,10 +279,10 @@ for (let iter = 1; iter <= ITERS; iter++) {
           /* best-effort */
         }
         try {
-          const bp = new ViewerBenchmarkPage(page);
           writeFileSync(`${failBase}.console.log`, bp.getConsoleLogs().join('\n'));
-        } catch {
-          /* logs unavailable if setup() itself threw */
+        } catch (archiveError) {
+          record.logArchiveError = String(archiveError);
+          console.error(`browser-cold-ab: log archive failed: ${archiveError}`);
         }
         writeFileSync(`${failBase}.error.txt`, message);
         console.error(`browser-cold-ab: FAILED ${tag}: ${message} (evidence: ${failBase}.*)`);

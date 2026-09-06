@@ -73,7 +73,8 @@ export function isNonRootNameExempt(typeUpper: string): boolean {
     || typeUpper === 'IFCPERSON'
     || typeUpper === 'IFCORGANIZATION'
     || typeUpper === 'IFCPERSONANDORGANIZATION'
-    || typeUpper.startsWith('IFCPROPERTY') || typeUpper === 'IFCCOMPLEXPROPERTY' // #4042: direct IfcProperty subtype, doesn't start IFCPROPERTY
+    // #4042: IfcComplexProperty is a direct subtype whose name lacks the prefix.
+    || typeUpper.startsWith('IFCPROPERTY') || typeUpper === 'IFCCOMPLEXPROPERTY'
     || typeUpper.startsWith('IFCPHYSICAL')
     || typeUpper.startsWith('IFCQUANTITY');
 }

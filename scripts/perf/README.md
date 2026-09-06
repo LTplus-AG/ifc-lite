@@ -592,3 +592,14 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
+
+### Retained cold-load work: search index ownership (#3993)
+
+The viewer shell owns search indexing for the lifetime of each loaded model.
+Search interfaces consume the same records, so opening or closing search does
+not create another owner or abandon its index. Cleanup releases in-flight
+claims, and stale promises cannot replace a newer build. Lifecycle tests cover
+StrictMode, unmount and partial/final metadata publications. This removes
+redundant work and preserves search availability; no separate cold-load speedup
+is attributed to this layer. Cumulative retained-stack qualification must
+exercise actual search and federated model lifetimes before landing.

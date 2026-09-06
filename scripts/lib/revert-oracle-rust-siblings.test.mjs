@@ -37,12 +37,12 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     mkdirSync(join(root, 'tests'));
     writeFileSync(join(root, 'tests/later_target.rs'),
       '#[test]\nfn version_stays_supported() { assert!((1..=2).contains(&oracle_rust_siblings::value::value())); }\n');
-    function writeVersion(value) {
+    const writeVersion = (value) => {
       writeFileSync(join(root, 'src/value.rs'), `pub fn value() -> u32 { ${value} }\n`);
       for (const file of ['value_tests.rs', 'tests.rs']) {
         writeFileSync(join(root, 'src', file), `#[test]\nfn observes_value() { assert_eq!(crate::value::value(), ${value}); }\n`);
       }
-    }
+    };
     writeVersion(1);
     // Generate/commit the lock before oracle's clean-tree check.
     run('cargo', ['generate-lockfile', '--offline']);

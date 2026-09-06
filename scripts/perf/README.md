@@ -587,6 +587,18 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
   a different tree shape is output-equivalent and can be asserted as such.
 
+### Source and buffer ownership during WASM prepass (#3989)
+
+Retained source-session reuse, binding-owned index adoption and direct transfer of
+already-owned mesh getter arrays as part of the qualified cold-load changes.
+The combined native/browser corpus evidence does not isolate a throughput gain
+for this layer; do not attribute the cumulative result to these copies alone.
+Installed-source methods retain byte-taking compatibility and reset on source
+replacement. Real WASM contracts verify returned buffers survive handle free,
+memory growth and transfer, including textures. Ownership must be established
+at the actual binding: a JavaScript view alone does not remove the copy into WASM,
+and borrowed views into WASM memory must not be transferred as owned output.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.

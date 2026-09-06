@@ -678,3 +678,12 @@ When working with multiple IFC files (e.g., architectural, structural, and MEP m
 - [Query Guide](querying.md) - Query parsed data
 - [Federation Guide](federation.md) - Load and coordinate multiple models
 - [API Reference](../api/typescript.md) - Complete API docs
+
+### Native Rust owned index columns
+
+`ColumnarEntityIndex::from_owned_columns(ids, starts, lengths)` consumes three
+`Vec<u32>` columns. Like the borrowed `from_columns` constructor, it sorts when
+needed, keeps the last input occurrence of duplicate IDs, and returns an empty
+index for empty or mismatched columns. Already sorted, unique columns retain
+their existing allocations. Use `from_columns` when the caller must keep owning
+its input vectors.

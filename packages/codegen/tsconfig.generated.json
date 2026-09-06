@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "nodenext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "moduleResolution": "nodenext",
+    "outDir": "./dist/generated",
+    "rootDir": "./generated",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true
+  },
+  "include": ["generated/**/*"],
+  "exclude": ["node_modules", "dist", "test", "**/test-compile.ts"]
+}

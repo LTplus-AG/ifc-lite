@@ -55,3 +55,14 @@ export {
   type FullGeneratedCode,
   type GeneratorOptions,
 } from './generator.js';
+
+// Schema-hierarchy helpers (runtime `isSubtypeOf`, against a generated
+// bundle's `SCHEMA_REGISTRY` — see `./ifc4` and `./ifc4x3` subpath exports).
+export {
+  isSubtypeOf,
+  isSubtypeOfAny,
+  isProperSubtypeOf,
+  isProperSubtypeOfAny,
+  type HierarchyEntity,
+  type HierarchyRegistry,
+} from './schema-hierarchy.js';

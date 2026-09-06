@@ -7,6 +7,9 @@ import {
   EntityExtractor,
   extractClassificationsOnDemand,
 } from '@ifc-lite/parser';
+import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen';
+import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
+import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 import type { ClassificationInfo } from '../types.js';
 
 interface ClassRecord {
@@ -174,97 +177,60 @@ function appendExternalReferenceClassifications(
 }
 
 /**
- * `IfcMaterialDefinition`'s concrete members (IFC4 and IFC4X3 EXPRESS
- * schemas agree): `IfcMaterial`, `IfcMaterialConstituent(Set)`,
- * `IfcMaterialLayer(Set)` and `IfcMaterialProfile(Set)`, plus the two
- * `…WithOffsets` subtypes. `IfcMaterialDefinition` itself is abstract (no
- * instances), and every OTHER `IFCMATERIAL*`-prefixed entity —
- * `IfcMaterialList` (an `IfcMaterialSelect` member, not
- * `IfcMaterialDefinition`), `IfcMaterialLayerSetUsage`/
- * `IfcMaterialProfileSetUsage`, `IfcMaterialDefinitionRepresentation`,
- * `IfcMaterialRelationship`, `IfcMaterialClassificationRelationship`,
- * `IfcMaterialProperties` and its subtypes — is NOT an
- * `IfcResourceObjectSelect` member and can never legitimately be the
- * `RelatedResourceObjects` target of an `IfcExternalReferenceRelationship`.
- * A plain `startsWith('IFCMATERIAL')` swallows all of those too, turning a
- * genuinely unclassified `IfcMaterialLayerSetUsage` (a common, real entity —
- * every layered wall has one) into a spurious `CLASSIFICATION_UNRESOLVED`.
+ * The schema registries this predicate checks type membership against — the
+ * union of IFC4 and IFC4X3, since a type introduced in only one of them
+ * (`IfcOpenCrossProfileDef`, IFC4X3-only) must still be recognised when a
+ * store built from the OTHER schema is queried against it (a server-parsed
+ * store's `EntityRef.type` names an entity, not a schema version).
  */
-const MATERIAL_DEFINITION_TYPES = new Set([
-  'IFCMATERIAL',
-  'IFCMATERIALCONSTITUENT',
-  'IFCMATERIALCONSTITUENTSET',
-  'IFCMATERIALLAYER',
-  'IFCMATERIALLAYERSET',
-  'IFCMATERIALLAYERWITHOFFSETS',
-  'IFCMATERIALPROFILE',
-  'IFCMATERIALPROFILESET',
-  'IFCMATERIALPROFILEWITHOFFSETS',
-]);
-
-/**
- * Every non-abstract `IfcProfileDef` subtype, walked from the
- * `SUBTYPE OF` chain in both `packages/codegen/schemas/IFC4_ADD2_TC1.exp`
- * and `IFC4X3.exp` down to `IfcProfileDef` — the union of both schemas,
- * since a type introduced in one (`IfcOpenCrossProfileDef`, IFC4X3-only)
- * must still be recognised when a store built from the other schema is
- * queried against it. `is-non-rooted-classifiable-resource.exp-derived.test.ts`
- * re-derives this same set from the `.exp` files at test time and asserts
- * it matches exactly — regenerate this list from that test's derivation
- * (not by hand) if either schema adds or removes a `IfcProfileDef`
- * subtype.
- *
- * Three prior predicates for this role each got a different edge wrong:
- * `endsWith('PROFILEDEF')` missed `IfcArbitraryProfileDefWithVoids` (its
- * name doesn't *end* in "ProfileDef"); the `includes('PROFILEDEF')` that
- * replaced it over-matched `IfcRelAssociatesProfileDef` — a *rooted*
- * relationship that points AT a profile def via `RelatingProfileDef`, not
- * a profile def itself; patching that with `!startsWith('IFCREL')` is
- * exactly the kind of one-off exclusion this explicit, schema-derived set
- * is meant to make unnecessary going forward.
- */
-const PROFILE_DEF_TYPES = new Set([
-  'IFCARBITRARYCLOSEDPROFILEDEF',
-  'IFCARBITRARYOPENPROFILEDEF',
-  'IFCARBITRARYPROFILEDEFWITHVOIDS',
-  'IFCASYMMETRICISHAPEPROFILEDEF',
-  'IFCCENTERLINEPROFILEDEF',
-  'IFCCIRCLEHOLLOWPROFILEDEF',
-  'IFCCIRCLEPROFILEDEF',
-  'IFCCOMPOSITEPROFILEDEF',
-  'IFCCSHAPEPROFILEDEF',
-  'IFCDERIVEDPROFILEDEF',
-  'IFCELLIPSEPROFILEDEF',
-  'IFCISHAPEPROFILEDEF',
-  'IFCLSHAPEPROFILEDEF',
-  'IFCMIRROREDPROFILEDEF',
-  'IFCOPENCROSSPROFILEDEF', // IFC4X3 only
-  'IFCPARAMETERIZEDPROFILEDEF',
-  'IFCRECTANGLEHOLLOWPROFILEDEF',
-  'IFCRECTANGLEPROFILEDEF',
-  'IFCROUNDEDRECTANGLEPROFILEDEF',
-  'IFCTRAPEZIUMPROFILEDEF',
-  'IFCTSHAPEPROFILEDEF',
-  'IFCUSHAPEPROFILEDEF',
-  'IFCZSHAPEPROFILEDEF',
-]);
+const HIERARCHY_REGISTRIES: readonly HierarchyRegistry[] = [
+  IFC4_SCHEMA.SCHEMA_REGISTRY,
+  IFC4X3_SCHEMA.SCHEMA_REGISTRY,
+];
 
 /**
  * Could an entity of this upper-cased type name be a `RelatedResourceObjects`
  * target of an `IfcExternalReferenceRelationship`? The IFC schema restricts
- * that role to `IfcResourceObjectSelect` members — `IfcMaterialDefinition`
- * (see `MATERIAL_DEFINITION_TYPES`) and `IfcProfileDef` (see
- * `PROFILE_DEF_TYPES`) subtypes — never an `IfcRoot` subtype (`IfcWall`,
- * `IfcDoor`, …), which can only be classified via
+ * that role to `IfcResourceObjectSelect` members — subtypes of
+ * `IfcMaterialDefinition` or `IfcProfileDef` — never an `IfcRoot` subtype
+ * (`IfcWall`, `IfcDoor`, …), which can only be classified via
  * `IfcRelAssociatesClassification`.
  *
+ * This is a schema-hierarchy fact, answered here via `@ifc-lite/codegen`'s
+ * generated `SCHEMA_REGISTRY.entities[type].inheritanceChain` (through
+ * `isProperSubtypeOfAny` — `IfcMaterialDefinition` and `IfcProfileDef` are
+ * themselves abstract with no concrete instances, so the CONCRETE-MEMBER
+ * question this predicate answers wants the self-match excluded) rather
+ * than a string test — `startsWith`, `endsWith` and `includes` variants of
+ * this predicate were each wrong at a different edge across three separate
+ * incidents (ifc-lite #3999):
+ *
+ *   1. `startsWith('IFCMATERIAL')` admitted `IfcMaterialList` (an
+ *      `IfcMaterialSelect` member, not `IfcMaterialDefinition`),
+ *      `IfcMaterialLayerSetUsage`, `IfcMaterialDefinitionRepresentation`,
+ *      `IfcMaterialRelationship` — none is `IfcMaterialDefinition`.
+ *   2. `endsWith('PROFILEDEF')` missed `IfcArbitraryProfileDefWithVoids`, a
+ *      genuine `IfcProfileDef` subtype whose name doesn't end that way.
+ *   3. `includes('PROFILEDEF')` (the fix for #2) admitted
+ *      `IfcRelAssociatesProfileDef`, a *rooted* relationship that points AT
+ *      a profile def via `RelatingProfileDef`, not a profile def itself.
+ *
+ * `isProperSubtypeOfAny` reads the actual `SUBTYPE OF` chain the schemas declare,
+ * so none of those three edges is reachable by construction —
+ * `is-non-rooted-classifiable-resource.exp-derived.test.ts` still
+ * independently re-derives the answer from the `.exp` files and asserts
+ * agreement for every entity in both schemas, as a check against a bug in
+ * codegen's own chain computation, not just against a string test.
+ *
  * Pulled out of `isNonRootedClassifiableResource` as a pure function of the
- * type name so `is-non-rooted-classifiable-resource.exp-derived.test.ts` can
- * exercise it directly against every entity name in both schemas, without
- * building a store for each one.
+ * type name so that test can exercise it directly against every entity name
+ * in both schemas, without building a store for each one.
  */
 export function isNonRootedClassifiableResourceType(upperType: string): boolean {
-  return MATERIAL_DEFINITION_TYPES.has(upperType) || PROFILE_DEF_TYPES.has(upperType);
+  return (
+    isProperSubtypeOfAny(HIERARCHY_REGISTRIES, upperType, 'IfcMaterialDefinition') ||
+    isProperSubtypeOfAny(HIERARCHY_REGISTRIES, upperType, 'IfcProfileDef')
+  );
 }
 
 /**

@@ -15,10 +15,38 @@ test('#3978 static root rejects encoded traversal into a sibling with the same p
   assert.equal(browserStaticPath(root, '/'), resolve(root, 'index.html'));
   assert.equal(browserStaticPath(root, '/assets/app.js?q=1'), resolve(root, 'assets/app.js'));
 });
-for (const [flag, value, expected] of [['--port', '3100', /port must be 3000/], ['--iters', '1.5', /iters must/]]) {
+for (const [flag, value, expected] of [['--port', '65536', /port must be an integer/], ['--iters', '1.5', /iters must/]]) {
   test(`#3978 rejects ${flag} ${value} before opening a browser/server`, () => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', flag, value], { encoding: 'utf8' });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, expected);
   });
 }
+
+
+test('#3978 shared benchmark setup navigates to the selected server and keeps the CI default', async () => {
+  const { ViewerBenchmarkPage } = await tsImport('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
+  const visits = [];
+  const page = {
+    on() {}, async addInitScript() {}, async goto(url) { visits.push(url); },
+    async waitForSelector() {}, async waitForLoadState() {},
+  };
+  await new ViewerBenchmarkPage(page, 'http://localhost:3162').setup();
+  await new ViewerBenchmarkPage(page).setup();
+  assert.deepEqual(visits, ['http://localhost:3162', 'http://localhost:3000']);
+});
+
+
+test('#3978 strict manual loading starts observation without the legacy one-second sleep', async () => {
+  const { ViewerBenchmarkPage } = await tsImport('../tests/benchmark/viewer-benchmark-page.ts', import.meta.url);
+  const events = [];
+  const page = {
+    locator() { return { first() { return { async setInputFiles(path) { events.push(path); } }; } }; },
+    async waitForTimeout(ms) { events.push(ms); },
+  };
+  const benchmark = new ViewerBenchmarkPage(page);
+  await benchmark.loadFile('manual.ifc', false);
+  assert.deepEqual(events, ['manual.ifc']);
+  await benchmark.loadFile('ci.ifc');
+  assert.deepEqual(events, ['manual.ifc', 'ci.ifc', 1000]);
+});

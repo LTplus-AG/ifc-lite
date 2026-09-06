@@ -60,16 +60,16 @@
  *   npx tsx scripts/perf/browser-cold-ab.mts \
  *     tests/models/ara3d/AC20-FZK-Haus.ifc \
  *     "tests/models/various/01_Snowdon_Towers_Sample_Structural(1).ifc" \
- *     --dist-branch apps/viewer/dist --iters 3
+ *     --dist-branch apps/viewer/dist --iters 5
  *
  *   # harness self-test: inject a 2s delay on the .wasm fetch for the
  *   # "branch" side of each interleaved pair and confirm it is flagged
  *   npx tsx scripts/perf/browser-cold-ab.mts tests/models/ara3d/AC20-FZK-Haus.ifc \
- *     --dist-branch apps/viewer/dist --iters 3 \
+ *     --dist-branch apps/viewer/dist --iters 5 \
  *     --fault-inject-ms 2000 --fault-inject-side branch
  */
 
-import { chromium } from '@playwright/test';
+import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { browserStaticPath } from './browser-cold-server-path.js';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, mkdirSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -95,7 +95,7 @@ function flag(name: string): string | null {
   return i !== -1 ? argv[i + 1] : null;
 }
 const FLAGS_WITH_VALUE = new Set([
-  '--corpus', '--iters', '--dist-base', '--dist-branch', '--port',
+  '--browser-executable', '--corpus', '--iters', '--dist-base', '--dist-branch', '--port',
   '--base-label', '--branch-label', '--jsonl', '--report-json', '--results-dir',
   '--fault-inject-ms', '--fault-inject-side', '--fault-inject-pattern', '--timeout-ms',
 ]);
@@ -105,19 +105,27 @@ function isFlagValue(i: number): boolean {
 }
 const fixtureArgs = argv.filter((a, i) => !a.startsWith('--') && !isFlagValue(i));
 
-const ITERS = Number(flag('--iters') ?? '3');
+const ITERS = Number(flag('--iters') ?? '5');
 if (!Number.isInteger(ITERS) || ITERS < 1) {
   console.error(`browser-cold-ab: --iters must be a positive integer (got ${flag('--iters')})`);
   process.exit(2);
 }
+const browserExecutable = flag('--browser-executable');
+const headed = argv.includes('--headed');
+const browserLaunchOptions = {
+  headless: !headed,
+  ...(browserExecutable ? { executablePath: resolve(browserExecutable) } : {}),
+  // Same real-GPU flags as the retained worker-pool qualification harness.
+  args: ['--enable-gpu', '--enable-webgpu', '--enable-unsafe-webgpu', '--use-angle=default', '--ignore-gpu-blocklist'],
+};
 const DIST_BRANCH = resolve(ROOT, flag('--dist-branch') ?? 'apps/viewer/dist');
 const DIST_BASE_ARG = flag('--dist-base');
 const DIST_BASE = DIST_BASE_ARG ? resolve(ROOT, DIST_BASE_ARG) : null;
-// ViewerBenchmarkPage.setup() hardcodes `http://localhost:3000` (shared with
-// playwright.config.ts's e2e webServer), so this must match unless that file
-// changes too.
+// One selected origin is shared by the owned server and benchmark page.
 const PORT = Number(flag('--port') ?? '3000');
-if (PORT !== 3000) throw new Error('--port must be 3000: benchmark page uses that origin');
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  throw new Error('--port must be an integer between 1 and 65535');
+}
 const BASE_LABEL = flag('--base-label') ?? (DIST_BASE ? 'base' : 'run-A');
 const BRANCH_LABEL = flag('--branch-label') ?? (DIST_BASE ? 'branch' : 'run-B');
 const JSONL_OUT = resolve(ROOT, flag('--jsonl') ?? 'scripts/perf/.browser-cold-ab-results/runs.jsonl');
@@ -202,7 +210,11 @@ const server = createServer((req, res) => {
   const type = MIME[extname(filePath)] ?? 'application/octet-stream';
   // no-store: cross-round correctness matters far more than repeat-load speed
   // here, and each round gets a brand-new browser profile anyway.
-  res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' });
+  res.writeHead(200, {
+    'Content-Type': type, 'Cache-Control': 'no-store',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+    'Cross-Origin-Embedder-Policy': 'credentialless',
+  });
   createReadStream(filePath).pipe(res);
 });
 await new Promise<void>((resolvePort, reject) => {
@@ -235,13 +247,20 @@ for (let iter = 1; iter <= ITERS; iter++) {
 
       // Brand-new process per sample: no persistent context, no shared cache,
       // WASM instantiation and worker startup both start from zero.
-      const browser = await chromium.launch({ headless: true });
-      const context = await browser.newContext();
-      const page = await context.newPage();
-
-      const bp = new ViewerBenchmarkPage(page);
-      let record: Record<string, unknown> = { side: label, fixture: fixture.name, round: iter, ok: false };
+      let browser: Browser | undefined;
+      let context: BrowserContext | undefined;
+      let page: Page | undefined;
+      let bp: ViewerBenchmarkPage | undefined;
+      let record: Record<string, unknown> = { side: label, fixture: fixture.name, round: iter, ok: false,
+        browserExecutable: browserExecutable ? resolve(browserExecutable) : chromium.executablePath(),
+        browserLaunchOptions,
+      };
       try {
+        browser = await chromium.launch(browserLaunchOptions);
+        record.browserVersion = browser.version();
+        context = await browser.newContext();
+        page = await context.newPage();
+        bp = new ViewerBenchmarkPage(page, `http://localhost:${PORT}`);
         if (injectHere) {
           const pattern = new RegExp(FAULT_PATTERN);
           await context.route('**/*', async (route) => {
@@ -253,17 +272,27 @@ for (let iter = 1; iter <= ITERS; iter++) {
         }
 
         await bp.setup();
+        const isolation = await page.evaluate(() => ({
+          crossOriginIsolated: globalThis.crossOriginIsolated,
+          sharedArrayBufferAvailable: typeof SharedArrayBuffer !== 'undefined',
+        }));
+        record = { ...record, ...isolation };
+        if (!isolation.crossOriginIsolated || !isolation.sharedArrayBufferAvailable) {
+          throw new Error('Viewer is not cross-origin isolated; worker-pool sample invalid');
+        }
         const sizeMB = statSync(fixture.path).size / (1024 * 1024);
         const timeoutMs = Math.max(TIMEOUT_MS, sizeMB > 200 ? 600000 : sizeMB > 50 ? 300000 : TIMEOUT_MS);
-        await bp.loadFile(fixture.path);
+        await bp.loadFile(fixture.path, false);
         await bp.waitForCompletion(timeoutMs, true);
         const metrics = bp.getMetrics();
         if (metrics.streamCompleteMs == null || !metrics.totalMeshes) {
           throw new Error('load did not reach streamCompleteMs / produced 0 meshes');
         }
         record = { ...record, ok: true, ...metrics };
+        // Separate visual artifact, captured after the observed timing boundary.
+        await page.screenshot({ path: join(RESULTS_DIR,
+          `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.png`) });
         ok++;
-        writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.json`), JSON.stringify(record, null, 2));
         writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.console.log`), bp.getConsoleLogs().join('\n'));
       } catch (err) {
         // Never silently retry a product failure — record it, archive
@@ -274,12 +303,12 @@ for (let iter = 1; iter <= ITERS; iter++) {
         record = { ...record, ok: false, error: message };
         const failBase = join(RESULTS_DIR, `FAILED-${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}-${Date.now()}`);
         try {
-          await page.screenshot({ path: `${failBase}.png`, fullPage: false });
-        } catch {
-          /* best-effort */
+          await page?.screenshot({ path: `${failBase}.png`, fullPage: false });
+        } catch (archiveError) {
+          record.screenshotArchiveError = String(archiveError);
         }
         try {
-          writeFileSync(`${failBase}.console.log`, bp.getConsoleLogs().join('\n'));
+          writeFileSync(`${failBase}.console.log`, bp?.getConsoleLogs().join('\n') ?? 'Browser/page startup failed before console observer attached');
         } catch (archiveError) {
           record.logArchiveError = String(archiveError);
           console.error(`browser-cold-ab: log archive failed: ${archiveError}`);
@@ -287,10 +316,23 @@ for (let iter = 1; iter <= ITERS; iter++) {
         writeFileSync(`${failBase}.error.txt`, message);
         console.error(`browser-cold-ab: FAILED ${tag}: ${message} (evidence: ${failBase}.*)`);
       } finally {
-        await context.close().catch(() => {});
-        await browser.close().catch(() => {});
+        await context?.close().catch(error => {
+          record.contextCloseError = String(error);
+          console.error(`browser-cold-ab: context cleanup failed: ${error}`);
+        });
+        await browser?.close().catch(error => {
+          record.browserCloseError = String(error);
+          console.error(`browser-cold-ab: browser cleanup failed: ${error}`);
+        });
       }
 
+      if (record.ok && (record.contextCloseError || record.browserCloseError)) {
+        record.ok = false;
+        record.error = 'Owned browser cleanup failed; fresh-process qualification invalid';
+        failures++;
+        ok--;
+      }
+      writeFileSync(join(RESULTS_DIR, `${label}-${fixture.name.replace(/[^a-zA-Z0-9]/g, '_')}-r${iter}.json`), JSON.stringify(record, null, 2));
       appendFileSync(JSONL_OUT, JSON.stringify(record) + '\n');
     }
   }
@@ -303,4 +345,4 @@ console.log(`browser-cold-ab: ${ok} sample(s) ok, ${failures} failed. Runs: ${JS
 const reportArgs = [join(__dirname, 'browser-ab-report.mjs'), JSONL_OUT, '--base', BASE_LABEL, '--branch', BRANCH_LABEL];
 if (REPORT_JSON) reportArgs.push('--json', REPORT_JSON);
 const result = spawnSync(process.execPath, reportArgs, { stdio: 'inherit' });
-process.exit(failures > 0 ? 1 : (result.status ?? 0));
+process.exit(failures > 0 ? 1 : (result.status ?? 1));

@@ -86,11 +86,12 @@ for (const r of rows) {
   }
 }
 
-const coverage = 'Observed metadata/geometry/render only; search, cache-tail memory, properties, picking and Firefox unqualified.';
+const coverage = 'Observed metadata/geometry/renderer logs plus canvas allocation (100ms polling); search, cache-tail memory, properties, picking and Firefox unqualified.';
 const report = { coverage, base: baseLabel, branch: branchLabel, failures: failedRows.length, fixtures: [] };
 let anyRealChange = false;
 let anyFingerprintDrift = false;
 let anyTooNoisy = false;
+let anyInsufficientSamples = false;
 // Set when a fixture has zero comparable samples on one side (e.g. every
 // launch on that side threw and was archived as a failure) — distinct from
 // "no metric moved": no comparison happened for that fixture AT ALL, so
@@ -144,6 +145,13 @@ for (const [fixture, sides] of byFixture) {
     report.fixtures.push(fx);
     continue;
   }
+  const rounds = values => new Set(values.map(row => row.round));
+  const baseRounds = rounds(baseVals);
+  const branchRounds = rounds(branchVals);
+  const sufficient = baseVals.length === baseRounds.size && branchVals.length === branchRounds.size &&
+    baseRounds.size >= 5 && baseRounds.size === branchRounds.size &&
+    [...baseRounds].every(round => branchRounds.has(round));
+  if (!sufficient) anyInsufficientSamples = true;
   lines.push(`    ${'metric'.padEnd(30)} ${baseLabel.padStart(9)} ${branchLabel.padStart(9)}   delta    noise`);
 
   for (const [key, label] of METRICS) {
@@ -153,15 +161,15 @@ for (const [fixture, sides] of byFixture) {
     const bMed = median(bv);
     const brMed = median(brv);
     const d = pct(brMed, bMed);
-    const noise = spreadPct(bv);
+    const noise = sufficient ? spreadPct(bv) : null;
     // Same rule as the native ab-report: a change only counts if it clears
     // both the base's own noise floor AND a small absolute ms floor.
-    const real = d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 5;
+    const real = sufficient && noise != null && d != null && Math.abs(d) > Math.max(noise, 3) && Math.abs(brMed - bMed) >= 5;
     if (real) anyRealChange = true;
-    if (key === 'metadataRenderReadyMs' && noise > 20) anyTooNoisy = true;
+    if (key === 'metadataRenderReadyMs' && noise != null && noise > 20) anyTooNoisy = true;
     const tag = real ? (d < 0 ? '  ✅' : '  ⛔') : '  ·';
     lines.push(
-      `    ${label.padEnd(30)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${(sign(d) + (d == null ? '—' : d.toFixed(1)) + '%').padStart(7)}  ${('±' + noise.toFixed(0) + '%').padStart(6)}${tag}`
+      `    ${label.padEnd(30)} ${fmt(bMed).padStart(9)} ${fmt(brMed).padStart(9)}  ${(sign(d) + (d == null ? '—' : d.toFixed(1)) + '%').padStart(7)}  ${(noise == null ? 'n/a' : '±' + noise.toFixed(0) + '%').padStart(6)}${tag}`
     );
     fx.metrics.push({ metric: label, baseMedianMs: bMed, branchMedianMs: brMed, deltaPct: d, noisePct: noise, real });
   }
@@ -197,7 +205,10 @@ if (rows.length === 0) {
     // here would read as a clean pass for a fixture nothing was verified on.
     lines.push('VERDICT: ⚠️  inconclusive — at least one fixture had no comparable samples on one side (see warnings above); this is NOT a clean "no regression" result.');
   }
-  if (!anyRealChange && !anyIncomparableFixture) {
+  if (anyInsufficientSamples) {
+    lines.push('VERDICT: insufficient paired samples (minimum five unique matched rounds); functional observations only, no noise-based performance verdict.');
+  }
+  if (!anyRealChange && !anyIncomparableFixture && !anyInsufficientSamples) {
     lines.push('VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds.');
   }
 }
@@ -213,6 +224,7 @@ if (jsonOut) {
     fingerprintDrift: anyFingerprintDrift,
     tooNoisy: anyTooNoisy,
     realChange: anyRealChange,
+    insufficientPairedSamples: anyInsufficientSamples,
     incomparableFixture: anyIncomparableFixture,
   };
   writeFileSync(jsonOut, JSON.stringify(report, null, 2));
@@ -224,4 +236,4 @@ if (jsonOut) {
 // sample (the per-fixture version of the same fault - see anyIncomparableFixture
 // above). A real regression/improvement (anyRealChange) still exits 0: that
 // is a successful, trustworthy comparison reporting a result, not a fault.
-process.exit(rows.length === 0 || anyIncomparableFixture || anyFingerprintDrift ? 1 : 0);
+process.exit(failedRows.length > 0 || rows.length === 0 || anyIncomparableFixture || anyFingerprintDrift ? 1 : 0);

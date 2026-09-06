@@ -12,7 +12,8 @@ function scenario({ metadataAt = 265, rendererAt = 200, canvasAt = 200, failedAt
   const emitted = new Set();
   const events = [
     [194, '[useIfc] Stream complete for fixture.ifc: 194ms'],
-    [rendererAt, '[ifc-lite] fixture.ifc (2.4MB) → 10 meshes, 20k verts in 0.2s'],
+    [200, '[ifc-lite] fixture.ifc (2.4MB) → 10 meshes, 20k verts in 0.2s'],
+    [rendererAt, '[GeomStream] finalizeStreamingAsync complete: 10ms → 2 consolidated batches'],
     [metadataAt, '[useIfc] Data model parsing complete for fixture.ifc: 265ms'],
     [failedAt, '[useIfc] Data model parsing failed for fixture.ifc: 250ms'],
   ];
@@ -36,7 +37,7 @@ test('#3978 early 200ms renderer summary cannot complete before 265ms metadata',
 test('#3978 delayed metadata moves observed readiness without changing renderer summary', async () => {
   assert.equal(await waitForMetadataRenderReadiness(scenario({ metadataAt: 765 })), 765);
 });
-test('#3978 metadata alone cannot precede renderer and actual canvas', async () => {
+test('#3978 metadata alone cannot precede renderer finalization and allocated canvas', async () => {
   assert.equal(await waitForMetadataRenderReadiness(scenario({ rendererAt: 350, canvasAt: 450 })), 450);
 });
 test('#3978 absent metadata fails finitely instead of archiving a successful partial load', async () => {
@@ -44,4 +45,13 @@ test('#3978 absent metadata fails finitely instead of archiving a successful par
 });
 test('#3978 metadata failure is retained as failure even after geometry and canvas', async () => {
   await assert.rejects(waitForMetadataRenderReadiness(scenario({ failedAt: 250 })), /Metadata failed/);
+});
+
+test('#3978 app summary and allocated canvas cannot substitute for renderer finalization', async () => {
+  await assert.rejects(waitForMetadataRenderReadiness(scenario({ rendererAt: Infinity })), /Timed out/);
+});
+test('#3978 renderer initialization failure rejects an otherwise ready model', async () => {
+  const input = scenario();
+  input.logs = () => ['[Viewport] Renderer init failed: Failed to get GPU adapter'];
+  await assert.rejects(waitForMetadataRenderReadiness(input), /Renderer failed/);
 });

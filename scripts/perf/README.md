@@ -118,7 +118,7 @@ CI-wired, advisory-only sibling and is unaffected.
 
 ```bash
 # public-fixture A/B, working tree only (repeatability check / no --base):
-scripts/perf/browser-cold-ab.sh --skip-branch-build --iters 3
+scripts/perf/browser-cold-ab.sh --skip-branch-build --iters 5
 
 # real base-vs-branch (builds BASE in a throwaway git worktree):
 scripts/perf/browser-cold-ab.sh --base origin/main --iters 5
@@ -536,3 +536,30 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
+
+
+The manual server matches deployed COOP/COEP (`same-origin` / `credentialless`)
+and records `crossOriginIsolated` plus SharedArrayBuffer availability, refusing
+samples without them. `--port` selects both server and shared benchmark-page
+origin; the default remains 3000 for CI compatibility.
+
+`metadataRenderReadyMs` is the first successful observation from a 100ms polling
+loop after file selection: metadata, geometry, renderer-completion logs and a
+canvas check. WebGPU falls back to nonzero canvas dimensions, so this is not a
+pixel-readback or exact paint timestamp. Screenshots are separate post-boundary
+artifacts. Polling and automation latency are included; differences on that
+scale cannot establish small-model causal gains. The manual path skips the
+legacy fixed one-second pre-observation sleep; CI keeps its original default.
+
+Manual runs default to five interleaved pairs. Fewer pairs remain available for
+functional smoke checks, but the reporter withholds noise estimates and performance
+verdicts. Any failed sample makes the report exit nonzero, including when other
+rounds completed. Renderer readiness requires the successful streaming-finalization
+log; the app summary and an allocated canvas do not establish GPU readiness.
+
+For local real-GPU Chrome qualification, pass `--headed --browser-executable
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to either manual
+entrypoint. The record includes the selected executable, browser version, headed
+mode and GPU arguments. The default remains bundled Chromium headless, which may
+not provide WebGPU on a particular host; renderer failure invalidates that sample.
+Never compare different launch modes or browser artifacts as a code A/B.

@@ -81,7 +81,7 @@ test('THE REGRESSION: both base samples failed, branch is healthy — not the ca
   );
 });
 
-test('THE HEALTHY CONTROL: two samples per side, no drift — ordinary verdict, exit 0', () => {
+test('#3978 two samples per side remain functional observations, exit 0', () => {
   const r = run([
     sample({ side: 'A', fixture: 'large-arch', round: 1 }),
     sample({ side: 'A', fixture: 'large-arch', round: 2 }),
@@ -89,7 +89,8 @@ test('THE HEALTHY CONTROL: two samples per side, no drift — ordinary verdict, 
     sample({ side: 'B', fixture: 'large-arch', round: 2 }),
   ]);
   assert.equal(r.code, 0, r.out);
-  assert.match(r.out, /VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds\./);
+  assert.match(r.out, /VERDICT: insufficient paired samples/);
+  assert.doesNotMatch(r.out, /±0|✅|⛔|beyond the noise floor/);
 });
 
 test('totalMeshes mismatch between sides: invalidates the timing comparison (#3978)', () => {
@@ -115,10 +116,10 @@ test('a real regression on one fixture and a crashed-on-one-side second fixture:
   // trustworthy "a metric moved" result with no textual explanation for
   // the nonzero exit.
   const r = run([
-    sample({ side: 'A', fixture: 'regressed', round: 1 }),
-    sample({ side: 'A', fixture: 'regressed', round: 2 }),
-    sample({ side: 'B', fixture: 'regressed', round: 1, jitter: 500 }),
-    sample({ side: 'B', fixture: 'regressed', round: 2, jitter: 500 }),
+    ...Array.from({ length: 5 }, (_, i) => [
+      sample({ side: 'A', fixture: 'regressed', round: i + 1 }),
+      sample({ side: 'B', fixture: 'regressed', round: i + 1, jitter: 500 }),
+    ]).flat(),
     sample({ side: 'A', fixture: 'crashed', round: 1, ok: false }),
     sample({ side: 'A', fixture: 'crashed', round: 2, ok: false }),
     sample({ side: 'B', fixture: 'crashed', round: 1 }),
@@ -151,4 +152,11 @@ test('#3978 mesh drift never reports matching fingerprints or within-noise succe
   assert.equal(code, 1, out);
   assert.match(out, /fingerprint changed/);
   assert.doesNotMatch(out, /totalMeshes matched|VERDICT: no metric moved/);
+});
+
+test('#3978 a failed round invalidates otherwise comparable successful samples', () => {
+  const rows = Array.from({ length: 5 }, (_, i) => ['A', 'B'].map(side =>
+    sample({ side, fixture: 'same', round: i + 1 }))).flat();
+  rows.push(sample({ side: 'A', fixture: 'same', round: 6, ok: false }));
+  assert.equal(run(rows).code, 1);
 });

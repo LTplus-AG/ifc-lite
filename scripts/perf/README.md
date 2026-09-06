@@ -596,3 +596,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 ### Retained processor registry ownership (#3987)
 
 Built-in processor registrations now share immutable setup while each router keeps its own failure state and custom replacement behavior. Retained in the cumulative cold-load candidate; no isolated throughput gain is attributed to this layer. Native constructor profiles identify the mechanism, but native and actual browser-worker verdicts remain separate. Do not replace custom processors or share mutable diagnostics to reduce setup further.
+
+### Retained transient decoder ownership (#4000)
+
+Use reusable output buffers and a validated string projection where consumers discard full decoded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Retained with the cumulative cold-load candidate, without an isolated percentage claim. Full-call timing must include the disposal join and trailing metadata; summed worker high-water allocations do not establish retained or simultaneous memory.

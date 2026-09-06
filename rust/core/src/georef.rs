@@ -490,8 +490,7 @@ impl GeoRefExtractor {
             if *ifc_type != IfcType::IfcPropertySet {
                 continue;
             }
-            let entity = decoder.decode_by_id_transient(*id)?;
-            if let Some(name) = entity.get_string(2) {
+            if let Some(name) = decoder.decode_string_by_id_transient(*id, 2)? {
                 if name.eq_ignore_ascii_case("ePSet_MapConversion") && map_conversion_pset.is_none() {
                     map_conversion_pset = Some(*id);
                 } else if name.eq_ignore_ascii_case("ePSet_ProjectedCRS") && projected_crs_pset.is_none() {

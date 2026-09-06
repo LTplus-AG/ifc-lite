@@ -1301,9 +1301,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                 {
                     return;
                 }
-                let mut local_decoder =
-                    entity_index_for_meta.decoder(content);
-                let Ok(entity) = local_decoder.decode_at(job.start, job.end) else {
+                let local_decoder = entity_index_for_meta.decoder(content);
+                // #3987: this decoder is read once; an entity-cache clone is never reused.
+                let Ok(entity) = local_decoder.decode_at_uncached(job.start, job.end) else {
                     return;
                 };
                 job.global_id = normalize_optional_string(entity.get_string(0));
@@ -1570,6 +1570,21 @@ pub fn process_geometry_streaming_filtered_with_options(
         "Geometry processing complete"
     );
 
+    let extract_georeferencing = || crate::georeferencing::extract_georeferencing_from_candidates(
+        &mut entity_index_arc.decoder(content), &georeferencing_candidates,
+    );
+    // #3987: jobs and instance finalization have finished using these caches.
+    // Keep metadata on the caller thread; join ALL disposal before returning,
+    // including on unwind. No cleanup survives the full-load readiness boundary.
+    #[cfg(not(target_arch = "wasm32"))]
+    let georeferencing = rayon::in_place_scope(|scope| {
+        scope.spawn(move |_| drop(decoder));
+        scope.spawn(move |_| drop(item_dedup_cache));
+        extract_georeferencing()
+    });
+    #[cfg(target_arch = "wasm32")]
+    let georeferencing = extract_georeferencing();
+
     ProcessingResult {
         meshes,
         instances,
@@ -1585,9 +1600,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 is_geo_referenced: has_rtc_offset,
             },
             length_unit_scale: Some(unit_scale),
-            georeferencing: crate::georeferencing::extract_georeferencing_from_candidates(
-                &mut entity_index_arc.decoder(content), &georeferencing_candidates,
-            ),
+            georeferencing,
         },
         stats: ProcessingStats {
             total_meshes,

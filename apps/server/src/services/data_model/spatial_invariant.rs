@@ -30,6 +30,31 @@ use rustc_hash::FxHashMap;
 /// Called from both `build_spatial_hierarchy`'s own `debug_assert!` and the
 /// test suite (`super::spatial::spatial_hierarchy_consistency_violations`),
 /// so this is the single place either has to change.
+///
+/// This only checks that every edge in the node set is locally consistent -
+/// it is not a global well-formedness check on the tree as a whole. Three
+/// classes of wrong hierarchy pass every clause above with an empty result:
+///
+/// 1. A second, fully disconnected root: an internally consistent,
+///    sentinel-parented island with its own `children_ids` chain, reachable
+///    from nothing the real tree walk starts at. Nothing here checks that
+///    the node set has exactly one root or that every node is reachable
+///    from it.
+/// 2. A cycle isolated from any root: e.g. two nodes that are each other's
+///    parent and only listed child (`A.parent_id == B`, `A.children_ids ==
+///    [B]`, and symmetrically for `B`). Each direction agrees locally, so
+///    clause (c) is satisfied even though neither node connects to the real
+///    root at all.
+/// 3. A wrong `level`: `SpatialNode::level` is never read by any clause
+///    here, so a node with the correct parent/children edges but a `level`
+///    that disagrees with its actual depth in the tree is invisible to this
+///    check.
+///
+/// None of these three is a known live defect - #3973 introduced this check
+/// to close the dangling-reference shape it fixed twice, not to make the
+/// hierarchy globally sound. Widening it to catch them is a judgment call
+/// for whoever owns this invariant next, not something to infer from this
+/// docstring. Tracked as #4022 rather than implemented here.
 pub(crate) fn spatial_hierarchy_consistency_violations(nodes: &[&SpatialNode]) -> Vec<String> {
     let by_id: FxHashMap<u32, &&SpatialNode> = nodes.iter().map(|n| (n.entity_id, n)).collect();
     let mut violations = Vec::new();

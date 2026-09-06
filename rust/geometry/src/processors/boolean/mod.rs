@@ -336,15 +336,15 @@ impl BooleanClippingProcessor {
     /// **Measured contract (issue #3980):** `build_cutter_union` does NOT
     /// verify that its union is watertight or even manifold — see its doc
     /// comment for the measured numbers on the real #960 fixture. It only
-    /// requires a nonempty result and defers (`Ok(None)`) when both its
-    /// primary and fallback union attempts come back empty. What actually
+    /// requires a nonempty result and defers (`Ok(None)`) when the primary is
+    /// empty and the fallback is empty or errors. What actually
     /// keeps a non-closed union from producing a wrong subtraction is
     /// downstream, in this function: the per-cutter trial-subtract probes,
     /// the intersected-bounds check on the batched subtract, the `#3919`
     /// accept-gate on the actual cut, and the `#3925` removal-bound check on
-    /// the repair candidate. Those checks were sufficient on every real
-    /// fixture measured so far, but that is fixture evidence, not a closure
-    /// proof.
+    /// the repair candidate. Those checks were sufficient on all five walls
+    /// in the audited #960 fixture, but that is fixture evidence, not a
+    /// closure proof.
     fn try_union_polygonal_chain(
         &self,
         entity: &DecodedEntity,
@@ -441,13 +441,13 @@ impl BooleanClippingProcessor {
         // true CSG union, so abutting roof segments share no internal seam)
         // and subtract once. This is what eliminates the zero-thickness seam
         // fins that sequential subtraction leaves behind and the deep-chain
-        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` only
-        // when both its union attempts come back empty — it does not check
-        // the union for closure (issue #3980; see its doc comment for the
-        // measured contract) — so we still defer whenever no kernel produces
-        // even a nonempty result, which is the case that used to feed a
-        // broken union into the subtract and have the CSG kernel silently
-        // return the host UNCHANGED (issue #960 wall #2152: the gable-end
+        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when
+        // the primary result is empty and the fallback is empty or errors —
+        // it does not check the union for closure (issue #3980; see its doc
+        // comment for the measured contract) — so we still defer whenever no
+        // kernel produces even a nonempty result, which is the case that used
+        // to feed a broken union into the subtract and have the CSG kernel
+        // silently return the host UNCHANGED (issue #960 wall #2152: the gable-end
         // wall rendered at full 7000 mm extrusion height).
         let combined = match self.build_cutter_union(&clipper, &prisms) {
             Some(m) if !m.is_empty() => m,
@@ -690,17 +690,18 @@ impl BooleanClippingProcessor {
     /// `try_union_polygonal_chain` returns `None` (fall through to this
     /// sequential step) whenever batching isn't provably safe, so the
     /// per-cutter bounded→unbounded fallback still rescues full-cross-section
-    /// clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
-    /// on all five reported House.ifc walls. `build_cutter_union` (the exact
+    /// clips (duplex.ifc "Party Wall"). Verified Z-bound agreement with
+    /// IfcOpenShell within 25 mm on all five reported House.ifc walls.
+    /// `build_cutter_union` (the exact
     /// kernel's N-ary `union_many`, falling back to `union_meshes`) only
     /// requires a NONEMPTY union — it does not verify closure (issue #3980;
     /// see its doc comment for the measured contract on the real #960
     /// fixture). What actually guards the single subtract is downstream, in
     /// `try_union_polygonal_chain`: the intersected-bounds check and the
     /// `#3919` accept-gate on the actual cut. When `build_cutter_union`
-    /// returns `None` (both union attempts empty) or those downstream checks
-    /// reject the result, the chain falls through to this sequential path —
-    /// never worse than pre-#960 (841_house_stack_overflow.ifc).
+    /// returns `None` (primary empty and fallback empty or errored) or those
+    /// downstream checks reject the result, the chain falls through to this
+    /// sequential path.
     ///
     /// `solo_step`: true when this is the ONLY node the caller's spine walk
     /// deferred to (a genuine single-PBHS-cutter DIFFERENCE, #3923's target

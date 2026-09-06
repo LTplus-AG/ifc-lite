@@ -19,8 +19,9 @@ impl BooleanClippingProcessor {
     /// "watertight" language this comment used to carry, neither the primary
     /// path (`union_many_preserving_coordinates` + `consolidate_coplanar`) nor
     /// the `union_meshes` fallback is checked for closure here — only for
-    /// nonemptiness. `None` is returned solely when BOTH come back empty; the
-    /// caller then defers to the sequential per-cutter path. An exact
+    /// nonemptiness. `None` is returned for empty input, or when the primary
+    /// result is empty and the fallback is empty or errors; the caller then
+    /// defers to the sequential per-cutter path. An exact
     /// bit-identical directed-edge closure check against the real #960
     /// fixture (five walls, `960_house_segmented_roof_clip.ifc`) found this
     /// union closed on only 1 of 5 real chains — the rest had open boundary
@@ -30,9 +31,9 @@ impl BooleanClippingProcessor {
     /// the caller (`try_union_polygonal_chain` in `super::mod`): its
     /// intersected-bounds check and the `#3919` accept-gate on the actual
     /// subtract. On the #960 fixture's walls #2152 and #5904 those
-    /// downstream checks were sufficient — every wall's Z bounds still
-    /// matched IfcOpenShell — but that is evidence for those walls, not a
-    /// closure guarantee this function provides.
+    /// downstream checks were sufficient — every wall's Z bounds agreed with
+    /// IfcOpenShell within the test's 25 mm tolerance — but that is evidence
+    /// for those walls, not a closure guarantee this function provides.
     pub(super) fn build_cutter_union(&self, clipper: &ClippingProcessor, prisms: &[Mesh]) -> Option<Mesh> {
         if prisms.is_empty() {
             return None;

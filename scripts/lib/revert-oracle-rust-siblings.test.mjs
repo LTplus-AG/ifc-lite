@@ -31,7 +31,12 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     mkdirSync(join(root, 'src'));
     writeFileSync(join(root, '.gitignore'), '/target/\n');
     writeFileSync(join(root, 'Cargo.toml'), '[package]\nname = "oracle-rust-siblings"\nversion = "0.1.0"\nedition = "2021"\n');
-    writeFileSync(join(root, 'src/lib.rs'), 'mod value;\n#[cfg(test)] mod value_tests;\n#[cfg(test)] mod tests;\n');
+    writeFileSync(join(root, 'src/lib.rs'), 'pub mod value;\n#[cfg(test)] mod value_tests;\n#[cfg(test)] mod tests;\n');
+    // A later Cargo target must still execute after the library target fails.
+    // Its supported-version invariant holds for both production revisions.
+    mkdirSync(join(root, 'tests'));
+    writeFileSync(join(root, 'tests/later_target.rs'),
+      '#[test]\nfn version_stays_supported() { assert!((1..=2).contains(&oracle_rust_siblings::value::value())); }\n');
     function writeVersion(value) {
       writeFileSync(join(root, 'src/value.rs'), `pub fn value() -> u32 { ${value} }\n`);
       for (const file of ['value_tests.rs', 'tests.rs']) {
@@ -49,7 +54,7 @@ test('#4016: the complete oracle executes changed Rust sibling assertions and re
     run('git', ['commit', '-qm', 'change production and both sibling assertions']);
     const output = run(process.execPath, [oracle, '--root', root, '--base', base, '--ci', '--json']);
     assert.match(output, /OBSERVED/);
-    assert.match(output, /2 assertion\(s\) RED out of 2 collected/);
+    assert.match(output, /2 assertion\(s\) RED out of 3 collected/);
     assert.equal(readFileSync(join(root, 'src/value.rs'), 'utf8'), 'pub fn value() -> u32 { 2 }\n');
     assert.equal(run('git', ['status', '--porcelain']).trim(), '');
   } finally {

@@ -186,7 +186,7 @@ export function rootScriptsRunner(files) {
 /** Cargo test invocation for a crate. */
 export function cargoRunner(crate) {
   if (!crate) return null;
-  return { family: 'cargo', bin: 'cargo', args: ['test', '-p', crate] };
+  return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate] };
 }
 
 // ---------------------------------------------------------------------------

@@ -599,7 +599,7 @@ test('cargoRunner targets one crate and refuses an unnamed one', () => {
   assert.deepEqual(cargoRunner('ifc-lite-geom'), {
     family: 'cargo',
     bin: 'cargo',
-    args: ['test', '-p', 'ifc-lite-geom'],
+    args: ['test', '--no-fail-fast', '-p', 'ifc-lite-geom'],
   });
   assert.equal(cargoRunner(null), null);
 });

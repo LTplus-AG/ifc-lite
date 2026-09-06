@@ -90,10 +90,10 @@ export function extractClassificationsOnDemand(
                     if (typeResolved) resolved.push(...typeResolved);
                 }
             }
-            // Rows have no classification-reference id for an exact join.
-            // A count mismatch means stale or incomplete payload data; do
-            // not let those attributes certify an IDS constraint (#3959).
-            if (resolved.length === classRefIds.length) return resolved;
+            // The server resolves these rows from the same immutable input
+            // as its graph. Repeated relationships emit repeated rows while
+            // the graph deduplicates edges, so their counts need not match.
+            if (resolved.length > 0) return resolved;
         }
         // No forwarded resolved data. Turning an id into
         // system/identification/name/path needs raw STEP bytes

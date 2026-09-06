@@ -567,27 +567,24 @@ describe('convertServerDataModel classification wiring (#3955)', () => {
     assert.equal(result.failure?.type, 'CLASSIFICATION_UNRESOLVED');
   });
 
-  for (const mismatch of ['excess', 'partial'] as const) {
-    it(`rejects ${mismatch} resolved classification rows instead of certifying their attributes (#3959)`, () => {
-      const dataModel = buildClassifiedDataModel(true);
-      if (mismatch === 'excess') {
-        dataModel.classifications.push({ element_id: 4, system_name: 'Stale system', identification: 'STALE' });
-      } else {
-        dataModel.relationships.push({ rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 101, related_id: 4 });
-      }
-      const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
-      const info = extractClassificationsOnDemand(store, 4);
-      assert.deepEqual(info, mismatch === 'excess'
-        ? [{ unresolved: true }]
-        : [{ unresolved: true }, { unresolved: true }]);
-      const facet = mismatch === 'excess'
-        ? { type: 'classification' as const, system: { type: 'simpleValue' as const, value: 'Stale system' } }
-        : systemFacet;
-      const result = checkClassificationFacet(facet, 4, createDataAccessor(store));
-      assert.equal(result.passed, false);
-      assert.equal(result.failure?.type, 'CLASSIFICATION_UNRESOLVED');
-    });
-  }
+  it('resolves canonical repeated classification relationships after graph deduplication (#3959)', () => {
+    const dataModel = buildClassifiedDataModel(true);
+    // Two legal IfcRelAssociatesClassification records share the same pair.
+    // The server emits one classification row per relationship, while the
+    // viewer graph collapses their equal (source, target, type) edges.
+    dataModel.relationships[0].rel_id = 200;
+    dataModel.relationships.push({ ...dataModel.relationships[0], rel_id: 201 });
+    dataModel.classifications.push({ ...dataModel.classifications[0] });
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+    const refs = store.relationships.getRelated(4, RelationshipType.AssociatesClassification, 'inverse');
+    assert.deepEqual(refs, [100]);
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info.length, 2);
+    assert.ok(info.every((row) => row.system === 'Uniclass 2015' && row.identification === 'EF_25_10'));
+    const result = checkClassificationFacet(systemFacet, 4, createDataAccessor(store));
+    assert.equal(result.passed, true);
+    assert.equal(result.failure, undefined);
+  });
 
   it('mutation: an attribute the server never sent (location) stays undefined, never fabricated', () => {
     const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);

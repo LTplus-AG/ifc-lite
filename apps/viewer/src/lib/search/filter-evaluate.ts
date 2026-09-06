@@ -209,6 +209,14 @@ export async function evaluateFilterRulesFederated(
   let totalKnown = true;
   for (const m of models) {
     if (!m.store) continue;
+    const modelFilterIdentity = m.filterIdentity ?? m.id;
+    if (
+      combinator === 'AND'
+      && orderedRules.some((rule) => rule.kind === 'model'
+        && !setOpMatches(rule.op, modelFilterIdentity, rule.values))
+    ) {
+      continue;
+    }
     const candidates = options.candidateExpressIdsByModel?.get(m.id);
     const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined, m.id);
     const arr = materialiseNumericIterable(source);
@@ -219,7 +227,7 @@ export async function evaluateFilterRulesFederated(
     }
     plans.push({
       modelId: m.id,
-      modelFilterIdentity: m.filterIdentity ?? m.id,
+      modelFilterIdentity,
       store: m.store,
       iter: arr ?? source,
       total: arr ? arr.length : -1,

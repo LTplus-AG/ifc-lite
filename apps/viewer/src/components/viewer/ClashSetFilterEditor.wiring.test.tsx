@@ -112,6 +112,10 @@ describe('ClashSetFilterEditor', () => {
       .find((item) => item.textContent?.includes('Structure.ifc'));
     assert.ok(option, 'the model picker must display the loaded model name');
     click(option);
-    assert.deepEqual(commits, [Rule.model(['Structure.ifc:fingerprint-b'])]);
+    assert.deepEqual(commits, [{
+      kind: 'model',
+      values: ['Structure.ifc:fingerprint-b'],
+      op: 'in',
+    }]);
   });
 });

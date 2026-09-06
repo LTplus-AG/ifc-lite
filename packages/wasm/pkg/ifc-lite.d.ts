@@ -609,8 +609,8 @@ export class IfcAPI {
      * Process geometry for a subset of pre-scanned entities → flat
      * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
      * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
-     * to MeshDataJs (the IFC Z-up→WebGL Y-up swap + winding reversal happen
-     * there). Output is byte-for-byte what the pre-refactor method produced.
+     * to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
+     * there). Flat indices preserve source order through this proper rotation.
      */
     processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
     /**

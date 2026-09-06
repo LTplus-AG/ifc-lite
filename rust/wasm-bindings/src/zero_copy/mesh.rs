@@ -287,10 +287,10 @@ impl MeshDataJs {
 impl MeshDataJs {
     /// Create new mesh data with IFC Z-up to WebGL Y-up conversion.
     ///
-    /// Performs coordinate conversion and winding order reversal in Rust
+    /// Performs coordinate conversion in Rust
     /// to avoid expensive per-vertex JS iteration (63.5M vertices for large files).
     /// IFC Z-up → WebGL Y-up: swap Y/Z, negate new Z for right-handedness.
-    /// Winding order reversed to compensate for the handedness flip.
+    /// This rotation has determinant +1, so triangle winding is preserved (#4056).
     pub fn new(express_id: u32, ifc_type: String, mut mesh: Mesh, color: [f32; 4]) -> Self {
         // Convert positions: IFC Z-up → WebGL Y-up
         for chunk in mesh.positions.chunks_exact_mut(3) {
@@ -306,13 +306,6 @@ impl MeshDataJs {
             let z = chunk[2];
             chunk[1] = z;
             chunk[2] = -y;
-        }
-
-        // Reverse winding order to compensate for handedness flip
-        let remainder = mesh.indices.len() % 3;
-        let end = mesh.indices.len() - remainder;
-        for i in (0..end).step_by(3) {
-            mesh.indices.swap(i + 1, i + 2);
         }
 
         // The per-element origin is a world-frame point and MUST undergo the
@@ -380,9 +373,9 @@ impl MeshDataJs {
     }
 
     /// Attach per-vertex UVs + a decoded RGBA8 texture (#961). UVs are 1:1 with
-    /// `positions` and need no coordinate flip (they are 2D); the winding
-    /// reversal in `new` swaps indices, not vertices, so per-vertex UVs stay
-    /// aligned. Call after `new`.
+    /// `positions` and need no coordinate flip (they are 2D). The rotation in
+    /// `new` preserves vertex and index order, so per-vertex UVs stay aligned.
+    /// Call after `new`.
     // Each arg is a distinct JS call parameter; a Rust struct would not reduce
     // arity for JS callers. Matches the 21 other sites in this crate.
     #[allow(clippy::too_many_arguments)]
@@ -425,7 +418,7 @@ impl MeshDataJs {
 
     /// Build from the canonical per-element producer's [`MeshData`]
     /// (`ifc_lite_processing::element`): wraps [`MeshDataJs::new`] (IFC Z-up →
-    /// WebGL Y-up + winding reversal), copies the `geometry_class` tag and the
+    /// WebGL Y-up rotation with preserved winding), copies the `geometry_class` tag and the
     /// optional texture/UVs. Element metadata the browser doesn't carry
     /// (global_id / name / presentation layer / material name / properties) is
     /// dropped — the viewer gets it from the parser worker instead.

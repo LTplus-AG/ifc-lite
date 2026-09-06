@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /** Source and owned-buffer contracts registered by the real WASM harness. */
+import { checkFlatWindingContract } from './wasm-flat-winding-contract.mjs';
 import { checkMeshGetterOwnershipContract } from './wasm-mesh-getter-ownership-contract.mjs';
 import { checkSourceFingerprintContract, checkPrepassReservationContract } from './wasm-source-fingerprint-contract.mjs';
 import { checkAffinityChunkContract } from './wasm-affinity-chunk-contract.mjs';
@@ -38,6 +39,10 @@ export async function runColdLoadContracts({
       freshApi.clearPrePassCache();
       freshApi.free();
     }
+  });
+
+  test('flat and instanced WASM triangles retain outward winding (#4056)', () => {
+    checkFlatWindingContract(IfcAPI);
   });
 
   test('streaming affinity chunks retain complete ordered owned payloads (cold-load audit)', () => {

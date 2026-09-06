@@ -812,3 +812,7 @@ distributions directly to the TypeScript entrypoint and retain their provenance.
 `--skip-branch-build` labels its input as supplied distribution, not a verified
 current-commit build. The wrapper retains the temporary base through child exit
 and then removes it while preserving the child failure status.
+
+### Flat Y-up orientation and route-sensitive qualification (#4056)
+
+The IFC-to-viewer map `(x, y, z) -> (x, z, -y)` preserves orientation. Removing the flat binding's extra triangle reversal aligns its winding with transformed normals and the native/IFNS route; a viewer geometry-output revision prevents old cached winding from surviving the correction. Simplification and native Y-up export conversion must use the same orientation-preserving convention. This is a correctness change, with no throughput gain claimed. Canonical native geometry and its determinism manifests are unchanged; converted flat indices intentionally differ. An actual WASM boundary contract fails on the old runtime and passes on the correction. A canonical geometry fingerprint cannot certify downstream coordinate conversion, and adaptive batch boundaries can expose a route-specific defect by moving otherwise identical entities between flat and instanced transport.

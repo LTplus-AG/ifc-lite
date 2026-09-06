@@ -122,23 +122,21 @@ fn clone_carries_every_parallel_array() {
     assert_eq!(cloned.geometry_closure_flags, vec![0b1111]);
 }
 
-/// `MeshDataJs::new` reverses winding order in place-of-3 triples to
-/// compensate for the Z-up->Y-up handedness flip. A caller-supplied index
-/// count that is not a multiple of 3 must not panic — the divisible prefix is
-/// processed and the (malformed) remainder is left untouched, rather than the
-/// bounds computation reading past the end of `indices`.
+/// #4056: a proper rotation preserves index order, including an incomplete tail.
 #[test]
-fn new_processes_divisible_prefix_without_panicking_on_non_multiple_of_3_indices() {
+fn issue_4056_rotation_preserves_indices_and_incomplete_tail() {
     let mut mesh = Mesh::new();
-    mesh.positions = vec![0.0, 0.0, 1.0, 0.0, 1.0, 2.0];
-    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 1.0, 0.0];
-    mesh.indices = vec![0, 1, 0, 1]; // 4 indices: not a multiple of 3
-
-    let md = MeshDataJs::new(1, "IfcWall".to_string(), mesh, [1.0, 1.0, 1.0, 1.0]);
-
-    // Only the first 3 (divisible prefix) are winding-reversed via swap(1, 2);
-    // the trailing 4th index rides through unchanged.
-    assert_eq!(md.indices, vec![0, 0, 1, 1]);
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 1, 2, 1];
+    let md = MeshDataJs::new(1, "IfcWall".to_string(), mesh, [1.0; 4]);
+    assert_eq!(md.indices, vec![0, 1, 2, 1]);
+    let p = &md.positions;
+    let u = [p[3] - p[0], p[4] - p[1], p[5] - p[2]];
+    let v = [p[6] - p[0], p[7] - p[1], p[8] - p[2]];
+    let cross = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
+    let dot: f32 = cross.iter().zip(&md.normals).map(|(a, b)| a * b).sum();
+    assert!(dot > 0.0, "The rotated face must retain its outward normal");
 }
 
 /// `MeshDataJs::new` converts IFC Z-up to WebGL Y-up: new_y = old_z,

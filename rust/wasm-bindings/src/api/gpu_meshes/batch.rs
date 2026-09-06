@@ -640,8 +640,8 @@ impl IfcAPI {
     /// Process geometry for a subset of pre-scanned entities → flat
     /// MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
     /// Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
-    /// to MeshDataJs (the IFC Z-up→WebGL Y-up swap + winding reversal happen
-    /// there). Output is byte-for-byte what the pre-refactor method produced.
+    /// to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
+    /// there). Flat indices preserve source order through this proper rotation.
     #[wasm_bindgen(js_name = processGeometryBatch)]
     #[allow(clippy::too_many_arguments)]
     pub fn process_geometry_batch(

@@ -1,5 +1,19 @@
 # @ifc-lite/ids
 
+## 1.15.54
+
+### Patch Changes
+
+- [#3951](https://github.com/LTplus-AG/ifc-lite/pull/3951) [`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a server-parsed (source-empty) store reporting a genuinely classified entity as unclassified ([#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948)). `extractClassificationsOnDemand` and `extractClassificationSystemsOnDemand` (`packages/parser/src/classification-resolver.ts`) resolved classification ids via the relationship graph on server-parsed stores, then unconditionally discarded the result with `if (!store.source?.length) return [];` — a classified entity was byte-identical to an unclassified one to every caller, including the IDS bridge.
+  
+  The classification's own attributes (system name, identification code, reference chain) genuinely cannot be read without raw STEP bytes, and no equivalent precomputed table exists for them on a server-parsed store (unlike type-inherited property sets, fixed for the same shape of bug in [#1795](https://github.com/LTplus-AG/ifc-lite/issues/1795)/[#1787](https://github.com/LTplus-AG/ifc-lite/issues/1787)). So both functions now signal "classified, but unresolved" distinctly from "genuinely unclassified": `extractClassificationsOnDemand` returns one `{ unresolved: true }` entry per resolved id instead of `[]`, and `extractClassificationSystemsOnDemand`'s return type changes from `string[]` to `{ names: string[]; unresolved: boolean }` (a breaking signature change with no known external callers today).
+  
+  The IDS classification facet checker (`packages/ids/src/facets/classification-facet.ts`) now treats presence-only facets correctly (a classified entity passes an "any classification" requirement instead of a false `CLASSIFICATION_MISSING`), and reports a new `CLASSIFICATION_UNRESOLVED` failure — distinct from `CLASSIFICATION_MISSING`/`CLASSIFICATION_VALUE_MISMATCH`/`CLASSIFICATION_SYSTEM_MISMATCH` — when a system/value-constrained facet cannot be verified because the matching classification's attributes are unreadable, instead of silently passing or failing on data it never read.
+  
+  Both message formatters (`packages/ids/src/translation/service.ts` and `packages/ids/src/validation/validator.ts`) now have a case for `CLASSIFICATION_UNRESOLVED` — previously both fell through to their `default` branch and showed the raw enum ("Validation failed: CLASSIFICATION_UNRESOLVED") in the viewer's IDS panel and exported reports, indistinguishable from a genuine violation. The message now states plainly that the entity is classified but the details could not be read from this data source. `ClassificationCard.tsx` (properties panel) gets the same "unavailable on this data source" treatment already added to `ModelMetadataPanel.tsx`, instead of rendering an empty "Classification / Unknown" card for an unresolved entry.
+- Updated dependencies [[`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2), [`e1d807c`](https://github.com/LTplus-AG/ifc-lite/commit/e1d807cf4bf4f3bf25122fed4d7e3fde8296bf6d), [`6094e2f`](https://github.com/LTplus-AG/ifc-lite/commit/6094e2f16f27c80bc227f73bbdf634a770f17abc)]:
+  - @ifc-lite/parser@5.1.0
+
 ## 1.15.53
 
 ### Patch Changes

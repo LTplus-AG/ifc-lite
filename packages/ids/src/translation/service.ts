@@ -497,7 +497,7 @@ class IDSTranslationServiceImpl implements TranslationService {
         });
 
       case 'CLASSIFICATION_UNRESOLVED':
-        return t.classificationUnresolved;
+        return field === 'presence' ? t.classificationPresenceUnresolved : t.classificationUnresolved;
 
       // Material failures
       case 'MATERIAL_MISSING':

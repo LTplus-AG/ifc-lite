@@ -4,6 +4,7 @@
 /** Source and owned-buffer contracts registered by the real WASM harness. */
 import { checkMeshGetterOwnershipContract } from './wasm-mesh-getter-ownership-contract.mjs';
 import { checkSourceFingerprintContract, checkPrepassReservationContract } from './wasm-source-fingerprint-contract.mjs';
+import { checkAffinityChunkContract } from './wasm-affinity-chunk-contract.mjs';
 import { checkPrepassSourceContract } from './wasm-prepass-source-contract.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
@@ -37,6 +38,10 @@ export async function runColdLoadContracts({
       freshApi.clearPrePassCache();
       freshApi.free();
     }
+  });
+
+  test('streaming affinity chunks retain complete ordered owned payloads (cold-load audit)', () => {
+    checkAffinityChunkContract(IfcAPI);
   });
 
   test('prepass full-source fingerprint preserves old entry points and malformed tails (#3985)', () => {

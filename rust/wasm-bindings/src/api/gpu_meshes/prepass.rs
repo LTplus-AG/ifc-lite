@@ -710,22 +710,16 @@ impl IfcAPI {
                 EntityDecoder::with_arc_columnar_index(content, entity_index_arc.clone());
             let akey_router = GeometryRouter::new(); // not drained: meshes nothing (issue_3821_auxiliary_routers_mesh_nothing.rs)
             let rest = &buffered_jobs[first_n..];
-            let mut affinity: Vec<u32> = Vec::with_capacity(rest.len());
-            for &(id, _s, _e, _t) in rest {
-                let key = match akey_decoder.decode_by_id(id) {
+            super::affinity_chunks::emit_affinity_chunks(rest, chunk_size,
+                |&(id, _s, _e, _t)| match akey_decoder.decode_by_id(id) {
                     Ok(ent) => akey_router
                         .geometry_routing_key(&ent, &mut akey_decoder)
                         .map(fold_u128_to_u32)
                         .unwrap_or(id),
                     Err(_) => id,
-                };
-                affinity.push(key);
-            }
-            for (jobs_chunk, aff_chunk) in
-                rest.chunks(chunk_size).zip(affinity.chunks(chunk_size))
-            {
-                emit_jobs_chunk(on_event, jobs_chunk, aff_chunk)?;
-            }
+                },
+                |jobs_chunk, affinity| emit_jobs_chunk(on_event, jobs_chunk, affinity),
+            )?;
         }
         buffered_jobs.clear();
 

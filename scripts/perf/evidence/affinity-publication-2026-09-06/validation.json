@@ -1,0 +1,58 @@
+{
+  "schema": 1,
+  "baseRef": "10fb52dede8e681e953d7156bff22372ab29b5db",
+  "sourceHashes": {
+    "rust/wasm-bindings/src/api/gpu_meshes/prepass.rs": "6399e5716d252f686a401d7758c3ac65776c66e2e95526ddb7ba8bef2e3c0c89",
+    "scripts/lib/wasm-affinity-chunk-contract.mjs": "07483bcfe341e0fd4ddf20e2c451a352c28d6299b67114b4926341929f3f97dc",
+    "scripts/lib/wasm-cold-load-contracts.mjs": "86f7a5d3f96a6d020c4839413c1abd26be578ba4a138b38edf77688d26ed0782"
+  },
+  "wasmSha256": "a440110e49a6e06a1c12deb4460c26e7e268cf4af88640d62d5b4d61f9e5203b",
+  "forcedRecompilation": {
+    "command": "cargo clean -p ifc-lite-wasm --release --target wasm32-unknown-unknown && bash scripts/build-wasm.sh",
+    "logSha256": "798522888a9e8111aa5f3c8af09d8b72d799b900062f0d626c11676834e1f5a6",
+    "crateCompilationObserved": true,
+    "matchesMeasuredStandaloneAndBundledArtifacts": true
+  },
+  "checks": {
+    "cargo test -p ifc-lite-wasm": {
+      "logSha256": "1d7c45caef6e62d4b00f008135c0120766a6c39abac4853280c6a42d88fad2a4",
+      "status": "passed"
+    },
+    "cargo clippy --workspace --all-targets -- -D warnings": {
+      "logSha256": "eb635e90673c8b4357d722a735f19f88231a538587aa146dd5923e49793411f1",
+      "status": "passed"
+    },
+    "pnpm test:wasm-contract": {
+      "logSha256": "41225a23968eb0ac3a9a1792847f0152caff00564f993d455a019a6627e62bc3",
+      "passed": 85,
+      "failed": 0,
+      "skipped": 2,
+      "skipReason": "Missing embedded/external texture fixtures"
+    },
+    "pnpm test --filter=@ifc-lite/wasm": {
+      "logSha256": "40ce99e45ca63770a9433cbcac8435f25f4e68e75960b96d351dff354d3353f4",
+      "status": "passed",
+      "scope": "Root Turbo invocation; package tests include explicit skips"
+    },
+    "pnpm typecheck": {
+      "logSha256": "b8922744a7c08e00dfce9363ad54ac68d2e935ccbc91af24233f793660bc198b",
+      "status": "passed earlier in session; no TS production source changed"
+    },
+    "node scripts/check-test-wiring.mjs": {
+      "logSha256": "112c76289f46f1ab6584e6923f9c97fb6b8f857555b2804e4ffeeff0a5d7c887",
+      "status": "passed"
+    },
+    "node scripts/check-module-size.mjs": {
+      "logSha256": "7c109d584ec9269f781becb6322660981eeb131cf00eb8b042342c21192d89f1",
+      "status": "passed"
+    }
+  },
+  "notRun": [
+    "Full eleven-model corpus",
+    "Firefox candidate comparison",
+    "New native processing benchmark",
+    "Candidate federation/cache reopen qualification",
+    "Full Rust workspace tests",
+    "Full TS workspace tests"
+  ]
+}

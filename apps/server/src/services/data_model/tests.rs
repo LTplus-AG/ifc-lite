@@ -4,6 +4,31 @@
 
 use super::*;
 
+/// `extract_data_model`, plus the #3973 structural invariant
+/// (`spatial::spatial_hierarchy_consistency_violations`) asserted over the
+/// resulting `spatial_hierarchy` on every call. Every existing spatial
+/// fixture in this file goes through this wrapper rather than calling
+/// `extract_data_model` directly, so each one retroactively guards against a
+/// third instance of the dangling `children_ids` / disagreeing `parent_id`
+/// shape - not just the two fixtures written specifically to reproduce it.
+/// `build_spatial_hierarchy` itself only runs this check via `debug_assert!`
+/// (skipped in release builds); this wrapper enforces it unconditionally in
+/// the test suite regardless of build profile.
+fn extract_data_model_checked<T>(content: &T) -> DataModel
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let dm = extract_data_model(content);
+    let node_refs: Vec<&SpatialNode> = dm.spatial_hierarchy.nodes.iter().collect();
+    let violations = spatial::spatial_hierarchy_consistency_violations(&node_refs);
+    assert!(
+        violations.is_empty(),
+        "spatial hierarchy consistency invariant violated:\n{}",
+        violations.join("\n")
+    );
+    dm
+}
+
 /// IFC4 model (millimetre units) with a wall carrying a two-layer material
 /// set, a Uniclass classification reference, and a document reference — one
 /// of each association type (issue #900).
@@ -53,7 +78,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_classification_material_and_document_associations() {
-    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
 
     // Classification: one reference assigned to the wall (#28).
     assert_eq!(dm.classifications.len(), 1, "expected one classification");
@@ -168,7 +193,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_type_relationship_and_resolves_typed_property_values() {
-    let dm = extract_data_model(TYPE_PARITY_IFC);
+    let dm = extract_data_model_checked(TYPE_PARITY_IFC);
 
     // IfcRelDefinesByType survives (was dropped by the `_ => (4,5)` default):
     // relating = type #200, related = each wall.
@@ -300,7 +325,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-    let dm = extract_data_model(plain);
+    let dm = extract_data_model_checked(plain);
     assert!(dm.classifications.is_empty());
     assert!(dm.materials.is_empty());
     assert!(dm.documents.is_empty());
@@ -312,7 +337,7 @@ END-ISO-10303-21;
 /// ObjectType), and CompositionType enums must not leak into PredefinedType.
 #[test]
 fn extracts_root_attributes_at_schema_positions() {
-    let dm = extract_data_model(TYPE_PARITY_IFC);
+    let dm = extract_data_model_checked(TYPE_PARITY_IFC);
     let e = |id: u32| dm.entities.iter().find(|e| e.entity_id == id).unwrap();
 
     let wall_a = e(100);
@@ -362,7 +387,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_voids_and_fills_single_ref_relationships() {
-    let dm = extract_data_model(VOID_FILL_IFC);
+    let dm = extract_data_model_checked(VOID_FILL_IFC);
     let has_rel = |ty: &str, relating: u32, related: u32| {
         dm.relationships.iter().any(|r| {
             r.rel_type.eq_ignore_ascii_case(ty)
@@ -404,7 +429,7 @@ END-ISO-10303-21;
 
 #[test]
 fn drops_voids_and_fills_rows_with_missing_or_list_refs() {
-    let dm = extract_data_model(MALFORMED_VOID_FILL_IFC);
+    let dm = extract_data_model_checked(MALFORMED_VOID_FILL_IFC);
     assert!(
         !dm.relationships.iter().any(|r| {
             r.rel_type.eq_ignore_ascii_case("IFCRELVOIDSELEMENT")
@@ -450,7 +475,7 @@ END-ISO-10303-21;
 
 #[test]
 fn builds_spatial_hierarchy_with_correct_parent_level_and_path() {
-    let dm = extract_data_model(SPATIAL_CHAIN_IFC);
+    let dm = extract_data_model_checked(SPATIAL_CHAIN_IFC);
     let sh = &dm.spatial_hierarchy;
 
     assert_eq!(sh.project_id, 1, "project id must be #1");
@@ -518,7 +543,7 @@ END-ISO-10303-21;
 
 #[test]
 fn resolves_document_information_directly_at_its_own_attribute_layout() {
-    let dm = extract_data_model(DOCUMENT_PATHS_IFC);
+    let dm = extract_data_model_checked(DOCUMENT_PATHS_IFC);
     let d = dm
         .documents
         .iter()
@@ -532,7 +557,7 @@ fn resolves_document_information_directly_at_its_own_attribute_layout() {
 
 #[test]
 fn backfills_only_missing_document_reference_fields_from_referenced_document() {
-    let dm = extract_data_model(DOCUMENT_PATHS_IFC);
+    let dm = extract_data_model_checked(DOCUMENT_PATHS_IFC);
     let d = dm
         .documents
         .iter()
@@ -577,7 +602,7 @@ END-ISO-10303-21;
 
 #[test]
 fn maps_every_physical_quantity_subtype_to_its_own_quantity_type_string() {
-    let dm = extract_data_model(ALL_QUANTITY_KINDS_IFC);
+    let dm = extract_data_model_checked(ALL_QUANTITY_KINDS_IFC);
     let qset = dm
         .quantity_sets
         .iter()
@@ -624,7 +649,7 @@ END-ISO-10303-21;
 
 #[test]
 fn resolves_a_direct_material_association_including_its_category() {
-    let dm = extract_data_model(DIRECT_MATERIAL_IFC);
+    let dm = extract_data_model_checked(DIRECT_MATERIAL_IFC);
     let m = dm
         .materials
         .iter()
@@ -659,7 +684,7 @@ END-ISO-10303-21;
 
 #[test]
 fn walks_referenced_source_through_multiple_classification_reference_levels() {
-    let dm = extract_data_model(NESTED_CLASSIFICATION_IFC);
+    let dm = extract_data_model_checked(NESTED_CLASSIFICATION_IFC);
     let c = dm
         .classifications
         .iter()
@@ -676,7 +701,7 @@ fn walks_referenced_source_through_multiple_classification_reference_levels() {
 
 #[test]
 fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
-    let dm = extract_data_model(SPATIAL_CHAIN_IFC);
+    let dm = extract_data_model_checked(SPATIAL_CHAIN_IFC);
     let sh = &dm.spatial_hierarchy;
 
     // Each element must land in EXACTLY its own container's bucket, not any
@@ -701,7 +726,7 @@ fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
 /// ids, so neither a constant nor a copy of a neighbouring column passes.
 #[test]
 fn relationships_carry_the_ifcrel_express_id() {
-    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
     let rel_id_of = |ty: &str, relating: u32, related: u32| -> u32 {
         dm.relationships
             .iter()
@@ -722,7 +747,7 @@ fn relationships_carry_the_ifcrel_express_id() {
 /// from the list path, so it can lose `rel_id` on its own.
 #[test]
 fn voids_and_fills_carry_the_ifcrel_express_id() {
-    let dm = extract_data_model(VOID_FILL_IFC);
+    let dm = extract_data_model_checked(VOID_FILL_IFC);
     let rel_id_of = |ty: &str| -> u32 {
         dm.relationships
             .iter()
@@ -756,7 +781,7 @@ END-ISO-10303-21;
 
 #[test]
 fn a_contained_not_aggregated_space_is_promoted_to_its_own_node() {
-    let dm = extract_data_model(CONTAINED_SPACE_IFC);
+    let dm = extract_data_model_checked(CONTAINED_SPACE_IFC);
     let sh = &dm.spatial_hierarchy;
 
     let storey = sh
@@ -823,7 +848,7 @@ END-ISO-10303-21;
 
 #[test]
 fn a_space_both_aggregated_and_contained_under_the_same_parent_is_not_duplicated() {
-    let dm = extract_data_model(DOUBLE_LINKED_SPACE_IFC);
+    let dm = extract_data_model_checked(DOUBLE_LINKED_SPACE_IFC);
     let sh = &dm.spatial_hierarchy;
 
     let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey");
@@ -867,7 +892,7 @@ END-ISO-10303-21;
 
 #[test]
 fn contained_spatial_zone_and_ifc4x3_facility_parts_are_promoted_to_nodes() {
-    let dm = extract_data_model(CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC);
+    let dm = extract_data_model_checked(CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC);
     let sh = &dm.spatial_hierarchy;
     let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
 
@@ -927,8 +952,8 @@ END-ISO-10303-21;
 
 #[test]
 fn reordering_the_same_relationships_in_the_file_produces_an_identical_tree() {
-    let ordered = extract_data_model(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
-    let reordered = extract_data_model(CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC);
+    let ordered = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let reordered = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC);
 
     let mut ordered_nodes = ordered.spatial_hierarchy.nodes.clone();
     let mut reordered_nodes = reordered.spatial_hierarchy.nodes.clone();
@@ -974,7 +999,7 @@ END-ISO-10303-21;
 
 #[test]
 fn a_space_aggregated_under_one_storey_and_contained_under_another_picks_one_canonical_parent() {
-    let dm = extract_data_model(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let dm = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
     let sh = &dm.spatial_hierarchy;
 
     let storey_a = sh.nodes.iter().find(|n| n.entity_id == 2).expect("storey A");
@@ -1044,7 +1069,7 @@ END-ISO-10303-21;
         let handle = std::thread::Builder::new()
             .stack_size(256 * 1024)
             .spawn(|| {
-                let dm = extract_data_model(CYCLIC_STOREY_IFC);
+                let dm = extract_data_model_checked(CYCLIC_STOREY_IFC);
                 dm.spatial_hierarchy.nodes.len()
             })
             .expect("failed to spawn repro thread");
@@ -1116,7 +1141,7 @@ fn entities_past_the_depth_cap_are_dropped_cleanly_not_resurrected_as_fake_roots
     }
     data.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
 
-    let dm = extract_data_model(&data);
+    let dm = extract_data_model_checked(&data);
     let sh = &dm.spatial_hierarchy;
     let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
 
@@ -1180,7 +1205,7 @@ END-ISO-10303-21;
 
 #[test]
 fn a_rescued_orphans_children_ids_never_names_a_node_that_was_not_itself_rescued() {
-    let dm = extract_data_model(DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC);
+    let dm = extract_data_model_checked(DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC);
     let site = dm
         .spatial_hierarchy
         .nodes

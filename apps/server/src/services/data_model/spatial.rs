@@ -15,10 +15,13 @@
 
 #[path = "spatial_elevation.rs"]
 mod spatial_elevation;
+#[path = "spatial_invariant.rs"]
+mod spatial_invariant;
 #[path = "spatial_tree.rs"]
 mod spatial_tree;
 
 use self::spatial_elevation::extract_elevation_if_storey;
+pub(super) use self::spatial_invariant::spatial_hierarchy_consistency_violations;
 use self::spatial_tree::build_spatial_nodes_recursive;
 use super::types::{EntityMetadata, Relationship, SpatialHierarchyData, SpatialNode};
 use ifc_lite_core::EntityDecoder;
@@ -278,6 +281,26 @@ pub(super) fn build_spatial_hierarchy(
         node.children_ids
             .retain(|child_id| all_node_ids.contains(child_id));
     }
+
+    // #3973 landed two pointwise fixes for the same defect shape - a fake root
+    // (or, before this PR, a resurrected depth-capped node) whose children_ids
+    // named an entity absent from nodes_map - each closing one path into the
+    // tree (recursive descent, then orphan-fill) without ruling the shape out
+    // structurally. Only a release build skips this: the check walks every
+    // node once and only runs when debug_assertions are compiled in, exactly
+    // like every other debug_assert! in this codebase.
+    debug_assert!(
+        {
+            let values: Vec<&SpatialNode> = nodes_map.values().collect();
+            let violations = spatial_hierarchy_consistency_violations(&values);
+            if !violations.is_empty() {
+                tracing::error!(violations = ?violations, "spatial hierarchy consistency violated");
+            }
+            violations.is_empty()
+        },
+        "build_spatial_hierarchy produced an inconsistent tree (see logged violations)"
+    );
+
 
     // Build lookup maps for element containment
     let mut element_to_storey = Vec::new();

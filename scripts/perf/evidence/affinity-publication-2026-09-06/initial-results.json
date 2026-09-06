@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "baseRef": "10fb52dede8e681e953d7156bff22372ab29b5db",
-  "candidate": "incremental affinity publication with tested streaming helper",
+  "candidate": "incremental affinity publication only; corrected combined-label provenance",
   "baseWasmSha256": "6649d2c2a45db7f6372af7df5661b1e4efcabe13a02927a6b12d82a31e44491c",
-  "candidateWasmSha256": "88c4e3e5b06871c0c1d93bff418e0f427af9a90529229a29ea274a6b249ca508",
+  "candidateWasmSha256": "a440110e49a6e06a1c12deb4460c26e7e268cf4af88640d62d5b4d61f9e5203b",
   "browser": "Chrome 152.0.7977.76, headed WebGPU, fresh process and context per run",
   "method": "Five pairs per model; pair order alternates. OS file cache uncontrolled. Median paired ratios, equal-model geometric mean.",
   "limitations": [
@@ -14,74 +14,74 @@
     "Spatial query order may differ",
     "Pre-load analytics404 preserved in raw logs"
   ],
-  "equalModelGeomeanReadinessReductionPercent": 2.0291377096043783,
+  "equalModelGeomeanReadinessReductionPercent": 1.7420594367768438,
   "models": [
     {
       "model": "large-mep-1050",
       "medianPairedReductionPercent": {
-        "readinessMs": 9.801704644285959,
-        "geometryMs": 13.265068652548283,
-        "physicalBytes": -3.3704037054720803
+        "readinessMs": 8.901052631578942,
+        "geometryMs": 12.945949170743344,
+        "physicalBytes": -3.8498613365433254
       },
       "readinessMedianMs": {
-        "base": 11938,
-        "candidate": 10912
+        "base": 11763,
+        "candidate": 10577
       },
       "pairCount": 5
     },
     {
       "model": "large-architecture-343",
       "medianPairedReductionPercent": {
-        "readinessMs": -0.9121459433509393,
-        "geometryMs": -1.026518391787845,
-        "physicalBytes": 0.21773958489402778
+        "readinessMs": -0.6161137440758191,
+        "geometryMs": 0.3511852502194879,
+        "physicalBytes": -0.1093347125193933
       },
       "readinessMedianMs": {
-        "base": 2083,
-        "candidate": 2102
+        "base": 2070,
+        "candidate": 2117
       },
       "pairCount": 5
     },
     {
       "model": "large-sanitary-ifc4-218",
       "medianPairedReductionPercent": {
-        "readinessMs": -0.034928396786582105,
-        "geometryMs": 0.5491762356465313,
-        "physicalBytes": 2.2240304940025823
+        "readinessMs": -0.20847810979847115,
+        "geometryMs": -0.44887780548628076,
+        "physicalBytes": 0.8787733419324484
       },
       "readinessMedianMs": {
-        "base": 2961,
-        "candidate": 2950
+        "base": 2878,
+        "candidate": 2884
       },
       "pairCount": 5
     },
     {
       "model": "small-haus",
       "medianPairedReductionPercent": {
-        "readinessMs": 1.3953488372092981,
-        "geometryMs": 1.0638297872340385,
-        "physicalBytes": 1.7515427262958183
+        "readinessMs": 0.46511627906976605,
+        "geometryMs": -1.6304347826086918,
+        "physicalBytes": -0.5101165722867007
       },
       "readinessMedianMs": {
         "base": 215,
-        "candidate": 215
+        "candidate": 213
       },
       "pairCount": 5
     },
     {
       "model": "csg-129",
       "medianPairedReductionPercent": {
-        "readinessMs": -0.5295675198587757,
-        "geometryMs": -0.5591798695246952,
-        "physicalBytes": 2.150212608864188
+        "readinessMs": -0.17921146953405742,
+        "geometryMs": -0.18939393939394478,
+        "physicalBytes": -0.2593360111009968
       },
       "readinessMedianMs": {
-        "base": 1133,
-        "candidate": 1139
+        "base": 1116,
+        "candidate": 1113
       },
       "pairCount": 5
     }
   ],
-  "pairsFile": "landing-pairs.jsonl",
-  "phase": "Final landing implementation with tested helper"
+  "pairsFile": "initial-pairs.jsonl",
+  "phase": "Initial inline implementation before testable-helper extraction; not final landing binary"
 }

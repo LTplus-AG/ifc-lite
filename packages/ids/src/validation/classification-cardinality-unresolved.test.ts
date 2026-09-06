@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { EMPTY_SOURCE_BYTES, IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { createDataAccessor } from '../bridge/data-accessor.js';
@@ -12,7 +13,8 @@ import { validateIDS } from './validator.js';
 describe('unresolved classification cardinality through validateIDS (#3954 / #3996)', () => {
   let full: IfcDataStore;
   beforeAll(async () => {
-    const bytes = readFileSync(new URL('../__corpus__/buildingsmart-ids/classification/pass-non_rooted_resources_that_have_external_classification_references_should_also_pass.ifc', import.meta.url));
+    // Vitest runs in packages/ids and may rewrite import.meta.url to a data URL.
+    const bytes = readFileSync(resolve(process.cwd(), 'src/__corpus__/buildingsmart-ids/classification/pass-non_rooted_resources_that_have_external_classification_references_should_also_pass.ifc'));
     full = await new IfcParser().parseColumnar(
       Uint8Array.from(bytes).buffer, { disableWorkerScan: true },
     );

@@ -39,7 +39,7 @@ import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
-import { forwardEntityIndexTo, type EntityIndexSink } from './entityIndexHandoff.js';
+import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
@@ -1450,6 +1450,7 @@ export function useIfcLoader() {
       // sync threshold (2 MB) and the desktop-stable path don't fire it
       // — gate `waitForEntityIndex` so the parser doesn't hang.
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
+      const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
       const geometryWillEmitEntityIndex =
         useParserWorker
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
@@ -1468,6 +1469,7 @@ export function useIfcLoader() {
           const worker = new WorkerParser();
           workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {
+            sourceFingerprint,
             onSpatialReady: onPartialDataStore,
             // Hold the parser's WASM scan until the pre-pass hands over
             // the entity index — but only when we know the geometry
@@ -1607,6 +1609,7 @@ export function useIfcLoader() {
               // reference arrays. Small loads still receive immediately.
               // Refusal counts and malformed-stop diagnostics remain attached.
               onEntityIndex: parserEntityIndexHandoff,
+              sourceFingerprint,
               // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
               // count heuristic so the host's thermal sweet spot can be measured.
               // Still clamped to the memory budget by the engine. Geometry output

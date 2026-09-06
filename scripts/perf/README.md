@@ -526,6 +526,10 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
     resolving it correctly and never resolving it agree on every shipped fixture.
     Identical output there is evidence about the corpus, not about the change.
 
+### Retained prepass source fingerprint sharing (#3985)
+
+The existing prepass can publish the exact full-byte source key through a fresh per-load shared cell, including malformed tails. The parser uses it only when already ready; prior entry points and unavailable-cell fallback remain compatible without another source copy or worker. Retained cumulative qualification is not an isolated percentage claim. Record actual parser/prepass key origin when diagnosing overlap; an unavailable key can still pay the original parser hash.
+
 ### Reading the FIELD telemetry (PostHog) — verdicts and traps
 
 - **A per-model PostHog regression alert is device-mix noise until you control for

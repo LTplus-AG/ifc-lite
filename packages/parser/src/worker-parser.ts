@@ -32,6 +32,8 @@ import type {
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 
 export interface WorkerParserOptions extends ParseOptions {
+  /** Fresh per-request 16-byte prepass fingerprint cell; never awaited. */
+  sourceFingerprint?: SharedArrayBuffer;
   /** Override the worker URL. Default: bundler-resolved `parser.worker.ts`. */
   workerUrl?: URL | string;
   /** Optional callback receiving the per-parse memory snapshot at completion. */
@@ -235,6 +237,7 @@ export class WorkerParser {
 
       const input: ParserWorkerInputMessage = {
         type: 'parse',
+        sourceFingerprint: options.sourceFingerprint,
         indexTransport: 'packed-index-v1',
         id,
         source,

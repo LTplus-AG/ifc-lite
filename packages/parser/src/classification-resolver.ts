@@ -70,16 +70,39 @@ export function extractClassificationsOnDemand(
 
     if (!classRefIds || classRefIds.length === 0) return [];
     if (!store.source?.length) {
-        // Server-parsed / source-empty store: the relationship graph above
-        // already proves this entity (or its type) IS classified — the ids
-        // resolved into `classRefIds` are real `IfcRelAssociatesClassification`
-        // targets. But turning an id into system/identification/name/path
-        // needs raw STEP bytes (`EntityExtractor`), which this store doesn't
-        // have. Previously this silently returned `[]` here, making a
-        // classified entity byte-identical to a genuinely unclassified one
-        // (issue #3948). Surface one unresolved marker per resolved id
-        // instead, so callers — the IDS bridge in particular — can tell
-        // "classified, but this data source can't say more" from "none".
+        // Server-parsed / source-empty store: no source bytes to decode the
+        // classification reference's own attributes. The relationship graph
+        // above already proved this entity (or its type) IS classified — the
+        // ids resolved into `classRefIds` are real
+        // `IfcRelAssociatesClassification` targets.
+        //
+        // If the server also forwarded the resolved attributes (issue
+        // #3955), prefer those — real system/identification/name data beats
+        // a marker. Roll up the entity's own row plus its type's (mirroring
+        // the classRefIds roll-up above) so a type-level classification is
+        // not dropped.
+        if (store.resolvedClassifications) {
+            const resolved: ClassificationInfo[] = [...(store.resolvedClassifications.get(entityId) || [])];
+            if (store.relationships) {
+                const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
+                for (const typeId of typeIds) {
+                    const typeResolved = store.resolvedClassifications.get(typeId);
+                    if (typeResolved) resolved.push(...typeResolved);
+                }
+            }
+            // The server resolves these rows from the same immutable input
+            // as its graph. Repeated relationships emit repeated rows while
+            // the graph deduplicates edges, so their counts need not match.
+            if (resolved.length > 0) return resolved;
+        }
+        // No forwarded resolved data. Turning an id into
+        // system/identification/name/path needs raw STEP bytes
+        // (`EntityExtractor`), which this store doesn't have. Previously
+        // this silently returned `[]` here, making a classified entity
+        // byte-identical to a genuinely unclassified one (issue #3948).
+        // Surface one unresolved marker per resolved id instead, so callers
+        // — the IDS bridge in particular — can tell "classified, but this
+        // data source can't say more" from "none".
         return classRefIds.map((): ClassificationInfo => ({ unresolved: true }));
     }
 

@@ -179,7 +179,7 @@
    497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
-   630 apps/viewer/src/utils/serverDataModel.ts
+   470 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts
@@ -285,7 +285,7 @@
    573 packages/mutations/src/csv-connector.ts
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-  1189 packages/parser/src/columnar-parser.ts
+   920 packages/parser/src/columnar-parser.ts
    474 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts

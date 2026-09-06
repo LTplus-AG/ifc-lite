@@ -463,6 +463,7 @@ DATA;
 #7=IFCPROPERTYSET('${guid(7)}',#10,'Pset_Test',$,(#8,#9));
 #8=IFCPROPERTYSINGLEVALUE('SimpleProp',$,IFCLABEL('foo'),$);
 #9=IFCCOMPLEXPROPERTY('ComplexProp',$,'Usage',(#8));
+#40=IFCMATERIAL('Concrete C30/37',$,$);
 #10=IFCOWNERHISTORY(#13,#14,$,.NOCHANGE.,1700000001,$,$,1700000000);
 #11=IFCPERSON('IDENT-1','Doe','Jane',$,$,$,$,$);
 #12=IFCORGANIZATION($,'Acme Consulting','Structural Engineering',$,$);
@@ -479,8 +480,11 @@ END-ISO-10303-21;`;
 // closure — whether a `HasPropertySets` reference is followed into that
 // closure is an orthogonal `visibleOnly`-style concern this test is not
 // about; it only needs #7-#9 to be present in the export so their pseudonym
-// (or lack of one) can be asserted.
-const COMPLEX_PROPERTY_INCLUDED_IDS = new Set([1, 4, 5, 6, 7, 8, 9, 20, 21, 30]);
+// (or lack of one) can be asserted. #40 (`IfcMaterial`, unreferenced by
+// anything else in this fixture) is included the same way, purely so the
+// "still scrubbed" control below has a genuinely non-`IfcRoot` type to pin —
+// see that test.
+const COMPLEX_PROPERTY_INCLUDED_IDS = new Set([1, 4, 5, 6, 7, 8, 9, 20, 21, 30, 40]);
 
 async function complexPropertyFixture() {
   const store = await parse(COMPLEX_PROPERTY_MODEL);
@@ -517,7 +521,7 @@ describe('applyScrub: isNonRootNameExempt covers IfcComplexProperty (#4042)', ()
     expect(lineArgs(content, 9)[0]).toBe("'ComplexProp'");
   });
 
-  it('control: a type that should still be scrubbed (IfcPropertySet, an IfcRoot) still is', async () => {
+  it('control: a non-root type that should still be scrubbed (IfcMaterial) still is', async () => {
     const { store, view, index } = await complexPropertyFixture();
     applyScrub(store, index, COMPLEX_PROPERTY_INCLUDED_IDS, view, {
       keepPropertySets: true,
@@ -525,9 +529,16 @@ describe('applyScrub: isNonRootNameExempt covers IfcComplexProperty (#4042)', ()
     });
     const content = exportComplexPropertyFixture(store, view);
 
-    // IfcPropertySet is IfcRoot, not covered by isNonRootNameExempt at all —
-    // its Name is still pseudonymized under the root sweep regardless of
-    // this fix, proving the exemption did not widen too far.
-    expect(lineArgs(content, 7)[2]).toBe("'IfcPropertySet-1'");
+    // IfcMaterial is not an IfcRoot, so `slotsFor` reaches `isNonRootNameExempt`
+    // rather than short-circuiting on `IFC_ROOT_TYPES` first (unlike
+    // IfcPropertySet, which IS an IfcRoot and would stay pseudonymized under
+    // the ROOT sweep no matter what isNonRootNameExempt returns — that
+    // shorter-circuiting is exactly why an earlier version of this test using
+    // IfcPropertySet passed even when isNonRootNameExempt was mutated to
+    // `return true` unconditionally). IfcMaterial.Name isn't in the exempt
+    // list, so it must still be pseudonymized: proves the fix's new
+    // exact-type check for IfcComplexProperty didn't widen the exemption to
+    // cover unrelated non-root classes too.
+    expect(lineArgs(content, 40)[0]).toBe("'IfcMaterial-1'");
   });
 });

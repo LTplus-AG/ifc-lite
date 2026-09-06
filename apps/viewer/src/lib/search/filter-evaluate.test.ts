@@ -229,6 +229,41 @@ describe('evaluateFilterRulesFederated', () => {
     );
     assert.strictEqual(out.length, 3);
   });
+
+  it('selects one exact model in a federation (#4019)', async () => {
+    const a = buildStore(rows);
+    const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
+    const progress: Array<[number, number]> = [];
+    const out = await evaluateFilterRulesFederated(
+      [
+        { id: 'runtime-architecture', filterIdentity: 'Architecture.ifc:fingerprint-a', store: a },
+        { id: 'runtime-structure', filterIdentity: 'Structure.ifc:fingerprint-b', store: b },
+      ],
+      [Rule.model(['Structure.ifc:fingerprint-b'])],
+      'AND',
+      { onProgress: (scanned, total) => progress.push([scanned, total]) },
+    );
+    assert.deepStrictEqual(new Set(out.map((r) => r.modelId)), new Set(['runtime-structure']));
+    assert.deepStrictEqual(out.map((r) => r.expressId), [1010, 1020, 1030, 1040]);
+    assert.deepStrictEqual(progress.at(-1), [4, 4], 'must not scan the rejected model');
+  });
+
+  it('survives runtime model-id changes while combining other rules (#4019)', async () => {
+    const a = buildStore(rows);
+    const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
+    const out = await evaluateFilterRulesFederated(
+      [
+        { id: 'new-runtime-a', filterIdentity: 'Architecture.ifc:fingerprint-a', store: a },
+        { id: 'new-runtime-b', filterIdentity: 'Structure.ifc:fingerprint-b', store: b },
+      ],
+      [Rule.model(['Structure.ifc:fingerprint-b'], 'notIn'), Rule.ifcType(['IfcWall'])],
+      'AND',
+    );
+    assert.deepStrictEqual(out.map((r) => [r.modelId, r.expressId]), [
+      ['new-runtime-a', 10],
+      ['new-runtime-a', 20],
+    ]);
+  });
 });
 
 describe('flattenPsets / matchPropertyRule', () => {

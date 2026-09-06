@@ -632,3 +632,14 @@ Pack immutable type-index publication once and reuse partial columns on complete
 ### Retained prepass source fingerprint sharing (#3985)
 
 The existing prepass can publish the exact full-byte source key through a fresh per-load shared cell, including malformed tails. The parser uses it only when already ready; prior entry points and unavailable-cell fallback remain compatible without another source copy or worker. Retained cumulative qualification is not an isolated percentage claim. Record actual parser/prepass key origin when diagnosing overlap; an unavailable key can still pay the original parser hash.
+
+### Retained cold-load work: bounded cache compression (#4003)
+
+Geometry cache compression can run in one lazy module worker, using the same
+codec and bounded chunk window as the workerless writer. The viewer opts in;
+SDK callers retain the workerless default. Only fresh serialized chunks transfer,
+and worker failures reject the cache write with deterministic disposal. This
+moves compression off the interaction thread without removing its CPU or memory
+cost. Cumulative qualification must include cache completion, full-lifetime
+memory and actual cache reopening; raw IFC timing must not be replaced by a
+prepared reload. No isolated throughput gain is attributed to this layer.

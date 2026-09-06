@@ -690,3 +690,12 @@ and rejects the whole loop for missing or oversized point references; points
 already resolved remain in the decoder's existing point cache even on failure.
 Both retain the behavior of their allocating convenience accessors. The caller
 controls scratch-vector lifetime; reuse does not promise physical memory release.
+
+
+### Native Rust geometry classification
+
+`ifc_lite_core::geometry_flags_by_name(type_name)` returns
+`(has_geometry, is_representationless_spatial_container)`, using the same
+case normalization and legacy-type rules as the two individual predicates.
+These flags classify a type; they do not establish whether a particular record
+contains a usable representation.

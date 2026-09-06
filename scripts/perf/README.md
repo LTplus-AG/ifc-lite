@@ -600,3 +600,7 @@ Built-in processor registrations now share immutable setup while each router kee
 ### Retained transient decoder ownership (#4000)
 
 Use reusable output buffers and a validated string projection where consumers discard full decoded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Retained with the cumulative cold-load candidate, without an isolated percentage claim. Full-call timing must include the disposal join and trailing metadata; summed worker high-water allocations do not establish retained or simultaneous memory.
+
+### Retained canonical lexical and schema work (#4001)
+
+Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Retained as part of cumulative cold-load qualification; no isolated native or browser gain is claimed. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.

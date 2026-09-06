@@ -1,3 +1,6 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // Real WASM ownership invariant for redundant worker getter copies (#3989).
 import assert from 'node:assert/strict';
 const bytesOf = array => new Uint8Array(array.buffer, array.byteOffset, array.byteLength);

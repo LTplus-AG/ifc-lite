@@ -9,7 +9,7 @@
 //! GLB/OBJ exporters must redo the identical conversion to match:
 //!
 //! - positions + normals: `(x, y, z) -> (x, z, -y)`
-//! - triangle winding reversed (mirrors `MeshDataJs::new`, keeps front faces)
+//! - triangle winding preserved: this is a determinant +1 rotation, not a reflection
 //! - per-element `origin` swapped the same way
 //!
 //! The from-meshes GLB path (the viewer's own `MeshData`) is already Y-up and
@@ -72,7 +72,7 @@ pub(crate) fn yup_matrix4(m: &[f64]) -> [f64; 16] {
 /// Reusable owned buffers for the streaming Y-up conversion. The streaming/bounded
 /// export passes convert one mesh at a time and drop it; reusing a single scratch across
 /// meshes (clear + refill, capacity persists) avoids the 3 fresh heap allocations per
-/// mesh that per-call [`to_yup`] incurred — on a million-submesh model, per pass.
+/// mesh that allocating fresh buffers would incur — on a million-submesh model, per pass.
 pub(crate) struct YUpScratch {
     pub positions: Vec<f32>,
     pub normals: Vec<f32>,
@@ -86,9 +86,8 @@ impl YUpScratch {
     }
 }
 
-/// [`to_yup`] into a reusable [`YUpScratch`] instead of freshly allocated buffers. The
-/// scratch is cleared and refilled, so its capacity is retained across calls; every value
-/// is identical to [`to_yup`], so output is unchanged.
+/// Convert into reusable buffers, preserving triangle winding. The scratch is
+/// cleared and refilled, so its capacity is retained across calls.
 pub(crate) fn to_yup_into(
     scratch: &mut YUpScratch,
     positions: &[f32],
@@ -108,25 +107,15 @@ pub(crate) fn to_yup_into(
     }
     scratch.indices.clear();
     scratch.indices.extend_from_slice(indices);
-    let tri_end = scratch.indices.len() - scratch.indices.len() % 3;
-    let mut i = 0;
-    while i < tri_end {
-        scratch.indices.swap(i + 1, i + 2);
-        i += 3;
-    }
     scratch.origin = yup_f64(origin);
 }
 
-/// In-place variant of [`to_yup`]: rewrites `positions` / `normals` / `indices` /
-/// `origin` from IFC Z-up to WebGL Y-up WITHOUT allocating new buffers. The in-memory
-/// GLB path owns its `MeshData` and drops it immediately after assembly, so mutating it
-/// is invisible to any other consumer. Every value matches [`to_yup`]
-/// (`(x,y,z) -> (x,z,-y)`, winding reversed), so the emitted GLB is byte-for-byte
-/// unchanged — it just skips the full second copy of the model's geometry.
+/// In-place variant of [`to_yup_into`], without allocating new buffers.
+/// The determinant +1 frame rotation preserves triangle indices and winding.
 pub(crate) fn to_yup_in_place(
     positions: &mut [f32],
     normals: &mut [f32],
-    indices: &mut [u32],
+    _indices: &mut [u32],
     origin: &mut [f64; 3],
 ) {
     for c in positions.chunks_exact_mut(3) {
@@ -139,12 +128,6 @@ pub(crate) fn to_yup_in_place(
         let (y, z) = (c[1], c[2]);
         c[1] = z;
         c[2] = -y;
-    }
-    let tri_end = indices.len() - indices.len() % 3;
-    let mut i = 0;
-    while i < tri_end {
-        indices.swap(i + 1, i + 2);
-        i += 3;
     }
     *origin = yup_f64(*origin);
 }

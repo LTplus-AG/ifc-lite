@@ -130,16 +130,16 @@ pub fn export_obj_with_stats(content: &[u8], opts: &ObjOptions) -> (String, ObjS
         }
 
         // Faces — OBJ indices are 1-based and global; offset by vert_base. Winding is
-        // reversed (2nd/3rd vertex swapped) to compensate the Z-up→Y-up handedness
-        // convention, matching the GLB exporter / `MeshDataJs::new`.
+        // preserved: (x,y,z) -> (x,z,-y) has determinant +1, so this frame
+        // rotation does not change handedness.
         for tri in mesh.indices.chunks_exact(3) {
             let a = vert_base + tri[0] as usize + 1;
             let b = vert_base + tri[1] as usize + 1;
             let c = vert_base + tri[2] as usize + 1;
             if has_normals {
-                let _ = writeln!(out, "f {a}//{a} {c}//{c} {b}//{b}");
+                let _ = writeln!(out, "f {a}//{a} {b}//{b} {c}//{c}");
             } else {
-                let _ = writeln!(out, "f {a} {c} {b}");
+                let _ = writeln!(out, "f {a} {b} {c}");
             }
             stats.triangles += 1;
         }
@@ -198,18 +198,9 @@ mod tests {
         assert!(isolated.meshes <= all.meshes);
     }
 
-    /// OBJ hand-writes its own third copy of the Z-up→Y-up winding reversal
-    /// (`f {a} {c} {b}`, see the comment above the face loop), alongside
-    /// `frame::to_yup_into` and `frame::to_yup_in_place`. Deleting the reversal
-    /// from all three at once left the whole crate suite green: glTF materials
-    /// are unconditionally `doubleSided: true`, so nothing renderer-facing can
-    /// fail on winding, and OBJ had no winding assertion at all.
-    ///
-    /// Pin it against the SOURCE mesh rather than against the GLB path — an
-    /// equivalence test between two copies of the same conversion is blind to a
-    /// mutation applied to both.
+    /// #4056: the proper frame rotation must retain source triangle order.
     #[test]
-    fn obj_faces_reverse_the_source_mesh_winding() {
+    fn obj_faces_preserve_the_source_mesh_winding_4056() {
         let bytes = fixture_or_skip!("ara3d/duplex.ifc");
         let result = process_geometry(&bytes);
 
@@ -233,7 +224,7 @@ mod tests {
         let tri = &mesh.indices[0..3];
         // OBJ indices are 1-based and global.
         let idx = |i: u32| vert_base + i as usize + 1;
-        let expected = format!("f {} {} {}", idx(tri[0]), idx(tri[2]), idx(tri[1]));
+        let expected = format!("f {} {} {}", idx(tri[0]), idx(tri[1]), idx(tri[2]));
 
         let obj = export_obj(&bytes, &ObjOptions { include_normals: false, ..ObjOptions::default() });
         let first_face = obj.lines().find(|l| l.starts_with("f ")).expect("a face line");
@@ -241,7 +232,72 @@ mod tests {
         // A triangle whose 2nd and 3rd source indices coincide would make the
         // reversal unobservable; assert the fixture is not that degenerate case.
         assert_ne!(tri[1], tri[2], "fixture triangle must distinguish b from c");
-        assert_eq!(first_face, expected, "OBJ must emit a, c, b — winding reversed");
+        assert_eq!(first_face, expected, "OBJ must preserve source winding");
+    }
+
+    /// #4056: inspect real exported positions, normals and both OBJ face syntaxes.
+    #[test]
+    fn obj_triangle_keeps_outward_face_orientation_4056() {
+        let bytes = br#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('Orientation witness'),'2;1');
+FILE_NAME('triangle.ifc','2026-09-07T00:00:00',('Test'),('Test'),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCDIRECTION((0.,0.,1.));
+#3=IFCDIRECTION((1.,0.,0.));
+#4=IFCAXIS2PLACEMENT3D(#1,#2,#3);
+#5=IFCLOCALPLACEMENT($,#4);
+#6=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,0.00001,#4,$);
+#7=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#8=IFCUNITASSIGNMENT((#7));
+#9=IFCPROJECT('0000000000000000000001',$,'Project',$,$,$,$,(#6),#8);
+#12=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.)));
+#13=IFCTRIANGULATEDFACESET(#12,((0.,0.,1.),(0.,0.,1.),(0.,0.,1.)),.F.,((1,2,3)),$);
+#14=IFCSHAPEREPRESENTATION(#6,'Body','Tessellation',(#13));
+#15=IFCPRODUCTDEFINITIONSHAPE($,$,(#14));
+#1000=IFCWALL('0000000000000000001000',$,'Triangle',$,$,#5,#15,$,.NOTDEFINED.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        for include_normals in [false, true] {
+            let (obj, stats) = export_obj_with_stats(bytes, &ObjOptions {
+                include_normals, ..ObjOptions::default()
+            });
+            assert_eq!(stats.triangles, 1);
+            let vectors = |prefix: &str| -> Vec<Vec<f64>> {
+                obj.lines().filter_map(|line| line.strip_prefix(prefix))
+                    .map(|line| line.split_whitespace().map(|n| n.parse().unwrap()).collect())
+                    .collect()
+            };
+            let positions = vectors("v ");
+            let normals = vectors("vn ");
+            let face = obj.lines().find_map(|line| line.strip_prefix("f ")).unwrap();
+            let refs: Vec<Vec<usize>> = face.split_whitespace()
+                .map(|token| token.split("//").map(|n| n.parse::<usize>().unwrap() - 1).collect())
+                .collect();
+            assert_eq!(refs.len(), 3);
+            let a = &positions[refs[0][0]];
+            let b = &positions[refs[1][0]];
+            let c = &positions[refs[2][0]];
+            // Original face is +Z; the proper rotation takes its outward normal
+            // to +Y. Compute from exported vertex references, independently of
+            // the implementation's index ordering and normal conversion.
+            let cross_y = (b[2] - a[2]) * (c[0] - a[0])
+                - (b[0] - a[0]) * (c[2] - a[2]);
+            assert!(cross_y > 0.0, "exported face points inward: {face}");
+            for reference in refs {
+                if include_normals {
+                    assert_eq!(reference.len(), 2);
+                    assert_eq!(normals[reference[1]], [0.0, 1.0, 0.0]);
+                } else {
+                    assert_eq!(reference.len(), 1);
+                    assert!(normals.is_empty());
+                }
+            }
+        }
     }
 
     /// A minimal, otherwise-valid mesh — mirrors the fixture in

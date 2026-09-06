@@ -185,6 +185,7 @@ export const fr = {
     classificationValueMissingAvailable: 'Le code de classification {expected} n\'a pas été trouvé. Disponibles : {available}',
     classificationProhibited: 'La classification interdite "{actual}" existe dans le système "{system}"',
     classificationUnresolved: 'L\'entité est classifiée, mais les détails de la classification ne peuvent pas être lus depuis cette source de données',
+    classificationPresenceUnresolved: 'Impossible de déterminer si cette entité est classifiée à partir de cette source de données',
 
     // Material failures
     materialMissing: 'Aucun matériau attribué',

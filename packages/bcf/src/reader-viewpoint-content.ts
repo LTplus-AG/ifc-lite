@@ -259,15 +259,16 @@ function parseBitmaps(content: string): BCFBitmap[] {
     const normal = parseDirection(body, 'Normal');
     const up = parseDirection(body, 'Up');
     const height = extractElement(body, 'Height');
+    const parsedHeight = height === undefined ? undefined : parseFiniteFloat(height);
 
-    if (format && reference && location && normal && up && height) {
+    if (format && reference && location && normal && up && parsedHeight !== undefined) {
       bitmaps.push({
         format: format.toUpperCase() === 'JPG' ? 'JPG' : 'PNG',
         reference,
         location,
         normal,
         up,
-        height: parseFloat(height),
+        height: parsedHeight,
       });
     }
   };

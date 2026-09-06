@@ -112,6 +112,6 @@ describe('#3962: dangling snapshot reference', () => {
     const topic = readBack.topics.get(topicGuid);
     expect(topic).toBeDefined();
     expect(topic!.viewpoints).toHaveLength(1);
-    expect(topic!.viewpoints[0].snapshot).toBeDefined();
+    expect(topic!.viewpoints[0].snapshot).toBe(validDataUrl);
   });
 });

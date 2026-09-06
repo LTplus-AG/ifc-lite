@@ -1,0 +1,888 @@
+{
+  "schema": 1,
+  "candidateIssue": "#4055",
+  "base": "corrected #4058 final",
+  "baseWasmSha256": "3291120b10dcbfa208db6c97574e2d247cdd4b9a28dde3fc1449313d68059b3c",
+  "candidateWasmSha256": "7608de4fd4e46ebb090ec5e9a855272df42b14259b1345138c4ead59ef864198",
+  "verdict": "Rejected under unchanged raw geometry and lifecycle gates; no landing or universal performance claim",
+  "scope": "Single interleaved fresh-process Chrome pair per27models, with three justified clean recovery pairs after failed teardown; originals preserved",
+  "whole27Qualified": false,
+  "historical11": {
+    "totalModels": 11,
+    "acceptedPairModels": 11,
+    "rejectedModels": [],
+    "readinessReductionPercentAcceptedSubset": -0.6264438281453844,
+    "geometryReductionPercentAcceptedSubset": 0.8593101929979641
+  },
+  "expanded16": {
+    "totalModels": 16,
+    "acceptedPairModels": 13,
+    "rejectedModels": [
+      "downloads-01-1259mb",
+      "downloads-06-511mb",
+      "downloads-08-263mb"
+    ],
+    "readinessReductionPercentAcceptedSubset": -0.16120938211487967,
+    "geometryReductionPercentAcceptedSubset": 0.1570120958957144
+  },
+  "all27": {
+    "totalModels": 27,
+    "acceptedPairModels": 24,
+    "rejectedModels": [
+      "downloads-01-1259mb",
+      "downloads-06-511mb",
+      "downloads-08-263mb"
+    ],
+    "readinessReductionPercentAcceptedSubset": -0.37417423235723835,
+    "geometryReductionPercentAcceptedSubset": 0.4795141599028274
+  },
+  "pairs": [
+    {
+      "fixture": "large-mep-1050",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 10182,
+        "candidate": 10229,
+        "unqualifiedRatio": 1.0046159890001964
+      },
+      "geometryMs": {
+        "base": 6915,
+        "candidate": 6930,
+        "unqualifiedRatio": 1.002169197396963
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "9d76302a16ad5e84cfef0a182a7d80201b6430b20c0082b911d87c7961b36424",
+      "candidateResultSha256": "2cd98254579a9ea7acaabaf08950c7fafb699593d9ef7e59d2899caec6389991",
+      "failures": []
+    },
+    {
+      "fixture": "large-architecture-343",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 2033,
+        "candidate": 2057,
+        "unqualifiedRatio": 1.0118052139695033
+      },
+      "geometryMs": {
+        "base": 1104,
+        "candidate": 1115,
+        "unqualifiedRatio": 1.0099637681159421
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "9e6cd5287f7bf9ed1f31e1a310a2c647aa97a3c2a14f6e5827486e8a8f5a3622",
+      "candidateResultSha256": "93d221d5929c895c5837db011d204b2fb9a9276c070882409e6ed21c9ebddbe4",
+      "failures": []
+    },
+    {
+      "fixture": "large-csg-177",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 2079,
+        "candidate": 2073,
+        "unqualifiedRatio": 0.9971139971139971
+      },
+      "geometryMs": {
+        "base": 1392,
+        "candidate": 1392,
+        "unqualifiedRatio": 1.0
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "0805ec9243e47137290c89c04350a0ae76d4ae46bd25a17660614cea5466ba3c",
+      "candidateResultSha256": "768af1845a70fcc6a5d16471b1e120e1e13989a3761ef1e7f6a3e39b780889c6",
+      "failures": []
+    },
+    {
+      "fixture": "small-haus",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 234,
+        "candidate": 232,
+        "unqualifiedRatio": 0.9914529914529915
+      },
+      "geometryMs": {
+        "base": 208,
+        "candidate": 207,
+        "unqualifiedRatio": 0.9951923076923077
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "6c3870909c20670a8eac9239f52a2c7c6ad28bf93d694acd81d23adf61f81c86",
+      "candidateResultSha256": "79b6384047375257d9577ac37405bc4c26b82e883627bb53a36c3f5056266516",
+      "failures": []
+    },
+    {
+      "fixture": "csg-129",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 1143,
+        "candidate": 1114,
+        "unqualifiedRatio": 0.9746281714785652
+      },
+      "geometryMs": {
+        "base": 1084,
+        "candidate": 1056,
+        "unqualifiedRatio": 0.974169741697417
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "45379e5af1caea272dc9f0eaef4fc812e664c89e8518ce366a0d13eb96491079",
+      "candidateResultSha256": "edf48808d3045014eb9dec109c787c90a84d89ae2dbeb8ac72d64c31cf6254cd",
+      "failures": []
+    },
+    {
+      "fixture": "large-sanitary-ifc4-218",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 2854,
+        "candidate": 2839,
+        "unqualifiedRatio": 0.9947442186405046
+      },
+      "geometryMs": {
+        "base": 2029,
+        "candidate": 1947,
+        "unqualifiedRatio": 0.9595860029571217
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "6001c9df489e01d5cee5b21aeef824015839cd6dc9c1108bcdabe89e98d142a4",
+      "candidateResultSha256": "383309d7d93b3ec5b9270018e2f4d633812ff5d77dfa8705ca3cd4e2ed5089a1",
+      "failures": []
+    },
+    {
+      "fixture": "large-architecture-192",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 3619,
+        "candidate": 3631,
+        "unqualifiedRatio": 1.0033158331030672
+      },
+      "geometryMs": {
+        "base": 2990,
+        "candidate": 2991,
+        "unqualifiedRatio": 1.0003344481605352
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "89f848c2ffff4deecbc1408354873b6253a1b539cdfd4eebc699433e3f3a4856",
+      "candidateResultSha256": "02f6d846900dd7266a1bc9a8de9229e97e54dbd4a69062324e717097f8789062",
+      "failures": []
+    },
+    {
+      "fixture": "services-73",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 1145,
+        "candidate": 1159,
+        "unqualifiedRatio": 1.012227074235808
+      },
+      "geometryMs": {
+        "base": 735,
+        "candidate": 738,
+        "unqualifiedRatio": 1.0040816326530613
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "4aabaf6af9853844e54d7bd01427f0d3ae6e405201b8ad1955e35630fe8ca538",
+      "candidateResultSha256": "73531f0f5a8b084123215624d67d66bf96314d8471dfe2b9fba7b101f6cedbb1",
+      "failures": []
+    },
+    {
+      "fixture": "structural-tekla-27",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 709,
+        "candidate": 704,
+        "unqualifiedRatio": 0.9929478138222849
+      },
+      "geometryMs": {
+        "base": 476,
+        "candidate": 471,
+        "unqualifiedRatio": 0.9894957983193278
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "edd7b60ddce709fb11ece36301fa4fa081ab524299f5420019b03c424a65dbce",
+      "candidateResultSha256": "ffd5d64b4b40d2962a15a4881a7b873752b5ca33297c26db0e4b162d7e78160a",
+      "failures": []
+    },
+    {
+      "fixture": "bridge-ifc4x2-15",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 312,
+        "candidate": 341,
+        "unqualifiedRatio": 1.0929487179487178
+      },
+      "geometryMs": {
+        "base": 251,
+        "candidate": 245,
+        "unqualifiedRatio": 0.9760956175298805
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "7b157e49240398c911cbc8dc32ec05b93288e86d941cd32b98d2d2b68f1702d9",
+      "candidateResultSha256": "05fe9d1b3409ce5be58d6668d763c6696d209249f418f31fda92df73d771ff90",
+      "failures": []
+    },
+    {
+      "fixture": "school-54",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 1216,
+        "candidate": 1213,
+        "unqualifiedRatio": 0.9975328947368421
+      },
+      "geometryMs": {
+        "base": 906,
+        "candidate": 902,
+        "unqualifiedRatio": 0.9955849889624724
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "87e25861a0273195d1c82d6619e53c45fbb089df36771605132b31df602290b8",
+      "candidateResultSha256": "9ab82c45e80fc4478f2f562b391cea6dcb85b452504f6356612afee80c96154f",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-01-1259mb",
+      "bothCasesQualified": false,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": false,
+      "fullFeatureCompletionMs": {
+        "base": 35663,
+        "candidate": 35497,
+        "unqualifiedRatio": 0.9953453158735944
+      },
+      "geometryMs": {
+        "base": 31548,
+        "candidate": 31398,
+        "unqualifiedRatio": 0.995245340433625
+      },
+      "cohort": "browser-runs-r1",
+      "baseResultSha256": "8f4b8b03e02c0a47d387ebbc72bc502ee09528569dc4b182189ca8a066426f7d",
+      "candidateResultSha256": "f3c42327d8191560a725aff463f661cbb72b225f718bbd6bb3e97c10b106e096",
+      "failures": [
+        {
+          "side": "base",
+          "failures": [
+            "nonzero-exit",
+            "teardown-failure"
+          ]
+        },
+        {
+          "side": "candidate",
+          "failures": [
+            "nonzero-exit",
+            "teardown-failure"
+          ]
+        }
+      ]
+    },
+    {
+      "fixture": "downloads-02-1050mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 10314,
+        "candidate": 10306,
+        "unqualifiedRatio": 0.9992243552452976
+      },
+      "geometryMs": {
+        "base": 7020,
+        "candidate": 7028,
+        "unqualifiedRatio": 1.0011396011396012
+      },
+      "cohort": "browser-runs-r3-recovery",
+      "baseResultSha256": "b4ecb25819306721ec196fea9e48911663047a41bd12d101da5fb5105f4f9fa4",
+      "candidateResultSha256": "a1fa6b270176aa684fab7ff81d8336c2d51dec52be46aead89846ece72e0e877",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-04-1034mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 8681,
+        "candidate": 8604,
+        "unqualifiedRatio": 0.991130054141228
+      },
+      "geometryMs": {
+        "base": 6806,
+        "candidate": 6731,
+        "unqualifiedRatio": 0.9889803114898619
+      },
+      "cohort": "browser-runs-r3-recovery",
+      "baseResultSha256": "9fdabf749ffac065d54ad0c70aba5c595186d6c6b251a91c860dae7352db3a5f",
+      "candidateResultSha256": "057ffdcf6ea06cb6fb20a77b3650a3d512d9ba578840c51595b56b77b789a335",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-05-1034mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 10615,
+        "candidate": 10601,
+        "unqualifiedRatio": 0.9986811116344795
+      },
+      "geometryMs": {
+        "base": 7187,
+        "candidate": 7183,
+        "unqualifiedRatio": 0.9994434395436205
+      },
+      "cohort": "browser-runs-r3-recovery",
+      "baseResultSha256": "24cac79dfc447045bf0504000723135ad24a679f56e5c9d021119681efd9fc54",
+      "candidateResultSha256": "4096080b3cf2fbee3dddeecb3fd58437316d9f6375916809e9c58a4d77756f46",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-06-511mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": false,
+        "sha256": false,
+        "channels": false,
+        "hashSha256": false,
+        "aabbBitsSha256": false,
+        "volumeBitsSha256": false
+      },
+      "spatialQueryMultisetsMatch": false,
+      "sameBrowserRelease": true,
+      "qualified": false,
+      "fullFeatureCompletionMs": {
+        "base": 25635,
+        "candidate": 24804,
+        "unqualifiedRatio": 0.9675833820947922
+      },
+      "geometryMs": {
+        "base": 22815,
+        "candidate": 21989,
+        "unqualifiedRatio": 0.963795748411133
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "68dd69e86ffbbf1fe4313641a332e91cb8bfdc5e6ab4ff221fbe32dd2d0b9060",
+      "candidateResultSha256": "afd277affb526115ff8a81d05d427fb3e300140821455d4b3dec2a9c0ece3e45",
+      "failures": [
+        {
+          "rawGeometryMismatch": true
+        },
+        {
+          "spatialMismatch": true
+        }
+      ]
+    },
+    {
+      "fixture": "downloads-07-283mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 4311,
+        "candidate": 4314,
+        "unqualifiedRatio": 1.000695894224078
+      },
+      "geometryMs": {
+        "base": 3859,
+        "candidate": 3858,
+        "unqualifiedRatio": 0.9997408655091993
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "bae2d964fd148a4d7ee3d41efb6fa083599124d2429ce6543503406850a49cce",
+      "candidateResultSha256": "2dc9b65e2b6c03a7adb8cd6658ca17a475ccccbe284e14a6cb8997cdc72b978a",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-08-263mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": false,
+        "sha256": false,
+        "channels": false,
+        "hashSha256": false,
+        "aabbBitsSha256": false,
+        "volumeBitsSha256": false
+      },
+      "spatialQueryMultisetsMatch": false,
+      "sameBrowserRelease": true,
+      "qualified": false,
+      "fullFeatureCompletionMs": {
+        "base": 38795,
+        "candidate": 34448,
+        "unqualifiedRatio": 0.8879494780255187
+      },
+      "geometryMs": {
+        "base": 36220,
+        "candidate": 31515,
+        "unqualifiedRatio": 0.8700993926007731
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "034af02545cc19a6182db0011bb838ec57cf01bddef16940d89ba0e702e4e8ab",
+      "candidateResultSha256": "51f8c43f3be3322dfbbaeadb00005d10ff4764591c6c28746b5a8c0db6d41d03",
+      "failures": [
+        {
+          "rawGeometryMismatch": true
+        },
+        {
+          "spatialMismatch": true
+        }
+      ]
+    },
+    {
+      "fixture": "downloads-12-13mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 441,
+        "candidate": 431,
+        "unqualifiedRatio": 0.9773242630385488
+      },
+      "geometryMs": {
+        "base": 350,
+        "candidate": 340,
+        "unqualifiedRatio": 0.9714285714285714
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "8d9068865851105e70872ffd67d47bb0de21954ae85a0b6fc8b2b82ae2b2e9df",
+      "candidateResultSha256": "c6c9e6aceb300e8d2974c4fe445286818231c3e3d9a6dd186d2b938538d1f91e",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-13-13mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 438,
+        "candidate": 439,
+        "unqualifiedRatio": 1.0022831050228311
+      },
+      "geometryMs": {
+        "base": 351,
+        "candidate": 337,
+        "unqualifiedRatio": 0.9601139601139601
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "de1dfeff0622b6bdb14f4f8b360f34e882087c7aff9c2d415a60807b22bb889a",
+      "candidateResultSha256": "05835b6950d397ccef34335bde51d6132775782effae522f2309b195552d36e2",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-14-11mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 339,
+        "candidate": 347,
+        "unqualifiedRatio": 1.0235988200589972
+      },
+      "geometryMs": {
+        "base": 235,
+        "candidate": 237,
+        "unqualifiedRatio": 1.0085106382978724
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "3fe6728444f64f1d585dc77cf8805fbf9e5553497353b0393dfa8c09ab83cd10",
+      "candidateResultSha256": "0510914864df9c03df1d31103c9f1d401007ba0574547e08733c1f8e99c98f30",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-15-5mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 382,
+        "candidate": 394,
+        "unqualifiedRatio": 1.031413612565445
+      },
+      "geometryMs": {
+        "base": 345,
+        "candidate": 358,
+        "unqualifiedRatio": 1.03768115942029
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "55085e7406b8fb24f463cfba55aecb1459e33afc2a8ed80c88d445c9e69655d6",
+      "candidateResultSha256": "3c636c4122f26840212f1b697387ef08d4e7aa3f11f15a552d02d834e1725ab3",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-16-1mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 268,
+        "candidate": 271,
+        "unqualifiedRatio": 1.0111940298507462
+      },
+      "geometryMs": {
+        "base": 143,
+        "candidate": 147,
+        "unqualifiedRatio": 1.027972027972028
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "ac1010bbc5702ead0a188d36f5686dabdeeda6f1aa98d45852c42b8f44dde4c5",
+      "candidateResultSha256": "9ee4bc5378626b88085dcf23650c35cdabbf5da7eda3164cd1cfe7a101894d8e",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-17-1mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 252,
+        "candidate": 254,
+        "unqualifiedRatio": 1.007936507936508
+      },
+      "geometryMs": {
+        "base": 138,
+        "candidate": 135,
+        "unqualifiedRatio": 0.9782608695652174
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "ccec701c1c4742199b65fc551054837b3b9248bcf440362f88e3d57df696f2e0",
+      "candidateResultSha256": "4d1d1b8d8355f245cfea9125ecf7f59242137f22a0901cacc3473b2572d3f93d",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-18-1mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 2711,
+        "candidate": 2699,
+        "unqualifiedRatio": 0.9955735890815197
+      },
+      "geometryMs": {
+        "base": 2606,
+        "candidate": 2592,
+        "unqualifiedRatio": 0.9946277820414429
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "a6c7282e81409157c3bbc60e69be668e655d1cf914e6a264c165bc786d8347b2",
+      "candidateResultSha256": "edde5be305db1fdc2d85bf02f039c972bcaeace8e7f48c944ba09a0b51062098",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-19-0mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 238,
+        "candidate": 241,
+        "unqualifiedRatio": 1.0126050420168067
+      },
+      "geometryMs": {
+        "base": 137,
+        "candidate": 140,
+        "unqualifiedRatio": 1.0218978102189782
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "3a1ed51b66cc1d121565a6d34f2d514b7f50e1e1ec86fc57cf681f6f1300823b",
+      "candidateResultSha256": "3d07be5555080c7d260ceb30f555f034de369d9008f6ec6a85f623c9257b1c9d",
+      "failures": []
+    },
+    {
+      "fixture": "downloads-20-0mb",
+      "bothCasesQualified": true,
+      "rawGeometryGate": {
+        "counts": true,
+        "sha256": true,
+        "channels": true,
+        "hashSha256": true,
+        "aabbBitsSha256": true,
+        "volumeBitsSha256": true
+      },
+      "spatialQueryMultisetsMatch": true,
+      "sameBrowserRelease": true,
+      "qualified": true,
+      "fullFeatureCompletionMs": {
+        "base": 241,
+        "candidate": 234,
+        "unqualifiedRatio": 0.970954356846473
+      },
+      "geometryMs": {
+        "base": 137,
+        "candidate": 136,
+        "unqualifiedRatio": 0.9927007299270073
+      },
+      "cohort": "browser-runs-r2",
+      "baseResultSha256": "428d839fca30088ebc7624098523343634454b4c7a764dec760da51017c7298f",
+      "candidateResultSha256": "f81b7bf897132a0411d9647644e3c5c7106e31fc08b0b58644b51ca766097ff1",
+      "failures": []
+    }
+  ],
+  "retainedAttemptDisposition": {
+    "r1": "First11pairs retained;1259MBbotharms browser.close20swatchdog failures retained unqualified; subsequent02/04/05 originalpairs remain boundary-contamination-uncertain and excluded from accepted timings. R1stopped after05candidate result saved before parent verdict emission.",
+    "r2": "Remaining12pairs, explicit sampled Chrome process disappearance before every next case; no lifecycle failures.",
+    "r3": "Only02/04/05 recoverypairs with explicit process disappearance; original uncertain attempts not overwritten."
+  },
+  "limits": [
+    "Functional completion does not waive browser.close watchdog failures.",
+    "Raw counts, canonical hash, AABB, volume and spatial query multisets compared without normalization or canonical-producer substitution.",
+    "Accepted-subset percentages do not represent a qualified whole27performance result; one pair cannot establish regression freedom.",
+    "No Firefox corpus comparison or deployment claim.",
+    "Original1259candidate process tree was checked after baseline had begun, not at its exact launch boundary; both1259cases remain rejected."
+  ],
+  "counts": {
+    "distinctFixtures": 27,
+    "totalRawCaseAttempts": 60,
+    "cleanRecoveryCaseAttempts": 6,
+    "retainedComparisonCases": 54,
+    "featureHarnessSuccessesRetainedComparison": 54,
+    "lifecycleRejectedRetainedCases": 2,
+    "rawGeometryRejectedPairs": 2,
+    "spatialRejectedPairs": 2,
+    "acceptedPairs": 24,
+    "rejectedPairs": 3,
+    "originalRecoveryAffectedCaseAttempts": 6
+  },
+  "sourceSummarySha256": "8c5cd62ac0f8289f621d777b2d35c7db3f3b188be3a87e407e38fe557e852531",
+  "candidateSourceCommit": "2312cc56a365de6f1dc723bdc13f58125299fb61",
+  "candidateSourceDelta": "only nine constraint-inventory kernel files vs publication2a2c0fb55; no canonical witness feature enabled",
+  "browserVersion": "Chrome 152.0.7977.76",
+  "browserHarnessSha256": {
+    "chrome.mjs": "ee08e4688487f42b996faa5b1e970a5503469da49095479bb9f9611b7e8baa88",
+    "server.py": "50b44bebf78e74528d6e72182cb503c55b1418fdb900fbab5b91162e4b0c9688",
+    "empty-property-witness.mjs": "3ac61ecf64e16dd4f8317687f8554b9f0fb95000fc79ed775c9a49fdfee80038",
+    "property-policy.mjs": "df29bc0ec133e45ae9e255278c9d5e73e33901da7ee4ae275105eb009121662e"
+  }
+}

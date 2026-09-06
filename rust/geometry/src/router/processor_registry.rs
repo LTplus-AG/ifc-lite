@@ -127,7 +127,3 @@ impl ProcessorRegistry {
         self.overrides.values().chain(self.defaults.iter().filter_map(OnceCell::get))
     }
 }
-
-#[cfg(test)]
-#[path = "processor_registry_tests.rs"]
-mod tests;

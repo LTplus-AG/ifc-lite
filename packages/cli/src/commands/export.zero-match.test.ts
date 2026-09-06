@@ -123,14 +123,29 @@ describe('export fails loudly when a filter matches 0 entities (#4047)', () => {
   it.each(ISOLATING_FORMATS)(
     '--format %s with --type matching something still succeeds and narrows (control)',
     async (format) => {
-      const out = outFile(`m.${format}`);
-      const { exited } = await run([
-        SAMPLE_IFC, '--format', format, '--type', 'IfcWall', '--out', out,
+      const filtered = outFile(`filtered.${format}`);
+      const { exited: filteredExited } = await run([
+        SAMPLE_IFC, '--format', format, '--type', 'IfcWall', '--out', filtered,
       ]);
       // The guard must not be satisfiable by simply failing every export.
-      expect(exited).toBe(false);
-      expect(existsSync(out)).toBe(true);
-      expect(statSync(out).size).toBeGreaterThan(0);
+      expect(filteredExited).toBe(false);
+      expect(existsSync(filtered)).toBe(true);
+      const filteredSize = statSync(filtered).size;
+      expect(filteredSize).toBeGreaterThan(0);
+
+      // Narrowing must actually have happened, not merely "some nonempty
+      // file got written" — that alone is satisfied by silently exporting
+      // the WHOLE model too (the exact escape this guard exists to close;
+      // see the module doc). obj/gltf/glb/jsonld/step are binary or
+      // structured formats with no shared entity-counting signal across
+      // the family, so compare against an unfiltered export of the same
+      // model instead: on hello-wall.ifc (1 wall among ~20 other element
+      // types) a real subset export is reliably, deterministically smaller
+      // than the whole-model export in every one of these formats.
+      const whole = outFile(`whole.${format}`);
+      const { exited: wholeExited } = await run([SAMPLE_IFC, '--format', format, '--out', whole]);
+      expect(wholeExited).toBe(false);
+      expect(filteredSize).toBeLessThan(statSync(whole).size);
     },
     60_000,
   );

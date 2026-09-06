@@ -32,12 +32,12 @@ ENDSEC;
 END-ISO-10303-21;
 `;
   const bytes = new TextEncoder().encode(source);
-  function run(partitioned) {
+  function run(partitioned, input = bytes) {
     const api = new IfcAPI();
     let result;
     try {
-      const pre = api.buildPrePassOnce(bytes);
-      const args = [bytes, pre.jobs, pre.unitScale, ...pre.rtcOffset, pre.needsShift,
+      const pre = api.buildPrePassOnce(input);
+      const args = [input, pre.jobs, pre.unitScale, ...pre.rtcOffset, pre.needsShift,
         pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors];
       result = partitioned ? api.processGeometryBatchPartitioned(...args)
         : api.processGeometryBatch(...args);
@@ -50,7 +50,8 @@ END-ISO-10303-21;
       assert.ok(mesh);
       try {
         return { expressId: mesh.expressId, positions: mesh.positions,
-          normals: mesh.normals, indices: mesh.indices };
+          normals: mesh.normals, indices: mesh.indices, origin: mesh.origin,
+          localToWorld: mesh.localToWorld };
       } finally {
         mesh.free();
       }
@@ -60,6 +61,13 @@ END-ISO-10303-21;
       api.free();
     }
   }
+  // A real non-planar solid traverses MeshDataJs before the demesher; a
+  // level-5 box replacement must not reintroduce the old reversed convention.
+  const boxSource = source.replace(/#12=[^;]+;/,
+    '#10=IFCCARTESIANPOINT((0.,0.));\n#11=IFCAXIS2PLACEMENT2D(#10,$);\n#12=IFCRECTANGLEPROFILEDEF(.AREA.,$,#11,2.,2.);')
+    .replace(/#13=[^;]+;/, '#13=IFCEXTRUDEDAREASOLID(#12,#4,#2,3.);')
+    .replace("'Tessellation'", "'SweptSolid'");
+  checkSimplifiedWinding(IfcAPI, run(false, new TextEncoder().encode(boxSource)));
   const flat = run(false);
   const decoded = decodeInstancedShard(run(true));
   // Only upload allocation is stubbed; materialization uses the real Scene.
@@ -97,4 +105,40 @@ function dotCrossNormal({ indices, positions: p, normals: n }) {
   return (u[1] * v[2] - u[2] * v[1]) * n[a * 3]
     + (u[2] * v[0] - u[0] * v[2]) * n[a * 3 + 1]
     + (u[0] * v[1] - u[1] * v[0]) * n[a * 3 + 2];
+}
+
+function checkSimplifiedWinding(IfcAPI, mesh) {
+  assert.ok(mesh.localToWorld, 'actual generated mesh must carry placement capture');
+  const api = new IfcAPI();
+  try {
+    for (const level of [1, 5]) {
+      const out = api.simplifyMeshes(new Uint32Array([mesh.expressId]), new Uint8Array([level]),
+        mesh.positions, mesh.normals, mesh.indices,
+        new Uint32Array([mesh.positions.length / 3]), new Uint32Array([mesh.indices.length]),
+        mesh.origin, mesh.localToWorld, new Uint8Array([1]), 0, 0, 0, 1, true);
+      try {
+        assert.deepEqual(Array.from(out.skippedIds), []);
+        assert.deepEqual(Array.from(out.elementIds), [mesh.expressId]);
+        const indices = out.renderIndices, positions = out.renderPositions, normals = out.renderNormals;
+        assert.equal(indices.length, 36, `level ${level}: complete box`);
+        assert.deepEqual(out.localIndices, indices, 'proper rotation preserves IFC-local index order');
+        for (let i = 0; i < indices.length; i += 3) {
+          assert.ok(dotCrossNormal({ indices: indices.subarray(i, i + 3), positions, normals }) > 0,
+            `level ${level}: simplified face agrees with outward normals`);
+        }
+        const local = out.localPositions;
+        let volume6 = 0;
+        for (let i = 0; i < indices.length; i += 3) {
+          const [a, b, c] = Array.from(indices.subarray(i, i + 3), j => local.subarray(j * 3, j * 3 + 3));
+          volume6 += a[0] * (b[1] * c[2] - b[2] * c[1])
+            + a[1] * (b[2] * c[0] - b[0] * c[2]) + a[2] * (b[0] * c[1] - b[1] * c[0]);
+        }
+        assert.ok(volume6 > 0, `level ${level}: re-exported IFC shell must remain outward`);
+      } finally {
+        out.free();
+      }
+    }
+  } finally {
+    api.free();
+  }
 }

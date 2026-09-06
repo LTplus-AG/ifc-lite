@@ -712,7 +712,7 @@ function calculateSummary(
 /**
  * Format a failure reason without translation
  */
-function formatFailureReason(result: FacetCheckResult): string {
+export function formatFailureReason(result: FacetCheckResult): string {
   if (!result.failure) {
     return `Expected ${result.expectedValue}, got ${result.actualValue}`;
   }
@@ -748,6 +748,8 @@ function formatFailureReason(result: FacetCheckResult): string {
       return `Classification system "${actual}" does not match expected ${expected}`;
     case 'CLASSIFICATION_VALUE_MISMATCH':
       return `Classification value "${actual}" does not match expected ${expected}`;
+    case 'CLASSIFICATION_UNRESOLVED':
+      return 'Entity is classified, but classification details cannot be read from this data source';
     case 'MATERIAL_MISSING':
       return 'No material assigned';
     case 'MATERIAL_VALUE_MISMATCH':
@@ -765,9 +767,7 @@ function formatFailureReason(result: FacetCheckResult): string {
   }
 }
 
-/**
- * Format a requirement description without translation
- */
+/** Format a requirement description without translation */
 function formatRequirementDescription(requirement: IDSRequirement): string {
   const facet = requirement.facet;
   const optionality = requirement.optionality;

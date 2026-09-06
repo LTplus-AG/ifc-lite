@@ -36,6 +36,23 @@ const cols = (rows: typeof spans) => ({
 });
 
 describe('buildEntityRefsFromIndex', () => {
+  it.each([false, true])('preserves equal-ID input order with sorted columns=%s', (sorted) => {
+    // Sorting must change only ID order, never the correspondence between
+    // a source span and its type, including repeated IDs from older producers.
+    const records = ['#2=IFCWALL($);', '#2=IFCSLAB($);', '#7=IFCBEAM($);'];
+    const bytes = new TextEncoder().encode(records.join('\n'));
+    const rows = records.map((line, i) => ({
+      id: i < 2 ? 2 : 7,
+      start: records.slice(0, i).reduce((n, record) => n + record.length + 1, 0),
+      len: line.length,
+    }));
+    const { ids, starts, lengths } = cols(sorted ? rows : [rows[2], rows[0], rows[1]]);
+    const refs = buildEntityRefsFromIndex(bytes, ids, starts, lengths);
+    expect(refs.map(ref => [ref.expressId, ref.type, ref.byteOffset])).toEqual(
+      rows.map((row, i) => [row.id, ['IFCWALL', 'IFCSLAB', 'IFCBEAM'][i], row.start]),
+    );
+  });
+
   it('extracts the type token and byte span for each column entry', () => {
     const { ids, starts, lengths } = cols(spans);
     const refs = buildEntityRefsFromIndex(src, ids, starts, lengths);

@@ -184,6 +184,7 @@ export const de = {
     classificationValueMismatch: 'Klassifizierungscode "{actual}" entspricht nicht dem erwarteten {expected}',
     classificationValueMissingAvailable: 'Klassifizierungscode {expected} nicht gefunden. Verfügbar: {available}',
     classificationProhibited: 'Verbotene Klassifizierung "{actual}" existiert im System "{system}"',
+    classificationUnresolved: 'Entität ist klassifiziert, aber die Klassifizierungsdetails können aus dieser Datenquelle nicht gelesen werden',
 
     // Material failures
     materialMissing: 'Kein Material zugewiesen',

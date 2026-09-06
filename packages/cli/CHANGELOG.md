@@ -1,5 +1,22 @@
 # @ifc-lite/cli
 
+## 0.28.0
+
+### Minor Changes
+
+- [#3934](https://github.com/LTplus-AG/ifc-lite/pull/3934) [`071fb0d`](https://github.com/LTplus-AG/ifc-lite/commit/071fb0d488c7e7537b56da17dad3bef63cc1d9c7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `ifc-lite delivery <recipe.json> [--json] [--out F] [--html F]`: a repeatable, reviewable model-delivery check that runs structural validation (the same rules `ifc-lite validate` runs) and/or IDS validation (the same validator `ifc-lite ids` runs) against one or more models from a saved, versioned recipe file.
+  
+  A recipe declares `models`, an optional `structural: true`, and an optional `ids` list of rule files, with every path resolved relative to the recipe file's own directory; a recipe that declares zero applicable checks is a fatal error. Every check reports `pass`, `fail`, or `error` (an unreadable model, an unreadable/unparsable IDS file, an IDS document with zero specifications, or an IDS document whose specifications all matched zero entities without a violation) — never folded into `pass`, so a rule that evaluated nothing can never read as a passing delivery. The overall verdict is `pass` only when every declared check on every declared model passed, so an unreadable model or an empty ruleset can never read as a successful delivery. The consolidated report records each model's SHA-256 fingerprint (or load error), the tool version, and every check's underlying `validate`/`ids` evidence — including per-specification pass/fail/not-applicable counts and per-entity pass/fail counts for IDS checks — as a flat array (never keyed by model/type/source), so two checks can never collide and overwrite one another in the output; running the same recipe twice against unchanged files produces byte-identical JSON and HTML. `--html <file>` additionally renders a standalone HTML report alongside the JSON.
+
+### Patch Changes
+
+- Updated dependencies [[`5d4140b`](https://github.com/LTplus-AG/ifc-lite/commit/5d4140b305aa3ef2c1d82e1def85095c8832bbed), [`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2), [`e1d807c`](https://github.com/LTplus-AG/ifc-lite/commit/e1d807cf4bf4f3bf25122fed4d7e3fde8296bf6d), [`09f9419`](https://github.com/LTplus-AG/ifc-lite/commit/09f941947666f567cd1fd6fd362041e048868434), [`6094e2f`](https://github.com/LTplus-AG/ifc-lite/commit/6094e2f16f27c80bc227f73bbdf634a770f17abc), [`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2)]:
+  - @ifc-lite/clash@2.1.0
+  - @ifc-lite/parser@5.1.0
+  - @ifc-lite/ids@1.15.54
+  - @ifc-lite/wasm@6.3.0
+  - @ifc-lite/sdk@4.0.1
+
 ## 0.27.0
 
 ### Minor Changes

@@ -2,16 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * CompactEntityIndex - Memory-efficient entity index using typed arrays
- *
- * Replaces Map<number, EntityRef> with sorted typed arrays for O(log n) lookup.
- * For 8.4M entities, this saves ~400MB of Map overhead:
- *   - Map: ~56 bytes/entry overhead (key + value + hash table) = ~470MB
- *   - Typed arrays: ~16 bytes/entry (4 Uint32Arrays) = ~134MB
- *
- * Provides the same Map-like interface via get()/has() for drop-in compatibility.
- */
+/** Sorted entity columns avoid the per-entry overhead of Map<number, EntityRef>.
+ * Lookups use binary search with a bounded LRU for recently read references. */
 
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
@@ -51,6 +43,7 @@ export class CompactEntityIndex {
 
   /** LRU cache for recently accessed EntityRefs */
   private lruCache: Map<number, EntityRef>;
+  private lruKeys: MapIterator<number> | undefined;
   private readonly lruMaxSize: number;
 
   constructor(
@@ -125,8 +118,10 @@ export class CompactEntityIndex {
     // Add to LRU cache
     this.lruCache.set(expressId, ref);
     if (this.lruCache.size > this.lruMaxSize) {
-      // Delete oldest entry (first key in insertion order)
-      const firstKey = this.lruCache.keys().next().value;
+      // #3983: keep a live cursor. Restarting at the Map's deleted prefix for
+      // every eviction makes a large sequential scan quadratic in Firefox.
+      this.lruKeys ??= this.lruCache.keys();
+      const firstKey = this.lruKeys.next().value;
       if (firstKey !== undefined) {
         this.lruCache.delete(firstKey);
       }
@@ -234,6 +229,7 @@ export class CompactEntityIndex {
    */
   clearCache(): void {
     this.lruCache.clear();
+    this.lruKeys = undefined;
   }
 
   /**

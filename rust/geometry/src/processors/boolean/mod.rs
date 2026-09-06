@@ -332,12 +332,19 @@ impl BooleanClippingProcessor {
     /// cutter that needs the per-cutter unbounded-plane fallback, or a CSG
     /// union that silently under-removes).
     ///
-    /// Relies on a *watertight* CSG union of the cutter prisms (built by
-    /// [`Self::build_cutter_union`]). No longer manifold-gated — the chain walk
-    /// and cutter build are kernel-agnostic and must compile into the pure-Rust
-    /// wasm — but it still DEFERS (returns `Ok(None)`) when no available kernel
-    /// can produce that watertight union, so a non-manifold mesh-merge is never
-    /// fed into the subtract.
+    /// Relies on [`Self::build_cutter_union`] for the cutter-prism union.
+    /// **Measured contract (issue #3980):** `build_cutter_union` does NOT
+    /// verify that its union is watertight or even manifold — see its doc
+    /// comment for the measured numbers on the real #960 fixture. It only
+    /// requires a nonempty result and defers (`Ok(None)`) when the primary is
+    /// empty and the fallback is empty or errors. What actually
+    /// keeps a non-closed union from producing a wrong subtraction is
+    /// downstream, in this function: the per-cutter trial-subtract probes,
+    /// the intersected-bounds check on the batched subtract, the `#3919`
+    /// accept-gate on the actual cut, and the `#3925` removal-bound check on
+    /// the repair candidate. Those checks were sufficient on all five walls
+    /// in the audited #960 fixture, but that is fixture evidence, not a
+    /// closure proof.
     fn try_union_polygonal_chain(
         &self,
         entity: &DecodedEntity,
@@ -430,16 +437,18 @@ impl BooleanClippingProcessor {
         }
         let _ = clipper.take_failures();
 
-        // Every cutter is a clean partial cut: union them into ONE watertight
-        // solid (a true CSG union, so abutting roof segments share no internal
-        // seam) and subtract once. This eliminates both the zero-thickness seam
-        // fins that sequential subtraction leaves behind AND the deep-chain
-        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when no
-        // available kernel can union the prisms into a watertight solid; we
-        // defer (like every other guard here) rather than feed a broken,
-        // non-manifold union into the subtract — which the CSG kernel can't
-        // classify, silently returning the host UNCHANGED (issue #960 wall
-        // #2152: the gable-end wall rendered at full 7000 mm extrusion height).
+        // Every cutter is a clean partial cut: union them into ONE solid (a
+        // true CSG union, so abutting roof segments share no internal seam)
+        // and subtract once. This is what eliminates the zero-thickness seam
+        // fins that sequential subtraction leaves behind and the deep-chain
+        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when
+        // the primary result is empty and the fallback is empty or errors —
+        // it does not check the union for closure (issue #3980; see its doc
+        // comment for the measured contract) — so we still defer whenever no
+        // kernel produces even a nonempty result, which is the case that used
+        // to feed a broken union into the subtract and have the CSG kernel
+        // silently return the host UNCHANGED (issue #960 wall #2152: the gable-end
+        // wall rendered at full 7000 mm extrusion height).
         let combined = match self.build_cutter_union(&clipper, &prisms) {
             Some(m) if !m.is_empty() => m,
             _ => {
@@ -681,12 +690,18 @@ impl BooleanClippingProcessor {
     /// `try_union_polygonal_chain` returns `None` (fall through to this
     /// sequential step) whenever batching isn't provably safe, so the
     /// per-cutter bounded→unbounded fallback still rescues full-cross-section
-    /// clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
-    /// on all five reported House.ifc walls. The *correctness* of the single
-    /// subtract hinges on a WATERTIGHT union of the cutter prisms
-    /// (`build_cutter_union`, the exact kernel's N-ary `union_many`); when it
-    /// can't produce one, the chain falls through to this path — never worse
-    /// than pre-#960 (841_house_stack_overflow.ifc).
+    /// clips (duplex.ifc "Party Wall"). Verified Z-bound agreement with
+    /// IfcOpenShell within 25 mm on all five reported House.ifc walls.
+    /// `build_cutter_union` (the exact
+    /// kernel's N-ary `union_many`, falling back to `union_meshes`) only
+    /// requires a NONEMPTY union — it does not verify closure (issue #3980;
+    /// see its doc comment for the measured contract on the real #960
+    /// fixture). What actually guards the single subtract is downstream, in
+    /// `try_union_polygonal_chain`: the intersected-bounds check and the
+    /// `#3919` accept-gate on the actual cut. When `build_cutter_union`
+    /// returns `None` (primary empty and fallback empty or errored) or those
+    /// downstream checks reject the result, the chain falls through to this
+    /// sequential path.
     ///
     /// `solo_step`: true when this is the ONLY node the caller's spine walk
     /// deferred to (a genuine single-PBHS-cutter DIFFERENCE, #3923's target

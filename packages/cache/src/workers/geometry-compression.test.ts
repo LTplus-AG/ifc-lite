@@ -121,7 +121,8 @@ const coordinateInfo: CoordinateInfo = {
 };
 const makeMesh = (id: number, vertices: number): MeshData => ({
   expressId: id, ifcType: 'IFCWALL', origin: [id * 64, 0, 0],
-  positions: new Float32Array(vertices * 3), normals: new Float32Array(vertices * 3),
+  positions: Float32Array.from({ length: vertices * 3 }, (_, i) => id * 16 + (i % 97) / 8),
+  normals: Float32Array.from({ length: vertices * 3 }, (_, i) => (id + i % 3 + 1) / Math.hypot(id + 1, id + 2, id + 3)),
   indices: new Uint32Array([0, 1, 2]), color: [0.2, 0.3, 0.4, 1],
 });
 
@@ -142,6 +143,7 @@ it('keeps complete geometry bytes/order and the four-record bound through actual
   const restored = (await Promise.all(opened.chunks.map((_, i) => opened.readChunk(i)))).flat();
   expect(restored.map(mesh => mesh.expressId)).toEqual(meshes.map(mesh => mesh.expressId));
   expect(restored.map(mesh => mesh.positions)).toEqual(meshes.map(mesh => mesh.positions));
+  expect(restored.map(mesh => mesh.normals)).toEqual(meshes.map(mesh => mesh.normals));
   expect(restored.map(mesh => mesh.origin)).toEqual(meshes.map(mesh => mesh.origin));
   expect(meshes.every(mesh => mesh.positions.byteLength > 0)).toBe(true);
 }, 30_000);

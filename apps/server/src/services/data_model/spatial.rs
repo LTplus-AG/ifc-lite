@@ -259,6 +259,26 @@ pub(super) fn build_spatial_hierarchy(
         }
     }
 
+    // The orphan-fill loop above pulls a rescued node's `children_ids`
+    // straight from `spatial_children_map`, without the same filtering
+    // `build_spatial_nodes_recursive` applies to its own node after
+    // descending into its children. That reintroduces this PR's own bug one
+    // level removed: an entity whose canonical parent is itself an orphan
+    // (e.g. a Site never aggregated by Project, canonical-parenting a
+    // Building) is skipped by the orphan-fill loop's `canonical_parent`
+    // check - correctly, since it does have a parent - but that parent is
+    // rescued as a fake root and still lists it in `children_ids`, so the
+    // fake root ends up pointing at a child with no `SpatialNode` of its
+    // own: the exact dangling-reference shape this fix set out to eliminate.
+    // One final pass across every node (recursively-built ones included, as
+    // a no-op there) closes this the same way the recursive walker already
+    // closes it for its own descent.
+    let all_node_ids: FxHashSet<u32> = nodes_map.keys().copied().collect();
+    for node in nodes_map.values_mut() {
+        node.children_ids
+            .retain(|child_id| all_node_ids.contains(child_id));
+    }
+
     // Build lookup maps for element containment
     let mut element_to_storey = Vec::new();
     let mut element_to_building = Vec::new();

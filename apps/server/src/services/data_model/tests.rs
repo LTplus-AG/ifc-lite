@@ -1151,3 +1151,48 @@ fn entities_past_the_depth_cap_are_dropped_cleanly_not_resurrected_as_fake_roots
     }
 }
 
+/// Follow-up to #3973's own fix: `Site` is never aggregated by `Project` (a
+/// malformed but real truncated-export shape), so it is genuinely unreachable
+/// from the root and rescued by the orphan-fill loop as a fake root
+/// (`parent_id: 0, level: 0`) - correctly, per this PR's own rule, since it
+/// has no canonical parent of its own. But `Site` DOES canonically parent
+/// `Building` via `IfcRelAggregates`, so `Building` is skipped by the
+/// orphan-fill loop's `canonical_parent` check (it does have a parent) and
+/// never gets its own `SpatialNode` - while the orphan-fill loop populated
+/// the rescued `Site` node's `children_ids` straight from
+/// `spatial_children_map`, without the same filtering
+/// `build_spatial_nodes_recursive` applies to its own descent. The rescued
+/// `Site` therefore names `Building` as a child with no `SpatialNode` of its
+/// own: the exact dangling-reference shape this fix set out to eliminate,
+/// reappearing one level removed in the orphan-fill path itself.
+const DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000009',$,'MyProject',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'MySite',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#101=IFCRELAGGREGATES('Agg00000000000000000009',$,$,$,#2,(#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_rescued_orphans_children_ids_never_names_a_node_that_was_not_itself_rescued() {
+    let dm = extract_data_model(DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC);
+    let site = dm
+        .spatial_hierarchy
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 2)
+        .expect("Site is genuinely unreachable and has no canonical parent, so it must be rescued as a fake root");
+    assert_eq!(site.parent_id, 0);
+    let building_has_node = dm.spatial_hierarchy.nodes.iter().any(|n| n.entity_id == 3);
+    assert!(
+        !site.children_ids.contains(&3) || building_has_node,
+        "Site's children_ids names Building (#3) as a child, but Building has \
+         no SpatialNode of its own - a dangling reference identical in shape \
+         to the one this fix eliminated for the recursive-descent path"
+    );
+}

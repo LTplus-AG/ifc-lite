@@ -14,6 +14,8 @@ interface ClassRecord {
   identification?: string;
   name?: string;
   path?: string[];
+  unresolved?: boolean;
+  presenceUnknown?: boolean;
 }
 
 /**
@@ -45,7 +47,13 @@ export function resolveClassifications(
     // even when the value is empty — so optional-cardinality value
     // mismatches register as a value mismatch rather than as a
     // missing-classification (which optional pardons).
-    out.push({ system, value: baseValue, name: c.name });
+    out.push({
+      system,
+      value: baseValue,
+      name: c.name,
+      unresolved: c.unresolved,
+      presenceUnknown: c.presenceUnknown,
+    });
     if (Array.isArray(c.path)) {
       for (const code of c.path) {
         if (code && code !== baseValue) {
@@ -63,15 +71,50 @@ export function resolveClassifications(
  * `IfcRelAssociatesClassification`. The parser doesn't categorize
  * external-ref edges into the relationship graph today, so we scan
  * the type table directly.
+ *
+ * On a server-parsed (source-empty) store this type table is not merely
+ * incomplete — it structurally cannot contain `IFCEXTERNALREFERENCERELATIONSHIP`
+ * (or `IFCMATERIAL`/`IFCPROFILEDEF`) entries at all: the server pipeline's
+ * `IfcTypeEnum` (packages/data/src/types.ts) has no slot for any of them, and
+ * the server resolves classifications only via `IfcRelAssociatesClassification`
+ * (apps/server/src/services/data_model/classifications.rs). So an empty
+ * `byType` lookup here proves nothing about whether THIS entity carries a
+ * classification through this pathway — unlike the sibling
+ * `IfcRelAssociatesClassification` path (#3951), there is no
+ * relationship-graph fallback at all for this one (#3954): presence cannot
+ * be proven OR disproven without source bytes.
  */
 function appendExternalReferenceClassifications(
   store: IfcDataStore,
   expressId: number,
   list: ClassRecord[]
 ): void {
+  if (!store.source?.length) {
+    // Only fall back to "cannot determine" when:
+    //  1. the IfcRelAssociatesClassification path (already applied to `list`
+    //     by the caller) found nothing — an entity already confirmed
+    //     classified, or confirmed-but-unresolved, through that path doesn't
+    //     also rely on this non-rooted-resource pathway, so leave it
+    //     untouched rather than diluting a real match/mismatch into
+    //     "unresolved"; and
+    //  2. `expressId` could actually BE a `RelatedResourceObjects` target —
+    //     the IFC schema restricts that role to non-rooted resource-level
+    //     entities (IfcResourceObjectSelect: IfcMaterial(Select) members,
+    //     IfcProfileDef, …), never an IfcRoot subtype like IfcWall. A rooted
+    //     element's `list.length === 0` genuinely means unclassified — no
+    //     external-ref ambiguity is even schema-possible for it — so
+    //     blanket-marking every empty result as unresolved would regress the
+    //     overwhelming common case (a genuinely unclassified wall/door/etc.)
+    //     into a false "cannot determine" on every server-parsed model.
+    if (list.length === 0 && isNonRootedClassifiableResource(store, expressId)) {
+      list.push({ unresolved: true, presenceUnknown: true });
+    }
+    return;
+  }
+
   const erRefs =
     store.entityIndex?.byType?.get?.('IFCEXTERNALREFERENCERELATIONSHIP') || [];
-  if (erRefs.length === 0 || !store.source?.length) return;
+  if (erRefs.length === 0) return;
   const ex = new EntityExtractor(store.source);
 
   for (const erId of erRefs) {
@@ -128,4 +171,115 @@ function appendExternalReferenceClassifications(
     }
     list.push(info);
   }
+}
+
+/**
+ * `IfcMaterialDefinition`'s concrete members (IFC4 and IFC4X3 EXPRESS
+ * schemas agree): `IfcMaterial`, `IfcMaterialConstituent(Set)`,
+ * `IfcMaterialLayer(Set)` and `IfcMaterialProfile(Set)`, plus the two
+ * `…WithOffsets` subtypes. `IfcMaterialDefinition` itself is abstract (no
+ * instances), and every OTHER `IFCMATERIAL*`-prefixed entity —
+ * `IfcMaterialList` (an `IfcMaterialSelect` member, not
+ * `IfcMaterialDefinition`), `IfcMaterialLayerSetUsage`/
+ * `IfcMaterialProfileSetUsage`, `IfcMaterialDefinitionRepresentation`,
+ * `IfcMaterialRelationship`, `IfcMaterialClassificationRelationship`,
+ * `IfcMaterialProperties` and its subtypes — is NOT an
+ * `IfcResourceObjectSelect` member and can never legitimately be the
+ * `RelatedResourceObjects` target of an `IfcExternalReferenceRelationship`.
+ * A plain `startsWith('IFCMATERIAL')` swallows all of those too, turning a
+ * genuinely unclassified `IfcMaterialLayerSetUsage` (a common, real entity —
+ * every layered wall has one) into a spurious `CLASSIFICATION_UNRESOLVED`.
+ */
+const MATERIAL_DEFINITION_TYPES = new Set([
+  'IFCMATERIAL',
+  'IFCMATERIALCONSTITUENT',
+  'IFCMATERIALCONSTITUENTSET',
+  'IFCMATERIALLAYER',
+  'IFCMATERIALLAYERSET',
+  'IFCMATERIALLAYERWITHOFFSETS',
+  'IFCMATERIALPROFILE',
+  'IFCMATERIALPROFILESET',
+  'IFCMATERIALPROFILEWITHOFFSETS',
+]);
+
+/**
+ * Every non-abstract `IfcProfileDef` subtype, walked from the
+ * `SUBTYPE OF` chain in both `packages/codegen/schemas/IFC4_ADD2_TC1.exp`
+ * and `IFC4X3.exp` down to `IfcProfileDef` — the union of both schemas,
+ * since a type introduced in one (`IfcOpenCrossProfileDef`, IFC4X3-only)
+ * must still be recognised when a store built from the other schema is
+ * queried against it. `is-non-rooted-classifiable-resource.exp-derived.test.ts`
+ * re-derives this same set from the `.exp` files at test time and asserts
+ * it matches exactly — regenerate this list from that test's derivation
+ * (not by hand) if either schema adds or removes a `IfcProfileDef`
+ * subtype.
+ *
+ * Three prior predicates for this role each got a different edge wrong:
+ * `endsWith('PROFILEDEF')` missed `IfcArbitraryProfileDefWithVoids` (its
+ * name doesn't *end* in "ProfileDef"); the `includes('PROFILEDEF')` that
+ * replaced it over-matched `IfcRelAssociatesProfileDef` — a *rooted*
+ * relationship that points AT a profile def via `RelatingProfileDef`, not
+ * a profile def itself; patching that with `!startsWith('IFCREL')` is
+ * exactly the kind of one-off exclusion this explicit, schema-derived set
+ * is meant to make unnecessary going forward.
+ */
+const PROFILE_DEF_TYPES = new Set([
+  'IFCARBITRARYCLOSEDPROFILEDEF',
+  'IFCARBITRARYOPENPROFILEDEF',
+  'IFCARBITRARYPROFILEDEFWITHVOIDS',
+  'IFCASYMMETRICISHAPEPROFILEDEF',
+  'IFCCENTERLINEPROFILEDEF',
+  'IFCCIRCLEHOLLOWPROFILEDEF',
+  'IFCCIRCLEPROFILEDEF',
+  'IFCCOMPOSITEPROFILEDEF',
+  'IFCCSHAPEPROFILEDEF',
+  'IFCDERIVEDPROFILEDEF',
+  'IFCELLIPSEPROFILEDEF',
+  'IFCISHAPEPROFILEDEF',
+  'IFCLSHAPEPROFILEDEF',
+  'IFCMIRROREDPROFILEDEF',
+  'IFCOPENCROSSPROFILEDEF', // IFC4X3 only
+  'IFCPARAMETERIZEDPROFILEDEF',
+  'IFCRECTANGLEHOLLOWPROFILEDEF',
+  'IFCRECTANGLEPROFILEDEF',
+  'IFCROUNDEDRECTANGLEPROFILEDEF',
+  'IFCTRAPEZIUMPROFILEDEF',
+  'IFCTSHAPEPROFILEDEF',
+  'IFCUSHAPEPROFILEDEF',
+  'IFCZSHAPEPROFILEDEF',
+]);
+
+/**
+ * Could an entity of this upper-cased type name be a `RelatedResourceObjects`
+ * target of an `IfcExternalReferenceRelationship`? The IFC schema restricts
+ * that role to `IfcResourceObjectSelect` members — `IfcMaterialDefinition`
+ * (see `MATERIAL_DEFINITION_TYPES`) and `IfcProfileDef` (see
+ * `PROFILE_DEF_TYPES`) subtypes — never an `IfcRoot` subtype (`IfcWall`,
+ * `IfcDoor`, …), which can only be classified via
+ * `IfcRelAssociatesClassification`.
+ *
+ * Pulled out of `isNonRootedClassifiableResource` as a pure function of the
+ * type name so `is-non-rooted-classifiable-resource.exp-derived.test.ts` can
+ * exercise it directly against every entity name in both schemas, without
+ * building a store for each one.
+ */
+export function isNonRootedClassifiableResourceType(upperType: string): boolean {
+  return MATERIAL_DEFINITION_TYPES.has(upperType) || PROFILE_DEF_TYPES.has(upperType);
+}
+
+/**
+ * Could `expressId` be a `RelatedResourceObjects` target of an
+ * `IfcExternalReferenceRelationship`? See `isNonRootedClassifiableResourceType`
+ * for the schema rule this applies. `EntityRef.type` is available from the
+ * type-table index without reading `source` bytes (it's set from the raw
+ * STEP/server type name, not extracted attributes), so this check costs
+ * nothing on a server-parsed store.
+ */
+function isNonRootedClassifiableResource(
+  store: IfcDataStore,
+  expressId: number
+): boolean {
+  const type = store.entityIndex?.byId?.get?.(expressId)?.type;
+  if (typeof type !== 'string') return false;
+  return isNonRootedClassifiableResourceType(type.toUpperCase());
 }

@@ -66,6 +66,14 @@ export interface StoreyRule {
   refs?: ReadonlyArray<{ modelId: string; expressId: number }>;
 }
 
+/** Match the loaded model that owns an element. Values use a durable source
+ * fingerprint so saved filters survive the fresh runtime ids minted on reload. */
+export interface ModelRule {
+  kind: 'model';
+  values: string[];
+  op: SetOp;
+}
+
 export interface IfcTypeRule {
   kind: 'ifcType';
   values: string[];
@@ -133,6 +141,7 @@ export interface ElevationRule {
 }
 
 export type FilterRule =
+  | ModelRule
   | StoreyRule
   | IfcTypeRule
   | PredefinedTypeRule
@@ -286,6 +295,7 @@ export function addHierarchyStoreyToRule(
 // rules from a different representation (URL state, presets).
 
 export const Rule = {
+  model: (values: string[], op: SetOp = 'in'): ModelRule => ({ kind: 'model', values, op }),
   storey: (
     values: string[],
     op: SetOp = 'in',
@@ -311,6 +321,7 @@ export function isFilterRule(value: unknown): value is FilterRule {
   if (typeof value !== 'object' || value === null) return false;
   const kind = (value as { kind?: unknown }).kind;
   return (
+    kind === 'model' ||
     kind === 'storey' ||
     kind === 'ifcType' ||
     kind === 'predefinedType' ||

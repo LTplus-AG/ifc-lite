@@ -124,3 +124,15 @@ See the [API Reference](https://ifclite.dev/docs/api/typescript/#ifc-litecache).
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+
+### Compact entity-index input
+
+`CacheEntityIndex.byId` continues to accept an iterable of entity references. Column-aware producers may additionally implement `getColumns()`, returning `expressIds`, `byteOffsets`, `byteLengths`, `typeIndices` and `typeStrings` with the same rows as iteration. The parser's `CompactEntityIndex` supplies this method; the cache package does not require a parser runtime dependency.
+
+Serialization borrows valid sorted columns synchronously, preserving stable duplicate order, normalized type names and first-row type-table order. It never mutates or detaches input backing. Unsupported column shapes use the iterable representation. Producers must keep borrowed columns stable during serialization and must not expose unrelated columns through this method. The existing binary format and generic iterable behavior are unchanged.
+## Browser compression worker
+
+`BinaryCacheWriter.write` accepts `compressGeometryChunksInWorker: true` to run geometry chunk compression in one lazily created browser module worker. The viewer enables it to keep codec work off the UI thread. The default is `false`, preserving workerless SDK and Node use. The existing compression size floor and four-chunk concurrency limit remain in effect; disabling `compressGeometryChunks` creates no worker. Cache format, chunk order, compressed-versus-raw selection and readers are unchanged.
+
+The browser application must bundle the package worker asset and permit module workers. Worker startup, codec and transport failures reject the cache write; there is no silent main-thread retry. Only newly serialized chunk buffers cross the worker boundary, and the worker terminates after geometry serialization succeeds or fails. Source/model data stay with the caller. This moves compression CPU rather than eliminating it; include cache completion when measuring cold loads.

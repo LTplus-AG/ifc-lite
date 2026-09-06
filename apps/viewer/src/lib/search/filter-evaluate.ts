@@ -56,6 +56,11 @@ import {
   type Combinator,
   type FilterRule,
 } from './filter-rules.js';
+import {
+  isNumericArrayLike,
+  materialiseNumericIterable,
+  toNumericIterable,
+} from './filter-iteration.js';
 
 import {
   flattenPsets,
@@ -96,6 +101,8 @@ export interface EvaluateOptions {
   storeyNameOf?: (expressId: number) => string;
   /** Optional predefined-type resolver. Falls back to "" when omitted. */
   predefinedTypeOf?: (expressId: number) => string;
+  /** Stable identity used by persisted model rules; defaults to `modelId`. */
+  modelFilterIdentity?: string;
 }
 
 const DEFAULT_LIMIT = 5_000;
@@ -120,13 +127,14 @@ export function evaluateFilterRules(
 
   const limit = options.limit ?? DEFAULT_LIMIT;
   const orderedRules = orderRulesByCost(rules);
-  const iterIds = toIterable(
+  const iterIds = toNumericIterable(
     selectIterationSource(store, rules, combinator, options.candidateExpressIds, modelId),
   );
   const out: FilteredElement[] = [];
   const ctx: EvalContext = {
     store,
     modelId,
+    modelFilterIdentity: options.modelFilterIdentity ?? modelId,
     table: store.entities,
     options,
     hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -146,18 +154,6 @@ export function evaluateFilterRules(
     out.push(buildResult(modelId, ctx, expressId));
   }
   return out;
-}
-
-/** Coerce ArrayLike-or-Iterable into an Iterable so the sync entry can
- *  use `for…of`. The federated entry takes the array fast-path
- *  separately. */
-function toIterable(source: ArrayLike<number> | Iterable<number>): Iterable<number> {
-  if (Symbol.iterator in Object(source)) return source as Iterable<number>;
-  // ArrayLike fallback — wrap as a generator so the for…of loop works.
-  return (function* () {
-    const arr = source as ArrayLike<number>;
-    for (let i = 0; i < arr.length; i++) yield arr[i];
-  })();
 }
 
 // ── Async federated entry — production UI path ──────────────────────────────
@@ -186,7 +182,7 @@ export interface FederatedEvaluateOptions extends Omit<EvaluateOptions, 'candida
  * sorted result list. Async chunked + cancellable + progress-reporting.
  */
 export async function evaluateFilterRulesFederated(
-  models: ReadonlyArray<{ id: string; store: IfcDataStore | null }>,
+  models: ReadonlyArray<{ id: string; filterIdentity?: string; store: IfcDataStore | null }>,
   rules: readonly FilterRule[],
   combinator: Combinator,
   options: FederatedEvaluateOptions = {},
@@ -203,6 +199,7 @@ export async function evaluateFilterRulesFederated(
   // progress callback can render a single bar across the federation.
   interface Plan {
     modelId: string;
+    modelFilterIdentity: string;
     store: IfcDataStore;
     iter: ArrayLike<number> | Iterable<number>;
     total: number;
@@ -212,15 +209,32 @@ export async function evaluateFilterRulesFederated(
   let totalKnown = true;
   for (const m of models) {
     if (!m.store) continue;
+    const modelFilterIdentity = m.filterIdentity ?? m.id;
+    if (
+      combinator === 'AND'
+      && orderedRules.some((rule) => {
+        if (rule.kind !== 'model') return false;
+        const matchesModel = setOpMatches(rule.op, modelFilterIdentity, rule.values);
+        return !matchesModel;
+      })
+    ) {
+      continue;
+    }
     const candidates = options.candidateExpressIdsByModel?.get(m.id);
     const source = candidates ?? selectIterationSource(m.store, rules, combinator, undefined, m.id);
-    const arr = materialiseIterable(source);
+    const arr = materialiseNumericIterable(source);
     if (arr === null) {
       totalKnown = false;
     } else {
       grandTotal += arr.length;
     }
-    plans.push({ modelId: m.id, store: m.store, iter: arr ?? source, total: arr ? arr.length : -1 });
+    plans.push({
+      modelId: m.id,
+      modelFilterIdentity,
+      store: m.store,
+      iter: arr ?? source,
+      total: arr ? arr.length : -1,
+    });
   }
 
   let scanned = 0;
@@ -233,6 +247,7 @@ export async function evaluateFilterRulesFederated(
     const ctx: EvalContext = {
       store: plan.store,
       modelId: plan.modelId,
+      modelFilterIdentity: plan.modelFilterIdentity,
       table: plan.store.entities,
       options,
       hasPropertyRule: orderedRules.some((r) => r.kind === 'property'),
@@ -245,7 +260,7 @@ export async function evaluateFilterRulesFederated(
     // Walk the per-model iter in chunkSize-sized strides, yielding the
     // event loop between chunks. ArrayLike fast-path uses index access;
     // the fallback path drains an iterator into chunks.
-    if (Array.isArray(plan.iter) || isArrayLike(plan.iter)) {
+    if (Array.isArray(plan.iter) || isNumericArrayLike(plan.iter)) {
       const arr = plan.iter as ArrayLike<number>;
       for (let i = 0; i < arr.length && out.length < limit; i += chunkSize) {
         if (signal?.aborted) throwAbort(signal);
@@ -350,6 +365,8 @@ function unionByType(store: IfcDataStore, names: readonly string[]): number[] | 
  * expensive parse for entities that already fail/pass.
  */
 const RULE_COST: Record<FilterRule['kind'], number> = {
+  // Constant-time comparison against the entity's owning model.
+  model:          0,
   // Column-only — single TypedArray read.
   ifcType:        0,
   // Pre-built reverse-map lookup.
@@ -390,6 +407,8 @@ interface EvalContext {
   store: IfcDataStore;
   /** Scopes a `StoreyRule.refs` exact match to this store's own model. */
   modelId: string;
+  /** Stable source identity compared by `ModelRule`. */
+  modelFilterIdentity: string;
   table: IfcDataStore['entities'];
   options: EvaluateOptions;
   hasPropertyRule: boolean;
@@ -517,6 +536,9 @@ function evaluateRule(
   classFor: (() => readonly ClassificationInfo[]) | null,
 ): boolean {
   switch (rule.kind) {
+    case 'model': {
+      return setOpMatches(rule.op, ctx.modelFilterIdentity, rule.values);
+    }
     case 'storey': {
       // Exact-identity mode (refs present): Name isn't unique.
       if (rule.refs) {
@@ -585,28 +607,6 @@ function buildResult(modelId: string, ctx: EvalContext, expressId: number): Filt
  *  entry report a `total` rather than streaming with `total = -1`. */
 function iterateAllExpressIds(store: IfcDataStore): ArrayLike<number> {
   return store.entities.expressId;
-}
-
-function isArrayLike(value: unknown): value is ArrayLike<number> {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { length?: unknown }).length === 'number'
-  );
-}
-
-/** Try to materialise an iterable into an array so the federated loop
- *  can chunk-iterate by index (faster + provides a `total` for progress).
- *  Returns null when the source is unknown-size and we'd rather stream. */
-function materialiseIterable(
-  source: ArrayLike<number> | Iterable<number>,
-): ArrayLike<number> | null {
-  if (Array.isArray(source)) return source;
-  if (isArrayLike(source)) return source;
-  if (source instanceof Set) return Array.from(source);
-  // Generators / unknown-size iterables: keep streaming. The federated
-  // loop falls back to the iterator branch with a buffered chunk count.
-  return null;
 }
 
 function throwAbort(signal: AbortSignal): never {

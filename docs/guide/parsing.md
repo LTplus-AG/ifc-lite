@@ -115,6 +115,17 @@ if (WorkerParser.isSupported()) {
 }
 ```
 
+For an integrated geometry/parser load, both `WorkerParser.parseColumnar` and
+`GeometryProcessor.processAdaptive` accept an optional `sourceFingerprint` cell.
+Use a fresh 16-byte `SharedArrayBuffer` for each immutable source and pass that
+same cell to both calls. Its four unsigned 32-bit words hold source length low
+and high halves, hash, and readiness; initialize only the two length words before
+starting either call. Never reuse a cell for another source or load. The existing
+prepass worker computes the full-source key when its WASM supports that operation;
+the parser uses it only if ready, otherwise it computes the same key itself without
+waiting. Omitting the cell retains ordinary parsing behavior. This optimization
+does not change partial/final source accessor identity or cache keys.
+
 ### Streaming Geometry
 
 For large files, stream geometry progressively using `GeometryProcessor.processStreaming()`:
@@ -394,6 +405,19 @@ await client.parseParquetStream(file, (batch) => {
 
 See the [Server Guide](server.md) for complete server documentation.
 
+### Native Rust decoder scratch buffers
+
+For repeated native decoding, caller-owned scratch vectors can be reused with
+`EntityDecoder::get_entity_ref_list_fast_into(entity_id, &mut ids)` and
+`get_polyloop_coords_cached_into(entity_id, &mut coords)`. Each replaces the
+buffer contents and returns `Some(())` on success or `None` with an empty buffer
+on failure. The reference-list helper preserves authored order and duplicates,
+dropping oversized references. The PolyLoop helper preserves coordinate order
+and rejects the whole loop for missing or oversized point references; points
+already resolved remain in the decoder's existing point cache even on failure.
+Both retain the behavior of their allocating convenience accessors. The caller
+controls scratch-vector lifetime; reuse does not promise physical memory release.
+
 ## Parse Options
 
 ```typescript
@@ -468,6 +492,17 @@ interface IfcDataStore {
 }
 ```
 
+Source-empty server stores can provide `resolvedClassifications`, an optional map from entity express IDs to `ClassificationInfo[]`. `extractClassificationsOnDemand` combines the entity's rows with those inherited through `IfcRelDefinesByType`, using the relationship graph to confirm classification associations. The server derives classifications and relationships from the same immutable IFC input. Repeated relationships may produce multiple resolved rows for one deduplicated graph edge. When resolved rows are absent, the parser returns unresolved markers instead of certifying classification attributes. Source-bearing stores continue to decode classifications from their IFC bytes.
+
+### Native Rust owned index columns
+
+`ColumnarEntityIndex::from_owned_columns(ids, starts, lengths)` consumes three
+`Vec<u32>` columns. Like the borrowed `from_columns` constructor, it sorts when
+needed, keeps the last input occurrence of duplicate IDs, and returns an empty
+index for empty or mismatched columns. Already sorted, unique columns retain
+their existing allocations. Use `from_columns` when the caller must keep owning
+its input vectors.
+
 ## Spatial Hierarchy
 
 ```typescript
@@ -512,6 +547,14 @@ const storeyId = hierarchy.elementToStorey.get(wallId);
 Entity counts are taken from the EXPRESS schemas the code generators consume
 (`IFC4_ADD2_TC1`, `IFC4X3`). IFC2X3 files are parsed with the same pipeline;
 the runtime schema registry itself is generated from IFC4.
+
+### Native Rust geometry classification
+
+`ifc_lite_core::geometry_flags_by_name(type_name)` returns
+`(has_geometry, is_representationless_spatial_container)`, using the same
+case normalization and legacy-type rules as the two individual predicates.
+These flags classify a type; they do not establish whether a particular record
+contains a usable representation.
 
 ### Schema Registry
 
@@ -676,3 +719,9 @@ When working with multiple IFC files (e.g., architectural, structural, and MEP m
 - [Query Guide](querying.md) - Query parsed data
 - [Federation Guide](federation.md) - Load and coordinate multiple models
 - [API Reference](../api/typescript.md) - Complete API docs
+
+### Borrowing compact entity columns
+
+`CompactEntityIndex.getColumns()` exposes the four numeric backing arrays (`expressIds`, `byteOffsets`, `byteLengths`, `typeIndices`) and a copy of the `typeStrings` list. This supports column-aware consumers such as binary cache serialization without creating a reference object for every entity.
+
+The numeric arrays are borrowed and must not be mutated. They remain valid until their owner detaches them. A transport may transfer the arrays when retiring the owning index; cache consumers must not detach them. Changing the returned string list does not change the index. Generic map-compatible indexes remain supported by the parser and cache interfaces.

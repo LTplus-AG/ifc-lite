@@ -7,6 +7,7 @@
 //! Routes IFC representation entities to appropriate processors based on type.
 
 mod caching;
+mod brep_signatures;
 mod rep_filter;
 mod content_hash;
 mod diagnostics;
@@ -22,6 +23,7 @@ pub(crate) mod transforms;
 pub(crate) mod voids;
 
 pub use processor::GeometryProcessor;
+pub use brep_signatures::SharedBrepSignatureCache;
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
@@ -38,22 +40,17 @@ pub use content_hash::FACETED_BREP_DEDUP_FACE_LIMIT;
 mod tests;
 
 use crate::material_layer_index::MaterialLayerIndex;
-use crate::processors::{
-    AdvancedBrepProcessor, BSplineSurfaceProcessor, BlockProcessor, BooleanClippingProcessor,
-    CsgSolidProcessor, ExtrudedAreaSolidProcessor, ExtrudedAreaSolidTaperedProcessor,
-    FaceBasedSurfaceModelProcessor, FacetedBrepProcessor, IfcAlignmentProcessor,
-    PolygonalFaceSetProcessor, RevolvedAreaSolidProcessor,
-    SectionedSolidHorizontalProcessor, ShellBasedSurfaceModelProcessor, SphereProcessor,
-    SurfaceCurveSweptAreaSolidProcessor, SweptDiskSolidProcessor, TriangulatedFaceSetProcessor,
-};
+use crate::processors::{BooleanClippingProcessor, CsgSolidProcessor};
+mod processor_registry;
+use processor_registry::ProcessorRegistry;
 use crate::tessellation::TessellationQuality;
 use crate::{BoolFailure, Mesh, Result};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::rc::Rc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// Shared content-dedup cache: maps a 128-bit structural item hash to the
 /// LOCAL (pre-placement, void-free, colour-free) item mesh PLUS its precomputed
@@ -108,8 +105,8 @@ pub type MappedInstancePlan = Arc<FxHashMap<u32, (u32, u32)>>;
 
 /// Geometry router - routes entities to processors
 pub struct GeometryRouter {
-    schema: IfcSchema,
-    processors: HashMap<IfcType, Arc<dyn GeometryProcessor>>,
+    schema: &'static IfcSchema,
+    processors: ProcessorRegistry,
     /// Cache for IfcRepresentationMap source geometry (MappedItem instancing)
     /// Key: RepresentationMap entity ID, Value: Processed mesh.
     ///
@@ -139,16 +136,13 @@ pub struct GeometryRouter {
     /// `geometry_id` (colour/palette/texture), voids and placement are applied by
     /// the caller, so reuse never changes an instance's appearance.
     ///
-    /// `Arc<Mutex<_>>` so ONE cache outlives any single router and is shared across
-    /// the native rayon pool's per-element routers AND a wasm worker's per-batch
-    /// routers (re-injected each batch). A hit skips the expensive build entirely,
+    /// Shared across native per-element and wasm per-batch routers. A hit skips building;
     /// so the lock is held only for a map get/clone (hit) or insert (miss); the
     /// build runs outside it. `None` ⇒ dedup disabled (e.g. `new()` in tests).
     item_dedup_cache: Option<ItemDedupCache>,
-    /// Per-router memo for the per-item structural hash (shared sub-entities
-    /// hashed once). Kept LOCAL so the recursive DAG walk never contends the
-    /// shared cache's lock; recomputing it per router is cheap next to meshing.
+    /// Generic recursive hashes stay local: depth/cycle context may differ.
     content_sig_memo: RefCell<FxHashMap<u32, u128>>,
+    shared_brep_signatures: Option<SharedBrepSignatureCache>,
     /// Content-hash refs refused above `u32::MAX` (#3421/#3752); diagnostic only.
     content_hash_oversized_ref_drops: RefCell<usize>,
     /// Unit scale factor (e.g., 0.001 for millimeters -> meters), applied to
@@ -244,16 +238,19 @@ pub struct GeometryRouter {
 impl GeometryRouter {
     /// Create new router with default processors
     pub fn new() -> Self {
-        let schema = IfcSchema::new();
-        let schema_clone = schema.clone();
-        let mut router = Self {
+        // Routing metadata is immutable through this API. Keep one default
+        // per process/wasm instance; processor diagnostics remain router-local.
+        static SCHEMA: OnceLock<IfcSchema> = OnceLock::new();
+        let schema = SCHEMA.get_or_init(IfcSchema::new);
+        Self {
             schema,
-            processors: HashMap::new(),
+            processors: ProcessorRegistry::new(),
             mapped_item_cache: RefCell::new(FxHashMap::default()),
             shared_mapped_item_cache: None, // armed by `enable_shared_mapped_item_cache`
             geometry_hash_cache: RefCell::new(FxHashMap::default()),
             item_dedup_cache: None, // armed by `with_units` / `enable_content_dedup_shared`
             content_sig_memo: RefCell::new(FxHashMap::default()),
+            shared_brep_signatures: None,
             content_hash_oversized_ref_drops: RefCell::new(0),
             unit_scale: 1.0,             // Default to base meters
             rtc_offset: (0.0, 0.0, 0.0), // Default to no offset
@@ -271,39 +268,7 @@ impl GeometryRouter {
             instancing_batch_local: false, // native global-template mode by default
             instanced_sources_materialized: RefCell::new(FxHashSet::default()),
             unsupported: RefCell::new(Default::default()),
-        };
-
-        // Register default P0 processors
-        router.register(Box::new(ExtrudedAreaSolidProcessor::new(
-            schema_clone.clone(),
-        )));
-        router.register(Box::new(ExtrudedAreaSolidTaperedProcessor::new(
-            schema_clone.clone(),
-        )));
-        router.register(Box::new(TriangulatedFaceSetProcessor::new()));
-        router.register(Box::new(PolygonalFaceSetProcessor::new()));
-        router.register(Box::new(FacetedBrepProcessor::new()));
-        router.register(Box::new(BooleanClippingProcessor::new()));
-        router.register(Box::new(SweptDiskSolidProcessor::new(schema_clone.clone())));
-        router.register(Box::new(RevolvedAreaSolidProcessor::new(
-            schema_clone.clone(),
-        )));
-        router.register(Box::new(SurfaceCurveSweptAreaSolidProcessor::new(
-            schema_clone.clone(),
-        )));
-        router.register(Box::new(SectionedSolidHorizontalProcessor::new(
-            schema_clone.clone(),
-        )));
-        router.register(Box::new(AdvancedBrepProcessor::new()));
-        router.register(Box::new(BSplineSurfaceProcessor::new()));
-        router.register(Box::new(ShellBasedSurfaceModelProcessor::new()));
-        router.register(Box::new(FaceBasedSurfaceModelProcessor::new()));
-        router.register(Box::new(BlockProcessor::new()));
-        router.register(Box::new(SphereProcessor::new()));
-        router.register(Box::new(CsgSolidProcessor::new()));
-        router.register(Box::new(IfcAlignmentProcessor::new()));
-
-        router
+        }
     }
 
     /// Create router and extract unit scale from IFC file
@@ -702,9 +667,9 @@ impl GeometryRouter {
 
     /// Register a geometry processor
     pub fn register(&mut self, processor: Box<dyn GeometryProcessor>) {
-        let processor_arc: Arc<dyn GeometryProcessor> = Arc::from(processor);
-        for ifc_type in processor_arc.supported_types() {
-            self.processors.insert(ifc_type, Arc::clone(&processor_arc));
+        let processor_rc: Rc<dyn GeometryProcessor> = Rc::from(processor);
+        for ifc_type in processor_rc.supported_types() {
+            self.processors.insert(ifc_type, Rc::clone(&processor_rc));
         }
     }
 
@@ -727,7 +692,7 @@ impl GeometryRouter {
 
     /// Get schema reference
     pub fn schema(&self) -> &IfcSchema {
-        &self.schema
+        self.schema
     }
 }
 

@@ -47,7 +47,22 @@ timings the pipeline already publishes (`ProcessingStats`) plus an isolated
 
 Flags: `--suite` (all catalogued heavy fixtures on disk), `--iters N`,
 `--census` (CSG op distribution), `--json` (stdout; table stays on stderr),
+`--fingerprint` (ordered mesh fingerprint, computed outside the timed interval),
 `OBS=1` env (build with `observability` to fill `faceted_brep_time_ms`).
+
+JSON `allWallMs` measures each complete `process_geometry` call, including final
+metadata assembly after the pipeline's `totalMs` timer stops. Use its median
+for full-load comparisons; `allTotalsMs` retains the narrower pipeline timer.
+For a cold application load, pass `--cold --iters 1` with exactly one fixture
+per process. This skips the isolated index scans and reports `fileReadMs` plus
+`fullLoadWallMs` (file reading and the complete processing call);
+`indexBuildMs` is `null`. Launch a new process for each sample. This does not
+purge the operating system's file cache, so report that limitation explicitly.
+With `--fingerprint`, `meshFingerprintsFnv1a64` records exact float bits and
+ordered mesh identifiers, geometry, color, transforms and bounds. It does not
+cover text metadata, material definitions, UV textures or instancing records;
+validate those surfaces separately. Alternate base and branch runs in fresh
+processes on an idle machine, with the same measurement harness on both sides.
 
 Why `--profile profiling`: release-grade opt but keeps symbols and
 `panic=unwind`, so `samply` gets a symbolized flamegraph and per-element
@@ -191,7 +206,93 @@ XKT/XGF); that stays out of scope per the issue.
 
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
+### Retained processor registry ownership (#3987)
+
+Built-in processor registrations share immutable setup while each router keeps its own failure state and custom replacement behavior. Own-layer native subset comparisons did not establish a meaningful full-load improvement; the cumulative result must not be attributed to this layer. Constructor profiles identify avoided setup work, not a throughput verdict. Keep custom processors and mutable diagnostics independent. Browser performance is a separate verdict; invalid Firefox cohorts and unrun follow-ups provide no supporting result.
+
+### N-ary repair validation (#3925)
+
+Rebase before measuring geometry. The old direct-router census converted survey
+coordinates to f32 before subtracting an origin; its apparent covering regressions
+were measurements of already-collapsed inputs. Disabling shared-corner protection
+to satisfy that census regressed valid large-model cuts. A raw-first union also
+improved a synthetic sweep while damaging those cuts. Both were discarded.
+
+Preserve an accepted production union. For an unusable 3D opening union, try one
+coordinate-preserving candidate before sequential subtraction. Roof chains need
+their own actual-cut checks and a removed-volume upper bound from clean individual
+trials; a bounding box alone cannot detect over-removal. Making every diagnostic
+trial reject the original path also lost existing cuts and was discarded.
+
+The census coordinate migration uses a reference generated on pre-regression
+code, with one independently checked torn-to-closed row recorded separately.
+Neither arbitrary golden updates nor local closure scores establish correctness.
+Keep real loader output and independent solid measurements in the comparison.
+See [the implementation and reference provenance](../../docs/architecture/nary-union-repair.md).
+Correctness-only native and worker-pool full-load comparisons across eleven
+models were broadly neutral in time and peak memory; the large target's browser
+load improved. Five interleaved fresh-process pairs were used per model and
+runtime, with OS file cache uncontrolled. Native geometry was byte-identical
+except for the intended CSG129 repair. Browser geometry was identical except for
+two already-open walls whose reference comparison is recorded in the linked
+note. The performance-only stack is evaluated separately against this corrected
+baseline. **Lesson:** qualify the browser's actual detail settings too; native
+full-detail identity alone does not establish browser identity.
+
+### Retained transient decoder ownership (#4000)
+
+Reusable output buffers and a validated string projection avoid building discarded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Own-layer native and actual Chrome worker-pool subset comparisons did not establish a meaningful full-load improvement. Keep the cumulative result separate, include the disposal join and trailing metadata in timing, and do not treat summed worker allocations as simultaneous memory. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded.
+
+### Cold-load validation notes
+
+A geometry-complete event does not imply an interactive viewer: metadata,
+renderer finalization and the store's loading state can finish later. Compare
+fresh browser processes with the target file loaded first, and stop the load
+timer only after all of these finish. Exercise GPU picking, visible property
+sets and spatial hierarchy afterwards; exercise section generation on demand
+and federation separately. Keep integrity extraction outside the timed interval.
+
+Worker memory summaries can finish before renderer finalization. They are not
+whole-load peak-memory measurements. Sample through full readiness and name the
+metric precisely: summing Chrome process RSS can double-count shared pages.
+Readiness polling quantizes short loads; capture the store's readiness event.
+Coarse RSS sampling can miss short-lived peaks, so also inspect OS process
+high-water marks and state whether they include browser startup.
+Preserve failed loads alongside successful samples. Listen for renderer crashes
+as well as JavaScript errors, and stop memory sampling on every exit path.
+
 ### Shipped wins
+- **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
+  missed an engine-dependent entity-cache eviction cost. Georeference discovery
+  runs through the property-set index during React rendering. Restarting a Map
+  iterator for each eviction repeatedly traversed its deleted prefix in Firefox;
+  a live eviction cursor preserves LRU ordering without restarting that walk.
+  Prepare the source fingerprint and georeferencing in the parser worker and
+  carry them with both store publications, so the first render does not rescan
+  the source. Deferred-property parses must wait for their complete index before
+  preparing georeferencing. **Lesson:** qualify Firefox as well as Chrome, record
+  event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
+  from uninstrumented timing. A worker-complete event alone cannot establish that
+  publishing its result leaves the UI responsive.
+- **Native cold-load working set (#3967):** immutable schema classification replaces
+  contended global caches; completed BREP signatures are shared within one
+  immutable source; the geometry scan supplies ordered georeferencing candidates
+  and discovery reads unrelated property sets without retaining them. Large
+  sources with `u32` offsets build compact rows in fixed pages, then select a
+  direct-address index only when its allocation fits within compact columns.
+  Intermediate rows have a source-based budget; unusually dense record streams
+  switch to hash coalescing so duplicate records cannot keep growing staging.
+  Sparse IDs keep sorted columns; wider sources and supplied hash indexes retain
+  their existing representation. Duplicate IDs still resolve to their last
+  authored span. Interleaved fresh-process comparisons covered large MEP,
+  architecture, sanitary, CSG, structural and bridge models from multiple
+  exporters and schemas, including the small guard fixtures: all full-load
+  medians improved and every ordered geometry fingerprint matched. Large-model
+  peak RSS fell; small-model RSS ranges overlapped. **Lesson:** measure the
+  whole call including final metadata and teardown, and measure the index's
+  working set, not just time attributed to the scanner. Bounded parallel typed
+  scan windows passed scanner parity but added too little end-to-end benefit
+  to retain; the compact-index change produced the material gain.
 - **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
   record-not-gate closure audit adds a strict directed-edge hash sweep and only
   runs the hairline sweep when strict closure fails. On `140a6d854` versus the
@@ -259,6 +360,10 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
   shipped and is a real win; it is NOT the viewer huge-file case below (see dead ends).
 - **Vertex weld at faceted-brep source** (#1562): closes the volume-metric gap.
 
+### Retained mesh bookkeeping and no-op copies (#3988)
+
+Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
+
 ### Dead ends (do NOT re-spike without a new mechanism)
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
 - **Shared entity-index for the VIEWER huge-file path** (#1445): CLOSED, branch
@@ -293,6 +398,48 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
   bought is now ~0%. Another regime-rot casualty.
 
 ### Cold-start / CSG levers — mixed status (read each label)
+- **Viewer drawing demand, property-set discovery and parser scheduling (RETAINED, measured):** a saved
+  section-overlay preference does not imply an active drawing consumer. Match
+  the renderer's section-tool demand, preserve explicit export generation, and
+  refresh inputs when a consumer becomes active again. On large cold loads the
+  previous hidden section cut blocked metadata delivery and renderer readiness.
+  Sorted parser indexes also need no permutation; association-target discovery
+  was dead work once all references were indexed. A conservative resident-byte
+  ePSet filter skips only proven negatives, retaining the canonical decoder for
+  escaped names and possible matches. Disabling only the DXF caller did not
+  help: another required georeference consumer paid the same work later.
+  Parser reference arrays can overlap the geometry workers' peak allocation.
+  Giving geometry a bounded head start reduces that overlap: hand off the
+  already-built shared index when a worker finishes, at stream completion, or
+  at a source-size-scaled deadline. Always release it on iterator shutdown too.
+  Waiting only for worker completion regressed an architecture model; the
+  deadline bounds that tradeoff and avoids the parser's fallback scan timeout.
+  Keep smaller sources immediate: deferring a structural fixture increased its
+  renderer peak despite faster loading; immediate handoff removed that increase.
+  Final fresh-process comparisons across MEP, architecture, sanitary, CSG,
+  structural and bridge models improved every full-readiness median, with
+  matching geometry digests and real GPU picks, properties and spatial paths.
+  The large target reduced whole-browser RSS and renderer peak footprint;
+  smaller-model total RSS remained variable, so this is not a universal memory
+  reduction claim. Actual section-tool activation produced identical cut
+  geometry on small and large models. Single-to-federated loading preserved
+  selection, properties and spatial hierarchy; metadata-only input still settled.
+  Active drawing requests share one queue: geometry, plane and visibility
+  changes keep only the newest pending inputs, and superseded cuts cannot
+  publish. Parser-worker-unavailable loads do not retain a deferred handoff.
+  An interleaved ablation across MEP, CSG, structural, bridge and small models
+  found no material full-load or RSS benefit from retaining WASM batch decoder
+  memos, including completed BREP signatures. That extra WASM cache machinery
+  was removed; the native shared signature cache remains independently useful.
+  Clearing local reference variables and delaying only until the first mesh
+  batch did not reliably reduce whole-load memory either.
+  Rare Chrome ARM64 renderer SIGILLs occurred during the style pre-pass on
+  both the performance candidate and the unoptimized corrected baseline.
+  Preserve failed runs alongside successful timing samples; successful replays
+  do not establish a fix or equal failure rates. Follow-up #3975 carries the
+  crash dumps, reproduction conditions and bounded engine/application diagnosis.
+  This change does not claim to fix that shared reliability defect.
+  Geometry-only events and truncated worker-memory summaries cannot settle it.
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
 "all unshipped".
@@ -377,6 +524,10 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   is a judgement call (an order of magnitude clear of realistic repeated parts, which run to
   low hundreds of faces), not a measured optimum.
 
+### Retained canonical lexical and schema work (#4001)
+
+Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
+
 ### Measured feature costs (not levers — recorded so nobody re-measures)
 - **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
   base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
@@ -453,6 +604,10 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
     corpus is the identity**, which is precisely why the #2358 bug survived —
     resolving it correctly and never resolving it agree on every shipped fixture.
     Identical output there is evidence about the corpus, not about the change.
+
+### Retained prepass source fingerprint sharing (#3985)
+
+The existing prepass can publish the exact full-byte source key through a fresh per-load shared cell, including malformed tails. The parser uses it only when already ready; prior entry points and unavailable-cell fallback remain compatible without another source copy or worker. Retained cumulative qualification is not an isolated percentage claim. Record actual parser/prepass key origin when diagnosing overlap; an unavailable key can still pay the original parser hash.
 
 ### Reading the FIELD telemetry (PostHog) — verdicts and traps
 
@@ -531,12 +686,17 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
   a different tree shape is output-equivalent and can be asserted as such.
 
+### Source and buffer ownership during WASM prepass (#3989)
+
+Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
 
+### Manual browser readiness boundary (#3978)
 
 The manual server matches deployed COOP/COEP (`same-origin` / `credentialless`)
 and records `crossOriginIsolated` plus SharedArrayBuffer availability, refusing
@@ -563,3 +723,67 @@ entrypoint. The record includes the selected executable, browser version, headed
 mode and GPU arguments. The default remains bundled Chromium headless, which may
 not provide WebGPU on a particular host; renderer failure invalidates that sample.
 Never compare different launch modes or browser artifacts as a code A/B.
+### Retained column-native metadata preparation (#3985)
+
+Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
+
+### Retained cold-load work: search index ownership (#3993)
+
+The viewer shell owns search indexing for the lifetime of each loaded model.
+Search interfaces consume the same records, so opening or closing search does
+not create another owner or abandon its index. Cleanup releases in-flight
+claims, and stale promises cannot replace a newer build. Lifecycle tests cover
+StrictMode, unmount and partial/final metadata publications. This removes
+redundant work and preserves search availability; no separate cold-load speedup
+is attributed to this layer. Final frozen-artifact functional runs exercise actual search, model-ID resolution,
+properties and GPU picking with one and multiple models, including cache-hit
+reopening. The shared evidence below records coverage limits.
+
+
+### Retained cold-load qualification and limitations (#3985, #3993)
+
+The [retained evidence](./evidence/retained-cold-load-2026-09-06/README.md) separates
+combined native, browser and isolated-layer outcomes. Native full-call corpus
+loading improved with stable count and ordered-fingerprint witnesses; the
+separate observable oracle retained exact output for its covered modes. Isolated
+native layers were mixed, including a slower standalone ownership subset.
+
+Chrome supplemental review found lower overall readiness time and memory, with
+a consistent small-model readiness cost and slower geometry completion on some
+models. Its original strict console audit remains failed: static-only captures
+confirm a missing local analytics resource, while original per-event URLs were
+not recorded. Firefox's original cohort remains invalid after a transient-child
+memory-read failure and a long scheduling outlier. Later focus controls pass
+but do not establish that historical cause or a corpus speedup.
+
+Keep these limitations with the measurements. Neither isolated cleanup, a
+prepared reload, a diagnostic profile nor an unrun experiment supplies a
+throughput gain. No universal absence of performance regressions or target
+corpus gain is claimed. Original failures and private exploratory work remain
+archived; the published projections identify their source records by hash.
+
+### Retained parser publication and receiver ownership (#3985)
+
+Pack immutable type-index publication once and reuse partial columns on complete, retaining legacy transport and shared source access. Terminate the completed parser worker before receiver hydration and use the compact maximum ID during ingestion. Retained as cumulative cold-load work, with no isolated percentage attributed. Qualification must include full property/reference access, federation and memory through cache completion; worker completion alone is not readiness.
+
+### Retained cold-load work: exact LOD keys (#3991)
+
+Bounded LOD cell neighborhoods use exact integer keys containing all three cell
+coordinates and the full entity ID. Inputs outside the proved range keep the
+existing string representation. The independent tuple oracle checks identical
+representatives and triangle order, including range boundaries, subviews,
+nonfinite coordinates and full-width entity IDs. This removes per-vertex key
+allocation; no isolated end-to-end speedup is attributed to this layer. The
+retained cold-load stack must carry its cumulative browser qualification,
+including picking and peak-memory observations, before landing.
+
+### Retained cold-load work: bounded cache compression (#4003)
+
+Geometry cache compression can run in one lazy module worker, using the same
+codec and bounded chunk window as the workerless writer. The viewer opts in;
+SDK callers retain the workerless default. Only fresh serialized chunks transfer,
+and worker failures reject the cache write with deterministic disposal. This
+moves compression off the interaction thread without removing its CPU or memory
+cost. Cumulative qualification must include cache completion, full-lifetime
+memory and actual cache reopening; raw IFC timing must not be replaced by a
+prepared reload. No isolated throughput gain is attributed to this layer.

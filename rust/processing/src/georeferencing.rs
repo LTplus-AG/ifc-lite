@@ -128,38 +128,42 @@ pub fn extract_georeferencing_with_index(
     content: &[u8],
     entity_index: &Arc<EntityIndex>,
 ) -> Option<Georeferencing> {
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
-
-    let mut entity_types: Vec<(u32, IfcType)> = Vec::new();
+    let mut entity_types = Vec::new();
     let mut scanner = EntityScanner::new(content);
-    while let Some((id, type_name, _start, _end)) = scanner.next_entity() {
-        match type_name {
-            // IFC4X3's concrete subtype of IfcMapConversion. The scanner
-            // classifies by the RAW STEP type name, so matching the supertype
-            // spelling alone found nothing in a file written this way and the
-            // extractor fell through to the ePSet / legacy-IfcSite fallbacks —
-            // reporting no map conversion, hence no transform, for a file that
-            // carries one. Its first eight attributes ARE IfcMapConversion's,
-            // and `GeoRefExtractor` reads them positionally, so classifying it
-            // as the supertype is exactly right; the FactorX/Y/Z it adds sit
-            // after them and are ignored. Same widening as the TS reader's
-            // `MAP_CONVERSION_TYPE_NAMES`.
-            "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED" => {
-                entity_types.push((id, IfcType::IfcMapConversion))
-            }
-            "IFCPROJECTEDCRS" => entity_types.push((id, IfcType::IfcProjectedCRS)),
-            "IFCPROPERTYSET" => entity_types.push((id, IfcType::IfcPropertySet)),
-            // Legacy IfcSite RefLatitude/RefLongitude fallback (TS parity).
-            "IFCSITE" => entity_types.push((id, IfcType::IfcSite)),
-            _ => {}
+    while let Some((id, type_name, _, _)) = scanner.next_entity() {
+        if let Some(ifc_type) = georeferencing_candidate_type(type_name) {
+            entity_types.push((id, ifc_type));
         }
     }
+    extract_georeferencing_from_candidates(
+        &mut EntityDecoder::with_arc_index(content, entity_index.clone()), &entity_types)
+}
 
+/// Candidate classification shared by standalone extraction and the native
+/// geometry scan. Preserve raw-name matching and file order, including all sites.
+pub(crate) fn georeferencing_candidate_type(type_name: &str) -> Option<IfcType> {
+    match type_name {
+        // Scaled's first eight attributes have the base conversion layout.
+        "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED" => Some(IfcType::IfcMapConversion),
+        "IFCPROJECTEDCRS" => Some(IfcType::IfcProjectedCRS),
+        "IFCPROPERTYSET" => Some(IfcType::IfcPropertySet),
+        "IFCSITE" => Some(IfcType::IfcSite),
+        _ => None,
+    }
+}
+
+/// Reuse candidates from the geometry scan, avoiding the remaining whole-file
+/// scan after index reuse. A fresh decoder preserves the standalone extractor's
+/// lookup semantics, including duplicate ids, rather than inheriting scan caches.
+pub(crate) fn extract_georeferencing_from_candidates(
+    decoder: &mut EntityDecoder<'_>,
+    entity_types: &[(u32, IfcType)],
+) -> Option<Georeferencing> {
     if entity_types.is_empty() {
         return None;
     }
 
-    match GeoRefExtractor::extract(&mut decoder, &entity_types) {
+    match GeoRefExtractor::extract(decoder, entity_types) {
         Ok(Some(geo)) => Some(Georeferencing::from_core(&geo)),
         Ok(None) => None,
         Err(e) => {

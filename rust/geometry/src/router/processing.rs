@@ -25,6 +25,7 @@ pub(crate) const IDENTITY_ROW_MAJOR: [f64; 16] = [
 ];
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
 // Maximum nested IfcMappedItem depth for a single geometry item. Shared with
@@ -714,84 +715,6 @@ impl GeometryRouter {
         mesh
     }
 
-    /// Cache key for an item: its structural hash combined with the router params
-    /// that change the meshed output (tessellation quality / unit scale / RTC), or
-    /// `None` when dedup is disabled (skips the hash walk so disabled = zero
-    /// overhead). The quality fold is what keeps `setTessellationQuality` correct —
-    /// the shared cache persists across quality changes on a worker, so the key
-    /// must distinguish them (#976).
-    fn item_dedup_key(&self, item: &DecodedEntity, decoder: &mut EntityDecoder) -> Option<u128> {
-        self.item_dedup_cache.as_ref()?;
-        // Dedup the geometry types whose repeated instances dominate real models:
-        // IfcFacetedBrep (tessellated steel) AND the procedural boolean/extrusion
-        // hot path (clipped beams/columns — IfcBooleanResult /
-        // IfcBooleanClippingResult / IfcExtrudedAreaSolid). #1177 had restricted
-        // this to IfcFacetedBrep because the structural hash re-decoded the subtree
-        // per item; it is now memoized (`content_sig_memo`), so shared subtrees
-        // (the same cutter/profile referenced by hundreds of parts) are hashed once
-        // and the dedup is a measured net win, byte-identical: a 20 MB boolean-clip
-        // steel model (170_KM) drops geometry 16.4 s → 2.8 s (5.8×), and procedural
-        // arch models improve too (advanced_model 3.1×, ISSUE_068 1.7×) with no
-        // regression on the tested corpus. The IfcMappedItem instancing cache is a
-        // separate path, always on.
-        let base = matches!(
-            item.ifc_type,
-            IfcType::IfcFacetedBrep
-                | IfcType::IfcBooleanResult
-                | IfcType::IfcBooleanClippingResult
-                | IfcType::IfcExtrudedAreaSolid
-        );
-        // Additive, flagged OFF by default: faceset / surface-model families. Their
-        // generic byte signature (`sig_walk_bytes`) is already complete; gated so a
-        // low-reuse model never pays the hash for no payback (the #1177 trap).
-        let extra = Self::build_dedup_extra_enabled()
-            && matches!(
-                item.ifc_type,
-                IfcType::IfcPolygonalFaceSet
-                    | IfcType::IfcTriangulatedFaceSet
-                    | IfcType::IfcShellBasedSurfaceModel
-                    | IfcType::IfcFaceBasedSurfaceModel
-            );
-        if !(base || extra) {
-            return None;
-        }
-        // Skip the hash walk entirely for a faceted BREP too large for dedup to
-        // ever pay off (#1909): `try_faceted_brep_signature` mirrors the
-        // mesher's own face/bound/loop/point traversal, so on a huge one-off
-        // BREP (a single ~2.5M-triangle import, no sibling item to match) the
-        // hash is a full second traversal with zero possible payback — it
-        // measured ~30s where the equivalent web-ifc load took ~2.85s, almost
-        // entirely this walk. The face-count probe is a cheap O(faces) prefix
-        // of the same walk (shell ref + face list, no per-point decode), so
-        // bailing here costs nothing extra. Below the threshold (Tekla-style
-        // small repeated parts, the case this cache exists for) behavior is
-        // unchanged. Skipping this pre-mesh cache does NOT disable dedup for a
-        // genuinely repeated large BREP: the post-mesh `get_or_cache_by_hash`
-        // (sampled, O(1) regardless of mesh size) and the instancing
-        // `rep_identity` (`direct_rep_identity`, computed unconditionally after
-        // meshing) both still run, so repeated large geometry still collapses
-        // to one GPU-instanced template — it just re-meshes each occurrence
-        // instead of skipping the mesh on a cache hit.
-        if item.ifc_type == IfcType::IfcFacetedBrep {
-            if let Some(face_count) = super::content_hash::faceted_brep_face_count(decoder, item.id) {
-                if face_count > super::content_hash::FACETED_BREP_DEDUP_FACE_LIMIT {
-                    return None;
-                }
-            }
-        }
-        let structural = {
-            let mut memo = self.content_sig_memo.borrow_mut();
-            let mut refused = self.content_hash_oversized_ref_drops.borrow_mut();
-            super::content_hash::item_signature(decoder, item.id, &mut memo, &mut refused)
-        };
-        Some(super::content_hash::key_with_params(
-            structural,
-            self.tessellation_quality.to_index(),
-            self.unit_scale,
-            self.rtc_offset,
-        ))
-    }
-
     /// The meshing body of [`Self::process_representation_item`] (everything except
     /// the MappedItem path and the content-dedup wrapper).
     fn process_representation_item_uncached(
@@ -814,7 +737,7 @@ impl GeometryRouter {
                 self.rtc_offset.2 / self.unit_scale,
             );
             let mut mesh =
-                processor.process_with_rtc(item, decoder, &self.schema, rtc_file_units)?;
+                processor.process_with_rtc(item, decoder, self.schema, rtc_file_units)?;
             mesh.validate_indices();
             self.scale_mesh(&mut mesh);
             // Mark positions as already RTC-shifted by setting a flag
@@ -827,9 +750,9 @@ impl GeometryRouter {
         }
 
         // Check if we have a processor for this type
-        if let Some(processor) = self.processors.get(&item.ifc_type) {
+        if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
             let mut mesh =
-                processor.process(item, decoder, &self.schema, self.tessellation_quality)?;
+                processor.process(item, decoder, self.schema, self.tessellation_quality)?;
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
@@ -888,12 +811,12 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        let processor = match self.processors.get(&IfcType::IfcAlignment) {
-            Some(p) => Arc::clone(p),
+        let processor = match self.processors.get(&IfcType::IfcAlignment, self.schema) {
+            Some(p) => Rc::clone(p),
             None => return Ok(None),
         };
         let mut mesh =
-            match processor.process(element, decoder, &self.schema, self.tessellation_quality) {
+            match processor.process(element, decoder, self.schema, self.tessellation_quality) {
             Ok(m) => m,
             // Missing Axis or unparseable curve isn't fatal — fall back so
             // the caller can still walk a normal representation if present.

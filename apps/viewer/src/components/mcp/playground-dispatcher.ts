@@ -1655,8 +1655,7 @@ const IMPLS: Record<string, ToolImpl> = {
     const t0 = Date.now();
     const initial = v.getSelection();
     if (initial.length > 0) {
-      // Already something selected — return immediately so the agent
-      // doesn't pointlessly stall.
+      // Already something selected — return immediately so the agent doesn't pointlessly stall.
       return {
         text: `Already selected ${initial.length} entit${initial.length === 1 ? 'y' : 'ies'}.`,
         structured: { selection: initial, waitedMs: 0, timedOut: false },
@@ -1871,17 +1870,18 @@ function makeIdsAccessor(m: LoadedPlaygroundModel): import('@ifc-lite/ids').IFCD
       }));
     },
     getClassifications(id) {
+      // Forward `unresolved` (#3948/#3951) — else a classified-but-unresolved entity reads as a fabricated empty match.
       return m.bim.classifications(ref(id)).map((c) => ({
         system: c.system ?? '',
         value: c.identification ?? c.name ?? '',
         name: c.name,
+        unresolved: c.unresolved,
       }));
     },
     getMaterials(id) {
-      // Every variant via the same #1366 lens collector the material
-      // filter/list panels use. Previously only `mat.layers` and the
-      // top-level `mat.name` were checked, so a profile set, constituent
-      // set, or material list was invisible to IDS material requirements.
+      // Every variant via the same #1366 lens collector the material filter/list panels use.
+      // Previously only `mat.layers`/top-level `mat.name` were checked, so a profile set,
+      // constituent set, or material list was invisible to IDS material requirements.
       return lensMaterialNames(m.bim.materials(ref(id))).map((name) => ({ name }));
     },
     getParent(id) {

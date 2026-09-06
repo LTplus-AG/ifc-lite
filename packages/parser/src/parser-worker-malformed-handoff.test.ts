@@ -23,7 +23,12 @@
  * per-test and why the hook timeout is generous.
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { WorkerIndexReceiver, type WorkerStorePayload } from './worker-index-publication.js';
+import { fromTransport, type DataStoreTransport } from './data-store-transport.js';
+import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
+import { contiguousSourceBytes } from './source-bytes.js';
 
 const postedMessages: unknown[] = [];
 let originalSelf: unknown;
@@ -44,6 +49,7 @@ const IFC = [
   'DATA;',
   "#1=IFCPROJECT('0000000000000000000001',$,'P',$,$,$,$,$,$);",
   "#2=IFCWALL('0000000000000000000002',$,'Wall2',$,$,$,$,$,$);",
+  "#3=IFCSITE('0000000000000000000003',$,'Site',$,$,$,$,$,.ELEMENT.,(47,0,0),(8,0,0),0.,$,$);",
   'ENDSEC;',
   'END-ISO-10303-21;',
   '',
@@ -72,10 +78,41 @@ function columnsForFirstRecordOnly() {
   };
 }
 
+/** One cast, not four. */
+const typeOf = (m: unknown): string | undefined => (m as { type?: string }).type;
+
+/**
+ * WAIT FOR THE WORKER TO SETTLE, NOT FOR A FIXED NUMBER OF TURNS.
+ *
+ * This used to drain 200 microtasks, one macrotask, then 200 more, and it made
+ * one test out of 1,181 redden the whole Node-tests job: measured over 39
+ * pushes to main, `Test` was red 15 times and 12 of those were this assertion.
+ *
+ * THE BUDGET WAS NEVER 400 TURNS. The parse yields through
+ * `yield-to-event-loop.ts`, a MessageChannel round-trip in Node, which no
+ * amount of microtask draining satisfies -- so the old helper's real budget was
+ * exactly ONE event-loop turn, and this fixture needs exactly one. Zero
+ * headroom. One extra crossing of `YIELD_INTERVAL_MS` (columnar-parser.ts) or
+ * one hit of entity-scanner's `setTimeout(0)` on a loaded runner makes it two,
+ * and the old code loses. Reproduced by deferring the worker's delivery a few
+ * macrotasks: old 3 failed, new 4 passed.
+ *
+ * `vi.waitFor` polls the condition instead, and its timeout message NAMES the
+ * wait and lists what did arrive. That matters more than it looks: a bare
+ * deadline here would fail with `expected [ … ] to include 'complete'` -- the
+ * exact text this change exists to stop producing -- and send the next reader
+ * to re-diagnose a fixed bug.
+ */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 200; i++) await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  for (let i = 0; i < 200; i++) await Promise.resolve();
+  await vi.waitFor(
+    () => {
+      const types = postedMessages.map(typeOf);
+      if (!types.includes('complete') && !types.includes('error')) {
+        throw new Error(`worker has not settled: saw [${types.join(', ')}]`);
+      }
+    },
+    { timeout: 20_000, interval: 1 },
+  );
 }
 
 function post(data: unknown): void {
@@ -101,15 +138,15 @@ function startParse(): void {
  * `{type:'error'}`. Both controls passed, proving nothing.
  */
 function assertParsed(): void {
-  const types = postedMessages.map((m) => (m as { type?: string }).type);
-  const error = postedMessages.find((m) => (m as { type?: string }).type === 'error');
+  const types = postedMessages.map(typeOf);
+  const error = postedMessages.find((m) => typeOf(m) === 'error');
   if (error) throw new Error(`worker errored: ${(error as { message?: string }).message}`);
   expect(types).toContain('complete');
 }
 
 function diagnostics(): string[] {
   return postedMessages
-    .filter((m) => (m as { type?: string }).type === 'diagnostic')
+    .filter((m) => typeOf(m) === 'diagnostic')
     .map((m) => (m as { message: string }).message);
 }
 
@@ -120,7 +157,8 @@ beforeEach(async () => {
   originalPostMessage = g.postMessage;
   g.self = globalThis;
   g.postMessage = (msg: unknown) => postedMessages.push(msg);
-  await import('./parser.worker.js?t=' + ++importCounter);
+  importCounter += 1;
+  await import('./parser.worker.js?t=' + importCounter);
 }, WORKER_IMPORT_HOOK_TIMEOUT_MS);
 
 afterEach(() => {
@@ -176,3 +214,67 @@ describe('parser.worker.ts and the #3790 set-entity-index handoff', () => {
     expect(diagnostics().some((m) => m.includes('stopped early'))).toBe(false);
   }, 30_000);
 });
+
+// #3983: execute the real worker handler; verify the receiver needs no entity
+// lookups for its first georeference read (including the early spatial store).
+it('prepares render metadata before publishing partial and complete stores (#3983)', async () => {
+  const records = [...IFC.matchAll(/#(\d+)=[^;]+;/g)];
+  post({ type: 'set-entity-index',
+    ids: Uint32Array.from(records, r => Number(r[1])),
+    starts: Uint32Array.from(records, r => r.index!),
+    lengths: Uint32Array.from(records, r => r[0].length),
+  });
+  startParse();
+  await settle();
+  assertParsed();
+  const messages = postedMessages.filter((m): m is { type: string; payload: DataStoreTransport } =>
+    ['partial-store', 'complete'].includes((m as { type: string }).type));
+  expect(messages).toHaveLength(2);
+  for (const { payload } of messages) {
+    const source = contiguousSourceBytes(new Uint8Array(sharedSource()), payload.sourceContentKey ?? undefined);
+    // Full-fixture FNV-1a, independently calculated with Python integer arithmetic.
+    expect(payload.sourceContentKey).toBe('16b-6d79a917');
+    // toTransferable does not compute a key: this proves it arrived pre-seeded.
+    expect(source.toTransferable().contentKey).toBe(payload.sourceContentKey);
+    const store = fromTransport(structuredClone(payload), source);
+    const lookups = vi.spyOn(store.entityIndex.byId, 'get');
+    const georef = extractGeoreferencingOnDemand(store);
+    expect(georef?.source).toBe('siteLocation');
+    expect(georef?.projectedCRS?.name).toBe('EPSG:4326');
+    expect(lookups).not.toHaveBeenCalled();
+    lookups.mockRestore();
+  }
+}, 30_000);
+
+
+it('negotiates one immutable index through the real worker handler and transfer boundary (#3985)', async () => {
+  (globalThis as Record<string, unknown>).postMessage = (message: unknown, transfers: Transferable[] = []) => {
+    postedMessages.push(structuredClone(message, { transfer: transfers }));
+  };
+  const records = [...IFC.matchAll(/#(\d+)=[^;]+;/g)];
+  post({ type: 'set-entity-index',
+    ids: Uint32Array.from(records, record => Number(record[1])),
+    starts: Uint32Array.from(records, record => record.index!),
+    lengths: Uint32Array.from(records, record => record[0].length),
+  });
+  const source = sharedSource();
+  post({ type: 'parse', id: 'packed-req', source, waitForEntityIndex: true, indexTransport: 'packed-index-v1' });
+  await settle();
+  assertParsed();
+  const messages = postedMessages.filter((message): message is { type: string; payload: WorkerStorePayload } =>
+    ['partial-store', 'complete'].includes((message as { type: string }).type));
+  expect(messages).toHaveLength(2);
+  expect(messages[0].payload.entityIndex).toHaveProperty('format', 'packed-index-v1');
+  expect(messages[1].payload.entityIndex).toEqual({ format: 'published-index-v1' });
+  const receiver = new WorkerIndexReceiver();
+  receiver.capturePartial(messages[0].payload);
+  const sourceBytes = contiguousSourceBytes(new Uint8Array(source), messages[0].payload.sourceContentKey ?? undefined);
+  const early = receiver.hydrate(messages[0].payload, sourceBytes);
+  early.entityIndex.byType.get('IFCWALL')!.push(999);
+  early.entityIndex.byId.get(2)!.byteOffset = 0;
+  const final = receiver.hydrate(messages[1].payload, sourceBytes);
+  expect(final.entityIndex.byType.get('IFCWALL')).toEqual([2]);
+  expect(final.getEntity(2)?.attributes[2]).toBe('Wall2');
+  expect(final.source).toBe(early.source);
+  expect(extractGeoreferencingOnDemand(final)?.projectedCRS?.name).toBe('EPSG:4326');
+}, 30_000);

@@ -162,7 +162,7 @@ impl<'a> EntityScanner<'a> {
         // Outer loop so a record this scanner refuses (an oversized
         // instance name, below) is SKIPPED rather than ending the scan.
         loop {
-            let (line_start, id_end_validated, eq_pos) = loop {
+            let (line_start, parsed_id, eq_pos) = loop {
                 // Step (1): jump past any `/* … */` comment that starts at or
                 // before the next candidate '#'. Use memchr2 so we look for
                 // '#' and '/' in one SIMD pass — whichever comes first
@@ -197,15 +197,13 @@ impl<'a> EntityScanner<'a> {
 
                 // candidate_byte == b'#'. Step (2): validate `#<digits>[ws]*=`.
                 let after = candidate + 1;
-                if after >= len || !bytes[after].is_ascii_digit() {
+                let (digit_count, parsed_id) =
+                    crate::express_id::parse_express_id_prefix(&bytes[after..]);
+                if digit_count == 0 {
                     self.position = after;
                     continue;
                 }
-                // Walk the digit run.
-                let mut digit_end = after;
-                while digit_end < len && bytes[digit_end].is_ascii_digit() {
-                    digit_end += 1;
-                }
+                let digit_end = after + digit_count;
                 // Skip optional trivia and verify the next byte is '='.
                 // `None` means a comment opened here and never closes, which
                 // is not a declaration either — fall through to the rescan
@@ -213,7 +211,7 @@ impl<'a> EntityScanner<'a> {
                 // `skip_step_comment` ends the scan on it.
                 let probe = super::lexical::skip_step_trivia(bytes, digit_end).unwrap_or(len);
                 if probe < len && bytes[probe] == b'=' {
-                    break (candidate, digit_end, probe);
+                    break (candidate, parsed_id, probe);
                 }
                 // '#<digits>' not followed by '=' — this is a comment or string
                 // reference, not an entity definition. Skip past the digits and
@@ -223,7 +221,9 @@ impl<'a> EntityScanner<'a> {
 
             // Find the end of the entity (semicolon) while respecting quoted strings
             // IFC strings use single quotes and can contain semicolons
-            let line_content = &bytes[line_start..];
+            // The prefix contains only digits and already-closed trivia (#3987).
+            let body_start = eq_pos + 1;
+            let line_content = &bytes[body_start..];
             let end_offset = match self.find_entity_end(line_content) {
                 Some(o) => o,
                 None => {
@@ -233,12 +233,10 @@ impl<'a> EntityScanner<'a> {
                     return None;
                 }
             };
-            let line_end = line_start + end_offset + 1;
+            let line_end = body_start + end_offset + 1;
 
-            // Parse entity ID — digit range already validated in the candidate loop.
-            let id_start = line_start + 1;
-            let id_end = id_end_validated;
-            let Some(id) = self.parse_u32_fast(id_start, id_end) else {
+            // Refusal is still reported AFTER malformed-body detection (#3987).
+            let Some(id) = parsed_id else {
                 // The instance name does not fit `u32` (issue #3395). SKIP
                 // the record and keep scanning: returning `None` here would
                 // end the whole scan at the first oversized id, silently
@@ -250,26 +248,18 @@ impl<'a> EntityScanner<'a> {
                 continue;
             };
 
-            // `eq_pos` is the '=' the candidate loop validated, NOT the first
-            // '=' in the record. This used to `memchr` for one, which finds
-            // the one inside the comment in `#1 /* a=b */ = IFCWALL(…)` and
-            // reads `b` as the type name.
-            //
-            // Skip trivia between the '=' and the type name. The comments in
-            // this record all closed — `find_entity_end` above would have
-            // refused the record otherwise — so `None` is unreachable, and
-            // `line_end` is the conservative answer if it ever were not.
+            // Use the validated '=', not one inside `#1 /* a=b */ = IFCWALL`.
+            // Skip trivia before the type; find_entity_end already verified
+            // closed comments, with line_end as a conservative fallback.
             let type_start = super::lexical::skip_step_trivia(&self.bytes[..line_end], eq_pos + 1)
                 .unwrap_or(line_end);
 
             // Find end of type name (at '(', whitespace, or a comment opener:
             // `IFCWALL/* n */(…)` is legal and its type name is IFCWALL).
             //
-            // `super::lexical::is_step_space`, not `u8::is_ascii_whitespace`:
-            // the latter excludes vertical tab (see that function's doc
-            // comment), which would leave `IFCWALL\x0B(` reading a type name
-            // of "IFCWALL\x0B" instead of "IFCWALL".
+            // STEP whitespace includes vertical tab, unlike is_ascii_whitespace.
             let mut type_end = type_start;
+            let mut type_bytes_or = 0u8;
             while type_end < line_end {
                 let b = self.bytes[type_end];
                 if b == b'(' || super::lexical::is_step_space(b) {
@@ -278,35 +268,24 @@ impl<'a> EntityScanner<'a> {
                 if b == b'/' && self.bytes.get(type_end + 1) == Some(&b'*') {
                     break;
                 }
+                type_bytes_or |= b;
                 type_end += 1;
             }
 
-            // Use safe UTF-8 conversion - malformed input should not cause UB
-            let type_name = std::str::from_utf8(&self.bytes[type_start..type_end]).unwrap_or("UNKNOWN");
+            let type_bytes = &self.bytes[type_start..type_end];
+            let type_name = if type_bytes_or.is_ascii() {
+                // SAFETY: the loop ORs every byte in this exact slice; a clear
+                // high bit proves every byte is ASCII and therefore valid UTF-8.
+                unsafe { std::str::from_utf8_unchecked(type_bytes) }
+            } else {
+                std::str::from_utf8(type_bytes).unwrap_or("UNKNOWN")
+            };
 
             // Move position past this entity
             self.position = line_end;
 
             return Some((id, type_name, line_start, line_end));
         }
-    }
-
-    /// Fast u32 parsing without string allocation.
-    ///
-    /// `start..end` is a validated ASCII digit run (the candidate loop in
-    /// [`next_entity`](Self::next_entity) walks it with `is_ascii_digit`), so
-    /// `None` means exactly one thing: the value does not fit `u32`. It used to
-    /// be `wrapping_mul`/`wrapping_add`, which turned `#4294967297` into `1` —
-    /// a real entity's id, indistinguishable from it downstream (issue #3395).
-    ///
-    /// Delegates to [`crate::express_id::parse_express_id`], the single
-    /// checked accumulator shared with every `#<digits>` reference reader in
-    /// [`crate::fast_parse`] and [`crate::decoder`] (issue #3421) — the
-    /// definition and reference sides of an express id agree on the bound
-    /// because they call the same function, not two copies of the same rule.
-    #[inline]
-    fn parse_u32_fast(&self, start: usize, end: usize) -> Option<u32> {
-        crate::express_id::parse_express_id(&self.bytes[start..end])
     }
 
     /// Find the terminating semicolon of an entity, skipping over quoted strings.

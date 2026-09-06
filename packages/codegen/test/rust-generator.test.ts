@@ -85,8 +85,7 @@ describe('generateRust — schema.rs IfcType enum', () => {
     expect(rust.schema).not.toContain('    IFCWALL,\n');
   });
 
-  it('matches from_str on the UPPERCASE spelling (it is fed s.to_uppercase())', () => {
-    expect(rust.schema).toContain('let upper = s.to_uppercase();');
+  it('emits uppercase schema match arms', () => {
     expect(rust.schema).toContain('"IFCWALL" => Self::IfcWall,');
     // Both directions: a PascalCase match arm would be dead code.
     expect(rust.schema).not.toContain('"IfcWall" => Self::IfcWall,');

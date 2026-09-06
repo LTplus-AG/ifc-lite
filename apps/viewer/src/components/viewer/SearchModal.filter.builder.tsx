@@ -183,7 +183,7 @@ export function SearchModalFilterBuilder() {
       <div className="flex flex-col gap-2">
         {filter.rules.length === 0 && (
           <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-            Add a rule to start filtering — pick by storey, IFC type, name,
+            Add a rule to start filtering — pick by model, storey, IFC type, name,
             property, quantity, material, classification, or elevation.
           </p>
         )}

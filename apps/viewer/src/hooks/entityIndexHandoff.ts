@@ -42,17 +42,48 @@ export interface EntityIndexSink {
  * `setTimeout(startDataModelParsing, 0)` task that runs afterwards, so a helper
  * that captured the VALUE would close over null for the life of the load and
  * drop both counts on every load large enough to take this path.
+ *
+ * Deferred mode holds the shared columns until `release()` so parser allocation
+ * can follow a geometry worker's completion. Callers also release on stream
+ * completion or shutdown: empty or failed geometry must never park metadata.
+ * A deadline also releases slow streams before the parser's own handoff timeout
+ * could start a redundant scan. Release is idempotent; late indexes pass through.
  */
 export function forwardEntityIndexTo(
   resolveSink: () => EntityIndexSink | null | undefined,
+  deferUntilWorkerFinishes = false,
+  maximumWaitMs = 10_000,
 ) {
-  return (
+  let ready = !deferUntilWorkerFinishes;
+  let pending: Parameters<EntityIndexSink['setEntityIndex']> | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const forward = (
     ids: Uint32Array,
     starts: Uint32Array,
     lengths: Uint32Array,
     oversizedIdCount?: number,
     malformedRecordCount?: number,
   ): void => {
-    resolveSink()?.setEntityIndex(ids, starts, lengths, oversizedIdCount, malformedRecordCount);
+    const args: Parameters<EntityIndexSink['setEntityIndex']> = [ids, starts, lengths, oversizedIdCount, malformedRecordCount];
+    if (!ready) { pending = args; return; }
+    resolveSink()?.setEntityIndex(...args);
   };
+  const release = (): void => {
+    if (timer !== undefined) { clearTimeout(timer); timer = undefined; }
+    ready = true;
+    const args = pending;
+    pending = undefined;
+    if (args) forward(...args);
+  };
+  if (deferUntilWorkerFinishes) timer = setTimeout(release, maximumWaitMs);
+  return Object.assign(forward, { release });
+}
+
+/** One immutable-source fingerprint slot per load; never cache or reuse it. */
+export function createSourceFingerprintCell(source: SharedArrayBuffer | null | undefined, enabled: boolean): SharedArrayBuffer | undefined {
+  if (!enabled || !source) return undefined;
+  const cell = new SharedArrayBuffer(16), words = new Uint32Array(cell);
+  words[0] = source.byteLength >>> 0;
+  words[1] = Math.floor(source.byteLength / 0x100000000);
+  return cell;
 }

@@ -193,6 +193,8 @@ fn issue_583_institute_var2_walls_and_doors_present() {
 // boolean results on this fixture as non-manifold and #3854 routes each refusal
 // into `csg_failures_total`. That is the gate reporting, not a #583 regression;
 // the census in issue_3440_manifold_gate_census.rs is what pins the gated count.
+// #3925 also guards the raw-union-first roof path: walls #227944/#229966
+// need a clean repaired subtraction even when the default gate accepts a tear.
 #[cfg(not(feature = "csg_manifold_gate"))]
 #[test]
 fn issue_583_institute_var2_no_csg_failures() {

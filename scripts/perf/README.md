@@ -129,7 +129,7 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### Retained processor registry ownership (#3987)
 
-Built-in processor registrations now share immutable setup while each router keeps its own failure state and custom replacement behavior. Retained in the cumulative cold-load candidate; no isolated throughput gain is attributed to this layer. Native constructor profiles identify the mechanism, but native and actual browser-worker verdicts remain separate. Do not replace custom processors or share mutable diagnostics to reduce setup further.
+Built-in processor registrations share immutable setup while each router keeps its own failure state and custom replacement behavior. Own-layer native subset comparisons did not establish a meaningful full-load improvement; the cumulative result must not be attributed to this layer. Constructor profiles identify avoided setup work, not a throughput verdict. Keep custom processors and mutable diagnostics independent. Browser performance is a separate verdict; invalid Firefox cohorts and unrun follow-ups provide no supporting result.
 
 ### N-ary repair validation (#3925)
 

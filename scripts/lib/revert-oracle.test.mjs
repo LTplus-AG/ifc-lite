@@ -411,6 +411,18 @@ test('classifyPath: test sources', () => {
   assert.equal(classifyPath('packages/core/src/__snapshots__/a.snap'), 'test');
 });
 
+test('#4016: separate Rust sibling modules are tests; inline production stays production', () => {
+  for (const path of ['rust/geometry/src/router/processor_registry_tests.rs',
+    'rust/geometry/src/router/tests.rs', 'rust/core/src/parser/scanner_tests.rs']) {
+    assert.equal(classifyPath(path), 'test');
+  }
+  for (const path of ['rust/geometry/src/router/processor_registry.rs',
+    'rust/geometry/src/router/mod.rs', 'rust/core/src/parser/scanner.rs',
+    'rust/core/src/testing.rs', 'rust/core/src/test_utils.rs']) {
+    assert.equal(classifyPath(path), 'production');
+  }
+});
+
 test('classifyPath: a `test-utils.ts` is production, not a test', () => {
   // Distinct subject from the `test/` SEGMENT case below: a hyphenated
   // filename must not be swallowed by the directory rule.
@@ -587,7 +599,7 @@ test('cargoRunner targets one crate and refuses an unnamed one', () => {
   assert.deepEqual(cargoRunner('ifc-lite-geom'), {
     family: 'cargo',
     bin: 'cargo',
-    args: ['test', '-p', 'ifc-lite-geom'],
+    args: ['test', '--no-fail-fast', '-p', 'ifc-lite-geom'],
   });
   assert.equal(cargoRunner(null), null);
 });

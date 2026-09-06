@@ -663,5 +663,29 @@ not create another owner or abandon its index. Cleanup releases in-flight
 claims, and stale promises cannot replace a newer build. Lifecycle tests cover
 StrictMode, unmount and partial/final metadata publications. This removes
 redundant work and preserves search availability; no separate cold-load speedup
-is attributed to this layer. Cumulative retained-stack qualification must
-exercise actual search and federated model lifetimes before landing.
+is attributed to this layer. Final frozen-artifact functional runs exercise actual search, model-ID resolution,
+properties and GPU picking with one and multiple models, including cache-hit
+reopening. The shared evidence below records coverage limits.
+
+
+### Retained cold-load qualification and limitations (#3985, #3993)
+
+The [retained evidence](./evidence/retained-cold-load-2026-09-06/README.md) separates
+combined native, browser and isolated-layer outcomes. Native full-call corpus
+loading improved with stable count and ordered-fingerprint witnesses; the
+separate observable oracle retained exact output for its covered modes. Isolated
+native layers were mixed, including a slower standalone ownership subset.
+
+Chrome supplemental review found lower overall readiness time and memory, with
+a consistent small-model readiness cost and slower geometry completion on some
+models. Its original strict console audit remains failed: static-only captures
+confirm a missing local analytics resource, while original per-event URLs were
+not recorded. Firefox's original cohort remains invalid after a transient-child
+memory-read failure and a long scheduling outlier. Later focus controls pass
+but do not establish that historical cause or a corpus speedup.
+
+Keep these limitations with the measurements. Neither isolated cleanup, a
+prepared reload, a diagnostic profile nor an unrun experiment supplies a
+throughput gain. No universal absence of performance regressions or target
+corpus gain is claimed. Original failures and private exploratory work remain
+archived; the published projections identify their source records by hash.

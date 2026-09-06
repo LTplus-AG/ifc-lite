@@ -10,8 +10,25 @@
   },
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./ifc4": {
+      "types": "./dist/generated/ifc4/index.d.ts",
+      "import": "./dist/generated/ifc4/index.js",
+      "default": "./dist/generated/ifc4/index.js"
+    },
+    "./ifc4x3": {
+      "types": "./dist/generated/ifc4x3/index.d.ts",
+      "import": "./dist/generated/ifc4x3/index.js",
+      "default": "./dist/generated/ifc4x3/index.js"
+    }
+  },
   "scripts": {
-    "build": "pnpm exec tsc",
+    "build": "pnpm exec tsc && pnpm exec tsc -p tsconfig.generated.json",
     "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run",

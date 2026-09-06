@@ -141,10 +141,12 @@ describe('clash revision baseline persistence (#3928)', () => {
 /** A `ClashRuleCoverage` carrying the #3947 per-element key arrays, sized so
  *  a handful of rules on a broad selector are enough to blow a small quota —
  *  standing in for "a broad rule on a large federated model" from #3953. */
-function coverageWithKeys(rule: string, keyCount: number): ClashRuleCoverage {
-  const keysA = Array.from({ length: keyCount }, (_, i) => `2N1SPBejP08uMKa3Ea${rule}${String(i).padStart(6, '0')}`);
-  const keysB = Array.from({ length: keyCount }, (_, i) => `1O2SPBejP08uMKa3Fb${rule}${String(i).padStart(6, '0')}`);
-  return { rule, matchedA: keyCount, matchedB: keyCount, matchedKeysA: keysA, matchedKeysB: keysB };
+function coverageWithKeys(
+  rule: string, matchedA: number, matchedB: number, fromMembersA: boolean, fromMembersB: boolean,
+): ClashRuleCoverage {
+  const keysA = Array.from({ length: matchedA }, (_, i) => `2N1SPBejP08uMKa3Ea${rule}${String(i).padStart(6, '0')}`);
+  const keysB = Array.from({ length: matchedB }, (_, i) => `1O2SPBejP08uMKa3Fb${rule}${String(i).padStart(6, '0')}`);
+  return { rule, matchedA, matchedB, fromMembersA, fromMembersB, matchedKeysA: keysA, matchedKeysB: keysB };
 }
 
 describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', () => {
@@ -160,7 +162,10 @@ describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', 
     () => {
       const r: ClashResult = {
         ...result([clash('m1')]),
-        ruleCoverage: [coverageWithKeys('r1', 400), coverageWithKeys('r2', 400)],
+        ruleCoverage: [
+          coverageWithKeys('r1', 400, 300, true, false),
+          coverageWithKeys('r2', 200, 500, false, true),
+        ],
       };
       const outcome = saveRevisionBaseline({ result: r, modelNames: { m1: 'building.ifc' }, takenAt: 1000 });
       assert.deepStrictEqual(outcome, { ok: true });
@@ -171,9 +176,14 @@ describe('saveRevisionBaseline size (#3953: matchedKeysA/B growth from #3947)', 
       assert.ok(loaded);
       const coverage = loaded.result.ruleCoverage;
       assert.ok(coverage);
-      assert.strictEqual(coverage[0]?.matchedA, 400);
-      assert.strictEqual(coverage[0]?.matchedKeysA, undefined);
-      assert.strictEqual(coverage[0]?.matchedKeysB, undefined);
+      assert.deepStrictEqual(coverage, [
+        { rule: 'r1', matchedA: 400, matchedB: 300, fromMembersA: true, fromMembersB: false },
+        { rule: 'r2', matchedA: 200, matchedB: 500, fromMembersA: false, fromMembersB: true },
+      ]);
+      for (const entry of coverage) {
+        assert.strictEqual(entry.matchedKeysA, undefined);
+        assert.strictEqual(entry.matchedKeysB, undefined);
+      }
     },
   );
 

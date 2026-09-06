@@ -287,10 +287,10 @@ impl MeshDataJs {
 impl MeshDataJs {
     /// Create new mesh data with IFC Z-up to WebGL Y-up conversion.
     ///
-    /// Performs coordinate conversion and winding order reversal in Rust
+    /// Performs coordinate conversion in Rust
     /// to avoid expensive per-vertex JS iteration (63.5M vertices for large files).
     /// IFC Z-up → WebGL Y-up: swap Y/Z, negate new Z for right-handedness.
-    /// Winding order reversed to compensate for the handedness flip.
+    /// This rotation has determinant +1, so triangle winding is preserved (#4056).
     pub fn new(express_id: u32, ifc_type: String, mut mesh: Mesh, color: [f32; 4]) -> Self {
         // Convert positions: IFC Z-up → WebGL Y-up
         for chunk in mesh.positions.chunks_exact_mut(3) {
@@ -306,13 +306,6 @@ impl MeshDataJs {
             let z = chunk[2];
             chunk[1] = z;
             chunk[2] = -y;
-        }
-
-        // Reverse winding order to compensate for handedness flip
-        let remainder = mesh.indices.len() % 3;
-        let end = mesh.indices.len() - remainder;
-        for i in (0..end).step_by(3) {
-            mesh.indices.swap(i + 1, i + 2);
         }
 
         // The per-element origin is a world-frame point and MUST undergo the

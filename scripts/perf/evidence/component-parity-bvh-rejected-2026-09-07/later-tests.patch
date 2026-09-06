@@ -1,0 +1,58 @@
+diff --git a/rust/geometry/src/kernel/arrangement/component_parity_tests.rs b/rust/geometry/src/kernel/arrangement/component_parity_tests.rs
+index e8768c75ef03e5d3b1671c3d3763797e6ea6717a..6295505e42453b6f028d4a84ee8f3a19ec31eb05 100644
+--- a/rust/geometry/src/kernel/arrangement/component_parity_tests.rs
++++ b/rust/geometry/src/kernel/arrangement/component_parity_tests.rs
+@@ -5 +5 @@
+-use super::{point_inside, point_inside_bvh, BComponents, Tri};
++use super::{exact_seg_hits_tri, point_inside, point_inside_bvh, ray_dir, sound_far, BComponents, Tri};
+@@ -62,0 +63,50 @@ fn issue_4054_dense_component_prunes_candidates_and_preserves_exact_parity() {
++
++#[test]
++fn issue_4054_candidates_include_every_exact_hit_with_original_padded_endpoint() {
++    let mut mesh = Vec::new();
++    for i in 0..32 {
++        let x = i as f64 * 2.0;
++        mesh.extend(box_mesh([x, 0.0, 0.0], [x + 1.0, 1.0, 1.0]));
++    }
++    let refs = [&mesh[..]];
++    let components = BComponents::new(&refs);
++    let mut scratch = Vec::new();
++    let mut exact_hits = 0;
++    let mut most_hits = 0;
++    for i in 0..256 {
++        let t = i as f64;
++        // Include boundary starts and rays that both enter and exit a shell:
++        // missing an even number of hits would evade a parity-only oracle.
++        let p = if i == 0 { [-0.5; 3] } else {
++            [(t * 0.618_033_988_75).fract() * 68.0 - 2.0,
++             (i % 5) as f64 * 0.5 - 0.5, (i % 7) as f64 * 0.25 - 0.25]
++        };
++        point_inside_bvh(p, &mesh, &components.bvhs[0], components.exts[0],
++            Some(components.aabbs[0]), &mut scratch);
++        let far = sound_far(p, ray_dir(), components.exts[0], components.aabbs[0]);
++        let before = exact_hits;
++        for (j, tri) in mesh.iter().enumerate() {
++            if exact_seg_hits_tri(p, far, tri) {
++                exact_hits += 1;
++                assert!(scratch.contains(&(j as u32)), "#4054 missed exact hit {j}, p={p:?}");
++            }
++        }
++        most_hits = most_hits.max(exact_hits - before);
++    }
++    assert!(exact_hits > 0, "#4054 candidate-superset oracle must exercise hits");
++
++    assert!(most_hits >= 2, "#4054 an even-hit query must be covered");
++
++    let mesh = box_mesh([0.0; 3], [1.0; 3]);
++    let refs = [&mesh[..]];
++    let components = BComponents::new(&refs);
++    let dir = ray_dir();
++    let p = std::array::from_fn(|i| 0.5 - dir[i] * components.exts[0]);
++    let padded = sound_far(p, dir, components.exts[0], components.aabbs[0]);
++    let root = sound_far(p, dir, components.exts[0], components.bvhs[0].root_aabb().unwrap());
++    assert_ne!(padded.map(f64::to_bits), root.map(f64::to_bits),
++        "#4054 padded-box endpoint preservation is a real distinct-ray case");
++    let got = point_inside_bvh(p, &mesh, &components.bvhs[0], components.exts[0],
++        Some(components.aabbs[0]), &mut scratch);
++    assert_eq!(got, point_inside(p, &mesh, components.exts[0], components.aabbs[0]));
++}

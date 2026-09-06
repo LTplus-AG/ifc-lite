@@ -13,3 +13,16 @@ The first five pairs used the original harness; the remaining twenty-two used a 
 Before the screen, the candidate passed geometry library tests, strict workspace Clippy, root Turbo typecheck and real WASM contracts with reported skips. A later test-only extension added exact-hit candidate-superset and distinct padded-endpoint coverage. These checks support the bounded mechanism review; they neither replace the failed end-to-end gates nor imply full issue acceptance.
 
 The lesson is to reject this version rather than extrapolate a classification hotspot into a corpus win. BVH construction overhead is a possible tradeoff, not an attributed cause; no small-component threshold has been justified. Any reconsideration needs a new mechanism or stronger evidence. Independent constraint-recovery and type-reconstruction work retain their own issues and evidence.
+
+The candidate source is retained as plain patches, so inspecting the rejected
+mechanism does not depend on private branch refs surviving. These zero-context
+patches use `git apply --unidiff-zero` (avoiding whitespace-only context lines). Apply
+`measured-candidate.patch` to public commit `96ea5f08e4872cb50fe9eac7a9878ff607eb3f4a`;
+its affected base files are byte-identical to measured source `7509432ca`.
+This reproduces the two changed files at measured commit `67c3f6d31`.
+`later-tests.patch` then reproduces the test-only extension at `bdc38d30c`;
+those later tests were not part of the timed artifact. Neither patch is applied
+to production by this documentation PR.
+
+- `measured-candidate.patch`: SHA-256 `1ceda5c0b0b9bde477b0a7de487d962a75fadfbd1593a44a48f1186b02b9fb9b`.
+- `later-tests.patch`: SHA-256 `abc9e24c8370e535c1a6da4c62c9d8aa2565e09d8665295321adb4fbe6353b5a`.

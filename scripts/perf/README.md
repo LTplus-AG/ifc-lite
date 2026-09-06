@@ -642,3 +642,14 @@ nonfinite coordinates and full-width entity IDs. This removes per-vertex key
 allocation; no isolated end-to-end speedup is attributed to this layer. The
 retained cold-load stack must carry its cumulative browser qualification,
 including picking and peak-memory observations, before landing.
+
+### Retained cold-load work: bounded cache compression (#4003)
+
+Geometry cache compression can run in one lazy module worker, using the same
+codec and bounded chunk window as the workerless writer. The viewer opts in;
+SDK callers retain the workerless default. Only fresh serialized chunks transfer,
+and worker failures reject the cache write with deterministic disposal. This
+moves compression off the interaction thread without removing its CPU or memory
+cost. Cumulative qualification must include cache completion, full-lifetime
+memory and actual cache reopening; raw IFC timing must not be replaced by a
+prepared reload. No isolated throughput gain is attributed to this layer.

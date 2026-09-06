@@ -749,7 +749,7 @@ export function formatFailureReason(result: FacetCheckResult): string {
     case 'CLASSIFICATION_VALUE_MISMATCH':
       return `Classification value "${actual}" does not match expected ${expected}`;
     case 'CLASSIFICATION_UNRESOLVED':
-      return 'Entity is classified, but classification details cannot be read from this data source';
+      return field === 'presence' ? 'Whether this entity is classified cannot be determined from this data source' : 'Entity is classified, but classification details cannot be read from this data source';
     case 'MATERIAL_MISSING':
       return 'No material assigned';
     case 'MATERIAL_VALUE_MISMATCH':

@@ -1,5 +1,27 @@
 # @ifc-lite/clash
 
+## 2.1.0
+
+### Minor Changes
+
+- [#3947](https://github.com/LTplus-AG/ifc-lite/pull/3947) [`5d4140b`](https://github.com/LTplus-AG/ifc-lite/commit/5d4140b305aa3ef2c1d82e1def85095c8832bbed) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Compare a saved clash-run baseline against the current run and see which clashes are new, still open, or no longer detected ([#3928](https://github.com/LTplus-AG/ifc-lite/issues/3928)).
+  
+  `@ifc-lite/clash` already shipped `compareClashRuns`, the matching engine for diffing two clash runs by their durable `clashReviewKey`, but it had no viewer, CLI, or sandbox consumer. This adds one: a "Compare clash runs" dialog in the clash panel header lets a coordinator save the current result as a baseline and later compare a fresh run against it.
+  
+  A raw `compareClashRuns` diff is unsafe to show as-is: it cannot tell "genuinely fixed" apart from "we didn't actually re-check". A dropped rule, a rule whose selector now matches nothing, or a model no longer part of the comparison all make a clash vanish from the current run's results for reasons that have nothing to do with the model getting better. `@ifc-lite/clash` gains `compareClashRevisions`, which wraps `compareClashRuns` and reclassifies an unsafe `resolved` clash into a new `unretested` bucket, so a coordinator is told "unconfirmed" instead of a false "fixed". The viewer dialog surfaces the reason for every `unretested` clash instead of hiding it in a bucket count.
+  
+  The safety check works at per-element granularity, not just per-rule/per-model: a `resolved` clash is only trusted when BOTH of its elements are confirmed, by durable key, to still be matched by the SAME SIDE of the same rule in the current run (`ClashRuleCoverage.matchedKeysA`/`matchedKeysB`, new fields the engine now records alongside the existing match counts). Checking `matchedKeysA` and `matchedKeysB` separately, rather than as one combined set, matters when the two sides overlap (e.g. an element listed in both `membersA` and `membersB`): a clash's A-side element must still be matched on side A, and its B-side element still matched on side B — an element that only moved to the other side is not "still matched" for that clash. A self-clash rule (no `b` side at all) has just the one group, so its two elements are checked against that single set instead. This also catches a narrowed selector or re-scoped membership filter that drops just one previously-clashing element while the rule's overall coverage stays non-zero, and a durable key (e.g. GlobalId) that was re-minted between exports for the same physical element. Model identity for the missing-model check no longer collapses on a duplicate display name: two models sharing one name are told apart by how many still share it, not by simple set membership.
+  
+  The viewer's saved-baseline persistence now validates the stored shape (`result.clashes` must be an array) and its schema version before trusting it, instead of handing a structurally-thin corrupted value to the compare engine, which iterates `clashes` directly.
+  
+  New exports on `@ifc-lite/clash`: `compareClashRevisions`, `ClashRevisionSide`, `ClashRevisionComparison`, `ClashRevisionReasons`.
+
+### Patch Changes
+
+- Updated dependencies [[`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2), [`e1d807c`](https://github.com/LTplus-AG/ifc-lite/commit/e1d807cf4bf4f3bf25122fed4d7e3fde8296bf6d), [`09f9419`](https://github.com/LTplus-AG/ifc-lite/commit/09f941947666f567cd1fd6fd362041e048868434), [`6094e2f`](https://github.com/LTplus-AG/ifc-lite/commit/6094e2f16f27c80bc227f73bbdf634a770f17abc)]:
+  - @ifc-lite/parser@5.1.0
+  - @ifc-lite/wasm@6.3.0
+
 ## 2.0.0
 
 ### Major Changes

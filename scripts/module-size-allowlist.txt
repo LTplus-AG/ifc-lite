@@ -366,9 +366,9 @@
    528 scripts/lib/revert-oracle.mjs
    494 scripts/lib/rust-source-text-detect.mjs
   1165 scripts/lib/vitest-timeout-audit.mjs
-   680 scripts/review/build-context-pack.mjs
-   679 scripts/review/build-review-input.mjs
-   562 scripts/review/run-reviewer.mjs
+   691 scripts/review/build-context-pack.mjs
+   677 scripts/review/build-review-input.mjs
+   591 scripts/review/run-reviewer.mjs
    688 scripts/source-text-assertion-detect.mjs
    504 scripts/test-geometry-regression.mjs
   2196 scripts/test-wasm-contract.mjs

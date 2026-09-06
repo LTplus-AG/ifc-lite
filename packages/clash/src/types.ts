@@ -244,6 +244,21 @@ export interface ClashRuleCoverage {
    */
   fromMembersA?: boolean;
   fromMembersB?: boolean;
+  /**
+   * The durable `key` (IfcGUID / USD prim path) of every element THIS rule
+   * matched on each side, deduplicated and sorted for determinism — not just
+   * a count. `compareClashRevisions` (revision.ts) needs this to ask "was
+   * this SPECIFIC element re-examined?", which `matchedA`/`matchedB` (counts
+   * only) cannot answer: a narrowed selector that drops one previously-
+   * matched element while keeping the total count non-zero is invisible to a
+   * count-only check. `matchedKeysB` mirrors `matchedB`'s `null` for a
+   * self-clash rule (no `b` side). Absent (not just empty) on a result
+   * recorded before this existed, or from a hand-built fixture — callers
+   * MUST treat an absent `matchedKeysA` as "cannot verify", never as "matched
+   * nothing".
+   */
+  matchedKeysA?: readonly string[];
+  matchedKeysB?: readonly string[] | null;
 }
 
 export interface ClashResult {

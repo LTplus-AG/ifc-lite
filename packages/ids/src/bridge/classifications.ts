@@ -14,6 +14,7 @@ interface ClassRecord {
   identification?: string;
   name?: string;
   path?: string[];
+  unresolved?: boolean;
 }
 
 /**
@@ -45,7 +46,7 @@ export function resolveClassifications(
     // even when the value is empty — so optional-cardinality value
     // mismatches register as a value mismatch rather than as a
     // missing-classification (which optional pardons).
-    out.push({ system, value: baseValue, name: c.name });
+    out.push({ system, value: baseValue, name: c.name, unresolved: c.unresolved });
     if (Array.isArray(c.path)) {
       for (const code of c.path) {
         if (code && code !== baseValue) {

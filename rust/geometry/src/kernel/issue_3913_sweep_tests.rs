@@ -306,17 +306,11 @@ fn run_sweep() -> Vec<Verdict> {
     out
 }
 
-/// Regression ceiling recorded from a real run of `run_sweep()` on this
-/// commit: `498 / 882` torn, measured via `cargo test -p ifc-lite-geometry
-/// --lib mesh_bridge::issue_3913_sweep_tests -- --nocapture` on upstream/main
-/// (where `union_many` has NO N-ary weld — #3912, the weld, is a separate
-/// unmerged PR), extended to all 6 operand orderings. All 498 torn configurations
-/// have `dz != 0` (the flush control never tears). A future weld landing in
-/// `union_many` should only ever LOWER this count; this gate exists so it can
-/// never rise again unnoticed. Update this constant (down, with the new
-/// measured count quoted in the same commit) whenever a fix intentionally
-/// changes the sweep's outcome; never raise it to force a pass.
-const KNOWN_TORN_CEILING: usize = 498;
+/// The shipped #3912 N-ary weld measured 136 / 882 torn configurations.
+/// #3925 preserves that union path; the unshipped raw-first experiment improved
+/// this synthetic sweep but regressed real large-model cuts and was discarded.
+/// Tighten the pre-weld ceiling of 498 to the measured shipped result.
+const KNOWN_TORN_CEILING: usize = 136;
 
 /// The primary #3913 deliverable: a committed, deterministic, CI-run sweep
 /// over the exact 882-configuration shape (7x7 corner grid x 3 dz x 6

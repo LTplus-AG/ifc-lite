@@ -77,10 +77,41 @@ function columnsForFirstRecordOnly() {
   };
 }
 
+/** One cast, not four. */
+const typeOf = (m: unknown): string | undefined => (m as { type?: string }).type;
+
+/**
+ * WAIT FOR THE WORKER TO SETTLE, NOT FOR A FIXED NUMBER OF TURNS.
+ *
+ * This used to drain 200 microtasks, one macrotask, then 200 more, and it made
+ * one test out of 1,181 redden the whole Node-tests job: measured over 39
+ * pushes to main, `Test` was red 15 times and 12 of those were this assertion.
+ *
+ * THE BUDGET WAS NEVER 400 TURNS. The parse yields through
+ * `yield-to-event-loop.ts`, a MessageChannel round-trip in Node, which no
+ * amount of microtask draining satisfies -- so the old helper's real budget was
+ * exactly ONE event-loop turn, and this fixture needs exactly one. Zero
+ * headroom. One extra crossing of `YIELD_INTERVAL_MS` (columnar-parser.ts) or
+ * one hit of entity-scanner's `setTimeout(0)` on a loaded runner makes it two,
+ * and the old code loses. Reproduced by deferring the worker's delivery a few
+ * macrotasks: old 3 failed, new 4 passed.
+ *
+ * `vi.waitFor` polls the condition instead, and its timeout message NAMES the
+ * wait and lists what did arrive. That matters more than it looks: a bare
+ * deadline here would fail with `expected [ … ] to include 'complete'` -- the
+ * exact text this change exists to stop producing -- and send the next reader
+ * to re-diagnose a fixed bug.
+ */
 async function settle(): Promise<void> {
-  for (let i = 0; i < 200; i++) await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  for (let i = 0; i < 200; i++) await Promise.resolve();
+  await vi.waitFor(
+    () => {
+      const types = postedMessages.map(typeOf);
+      if (!types.includes('complete') && !types.includes('error')) {
+        throw new Error(`worker has not settled: saw [${types.join(', ')}]`);
+      }
+    },
+    { timeout: 20_000, interval: 1 },
+  );
 }
 
 function post(data: unknown): void {
@@ -106,15 +137,15 @@ function startParse(): void {
  * `{type:'error'}`. Both controls passed, proving nothing.
  */
 function assertParsed(): void {
-  const types = postedMessages.map((m) => (m as { type?: string }).type);
-  const error = postedMessages.find((m) => (m as { type?: string }).type === 'error');
+  const types = postedMessages.map(typeOf);
+  const error = postedMessages.find((m) => typeOf(m) === 'error');
   if (error) throw new Error(`worker errored: ${(error as { message?: string }).message}`);
   expect(types).toContain('complete');
 }
 
 function diagnostics(): string[] {
   return postedMessages
-    .filter((m) => (m as { type?: string }).type === 'diagnostic')
+    .filter((m) => typeOf(m) === 'diagnostic')
     .map((m) => (m as { message: string }).message);
 }
 

@@ -333,3 +333,52 @@ mod attribute_names {
         assert_eq!(u.attribute_index("GlobalId"), None);
     }
 }
+
+// #3987: borrowing canonical names must retain case-insensitive schema identity
+// and the public Unicode-normalized CRC for unknown names.
+#[test]
+fn type_name_normalization_preserves_catalog_and_unknown_unicode_3987() {
+    for &ty in crate::IFC_TYPES {
+        for spelling in [ty.name().to_string(), ty.name().to_uppercase(), ty.name().to_lowercase()] {
+            assert_eq!(IfcType::from_str(&spelling), ty, "{spelling}");
+        }
+    }
+    // Independent bitwise IEEE CRC32 oracle, avoiding the generated table.
+    fn crc32(bytes: &[u8]) -> u32 {
+        let mut crc = !0u32;
+        for &byte in bytes {
+            crc ^= u32::from(byte);
+            for _ in 0..8 {
+                crc = (crc >> 1) ^ (0xedb8_8320 & 0u32.wrapping_sub(crc & 1));
+            }
+        }
+        !crc
+    }
+    // Unicode normalization may produce a KNOWN canonical keyword.
+    assert_eq!(IfcType::from_str("IFCſPACE"), IfcType::IfcSpace);
+    // Legacy spelling stays a raw schema lookup here; legacy-aware remapping
+    // belongs to its existing wrapper, not this normalization optimization.
+    for &name in crate::legacy_entities::LEGACY_ENTITY_NAMES {
+        let upper = name.to_uppercase();
+        let expected = crate::IFC_TYPES.iter().copied()
+            .find(|ty| ty.as_str() == upper)
+            .unwrap_or_else(|| IfcType::Unknown(crc32(upper.as_bytes())));
+        for spelling in [name.to_owned(), name.to_lowercase()] {
+            assert_eq!(IfcType::from_str(&spelling), expected, "{spelling}");
+        }
+    }
+    for (input, uppercase) in [
+        ("", ""),
+        ("IFCÉ", "IFCÉ"),
+        ("IFCWALL ", "IFCWALL "),
+        ("IFC\0WALL", "IFC\0WALL"),
+        ("IFC_VENDOR_123", "IFC_VENDOR_123"),
+        ("Ifc_Vendor_123", "IFC_VENDOR_123"),
+        ("ifcstraße", "IFCSTRASSE"),
+        ("ifcﬃ", "IFCFFI"),
+        ("ifcé", "IFCÉ"),
+        ("ifcı", "IFCI"),
+    ] {
+        assert_eq!(IfcType::from_str(input), IfcType::Unknown(crc32(uppercase.as_bytes())), "{input}");
+    }
+}

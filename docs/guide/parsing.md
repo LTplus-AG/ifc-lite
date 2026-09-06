@@ -515,6 +515,14 @@ Entity counts are taken from the EXPRESS schemas the code generators consume
 (`IFC4_ADD2_TC1`, `IFC4X3`). IFC2X3 files are parsed with the same pipeline;
 the runtime schema registry itself is generated from IFC4.
 
+### Native Rust geometry classification
+
+`ifc_lite_core::geometry_flags_by_name(type_name)` returns
+`(has_geometry, is_representationless_spatial_container)`, using the same
+case normalization and legacy-type rules as the two individual predicates.
+These flags classify a type; they do not establish whether a particular record
+contains a usable representation.
+
 ### Schema Registry
 
 Access runtime schema metadata (generated from `IFC4_ADD2_TC1`):

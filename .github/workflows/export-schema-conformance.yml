@@ -1,0 +1,99 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Schema-conformance check for the STEP/IFC export writer, against
+# IfcOpenShell (#4043).
+#
+# THE GAP THIS CLOSES. Every fidelity test for `packages/export`'s STEP/IFC
+# writer is `parse(write(x))` through ifc-lite's own `@ifc-lite/parser` — the
+# writer and reader agreeing with each other, not with the format. The
+# `IfcOpenShell parity` workflow (ifcopenshell-parity.yml) is this repo's
+# real external anchor, but its `paths:`/internal filter covers
+# `rust/geometry|processing|core|python` and the parity tooling itself —
+# `packages/**` and `rust/export/**` are outside it — and it compares only
+# bbox/volume/dropped-element counts, never STEP/EXPRESS schema conformance
+# (mandatory attributes, WHERE/uniqueness rules, inverse relationships).
+# `packages/export/src/step-exporter.test.ts` records that gap being hit
+# once by hand as regression #1839, caught by a manual `ifcopenshell.validate`
+# run that was never wired into CI.
+#
+# WHY A SEPARATE JOB, NOT AN EXTENSION OF `ifcopenshell-parity.yml`'s
+# `quick` lane. That lane is a REQUIRED check specifically because it is
+# cheap and always reports (no reference-engine install, Rust-wheel-only,
+# gated on 4 fixed geometry fixtures). Measured on this branch,
+# `packages/export/**` changed in 22 of the last 300 upstream commits and
+# `rust/export/**` in 14 — folding this into that lane's trigger would
+# roughly double how often the REQUIRED parity check does real work, and
+# would add a Python + ifcopenshell install (a native-extension wheel, not a
+# small pure-Python package) to a lane whose whole design point is staying
+# light. This is a NEW, non-required, narrowly-path-filtered job instead —
+# same tooling directory, same requirements.lock, independent trigger — so a
+# writer-schema regression is caught without slowing or risking every other
+# PR's required check.
+#
+# WHAT IT DOES. Re-exports two real third-party fixtures (ara3d/duplex.ifc,
+# ara3d/IfcOpenHouse_IFC4.ifc) through `StepExporter` and runs
+# `tools/ifcopenshell_reference/validate_export.py` — `ifcopenshell.validate`
+# with `express_rules=True` — against both the re-exports and the ORIGINAL
+# fixtures (a control: a non-conformant input must not read as a writer
+# defect). See that script's own header for its vacuous-pass refusals, and
+# `test_validate_export.py` for the fault-injection proof it actually has
+# teeth.
+
+name: Export schema conformance
+
+on:
+  pull_request:
+    paths:
+      - "packages/export/**"
+      - "packages/parser/**"
+      - "tools/ifcopenshell_reference/validate_export.py"
+      - "tools/ifcopenshell_reference/test_validate_export.py"
+      - "tools/ifcopenshell_reference/requirements.lock"
+      - "tests/models/manifest.json"
+      - ".github/workflows/export-schema-conformance.yml"
+  schedule:
+    # Weekly, off the top of the hour — catches a pinned-engine or fixture
+    # drift even on a quiet week with no export/parser PRs.
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: StepExporter output vs ifcopenshell.validate(express_rules=True)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ifcopenshell + pytest (express_rules needs pytest's assertion rewriter)
+        run: pip install -r tools/ifcopenshell_reference/requirements.lock
+
+      - name: validate_export.py self-test (vacuity refusals + fault injection)
+        working-directory: tools/ifcopenshell_reference
+        run: python -m unittest test_validate_export -v
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Fetch the two fixtures this check needs
+        run: node scripts/fixtures/fetch-fixtures.mjs tests/models/ara3d/duplex.ifc tests/models/ara3d/IfcOpenHouse_IFC4.ifc
+
+      - name: Re-export both fixtures and validate against IfcOpenShell
+        run: pnpm --filter @ifc-lite/export exec vitest run src/ifcopenshell-schema-conformance.test.ts

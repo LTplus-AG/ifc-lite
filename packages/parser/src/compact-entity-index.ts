@@ -7,19 +7,8 @@
 
 import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
+import { internType, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
-
-/** Intern `type` into the parallel string table/lookup pair, returning the
- *  index the `Uint16Array` type column stores. */
-function internType(typeStrings: string[], typeStringMap: Map<string, number>, type: string): number {
-  let index = typeStringMap.get(type);
-  if (index === undefined) {
-    index = typeStrings.length;
-    typeStrings.push(type);
-    typeStringMap.set(type, index);
-  }
-  return index;
-}
 
 /**
  * Compact read-only entity index backed by sorted typed arrays.
@@ -68,6 +57,13 @@ export class CompactEntityIndex {
     for (let i = 0; i < typeStrings.length; i++) {
       this.typeStringMap.set(typeStrings[i], i);
     }
+  }
+
+  /** Borrow numeric backing, valid until its owner detaches it; do not mutate.
+   * Cache consumers must not detach. Transport may transfer a retired index. */
+  getColumns(): CompactEntityIndexColumns {
+    const { expressIds, byteOffsets, byteLengths, typeIndices, typeStrings } = this;
+    return { expressIds, byteOffsets, byteLengths, typeIndices, typeStrings: typeStrings.slice() };
   }
 
   /**
@@ -413,15 +409,7 @@ export async function buildCompactEntityIndexAsync(
   entityRefs: EntityRef[],
   lruMaxSize?: number,
   chunkSize: number = 8192,
-  // Phase 3c: 8ms was the previous default but caused the parser tail
-  // to balloon under stream-time contention. Each yield under load
-  // costs 10-50ms wall-clock (event-loop backlogged with geometry
-  // batches), and 1700 yields × 4ms avg = 6.5s of pure overhead
-  // (measured: compact entity index 196ms uncontended → 6700ms
-  // contended). 50ms budget cuts yields to ~270 → ~1s overhead, saving
-  // ~5s on the parser path. Trade-off: parser worker briefly
-  // unresponsive between yields, but it's a worker thread so this only
-  // affects message processing back to main, which is buffered anyway.
+  // A worker-local time budget bounds event-loop handoffs under stream contention.
   budgetMs: number = 50,
 ): Promise<CompactEntityIndex> {
   const count = entityRefs.length;

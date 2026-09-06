@@ -5,7 +5,7 @@
   "baseWasmSha256": "3291120b10dcbfa208db6c97574e2d247cdd4b9a28dde3fc1449313d68059b3c",
   "candidateWasmSha256": "7608de4fd4e46ebb090ec5e9a855272df42b14259b1345138c4ead59ef864198",
   "verdict": "Rejected under unchanged raw geometry and lifecycle gates; no landing or universal performance claim",
-  "scope": "Single interleaved fresh-process Chrome pair per27models, with three justified clean recovery pairs after failed teardown; originals preserved",
+  "scope": "Single interleaved fresh-process Chrome pair per 27 models, with three justified clean recovery pairs after failed teardown; originals preserved",
   "whole27Qualified": false,
   "historical11": {
     "totalModels": 11,
@@ -851,16 +851,16 @@
     }
   ],
   "retainedAttemptDisposition": {
-    "r1": "First11pairs retained;1259MBbotharms browser.close20swatchdog failures retained unqualified; subsequent02/04/05 originalpairs remain boundary-contamination-uncertain and excluded from accepted timings. R1stopped after05candidate result saved before parent verdict emission.",
-    "r2": "Remaining12pairs, explicit sampled Chrome process disappearance before every next case; no lifecycle failures.",
-    "r3": "Only02/04/05 recoverypairs with explicit process disappearance; original uncertain attempts not overwritten."
+    "r1": "First 11 pairs retained; 1259 MB both arms browser.close 20s watchdog failures retained unqualified; subsequent 02/04/05 original pairs remain boundary-contamination-uncertain and excluded from accepted timings. R1 stopped after 05 candidate result saved before parent verdict emission.",
+    "r2": "Remaining 12 pairs, explicit sampled Chrome process disappearance before every next case; no lifecycle failures.",
+    "r3": "Only 02/04/05 recovery pairs with explicit process disappearance; original uncertain attempts not overwritten."
   },
   "limits": [
     "Functional completion does not waive browser.close watchdog failures.",
     "Raw counts, canonical hash, AABB, volume and spatial query multisets compared without normalization or canonical-producer substitution.",
-    "Accepted-subset percentages do not represent a qualified whole27performance result; one pair cannot establish regression freedom.",
+    "Accepted-subset percentages do not represent a qualified whole 27 performance result; one pair cannot establish regression freedom.",
     "No Firefox corpus comparison or deployment claim.",
-    "Original1259candidate process tree was checked after baseline had begun, not at its exact launch boundary; both1259cases remain rejected."
+    "Original 1259 candidate process tree was checked after baseline had begun, not at its exact launch boundary; both 1259 cases remain rejected."
   ],
   "counts": {
     "distinctFixtures": 27,
@@ -877,7 +877,7 @@
   },
   "sourceSummarySha256": "8c5cd62ac0f8289f621d777b2d35c7db3f3b188be3a87e407e38fe557e852531",
   "candidateSourceCommit": "2312cc56a365de6f1dc723bdc13f58125299fb61",
-  "candidateSourceDelta": "only nine constraint-inventory kernel files vs publication2a2c0fb55; no canonical witness feature enabled",
+  "candidateSourceDelta": "only nine constraint-inventory kernel files vs publication 2a2c0fb55; no canonical witness feature enabled",
   "browserVersion": "Chrome 152.0.7977.76",
   "browserHarnessSha256": {
     "chrome.mjs": "ee08e4688487f42b996faa5b1e970a5503469da49095479bb9f9611b7e8baa88",

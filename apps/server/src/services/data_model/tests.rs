@@ -4,6 +4,31 @@
 
 use super::*;
 
+/// `extract_data_model`, plus the #3973 structural invariant
+/// (`spatial::spatial_hierarchy_consistency_violations`) asserted over the
+/// resulting `spatial_hierarchy` on every call. Every existing spatial
+/// fixture in this file goes through this wrapper rather than calling
+/// `extract_data_model` directly, so each one retroactively guards against a
+/// third instance of the dangling `children_ids` / disagreeing `parent_id`
+/// shape - not just the two fixtures written specifically to reproduce it.
+/// `build_spatial_hierarchy` itself only runs this check via `debug_assert!`
+/// (skipped in release builds); this wrapper enforces it unconditionally in
+/// the test suite regardless of build profile.
+fn extract_data_model_checked<T>(content: &T) -> DataModel
+where
+    T: AsRef<[u8]> + ?Sized,
+{
+    let dm = extract_data_model(content);
+    let node_refs: Vec<&SpatialNode> = dm.spatial_hierarchy.nodes.iter().collect();
+    let violations = spatial::spatial_hierarchy_consistency_violations(&node_refs);
+    assert!(
+        violations.is_empty(),
+        "spatial hierarchy consistency invariant violated:\n{}",
+        violations.join("\n")
+    );
+    dm
+}
+
 /// IFC4 model (millimetre units) with a wall carrying a two-layer material
 /// set, a Uniclass classification reference, and a document reference — one
 /// of each association type (issue #900).
@@ -53,7 +78,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_classification_material_and_document_associations() {
-    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
 
     // Classification: one reference assigned to the wall (#28).
     assert_eq!(dm.classifications.len(), 1, "expected one classification");
@@ -168,7 +193,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_type_relationship_and_resolves_typed_property_values() {
-    let dm = extract_data_model(TYPE_PARITY_IFC);
+    let dm = extract_data_model_checked(TYPE_PARITY_IFC);
 
     // IfcRelDefinesByType survives (was dropped by the `_ => (4,5)` default):
     // relating = type #200, related = each wall.
@@ -300,7 +325,7 @@ DATA;
 ENDSEC;
 END-ISO-10303-21;
 "#;
-    let dm = extract_data_model(plain);
+    let dm = extract_data_model_checked(plain);
     assert!(dm.classifications.is_empty());
     assert!(dm.materials.is_empty());
     assert!(dm.documents.is_empty());
@@ -312,7 +337,7 @@ END-ISO-10303-21;
 /// ObjectType), and CompositionType enums must not leak into PredefinedType.
 #[test]
 fn extracts_root_attributes_at_schema_positions() {
-    let dm = extract_data_model(TYPE_PARITY_IFC);
+    let dm = extract_data_model_checked(TYPE_PARITY_IFC);
     let e = |id: u32| dm.entities.iter().find(|e| e.entity_id == id).unwrap();
 
     let wall_a = e(100);
@@ -362,7 +387,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_voids_and_fills_single_ref_relationships() {
-    let dm = extract_data_model(VOID_FILL_IFC);
+    let dm = extract_data_model_checked(VOID_FILL_IFC);
     let has_rel = |ty: &str, relating: u32, related: u32| {
         dm.relationships.iter().any(|r| {
             r.rel_type.eq_ignore_ascii_case(ty)
@@ -404,7 +429,7 @@ END-ISO-10303-21;
 
 #[test]
 fn drops_voids_and_fills_rows_with_missing_or_list_refs() {
-    let dm = extract_data_model(MALFORMED_VOID_FILL_IFC);
+    let dm = extract_data_model_checked(MALFORMED_VOID_FILL_IFC);
     assert!(
         !dm.relationships.iter().any(|r| {
             r.rel_type.eq_ignore_ascii_case("IFCRELVOIDSELEMENT")
@@ -450,7 +475,7 @@ END-ISO-10303-21;
 
 #[test]
 fn builds_spatial_hierarchy_with_correct_parent_level_and_path() {
-    let dm = extract_data_model(SPATIAL_CHAIN_IFC);
+    let dm = extract_data_model_checked(SPATIAL_CHAIN_IFC);
     let sh = &dm.spatial_hierarchy;
 
     assert_eq!(sh.project_id, 1, "project id must be #1");
@@ -518,7 +543,7 @@ END-ISO-10303-21;
 
 #[test]
 fn resolves_document_information_directly_at_its_own_attribute_layout() {
-    let dm = extract_data_model(DOCUMENT_PATHS_IFC);
+    let dm = extract_data_model_checked(DOCUMENT_PATHS_IFC);
     let d = dm
         .documents
         .iter()
@@ -532,7 +557,7 @@ fn resolves_document_information_directly_at_its_own_attribute_layout() {
 
 #[test]
 fn backfills_only_missing_document_reference_fields_from_referenced_document() {
-    let dm = extract_data_model(DOCUMENT_PATHS_IFC);
+    let dm = extract_data_model_checked(DOCUMENT_PATHS_IFC);
     let d = dm
         .documents
         .iter()
@@ -577,7 +602,7 @@ END-ISO-10303-21;
 
 #[test]
 fn maps_every_physical_quantity_subtype_to_its_own_quantity_type_string() {
-    let dm = extract_data_model(ALL_QUANTITY_KINDS_IFC);
+    let dm = extract_data_model_checked(ALL_QUANTITY_KINDS_IFC);
     let qset = dm
         .quantity_sets
         .iter()
@@ -624,7 +649,7 @@ END-ISO-10303-21;
 
 #[test]
 fn resolves_a_direct_material_association_including_its_category() {
-    let dm = extract_data_model(DIRECT_MATERIAL_IFC);
+    let dm = extract_data_model_checked(DIRECT_MATERIAL_IFC);
     let m = dm
         .materials
         .iter()
@@ -659,7 +684,7 @@ END-ISO-10303-21;
 
 #[test]
 fn walks_referenced_source_through_multiple_classification_reference_levels() {
-    let dm = extract_data_model(NESTED_CLASSIFICATION_IFC);
+    let dm = extract_data_model_checked(NESTED_CLASSIFICATION_IFC);
     let c = dm
         .classifications
         .iter()
@@ -676,7 +701,7 @@ fn walks_referenced_source_through_multiple_classification_reference_levels() {
 
 #[test]
 fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
-    let dm = extract_data_model(SPATIAL_CHAIN_IFC);
+    let dm = extract_data_model_checked(SPATIAL_CHAIN_IFC);
     let sh = &dm.spatial_hierarchy;
 
     // Each element must land in EXACTLY its own container's bucket, not any
@@ -701,7 +726,7 @@ fn buckets_contained_elements_by_the_correct_spatial_container_kind() {
 /// ids, so neither a constant nor a copy of a neighbouring column passes.
 #[test]
 fn relationships_carry_the_ifcrel_express_id() {
-    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
     let rel_id_of = |ty: &str, relating: u32, related: u32| -> u32 {
         dm.relationships
             .iter()
@@ -722,7 +747,7 @@ fn relationships_carry_the_ifcrel_express_id() {
 /// from the list path, so it can lose `rel_id` on its own.
 #[test]
 fn voids_and_fills_carry_the_ifcrel_express_id() {
-    let dm = extract_data_model(VOID_FILL_IFC);
+    let dm = extract_data_model_checked(VOID_FILL_IFC);
     let rel_id_of = |ty: &str| -> u32 {
         dm.relationships
             .iter()
@@ -732,6 +757,469 @@ fn voids_and_fills_carry_the_ifcrel_express_id() {
     };
     assert_eq!(rel_id_of("IFCRELVOIDSELEMENT"), 40);
     assert_eq!(rel_id_of("IFCRELFILLSELEMENT"), 50);
+}
+
+/// #3965: an `IfcSpace` placed under its storey via `IfcRelContainedInSpatialStructure`
+/// only (the common Revit Family / Dynamo export pattern, historically reported at
+/// #1075) must be promoted into its own `SpatialNode`, exactly like an aggregated one -
+/// not left as a flat leaf in `element_ids` with no parent link.
+const CONTAINED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_contained_not_aggregated_space_is_promoted_to_its_own_node() {
+    let dm = extract_data_model_checked(CONTAINED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey = sh
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 3)
+        .expect("storey node");
+    assert_eq!(
+        storey.children_ids,
+        vec![5],
+        "the contained space must be linked as the storey's child, not dropped"
+    );
+
+    let space = sh
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 5)
+        .expect("the contained IfcSpace must have its own SpatialNode");
+    assert_eq!(space.parent_id, 3, "space's parent must be the storey that contains it");
+    assert_eq!(space.type_name.to_uppercase(), "IFCSPACE");
+    assert_eq!(space.level, storey.level + 1);
+
+    // Reachable-from-project walk (what the client's buildSpatialNodeTree/hierarchy
+    // panel actually does) must find the space, not just nodes_map containing it.
+    let mut reachable = std::collections::HashSet::new();
+    let mut stack = vec![sh.project_id];
+    while let Some(id) = stack.pop() {
+        if !reachable.insert(id) {
+            continue;
+        }
+        if let Some(n) = sh.nodes.iter().find(|n| n.entity_id == id) {
+            stack.extend(n.children_ids.iter().copied());
+        }
+    }
+    assert!(
+        reachable.contains(&5),
+        "the contained space must be reachable from project_id via children_ids"
+    );
+
+    // It must NOT also linger as a plain leaf element on the storey.
+    assert!(
+        !storey.element_ids.contains(&5),
+        "a promoted spatial child must not remain in element_ids as a leaf too"
+    );
+}
+
+/// A space that is BOTH aggregated AND contained under the SAME parent (some
+/// authoring tools emit both relationships for the same edge) must appear as
+/// exactly one node with exactly one children_ids entry - not twice.
+const DOUBLE_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#3,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_both_aggregated_and_contained_under_the_same_parent_is_not_duplicated() {
+    let dm = extract_data_model_checked(DOUBLE_LINKED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey");
+    assert_eq!(
+        storey.children_ids,
+        vec![5],
+        "the doubly-linked space must appear exactly once in children_ids"
+    );
+
+    let space_nodes: Vec<_> = sh.nodes.iter().filter(|n| n.entity_id == 5).collect();
+    assert_eq!(space_nodes.len(), 1, "exactly one SpatialNode for the space, not two");
+}
+
+/// #3965's narrower gap: `IFCSPATIALZONE` was entirely absent from the spatial
+/// type list, so a zone contained (not aggregated) under its storey never got a
+/// node - and, per the issue's own scratch repro, anything the zone in turn
+/// contained (a wall here) vanished from the hierarchy entirely, not even
+/// surfacing as a leaf. `IFCMARINEPART` and `IFCFACILITYPARTCOMMON` (the
+/// IFC4X3 pair the TS side carries since #3248/#3249) get the same treatment
+/// under a facility.
+const CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4X3'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('Stor0000000000000000001',$,'MyStorey',$,$,$,$,$,$,$);
+#6=IFCSPATIALZONE('Zone0000000000000000001',$,'MyZone',$,$,$,$,$,$);
+#12=IFCWALL('Wall0000000000000000001',$,'ZoneWall',$,$,$,$,$,$);
+#7=IFCFACILITY('Faci0000000000000000001',$,'MyFacility',$,$,$,$,$,$,$,$,$);
+#8=IFCMARINEPART('Mari0000000000000000001',$,'MyMarinePart',$,$,$,$,$,$,$,$,$,$);
+#9=IFCFACILITYPARTCOMMON('Comm0000000000000000001',$,'MyCommonPart',$,$,$,$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#3,#7));
+#111=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#6),#3);
+#112=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000002',$,$,$,(#12),#6);
+#113=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000003',$,$,$,(#8),#7);
+#114=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000004',$,$,$,(#9),#7);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn contained_spatial_zone_and_ifc4x3_facility_parts_are_promoted_to_nodes() {
+    let dm = extract_data_model_checked(CONTAINED_ZONE_AND_IFC4X3_PARTS_IFC);
+    let sh = &dm.spatial_hierarchy;
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
+
+    let zone = node(6).expect("contained IfcSpatialZone must get its own node");
+    assert_eq!(zone.parent_id, 3);
+    assert_eq!(zone.type_name.to_uppercase(), "IFCSPATIALZONE");
+    assert!(
+        zone.element_ids.contains(&12),
+        "the wall the zone contains must not be lost from the hierarchy"
+    );
+
+    let marine_part = node(8).expect("contained IfcMarinePart must get its own node");
+    assert_eq!(marine_part.parent_id, 7);
+    assert_eq!(marine_part.type_name.to_uppercase(), "IFCMARINEPART");
+
+    let facility_part_common =
+        node(9).expect("contained IfcFacilityPartCommon must get its own node");
+    assert_eq!(facility_part_common.parent_id, 7);
+    assert_eq!(facility_part_common.type_name.to_uppercase(), "IFCFACILITYPARTCOMMON");
+}
+
+/// #3973: a space aggregated under Storey A (#2) but ALSO contained (not
+/// aggregated) under a DIFFERENT storey, Storey B (#3). Unlike the
+/// same-parent case above, cross-parent dedup was never handled at all:
+/// `spatial_children_map` is keyed per-parent, so both storeys' children_ids
+/// listed the space, while `build_spatial_nodes_recursive` has no
+/// already-inserted guard, so whichever branch the walk reached last silently
+/// overwrote `nodes_map`, deciding the space's `parent_id` by relationship-list
+/// iteration order rather than a rule. A client walking from Storey A would
+/// find the space id but render it with Storey B's parent linkage.
+///
+/// Fixed behaviour: IfcRelAggregates is the canonical spatial-hierarchy
+/// relationship, so the aggregated parent (Storey A) wins deterministically
+/// over the merely-contained parent (Storey B); Storey B's children_ids must
+/// not reference a node that isn't actually its child.
+/// #3973's own comment claims aggregation-vs-containment precedence and
+/// first-file-order-wins-among-ties are never decided by relationship/HashMap
+/// iteration order. This is the direct check: the SAME cross-parent fixture
+/// as the test below, but with its two IFCRELAGGREGATES lines re-ordered
+/// relative to each other AND relative to the IFCRELCONTAINEDINSPATIALSTRUCTURE
+/// line, must produce the identical tree.
+const CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#5));
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2,#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn reordering_the_same_relationships_in_the_file_produces_an_identical_tree() {
+    let ordered = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let reordered = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_REORDERED_IFC);
+
+    let mut ordered_nodes = ordered.spatial_hierarchy.nodes.clone();
+    let mut reordered_nodes = reordered.spatial_hierarchy.nodes.clone();
+    ordered_nodes.sort_by_key(|n| n.entity_id);
+    reordered_nodes.sort_by_key(|n| n.entity_id);
+
+    assert_eq!(
+        ordered_nodes.len(),
+        reordered_nodes.len(),
+        "reordering relationship lines must not change how many nodes are built"
+    );
+    for (a, b) in ordered_nodes.iter().zip(reordered_nodes.iter()) {
+        assert_eq!(a.entity_id, b.entity_id);
+        assert_eq!(
+            a.parent_id, b.parent_id,
+            "entity {} got a different parent depending on file order",
+            a.entity_id
+        );
+        assert_eq!(a.level, b.level, "entity {} got a different level depending on file order", a.entity_id);
+        assert_eq!(
+            a.children_ids, b.children_ids,
+            "entity {} got different children_ids depending on file order",
+            a.entity_id
+        );
+    }
+}
+
+const CROSS_PARENT_DUAL_LINKED_SPACE_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#5=IFCSPACE('Spac0000000000000000001',$,'MySpace',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2,#3));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#5));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#5),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_space_aggregated_under_one_storey_and_contained_under_another_picks_one_canonical_parent() {
+    let dm = extract_data_model_checked(CROSS_PARENT_DUAL_LINKED_SPACE_IFC);
+    let sh = &dm.spatial_hierarchy;
+
+    let storey_a = sh.nodes.iter().find(|n| n.entity_id == 2).expect("storey A");
+    let storey_b = sh.nodes.iter().find(|n| n.entity_id == 3).expect("storey B");
+
+    // Exactly one SpatialNode for the space, ever.
+    let space_nodes: Vec<_> = sh.nodes.iter().filter(|n| n.entity_id == 5).collect();
+    assert_eq!(
+        space_nodes.len(),
+        1,
+        "exactly one SpatialNode for the cross-parent space, not one per parent"
+    );
+
+    // The aggregation edge (Storey A) is the canonical relationship and must win,
+    // deterministically - never decided by relationship/HashMap iteration order.
+    assert_eq!(
+        space_nodes[0].parent_id, 2,
+        "the aggregated parent (Storey A) must win over the merely-contained parent (Storey B)"
+    );
+
+    assert_eq!(
+        storey_a.children_ids,
+        vec![5],
+        "Storey A (the real aggregation parent) must list the space as its child"
+    );
+    assert!(
+        !storey_b.children_ids.contains(&5),
+        "Storey B must not reference a node that is not actually its child - \
+         a dangling children_ids entry lets a client render the space with the wrong parent's data"
+    );
+}
+
+/// #3973: `Storey A` aggregates `Storey B` via `IfcRelAggregates`, and `Storey B`
+/// "contains" `Storey A` via `IfcRelContainedInSpatialStructure` (this PR's own
+/// promotion puts a contained spatial-structure target into
+/// `spatial_children_map`, same as an aggregated one). That produces
+/// `spatial_children_map == {A: [B], B: [A]}`, and the unguarded recursive walk
+/// in `build_spatial_nodes_recursive` recurses A -> B -> A -> B -> ... without
+/// bound. Because the crate builds with `panic = 'abort'`, the resulting stack
+/// overflow is not a catchable panic - it SIGABRTs the whole process. That
+/// cannot be observed with a normal `#[test]` (it would kill the test runner
+/// too), so this spawns the reproduction in a fresh child process and asserts
+/// the child exits successfully rather than being killed by a signal.
+#[test]
+fn cyclic_aggregate_and_containment_edges_do_not_abort_the_process() {
+    const CYCLIC_STOREY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);
+#2=IFCBUILDINGSTOREY('StorA00000000000000001',$,'StoreyA',$,$,$,$,$,$,$);
+#3=IFCBUILDINGSTOREY('StorB00000000000000001',$,'StoreyB',$,$,$,$,$,$,$);
+#100=IFCRELAGGREGATES('Agg00000000000000000001',$,$,$,#1,(#2));
+#101=IFCRELAGGREGATES('Agg00000000000000000002',$,$,$,#2,(#3));
+#110=IFCRELCONTAINEDINSPATIALSTRUCTURE('Con00000000000000000001',$,$,$,(#2),#3);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    const REPRO_ENV_VAR: &str = "IFC_LITE_SPATIAL_CYCLE_REPRO";
+
+    if std::env::var(REPRO_ENV_VAR).is_ok() {
+        // Child process: run the exact reproduction (on a small dedicated
+        // thread stack, so an unguarded cycle overflows fast rather than
+        // eating gigabytes of stack first) and exit cleanly if it survives.
+        let handle = std::thread::Builder::new()
+            .stack_size(256 * 1024)
+            .spawn(|| {
+                let dm = extract_data_model_checked(CYCLIC_STOREY_IFC);
+                dm.spatial_hierarchy.nodes.len()
+            })
+            .expect("failed to spawn repro thread");
+        let node_count = handle.join().expect("repro thread panicked/aborted");
+        eprintln!("cyclic repro produced {node_count} spatial nodes without aborting");
+        std::process::exit(0);
+    }
+
+    let exe = std::env::current_exe().expect("current test exe");
+    // NOT `module_path!()` - it is crate-qualified (`ifc_lite_server::...`),
+    // while libtest's own `--exact` names are not (confirmed via `--list`).
+    let test_name =
+        "services::data_model::tests::cyclic_aggregate_and_containment_edges_do_not_abort_the_process";
+    let output = std::process::Command::new(&exe)
+        .args([test_name, "--exact", "--nocapture"])
+        .env(REPRO_ENV_VAR, "1")
+        .output()
+        .expect("failed to spawn child test process");
+
+    assert!(
+        output.status.success(),
+        "a spatial hierarchy with a Storey-A-aggregates-Storey-B / \
+         Storey-B-contains-Storey-A cycle must not abort the process; \
+         child exit status = {:?}\n--- child stdout ---\n{}\n--- child stderr ---\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+/// #3973 follow-up: a chain nested past `MAX_SPATIAL_TREE_DEPTH` (100) must
+/// have its excluded subtree dropped CLEANLY, not resurrected as corrupted
+/// fake roots. The pre-fix "orphan-fill" loop only checked `nodes_map`, which
+/// is empty both for a depth-capped entity and for its never-visited
+/// descendants, so it reinserted every one of them at `parent_id: 0, level:
+/// 0` while the last surviving ancestor's `children_ids` still (for the
+/// entity directly at the boundary) named the dropped id as a child - two
+/// representations of the same entity's place in the tree disagreeing, and
+/// exactly the shape `apps/server/src/services/parquet_data_model.rs` reads
+/// `parent_id` as authoritative for, so the exported Parquet spatial table
+/// would show spurious extra roots instead of a dropped subtree.
+#[test]
+fn entities_past_the_depth_cap_are_dropped_cleanly_not_resurrected_as_fake_roots() {
+    // Chain of 110 nested IFCBUILDINGSTOREY entities, each aggregated under
+    // the previous one, starting from IFCPROJECT (#1). Project is level 0,
+    // so entity id 2+i sits at level i+1; the cap (level > 100) first excludes
+    // id 102 (level 101).
+    let mut data = String::new();
+    data.push_str("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n");
+    data.push_str("#1=IFCPROJECT('Proj0000000000000000001',$,'MyProject',$,$,$,$,$,$);\n");
+    let n = 110u32;
+    for i in 0..n {
+        let id = 2 + i;
+        data.push_str(&format!(
+            "#{id}=IFCBUILDINGSTOREY('Stor{id:0>19}',$,'Storey{id}',$,$,$,$,$,$,$);\n"
+        ));
+    }
+    let mut rel_id = 1000u32;
+    data.push_str(&format!(
+        "#{rel_id}=IFCRELAGGREGATES('Agg{rel_id:0>19}',$,$,$,#1,(#2));\n"
+    ));
+    for i in 0..(n - 1) {
+        rel_id += 1;
+        let parent = 2 + i;
+        let child = 3 + i;
+        data.push_str(&format!(
+            "#{rel_id}=IFCRELAGGREGATES('Agg{rel_id:0>19}',$,$,$,#{parent},(#{child}));\n"
+        ));
+    }
+    data.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+
+    let dm = extract_data_model_checked(&data);
+    let sh = &dm.spatial_hierarchy;
+    let node = |id: u32| sh.nodes.iter().find(|n| n.entity_id == id);
+
+    let last_kept = node(101).expect("the last node within the depth cap must survive");
+    assert_eq!(last_kept.level, 100);
+    assert!(
+        last_kept.children_ids.is_empty(),
+        "the depth-capped child (102) must not remain in its parent's children_ids: {:?}",
+        last_kept.children_ids
+    );
+
+    for dropped_id in [102u32, 103, 110, 111] {
+        assert!(
+            node(dropped_id).is_none(),
+            "entity {dropped_id} is past the depth cap and must not appear as a node at all \
+             (in particular, never as a fake root with parent_id 0)"
+        );
+    }
+
+    // No node anywhere may reference a child that has no SpatialNode of its own.
+    let existing_ids: std::collections::HashSet<u32> =
+        sh.nodes.iter().map(|n| n.entity_id).collect();
+    for node in &sh.nodes {
+        for &child in &node.children_ids {
+            assert!(
+                existing_ids.contains(&child),
+                "node {} (level {}) lists child {child}, which has no SpatialNode",
+                node.entity_id,
+                node.level
+            );
+        }
+    }
+}
+
+/// Follow-up to #3973's own fix: `Site` is never aggregated by `Project` (a
+/// malformed but real truncated-export shape), so it is genuinely unreachable
+/// from the root and rescued by the orphan-fill loop as a fake root
+/// (`parent_id: 0, level: 0`) - correctly, per this PR's own rule, since it
+/// has no canonical parent of its own. But `Site` DOES canonically parent
+/// `Building` via `IfcRelAggregates`, so `Building` is skipped by the
+/// orphan-fill loop's `canonical_parent` check (it does have a parent) and
+/// never gets its own `SpatialNode` - while the orphan-fill loop populated
+/// the rescued `Site` node's `children_ids` straight from
+/// `spatial_children_map`, without the same filtering
+/// `build_spatial_nodes_recursive` applies to its own descent. The rescued
+/// `Site` therefore names `Building` as a child with no `SpatialNode` of its
+/// own: the exact dangling-reference shape this fix set out to eliminate,
+/// reappearing one level removed in the orphan-fill path itself.
+const DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000009',$,'MyProject',$,$,$,$,$,$);
+#2=IFCSITE('Site0000000000000000001',$,'MySite',$,$,$,$,$,$,$,$,$,$,$);
+#3=IFCBUILDING('Bldg0000000000000000001',$,'MyBuilding',$,$,$,$,$,$,$,$,$);
+#101=IFCRELAGGREGATES('Agg00000000000000000009',$,$,$,#2,(#3));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_rescued_orphans_children_ids_never_names_a_node_that_was_not_itself_rescued() {
+    let dm = extract_data_model_checked(DISCONNECTED_SITE_AGGREGATES_BUILDING_IFC);
+    let site = dm
+        .spatial_hierarchy
+        .nodes
+        .iter()
+        .find(|n| n.entity_id == 2)
+        .expect("Site is genuinely unreachable and has no canonical parent, so it must be rescued as a fake root");
+    assert_eq!(site.parent_id, 0);
+    let building_has_node = dm.spatial_hierarchy.nodes.iter().any(|n| n.entity_id == 3);
+    assert!(
+        !site.children_ids.contains(&3) || building_has_node,
+        "Site's children_ids names Building (#3) as a child, but Building has \
+         no SpatialNode of its own - a dangling reference identical in shape \
+         to the one this fix eliminated for the recursive-descent path"
+    );
 }
 
 /// Fixture for issue #3964: a `IfcSystem` grouping a wall via
@@ -766,7 +1254,7 @@ END-ISO-10303-21;
 
 #[test]
 fn extracts_assigns_to_group_relationship_orientation() {
-    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
     // RelatingGroup=#20 (IfcSystem), RelatedObjects=(#10) (the wall).
     assert!(
         dm.relationships.iter().any(|r| {
@@ -781,7 +1269,7 @@ fn extracts_assigns_to_group_relationship_orientation() {
 
 #[test]
 fn extracts_assigns_to_group_by_factor_relationship_orientation() {
-    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
     // RelatingGroup=#25 (IfcZone), RelatedObjects=(#10) (the wall).
     assert!(
         dm.relationships.iter().any(|r| {
@@ -796,7 +1284,7 @@ fn extracts_assigns_to_group_by_factor_relationship_orientation() {
 
 #[test]
 fn extracts_nests_relationship_orientation() {
-    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
     // RelatingObject=#30 (door), RelatedObjects=(#31) (the nested panel).
     assert!(
         dm.relationships.iter().any(|r| {
@@ -811,7 +1299,7 @@ fn extracts_nests_relationship_orientation() {
 
 #[test]
 fn extracts_connects_path_elements_relationship_orientation() {
-    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    let dm = extract_data_model_checked(NEW_REL_TYPES_IFC);
     // RelatingElement=#10 (wall 1), RelatedElement=#11 (wall 2).
     assert!(
         dm.relationships.iter().any(|r| {
@@ -830,7 +1318,7 @@ fn extracts_connects_path_elements_relationship_orientation() {
 /// matching an unrelated type.
 #[test]
 fn fixture_without_new_types_is_unaffected() {
-    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let dm = extract_data_model_checked(ASSOCIATIONS_IFC);
     assert!(
         !dm.relationships.iter().any(|r| {
             matches!(

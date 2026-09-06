@@ -25,6 +25,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { WorkerIndexReceiver, type WorkerStorePayload } from './worker-index-publication.js';
 import { fromTransport, type DataStoreTransport } from './data-store-transport.js';
 import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 import { contiguousSourceBytes } from './source-bytes.js';
@@ -212,4 +213,37 @@ it('prepares render metadata before publishing partial and complete stores (#398
     expect(lookups).not.toHaveBeenCalled();
     lookups.mockRestore();
   }
+}, 30_000);
+
+
+it('negotiates one immutable index through the real worker handler and transfer boundary (#3985)', async () => {
+  (globalThis as Record<string, unknown>).postMessage = (message: unknown, transfers: Transferable[] = []) => {
+    postedMessages.push(structuredClone(message, { transfer: transfers }));
+  };
+  const records = [...IFC.matchAll(/#(\d+)=[^;]+;/g)];
+  post({ type: 'set-entity-index',
+    ids: Uint32Array.from(records, record => Number(record[1])),
+    starts: Uint32Array.from(records, record => record.index!),
+    lengths: Uint32Array.from(records, record => record[0].length),
+  });
+  const source = sharedSource();
+  post({ type: 'parse', id: 'packed-req', source, waitForEntityIndex: true, indexTransport: 'packed-index-v1' });
+  await settle();
+  assertParsed();
+  const messages = postedMessages.filter((message): message is { type: string; payload: WorkerStorePayload } =>
+    ['partial-store', 'complete'].includes((message as { type: string }).type));
+  expect(messages).toHaveLength(2);
+  expect(messages[0].payload.entityIndex).toHaveProperty('format', 'packed-index-v1');
+  expect(messages[1].payload.entityIndex).toEqual({ format: 'published-index-v1' });
+  const receiver = new WorkerIndexReceiver();
+  receiver.capturePartial(messages[0].payload);
+  const sourceBytes = contiguousSourceBytes(new Uint8Array(source), messages[0].payload.sourceContentKey ?? undefined);
+  const early = receiver.hydrate(messages[0].payload, sourceBytes);
+  early.entityIndex.byType.get('IFCWALL')!.push(999);
+  early.entityIndex.byId.get(2)!.byteOffset = 0;
+  const final = receiver.hydrate(messages[1].payload, sourceBytes);
+  expect(final.entityIndex.byType.get('IFCWALL')).toEqual([2]);
+  expect(final.getEntity(2)?.attributes[2]).toBe('Wall2');
+  expect(final.source).toBe(early.source);
+  expect(extractGeoreferencingOnDemand(final)?.projectedCRS?.name).toBe('EPSG:4326');
 }, 30_000);

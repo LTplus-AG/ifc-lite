@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
+import { CompactEntityIndex, parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -70,8 +70,11 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
 export function getMaxExpressId(dataStore: IfcDataStore | null, meshes: MeshData[]): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
   let maxExpressIdFromEntities = 0;
-  if (dataStore?.entityIndex?.byId) {
-    for (const key of dataStore.entityIndex.byId.keys()) {
+  const entityIndex = dataStore?.entityIndex?.byId;
+  if (entityIndex instanceof CompactEntityIndex) {
+    maxExpressIdFromEntities = entityIndex.maxExpressId;
+  } else if (entityIndex) {
+    for (const key of entityIndex.keys()) {
       if (key > maxExpressIdFromEntities) {
         maxExpressIdFromEntities = key;
       }

@@ -16,6 +16,7 @@ import type { ExpressSchema, EntityDefinition } from './express-parser.js';
 import { crc32, formatCRC32TableLiteral } from './crc32.js';
 import { getInheritanceChain } from './express-parser.js';
 import { generateSchemaQueries } from './rust-schema-queries.js';
+import { generateTypeNameParser } from './rust-type-name-parser.js';
 
 export interface RustGeneratedCode {
   typeIds: string;
@@ -109,22 +110,7 @@ pub enum IfcType {
 }
 
 impl IfcType {
-    /// Parse IFC type from string (case-insensitive)
-    #[allow(clippy::should_implement_trait)]
-    pub fn from_str(s: &str) -> Self {
-        let upper = s.to_uppercase();
-        match upper.as_str() {
-`;
-
-  // Generate match arms for all entities
-  for (const entity of schema.entities) {
-    code += `            "${entity.name.toUpperCase()}" => Self::${entity.name},\n`;
-  }
-
-  code += `            _ => Self::Unknown(crc32_hash(&upper)),
-        }
-    }
-
+${generateTypeNameParser(schema)}
     /// Parse from CRC32 type ID
     pub fn from_id(id: u32) -> Self {
         match id {

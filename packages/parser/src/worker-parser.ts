@@ -12,7 +12,8 @@
  *   2. Caller constructs a `WorkerParser` and calls `parseColumnar(sab, …)`.
  *   3. The worker emits `progress`, `diagnostic`, optional `partial-store`,
  *      then `complete` (or `error`). This wrapper resolves the returned
- *      Promise on `complete` and self-terminates afterward.
+ *      Promise after receiving `complete` and hydrating the result. The
+ *      completed worker is terminated before receiver reconstruction.
  *
  * On `partial-store` the wrapper invokes `options.onSpatialReady` so the
  * viewer can render the spatial-hierarchy panel before the full parse
@@ -21,11 +22,8 @@
 
 import type { IfcDataStore } from './columnar-parser.js';
 import type { ParseOptions } from './index.js';
-import {
-  fromTransport,
-  type DataStoreTransport,
-  type ParserMemorySnapshot,
-} from './data-store-transport.js';
+import { WorkerIndexReceiver, type WorkerStorePayload } from './worker-index-publication.js';
+import type { ParserMemorySnapshot } from './data-store-transport.js';
 import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import type {
   ParserWorkerInputMessage,
@@ -34,6 +32,8 @@ import type {
 import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 
 export interface WorkerParserOptions extends ParseOptions {
+  /** Fresh per-request 16-byte prepass fingerprint cell; never awaited. */
+  sourceFingerprint?: SharedArrayBuffer;
   /** Override the worker URL. Default: bundler-resolved `parser.worker.ts`. */
   workerUrl?: URL | string;
   /** Optional callback receiving the per-parse memory snapshot at completion. */
@@ -120,14 +120,16 @@ export class WorkerParser {
       // memoising on the shared Uint8Array; sharing the accessor is the same
       // guarantee without the side table.
       let sourceBytes: IfcSourceBytes | undefined;
-      const hydrate = (payload: DataStoreTransport) => {
+      const indexReceiver = new WorkerIndexReceiver();
+      const hydrate = (payload: WorkerStorePayload) => {
         // #3983: the worker hashes the source before the first UI publication.
         // Retain one accessor across partial/full stores and compression swaps.
         sourceBytes ??= contiguousSourceBytes(new Uint8Array(source), payload.sourceContentKey ?? undefined);
-        return fromTransport(payload, sourceBytes);
+        return indexReceiver.hydrate(payload, sourceBytes);
       };
 
       const settle = (cleanup: () => void) => {
+        indexReceiver.clear();
         worker.onmessage = null;
         worker.onerror = null;
         worker.onmessageerror = null;
@@ -148,8 +150,9 @@ export class WorkerParser {
             return;
 
           case 'partial-store': {
-            if (!options.onSpatialReady) return;
             try {
+              indexReceiver.capturePartial(msg.payload);
+              if (!options.onSpatialReady) return;
               const partial = hydrate(msg.payload);
               options.onSpatialReady(partial);
             } catch (err) {
@@ -162,17 +165,18 @@ export class WorkerParser {
 
           case 'complete': {
             try {
+              // #3985: the received message owns its transferred columns. Stop
+              // the completed sender before allocating receiver collections;
+              // retain indexReceiver's partial seed until hydration completes.
+              worker.terminate();
+              if (this.worker === worker) this.worker = null;
               const dataStore = hydrate(msg.payload);
               options.onMemorySnapshot?.(msg.memory);
-              settle(() => {
-                worker.terminate();
-                this.worker = null;
-              });
+              settle(() => {});
               resolve(dataStore);
             } catch (err) {
               settle(() => {
-                worker.terminate();
-                this.worker = null;
+                if (this.worker === worker) this.worker = null;
               });
               reject(new Error(`complete hydrate failed: ${err instanceof Error ? err.message : String(err)}`));
             }
@@ -233,6 +237,8 @@ export class WorkerParser {
 
       const input: ParserWorkerInputMessage = {
         type: 'parse',
+        sourceFingerprint: options.sourceFingerprint,
+        indexTransport: 'packed-index-v1',
         id,
         source,
         yieldIntervalMs: options.yieldIntervalMs,
@@ -301,6 +307,10 @@ export class WorkerParser {
   /** Terminate the worker if running. Safe to call repeatedly. */
   terminate(): void {
     if (this.worker) {
+      // Drop the per-request hydration closure, including its packed index seed.
+      this.worker.onmessage = null;
+      this.worker.onerror = null;
+      this.worker.onmessageerror = null;
       this.worker.terminate();
       this.worker = null;
     }

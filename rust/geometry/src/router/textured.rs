@@ -161,11 +161,11 @@ impl GeometryRouter {
                 }
             }
 
-            match self.processors.get(&item.ifc_type) {
+            match self.processors.get(&item.ifc_type, self.schema) {
                 Some(processor) => match processor.process(
                     &item,
                     decoder,
-                    &self.schema,
+                    self.schema,
                     self.tessellation_quality,
                 ) {
                     Ok(mut sub_mesh) => {

@@ -306,6 +306,14 @@ export class IfcAPI {
      */
     buildPrePassStreamingSharded(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array, index_classes: Uint8Array): any;
     /**
+     * Existing sharded prepass plus an exact full-source key in complete.
+     */
+    buildPrePassStreamingShardedWithSourceFingerprint(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array, index_classes: Uint8Array): any;
+    /**
+     * Existing streaming prepass plus an exact full-source key in complete.
+     */
+    buildPrePassStreamingWithSourceFingerprint(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
+    /**
      * Clear the cached entity index (call between loads when reusing
      * the same `IfcAPI` instance — e.g. the parser worker keeps one
      * `IfcAPI` alive across multiple `parse` requests).
@@ -533,6 +541,10 @@ export class IfcAPI {
      */
     finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
     /**
+     * Finalize prepass styles against the installed source and entity index.
+     */
+    finalizePrepassStylesFromSource(orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
+    /**
      * Get WASM memory for zero-copy access
      */
     getMemory(): any;
@@ -655,6 +667,10 @@ export class IfcAPI {
      */
     resolveStyledItemsShard(data: Uint8Array, spans: Uint32Array): any;
     /**
+     * Resolve styled-item spans against the installed source and entity index.
+     */
+    resolveStyledItemsShardFromSource(spans: Uint32Array): any;
+    /**
      * Fast entity scanning using SIMD-accelerated Rust scanner
      * Returns array of entity references for data model parsing
      * Much faster than TypeScript byte-by-byte scanning (5-10x speedup)
@@ -706,6 +722,10 @@ export class IfcAPI {
      */
     scanEntityIndexShard(data: Uint8Array, range_start: number, range_end: number): any;
     /**
+     * Scan a shard of the source installed by `setSourceBytes`.
+     */
+    scanEntityIndexShardFromSource(start: number, end: number): any;
+    /**
      * Fast geometry-only entity scanning
      * Scans only entities that have geometry, skipping 99% of non-geometry entities
      * Returns array of geometry entity references for parallel processing
@@ -735,10 +755,10 @@ export class IfcAPI {
      * even though the pre-pass worker built the same index minutes
      * earlier.
      *
-     * Builds a compact [`ColumnarEntityIndex`] from the three input slices
+     * Adopts the three binding-owned columns into a compact [`ColumnarEntityIndex`]
      * (sorted `u32` columns + binary search) instead of a per-worker
      * `FxHashMap` — ~229 MB vs ~436 MB on a 19.1 M-entity model (#1682).
-     * [`ColumnarEntityIndex::from_columns`] verifies the id ordering once
+     * [`ColumnarEntityIndex::from_owned_columns`] verifies the id ordering once
      * (O(n)) and only argsorts if the producer did not emit sorted columns.
      *
      * `lengths[i]` is the byte length of entity `ids[i]`, so lookup returns
@@ -1976,6 +1996,8 @@ export interface InitOutput {
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
+    readonly ifcapi_buildPrePassStreamingShardedWithSourceFingerprint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
+    readonly ifcapi_buildPrePassStreamingWithSourceFingerprint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_clearPrePassCache: (a: number) => void;
     readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
@@ -1995,6 +2017,7 @@ export interface InitOutput {
     readonly ifcapi_exportUsd: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
     readonly ifcapi_finalizePrepassStyles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
+    readonly ifcapi_finalizePrepassStylesFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;
     readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
     readonly ifcapi_is_ready: (a: number) => number;
@@ -2009,9 +2032,11 @@ export interface InitOutput {
     readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
     readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;

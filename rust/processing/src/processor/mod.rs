@@ -31,6 +31,7 @@ mod jobs;
 mod opening_filter;
 mod properties;
 mod quick_metadata;
+mod schema_detection;
 mod site_local;
 
 pub use quick_metadata::is_quick_spatial_type_ci;
@@ -579,7 +580,6 @@ pub fn process_geometry_streaming_filtered_with_options(
     } else {
         HashMap::new()
     };
-    let mut schema_version = "IFC2X3".to_string();
     let mut total_entities = 0usize;
     let mut site_entity_pos: Option<(usize, usize)> = None;
     let mut building_entity_pos: Option<(usize, usize)> = None;
@@ -707,7 +707,9 @@ pub fn process_geometry_streaming_filtered_with_options(
             building_entity_pos = Some((start, end));
         }
 
-        if ifc_lite_core::has_geometry_by_name(type_name) {
+        let (has_geometry, representationless_spatial) =
+            ifc_lite_core::geometry_flags_by_name(type_name);
+        if has_geometry {
             // Legacy-aware so a remapped entity (IfcProxy, IfcSolidStratum, …)
             // labels its node with the real base type, not "Unknown", and matches
             // the attribute pass's row type (#1496).
@@ -740,7 +742,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 space_zone_properties: None,
                 representation_map_id: None,
             });
-        } else if ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
+        } else if representationless_spatial
             && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
         {
             // #1910: `has_geometry_by_name` excludes spatial containers like
@@ -915,14 +917,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         opening_filter,
     );
 
-    // Detect schema version. SIMD substring search (memmem) instead of the naive
-    // per-position `windows().any()`, which walked the WHOLE file — twice for an
-    // IFC2X3 file where both matches fail. Same predicate, byte-identical result.
-    if memchr::memmem::find(content, b"IFC4X3").is_some() {
-        schema_version = "IFC4X3".into();
-    } else if memchr::memmem::find(content, b"IFC4").is_some() {
-        schema_version = "IFC4".into();
-    }
+    let schema_version = schema_detection::detect_schema_version(content).to_string();
 
     let geometry_entity_count = entity_jobs.len();
     tracing::info!(
@@ -1301,9 +1296,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                 {
                     return;
                 }
-                let mut local_decoder =
-                    entity_index_for_meta.decoder(content);
-                let Ok(entity) = local_decoder.decode_at(job.start, job.end) else {
+                let local_decoder = entity_index_for_meta.decoder(content);
+                // #3987: this decoder is read once; an entity-cache clone is never reused.
+                let Ok(entity) = local_decoder.decode_at_uncached(job.start, job.end) else {
                     return;
                 };
                 job.global_id = normalize_optional_string(entity.get_string(0));
@@ -1570,6 +1565,21 @@ pub fn process_geometry_streaming_filtered_with_options(
         "Geometry processing complete"
     );
 
+    let extract_georeferencing = || crate::georeferencing::extract_georeferencing_from_candidates(
+        &mut entity_index_arc.decoder(content), &georeferencing_candidates,
+    );
+    // #3987: jobs and instance finalization have finished using these caches.
+    // Keep metadata on the caller thread; join ALL disposal before returning,
+    // including on unwind. No cleanup survives the full-load readiness boundary.
+    #[cfg(not(target_arch = "wasm32"))]
+    let georeferencing = rayon::in_place_scope(|scope| {
+        scope.spawn(move |_| drop(decoder));
+        scope.spawn(move |_| drop(item_dedup_cache));
+        extract_georeferencing()
+    });
+    #[cfg(target_arch = "wasm32")]
+    let georeferencing = extract_georeferencing();
+
     ProcessingResult {
         meshes,
         instances,
@@ -1585,9 +1595,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 is_geo_referenced: has_rtc_offset,
             },
             length_unit_scale: Some(unit_scale),
-            georeferencing: crate::georeferencing::extract_georeferencing_from_candidates(
-                &mut entity_index_arc.decoder(content), &georeferencing_candidates,
-            ),
+            georeferencing,
         },
         stats: ProcessingStats {
             total_meshes,

@@ -448,7 +448,8 @@ canvas.addEventListener('click', async (e) => {
 
 `EntityRef` carries the byte range along with the type. When you hold the index as its
 concrete `CompactEntityIndex`, `getByteRange(id)` returns `{ byteOffset, byteLength }`
-on its own, without building an `EntityRef`.
+on its own, without building an `EntityRef`. Its `maxExpressId` getter reads the
+highest indexed ID in constant time and returns `0` for an empty index.
 
 #### When `geometryItemId` is absent
 

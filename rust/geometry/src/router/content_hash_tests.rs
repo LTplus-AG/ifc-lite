@@ -158,3 +158,43 @@ fn geometry_routing_key_feeds_take_content_hash_oversized_ref_drops() {
         "a second drain must return zero — the counter resets, it isn't recomputed"
     );
 }
+
+// #3988: a face with two bounds followed by one with a single shorter loop
+// must consume exactly those authored corners. Buffer reuse must not retain the
+// previous face's hole or the previous loop's fourth point.
+#[test]
+fn issue_3988_brep_signature_reuses_scratch_without_stale_faces_or_points() {
+    let source = "\
+#1=IFCFACETEDBREP(#2);
+#2=IFCCLOSEDSHELL((#3,#4));
+#3=IFCFACE((#5,#6));
+#4=IFCFACE((#7));
+#5=IFCFACEOUTERBOUND(#10,.T.);
+#6=IFCFACEBOUND(#11,.F.);
+#7=IFCFACEOUTERBOUND(#12,.T.);
+#10=IFCPOLYLOOP((#20,#21,#22,#23));
+#11=IFCPOLYLOOP((#20,#21,#22));
+#12=IFCPOLYLOOP((#21,#22,#23));
+#20=IFCCARTESIANPOINT((0.,0.,0.));
+#21=IFCCARTESIANPOINT((1.,0.,0.));
+#22=IFCCARTESIANPOINT((0.,1.,0.));
+#23=IFCCARTESIANPOINT((0.,0.,1.));
+";
+    let mut decoder = EntityDecoder::new(source);
+    let signature = try_faceted_brep_signature(&mut decoder, 1).expect("complete BREP");
+    assert_eq!(decoder.point_cache_stats(), (6, 4), "ten authored corners, four unique points");
+    // STEP ids are identities, not geometry: an otherwise identical source
+    // with all references renumbered must retain the content signature.
+    let mut renumbered = source.to_string();
+    for id in (1..=23).rev() {
+        // Punctuation delimits STEP refs so #2 cannot accidentally replace #20.
+        for suffix in [",", ")", "="] {
+            renumbered = renumbered.replace(&format!("#{id}{suffix}"), &format!("#{}{suffix}", id + 100));
+        }
+    }
+    let mut other = EntityDecoder::new(&renumbered);
+    assert_eq!(try_faceted_brep_signature(&mut other, 101), Some(signature));
+    let missing = source.replace("#12=IFCPOLYLOOP((#21,#22,#23))", "#12=IFCPOLYLOOP((#21,#22,#99))");
+    let mut missing_decoder = EntityDecoder::new(&missing);
+    assert_eq!(try_faceted_brep_signature(&mut missing_decoder, 1), None);
+}

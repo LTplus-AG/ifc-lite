@@ -150,15 +150,11 @@ pub fn weld_indexed(
             Some(u) => [u[v * 2], u[v * 2 + 1]],
             None => [0.0, 0.0],
         };
-        let id = match map.get(&vkey(p, n, uv)) {
-            Some(&id) => id,
-            None => {
-                let id = first_vert.len() as u32;
-                first_vert.push(v as u32);
-                map.insert(vkey(p, n, uv), id);
-                id
-            }
-        };
+        let id = *map.entry(vkey(p, n, uv)).or_insert_with(|| {
+            let id = first_vert.len() as u32;
+            first_vert.push(v as u32);
+            id
+        });
         remap[v] = id;
     }
 

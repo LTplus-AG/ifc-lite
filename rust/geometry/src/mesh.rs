@@ -491,17 +491,19 @@ impl Mesh {
             self.indices.clear();
             return;
         }
-        let mut valid = Vec::with_capacity(self.indices.len());
-        for chunk in self.indices.chunks(3) {
-            if chunk.len() == 3
-                && (chunk[0] as usize) < vertex_count
+        let original_len = self.indices.len();
+        let mut kept = 0;
+        for read in (0..original_len / 3 * 3).step_by(3) {
+            let chunk = [self.indices[read], self.indices[read + 1], self.indices[read + 2]];
+            if (chunk[0] as usize) < vertex_count
                 && (chunk[1] as usize) < vertex_count
-                && (chunk[2] as usize) < vertex_count
-            {
-                valid.extend_from_slice(chunk);
+                && (chunk[2] as usize) < vertex_count {
+                if kept != read { self.indices[kept..kept + 3].copy_from_slice(&chunk); }
+                kept += 3;
             }
         }
-        self.indices = valid;
+        self.indices.truncate(kept);
+        self.indices.shrink_to(original_len);
     }
 
     /// Drop triangles that collapsed into degenerate needles when the mesh was
@@ -554,14 +556,13 @@ impl Mesh {
         let dist = |a: [f64; 3], b: [f64; 3]| -> f64 {
             ((a[0] - b[0]).powi(2) + (a[1] - b[1]).powi(2) + (a[2] - b[2]).powi(2)).sqrt()
         };
-
-        let mut kept = Vec::with_capacity(self.indices.len());
-        for tri in self.indices.chunks_exact(3) {
+        // #3988: compact only after a drop; bound retained capacity as before.
+        let original_len = self.indices.len();
+        let mut kept = 0;
+        for read in (0..original_len / 3 * 3).step_by(3) {
+            let tri = [self.indices[read], self.indices[read + 1], self.indices[read + 2]];
             let (ia, ib, ic) = (tri[0], tri[1], tri[2]);
-            // Drop any out-of-range triangle BEFORE the unchecked `bits()` closure
-            // indexes positions[] (unlike `vert()` below, `bits()` has no bounds
-            // check). Matches the drop-not-panic contract of vert()/validate_indices;
-            // sibling drop_thin_triangles guards the same way.
+            // Guard before bits() indexes positions; invalid triangles are dropped.
             if ia as usize >= vertex_count
                 || ib as usize >= vertex_count
                 || ic as usize >= vertex_count
@@ -582,17 +583,16 @@ impl Mesh {
             let e2 = dist(vc, va);
             let min_edge = e0.min(e1).min(e2);
             let max_edge = e0.max(e1).max(e2);
-            // Catastrophic needle: a sliver whose longest edge dwarfs its
-            // shortest by >1e5. min_edge==0 is already handled by the bit check
-            // above, so a finite ratio here means near-but-not-identical f32.
+            // Drop catastrophic needles; bit-identical zero edges were handled above.
             if min_edge > 0.0 && max_edge / min_edge > MAX_ASPECT {
                 continue;
             }
-            kept.extend_from_slice(tri);
+            if kept != read { self.indices[kept..kept + 3].copy_from_slice(&tri); }
+            kept += 3;
         }
-        self.indices = kept;
+        self.indices.truncate(kept);
+        self.indices.shrink_to(original_len);
     }
-
     /// Check if mesh is empty
     #[inline]
     pub fn is_empty(&self) -> bool {

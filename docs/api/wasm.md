@@ -122,6 +122,30 @@ processGeometryBatchFromSource(jobsFlat, unitScale, /* same trailing args */): M
 processGeometryBatchPartitionedFromSource(jobsFlat, unitScale, /* ... */): PartitionedBatch;
 ```
 
+The sharded pre-pass can reuse the same installed source before geometry batches:
+
+```typescript
+scanEntityIndexShardFromSource(start: number, end: number): any;
+resolveStyledItemsShardFromSource(spans: Uint32Array): any;
+finalizePrepassStylesFromSource(
+  orphanIds: Uint32Array, orphanColors: Float32Array,
+  geomIds: Uint32Array, geomColors: Float32Array,
+  colourMapSpans: Uint32Array, materialDefSpans: Uint32Array,
+  relMaterialSpans: Uint32Array, voidSpans: Uint32Array,
+  fillsSpans: Uint32Array, aggregateSpans: Uint32Array,
+  planeAngleToRadians: number,
+): any;
+```
+
+Call `setSourceBytes` before these methods and `setEntityIndex` before resolving
+or finalizing styles. They use the same scanner and style processing as the
+byte-taking methods, with identical arguments after omitting the source bytes.
+`clearPrePassCache()` releases the installed source and index; use it on completion,
+cancellation, or failure. Install the new source and index before reusing an API
+instance for another model. JavaScript input arrays remain usable after
+`setEntityIndex`; its binding adopts its own WASM allocations, while the Rust
+`set_entity_index` method continues to accept borrowed slices.
+
 #### Export
 
 Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a `Uint8Array`.
@@ -500,3 +524,16 @@ bash scripts/build-wasm.sh
 | `bundler` | CommonJS | Webpack/Rollup |
 | `nodejs` | Node.js | Server-side |
 | `no-modules` | Global | Script tag |
+
+
+### Streaming prepass source fingerprints
+
+`IfcAPI.buildPrePassStreamingWithSourceFingerprint` and
+`IfcAPI.buildPrePassStreamingShardedWithSourceFingerprint` accept the same arguments
+as `buildPrePassStreaming` and `buildPrePassStreamingSharded`, respectively. They
+run the same prepass and add `sourceContentKey` to the final `complete` event. The
+key is the existing full-byte FNV-1a source identity, including comments and any
+unparsed tail. Existing methods and their Rust signatures remain unchanged and do
+not compute this extra key. Feature-detect the new methods when supporting older
+WASM builds. The viewer uses these methods only when a matching parser has a fresh
+fingerprint cell; no additional file-sized buffer is created.

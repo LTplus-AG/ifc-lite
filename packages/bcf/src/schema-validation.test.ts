@@ -1003,4 +1003,30 @@ describe('a second, independently-produced archive validates against the vendore
     }
     expect(failures).toEqual([]);
   });
+
+  it('AC20-FZK-Haus_BIMcollabZoom-CommentOnly.bcf (same archive, top-level <Viewpoints> removed)', async () => {
+    // Derived from AC20-FZK-Haus_BIMcollabZoom.bcf by deleting only its
+    // top-level `<Viewpoints Guid="...">` element -- markup.xsd declares
+    // that element `minOccurs="0"`, so a schema-valid Markup can omit it
+    // entirely and reference a viewpoint solely through the Comment's
+    // nested `<Viewpoint Guid="..."/>`. This pins that markup.xsd still
+    // accepts the file with that element gone, independent of whether any
+    // reader code path uses the Comment's reference for lookup (it does
+    // not -- see the matching reader.test.ts describe block).
+    const entries = await realArchiveEntries('AC20-FZK-Haus_BIMcollabZoom-CommentOnly.bcf');
+
+    const kinds = [...entries.keys()].map((n) => n.replace(/^[^/]+\//, ''));
+    expect(kinds).toContain('bcf.version');
+    expect(kinds).toContain('project.bcfp');
+    expect(kinds).toContain('markup.bcf');
+    expect(kinds.filter((n) => n.endsWith('.bcfv'))).toHaveLength(1);
+
+    const failures: string[] = [];
+    for (const [name, xml] of entries) {
+      const xsd = SCHEMA_FOR_ENTRY.find(([re]) => re.test(name))![1];
+      const { valid, messages } = await validate('2.1', xsd, xml);
+      if (!valid) failures.push(`${name} [${xsd}]: ${messages.join(' | ')}`);
+    }
+    expect(failures).toEqual([]);
+  });
 });

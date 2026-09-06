@@ -3,10 +3,13 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { Page, ConsoleMessage } from '@playwright/test';
+import { waitForMetadataRenderReadiness } from './metadata-render-readiness.js';
 
 export interface ViewerBenchmarkMetrics {
   // Wall-clock total time (what users actually experience)
   totalWallClockMs: number | null;
+  /** Manual polling boundary for metadata/geometry/renderer logs and canvas allocation. */
+  metadataRenderReadyMs?: number | null;
   // File read time
   fileReadMs: number | null;
   // Individual phase timings
@@ -52,7 +55,7 @@ export class ViewerBenchmarkPage {
   private loadEndTime: number = 0;
   private cacheMode: string;
 
-  constructor(page: Page) {
+  constructor(page: Page, private readonly origin = 'http://localhost:3000') {
     this.page = page;
     this.cacheMode = process.env.VIEWER_BENCHMARK_CACHE_MODE ?? 'default';
   }
@@ -250,7 +253,7 @@ export class ViewerBenchmarkPage {
     }
 
     // Navigate to viewer app
-    await this.page.goto('http://localhost:3000');
+    await this.page.goto(this.origin);
     
     // Wait for app to be ready (file input exists but is hidden, so check for existence)
     await this.page.waitForSelector('input[type="file"]', { state: 'attached', timeout: 30000 });
@@ -267,7 +270,7 @@ export class ViewerBenchmarkPage {
     }
   }
 
-  async loadFile(filePath: string) {
+  async loadFile(filePath: string, waitForStart = true) {
     // Find the file input (there are two, use the one in ViewportContainer)
     const fileInput = this.page.locator('input[type="file"]').first();
 
@@ -278,11 +281,11 @@ export class ViewerBenchmarkPage {
     await fileInput.setInputFiles(filePath);
 
     // Wait for file loading to start (check for file name in logs)
-    await this.page.waitForTimeout(1000);
+    if (waitForStart) await this.page.waitForTimeout(1000);
   }
 
   /**
-   * Check if canvas has actual rendered content (not just blank/gray)
+   * Check 2D content when available; WebGPU fallback establishes only canvas allocation
    */
   private async checkCanvasHasContent(): Promise<boolean> {
     try {
@@ -322,7 +325,18 @@ export class ViewerBenchmarkPage {
     }
   }
 
-  async waitForCompletion(timeoutMs: number = 600000) {
+  async waitForCompletion(timeoutMs: number = 600000, requireMetadataRender = false) {
+    if (requireMetadataRender) {
+      this.loadEndTime = await waitForMetadataRenderReadiness({
+        logs: () => this.consoleLogs, canvasReady: () => this.checkCanvasHasContent(),
+        now: () => Date.now(), pause: () => this.page.waitForTimeout(100), timeoutMs,
+      });
+      this.metrics.metadataRenderReadyMs = this.loadEndTime - this.loadStartTime;
+      this.metrics.renderCompleteMs = this.metrics.metadataRenderReadyMs;
+      this.metrics.canvasHasContent = true;
+      this.parseMetrics();
+      return;
+    }
     const startTime = Date.now();
     let renderCompleteTime: number | null = null;
 
@@ -596,6 +610,7 @@ export class ViewerBenchmarkPage {
   getMetrics(): ViewerBenchmarkMetrics {
     return {
       totalWallClockMs: this.metrics.totalWallClockMs ?? null,
+      metadataRenderReadyMs: this.metrics.metadataRenderReadyMs ?? null,
       fileReadMs: this.metrics.fileReadMs ?? null,
       modelOpenMs: this.metrics.modelOpenMs ?? null,
       firstBatchWaitMs: this.metrics.firstBatchWaitMs ?? null,

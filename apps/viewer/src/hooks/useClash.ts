@@ -531,7 +531,11 @@ export function useClash() {
   const runPresets = useCallback(
     async (presets: ClashPreset[]): Promise<void> => {
       const state = useViewerStore.getState();
-      const models = [...state.models].map(([id, m]) => ({ id, store: m.ifcDataStore }));
+      const models = [...state.models].map(([id, m]) => ({
+        id,
+        filterIdentity: m.sourceFingerprint,
+        store: m.ifcDataStore,
+      }));
       const rules = rulesFromPresets(presets, mode, mode === 'clearance' ? clearance : undefined, reportTouch);
       // Resolving the filters is a federation scan that happens BEFORE `run()`
       // takes over the epoch and the running/error state. Take an epoch here

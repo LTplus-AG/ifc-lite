@@ -174,22 +174,22 @@ export function extractNodeFlags(script) {
  * `scripts/**` has no package of its own: the root `scripts.test` is
  * `turbo test`, which runs the workspace and not these files. CI runs each one
  * with an explicit `node --test scripts/<x>.test.mjs` step, so that is what we
- * reproduce. Only plain-JS test files qualify — anything needing a loader must
- * declare a runner rather than be guessed at.
+ * reproduce. Loader-dependent entrypoints require a declared runner.
  */
 export function rootScriptsRunner(files) {
   if (!Array.isArray(files) || files.length === 0) return null;
-  if (!files.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
-  return { family: 'node-test', bin: 'node', args: ['--test', ...files] };
+  // #4036: retain scaffolding during reversion, but execute only test entrypoints.
+  if (!files.every((f) => classifyPath(f) === 'test')) return null;
+  const entries = files.filter((f) => /\.(test|spec)\.[^/]+$/.test(f));
+  if (entries.length === 0 || !entries.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
+  return { family: 'node-test', bin: 'node', args: ['--test', ...entries] };
 }
-
 /** Cargo test invocation for a crate. */
 export function cargoRunner(crate) {
   if (!crate) return null;
   return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate] };
 }
 
-// ---------------------------------------------------------------------------
 // Runner output parsing — the core of the tool
 // ---------------------------------------------------------------------------
 

@@ -1,0 +1,175 @@
+{
+  "scope": "Functional smoke only. Two fresh processes, same viewer artifact; no performance comparison.",
+  "sourceLineage": {
+    "harnessParent": "671825706b36d5acda190b8bc0e033780ac49e38",
+    "smokeHarness": "5cdccfabd includes smoke runtime; subsequent changes only final archive placement and counters",
+    "viewer": "combined local validation runtime at 5c75ee6339872fdac698594dc234aa6715d2d809; later overlays are test-only"
+  },
+  "fixture": {
+    "name": "AC20-FZK-Haus.ifc",
+    "sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"
+  },
+  "runtimeHashes": {
+    "index.html": "6aa568930cb8b7e9e592b495beef0e774825371a12420a7ff2de8353ff8a5441",
+    "ifc-lite_bg-hObAX6Qn.wasm": "fbce394b8ddbab85d1908e5951ce97512a86009ed204dc333d84e6787b91f600",
+    "ifc-lite.js": "ab8d6ad4b0fa777918f83b049bbf2cbde01a4279fa7eee64aa5ddc2caf4da490"
+  },
+  "rawJSONLSHA256": "26d77c6e051484e8cb4c9a2ea5b9a6e2e1edb81bf4739d44efbbece89b19c6cd",
+  "runs": [
+    {
+      "record": {
+        "side": "run-A",
+        "fixture": "AC20-FZK-Haus.ifc",
+        "round": 1,
+        "ok": true,
+        "browserExecutable": "Google Chrome",
+        "browserLaunchOptions": {
+          "headless": false,
+          "executablePath": "Google Chrome",
+          "args": [
+            "--enable-gpu",
+            "--enable-webgpu",
+            "--enable-unsafe-webgpu",
+            "--use-angle=default",
+            "--ignore-gpu-blocklist"
+          ]
+        },
+        "browserVersion": "152.0.7977.76",
+        "crossOriginIsolated": true,
+        "sharedArrayBufferAvailable": true,
+        "totalWallClockMs": 200,
+        "metadataRenderReadyMs": 259,
+        "fileReadMs": 10,
+        "modelOpenMs": null,
+        "firstBatchWaitMs": 45,
+        "firstAppendGeometryBatchMs": 112,
+        "firstVisibleGeometryMs": 127,
+        "streamCompleteMs": 144,
+        "metadataStartMs": 66,
+        "spatialReadyMs": 151,
+        "metadataCompleteMs": 173,
+        "metadataFailedMs": null,
+        "firstBatchNumber": 1,
+        "firstBatchMeshes": 34,
+        "totalBatches": 10,
+        "totalMeshes": 317,
+        "geometryStreamingMs": 144,
+        "wasmWaitMs": null,
+        "jsProcessMs": null,
+        "entityScanMs": 7,
+        "entityCount": 44249,
+        "dataModelParseMs": null,
+        "dataModelEntityCount": null,
+        "fileSizeMB": 2.41,
+        "renderCompleteMs": 259,
+        "canvasHasContent": true,
+        "drawCalls": null,
+        "residentGpuMB": null,
+        "batchesContributionCulled": null,
+        "instancedDrawn": null,
+        "instancedFrustumCulled": null,
+        "instancedContributionCulled": null
+      },
+      "rawConsoleSHA256": "55e0552d162cb811b5074315d1a7225cf42d2884dc13370d61fb343eef273442",
+      "completionWitnessLines": [
+        "[useIfc] Data model parsing complete for AC20-FZK-Haus.ifc: 173ms",
+        "[useIfc] Stream complete for AC20-FZK-Haus.ifc: 144ms",
+        "[GeomStream] finalizeStreamingAsync complete: 4ms \u2192 13 consolidated batches, 0.0M triangles"
+      ],
+      "warningAndErrorLines": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "[Vercel Web Analytics] Failed to load script from /_vercel/insights/script.js. Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information."
+      ]
+    },
+    {
+      "record": {
+        "side": "run-B",
+        "fixture": "AC20-FZK-Haus.ifc",
+        "round": 1,
+        "ok": true,
+        "browserExecutable": "Google Chrome",
+        "browserLaunchOptions": {
+          "headless": false,
+          "executablePath": "Google Chrome",
+          "args": [
+            "--enable-gpu",
+            "--enable-webgpu",
+            "--enable-unsafe-webgpu",
+            "--use-angle=default",
+            "--ignore-gpu-blocklist"
+          ]
+        },
+        "browserVersion": "152.0.7977.76",
+        "crossOriginIsolated": true,
+        "sharedArrayBufferAvailable": true,
+        "totalWallClockMs": 200,
+        "metadataRenderReadyMs": 265,
+        "fileReadMs": 10,
+        "modelOpenMs": null,
+        "firstBatchWaitMs": 43,
+        "firstAppendGeometryBatchMs": 118,
+        "firstVisibleGeometryMs": 158,
+        "streamCompleteMs": 144,
+        "metadataStartMs": 73,
+        "spatialReadyMs": 166,
+        "metadataCompleteMs": 185,
+        "metadataFailedMs": null,
+        "firstBatchNumber": 1,
+        "firstBatchMeshes": 34,
+        "totalBatches": 10,
+        "totalMeshes": 317,
+        "geometryStreamingMs": 144,
+        "wasmWaitMs": null,
+        "jsProcessMs": null,
+        "entityScanMs": 6,
+        "entityCount": 44249,
+        "dataModelParseMs": null,
+        "dataModelEntityCount": null,
+        "fileSizeMB": 2.41,
+        "renderCompleteMs": 265,
+        "canvasHasContent": true,
+        "drawCalls": null,
+        "residentGpuMB": null,
+        "batchesContributionCulled": null,
+        "instancedDrawn": null,
+        "instancedFrustumCulled": null,
+        "instancedContributionCulled": null
+      },
+      "rawConsoleSHA256": "503f8848f0c4511d299327affaaf790e908776248abe9eaee072d1fa019779c5",
+      "completionWitnessLines": [
+        "[useIfc] Stream complete for AC20-FZK-Haus.ifc: 144ms",
+        "[useIfc] Data model parsing complete for AC20-FZK-Haus.ifc: 185ms",
+        "[GeomStream] finalizeStreamingAsync complete: 3ms \u2192 13 consolidated batches, 0.0M triangles"
+      ],
+      "warningAndErrorLines": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)",
+        "[Vercel Web Analytics] Failed to load script from /_vercel/insights/script.js. Be sure to enable Web Analytics for your project and deploy again. See https://vercel.com/docs/analytics/quickstart for more information."
+      ]
+    }
+  ],
+  "reportVerdict": {
+    "noSuccessfulSamples": false,
+    "fingerprintDrift": false,
+    "tooNoisy": false,
+    "realChange": false,
+    "insufficientPairedSamples": true,
+    "incomparableFixture": false
+  },
+  "priorAttempts": [
+    {
+      "attempt": "harness-3982-functional-smoke",
+      "status": "Invalid renderer qualification: raw console has no GPU adapter; original helper accepted canvas allocation/app summary. Retained privately, not a passed renderer smoke.",
+      "extra": "Also inherited one-second post-selection wait."
+    },
+    {
+      "attempt": "harness-3982-functional-smoke-02",
+      "status": "Invalid renderer qualification: raw console has no GPU adapter; original helper accepted canvas allocation/app summary. Retained privately, not a passed renderer smoke.",
+      "extra": "Manual fixed delay removed, but nonisolated worker fallback remained."
+    },
+    {
+      "attempt": "harness-3982-functional-smoke-03",
+      "status": "Invalid renderer qualification: raw console has no GPU adapter; original helper accepted canvas allocation/app summary. Retained privately, not a passed renderer smoke.",
+      "extra": "Isolation corrected, GPU still unavailable."
+    }
+  ]
+}

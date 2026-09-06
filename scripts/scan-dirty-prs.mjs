@@ -248,6 +248,10 @@ async function main() {
 
   const results = scanPrs(prs, required, baseBranches, aliases);
   const { ok, lines } = report(results, required, baseBranches);
+  // The SAME set the report calls silent -- deliberately not `unknownAdvisory`,
+  // which the scanner keeps out of `silent` because those PRs re-check
+  // themselves.
+  const silentNumbers = results.filter((r) => r.silent).map((r) => r.number);
 
   // Live mode only: offline `--state-file` runs are the regression harness,
   // which has no run history to ask about and must not shell out to `gh`.
@@ -276,6 +280,13 @@ async function main() {
     }
   }
 
+  // THE SILENT SET, FOR MACHINES. Screen-scraping the human lines picked up
+  // the `unknownAdvisory` block too -- PRs the scanner deliberately keeps OUT
+  // of `silent` because they re-check themselves -- so a freshly opened PR got
+  // labelled and unlabelled every 30 minutes. Emitting the set the scanner
+  // actually computed removes the second, divergent derivation.
+  console.log(`silent-prs=${silentNumbers.join(',')}`);
+
   process.exit(ok ? 0 : 1);
 }
 
@@ -285,7 +296,12 @@ if (process.argv[1] && process.argv[1].endsWith('scan-dirty-prs.mjs')) {
   } catch (err) {
     if (err instanceof DirtyPrScanError) {
       console.error(`❌ ${err.reason}: ${err.message}`);
-      process.exit(1);
+      // EXIT 2, NOT 1. `1` means "the scan looked and found silent PRs"; this
+      // means "the scan could not look". A caller that acts on the finding --
+      // labelling the PRs it named, clearing the label from the rest -- must
+      // be able to tell those apart, or a transient HTTP 502 reads as "no PR
+      // is silent any more" and clears correct state.
+      process.exit(2);
     }
     throw err;
   }

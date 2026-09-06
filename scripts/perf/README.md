@@ -158,7 +158,7 @@ full-detail identity alone does not establish browser identity.
 
 ### Retained transient decoder ownership (#4000)
 
-Use reusable output buffers and a validated string projection where consumers discard full decoded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Retained with the cumulative cold-load candidate, without an isolated percentage claim. Full-call timing must include the disposal join and trailing metadata; summed worker high-water allocations do not establish retained or simultaneous memory.
+Reusable output buffers and a validated string projection avoid building discarded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Own-layer native and actual Chrome worker-pool subset comparisons did not establish a meaningful full-load improvement. Keep the cumulative result separate, include the disposal join and trailing metadata in timing, and do not treat summed worker allocations as simultaneous memory. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded.
 
 ### Cold-load validation notes
 

@@ -171,6 +171,7 @@ nav:
     - Spatial Zone Emission: architecture/spatial-zone-emission.md
     - Mesh Determinism: architecture/mesh-determinism.md
     - CSG Threading: architecture/csg-threading-design.md
+    - N-ary Union Repair: architecture/nary-union-repair.md
     - WASM Wide Arithmetic: architecture/wasm-wide-arithmetic.md
     - Plato Code Generation: architecture/plato-codegen.md
     - Extension System:

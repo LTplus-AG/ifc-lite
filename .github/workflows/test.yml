@@ -438,7 +438,7 @@ jobs:
     needs: [changes, build]
     if: >-
       github.event_name == 'pull_request' &&
-      needs.changes.outputs.frontend == 'true' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
       !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
     runs-on: ubuntu-latest
     timeout-minutes: 20

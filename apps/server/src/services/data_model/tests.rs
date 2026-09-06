@@ -733,3 +733,197 @@ fn voids_and_fills_carry_the_ifcrel_express_id() {
     assert_eq!(rel_id_of("IFCRELVOIDSELEMENT"), 40);
     assert_eq!(rel_id_of("IFCRELFILLSELEMENT"), 50);
 }
+
+/// Fixture for issue #3964: a `IfcSystem` grouping a wall via
+/// `IfcRelAssignsToGroup`, an `IfcZone` grouping the same wall via
+/// `IfcRelAssignsToGroupByFactor` (adds a proportional Factor, e.g. zone
+/// occupancy share, but shares the same RelatedObjects/RelatingGroup
+/// membership semantics as its supertype), a door decomposed into a panel via
+/// `IfcRelNests` (a decomposition edge some IFC4 exporters use instead of
+/// `IfcRelAggregates`, e.g. feature/fastener nesting), and two walls joined
+/// end-to-end via `IfcRelConnectsPathElements` (the "connected walls" edge the
+/// Properties panel reads via `extractRelationshipsOnDemand`). None of these
+/// four types were extracted before this fix.
+const NEW_REL_TYPES_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,$,$);
+#10=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#11=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$,$);
+#20=IFCSYSTEM('Sys0000000000000000001',$,'HVAC-1',$,$);
+#21=IFCRELASSIGNSTOGROUP('Grp0000000000000000001',$,$,$,(#10),$,#20);
+#25=IFCZONE('Zon0000000000000000001',$,'Zone-A',$,$);
+#26=IFCRELASSIGNSTOGROUPBYFACTOR('Grf0000000000000000001',$,$,$,(#10),$,#25,0.5);
+#30=IFCDOOR('Doo0000000000000000001',$,'D1',$,$,$,$,$,$);
+#31=IFCDOOR('Doo0000000000000000002',$,'D2',$,$,$,$,$,$);
+#32=IFCRELNESTS('Nst0000000000000000001',$,$,$,#30,(#31));
+#40=IFCRELCONNECTSPATHELEMENTS('Con0000000000000000001',$,$,$,$,#10,#11,$,$,.ATEND.,.ATSTART.);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn extracts_assigns_to_group_relationship_orientation() {
+    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    // RelatingGroup=#20 (IfcSystem), RelatedObjects=(#10) (the wall).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELASSIGNSTOGROUP")
+                && r.relating_id == 20
+                && r.related_id == 10
+        }),
+        "IFCRELASSIGNSTOGROUP (system -> wall) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+#[test]
+fn extracts_assigns_to_group_by_factor_relationship_orientation() {
+    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    // RelatingGroup=#25 (IfcZone), RelatedObjects=(#10) (the wall).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELASSIGNSTOGROUPBYFACTOR")
+                && r.relating_id == 25
+                && r.related_id == 10
+        }),
+        "IFCRELASSIGNSTOGROUPBYFACTOR (zone -> wall) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+#[test]
+fn extracts_nests_relationship_orientation() {
+    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    // RelatingObject=#30 (door), RelatedObjects=(#31) (the nested panel).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELNESTS")
+                && r.relating_id == 30
+                && r.related_id == 31
+        }),
+        "IFCRELNESTS (door -> panel) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+#[test]
+fn extracts_connects_path_elements_relationship_orientation() {
+    let dm = extract_data_model(NEW_REL_TYPES_IFC);
+    // RelatingElement=#10 (wall 1), RelatedElement=#11 (wall 2).
+    assert!(
+        dm.relationships.iter().any(|r| {
+            r.rel_type.eq_ignore_ascii_case("IFCRELCONNECTSPATHELEMENTS")
+                && r.relating_id == 10
+                && r.related_id == 11
+        }),
+        "IFCRELCONNECTSPATHELEMENTS (wall -> wall) missing or misoriented: {:?}",
+        dm.relationships
+    );
+}
+
+/// Control: a fixture with none of the four new types must extract exactly as
+/// before — none of them should ever appear for a model that never wrote
+/// them, so a future change to the new-type match arms can't silently start
+/// matching an unrelated type.
+#[test]
+fn fixture_without_new_types_is_unaffected() {
+    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    assert!(
+        !dm.relationships.iter().any(|r| {
+            matches!(
+                r.rel_type.to_uppercase().as_str(),
+                "IFCRELASSIGNSTOGROUP"
+                    | "IFCRELASSIGNSTOGROUPBYFACTOR"
+                    | "IFCRELNESTS"
+                    | "IFCRELCONNECTSPATHELEMENTS"
+            )
+        }),
+        "fixture has none of the new types, but one was extracted: {:?}",
+        dm.relationships
+    );
+}
+
+/// #3949: `IfcClassification`'s attribute order is `Source(0), Edition(1),
+/// EditionDate(2), Name(3), ...` — nothing like `IfcRoot`'s
+/// `GlobalId(0), OwnerHistory(1), Name(2)`. Reading it at the hardcoded
+/// `IfcRoot` positions makes `global_id` the classification's `Source` string
+/// and `name` its `EditionDate`.
+const CLASSIFICATION_METADATA_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#90=IFCCLASSIFICATION('Src90','Ed90','2024-01-01','RealName90',$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn ifcclassification_metadata_reads_name_by_schema_position_not_ifcroot_position() {
+    let dm = extract_data_model(CLASSIFICATION_METADATA_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 90)
+        .expect("classification entity #90 missing");
+    assert_eq!(e.type_name, "IFCCLASSIFICATION");
+    // `IfcClassification` has no `GlobalId` attribute at all.
+    assert_eq!(
+        e.global_id, None,
+        "IfcClassification does not declare GlobalId; must not read Source as a GUID"
+    );
+    assert_eq!(
+        e.name.as_deref(),
+        Some("RealName90"),
+        "name must be IfcClassification's own Name attribute (index 3), not EditionDate (index 2)"
+    );
+}
+
+/// Control: a genuine `IfcRoot` subtype (`IfcWall`) must keep extracting
+/// `global_id`/`name` at exactly the same positions as before this fix —
+/// `IfcRoot` subtypes are the overwhelming majority of real-model content.
+#[test]
+fn ifcwall_metadata_still_reads_globalid_and_name_at_ifcroot_positions() {
+    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 28)
+        .expect("wall entity #28 missing");
+    assert_eq!(e.global_id.as_deref(), Some("Wall00000000000000001"));
+    assert_eq!(e.name.as_deref(), Some("W1"));
+}
+
+/// Control: a type absent from the schema registry falls back to the same
+/// `IfcElement`-layout positions the WASM path uses for unknown types
+/// (Description 3, ObjectType 4, Tag 7) — extended here to GlobalId 0 / Name 2,
+/// matching the pre-fix hardcoded behaviour for the unknown-type case.
+const UNKNOWN_TYPE_METADATA_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#95=IFCTOTALLYMADEUPVENDORTYPE('Guid95',$,'Name95','Desc95','ObjType95',$,$,'Tag95');
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn unknown_type_metadata_falls_back_to_ifcelement_layout_positions() {
+    let dm = extract_data_model(UNKNOWN_TYPE_METADATA_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 95)
+        .expect("unknown-type entity #95 missing");
+    assert_eq!(e.global_id.as_deref(), Some("Guid95"));
+    assert_eq!(e.name.as_deref(), Some("Name95"));
+    assert_eq!(e.description.as_deref(), Some("Desc95"));
+    assert_eq!(e.object_type.as_deref(), Some("ObjType95"));
+    assert_eq!(e.tag.as_deref(), Some("Tag95"));
+}

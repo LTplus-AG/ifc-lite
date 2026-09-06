@@ -4,7 +4,9 @@
 
 use super::super::helpers::parse_axis2_placement_3d;
 use super::BooleanClippingProcessor;
-use crate::{calculate_normals, Error, Mesh, Point2, Point3, Profile2D, Result, Vector3};
+use crate::{
+    calculate_normals, ClippingProcessor, Error, Mesh, Point2, Point3, Profile2D, Result, Vector3,
+};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 
 impl BooleanClippingProcessor {
@@ -374,5 +376,25 @@ impl BooleanClippingProcessor {
 
         calculate_normals(&mut mesh);
         Ok(mesh)
+    }
+
+    /// Subtract `cutter` from `base`; an accept-gate rejection (#3919) hands
+    /// back `base` UN-CUT (same shape as "nothing to cut", which
+    /// `difference_result_looks_degenerate` can't catch), so it is treated
+    /// like empty/errored/degenerate: `None`. Used by
+    /// `try_union_polygonal_chain`'s per-cutter trials and final subtract so a
+    /// rejected gate always defers to the sequential path. Leaves any
+    /// failures in `clipper` for the caller to drain.
+    pub(super) fn subtract_checked(
+        clipper: &ClippingProcessor,
+        base: &Mesh,
+        cutter: &Mesh,
+    ) -> Option<Mesh> {
+        let mark = clipper.failure_count();
+        let m = match clipper.subtract_mesh(base, cutter) {
+            Ok(m) if !m.is_empty() && !clipper.has_accept_gate_rejection_since(mark) => m,
+            _ => return None,
+        };
+        (!ClippingProcessor::difference_result_looks_degenerate(base, &m)).then_some(m)
     }
 }

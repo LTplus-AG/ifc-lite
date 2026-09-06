@@ -89,6 +89,7 @@ import {
   UNOBSERVED,
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
+import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -177,14 +178,6 @@ function findUp(startDir, filename) {
   }
 }
 
-function crateNameFor(absFile) {
-  const dir = findUp(dirname(absFile), 'Cargo.toml');
-  if (!dir) return null;
-  const toml = readFileSync(join(dir, 'Cargo.toml'), 'utf8');
-  const m = /^\s*\[package\][\s\S]*?^\s*name\s*=\s*"([^"]+)"/m.exec(toml);
-  return m ? { dir, crate: m[1] } : null;
-}
-
 /** Group test files by the package that owns them and pick each one's runner. */
 function planRuns(testPaths) {
   /** @type {Map<string, {dir: string, files: string[], script: string|undefined, crate: string|null}>} */
@@ -193,14 +186,14 @@ function planRuns(testPaths) {
 
   for (const rel of testPaths) {
     const abs = join(ROOT, rel);
-    if (rel.endsWith('.rs')) {
-      const c = crateNameFor(abs);
-      if (!c) { unassigned.push(rel); continue; }
+    const c = cargoTestOwner(abs, ROOT);
+    if (c) {
       const key = `cargo:${c.crate}`;
       if (!groups.has(key)) groups.set(key, { dir: c.dir, files: [], script: undefined, crate: c.crate });
       groups.get(key).files.push(rel);
       continue;
     }
+    if (rel.endsWith('.rs')) { unassigned.push(rel); continue; }
     const pkgDir = findUp(dirname(abs), 'package.json');
     if (!pkgDir) { unassigned.push(rel); continue; }
     if (!groups.has(pkgDir)) {

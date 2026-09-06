@@ -26,7 +26,7 @@ import {
   type DataStoreTransport,
   type ParserMemorySnapshot,
 } from './data-store-transport.js';
-import { contiguousSourceBytes } from './source-bytes.js';
+import { contiguousSourceBytes, type IfcSourceBytes } from './source-bytes.js';
 import type {
   ParserWorkerInputMessage,
   ParserWorkerOutputMessage,
@@ -119,7 +119,13 @@ export class WorkerParser {
       // on exactly the models #2183 is about. The previous code got one hash by
       // memoising on the shared Uint8Array; sharing the accessor is the same
       // guarantee without the side table.
-      const sourceBytes = contiguousSourceBytes(new Uint8Array(source));
+      let sourceBytes: IfcSourceBytes | undefined;
+      const hydrate = (payload: DataStoreTransport) => {
+        // #3983: the worker hashes the source before the first UI publication.
+        // Retain one accessor across partial/full stores and compression swaps.
+        sourceBytes ??= contiguousSourceBytes(new Uint8Array(source), payload.sourceContentKey ?? undefined);
+        return fromTransport(payload, sourceBytes);
+      };
 
       const settle = (cleanup: () => void) => {
         worker.onmessage = null;
@@ -144,7 +150,7 @@ export class WorkerParser {
           case 'partial-store': {
             if (!options.onSpatialReady) return;
             try {
-              const partial = fromTransport(msg.payload as DataStoreTransport, sourceBytes);
+              const partial = hydrate(msg.payload);
               options.onSpatialReady(partial);
             } catch (err) {
               // Don't fail the whole parse on partial deserialization
@@ -156,7 +162,7 @@ export class WorkerParser {
 
           case 'complete': {
             try {
-              const dataStore = fromTransport(msg.payload as DataStoreTransport, sourceBytes);
+              const dataStore = hydrate(msg.payload);
               options.onMemorySnapshot?.(msg.memory);
               settle(() => {
                 worker.terminate();

@@ -460,6 +460,56 @@ fn the_index_taking_variant_agrees_with_the_wrapper() {
     }
 }
 
+/// Reusing the native scan must preserve standalone metadata, even when the
+/// caller disables property extraction: IFC2x3 georeferencing still needs Psets.
+#[test]
+fn native_scan_candidates_preserve_georeferencing_with_properties_disabled() {
+    for content in [
+        GEOREF_IFC, SCALED_MAP_CONVERSION_IFC, TWO_CONVERSIONS_IFC,
+        IFC2X3_PSET_IFC, IFC2X3_EPSET_LOWERCASE_IFC, SITE_ONLY_IFC,
+    ] {
+        let expected = extract_georeferencing(content).expect("fixture has georeferencing");
+        let result = crate::processor::process_geometry_streaming_with_options_and_bootstrap(
+            content.as_bytes(),
+            crate::processor::StreamingOptions {
+                include_properties: false,
+                ..Default::default()
+            },
+            |_, _, _| {}, |_| {}, |_| {},
+        );
+        assert_eq!(result.metadata.georeferencing, Some(expected));
+    }
+}
+
+/// The provided candidate sequence is authoritative; extraction must not sort
+/// by id or secretly scan the source again and lose first-wins ordering.
+#[test]
+fn supplied_georeferencing_candidates_preserve_order() {
+    let index = Arc::new(ifc_lite_core::build_entity_index(TWO_CONVERSIONS_IFC));
+    let geo = extract_georeferencing_from_candidates(
+        &mut EntityDecoder::with_arc_index(TWO_CONVERSIONS_IFC, index),
+        &[(10, IfcType::IfcProjectedCRS), (12, IfcType::IfcMapConversion), (11, IfcType::IfcMapConversion)],
+    ).unwrap();
+    assert_eq!(geo.eastings, 999.0);
+    assert_eq!(geo.northings, 888.0);
+    assert_eq!(extract_georeferencing(TWO_CONVERSIONS_IFC).unwrap().eastings, 111.0);
+}
+
+#[test]
+fn native_georeferencing_keeps_first_pset_and_first_site() {
+    let psets = "#1=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(123.),$);\n\
+        #2=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(999.),$);\n\
+        #9=IFCPROPERTYSET('first',$,'ePSet_MapConversion',$,(#1));\n\
+        #8=IFCPROPERTYSET('second',$,'ePSet_MapConversion',$,(#2));";
+    let sites = "#9=IFCSITE('first',$,'Site',$,$,$,$,$,.ELEMENT.,(47,0,0,0),(8,0,0,0),10.,$,$);\n\
+        #8=IFCSITE('second',$,'Site',$,$,$,$,$,.ELEMENT.,(12,0,0,0),(34,0,0,0),20.,$,$);";
+    for (content, eastings) in [(psets, 123.0), (sites, 8.0)] {
+        let expected = extract_georeferencing(content).unwrap();
+        assert_eq!(expected.eastings, eastings);
+        assert_eq!(crate::process_geometry(content).metadata.georeferencing, Some(expected));
+    }
+}
+
 /// The index passed in is the one consulted, rather than a fresh one built
 /// inside. Handed an empty index, the references the extractor resolves by id
 /// all miss, so a file that otherwise georeferences comes back `None`.

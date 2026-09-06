@@ -10,6 +10,38 @@
 
 use super::*;
 
+/// The fused ASCII proof must retain the scanner's existing UTF-8 fallback:
+/// valid non-ASCII keywords survive, invalid ones become UNKNOWN, and neither
+/// case changes the original byte spans or prevents reading the next record.
+#[test]
+fn type_name_ascii_fast_path_preserves_utf8_and_invalid_byte_behavior() {
+    for keyword in [
+        b"IFCCARTESIANPOINT".as_slice(),
+        b"IfcVendor_123".as_slice(),
+        "IfcVéndor".as_bytes(),
+        "IfcVendor\u{1f600}".as_bytes(),
+        b"Ifc\xffVendor".as_slice(),
+        b"IfcVendor\xc3".as_slice(),
+        b"\x80IFCVENDOR".as_slice(),
+    ] {
+        for delimiter in [b"(".as_slice(), b"\x0b(".as_slice(), b"/* note */(".as_slice()] {
+            let mut content = b"#1=".to_vec();
+            content.extend_from_slice(keyword);
+            content.extend_from_slice(delimiter);
+            content.extend_from_slice(b"$);");
+            let first_end = content.len();
+            content.extend_from_slice(b"#2=IFCWALL($);");
+            let mut scanner = EntityScanner::new(&content);
+            let (id, name, start, end) = scanner.next_entity().unwrap();
+            assert_eq!((id, start, end), (1, 0, first_end));
+            assert_eq!(name, std::str::from_utf8(keyword).unwrap_or("UNKNOWN"));
+            assert_eq!(scanner.next_entity().map(|(id, name, _, _)| (id, name)), Some((2, "IFCWALL")));
+            assert!(scanner.next_entity().is_none());
+            assert_eq!(scanner.malformed_record_start(), None);
+        }
+    }
+}
+
 #[test]
 fn test_entity_scanner() {
     let content = r#"

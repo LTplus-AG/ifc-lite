@@ -373,6 +373,7 @@ export type FailureType =
   | 'CLASSIFICATION_MISSING'
   | 'CLASSIFICATION_SYSTEM_MISMATCH'
   | 'CLASSIFICATION_VALUE_MISMATCH'
+  | 'CLASSIFICATION_UNRESOLVED' // classified, but attributes unreadable here (#3948)
   // Material failures
   | 'MATERIAL_MISSING'
   | 'MATERIAL_VALUE_MISMATCH'
@@ -520,12 +521,11 @@ export interface PropertySetInfo {
 
 /** Classification information */
 export interface ClassificationInfo {
-  /** Classification system name */
-  system: string;
-  /** Classification value/code */
-  value: string;
-  /** Optional classification name */
-  name?: string;
+  system: string; // Classification system name
+  value: string; // Classification value/code
+  name?: string; // Optional classification name
+  unresolved?: boolean; // classified, but system/value/name ('') unreadable (#3948)
+  presenceUnknown?: boolean; // unlike `unresolved`, does NOT prove presence (#3954); paired with `unresolved: true`
 }
 
 /** Material information */

@@ -54,7 +54,6 @@ interface Section2DPanelProps {
 export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
-  modelIdToIndex
 }: Section2DPanelProps = {}): React.ReactElement | null {
   // ═══════════════════════════════════════════════════════════════════════════
   // STORE SELECTORS
@@ -81,11 +80,8 @@ export function Section2DPanel({
   // viewport does, so a hidden IfcSpace/IfcOpeningElement is not cut (#2060).
   const typeVisibility = useViewerStore((s) => s.typeVisibility);
   // Graphic overrides
-  const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
-  const setActivePreset = useViewerStore((s) => s.setActivePreset);
   const overridesEnabled = useViewerStore((s) => s.overridesEnabled);
-  const toggleOverridesEnabled = useViewerStore((s) => s.toggleOverridesEnabled);
   const getActiveOverrideRules = useViewerStore((s) => s.getActiveOverrideRules);
   const customOverrideRules = useViewerStore((s) => s.customOverrideRules);
 
@@ -111,7 +107,6 @@ export function Section2DPanel({
 
   // 2D Measure tool state
   const measure2DMode = useViewerStore((s) => s.measure2DMode);
-  const toggleMeasure2DMode = useViewerStore((s) => s.toggleMeasure2DMode);
   const measure2DStart = useViewerStore((s) => s.measure2DStart);
   const measure2DCurrent = useViewerStore((s) => s.measure2DCurrent);
   const setMeasure2DStart = useViewerStore((s) => s.setMeasure2DStart);
@@ -122,7 +117,6 @@ export function Section2DPanel({
   const measure2DResults = useViewerStore((s) => s.measure2DResults);
   const completeMeasure2D = useViewerStore((s) => s.completeMeasure2D);
   const cancelMeasure2D = useViewerStore((s) => s.cancelMeasure2D);
-  const clearMeasure2DResults = useViewerStore((s) => s.clearMeasure2DResults);
   const measure2DSnapPoint = useViewerStore((s) => s.measure2DSnapPoint);
   const setMeasure2DSnapPoint = useViewerStore((s) => s.setMeasure2DSnapPoint);
 
@@ -137,7 +131,6 @@ export function Section2DPanel({
   const addPolygonArea2DPoint = useViewerStore((s) => s.addPolygonArea2DPoint);
   const completePolygonArea2D = useViewerStore((s) => s.completePolygonArea2D);
   const cancelPolygonArea2D = useViewerStore((s) => s.cancelPolygonArea2D);
-  const clearPolygonArea2DResults = useViewerStore((s) => s.clearPolygonArea2DResults);
   // Text annotation state
   const textAnnotations2D = useViewerStore((s) => s.textAnnotations2D);
   const textAnnotation2DEditing = useViewerStore((s) => s.textAnnotation2DEditing);
@@ -187,7 +180,7 @@ export function Section2DPanel({
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCAL STATE
   // ═══════════════════════════════════════════════════════════════════════════
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded] = useState(false);
   const [panelSize, setPanelSize] = useState({ width: 400, height: 300 });
   const [isNarrow, setIsNarrow] = useState(false);  // Track if panel is too narrow for all buttons
   const [isPinned, setIsPinned] = useState(true);  // Default ON: keep position on regenerate
@@ -284,10 +277,10 @@ export function Section2DPanel({
   // EXTRACTED HOOKS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const { generateDrawing, doRegenerate, isRegenerating } = useDrawingGeneration({
+  const { generateDrawing, isRegenerating } = useDrawingGeneration({
     geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
     combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
-    models, panelVisible, drawing,
+    models, panelVisible, activeTool, drawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });
 
@@ -477,7 +470,7 @@ export function Section2DPanel({
     legacyPointClouds: geometryResult?.pointClouds,
   });
 
-  const { formatDistance, handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({
+  const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({
     drawing, displayOptions, sectionPlane, activePresetId,
     entityColorMap, overridesEnabled, overrideEngine,
     measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D,
@@ -541,10 +534,6 @@ export function Section2DPanel({
     setDrawing(null);
     setDrawingStatus('idle');
   }, [displayOptions.useSymbolicRepresentations, updateDisplayOptions, setDrawing, setDrawingStatus]);
-
-  const toggleExpanded = useCallback(() => {
-    setIsExpanded((prev) => !prev);
-  }, []);
 
   const togglePinned = useCallback(() => {
     setIsPinned((prev) => !prev);

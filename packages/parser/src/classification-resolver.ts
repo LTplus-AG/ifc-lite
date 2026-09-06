@@ -18,6 +18,16 @@ export interface ClassificationInfo {
     location?: string;
     description?: string;
     path?: string[];
+    /**
+     * True when the relationship graph proves this entity/type carries a
+     * classification association, but the classification's own attributes
+     * (system, identification, name, path) could not be read because this
+     * store has no source bytes — a server-parsed store (issue #3948).
+     * Distinguishes "classified but unresolved" from "genuinely unclassified"
+     * (an empty result array), which are otherwise byte-identical to every
+     * caller. All other fields are left `undefined` on an unresolved entry.
+     */
+    unresolved?: boolean;
 }
 
 /**
@@ -59,7 +69,42 @@ export function extractClassificationsOnDemand(
     }
 
     if (!classRefIds || classRefIds.length === 0) return [];
-    if (!store.source?.length) return [];
+    if (!store.source?.length) {
+        // Server-parsed / source-empty store: no source bytes to decode the
+        // classification reference's own attributes. The relationship graph
+        // above already proved this entity (or its type) IS classified — the
+        // ids resolved into `classRefIds` are real
+        // `IfcRelAssociatesClassification` targets.
+        //
+        // If the server also forwarded the resolved attributes (issue
+        // #3955), prefer those — real system/identification/name data beats
+        // a marker. Roll up the entity's own row plus its type's (mirroring
+        // the classRefIds roll-up above) so a type-level classification is
+        // not dropped.
+        if (store.resolvedClassifications) {
+            const resolved: ClassificationInfo[] = [...(store.resolvedClassifications.get(entityId) || [])];
+            if (store.relationships) {
+                const typeIds = store.relationships.getRelated(entityId, RelationshipType.DefinesByType, 'inverse');
+                for (const typeId of typeIds) {
+                    const typeResolved = store.resolvedClassifications.get(typeId);
+                    if (typeResolved) resolved.push(...typeResolved);
+                }
+            }
+            // The server resolves these rows from the same immutable input
+            // as its graph. Repeated relationships emit repeated rows while
+            // the graph deduplicates edges, so their counts need not match.
+            if (resolved.length > 0) return resolved;
+        }
+        // No forwarded resolved data. Turning an id into
+        // system/identification/name/path needs raw STEP bytes
+        // (`EntityExtractor`), which this store doesn't have. Previously
+        // this silently returned `[]` here, making a classified entity
+        // byte-identical to a genuinely unclassified one (issue #3948).
+        // Surface one unresolved marker per resolved id instead, so callers
+        // — the IDS bridge in particular — can tell "classified, but this
+        // data source can't say more" from "none".
+        return classRefIds.map((): ClassificationInfo => ({ unresolved: true }));
+    }
 
     const extractor = new EntityExtractor(store.source);
     const results: ClassificationInfo[] = [];
@@ -106,9 +151,26 @@ export function extractClassificationsOnDemand(
     return results;
 }
 
+/** Result of {@link extractClassificationSystemsOnDemand}. */
+export interface ClassificationSystemNames {
+    /** Distinct system names, sorted. Empty when the model genuinely has no
+     *  `IfcClassification` entities — check `unresolved` before reading an
+     *  empty array as "no systems". */
+    names: string[];
+    /**
+     * True when the model DOES have `IfcClassification` entities (per the
+     * byType index) but their `Name` could not be read because this store
+     * has no source bytes — a server-parsed store (issue #3948), the same
+     * condition `extractClassificationsOnDemand` signals per-entity via
+     * `ClassificationInfo.unresolved`. When true, `names` is always `[]`
+     * and must not be read as "the model has no classification systems".
+     */
+    unresolved: boolean;
+}
+
 /**
  * List the distinct classification system names present in a model —
- * CHEAP and EXACT.
+ * CHEAP and EXACT when source bytes are available.
  *
  * Unlike extractClassificationsOnDemand (which resolves classifications for
  * ONE entity by walking its reference chain, and is only reachable through
@@ -121,9 +183,16 @@ export function extractClassificationsOnDemand(
  * A model can carry SEVERAL systems at once (e.g. Uniclass, OmniClass, and
  * a national system) — this returns all of them, sorted alphabetically.
  */
-export function extractClassificationSystemsOnDemand(store: IfcDataStore): string[] {
+export function extractClassificationSystemsOnDemand(store: IfcDataStore): ClassificationSystemNames {
     const ids = store.entityIndex.byType.get('IFCCLASSIFICATION');
-    if (!ids || ids.length === 0 || !store.source?.length) return [];
+    if (!ids || ids.length === 0) return { names: [], unresolved: false };
+    if (!store.source?.length) {
+        // The model has classification systems (confirmed by the byType
+        // index), but reading their Name needs raw STEP bytes this
+        // server-parsed store doesn't carry. `[]` alone would be
+        // indistinguishable from "no systems" (issue #3948).
+        return { names: [], unresolved: true };
+    }
 
     const extractor = new EntityExtractor(store.source);
     const names = new Set<string>();
@@ -140,7 +209,7 @@ export function extractClassificationSystemsOnDemand(store: IfcDataStore): strin
         if (typeof name === 'string' && name.length > 0) names.add(name);
     }
 
-    return Array.from(names).sort();
+    return { names: Array.from(names).sort(), unresolved: false };
 }
 
 /**

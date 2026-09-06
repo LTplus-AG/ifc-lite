@@ -111,14 +111,38 @@ function firstPathMatch(input, re) {
  * be mistaken for the comparisons it MAKES. Arrow functions, Rust arrows, JSX
  * closers, shift operators and generic parameters go the same way, or every
  * TypeScript diff in the repository would fire on `=>` alone.
+ *
+ * GENERIC PARAMETERS ARE PEELED TO A FIXPOINT, BEFORE `>>` IS STRIPPED AS A
+ * SHIFT OPERATOR. A single pass of the generic-parameter strip only removes
+ * one level of nesting, so a two-level generic like `Promise<Map<string,
+ * string>>` left its OUTER `<` behind after the inner `<string, string>` was
+ * consumed -- and if the shift-operator strip ran first instead, it reads the
+ * closing `>>` as a right-shift token, orphaning that same outer `<` a
+ * different way.
+ * Either order left one bracket of an ordinary type annotation unpartnered.
+ *
+ * MEASURED, on two unrelated PRs the same day: `Promise<Map<string, string>>`
+ * in a test file's function signature, and `Array<ReturnType<typeof
+ * Rule.model>>` in another. Neither line contains a comparison of any kind,
+ * and both fired `one-ended-numeric-bound` on the strength of an un-consumed
+ * `<` alone. Looping the generic strip first consumes any depth of nesting
+ * before shift/arrow tokens are touched, which also incidentally fixes the
+ * `<Dialog open={open} />` case this file already documents: the whole tag
+ * matches the generic-parameter shape (`<`, a name, non-`<>` body, `>`) before
+ * `/>` is ever stripped, so it is removed as one unit instead of losing its
+ * closing `>` to the JSX-closer strip first.
  */
 function unpartneredComparison(text) {
-  const stripped = String(text)
+  let stripped = String(text)
     .replace(/\\./g, ' ')                          // escapes, before any quote matching
     .replace(/`[^`]*`|'[^']*'|"[^"]*"/g, ' ')      // string and template CONTENTS
-    .replace(/\/\/.*$|\/\*.*?\*\//g, ' ')            // comments
-    .replace(/=>|->|<<|>>|<\/|\/>/g, ' ')
-    .replace(/<[A-Za-z_$][^<>]*>/g, ' ');          // generic parameters, not comparisons
+    .replace(/\/\/.*$|\/\*.*?\*\//g, ' ');           // comments
+  let previous;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[A-Za-z_$][^<>]*>/g, ' '); // generic parameters, not comparisons
+  } while (stripped !== previous);
+  stripped = stripped.replace(/=>|->|<<|>>|<\/|\/>/g, ' ');
   const lower = (stripped.match(/(?:^|[^<>=!])(<=?)(?![=<])/g) || []).length;
   const upper = (stripped.match(/(?:^|[^<>=!])(>=?)(?![=>])/g) || []).length;
   return (lower > 0) !== (upper > 0);

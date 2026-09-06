@@ -23,7 +23,7 @@ impl BooleanClippingProcessor {
     /// caller then defers to the sequential per-cutter path. An exact
     /// bit-identical directed-edge closure check against the real #960
     /// fixture (five walls, `960_house_segmented_roof_clip.ifc`) found this
-    /// union closed on only 2 of 5 real chains — the rest had open boundary
+    /// union closed on only 1 of 5 real chains — the rest had open boundary
     /// edges, and some had degenerate (zero-length) edges — yet all were
     /// accepted, because nothing here rejects them. What actually stands
     /// between a non-closed union and a wrong subtraction is downstream, in

@@ -373,9 +373,9 @@ impl MeshDataJs {
     }
 
     /// Attach per-vertex UVs + a decoded RGBA8 texture (#961). UVs are 1:1 with
-    /// `positions` and need no coordinate flip (they are 2D); the winding
-    /// reversal in `new` swaps indices, not vertices, so per-vertex UVs stay
-    /// aligned. Call after `new`.
+    /// `positions` and need no coordinate flip (they are 2D). The rotation in
+    /// `new` preserves vertex and index order, so per-vertex UVs stay aligned.
+    /// Call after `new`.
     // Each arg is a distinct JS call parameter; a Rust struct would not reduce
     // arity for JS callers. Matches the 21 other sites in this crate.
     #[allow(clippy::too_many_arguments)]

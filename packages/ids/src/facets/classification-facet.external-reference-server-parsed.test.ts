@@ -200,4 +200,47 @@ ${FOOTER}`;
     expect(valueResult.failure?.type).toBe('CLASSIFICATION_UNRESOLVED');
     expect(valueResult.failure?.field).toBe('value');
   });
+
+  it('control: IfcMaterialList — an IfcMaterialSelect member, but NOT an IfcMaterialDefinition/IfcResourceObjectSelect member — still reports CLASSIFICATION_MISSING, not a spurious UNRESOLVED', async () => {
+    // A plain `startsWith('IFCMATERIAL')` gate would swallow this: the IFC4
+    // and IFC4X3 schemas restrict IfcExternalReferenceRelationship's
+    // RelatedResourceObjects role (via IfcResourceObjectSelect) to
+    // IfcMaterialDefinition's ONEOF (IfcMaterial, IfcMaterialConstituent(Set),
+    // IfcMaterialLayer(Set), IfcMaterialProfile(Set), and the two
+    // `…WithOffsets` subtypes) — IfcMaterialList is not one of them, so it
+    // can never legitimately carry this kind of classification. A genuinely
+    // unclassified one must stay a confident MISSING.
+    const ifc = `${HEADER}
+#10=IFCMATERIAL('Steel',$,$);
+#11=IFCMATERIALLIST((#10));
+${FOOTER}`;
+    const server = asServerParsed(await realStore(ifc));
+    const accessor = createDataAccessor(server);
+    const result = checkClassificationFacet(presenceFacet, 11, accessor);
+
+    expect(result.failure?.type).toBe('CLASSIFICATION_MISSING');
+  });
+
+  it('IfcArbitraryProfileDefWithVoids — a real IfcProfileDef subtype whose name does not literally END in "ProfileDef" — still reports CLASSIFICATION_UNRESOLVED, not a fabricated MISSING', async () => {
+    // A genuine IfcProfileDef descendant (SUBTYPE OF IfcArbitraryClosedProfileDef
+    // SUBTYPE OF IfcProfileDef) can carry this classification via
+    // IfcProfileDef's own HasExternalReference inverse. An `endsWith('PROFILEDEF')`
+    // gate misses it because its name ends in "WithVoids", not "ProfileDef" —
+    // the opposite direction of the #3954 bug this file otherwise covers.
+    const ifc = `${HEADER}
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCCARTESIANPOINT((1.,0.));
+#12=IFCPOLYLINE((#10,#11));
+#13=IFCCARTESIANPOINT((0.,1.));
+#14=IFCCARTESIANPOINT((1.,1.));
+#15=IFCPOLYLINE((#13,#14));
+#20=IFCARBITRARYPROFILEDEFWITHVOIDS(.AREA.,$,#12,(#15));
+${FOOTER}`;
+    const server = asServerParsed(await realStore(ifc));
+    const accessor = createDataAccessor(server);
+    const result = checkClassificationFacet(presenceFacet, 20, accessor);
+
+    expect(result.failure?.type).toBe('CLASSIFICATION_UNRESOLVED');
+    expect(result.failure?.type).not.toBe('CLASSIFICATION_MISSING');
+  });
 });

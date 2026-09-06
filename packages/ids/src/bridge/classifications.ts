@@ -174,16 +174,51 @@ function appendExternalReferenceClassifications(
 }
 
 /**
+ * `IfcMaterialDefinition`'s concrete members (IFC4 and IFC4X3 EXPRESS
+ * schemas agree): `IfcMaterial`, `IfcMaterialConstituent(Set)`,
+ * `IfcMaterialLayer(Set)` and `IfcMaterialProfile(Set)`, plus the two
+ * `…WithOffsets` subtypes. `IfcMaterialDefinition` itself is abstract (no
+ * instances), and every OTHER `IFCMATERIAL*`-prefixed entity —
+ * `IfcMaterialList` (an `IfcMaterialSelect` member, not
+ * `IfcMaterialDefinition`), `IfcMaterialLayerSetUsage`/
+ * `IfcMaterialProfileSetUsage`, `IfcMaterialDefinitionRepresentation`,
+ * `IfcMaterialRelationship`, `IfcMaterialClassificationRelationship`,
+ * `IfcMaterialProperties` and its subtypes — is NOT an
+ * `IfcResourceObjectSelect` member and can never legitimately be the
+ * `RelatedResourceObjects` target of an `IfcExternalReferenceRelationship`.
+ * A plain `startsWith('IFCMATERIAL')` swallows all of those too, turning a
+ * genuinely unclassified `IfcMaterialLayerSetUsage` (a common, real entity —
+ * every layered wall has one) into a spurious `CLASSIFICATION_UNRESOLVED`.
+ */
+const MATERIAL_DEFINITION_TYPES = new Set([
+  'IFCMATERIAL',
+  'IFCMATERIALCONSTITUENT',
+  'IFCMATERIALCONSTITUENTSET',
+  'IFCMATERIALLAYER',
+  'IFCMATERIALLAYERSET',
+  'IFCMATERIALLAYERWITHOFFSETS',
+  'IFCMATERIALPROFILE',
+  'IFCMATERIALPROFILESET',
+  'IFCMATERIALPROFILEWITHOFFSETS',
+]);
+
+/**
  * Could `expressId` be a `RelatedResourceObjects` target of an
  * `IfcExternalReferenceRelationship`? The IFC schema restricts that role to
- * `IfcResourceObjectSelect` members — `IfcMaterial` (and its sibling
- * material-select types) and `IfcProfileDef` are the ones this bridge's
- * on-the-wire comment names — never an `IfcRoot` subtype (`IfcWall`,
- * `IfcDoor`, …), which can only be classified via
+ * `IfcResourceObjectSelect` members — `IfcMaterialDefinition` (see
+ * `MATERIAL_DEFINITION_TYPES`) and `IfcProfileDef` are the ones this
+ * bridge's on-the-wire comment names — never an `IfcRoot` subtype
+ * (`IfcWall`, `IfcDoor`, …), which can only be classified via
  * `IfcRelAssociatesClassification`. `EntityRef.type` is available from the
  * type-table index without reading `source` bytes (it's set from the raw
  * STEP/server type name, not extracted attributes), so this check costs
  * nothing on a server-parsed store.
+ *
+ * `IfcProfileDef`'s own subtypes are matched by substring rather than an
+ * explicit list: every one of them (`IfcRectangleProfileDef`,
+ * `IfcCircleHollowProfileDef`, …) has "PROFILEDEF" somewhere in its name —
+ * including `IfcArbitraryProfileDefWithVoids`, whose name does NOT *end* in
+ * "ProfileDef" (`endsWith` missed it; `includes` does not).
  */
 function isNonRootedClassifiableResource(
   store: IfcDataStore,
@@ -192,9 +227,5 @@ function isNonRootedClassifiableResource(
   const type = store.entityIndex?.byId?.get?.(expressId)?.type;
   if (typeof type !== 'string') return false;
   const upper = type.toUpperCase();
-  return (
-    upper === 'IFCMATERIAL' ||
-    upper.startsWith('IFCMATERIAL') || // IfcMaterialLayer(Set), IfcMaterialProfile(Set), IfcMaterialConstituent(Set), IfcMaterialList
-    upper.endsWith('PROFILEDEF') // IfcProfileDef and every concrete subtype (e.g. IfcRectangleProfileDef)
-  );
+  return MATERIAL_DEFINITION_TYPES.has(upper) || upper.includes('PROFILEDEF');
 }

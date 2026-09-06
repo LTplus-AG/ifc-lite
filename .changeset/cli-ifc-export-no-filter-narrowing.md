@@ -7,3 +7,5 @@ Fix `ifc-lite export <model> --format ifc` silently narrowing to fewer entities 
 A genuinely filtered `--format ifc` export now also reports the entity count it wrote versus the model's total on stderr, and fails loudly instead of silently exporting the whole model when a filter matches zero entities (mirroring the existing behavior of the Rust-backed export formats).
 
 Also split `export.ts`'s Rust-backed exporters (`obj`/`gltf`/`glb`/`jsonld`/`ifcx`/`usd`/`step`, and the shared wasm `GeometryProcessor` bootstrap they use) into `export-rust-formats.ts`, to bring the file back under the repo's module-size budget after this fix's own growth pushed it over. Pure internal refactor: no behaviour change, and `@ifc-lite/cli`'s public API is unchanged.
+
+The zero-match `fatal()` guard above (and the equivalent, pre-existing guard in the Rust-backed formats) is now covered by tests: `packages/cli/src/commands/export.zero-match.test.ts` exercises `--format ifc|obj|gltf|glb|jsonld|step` with a `--type` that matches nothing (fails loudly, nothing written) and with one that matches something (still succeeds and narrows).

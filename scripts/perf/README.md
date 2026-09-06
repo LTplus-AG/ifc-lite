@@ -654,3 +654,14 @@ nonfinite coordinates and full-width entity IDs. This removes per-vertex key
 allocation; no isolated end-to-end speedup is attributed to this layer. The
 retained cold-load stack must carry its cumulative browser qualification,
 including picking and peak-memory observations, before landing.
+
+### Retained cold-load work: search index ownership (#3993)
+
+The viewer shell owns search indexing for the lifetime of each loaded model.
+Search interfaces consume the same records, so opening or closing search does
+not create another owner or abandon its index. Cleanup releases in-flight
+claims, and stale promises cannot replace a newer build. Lifecycle tests cover
+StrictMode, unmount and partial/final metadata publications. This removes
+redundant work and preserves search availability; no separate cold-load speedup
+is attributed to this layer. Cumulative retained-stack qualification must
+exercise actual search and federated model lifetimes before landing.

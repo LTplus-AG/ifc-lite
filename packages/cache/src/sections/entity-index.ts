@@ -4,8 +4,14 @@
 
 import type { CacheEntityIndex, CacheEntityRef, CachedEntityIndexColumns } from '../types.js';
 import { BufferReader, BufferWriter } from '../utils/buffer-utils.js';
+import { prepareBorrowedEntityColumns } from './entity-index-columns.js';
 
 export function writeEntityIndex(writer: BufferWriter, entityIndex: CacheEntityIndex): void {
+  const columns = prepareBorrowedEntityColumns(entityIndex.byId);
+  if (columns) {
+    writeColumns(writer, columns);
+    return;
+  }
   const refs = Array.from(entityIndex.byId, ([id, ref]) => normalizeRef(id, ref))
     .sort((a, b) => a.expressId - b.expressId);
 
@@ -34,15 +40,17 @@ export function writeEntityIndex(writer: BufferWriter, entityIndex: CacheEntityI
     typeIndices[i] = typeIndex;
   }
 
-  writer.writeUint32(refs.length);
-  writer.writeUint32(typeNames.length);
-  for (const typeName of typeNames) {
-    writer.writeString(typeName);
-  }
-  writer.writeTypedArray(ids);
-  writer.writeTypedArray(byteOffsets);
-  writer.writeTypedArray(byteLengths);
-  writer.writeTypedArray(typeIndices);
+  writeColumns(writer, { ids, byteOffsets, byteLengths, typeIndices, typeNames });
+}
+
+function writeColumns(writer: BufferWriter, columns: CachedEntityIndexColumns): void {
+  writer.writeUint32(columns.ids.length);
+  writer.writeUint32(columns.typeNames.length);
+  for (const name of columns.typeNames) writer.writeString(name);
+  writer.writeTypedArray(columns.ids);
+  writer.writeTypedArray(columns.byteOffsets);
+  writer.writeTypedArray(columns.byteLengths);
+  writer.writeTypedArray(columns.typeIndices);
 }
 
 export function readEntityIndex(reader: BufferReader): CachedEntityIndexColumns {

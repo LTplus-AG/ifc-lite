@@ -593,6 +593,10 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
 
+### Retained column-native metadata preparation (#3985)
+
+Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
+
 ### Retained cold-load work: search index ownership (#3993)
 
 The viewer shell owns search indexing for the lifetime of each loaded model.

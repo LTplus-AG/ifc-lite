@@ -60,7 +60,15 @@ permissions:
   # `gh run list`, for the cadence report below. Without it that step 403s.
   actions: read
   contents: read
-  pull-requests: read
+  # WRITE, not read: the scan now puts its verdict ON the offending PRs as a
+  # label instead of reddening main. Labelling a PR is the `pull-requests`
+  # scope, never `issues` -- they look interchangeable on the REST surface and
+  # are not.
+  pull-requests: write
+  # ONLY for `gh label create`: a label is an issues-scope resource even though
+  # it is applied to a PR. Applying it is `pull-requests`. The two are not
+  # interchangeable -- label-authority.yml carries the measured evidence.
+  issues: write
   # Declaring ANY `permissions:` block sets every scope not listed to `none`,
   # and this scan's whole verdict rests on `statusCheckRollup` -- check-run and
   # commit-status data, neither of which `pull-requests: read` covers. Without
@@ -100,8 +108,89 @@ jobs:
       # in the script rather than a shell step here so the arithmetic is a
       # tested pure function (`cadenceReport`) instead of untested YAML, and so
       # it reaches the same summary file as the findings.
+      # A RED MAIN IS THE WRONG PLACE FOR THIS VERDICT, and this is the same
+      # argument review-lane-canary.yml already makes: "a failed scheduled
+      # workflow is a row in a tab nobody opens". It is worse here, because the
+      # condition is about OPEN PRs -- nobody can clear it by changing `main`,
+      # and the PR authors who CAN clear it never see the red at all.
+      #
+      # Measured before this change: the scan failed 10 of 39 pushes to main,
+      # and 8 of the last 9, on one unchanged set of PRs. A main that is red by
+      # default is a main nobody reads -- which is how a flaky parser test
+      # produced 12 of the 15 `Test` failures in that same window unnoticed.
+      #
+      # DETECTION IS UNCHANGED. Only the delivery moves: onto the PRs the scan
+      # names, plus the job summary the scanner already writes.
       - name: Scan open PRs
+        id: scan
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-        run: node scripts/scan-dirty-prs.mjs --repo "${{ github.repository }}"
+        run: |
+          set -uo pipefail
+          node scripts/scan-dirty-prs.mjs --repo "${{ github.repository }}" \
+            2>&1 | tee "$RUNNER_TEMP/scan.log"
+          rc=${PIPESTATUS[0]}
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # 2 IS "COULD NOT LOOK" AND STILL FAILS THE JOB. Only the FINDING (1)
+          # stops reddening main; an API error must not be quietly absorbed,
+          # and it must not reach the label step, where an empty silent set
+          # would read as "nothing is silent any more" and strip the label off
+          # PRs that are still broken.
+          if [ "$rc" -ge 2 ]; then
+            echo "::error::The scan could not complete; not touching any label."
+            exit "$rc"
+          fi
+          exit 0
+
+      # THE VERDICT LANDS ON THE PRs IT NAMES. A label is visible to the author,
+      # survives new pushes, and is removed in the same run that finds the PR
+      # fixed -- so a stale label cannot outlive the condition the way an old
+      # red run does.
+      #
+      # Reads the scanner's own `silent-prs=` line rather than scraping the
+      # human report: those lines also carry the `unknownAdvisory` block, which
+      # the scanner deliberately keeps OUT of `silent` because those PRs
+      # re-check themselves, so scraping labelled and unlabelled every freshly
+      # opened PR twice an hour.
+      - name: Mark the PRs the scan named
+        if: steps.scan.outputs.rc == '0' || steps.scan.outputs.rc == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          LABEL=ci-silent
+          gh label create "$LABEL" --repo "$REPO" --color d93f0b \
+            --description "No pull_request CI can run on this PR's current head (stacked base, or conflicted)." 2>/dev/null || true
+
+          named="$(grep -oE '^silent-prs=.*' "$RUNNER_TEMP/scan.log" | tail -1 | cut -d= -f2 | tr ',' ' ')"
+          echo "silent set: ${named:-<none>}"
+
+          # `--limit 100` to match the scanner's own page size: the default 30
+          # would leave a 31st labelled PR with nothing able to clear it.
+          # Hoisted out of the `for` list because `set -e` does NOT fire on a
+          # failed command substitution there -- a failed read would silently
+          # iterate zero times and look like "nothing to clear".
+          labelled="$(gh pr list --repo "$REPO" --state open --label "$LABEL" --limit 100 --json number --jq '.[].number')"
+
+          failures=0
+          for pr in $labelled; do
+            case " $named " in
+              *" $pr "*) ;;
+              *) echo "  clearing $LABEL from #$pr"
+                 gh pr edit "$pr" --repo "$REPO" --remove-label "$LABEL" || failures=$((failures + 1)) ;;
+            esac
+          done
+          for pr in $named; do
+            echo "  labelling #$pr"
+            gh pr edit "$pr" --repo "$REPO" --add-label "$LABEL" || failures=$((failures + 1))
+          done
+
+          # READ BACK. Silencing these and printing "labelling #N" regardless
+          # would let the whole mechanism die -- a revoked scope, an org policy
+          # -- with the log still claiming it worked.
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::$failures label write(s) failed; the verdict did not reach those PRs."
+            exit 1
+          fi

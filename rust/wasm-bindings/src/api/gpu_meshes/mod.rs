@@ -15,3 +15,6 @@ pub(crate) mod prepass;
 mod prepass_discovery;
 mod prepass_sharded;
 mod void_index;
+
+mod prepass_affinity;
+mod prepass_from_source;

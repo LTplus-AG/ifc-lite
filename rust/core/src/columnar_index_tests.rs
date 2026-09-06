@@ -127,3 +127,29 @@ fn consuming_and_borrowing_hashmap_builds_agree() {
     }
     assert_eq!(consumed.len(), 4);
 }
+
+#[test]
+fn issue_3989_owned_sorted_columns_keep_allocations_and_lookup_spans() {
+    // Ownership invariant: adopting a sorted index must not transiently double
+    // its three buffers while the worker already retains the source file.
+    let ids = vec![1, 7, 90];
+    let starts = vec![10, 25, 70];
+    let lengths = vec![5, 8, 11];
+    let pointers = (ids.as_ptr(), starts.as_ptr(), lengths.as_ptr());
+    let index = ColumnarEntityIndex::from_owned_columns(ids, starts, lengths);
+    assert_eq!((index.ids.as_ptr(), index.starts.as_ptr(), index.lengths.as_ptr()), pointers);
+    assert_eq!(index.lookup(7), Some((25, 33)));
+    assert_eq!(index.lookup(90), Some((70, 81)));
+    assert_eq!(index.lookup(8), None);
+}
+
+#[test]
+fn issue_3989_owned_columns_preserve_unsorted_and_adjacent_duplicate_precedence() {
+    for ids in [vec![7, 3, 7], vec![3, 7, 7]] {
+        let index = ColumnarEntityIndex::from_owned_columns(ids, vec![10, 20, 30], vec![1, 2, 3]);
+        assert_eq!(index.ids(), &[3, 7]);
+        assert_eq!(index.lookup(7), Some((30, 33)), "last input occurrence wins");
+    }
+    assert!(ColumnarEntityIndex::from_owned_columns(vec![1, 2], vec![10], vec![1, 2]).is_empty());
+    assert!(ColumnarEntityIndex::from_owned_columns(vec![], vec![], vec![]).is_empty());
+}

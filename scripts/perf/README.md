@@ -608,3 +608,15 @@ Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obt
 ### Retained mesh bookkeeping and no-op copies (#3988)
 
 Orientation reuses deterministic edge adjacency, while triangle filters compact their existing index buffer and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Retained in cumulative cold-load qualification; do not extrapolate sampled leaf CPU to a per-layer throughput claim. Keep exact output and diagnostic oracles, including invalid/degenerate triangles and reused buffer capacity. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
+
+### Source and buffer ownership during WASM prepass (#3989)
+
+Retained source-session reuse, binding-owned index adoption and direct transfer of
+already-owned mesh getter arrays as part of the qualified cold-load changes.
+The combined native/browser corpus evidence does not isolate a throughput gain
+for this layer; do not attribute the cumulative result to these copies alone.
+Installed-source methods retain byte-taking compatibility and reset on source
+replacement. Real WASM contracts verify returned buffers survive handle free,
+memory growth and transfer, including textures. Ownership must be established
+at the actual binding: a JavaScript view alone does not remove the copy into WASM,
+and borrowed views into WASM memory must not be transferred as owned output.

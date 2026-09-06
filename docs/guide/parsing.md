@@ -699,3 +699,12 @@ controls scratch-vector lifetime; reuse does not promise physical memory release
 case normalization and legacy-type rules as the two individual predicates.
 These flags classify a type; they do not establish whether a particular record
 contains a usable representation.
+
+### Native Rust owned index columns
+
+`ColumnarEntityIndex::from_owned_columns(ids, starts, lengths)` consumes three
+`Vec<u32>` columns. Like the borrowed `from_columns` constructor, it sorts when
+needed, keeps the last input occurrence of duplicate IDs, and returns an empty
+index for empty or mismatched columns. Already sorted, unique columns retain
+their existing allocations. Use `from_columns` when the caller must keep owning
+its input vectors.

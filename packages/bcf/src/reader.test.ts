@@ -1445,4 +1445,44 @@ describe('BCF Reader - buildingSMART Test Files', () => {
       expect(topic.documentReferences?.[0]?.isExternal).toBe(expected);
     });
   });
+
+  describe('AC20-FZK-Haus_BIMcollabZoom.bcf (BIMcollab Zoom, a second independent producer)', () => {
+    // Produced by importing an ifc-lite export into BIMcollab Zoom and
+    // re-exporting it -- a different tool than the iabi.BCF-produced
+    // PerspectiveCamera.bcf/OrthogonalCamera.bcf pair above. It declares its
+    // one viewpoint only through `<Comment><Viewpoint Guid="..."/></Comment>`
+    // -- our own writer always emits a top-level `<Viewpoints Guid="...">`
+    // entry too, so no self-round-trip exercises a comment-only reference.
+    it('parses the archive and recovers the topic', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+
+      expect(project.version).toBe('2.1');
+      expect(project.topics.size).toBe(1);
+    });
+
+    it('recovers the viewpoint even though markup.bcf declares it only via <Comment><Viewpoint Guid=.../></Comment>', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+
+      expect(topic.viewpoints).toHaveLength(1);
+      expect(topic.viewpoints[0].guid).toBe('1b3f474c-f8c3-4e5e-be88-8a0ec919eb32');
+      expect(topic.viewpoints[0].perspectiveCamera).toBeDefined();
+      expect(topic.viewpoints[0].snapshot).toBeDefined();
+    });
+
+    it('keeps comment.viewpointGuid pointing at the comment-referenced viewpoint', async () => {
+      const filePath = join(TEST_DATA_DIR, 'AC20-FZK-Haus_BIMcollabZoom.bcf');
+      const buffer = await readFile(filePath);
+      const project = await readBCF(buffer);
+      const topic = [...project.topics.values()][0];
+
+      expect(topic.comments).toHaveLength(1);
+      expect(topic.comments[0].viewpointGuid).toBe('1b3f474c-f8c3-4e5e-be88-8a0ec919eb32');
+      expect(topic.comments[0].viewpointGuid).toBe(topic.viewpoints[0].guid);
+    });
+  });
 });

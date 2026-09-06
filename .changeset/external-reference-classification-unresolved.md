@@ -2,6 +2,8 @@
 "@ifc-lite/ids": patch
 ---
 
+The full IDS validator preserves `CLASSIFICATION_UNRESOLVED` as a nonpassing outcome for required, optional, and prohibited requirements. In particular, unknown classification presence cannot certify that a prohibition is satisfied.
+
 Fix a server-parsed (source-empty) store silently reporting a classification reached via `IfcExternalReferenceRelationship` (the mechanism non-rooted resources — `IfcMaterial`, `IfcProfileDef` — use instead of `IfcRelAssociatesClassification`) as `CLASSIFICATION_MISSING` (#3954). `appendExternalReferenceClassifications` (`packages/ids/src/bridge/classifications.ts`) used to bail unconditionally whenever `store.source` was empty, so a genuinely classified material and an unclassified one were byte-identical to the IDS classification facet.
 
 Unlike the sibling `IfcRelAssociatesClassification` pathway (#3948/#3951), there is no relationship-graph fallback for this one: the server pipeline's `IfcTypeEnum` (`packages/data/src/types.ts`) has no slot for `IfcExternalReferenceRelationship`, `IfcMaterial` or `IfcProfileDef`, and the server resolves classifications only via `IfcRelAssociatesClassification`. So presence can be neither proven nor disproven for this pathway on a server-parsed store — the honest answer is `CLASSIFICATION_UNRESOLVED`, not a fabricated pass or a fabricated `CLASSIFICATION_MISSING`.

@@ -21,7 +21,6 @@ import type {
   BCFBimSnippet,
   BCFHeaderFile,
 } from './types.js';
-import { parseFiniteFloat } from './numeric.js';
 import { parseViewpointContent } from './reader-viewpoint-content.js';
 
 /**
@@ -356,6 +355,7 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
   const description = extractElement(topicContent, 'Description');
   const priority = extractElement(topicContent, 'Priority');
   const index = extractElement(topicContent, 'Index');
+  const parsedIndex = index ? Number.parseInt(index, 10) : undefined;
   const creationDate = extractElement(topicContent, 'CreationDate'); // required no-default in markup.xsd; leave undefined, don't fabricate
   const creationAuthor = extractElement(topicContent, 'CreationAuthor'); // same: required no-default, don't fabricate 'Unknown'
   const modifiedDate = extractElement(topicContent, 'ModifiedDate');
@@ -394,12 +394,9 @@ async function readTopic(zip: JSZip, topicFolder: string, budget: ExpansionBudge
     topicType,
     topicStatus,
     priority,
-    // `parseFiniteFloat`, not raw `parseInt`: every other numeric field this
-    // reader parses from untrusted XML text goes through that guard so a
-    // value that fails to parse becomes `undefined` rather than `NaN` typed
-    // as a valid `number` (#3961) -- see parsePoint/parsePerspectiveCamera
-    // above for the same pattern.
-    index: index ? parseFiniteFloat(index) : undefined,
+    // Preserve integer parsing: accepting fractions makes re-export throw.
+    // Guard malformed/overflowed tokens instead of storing NaN/Infinity (#3961).
+    index: Number.isFinite(parsedIndex) ? parsedIndex : undefined,
     creationDate,
     creationAuthor,
     modifiedDate,

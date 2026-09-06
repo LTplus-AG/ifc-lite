@@ -4,10 +4,8 @@
 
 /**
  * #3961: `readTopic` parsed `Topic/Index` with a raw `parseInt`, the one
- * numeric field in this reader that was never routed through
- * `parseFiniteFloat` (`numeric.ts`) the way every other numeric field
- * (camera fields, clipping-plane points, field of view, view-to-world scale)
- * already is. `parseInt('not-a-number', 10)` is `NaN`, which is a `number`
+ * numeric field in this reader that lacked a finiteness guard.
+ * `parseInt('not-a-number', 10)` is `NaN`, which is a `number`
  * per `BCFTopic.index?: number` (`types.ts`) -- so a malformed `<Index>`
  * became a value indistinguishable, by type, from a real index, rather than
  * `undefined` the way a missing `<Index>` already reads.
@@ -21,6 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import JSZip from 'jszip';
 import { readBCF } from './reader.js';
+import { writeBCF } from './writer.js';
 
 function archiveWithIndex(indexXml: string): Promise<Uint8Array> {
   const zip = new JSZip();
@@ -39,6 +38,18 @@ function archiveWithIndex(indexXml: string): Promise<Uint8Array> {
 }
 
 describe('#3961: non-numeric Topic/Index', () => {
+  it('preserves integer parsing for fractional input so re-export succeeds (#3970)', async () => {
+    const project = await readBCF(await archiveWithIndex('<Index>7.5</Index>'));
+    const output = await writeBCF(project);
+    const restored = await readBCF(new Uint8Array(await output.arrayBuffer()));
+    expect([...restored.topics.values()][0].index).toBe(7);
+  });
+
+  it('omits an integer token that overflows to infinity (#3961)', async () => {
+    const project = await readBCF(await archiveWithIndex(`<Index>${'9'.repeat(400)}</Index>`));
+    expect([...project.topics.values()][0].index).toBeUndefined();
+  });
+
   it('parses a non-numeric <Index> to undefined, not NaN', async () => {
     const buf = await archiveWithIndex('<Index>not-a-number</Index>');
     const project = await readBCF(buf);

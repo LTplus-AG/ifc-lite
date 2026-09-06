@@ -470,6 +470,15 @@ interface IfcDataStore {
 
 Source-empty server stores can provide `resolvedClassifications`, an optional map from entity express IDs to `ClassificationInfo[]`. `extractClassificationsOnDemand` combines the entity's rows with those inherited through `IfcRelDefinesByType`, using the relationship graph to confirm classification associations. The server derives classifications and relationships from the same immutable IFC input. Repeated relationships may produce multiple resolved rows for one deduplicated graph edge. When resolved rows are absent, the parser returns unresolved markers instead of certifying classification attributes. Source-bearing stores continue to decode classifications from their IFC bytes.
 
+### Native Rust owned index columns
+
+`ColumnarEntityIndex::from_owned_columns(ids, starts, lengths)` consumes three
+`Vec<u32>` columns. Like the borrowed `from_columns` constructor, it sorts when
+needed, keeps the last input occurrence of duplicate IDs, and returns an empty
+index for empty or mismatched columns. Already sorted, unique columns retain
+their existing allocations. Use `from_columns` when the caller must keep owning
+its input vectors.
+
 ## Spatial Hierarchy
 
 ```typescript
@@ -678,12 +687,3 @@ When working with multiple IFC files (e.g., architectural, structural, and MEP m
 - [Query Guide](querying.md) - Query parsed data
 - [Federation Guide](federation.md) - Load and coordinate multiple models
 - [API Reference](../api/typescript.md) - Complete API docs
-
-### Native Rust owned index columns
-
-`ColumnarEntityIndex::from_owned_columns(ids, starts, lengths)` consumes three
-`Vec<u32>` columns. Like the borrowed `from_columns` constructor, it sorts when
-needed, keeps the last input occurrence of duplicate IDs, and returns an empty
-index for empty or mismatched columns. Already sorted, unique columns retain
-their existing allocations. Use `from_columns` when the caller must keep owning
-its input vectors.

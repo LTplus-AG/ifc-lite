@@ -589,15 +589,7 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
 
 ### Source and buffer ownership during WASM prepass (#3989)
 
-Retained source-session reuse, binding-owned index adoption and direct transfer of
-already-owned mesh getter arrays as part of the qualified cold-load changes.
-The combined native/browser corpus evidence does not isolate a throughput gain
-for this layer; do not attribute the cumulative result to these copies alone.
-Installed-source methods retain byte-taking compatibility and reset on source
-replacement. Real WASM contracts verify returned buffers survive handle free,
-memory growth and transfer, including textures. Ownership must be established
-at the actual binding: a JavaScript view alone does not remove the copy into WASM,
-and borrowed views into WASM memory must not be transferred as owned output.
+Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.
 
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).

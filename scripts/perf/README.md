@@ -632,6 +632,10 @@ throughput gain. No universal absence of performance regressions or target
 corpus gain is claimed. Original failures and private exploratory work remain
 archived; the published projections identify their source records by hash.
 
+### Retained parser publication and receiver ownership (#3985)
+
+Pack immutable type-index publication once and reuse partial columns on complete, retaining legacy transport and shared source access. Terminate the completed parser worker before receiver hydration and use the compact maximum ID during ingestion. Retained as cumulative cold-load work, with no isolated percentage attributed. Qualification must include full property/reference access, federation and memory through cache completion; worker completion alone is not readiness.
+
 ### Retained cold-load work: exact LOD keys (#3991)
 
 Bounded LOD cell neighborhoods use exact integer keys containing all three cell

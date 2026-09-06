@@ -220,6 +220,11 @@ export class CompactEntityIndex {
     }
   }
 
+  /** Highest indexed ID in constant time; zero for an empty index. */
+  get maxExpressId(): number {
+    return this.expressIds[this.size - 1] ?? 0;
+  }
+
   /**
    * Clear the LRU cache (e.g., on model unload).
    */

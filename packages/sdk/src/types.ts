@@ -137,6 +137,7 @@ export interface ClassificationData {
   location?: string;
   description?: string;
   path?: string[];
+  unresolved?: boolean; // classified, attributes unreadable — other fields `undefined` (#3948)
 }
 
 export interface MaterialLayerData {
@@ -353,9 +354,8 @@ export interface ModelBackendMethods {
 export interface QueryBackendMethods {
   entities(descriptor: QueryDescriptor): EntityData[];
   /**
-   * Entities matching the host's active advanced filter, or `null` when no
-   * filter is active (so callers can distinguish "no filter" from "filter with
-   * zero matches"). Host-specific; transport/headless backends may return null.
+   * Entities matching the host's active advanced filter, or `null` when no filter is
+   * active (distinguishes "no filter" from "filter with zero matches"). Host-specific.
    */
   entitiesMatchingActiveFilter(): EntityData[] | null;
   entityData(ref: EntityRef): EntityData | null;

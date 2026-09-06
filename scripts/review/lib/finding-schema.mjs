@@ -202,16 +202,26 @@ export function validate({ response, input, onWarn = null }) {
 
   // THE SENTINEL FIRST, before the field-by-field schema pass. A response that
   // stopped early usually fails several schema checks at once, and reporting the
-  // first missing field would send the reader to fix the prompt when the real
-  // problem is the token budget. The sentinel names the actual cause.
+  // first missing field would send the reader hunting the wrong thing.
+  //
+  // WHAT THIS ACTUALLY CATCHES, measured rather than assumed. A genuinely
+  // truncated response does not reach here at all: cut this file's own sample
+  // mid-object and the parse path answers RAW_UNPARSEABLE. This branch fires
+  // only on a COMPLETE object that parsed and then omitted `end` OR gave it a
+  // value other than the sentinel — so the cause is a wrong last field, not a
+  // stopped response. The old remedy said "raise the output token budget",
+  // which named both the wrong cause and a knob that does not exist: neither
+  // run-reviewer.mjs nor openai-reviewer.mjs sets a max-token limit on the
+  // Claude path.
   if (response.end !== SENTINEL) {
     throw new ValidateFindingsError(
       'RESPONSE_TRUNCATED',
       `The terminal sentinel is ${JSON.stringify(response.end)}, not ${JSON.stringify(SENTINEL)}. ` +
         'Valid JSON is not evidence of a complete response: `{"verdict":"clean"}` parses perfectly ' +
-        'and reviewed nothing. The sentinel is the LAST field the model writes, so its absence means ' +
-        'the response ended before the model meant it to. REMEDY: raise the output token budget, or ' +
-        'send fewer files per run.',
+        'and reviewed nothing. This response PARSED — a genuinely cut-off answer fails earlier as ' +
+        'RAW_UNPARSEABLE — so `end` was omitted or given the wrong value, not truncated away. ' +
+        'REMEDY: re-run; the retry asks for the exact sentinel. If it recurs on one diff, look at ' +
+        'what the model is emitting for that field, not at any token budget.',
     );
   }
 

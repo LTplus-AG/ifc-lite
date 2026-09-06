@@ -26,6 +26,19 @@ pub(super) fn extract_relationships(
         "IFCRELASSOCIATESDOCUMENT",
         "IFCRELVOIDSELEMENT",
         "IFCRELFILLSELEMENT",
+        // Added for issue #3964. Each has a live consumer on the TS/WASM
+        // side (see the PR description for the full audit of what was and
+        // wasn't added):
+        //  - IFCRELASSIGNSTOGROUP / IFCRELASSIGNSTOGROUPBYFACTOR: the
+        //    viewer's Groups panel, "By Zone" lens, and IDS `partOf`.
+        //  - IFCRELNESTS: IDS `partOf` maps it onto the same edge bucket as
+        //    IfcRelAggregates (packages/ids/src/bridge/data-accessor.ts).
+        //  - IFCRELCONNECTSPATHELEMENTS: the Properties panel's "connected
+        //    walls" (extractRelationshipsOnDemand).
+        "IFCRELASSIGNSTOGROUP",
+        "IFCRELASSIGNSTOGROUPBYFACTOR",
+        "IFCRELNESTS",
+        "IFCRELCONNECTSPATHELEMENTS",
     ];
 
     let rel_jobs: Vec<_> = jobs
@@ -138,6 +151,24 @@ fn extract_relationship(
         }]);
     }
 
+    // IfcRelConnectsElements (and its subtype IfcRelConnectsPathElements)
+    // carries an OPTIONAL ConnectionGeometry at attr 4, then RelatingElement
+    // at attr 5 and RelatedElement at attr 6 — both SINGLE refs, not lists
+    // (mirrors the TS `extractRelFast` ConnectsElements/ConnectsPathElements
+    // branch in columnar-parser-relationships.ts). The list-based path below
+    // would call `get_list(6)` on a single entity ref, get `None`, and
+    // silently drop the relationship, same failure mode as #1751.
+    if type_upper == "IFCRELCONNECTSPATHELEMENTS" {
+        let relating_id = entity.get_ref(5)?;
+        let related_id = entity.get_ref(6)?;
+        return Some(vec![Relationship {
+            rel_type: type_name.to_string(),
+            rel_id,
+            relating_id,
+            related_id,
+        }]);
+    }
+
     let (relating_idx, related_idx) = match type_upper.as_str() {
         "IFCRELDEFINESBYPROPERTIES" => (5, 4), // RelatingPropertyDefinition at 5, RelatedObjects at 4
         // RelatingType (single ref) at 5, RelatedObjects (list) at 4 — same
@@ -151,6 +182,15 @@ fn extract_relationship(
         "IFCRELASSOCIATESMATERIAL"
         | "IFCRELASSOCIATESCLASSIFICATION"
         | "IFCRELASSOCIATESDOCUMENT" => (5, 4),
+        // IfcRelAssigns base attrs: RelatedObjects(4), RelatedObjectsType(5,
+        // an enum, not a ref), then IfcRelAssignsToGroup adds RelatingGroup(6).
+        // IfcRelAssignsToGroupByFactor is a subtype (adds a trailing Factor
+        // we don't read) with the identical RelatedObjects/RelatingGroup
+        // layout, so it shares this arm.
+        "IFCRELASSIGNSTOGROUP" | "IFCRELASSIGNSTOGROUPBYFACTOR" => (6, 4),
+        // IFCRELNESTS (IfcRelDecomposes): RelatingObject(4), RelatedObjects(5)
+        // — identical layout to IFCRELAGGREGATES, so it falls through to the
+        // default arm below; listed here only for discoverability.
         _ => (4, 5), // Standard: RelatingObject at 4, RelatedObjects at 5
     };
 

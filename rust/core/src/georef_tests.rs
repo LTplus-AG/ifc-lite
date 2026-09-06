@@ -11,6 +11,26 @@
 use super::*;
 
 #[test]
+fn georef_discovery_does_not_retain_unrelated_property_sets() {
+    // Cold-load invariant: searching once for two georeferencing property sets
+    // must not retain every other property set in the model's decoder cache.
+    let mut source = String::from("DATA;\n");
+    let mut types = Vec::new();
+    for id in 1..=1000 {
+        source.push_str(&format!("#{id}=IFCPROPERTYSET('g',$,'Unrelated',$,(#2001));\n"));
+        types.push((id, IfcType::IfcPropertySet));
+    }
+    source.push_str("#1001=IFCPROPERTYSET('g',$,'ePsEt_MapConversion',$,(#2001));\n#2001=IFCPROPERTYSINGLEVALUE('Eastings',$,IFCLENGTHMEASURE(42.),$);\nENDSEC;");
+    types.push((1001, IfcType::IfcPropertySet));
+    let mut decoder = EntityDecoder::new(&source);
+    let geo = GeoRefExtractor::extract(&mut decoder, &types).unwrap().unwrap();
+    assert_eq!(geo.eastings, 42.0);
+    assert_eq!(geo.source, GeoRefSource::EPSetMapConversion);
+    assert!(decoder.cache_size() <= 2, "only the selected set and its value should be retained");
+    assert_eq!(decoder.decode_by_id(500).unwrap().get_string(2), Some("Unrelated"));
+}
+
+#[test]
 fn test_georef_local_to_map() {
     let mut georef = GeoReference::new();
     georef.eastings = 500000.0;

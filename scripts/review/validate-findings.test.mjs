@@ -54,6 +54,7 @@ import { buildPrompt } from './run-reviewer.mjs';
 import { RETRYABLE_VALIDATION_REASONS } from './retry-prompt.mjs'; // #3777
 import { DEFECT_CLASSES, CLASS_VERDICTS } from './lib/defect-classes.mjs'; // #3831
 import { APPLIES, applicableClasses } from './lib/class-applicability.mjs'; // #3831 round 2
+import { checkClassPass } from './lib/defect-classes.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, 'validate-findings.mjs');
@@ -2192,4 +2193,53 @@ test('#3831: the rubric names EVERY class the validator enforces, and no others'
   const listed = [...required.split('\n\n')[1].matchAll(/`([a-z-]+)`/g)].map((m) => m[1]);
   assert.ok(listed.length > 0, 'the required-class enumeration must be findable in rubric.md');
   assert.deepEqual([...listed].sort(), [...DEFECT_CLASSES].sort(), 'the rubric asks for a different set than the validator enforces');
+});
+
+// ── ONE MESSAGE, EVERY WAVE-OFF (#review-lane-disclosure) ──
+//
+// `checkClassPass` used to throw on the FIRST class it found waved off, so a
+// retry learned exactly one class per attempt: it fixed that one and stepped on
+// the next. Measured across the lane's history, every double-CLASS_PASS_INCOMPLETE
+// red named a different class the second time. Reporting all of them makes the
+// single retry informed enough to be the last one.
+test('checkClassPass reports EVERY waved-off class, not just the first', () => {
+  const input = {
+    files: new Map([
+      [
+        'a.ts',
+        {
+          path: 'a.ts',
+          patch: '@@ -1,1 +1,4 @@\n a\n+export function f(x) { return x.name || x.id; }\n+const on = xs.filter((x) => x.on);\n+localStorage.clear();\n',
+          addedLineRanges: [[2, 4]],
+        },
+      ],
+    ]),
+    contextPack: { siblings: [], fileEvidence: [], body: 'b', truncated: false },
+  };
+  const fired = [...applicableClasses(input).keys()];
+  assert.ok(fired.length >= 3, `fixture must trip 3+ predicates; tripped ${fired.length}`);
+
+  // Wave off EVERY firing class.
+  const response = {
+    verdict: 'clean',
+    class_pass: DEFECT_CLASSES.map((c, i) => ({
+      class: c,
+      verdict: 'not-applicable',
+      // Distinct and over the 12-char floor, so this fixture reaches the
+      // wave-off check rather than tripping the reason-length one first.
+      why: `no site for ${c} anywhere in this diff (${i})`,
+    })),
+  };
+  let err = null;
+  try {
+    checkClassPass({ response, input, warn: () => {} });
+  } catch (e) {
+    err = e;
+  }
+  assert.ok(err, 'must refuse a clean verdict that waves off every firing class');
+  assert.equal(err.reason ?? err.code, 'CLASS_PASS_INCOMPLETE');
+  for (const cls of fired) {
+    assert.match(err.message, new RegExp(cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `message must name ${cls}`);
+  }
+  assert.match(err.message, new RegExp(`${fired.length} class\\(es\\)`));
 });

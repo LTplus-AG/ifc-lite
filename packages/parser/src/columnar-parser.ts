@@ -13,7 +13,7 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
-import { getAttributeNames, getAttributeNamesAcrossSchemas, getInheritanceChain } from './ifc-schema.js';
+import { getInheritanceChain } from './ifc-schema.js';
 import { parsePropertyValueWithComplex } from './on-demand-extractors.js';
 import { readQuantitySet } from './quantity-collect.js';
 import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
@@ -26,7 +26,7 @@ import {
     RelationshipGraphBuilder,
     RelationshipType,
 } from '@ifc-lite/data';
-import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase, IfcEntity, IfcAttributeValue } from '@ifc-lite/data';
+import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, QuantitySet, IfcStoreBase } from '@ifc-lite/data';
 import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
@@ -36,7 +36,6 @@ import {
     HIERARCHY_REL_TYPES,
     PROPERTY_REL_TYPES,
     ASSOCIATION_REL_TYPES,
-    SKIP_DISPLAY_ATTRS,
     PROPERTY_ENTITY_TYPES,
     PROPERTY_CONTAINER_TYPES,
     isIfcTypeLikeEntity,

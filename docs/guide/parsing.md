@@ -468,6 +468,8 @@ interface IfcDataStore {
 }
 ```
 
+Source-empty server stores can provide `resolvedClassifications`, an optional map from entity express IDs to `ClassificationInfo[]`. `extractClassificationsOnDemand` combines the entity's rows with those inherited through `IfcRelDefinesByType`, using the relationship graph to confirm classification associations. When the resolved row count disagrees with the graph, or rows are absent, it returns unresolved markers instead of certifying classification attributes. Rows currently carry no reference identity, so equal counts alone cannot detect a stale replacement. Source-bearing stores continue to decode classifications from their IFC bytes.
+
 ## Spatial Hierarchy
 
 ```typescript

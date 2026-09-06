@@ -567,6 +567,28 @@ describe('convertServerDataModel classification wiring (#3955)', () => {
     assert.equal(result.failure?.type, 'CLASSIFICATION_UNRESOLVED');
   });
 
+  for (const mismatch of ['excess', 'partial'] as const) {
+    it(`rejects ${mismatch} resolved classification rows instead of certifying their attributes (#3959)`, () => {
+      const dataModel = buildClassifiedDataModel(true);
+      if (mismatch === 'excess') {
+        dataModel.classifications.push({ element_id: 4, system_name: 'Stale system', identification: 'STALE' });
+      } else {
+        dataModel.relationships.push({ rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 101, related_id: 4 });
+      }
+      const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+      const info = extractClassificationsOnDemand(store, 4);
+      assert.deepEqual(info, mismatch === 'excess'
+        ? [{ unresolved: true }]
+        : [{ unresolved: true }, { unresolved: true }]);
+      const facet = mismatch === 'excess'
+        ? { type: 'classification' as const, system: { type: 'simpleValue' as const, value: 'Stale system' } }
+        : systemFacet;
+      const result = checkClassificationFacet(facet, 4, createDataAccessor(store));
+      assert.equal(result.passed, false);
+      assert.equal(result.failure?.type, 'CLASSIFICATION_UNRESOLVED');
+    });
+  }
+
   it('mutation: an attribute the server never sent (location) stays undefined, never fabricated', () => {
     const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
     const info = extractClassificationsOnDemand(store, 4);

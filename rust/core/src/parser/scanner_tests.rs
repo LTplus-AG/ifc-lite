@@ -603,3 +603,46 @@ ENDSEC;\nDATA;\n\
         "an unterminated HEADER comment must be reported, not silently skipped"
     );
 }
+
+/// #3987: a numerically oversized prefix is not reported until its entire body
+/// has a terminator. Closed prefix trivia must not affect span/quote handling.
+#[test]
+fn fused_id_prefix_retains_refusal_and_malformed_order_3987() {
+    for id in ["1", "0000000000000000001", "4294967295", "4294967296",
+        "999999999999999999999999999999999999"] {
+        for trivia in ["", " ", "/* quote' ; #7=IFCX(); */", "\r\n/* a=b */\x0b"] {
+            let prefix = format!("#{id}{trivia}=");
+            let parsed = id.parse::<u32>().ok();
+            for body in ["IFCWALL('a;''b',/* x; */$);", "/* x'; */IFCWALL($);", "IFCWALL($);"] {
+                let record = format!("{prefix}{body}");
+                let source = format!("{record}#7=IFCDOOR($);");
+                let mut scanner = EntityScanner::new(&source);
+                if let Some(expected) = parsed {
+                    let found = scanner.next_entity().unwrap();
+                    assert_eq!((found.0, found.1, found.2, found.3),
+                        (expected, "IFCWALL", 0, record.len()));
+                }
+                assert_eq!(scanner.next_entity(), Some((7, "IFCDOOR", record.len(), source.len())));
+                assert_eq!(scanner.skipped_oversized_id_starts(),
+                    if parsed.is_none() { &[0][..] } else { &[][..] });
+                assert_eq!(scanner.malformed_record_start(), None);
+            }
+            for body in ["IFCWALL('unterminated);", "IFCWALL(/* unterminated", "IFCWALL($)"] {
+                let source = format!("{prefix}{body}");
+                let mut scanner = EntityScanner::new(&source);
+                assert!(scanner.next_entity().is_none());
+                assert_eq!(scanner.malformed_record_start(), Some(0));
+                assert!(scanner.skipped_oversized_id_starts().is_empty());
+            }
+        }
+    }
+    let source = "#4294967296/* never closed";
+    let mut scanner = EntityScanner::new(source);
+    assert!(scanner.next_entity().is_none());
+    assert_eq!(scanner.malformed_record_start(), source.find("/*"));
+    assert!(scanner.skipped_oversized_id_starts().is_empty());
+    let source = "#4294967296 not-a-declaration #8=IFCWALL($);";
+    let mut scanner = EntityScanner::new(source);
+    assert_eq!(scanner.next_entity().map(|x| x.0), Some(8));
+    assert!(scanner.skipped_oversized_id_starts().is_empty());
+}

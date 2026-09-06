@@ -110,7 +110,8 @@ pub use project_units::{
 };
 pub use schema_gen::{AttributeValue, DecodedEntity, GeometryCategory, IfcSchema, ProfileCategory};
 pub use schema_helpers::{
-    has_geometry_by_name, is_representationless_spatial_container_by_name, is_simple_geometry_type,
+    geometry_flags_by_name, has_geometry_by_name, is_representationless_spatial_container_by_name,
+    is_simple_geometry_type,
     legacy_aware_ifc_type, legacy_aware_ifc_type_from_record, nth_attribute_is_present,
     type_product_ifc_type,
 };

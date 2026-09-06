@@ -441,6 +441,10 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   is a judgement call (an order of magnitude clear of realistic repeated parts, which run to
   low hundreds of faces), not a measured optimum.
 
+### Retained canonical lexical and schema work (#4001)
+
+Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
+
 ### Measured feature costs (not levers — recorded so nobody re-measures)
 - **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
   base = `2edd144329`, arm64 native). This correctness fix keeps a rotated

@@ -203,33 +203,77 @@ const MATERIAL_DEFINITION_TYPES = new Set([
 ]);
 
 /**
+ * Every non-abstract `IfcProfileDef` subtype, walked from the
+ * `SUBTYPE OF` chain in both `packages/codegen/schemas/IFC4_ADD2_TC1.exp`
+ * and `IFC4X3.exp` down to `IfcProfileDef` — the union of both schemas,
+ * since a type introduced in one (`IfcOpenCrossProfileDef`, IFC4X3-only)
+ * must still be recognised when a store built from the other schema is
+ * queried against it. `is-non-rooted-classifiable-resource.exp-derived.test.ts`
+ * re-derives this same set from the `.exp` files at test time and asserts
+ * it matches exactly — regenerate this list from that test's derivation
+ * (not by hand) if either schema adds or removes a `IfcProfileDef`
+ * subtype.
+ *
+ * Three prior predicates for this role each got a different edge wrong:
+ * `endsWith('PROFILEDEF')` missed `IfcArbitraryProfileDefWithVoids` (its
+ * name doesn't *end* in "ProfileDef"); the `includes('PROFILEDEF')` that
+ * replaced it over-matched `IfcRelAssociatesProfileDef` — a *rooted*
+ * relationship that points AT a profile def via `RelatingProfileDef`, not
+ * a profile def itself; patching that with `!startsWith('IFCREL')` is
+ * exactly the kind of one-off exclusion this explicit, schema-derived set
+ * is meant to make unnecessary going forward.
+ */
+const PROFILE_DEF_TYPES = new Set([
+  'IFCARBITRARYCLOSEDPROFILEDEF',
+  'IFCARBITRARYOPENPROFILEDEF',
+  'IFCARBITRARYPROFILEDEFWITHVOIDS',
+  'IFCASYMMETRICISHAPEPROFILEDEF',
+  'IFCCENTERLINEPROFILEDEF',
+  'IFCCIRCLEHOLLOWPROFILEDEF',
+  'IFCCIRCLEPROFILEDEF',
+  'IFCCOMPOSITEPROFILEDEF',
+  'IFCCSHAPEPROFILEDEF',
+  'IFCDERIVEDPROFILEDEF',
+  'IFCELLIPSEPROFILEDEF',
+  'IFCISHAPEPROFILEDEF',
+  'IFCLSHAPEPROFILEDEF',
+  'IFCMIRROREDPROFILEDEF',
+  'IFCOPENCROSSPROFILEDEF', // IFC4X3 only
+  'IFCPARAMETERIZEDPROFILEDEF',
+  'IFCRECTANGLEHOLLOWPROFILEDEF',
+  'IFCRECTANGLEPROFILEDEF',
+  'IFCROUNDEDRECTANGLEPROFILEDEF',
+  'IFCTRAPEZIUMPROFILEDEF',
+  'IFCTSHAPEPROFILEDEF',
+  'IFCUSHAPEPROFILEDEF',
+  'IFCZSHAPEPROFILEDEF',
+]);
+
+/**
+ * Could an entity of this upper-cased type name be a `RelatedResourceObjects`
+ * target of an `IfcExternalReferenceRelationship`? The IFC schema restricts
+ * that role to `IfcResourceObjectSelect` members — `IfcMaterialDefinition`
+ * (see `MATERIAL_DEFINITION_TYPES`) and `IfcProfileDef` (see
+ * `PROFILE_DEF_TYPES`) subtypes — never an `IfcRoot` subtype (`IfcWall`,
+ * `IfcDoor`, …), which can only be classified via
+ * `IfcRelAssociatesClassification`.
+ *
+ * Pulled out of `isNonRootedClassifiableResource` as a pure function of the
+ * type name so `is-non-rooted-classifiable-resource.exp-derived.test.ts` can
+ * exercise it directly against every entity name in both schemas, without
+ * building a store for each one.
+ */
+export function isNonRootedClassifiableResourceType(upperType: string): boolean {
+  return MATERIAL_DEFINITION_TYPES.has(upperType) || PROFILE_DEF_TYPES.has(upperType);
+}
+
+/**
  * Could `expressId` be a `RelatedResourceObjects` target of an
- * `IfcExternalReferenceRelationship`? The IFC schema restricts that role to
- * `IfcResourceObjectSelect` members — `IfcMaterialDefinition` (see
- * `MATERIAL_DEFINITION_TYPES`) and `IfcProfileDef` are the ones this
- * bridge's on-the-wire comment names — never an `IfcRoot` subtype
- * (`IfcWall`, `IfcDoor`, …), which can only be classified via
- * `IfcRelAssociatesClassification`. `EntityRef.type` is available from the
+ * `IfcExternalReferenceRelationship`? See `isNonRootedClassifiableResourceType`
+ * for the schema rule this applies. `EntityRef.type` is available from the
  * type-table index without reading `source` bytes (it's set from the raw
  * STEP/server type name, not extracted attributes), so this check costs
  * nothing on a server-parsed store.
- *
- * `IfcProfileDef`'s own subtypes are matched by substring rather than an
- * explicit list: every one of them (`IfcRectangleProfileDef`,
- * `IfcCircleHollowProfileDef`, …) has "PROFILEDEF" somewhere in its name —
- * including `IfcArbitraryProfileDefWithVoids`, whose name does NOT *end* in
- * "ProfileDef" (`endsWith` missed it; `includes` does not).
- *
- * A bare `includes('PROFILEDEF')` over-matches one real IFC4X3 entity:
- * `IfcRelAssociatesProfileDef` (`SUBTYPE OF IfcRelAssociates`, itself an
- * `IfcRoot` subtype via `IfcRelationship`) carries "PROFILEDEF" in its name
- * but is a RELATIONSHIP that POINTS AT a profile def via its
- * `RelatingProfileDef` attribute - it is not a profile def itself, and,
- * being rooted, is classified (if at all) via
- * `IfcRelAssociatesClassification`, never as a `RelatedResourceObjects`
- * target. Every genuine `IfcProfileDef` descendant's name has "PROFILEDEF"
- * preceded by its own subtype qualifier, never by "IFCREL", so excluding
- * that prefix removes the one false positive without another allow-list.
  */
 function isNonRootedClassifiableResource(
   store: IfcDataStore,
@@ -237,9 +281,5 @@ function isNonRootedClassifiableResource(
 ): boolean {
   const type = store.entityIndex?.byId?.get?.(expressId)?.type;
   if (typeof type !== 'string') return false;
-  const upper = type.toUpperCase();
-  return (
-    MATERIAL_DEFINITION_TYPES.has(upper) ||
-    (upper.includes('PROFILEDEF') && !upper.startsWith('IFCREL'))
-  );
+  return isNonRootedClassifiableResourceType(type.toUpperCase());
 }

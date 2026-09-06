@@ -66,8 +66,8 @@ export interface StoreyRule {
   refs?: ReadonlyArray<{ modelId: string; expressId: number }>;
 }
 
-/** Match the loaded model that owns an element. Values are the viewer's
- * exact model ids, so same-named files in one federation stay distinct. */
+/** Match the loaded model that owns an element. Values use a durable source
+ * fingerprint so saved filters survive the fresh runtime ids minted on reload. */
 export interface ModelRule {
   kind: 'model';
   values: string[];

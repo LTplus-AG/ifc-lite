@@ -80,14 +80,14 @@ describe('ClashSetFilterEditor', () => {
     assert.ok(labels.some((l) => l.includes('Add filter rule')));
   });
 
-  it('shows loaded model names and commits the exact selected model id (#4019)', () => {
+  it('shows model names and commits the selected durable source identity (#4019)', () => {
     const commits: Array<ReturnType<typeof Rule.model>> = [];
     const container = render(
       <RuleRow
         rule={Rule.model([])}
         modelOptions={[
-          { label: 'Architecture.ifc', value: 'model-a' },
-          { label: 'Structure.ifc', value: 'model-b' },
+          { label: 'Architecture.ifc', value: 'Architecture.ifc:fingerprint-a' },
+          { label: 'Structure.ifc', value: 'Structure.ifc:fingerprint-b' },
         ]}
         ifcTypeOptions={[]}
         storeyOptions={[]}
@@ -112,6 +112,6 @@ describe('ClashSetFilterEditor', () => {
       .find((item) => item.textContent?.includes('Structure.ifc'));
     assert.ok(option, 'the model picker must display the loaded model name');
     click(option);
-    assert.deepEqual(commits, [Rule.model(['model-b'])]);
+    assert.deepEqual(commits, [Rule.model(['Structure.ifc:fingerprint-b'])]);
   });
 });

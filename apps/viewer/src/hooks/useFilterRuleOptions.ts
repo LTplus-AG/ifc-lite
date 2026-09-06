@@ -99,7 +99,10 @@ export function useFilterRuleOptions(rules: readonly FilterRule[]): FilterRuleOp
   }, [schemaEntry]);
 
   const modelOptions = useMemo(
-    () => Array.from(models.values(), (model) => ({ label: model.name, value: model.id })),
+    () => Array.from(models.values(), (model) => ({
+      label: model.name,
+      value: model.sourceFingerprint ?? model.id,
+    })),
     [models],
   );
 

@@ -234,25 +234,31 @@ describe('evaluateFilterRulesFederated', () => {
     const a = buildStore(rows);
     const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
     const out = await evaluateFilterRulesFederated(
-      [{ id: 'architecture', store: a }, { id: 'structure', store: b }],
-      [Rule.model(['structure'])],
+      [
+        { id: 'runtime-architecture', filterIdentity: 'Architecture.ifc:fingerprint-a', store: a },
+        { id: 'runtime-structure', filterIdentity: 'Structure.ifc:fingerprint-b', store: b },
+      ],
+      [Rule.model(['Structure.ifc:fingerprint-b'])],
       'AND',
     );
-    assert.deepStrictEqual(new Set(out.map((r) => r.modelId)), new Set(['structure']));
+    assert.deepStrictEqual(new Set(out.map((r) => r.modelId)), new Set(['runtime-structure']));
     assert.deepStrictEqual(out.map((r) => r.expressId), [1010, 1020, 1030, 1040]);
   });
 
-  it('supports excluding a model while combining other rules (#4019)', async () => {
+  it('survives runtime model-id changes while combining other rules (#4019)', async () => {
     const a = buildStore(rows);
     const b = buildStore(rows.map((r) => ({ ...r, expressId: r.expressId + 1000 })));
     const out = await evaluateFilterRulesFederated(
-      [{ id: 'architecture', store: a }, { id: 'structure', store: b }],
-      [Rule.model(['structure'], 'notIn'), Rule.ifcType(['IfcWall'])],
+      [
+        { id: 'new-runtime-a', filterIdentity: 'Architecture.ifc:fingerprint-a', store: a },
+        { id: 'new-runtime-b', filterIdentity: 'Structure.ifc:fingerprint-b', store: b },
+      ],
+      [Rule.model(['Structure.ifc:fingerprint-b'], 'notIn'), Rule.ifcType(['IfcWall'])],
       'AND',
     );
     assert.deepStrictEqual(out.map((r) => [r.modelId, r.expressId]), [
-      ['architecture', 10],
-      ['architecture', 20],
+      ['new-runtime-a', 10],
+      ['new-runtime-a', 20],
     ]);
   });
 });

@@ -666,6 +666,7 @@ export function useIfcLoader() {
           const federatedModel: FederatedModel = {
             id: modelId,
             name: target.name ?? file.name,
+            sourceFingerprint: modelSourceIdentity,
             ifcDataStore: dataStore,
             geometryResult,
             visible: target.visible ?? true,
@@ -783,6 +784,12 @@ export function useIfcLoader() {
           console.log(`[useIfc] Decoded ${textureBitmaps.size} .ifcZIP texture image(s)`);
         }
       }
+
+      // Persisted model filters need a stable identity because ids are fresh UUIDs.
+      // The filename distinguishes byte-identical files with different names.
+      const sourceKeyFingerprint = computeSourceFingerprint(buffer);
+      const modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
+      if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
 
       // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
       // cloud format was already resolved from the head slice above.
@@ -1072,7 +1079,6 @@ export function useIfcLoader() {
       // itself the validation — a genuinely different file can't key the same
       // entry. `.hash` is reused as the cache header's `sourceHash` so the write
       // path never pays a full-file hash either.
-      const fingerprint = computeSourceFingerprint(buffer);
       // Snapshot the merge-layers flag *before* the cache lookup: it is a
       // load-time WASM tessellation input (issue #540) and must discriminate
       // the cache key, otherwise toggling it + reloading serves geometry built
@@ -1110,7 +1116,7 @@ export function useIfcLoader() {
       // added the geometryClass tag the Model/Types switch needs).
       const cacheKey = buildGeometryCacheKey(
         buffer.byteLength,
-        fingerprint.hex,
+        sourceKeyFingerprint.hex,
         mergeLayersAtLoad,
         undefined,
         skipSmallCutsAtLoad,

@@ -29,10 +29,10 @@ impl BooleanClippingProcessor {
     /// between a non-closed union and a wrong subtraction is downstream, in
     /// the caller (`try_union_polygonal_chain` in `super::mod`): its
     /// intersected-bounds check and the `#3919` accept-gate on the actual
-    /// subtract. On the #960/#2152/#5904 fixtures those downstream checks
-    /// were sufficient — every wall's Z bounds still matched IfcOpenShell —
-    /// but that is evidence for those fixtures, not a closure guarantee this
-    /// function provides.
+    /// subtract. On the #960 fixture's walls #2152 and #5904 those
+    /// downstream checks were sufficient — every wall's Z bounds still
+    /// matched IfcOpenShell — but that is evidence for those walls, not a
+    /// closure guarantee this function provides.
     pub(super) fn build_cutter_union(&self, clipper: &ClippingProcessor, prisms: &[Mesh]) -> Option<Mesh> {
         if prisms.is_empty() {
             return None;

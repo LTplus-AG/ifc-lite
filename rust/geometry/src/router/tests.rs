@@ -9,8 +9,11 @@ use ifc_lite_core::EntityDecoder;
 #[test]
 fn test_router_creation() {
     let router = GeometryRouter::new();
-    // Router registers default processors on creation
-    assert!(!router.processors.is_empty());
+    let mut decoder = EntityDecoder::new("#1=IFCSPHERE($,2.);");
+    let sphere = decoder.decode_by_id(1).unwrap();
+    let mesh = router.process_representation_item(&sphere, &mut decoder).unwrap();
+    assert!(mesh.triangle_count() > 0);
+    assert!(mesh.positions.iter().all(|value| value.is_finite()));
 }
 
 #[test]
@@ -1062,3 +1065,6 @@ fn the_same_item_under_a_body_source_is_still_counted_on_the_occurrence_path() {
         "the gate keys on the representation, not on the item type: {unsupported:?}"
     );
 }
+
+#[path = "processor_registry_tests.rs"]
+mod processor_registry_tests;

@@ -115,6 +115,17 @@ if (WorkerParser.isSupported()) {
 }
 ```
 
+For an integrated geometry/parser load, both `WorkerParser.parseColumnar` and
+`GeometryProcessor.processAdaptive` accept an optional `sourceFingerprint` cell.
+Use a fresh 16-byte `SharedArrayBuffer` for each immutable source and pass that
+same cell to both calls. Its four unsigned 32-bit words hold source length low
+and high halves, hash, and readiness; initialize only the two length words before
+starting either call. Never reuse a cell for another source or load. The existing
+prepass worker computes the full-source key when its WASM supports that operation;
+the parser uses it only if ready, otherwise it computes the same key itself without
+waiting. Omitting the cell retains ordinary parsing behavior. This optimization
+does not change partial/final source accessor identity or cache keys.
+
 ### Streaming Geometry
 
 For large files, stream geometry progressively using `GeometryProcessor.processStreaming()`:

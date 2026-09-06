@@ -6,6 +6,8 @@ import type { TessellationQuality } from './types.js';
 import type { BatchSizingConfig } from './batch-sizing.js';
 
 export interface ProcessParallelOptions {
+  /** Fresh per-load fingerprint cell shared only with the matching parser. */
+  sourceFingerprint?: SharedArrayBuffer;
   /**
    * Fires when the streaming pre-pass finishes building the entity index
    * (after styles), with SAB-backed Uint32Array views over the shared

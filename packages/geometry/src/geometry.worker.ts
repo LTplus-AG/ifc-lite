@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
+import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
@@ -174,6 +175,7 @@ export interface GeometryWorkerScanShardMessage {
 
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass-streaming';
+  sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
   /** Jobs per chunk (defaults to 50_000). */
   chunkSize?: number;
@@ -319,6 +321,7 @@ export interface GeometryWorkerStylesShardResultMessage {
  */
 export interface GeometryWorkerPrePassShardedMessage {
   type: 'prepass-streaming-sharded';
+  sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
   chunkSize?: number;
   disabledTypes?: string[];
@@ -1384,26 +1387,20 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
       const onEvent = (event: unknown) => {
+        publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       const run = (
         bytes: Uint8Array,
         ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
       ) =>
-        (ifcApi as unknown as {
-          buildPrePassStreamingSharded: (
-            data: Uint8Array, onEvent: (e: unknown) => void, chunkSize: number,
-            disabledTypes: string[] | undefined, skipTypeGeometry: boolean,
-            ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
-          ) => unknown;
-        }).buildPrePassStreamingSharded(
-          bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry,
-          ids, starts, lengths, classes,
-        );
+        runPrepassWithFingerprint(ifcApi, [bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry],
+          sourceFingerprint, [ids, starts, lengths, classes]);
       try {
         run(viewSharedBytes(sharedBuffer), indexIds, indexStarts, indexLengths, indexClasses);
       } catch (err) {
@@ -1469,6 +1466,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // before the first chunk lands.
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const sharedBuffer = e.data.sharedBuffer;
+      const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       // #1097 load-time visibility filter (skip disabled types at job gen).
       const disabledTypes = e.data.disabledTypes ?? undefined;
@@ -1479,10 +1477,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // zero-copy view first, fall back to a materialised copy only if
       // wasm-bindgen rejects the view.
       const onEvent = (event: unknown) => {
+        publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       const runPrepass = (bytes: Uint8Array) =>
-        ifcApi.buildPrePassStreaming(bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
+        runPrepassWithFingerprint(ifcApi, [bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry], sourceFingerprint);
       try {
         // Zero-copy SAB view first; wasm-bindgen copies it into linear memory.
         runPrepass(viewSharedBytes(sharedBuffer));
@@ -1593,7 +1592,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // size from a previous dense model).
       batchSizing = resolveBatchSizing(e.data.batchSizing);
       adaptiveBatchJobs = batchSizing.maxJobs;
-      // Reuse this load's shard source; reset non-sharded/reused loads before geometry (#3989).
+      // Shard scanning has already installed this load's source (#3989).
+      // Non-sharded/reused loads still reset before their first geometry batch.
       if (!sourcePreparedForStream || !canReuseWorkerSource(installedSourceSessionId, e.data.sourceSessionId)) {
         sourceBytesApplied = false;
         cachedSourceBytes = null;

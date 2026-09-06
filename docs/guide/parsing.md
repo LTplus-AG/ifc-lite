@@ -394,6 +394,19 @@ await client.parseParquetStream(file, (batch) => {
 
 See the [Server Guide](server.md) for complete server documentation.
 
+### Native Rust decoder scratch buffers
+
+For repeated native decoding, caller-owned scratch vectors can be reused with
+`EntityDecoder::get_entity_ref_list_fast_into(entity_id, &mut ids)` and
+`get_polyloop_coords_cached_into(entity_id, &mut coords)`. Each replaces the
+buffer contents and returns `Some(())` on success or `None` with an empty buffer
+on failure. The reference-list helper preserves authored order and duplicates,
+dropping oversized references. The PolyLoop helper preserves coordinate order
+and rejects the whole loop for missing or oversized point references; points
+already resolved remain in the decoder's existing point cache even on failure.
+Both retain the behavior of their allocating convenience accessors. The caller
+controls scratch-vector lifetime; reuse does not promise physical memory release.
+
 ## Parse Options
 
 ```typescript
@@ -678,17 +691,3 @@ When working with multiple IFC files (e.g., architectural, structural, and MEP m
 - [Query Guide](querying.md) - Query parsed data
 - [Federation Guide](federation.md) - Load and coordinate multiple models
 - [API Reference](../api/typescript.md) - Complete API docs
-
-
-### Native Rust decoder scratch buffers
-
-For repeated native decoding, caller-owned scratch vectors can be reused with
-`EntityDecoder::get_entity_ref_list_fast_into(entity_id, &mut ids)` and
-`get_polyloop_coords_cached_into(entity_id, &mut coords)`. Each replaces the
-buffer contents and returns `Some(())` on success or `None` with an empty buffer
-on failure. The reference-list helper preserves authored order and duplicates,
-dropping oversized references. The PolyLoop helper preserves coordinate order
-and rejects the whole loop for missing or oversized point references; points
-already resolved remain in the decoder's existing point cache even on failure.
-Both retain the behavior of their allocating convenience accessors. The caller
-controls scratch-vector lifetime; reuse does not promise physical memory release.

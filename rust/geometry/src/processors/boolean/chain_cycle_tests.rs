@@ -960,3 +960,168 @@ fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
         mx.z,
     );
 }
+
+/// A SYNTHETIC, small hand-written fixture that makes the #4023 defect
+/// ACTIVE (RED before the fix, GREEN after), unlike the real-fixture guard
+/// above (whose #2146 entry point never reaches an accept-gate rejection —
+/// see #4024's PR body for the ~50-node scan across every DIFFERENCE-chain
+/// root in `960_house_segmented_roof_clip.ifc` that confirmed this).
+///
+/// Chain (innermost first): `G` (a plain 10x10x10 box) `-cutterF2->` `H`
+/// `-cutterF1->` `F` `-cutterE->` `E`. `collect_polygonal_chain(E)` walks the
+/// WHOLE left-spine PBHS chain in one call, so entering at `E` always
+/// attempts to batch all three cutters together first
+/// (`try_union_polygonal_chain`, verified below via bounds/failure evidence,
+/// not asserted directly on private state). `cutterE`'s polygonal boundary
+/// is a self-intersecting (bowtie) `IfcPolyline` — a structurally invalid
+/// polygon whose extruded prism makes the CSG subtract produce a torn,
+/// non-closed result. That trips the accept gate for the 3-cutter batch
+/// attempt at `E`, so it defers; `process_with_depth_inner` pushes `E` onto
+/// `spine` and walks down to `F`, whose OWN 2-cutter batch (`cutterF1`,
+/// `cutterF2` — both ordinary, non-degenerate half-space slabs) succeeds
+/// cleanly. That leaves `spine == [E]` with `based_on_batch == true`: the
+/// exact shape `solo_step == spine.len() == 1` mis-reads as "no sibling".
+///
+/// Applying `E`'s own step then re-hits the SAME bowtie-cutter accept-gate
+/// rejection, this time via `apply_boolean_step`'s single-cutter
+/// `IfcPolygonalBoundedHalfSpace` branch
+/// (`BooleanClippingProcessor::resolve_single_cutter_subtract`). Pre-fix,
+/// `solo_step` is wrongly `true` there, so the rejection escalates to
+/// `SingleCutterSubtract::FallThrough` — the unbounded plane clip at
+/// `cutterE`'s plane (z = 2, agreement removes z > 2) — collapsing the
+/// batched `F`/`H` result down to z in `[0, 2]` and x/y in `[-5, 3]`
+/// (`F`'s own x > 3 slab already capped x at 3). Post-fix, `based_on_batch`
+/// makes `solo_step` correctly `false`, so the same rejection instead takes
+/// `SingleCutterSubtract::KeepUncut`: `E`'s cutter is dropped and the
+/// batched `F`/`H` result (x, y in `[-5, 5]`, z in `[0, 10]`) is returned
+/// un-cut.
+///
+/// Verified directly (not asserted, since it reads private state): on this
+/// checkout, `collect_polygonal_chain(#450)` (E) returns cutters
+/// `[240, 340, 440]` (all three); `try_union_polygonal_chain(#450)` returns
+/// `None` (deferred) under both `csg_manifold_gate` and `csg_topology_gate`;
+/// `try_union_polygonal_chain(#350)` (F) returns `Some` (batched) under
+/// both. `cargo test --features csg_manifold_gate` records exactly one
+/// `NonManifoldRejected { same_direction: 6, .. }` failure on this fixture
+/// pre- and post-fix; `--features csg_topology_gate` records exactly one
+/// `OpenTopologyRejected` either way — the SAME accept-gate rejection is
+/// reached both times, only its fallback changes.
+#[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+#[test]
+fn solo_step_batched_suffix_defect_is_active_on_a_synthetic_bowtie_cutter() {
+    // G: a plain 10x10x10 box (IfcRectangleProfileDef is CENTERED on its
+    // position, so this spans x, y in [-5, 5], z in [0, 10]).
+    let base = "\
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCAXIS2PLACEMENT2D(#10,$);
+#12=IFCRECTANGLEPROFILEDEF(.AREA.,$,#11,10.,10.);
+#13=IFCCARTESIANPOINT((0.,0.,0.));
+#14=IFCAXIS2PLACEMENT3D(#13,$,$);
+#15=IFCDIRECTION((0.,0.,1.));
+#16=IFCEXTRUDEDAREASOLID(#12,#14,#15,10.);
+";
+    // cutterF2 (innermost of the F/H suffix): ordinary half-space slab,
+    // plane at y=3, removing y>3 across the full x/z extent.
+    let cutter_f2 = "\
+#200=IFCCARTESIANPOINT((0.,3.,0.));
+#201=IFCDIRECTION((0.,1.,0.));
+#202=IFCAXIS2PLACEMENT3D(#200,#201,$);
+#203=IFCPLANE(#202);
+#210=IFCCARTESIANPOINT((0.,3.,0.));
+#211=IFCDIRECTION((0.,1.,0.));
+#212=IFCDIRECTION((0.,0.,1.));
+#213=IFCAXIS2PLACEMENT3D(#210,#211,#212);
+#220=IFCCARTESIANPOINT((-6.,-6.));
+#221=IFCCARTESIANPOINT((6.,-6.));
+#222=IFCCARTESIANPOINT((6.,6.));
+#223=IFCCARTESIANPOINT((-6.,6.));
+#224=IFCCARTESIANPOINT((-6.,-6.));
+#230=IFCPOLYLINE((#220,#221,#222,#223,#224));
+#240=IFCPOLYGONALBOUNDEDHALFSPACE(#203,.F.,#213,#230);
+#250=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#16,#240);
+";
+    // cutterF1 (outer half of the F/H suffix): ordinary half-space slab,
+    // plane at x=3, removing x>3. Together F1+F2 batch cleanly in ONE call
+    // (try_union_polygonal_chain from #350) since neither is degenerate.
+    let cutter_f1 = "\
+#300=IFCCARTESIANPOINT((3.,0.,0.));
+#301=IFCDIRECTION((1.,0.,0.));
+#302=IFCAXIS2PLACEMENT3D(#300,#301,$);
+#303=IFCPLANE(#302);
+#310=IFCCARTESIANPOINT((3.,0.,0.));
+#311=IFCDIRECTION((1.,0.,0.));
+#312=IFCDIRECTION((0.,0.,1.));
+#313=IFCAXIS2PLACEMENT3D(#310,#311,#312);
+#320=IFCCARTESIANPOINT((-6.,-6.));
+#321=IFCCARTESIANPOINT((6.,-6.));
+#322=IFCCARTESIANPOINT((6.,6.));
+#323=IFCCARTESIANPOINT((-6.,6.));
+#324=IFCCARTESIANPOINT((-6.,-6.));
+#330=IFCPOLYLINE((#320,#321,#322,#323,#324));
+#340=IFCPOLYGONALBOUNDEDHALFSPACE(#303,.F.,#313,#330);
+#350=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#250,#340);
+";
+    // cutterE (outermost, E's own cutter): a SELF-INTERSECTING (bowtie)
+    // IfcPolyline boundary -- (-4,-4)->(4,4)->(4,-4)->(-4,4)->(-4,-4) crosses
+    // itself at the origin -- at plane z=2, removing z>2. Extruding this
+    // invalid polygon into a prism and subtracting it is what trips the
+    // accept gate, both as part of E's own 3-cutter top-level batch attempt
+    // and again at E's single-cutter step once the F/H suffix has batched.
+    let cutter_e = "\
+#400=IFCCARTESIANPOINT((0.,0.,2.));
+#401=IFCDIRECTION((0.,0.,1.));
+#402=IFCAXIS2PLACEMENT3D(#400,#401,$);
+#403=IFCPLANE(#402);
+#410=IFCCARTESIANPOINT((0.,0.,2.));
+#411=IFCDIRECTION((0.,0.,1.));
+#412=IFCDIRECTION((1.,0.,0.));
+#413=IFCAXIS2PLACEMENT3D(#410,#411,#412);
+#420=IFCCARTESIANPOINT((-4.,-4.));
+#421=IFCCARTESIANPOINT((4.,4.));
+#422=IFCCARTESIANPOINT((4.,-4.));
+#423=IFCCARTESIANPOINT((-4.,4.));
+#424=IFCCARTESIANPOINT((-4.,-4.));
+#430=IFCPOLYLINE((#420,#421,#422,#423,#424));
+#440=IFCPOLYGONALBOUNDEDHALFSPACE(#403,.F.,#413,#430);
+#450=IFCBOOLEANCLIPPINGRESULT(.DIFFERENCE.,#350,#440);
+";
+    let content = wrap_ifc(&format!("{base}{cutter_f2}{cutter_f1}{cutter_e}"));
+    let mut decoder = EntityDecoder::new(&content);
+    let processor = BooleanClippingProcessor::new();
+    let entity = decoder.decode_by_id(450).expect("decode #450");
+    let mesh = processor
+        .process(&entity, &mut decoder, &IfcSchema::new(), TessellationQuality::Medium)
+        .expect("process #450 chain");
+    assert!(!mesh.is_empty(), "#450's chain must not render as empty");
+
+    // The accept gate must actually have fired (this fixture is worthless as
+    // a RED/GREEN unless a real rejection was observed, not just an empty
+    // failure list that happens to leave bounds unchanged).
+    let failures = processor.take_failures();
+    assert!(
+        failures.iter().any(|f| matches!(
+            f.reason,
+            BoolFailureReason::OpenTopologyRejected | BoolFailureReason::NonManifoldRejected { .. }
+        )),
+        "expected an accept-gate rejection (OpenTopologyRejected / \
+         NonManifoldRejected) on the bowtie cutterE subtract; got {failures:?}"
+    );
+
+    let (_, mx) = mesh.bounds();
+    // Before the fix: `solo_step` was wrongly `true` (spine.len() == 1,
+    // ignoring `based_on_batch`), so the gate rejection escalated to
+    // FallThrough and applied cutterE's unbounded plane clip (z > 2 removed)
+    // on top of cutterF1's own x > 3 cap, landing at max ~= (3, 3, 2).
+    // After the fix, `based_on_batch` is threaded through, `solo_step` is
+    // correctly `false`, and the rejection takes KeepUncut instead: cutterE
+    // is dropped entirely and the F/H batched result is returned un-cut, at
+    // its true extent, max ~= (5, 5, 10).
+    assert!(
+        (mx.x - 5.0).abs() < 1.0e-3 && (mx.y - 5.0).abs() < 1.0e-3 && (mx.z - 10.0).abs() < 1.0e-3,
+        "max bounds = {mx:?}, expected ~(5, 5, 10) (KeepUncut: cutterE dropped, \
+         F/H batched result returned un-cut). ~(3, 3, 2) means solo_step was \
+         miscomputed from spine.len() alone again, ignoring that a nested \
+         batch already folded this cutter's siblings into the mesh."
+    );
+}
+

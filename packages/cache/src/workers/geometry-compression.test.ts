@@ -125,6 +125,8 @@ const makeMesh = (id: number, vertices: number): MeshData => ({
   indices: new Uint32Array([0, 1, 2]), color: [0.2, 0.3, 0.4, 1],
 });
 
+// Real compression/decompression of nine chunks can exceed Vitest's 5s default
+// on shared CI runners; retain a finite per-test completion bound (#4003).
 it('keeps complete geometry bytes/order and the four-record bound through actual codec transfers (#3985)', async () => {
   const meshes = Array.from({ length: 9 }, (_, i) => makeMesh(i + 1, 6000));
   const defaultBytes = await buildGeometrySectionV13(meshes, coordinateInfo);
@@ -142,7 +144,7 @@ it('keeps complete geometry bytes/order and the four-record bound through actual
   expect(restored.map(mesh => mesh.positions)).toEqual(meshes.map(mesh => mesh.positions));
   expect(restored.map(mesh => mesh.origin)).toEqual(meshes.map(mesh => mesh.origin));
   expect(meshes.every(mesh => mesh.positions.byteLength > 0)).toBe(true);
-});
+}, 30_000);
 
 it('starts no compression worker for disabled compression, empty geometry or small chunks (#3985)', async () => {
   let starts = 0;

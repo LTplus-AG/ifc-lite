@@ -243,4 +243,28 @@ ${FOOTER}`;
     expect(result.failure?.type).toBe('CLASSIFICATION_UNRESOLVED');
     expect(result.failure?.type).not.toBe('CLASSIFICATION_MISSING');
   });
+
+  it('control: IfcRelAssociatesProfileDef (IFC4X3) — its name contains "PROFILEDEF" but it is a rooted IfcRelAssociates relationship, not an IfcProfileDef — still reports CLASSIFICATION_MISSING, not a spurious UNRESOLVED', async () => {
+    // A bare `includes('PROFILEDEF')` swallows this: IfcRelAssociatesProfileDef
+    // is `SUBTYPE OF (IfcRelAssociates)`, itself an IfcRoot subtype - it POINTS
+    // AT an IfcProfileDef via its own RelatingProfileDef attribute rather than
+    // being one, and, being rooted, is classified (if at all) only via
+    // IfcRelAssociatesClassification, never as a RelatedResourceObjects target
+    // of IfcExternalReferenceRelationship. A genuinely unclassified one must
+    // stay a confident MISSING, the same as any other IfcRoot subtype.
+    const ifc = `${HEADER}
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCCARTESIANPOINT((1.,0.));
+#12=IFCPOLYLINE((#10,#11));
+#20=IFCARBITRARYOPENPROFILEDEF(.CURVE.,$,#12);
+#1=IFCWALL('gid',$,$,$,$,$,$,$,$);
+#2=IFCRELASSOCIATESPROFILEDEF('gid2',$,$,$,(#1),#20);
+${FOOTER}`;
+    const server = asServerParsed(await realStore(ifc));
+    const accessor = createDataAccessor(server);
+    const result = checkClassificationFacet(presenceFacet, 2, accessor);
+
+    expect(result.failure?.type).toBe('CLASSIFICATION_MISSING');
+    expect(result.failure?.type).not.toBe('CLASSIFICATION_UNRESOLVED');
+  });
 });

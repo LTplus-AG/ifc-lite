@@ -219,6 +219,17 @@ const MATERIAL_DEFINITION_TYPES = new Set([
  * `IfcCircleHollowProfileDef`, …) has "PROFILEDEF" somewhere in its name —
  * including `IfcArbitraryProfileDefWithVoids`, whose name does NOT *end* in
  * "ProfileDef" (`endsWith` missed it; `includes` does not).
+ *
+ * A bare `includes('PROFILEDEF')` over-matches one real IFC4X3 entity:
+ * `IfcRelAssociatesProfileDef` (`SUBTYPE OF IfcRelAssociates`, itself an
+ * `IfcRoot` subtype via `IfcRelationship`) carries "PROFILEDEF" in its name
+ * but is a RELATIONSHIP that POINTS AT a profile def via its
+ * `RelatingProfileDef` attribute - it is not a profile def itself, and,
+ * being rooted, is classified (if at all) via
+ * `IfcRelAssociatesClassification`, never as a `RelatedResourceObjects`
+ * target. Every genuine `IfcProfileDef` descendant's name has "PROFILEDEF"
+ * preceded by its own subtype qualifier, never by "IFCREL", so excluding
+ * that prefix removes the one false positive without another allow-list.
  */
 function isNonRootedClassifiableResource(
   store: IfcDataStore,
@@ -227,5 +238,8 @@ function isNonRootedClassifiableResource(
   const type = store.entityIndex?.byId?.get?.(expressId)?.type;
   if (typeof type !== 'string') return false;
   const upper = type.toUpperCase();
-  return MATERIAL_DEFINITION_TYPES.has(upper) || upper.includes('PROFILEDEF');
+  return (
+    MATERIAL_DEFINITION_TYPES.has(upper) ||
+    (upper.includes('PROFILEDEF') && !upper.startsWith('IFCREL'))
+  );
 }

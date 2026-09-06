@@ -127,6 +127,10 @@ WASM-specific structural cost (not in the native probe, by design):
 
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
+### Retained processor registry ownership (#3987)
+
+Built-in processor registrations now share immutable setup while each router keeps its own failure state and custom replacement behavior. Retained in the cumulative cold-load candidate; no isolated throughput gain is attributed to this layer. Native constructor profiles identify the mechanism, but native and actual browser-worker verdicts remain separate. Do not replace custom processors or share mutable diagnostics to reduce setup further.
+
 ### N-ary repair validation (#3925)
 
 Rebase before measuring geometry. The old direct-router census converted survey

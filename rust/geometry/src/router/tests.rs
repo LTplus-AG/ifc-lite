@@ -9,8 +9,8 @@ use ifc_lite_core::EntityDecoder;
 #[test]
 fn test_router_creation() {
     let router = GeometryRouter::new();
-    // Router registers default processors on creation
-    assert!(!router.processors.is_empty());
+    // Default dispatch is available before any custom registration.
+    assert!(router.processors.get(&ifc_lite_core::IfcType::IfcExtrudedAreaSolid, router.schema).is_some());
 }
 
 #[test]

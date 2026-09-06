@@ -418,7 +418,7 @@ impl MeshDataJs {
 
     /// Build from the canonical per-element producer's [`MeshData`]
     /// (`ifc_lite_processing::element`): wraps [`MeshDataJs::new`] (IFC Z-up →
-    /// WebGL Y-up + winding reversal), copies the `geometry_class` tag and the
+    /// WebGL Y-up rotation with preserved winding), copies the `geometry_class` tag and the
     /// optional texture/UVs. Element metadata the browser doesn't carry
     /// (global_id / name / presentation layer / material name / properties) is
     /// dropped — the viewer gets it from the parser worker instead.

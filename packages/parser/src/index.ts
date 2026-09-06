@@ -191,8 +191,8 @@ import { EntityIndexBuilder } from './entity-index.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { PropertyExtractor } from './property-extractor.js';
 import { RelationshipExtractor } from './relationship-extractor.js';
-import { ColumnarParser, type IfcDataStore } from './columnar-parser.js';
-import { scanIfcEntities, type PreScannedEntityIndex, type WasmScanApi } from './entity-scanner.js';
+import { parseColumnarInput, type IfcDataStore } from './columnar-parser.js';
+import { scanIfcEntities, scanColumnarEntities, type PreScannedEntityIndex, type WasmScanApi } from './entity-scanner.js';
 
 export interface ParseOptions {
   onProgress?: (progress: { phase: string; percent: number }) => void;
@@ -210,10 +210,9 @@ export interface ParseOptions {
   /**
    * Pre-built entity index from another worker (typically the streaming
    * geometry pre-pass). When supplied, `parseColumnar` skips both the
-   * worker-based and WASM scans and synthesizes `EntityRef[]` from the
-   * column arrays directly — saving ~10 s on 1 GB / 14 M-entity files
-   * where the parser would otherwise duplicate the pre-pass scan under
-   * heavy WASM contention with the geometry workers.
+   * worker-based and WASM scans and retains the numeric columns through
+   * entity categorization. Only records needed for metadata extraction
+   * materialize EntityRefs; every record remains addressable in the store.
    */
   preScannedEntityIndex?: PreScannedEntityIndex;
 }
@@ -298,12 +297,11 @@ export class IfcParser {
     buffer: ArrayBuffer | SharedArrayBuffer,
     options: ParseOptions = {},
   ): Promise<IfcDataStore> {
-    const { entityRefs, processed, elapsedMs, scanPath } = await scanIfcEntities(buffer, options);
+    const { entityRefs, entityColumns, processed, elapsedMs, scanPath } = await scanColumnarEntities(buffer, options);
     console.log(`[IfcParser] Fast scan: ${processed} entities in ${elapsedMs.toFixed(0)}ms (path=${scanPath})`);
 
     // Build columnar structures with on-demand property extraction
-    const columnarParser = new ColumnarParser();
-    const dataStore = await columnarParser.parseLite(buffer, entityRefs, options);
+    const dataStore = await parseColumnarInput(buffer, entityColumns ?? entityRefs, options);
     return dataStore;
   }
 }

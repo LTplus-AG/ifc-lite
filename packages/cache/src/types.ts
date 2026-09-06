@@ -341,7 +341,16 @@ export interface CacheEntityRef {
 }
 
 export interface CacheEntityIndex {
-  byId: Iterable<[number, CacheEntityRef]>;
+  byId: Iterable<[number, CacheEntityRef]> & {
+    /** Optional borrowed columns equivalent to iteration; never mutated/transferred. */
+    getColumns?(): {
+      expressIds: Uint32Array;
+      byteOffsets: Uint32Array;
+      byteLengths: Uint32Array;
+      typeIndices: Uint16Array;
+      typeStrings: string[];
+    };
+  };
 }
 
 export interface CachedEntityIndexColumns {

@@ -1464,13 +1464,7 @@ export function useIfcLoader() {
           if (!useParserWorker || !sharedSource) {
             return Promise.reject(new Error('parser worker disabled (no SAB / native file)'));
           }
-          // NOTE: `deferPropertyAtomIndex` is not enabled here. The current
-          // implementation in `columnar-parser.ts` calls
-          // `entityRefs.filter(...)` to split property atoms out of the
-          // primary index, which costs more on a 14 M-entity file (~3 s
-          // for the filter pass) than the index-build time it saves.
-          // Re-enable once the categorization loop builds the two
-          // ref arrays inline so there is no second O(N) walk.
+          // Keep the existing non-deferred atom policy while qualifying source ownership.
           const worker = new WorkerParser();
           workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {

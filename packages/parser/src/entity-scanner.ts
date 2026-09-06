@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { safeUtf8Decode } from '@ifc-lite/data';
-import { buildEntityRefsFromIndex } from './entity-refs-from-index.js';
+import { buildEntityRefsFromIndex, buildEntityColumnsFromIndex, type ScannedEntityColumns } from './entity-refs-from-index.js';
 import { MAX_EXPRESS_ID } from './express-id.js';
 import { scanEntitiesInWorker } from './scan-worker-inline.js';
 import { StepTokenizer } from './tokenizer.js';
@@ -104,10 +104,26 @@ type WasmScanFunction = () => unknown;
 
 const HUGE_STRING_SCAN_BYTES = 256 * 1024 * 1024;
 
+/** Internal columnar consumer; public scanIfcEntities still returns EntityRef[]. */
+export function scanColumnarEntities(
+  buffer: ArrayBuffer | SharedArrayBuffer,
+  options: EntityScanOptions = {},
+): Promise<EntityScanResult & { entityColumns?: ScannedEntityColumns }> {
+  return scanEntities(buffer, options, true);
+}
+
 export async function scanIfcEntities(
   buffer: ArrayBuffer | SharedArrayBuffer,
   options: EntityScanOptions = {},
 ): Promise<EntityScanResult> {
+  return scanEntities(buffer, options, false);
+}
+
+async function scanEntities(
+  buffer: ArrayBuffer | SharedArrayBuffer,
+  options: EntityScanOptions,
+  keepColumns: boolean,
+): Promise<EntityScanResult & { entityColumns?: ScannedEntityColumns }> {
   const uint8Buffer = new Uint8Array(buffer);
   const fileSizeMB = buffer.byteLength / (1024 * 1024);
 
@@ -115,6 +131,7 @@ export async function scanIfcEntities(
   const scanStartTime = performance.now();
 
   let entityRefs: EntityRef[] = [];
+  let entityColumns: ScannedEntityColumns | undefined;
   let processed = 0;
   let scanPath: EntityScanPath = 'tokenizer';
   let oversizedIdCount = 0;
@@ -123,8 +140,9 @@ export async function scanIfcEntities(
 
   if (options.preScannedEntityIndex) {
     const { ids, starts, lengths } = options.preScannedEntityIndex;
-    entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
-    processed = entityRefs.length;
+    if (keepColumns) entityColumns = buildEntityColumnsFromIndex(uint8Buffer, ids, starts, lengths);
+    else entityRefs = buildEntityRefsFromIndex(uint8Buffer, ids, starts, lengths);
+    processed = ids.length;
     scanPath = 'pre-scanned';
     // `undefined` means this producer does not report, which the field's own
     // doc says is NOT the claim `0` makes. Coercing it here would turn "not
@@ -140,7 +158,9 @@ export async function scanIfcEntities(
     malformedRecordCount = options.preScannedEntityIndex.malformedRecordCount ?? 0;
   }
 
-  if (entityRefs.length === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
+  if (processed === 0) entityColumns = undefined;
+
+  if (processed === 0 && !options.disableWorkerScan && typeof Worker !== 'undefined') {
     try {
       const scan = await scanEntitiesInWorker(buffer);
       entityRefs = scan.refs;
@@ -158,7 +178,7 @@ export async function scanIfcEntities(
   }
 
   const wasmScanFn = selectWasmScanFunction(options.wasmApi, uint8Buffer);
-  if (entityRefs.length === 0 && wasmScanFn) {
+  if (processed === 0 && wasmScanFn) {
     try {
       entityRefs = normalizeWasmEntityRefs(wasmScanFn());
       processed = entityRefs.length;
@@ -180,7 +200,7 @@ export async function scanIfcEntities(
     }
   }
 
-  if (entityRefs.length === 0) {
+  if (processed === 0) {
     const tokenizer = new StepTokenizer(uint8Buffer);
     const yieldInterval = 5000;
     const estimatedTotalEntities = Math.max(fileSizeMB * 13500, 10000);
@@ -259,7 +279,7 @@ export async function scanIfcEntities(
   options.onDiagnostic?.(`scan complete: entities=${processed} elapsed=${elapsedMs.toFixed(0)}ms`);
   options.onProgress?.({ phase: 'scanning', percent: 100 });
 
-  return { entityRefs, processed, elapsedMs, scanPath, oversizedIdCount, malformedRecordCount };
+  return { entityRefs, ...(entityColumns && processed > 0 && scanPath === 'pre-scanned' ? { entityColumns } : {}), processed, elapsedMs, scanPath, oversizedIdCount, malformedRecordCount };
 }
 
 /**

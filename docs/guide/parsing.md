@@ -708,3 +708,9 @@ needed, keeps the last input occurrence of duplicate IDs, and returns an empty
 index for empty or mismatched columns. Already sorted, unique columns retain
 their existing allocations. Use `from_columns` when the caller must keep owning
 its input vectors.
+
+### Borrowing compact entity columns
+
+`CompactEntityIndex.getColumns()` exposes the four numeric backing arrays (`expressIds`, `byteOffsets`, `byteLengths`, `typeIndices`) and a copy of the `typeStrings` list. This supports column-aware consumers such as binary cache serialization without creating a reference object for every entity.
+
+The numeric arrays are borrowed and must not be mutated. They remain valid until their owner detaches them. A transport may transfer the arrays when retiring the owning index; cache consumers must not detach them. Changing the returned string list does not change the index. Generic map-compatible indexes remain supported by the parser and cache interfaces.

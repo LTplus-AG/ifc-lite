@@ -13,10 +13,10 @@ import type { EntityRef } from './types.js';
 import { SpatialHierarchyBuilder } from './spatial-hierarchy-builder.js';
 import { EntityExtractor } from './entity-extractor.js';
 import { extractLengthUnitScale } from './unit-extractor.js';
-import { getAttributeNames, getAttributeNamesAcrossSchemas, getInheritanceChain } from './ifc-schema.js';
+import { getAttributeNames, getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 import { parsePropertyValueWithComplex } from './on-demand-extractors.js';
 import { readQuantitySet } from './quantity-collect.js';
-import { buildCompactEntityIndexAsync } from './compact-entity-index.js';
+import { prepareColumnarEntities, type ColumnarEntityInput } from './columnar-entity-preparation.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 import {
     StringTable,
@@ -30,16 +30,8 @@ import type { SpatialHierarchy, QuantityTable, PropertyValue, PropertySet, Quant
 import { BufferEntitySource } from './entity-source.js';
 import { batchExtractGlobalIdAndName } from './columnar-parser-attributes.js';
 import {
-    GEOMETRY_TYPES,
     REL_TYPE_MAP,
-    SPATIAL_TYPES,
-    HIERARCHY_REL_TYPES,
-    PROPERTY_REL_TYPES,
-    ASSOCIATION_REL_TYPES,
     SKIP_DISPLAY_ATTRS,
-    PROPERTY_ENTITY_TYPES,
-    PROPERTY_CONTAINER_TYPES,
-    isIfcTypeLikeEntity,
 } from './columnar-parser-indexes.js';
 import { extractRelFast, extractPropertyRelFast } from './columnar-parser-relationships.js';
 import { detectSchemaVersion, parseSourceHeader } from './source-header.js';
@@ -127,17 +119,10 @@ export interface IfcDataStore extends IfcStoreBase {
     lengthUnitScale?: number;
 }
 
-export class ColumnarParser {
-    /**
-     * Parse IFC file into columnar data store
-     *
-     * Uses fast semicolon-based scanning with on-demand property extraction.
-     * Properties are parsed lazily when accessed, not upfront.
-     * This provides instant UI responsiveness even for very large files.
-     */
-    async parseLite(
+/** Internal implementation shared by public refs and parser-worker columns. */
+export async function parseColumnarInput(
         buffer: ArrayBuffer | SharedArrayBuffer,
-        entityRefs: EntityRef[],
+        input: ColumnarEntityInput,
         options: {
             onProgress?: (progress: { phase: string; percent: number }) => void;
             onDiagnostic?: (message: string) => void;
@@ -148,7 +133,7 @@ export class ColumnarParser {
     ): Promise<IfcDataStore> {
         const startTime = performance.now();
         const uint8Buffer = new Uint8Array(buffer);
-        const totalEntities = entityRefs.length;
+        const totalEntities = Array.isArray(input) ? input.length : input.expressIds.length;
 
         // Phase timing for performance telemetry
         let phaseStart = startTime;
@@ -184,95 +169,6 @@ export class ColumnarParser {
 
         logPhase('init builders');
 
-        // Single pass: build byType index AND categorize entities simultaneously.
-        // Uses a type-name cache to avoid calling .toUpperCase() on 4.4M refs
-        // (only ~776 unique type names in IFC4).
-        const byType = new Map<string, number[]>();
-        const deferPropertyAtomIndex = options.deferPropertyAtomIndex === true;
-        const typeUpperCache = new Map<string, string>();
-        const getTypeUpper = (type: string) => {
-            let upper = typeUpperCache.get(type);
-            if (upper === undefined) {
-                upper = type.toUpperCase();
-                typeUpperCache.set(type, upper);
-            }
-            return upper;
-        };
-
-        // Non-product helper entities that on-demand extraction / StepExporter
-        // need addressable in `byId`. These are not IfcProduct subtypes so the
-        // schema-driven IFCPRODUCT subtype check below cannot capture them.
-        // Without them, findPreferredGeometricRepresentationContextId() and
-        // findLengthUnitReference() fail because the entities are missing from
-        // the compact entity index.
-        const RELEVANT_NON_PRODUCT_HELPERS = new Set([
-            'IFCGEOMETRICREPRESENTATIONCONTEXT', 'IFCGEOMETRICREPRESENTATIONSUBCONTEXT',
-            'IFCUNITASSIGNMENT', 'IFCSIUNIT', 'IFCCONVERSIONBASEDUNIT',
-            'IFCDERIVEDUNIT', 'IFCDERIVEDUNITELEMENT', 'IFCMEASUREWITHUNIT',
-            'IFCDIMENSIONALEXPONENTS',
-            'IFCMAPCONVERSION', 'IFCPROJECTEDCRS',
-            'IFCMATERIALLAYER', 'IFCMATERIALLAYERSET', 'IFCMATERIALLAYERSETUSAGE',
-            'IFCMATERIALCONSTITUENTSET', 'IFCMATERIALCONSTITUENT',
-            'IFCMATERIALPROFILESET', 'IFCMATERIALPROFILE', 'IFCMATERIAL',
-            'IFCCLASSIFICATION', 'IFCCLASSIFICATIONREFERENCE',
-            'IFCDOCUMENTINFORMATION', 'IFCDOCUMENTREFERENCE',
-        ]);
-
-        // Schema-driven inclusion: every IfcProduct subtype belongs in the
-        // EntityTable. The previous hardcoded enumeration of IFC4 building-
-        // element leaves (IFCWALL, IFCSLAB, …) and IFC4x3 infrastructure
-        // leaves (IFCREFERENT, IFCSIGNAL, IFCALIGNMENT, IFCPAVEMENT, …) drifted
-        // with every schema bump — new entities silently became CAT_SKIP and
-        // disappeared from the hierarchy panel. The generated schema registry
-        // already knows the full inheritance chain, so use it.
-        const RELEVANT_PRODUCT_ROOTS = new Set(['IFCPRODUCT']);
-
-        // IfcGroup family (IfcZone, IfcSystem, IfcDistributionSystem,
-        // IfcBuildingSystem, IfcDistributionCircuit, …). These are NOT
-        // IfcProduct subtypes, so without an explicit branch they fall through
-        // to CAT_SKIP and never enter the EntityTable — leaving their Name
-        // unresolvable (`getName` → '') and making them invisible to
-        // `getByType`. The Relationships card then shows "Group #<id>" and the
-        // lens/lists can't surface them. Route them into their own bucket so we
-        // can extract Name/LongName/ObjectType for the group label (#1075).
-        const GROUP_ROOTS = new Set(['IFCGROUP']);
-
-        // Category constants for the lookup cache
-        const CAT_SKIP = 0, CAT_SPATIAL = 1, CAT_GEOMETRY = 2, CAT_HIERARCHY_REL = 3,
-              CAT_PROPERTY_REL = 4, CAT_PROPERTY_ENTITY = 5, CAT_ASSOCIATION_REL = 6,
-              CAT_TYPE_OBJECT = 7, CAT_RELEVANT = 8, CAT_GROUP = 9;
-
-
-        /** Returns true if `upper` (already uppercased) is a subtype of any type in `set`. */
-        function isSubtypeOfAny(upper: string, set: Set<string>): boolean {
-            const chain = getInheritanceChain(upper);
-            return chain.some(ancestor => set.has(ancestor.toUpperCase()));
-        }
-
-        // Cache: type name → category (avoids 4.4M .toUpperCase() calls)
-        const typeCategoryCache = new Map<string, number>();
-        function getCategory(type: string): number {
-            let cat = typeCategoryCache.get(type);
-            if (cat !== undefined) return cat;
-            const upper = getTypeUpper(type);
-            if (SPATIAL_TYPES.has(upper) || isSubtypeOfAny(upper, SPATIAL_TYPES)) cat = CAT_SPATIAL;
-            else if (GEOMETRY_TYPES.has(upper) || isSubtypeOfAny(upper, GEOMETRY_TYPES)) cat = CAT_GEOMETRY;
-            else if (HIERARCHY_REL_TYPES.has(upper)) cat = CAT_HIERARCHY_REL;
-            else if (PROPERTY_REL_TYPES.has(upper)) cat = CAT_PROPERTY_REL;
-            else if (PROPERTY_ENTITY_TYPES.has(upper)) cat = CAT_PROPERTY_ENTITY;
-            else if (ASSOCIATION_REL_TYPES.has(upper)) cat = CAT_ASSOCIATION_REL;
-            else if (isIfcTypeLikeEntity(upper)) cat = CAT_TYPE_OBJECT;
-            else if (isSubtypeOfAny(upper, GROUP_ROOTS)) cat = CAT_GROUP;
-            else if (
-                RELEVANT_NON_PRODUCT_HELPERS.has(upper)
-                || isSubtypeOfAny(upper, RELEVANT_PRODUCT_ROOTS)
-                || upper.startsWith('IFCREL')
-            ) cat = CAT_RELEVANT;
-            else cat = CAT_SKIP;
-            typeCategoryCache.set(type, cat);
-            return cat;
-        }
-
         // Time-based yielding: yield to the main thread every ~80ms so geometry
         // streaming callbacks can fire. This limits main-thread blocking to short
         // bursts that don't starve geometry, while adding minimal overhead (~15 yields
@@ -289,73 +185,12 @@ export class ColumnarParser {
 
         emitDiagnostic(`parseLite start: totalEntities=${totalEntities} yieldInterval=${YIELD_INTERVAL_MS}ms`);
 
-        const spatialRefs: EntityRef[] = [];
-        const geometryRefs: EntityRef[] = [];
-        const relationshipRefs: EntityRef[] = [];
-        const propertyRelRefs: EntityRef[] = [];
-        const propertyContainerRefs: EntityRef[] = [];
-        const propertyAtomRefs: EntityRef[] = [];
-        const associationRelRefs: EntityRef[] = [];
-        const typeObjectRefs: EntityRef[] = [];
-        const otherRelevantRefs: EntityRef[] = [];
-        const groupRefs: EntityRef[] = [];
-
-        for (let i = 0; i < entityRefs.length; i++) {
-            if ((i & 0x3FF) === 0) await yieldIfNeeded();
-            const ref = entityRefs[i];
-            // Categorize (cached — .toUpperCase() called once per unique type)
-            const cat = getCategory(ref.type);
-            const typeUpper = cat === CAT_PROPERTY_ENTITY ? getTypeUpper(ref.type) : '';
-            // ALL entities must be indexed in byType for on-demand extraction
-            // (e.g. IfcGeometricRepresentationContext, IfcSiUnit, IfcMaterialLayer).
-            // Only property atoms are optionally deferred for huge-file lazy loading.
-            const includeInPrimaryIndex =
-                !deferPropertyAtomIndex || cat !== CAT_PROPERTY_ENTITY || PROPERTY_CONTAINER_TYPES.has(typeUpper);
-            if (includeInPrimaryIndex) {
-                // STEP convention is uppercase entity type names and every
-                // downstream consumer (schedule-extractor, property readers,
-                // test helpers) keys on uppercase. The tokenizer preserves
-                // original case though, so if a STEP writer ever emits
-                // mixed-case or lowercase types the index would miss on
-                // canonical lookups. Normalise once here — `getTypeUpper`
-                // is already cached by type name so the cost is ~0.
-                const typeKey = getTypeUpper(ref.type);
-                let typeList = byType.get(typeKey);
-                if (!typeList) { typeList = []; byType.set(typeKey, typeList); }
-                typeList.push(ref.expressId);
-            }
-            if (cat === CAT_SPATIAL) spatialRefs.push(ref);
-            else if (cat === CAT_GEOMETRY) geometryRefs.push(ref);
-            else if (cat === CAT_HIERARCHY_REL) relationshipRefs.push(ref);
-            else if (cat === CAT_PROPERTY_REL) propertyRelRefs.push(ref);
-            else if (cat === CAT_PROPERTY_ENTITY) {
-                if (PROPERTY_CONTAINER_TYPES.has(typeUpper)) propertyContainerRefs.push(ref);
-                else propertyAtomRefs.push(ref);
-            }
-            else if (cat === CAT_ASSOCIATION_REL) associationRelRefs.push(ref);
-            else if (cat === CAT_TYPE_OBJECT) typeObjectRefs.push(ref);
-            else if (cat === CAT_GROUP) groupRefs.push(ref);
-            else if (cat === CAT_RELEVANT) otherRelevantRefs.push(ref);
-        }
-
-        logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${propertyAtomRefs.length} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} group:${groupRefs.length} other:${otherRelevantRefs.length}`);
-
-        // ALL entity refs must be indexed in byId so that on-demand extraction
-        // can look up any entity by expressId (e.g. IfcUnitAssignment,
-        // IfcGeometricRepresentationContext, IfcSiUnit, IfcLocalPlacement, etc.).
-        // Only property atoms are optionally deferred for huge-file lazy loading.
-        const indexedRefs = deferPropertyAtomIndex
-            ? entityRefs.filter(ref => {
-                const cat = getCategory(ref.type);
-                return cat !== CAT_PROPERTY_ENTITY || PROPERTY_CONTAINER_TYPES.has(getTypeUpper(ref.type));
-              })
-            : entityRefs;
-        emitDiagnostic(
-            `index input: indexedRefs=${indexedRefs.length} deferredPropertyAtoms=${deferPropertyAtomIndex ? propertyAtomRefs.length : 0}`
-        );
-
-        // Keep every indexed entity available for on-demand reference resolution.
-        const compactByIdIndex = await buildCompactEntityIndexAsync(indexedRefs);
+        const prepared = await prepareColumnarEntities(input, options.deferPropertyAtomIndex === true, yieldIfNeeded);
+        const { byType, getTypeUpper, spatialRefs, geometryRefs, relationshipRefs, propertyRelRefs,
+            propertyContainerRefs, associationRelRefs, typeObjectRefs, otherRelevantRefs, groupRefs } = prepared;
+        logPhase(`categorize ${totalEntities} → spatial:${spatialRefs.length} geom:${geometryRefs.length} rel:${relationshipRefs.length} propRel:${propertyRelRefs.length} propContainers:${propertyContainerRefs.length} propAtoms:${prepared.propertyAtomCount} assocRel:${associationRelRefs.length} type:${typeObjectRefs.length} group:${groupRefs.length} other:${otherRelevantRefs.length}`);
+        emitDiagnostic(`index input: indexedRefs=${prepared.indexedCount} deferredPropertyAtoms=${options.deferPropertyAtomIndex ? prepared.propertyAtomCount : 0}`);
+        const compactByIdIndex = await prepared.buildPrimaryIndex();
         logPhase('compact entity index');
 
         // Create entity table builder with EXACT capacity (not totalEntities which
@@ -696,14 +531,9 @@ export class ColumnarParser {
         logPhase('relationship graph build()');
 
         let deferredEntityIndex: EntityByIdIndex | undefined;
-        if (deferPropertyAtomIndex && propertyAtomRefs.length > 0) {
+        if (options.deferPropertyAtomIndex && prepared.propertyAtomCount > 0) {
             options.onProgress?.({ phase: 'indexing property atoms', percent: 98 });
-            deferredEntityIndex = await buildCompactEntityIndexAsync(
-                propertyAtomRefs,
-                undefined,
-                1024,
-                2,
-            );
+            deferredEntityIndex = await prepared.buildDeferredIndex();
             logPhase('deferred property atom index');
         }
 
@@ -733,6 +563,28 @@ export class ColumnarParser {
             },
         };
         return finalStore;
+    }
+
+export class ColumnarParser {
+    /**
+     * Parse IFC file into columnar data store
+     *
+     * Uses fast semicolon-based scanning with on-demand property extraction.
+     * Properties are parsed lazily when accessed, not upfront.
+     * This provides instant UI responsiveness even for very large files.
+     */
+    async parseLite(
+        buffer: ArrayBuffer | SharedArrayBuffer,
+        entityRefs: EntityRef[],
+        options: {
+            onProgress?: (progress: { phase: string; percent: number }) => void;
+            onDiagnostic?: (message: string) => void;
+            yieldIntervalMs?: number;
+            deferPropertyAtomIndex?: boolean;
+            onSpatialReady?: (partialStore: IfcDataStore) => void;
+        } = {}
+    ): Promise<IfcDataStore> {
+        return parseColumnarInput(buffer, entityRefs, options);
     }
 
     /**

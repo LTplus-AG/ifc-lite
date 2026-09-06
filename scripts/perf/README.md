@@ -620,3 +620,7 @@ replacement. Real WASM contracts verify returned buffers survive handle free,
 memory growth and transfer, including textures. Ownership must be established
 at the actual binding: a JavaScript view alone does not remove the copy into WASM,
 and borrowed views into WASM memory must not be transferred as owned output.
+
+### Retained column-native metadata preparation (#3985)
+
+Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.

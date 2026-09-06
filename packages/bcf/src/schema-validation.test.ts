@@ -939,3 +939,63 @@ describe('BCF camera cardinality and order', () => {
     });
   });
 });
+
+/**
+ * Every test above validates OUR OWN output -- a maximal fixture we built by
+ * hand from `BCFTopic`, chosen because we believe it exercises what the
+ * schemas require. That belief is exactly what an externally-produced file
+ * can falsify: `reader.test.ts` already parses `test-data/PerspectiveCamera.bcf`
+ * and `test-data/OrthogonalCamera.bcf` (real `.bcf` archives sourced from
+ * buildingSMART/BCF-XML's own "Test Cases/v2.1" directory, produced by a
+ * third-party tool -- their `bcf.version` comment reads "Created with the
+ * iabi.BCF library" -- not by anything in this repository), but only for
+ * whether OUR READER can parse them. Nothing asked whether they satisfy the
+ * vendored XSDs themselves. If our copy of the schema were corrupted, or the
+ * `<xs:include>` wiring for 3.0's shared types were broken, or a facet were
+ * transcribed wrong, every "emits a schema-valid ..." test above could still
+ * pass -- because they all validate a fixture drawn from the same
+ * understanding of the schema that produced the schema check itself. A
+ * genuinely independent file has no such correlation with our schema copy or
+ * our reader; it does with buildingSMART's canonical schema, which is the
+ * same document these XSDs are vendored copies of.
+ */
+describe('a genuine buildingSMART-produced archive validates against the vendored XSDs', () => {
+  const TEST_DATA_DIR = path.join(DIR, '..', 'test-data');
+
+  /** Read one real `.bcf` archive from disk and return its governed entries. */
+  async function realArchiveEntries(fileName: string): Promise<Map<string, string>> {
+    const buffer = readFileSync(path.join(TEST_DATA_DIR, fileName));
+    const zip = await JSZip.loadAsync(buffer);
+    const out = new Map<string, string>();
+    for (const name of Object.keys(zip.files)) {
+      const entry = zip.files[name];
+      if (entry.dir) continue;
+      if (SCHEMA_FOR_ENTRY.some(([re]) => re.test(name))) {
+        out.set(name, await entry.async('string'));
+      }
+    }
+    return out;
+  }
+
+  it.each(['PerspectiveCamera.bcf', 'OrthogonalCamera.bcf'])('%s', async (fileName) => {
+    const entries = await realArchiveEntries(fileName);
+
+    // Anti-vacuity: this archive carries exactly a bcf.version, one
+    // markup.bcf and one .bcfv (plus the source .ifc and a snapshot PNG,
+    // neither XML and so not in SCHEMA_FOR_ENTRY). If a future change to
+    // this helper or to how JSZip enumerates entries stopped finding them,
+    // the loop below would validate zero entries and vacuously pass.
+    const kinds = [...entries.keys()].map((n) => n.replace(/^[^/]+\//, ''));
+    expect(kinds).toContain('bcf.version');
+    expect(kinds).toContain('markup.bcf');
+    expect(kinds.filter((n) => n.endsWith('.bcfv'))).toHaveLength(1);
+
+    const failures: string[] = [];
+    for (const [name, xml] of entries) {
+      const xsd = SCHEMA_FOR_ENTRY.find(([re]) => re.test(name))![1];
+      const { valid, messages } = await validate('2.1', xsd, xml);
+      if (!valid) failures.push(`${name} [${xsd}]: ${messages.join(' | ')}`);
+    }
+    expect(failures).toEqual([]);
+  });
+});

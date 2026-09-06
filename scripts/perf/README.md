@@ -283,7 +283,7 @@ as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Retained mesh bookkeeping and no-op copies (#3988)
 
-Orientation reuses deterministic edge adjacency, while triangle filters compact their existing index buffer and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Retained in cumulative cold-load qualification; do not extrapolate sampled leaf CPU to a per-layer throughput claim. Keep exact output and diagnostic oracles, including invalid/degenerate triangles and reused buffer capacity. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
+Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.

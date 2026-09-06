@@ -624,3 +624,7 @@ and borrowed views into WASM memory must not be transferred as owned output.
 ### Retained column-native metadata preparation (#3985)
 
 Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
+
+### Retained parser publication and receiver ownership (#3985)
+
+Pack immutable type-index publication once and reuse partial columns on complete, retaining legacy transport and shared source access. Terminate the completed parser worker before receiver hydration and use the compact maximum ID during ingestion. Retained as cumulative cold-load work, with no isolated percentage attributed. Qualification must include full property/reference access, federation and memory through cache completion; worker completion alone is not readiness.

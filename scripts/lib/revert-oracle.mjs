@@ -79,7 +79,7 @@ export function classifyPath(path) {
   for (const p of IGNORED_PREFIXES) if (path.startsWith(p)) return 'ignored';
   for (const s of IGNORED_SUFFIXES) if (path.endsWith(s)) return 'ignored';
   if (DEPLOY_CONFIG_RE.test(path)) return 'ignored';
-  if (TEST_FILE_RE.test(path)) return 'test';
+  if (TEST_FILE_RE.test(path) || /(^|\/)(?:[^/]+_tests|tests)\.rs$/.test(path)) return 'test';
   if (TEST_DIR_RE.test(path)) return 'test';
   if (TEST_SEGMENT_RE.test(path)) return 'test';
   return 'production';

@@ -785,12 +785,9 @@ export function useIfcLoader() {
         }
       }
 
-      // Persisted model filters need a stable identity because ids are fresh UUIDs.
-      // The filename distinguishes byte-identical files with different names.
       const sourceKeyFingerprint = computeSourceFingerprint(buffer);
       const modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
       if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
-
       // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
       // cloud format was already resolved from the head slice above.
       const format = pointCloudFormat ?? detectFormat(buffer);

@@ -627,3 +627,14 @@ prepared reload, a diagnostic profile nor an unrun experiment supplies a
 throughput gain. No universal absence of performance regressions or target
 corpus gain is claimed. Original failures and private exploratory work remain
 archived; the published projections identify their source records by hash.
+
+### Retained cold-load work: exact LOD keys (#3991)
+
+Bounded LOD cell neighborhoods use exact integer keys containing all three cell
+coordinates and the full entity ID. Inputs outside the proved range keep the
+existing string representation. The independent tuple oracle checks identical
+representatives and triangle order, including range boundaries, subviews,
+nonfinite coordinates and full-width entity IDs. This removes per-vertex key
+allocation; no isolated end-to-end speedup is attributed to this layer. The
+retained cold-load stack must carry its cumulative browser qualification,
+including picking and peak-memory observations, before landing.

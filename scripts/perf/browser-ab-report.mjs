@@ -160,17 +160,31 @@ if (rows.length === 0) {
   lines.push('VERDICT: ⚠️  totalMeshes fingerprint changed — the timing delta is not like-for-like; state the output change or investigate before trusting any number here.');
 } else if (anyTooNoisy) {
   lines.push('VERDICT: ⚠️  machine too noisy (base TOTAL spread >20%) — close other load and re-run with more --iters before trusting any delta.');
-} else if (anyRealChange) {
-  lines.push(`VERDICT: a metric moved beyond the noise floor (✅ faster / ⛔ slower). ${baseLabel} vs ${branchLabel}. totalMeshes matched across all rounds on every fixture with comparable samples.`);
-} else if (anyIncomparableFixture) {
-  // NOT the calm "within noise" message below: that message claims every
-  // fixture was actually compared. When one side of a fixture produced zero
-  // successful samples (e.g. every launch on that side threw), no
-  // comparison happened for it at all - falling through to "within noise"
-  // here would read as a clean pass for a fixture nothing was verified on.
-  lines.push('VERDICT: ⚠️  inconclusive — at least one fixture had no comparable samples on one side (see warnings above); this is NOT a clean "no regression" result.');
 } else {
-  lines.push('VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds.');
+  // anyRealChange and anyIncomparableFixture are independent facts about
+  // DIFFERENT fixtures (a real move on one fixture says nothing about
+  // whether another fixture was ever actually measured), so both lines are
+  // printed when both are true - an exclusive if/else here previously let
+  // the exit code (nonzero whenever anyIncomparableFixture, regardless of
+  // anyRealChange - see below) contradict the ONLY verdict text printed: a
+  // real regression detected on one fixture while a different fixture
+  // crashed on every launch on one side printed the calm-sounding "a metric
+  // moved..." line alone and exited 1, with nothing in the VERDICT itself
+  // explaining the nonzero exit.
+  if (anyRealChange) {
+    lines.push(`VERDICT: a metric moved beyond the noise floor (✅ faster / ⛔ slower). ${baseLabel} vs ${branchLabel}. totalMeshes matched across all rounds on every fixture with comparable samples.`);
+  }
+  if (anyIncomparableFixture) {
+    // NOT the calm "within noise" message below: that message claims every
+    // fixture was actually compared. When one side of a fixture produced zero
+    // successful samples (e.g. every launch on that side threw), no
+    // comparison happened for it at all - falling through to "within noise"
+    // here would read as a clean pass for a fixture nothing was verified on.
+    lines.push('VERDICT: ⚠️  inconclusive — at least one fixture had no comparable samples on one side (see warnings above); this is NOT a clean "no regression" result.');
+  }
+  if (!anyRealChange && !anyIncomparableFixture) {
+    lines.push('VERDICT: no metric moved beyond the machine noise floor — within noise; totalMeshes matched across all rounds.');
+  }
 }
 if (failedRows.length > 0) {
   lines.push(`(${failedRows.length} sample(s) failed and were excluded — a failed run is never silently retried; see evidence paths above.)`);

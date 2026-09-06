@@ -106,3 +106,27 @@ test('totalMeshes mismatch between sides: flagged as output-changed, but does NO
   assert.match(r.out, /OUTPUT CHANGED: totalMeshes 500→600/);
   assert.match(r.out, /VERDICT: .*totalMeshes fingerprint changed/);
 });
+
+test('a real regression on one fixture and a crashed-on-one-side second fixture: BOTH verdict lines print, not just the calmer one', () => {
+  // Regression this guards: anyRealChange and anyIncomparableFixture are
+  // exclusive branches of the same if/else-if before this fix, so a real
+  // regression detected on one fixture silently swallowed the warning that
+  // a DIFFERENT fixture was never actually measured — the process still
+  // exited nonzero (anyIncomparableFixture is unconditional in the exit
+  // expression), but the only VERDICT line printed read like a clean,
+  // trustworthy "a metric moved" result with no textual explanation for
+  // the nonzero exit.
+  const r = run([
+    sample({ side: 'A', fixture: 'regressed', round: 1 }),
+    sample({ side: 'A', fixture: 'regressed', round: 2 }),
+    sample({ side: 'B', fixture: 'regressed', round: 1, jitter: 500 }),
+    sample({ side: 'B', fixture: 'regressed', round: 2, jitter: 500 }),
+    sample({ side: 'A', fixture: 'crashed', round: 1, ok: false }),
+    sample({ side: 'A', fixture: 'crashed', round: 2, ok: false }),
+    sample({ side: 'B', fixture: 'crashed', round: 1 }),
+    sample({ side: 'B', fixture: 'crashed', round: 2 }),
+  ]);
+  assert.notEqual(r.code, 0, r.out);
+  assert.match(r.out, /VERDICT: a metric moved beyond the noise floor/);
+  assert.match(r.out, /VERDICT: .*inconclusive.*NOT a clean "no regression" result/);
+});

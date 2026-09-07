@@ -27,6 +27,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Clock, X, SlidersHorizontal } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
+import { parseSelector } from '@ifc-lite/query';
 import { Input } from '@/components/ui/input';
 import { useViewerStore } from '@/store';
 import { toGlobalIdFromModels } from '@/store/globalId';
@@ -528,6 +529,7 @@ export function SearchInline() {
       {showPopover && !showRecents && (
         <SearchPopover
           results={results}
+          query={searchQuery}
           highlightIndex={searchHighlightIndex}
           modelsCount={models.size}
           indexingCount={indexingCount}
@@ -635,6 +637,7 @@ function RecentsPopover({ recents, onPick, onClear }: RecentsPopoverProps) {
 
 interface SearchPopoverProps {
   results: SearchResult[];
+  query: string;
   highlightIndex: number;
   modelsCount: number;
   indexingCount: number;
@@ -645,6 +648,7 @@ interface SearchPopoverProps {
 
 function SearchPopover({
   results,
+  query,
   highlightIndex,
   modelsCount,
   indexingCount,
@@ -661,7 +665,7 @@ function SearchPopover({
       >
         {indexingCount > 0
           ? `Indexing ${indexingCount} model${indexingCount === 1 ? '' : 's'}… results appear as rows become searchable.`
-          : 'No results — try a name, IFC type, or full GlobalId.'}
+          : parseSelector(query).ok ? 'That reads as selector syntax. This box searches names, IFC types and GlobalIds — run a selector from the Filter tab (Advanced, below).' : 'No results — try a name, IFC type, or full GlobalId.'}
       </div>
     );
   }

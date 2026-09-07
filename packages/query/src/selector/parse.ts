@@ -10,6 +10,7 @@
  *     filter := "!"? (class | globalId)
  *             | word ("." name)? op value
  *             | (string | regex) "." name op value
+ *             | word "." (string | regex) op value
  *
  * The parser is deliberately more capable than any single adapter: it accepts
  * every construct the page documents, so an adapter can name what it cannot
@@ -112,6 +113,22 @@ class Parser {
       if (negate) this.failNegate(first);
       this.advance();
       return this.finishProperty(first, nameOf(head));
+    }
+
+    // `Pset_BeamCommon."IsExternal"` — a bare-word property set keeps its '.'
+    // inside the word (that is what keeps a decimal like `1.5` one token), so
+    // the separator never reaches the branch above and the quoted property
+    // name arrives as the NEXT token. Without this, only the regex spelling
+    // `/Pset_.*Common/."IsExternal"` parsed, and the literal one failed with a
+    // message about a missing operator (#4091).
+    if (
+      head.kind === 'word' &&
+      head.value.length > 1 &&
+      head.value.endsWith('.') &&
+      (after?.kind === 'string' || after?.kind === 'regex')
+    ) {
+      if (negate) this.failNegate(first);
+      return this.finishProperty(first, { kind: 'string', text: head.value.slice(0, -1) });
     }
 
     if (after?.kind === 'op') {

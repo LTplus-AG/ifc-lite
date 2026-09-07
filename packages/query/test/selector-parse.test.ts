@@ -248,6 +248,32 @@ describe('parseSelector — lexical detail', () => {
     });
   });
 
+  it('a quoted PROPERTY name works after a literal property set, not only after a regex one', () => {
+    // #4091: `Pset_BeamCommon."IsExternal"` was a parse error while
+    // `/Pset_.*Common/."IsExternal"` parsed, because the lexer keeps the '.'
+    // inside a bare word and only the regex spelling reached the property
+    // branch. One character from the shape the issue reported.
+    expect(parsed('Pset_BeamCommon."IsExternal" = FALSE').groups[0]?.filters[0]).toStrictEqual({
+      kind: 'property',
+      pset: { kind: 'string', text: 'Pset_BeamCommon' },
+      prop: { kind: 'string', text: 'IsExternal' },
+      op: '=',
+      value: { kind: 'string', text: 'FALSE' },
+      text: 'Pset_BeamCommon."IsExternal" = FALSE',
+    });
+  });
+
+  it('a regex PROPERTY name works after a literal property set too', () => {
+    expect(parsed('Pset_BeamCommon./IsExt.*/=TRUE').groups[0]?.filters[0]).toStrictEqual({
+      kind: 'property',
+      pset: { kind: 'string', text: 'Pset_BeamCommon' },
+      prop: { kind: 'regex', source: 'IsExt.*' },
+      op: '=',
+      value: { kind: 'string', text: 'TRUE' },
+      text: 'Pset_BeamCommon./IsExt.*/=TRUE',
+    });
+  });
+
   it('a decimal value stays one word, the leading dot is a separator', () => {
     expect(parsed('Qto_WallBaseQuantities.NetVolume>1.5').groups[0]?.filters[0]).toStrictEqual({
       kind: 'property',

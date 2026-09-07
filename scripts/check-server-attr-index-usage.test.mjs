@@ -35,6 +35,7 @@ import {
   extractFieldReads,
   checkUsage,
   findUnauditedLiteralReads,
+  checkIdxProvenance,
   METADATA_REL,
 } from './check-server-attr-index-usage.mjs';
 
@@ -258,4 +259,87 @@ test('GREEN (no false positive): a new field wired through idx.<field> (not one 
 test('GREEN (no false positive on unmodified source): findUnauditedLiteralReads finds nothing in the real, unmutated metadata.rs', () => {
   reset();
   assert.deepEqual(findUnauditedLiteralReads(realRust), []);
+});
+
+// --- idx provenance: checkUsage/findUnauditedLiteralReads verify the
+// REFERENCE (`idx.<field>` appears in the source text); neither verifies
+// where `idx` itself comes from. Shadowing `idx` right after its real
+// binding leaves every `idx.<field>` occurrence in the text unchanged while
+// silently redirecting all six fields to the fallback for every entity type
+// — the exact #3949 defect, one level removed. checkIdxProvenance closes
+// that gap.
+
+test('RED (idx provenance): shadowing idx with a second `let idx = …;` binding right after the real one fails the gate end to end, even though every `idx.<field>` text still matches', () => {
+  reset();
+  mutate(
+    'let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);',
+    'let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);\n            let idx = UNKNOWN_TYPE_FALLBACK;',
+  );
+  const { status, out } = runChecker();
+  assert.equal(status, 1, out);
+  assert.match(out, /found 2 `let idx = …;` bindings of `idx`/);
+  assert.match(out, /a second binding SHADOWS the first/);
+  // The pre-existing checks must NOT be the ones reporting this — they still
+  // see idx.<field> verbatim in the text and would otherwise stay silent.
+  assert.doesNotMatch(out, /is read as `/);
+});
+
+test('checkIdxProvenance flags a shadowed idx directly (unit-level, not just end to end)', () => {
+  const shadowed = `
+            let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);
+            let idx = UNKNOWN_TYPE_FALLBACK;
+            let global_id = string_at(&entity, idx.global_id);
+`;
+  const failures = checkIdxProvenance(shadowed);
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /found 2 `let idx = …;` bindings/);
+});
+
+test('RED (idx provenance): idx bound from something other than root_attr_indices fails, even with only one binding', () => {
+  const failures = checkIdxProvenance('let idx = UNKNOWN_TYPE_FALLBACK;\n');
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /not from `root_attr_indices\(\.\.\.\)`/);
+});
+
+test('RED (idx provenance): a bare reassignment of idx (no `let`) fails', () => {
+  const failures = checkIdxProvenance(
+    'let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);\nidx = UNKNOWN_TYPE_FALLBACK;\n',
+  );
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /`idx` is reassigned after its initial binding/);
+});
+
+test('GREEN (no false positive): checkIdxProvenance passes a correctly-wired single binding', () => {
+  assert.deepEqual(
+    checkIdxProvenance(
+      'let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);\n',
+    ),
+    [],
+  );
+});
+
+test('GREEN (no false positive on unmodified source): checkIdxProvenance passes the real, unmutated metadata.rs', () => {
+  reset();
+  assert.deepEqual(checkIdxProvenance(realRust), []);
+});
+
+test('GREEN (no false positive): a comment mentioning `let idx = …` does not count as a binding', () => {
+  assert.deepEqual(
+    checkIdxProvenance(
+      '// let idx = UNKNOWN_TYPE_FALLBACK; (old approach, no longer used)\nlet idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);\n',
+    ),
+    [],
+  );
+});
+
+test('the mutation-checked real gate still catches the original #3949 shape (global_id/name hardcoded) after the idx-provenance check was added', () => {
+  reset();
+  mutate(
+    'let global_id = string_at(&entity, idx.global_id);\n            let name = string_at(&entity, idx.name);',
+    'let global_id = string_at(&entity, 0);\n            let name = string_at(&entity, 2);',
+  );
+  const { status, out } = runChecker();
+  assert.equal(status, 1, out);
+  assert.match(out, /`global_id` is read as `0`, not `idx\.global_id`/);
+  assert.match(out, /`name` is read as `2`, not `idx\.name`/);
 });

@@ -208,11 +208,94 @@ export function findUnauditedLiteralReads(rustSource) {
   return failures;
 }
 
+/**
+ * Every check above (`checkUsage`, `findUnauditedLiteralReads`) trusts that
+ * `idx.<field>` is actually the schema-derived table `root_attr_indices`
+ * returned — it only verifies the REFERENCE (`idx.<field>` in the source
+ * text), never `idx`'s own PROVENANCE. That leaves an evasion the fixed-six
+ * text match cannot see: shadow `idx` with a second binding right after the
+ * real one —
+ *
+ *   let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);
+ *   let idx = UNKNOWN_TYPE_FALLBACK;   // shadow
+ *
+ * — and every `idx.<field>` read below still says `idx.<field>` verbatim, so
+ * checkUsage still reports a clean 6/6 and findUnauditedLiteralReads finds no
+ * literal index at all, while every field resolves to the fallback for every
+ * entity type: the exact #3949 defect, shipped green (found during review of
+ * PR #4082, the fixed-six-field gate this file was originally about).
+ *
+ * This scans for every `idx = <expr>;` statement in the file (`let idx = …`
+ * or a bare reassignment) and fails if there is more than one `let idx = …`
+ * binding, if the single binding's right-hand side does not call
+ * `root_attr_indices(`, or if `idx` is reassigned outside a `let` at all.
+ *
+ * SCOPE NOTE: this is deliberately textual, like the rest of this gate, not
+ * a Rust parser — it does not track lexical scopes, so it cannot distinguish
+ * two *sibling* functions that each legitimately declare their own local
+ * `idx` (there are none today; `extract_entity_metadata` is the only
+ * function in this file using the name) from a shadow inside the SAME
+ * function. If a second, unrelated `idx` is ever introduced in another
+ * function in this file, this check will need scope-awareness it does not
+ * have — left undone deliberately rather than half-built, per the brief not
+ * to turn this into a parser.
+ *
+ * @returns {string[]} failure messages; empty if idx's provenance checks out.
+ */
+export function checkIdxProvenance(rustSource) {
+  const code = stripComments(rustSource);
+  // Matches both `let idx = …;` / `let mut idx = …;` (group 1 present) and a
+  // bare reassignment `idx = …;` (group 1 absent). The `(?!=)` after `=`
+  // keeps this off `idx == …` comparisons; the `\b` before `idx` keeps it
+  // off identifiers merely ending in "idx" (e.g. `some_idx`).
+  const re = /(let\s+(?:mut\s+)?)?\bidx\s*=(?!=)\s*([^;]+);/g;
+  const letBindings = [];
+  const reassignments = [];
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const [, letPrefix, rawExpr] = m;
+    const expr = rawExpr.trim();
+    if (letPrefix) {
+      letBindings.push(expr);
+    } else {
+      reassignments.push(expr);
+    }
+  }
+
+  const failures = [];
+
+  if (letBindings.length === 0) {
+    failures.push(
+      `no \`let idx = …;\` binding found in ${METADATA_REL} — this gate could not verify \`idx\`'s provenance at all; it may have been renamed or restructured.`,
+    );
+    return failures;
+  }
+
+  if (letBindings.length > 1) {
+    failures.push(
+      `found ${letBindings.length} \`let idx = …;\` bindings of \`idx\` in ${METADATA_REL} (${letBindings.map((e) => `\`${e}\``).join(', ')}) — a second binding SHADOWS the first, silently replacing what every \`idx.<field>\` read below resolves to, regardless of what those reads say in the source text. Only one \`let idx = root_attr_indices(...)\` binding is allowed; remove the extra binding(s). This is the exact shape of issue #3949, one level removed: the fields still read \`idx.<field>\`, but \`idx\` itself no longer comes from the schema-derived table.`,
+    );
+  } else if (!/root_attr_indices\s*\(/.test(letBindings[0])) {
+    failures.push(
+      `\`idx\` is bound as \`let idx = ${letBindings[0]};\` in ${METADATA_REL}, not from \`root_attr_indices(...)\` — every \`idx.<field>\` read below is only as trustworthy as \`idx\`'s own provenance, and this binding does not come from the schema-derived per-type index table.`,
+    );
+  }
+
+  if (reassignments.length > 0) {
+    failures.push(
+      `\`idx\` is reassigned after its initial binding in ${METADATA_REL} (\`idx = ${reassignments[0]};\`) — \`idx\` must be established exactly once, via \`let idx = root_attr_indices(...)\`, and never mutated afterward.`,
+    );
+  }
+
+  return failures;
+}
+
 if (process.argv[1] && process.argv[1].endsWith('check-server-attr-index-usage.mjs')) {
   const rustSource = readFileSync(join(ROOT, METADATA_REL), 'utf8');
   const { failures, underRead } = checkUsage(rustSource);
   const strayFailures = findUnauditedLiteralReads(rustSource);
-  const allFailures = [...failures, ...strayFailures];
+  const idxFailures = underRead ? [] : checkIdxProvenance(rustSource);
+  const allFailures = [...failures, ...strayFailures, ...idxFailures];
 
   if (allFailures.length > 0) {
     console.error(`\ncheck-server-attr-index-usage: ${METADATA_REL} drifted\n`);
@@ -242,6 +325,17 @@ so checkUsage's per-field comparison never saw them — but every
 \`string_at\`/\`enum_at\` call against \`&entity\` in ${METADATA_REL} is
 checked regardless of name, and a literal index there is the same #3949 risk
 as a literal index on one of the six known fields.
+`);
+    }
+    if (idxFailures.length > 0) {
+      console.error(`
+Every \`idx.<field>\` check above only verifies the REFERENCE in the source
+text — it trusts that \`idx\` itself still comes from
+\`root_attr_indices(...)\`. A second/shadowing \`let idx = …;\` binding, or a
+reassignment, replaces what \`idx.<field>\` resolves to for every field at
+once without changing a single \`idx.<field>\` occurrence in the text. Fix
+\`idx\`'s binding in ${METADATA_REL} so it is established exactly once, from
+\`root_attr_indices(...)\`.
 `);
     }
     process.exit(1);

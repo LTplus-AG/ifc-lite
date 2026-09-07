@@ -16,22 +16,32 @@ use super::EntityDecoder;
 use crate::DecodedEntity;
 
 impl EntityDecoder<'_> {
-    /// Read an indexed entity, honoring existing memoized values but retaining
-    /// no new value. Linear discovery passes must not fill the geometry cache
-    /// with every unrelated property set they inspect once.
-    pub(crate) fn decode_by_id_transient(&mut self, id: u32) -> crate::Result<DecodedEntity> {
+    /// #3987: validate an indexed record fully, but materialize only a string
+    /// attribute. Discovery must not allocate discarded property/reference trees.
+    /// Honor both requested-id and parsed-id memoized values without adding any.
+    pub(crate) fn decode_string_by_id_transient(
+        &mut self, id: u32, attribute: usize,
+    ) -> crate::Result<Option<String>> {
         if let Some(entity) = self.cache.get(&id) {
-            return Ok(entity.as_ref().clone());
+            return Ok(entity.get_string(attribute).map(str::to_owned));
         }
         self.build_index();
         let (start, end) = self.entity_index.as_ref().and_then(|index| index.lookup(id))
             .ok_or_else(|| crate::Error::parse(0, format!("Entity #{} not found", id)))?;
-        let entity = self.decode_at_uncached(start, end)?;
-        // Match decode_at's parsed-id cache lookup, including caller-supplied
-        // indexes whose key differs from the id declared at that span.
-        Ok(match self.cache.get(&entity.id) {
-            Some(cached) => cached.as_ref().clone(),
-            None => entity,
+        // The SAME parser checks unused fields too. A malformed tail must fail
+        // even when Name was already readable or the parsed id is memoized.
+        let (parsed_id, _, tokens) = self.parse_at(start, end, "decode_at_uncached")?;
+        if let Some(entity) = self.cache.get(&parsed_id) {
+            return Ok(entity.get_string(attribute).map(str::to_owned));
+        }
+        Ok(match tokens.get(attribute) {
+            Some(token @ crate::parser::Token::String(_)) => {
+                match crate::AttributeValue::from_token(token) {
+                    crate::AttributeValue::String(value) => Some(value),
+                    _ => None,
+                }
+            }
+            _ => None,
         })
     }
 
@@ -146,3 +156,7 @@ impl EntityDecoder<'_> {
         self.cache.len()
     }
 }
+
+#[cfg(test)]
+#[path = "transient_projection_tests.rs"]
+mod transient_projection_tests;

@@ -13,7 +13,7 @@
 //! needs (`origin`, `local_to_world`, #1474) rides on those meshes.
 //!
 //! Frames: consumer meshes arrive in the wasm boundary convention — WebGL
-//! Y-up positions/normals/origin, winding reversed, `local_to_world`
+//! Y-up positions/normals/origin, winding preserved, `local_to_world`
 //! conjugated (`zero_copy::mesh::MeshDataJs::new`) — with `y_up = true`;
 //! native in-memory meshes (IFC Z-up, untouched winding) pass `y_up = false`.
 //! `rtc_offset` is the model's origin shift in IFC Z-up metres
@@ -37,7 +37,7 @@ pub struct SimplifyRecordInput<'a> {
     pub positions: &'a [f32],
     /// Vertex normals, 1:1 with positions (may be empty).
     pub normals: &'a [f32],
-    /// Triangle indices (winding per `y_up`).
+    /// Triangle indices (both frames preserve outward winding).
     pub indices: &'a [u32],
     /// Per-mesh local origin (frame per `y_up`); world = origin + position.
     pub origin: [f64; 3],
@@ -86,7 +86,7 @@ pub struct SimplifiedElement {
     /// Render positions relative to `render_origin` (frame per `y_up`).
     pub render_positions: Vec<f32>,
     pub render_normals: Vec<f32>,
-    /// Render indices (winding per `y_up`).
+    /// Render indices (both frames preserve outward winding).
     pub render_indices: Vec<u32>,
     /// Per-mesh origin for the render positions (frame per `y_up`).
     pub render_origin: [f64; 3],
@@ -130,8 +130,7 @@ pub fn simplify_element(
     }
 
     // -- Merge records into one IFC Z-up soup in the RTC-shifted world frame
-    // (f64), restoring the IFC winding when the input is the Y-up boundary
-    // convention.
+    // (f64). The Y-up conversion is a proper rotation, preserving winding.
     let mut world: Vec<[f64; 3]> = Vec::new();
     let mut normals: Vec<f32> = Vec::new();
     let mut indices: Vec<u32> = Vec::new();
@@ -165,13 +164,9 @@ pub fn simplify_element(
             {
                 continue;
             }
-            // The boundary reversed winding for the Y-up handedness flip;
-            // restore the IFC order for frame-consistent processing.
-            if y_up {
-                indices.extend_from_slice(&[tri[0] + base, tri[2] + base, tri[1] + base]);
-            } else {
-                indices.extend_from_slice(&[tri[0] + base, tri[1] + base, tri[2] + base]);
-            }
+            // #4056: (x,y,z) -> (x,z,-y) has determinant +1 in either
+            // direction, so the same index order is valid in both frames.
+            indices.extend_from_slice(&[tri[0] + base, tri[1] + base, tri[2] + base]);
         }
     }
     if world.is_empty() || indices.is_empty() {
@@ -259,11 +254,7 @@ pub fn simplify_element(
                 [n[0] as f32, n[1] as f32, n[2] as f32]
             })
             .collect();
-        let mut indices = out.indices.clone();
-        for tri in indices.chunks_exact_mut(3) {
-            tri.swap(1, 2);
-        }
-        (positions, normals, indices, zup_to_yup(out.origin))
+        (positions, normals, out.indices, zup_to_yup(out.origin))
     } else {
         (out.positions, out.normals, out.indices, out.origin)
     };

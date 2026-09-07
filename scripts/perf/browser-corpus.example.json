@@ -1,0 +1,4 @@
+[
+  { "name": "large-mep-example.ifc", "path": "/absolute/local/path/to/large-mep-example.ifc" },
+  { "name": "large-architecture-example.ifc", "path": "/absolute/local/path/to/large-architecture-example.ifc" }
+]

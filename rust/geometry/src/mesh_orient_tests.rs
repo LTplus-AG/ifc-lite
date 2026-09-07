@@ -436,3 +436,187 @@ fn a_closed_but_non_orientable_shell_is_refused_rather_than_wound_outward() {
         "a non-orientable component keeps the winding it was authored with"
     );
 }
+
+// #3988: index sharing is storage only. The orienter must produce the same
+// ordered, directed triangles and topology for shared, soup and sparse storage.
+#[test]
+fn issue_3988_orientation_is_independent_of_vertex_index_sharing() {
+    for flipped in [&[][..], &[0][..], &[2, 4, 7][..], &[0, 1, 2, 3, 4, 5][..]] {
+        let mut expanded = cube(flipped);
+        let mut indexed = Mesh::new();
+        let mut ids = FxHashMap::default();
+        for p in expanded.positions.chunks_exact(3) {
+            let key = (p[0].to_bits(), p[1].to_bits(), p[2].to_bits());
+            let id = *ids.entry(key).or_insert_with(|| {
+                let id = indexed.positions.len() as u32 / 3;
+                indexed.positions.extend_from_slice(p);
+                id
+            });
+            indexed.indices.push(id);
+        }
+        let mut sparse = indexed.clone();
+        // Unreferenced positions must not influence welding IDs or topology.
+        sparse.positions.extend(std::iter::repeat_n(37.0, 300));
+        let expected = orient_mesh_outward_verdict(&mut expanded);
+        let directed_positions = |m: &Mesh| -> Vec<u32> {
+            m.indices.iter().flat_map(|&i| {
+                m.positions[i as usize * 3..i as usize * 3 + 3].iter().map(|p| p.to_bits())
+            }).collect()
+        };
+        for m in [&mut indexed, &mut sparse] {
+            assert_eq!(orient_mesh_outward_verdict(m), expected);
+            assert_eq!(directed_positions(m), directed_positions(&expanded));
+        }
+        assert!(expected.is_single_closed_solid());
+    }
+}
+
+// #3988: compact edge bookkeeping must preserve the actual incidence stream,
+// including repeated triangle IDs. Only count<=2 exposes triangle slots.
+#[test]
+fn compact_incidence_preserves_incident_prefixes_3988() {
+    for sequence in [
+        (0..16).collect::<Vec<usize>>(),
+        vec![7; 16],
+        vec![usize::MAX / 3, usize::MAX / 3 - 1, 0, 1, 1, 0],
+    ] {
+        let mut edge = EdgeInc::default();
+        let mut oracle = Vec::new();
+        assert_eq!(edge.count(), 0);
+        assert!(edge.incident().is_empty());
+        for triangle in sequence {
+            oracle.push(triangle);
+            edge.push(triangle);
+            assert_eq!(edge.count() as usize, oracle.len());
+            if oracle.len() <= 2 {
+                assert_eq!(edge.incident(), oracle);
+            }
+        }
+    }
+}
+
+// #3988: the old record's u32 arithmetic is observable at overflow. Starting
+// near the boundary avoids allocating billions of triangles while checking the
+// same state transitions, including usize::MAX collision on wasm32.
+#[test]
+fn compact_incidence_preserves_counter_overflow_3988() {
+    #[derive(Clone)]
+    struct Original { tris: [usize; 2], count: u32 }
+    impl Original {
+        fn push(&mut self, triangle: usize) {
+            if self.count < 2 { self.tris[self.count as usize] = triangle; }
+            self.count += 1;
+        }
+    }
+    let mut original = Original { tris: [42, 73], count: u32::MAX - 1 };
+    let mut compact = EdgeInc {
+        tris: [(u32::MAX - 1) as usize, EdgeInc::NONMANIFOLD],
+    };
+    original.push(9);
+    compact.push(9);
+    assert_eq!(compact.count(), original.count);
+    let original_overflow = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        original.push(10);
+    }));
+    let compact_overflow = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compact.push(10);
+    }));
+    assert_eq!(compact_overflow.is_err(), original_overflow.is_err());
+    assert_eq!(compact.count(), original.count);
+    if original_overflow.is_ok() {
+        assert!(compact.incident().is_empty());
+        for triangle in [19, 23] {
+            original.push(triangle);
+            compact.push(triangle);
+            assert_eq!(compact.count(), original.count);
+            assert_eq!(compact.incident(), &original.tris[..original.count as usize]);
+        }
+    }
+}
+
+/// #3988: compare dense links with the original map incidence representation
+/// through the SAME canonical orientation pass, including exact winding order.
+fn assert_dense_matches_map_3988(input: &Mesh) {
+    let mut dense = input.clone();
+    let mut wide = input.clone();
+    ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+    let dense_verdict = orient_mesh_outward_verdict(&mut dense);
+    ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch {
+        edge_tris: EdgeAdjacency::wide_for_test(), ..OrientScratch::default()
+    }));
+    let wide_verdict = orient_mesh_outward_verdict(&mut wide);
+    ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+    assert_eq!(dense_verdict, wide_verdict);
+    assert_eq!(dense.indices, wide.indices);
+    assert_eq!(dense.positions.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+        wide.positions.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+    assert_eq!(dense.normals.iter().map(|v| v.to_bits()).collect::<Vec<_>>(),
+        wide.normals.iter().map(|v| v.to_bits()).collect::<Vec<_>>());
+}
+
+#[test]
+fn dense_adjacency_preserves_orientation_and_degenerate_incidence_3988() {
+    for mask in 0..256u32 {
+        let flips: Vec<usize> = (0..12).filter(|bit| mask & (1 << bit) != 0).collect();
+        assert_dense_matches_map_3988(&cube(&flips));
+    }
+    let vertices = [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+    // Repeated non-zero edges within one degenerate triangle are two distinct
+    // incidences; a later third incidence must revoke BOTH earlier links.
+    for faces in [
+        vec![[0, 1, 0], [0, 2, 3]],
+        vec![[0, 1, 0], [0, 1, 2]],
+        vec![[0, 1, 2], [1, 0, 3], [0, 1, 3]],
+        vec![[0, 0, 0], [1, 1, 1]],
+        vec![[0, 1, 2], [0, 2, 1]],
+    ] { assert_dense_matches_map_3988(&soup(&vertices, &faces)); }
+    // File-like arbitrary topology, deterministic and including repeated refs.
+    let mut state = 0x3988u32;
+    for _ in 0..128 {
+        let faces: Vec<[usize; 3]> = (0..17).map(|_| std::array::from_fn(|_| {
+            state = state.wrapping_mul(1664525).wrapping_add(1013904223);
+            ((state >> 16) & 3) as usize
+        })).collect();
+        assert_dense_matches_map_3988(&soup(&vertices, &faces));
+    }
+    let mut malformed = cube(&[]);
+    malformed.indices.push(u32::MAX);
+    assert_dense_matches_map_3988(&malformed);
+    let mut partial = cube(&[3]);
+    partial.indices.push(0);
+    assert_dense_matches_map_3988(&partial);
+}
+
+#[test]
+fn dense_adjacency_reuses_links_across_width_transitions_3988() {
+    let mut retained_dense = OrientScratch::default();
+    for triangles in [2, 21845, 21846, 7, 24000, 2] {
+        // Disjoint closed tetrahedra exercise volume order and orientation;
+        // trailing open triangles cover counts not divisible by four.
+        let mut input = Mesh::new();
+        for t in 0..triangles {
+            let group = t / 4;
+            let x = group as f32 * 4.0;
+            let vertices = [[x, 0.0, 0.0], [x + 1.0, 0.0, 0.0],
+                [x, 1.0, 0.0], [x, 0.0, 1.0]];
+            let faces = [[0, 2, 1], [0, 1, 3], [1, 2, 3], [2, 0, 3]];
+            let part = soup(&vertices, &[faces[t % 4]]);
+            let offset = input.positions.len() as u32 / 3;
+            input.positions.extend(part.positions);
+            input.normals.extend(part.normals);
+            input.indices.extend(part.indices.into_iter().map(|i| i + offset));
+        }
+        let mut expected = input.clone();
+        ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch {
+            edge_tris: EdgeAdjacency::wide_for_test(), ..OrientScratch::default()
+        }));
+        let expected_verdict = orient_mesh_outward_verdict(&mut expected);
+        ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(retained_dense));
+        let actual_verdict = orient_mesh_outward_verdict(&mut input);
+        retained_dense = ORIENT_SCRATCH.with(|slot| slot.borrow_mut().take().unwrap());
+        assert_eq!(actual_verdict, expected_verdict, "{triangles} triangles");
+        assert_eq!(input.indices, expected.indices, "{triangles} triangles");
+    }
+    ORIENT_SCRATCH.with(|slot| *slot.borrow_mut() = Some(OrientScratch::default()));
+}

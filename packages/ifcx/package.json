@@ -25,7 +25,7 @@
     "@noble/hashes": "^2.4.0"
   },
   "devDependencies": {
-    "tsx": "^4.23.12",
+    "tsx": "^4.23.13",
     "typescript": "^6.0.3"
   },
   "license": "MPL-2.0",

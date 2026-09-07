@@ -5,17 +5,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
-  setOpMatches,
-  stringOpMatches,
-  matchStringAnyNone,
-  numericOpMatches,
-  valueOpMatches,
   combineRuleResults,
   isFilterRule,
   parseFilterRules,
   Rule,
   addHierarchyStoreyToRule,
 } from './filter-rules.js';
+import {
+  setOpMatches,
+  stringOpMatches,
+  matchStringAnyNone,
+  numericOpMatches,
+  valueOpMatches,
+} from './filter-ops.js';
 
 describe('op helpers tolerate an undefined candidate (#1195)', () => {
   // getTypeName / property accessors are typed `string` but return undefined
@@ -234,6 +236,16 @@ describe('stringOpMatches — matches / notMatches', () => {
   it('a value already written as a /…/ literal is honoured as one, flags included', () => {
     assert.strictEqual(stringOpMatches('matches', 'D01', '/D[0-9]{2}/'), true);
     assert.strictEqual(stringOpMatches('matches', 'wand', '/WAND/i'), true);
+  });
+
+  it('a DECLARED regex source is compiled whole, slashes and all', () => {
+    // #4091: the selector `Name=/\/tmp\//` is the source `/tmp/`. Re-read for
+    // delimiters it compiles to `tmp` and matches far too much.
+    assert.strictEqual(stringOpMatches('matches', 'C:/tmp/x', '/tmp/', 'regex'), true);
+    assert.strictEqual(stringOpMatches('matches', 'tmp', '/tmp/', 'regex'), false);
+    // Without a declared kind the same string is free text, where the slashes
+    // are the chip editor's only way to say "pattern".
+    assert.strictEqual(stringOpMatches('matches', 'tmp', '/tmp/'), true);
   });
 
   it('is case-sensitive without an explicit flag, unlike every other op here', () => {

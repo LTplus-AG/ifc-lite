@@ -30,6 +30,7 @@ import {
   type FilterRule,
   type NumericOp,
   type SetOp,
+  type TextKind,
   type ValueOp,
 } from './filter-rules.js';
 
@@ -174,7 +175,7 @@ function adaptAttribute(
   if (!stringOp) return unsupportedOp(text, op, value);
   const invalid = regexProblem(value);
   if (invalid) return `${quote(text)}: ${invalid}`;
-  return Rule.name(stringOp, literalOf(value));
+  return Rule.name(stringOp, literalOf(value), regexValueKind(value));
 }
 
 function adaptProperty(
@@ -188,12 +189,13 @@ function adaptProperty(
     const invalid = regexProblem(part);
     if (invalid) return `${quote(text)}: ${invalid}`;
   }
-  const setName = nameLiteral(pset);
-  const propName = nameLiteral(prop);
+  const setName = literalOf(pset);
+  const propName = literalOf(prop);
+  const names = { setNameKind: nameKind(pset), propertyNameKind: nameKind(prop) };
 
   if (value.kind === 'null') {
-    if (op === '=') return Rule.property(setName, propName, 'isNotSet', '');
-    if (op === '!=') return Rule.property(setName, propName, 'isSet', '');
+    if (op === '=') return Rule.property(setName, propName, 'isNotSet', '', names);
+    if (op === '!=') return Rule.property(setName, propName, 'isSet', '', names);
     return `${quote(text)}: NULL can only be compared with "=" or "!="`;
   }
 
@@ -202,18 +204,21 @@ function adaptProperty(
     if (!regexOp) return unsupportedOp(text, op, value);
     const invalid = regexProblem(value);
     if (invalid) return `${quote(text)}: ${invalid}`;
-    return Rule.property(setName, propName, regexOp, value.source);
+    return Rule.property(setName, propName, regexOp, value.source, { ...names, valueKind: 'regex' });
   }
 
   const numeric = Number.parseFloat(value.text);
   const numericOp = NUMERIC_OPS[op];
   if (looksLikeQuantitySet(pset) && numericOp && Number.isFinite(numeric) && value.text.trim() !== '') {
-    return Rule.quantity(setName, propName, numericOp, numeric);
+    return Rule.quantity(setName, propName, numericOp, numeric, {
+      setNameKind: names.setNameKind,
+      quantityNameKind: names.propertyNameKind,
+    });
   }
 
   const valueOp = VALUE_OPS[op];
   if (!valueOp) return unsupportedOp(text, op, value);
-  return Rule.property(setName, propName, valueOp, value.text);
+  return Rule.property(setName, propName, valueOp, value.text, names);
 }
 
 function adaptMaterial(op: SelectorOp, value: SelectorValue, text: string): FilterRule | string {
@@ -226,7 +231,7 @@ function adaptMaterial(op: SelectorOp, value: SelectorValue, text: string): Filt
   // accepts a material Category here; ifc-lite does not read Category yet
   // (#4094), so a Category-only match still finds nothing — stated in the docs
   // rather than silently approximated.
-  return Rule.material(stringOp, literalOf(value));
+  return Rule.material(stringOp, literalOf(value), regexValueKind(value));
 }
 
 function adaptClassification(op: SelectorOp, value: SelectorValue, text: string): FilterRule | string {
@@ -239,7 +244,7 @@ function adaptClassification(op: SelectorOp, value: SelectorValue, text: string)
   if (!stringOp) return unsupportedOp(text, op, value);
   const invalid = regexProblem(value);
   if (invalid) return `${quote(text)}: ${invalid}`;
-  return Rule.classification('', stringOp, literalOf(value));
+  return Rule.classification('', stringOp, literalOf(value), regexValueKind(value));
 }
 
 function adaptLocation(op: SelectorOp, value: SelectorValue, text: string): FilterRule | string {
@@ -267,22 +272,34 @@ function stringOpFor(op: SelectorOp, value: SelectorValue): SharedStringOp | und
   return value.kind === 'regex' ? REGEX_OPS[op] : STRING_OPS[op];
 }
 
-/**
- * A comparison OPERAND. A regex travels as its bare source, because the rule's
- * `matches` / `notMatches` op is already what says "this is a pattern".
- */
+/** The bare text of a name or operand: a regex travels as its own source. */
 function literalOf(value: SelectorText): string {
   return value.kind === 'regex' ? value.source : value.text;
 }
 
 /**
- * A property-set or property NAME. There is no op beside a name, so the `/…/`
- * literal is what marks it as a pattern — that is exactly what `nameMatches`
- * keys on, and what keeps a plain `Pset_WallCommon` an equality rather than a
- * regex that would also swallow `Pset_WallCommonExtra`.
+ * A property-set or property NAME's kind, handed to the rule instead of being
+ * re-encoded into a spelling the matcher has to guess back out. A name has no
+ * operator beside it, so BOTH kinds have to be stated.
+ *
+ * Re-encoding was the #4091 defect class at this seam. A quoted name is the
+ * grammar's only way to ask for a LITERAL, so `"/Wall/".FireRating` written
+ * back as `/Wall/` became a pattern matching `Pset_WallCommon`; and a regex
+ * source can itself start and end with a slash, so `Name=/\/tmp\//` written
+ * back bare became the pattern `tmp`. Both matched the wrong elements and
+ * said nothing.
  */
-function nameLiteral(name: SelectorText): string {
-  return name.kind === 'regex' ? `/${name.source}/` : name.text;
+function nameKind(name: SelectorText): TextKind {
+  return name.kind === 'regex' ? 'regex' : 'literal';
+}
+
+/**
+ * The same discriminator for a comparison OPERAND, where only one half needs
+ * saying: a value reaches a regex op only by having been written as `/…/`, so
+ * a rule with no `valueKind` is one whose op already rules a pattern out.
+ */
+function regexValueKind(value: SelectorText): TextKind | undefined {
+  return value.kind === 'regex' ? 'regex' : undefined;
 }
 
 /**

@@ -17,8 +17,33 @@ import assert from 'node:assert/strict';
 import { parseSelector } from '@ifc-lite/query';
 import { selectorToFilterRules } from './selector-to-rules.js';
 import { Rule, type FilterRule } from './filter-rules.js';
+import { matchPropertyRule } from './filter-match.js';
+import { stringOpMatches } from './filter-ops.js';
 
 const GUID = '325Q7Fhnf67OZC$$r43uzK';
+
+/**
+ * A property / quantity rule as the adapter builds it. Both names carry the
+ * AST's string-or-regex discriminator, so every expectation states it rather
+ * than leaving the matcher to sniff the text back out (#4091).
+ */
+const prop = (
+  set: string,
+  name: string,
+  op: Parameters<typeof Rule.property>[2],
+  value: string,
+  kinds: Parameters<typeof Rule.property>[4] = {},
+): FilterRule =>
+  Rule.property(set, name, op, value, { setNameKind: 'literal', propertyNameKind: 'literal', ...kinds });
+
+const qty = (
+  set: string,
+  name: string,
+  op: Parameters<typeof Rule.quantity>[2],
+  value: number,
+  kinds: Parameters<typeof Rule.quantity>[4] = {},
+): FilterRule =>
+  Rule.quantity(set, name, op, value, { setNameKind: 'literal', quantityNameKind: 'literal', ...kinds });
 
 function adapt(text: string, schemaVersion = 'IFC4') {
   const result = parseSelector(text);
@@ -99,14 +124,14 @@ describe('selectorToFilterRules — the documented examples', () => {
   it('8. Name by regular expression', () => {
     assert.deepEqual(rulesOf('IfcDoor, Name=/D[0-9]{2}/'), [
       Rule.ifcType(DOORS, 'in'),
-      Rule.name('matches', 'D[0-9]{2}'),
+      Rule.name('matches', 'D[0-9]{2}', 'regex'),
     ]);
   });
 
   it('9. a property in a named set', () => {
     assert.deepEqual(rulesOf('IfcWall, Pset_WallCommon.FireRating=2HR'), [
       Rule.ifcType(WALLS, 'in'),
-      Rule.property('Pset_WallCommon', 'FireRating', 'eq', '2HR'),
+      prop('Pset_WallCommon', 'FireRating', 'eq', '2HR'),
     ]);
   });
 
@@ -118,19 +143,19 @@ describe('selectorToFilterRules — the documented examples', () => {
         'IfcBeam', 'IfcBeamStandardCase',
         'IfcFooting',
       ], 'in'),
-      Rule.property('/Pset_.*Common/', 'LoadBearing', 'eq', 'TRUE'),
+      prop('Pset_.*Common', 'LoadBearing', 'eq', 'TRUE', { setNameKind: 'regex' }),
     ]);
   });
 
   it('11. != NULL is the isSet presence check', () => {
     const rules = rulesOf('IfcElement, /Pset_.*Common/.FireRating != NULL');
-    assert.deepEqual(rules[1], Rule.property('/Pset_.*Common/', 'FireRating', 'isSet', ''));
+    assert.deepEqual(rules[1], prop('Pset_.*Common', 'FireRating', 'isSet', '', { setNameKind: 'regex' }));
   });
 
   it('11b. = NULL is isNotSet', () => {
     assert.deepEqual(
       rulesOf('Pset_WallCommon.FireRating = NULL'),
-      [Rule.property('Pset_WallCommon', 'FireRating', 'isNotSet', '')],
+      [prop('Pset_WallCommon', 'FireRating', 'isNotSet', '')],
     );
   });
 
@@ -143,7 +168,7 @@ describe('selectorToFilterRules — the documented examples', () => {
 
   it('13. a classification matched by a regular expression', () => {
     const rules = rulesOf('IfcElement, classification=/Pr_.*/');
-    assert.deepEqual(rules[1], Rule.classification('', 'matches', 'Pr_.*'));
+    assert.deepEqual(rules[1], Rule.classification('', 'matches', 'Pr_.*', 'regex'));
   });
 
   it('14. everything at once — four rules kept, the GlobalId reported', () => {
@@ -151,7 +176,7 @@ describe('selectorToFilterRules — the documented examples', () => {
     assert.deepEqual(out.rules, [
       Rule.ifcType([...WALLS, ...SLABS], 'in'),
       Rule.material('eq', 'concrete'),
-      Rule.property('/Pset_.*Common/', 'FireRating', 'eq', '2HR'),
+      prop('Pset_.*Common', 'FireRating', 'eq', '2HR', { setNameKind: 'regex' }),
     ]);
     assert.equal(out.unsupported.length, 1);
     assert.match(out.unsupported[0] ?? '', /GlobalId/);
@@ -184,14 +209,14 @@ describe('selectorToFilterRules — the documented examples', () => {
 describe('selectorToFilterRules — operators and value shapes', () => {
   it('maps every property operator', () => {
     const cases: Array<[string, FilterRule]> = [
-      ['A.B=x', Rule.property('A', 'B', 'eq', 'x')],
-      ['A.B!=x', Rule.property('A', 'B', 'ne', 'x')],
-      ['A.B*=x', Rule.property('A', 'B', 'contains', 'x')],
-      ['A.B!*=x', Rule.property('A', 'B', 'notContains', 'x')],
-      ['A.B>1', Rule.property('A', 'B', 'gt', '1')],
-      ['A.B>=1', Rule.property('A', 'B', 'gte', '1')],
-      ['A.B<1', Rule.property('A', 'B', 'lt', '1')],
-      ['A.B<=1', Rule.property('A', 'B', 'lte', '1')],
+      ['A.B=x', prop('A', 'B', 'eq', 'x')],
+      ['A.B!=x', prop('A', 'B', 'ne', 'x')],
+      ['A.B*=x', prop('A', 'B', 'contains', 'x')],
+      ['A.B!*=x', prop('A', 'B', 'notContains', 'x')],
+      ['A.B>1', prop('A', 'B', 'gt', '1')],
+      ['A.B>=1', prop('A', 'B', 'gte', '1')],
+      ['A.B<1', prop('A', 'B', 'lt', '1')],
+      ['A.B<=1', prop('A', 'B', 'lte', '1')],
     ];
     for (const [text, expected] of cases) assert.deepEqual(rulesOf(text), [expected], text);
   });
@@ -200,31 +225,31 @@ describe('selectorToFilterRules — operators and value shapes', () => {
     assert.deepEqual(rulesOf('Name!=D01'), [Rule.name('ne', 'D01')]);
     assert.deepEqual(rulesOf('Name*=Wand'), [Rule.name('contains', 'Wand')]);
     assert.deepEqual(rulesOf('Name!*=Wand'), [Rule.name('notContains', 'Wand')]);
-    assert.deepEqual(rulesOf('Name!=/D[0-9]{2}/'), [Rule.name('notMatches', 'D[0-9]{2}')]);
+    assert.deepEqual(rulesOf('Name!=/D[0-9]{2}/'), [Rule.name('notMatches', 'D[0-9]{2}', 'regex')]);
   });
 
   it('a Qto_ set with a numeric value becomes a quantity rule, not a property rule', () => {
     assert.deepEqual(
       rulesOf('Qto_WallBaseQuantities.NetVolume>1.5'),
-      [Rule.quantity('Qto_WallBaseQuantities', 'NetVolume', 'gt', 1.5)],
+      [qty('Qto_WallBaseQuantities', 'NetVolume', 'gt', 1.5)],
     );
     assert.deepEqual(
       rulesOf('/Qto_.*/.NetVolume>1.5'),
-      [Rule.quantity('/Qto_.*/', 'NetVolume', 'gt', 1.5)],
+      [qty('Qto_.*', 'NetVolume', 'gt', 1.5, { setNameKind: 'regex' })],
     );
   });
 
   it('a Qto_ set with a NON-numeric value stays a property rule', () => {
     assert.deepEqual(
       rulesOf('Qto_WallBaseQuantities.Note=draft'),
-      [Rule.property('Qto_WallBaseQuantities', 'Note', 'eq', 'draft')],
+      [prop('Qto_WallBaseQuantities', 'Note', 'eq', 'draft')],
     );
   });
 
   it('a Pset_ set with a numeric value stays a property rule', () => {
     assert.deepEqual(
       rulesOf('Pset_WallCommon.ThermalTransmittance>1.5'),
-      [Rule.property('Pset_WallCommon', 'ThermalTransmittance', 'gt', '1.5')],
+      [prop('Pset_WallCommon', 'ThermalTransmittance', 'gt', '1.5')],
     );
   });
 
@@ -300,5 +325,114 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
     for (const entry of out.unsupported) {
       assert.match(entry, /^"/, `entry does not start with the quoted source: ${entry}`);
     }
+  });
+});
+
+
+/**
+ * The selector #4091 was reported with, pinned by name so it cannot regress
+ * quietly. Two things had to be true for it to work: a class list hoists into
+ * one expanded `in` rule, and a quoted property name is accepted after a
+ * property set — which for the regex spelling it always was, and for the
+ * literal spelling `Pset_BeamCommon."IsExternal"` it was not.
+ */
+describe('the reporter\'s selector (#4091)', () => {
+  const SELECTOR =
+    'IfcBeam, IfcColumn, IfcFooting, IfcMember, IfcPlate, IfcSlab, IfcStair, IfcWall, /Pset_.*Common/."Tragendes_Element" = TRUE';
+
+  it('becomes one expanded type rule and one property rule, with nothing unsupported', () => {
+    const out = adapt(SELECTOR);
+    assert.deepEqual(out.unsupported, []);
+    assert.equal(out.combinator, 'AND');
+    assert.equal(out.rules.length, 2);
+
+    const [types, property] = out.rules;
+    assert.ok(types && types.kind === 'ifcType');
+    assert.equal(types.op, 'in');
+    assert.equal(types.values.length, 16);
+    for (const name of ['IfcBeam', 'IfcColumn', 'IfcFooting', 'IfcMember', 'IfcPlate', 'IfcSlab', 'IfcStair', 'IfcWall']) {
+      assert.ok(types.values.includes(name), `${name} missing from the expansion`);
+    }
+    // The expansion is the point: a file full of IfcBeamStandardCase answers.
+    assert.ok(types.values.includes('IfcBeamStandardCase'));
+
+    assert.deepEqual(
+      property,
+      prop('Pset_.*Common', 'Tragendes_Element', 'eq', 'TRUE', { setNameKind: 'regex' }),
+    );
+  });
+
+  it('the property rule really reaches a German Pset_…Common set', () => {
+    const rule = adapt(SELECTOR).rules[1];
+    assert.ok(rule && rule.kind === 'property');
+    assert.equal(
+      matchPropertyRule(rule, [{ setName: 'Pset_BeamCommon', propertyName: 'Tragendes_Element', value: 'TRUE' }]),
+      true,
+    );
+    assert.equal(
+      matchPropertyRule(rule, [{ setName: 'Pset_BeamCommon', propertyName: 'Tragendes_Element', value: 'FALSE' }]),
+      false,
+    );
+  });
+
+  it('the same filter written with a LITERAL property set parses and adapts too', () => {
+    assert.deepEqual(
+      rulesOf('Pset_BeamCommon."Tragendes_Element" = TRUE'),
+      [prop('Pset_BeamCommon', 'Tragendes_Element', 'eq', 'TRUE')],
+    );
+  });
+});
+
+/**
+ * The AST's string/regex discriminator has to survive the adapter. Re-deriving
+ * it from the rule's text downstream is #4091's own defect class — matched the
+ * wrong thing, said nothing — moved one layer along.
+ */
+describe('selectorToFilterRules — a name or value keeps the kind the grammar gave it', () => {
+  it('a QUOTED name that looks like a regex stays literal, and matches nothing else', () => {
+    const [rule] = rulesOf('"/Wall/".FireRating=2HR');
+    assert.deepEqual(rule, prop('/Wall/', 'FireRating', 'eq', '2HR'));
+    assert.ok(rule && rule.kind === 'property');
+
+    // Quoting is the grammar's only way to ask for a literal name. Read as a
+    // pattern, `/Wall/` would swallow every set whose name contains "Wall".
+    assert.equal(
+      matchPropertyRule(rule, [{ setName: 'Pset_WallCommon', propertyName: 'FireRating', value: '2HR' }]),
+      false,
+    );
+    assert.equal(
+      matchPropertyRule(rule, [{ setName: '/Wall/', propertyName: 'FireRating', value: '2HR' }]),
+      true,
+    );
+  });
+
+  it('a regex VALUE containing an escaped slash keeps its slashes', () => {
+    const [rule] = rulesOf('Name=/\\/tmp\\//');
+    assert.deepEqual(rule, Rule.name('matches', '/tmp/', 'regex'));
+    assert.ok(rule && rule.kind === 'name');
+
+    // The source IS `/tmp/`, so the slashes are part of the pattern. Sniffed
+    // for delimiters it would compile to `tmp` and match every name with
+    // "tmp" anywhere in it.
+    assert.equal(stringOpMatches(rule.op, 'C:/tmp/x', rule.value, rule.valueKind), true);
+    assert.equal(stringOpMatches(rule.op, 'tmp', rule.value, rule.valueKind), false);
+  });
+
+  it('a regex property SET name is still a pattern, declared rather than spelled', () => {
+    const [rule] = rulesOf('/Pset_.*Common/.FireRating=2HR');
+    assert.deepEqual(rule, prop('Pset_.*Common', 'FireRating', 'eq', '2HR', { setNameKind: 'regex' }));
+    assert.ok(rule && rule.kind === 'property');
+    assert.equal(
+      matchPropertyRule(rule, [{ setName: 'Pset_SlabCommon', propertyName: 'FireRating', value: '2HR' }]),
+      true,
+    );
+  });
+
+  it('a quoted VALUE spelled like a regex is compared as text', () => {
+    const [rule] = rulesOf('Name="/D[0-9]/"');
+    assert.deepEqual(rule, Rule.name('eq', '/D[0-9]/'));
+    assert.ok(rule && rule.kind === 'name');
+    assert.equal(stringOpMatches(rule.op, '/D[0-9]/', rule.value, rule.valueKind), true);
+    assert.equal(stringOpMatches(rule.op, 'D01', rule.value, rule.valueKind), false);
   });
 });

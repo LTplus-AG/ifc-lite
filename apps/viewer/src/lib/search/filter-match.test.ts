@@ -64,6 +64,25 @@ describe('nameMatches — regex property-set / property names', () => {
   });
 });
 
+describe('nameMatches — the rule says which kind of name it holds', () => {
+  it("a 'literal' name is text even when it is spelled with slashes", () => {
+    // The selector grammar's only escape hatch for a literal name is quoting
+    // it, so `"/Wall/".FireRating` must not swallow Pset_WallCommon (#4091).
+    assert.strictEqual(nameMatches('/Wall/', 'Pset_WallCommon', 'literal'), false);
+    assert.strictEqual(nameMatches('/Wall/', '/Wall/', 'literal'), true);
+    // The same string with no declared kind is free text, and there the
+    // slashes are the chip editor's only way to say "pattern".
+    assert.strictEqual(nameMatches('/Wall/', 'Pset_WallCommon'), true);
+  });
+
+  it("a 'regex' name is a SOURCE, so it needs no slashes of its own", () => {
+    assert.strictEqual(nameMatches('Pset_.*Common', 'Pset_SlabCommon', 'regex'), true);
+    assert.strictEqual(nameMatches('Pset_.*Common', 'Qto_WallBaseQuantities', 'regex'), false);
+    // A source whose own text contains slashes keeps them.
+    assert.strictEqual(nameMatches('/Wall/', 'a/Wall/b', 'regex'), true);
+  });
+});
+
 describe('matchPropertyRule / matchQuantityRule read names through nameMatches', () => {
   const psetRows = [
     { setName: 'Pset_WallCommon', propertyName: 'FireRating', value: 'REI 60' },

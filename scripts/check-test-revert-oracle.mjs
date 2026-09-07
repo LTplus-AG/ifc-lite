@@ -89,6 +89,7 @@ import {
   UNOBSERVED,
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
+import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
 import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 
@@ -299,6 +300,14 @@ if (baseSha === headSha) die(EXIT_NOTHING_CHECKED, 'base and head are the same c
 const mergeBase = gitOrDie(['merge-base', baseSha, headSha]).trim();
 const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]));
 if (entries.length === 0) die(EXIT_NOTHING_CHECKED, 'the diff is empty; nothing to check.');
+
+if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries)) {
+  console.log(
+    '  NOT APPLICABLE: Dependabot changed dependency manifests/lockfiles only; ' +
+      'the normal build and test lanes provide the compatibility verdict.',
+  );
+  process.exit(0);
+}
 
 const { production, test: testEntries, ignored, warnings } = classifyDiff(entries);
 for (const w of warnings) console.log(`  WARNING: ${w}`);

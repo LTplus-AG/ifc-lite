@@ -1,5 +1,11 @@
 # @ifc-lite/codegen
 
+## 1.15.13
+
+### Patch Changes
+
+- [#4005](https://github.com/LTplus-AG/ifc-lite/pull/4005) [`2ac2d03`](https://github.com/LTplus-AG/ifc-lite/commit/2ac2d03b874bd9f58637c8c8d194b8f8a9e563af) Thanks [@louistrue](https://github.com/louistrue)! - Generate a canonical-first Rust type lookup without duplicating the finite match, preserving Unicode case normalization and unknown-type identifiers.
+
 ## 1.15.12
 
 ### Patch Changes

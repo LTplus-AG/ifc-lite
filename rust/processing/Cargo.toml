@@ -31,11 +31,11 @@ name = "csg_scaling_bench"
 required-features = ["csg-capture"]
 
 [dependencies]
-ifc-lite-core = { version = "9.3.0", path = "../core" }
+ifc-lite-core = { version = "9.4.0", path = "../core" }
 # CSG runs on the pure-Rust exact kernel inside ifc-lite-geometry on every
 # target (the Manifold C++ kernel was removed in the kernel consolidation —
 # see docs/architecture/geometry-pipeline.md).
-ifc-lite-geometry = { version = "9.3.0", path = "../geometry", default-features = false }
+ifc-lite-geometry = { version = "9.4.0", path = "../geometry", default-features = false }
 rayon = "1.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
@@ -48,7 +48,7 @@ tracing = "0.1"
 # deadlock regression here diagnoses a worker panic the same way the geometry
 # suites do instead of carrying its own copy of the two-arm match. Already a
 # normal dependency of this crate; the feature is test-only.
-ifc-lite-geometry = { version = "9.3.0", path = "../geometry", default-features = false, features = ["test-support"] }
+ifc-lite-geometry = { version = "9.4.0", path = "../geometry", default-features = false, features = ["test-support"] }
 
 [lints]
 workspace = true

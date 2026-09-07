@@ -1,5 +1,19 @@
 # @ifc-lite/viewer
 
+## 1.40.1
+
+### Patch Changes
+
+- [#3998](https://github.com/LTplus-AG/ifc-lite/pull/3998) [`7ad6dc1`](https://github.com/LTplus-AG/ifc-lite/commit/7ad6dc1dd7f347d9dc5c51ee2decab81519b79c0) Thanks [@louistrue](https://github.com/louistrue)! - Flip the BCF panel's arrows so import points into the panel and export points out.
+- Updated dependencies [[`8eb1c25`](https://github.com/LTplus-AG/ifc-lite/commit/8eb1c258fafc73bd9c83c7af95ba2feebf00fb34), [`a24b8cf`](https://github.com/LTplus-AG/ifc-lite/commit/a24b8cff9598e48c75c5f9fbebd036e72c09063e), [`ae886b4`](https://github.com/LTplus-AG/ifc-lite/commit/ae886b4d113a227826fdec535a3d66f6d963beb9), [`58504e7`](https://github.com/LTplus-AG/ifc-lite/commit/58504e7ad1cb5377e2ab48fe212a5d14998fccf9), [`9dd8ba1`](https://github.com/LTplus-AG/ifc-lite/commit/9dd8ba133f4d261b3ebc9d37fbf8962a63890b8c), [`2ac2d03`](https://github.com/LTplus-AG/ifc-lite/commit/2ac2d03b874bd9f58637c8c8d194b8f8a9e563af), [`90f4859`](https://github.com/LTplus-AG/ifc-lite/commit/90f4859b73f694114baec821721be498757b9c48), [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`85089b1`](https://github.com/LTplus-AG/ifc-lite/commit/85089b1ccbf43d7d9982cd8a2f7c31de8e2207df), [`dfc543b`](https://github.com/LTplus-AG/ifc-lite/commit/dfc543b58306b7e457628365e75afb18e1fcfde4), [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914), [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10), [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914), [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914), [`e409924`](https://github.com/LTplus-AG/ifc-lite/commit/e40992485dd2a0c845225be237c65fd12603d689), [`96ea5f0`](https://github.com/LTplus-AG/ifc-lite/commit/96ea5f08e4872cb50fe9eac7a9878ff607eb3f4a), [`5cbe8aa`](https://github.com/LTplus-AG/ifc-lite/commit/5cbe8aac32ee1b8871357c7dcd9c1154161322d5)]:
+  - @ifc-lite/bcf@3.0.1
+  - @ifc-lite/parser@5.2.0
+  - @ifc-lite/cache@3.3.0
+  - @ifc-lite/wasm@6.4.0
+  - @ifc-lite/geometry@4.3.0
+  - @ifc-lite/renderer@2.0.1
+  - @ifc-lite/ids@1.16.0
+
 ## 1.40.0
 
 ### Minor Changes

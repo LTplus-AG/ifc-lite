@@ -12,7 +12,15 @@ test('#4080: Dependabot-only dependency manifests and lockfiles use the normal t
   assert.equal(
     isDependabotDependencyOnly(
       'dependabot[bot]',
-      entries('package.json', 'packages/viewer/package.json', 'rust/geometry/Cargo.toml', 'pnpm-lock.yaml', 'Cargo.lock'),
+      entries(
+        'package.json',
+        'packages/viewer/package.json',
+        'rust/geometry/Cargo.toml',
+        'pnpm-lock.yaml',
+        'Cargo.lock',
+        'apps/server/Dockerfile',
+        'packages/collab-server/Dockerfile',
+      ),
     ),
     true,
   );
@@ -27,4 +35,5 @@ test('#4080: the exception cannot swallow authored or mixed changes', () => {
     false,
   );
   assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('packages/viewer/not-package.json')), false);
+  assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('apps/viewer/Dockerfile')), false);
 });

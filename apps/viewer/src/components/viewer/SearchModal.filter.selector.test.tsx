@@ -58,7 +58,7 @@ describe('SearchModalFilterSelector', () => {
     type(field(container), 'IfcWall, Name=/W.*/');
     click(applyButton(container));
 
-    assert.deepEqual(rulesInStore(), [Rule.ifcType(WALLS, 'in'), Rule.name('matches', 'W.*')]);
+    assert.deepEqual(rulesInStore(), [Rule.ifcType(WALLS, 'in'), Rule.name('matches', 'W.*', 'regex')]);
     assert.equal(useViewerStore.getState().searchFilter.combinator, 'AND');
     assert.equal(alertText(container), '');
   });

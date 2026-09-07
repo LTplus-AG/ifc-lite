@@ -57,7 +57,7 @@ describe('Filter tab — promoting the search bar query', () => {
     promote(container);
     assert.deepEqual(rules(), [
       Rule.ifcType(['IfcDoor', 'IfcDoorStandardCase'], 'in'),
-      Rule.name('matches', 'D[0-9]{2}'),
+      Rule.name('matches', 'D[0-9]{2}', 'regex'),
     ]);
   });
 

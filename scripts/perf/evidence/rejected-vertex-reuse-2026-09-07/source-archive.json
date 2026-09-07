@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "purpose": "Durable source archive of rejected experiment; evidence only",
+  "patchFormat": "git diff --binary --full-index --unified=0; apply using git apply --unidiff-zero",
+  "patches": [
+    {
+      "file": "measured-candidate.patch",
+      "from": "7509432ca345393a1533ade0287065391d3ce697",
+      "to": "d979e92e4cf12337c045704dc78ec5f3e38255f1",
+      "sha256": "44e4fefc397d7999f4a05fdfb9f7b29af886fc9bb1b3bf9b1cfba359219ae4bc"
+    },
+    {
+      "file": "test-followup.patch",
+      "from": "d979e92e4cf12337c045704dc78ec5f3e38255f1",
+      "to": "c0ef3e802e3dbaf48c13a09d64a3548bebf5b058",
+      "sha256": "c956157a4f4034f59bcbd22f3649f9ea56df232048164fde99db1bc296d3658c"
+    }
+  ],
+  "reconstructionChecks": [
+    {
+      "base": "7509432ca345393a1533ade0287065391d3ce697",
+      "measuredSource": "c0ef3e802e3dbaf48c13a09d64a3548bebf5b058",
+      "reconstructedTree": "3bc84febd693420c70b324b9c954280b38532859",
+      "measuredTree": "3bc84febd693420c70b324b9c954280b38532859",
+      "exactTreeMatch": true,
+      "remainingDifferences": [],
+      "applyCheck": true
+    },
+    {
+      "base": "e40992485dd2a0c845225be237c65fd12603d689",
+      "measuredSource": "2312cc56a365de6f1dc723bdc13f58125299fb61",
+      "reconstructedTree": "a97a4b5b0e4edff08829dd237243337200ffb9c8",
+      "measuredTree": "c256f0d8f2bce79a18df18d34c53e018390943ef",
+      "exactTreeMatch": false,
+      "remainingDifferences": [
+        "scripts/perf/evidence/yup-orientation-2026-09-07/README.md",
+        "scripts/perf/evidence/yup-orientation-2026-09-07/browser-qualification.json"
+      ],
+      "applyCheck": true
+    }
+  ],
+  "limits": [
+    "Native executable was built at c0ef after test-only follow-up to d979 production candidate. Both patches reconstruct that whole native source tree from public750.",
+    "Corrected browser2312 has identical candidate production and test source to the archived patches applied to public merged4058e409. Only the two listed orientation-evidence documents are absent from measured2312; no production source differs.",
+    "Temporary-index apply checks are not fresh builds or performance reruns; original binary hashes remain tied to their measured artifacts."
+  ]
+}

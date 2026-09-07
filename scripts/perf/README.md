@@ -817,6 +817,22 @@ and then removes it while preserving the child failure status.
 
 The IFC-to-viewer map `(x, y, z) -> (x, z, -y)` preserves orientation. Removing the flat binding's extra triangle reversal aligns its winding with transformed normals and the native/IFNS route; a viewer geometry-output revision prevents old cached winding from surviving the correction. Simplification and native Y-up export conversion must use the same orientation-preserving convention. This is a correctness change, with no throughput gain claimed. Canonical native geometry and its determinism manifests are unchanged; converted flat indices intentionally differ. An actual WASM boundary contract fails on the old runtime and passes on the correction. A canonical geometry fingerprint cannot certify downstream coordinate conversion, and adaptive batch boundaries can expose a route-specific defect by moving otherwise identical entities between flat and instanced transport.
 
+### Rejected: component parity BVH filtering (#4054)
+
+A private spike replaced linear component parity candidate scans with conservative
+BVH filtering while retaining the exact query endpoint and predicates. The cold-load
+screen did not establish a substantial corpus gain; a renderer-finalization timeout,
+teardown failures and unresolved raw geometry-channel differences prevent
+qualification. Do not land or repeat this version without a new mechanism or
+stronger evidence. A classification hotspot alone does not establish an end-to-end
+win, and no component-size threshold is justified by these observations. The
+[sanitized screen and limitations](evidence/component-parity-bvh-rejected-2026-09-07/README.md)
+retain the rejected result independently of constraint-recovery and type-ordinal work.
+
+### Rejected constraint-inventory vertex reuse (#4055)
+
+Reusing the CDT constraint inventory during refinement did not establish a substantial cold-load improvement across the expanded corpus. The native processing probe showed a narrow improvement, while the corrected-orientation browser screen remained mixed and failed unchanged raw geometry, spatial-query and browser-lifecycle gates. Exact instrumented producer output on one fixture did not waive downstream browser mismatches. Failed teardown attempts and later contamination-uncertain attempts remain recorded separately from justified clean recovery runs. Stop this experiment without landing the candidate; do not repeat it on a microbenchmark, normalized mesh comparison or selected-fixture timing alone. The [rejected experiment evidence](evidence/rejected-vertex-reuse-2026-09-07/README.md) records the complete disposition and provenance limits.
+
 ### Correctness prerequisite: server JSON cache roundtrips (#4064)
 
 Actual HTTP qualification exposed finite metadata coordinates changing during

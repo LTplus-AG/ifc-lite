@@ -1,0 +1,31 @@
+{
+  "protocol": 1,
+  "records": [
+    33745,
+    33745
+  ],
+  "canonicalExactDigestMatch": true,
+  "missingRecords": 0,
+  "addedRecords": 0,
+  "groupDifferences": [],
+  "missing": [],
+  "added": [],
+  "qualification": "Private instrumented native-payload diagnostic; original downstream geometry/spatial gate remains independent.",
+  "sourceSummarySha256": "146c3ef77ec578f506b3f6ed5a326d67ba8a99f2d99e95645fdb6df2743115c5",
+  "fixtureLabel": "downloads-08-263mb",
+  "limit": "Instrumented producer-output diagnosis only; exact native records do not waive any uninstrumented browser raw geometry or spatial gate and supply no timing evidence.",
+  "artifacts": {
+    "base": {
+      "sourceCommit": "7509432ca345393a1533ade0287065391d3ce697",
+      "privatePatchSha256": "173b2823b3b04f9559901fbed1aba229cbb4adf49218277682cb2f47a1aa085d",
+      "wasmSha256": "62f5a085c559a9b408851f52b364db424bb0108a4df5df5d8b67e6c25f9ea056",
+      "provenanceSha256": "df1ef7058274800caf716a44b9f2858377dc4bd0d430652f3c70db5d826e7d1f"
+    },
+    "candidate": {
+      "sourceCommit": "d979e92e4cf12337c045704dc78ec5f3e38255f1",
+      "privatePatchSha256": "173b2823b3b04f9559901fbed1aba229cbb4adf49218277682cb2f47a1aa085d",
+      "wasmSha256": "2c2ed26c8292606397b66cfa2f6dc0ce52dbc0eb384b6a748d3f7be0f2592811",
+      "provenanceSha256": "e559436a72ddfe727f6ccae95602fb1c1b9b40fe3cbae59b2839cf76f5c0653e"
+    }
+  }
+}

@@ -15,7 +15,7 @@
 import { useCallback, useState } from 'react';
 import { HelpCircle, Wand2 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
-import { parseSelector } from '@ifc-lite/query';
+import { parseSelector, type SelectorParseError } from '@ifc-lite/query';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -122,7 +122,7 @@ export function SearchModalFilterSelector() {
 }
 
 /** "…at character 7: …" plus the offending tail, so the caret is findable. */
-function describeParseError(query: string, error: { message: string; offset: number }): string {
+function describeParseError(query: string, error: SelectorParseError): string {
   const tail = query.slice(error.offset, error.offset + 24);
   const at = tail.length > 0 ? ` (at ${JSON.stringify(tail)})` : ' (at the end)';
   return `Character ${error.offset + 1}${at}: ${error.message}`;

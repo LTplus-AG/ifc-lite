@@ -30,7 +30,8 @@
 
 import type { SelectorParseError } from './ast.js';
 
-export type TokenKind =
+/** Lexeme classes. Not exported: `Token` is the only shape callers name. */
+type TokenKind =
   | 'word'
   | 'string'
   | 'regex'

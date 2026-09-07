@@ -107,6 +107,32 @@ fn kernel_error_count(router: &GeometryRouter) -> usize {
         .count()
 }
 
+/// Feature-agnostic count of "this open-topology union was flagged at all".
+///
+/// `record_topology_tear` (default build, and the `csg_manifold_gate`-only
+/// build, which never touches `topology_gate_reject`) records this as
+/// `KernelError`. Under `csg_topology_gate`, `union.rs`'s
+/// `accept_gates_reject` intercepts the SAME tear first and records
+/// `OpenTopologyRejected` instead, returning early WITHOUT also calling
+/// `record_topology_tear` (see the comment on that call site) — so under that
+/// feature `kernel_error_count` alone reads 0 even though the fixture tore
+/// exactly as designed. This control only needs to know the tear was
+/// recorded SOME way; which `BoolFailureReason` variant carries it is the
+/// accept-gate's choice, not this fixture's.
+fn open_topology_incident_count(router: &GeometryRouter) -> usize {
+    router
+        .take_csg_failures()
+        .values()
+        .flatten()
+        .filter(|f| {
+            matches!(
+                f.reason,
+                BoolFailureReason::KernelError(_) | BoolFailureReason::OpenTopologyRejected
+            )
+        })
+        .count()
+}
+
 fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
     let bits_sum: u64 = mesh
         .positions
@@ -116,9 +142,20 @@ fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
     (mesh.positions.len(), mesh.indices.len(), bits_sum)
 }
 
-/// Sanity control: with NO cache at all, the union really does record
-/// `KernelError` — otherwise every assertion below would trivially pass for
-/// the wrong reason (the geometry never tearing in the first place).
+/// Sanity control: with NO cache at all, the union really does get flagged as
+/// an open-topology accept — otherwise every assertion below would trivially
+/// pass for the wrong reason (the geometry never tearing in the first place).
+///
+/// This test is NOT `#[ignore]`d — the CI "CSG accept gates (feature builds)"
+/// job (`.github/workflows/test.yml`) runs `cargo test -p ifc-lite-geometry
+/// --features csg_topology_gate` (and the `csg_manifold_gate,csg_topology_gate`
+/// combination) directly, with no `--ignored`, so this control compiles and
+/// runs under those features too. It therefore reads
+/// `open_topology_incident_count` (either `BoolFailureReason::KernelError` or
+/// `OpenTopologyRejected`), not the narrower `kernel_error_count` the two
+/// `#[ignore]`d #4083 reproductions below use — those only ever run under the
+/// default feature set (`cargo test -p ifc-lite-geometry -- --ignored`),
+/// where `KernelError` is the only variant this fixture can produce.
 #[test]
 fn open_union_records_kernel_error_uncached() {
     let mut decoder = fresh_decoder(WALL_WITH_OPEN_UNION);
@@ -128,11 +165,12 @@ fn open_union_records_kernel_error_uncached() {
         .process_element(&entity, &mut decoder)
         .expect("mesh the open-union wall");
     assert!(!mesh.positions.is_empty(), "union must produce geometry, not an empty mesh");
-    let count = kernel_error_count(&router);
+    let count = open_topology_incident_count(&router);
     assert_eq!(
         count, 1,
-        "expected exactly one KernelError (open-topology accept) from the uncached union; \
-         if this is 0 the fixture no longer tears and the repro below is vacuous"
+        "expected exactly one open-topology accept (KernelError, or OpenTopologyRejected under \
+         csg_topology_gate) from the uncached union; if this is 0 the fixture no longer tears \
+         and the repro below is vacuous"
     );
 }
 

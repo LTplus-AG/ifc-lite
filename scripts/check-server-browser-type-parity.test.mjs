@@ -128,6 +128,11 @@ test('RELATIONSHIPS: RED when a type not on the allowlist is removed from the TS
   assert.match(out, /Rust server .* handles `IFCRELDEFINESBYPROPERTIES` but the TS parser .* does not/);
 });
 
+// The spatialTypes (#3965) and properties (#3963) allowlist entries used to
+// carry their own copies of this test. #3973 and #3971 closed those
+// divergences, the gate's stale-entry check demanded the entries go, and
+// suppression is concept-agnostic, so this test and the `deliberate` one
+// below cover the mechanism for every concept.
 test('RELATIONSHIPS: an allowlisted divergence (IFCRELCONNECTSELEMENTS) does not fail on its own', () => {
   // IFCRELNESTS/IFCRELASSIGNSTOGROUP(BYFACTOR)/IFCRELCONNECTSPATHELEMENTS
   // used to be the entries checked here, but #3969 merged and added all four
@@ -178,12 +183,6 @@ test('SPATIAL TYPES: RED when a type is removed from the Rust is_spatial_type ar
   assert.match(out, /TS parser .* handles `IFCBUILDINGSTOREY` but the Rust server .* does not/);
 });
 
-test('SPATIAL TYPES: an allowlisted divergence (IfcSpatialZone, #3965/#3973) does not fail on its own', () => {
-  assert.ok(Object.hasOwn(ALLOWLIST, 'spatialTypes:IFCSPATIALZONE'));
-  const { status, out } = runOn({});
-  assert.equal(status, 0, out);
-});
-
 test('SPATIAL TYPES: removing IfcSite from the TS enum list surfaces as a TS-side gap', () => {
   const ts = replaceOnce(real.TS_SPATIAL, '  IfcTypeEnum.IfcSite,\n', '');
   const { status, out } = runOn({ TS_SPATIAL: ts });
@@ -192,12 +191,6 @@ test('SPATIAL TYPES: removing IfcSite from the TS enum list surfaces as a TS-sid
 });
 
 // -- properties -----------------------------------------------------------
-
-test('PROPERTIES: an allowlisted divergence (IFCCOMPLEXPROPERTY, #3963/#3971) does not fail on its own', () => {
-  assert.ok(Object.hasOwn(ALLOWLIST, 'properties:IFCCOMPLEXPROPERTY'));
-  const { status, out } = runOn({});
-  assert.equal(status, 0, out);
-});
 
 test('PROPERTIES: RED when a value-shape arm is removed from the Rust match', () => {
   const rust = replaceOnce(

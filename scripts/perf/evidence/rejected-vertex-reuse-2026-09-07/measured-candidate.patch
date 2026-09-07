@@ -1,0 +1,406 @@
+diff --git a/rust/geometry/src/kernel/mod.rs b/rust/geometry/src/kernel/mod.rs
+index 8e333ab955fed1e872cd23f66a99d15c6150e28c..64f8c089974462139b0394979b9be5bb8bb7dfac 100644
+--- a/rust/geometry/src/kernel/mod.rs
++++ b/rust/geometry/src/kernel/mod.rs
+@@ -39,0 +40,2 @@ mod retriangulate_recover;
++mod retriangulate_vertices;
++mod retriangulate_enforce;
+diff --git a/rust/geometry/src/kernel/retriangulate.rs b/rust/geometry/src/kernel/retriangulate.rs
+index af7d31084198877c1317dfecfc84209c3a04d262..b804ee234c2f6472ae20c7a3af7b9e78c0e4583e 100644
+--- a/rust/geometry/src/kernel/retriangulate.rs
++++ b/rust/geometry/src/kernel/retriangulate.rs
+@@ -20 +20 @@ use super::predicates::{cmp_lex, orient2d, orient2d_any};
+-use super::retriangulate_recover::enforce_constraint;
++use super::retriangulate_enforce::enforce_constraint;
+@@ -600,8 +600,5 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
+-    // extra pass re-forces those; iteration is bounded — each pass is a no-op
+-    // (`recover_subsegment` early-returns on `edge_exists`) once every
+-    // constraint chain is present. The cap keeps a pathological ping-pong from
+-    // looping forever (the constraint set is crossing-free by construction —
+-    // seg×seg pre-pass for transversal constraints, a planar mesh complex for
+-    // coplanar ones — so non-convergence would leave at most an unrecovered
+-    // constraint, the pre-existing graceful-bail behavior). Purely a function
+-    // of exact predicates ⇒ deterministic, byte-identical native==wasm.
++    // extra pass re-forces those. Once every chain exists, recovery is a no-op.
++    // Four passes bound pathological ping-pong, preserving the graceful bail on
++    // an unrecovered constraint. Exact predicates keep native and WASM aligned.
++    // Recovery explicitly reports triangle replacement; failed attempts retain the inventory.
++    let mut vertices = None;
+@@ -621 +618,2 @@ pub fn triangulate(input: &RetriInput, interner: &mut Interner) -> Option<Mesh2d
+-            enforce_constraint(&mut mesh, interner, s, t);
++            let current = vertices.get_or_insert_with(|| super::retriangulate_vertices::ordered_vertices(&mesh.tris));
++            if enforce_constraint(&mut mesh, interner, s, t, current) { vertices = None; }
+diff --git a/rust/geometry/src/kernel/retriangulate_audit.rs b/rust/geometry/src/kernel/retriangulate_audit.rs
+index e1a201b03139cb12e949741c64be63768a01a2fb..b99f933845d1d64ca893ed675d0f24a127d3ddd0 100644
+--- a/rust/geometry/src/kernel/retriangulate_audit.rs
++++ b/rust/geometry/src/kernel/retriangulate_audit.rs
+@@ -23 +22,0 @@ use super::{DropAxis, Sign};
+-use std::collections::BTreeSet;
+@@ -27,8 +26,3 @@ use std::collections::BTreeSet;
+-fn chain_of(mesh: &Mesh2d, it: &Interner, axis: DropAxis, cs: Vid, ct: Vid) -> Vec<Vid> {
+-    let mut on_seg: Vec<Vid> = mesh
+-        .tris
+-        .iter()
+-        .flatten()
+-        .copied()
+-        .collect::<BTreeSet<Vid>>()
+-        .into_iter()
++fn chain_of(vertices: &[Vid], it: &Interner, axis: DropAxis, cs: Vid, ct: Vid) -> Vec<Vid> {
++    let mut on_seg: Vec<Vid> = vertices
++        .iter().copied()
+@@ -82,0 +77 @@ pub(crate) fn audit_and_recover(mesh: &mut Mesh2d, it: &Interner, canon: &Canoni
++    let mut vertices = None;
+@@ -84,3 +79,4 @@ pub(crate) fn audit_and_recover(mesh: &mut Mesh2d, it: &Interner, canon: &Canoni
+-        for w in chain_of(mesh, it, axis, cs, ct).windows(2) {
+-            if !edge_exists(mesh, w[0], w[1]) {
+-                recover_via_traversal(mesh, it, w[0], w[1]);
++        let current = vertices.get_or_insert_with(|| super::retriangulate_vertices::ordered_vertices(&mesh.tris));
++        for w in chain_of(current, it, axis, cs, ct).windows(2) {
++            if !edge_exists(mesh, w[0], w[1]) && recover_via_traversal(mesh, it, w[0], w[1]) {
++                vertices = None;
+@@ -89,0 +86 @@ pub(crate) fn audit_and_recover(mesh: &mut Mesh2d, it: &Interner, canon: &Canoni
++    let current = vertices.get_or_insert_with(|| super::retriangulate_vertices::ordered_vertices(&mesh.tris));
+@@ -91 +88 @@ pub(crate) fn audit_and_recover(mesh: &mut Mesh2d, it: &Interner, canon: &Canoni
+-        for w in chain_of(mesh, it, axis, cs, ct).windows(2) {
++        for w in chain_of(current, it, axis, cs, ct).windows(2) {
+diff --git a/rust/geometry/src/kernel/retriangulate_audit_tests.rs b/rust/geometry/src/kernel/retriangulate_audit_tests.rs
+index da30f7fbb378f6efa867b90af0129c01909eafa7..79aebaebabfcce6bc5a902849cecb570485c55a5 100644
+--- a/rust/geometry/src/kernel/retriangulate_audit_tests.rs
++++ b/rust/geometry/src/kernel/retriangulate_audit_tests.rs
+@@ -14 +14,2 @@ use super::super::retriangulate::{edge_exists, Canonical, Mesh2d, SubTri};
+-use super::super::retriangulate_recover::{enforce_constraint, recover_via_traversal};
++use super::super::retriangulate_recover::recover_via_traversal;
++use super::super::retriangulate_enforce::enforce_constraint;
+@@ -141 +142,2 @@ fn enforce_constraint_reports_audit_needed_when_recovery_fails() {
+-    enforce_constraint(&mut mesh, &it, a, b);
++    let vertices = super::super::retriangulate_vertices::ordered_vertices(&mesh.tris);
++    enforce_constraint(&mut mesh, &it, a, b, &vertices);
+diff --git a/rust/geometry/src/kernel/retriangulate_enforce.rs b/rust/geometry/src/kernel/retriangulate_enforce.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbc78e709eb04e7de4c32da0fd25e0d9a5078cf8
+--- /dev/null
++++ b/rust/geometry/src/kernel/retriangulate_enforce.rs
+@@ -0,0 +1,79 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! Constraint decomposition against an immutable current vertex inventory.
++use super::interner::{Interner, Vid};
++use super::retriangulate::{cmp_lex_v, coord2d_cached, edge_exists, lex_cmp, orient2d_v, Mesh2d, PREFILTER_MIN};
++use super::retriangulate_recover::{between, recover_subsegment, recover_via_traversal};
++use super::Sign;
++
++/// `verts` must contain the current mesh vertices in ascending unique Vid order.
++/// Returns true when recovery replaces triangles, invalidating that inventory.
++pub(crate) fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid, verts: &[Vid]) -> bool {
++    let axis = mesh.axis;
++    // Broadphase: a vertex collinear with AND between s,t must lie in the
++    // segment's 2D f64 AABB. Skip the (i1024, WASM-emulated) exact orient2d for
++    // vertices outside the widened box. Same conservative margin as the
++    // insert_point prefilter ⇒ a real on-segment vertex is never skipped on any
++    // platform, so `on_seg` — and the recovered topology — is byte-identical.
++    // This is the hot loop: enforce runs per constraint per fixed-point pass, so
++    // the unfiltered O(verts) exact scan is what stalls many-opening facades.
++    // Engaged only once the vertex set is large enough to amortise the cache.
++    let seg_box: Option<[f64; 4]> = if verts.len() > PREFILTER_MIN {
++        match (
++            coord2d_cached(it, s, axis, &mut mesh.coords),
++            coord2d_cached(it, t, axis, &mut mesh.coords),
++        ) {
++            (Some(s2), Some(t2)) => Some([
++                s2[0].min(t2[0]),
++                s2[1].min(t2[1]),
++                s2[0].max(t2[0]),
++                s2[1].max(t2[1]),
++            ]),
++            _ => None,
++        }
++    } else {
++        None
++    };
++    let mut on_seg: Vec<Vid> = verts
++        .iter().copied()
++        .filter(|&v| {
++            if v == s || v == t {
++                return false;
++            }
++            if let Some(bx) = seg_box {
++                if let Some(vc) = coord2d_cached(it, v, axis, &mut mesh.coords) {
++                    let mx = 1e-6 + vc[0].abs() * 1e-9;
++                    let my = 1e-6 + vc[1].abs() * 1e-9;
++                    if vc[0] < bx[0] - mx
++                        || vc[0] > bx[2] + mx
++                        || vc[1] < bx[1] - my
++                        || vc[1] > bx[3] + my
++                    {
++                        return false; // outside segment AABB ⇒ cannot lie on it
++                    }
++                }
++            }
++            orient2d_v(it, s, t, v, axis) == Sign::Zero && between(it, s, t, v)
++        })
++        .collect();
++    on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
++    if cmp_lex_v(it, s, t) == Sign::Positive {
++        on_seg.reverse(); // order from s toward t
++    }
++    let mut chain = vec![s];
++    chain.extend(on_seg);
++    chain.push(t);
++    let mut changed = false;
++    for w in chain.windows(2) {
++        changed |= recover_subsegment(mesh, it, w[0], w[1]);
++        // Robust fallback for the dense-face constraints the boundary-walk pocket
++        // split can't force (issue #098 V5C). Only runs on that failure, so the
++        // common path stays byte-identical.
++        if !edge_exists(mesh, w[0], w[1]) {
++            changed |= recover_via_traversal(mesh, it, w[0], w[1]);
++        }
++    }
++    changed
++}
+diff --git a/rust/geometry/src/kernel/retriangulate_recover.rs b/rust/geometry/src/kernel/retriangulate_recover.rs
+index 89b7df51917c1eede62b4d8234f2d3ec48bb2e78..9c425a1d4befeea1b19eddffd608351312556c8f 100644
+--- a/rust/geometry/src/kernel/retriangulate_recover.rs
++++ b/rust/geometry/src/kernel/retriangulate_recover.rs
+@@ -8 +8 @@
+-//! re-triangulation. [`enforce_constraint`] splits a constraint at the vertices
++//! re-triangulation. [`super::retriangulate_enforce::enforce_constraint`] splits a constraint at the vertices
+@@ -29,2 +29,2 @@ use std::collections::{BTreeMap, BTreeSet};
+-/// is a later increment.)
+-pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
++/// is a later increment.) Returns true only after replacing the triangle list.
++pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) -> bool {
+@@ -32 +32 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
+-        return;
++        return false;
+@@ -106 +106 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
+-        return;
++        return false;
+@@ -138 +138 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
+-            None => return,
++            None => return false,
+@@ -144 +144 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
+-        None => return,
++        None => return false,
+@@ -150 +150 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
+-            None => return,
++            None => return false,
+@@ -153 +153 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
+-            return; // cycle that never returns to the start — degenerate
++            return false; // cycle that never returns to the start — degenerate
+@@ -249,0 +250 @@ pub(crate) fn recover_subsegment(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vi
++    true
+@@ -260,3 +260,0 @@ pub(crate) fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
+-/// PHASE D — force constraint `(s,t)` to be a chain of edges: split it at any
+-/// mesh vertices lying strictly on it (collinear, ordered s→t), then recover each
+-/// sub-segment.
+@@ -274,2 +272,2 @@ pub(crate) fn between(it: &Interner, s: Vid, t: Vid, v: Vid) -> bool {
+-/// cover fails [`pocket_rebuild_valid`]. Only runs when the fast path failed.
+-pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) {
++/// cover fails [`pocket_rebuild_valid`]. Returns true after replacing triangles.
++pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b: Vid) -> bool {
+@@ -312 +310 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-        return;
++        return false;
+@@ -322 +320 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-            return; // crossed edge is a mesh boundary — degenerate, bail unchanged
++            return false; // crossed edge is a mesh boundary — degenerate, bail unchanged
+@@ -326 +324 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-            None => return,
++            None => return false,
+@@ -339 +337 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-            Sign::Zero => return, // apex on the line but not b — should've split; bail
++            Sign::Zero => return false, // apex on the line but not b — should've split; bail
+@@ -347 +345 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-            return; // safety: never loop past the triangle count
++            return false; // safety: never loop past the triangle count
+@@ -360 +358 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-        return;
++        return false;
+@@ -371,67 +369 @@ pub(crate) fn recover_via_traversal(mesh: &mut Mesh2d, it: &Interner, a: Vid, b:
+-}
+-
+-pub(crate) fn enforce_constraint(mesh: &mut Mesh2d, it: &Interner, s: Vid, t: Vid) {
+-    let axis = mesh.axis;
+-    let verts: BTreeSet<Vid> = mesh.tris.iter().flatten().copied().collect();
+-    // Broadphase: a vertex collinear with AND between s,t must lie in the
+-    // segment's 2D f64 AABB. Skip the (i1024, WASM-emulated) exact orient2d for
+-    // vertices outside the widened box. Same conservative margin as the
+-    // insert_point prefilter ⇒ a real on-segment vertex is never skipped on any
+-    // platform, so `on_seg` — and the recovered topology — is byte-identical.
+-    // This is the hot loop: enforce runs per constraint per fixed-point pass, so
+-    // the unfiltered O(verts) exact scan is what stalls many-opening facades.
+-    // Engaged only once the vertex set is large enough to amortise the cache.
+-    let seg_box: Option<[f64; 4]> = if verts.len() > PREFILTER_MIN {
+-        match (
+-            coord2d_cached(it, s, axis, &mut mesh.coords),
+-            coord2d_cached(it, t, axis, &mut mesh.coords),
+-        ) {
+-            (Some(s2), Some(t2)) => Some([
+-                s2[0].min(t2[0]),
+-                s2[1].min(t2[1]),
+-                s2[0].max(t2[0]),
+-                s2[1].max(t2[1]),
+-            ]),
+-            _ => None,
+-        }
+-    } else {
+-        None
+-    };
+-    let mut on_seg: Vec<Vid> = verts
+-        .into_iter()
+-        .filter(|&v| {
+-            if v == s || v == t {
+-                return false;
+-            }
+-            if let Some(bx) = seg_box {
+-                if let Some(vc) = coord2d_cached(it, v, axis, &mut mesh.coords) {
+-                    let mx = 1e-6 + vc[0].abs() * 1e-9;
+-                    let my = 1e-6 + vc[1].abs() * 1e-9;
+-                    if vc[0] < bx[0] - mx
+-                        || vc[0] > bx[2] + mx
+-                        || vc[1] < bx[1] - my
+-                        || vc[1] > bx[3] + my
+-                    {
+-                        return false; // outside segment AABB ⇒ cannot lie on it
+-                    }
+-                }
+-            }
+-            orient2d_v(it, s, t, v, axis) == Sign::Zero && between(it, s, t, v)
+-        })
+-        .collect();
+-    on_seg.sort_by(|&x, &y| lex_cmp(it, x, y));
+-    if cmp_lex_v(it, s, t) == Sign::Positive {
+-        on_seg.reverse(); // order from s toward t
+-    }
+-    let mut chain = vec![s];
+-    chain.extend(on_seg);
+-    chain.push(t);
+-    for w in chain.windows(2) {
+-        recover_subsegment(mesh, it, w[0], w[1]);
+-        // Robust fallback for the dense-face constraints the boundary-walk pocket
+-        // split can't force (issue #098 V5C). Only runs on that failure, so the
+-        // common path stays byte-identical.
+-        if !edge_exists(mesh, w[0], w[1]) {
+-            recover_via_traversal(mesh, it, w[0], w[1]);
+-        }
+-    }
++    true
+diff --git a/rust/geometry/src/kernel/retriangulate_recover_tests.rs b/rust/geometry/src/kernel/retriangulate_recover_tests.rs
+index 80f4f8d8e57911ddf781467bc065d87652a6aa07..7e84f0c329b36ac9509d7290fdf1614266cc3d84 100644
+--- a/rust/geometry/src/kernel/retriangulate_recover_tests.rs
++++ b/rust/geometry/src/kernel/retriangulate_recover_tests.rs
+@@ -113 +113,4 @@ fn traversal_recovers_figure8_pinch_with_exact_coverage() {
+-    recover_subsegment(&mut probe, &it, a, b);
++    // Inventory reuse requires false on every non-mutating bail.
++    let before_probe = probe.tris.clone();
++    assert!(!recover_subsegment(&mut probe, &it, a, b));
++    assert_eq!(probe.tris, before_probe);
+@@ -123 +126 @@ fn traversal_recovers_figure8_pinch_with_exact_coverage() {
+-    recover_via_traversal(&mut mesh, &it, a, b);
++    assert!(recover_via_traversal(&mut mesh, &it, a, b));
+@@ -164,0 +168,38 @@ fn traversal_recovers_figure8_pinch_with_exact_coverage() {
++
++#[test]
++fn vertex_inventory_reuse_matches_fresh_inventory_after_recovery_and_bails() {
++    use super::retriangulate_enforce::enforce_constraint;
++    use super::retriangulate_vertices::ordered_vertices;
++    let mut it = Interner::new();
++    let (mut cached, a, b) = pinch_mesh(&mut it);
++    let mut fresh = Mesh2d {
++        tris: cached.tris.clone(), axis: cached.axis, w0: cached.w0,
++        unrecovered: 0, audit_needed: false, coords: BTreeMap::new(),
++    };
++    let mut constraints = vec![(a, b), (b, a)];
++    constraints.extend(cached.tris.iter().map(|tri| (tri[0], tri[1])));
++    let mut inventory = None;
++    let mut mutations = 0;
++    let mut unchanged = 0;
++    for _ in 0..3 {
++        for &(s, t) in &constraints {
++            let before = cached.tris.clone();
++            let current = inventory.get_or_insert_with(|| ordered_vertices(&cached.tris));
++            assert_eq!(*current, ordered_vertices(&cached.tris));
++            let changed = enforce_constraint(&mut cached, &it, s, t, current);
++            if changed {
++                mutations += 1;
++                inventory = None;
++            } else {
++                unchanged += 1;
++                assert_eq!(cached.tris, before, "false must certify no triangle mutation");
++            }
++            let current = ordered_vertices(&fresh.tris);
++            enforce_constraint(&mut fresh, &it, s, t, &current);
++            assert_eq!(cached.tris, fresh.tris);
++            assert_eq!(cached.audit_needed, fresh.audit_needed);
++            assert_eq!(cached.unrecovered, fresh.unrecovered);
++        }
++    }
++    assert!(mutations > 0 && unchanged > 0, "exercise invalidation and reuse");
++}
+diff --git a/rust/geometry/src/kernel/retriangulate_vertices.rs b/rust/geometry/src/kernel/retriangulate_vertices.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..89ca1818cf6accbda6b8ba2108ec39b589220062
+--- /dev/null
++++ b/rust/geometry/src/kernel/retriangulate_vertices.rs
+@@ -0,0 +1,21 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! The current mesh's unique vertices in ascending Vid order.
++use super::interner::Vid;
++use super::retriangulate::SubTri;
++
++/// Preserve the former BTreeSet iteration sequence, including before callers
++/// choose their prefilter threshold. Equal integer IDs have no payload whose
++/// insertion order must survive, so an unstable sort is sufficient (#4055).
++pub(super) fn ordered_vertices(tris: &[SubTri]) -> Vec<Vid> {
++    let mut vertices: Vec<Vid> = tris.iter().flatten().copied().collect();
++    vertices.sort_unstable();
++    vertices.dedup();
++    vertices
++}
++
++#[cfg(test)]
++#[path = "retriangulate_vertices_tests.rs"]
++mod tests;
+diff --git a/rust/geometry/src/kernel/retriangulate_vertices_tests.rs b/rust/geometry/src/kernel/retriangulate_vertices_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2eedd06bbe138eb2576914d7101407f3657199a1
+--- /dev/null
++++ b/rust/geometry/src/kernel/retriangulate_vertices_tests.rs
+@@ -0,0 +1,31 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++use super::*;
++use std::collections::BTreeSet;
++
++#[test]
++fn issue_4055_vertex_sequence_matches_ordered_set_before_prefilter_selection() {
++    // Duplicated triangle corners must not inflate the threshold decision;
++    // permutation must not alter the subsequent exact-predicate call order.
++    for count in [0, 1, 2, 15, 16, 17, 31, 32, 33, 127, 512] {
++        let mut tris = Vec::new();
++        for i in 0..count {
++            let a = (i * 37 % count) as Vid;
++            let b = (i * 19 % count) as Vid;
++            tris.extend([[a, b, a], [b, b, a]]);
++        }
++        let expected: Vec<Vid> = tris.iter().flatten().copied()
++            .collect::<BTreeSet<_>>().into_iter().collect();
++        assert_eq!(ordered_vertices(&tris), expected);
++        tris.reverse();
++        assert_eq!(ordered_vertices(&tris), expected);
++    }
++}
++
++#[test]
++fn issue_4055_vertex_order_keeps_full_width_ids_and_degenerate_faces() {
++    let tris = [[Vid::MAX, 0, Vid::MAX], [1, 1, 0], [Vid::MAX - 1, 1, 0]];
++    assert_eq!(ordered_vertices(&tris), [0, 1, Vid::MAX - 1, Vid::MAX]);
++}

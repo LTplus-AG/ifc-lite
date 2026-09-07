@@ -460,6 +460,8 @@ jobs:
           name: build-output
           path: packages
       - name: Prove the changed tests observe the production change
+        env:
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
         run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
 
   typecheck:

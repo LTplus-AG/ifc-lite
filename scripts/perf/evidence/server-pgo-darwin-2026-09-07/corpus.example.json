@@ -1,0 +1,31 @@
+{
+  "expanded_corpus": [
+    {"label": "large-mep-1050", "path": "<LOCAL_FIXTURE_DIRECTORY>/large-mep-1050.ifc", "fixture_identity": {"sha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd", "bytes": 1050352883}},
+    {"label": "large-architecture-343", "path": "<LOCAL_FIXTURE_DIRECTORY>/large-architecture-343.ifc", "fixture_identity": {"sha256": "e91ddbbd672bbde946af14631de4c732f0cf8a7cfae5dbbf06fbeab03b5c46df", "bytes": 342657851}},
+    {"label": "large-csg-177", "path": "<LOCAL_FIXTURE_DIRECTORY>/large-csg-177.ifc", "fixture_identity": {"sha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8", "bytes": 177465622}},
+    {"label": "small-haus", "path": "<LOCAL_FIXTURE_DIRECTORY>/small-haus.ifc", "fixture_identity": {"sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d", "bytes": 2526544}},
+    {"label": "csg-129", "path": "<LOCAL_FIXTURE_DIRECTORY>/csg-129.ifc", "fixture_identity": {"sha256": "ffdfa9a91ac6a6c301d7da0d7861dfbc3958ceb55098c143a560468702642131", "bytes": 12030684}},
+    {"label": "large-sanitary-ifc4-218", "path": "<LOCAL_FIXTURE_DIRECTORY>/large-sanitary-ifc4-218.ifc", "fixture_identity": {"sha256": "fbd0b9222cd8af49aee9c14e41f83ff87a4bdb41052eefdbdd9a774d05189482", "bytes": 217904990}},
+    {"label": "large-architecture-192", "path": "<LOCAL_FIXTURE_DIRECTORY>/large-architecture-192.ifc", "fixture_identity": {"sha256": "d0a421e90aae06d9ea93b31d04fa7d6a076864afe3a759a72008a13b844868a5", "bytes": 192239836}},
+    {"label": "services-73", "path": "<LOCAL_FIXTURE_DIRECTORY>/services-73.ifc", "fixture_identity": {"sha256": "33eb10aeeaa2db809504256a9a010dded6db3b99e37040bde8b9a383cf7b0fd2", "bytes": 72893787}},
+    {"label": "structural-tekla-27", "path": "<LOCAL_FIXTURE_DIRECTORY>/structural-tekla-27.ifc", "fixture_identity": {"sha256": "5f7423ef7a7c7db1a56e214b802edc9122315d32e7c3d43a4f3ebbeae5979e76", "bytes": 26870837}},
+    {"label": "bridge-ifc4x2-15", "path": "<LOCAL_FIXTURE_DIRECTORY>/bridge-ifc4x2-15.ifc", "fixture_identity": {"sha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57", "bytes": 15171642}},
+    {"label": "school-54", "path": "<LOCAL_FIXTURE_DIRECTORY>/school-54.ifc", "fixture_identity": {"sha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121", "bytes": 56359451}},
+    {"label": "downloads-01-1259mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-01-1259mb.ifc", "fixture_identity": {"sha256": "887c68571ac721e40c9c0d98a5ca889c3b8ad037a1012c06314a674a798ddc9a", "bytes": 1259429221}},
+    {"label": "downloads-02-1050mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-02-1050mb.ifc", "fixture_identity": {"sha256": "b381f5b684e3a17753cfe76d444d3b13436ca3cd9e48a77c8078a2874eb548c1", "bytes": 1050352901}},
+    {"label": "downloads-04-1034mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-04-1034mb.ifc", "fixture_identity": {"sha256": "3590dabb008a4d86c1f1ef5eea19b4b5d2b8f18fe63cb57380dba3f4d224ecd2", "bytes": 1034356508}},
+    {"label": "downloads-05-1034mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-05-1034mb.ifc", "fixture_identity": {"sha256": "9f07f4a05fd0e0ba90e2914b4984d205d7b38ae800d972b65b3cdc611d6e7b40", "bytes": 1033537204}},
+    {"label": "downloads-06-511mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-06-511mb.ifc", "fixture_identity": {"sha256": "f967b4692369828196fb222a7abb893659482356290da034ee53a61530f3498f", "bytes": 510506767}},
+    {"label": "downloads-07-283mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-07-283mb.ifc", "fixture_identity": {"sha256": "9fb76969ef03ec593580040c68f8e360eb7ead9033d34a31311d35711eddc548", "bytes": 282818289}},
+    {"label": "downloads-08-263mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-08-263mb.ifc", "fixture_identity": {"sha256": "40b56e7dcc907ebd6b7987f5412abf8564bbfcbfbcd1638632bbc2e5243ea820", "bytes": 262557714}},
+    {"label": "downloads-12-13mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-12-13mb.ifc", "fixture_identity": {"sha256": "2ac970ce065ecac4e0c9e5f453a257169e90d0067f419b7e33533a64ef837880", "bytes": 13003205}},
+    {"label": "downloads-13-13mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-13-13mb.ifc", "fixture_identity": {"sha256": "8b5fdab886578e647abf4368735d38ea278b25834c68e8919818fd0c5e271f4b", "bytes": 13003203}},
+    {"label": "downloads-14-11mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-14-11mb.ifc", "fixture_identity": {"sha256": "8f65ccbb6308bbf6c79f8f7caa9babc4a47f2f242ee3fef77924a22cfbbd334d", "bytes": 10621837}},
+    {"label": "downloads-15-5mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-15-5mb.ifc", "fixture_identity": {"sha256": "2d7121d9b241cb668595a35d9c0ad3dcab5b88b35e7fb4edbfa04a33d1b5087c", "bytes": 4535696}},
+    {"label": "downloads-16-1mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-16-1mb.ifc", "fixture_identity": {"sha256": "ee4660df822389aaefe4295ada4722943aea963ca05a652baf2fd356854c4359", "bytes": 1097001}},
+    {"label": "downloads-17-1mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-17-1mb.ifc", "fixture_identity": {"sha256": "6b1dc56693fd9de0434508d449d89790edcd7217267257e596badaf115a98e44", "bytes": 849030}},
+    {"label": "downloads-18-1mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-18-1mb.ifc", "fixture_identity": {"sha256": "c9cd25d631c55f9d40cf304c6110f7b151652857879accf25960c73790dea53f", "bytes": 625337}},
+    {"label": "downloads-19-0mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-19-0mb.ifc", "fixture_identity": {"sha256": "ebe529f72af160a2c7cbfb1655082edf169266b632bb35bae3f7211980ad82f7", "bytes": 159982}},
+    {"label": "downloads-20-0mb", "path": "<LOCAL_FIXTURE_DIRECTORY>/downloads-20-0mb.ifc", "fixture_identity": {"sha256": "0f76dd3c30a6defd0698b70f3609ba46225202eca024fc781bb358d7b711ac1d", "bytes": 114592}}
+  ]
+}

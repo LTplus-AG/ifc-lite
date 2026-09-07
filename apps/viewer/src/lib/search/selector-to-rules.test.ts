@@ -294,6 +294,16 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
     assert.match(out.unsupported[0] ?? '', /IfcWaall/);
   });
 
+  it('an unknown class reads back with the "!" the user typed', () => {
+    // Every other entry quotes `filter.text`, the exact source substring. This
+    // one quoted `filter.name`, so `! IfcWaall` came back without its "!" and
+    // the reader could not tell which of two terms was rejected.
+    const out = adapt('IfcWall, ! IfcWaall');
+    assert.deepEqual(out.rules, [Rule.ifcType(WALLS, 'in')]);
+    assert.equal(out.unsupported.length, 1);
+    assert.ok(out.unsupported[0]?.startsWith('"! IfcWaall"'), out.unsupported[0]);
+  });
+
   it('parent= and query:', () => {
     assert.match(reported('parent=Foo')[0] ?? '', /parent=Foo/);
     assert.match(reported('query:types.count=0')[0] ?? '', /query:types\.count=0/);

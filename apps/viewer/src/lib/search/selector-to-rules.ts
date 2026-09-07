@@ -95,7 +95,7 @@ export function selectorToFilterRules(
   for (const filter of group?.filters ?? []) {
     if (filter.kind === 'class') {
       if (!isKnownType(filter.name)) {
-        unsupported.push(`${quote(filter.name)}: not an entity name in IFC2X3, IFC4 or IFC4X3`);
+        unsupported.push(`${quote(filter.text)}: not an entity name in IFC2X3, IFC4 or IFC4X3`);
         continue;
       }
       (filter.negate ? classSubtracts : classAdds).push(filter.name);

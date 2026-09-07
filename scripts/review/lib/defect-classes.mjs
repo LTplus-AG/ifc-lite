@@ -188,14 +188,18 @@ export function checkClassPass({ response, input, warn = (m) => console.log(m) }
   // demanding a citation makes that claim truer. Citations are asked for in
   // rubric.md and welcomed here; they are not the price of answering.
   const applicable = applicableClasses(input);
+  // EVERY WAVE-OFF, NOT THE FIRST. Failing on the first one made the retry
+  // learn a single class per attempt: it fixed that one and stepped on the
+  // next, which is why every double-CLASS_PASS_INCOMPLETE red named a
+  // different class the second time. One message, all of them, one retry.
+  const wavedOff = [];
   for (const [cls, site] of applicable) {
     const row = seen.get(cls);
     const where = site.path ? `\`${site.path}\`${site.line ? `:${site.line}` : ''}` : 'this diff';
     if (row.verdict === 'not-applicable') {
-      fail(
+      wavedOff.push(
         `\`${cls}\` was declared not-applicable, but ${where} makes it applicable ` +
-          `(${JSON.stringify(String(site.text).slice(0, 90))}). Walk it and report \`clear\`, ` +
-          'or report the defect.',
+          `(${JSON.stringify(String(site.text).slice(0, 90))}).`,
       );
     }
     // A CITATION THAT DOES NOT RESOLVE IS LOGGED, NOT REFUSED (#3848 round 4).
@@ -232,6 +236,13 @@ export function checkClassPass({ response, input, warn = (m) => console.log(m) }
           'so this is a note and not a refusal; cite an ADDED line, a sibling excerpt, or nothing.',
       );
     }
+  }
+
+  if (wavedOff.length > 0) {
+    fail(
+      `${wavedOff.length} class(es) the harness found a site for were declared not-applicable. ` +
+        `Walk each and report \`clear\`, or report the defect:\n  ${wavedOff.join('\n  ')}`,
+    );
   }
 }
 

@@ -63,9 +63,12 @@ behaviour in the diff and against each sibling excerpt you were given.
   class, not refused. Give a real one or give none, and do not invent a
   `path:line` to fill the space.
 - `not-applicable`: this diff cannot carry the class at all. Allowed only where
-  the harness agrees. It runs its own cheap check per class, and if it can see a
-  site in the diff, `not-applicable` is refused and names the file that made the
-  class apply.
+  the harness agrees. IT TELLS YOU WHICH ONES THOSE ARE: the prompt lists every
+  class it found a site for, with that site. For a listed class `not-applicable`
+  is refused, so answer `clear` or report the defect. The listed sites are
+  lexical matches, not confirmed defects — several are false fires, and `clear`
+  is the right answer for those. Every class NOT on that list may still be
+  `not-applicable` with a real reason.
 
 Reasons must differ from each other, because the questions differ. Twelve copies
 of one sentence is one sentence. `no such code in diff (1)`, `(2)`, `(3)` and

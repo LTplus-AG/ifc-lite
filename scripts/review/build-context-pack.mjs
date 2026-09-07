@@ -41,6 +41,8 @@ import { execFileSync } from 'node:child_process';
 import { renderSiblingRow, SIBLING_ROW_JOIN_MARGIN } from './sibling-row.mjs';
 import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
 import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
+import { applicabilityReserve } from './run-reviewer.mjs';
+import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
 
 /**
  * What the PR description may claim before the siblings compete for the rest.
@@ -147,6 +149,15 @@ export function promptEnvelopeBytes(input) {
   // reserving a few bytes is free while under-reserving is the whole defect.
   const countDigits = (n) => 2 * Buffer.byteLength(String(n), 'utf8');
   let total = PROMPT_BASE_OVERHEAD_BYTES;
+  // THE APPLICABILITY DISCLOSURE IS RENDERED INTO THE PROMPT AND SO IS CHARGED
+  // HERE. An upper bound rather than the exact set, because which classes fire
+  // is not known until the file set is final: at most one row per class, each
+  // at most the longest path present. Over-reserving is free; the undercharge
+  // is the whole defect this function exists to have stopped.
+  total += applicabilityReserve(
+    (input?.files ?? []).map((f) => f.path),
+    DEFECT_CLASSES.length,
+  );
   for (const f of input?.files ?? []) {
     const path = String(f?.path ?? '');
     total += keptRowCharge(path);

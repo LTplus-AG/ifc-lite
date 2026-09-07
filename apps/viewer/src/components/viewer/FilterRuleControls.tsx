@@ -24,7 +24,7 @@ import {
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 import { Rule, type Combinator, type FilterRule } from '@/lib/search/filter-rules';
-import { RULE_KIND_LABEL } from './SearchModal.filter.editors';
+import { RULE_KIND_LABEL } from './filter-rule-labels';
 
 export function CombinatorToggle({
   value,
@@ -91,6 +91,7 @@ export function AddRuleMenu({
  */
 export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
   switch (kind) {
+    case 'model':          return Rule.model([], 'in');
     case 'storey':         return Rule.storey([], 'in');
     case 'ifcType':        return Rule.ifcType([], 'in');
     case 'predefinedType': return Rule.predefinedType([], 'in');

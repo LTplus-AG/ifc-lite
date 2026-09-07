@@ -103,7 +103,7 @@ import {
 // copies held together by prose drifted once already: a constant that charged
 // a kept file's path once, where the prompt spends it twice, declared a
 // 600-file long-path diff "fits" 8,476 bytes over the ceiling.
-import { keptRowCharge, unreviewableRowCharge } from './run-reviewer.mjs';
+import { keptRowCharge, unreviewableRowCharge, applicabilityReserve } from './run-reviewer.mjs';
 import { gh, GhError } from '../lib/gh.mjs';
 import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 // The gate's pager, not a second copy of it. An earlier version here duplicated
@@ -112,6 +112,7 @@ import { unifiedDiffLineKind } from '../lib/unified-diff.mjs';
 // refused as truncated -- the permanent unclearable refusal pageAll's own
 // comment says was moved rather than fixed.
 import { pageAll } from '../check-review-posted.mjs';
+import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
 
 /**
  * 600 KB of patch text; the largest PR observed on this repo is ~427 KB. This is
@@ -396,6 +397,11 @@ export function fitFilesToPrompt(candidates, unreviewable) {
   // copies would drift apart.
   const omittedCharge = (path) => unreviewableRowCharge({ path, reason: OMITTED_FOR_PROMPT_REASON });
   let base = MAX_PROMPT_BYTES - PROMPT_BASE_OVERHEAD_BYTES;
+  // The applicability disclosure is rendered into the prompt too, so the fit
+  // must reserve it or a "fits" verdict is short by up to one row per defect
+  // class. Bounded by the longest CANDIDATE path: admitting fewer files can
+  // only shorten the real disclosure, never lengthen it.
+  base -= applicabilityReserve(candidates.map((c) => c.path), DEFECT_CLASSES.length);
   for (const u of unreviewable) base -= unreviewableRowCharge(u);
 
   const sized = candidates.map((c) => ({

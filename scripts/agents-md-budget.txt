@@ -25,7 +25,7 @@
 #
 # Regenerate: node scripts/check-agents-md-size.mjs --update
 # A raise:    node scripts/check-agents-md-size.mjs --update --allow-raise
- 47112 AGENTS.md
+ 46951 AGENTS.md
   5430 apps/viewer/AGENTS.md
   1638 packages/collab-server/AGENTS.md
   2013 packages/collab/AGENTS.md

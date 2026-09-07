@@ -127,13 +127,13 @@ test('the harness does not leak fixture findings into the ambient GITHUB_STEP_SU
 
 test('fails closed rather than silently passing when the state file is not an array', () => {
   const { code, output } = run({ not: 'an array' });
-  assert.equal(code, 1, output);
+  assert.equal(code, 2, output);
   assert.match(output, /BAD_INPUT/);
 });
 
 test('requires --repo or --state-file', () => {
   const r = spawnSync(process.execPath, [GATE], { encoding: 'utf8', env: { ...process.env, GITHUB_REPOSITORY: '' } });
-  assert.equal(r.status, 1);
+  assert.equal(r.status, 2);
   assert.match(`${r.stdout}${r.stderr}`, /NO_REPO/);
 });
 
@@ -229,8 +229,44 @@ test('fails closed rather than guessing a remedy when `baseRefName` is absent', 
   const { code, output } = run([
     { number: 3411, mergeable: 'CONFLICTING', mergeStateStatus: 'DIRTY', statusCheckRollup: [] },
   ]);
-  assert.equal(code, 1, output);
+  assert.equal(code, 2, output);
   assert.match(output, /NO_BASE_REF/);
+});
+
+// ── 1 MEANS "LOOKED AND FOUND"; 2 MEANS "COULD NOT LOOK" ──────────────────
+//
+// The whole point of the split. A caller acts on the finding -- it labels the
+// PRs the scan named and CLEARS the label from every PR it did not -- so
+// conflating the two lets a transient HTTP 502 read as "no PR is silent any
+// more" and strip the label off PRs that are still broken. Pinned in both
+// directions, because a split that only ever produces one of the codes is not
+// a split.
+test('exit 1 is a FINDING and exit 2 is a FAILURE TO LOOK, and they never collide', () => {
+  const finding = run([
+    { number: 1, baseRefName: 'feature/x', mergeable: 'MERGEABLE', mergeStateStatus: 'CLEAN', statusCheckRollup: [] },
+  ]);
+  assert.equal(finding.code, 1, finding.output);
+  assert.match(finding.output, /silent-prs=1/);
+
+  const cannotLook = run({ not: 'an array' });
+  assert.equal(cannotLook.code, 2, cannotLook.output);
+  // And it must NOT publish a silent set, because it never computed one. An
+  // empty `silent-prs=` here would be read as "nothing is silent".
+  assert.doesNotMatch(cannotLook.output, /silent-prs=/);
+});
+
+// ── THE MACHINE LINE IS THE SET THE REPORT CALLS SILENT ───────────────────
+//
+// Not the human lines. Screen-scraping those also picked up the
+// `unknownAdvisory` block -- PRs deliberately excluded from `silent` because
+// they re-check themselves -- so a freshly opened PR was labelled and
+// unlabelled every 30 minutes.
+test('silent-prs excludes the advisory UNKNOWN class the report prints separately', () => {
+  const { code, output } = run([
+    { number: 77, baseRefName: 'main', mergeable: 'UNKNOWN', mergeStateStatus: 'UNKNOWN', statusCheckRollup: [] },
+  ]);
+  assert.equal(code, 0, output);
+  assert.match(output, /silent-prs=$/m);
 });
 
 // ------------------------------------- a matrix job skipped BEFORE expanding (#3584 shape)

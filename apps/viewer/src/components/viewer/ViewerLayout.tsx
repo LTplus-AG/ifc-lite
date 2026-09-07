@@ -15,6 +15,7 @@ import { StatusBar } from './StatusBar';
 import { ViewportContainer } from './ViewportContainer';
 import { KeyboardShortcutsDialog, useKeyboardShortcutsDialog, type InfoDialogTab } from './KeyboardShortcutsDialog';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { useActionLogger } from '@/hooks/useActionLogger';
 import { usePrivacyDisclosure } from '@/hooks/usePrivacyDisclosure';
 import { isSafeMode } from '@/lib/safe-mode';
@@ -72,6 +73,7 @@ function BottomPanelGrip({ id }: { id: 'gantt' | 'script' | 'lists' }) {
 }
 
 export function ViewerLayout() {
+  useSearchIndex();
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
   // ⌘D / Ctrl+D to duplicate the current selection.

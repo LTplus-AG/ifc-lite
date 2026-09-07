@@ -34,6 +34,7 @@ export interface ResolveClashSetFilterOptions {
 /** The subset of a loaded model this module needs. */
 export interface ClashFilterModel {
   id: string;
+  filterIdentity?: string;
   store: IfcDataStore | null;
 }
 

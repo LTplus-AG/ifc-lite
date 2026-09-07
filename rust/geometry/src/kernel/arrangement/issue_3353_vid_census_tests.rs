@@ -228,7 +228,66 @@
 //! test starts failing, that is the expected trigger to re-diagnose BOTH
 //! files together, not to loosen either assertion.
 //!
-//! Refs #3353
+//! ## Issue #3915: is this a vertex-IDENTITY defect? (measured, ruled out)
+//!
+//! #3915 asked whether the interner should be CANONICALIZING near-coincident
+//! constraint-intersection vertices during per-face retriangulation, on the
+//! theory that this run interns three separate Vids for what should be one
+//! shared corner. Instrumented directly (`kernel::interner::Interner::intern`
+//! called from THIS reproduction, positions read via `to_f64_pt`), that
+//! theory does not hold:
+//!
+//! ```text
+//! Vid 10 = [-1.7237091064453125, -0.3524627685546875, 1.6377716064453125]
+//! Vid 11 = [ 1.1296997070312500, -0.3524627685546875, 1.6377716064453125]
+//! Vid 13 = [-1.6740500545616240, -0.2988684570207063,  1.6377716064453125]
+//! Vid 14 = [-1.6739785390123234, -0.2989121991848813,  1.6377716064453125]
+//! Vid 17 = [-0.7426012079060830,  0.0489949180186103,  1.6377716064453125]
+//! dist(10,11) = 2.853  dist(10,17) = 1.060  dist(11,17) = 1.915
+//! ```
+//!
+//! Vids 10, 11 and 17 are ordinary A-face vertices, none within a metre of
+//! either of the others — not a near-coincident trio. The ONLY near-coincident
+//! pair in this arrangement is Vid 13 / Vid 14, 83.85 um apart (matches the
+//! issue's own headline measurement exactly), and there are two of them, not
+//! three. So there is no third redundant Vid for an intern-time canonical form
+//! to fold away.
+//!
+//! What edge (13,14) actually is: a hairline retriangulation seam on A's
+//! face, correctly used by TWO real triangles — `kept[11]=[13,10,14]`
+//! (`A[15]`, kept by the ray cast) and `kept[56]=[41,13,14]` (`B[18]`, also
+//! kept by the ray cast) — one sliver per operand, each a legitimate
+//! consequence of where that operand's OWN retriangulation happened to place
+//! its constraint split. Both slivers share the tiny edge because they meet
+//! along it; neither vertex is spurious, and merging Vid 13 into Vid 14 (or
+//! vice versa) would collapse both real slivers, not remove a duplicate.
+//!
+//! The edge's multiplicity is 3, not 2, because a THIRD triangle also claims
+//! it: `kept[16]=[17,13,14]` (`A[22]`), the needle already named above as
+//! "the whole defect" — decided by regime 1 overriding a ray cast (`R3
+//! inside_b == true`) that had already rejected it correctly. That is a
+//! triangle-ACCEPTANCE defect in `classify.rs`, not a vertex-IDENTITY one:
+//! there is no pair of "independently-derived exact intersection points
+//! denoting one logical corner" here to canonicalize. Vid 13 and Vid 14 are
+//! two distinct, correctly-derived corners; the bug is that a third,
+//! wrongly-accepted triangle happens to use the tiny edge between them.
+//!
+//! The interner itself is exonerated by its own contract (`kernel::interner`
+//! module doc): "Two points that are EXACTLY coincident (`cmp_lex == Zero`)
+//! get the SAME `Vid`, regardless of construction (LPI vs TPI vs Explicit) or
+//! insertion order" — already construction-independent, already exercised by
+//! `Interner::tests::coincident_points_weld_to_one_vid` (an LPI and a TPI at
+//! the same point weld today). Vid 13 and Vid 14 do NOT collide under that
+//! rule because they are not the same exact rational point; inventing a
+//! second, coarser identity criterion to fold them together would need a
+//! distance threshold, which is exactly the "coincidence criterion" the
+//! "What was tried against that" section above already measured — at the
+//! classification layer, framed as a parent-plane/parent-flush gate rather
+//! than a vertex-merge — and found to regress 20 to 39 golden corpus hosts.
+//! Moving the identical threshold decision into the interner does not avoid
+//! that cost; it relocates it. No canonicalization is proposed here.
+//!
+//! Refs #3353, #3915
 
 use super::boolean_vids;
 use crate::kernel::arrangement::{arrange, Arrangement, BoolOp, Tri};

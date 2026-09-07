@@ -67,21 +67,9 @@ export interface GeometryHead {
   chunks: GeometryChunkInfo[];
 }
 
-// ─── codec ────────────────────────────────────────────────────────────────
-
-async function pipeThrough(data: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
-  // Copy into a fresh standalone buffer: `data` may be a subarray view, and
-  // Response/Blob would otherwise serialize the WHOLE backing buffer.
-  const standalone = new Uint8Array(data);
-  const out = await new Response(new Blob([standalone]).stream().pipeThrough(stream)).arrayBuffer();
-  return new Uint8Array(out);
-}
-
-export const deflateRaw = (data: Uint8Array): Promise<Uint8Array> =>
-  pipeThrough(data, new CompressionStream('deflate-raw'));
-
-export const inflateRaw = (data: Uint8Array): Promise<Uint8Array> =>
-  pipeThrough(data, new DecompressionStream('deflate-raw'));
+import { chooseStoredGeometryChunk, inflateRaw } from './geometry-codec.js';
+import { GeometryCompressionSession } from '../workers/geometry-compression-client.js';
+export { deflateRaw, inflateRaw } from './geometry-codec.js';
 
 // ─── write ────────────────────────────────────────────────────────────────
 
@@ -159,7 +147,7 @@ function chunkAabb(meshes: MeshData[]): { min: [number, number, number]; max: [n
 export async function buildGeometrySectionV13(
   meshes: MeshData[],
   coordinateInfo: CoordinateInfo,
-  options: { compress?: boolean } = {}
+  options: { compress?: boolean; compressInWorker?: boolean } = {}
 ): Promise<ArrayBuffer> {
   const compress = options.compress ?? true;
   const { validMeshes, actualTotalVertices, actualTotalTriangles } = validateMeshes(meshes);
@@ -178,33 +166,37 @@ export async function buildGeometrySectionV13(
     flags: GeometryChunkFlags;
     aabb: { min: [number, number, number]; max: [number, number, number] };
   };
+  const session = options.compressInWorker ? new GeometryCompressionSession() : undefined;
   const buildRecord = async (group: MeshData[]): Promise<BuiltRecord> => {
     const w = new BufferWriter(64 * 1024);
     for (const mesh of group) writeMeshRecord(w, mesh);
     const raw = new Uint8Array(w.build());
+    // Worker compression transfers raw.buffer; save this before detachment.
+    const uncompressedLength = raw.byteLength;
     let bytes: Uint8Array<ArrayBufferLike> = raw;
     let flags = GeometryChunkFlags.None;
-    if (compress && raw.byteLength >= GEOMETRY_CHUNK_COMPRESS_MIN_BYTES) {
-      const deflated = await deflateRaw(raw);
-      // Keep the raw record when compression doesn't pay (already-dense data).
-      if (deflated.byteLength < raw.byteLength) {
-        bytes = deflated;
-        flags = GeometryChunkFlags.DeflateRaw;
-      }
+    if (compress && uncompressedLength >= GEOMETRY_CHUNK_COMPRESS_MIN_BYTES) {
+      const stored = await (session ? session.compress(raw) : chooseStoredGeometryChunk(raw));
+      bytes = stored.bytes;
+      if (stored.compressed) flags = GeometryChunkFlags.DeflateRaw;
     }
     return {
       bytes,
-      uncompressedLength: raw.byteLength,
+      uncompressedLength,
       meshCount: group.length,
       flags,
       aabb: chunkAabb(group),
     };
   };
   const records: BuiltRecord[] = new Array(groups.length);
-  for (let i = 0; i < groups.length; i += CHUNK_BUILD_CONCURRENCY) {
-    const slice = groups.slice(i, i + CHUNK_BUILD_CONCURRENCY);
-    const built = await Promise.all(slice.map(buildRecord));
-    for (let j = 0; j < built.length; j++) records[i + j] = built[j];
+  try {
+    for (let i = 0; i < groups.length; i += CHUNK_BUILD_CONCURRENCY) {
+      const slice = groups.slice(i, i + CHUNK_BUILD_CONCURRENCY);
+      const built = await Promise.all(slice.map(buildRecord));
+      for (let j = 0; j < built.length; j++) records[i + j] = built[j];
+    }
+  } finally {
+    session?.close();
   }
 
   // Head: counts + coordinateInfo + directory. Directory offsets need the

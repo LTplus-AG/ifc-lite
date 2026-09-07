@@ -132,6 +132,8 @@ describe('runClash: rule membership', () => {
       rule: 'r',
       matchedA: 1,
       matchedB: 0,
+      matchedKeysA: ['wall-1'],
+      matchedKeysB: [],
       fromMembersA: true,
       fromMembersB: true,
     });
@@ -139,7 +141,13 @@ describe('runClash: rule membership', () => {
 
   it('leaves a selector-only rule exactly as it was', async () => {
     const coverage = await coverageOf(RULE);
-    expect(coverage).toEqual({ rule: 'r', matchedA: 2, matchedB: 2 });
+    expect(coverage).toEqual({
+      rule: 'r',
+      matchedA: 2,
+      matchedB: 2,
+      matchedKeysA: ['wall-1', 'wall-2'],
+      matchedKeysB: ['duct-1', 'duct-2'],
+    });
   });
 
   it('honours membersB on a rule with no b selector instead of self-clashing', async () => {

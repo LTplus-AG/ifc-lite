@@ -554,7 +554,7 @@ export function useIfcCache() {
 
       console.log('[useIfcCache] Writing cache buffer...');
       const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, {
-        includeGeometry: true,
+        includeGeometry: true, compressGeometryChunksInWorker: true,
         omitSourceHash: true,
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');

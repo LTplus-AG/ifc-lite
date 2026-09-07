@@ -42,9 +42,9 @@ impl GeometryRouter {
     /// down to every `processor.process` call site; that is a follow-up, not a
     /// reason to keep dropping the records.
     ///
-    /// `register` stores ONE `Arc` per processor under each supported IFC type
+    /// `register` stores ONE `Rc` per custom processor under each supported IFC type
     /// (`IfcBooleanResult` and `IfcBooleanClippingResult` share an instance),
-    /// so iterating the map visits the same processor twice; the second visit
+    /// so iterating custom registrations can visit the same processor twice; the second visit
     /// drains an already-emptied log and contributes nothing. No double count.
     pub fn drain_processor_failures(&self) {
         let mut swept: Vec<BoolFailure> = Vec::new();

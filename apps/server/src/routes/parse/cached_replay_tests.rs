@@ -302,3 +302,85 @@ fn decodes_a_length_exactly_matching_the_remaining_body() {
     blob.extend_from_slice(&[1, 2, 3, 4, 5]);
     assert_eq!(cached_geometry_slice(&blob), Some(&[1, 2, 3, 4, 5][..]));
 }
+
+
+/// #4064: finite geolocation, placement and unit-scale values must survive the
+/// JSON cache boundary, including the actual Haus northing that lost one ULP.
+#[test]
+fn issue_4064_json_preserves_coordinate_and_scale_bits() {
+    let values: [f64; 10] = [
+        49.100435000000004, 8.436539, -0.0, 0.0, 0.001,
+        5_000_000.123456789, -5_000_000.123456789,
+        0.9999999999999999, 1.0000000000000002, 1.0e-5,
+    ];
+    let encoded = serde_json::to_vec(&values).unwrap();
+    let decoded: Vec<f64> = serde_json::from_slice(&encoded).unwrap();
+    assert_eq!(decoded.len(), values.len());
+    for (original, restored) in values.iter().zip(decoded) {
+        assert_eq!(original.to_bits(), restored.to_bits(), "changed {original}");
+    }
+}
+
+/// #4064: exercise the real metadata-cache read and SSE replay, using a real
+/// Parquet triangle. Compare the cold Complete payload and the cached payload
+/// independently to the original finite values, not only to one another.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn issue_4064_cached_complete_preserves_georeferencing_bits() {
+    use super::stream_event::ParquetStreamEvent;
+    use ifc_lite_processing::{Georeferencing, SymbolicData};
+    let state = test_state("4064-coordinate-roundtrip").await;
+    let key = "4064-coordinate-roundtrip";
+    let northing = 49.100435000000004_f64;
+    let mut matrix = [0.0; 16];
+    matrix[0] = 1.0;
+    matrix[5] = 1.0;
+    matrix[10] = 1.0;
+    matrix[15] = 1.0;
+    matrix[12] = 8.436539;
+    matrix[13] = northing;
+    matrix[14] = 110.0;
+    matrix[4] = -0.0;
+    let mut header = sample_metadata_header(key, 1);
+    header.metadata.georeferencing = Some(Georeferencing {
+        northings: northing,
+        eastings: 8.436539,
+        orthogonal_height: 110.0,
+        scale: 1.0,
+        transform_matrix: matrix,
+        ..Default::default()
+    });
+    header.metadata.coordinate_info.origin_shift = [5_000_000.123456789, northing, -0.0];
+    header.metadata.length_unit_scale = Some(0.001);
+    let cold = serde_json::to_string(&ParquetStreamEvent::Complete {
+        stats: header.stats.clone(),
+        metadata: header.metadata.clone(),
+        symbolic_data: SymbolicData::default(),
+    }).unwrap();
+    let triangle = crate::types::MeshData::new(
+        42, "IfcWall".to_string(),
+        vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+        vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0],
+        vec![0, 1, 2], [0.8, 0.8, 0.8, 1.0],
+    );
+    let geometry = crate::services::serialize_to_parquet(&[triangle]).unwrap();
+    state.cache.set_bytes(&format!("{key}-parquet-v5"), &well_framed_blob(&geometry)).await.unwrap();
+    state.cache.set_bytes(&format!("{key}-parquet-metadata-v4"), &serde_json::to_vec(&header).unwrap()).await.unwrap();
+    seed_current_data_model(&state, key).await;
+    let response = try_cached_replay(&state, key, ParquetLayout::Flat).await.unwrap().expect("cache hit");
+    let body = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let text = String::from_utf8(body.to_vec()).unwrap();
+    let complete: Vec<serde_json::Value> = text.lines().filter_map(|line| line.strip_prefix("data: "))
+        .map(|json| serde_json::from_str::<serde_json::Value>(json).unwrap())
+        .filter(|event| event["type"] == "complete").collect();
+    assert_eq!(complete.len(), 1, "replay must contain exactly one Complete");
+    let cold: serde_json::Value = serde_json::from_str(&cold).unwrap();
+    for event in [&cold, &complete[0]] {
+        let metadata: ModelMetadata = serde_json::from_value(event["metadata"].clone()).unwrap();
+        let geo = metadata.georeferencing.unwrap();
+        assert_eq!(geo.northings.to_bits(), northing.to_bits());
+        assert_eq!(geo.transform_matrix.map(f64::to_bits), matrix.map(f64::to_bits));
+        assert_eq!(metadata.coordinate_info.origin_shift.map(f64::to_bits), header.metadata.coordinate_info.origin_shift.map(f64::to_bits));
+        assert_eq!(metadata.length_unit_scale.unwrap().to_bits(), 0.001_f64.to_bits());
+    }
+    assert_eq!(cold["metadata"], complete[0]["metadata"]);
+}

@@ -37,6 +37,7 @@
  */
 
 import { newFileLines } from '../build-review-input.mjs';
+import { applicabilityRow } from '../run-reviewer.mjs';
 
 /** Every added line of a patch, with its new-file line number. */
 function addedLines(patch) {
@@ -110,14 +111,38 @@ function firstPathMatch(input, re) {
  * be mistaken for the comparisons it MAKES. Arrow functions, Rust arrows, JSX
  * closers, shift operators and generic parameters go the same way, or every
  * TypeScript diff in the repository would fire on `=>` alone.
+ *
+ * GENERIC PARAMETERS ARE PEELED TO A FIXPOINT, BEFORE `>>` IS STRIPPED AS A
+ * SHIFT OPERATOR. A single pass of the generic-parameter strip only removes
+ * one level of nesting, so a two-level generic like `Promise<Map<string,
+ * string>>` left its OUTER `<` behind after the inner `<string, string>` was
+ * consumed -- and if the shift-operator strip ran first instead, it reads the
+ * closing `>>` as a right-shift token, orphaning that same outer `<` a
+ * different way.
+ * Either order left one bracket of an ordinary type annotation unpartnered.
+ *
+ * MEASURED, on two unrelated PRs the same day: `Promise<Map<string, string>>`
+ * in a test file's function signature, and `Array<ReturnType<typeof
+ * Rule.model>>` in another. Neither line contains a comparison of any kind,
+ * and both fired `one-ended-numeric-bound` on the strength of an un-consumed
+ * `<` alone. Looping the generic strip first consumes any depth of nesting
+ * before shift/arrow tokens are touched, which also incidentally fixes the
+ * `<Dialog open={open} />` case this file already documents: the whole tag
+ * matches the generic-parameter shape (`<`, a name, non-`<>` body, `>`) before
+ * `/>` is ever stripped, so it is removed as one unit instead of losing its
+ * closing `>` to the JSX-closer strip first.
  */
 function unpartneredComparison(text) {
-  const stripped = String(text)
+  let stripped = String(text)
     .replace(/\\./g, ' ')                          // escapes, before any quote matching
     .replace(/`[^`]*`|'[^']*'|"[^"]*"/g, ' ')      // string and template CONTENTS
-    .replace(/\/\/.*$|\/\*.*?\*\//g, ' ')            // comments
-    .replace(/=>|->|<<|>>|<\/|\/>/g, ' ')
-    .replace(/<[A-Za-z_$][^<>]*>/g, ' ');          // generic parameters, not comparisons
+    .replace(/\/\/.*$|\/\*.*?\*\//g, ' ');           // comments
+  let previous;
+  do {
+    previous = stripped;
+    stripped = stripped.replace(/<[A-Za-z_$][^<>]*>/g, ' '); // generic parameters, not comparisons
+  } while (stripped !== previous);
+  stripped = stripped.replace(/=>|->|<<|>>|<\/|\/>/g, ' ');
   const lower = (stripped.match(/(?:^|[^<>=!])(<=?)(?![=<])/g) || []).length;
   const upper = (stripped.match(/(?:^|[^<>=!])(>=?)(?![=>])/g) || []).length;
   return (lower > 0) !== (upper > 0);
@@ -220,4 +245,49 @@ export function applicableClasses(input) {
     if (site) out.set(cls, site);
   }
   return out;
+}
+
+/**
+ * The firing set, rendered for the PROMPT (#review-lane-disclosure).
+ *
+ * WHY THIS EXISTS. Until now the model was asked to guess which classes these
+ * predicates fire on, was never shown them or their result, and was refused
+ * when it guessed wrong. That is a hidden oracle, and it was the lane's single
+ * largest source of red: measured over 150 runs, only 39% of reviews passed
+ * validation on the first attempt, and CLASS_PASS_INCOMPLETE was the
+ * first-attempt reason in 40 of them.
+ *
+ * It is not a rigour loss. The validator still refuses exactly the same
+ * wave-offs; the model is simply told which ones they will be, so a false fire
+ * costs one wasted sentence instead of a red lane. That is the conservative
+ * direction `APPLIES` above already claims to have and, as measured, does not:
+ * the predicates are lexical and fire on a mean of 7.6 of 12 classes, on sites
+ * like `<Dialog`, `>/dev/null` and `.filter(Boolean)` that carry no such defect.
+ * The model saying so was CORRECT and was being refused for it.
+ *
+ * @param {Map<string, {path: string|null, line: number|null, text: string}>} fired
+ */
+export function renderApplicableForPrompt(fired) {
+  if (fired.size === 0) {
+    return 'The harness found no site for any class in this diff, so `not-applicable` with a real reason is available for all of them.';
+  }
+  // ESCAPED, because `site.path` is PR-controlled and this text lands in the
+  // TRUSTED half of the prompt. See applicabilityRow's comment.
+  const rows = [...fired].map(([cls, site]) => applicabilityRow(cls, site.path ?? null, site.line));
+  return (
+    `The harness ran its per-class check on this diff. For these ${fired.size} class(es) it found a site, ` +
+    'so `not-applicable` is NOT an available answer — report `clear` (you looked, nothing there) or a ' +
+    'finding:\n' +
+    rows.join('\n') +
+    '\n\nThese sites are LEXICAL matches, not confirmed defects; several will be false fires, and `clear` ' +
+    'is the right answer for those. Every other class may still be `not-applicable` with a real reason.'
+  );
+}
+
+/** `applicableClasses` over the raw review-input JSON, whose `files` is an array. */
+export function applicableClassesFromRaw(raw) {
+  return applicableClasses({
+    files: new Map((raw?.files ?? []).map((f) => [f.path, f])),
+    contextPack: raw?.contextPack ?? null,
+  });
 }

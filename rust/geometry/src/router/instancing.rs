@@ -101,11 +101,11 @@ impl GeometryRouter {
                     // the drop is recorded rather than the source withheld — but it
                     // MUST be recorded, or the one place the loss is visible at all
                     // is the one place instancing removed.
-                    match self.processors.get(&sub_item.ifc_type) {
+                    match self.processors.get(&sub_item.ifc_type, self.schema) {
                         Some(processor) => match processor.process(
                             &sub_item,
                             decoder,
-                            &self.schema,
+                            self.schema,
                             self.tessellation_quality,
                         ) {
                             Ok(mut sub_mesh) => {

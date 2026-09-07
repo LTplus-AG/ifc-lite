@@ -21,10 +21,20 @@ export function checkClassificationFacet(
   // Get classifications for the entity
   const classifications = accessor.getClassifications(expressId);
   const hasAnyClassifications = classifications.length > 0;
+  // A `presenceUnknown` entry (#3954) does NOT prove the entity is
+  // classified — it only means an IfcExternalReferenceRelationship-based
+  // classification couldn't be ruled out. Only a "proven" entry (a real
+  // classification, or #3948's proven-but-unreadable `unresolved`) may be
+  // treated as evidence of presence.
+  const hasProvenClassifications = classifications.some((c) => !c.presenceUnknown);
 
   // If no value or system constraint, just check if any classification exists
   if (!facet.system && !facet.value) {
-    if (!hasAnyClassifications) {
+    if (!hasProvenClassifications) {
+      if (hasAnyClassifications) {
+        // Every entry is `presenceUnknown` — cannot fabricate a pass.
+        return unresolvedResult(facet, 'presence');
+      }
       return {
         passed: false,
         actualValue: '(none)',
@@ -63,6 +73,17 @@ export function checkClassificationFacet(
         expected,
       },
     };
+  }
+
+  // Every entry is `presenceUnknown` (#3954) — before treating this as "no
+  // classifications matched", note that we cannot even say the entity IS
+  // classified, let alone whether a resolved value would have matched. This
+  // must be checked before the resolved/unresolved split below, or a
+  // presence-unknown entry would fall through `hasUnresolved` and get the
+  // "confirmed classified" `unresolvedResult('system'|'value')` wording,
+  // which asserts presence this pathway never proved.
+  if (!hasProvenClassifications) {
+    return unresolvedResult(facet, 'presence');
   }
 
   // Only entries whose attributes were actually readable can be matched
@@ -176,13 +197,15 @@ export function checkClassificationFacet(
  */
 function unresolvedResult(
   facet: IDSClassificationFacet,
-  field: 'system' | 'value'
+  field: 'presence' | 'system' | 'value'
 ): FacetCheckResult {
-  const expected = facet.system && facet.value
-    ? `${formatConstraint(facet.system)}:${formatConstraint(facet.value)}`
-    : facet.system
-      ? formatConstraint(facet.system)
-      : formatConstraint(facet.value!);
+  const expected = field === 'presence'
+    ? 'any classification'
+    : facet.system && facet.value
+      ? `${formatConstraint(facet.system)}:${formatConstraint(facet.value)}`
+      : facet.system
+        ? formatConstraint(facet.system)
+        : formatConstraint(facet.value!);
 
   return {
     passed: false,
@@ -194,7 +217,9 @@ function unresolvedResult(
       expected,
       context: {
         reason:
-          'Entity is classified, but the classification attributes are unavailable on this data source (server-parsed model without source bytes).',
+          field === 'presence'
+            ? 'Whether this entity is classified cannot be determined on this data source: a classification reachable only via IfcExternalReferenceRelationship (IfcMaterial, IfcProfileDef) cannot be resolved without source bytes.'
+            : 'Entity is classified, but the classification attributes are unavailable on this data source (server-parsed model without source bytes).',
       },
     },
   };

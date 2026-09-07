@@ -34,6 +34,7 @@ import { useViewerStore } from '@/store';
 import { ModelBadge } from './ModelBadge';
 import { ClashBcfExportDialog } from '@/components/viewer/ClashBcfExportDialog';
 import { ClashSettingsDialog } from '@/components/viewer/ClashSettingsDialog';
+import { ClashRevisionCompareDialog } from '@/components/viewer/ClashRevisionCompareDialog';
 import { createBCFProject, createBCFTopic } from '@ifc-lite/bcf';
 import { duplicateSetSections } from '@/lib/clash/duplicate-set-sections';
 import {
@@ -682,6 +683,7 @@ export function ClashPanel({ onClose }: ClashPanelProps) {
             <Info className="h-4 w-4" />
           </Button>
           <ClashSettingsDialog />
+          <ClashRevisionCompareDialog />
           {result && (
             <Button variant="ghost" size="icon" className="h-7 w-7" title="Clear results" onClick={clearAll}>
               <Trash2 className="h-4 w-4" />

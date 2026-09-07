@@ -20,6 +20,8 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 import assert from 'node:assert/strict';
 import { classify, checkToken, fenceUntrusted, buildPrompt, runReviewer, runReviewerWithFailover, resolveTokens, DISALLOWED_TOOLS } from './run-reviewer.mjs';
+import { applicableClassesFromRaw } from './lib/class-applicability.mjs';
+import { DEFECT_CLASSES } from './lib/defect-classes.mjs';
 
 const ok = (result, extra = {}) => () => ({ status: 0, stdout: JSON.stringify({ result, ...extra }), stderr: '' });
 const INPUT = {
@@ -399,12 +401,22 @@ test('no credential value ever reaches a label or a log line', () => {
 test('buildPrompt: retryReason RESPONSE_TRUNCATED gets truthful wording, never the proof-of-work text (#3777)', () => {
   const p = buildPrompt('R', INPUT, { retryNote: '❌ RESPONSE_TRUNCATED: sentinel missing.', retryReason: 'RESPONSE_TRUNCATED' });
   assert.match(p, /## This is a RETRY/);
-  assert.match(p, /terminal sentinel\s+was missing/);
+  assert.match(p, /terminal `end` field\s+was missing or not the exact sentinel/);
   assert.match(p, /Review the SAME diff again/);
   // Must NOT claim a proof-of-work failure -- that would tell the model
   // something false about what went wrong last time.
   assert.doesNotMatch(p, /failed proof-of-work/);
   assert.doesNotMatch(p, /Nominate a DIFFERENT real line/);
+  // AND MUST NOT BLAME A TOKEN BUDGET. Measured: a genuinely truncated response
+  // fails earlier as RAW_UNPARSEABLE, this branch only ever sees a COMPLETE
+  // object missing one field, and no max-token limit is set on either reviewer
+  // path — so the old "the output token budget ran out" wording named the wrong
+  // cause and a knob that does not exist.
+  assert.doesNotMatch(p, /token budget/i);
+  assert.doesNotMatch(p, /cut off before it finished/);
+  // Must not claim the rest of the answer was fine: the predicate also fires on
+  // a present-but-wrong sentinel, where other schema errors may well remain.
+  assert.doesNotMatch(p, /nothing to\s+correct/);
 });
 
 test('buildPrompt: retryReason FINDINGS_INVALID requires an array without defaulting it (#3919)', () => {
@@ -451,4 +463,56 @@ test('THE WIRING: the workflow actually passes the fallback secret', () => {
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN\s*\}\}/);
   assert.match(env, /CLAUDE_CODE_OAUTH_TOKEN_2:\s*\$\{\{\s*secrets\.CLAUDE_CODE_OAUTH_TOKEN_2\s*\}\}/);
   assert.match(env, /OPENAI_API_KEY:\s*\$\{\{\s*secrets\.OPENAI_API_KEY\s*\}\}/);
+});
+
+// ── THE PROMPT AND THE VALIDATOR MUST READ ONE FIRING SET (#review-lane-disclosure) ──
+//
+// The lane's largest source of red was a hidden oracle: the model had to guess
+// which classes `applicableClasses` fires on, was never shown them, and was
+// refused when it guessed wrong. Disclosure is only worth anything if the list
+// in the prompt IS the list the validator enforces, so that coupling is pinned
+// here rather than left to two call sites drifting apart.
+test('buildPrompt lists exactly the classes the validator will refuse a wave-off for', () => {
+  const input = {
+    headSha: 'f'.repeat(40),
+    files: [
+      {
+        path: 'packages/demo/src/label.ts',
+        patch: '@@ -1,1 +1,3 @@\n a\n+export function f(x) { return x.name || x.id; }\n+const on = xs.filter((x) => x.on);\n',
+        addedLineRanges: [[2, 3]],
+      },
+    ],
+    unreviewable: [],
+    excluded: [],
+    contextPack: { siblings: [], fileEvidence: [], body: 'adds a helper', truncated: false },
+  };
+  const fired = applicableClassesFromRaw(input);
+  assert.ok(fired.size > 0, 'fixture must trip at least one predicate or this test proves nothing');
+
+  const p = buildPrompt('R', input);
+  for (const cls of fired.keys()) {
+    assert.match(p, new RegExp(`- ${cls} —`), `prompt must name the firing class ${cls}`);
+  }
+  // And must NOT name a class that did not fire, or the model is steered away
+  // from a `not-applicable` it is entitled to.
+  for (const cls of DEFECT_CLASSES) {
+    if (fired.has(cls)) continue;
+    assert.doesNotMatch(p, new RegExp(`- ${cls} —`), `prompt must not list non-firing class ${cls}`);
+  }
+  assert.match(p, /`not-applicable` is NOT an available answer/);
+  // The listed sites are lexical matches; saying so is what makes `clear` the
+  // right answer for a false fire instead of the model arguing with the harness.
+  assert.match(p, /LEXICAL matches, not confirmed defects/);
+});
+
+test('buildPrompt says nothing fired when nothing fires, leaving not-applicable open', () => {
+  const input = {
+    headSha: 'f'.repeat(40),
+    files: [{ path: 'docs/x.md', patch: '@@ -1,1 +1,2 @@\n hello\n+world\n', addedLineRanges: [[2, 2]] }],
+    unreviewable: [],
+    excluded: [],
+    contextPack: null,
+  };
+  assert.equal(applicableClassesFromRaw(input).size, 0);
+  assert.match(buildPrompt('R', input), /found no site for any class/);
 });

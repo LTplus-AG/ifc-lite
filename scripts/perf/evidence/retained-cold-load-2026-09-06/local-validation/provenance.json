@@ -1,0 +1,75 @@
+{
+  "sourceHead": "5c75ee6339872fdac698594dc234aa6715d2d809",
+  "kind": "local-validation-not-performance-qualification",
+  "os": "macOS",
+  "architecture": "arm64",
+  "node": "22.14.0",
+  "pnpm": "10.8.1",
+  "wasmPack": "0.15.0",
+  "rustNightly": "nightly-2025-11-15",
+  "python": "3.12.13",
+  "pythonRustStable": "1.97.1",
+  "maturin": "1.15.0",
+  "wasmSha256": "fbce394b8ddbab85d1908e5951ce97512a86009ed204dc333d84e6787b91f600",
+  "glueSha256": "ab8d6ad4b0fa777918f83b049bbf2cbde01a4279fa7eee64aa5ddc2caf4da490",
+  "rootResults": {
+    "offlineFrozenInstall": "PASS",
+    "rootBuild": "49/49 PASS",
+    "rootTypecheck": "PASS,1739 testfiles",
+    "rootTest": "98/98 tasks PASS; viewer retains2 skips",
+    "rootLint": "PASS4249files0errors",
+    "realWasm": "86PASS0FAIL0SKIP including matched frozen baseline"
+  },
+  "staticScriptTests": {
+    "pass": 2036,
+    "fail": 0,
+    "skip": 0
+  },
+  "docs": {
+    "compiledSnippets": 379,
+    "docs": 83,
+    "explicitSkippedSnippets": 9
+  },
+  "fixtureDisposition": {
+    "originalCensusFailed": true,
+    "precedingNativeLanesFinishedBeforeCorruption": true,
+    "officialHashesRestored": true,
+    "privateCopies": true,
+    "postRerunVerifiedFiles": 164,
+    "rerunPass": 64,
+    "rerunFail": 0,
+    "rerunIgnored": 2
+  },
+  "remoteMainStatus": "separate-live-monitoring-required",
+  "publicArtifactPolicy": "Projection only; original logs retained privately by archiveId and SHA256.",
+  "supportingPrivateRecords": [
+    {
+      "archiveId": "shipping-native-stack/local-final-validation/fixture-corruption-timeline.json",
+      "sha256": "a37c2d5ffa4683247782c91ac5f58ab948418a285eddd6f4021fe0f72ffd50e4"
+    },
+    {
+      "archiveId": "shipping-native-stack/local-final-validation/fixture-restoration.json",
+      "sha256": "39ad0d9047b49b074056587f65070950f7698e742a75ee852306efd17c581421"
+    },
+    {
+      "archiveId": "shipping-native-stack/local-final-validation/private-fixture-copies.json",
+      "sha256": "8f12820edfdbdf0a36d84800afc0507e7918d2c7808e7a970e61a826aace45df"
+    },
+    {
+      "archiveId": "shipping-native-stack/local-final-validation/fixture-post-rerun-check.log",
+      "sha256": "9e1cf78a9d32ecd76faa5c26f788390d4b0cd77e6824cd56daf32f9e600e637c"
+    },
+    {
+      "archiveId": "shipping-native-stack/local-final-validation/rust-workspace-pre-fixture-env-interrupted.log",
+      "sha256": "72dd6ee59611409df56c703ca7eb43d6f111862b3cddc1f6dba7bfdb8f767308"
+    },
+    {
+      "archiveId": "local-final-validation/parity-resolved-Cargo.lock",
+      "sha256": "d089730fa5ca622e621083e69a2e5bb63b5bdfb0e0499c135dc85a58b2bc2d25"
+    },
+    {
+      "archiveId": "local-final-validation/parity-lock-resolution.patch",
+      "sha256": "6024fc007d22cb1b050b18d612e0d4d314c3a071451ea6010bee17d6a1c96d41"
+    }
+  ]
+}

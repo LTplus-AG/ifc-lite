@@ -42,6 +42,12 @@ export {
 } from './review.js';
 export { compareClashRuns, type ClashRevisionDiff } from './lifecycle.js';
 export {
+  compareClashRevisions,
+  type ClashRevisionSide,
+  type ClashRevisionComparison,
+  type ClashRevisionReasons,
+} from './revision.js';
+export {
   SEVERITY_RANK,
   TOUCHING_EPSILON,
   penetrationDepth,

@@ -25,6 +25,7 @@ pub(crate) const IDENTITY_ROW_MAJOR: [f64; 16] = [
 ];
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use rustc_hash::FxHashSet;
+use std::rc::Rc;
 use std::sync::Arc;
 
 // Maximum nested IfcMappedItem depth for a single geometry item. Shared with
@@ -736,7 +737,7 @@ impl GeometryRouter {
                 self.rtc_offset.2 / self.unit_scale,
             );
             let mut mesh =
-                processor.process_with_rtc(item, decoder, &self.schema, rtc_file_units)?;
+                processor.process_with_rtc(item, decoder, self.schema, rtc_file_units)?;
             mesh.validate_indices();
             self.scale_mesh(&mut mesh);
             // Mark positions as already RTC-shifted by setting a flag
@@ -749,9 +750,9 @@ impl GeometryRouter {
         }
 
         // Check if we have a processor for this type
-        if let Some(processor) = self.processors.get(&item.ifc_type) {
+        if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
             let mut mesh =
-                processor.process(item, decoder, &self.schema, self.tessellation_quality)?;
+                processor.process(item, decoder, self.schema, self.tessellation_quality)?;
             // Safety net: strip any out-of-bounds indices before downstream use
             mesh.validate_indices();
 
@@ -810,12 +811,12 @@ impl GeometryRouter {
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<Option<Mesh>> {
-        let processor = match self.processors.get(&IfcType::IfcAlignment) {
-            Some(p) => Arc::clone(p),
+        let processor = match self.processors.get(&IfcType::IfcAlignment, self.schema) {
+            Some(p) => Rc::clone(p),
             None => return Ok(None),
         };
         let mut mesh =
-            match processor.process(element, decoder, &self.schema, self.tessellation_quality) {
+            match processor.process(element, decoder, self.schema, self.tessellation_quality) {
             Ok(m) => m,
             // Missing Axis or unparseable curve isn't fatal — fall back so
             // the caller can still walk a normal representation if present.

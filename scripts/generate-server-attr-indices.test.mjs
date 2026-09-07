@@ -142,7 +142,7 @@ test('a healthy registry writes one arm per type', () => {
   assert.match(out, /\(776 types, registry IFC4_ADD2_TC1\)/);
   const rs = readFileSync(join(dir, OUT_REL), 'utf8');
   assert.equal((rs.match(/=> Some\(RootAttrIndices/g) ?? []).length, 776);
-  assert.match(rs, /"IFCPROBE0" => Some\(RootAttrIndices \{ description: 3, object_type: 4, tag: 5, predefined_type: 6 \}\)/);
+  assert.match(rs, /"IFCPROBE0" => Some\(RootAttrIndices \{ global_id: 0, name: 2, description: 3, object_type: 4, tag: 5, predefined_type: 6 \}\)/);
 });
 
 test('a full entities map with no allAttributes is refused, not written', () => {

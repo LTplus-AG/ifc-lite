@@ -1,5 +1,17 @@
 # @ifc-lite/sdk
 
+## 4.0.1
+
+### Patch Changes
+
+- [#3951](https://github.com/LTplus-AG/ifc-lite/pull/3951) [`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `ClassificationData` (the SDK's public classification shape) gained an `unresolved?: boolean` field mirroring `@ifc-lite/parser`'s `ClassificationInfo.unresolved` ([#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948)/[#3951](https://github.com/LTplus-AG/ifc-lite/issues/3951)), so a classified-but-unreadable entity (server-parsed store) can be told apart from a genuinely unclassified one through the SDK too.
+  
+  The MCP playground's own `IFCDataAccessor` implementation (`apps/viewer/src/components/mcp/playground-dispatcher.ts`) built its `getClassifications` result from `m.bim.classifications(...)` (this same SDK shape) but dropped the `unresolved` marker — a second, independent reimplementation of the canonical bridge (`packages/ids/src/bridge/data-accessor.ts`) that the viewer's own IDS panel already uses correctly. Without the field, a classified-but-unresolved entity looked to `checkClassificationFacet` like a real classification with an empty system/value, so the agent's `ids_validate` tool reported a fabricated `CLASSIFICATION_SYSTEM_MISMATCH`/`CLASSIFICATION_VALUE_MISMATCH` instead of the honest `CLASSIFICATION_UNRESOLVED` the same fixture produces through the canonical bridge. Fixed by forwarding `unresolved` through the mapping.
+- Updated dependencies [[`5d4140b`](https://github.com/LTplus-AG/ifc-lite/commit/5d4140b305aa3ef2c1d82e1def85095c8832bbed), [`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2), [`e1d807c`](https://github.com/LTplus-AG/ifc-lite/commit/e1d807cf4bf4f3bf25122fed4d7e3fde8296bf6d), [`6094e2f`](https://github.com/LTplus-AG/ifc-lite/commit/6094e2f16f27c80bc227f73bbdf634a770f17abc)]:
+  - @ifc-lite/clash@2.1.0
+  - @ifc-lite/parser@5.1.0
+  - @ifc-lite/ids@1.15.54
+
 ## 4.0.0
 
 ### Major Changes

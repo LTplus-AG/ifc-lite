@@ -1,5 +1,13 @@
 # @ifc-lite/wasm
 
+## 6.3.0
+
+### Minor Changes
+
+- [#3921](https://github.com/LTplus-AG/ifc-lite/pull/3921) [`09f9419`](https://github.com/LTplus-AG/ifc-lite/commit/09f941947666f567cd1fd6fd362041e048868434) Thanks [@louistrue](https://github.com/louistrue)! - Reduce shared Rust loading work with compact entity indexes, immutable schema classification and model-scoped BREP signatures. Avoid retaining unrelated property sets during georeferencing discovery.
+  
+  The Rust crates add a bounded direct-address index and an opaque model-scoped BREP signature cache. Supplied hash indexes and the WASM JavaScript API remain compatible. The minor bump carries the additive Rust API release, whose version is derived from the highest npm workspace package version.
+
 ## 6.2.0
 
 ### Minor Changes

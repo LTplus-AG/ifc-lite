@@ -13,14 +13,14 @@
 //! collision, not a missing value (issue #3395, split for the reference
 //! readers in #3421).
 //!
-//! [`parse_express_id`] is called from both sides of that contract: the
+//! [`parse_express_id`] and the internal prefix reader serve both sides: the
 //! definition scanner ([`crate::parser::scanner::EntityScanner`]) and every
 //! `#<digits>` reference reader in [`crate::fast_parse`] and
 //! [`crate::decoder`], and — now that it is `pub` — the REFERENCE readers in
 //! `ifc-lite-geometry`, `ifc-lite-export` and `ifc-lite-processing` that read
 //! raw STEP bytes outside this crate. A second, independently-written copy of
-//! this accumulation is exactly the drift #3395 was careful to avoid, so a
-//! new caller must reuse this function rather than writing its own loop.
+//! this accumulation is exactly the drift #3395 was careful to avoid. New
+//! callers reuse these canonical readers, which share the digit arithmetic.
 //!
 //! The bound is inclusive: `u32::MAX` is a legitimate express id and parses
 //! successfully. Refusal (`None`) is the only outcome for anything past it —
@@ -32,6 +32,41 @@
 //! *saturates* an out-of-range vertex index to `u32::MAX`: that value is a
 //! sentinel a downstream bounds check drops, not a key another value could
 //! collide with, so saturation is safe there and is not safe here.
+
+const UNCHECKED_DIGITS: usize = 9;
+
+#[inline]
+fn append_digit(value: u32, byte: u8) -> u32 {
+    value * 10 + (byte - b'0') as u32
+}
+
+#[inline]
+fn append_digit_checked(value: u32, byte: u8) -> Option<u32> {
+    value.checked_mul(10)?.checked_add((byte - b'0') as u32)
+}
+
+/// Read the leading ASCII digit run, returning its byte length and express id.
+/// An empty or overflowing run yields None, but overflow never stops scanning:
+/// callers still need the exact prefix end to validate the declaration (#3987).
+/// First-nine-digit arithmetic is unchecked because it cannot exceed 999999999.
+#[inline]
+pub(crate) fn parse_express_id_prefix(input: &[u8]) -> (usize, Option<u32>) {
+    let mut end = 0;
+    let mut result = 0u32;
+    for &byte in input.iter().take(UNCHECKED_DIGITS) {
+        if !byte.is_ascii_digit() { return (end, (end != 0).then_some(result)); }
+        result = append_digit(result, byte);
+        end += 1;
+    }
+    if end == 0 { return (0, None); }
+    let mut value = Some(result);
+    for &byte in &input[end..] {
+        if !byte.is_ascii_digit() { break; }
+        value = value.and_then(|value| append_digit_checked(value, byte));
+        end += 1;
+    }
+    (end, value)
+}
 
 /// Parse `digits` — an already-validated, non-empty run of ASCII digit bytes
 /// — into a `u32` express id, or `None` if the value does not fit.
@@ -54,14 +89,14 @@ pub fn parse_express_id(digits: &[u8]) -> Option<u32> {
         "parse_express_id expects a validated, non-empty digit run"
     );
     let mut result: u32 = 0;
-    if digits.len() <= 9 {
+    if digits.len() <= UNCHECKED_DIGITS {
         for &b in digits {
-            result = result * 10 + (b - b'0') as u32;
+            result = append_digit(result, b);
         }
         return Some(result);
     }
     for &b in digits {
-        result = result.checked_mul(10)?.checked_add((b - b'0') as u32)?;
+        result = append_digit_checked(result, b)?;
     }
     Some(result)
 }
@@ -94,5 +129,32 @@ mod tests {
         // real #1, which is the actual defect (#3421), not merely an
         // overflow that errors.
         assert_eq!(parse_express_id(b"4294967297"), None);
+    }
+
+    /// #3987: independent decimal-parser oracle covers leading zeroes and long
+    /// overflow prefixes, including bytes that must remain for the scanner.
+    #[test]
+    fn express_prefix_matches_checked_decimal_oracle_3987() {
+        let runs = ["0", "1", "999999999", "1000000000", "4294967295",
+            "4294967296", "4294967297", "999999999999999999999999999999999"];
+        for zeros in [0, 1, 9, 10, 64, 1024] {
+            for run in runs {
+                let digits = format!("{}{run}", "0".repeat(zeros));
+                let expected = digits.parse::<u32>().ok();
+                assert_eq!(parse_express_id(digits.as_bytes()), expected);
+                for suffix in [b"".as_slice(), b"=IFCWALL($);", b"/* ; */ =", b"x", b"\xff"] {
+                    let source = [digits.as_bytes(), suffix].concat();
+                    assert_eq!(parse_express_id_prefix(&source), (digits.len(), expected));
+                }
+            }
+        }
+        for source in [b"".as_slice(), b"=", b"-1", b"+1", b" ", b"\xff"] {
+            assert_eq!(parse_express_id_prefix(source), (0, None));
+        }
+        for value in [2u32, 19, 100, 123456789, u32::MAX - 1] {
+            let source = format!("{value};trailing");
+            assert_eq!(parse_express_id_prefix(source.as_bytes()),
+                (value.to_string().len(), Some(value)));
+        }
     }
 }

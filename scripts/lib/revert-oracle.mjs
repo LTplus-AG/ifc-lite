@@ -34,6 +34,7 @@
  * synthetic fixtures (`revert-oracle.test.mjs`) without reverting anything.
  */
 
+import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
@@ -49,8 +50,17 @@ const IGNORED_EXACT = new Set([
 ]);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
-/** A file that IS a test. */
-const TEST_FILE_RE = /(^|\/)[^/]*\.(test|spec)\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+/**
+ * Vercel deploy config: read by Vercel's build pipeline, imported by nothing
+ * here, so no test can observe it — the same reason `.github/` is ignored.
+ * Anchored on the basename on purpose; a blanket `scripts/**` or `*.sh` would
+ * swallow `scripts/lib/*.mjs`, which is real tested logic. Both directions are
+ * pinned in revert-oracle.test.mjs, which carries the full rationale.
+ */
+const DEPLOY_CONFIG_RE = /(^|\/)(vercel\.json|\.vercelignore|vercel-[a-z0-9-]*\.sh)$/;
+
+/** A file that IS a test: JS/TS `*.test.*`/`*.spec.*`, or Python's `test_*.py` / `*_test.py` (#4050). */
+const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)|test_[^/]*\.py|[^/]*_test\.py)$/;
 /** Directories whose entire contents are test scaffolding, not production. */
 const TEST_DIR_RE = /(^|\/)(__tests__|__snapshots__|__fixtures__|test-fixtures|testdata)(\/|$)/;
 /** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
@@ -69,7 +79,8 @@ export function classifyPath(path) {
   if (IGNORED_EXACT.has(path)) return 'ignored';
   for (const p of IGNORED_PREFIXES) if (path.startsWith(p)) return 'ignored';
   for (const s of IGNORED_SUFFIXES) if (path.endsWith(s)) return 'ignored';
-  if (TEST_FILE_RE.test(path)) return 'test';
+  if (DEPLOY_CONFIG_RE.test(path)) return 'ignored';
+  if (TEST_FILE_RE.test(path) || /(^|\/)(?:[^/]+_tests|tests)\.rs$/.test(path)) return 'test';
   if (TEST_DIR_RE.test(path)) return 'test';
   if (TEST_SEGMENT_RE.test(path)) return 'test';
   return 'production';
@@ -164,22 +175,22 @@ export function extractNodeFlags(script) {
  * `scripts/**` has no package of its own: the root `scripts.test` is
  * `turbo test`, which runs the workspace and not these files. CI runs each one
  * with an explicit `node --test scripts/<x>.test.mjs` step, so that is what we
- * reproduce. Only plain-JS test files qualify — anything needing a loader must
- * declare a runner rather than be guessed at.
+ * reproduce. Loader-dependent entrypoints require a declared runner.
  */
 export function rootScriptsRunner(files) {
   if (!Array.isArray(files) || files.length === 0) return null;
-  if (!files.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
-  return { family: 'node-test', bin: 'node', args: ['--test', ...files] };
+  // #4036: retain scaffolding during reversion, but execute only test entrypoints.
+  if (!files.every((f) => classifyPath(f) === 'test')) return null;
+  const entries = files.filter((f) => /\.(test|spec)\.[^/]+$/.test(f));
+  if (entries.length === 0 || !entries.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
+  return { family: 'node-test', bin: 'node', args: ['--test', ...entries] };
 }
-
 /** Cargo test invocation for a crate. */
 export function cargoRunner(crate) {
   if (!crate) return null;
-  return { family: 'cargo', bin: 'cargo', args: ['test', '-p', crate] };
+  return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate] };
 }
 
-// ---------------------------------------------------------------------------
 // Runner output parsing — the core of the tool
 // ---------------------------------------------------------------------------
 
@@ -242,6 +253,7 @@ const RUNNER_MISSING_PATTERNS = [
   /Command "\w[\w-]*" not found/i,
   /No such file or directory.*\.bin/,
   /error: no such command/,
+  PYTEST_MISSING_PATTERN,
 ];
 
 export function hasLoadError(text) {
@@ -274,13 +286,11 @@ export function parseRunnerOutput(run) {
   }
 
   const parsed =
-    family === 'vitest'
-      ? parseVitest(text)
-      : family === 'node-test'
-        ? parseNodeTest(text)
-        : family === 'cargo'
-          ? parseCargo(text)
-          : null;
+    family === 'vitest' ? parseVitest(text)
+    : family === 'node-test' ? parseNodeTest(text)
+    : family === 'cargo' ? parseCargo(text)
+    : family === 'python' ? parsePython(text)
+    : null;
 
   if (!parsed) {
     return { kind: UNPARSEABLE, passed: null, failed: null, total: null, evidence: [`unknown runner family: ${family}`] };

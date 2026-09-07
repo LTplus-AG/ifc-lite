@@ -127,6 +127,20 @@ describe('HierarchyPanel — federated unified-storey selection', () => {
     resetStore();
   });
 
+  it('distinguishes pending IFC metadata from completed geometry-only models (#3984)', () => {
+    const model = federatedModel('m1', makeStore(5, 0, 'Level 1'));
+    model.ifcDataStore = null;
+    model.loadState = 'hydrating-metadata';
+    useViewerStore.setState({ models: new Map([['m1', model]]) });
+    const container = renderPanel();
+    assert.match(container.textContent ?? '', /Building the hierarchy/);
+    act(() => {
+      useViewerStore.setState({ models: new Map([['m1', { ...model, loadState: 'complete' }]]) });
+    });
+    assert.match(container.textContent ?? '', /No hierarchy available for this model/);
+    assert.doesNotMatch(container.textContent ?? '', /Building the hierarchy/);
+  });
+
   it('selecting Level 1 (model m1, local id 5) does not cross-highlight Level 2 (model m2, same local id 5)', () => {
     const m1 = federatedModel('m1', makeStore(5, 0, 'Level 1'));
     const m2 = federatedModel('m2', makeStore(5, 10, 'Level 2'));

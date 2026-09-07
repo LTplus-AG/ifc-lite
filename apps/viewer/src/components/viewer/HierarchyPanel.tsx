@@ -58,7 +58,6 @@ export function HierarchyPanel() {
   const setSelectedModelId = useViewerStore((s) => s.setSelectedModelId);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
   const activeStorey = useViewerStore((s) => s.activeStorey);
-  const setStoreySelection = useViewerStore((s) => s.setStoreySelection);
   const setStoreysSelection = useViewerStore((s) => s.setStoreysSelection);
   const clearStoreySelection = useViewerStore((s) => s.clearStoreySelection);
   const setActiveStorey = useViewerStore((s) => s.setActiveStorey);
@@ -87,7 +86,6 @@ export function HierarchyPanel() {
   const hiddenEntities = useViewerStore((s) => s.hiddenEntities);
   const hideEntities = useViewerStore((s) => s.hideEntities);
   const showEntities = useViewerStore((s) => s.showEntities);
-  const toggleEntityVisibility = useViewerStore((s) => s.toggleEntityVisibility);
   const clearSelection = useViewerStore((s) => s.clearSelection);
 
   // Derive label for type isolation (from the Type tab, or any other
@@ -802,10 +800,9 @@ export function HierarchyPanel() {
   if (!ifcDataStore && singleModel) {
     const metadataState = singleModel.metadataLoadState;
     const message = metadataState === 'error'
-      ? (singleModel.loadError || 'Native metadata failed to load.')
-      : metadataState === 'bootstrapping'
-        ? 'Native spatial metadata is loading.'
-        : 'Spatial metadata will appear once bootstrap completes.';
+      ? (singleModel.loadError || 'Model details failed to load.')
+      : singleModel.loadState === 'complete' ? 'No hierarchy available for this model.'
+      : 'Building the hierarchy. You can explore the geometry while model details load.';
     return (
       <div className="h-full flex flex-col border-r-2 border-zinc-200 dark:border-zinc-800 bg-white dark:bg-black">
         <div className="p-3 border-b-2 border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-black">

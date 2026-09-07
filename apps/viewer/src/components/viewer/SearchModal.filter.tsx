@@ -138,9 +138,13 @@ export function SearchModalFilter() {
 
     const start = performance.now();
     try {
-      const modelArgs: Array<{ id: string; store: typeof activeStore }> = [];
+      const modelArgs: Array<{ id: string; filterIdentity?: string; store: typeof activeStore }> = [];
       for (const m of models.values()) {
-        if (m.ifcDataStore) modelArgs.push({ id: m.id, store: m.ifcDataStore });
+        if (m.ifcDataStore) modelArgs.push({
+          id: m.id,
+          filterIdentity: m.sourceFingerprint,
+          store: m.ifcDataStore,
+        });
       }
 
       // Fold the inline search query in as a Tier-1/Tier-0 candidate

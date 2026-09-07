@@ -1,0 +1,90 @@
+diff --git a/rust/geometry/src/kernel/retriangulate_audit_tests.rs b/rust/geometry/src/kernel/retriangulate_audit_tests.rs
+index 79aebaebabfcce6bc5a902849cecb570485c55a5..8f77fee2cd4b511311885c9788388164b98c9997 100644
+--- a/rust/geometry/src/kernel/retriangulate_audit_tests.rs
++++ b/rust/geometry/src/kernel/retriangulate_audit_tests.rs
+@@ -106 +106,2 @@ fn bailed_traversal_leaves_mesh_unchanged_and_audit_counts_unrecovered() {
+-    recover_via_traversal(&mut mesh, &it, a, b);
++    // #4055: false certifies no triangle replacement, independently of audit success.
++    assert!(!recover_via_traversal(&mut mesh, &it, a, b));
+@@ -149,0 +151,22 @@ fn enforce_constraint_reports_audit_needed_when_recovery_fails() {
++
++#[test]
++fn issue_4055_replacement_reports_true_even_when_constraint_stays_missing() {
++    use super::super::retriangulate_recover::recover_subsegment;
++    let mut it = Interner::new();
++    let (mut mesh, a, b) = boundary_exit_mesh(&mut it);
++    // The same oriented boundary-exit triangle, with a different cyclic start.
++    // Pocket recovery rebuilds it from endpoint a; endpoint b remains outside.
++    // This makes replacement observable without changing the fixture's geometry.
++    mesh.tris[0].rotate_left(1);
++    let before = mesh.tris.clone();
++    assert!(recover_subsegment(&mut mesh, &it, a, b));
++    assert_ne!(mesh.tris, before, "exercise a real triangle-list replacement");
++    assert!(!edge_exists(&mesh, a, b), "replacement is not recovery success");
++    assert!(mesh.audit_needed);
++    let mut before_vertices = before[0];
++    let mut after_vertices = mesh.tris[0];
++    before_vertices.sort_unstable();
++    after_vertices.sort_unstable();
++    assert_eq!(mesh.tris.len(), 1);
++    assert_eq!(before_vertices, after_vertices, "same oriented triangle is retained");
++}
+diff --git a/rust/geometry/src/kernel/retriangulate_recover_tests.rs b/rust/geometry/src/kernel/retriangulate_recover_tests.rs
+index 7e84f0c329b36ac9509d7290fdf1614266cc3d84..e5e06c979a096e5df441340228a9c8662acf2cb8 100644
+--- a/rust/geometry/src/kernel/retriangulate_recover_tests.rs
++++ b/rust/geometry/src/kernel/retriangulate_recover_tests.rs
+@@ -205,0 +206,54 @@ fn vertex_inventory_reuse_matches_fresh_inventory_after_recovery_and_bails() {
++
++/// #4055: exercise the actual audit entry point against the former fresh-per-
++/// constraint inventory policy. This pinch changes triangles but retains its
++/// vertex set; it does not claim to detect removal of inventory invalidation.
++#[test]
++fn issue_4055_actual_audit_matches_fresh_inventory_after_pinch_recovery() {
++    use super::retriangulate::{cmp_lex_v, lex_cmp, Canonical};
++    use super::retriangulate_audit::audit_and_recover;
++    use super::retriangulate_recover::between;
++    use std::collections::BTreeSet;
++    let mut it = Interner::new();
++    let (mut actual, a, b) = pinch_mesh(&mut it);
++    let before = actual.tris.clone();
++    let axis = actual.axis;
++    let mut fresh = Mesh2d {
++        tris: before.clone(), axis, w0: actual.w0,
++        unrecovered: 0, audit_needed: false, coords: BTreeMap::new(),
++    };
++    let canon = Canonical { corners: before[0], points: vec![], segments: vec![(a, b), (b, a)] };
++    let fresh_chain = |mesh: &Mesh2d, cs, ct| {
++        let mut on_seg: Vec<Vid> = mesh.tris.iter().flatten().copied()
++            .collect::<BTreeSet<_>>().into_iter()
++            .filter(|&v| v != cs && v != ct
++                && orient2d_v(&it, cs, ct, v, axis) == Sign::Zero
++                && between(&it, cs, ct, v)).collect();
++        on_seg.sort_by(|&x, &y| lex_cmp(&it, x, y));
++        if cmp_lex_v(&it, cs, ct) == Sign::Positive { on_seg.reverse(); }
++        let mut chain = vec![cs];
++        chain.extend(on_seg);
++        chain.push(ct);
++        chain
++    };
++    // Preserve the former chain snapshot per constraint, including when a
++    // subsegment replacement occurs before the next window in that chain.
++    for &(cs, ct) in &canon.segments {
++        for w in fresh_chain(&fresh, cs, ct).windows(2) {
++            if !edge_exists(&fresh, w[0], w[1]) {
++                recover_via_traversal(&mut fresh, &it, w[0], w[1]);
++            }
++        }
++    }
++    for &(cs, ct) in &canon.segments {
++        for w in fresh_chain(&fresh, cs, ct).windows(2) {
++            if !edge_exists(&fresh, w[0], w[1]) { fresh.unrecovered += 1; }
++        }
++    }
++    audit_and_recover(&mut actual, &it, &canon, axis);
++    assert_ne!(actual.tris, before, "audit must actually recover the pinch");
++    assert!(edge_exists(&actual, a, b));
++    assert_eq!(actual.tris, fresh.tris);
++    assert_eq!(actual.unrecovered, fresh.unrecovered);
++    assert_eq!(actual.audit_needed, fresh.audit_needed);
++    assert_eq!(area_sum(&it, &actual.tris, axis), area_sum(&it, &before, axis));
++}

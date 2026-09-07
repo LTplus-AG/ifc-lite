@@ -7,6 +7,9 @@ import {
   EntityExtractor,
   extractClassificationsOnDemand,
 } from '@ifc-lite/parser';
+import { isProperSubtypeOfAny, type HierarchyRegistry } from '@ifc-lite/codegen';
+import * as IFC4_SCHEMA from '@ifc-lite/codegen/ifc4';
+import * as IFC4X3_SCHEMA from '@ifc-lite/codegen/ifc4x3';
 import type { ClassificationInfo } from '../types.js';
 
 interface ClassRecord {
@@ -15,6 +18,7 @@ interface ClassRecord {
   name?: string;
   path?: string[];
   unresolved?: boolean;
+  presenceUnknown?: boolean;
 }
 
 /**
@@ -46,7 +50,13 @@ export function resolveClassifications(
     // even when the value is empty — so optional-cardinality value
     // mismatches register as a value mismatch rather than as a
     // missing-classification (which optional pardons).
-    out.push({ system, value: baseValue, name: c.name, unresolved: c.unresolved });
+    out.push({
+      system,
+      value: baseValue,
+      name: c.name,
+      unresolved: c.unresolved,
+      presenceUnknown: c.presenceUnknown,
+    });
     if (Array.isArray(c.path)) {
       for (const code of c.path) {
         if (code && code !== baseValue) {
@@ -64,15 +74,50 @@ export function resolveClassifications(
  * `IfcRelAssociatesClassification`. The parser doesn't categorize
  * external-ref edges into the relationship graph today, so we scan
  * the type table directly.
+ *
+ * On a server-parsed (source-empty) store this type table is not merely
+ * incomplete — it structurally cannot contain `IFCEXTERNALREFERENCERELATIONSHIP`
+ * (or `IFCMATERIAL`/`IFCPROFILEDEF`) entries at all: the server pipeline's
+ * `IfcTypeEnum` (packages/data/src/types.ts) has no slot for any of them, and
+ * the server resolves classifications only via `IfcRelAssociatesClassification`
+ * (apps/server/src/services/data_model/classifications.rs). So an empty
+ * `byType` lookup here proves nothing about whether THIS entity carries a
+ * classification through this pathway — unlike the sibling
+ * `IfcRelAssociatesClassification` path (#3951), there is no
+ * relationship-graph fallback at all for this one (#3954): presence cannot
+ * be proven OR disproven without source bytes.
  */
 function appendExternalReferenceClassifications(
   store: IfcDataStore,
   expressId: number,
   list: ClassRecord[]
 ): void {
+  if (!store.source?.length) {
+    // Only fall back to "cannot determine" when:
+    //  1. the IfcRelAssociatesClassification path (already applied to `list`
+    //     by the caller) found nothing — an entity already confirmed
+    //     classified, or confirmed-but-unresolved, through that path doesn't
+    //     also rely on this non-rooted-resource pathway, so leave it
+    //     untouched rather than diluting a real match/mismatch into
+    //     "unresolved"; and
+    //  2. `expressId` could actually BE a `RelatedResourceObjects` target —
+    //     the IFC schema restricts that role to non-rooted resource-level
+    //     entities (IfcResourceObjectSelect: IfcMaterial(Select) members,
+    //     IfcProfileDef, …), never an IfcRoot subtype like IfcWall. A rooted
+    //     element's `list.length === 0` genuinely means unclassified — no
+    //     external-ref ambiguity is even schema-possible for it — so
+    //     blanket-marking every empty result as unresolved would regress the
+    //     overwhelming common case (a genuinely unclassified wall/door/etc.)
+    //     into a false "cannot determine" on every server-parsed model.
+    if (list.length === 0 && isNonRootedClassifiableResource(store, expressId)) {
+      list.push({ unresolved: true, presenceUnknown: true });
+    }
+    return;
+  }
+
   const erRefs =
     store.entityIndex?.byType?.get?.('IFCEXTERNALREFERENCERELATIONSHIP') || [];
-  if (erRefs.length === 0 || !store.source?.length) return;
+  if (erRefs.length === 0) return;
   const ex = new EntityExtractor(store.source);
 
   for (const erId of erRefs) {
@@ -129,4 +174,78 @@ function appendExternalReferenceClassifications(
     }
     list.push(info);
   }
+}
+
+/**
+ * The schema registries this predicate checks type membership against — the
+ * union of IFC4 and IFC4X3, since a type introduced in only one of them
+ * (`IfcOpenCrossProfileDef`, IFC4X3-only) must still be recognised when a
+ * store built from the OTHER schema is queried against it (a server-parsed
+ * store's `EntityRef.type` names an entity, not a schema version).
+ */
+const HIERARCHY_REGISTRIES: readonly HierarchyRegistry[] = [
+  IFC4_SCHEMA.SCHEMA_REGISTRY,
+  IFC4X3_SCHEMA.SCHEMA_REGISTRY,
+];
+
+/**
+ * Could an entity of this upper-cased type name be a `RelatedResourceObjects`
+ * target of an `IfcExternalReferenceRelationship`? The IFC schema restricts
+ * that role to `IfcResourceObjectSelect` members — subtypes of
+ * `IfcMaterialDefinition` or `IfcProfileDef` — never an `IfcRoot` subtype
+ * (`IfcWall`, `IfcDoor`, …), which can only be classified via
+ * `IfcRelAssociatesClassification`.
+ *
+ * This is a schema-hierarchy fact, answered here via `@ifc-lite/codegen`'s
+ * generated `SCHEMA_REGISTRY.entities[type].inheritanceChain` (through
+ * `isProperSubtypeOfAny` — `IfcMaterialDefinition` and `IfcProfileDef` are
+ * themselves abstract with no concrete instances, so the CONCRETE-MEMBER
+ * question this predicate answers wants the self-match excluded) rather
+ * than a string test — `startsWith`, `endsWith` and `includes` variants of
+ * this predicate were each wrong at a different edge across three separate
+ * incidents (ifc-lite #3999):
+ *
+ *   1. `startsWith('IFCMATERIAL')` admitted `IfcMaterialList` (an
+ *      `IfcMaterialSelect` member, not `IfcMaterialDefinition`),
+ *      `IfcMaterialLayerSetUsage`, `IfcMaterialDefinitionRepresentation`,
+ *      `IfcMaterialRelationship` — none is `IfcMaterialDefinition`.
+ *   2. `endsWith('PROFILEDEF')` missed `IfcArbitraryProfileDefWithVoids`, a
+ *      genuine `IfcProfileDef` subtype whose name doesn't end that way.
+ *   3. `includes('PROFILEDEF')` (the fix for #2) admitted
+ *      `IfcRelAssociatesProfileDef`, a *rooted* relationship that points AT
+ *      a profile def via `RelatingProfileDef`, not a profile def itself.
+ *
+ * `isProperSubtypeOfAny` reads the actual `SUBTYPE OF` chain the schemas declare,
+ * so none of those three edges is reachable by construction —
+ * `is-non-rooted-classifiable-resource.exp-derived.test.ts` still
+ * independently re-derives the answer from the `.exp` files and asserts
+ * agreement for every entity in both schemas, as a check against a bug in
+ * codegen's own chain computation, not just against a string test.
+ *
+ * Pulled out of `isNonRootedClassifiableResource` as a pure function of the
+ * type name so that test can exercise it directly against every entity name
+ * in both schemas, without building a store for each one.
+ */
+export function isNonRootedClassifiableResourceType(upperType: string): boolean {
+  return (
+    isProperSubtypeOfAny(HIERARCHY_REGISTRIES, upperType, 'IfcMaterialDefinition') ||
+    isProperSubtypeOfAny(HIERARCHY_REGISTRIES, upperType, 'IfcProfileDef')
+  );
+}
+
+/**
+ * Could `expressId` be a `RelatedResourceObjects` target of an
+ * `IfcExternalReferenceRelationship`? See `isNonRootedClassifiableResourceType`
+ * for the schema rule this applies. `EntityRef.type` is available from the
+ * type-table index without reading `source` bytes (it's set from the raw
+ * STEP/server type name, not extracted attributes), so this check costs
+ * nothing on a server-parsed store.
+ */
+function isNonRootedClassifiableResource(
+  store: IfcDataStore,
+  expressId: number
+): boolean {
+  const type = store.entityIndex?.byId?.get?.(expressId)?.type;
+  if (typeof type !== 'string') return false;
+  return isNonRootedClassifiableResourceType(type.toUpperCase());
 }

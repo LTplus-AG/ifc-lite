@@ -94,3 +94,7 @@ Results are saved to `tests/benchmark/benchmark-results/` with automatic regress
 - [Architecture Overview](../architecture/overview.md) for system design and data flow
 - [Rendering Guide](rendering.md) for WebGPU pipeline details
 - [Server Guide](server.md) for server-side processing and caching
+
+### Cache write compression
+
+The viewer runs geometry cache compression in a browser module worker. SDK callers can enable the same behavior with `BinaryCacheWriter.write` option `compressGeometryChunksInWorker: true`; its default remains `false` for workerless environments. The cache format and compression rules are unchanged. A browser must bundle and permit the worker asset; worker failures reject the cache write. Cold-load qualification includes cache completion because off-main compression still consumes CPU.

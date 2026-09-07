@@ -178,8 +178,13 @@ test('SPATIAL TYPES: RED when a type is removed from the Rust is_spatial_type ar
   assert.match(out, /TS parser .* handles `IFCBUILDINGSTOREY` but the Rust server .* does not/);
 });
 
-test('SPATIAL TYPES: an allowlisted divergence (IfcSpatialZone, #3965/#3973) does not fail on its own', () => {
-  assert.ok(Object.hasOwn(ALLOWLIST, 'spatialTypes:IFCSPATIALZONE'));
+test('ALLOWLIST: a `pending` divergence does not fail on its own', () => {
+  // #3965's spatialTypes entries and #3963's properties entry used to be the
+  // fixtures here; #3973 and #3971 closed those divergences, so the gate's
+  // own stale-entry check demanded their removal. Repointed at a divergence
+  // that is still genuinely open rather than deleting the coverage.
+  assert.ok(Object.hasOwn(ALLOWLIST, 'relationships:IFCRELCONNECTSELEMENTS'));
+  assert.equal(ALLOWLIST['relationships:IFCRELCONNECTSELEMENTS'].status, 'pending');
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
 });
@@ -193,8 +198,12 @@ test('SPATIAL TYPES: removing IfcSite from the TS enum list surfaces as a TS-sid
 
 // -- properties -----------------------------------------------------------
 
-test('PROPERTIES: an allowlisted divergence (IFCCOMPLEXPROPERTY, #3963/#3971) does not fail on its own', () => {
-  assert.ok(Object.hasOwn(ALLOWLIST, 'properties:IFCCOMPLEXPROPERTY'));
+test('ALLOWLIST: a `deliberate` divergence does not fail on its own', () => {
+  // The sibling of the test above, for the other allowlist status: a settled
+  // trade-off rather than an in-flight fix. Together they prove suppression
+  // works for both statuses the allowlist can carry.
+  assert.ok(Object.hasOwn(ALLOWLIST, 'quantities:IFCPHYSICALCOMPLEXQUANTITY'));
+  assert.equal(ALLOWLIST['quantities:IFCPHYSICALCOMPLEXQUANTITY'].status, 'deliberate');
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
 });

@@ -184,19 +184,6 @@ export const ALLOWLIST = {
   'relationships:IFCRELASSIGNSTOPRODUCT': { status: 'pending', note: '#3964, tracked with #3969' },
   'relationships:IFCRELREFERENCEDINSPATIALSTRUCTURE': { status: 'pending', note: '#3964, tracked with #3969' },
 
-  // #3965: server never promotes a *contained* (not aggregated) spatial
-  // element into its own hierarchy node. TS treats IfcSpatialZone (the
-  // Revit Family+Dynamo pattern), IfcMarinePart and IfcFacilityPartCommon as
-  // spatial-structure nodes; the server's `is_spatial_type` does not yet.
-  // Open PR #3973 closes #3965.
-  'spatialTypes:IFCSPATIALZONE': { status: 'pending', note: '#3965, open PR #3973' },
-  'spatialTypes:IFCMARINEPART': { status: 'pending', note: '#3965, tracked with #3973' },
-  'spatialTypes:IFCFACILITYPARTCOMMON': { status: 'pending', note: '#3965, tracked with #3973' },
-
-  // #3963: the server has no IFCCOMPLEXPROPERTY arm at all and drops the
-  // whole containing PropertySet; the browser path resolves it via
-  // parsePropertyValueWithComplex. Open PR #3971 closes #3963.
-  'properties:IFCCOMPLEXPROPERTY': { status: 'pending', note: '#3963, open PR #3971' },
 
   // #3254: IfcPhysicalComplexQuantity groups other quantities instead of
   // carrying a measure itself, so neither side resolves it to a Quantity —

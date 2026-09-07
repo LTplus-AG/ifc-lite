@@ -20,6 +20,7 @@ test('#4080: Dependabot-only dependency manifests and lockfiles use the normal t
         'Cargo.lock',
         'apps/server/Dockerfile',
         'packages/collab-server/Dockerfile',
+        'tools/ifcopenshell_reference/Dockerfile',
       ),
     ),
     true,
@@ -35,5 +36,9 @@ test('#4080: the exception cannot swallow authored or mixed changes', () => {
     false,
   );
   assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('packages/viewer/not-package.json')), false);
+  assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('fixtures/package.json')), false);
+  assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('packages/viewer/fixture/package.json')), false);
+  assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('rust/python/Cargo.toml')), false);
+  assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('rust/csg-thread-bench/Cargo.toml')), false);
   assert.equal(isDependabotDependencyOnly('dependabot[bot]', entries('apps/viewer/Dockerfile')), false);
 });

@@ -23,6 +23,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 mod color_layer;
+mod csg_summary;
 mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};
@@ -1511,6 +1512,12 @@ pub fn process_geometry_streaming_filtered_with_options(
                 *by_reason.entry(f.reason.label()).or_insert(0) += 1;
             }
         }
+        // #4067: `KernelError` (the sole production emitter is
+        // `topology_diagnostic.rs`) records an ACCEPTED open-topology result —
+        // the returned mesh is unchanged — not a dropped cut. Partition the
+        // count before it's consumed into `breakdown` below.
+        let open_topology_accepted = *by_reason.get("KernelError").unwrap_or(&0);
+        let dropped = total_csg_failures - open_topology_accepted;
         let mut breakdown: Vec<(&'static str, usize)> = by_reason.into_iter().collect();
         breakdown.sort_by(|a, b| b.1.cmp(&a.1));
         let breakdown = breakdown
@@ -1521,8 +1528,11 @@ pub fn process_geometry_streaming_filtered_with_options(
         tracing::warn!(
             total_csg_failures,
             products_with_failures,
+            dropped,
+            open_topology_accepted,
             %breakdown,
-            "CSG failures during geometry extraction (cut dropped, host kept uncut)"
+            "{}",
+            csg_summary::csg_summary_message(dropped, open_topology_accepted)
         );
     }
 

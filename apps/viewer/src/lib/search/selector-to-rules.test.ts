@@ -239,6 +239,17 @@ describe('selectorToFilterRules — operators and value shapes', () => {
     );
   });
 
+  it('the Qto_ test is case-SENSITIVE, like every other one in the repo', () => {
+    // `Qto_` is a buildingSMART prefix with a fixed spelling, and the six
+    // other places that test for it (SDK, lists, ids, ifcx) all compare it
+    // case-sensitively. A selector that answered differently for the same set
+    // name would be a surface disagreeing with the rest of the app.
+    assert.deepEqual(
+      rulesOf('qto_wallbasequantities.NetVolume>1.5'),
+      [prop('qto_wallbasequantities', 'NetVolume', 'gt', '1.5')],
+    );
+  });
+
   it('a Qto_ set with a NON-numeric value stays a property rule', () => {
     assert.deepEqual(
       rulesOf('Qto_WallBaseQuantities.Note=draft'),

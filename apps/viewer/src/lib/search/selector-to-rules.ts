@@ -318,10 +318,16 @@ function regexProblem(value: SelectorText | SelectorValue): string | undefined {
   }
 }
 
-/** A set the quantity rule owns: `Qto_WallBaseQuantities`, or a regex over it. */
+/**
+ * A set the quantity rule owns: `Qto_WallBaseQuantities`, or a regex over it.
+ * Case-SENSITIVE, like the six other `Qto_` prefix tests in this repo (SDK,
+ * lists, ids, ifcx): `Qto_` is a buildingSMART prefix with a fixed spelling,
+ * and a selector answering differently from the rest of the app for the same
+ * set name would be a surface disagreeing with itself.
+ */
 function looksLikeQuantitySet(pset: SelectorText): boolean {
   const text = pset.kind === 'regex' ? pset.source.replace(/^\^/, '') : pset.text;
-  return text.toLowerCase().startsWith('qto_');
+  return text.startsWith('Qto_');
 }
 
 function unsupportedOp(text: string, op: SelectorOp, value: SelectorValue): string {

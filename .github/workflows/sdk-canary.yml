@@ -30,6 +30,7 @@ on:
       - 'packages/bcf/**'
       - 'packages/clash/**'
       - 'packages/cli/**'
+      - 'packages/codegen/**'
       - 'packages/collab/**'
       - 'packages/create/**'
       - 'packages/data/**'

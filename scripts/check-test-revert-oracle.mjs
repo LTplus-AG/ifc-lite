@@ -80,18 +80,16 @@ import { tmpdir } from 'node:os';
 import {
   parseNameStatus,
   classifyDiff,
-  detectRunner,
-  cargoRunner,
-  rootScriptsRunner,
   parseRunnerOutput,
   aggregate,
   verdict,
   UNOBSERVED,
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
-import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
-import { requiredFeatureCombos, requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
+import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
+import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
+import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootFlag = process.argv.indexOf('--root');
@@ -168,71 +166,18 @@ function parseArgs(argv) {
 // Package / runner resolution
 // ---------------------------------------------------------------------------
 
-function findUp(startDir, filename) {
-  let dir = startDir;
-  for (;;) {
-    const candidate = join(dir, filename);
-    if (existsSync(candidate)) return dir;
-    const parent = dirname(dir);
-    if (parent === dir || !parent.startsWith(ROOT)) return null;
-    dir = parent;
-  }
-}
-
-/** Group test files by the package that owns them and pick each one's runner. */
-function planRuns(testPaths) {
-  /** @type {Map<string, {dir: string, files: string[], script: string|undefined, crate: string|null}>} */
-  const groups = new Map();
-  const unassigned = [];
-
-  for (const rel of testPaths) {
-    const abs = join(ROOT, rel);
-    const c = cargoTestOwner(abs, ROOT);
-    if (c) {
-      const key = `cargo:${c.crate}`;
-      if (!groups.has(key)) groups.set(key, { dir: c.dir, files: [], script: undefined, crate: c.crate });
-      groups.get(key).files.push(rel);
-      continue;
-    }
-    if (rel.endsWith('.rs')) { unassigned.push(rel); continue; }
-    const pkgDir = findUp(dirname(abs), 'package.json');
-    if (!pkgDir) { unassigned.push(rel); continue; }
-    if (!groups.has(pkgDir)) {
-      let script;
-      try {
-        script = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')).scripts?.test;
-      } catch {
-        script = undefined;
-      }
-      groups.set(pkgDir, { dir: pkgDir, files: [], script, crate: null });
-    }
-    groups.get(pkgDir).files.push(rel);
-  }
-
-  const plans = [];
-  for (const [key, g] of groups) {
-    const relFiles = g.files.map((f) => relative(g.dir, join(ROOT, f)) || f);
-    // #4050/#4024: a default build compiles a `#[cfg(feature = "x")]` test OUT
-    // entirely, so run one cargo invocation per feature-combo the changed
-    // files require; none found -> the old, single default-features run.
-    if (g.crate) {
-      const combos = requiredFeatureCombos(ROOT, g.files);
-      for (const features of combos.length > 0 ? combos : [[]]) {
-        const label = features.length > 0 ? `${key}+${features.join('+')}` : key;
-        plans.push({ key: label, dir: g.dir, files: g.files, relFiles, script: g.script, crate: g.crate, runner: cargoRunner(g.crate, features) });
-      }
-      continue;
-    }
-    const runner = (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
-    plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: null });
-  }
-  return { plans, unassigned };
-}
+// findUp() and planRuns() live in ./lib/revert-oracle-plan-runs.mjs (#4090):
+// this file sits at its exact module-size budget with zero headroom, so the
+// grouping/runner-selection logic moved to that already-uncapped sibling
+// instead of growing this one. planRuns() is invoked below through
+// requiredFeaturePlanOrDie(), which also converts an UnhandledCfgShapeError
+// raised from inside it (via requiredFeatureCombos()) into a structured
+// failure instead of an unhandled crash.
 
 /** Resolve a runner binary the way the package itself would. */
 function resolveBin(bin, pkgDir) {
   if (bin === 'node') return process.execPath;
-  if (bin === 'cargo') return 'cargo';
+  if (bin === 'cargo' || bin === 'python3') return bin;
   let dir = pkgDir;
   for (;;) {
     const candidate = join(dir, 'node_modules', '.bin', bin);
@@ -310,6 +255,14 @@ const mergeBase = gitOrDie(['merge-base', baseSha, headSha]).trim();
 const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]));
 if (entries.length === 0) die(EXIT_NOTHING_CHECKED, 'the diff is empty; nothing to check.');
 
+if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries)) {
+  console.log(
+    '  NOT APPLICABLE: Dependabot changed dependency manifests/lockfiles only; ' +
+      'the normal build and test lanes provide the compatibility verdict.',
+  );
+  process.exit(0);
+}
+
 const { production, test: testEntries, ignored, warnings } = classifyDiff(entries);
 for (const w of warnings) console.log(`  WARNING: ${w}`);
 
@@ -342,7 +295,7 @@ if (testPaths.length === 0) {
   );
 }
 
-const { plans, unassigned } = requiredFeaturePlanOrDie(planRuns, testPaths, opts.json, baseSha, headSha, prodPaths, die, EXIT_UNHANDLED_CFG_SHAPE);
+const { plans, unassigned } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, opts.json, baseSha, headSha, prodPaths, die, EXIT_UNHANDLED_CFG_SHAPE);
 if (unassigned.length > 0) {
   die(EXIT_NOTHING_CHECKED, 'could not find an owning package for some test files', unassigned);
 }

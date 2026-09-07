@@ -34,6 +34,7 @@
  * synthetic fixtures (`revert-oracle.test.mjs`) without reverting anything.
  */
 
+import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
@@ -58,8 +59,8 @@ const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
  */
 const DEPLOY_CONFIG_RE = /(^|\/)(vercel\.json|\.vercelignore|vercel-[a-z0-9-]*\.sh)$/;
 
-/** A file that IS a test. */
-const TEST_FILE_RE = /(^|\/)[^/]*\.(test|spec)\.(ts|tsx|mts|cts|js|jsx|mjs|cjs)$/;
+/** A file that IS a test: JS/TS `*.test.*`/`*.spec.*`, or Python's `test_*.py` / `*_test.py` (#4050). */
+const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)|test_[^/]*\.py|[^/]*_test\.py)$/;
 /** Directories whose entire contents are test scaffolding, not production. */
 const TEST_DIR_RE = /(^|\/)(__tests__|__snapshots__|__fixtures__|test-fixtures|testdata)(\/|$)/;
 /** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
@@ -252,6 +253,7 @@ const RUNNER_MISSING_PATTERNS = [
   /Command "\w[\w-]*" not found/i,
   /No such file or directory.*\.bin/,
   /error: no such command/,
+  PYTEST_MISSING_PATTERN,
 ];
 
 export function hasLoadError(text) {
@@ -284,13 +286,11 @@ export function parseRunnerOutput(run) {
   }
 
   const parsed =
-    family === 'vitest'
-      ? parseVitest(text)
-      : family === 'node-test'
-        ? parseNodeTest(text)
-        : family === 'cargo'
-          ? parseCargo(text)
-          : null;
+    family === 'vitest' ? parseVitest(text)
+    : family === 'node-test' ? parseNodeTest(text)
+    : family === 'cargo' ? parseCargo(text)
+    : family === 'python' ? parsePython(text)
+    : null;
 
   if (!parsed) {
     return { kind: UNPARSEABLE, passed: null, failed: null, total: null, evidence: [`unknown runner family: ${family}`] };

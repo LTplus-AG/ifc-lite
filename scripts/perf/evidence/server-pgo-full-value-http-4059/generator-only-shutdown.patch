@@ -1,0 +1,17 @@
+diff --git a/apps/server/src/main.rs b/apps/server/src/main.rs
+index 7510c3f38..4cafaa75e 100644
+--- a/apps/server/src/main.rs
++++ b/apps/server/src/main.rs
+@@ -332,6 +332,12 @@ async fn main() -> anyhow::Result<()> {
+         .await
+         .with_context(|| format!("failed to bind to {addr}"))?;
+     axum::serve(listener, app)
++        // Training generator only: normal return permits LLVM's atexit writer.
++        .with_graceful_shutdown(async {
++            tokio::signal::ctrl_c()
++                .await
++                .expect("failed to receive training shutdown signal");
++        })
+         .await
+         .context("server exited with an error")?;
+     Ok(())

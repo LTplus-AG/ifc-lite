@@ -1,0 +1,117 @@
+diff --git a/rust/geometry/src/kernel/arrangement/classify.rs b/rust/geometry/src/kernel/arrangement/classify.rs
+index 3e279ae463c854422a7e367e98a36874b90af519..2095fb9216c813b3e115072e65dbaed98896f137 100644
+--- a/rust/geometry/src/kernel/arrangement/classify.rs
++++ b/rust/geometry/src/kernel/arrangement/classify.rs
+@@ -38,0 +39 @@ fn point_inside_bvh(
++    bounds: Option<Aabb>,
+@@ -41,4 +42,4 @@ fn point_inside_bvh(
+-    // Same far-endpoint soundness guarantee as `point_inside`, taken from the
+-    // BVH's root AABB (the unpadded bound over every triangle) rather than an
+-    // O(N) rescan.
+-    let Some(bb) = bvh.root_aabb() else {
++    // Preserve the caller's exact far endpoint: component B supplies its
++    // existing padded box (#4054); operand A keeps the unpadded BVH root.
++    // The BVH only filters candidates for the unchanged exact segment test.
++    let Some(bb) = bounds.or_else(|| bvh.root_aabb()) else {
+@@ -291,0 +293 @@ pub(super) struct BComponents<'a> {
++    bvhs: Vec<super::super::broadphase::Bvh>,
+@@ -329 +331,2 @@ impl<'a> BComponents<'a> {
+-        Self { comps, aabbs, exts }
++        let bvhs = comps.iter().map(|c| super::super::broadphase::Bvh::build(c)).collect();
++        Self { comps, aabbs, exts, bvhs }
+@@ -383 +386 @@ impl<'a> BComponents<'a> {
+-    fn inside(&self, p: [f64; 3]) -> bool {
++    fn inside(&self, p: [f64; 3], scratch: &mut Vec<u32>) -> bool {
+@@ -385 +388,3 @@ impl<'a> BComponents<'a> {
+-            self.ray_may_hit(k, p) && point_inside(p, comp, self.exts[k], self.aabbs[k])
++            self.ray_may_hit(k, p) && point_inside_bvh(
++                p, comp, &self.bvhs[k], self.exts[k], Some(self.aabbs[k]), scratch,
++            )
+@@ -415 +420 @@ impl<'a> BComponents<'a> {
+-    fn solid_side(&self, c: [f64; 3], dir: [f64; 3]) -> (bool, bool) {
++    fn solid_side(&self, c: [f64; 3], dir: [f64; 3], scratch: &mut Vec<u32>) -> (bool, bool) {
+@@ -425 +430 @@ impl<'a> BComponents<'a> {
+-        (self.inside(p_plus), self.inside(p_minus))
++        (self.inside(p_plus, scratch), self.inside(p_minus, scratch))
+@@ -565 +570 @@ pub(super) fn boolean_vids_components(
+-                let (op_plus, op_minus) = bc.solid_side(c, n);
++                let (op_plus, op_minus) = bc.solid_side(c, n, &mut scratch);
+@@ -580 +585 @@ pub(super) fn boolean_vids_components(
+-            let inside_b = bc.inside(c);
++            let inside_b = bc.inside(c, &mut scratch);
+@@ -619 +624 @@ pub(super) fn boolean_vids_components(
+-        let inside_a = point_inside_bvh(c, a, &bvh_a, ext_a, &mut scratch);
++        let inside_a = point_inside_bvh(c, a, &bvh_a, ext_a, None, &mut scratch);
+@@ -644,0 +650,4 @@ mod issue_3353_vid_census_tests;
++
++#[cfg(test)]
++#[path = "component_parity_tests.rs"]
++mod component_parity_tests;
+diff --git a/rust/geometry/src/kernel/arrangement/component_parity_tests.rs b/rust/geometry/src/kernel/arrangement/component_parity_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e8768c75ef03e5d3b1671c3d3763797e6ea6717a
+--- /dev/null
++++ b/rust/geometry/src/kernel/arrangement/component_parity_tests.rs
+@@ -0,0 +1,62 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++use super::{point_inside, point_inside_bvh, BComponents, Tri};
++use crate::kernel::{arrangement::box_mesh, budget};
++
++fn compare(comps: &[&[Tri]], points: impl IntoIterator<Item = [f64; 3]>) {
++    let components = BComponents::new(comps);
++    let mut scratch = Vec::new();
++    for p in points {
++        let before = (budget::count(), budget::element_count());
++        let expected = comps.iter().enumerate().any(|(k, comp)| {
++            components.ray_may_hit(k, p)
++                && point_inside(p, comp, components.exts[k], components.aabbs[k])
++        });
++        assert_eq!(components.inside(p, &mut scratch), expected, "#4054 p={p:?}");
++        assert_eq!((budget::count(), budget::element_count()), before,
++            "#4054 explicit parity must not alter escalation budgets");
++    }
++}
++
++#[test]
++fn issue_4054_component_bvh_matches_brute_at_boundaries_and_large_coordinates() {
++    for (origin, scale) in [(0.0, 1.0), (-1e8, 3.0), (1e8, 0.01), (0.0, 1e-6)] {
++        let a = box_mesh([origin; 3], [origin + scale; 3]);
++        let b = box_mesh([origin + 3.0 * scale; 3], [origin + 4.0 * scale; 3]);
++        let coords = [-2.0, -1e-9, 0.0, 1e-9, 0.5, 1.0 - 1e-9, 1.0, 1.0 + 1e-9, 3.5, 6.0];
++        let points = coords.into_iter().flat_map(|x| coords.into_iter().flat_map(move |y| {
++            coords.into_iter().map(move |z| [origin + x * scale, origin + y * scale, origin + z * scale])
++        }));
++        compare(&[&a, &b], points);
++        compare(&[&b, &a], [[origin + 0.5 * scale; 3], [origin + 3.5 * scale; 3]]);
++    }
++    compare(&[&[]], [[0.0; 3], [1e8; 3]]);
++}
++
++#[test]
++fn issue_4054_dense_component_prunes_candidates_and_preserves_exact_parity() {
++    let mut mesh = Vec::new();
++    for x in 0..16 {
++        for y in 0..8 {
++            let (x, y) = (x as f64 * 3.0, y as f64 * 3.0);
++            mesh.extend(box_mesh([x, y, 0.0], [x + 1.0, y + 1.0, 1.0]));
++        }
++    }
++    let refs = [&mesh[..]];
++    let components = BComponents::new(&refs);
++    let p = [0.5, 0.5, 0.5];
++    let mut scratch = Vec::new();
++    let got = point_inside_bvh(p, &mesh, &components.bvhs[0], components.exts[0],
++        Some(components.aabbs[0]), &mut scratch);
++    assert_eq!(got, point_inside(p, &mesh, components.exts[0], components.aabbs[0]));
++    assert!(got, "analytic interior of the first closed box");
++    assert!(scratch.len() < mesh.len() / 8, "#4054 pruning must be exercised");
++    compare(&[&mesh], (0..2048).map(|i| {
++        let t = i as f64;
++        [(t * 0.618_033_988_75).fract() * 52.0 - 2.0,
++         (t * 0.414_213_562_37).fract() * 28.0 - 2.0,
++         (t * 0.732_050_807_57).fract() * 5.0 - 2.0]
++    }));
++}

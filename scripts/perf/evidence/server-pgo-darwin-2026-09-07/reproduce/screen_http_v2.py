@@ -18,6 +18,14 @@ SOURCES=['run.py','cache_phase.py','wire.py','wire_arrow_v2.py','screen_http_v2.
 def write(path,value):
  with path.open('x') as f:json.dump(value,f,indent=2);f.write('\n')
 
+def training_identities(training, fixture_hashes):
+ if len(training)!=5:
+  raise ValueError("Training plan requires exactly five rows")
+ hashes={row["publicSha256"] for row in training}
+ if len(hashes)!=5 or not hashes<=set(fixture_hashes):
+  raise ValueError("Training fixtures must be distinct members of the corpus")
+ return hashes
+
 def main():
  p=argparse.ArgumentParser()
  for key in ('manifest','training-plan','base-provenance','candidate-provenance','projection','out'):p.add_argument('--'+key,required=True,type=Path)
@@ -26,8 +34,8 @@ def main():
  a=p.parse_args();a.out.mkdir(exist_ok=False)
  fixtures=json.loads(a.manifest.read_text())['expanded_corpus']
  training=json.loads(a.training_plan.read_text())['training']
- training_hashes={f['publicSha256'] for f in training}
  hashes=[f['fixture_identity']['sha256'] for f in fixtures]
+ training_hashes=training_identities(training,hashes)
  assert len(fixtures)==27 and len(set(hashes))==27 and len(training_hashes)==5 and training_hashes<=set(hashes)
  assert len({f['label'] for f in fixtures})==27
  frozen={name:sha(ROOT/name) for name in SOURCES}

@@ -21,8 +21,9 @@
   },
   "screen_http_v2.py": {
     "originalSha256": "7fba4e485afc8c15fd3467c7678178fc6d468034e13b33fbb5a71fd3cd8635a7",
-    "publishedSha256": "026944ec9c049b5e70f6d949e2f5056c1dcec752d2483ef604a0260b793bdc56",
-    "adaptation": "MPL header added"
+    "publishedSha256": "8de9ab614cd52914085bd732df4cb4af4eaa8c523f98f3ccbbf1a20dc77f8011",
+    "adaptation": "MPL header/path parameters; post-measurement reproduction hardening requires exactly five training rows before corpus execution. Original measured source digest preserved.",
+    "previousPublishedSha256": "026944ec9c049b5e70f6d949e2f5056c1dcec752d2483ef604a0260b793bdc56"
   },
   "screen_offline_pair.py": {
     "originalSha256": "998ba113b7a82372b5945cd7e8be381c92adb387a4fbd456149b93f149640159",

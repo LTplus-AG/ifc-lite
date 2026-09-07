@@ -6,7 +6,7 @@
 
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 
-use super::super::super::diagnostics::BoolFailure;
+use crate::diagnostics::BoolFailure;
 use super::BooleanClippingProcessor;
 use super::OperandPath;
 use crate::router::GeometryProcessor;

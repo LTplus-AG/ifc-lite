@@ -30,6 +30,7 @@ mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
 mod polygonal_union;
 mod polygonal_removal;
+mod router_impl;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -911,8 +912,6 @@ impl BooleanClippingProcessor {
         Ok(mesh)
     }
 }
-
-mod router_impl;
 
 #[cfg(test)]
 mod halfspace_cap_tests;

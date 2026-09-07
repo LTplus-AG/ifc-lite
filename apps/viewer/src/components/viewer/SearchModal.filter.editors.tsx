@@ -38,20 +38,20 @@ const NO_OPTIONS: readonly string[] = [];
 // ── Op constants ──────────────────────────────────────────────────────
 
 const SET_OPS: SetOp[] = ['in', 'notIn'];
-const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith'];
+const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches'];
 const VALUE_OPS: ValueOp[] = [
-  'eq', 'ne', 'contains', 'notContains', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
+  'eq', 'ne', 'contains', 'notContains', 'matches', 'notMatches', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
 ];
 const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
 const CLASSIFICATION_OPS: ClassificationOp[] = [
-  'contains', 'eq', 'ne', 'notContains', 'isSet', 'isNotSet',
+  'contains', 'eq', 'ne', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
 ];
 
 const OP_LABEL: Record<string, string> = {
   in: 'is one of',  notIn: 'is not one of',
   eq: '=', ne: '≠',
   contains: 'contains', notContains: 'does not contain',
-  startsWith: 'starts with',
+  startsWith: 'starts with', matches: 'matches /regex/', notMatches: 'does not match /regex/',
   gt: '>', gte: '≥', lt: '<', lte: '≤',
   isSet: 'is set', isNotSet: 'is not set',
 };

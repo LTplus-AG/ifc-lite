@@ -13,13 +13,22 @@
  * collides with the IFC `type` attribute name on element rows.
  */
 
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+
 // ── Operator enums ────────────────────────────────────────────────────────────
 
 /** Set-membership: storey, ifcType, predefinedType. */
 export type SetOp = 'in' | 'notIn';
 
 /** String comparisons (Name rule). */
-export type StringOp = 'eq' | 'ne' | 'contains' | 'notContains' | 'startsWith';
+export type StringOp =
+  | 'eq'
+  | 'ne'
+  | 'contains'
+  | 'notContains'
+  | 'startsWith'
+  | 'matches'
+  | 'notMatches';
 
 /** Numeric comparisons (Quantity rule). */
 export type NumericOp = 'eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte';
@@ -34,13 +43,23 @@ export type ValueOp =
   | 'lte'
   | 'contains'
   | 'notContains'
+  | 'matches'
+  | 'notMatches'
   | 'isSet'
   | 'isNotSet';
 
 /** Classification value+presence ops. A classification is matched against
  *  its code / name string, so this is the StringOp comparison subset plus
  *  presence — numeric ops don't apply. */
-export type ClassificationOp = 'eq' | 'ne' | 'contains' | 'notContains' | 'isSet' | 'isNotSet';
+export type ClassificationOp =
+  | 'eq'
+  | 'ne'
+  | 'contains'
+  | 'notContains'
+  | 'matches'
+  | 'notMatches'
+  | 'isSet'
+  | 'isNotSet';
 
 /** Top-level rule combinator. */
 export type Combinator = 'AND' | 'OR';
@@ -161,6 +180,30 @@ function lower(s: string | null | undefined): string {
   return (s ?? '').toLowerCase();
 }
 
+/**
+ * Regex matching for the `matches` / `notMatches` ops, shared by every rule
+ * kind that owns them.
+ *
+ * The rule value is the regex SOURCE (`D[0-9]{2}`), which is what the selector
+ * parser hands over and what the chip editor asks for, but a value already
+ * written as a `/…/` literal is honoured as one — that is the spelling the
+ * Lists panel established in this app (#1591) and the one the IfcOpenShell
+ * syntax uses, so a user who types the slashes gets what they meant rather
+ * than a regex hunting for literal slashes.
+ *
+ * Case-SENSITIVE, unlike every other op here: the selector grammar's `/…/` is
+ * a Python regular expression, and those do not fold case. Write `/(?i)…/`'s
+ * JavaScript equivalent by adding an `i` flag to a full literal (`/wand/i`).
+ *
+ * An empty value never matches; an invalid pattern never matches either
+ * (`compileNameMatcher` logs it and falls back to an exact compare against the
+ * literal text, which no property value equals).
+ */
+function regexOpMatches(candidate: string, value: string): boolean {
+  if (value.length === 0) return false;
+  return compileNameMatcher(isNamePattern(value) ? value : `/${value}/`)(candidate ?? '');
+}
+
 export function setOpMatches(op: SetOp, candidate: string, values: readonly string[]): boolean {
   const c = lower(candidate);
   const hit = values.some((v) => lower(v) === c);
@@ -176,6 +219,8 @@ export function stringOpMatches(op: StringOp, candidate: string, value: string):
     case 'contains':    return a.includes(b);
     case 'notContains': return !a.includes(b);
     case 'startsWith':  return a.startsWith(b);
+    case 'matches':     return regexOpMatches(candidate, value);
+    case 'notMatches':  return !regexOpMatches(candidate, value);
   }
 }
 
@@ -198,11 +243,14 @@ export function matchStringAnyNone(
     case 'eq':
     case 'contains':
     case 'startsWith':
+    case 'matches':
       return candidates.some((c) => stringOpMatches(op, c, value));
     case 'ne':
       return candidates.every((c) => stringOpMatches('eq', c, value) === false);
     case 'notContains':
       return candidates.every((c) => stringOpMatches('contains', c, value) === false);
+    case 'notMatches':
+      return candidates.every((c) => stringOpMatches('matches', c, value) === false);
   }
 }
 
@@ -235,6 +283,8 @@ export function valueOpMatches(op: ValueOp, psetVal: string, ruleVal: string): b
     case 'ne':          return lower(psetVal) !== lower(ruleVal);
     case 'contains':    return lower(psetVal).includes(lower(ruleVal));
     case 'notContains': return !lower(psetVal).includes(lower(ruleVal));
+    case 'matches':     return regexOpMatches(psetVal, ruleVal);
+    case 'notMatches':  return !regexOpMatches(psetVal, ruleVal);
     case 'gt':
     case 'gte':
     case 'lt':

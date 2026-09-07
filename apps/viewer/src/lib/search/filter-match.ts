@@ -30,6 +30,22 @@ import {
 } from './filter-rules.js';
 import { lensMaterialNames } from '../lens-material-names.js';
 import { parsePropertyValue } from '@ifc-lite/encoding';
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+
+/**
+ * Compare a rule's property-set / property name against a row's.
+ *
+ * A `/…/` literal is a regular expression (case-sensitive, the Lists-panel
+ * convention from #1591), which is what makes the selector syntax's
+ * `/Pset_.*Common/.FireRating` reach `Pset_WallCommon` and `Pset_SlabCommon`
+ * in one rule. Anything else keeps the historical case-insensitive equality.
+ * IFC set and property names never contain slashes, so the form is
+ * unambiguous.
+ */
+export function nameMatches(rulePattern: string, rowName: string): boolean {
+  if (isNamePattern(rulePattern)) return compileNameMatcher(rulePattern)(rowName);
+  return rowName.toLowerCase() === rulePattern.toLowerCase();
+}
 
 // ── Pset / Qto matching ──────────────────────────────────────────────────────
 
@@ -91,16 +107,16 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
   if (rule.op === 'isSet' || rule.op === 'isNotSet') {
     const present = rows.some(
       (r) =>
-        r.setName.toLowerCase() === rule.setName.toLowerCase() &&
-        r.propertyName.toLowerCase() === rule.propertyName.toLowerCase(),
+        nameMatches(rule.setName, r.setName) &&
+        nameMatches(rule.propertyName, r.propertyName),
     );
     return rule.op === 'isSet' ? present : !present;
   }
 
   return rows.some(
     (r) =>
-      r.setName.toLowerCase() === rule.setName.toLowerCase() &&
-      r.propertyName.toLowerCase() === rule.propertyName.toLowerCase() &&
+      nameMatches(rule.setName, r.setName) &&
+      nameMatches(rule.propertyName, r.propertyName) &&
       valueOpMatches(rule.op, r.value, rule.value),
   );
 }
@@ -108,8 +124,8 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
 export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {
   return rows.some(
     (r) =>
-      r.setName.toLowerCase() === rule.setName.toLowerCase() &&
-      r.quantityName.toLowerCase() === rule.quantityName.toLowerCase() &&
+      nameMatches(rule.setName, r.setName) &&
+      nameMatches(rule.quantityName, r.quantityName) &&
       numericOpMatches(rule.op, r.value, rule.value),
   );
 }

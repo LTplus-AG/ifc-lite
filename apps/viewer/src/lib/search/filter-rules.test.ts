@@ -212,3 +212,87 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(parsed[0].kind, 'ifcType');
   });
 });
+
+/**
+ * `matches` / `notMatches` — the regex ops the selector syntax's `/…/` form
+ * lands on (#4091). Everything else in this file compares case-insensitively;
+ * these two do not, because the grammar's `/…/` is a Python regular
+ * expression and those are case-sensitive by default.
+ */
+describe('stringOpMatches — matches / notMatches', () => {
+  it('matches on the regex source, anchored nowhere', () => {
+    assert.strictEqual(stringOpMatches('matches', 'D01', 'D[0-9]{2}'), true);
+    assert.strictEqual(stringOpMatches('matches', 'Door-D01-A', 'D[0-9]{2}'), true);
+    assert.strictEqual(stringOpMatches('matches', 'DA1', 'D[0-9]{2}'), false);
+  });
+
+  it('notMatches is its complement', () => {
+    assert.strictEqual(stringOpMatches('notMatches', 'D01', 'D[0-9]{2}'), false);
+    assert.strictEqual(stringOpMatches('notMatches', 'DA1', 'D[0-9]{2}'), true);
+  });
+
+  it('a value already written as a /…/ literal is honoured as one, flags included', () => {
+    assert.strictEqual(stringOpMatches('matches', 'D01', '/D[0-9]{2}/'), true);
+    assert.strictEqual(stringOpMatches('matches', 'wand', '/WAND/i'), true);
+  });
+
+  it('is case-sensitive without an explicit flag, unlike every other op here', () => {
+    assert.strictEqual(stringOpMatches('matches', 'wand', 'WAND'), false);
+    assert.strictEqual(stringOpMatches('eq', 'wand', 'WAND'), true);
+  });
+
+  it('an invalid pattern never matches, and never throws', () => {
+    assert.doesNotThrow(() => stringOpMatches('matches', 'D01', 'D[0-9'));
+    assert.strictEqual(stringOpMatches('matches', 'D01', 'D[0-9'), false);
+    // notMatches on a broken pattern rejects nothing rather than everything.
+    assert.strictEqual(stringOpMatches('notMatches', 'D01', 'D[0-9'), true);
+  });
+
+  it('an empty pattern never matches (it would otherwise match everything)', () => {
+    assert.strictEqual(stringOpMatches('matches', 'D01', ''), false);
+  });
+
+  it('a global flag does not alternate between calls', () => {
+    for (let i = 0; i < 4; i++) {
+      assert.strictEqual(stringOpMatches('matches', 'D01', '/D[0-9]{2}/g'), true, `call ${i}`);
+    }
+  });
+
+  it('does not throw on an undefined candidate (#1195)', () => {
+    const undef = undefined as unknown as string;
+    assert.doesNotThrow(() => stringOpMatches('matches', undef, 'D[0-9]{2}'));
+    assert.strictEqual(stringOpMatches('matches', undef, 'D[0-9]{2}'), false);
+  });
+});
+
+describe('valueOpMatches / matchStringAnyNone — matches / notMatches', () => {
+  it('matches a property value by regex', () => {
+    assert.strictEqual(valueOpMatches('matches', 'REI 60', 'REI.*'), true);
+    assert.strictEqual(valueOpMatches('matches', 'EI 60', 'REI.*'), false);
+    assert.strictEqual(valueOpMatches('notMatches', 'EI 60', 'REI.*'), true);
+  });
+
+  it('multi-valued matches when ANY candidate matches', () => {
+    assert.strictEqual(matchStringAnyNone('matches', ['Beton', 'Stahl'], 'Bet.*'), true);
+    assert.strictEqual(matchStringAnyNone('matches', ['Holz', 'Stahl'], 'Bet.*'), false);
+  });
+
+  it('multi-valued notMatches holds only when NO candidate matches', () => {
+    assert.strictEqual(matchStringAnyNone('notMatches', ['Holz', 'Stahl'], 'Bet.*'), true);
+    assert.strictEqual(matchStringAnyNone('notMatches', ['Beton', 'Stahl'], 'Bet.*'), false);
+  });
+
+  it('an empty candidate set never matches, negative ops included', () => {
+    assert.strictEqual(matchStringAnyNone('matches', [], 'Bet.*'), false);
+    assert.strictEqual(matchStringAnyNone('notMatches', [], 'Bet.*'), false);
+  });
+});
+
+describe('a rule carrying a regex op survives the saved-filter JSON guard', () => {
+  it('isFilterRule accepts it and parseFilterRules keeps it', () => {
+    const rule = Rule.name('matches', 'D[0-9]{2}');
+    const roundTripped = JSON.parse(JSON.stringify([rule])) as unknown;
+    assert.strictEqual(isFilterRule(rule), true);
+    assert.deepStrictEqual(parseFilterRules(roundTripped), [rule]);
+  });
+});

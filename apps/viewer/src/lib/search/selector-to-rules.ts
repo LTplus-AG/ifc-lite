@@ -215,13 +215,22 @@ function adaptProperty(
   const propName = literalOf(prop);
   const names = { setNameKind: nameKind(pset), propertyNameKind: nameKind(prop) };
 
+  // A `Qto_` set names the QUANTITY table, which a property rule does not read.
+  // So a term the quantity rule cannot carry is reported rather than emitted as
+  // a property rule against rows it can never find: `Qto_….NetVolume=NULL` did
+  // not merely miss, its `isNotSet` matched every element (#4091). Teaching
+  // property rules to read quantity rows is #4094.
+  const quantitySet = looksLikeQuantitySet(pset);
+
   if (value.kind === 'null') {
+    if (quantitySet) return quantityNeedsNumber(text);
     if (op === '=') return Rule.property(setName, propName, 'isNotSet', '', names);
     if (op === '!=') return Rule.property(setName, propName, 'isSet', '', names);
     return `${quote(text)}: NULL can only be compared with "=" or "!="`;
   }
 
   if (value.kind === 'regex') {
+    if (quantitySet) return quantityNeedsNumber(text);
     const regexOp = REGEX_OPS[op];
     if (!regexOp) return unsupportedOp(text, op, value);
     const invalid = regexProblem(value);
@@ -229,9 +238,10 @@ function adaptProperty(
     return Rule.property(setName, propName, regexOp, value.source, { ...names, valueKind: 'regex' });
   }
 
-  const numeric = Number.parseFloat(value.text);
-  const numericOp = NUMERIC_OPS[op];
-  if (looksLikeQuantitySet(pset) && numericOp && Number.isFinite(numeric) && value.text.trim() !== '') {
+  if (quantitySet) {
+    const numeric = Number.parseFloat(value.text);
+    const numericOp = NUMERIC_OPS[op];
+    if (!numericOp || !Number.isFinite(numeric)) return quantityNeedsNumber(text);
     return Rule.quantity(setName, propName, numericOp, numeric, {
       setNameKind: names.setNameKind,
       quantityNameKind: names.propertyNameKind,
@@ -346,10 +356,22 @@ function regexProblem(value: SelectorText | SelectorValue): string | undefined {
  * lists, ids, ifcx): `Qto_` is a buildingSMART prefix with a fixed spelling,
  * and a selector answering differently from the rest of the app for the same
  * set name would be a surface disagreeing with itself.
+ *
+ * Sets carrying quantities under another name — Revit IFC2x3's
+ * `BaseQuantities`, ArchiCAD's `ArchiCADQuantities` — are out of reach from a
+ * selector, which `docs/guide/selector-syntax.md` says rather than guessing.
  */
 function looksLikeQuantitySet(pset: SelectorText): boolean {
-  const text = pset.kind === 'regex' ? pset.source.replace(/^\^/, '') : pset.text;
-  return text.startsWith('Qto_');
+  if (pset.kind !== 'regex') return pset.text.startsWith('Qto_');
+  // A PATTERN names quantity sets when `Qto_` opens it or opens one of its
+  // alternatives: `/^Qto_.*/`, `/(Qto_Wall|Qto_Slab)BaseQuantities/`. One that
+  // continues a longer word (`/Pset_Qto.*/`) is naming something else.
+  return /(?:^|[^A-Za-z0-9_])Qto_/.test(pset.source);
+}
+
+/** The sentence a `Qto_` term gets when it cannot become a quantity rule. */
+function quantityNeedsNumber(text: string): string {
+  return `${quote(text)}: a Qto_ set is read from the quantity table, so it takes a numeric comparison against a number — not NULL, not "*=", not text`;
 }
 
 function unsupportedOp(text: string, op: SelectorOp, value: SelectorValue): string {

@@ -250,11 +250,41 @@ describe('selectorToFilterRules — operators and value shapes', () => {
     );
   });
 
-  it('a Qto_ set with a NON-numeric value stays a property rule', () => {
+  it('a regex naming quantity sets by ALTERNATION is a quantity rule too', () => {
+    // `Qto_` opens an alternative here rather than the pattern, so a
+    // starts-with test misses it and used to emit a property rule instead.
     assert.deepEqual(
-      rulesOf('Qto_WallBaseQuantities.Note=draft'),
-      [prop('Qto_WallBaseQuantities', 'Note', 'eq', 'draft')],
+      rulesOf('/(Qto_Wall|Qto_Slab)BaseQuantities/.NetVolume>1'),
+      [qty('(Qto_Wall|Qto_Slab)BaseQuantities', 'NetVolume', 'gt', 1, { setNameKind: 'regex' })],
     );
+  });
+
+  it('a Qto_ term the quantity rule cannot carry is REPORTED, not routed to property sets', () => {
+    // A property rule reads IFCPROPERTYSET rows and quantities live in their
+    // own table, so each of these used to become a rule that could not match.
+    // `= NULL` was worse than a miss: `isNotSet` against a set no property row
+    // ever carries matched EVERY element in the model (#4091).
+    for (const text of [
+      'Qto_WallBaseQuantities.NetVolume=NULL',
+      'Qto_WallBaseQuantities.NetVolume!=NULL',
+      'Qto_WallBaseQuantities.NetVolume*=1',
+      'Qto_WallBaseQuantities.Note=draft',
+      '/Qto_.*/.NetVolume=/1.*/',
+    ]) {
+      const out = adapt(text);
+      assert.deepEqual(out.rules, [], text);
+      assert.equal(out.unsupported.length, 1, text);
+      assert.match(out.unsupported[0] ?? '', /quantity table/, text);
+    }
+  });
+
+  it('a quantity set with no Qto_ prefix is out of reach, and stays that way here', () => {
+    // Revit IFC2x3 writes `BaseQuantities` and ArchiCAD writes
+    // `ArchiCADQuantities`, neither carrying the prefix, so both stay property
+    // rules against a table that holds no such row. Named in
+    // docs/guide/selector-syntax.md rather than silently approximated; letting
+    // property rules read quantity rows is #4094, and this pin turns red there.
+    assert.deepEqual(rulesOf('BaseQuantities.NetVolume>1'), [prop('BaseQuantities', 'NetVolume', 'gt', '1')]);
   });
 
   it('a Pset_ set with a numeric value stays a property rule', () => {

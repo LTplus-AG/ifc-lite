@@ -64,7 +64,7 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `Pset.Prop` with all eight operators | ✅ | |
 | `Pset.Prop = NULL` / `!= NULL` | ✅ | becomes "is not set" / "is set" |
 | `/Pset_.*Common/.Prop` regex set or property name | ✅ | one rule reaches several sets |
-| `Qto_….Quantity > 10` | ✅ | a `Qto_` set with a numeric value becomes a quantity rule; the prefix is case-sensitive, as everywhere else in ifc-lite |
+| `Qto_….Quantity > 10` | ⚠️ | only a `Qto_` set, and only a numeric comparison — see below |
 | `material=` | ⚠️ | matches material **names**; Category is not read yet |
 | `classification=`, `= NULL`, `!= NULL` | ✅ | matches the code or the name |
 | `location="Level 3"` | ⚠️ | see below |
@@ -73,6 +73,27 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | attributes other than `Name` and `PredefinedType` | ❌ | reported, not applied |
 | `parent=`, `query:` | ❌ | reported, not applied |
 | `+` unions of groups | ❌ | the first group is applied, the rest reported |
+
+### Which quantities a selector can reach
+
+Quantities are a separate table from property sets, and the two rules do not read
+each other's rows. A term reaches the quantity table only when **both** halves hold:
+
+- the set name starts with `Qto_` (case-sensitive), or is a pattern whose `Qto_`
+  opens it or opens one of its alternatives — `/^Qto_.*/`,
+  `/(Qto_Wall|Qto_Slab)BaseQuantities/`;
+- the comparison is `=`, `!=`, `>`, `>=`, `<` or `<=` against a number.
+
+A `Qto_` term failing the second half is **reported, not applied**:
+`Qto_WallBaseQuantities.NetVolume = NULL`, `…NetVolume *= 1` and
+`…Note = draft` all come back named rather than silently run against property
+sets, where they would find nothing (`= NULL` was worse still — "is not set"
+against a set no property row carries matched every element).
+
+Quantities written under a set with no `Qto_` prefix are **not reachable** from a
+selector today: Revit's IFC2x3 export writes `BaseQuantities` and ArchiCAD writes
+`ArchiCADQuantities`, so `BaseQuantities.NetVolume > 1` becomes a property rule and
+finds nothing. Reading quantity rows from a property term is part of #4094.
 
 ### How far `location=` reaches
 

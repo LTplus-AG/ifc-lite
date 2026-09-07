@@ -156,7 +156,7 @@ export interface ClassificationInfo {
  * `operator` exactly as they did before.
  *
  * Comparison semantics mirror the viewer's search rule model
- * (`apps/viewer/src/lib/search/filter-rules.ts`, `valueOpMatches`): `gt` / `gte`
+ * (`apps/viewer/src/lib/search/filter-ops.ts`, `valueOpMatches`): `gt` / `gte`
  * / `lt` / `lte` parse both sides with `Number.parseFloat` and match only when
  * both parse finite; `ne` is a case-insensitive string comparison, not a
  * numeric one (unlike `equals`, which stays case-sensitive except for the

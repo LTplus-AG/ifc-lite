@@ -285,6 +285,10 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 | `--offset <N>` | Skip first N results |
 | `--json` | JSON output |
 
+`--type` and `--where` are the CLI's own filter surface, not the IfcOpenShell
+selector syntax. See [Selector Syntax](selector-syntax.md) for how each selector
+construct is spelled here, and for what accepting selector text on the CLI would take.
+
 ---
 
 ### `props` — Entity Properties
@@ -588,14 +592,14 @@ Returns pass/fail summary with exit code 0 (pass) or 1 (fail).
 Create, read, and manage BCF (BIM Collaboration Format) files.
 
 ```bash
-# Create a new BCF issue
-ifc-lite bcf create --title "Missing fire door" --description "Level 2, Room 201" --out issue.bcf
+# Create a new BCF topic
+ifc-lite bcf create --title "Missing fire door" --description "Level 2, Room 201" --out topic.bcf
 
 # List topics in a BCF file
-ifc-lite bcf list issues.bcf
+ifc-lite bcf list topics.bcf
 
 # Add a comment to a BCF file
-ifc-lite bcf add-comment --file issues.bcf --text "Fixed in revision 3" --out updated.bcf
+ifc-lite bcf add-comment --file topics.bcf --text "Fixed in revision 3" --out updated.bcf
 ```
 
 ---

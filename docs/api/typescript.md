@@ -829,7 +829,7 @@ For byte-reproducible **exported files**, seed the exporter too: builders that a
 
 ## @ifc-lite/bcf
 
-BCF (BIM Collaboration Format) support for issue tracking. Implements BCF 2.1 and 3.0.
+BCF (BIM Collaboration Format) support for topic tracking. Implements BCF 2.1 and 3.0.
 
 ### readBCF / writeBCF
 

@@ -7,7 +7,7 @@
  *
  * Topics live inside a per-session BCF project that's lazy-created on first
  * write. We keep the project per ToolContext (server-wide, not per-model)
- * so an agent can collect issues across federated models, then export a
+ * so an agent can collect topics across federated models, then export a
  * single .bcfzip via `bcf_export`.
  */
 

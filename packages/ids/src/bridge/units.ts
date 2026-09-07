@@ -161,6 +161,81 @@ export function resolveEntityMeasureScales(
   return scales;
 }
 
+/**
+ * Which scalable IFC measure dimension `dataType` names, or `undefined`
+ * for anything this module doesn't scale (labels, identifiers, booleans,
+ * an untyped table column). The single classification both
+ * `applyUnitConversion` and the raw/base-SI helpers below key off, so
+ * "which measure types get scaled" can't drift between the base
+ * projection and an overlay correction.
+ */
+function measureKind(dataType: string | undefined): 'length' | 'area' | 'volume' | undefined {
+  const upper = dataType ? dataType.toUpperCase() : '';
+  if (upper === 'IFCLENGTHMEASURE' || upper === 'IFCPOSITIVELENGTHMEASURE') return 'length';
+  if (upper === 'IFCAREAMEASURE') return 'area';
+  if (upper === 'IFCVOLUMEMEASURE') return 'volume';
+  return undefined;
+}
+
+/**
+ * The raw-to-base-SI multiplier for a scalar measure of `dataType`, given
+ * the entity's resolved {@link EntityMeasureScales}. Area scales by the
+ * SQUARE of the length factor and volume by the CUBE (a millimetre-authored
+ * 1 m² is stored as 1e6 mm², not 1e3) — NOT the raw length scale — unless
+ * the file declares an explicit AREAUNIT/VOLUMEUNIT, which takes
+ * precedence (IFC does not require it to relate to LENGTHUNIT by that
+ * exponent; see `resolveMeasureScales` above). `undefined` for a
+ * non-measure `dataType` or when the entity has no resolved length scale.
+ */
+export function measureScaleFor(
+  dataType: string | undefined,
+  scales: EntityMeasureScales
+): number | undefined {
+  const kind = measureKind(dataType);
+  if (!kind) return undefined;
+  if (kind === 'length') return scales.length;
+  if (kind === 'area') {
+    return scales.area ?? (scales.length != null ? scales.length ** 2 : undefined);
+  }
+  return scales.volume ?? (scales.length != null ? scales.length ** 3 : undefined);
+}
+
+/**
+ * Convert a raw-frame scalar value — the frame every stored IFC property,
+ * and every `MutablePropertyView` property mutation, is written in — into
+ * the base-SI frame `applyUnitConversion`/`projectProperty` already put
+ * every OTHER property of the same pset into. Only numeric measure values
+ * move; strings, booleans and non-measure dataTypes pass through
+ * unchanged, and a value that is already `1` scale (e.g. a metre project)
+ * is returned as-is rather than re-boxed.
+ */
+export function toBaseSI(
+  rawValue: string | number | boolean | null,
+  dataType: string | undefined,
+  scales: EntityMeasureScales
+): string | number | boolean | null {
+  if (typeof rawValue !== 'number') return rawValue;
+  const scale = measureScaleFor(dataType, scales);
+  if (!scale || scale === 1) return rawValue;
+  return rawValue * scale;
+}
+
+/**
+ * The inverse of {@link toBaseSI}: convert a base-SI scalar — an IDS
+ * literal, or a user-typed correction meant to satisfy one — into the raw
+ * frame the model actually stores. Only numeric measure values move.
+ */
+export function toRaw(
+  baseSIValue: string | number | boolean | null,
+  dataType: string | undefined,
+  scales: EntityMeasureScales
+): string | number | boolean | null {
+  if (typeof baseSIValue !== 'number') return baseSIValue;
+  const scale = measureScaleFor(dataType, scales);
+  if (!scale || scale === 1) return baseSIValue;
+  return baseSIValue / scale;
+}
+
 export function applyUnitConversion(
   rawValue: string | number | boolean | null,
   rawValues: string[] | undefined,
@@ -168,15 +243,11 @@ export function applyUnitConversion(
   scale: number | undefined,
   measureScales?: MeasureScales
 ): { value: string | number | boolean | null; values: string[] | undefined } {
-  const upper = dataType ? dataType.toUpperCase() : '';
-  const isLength =
-    upper === 'IFCLENGTHMEASURE' || upper === 'IFCPOSITIVELENGTHMEASURE';
-  const isArea = upper === 'IFCAREAMEASURE';
-  const isVolume = upper === 'IFCVOLUMEMEASURE';
+  const kind = measureKind(dataType);
   const isUntypedTable =
     !dataType && Array.isArray(rawValues) && rawValues.length > 0;
 
-  if (!isLength && !isArea && !isVolume && !isUntypedTable) {
+  if (!kind && !isUntypedTable) {
     return { value: rawValue, values: rawValues };
   }
 
@@ -199,16 +270,14 @@ export function applyUnitConversion(
     return { value: rawValue, values: expanded };
   }
 
-  // Area scales by the SQUARE of the length factor and volume by the
-  // CUBE (a millimetre-authored 1 m² is stored as 1e6 mm², not 1e3) —
-  // NOT the raw length scale. Prefer the file's explicitly declared
-  // AREAUNIT/VOLUMEUNIT when present; only derive from the length scale
-  // when the file declares none (see `resolveMeasureScales` above).
-  const effectiveScale = isLength
-    ? scale
-    : isArea
-      ? (measureScales?.area ?? (scale != null ? scale ** 2 : undefined))
-      : (measureScales?.volume ?? (scale != null ? scale ** 3 : undefined));
+  // Dimension handling (length vs. area-squared vs. volume-cubed) lives in
+  // `measureScaleFor` — see its doc for why area/volume don't just reuse
+  // the raw length scale.
+  const effectiveScale = measureScaleFor(dataType, {
+    length: scale,
+    area: measureScales?.area,
+    volume: measureScales?.volume,
+  });
 
   if (!effectiveScale || effectiveScale === 1) {
     return { value: rawValue, values: rawValues };

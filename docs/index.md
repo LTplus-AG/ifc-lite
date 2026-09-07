@@ -55,7 +55,7 @@
 - **Extract data** like properties, quantities, relationships, and spatial structure
 - **Validate models** against IDS (Information Delivery Specification) rules
 - **Generate 2D drawings** like floor plans, sections, and elevations from 3D models
-- **Collaborate** with BCF support for issues, viewpoints, and comments
+- **Collaborate** with BCF support for topics, viewpoints, and comments
 - **Export** to glTF, IFC, CSV, or Parquet
 - **Work with multiple models** at once with federated selection and visibility
 - **Automate from the terminal** with the [ifc-lite CLI](guide/cli.md), including an MCP server for AI assistants

@@ -6,7 +6,7 @@
  * @ifc-lite/bcf - BIM Collaboration Format support
  *
  * This package provides BCF (BIM Collaboration Format) support for IFC-Lite.
- * It implements BCF 2.1 and 3.0 specifications for issue tracking in BIM projects.
+ * It implements BCF 2.1 and 3.0 specifications for topic tracking in BIM projects.
  *
  * @see https://github.com/buildingSMART/BCF-XML
  * @see https://www.buildingsmart.org/standards/bsi-standards/bim-collaboration-format/
@@ -121,7 +121,7 @@ export function createBCFProject(options?: {
 }
 
 /**
- * Create a new BCF topic (issue)
+ * Create a new BCF topic
  */
 export function createBCFTopic(options: {
   title: string;

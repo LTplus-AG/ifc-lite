@@ -31,7 +31,7 @@ let hadClashResultAtTourStart = 0;
 export const CLASH_TOUR: TourDefinition = {
   id: 'clash',
   title: 'Find clashes',
-  description: 'Detect overlapping elements, zoom to a clash, and hand it off as a BCF issue.',
+  description: 'Detect overlapping elements, zoom to a clash, and hand it off as a BCF topic.',
   minutes: 4,
   version: 1,
   panel: 'clash',
@@ -146,7 +146,7 @@ export const CLASH_TOUR: TourDefinition = {
       panel: 'clash',
       placement: 'left',
       title: 'Hand it off',
-      body: 'BCF topic files the focused clash as an issue with a snapshot. Clear removes the highlights when you are done.',
+      body: 'BCF topic files the focused clash with a snapshot. Clear removes the highlights when you are done.',
     },
   ],
 };

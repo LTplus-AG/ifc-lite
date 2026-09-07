@@ -1,13 +1,13 @@
 # BCF Collaboration
 
-IFClite supports **BCF (BIM Collaboration Format)**, the buildingSMART standard for issue tracking in BIM projects. The `@ifc-lite/bcf` package implements BCF 2.1 and 3.0 specifications.
+IFClite supports **BCF (BIM Collaboration Format)**, the buildingSMART standard for topic tracking in BIM projects. The `@ifc-lite/bcf` package implements BCF 2.1 and 3.0 specifications.
 
 ## What is BCF?
 
-BCF allows teams to create, share, and manage issues (called **topics**) linked to specific locations and components in a BIM model. Each topic can include:
+BCF allows teams to create, share, and manage **topics** linked to specific locations and components in a BIM model. Each topic can optionally be typed (Issue, Request, Comment, and more) and can include:
 
 - **Viewpoints** - Camera positions and component visibility snapshots
-- **Comments** - Discussion threads on the issue
+- **Comments** - Discussion threads on the topic
 - **Component references** - Links to specific IFC entities via GlobalId
 
 ## Quick Start
@@ -72,7 +72,7 @@ const bcfBlob = await writeBCF(project);
 
 ## Viewpoints
 
-Viewpoints capture the camera state and component visibility at the time an issue is created. IFClite provides utilities to convert between viewer camera state and BCF viewpoint format.
+Viewpoints capture the camera state and component visibility at the time a topic is created. IFClite provides utilities to convert between viewer camera state and BCF viewpoint format.
 
 ### Creating Viewpoints
 
@@ -233,7 +233,7 @@ In the IFClite viewer, BCF is integrated through the BCF panel:
 | Type | Description |
 |------|-------------|
 | `BCFProject` | Top-level container with topics map and version |
-| `BCFTopic` | An issue with title, status, comments, and viewpoints |
+| `BCFTopic` | A topic with title, status, comments, and viewpoints |
 | `BCFComment` | A comment on a topic with author and timestamp |
 | `BCFViewpoint` | Camera state, component visibility, and clipping planes |
 | `BCFComponents` | Selected, visible, and colored component references |

@@ -20,16 +20,36 @@ import {
 } from '@ifc-lite/parser';
 
 import {
-  valueOpMatches,
-  numericOpMatches,
-  matchStringAnyNone,
   type PropertyRule,
   type QuantityRule,
   type ClassificationRule,
   type StoreyRule,
+  type TextKind,
 } from './filter-rules.js';
+import { valueOpMatches, numericOpMatches, matchStringAnyNone } from './filter-ops.js';
 import { lensMaterialNames } from '../lens-material-names.js';
 import { parsePropertyValue } from '@ifc-lite/encoding';
+import { compileNameMatcher, isNamePattern } from '@ifc-lite/lists';
+
+/**
+ * Compare a rule's property-set / property name against a row's.
+ *
+ * `kind` is the rule saying what it holds (see {@link TextKind}). A `'regex'`
+ * name is a SOURCE and the whole string is the pattern, which is what makes
+ * the selector syntax's `/Pset_.*Common/.FireRating` reach `Pset_WallCommon`
+ * and `Pset_SlabCommon` in one rule; a `'literal'` name is compared as text
+ * even when it is spelled with slashes, which is what the grammar's quoting
+ * means and the only reason `"/Wall/".FireRating` can be asked for at all.
+ *
+ * A name with no declared kind was typed into a chip field, where the
+ * Lists-panel `/…/` convention (#1591) is the user's only way to say
+ * "pattern"; anything else there is the historical case-insensitive equality.
+ */
+export function nameMatches(rulePattern: string, rowName: string, kind?: TextKind): boolean {
+  if (kind === 'regex') return compileNameMatcher(`/${rulePattern}/`)(rowName);
+  if (kind === undefined && isNamePattern(rulePattern)) return compileNameMatcher(rulePattern)(rowName);
+  return rowName.toLowerCase() === rulePattern.toLowerCase();
+}
 
 // ── Pset / Qto matching ──────────────────────────────────────────────────────
 
@@ -91,25 +111,25 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
   if (rule.op === 'isSet' || rule.op === 'isNotSet') {
     const present = rows.some(
       (r) =>
-        r.setName.toLowerCase() === rule.setName.toLowerCase() &&
-        r.propertyName.toLowerCase() === rule.propertyName.toLowerCase(),
+        nameMatches(rule.setName, r.setName, rule.setNameKind) &&
+        nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind),
     );
     return rule.op === 'isSet' ? present : !present;
   }
 
   return rows.some(
     (r) =>
-      r.setName.toLowerCase() === rule.setName.toLowerCase() &&
-      r.propertyName.toLowerCase() === rule.propertyName.toLowerCase() &&
-      valueOpMatches(rule.op, r.value, rule.value),
+      nameMatches(rule.setName, r.setName, rule.setNameKind) &&
+      nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind) &&
+      valueOpMatches(rule.op, r.value, rule.value, rule.valueKind),
   );
 }
 
 export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {
   return rows.some(
     (r) =>
-      r.setName.toLowerCase() === rule.setName.toLowerCase() &&
-      r.quantityName.toLowerCase() === rule.quantityName.toLowerCase() &&
+      nameMatches(rule.setName, r.setName, rule.setNameKind) &&
+      nameMatches(rule.quantityName, r.quantityName, rule.quantityNameKind) &&
       numericOpMatches(rule.op, r.value, rule.value),
   );
 }
@@ -190,7 +210,7 @@ export function matchClassificationRule(
     if (r.name) candidates.push(r.name);
   }
   // rule.op is now eq | ne | contains | notContains — a StringOp subset.
-  return matchStringAnyNone(rule.op, candidates, rule.value);
+  return matchStringAnyNone(rule.op, candidates, rule.value, rule.valueKind);
 }
 
 /** Element elevation in metres, derived from its building storey's

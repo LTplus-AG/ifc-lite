@@ -223,7 +223,7 @@ export function buildClashNamespace(): NamespaceSchema {
         returns: 'value',
         llmSemantics: {
           taskTags: ['inspect'],
-          useWhen: 'Cluster a clash result into BCF-ready groups before exporting issues.',
+          useWhen: 'Cluster a clash result into BCF-ready groups before exporting topics.',
         },
       },
       {

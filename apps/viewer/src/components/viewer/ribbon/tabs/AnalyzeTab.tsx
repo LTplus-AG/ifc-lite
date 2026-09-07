@@ -45,7 +45,7 @@ export function AnalyzeTab() {
       <RibbonGroup label="Validate">
         <RibbonLargeButton
           icon={Issue}
-          label="BCF issues"
+          label="BCF topics"
           active={activeWorkspacePanels.has('bcf')}
           onClick={() => handleToggleRightPanel('bcf')}
         />

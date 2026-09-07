@@ -24,7 +24,7 @@ export async function bcfCommand(args: string[]): Promise<void> {
       const description = getFlag(args, '--description');
       const author = getFlag(args, '--author') ?? 'cli@ifc-lite.com';
       const outPath = getFlag(args, '--out');
-      if (!title) fatal('Usage: ifc-lite bcf create --title "Issue" [--description "..."] [--author email] --out file.bcf');
+      if (!title) fatal('Usage: ifc-lite bcf create --title "Missing door" [--description "..."] [--author email] --out file.bcf');
       if (!outPath) fatal('--out is required for BCF creation');
 
       const project = await bcf.createProject({ name: 'CLI Project' });

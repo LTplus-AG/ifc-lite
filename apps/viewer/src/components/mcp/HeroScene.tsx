@@ -78,7 +78,7 @@ export const HERO_STEPS: HeroStep[] = [
   { verb: 'Standardize', line: 'bsdd_property_sets("IfcWall")',                family: 'bSDD',      overlay: { kind: 'psets', psets: ['Pset_WallCommon', 'Qto_WallBaseQuantities', 'Pset_ConcreteElementGeneral'] } },
   { verb: 'Add',       line: 'entity_create(IfcDoor)',                         family: 'Mutation' },
   { verb: 'Section',   line: 'viewer_set_section(z = 2.2)',                    family: 'Viewer' },
-  { verb: 'Issue',     line: 'bcf_topic_create("missing fire rating")',        family: 'BCF',       overlay: { kind: 'pin', ref: 'BCF #04' } },
+  { verb: 'Flag',      line: 'bcf_topic_create("missing fire rating")',        family: 'BCF',       overlay: { kind: 'pin', ref: 'BCF #04' } },
   { verb: 'Inspect',   line: 'viewer_describe_selection()',                    family: 'Viewer',    overlay: { kind: 'card', ref: 'IfcWall #262', lines: ['Pset_WallCommon · IsExternal=true', 'FireRating=EI60 · 240 mm concrete'] } },
 ];
 

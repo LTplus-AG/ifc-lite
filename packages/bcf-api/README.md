@@ -1,6 +1,6 @@
 # @ifc-lite/bcf-api
 
-REST client for [buildingSMART BCF API](https://github.com/buildingSMART/BCF-API) (OpenCDE) servers. Connects to a BCF server, authenticates via OAuth2, and pulls projects, topics, comments and viewpoints into the [`@ifc-lite/bcf`](https://www.npmjs.com/package/@ifc-lite/bcf) in-memory model — so server-hosted issues flow through the same code paths as imported `.bcfzip` files.
+REST client for [buildingSMART BCF API](https://github.com/buildingSMART/BCF-API) (OpenCDE) servers. Connects to a BCF server, authenticates via OAuth2, and pulls projects, topics, comments and viewpoints into the [`@ifc-lite/bcf`](https://www.npmjs.com/package/@ifc-lite/bcf) in-memory model — so server-hosted topics flow through the same code paths as imported `.bcfzip` files.
 
 Works in the browser and in Node (uses the global `fetch`; injectable for tests). Implements the BCF API 2.1 routes.
 

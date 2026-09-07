@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * BCFPanel - BIM Collaboration Format issue management panel
+ * BCFPanel - BIM Collaboration Format topic management panel
  *
  * Provides:
  * - Topic list with filtering

@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Coordinates the "raise a BCF issue from a detected change" flow (#1199),
+ * Coordinates the "raise a BCF topic from a detected change" flow (#1199),
  * extracted from ComparePanel to keep it under the module-size house rule.
  *
  * Owns the create-form open/created state, captures a viewpoint (camera +
@@ -91,7 +91,7 @@ export function useBcfFromChange(
         const state = useViewerStore.getState();
         if (!state.bcfProject) {
           const first = modelList[0]?.name?.replace(/\.(ifc|ifczip)$/i, '') || 'Comparison';
-          state.setBcfProject(createBCFProject({ name: `${first}_Issues` }));
+          state.setBcfProject(createBCFProject({ name: `${first}_Topics` }));
         }
         // Resolve the viewpoint first so the topic's source-file Header can be
         // derived from the models its selection references before it is stored.
@@ -128,7 +128,7 @@ export function useBcfFromChange(
         setFormOpen(false);
         setCreatedTitle(topic.title);
       } catch (error) {
-        console.error('[compare] failed to create BCF issue from change', error);
+        console.error('[compare] failed to create BCF topic from change', error);
       } finally {
         submitInFlight.current = false;
       }

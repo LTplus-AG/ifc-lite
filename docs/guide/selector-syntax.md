@@ -42,6 +42,10 @@ Values, and property-set and property names, come in three spellings:
 | quoted | `"Level 3"` | `\"` and `\\` escape inside |
 | regular expression | `/D[0-9]{2}/` | unanchored, **case-sensitive** |
 
+Quoting is what forces a **literal**: `"/Wall/".FireRating` looks for a property
+set actually named `/Wall/`, not a pattern. It works in either position, so
+`Pset_BeamCommon."IsExternal"` and `/Pset_.*Common/."IsExternal"` are both valid.
+
 `NULL` (any case, unquoted) is the null literal, so `FireRating != NULL` means "has a
 FireRating". `TRUE` and `FALSE` are compared as the strings IFC property sets render
 them (`True` / `False`), case-insensitively.
@@ -60,7 +64,7 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `Pset.Prop` with all eight operators | ✅ | |
 | `Pset.Prop = NULL` / `!= NULL` | ✅ | becomes "is not set" / "is set" |
 | `/Pset_.*Common/.Prop` regex set or property name | ✅ | one rule reaches several sets |
-| `Qto_….Quantity > 10` | ✅ | a `Qto_` set with a numeric value becomes a quantity rule |
+| `Qto_….Quantity > 10` | ✅ | a `Qto_` set with a numeric value becomes a quantity rule; the prefix is case-sensitive, as everywhere else in ifc-lite |
 | `material=` | ⚠️ | matches material **names**; Category is not read yet |
 | `classification=`, `= NULL`, `!= NULL` | ✅ | matches the code or the name |
 | `location="Level 3"` | ⚠️ | see below |

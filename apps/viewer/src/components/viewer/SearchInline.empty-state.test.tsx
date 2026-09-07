@@ -65,6 +65,26 @@ describe('SearchInline — the empty popover names selector syntax', () => {
     assert.doesNotMatch(text, /selector syntax/i);
   });
 
+  it('a class name nobody knows is not worth sending anyone to the Filter tab for', () => {
+    // `IfcWaall` parses as a class term, so a hint keyed on parsing alone fired
+    // and pointed the user at a tab that then refuses the query — the same
+    // dead end #4091 is about, one surface further on.
+    const container = mountWithQuery('IfcWaall');
+    const text = container.textContent ?? '';
+    assert.match(text, /No results/);
+    assert.doesNotMatch(text, /selector syntax/i);
+  });
+
+  it('an unmatched GlobalId is a search term the box already understands', () => {
+    // A GlobalId parses as a selector term and the adapter has no rule for it
+    // (#4094), so the Filter tab would refuse it too. This box is where
+    // GlobalIds ARE searched, which makes "go elsewhere" the wrong advice.
+    const container = mountWithQuery('325Q7Fhnf67OZC$$r43uzK');
+    const text = container.textContent ?? '';
+    assert.match(text, /No results/);
+    assert.doesNotMatch(text, /selector syntax/i);
+  });
+
   it('a bare class name is a selector too, and is named as one', () => {
     // It also happens to match the seeded wall by TYPE, so this asserts the
     // hint reaches the empty state only — with rows present there is no

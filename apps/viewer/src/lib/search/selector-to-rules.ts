@@ -104,6 +104,13 @@ export function readSelector(text: string, options: SelectorAdaptOptions = {}): 
   return { ok: true, ...selectorToFilterRules(parsed.query, options) };
 }
 
+/** Text reading as a selector the Filter tab can RUN. An unknown class or a bare
+ *  GlobalId parses but yields no rule, so parsing alone is the wrong hint (#4091). */
+export function selectorYieldsRules(text: string): boolean {
+  const reading = readSelector(text);
+  return reading.ok && reading.rules.length > 0;
+}
+
 export function selectorToFilterRules(
   query: SelectorQuery,
   options: SelectorAdaptOptions = {},
@@ -144,11 +151,9 @@ export function selectorToFilterRules(
   return { combinator: 'AND', rules: all, unsupported, readsAsPlainText };
 }
 
-/**
- * A term carrying nothing selector-specific: a class name no schema knows
- * (`IFC-Export`), or an attribute with no rule behind it (`Level=1`). Text made
- * only of these is a search term that happens to parse.
- */
+/** A term carrying nothing selector-specific: a class name no schema knows
+ *  (`IFC-Export`), or an attribute with no rule behind it (`Level=1`). Text
+ *  made only of these is a search term that happens to parse. */
 function isPlainTextTerm(filter: SelectorFilter): boolean {
   if (filter.kind === 'class') return !isKnownType(filter.name);
   return filter.kind === 'attribute' && !FILTERABLE_ATTRIBUTES.has(filter.name.toLowerCase());
@@ -236,9 +241,8 @@ function adaptProperty(
 
   // A `Qto_` set names the QUANTITY table, which a property rule does not read,
   // so a term the quantity rule cannot carry is reported rather than aimed at
-  // rows it can never find: `Qto_….NetVolume=NULL` did not merely miss, its
-  // `isNotSet` matched every element (#4091). Property rules reading quantity
-  // rows is #4094.
+  // rows it can never find — `Qto_….NetVolume=NULL` matched EVERY element
+  // (#4091). Property rules reading quantity rows is #4094.
   const quantitySet = looksLikeQuantitySet(pset);
 
   if (value.kind === 'null') {
@@ -370,18 +374,15 @@ function regexProblem(value: SelectorText | SelectorValue): string | undefined {
 /**
  * A set the quantity rule owns: `Qto_WallBaseQuantities`, or a regex over it.
  * Case-SENSITIVE, like the six other `Qto_` prefix tests in this repo (SDK,
- * lists, ids, ifcx): `Qto_` is a buildingSMART prefix with a fixed spelling,
- * and a selector answering differently from the rest of the app for the same
- * set name would be a surface disagreeing with itself. Quantities written
- * under a set with no such prefix (Revit's `BaseQuantities`, ArchiCAD's
- * `ArchiCADQuantities`) are out of reach; `docs/guide/selector-syntax.md`
- * says so rather than guessing.
+ * lists, ids, ifcx): `Qto_` is a buildingSMART prefix with a fixed spelling, and
+ * a selector answering differently for the same set name would be a surface
+ * disagreeing with itself. Sets carrying quantities under another name are out
+ * of reach; see the guide.
  */
 function looksLikeQuantitySet(pset: SelectorText): boolean {
   if (pset.kind !== 'regex') return pset.text.startsWith('Qto_');
-  // A PATTERN names quantity sets when `Qto_` opens it or opens one of its
-  // alternatives: `/^Qto_.*/`, `/(Qto_Wall|Qto_Slab)BaseQuantities/`. One that
-  // continues a longer word (`/Pset_Qto.*/`) is naming something else.
+  // A PATTERN names them when `Qto_` opens it or opens one of its alternatives
+  // (`/(Qto_Wall|Qto_Slab)…/`); one continuing a word (`/Pset_Qto.*/`) does not.
   return /(?:^|[^A-Za-z0-9_])Qto_/.test(pset.source);
 }
 

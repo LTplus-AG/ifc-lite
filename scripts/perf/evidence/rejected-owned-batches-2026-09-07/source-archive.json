@@ -1,0 +1,22 @@
+{
+  "patch": "measured-candidate.patch",
+  "sha256": "f2007feaf8dafc7cc3777f280af3bf2642afa7930ddfb17e03395ddd14ed61f0",
+  "encoding": "git diff --binary --full-index --unified=0; apply with git apply --unidiff-zero",
+  "publicApplyBase": "1b95c6652f49409ed102a693e67c8cba7da4f3ae",
+  "measuredPrivateParent": "6aec7b6a08510b7a87dc88f8d1a6fb9467a5506c",
+  "measuredCandidate": "3e675edea949456561f23e3112123b69fd6198ab",
+  "reconstructedTree": "1c406b6732365e873aa00af6a113b9ca860102d6",
+  "checkedSourceScopes": [
+    "rust",
+    "apps/server",
+    "Cargo.toml",
+    "Cargo.lock",
+    ".cargo/config.toml"
+  ],
+  "compiledSourceDifferencesFromMeasuredCandidate": [],
+  "allSevenChangedFileBlobsExact": true,
+  "otherTreeDifferencesFromMeasuredCandidate": [],
+  "limit": "Temporary-index application on the public base reconstructs the exact measured candidate tree. This is source reconstruction, not a fresh build or repeated performance measurement.",
+  "measuredCandidateTree": "1c406b6732365e873aa00af6a113b9ca860102d6",
+  "fullMeasuredTreeExact": true
+}

@@ -39,11 +39,16 @@ import {
 } from '@/lib/search/saved-filters';
 import { toast } from '@/components/ui/toast';
 import { RuleRow } from './SearchModal.filter.editors';
+import { SearchModalFilterSelector } from './SearchModal.filter.selector';
+import { parseSelector } from '@ifc-lite/query';
+import { selectorToFilterRules } from '@/lib/search/selector-to-rules';
 
 export function SearchModalFilterBuilder() {
   const {
     filter,
     searchQuery,
+    models,
+    activeModelId,
     setFilterCombinator,
     setFilterLimit,
     addFilterRule,
@@ -55,6 +60,8 @@ export function SearchModalFilterBuilder() {
     useShallow((s) => ({
       filter: s.searchFilter,
       searchQuery: s.searchQuery,
+      models: s.models,
+      activeModelId: s.activeModelId,
       setFilterCombinator: s.setFilterCombinator,
       setFilterLimit: s.setFilterLimit,
       addFilterRule: s.addFilterRule,
@@ -76,11 +83,28 @@ export function SearchModalFilterBuilder() {
     [addFilterRule],
   );
 
+  /**
+   * The search bar's text as rules. It reads as a selector when it parses
+   * cleanly AND the adapter can carry all of it — `IfcWall, Name=/D[0-9]{2}/`
+   * becomes a type rule and a Name rule. Anything else, including a plain
+   * `Wand`, stays the `Name contains` it has always been: falling back is the
+   * predictable answer, and a partial selector reading would drop the part it
+   * could not carry without saying so.
+   */
   const promoteSearchQuery = useCallback(() => {
     const q = searchQuery.trim();
     if (!q) return;
+    const parsed = parseSelector(q);
+    if (parsed.ok) {
+      const schemaVersion = (activeModelId ? models.get(activeModelId) : undefined)?.schemaVersion;
+      const { rules, unsupported } = selectorToFilterRules(parsed.query, { schemaVersion });
+      if (rules.length > 0 && unsupported.length === 0) {
+        for (const rule of rules) addFilterRule(rule);
+        return;
+      }
+    }
     addFilterRule(Rule.name('contains', q));
-  }, [addFilterRule, searchQuery]);
+  }, [activeModelId, addFilterRule, models, searchQuery]);
 
   // ── Preset handlers ─────────────────────────────────────────────────
 
@@ -115,88 +139,91 @@ export function SearchModalFilterBuilder() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-3 p-4">
-      {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <CombinatorToggle value={filter.combinator} onChange={setFilterCombinator} />
+    <div className="flex flex-col">
+      <SearchModalFilterSelector />
+      <div className="flex flex-col gap-3 p-4">
+        {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <CombinatorToggle value={filter.combinator} onChange={setFilterCombinator} />
 
-        <div className="ml-1 flex items-center gap-1">
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Limit
-          </label>
-          <Input
-            type="number"
-            min={0}
-            value={filter.limit}
-            onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}
-            className="h-7 w-20 text-xs"
-          />
-          <span className="text-[10px] text-muted-foreground">0 = none</span>
-        </div>
+          <div className="ml-1 flex items-center gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Limit
+            </label>
+            <Input
+              type="number"
+              min={0}
+              value={filter.limit}
+              onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}
+              className="h-7 w-20 text-xs"
+            />
+            <span className="text-[10px] text-muted-foreground">0 = none</span>
+          </div>
 
-        {searchQuery.trim().length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={promoteSearchQuery}
-            className="h-7 gap-1 text-[11px]"
-            title="Add a Name contains rule from the search bar query"
-          >
-            <Plus className="h-3 w-3" />
-            Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as rule
-          </Button>
-        )}
-
-        <div className="ml-auto flex items-center gap-1">
-          <PresetMenu
-            presets={savedPresets}
-            onLoad={handleLoadPreset}
-            onDelete={handleDeletePreset}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleSavePreset}
-            disabled={filter.rules.length === 0}
-            className="h-7 gap-1 text-[11px]"
-            title="Save the current rules as a named preset"
-          >
-            <Save className="h-3 w-3" /> Save
-          </Button>
-          {filter.rules.length > 0 && (
+          {searchQuery.trim().length > 0 && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={clearFilterRules}
-              className="h-7 gap-1 text-[11px] text-muted-foreground"
+              onClick={promoteSearchQuery}
+              className="h-7 gap-1 text-[11px]"
+              title="Turn the search bar query into filter rules"
             >
-              <X className="h-3 w-3" /> Reset
+              <Plus className="h-3 w-3" />
+              Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as rule
             </Button>
           )}
-        </div>
-      </div>
 
-      {/* ── Rules list ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2">
-        {filter.rules.length === 0 && (
-          <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-            Add a rule to start filtering — pick by model, storey, IFC type, name,
-            property, quantity, material, classification, or elevation.
-          </p>
-        )}
-        {filter.rules.map((rule, i) => (
-          <RuleRow
-            key={i}
-            rule={rule}
-            {...ruleOptions}
-            onChange={(next) => updateFilterRule(i, next)}
-            onRemove={() => removeFilterRule(i)}
-          />
-        ))}
-        <AddRuleMenu onAdd={addRuleOfKind} />
+          <div className="ml-auto flex items-center gap-1">
+            <PresetMenu
+              presets={savedPresets}
+              onLoad={handleLoadPreset}
+              onDelete={handleDeletePreset}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleSavePreset}
+              disabled={filter.rules.length === 0}
+              className="h-7 gap-1 text-[11px]"
+              title="Save the current rules as a named preset"
+            >
+              <Save className="h-3 w-3" /> Save
+            </Button>
+            {filter.rules.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearFilterRules}
+                className="h-7 gap-1 text-[11px] text-muted-foreground"
+              >
+                <X className="h-3 w-3" /> Reset
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Rules list ──────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-2">
+          {filter.rules.length === 0 && (
+            <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
+              Add a rule to start filtering — pick by model, storey, IFC type, name,
+              property, quantity, material, classification, or elevation.
+            </p>
+          )}
+          {filter.rules.map((rule, i) => (
+            <RuleRow
+              key={i}
+              rule={rule}
+              {...ruleOptions}
+              onChange={(next) => updateFilterRule(i, next)}
+              onRemove={() => removeFilterRule(i)}
+            />
+          ))}
+          <AddRuleMenu onAdd={addRuleOfKind} />
+        </div>
       </div>
     </div>
   );

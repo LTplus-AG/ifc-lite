@@ -44,6 +44,7 @@ import {
   type CorrectionApplyResult,
 } from '@/hooks/ids/idsCorrection';
 import { MutablePropertyView } from '@ifc-lite/mutations';
+import { scaleCorrectionForWrite } from '@/hooks/ids/idsCorrectionScale';
 import type { IDSEntityResult, IDSSpecificationResult } from '@ifc-lite/ids';
 
 /**
@@ -204,6 +205,11 @@ export function IDSCorrectionDialog({
           });
           continue;
         }
+
+        // Convert the user-typed, IDS-facing (base-SI) value into the raw
+        // frame the model stores — see idsCorrectionScale.ts for why.
+        const dataType = existing?.dataType || activeRequirement.facetDataType;
+        value = scaleCorrectionForWrite(dataStore, expressId, dataType, value);
 
         const result = applyPropertyCorrection(
           {

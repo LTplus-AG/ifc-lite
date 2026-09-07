@@ -7,6 +7,7 @@ import { type IfcDataStore } from '@ifc-lite/parser';
 import type { PropertySetInfo } from '../types.js';
 
 import { collectAllPropertySets } from './properties.js';
+import { resolveEntityMeasureScales, toBaseSI } from './units.js';
 
 /**
  * One pending, in-memory correction to a property value, applied on top
@@ -36,10 +37,19 @@ export type PropertyOverlayResolver = (expressId: number) => PropertyOverride[] 
 /**
  * Property sets for `expressId`, with any pending overlay writes applied
  * on top of the canonical (parsed) result. The canonical projection stays
- * the single source of truth for pset unwrapping/unit conversion/merging
- * — the overlay only patches the specific properties it names, so an
- * entity with no overrides sees byte-identical output to the no-overlay
- * path, and an entity WITH overrides keeps every other property untouched.
+ * the single source of truth for pset unwrapping/merging — the overlay
+ * only patches the specific properties it names, so an entity with no
+ * overrides sees byte-identical output to the no-overlay path, and an
+ * entity WITH overrides keeps every other property untouched.
+ *
+ * An override's OWN value, however, does still go through unit
+ * conversion here (`toBaseSI` below, keyed off the same
+ * `resolveEntityMeasureScales` the canonical projection uses): a
+ * `PropertyOverride.value` is written in the model's raw storage frame
+ * (mirroring `MutablePropertyView.setProperty`), the same frame the
+ * canonical projection's OWN properties start in before
+ * `projectProperty` scales them — so splicing it in unconverted would
+ * leave it in the wrong unit frame relative to its neighbours.
  *
  * Pset/property name matching here is deliberately CASE-INSENSITIVE, to
  * match `getPropertyValue`/`getPropertySets` in ./data-accessor.ts (both
@@ -73,6 +83,20 @@ export function resolveEffectivePropertySets(
     properties: pset.properties.map((p) => ({ ...p })),
   }));
 
+  // The overlay's raw values (a `PropertyOverride.value` mirrors whatever
+  // was written through `MutablePropertyView.setProperty`, e.g. an IDS
+  // correction — see property-overlay-resolver.ts's own module doc) live
+  // in the SAME raw, author-unit frame `base`'s own properties started in
+  // BEFORE `projectProperty` (properties.ts) ran them through
+  // `applyUnitConversion`. Splicing an override in unconverted would leave
+  // it in the wrong frame relative to every other property in the same
+  // pset — under a `MILLI` project, a raw `0.9` reads as `0.9` base-SI
+  // metres instead of the `0.0009` it actually is. `resolveEntityMeasureScales`
+  // is the SAME per-entity resolver `collectAllPropertySets`/`projectProperty`
+  // already used to build `base`, so this can't drift into a second,
+  // parallel unit path.
+  const scales = resolveEntityMeasureScales(store, expressId);
+
   for (const override of overrides) {
     const psetLower = override.psetName.toLowerCase();
     const propLower = override.propName.toLowerCase();
@@ -88,12 +112,23 @@ export function resolveEffectivePropertySets(
     if (pset) {
       const idx = pset.properties.findIndex((p) => p.name.toLowerCase() === propLower);
       if (idx >= 0) {
-        // Keep the property's OWN stored name/casing — only its value
-        // changes. Replacing it with `override.propName`'s casing would
-        // just move the duplicate-entry risk from "two properties" to
-        // "renamed property", with no benefit.
-        pset.properties[idx] = { ...pset.properties[idx], value: override.value };
+        // Keep the property's OWN stored name/casing AND dataType — only
+        // its value changes. The existing entry's `dataType` (resolved by
+        // `projectProperty` from the IFC schema, not from this override)
+        // is what tells `toBaseSI` whether — and by which dimension — to
+        // scale: a non-measure property (IFCLABEL, boolean, identifier)
+        // has no scale and passes through untouched.
+        const existing = pset.properties[idx];
+        pset.properties[idx] = {
+          ...existing,
+          value: toBaseSI(override.value, existing.dataType, scales),
+        };
       } else {
+        // No existing entry to read a dataType from, so `override.value`
+        // is spliced in as-is (unscaled). `PropertyOverride` carries no
+        // dataType of its own — see its doc — so a correction that
+        // CREATES a brand-new measure property (rather than correcting an
+        // existing one) is out of scope for this frame conversion.
         pset.properties.push({ name: override.propName, value: override.value, dataType: '' });
       }
     } else {

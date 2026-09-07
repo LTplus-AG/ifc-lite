@@ -1,0 +1,87 @@
+{
+  "run.py": {
+    "originalSha256": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+    "publishedSha256": "d7556c684657f4075aaca303407d5ceda7c67e14e03c8cbd5a35b2700b32da1f",
+    "adaptation": "MPL header added"
+  },
+  "cache_phase.py": {
+    "originalSha256": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12",
+    "publishedSha256": "c3b11d5ad06e1a01f60aeab9b0ce8b66649f092d73082b9ef1224fc57b2e3175",
+    "adaptation": "MPL header added"
+  },
+  "wire.py": {
+    "originalSha256": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+    "publishedSha256": "fac9db1f703935a1fac2f8ba8e037e2442c3ec7269e5b0a8c25d5823b019a8f2",
+    "adaptation": "MPL header added"
+  },
+  "wire_arrow_v2.py": {
+    "originalSha256": "604f3291363df316a7c05a61b1cafa53dd0c719e5d1b6dbbbca3f43ecb705b1c",
+    "publishedSha256": "28a21af46f287ebac4583243f41dacd109576cc420438da6120ac155c49912db",
+    "adaptation": "MPL header added"
+  },
+  "screen_http_v2.py": {
+    "originalSha256": "7fba4e485afc8c15fd3467c7678178fc6d468034e13b33fbb5a71fd3cd8635a7",
+    "publishedSha256": "026944ec9c049b5e70f6d949e2f5056c1dcec752d2483ef604a0260b793bdc56",
+    "adaptation": "MPL header added"
+  },
+  "screen_offline_pair.py": {
+    "originalSha256": "998ba113b7a82372b5945cd7e8be381c92adb387a4fbd456149b93f149640159",
+    "publishedSha256": "b108eecb57abb34b00aca214765a51140e03b1667902744c9db236a815610725",
+    "adaptation": "MPL header added"
+  },
+  "screen_compare_v2.py": {
+    "originalSha256": "b46b00a983a5b49db68301304ca7b758726751da11d0780353f73ec75009a5bc",
+    "publishedSha256": "ac0d7d0b9f2140c3076c948c8a87704b73797c8c0f8f7430fe5ba4444c5b919a",
+    "adaptation": "MPL header added"
+  },
+  "test_wire.py": {
+    "originalSha256": "5f0435b70d14f098e884b6eac60ffc1765406b2dfe469dd75d577c778607f471",
+    "publishedSha256": "ea89aa4c35c29eb59908436ecab9f758d19cb4a2d4a00189dd1263bfd4e12b8d",
+    "adaptation": "MPL header added"
+  },
+  "test_wire_arrow_v2.py": {
+    "originalSha256": "5dbe81aa0f2efafdb46968abe257cecb773479246376a8b6c09769d1bd62554c",
+    "publishedSha256": "a5163d002e725049800a019d420243f6b11f2992652990518aaa54481cb44d15",
+    "adaptation": "MPL header added"
+  },
+  "train.py": {
+    "originalSha256": "daebdf54ff0023e9c83eb59e02a21e30343b62f2e899be082007038920434222",
+    "publishedSha256": "77e9ec5363140ee8bfd7553670e67de4cf4e229cef317d45cadb28b0ed0c684b",
+    "adaptation": "experiment directory supplied by required CLI argument; MPL header added"
+  },
+  "native_pairs.py": {
+    "originalSha256": "ceeeda64f2f717f3c3cc879db54417a5d5f6a299750760a27ccd03337ad68373",
+    "publishedSha256": "0251e4a724f19faa58dc6fa2cc42a16ea9781e6bba133e2ce2eac67d14d6ee30",
+    "adaptation": "manifest path required CLI input; MPL header added"
+  },
+  "build_server.py": {
+    "originalSha256": "8b3d68b2996f2b06663e6c785ef931f6410a7ebf0900e8196c0cf43a87bdbd2c",
+    "publishedSha256": "ce262a0b4ecc8c28b6f7f3a5a6713c7bf636ca788f0c0825baafd113f400a462",
+    "adaptation": "source directory, experiment directory, expected source commit, and build arm are explicit arguments; MPL header added"
+  },
+  "audit_profile.py": {
+    "originalSha256": "8ea1d15f9cd2eacae8013fd197a4b1c897f9bc2e8583dacfedc2b5241da3e5d0",
+    "publishedSha256": "03913c7325301c446a536799f24a0e0f1860426b35e7b33b94ffab0b32c52b99",
+    "adaptation": "CLI paths and source-audited actual streaming serializer selector; MPL header added"
+  },
+  "retention/capacity_guard.py": {
+    "originalSha256": "a8a0a041752c0db3be1746bb2c705faf3e2e0f3c9ef43ef0119b65603aad88c5",
+    "publishedSha256": "27b5f33d3f288ca8e0da2804e4a7a03e7a7d056e5bb5f949ad6e4ac20a4f2b05",
+    "adaptation": "MPL header added; active screen snapshot equality verified for helpers"
+  },
+  "retention/clone_duplicates.py": {
+    "originalSha256": "ddbb62a6ba8f9cde99ae91f3176f6c139dd3c5840bf77a574386fbd7bf9ee3fc",
+    "publishedSha256": "4f24fa429032113cd49943df0ca866881939f41fd82e27cc90f262f6bafa3c84",
+    "adaptation": "MPL header added; active screen snapshot equality verified for helpers"
+  },
+  "retention/test_capacity_guard.py": {
+    "originalSha256": "d7a78019b7be413feb2eed0d2350645e97128458ae57d72e237ab427cf1569e5",
+    "publishedSha256": "93f81e14805801be434e4b7f3b90f6f5f67ece25398db3165a4948e6bac65f34",
+    "adaptation": "MPL header added; active screen snapshot equality verified for helpers"
+  },
+  "retention/test_clone_duplicates.py": {
+    "originalSha256": "3f357a635dda4e7b9608d334d7ff549e8a0f769bb94ed641a41a4951be4f5d4e",
+    "publishedSha256": "e9fbf464e8de94c6f76a05f8a5404c27381243ade7ceac27ea1749f53ec3eaf1",
+    "adaptation": "MPL header added; active screen snapshot equality verified for helpers"
+  }
+}

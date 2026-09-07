@@ -828,3 +828,7 @@ stronger evidence. A classification hotspot alone does not establish an end-to-e
 win, and no component-size threshold is justified by these observations. The
 [sanitized screen and limitations](evidence/component-parity-bvh-rejected-2026-09-07/README.md)
 retain the rejected result independently of constraint-recovery and type-ordinal work.
+
+### Rejected constraint-inventory vertex reuse (#4055)
+
+Reusing the CDT constraint inventory during refinement did not establish a substantial cold-load improvement across the expanded corpus. The native processing probe showed a narrow improvement, while the corrected-orientation browser screen remained mixed and failed unchanged raw geometry, spatial-query and browser-lifecycle gates. Exact instrumented producer output on one fixture did not waive downstream browser mismatches. Failed teardown attempts and later contamination-uncertain attempts remain recorded separately from justified clean recovery runs. Stop this experiment without landing the candidate; do not repeat it on a microbenchmark, normalized mesh comparison or selected-fixture timing alone. The [rejected experiment evidence](evidence/rejected-vertex-reuse-2026-09-07/README.md) records the complete disposition and provenance limits.

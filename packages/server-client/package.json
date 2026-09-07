@@ -33,7 +33,7 @@
   "devDependencies": {
     "parquet-wasm": "^0.7.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

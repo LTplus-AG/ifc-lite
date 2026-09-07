@@ -16,3 +16,21 @@ export { QueryResultEntity } from './query-result-entity.js';
 export { DuckDBIntegration, type SQLResult } from './duckdb-integration.js';
 export { findPropertyInSets, findQuantityInSets, findAllPropertiesInSets, findAllQuantitiesInSets } from './pset-lookup.js';
 export { normalizeBooleanValue, compareFilterValue, type FilterComparisonOp } from './filter-predicate.js';
+export { parseSelector } from './selector/parse.js';
+export type {
+  SelectorOp,
+  SelectorText,
+  SelectorValue,
+  SelectorKeywordKind,
+  SelectorClassFilter,
+  SelectorGlobalIdFilter,
+  SelectorAttributeFilter,
+  SelectorPropertyFilter,
+  SelectorKeywordFilter,
+  SelectorQueryFilter,
+  SelectorFilter,
+  SelectorGroup,
+  SelectorQuery,
+  SelectorParseError,
+  SelectorParseResult,
+} from './selector/ast.js';

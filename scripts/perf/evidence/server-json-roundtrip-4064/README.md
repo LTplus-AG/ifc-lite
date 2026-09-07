@@ -1,0 +1,13 @@
+# Server JSON roundtrip correction (#4064)
+
+Retain this correctness fix. The server's cached JSON deserialization changed a finite Haus northing and its transform entry by one floating-point step. Enabling serde_json `float_roundtrip` in the server preserves the original values; no tolerance or geometry transform was changed.
+
+[screen.json](./screen.json) records frozen source/artifact identities, build settings, the complete fresh-process HTTP screen, memory sample boundaries and exact offline qualification. Private model names, paths, raw payloads and properties are omitted. Source commits identify the measured artifacts; later documentation commits do not change that attribution.
+
+All baseline/candidate cold comparisons preserve raw geometry Parquet batches and data-model bytes, as well as exact decoded geometry, metadata, diagnostics and symbolic/data-model fields. All corrected cold/cache replay comparisons pass. The original Haus baseline cache metadata failure remains a failed gate; the other baseline cache comparisons pass. No normalized geometry hash replaces a raw failure.
+
+The independent offline witness retains every wire column, per-occurrence vertex/triangle order, style/source fields and duplicate occurrences. Only batch storage offsets and batch order are normalized. It rejects nonfinite values; schema and signed-zero changes remain observable. Its vectorized encoding was checked against the scalar reference's equality decisions on real Haus captures and field mutations. Negative offsets are rejected more strictly than the reference; production offsets are unsigned. Consecutive data-model witnesses are reused only after full payload byte equality. Raw byte comparisons remain separately recorded.
+
+The screen contains one pair per fixture, not repeated-pair performance qualification. Its measurements support neither a gain nor neutrality claim. RSS peaks occurred during early cold processing; they are sampled process RSS, not physical footprint. Cold HTTP readiness stops at data-model receipt; cache completion/replay and shutdown are separately recorded. This does not establish browser readiness, client reconstruction cost, server-restart cache behavior or other-platform performance.
+
+The timed driver persists its transport checkpoint before offline decoding. Interrupted observer pilots and failed validation attempts remain private and are explicitly excluded from the declared screen, which restarted in full. No timing was reconstructed from an interrupted run. Local workspace tests and strict Clippy passed; normal PR CI remains the authoritative merge gate.

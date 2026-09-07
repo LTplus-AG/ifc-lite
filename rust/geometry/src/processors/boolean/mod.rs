@@ -20,7 +20,6 @@ use super::extrusion::ExtrudedAreaSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 use super::tessellated::TriangulatedFaceSetProcessor;
-use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
 mod failures;
@@ -31,6 +30,7 @@ mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
 mod polygonal_union;
 mod polygonal_removal;
+mod router_impl;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -332,12 +332,19 @@ impl BooleanClippingProcessor {
     /// cutter that needs the per-cutter unbounded-plane fallback, or a CSG
     /// union that silently under-removes).
     ///
-    /// Relies on a *watertight* CSG union of the cutter prisms (built by
-    /// [`Self::build_cutter_union`]). No longer manifold-gated — the chain walk
-    /// and cutter build are kernel-agnostic and must compile into the pure-Rust
-    /// wasm — but it still DEFERS (returns `Ok(None)`) when no available kernel
-    /// can produce that watertight union, so a non-manifold mesh-merge is never
-    /// fed into the subtract.
+    /// Relies on [`Self::build_cutter_union`] for the cutter-prism union.
+    /// **Measured contract (issue #3980):** `build_cutter_union` does NOT
+    /// verify that its union is watertight or even manifold — see its doc
+    /// comment for the measured numbers on the real #960 fixture. It only
+    /// requires a nonempty result and defers (`Ok(None)`) when the primary is
+    /// empty and the fallback is empty or errors. What actually
+    /// keeps a non-closed union from producing a wrong subtraction is
+    /// downstream, in this function: the per-cutter trial-subtract probes,
+    /// the intersected-bounds check on the batched subtract, the `#3919`
+    /// accept-gate on the actual cut, and the `#3925` removal-bound check on
+    /// the repair candidate. Those checks were sufficient on all five walls
+    /// in the audited #960 fixture, but that is fixture evidence, not a
+    /// closure proof.
     fn try_union_polygonal_chain(
         &self,
         entity: &DecodedEntity,
@@ -430,16 +437,18 @@ impl BooleanClippingProcessor {
         }
         let _ = clipper.take_failures();
 
-        // Every cutter is a clean partial cut: union them into ONE watertight
-        // solid (a true CSG union, so abutting roof segments share no internal
-        // seam) and subtract once. This eliminates both the zero-thickness seam
-        // fins that sequential subtraction leaves behind AND the deep-chain
-        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when no
-        // available kernel can union the prisms into a watertight solid; we
-        // defer (like every other guard here) rather than feed a broken,
-        // non-manifold union into the subtract — which the CSG kernel can't
-        // classify, silently returning the host UNCHANGED (issue #960 wall
-        // #2152: the gable-end wall rendered at full 7000 mm extrusion height).
+        // Every cutter is a clean partial cut: union them into ONE solid (a
+        // true CSG union, so abutting roof segments share no internal seam)
+        // and subtract once. This is what eliminates the zero-thickness seam
+        // fins that sequential subtraction leaves behind and the deep-chain
+        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when
+        // the primary result is empty and the fallback is empty or errors —
+        // it does not check the union for closure (issue #3980; see its doc
+        // comment for the measured contract) — so we still defer whenever no
+        // kernel produces even a nonempty result, which is the case that used
+        // to feed a broken union into the subtract and have the CSG kernel
+        // silently return the host UNCHANGED (issue #960 wall #2152: the gable-end
+        // wall rendered at full 7000 mm extrusion height).
         let combined = match self.build_cutter_union(&clipper, &prisms) {
             Some(m) if !m.is_empty() => m,
             _ => {
@@ -599,6 +608,14 @@ impl BooleanClippingProcessor {
         let mut spine: Vec<DecodedEntity> = Vec::new();
         let mut spine_seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut current = entity.clone();
+        // Whether `mesh` (below) already carries a successfully BATCHED set of
+        // PBHS cutters (`try_union_polygonal_chain`), as opposed to being the
+        // untouched base solid. A leftover `spine` of length 1 is only the
+        // true #3923 single-cutter shape (no sibling cutter anywhere) when
+        // this is false; if a nested batch succeeded first, that node's own
+        // cutter has siblings already folded into `mesh`, even though it is
+        // the only node left in `spine` — see the `solo_step` comment below.
+        let mut based_on_batch = false;
         let mut mesh = loop {
             if !spine_seen.insert(current.id) {
                 // Cyclic FirstOperand chain (malformed input). The recursive
@@ -623,6 +640,7 @@ impl BooleanClippingProcessor {
                 {
                     // Batched PBHS resolution handled this node and everything
                     // below it (see the comment on the sequential step).
+                    based_on_batch = true;
                     break result;
                 }
             }
@@ -637,12 +655,17 @@ impl BooleanClippingProcessor {
         };
 
         // Apply each spine node's operator + SecondOperand, innermost-first.
-        // `spine.len() == 1` is the true #3923 single-cutter shape (no other
-        // node shares the job); `> 1` means a longer chain's batching failed
-        // at every level, so each node here is a one-cutter-at-a-time
-        // fallback — see `single_cutter_gate.rs` for why that distinction
-        // matters to the gate-rejection fallback.
-        let solo_step = spine.len() == 1;
+        // `spine.len() == 1 && !based_on_batch` is the true #3923
+        // single-cutter shape (no other node shares the job, and the mesh it
+        // is cutting is the untouched base). `> 1` means a longer chain's
+        // batching failed at every level, so each node here is a
+        // one-cutter-at-a-time fallback. `spine.len() == 1 && based_on_batch`
+        // is the same "one cutter at a time" shape: a nested batch already
+        // succeeded on the levels below, so this lone leftover node's cutter
+        // has siblings (the batched ones) even though `spine` holds only it —
+        // see `single_cutter_gate.rs` for why that distinction matters to the
+        // gate-rejection fallback.
+        let solo_step = spine.len() == 1 && !based_on_batch;
         for node in spine.iter().rev() {
             if mesh.is_empty() {
                 // An emptied intermediate ends the chain, matching the old
@@ -681,12 +704,18 @@ impl BooleanClippingProcessor {
     /// `try_union_polygonal_chain` returns `None` (fall through to this
     /// sequential step) whenever batching isn't provably safe, so the
     /// per-cutter bounded→unbounded fallback still rescues full-cross-section
-    /// clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
-    /// on all five reported House.ifc walls. The *correctness* of the single
-    /// subtract hinges on a WATERTIGHT union of the cutter prisms
-    /// (`build_cutter_union`, the exact kernel's N-ary `union_many`); when it
-    /// can't produce one, the chain falls through to this path — never worse
-    /// than pre-#960 (841_house_stack_overflow.ifc).
+    /// clips (duplex.ifc "Party Wall"). Verified Z-bound agreement with
+    /// IfcOpenShell within 25 mm on all five reported House.ifc walls.
+    /// `build_cutter_union` (the exact
+    /// kernel's N-ary `union_many`, falling back to `union_meshes`) only
+    /// requires a NONEMPTY union — it does not verify closure (issue #3980;
+    /// see its doc comment for the measured contract on the real #960
+    /// fixture). What actually guards the single subtract is downstream, in
+    /// `try_union_polygonal_chain`: the intersected-bounds check and the
+    /// `#3919` accept-gate on the actual cut. When `build_cutter_union`
+    /// returns `None` (primary empty and fallback empty or errored) or those
+    /// downstream checks reject the result, the chain falls through to this
+    /// sequential path.
     ///
     /// `solo_step`: true when this is the ONLY node the caller's spine walk
     /// deferred to (a genuine single-PBHS-cutter DIFFERENCE, #3923's target
@@ -881,34 +910,6 @@ impl BooleanClippingProcessor {
             BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)
-    }
-}
-
-impl GeometryProcessor for BooleanClippingProcessor {
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
-        quality: TessellationQuality,
-    ) -> Result<Mesh> {
-        let mut visited = OperandPath::default();
-        self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
-    }
-
-    fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
-    }
-
-    /// Hand the log to the router (#3821); rationale on the trait method.
-    fn take_bool_failures(&self) -> Vec<BoolFailure> {
-        self.take_failures()
-    }
-}
-
-impl Default for BooleanClippingProcessor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

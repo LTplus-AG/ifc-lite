@@ -1,0 +1,11 @@
+{
+  "sourceCommit": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+  "profileKind": "Continuous counter-only; value annotations unavailable",
+  "training": [
+    {"label": "large-csg-177", "path": "<LOCAL_FIXTURE_DIRECTORY>/large-csg-177.ifc", "publicSha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8"},
+    {"label": "small-haus", "path": "<LOCAL_FIXTURE_DIRECTORY>/small-haus.ifc", "publicSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d"},
+    {"label": "structural-tekla-27", "path": "<LOCAL_FIXTURE_DIRECTORY>/structural-tekla-27.ifc", "publicSha256": "5f7423ef7a7c7db1a56e214b802edc9122315d32e7c3d43a4f3ebbeae5979e76"},
+    {"label": "bridge-ifc4x2-15", "path": "<LOCAL_FIXTURE_DIRECTORY>/bridge-ifc4x2-15.ifc", "publicSha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57"},
+    {"label": "school-54", "path": "<LOCAL_FIXTURE_DIRECTORY>/school-54.ifc", "publicSha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121"}
+  ]
+}

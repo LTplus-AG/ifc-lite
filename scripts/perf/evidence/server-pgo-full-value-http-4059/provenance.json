@@ -1,0 +1,207 @@
+{
+  "stockSourceCommit": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+  "controlUseSourceHashesExact": true,
+  "generatorSourceDifferences": [
+    "apps/server/src/main.rs"
+  ],
+  "sourceHashMapReference": "../server-pgo-darwin-2026-09-07/pre-screen-provenance.json (same corrected stock source)",
+  "artifacts": {
+    "base": {
+      "sourceCommit": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+      "sourceTree": "cb8cfc9227ad54039ad0069abe36be3fb05bbccd",
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--package",
+        "ifc-lite-server",
+        "--target",
+        "aarch64-apple-darwin"
+      ],
+      "CARGO_UNSTABLE_BUILD_STD": "std,panic_abort",
+      "features": "default (mimalloc; processing observability)",
+      "profile": "release (panic abort)",
+      "target": "aarch64-apple-darwin",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: aarch64-apple-darwin\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+      "binarySha256": "ea55315adb1f781d51fc0f1e70e5125a58d021ccf0e736e6ce1d0c86531b5169"
+    },
+    "candidate": {
+      "sourceCommit": "6aec7b6a08510b7a87dc88f8d1a6fb9467a5506c",
+      "sourceTree": "d15ef0662a3fcca93944a456b749f6b83514ae9e",
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--package",
+        "ifc-lite-server",
+        "--target",
+        "aarch64-apple-darwin"
+      ],
+      "CARGO_UNSTABLE_BUILD_STD": "std,panic_abort",
+      "features": "default (mimalloc; processing observability)",
+      "profile": "release (panic abort)",
+      "target": "aarch64-apple-darwin",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: aarch64-apple-darwin\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+      "binarySha256": "bd0e3a9fb2c83a98f41849e57fa9f9c5d8048cec12372bdc27946a5ddd20f445"
+    }
+  },
+  "generatorBinarySha256": "61f7bc66d92aa28c36b809c68f77a5ca844f4edbc0013d9e33314caa54153967",
+  "training": {
+    "complete": true,
+    "profileKind": "Full-value IR PGO, ordinary exit flush",
+    "generatorCommit": "0f989b0413363372069948c244ed0985fed65e06",
+    "stockSourceCommit": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+    "rows": [
+      {
+        "label": "large-csg-177",
+        "fixtureSha256": "d8cc92c00ba634d9f25f3d00185136cbc34f3b14f2cc552634551997ddc148f8",
+        "normalExitCode": 0,
+        "transportColdCachePassed": true,
+        "controlAndCacheExactV2Semantic": true,
+        "rawGeometryAndDataModelExact": true,
+        "profile": {
+          "file": "large-csg-177-15965.profraw",
+          "bytes": 7626624,
+          "sha256": "634fed16493bb8c0ffd3b571eb1ba5222fc574e8449a791672bffe4fbee45856"
+        },
+        "elapsedSeconds": 69.02637887001038
+      },
+      {
+        "label": "small-haus",
+        "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+        "normalExitCode": 0,
+        "transportColdCachePassed": true,
+        "controlAndCacheExactV2Semantic": true,
+        "rawGeometryAndDataModelExact": true,
+        "profile": {
+          "file": "small-haus-16312.profraw",
+          "bytes": 7621824,
+          "sha256": "30eb4b1a35b881dec0f9aa2477848a919580bbc38d55ab9732ad9dc7c2607d46"
+        },
+        "elapsedSeconds": 0.9591948986053467
+      },
+      {
+        "label": "structural-tekla-27",
+        "fixtureSha256": "5f7423ef7a7c7db1a56e214b802edc9122315d32e7c3d43a4f3ebbeae5979e76",
+        "normalExitCode": 0,
+        "transportColdCachePassed": true,
+        "controlAndCacheExactV2Semantic": true,
+        "rawGeometryAndDataModelExact": true,
+        "profile": {
+          "file": "structural-tekla-27-16314.profraw",
+          "bytes": 7610800,
+          "sha256": "d1d835744b8557e51cb5fefd91ee4f7b9dad35cb3371a0ffce5921271b60c99f"
+        },
+        "elapsedSeconds": 10.456415891647339
+      },
+      {
+        "label": "bridge-ifc4x2-15",
+        "fixtureSha256": "09e76df5ab48b726c0d21786f2b4c3417a7600251c99f40eb883718a1e0d2c57",
+        "normalExitCode": 0,
+        "transportColdCachePassed": true,
+        "controlAndCacheExactV2Semantic": true,
+        "rawGeometryAndDataModelExact": true,
+        "profile": {
+          "file": "bridge-ifc4x2-15-16317.profraw",
+          "bytes": 7610368,
+          "sha256": "1795b6aa74ff38467957ff8ded478f65947534536cf7944ff0073b0622949e7c"
+        },
+        "elapsedSeconds": 4.874653100967407
+      },
+      {
+        "label": "school-54",
+        "fixtureSha256": "bd455803048d0dacf4af7de1027beb1968f0727cde38f22bdea65e57484ff121",
+        "normalExitCode": 0,
+        "transportColdCachePassed": true,
+        "controlAndCacheExactV2Semantic": true,
+        "rawGeometryAndDataModelExact": true,
+        "profile": {
+          "file": "school-54-16319.profraw",
+          "bytes": 7635328,
+          "sha256": "7474816787ca1e036ad73321e4122fd6db0ab6c5ece76f262ba2e9a009534669"
+        },
+        "elapsedSeconds": 19.82440495491028
+      }
+    ],
+    "smokeExcluded": true
+  },
+  "profileCoverage": {
+    "valueSitesWithValues": [
+      548,
+      1079
+    ],
+    "kind": "Full-value IR profiling; generator-only main overlay",
+    "rawSha256": {
+      "bridge-ifc4x2-15-16317.profraw": "1795b6aa74ff38467957ff8ded478f65947534536cf7944ff0073b0622949e7c",
+      "large-csg-177-15965.profraw": "634fed16493bb8c0ffd3b571eb1ba5222fc574e8449a791672bffe4fbee45856",
+      "school-54-16319.profraw": "7474816787ca1e036ad73321e4122fd6db0ab6c5ece76f262ba2e9a009534669",
+      "small-haus-16312.profraw": "30eb4b1a35b881dec0f9aa2477848a919580bbc38d55ab9732ad9dc7c2607d46",
+      "structural-tekla-27-16314.profraw": "d1d835744b8557e51cb5fefd91ee4f7b9dad35cb3371a0ffce5921271b60c99f"
+    },
+    "mergedSha256": "0f28eba533c71794493425efff5f5b657849cf8cafe2cb87eb8ae37ecd1e0de0",
+    "recordCount": 36376,
+    "coverage": {
+      "scan": {
+        "needle": "next_entity",
+        "records": 4,
+        "nonzeroRecords": 4,
+        "maxBlockCount": 316215183
+      },
+      "decode": {
+        "needle": "decode_at",
+        "records": 5,
+        "nonzeroRecords": 5,
+        "maxBlockCount": 58580434
+      },
+      "producer": {
+        "needle": "produce_element_meshes",
+        "records": 1,
+        "nonzeroRecords": 1,
+        "maxBlockCount": 69049
+      },
+      "geometrySerialization": {
+        "needle": "build_mesh_tables",
+        "records": 1,
+        "nonzeroRecords": 1,
+        "maxBlockCount": 2303550
+      },
+      "dataModelSerialization": {
+        "needle": "serialize_data_model_to_parquet",
+        "records": 1,
+        "nonzeroRecords": 1,
+        "maxBlockCount": 33915310
+      }
+    },
+    "limitation": "IR block counts prove exercised code, not timings or exact function call counts"
+  },
+  "harnessSha256": {
+    "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+    "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12",
+    "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+    "wire_arrow_v2.py": "604f3291363df316a7c05a61b1cafa53dd0c719e5d1b6dbbbca3f43ecb705b1c",
+    "witness_reuse.py": "cad762e1ac1d527542e01d2b8f4190c53927187d34a11545d1bffe2fe6b87bbb",
+    "screen_http_v2.py": "dda721265de0133b89e69f52917dc035acb694fa3ce75fffa765715a8d214875",
+    "screen_compare_v2.py": "eeb5802a4eaabf8c2cf83cffd6ae831b24b3c0f33da1a4b31617f827d23ec80e",
+    "screen_offline_pair.py": "faf543f3fe915c12dd3d47d5302a323a9d989f677a27bd9fe5be4da5a0776fdd",
+    "retention/capacity_guard.py": "a8a0a041752c0db3be1746bb2c705faf3e2e0f3c9ef43ef0119b65603aad88c5",
+    "retention/clone_duplicates.py": "2f6428ea4ddf58612c0660913483eacc9350afcb591478b2c4a2c1583c0adcb8"
+  },
+  "inputSha256": {
+    "driver-freeze.json": "4cdbeaa3fb2b12ad6895fa3d5d80a0dc7810724979b69a24edb1fc7def4df6db",
+    "base-provenance.json": "9542dc0b15cc01ed71f3064c07d77f4ade7a085aa7b9e0aeec71081f3e149c31",
+    "candidate-provenance.json": "033567b7a3482783ee5205e9509c6ec6d4de0ee22ee9047d5232a899e6503bcd",
+    "projection.json": "57789cd086b5dd6d54e4f6d4cee891290bc07f66b55aed8c7aa7ff37fd7113f1",
+    "compatibility-audit.json": "86b92b6ab6bcc065c7251a85eb07b48e15b4ea28d92f9b8bac1e6e51181f09bb",
+    "training-plan.json": "13eca8aa97e3732ac6d3a3b1967c1df2cb8d370dc0a38284a7b60c7811bec130",
+    "manifest.json": "725222d7470805004b1e5ddeefad2802c794b96bc4e303205733cd0e72537f3a",
+    "freeze.json": "2279286d9086e9a575afc36a33ae9c14848b6344746d809d54d3aa9a214d3d3b"
+  },
+  "offlineVerifier": "Private frozen v3; full semantic output format byte-identical to published v2 on four Haus and four1259MB cold/cache captures. V3 source not claimed published. Public v2 can recompute all semantic gates from raw captures; offline decoder cost excluded from both timed arms.",
+  "publicSourceEquivalent": {
+    "commit": "1b95c6652f49409ed102a693e67c8cba7da4f3ae",
+    "measuredCommit": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+    "comparison": "git diff --name-only measured public -- Cargo.toml Cargo.lock .cargo rust apps/server/src apps/server/Cargo.toml",
+    "differences": [],
+    "scope": "Exact compiler inputs and Rust/server source equality; not whole Git tree equality (documentation and workflows differ)."
+  }
+}

@@ -1,0 +1,32 @@
+--- a/run.py
++++ b/run.py
+@@ -3,7 +3,7 @@
+ Raw wire persistence and RSS sampling run during timing; decoding runs afterward.
+ Fresh process/cache per invocation. No implicit artifact selection or retries.
+ """
+-import argparse,base64,hashlib,http.client,json,os,socket,subprocess,threading,time,traceback
++import argparse,base64,hashlib,http.client,json,os,socket,subprocess,threading,time,traceback,signal
+ from pathlib import Path
+ import psutil,requests,pyarrow,platform
+ from wire import decode_run
+@@ -128,15 +128,17 @@
+         result['error']=str(error);result['traceback']=traceback.format_exc()
+     finally:
+         watchdog.cancel();result['deadlineKilled']=timed_out.is_set();result['shutdownStartMs']=now()
+-        if proc.poll() is None:proc.terminate()
++        session.close()
++        if proc.poll() is None:proc.send_signal(signal.SIGINT)
+         try:result['exitCode']=proc.wait(timeout=10);result['shutdownTimedOut']=False
+         except subprocess.TimeoutExpired:
+             proc.kill();result['exitCode']=proc.wait();result['shutdownTimedOut']=True
+         result['shutdownEndMs']=now();stop.set();monitor.join();log.close();session.close()
+         result['memorySamples']=samples;result['peakSampledRss']=max((s['rss'] for s in samples),default=0)
+         result['peakSampledRssThroughColdReady']=max((s['rss'] for s in samples if s['ms']<=result.get('dataModelReceivedMs',float('inf'))),default=0)
+-        result['shutdownNote']='Owned process terminated after response completion; SIGTERM exit does not establish PGO profile flush.'
+-    result['transportSuccess']=bool(result.get('loadSuccess') and result.get('cacheReplaySuccess')) and not result['shutdownTimedOut'] and not result['deadlineKilled'] and 'error' not in result
++        result['shutdownNote']='Generator-only graceful SIGINT after completed cold/cache response; normal exit0 and nonzero full-value profile separately required.'
++    result['normalTrainingExit']=result['exitCode']==0
++    result['transportSuccess']=result['normalTrainingExit'] and bool(result.get('loadSuccess') and result.get('cacheReplaySuccess')) and not result['shutdownTimedOut'] and not result['deadlineKilled'] and 'error' not in result
+     result['offlineStatus']='pending' if a.defer_offline else 'running'
+     # Persist complete transport clocks and cleanup BEFORE any offline decoding.
+     (out/'timing-checkpoint.json').write_text(json.dumps(result,indent=2)+'\n')

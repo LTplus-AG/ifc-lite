@@ -1,0 +1,51 @@
+--- a/run.py
++++ b/run.py
+@@ -9,6 +9,7 @@
+ """
+ import argparse,base64,hashlib,http.client,json,os,socket,subprocess,threading,time,traceback
+ from pathlib import Path
++from training_shutdown import begin_training_shutdown, training_transport_success
+ import psutil,requests,pyarrow,platform
+ from wire import decode_run
+ from cache_phase import replay,compare_replay
+@@ -62,6 +63,7 @@
+         timed_out.set()
+         if proc.poll() is None:proc.kill()
+     watchdog=threading.Timer(a.timeout+30,kill_deadline);watchdog.start()
++    conn=None
+     try:
+         url=f'http://127.0.0.1:{port}'
+         while True:
+@@ -132,15 +134,19 @@
+         result['error']=str(error);result['traceback']=traceback.format_exc()
+     finally:
+         watchdog.cancel();result['deadlineKilled']=timed_out.is_set();result['shutdownStartMs']=now()
+-        if proc.poll() is None:proc.terminate()
++        close_errors=begin_training_shutdown(conn,session,proc)
++        if close_errors:
++            result["shutdownCloseErrors"]=close_errors
++            result.setdefault("error", "; ".join(close_errors))
+         try:result['exitCode']=proc.wait(timeout=10);result['shutdownTimedOut']=False
+         except subprocess.TimeoutExpired:
+             proc.kill();result['exitCode']=proc.wait();result['shutdownTimedOut']=True
+-        result['shutdownEndMs']=now();stop.set();monitor.join();log.close();session.close()
++        result['shutdownEndMs']=now();stop.set();monitor.join();log.close()
+         result['memorySamples']=samples;result['peakSampledRss']=max((s['rss'] for s in samples),default=0)
+         result['peakSampledRssThroughColdReady']=max((s['rss'] for s in samples if s['ms']<=result.get('dataModelReceivedMs',float('inf'))),default=0)
+-        result['shutdownNote']='Owned process terminated after response completion; SIGTERM exit does not establish PGO profile flush.'
+-    result['transportSuccess']=bool(result.get('loadSuccess') and result.get('cacheReplaySuccess')) and not result['shutdownTimedOut'] and not result['deadlineKilled'] and 'error' not in result
++        result['shutdownNote']='Training-only SIGINT after guarded connection cleanup; normal exit zero required for all success paths.'
++    result['normalTrainingExit']=result['exitCode']==0
++    result['transportSuccess']=training_transport_success(result)
+     result['offlineStatus']='pending' if a.defer_offline else 'running'
+     # Persist complete transport clocks and cleanup BEFORE any offline decoding.
+     (out/'timing-checkpoint.json').write_text(json.dumps(result,indent=2)+'\n')
+@@ -149,7 +155,7 @@
+             witness=decode_run(out)
+             result['decodedMeshes']=len(witness['geometry'])
+             if result.get('cacheReplaySuccess'):compare_replay(out,witness)
+-            result['success']=bool(result.get('cacheReplaySuccess')) and not result['shutdownTimedOut'] and not result['deadlineKilled'] and 'error' not in result
++            result['success']=result['transportSuccess']
+         except Exception as error:result['decodeError']=str(error);result['traceback']=traceback.format_exc()
+     if not a.defer_offline:result['offlineStatus']='passed' if result['success'] else 'failed'
+     (out/'result.json').write_text(json.dumps(result,indent=2)+'\n')

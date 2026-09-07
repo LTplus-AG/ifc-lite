@@ -4,6 +4,9 @@
 
 //! Property set extraction.
 
+use super::property_value::{
+    fmt_number, infer_data_type, member_list, resolve_complex_property_value, resolve_single_value,
+};
 use super::types::{EntityJob, Property, PropertySet};
 use ifc_lite_core::{DecodedEntity, EntityDecoder};
 use rayon::prelude::*;
@@ -32,8 +35,22 @@ pub(super) fn extract_properties(
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
 
             // IfcPropertySet: [0]=GlobalId, [1]=OwnerHistory, [2]=Name, [3]=Description, [4]=HasProperties
-            let pset_name = entity.get_string(2)?.to_string();
-            let has_properties = entity.get_list(4)?;
+            // `Name` is OPTIONAL per the schema (inherited from `IfcRoot`) —
+            // bailing the whole closure with `?` on a null/non-string Name
+            // would drop a pset with genuinely resolvable properties before
+            // the keep condition below ever runs, breaking the exact parity
+            // with the browser/WASM path's `typeof psetAttrs[2] === 'string'
+            // ? psetAttrs[2] : ''` (`columnar-parser.ts`), which always
+            // normalizes a missing Name to `''` rather than discarding the
+            // pset. Mirror that here instead of using `?`.
+            let pset_name = entity.get_string(2).unwrap_or_default().to_string();
+            // `HasProperties` is a mandatory, non-empty SET per the schema, so
+            // a `$`/malformed value here means the file itself is invalid —
+            // but the browser path still tolerates it (`Array.isArray` check,
+            // falling through with an empty `properties`) rather than
+            // discarding the pset outright. Match that: treat a missing/
+            // malformed list as empty rather than bailing on `?`.
+            let has_properties = entity.get_list(4).unwrap_or(&[]);
 
             let mut properties = Vec::new();
 
@@ -48,7 +65,15 @@ pub(super) fn extract_properties(
                 }
             }
 
-            if properties.is_empty() {
+            // A PropertySet with a real Name is real evidence the file links
+            // this element to it, even when every member failed to resolve
+            // (issue #3963): dropping it wholesale is indistinguishable from
+            // "this element was never linked to any pset via
+            // IfcRelDefinesByProperties" in the first place. Mirrors the
+            // browser/WASM path's keep condition (`columnar-parser.ts`:
+            // `properties.length > 0 || psetName`) — only an unnamed,
+            // fully-unresolved set is dropped.
+            if properties.is_empty() && pset_name.is_empty() {
                 return None;
             }
 
@@ -70,7 +95,10 @@ pub(super) fn extract_properties(
 /// the decoder stores as `AttributeValue::List([String(type), inner])`; the old
 /// code only matched bare `String`/`Float` and emitted `format!("{:?}")` Debug
 /// garbage for every text/boolean value — this resolves them properly.
-fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Option<Property> {
+pub(super) fn extract_property(
+    entity: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Option<Property> {
     use ifc_lite_core::AttributeValue;
     // All IfcProperty subtypes carry Name at attribute 0.
     let property_name = entity.get_string(0)?.to_string();
@@ -190,6 +218,18 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
             None => (String::new(), "null".into(), None, None),
         },
 
+        // [Name, Description, UsageName, HasProperties] — issue #3963. Mirrors
+        // `resolveComplexPropertyValue` in
+        // packages/parser/src/property-value-parser.ts, which IS the spec:
+        // flatten each resolvable nested property into a "Name: value" part,
+        // join with ", ", and fall back to the bare UsageName (or nothing)
+        // when no nested member resolves. Recurses into further nested
+        // IFCCOMPLEXPROPERTY members up to the same depth cap as the TS side.
+        "IFCCOMPLEXPROPERTY" => {
+            let (v, k, d, vs) = resolve_complex_property_value(entity, decoder, 0);
+            (v, k, d, vs)
+        }
+
         _ => return None,
     };
 
@@ -200,148 +240,4 @@ fn extract_property(entity: &DecodedEntity, _decoder: &mut EntityDecoder) -> Opt
         data_type,
         values,
     })
-}
-
-/// Stringify one member of an enumerated / list value, mirroring the WASM
-/// `String(v)` / `String(v[1])`: a typed wrapper `List([type, inner])` yields
-/// the inner, a scalar yields itself. `None` for nulls (dropped, like the TS
-/// `.filter(v => v !== 'null')`).
-fn stringify_member(v: &ifc_lite_core::AttributeValue) -> Option<String> {
-    use ifc_lite_core::AttributeValue;
-    match v {
-        AttributeValue::List(items) if items.len() == 2 => stringify_scalar(&items[1]),
-        other => stringify_scalar(other),
-    }
-}
-
-fn stringify_scalar(v: &ifc_lite_core::AttributeValue) -> Option<String> {
-    use ifc_lite_core::AttributeValue;
-    match v {
-        AttributeValue::String(s) => Some(s.clone()),
-        AttributeValue::Enum(e) => Some(e.clone()),
-        AttributeValue::Integer(i) => Some(i.to_string()),
-        AttributeValue::Float(f) => Some(fmt_number(*f)),
-        _ => None,
-    }
-}
-
-/// Stringified members of a `List(...)` attribute (the WASM candidate array
-/// before joining), or `None` when the attribute is not a list or every
-/// member filters out — the display and the `values` wire field both derive
-/// from this, so they can never disagree.
-fn member_list(attr: Option<&ifc_lite_core::AttributeValue>) -> Option<Vec<String>> {
-    use ifc_lite_core::AttributeValue;
-    match attr {
-        Some(AttributeValue::List(items)) => {
-            let parts: Vec<String> = items.iter().filter_map(stringify_member).collect();
-            if parts.is_empty() {
-                None
-            } else {
-                Some(parts)
-            }
-        }
-        _ => None,
-    }
-}
-
-/// The IFC type tag of a typed-wrapper attribute (`List([String(type), _])`),
-/// upper-cased — mirrors the WASM `inferDataType`.
-fn infer_data_type(attr: Option<&ifc_lite_core::AttributeValue>) -> Option<String> {
-    use ifc_lite_core::AttributeValue;
-    match attr {
-        Some(AttributeValue::List(items)) if items.len() == 2 => match &items[0] {
-            AttributeValue::String(s) => Some(s.to_uppercase()),
-            _ => None,
-        },
-        _ => None,
-    }
-}
-
-/// Normalise an `.ENUM.`-style logical/boolean token (dots already stripped to
-/// the inner letter by the tokenizer, e.g. `Enum("T")`; or a bare `String`).
-fn logical_token(v: &ifc_lite_core::AttributeValue) -> Option<&str> {
-    v.as_enum()
-        .or_else(|| v.as_string())
-        .map(|s| s.trim_matches('.'))
-}
-
-/// Resolve an `IfcPropertySingleValue` NominalValue → (value string, kind, data_type),
-/// matching `parsePropertyValue`'s single-value branch exactly.
-fn resolve_single_value(
-    nominal: &ifc_lite_core::AttributeValue,
-) -> (String, String, Option<String>) {
-    use ifc_lite_core::AttributeValue;
-
-    // Typed wrapper: List([String(typeName), inner]) — the common conformant case.
-    if let AttributeValue::List(items) = nominal {
-        if items.len() == 2 {
-            if let AttributeValue::String(type_name) = &items[0] {
-                let ty = type_name.to_uppercase();
-                let inner = &items[1];
-
-                if ty.contains("BOOLEAN") {
-                    let b = logical_token(inner) == Some("T");
-                    return (b.to_string(), "boolean".into(), Some(ty));
-                }
-                if ty.contains("LOGICAL") {
-                    return match logical_token(inner) {
-                        Some("U") | Some("X") => (String::new(), "logical".into(), Some(ty)),
-                        Some("T") => ("true".into(), "logical".into(), Some(ty)),
-                        _ => ("false".into(), "logical".into(), Some(ty)),
-                    };
-                }
-                if let Some(n) = inner.as_float() {
-                    // Preserve the IFC-declared numeric kind rather than
-                    // re-inferring from the JS/Rust number-ness.
-                    let kind = if ty == "IFCINTEGER" || ty == "IFCCOUNTMEASURE" {
-                        "integer"
-                    } else if ty == "IFCREAL" || ty.ends_with("MEASURE") || ty.ends_with("RATIO") {
-                        "real"
-                    } else if n.fract() == 0.0 {
-                        "integer"
-                    } else {
-                        "real"
-                    };
-                    return (fmt_number(n), kind.into(), Some(ty));
-                }
-                // String inner (IFCLABEL/IFCTEXT/IFCIDENTIFIER/...).
-                if let Some(s) = inner.as_string() {
-                    return (s.to_string(), "string".into(), Some(ty));
-                }
-                if let Some(e) = inner.as_enum() {
-                    return (e.to_string(), "string".into(), Some(ty));
-                }
-            }
-        }
-    }
-
-    // Untyped scalars.
-    match nominal {
-        AttributeValue::Integer(i) => (i.to_string(), "integer".into(), None),
-        AttributeValue::Float(f) => {
-            let kind = if f.fract() == 0.0 { "integer" } else { "real" };
-            (fmt_number(*f), kind.into(), None)
-        }
-        AttributeValue::String(s) => (s.clone(), "string".into(), None),
-        // Bare enum tokens some authoring tools emit directly in the value slot.
-        AttributeValue::Enum(e) => match e.trim_matches('.') {
-            "T" => ("true".into(), "boolean".into(), None),
-            "F" => ("false".into(), "boolean".into(), None),
-            "U" | "X" => (String::new(), "logical".into(), None),
-            other => (other.to_string(), "string".into(), None),
-        },
-        AttributeValue::Null | AttributeValue::Derived => (String::new(), "null".into(), None),
-        // Anything else (nested list, ref) — stringify defensively.
-        other => (format!("{:?}", other), "string".into(), None),
-    }
-}
-
-/// Render a number the way JS `String(n)` would for the canonical value string
-/// (integers without a trailing `.0`, so `200.0` -> "200").
-fn fmt_number(n: f64) -> String {
-    if n.fract() == 0.0 && n.abs() < 1e15 {
-        format!("{}", n as i64)
-    } else {
-        format!("{}", n)
-    }
 }

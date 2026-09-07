@@ -204,6 +204,20 @@ XKT/XGF); that stays out of scope per the issue.
 
 ## Lever ledger (read before spiking)
 
+### Incremental affinity publication (#4051)
+
+Publish each existing bulk job chunk after its routing keys are ready, keeping
+the shared decoder/signature memo and exact payload order. The
+[local evidence](./evidence/affinity-publication-2026-09-06/README.md) records a
+large-MEP readiness benefit and its memory tradeoff, with much smaller effects
+on the other measured models. This is not full-corpus or Firefox qualification.
+The separate per-batch map-cache experiment is archived, not retained or added
+to this candidate's savings. An intended combined build reused stale Cargo
+output after source restoration preserved older timestamps; its original labels
+are corrected explicitly in the evidence. Force actual Rust recompilation after
+variant restoration: forced Turbo execution and matching bundled hashes alone
+do not prove the restored source was compiled.
+
 Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
 
 ### Retained processor registry ownership (#3987)
@@ -798,3 +812,72 @@ distributions directly to the TypeScript entrypoint and retain their provenance.
 `--skip-branch-build` labels its input as supplied distribution, not a verified
 current-commit build. The wrapper retains the temporary base through child exit
 and then removes it while preserving the child failure status.
+
+### Flat Y-up orientation and route-sensitive qualification (#4056)
+
+The IFC-to-viewer map `(x, y, z) -> (x, z, -y)` preserves orientation. Removing the flat binding's extra triangle reversal aligns its winding with transformed normals and the native/IFNS route; a viewer geometry-output revision prevents old cached winding from surviving the correction. Simplification and native Y-up export conversion must use the same orientation-preserving convention. This is a correctness change, with no throughput gain claimed. Canonical native geometry and its determinism manifests are unchanged; converted flat indices intentionally differ. An actual WASM boundary contract fails on the old runtime and passes on the correction. A canonical geometry fingerprint cannot certify downstream coordinate conversion, and adaptive batch boundaries can expose a route-specific defect by moving otherwise identical entities between flat and instanced transport.
+
+### Rejected: component parity BVH filtering (#4054)
+
+A private spike replaced linear component parity candidate scans with conservative
+BVH filtering while retaining the exact query endpoint and predicates. The cold-load
+screen did not establish a substantial corpus gain; a renderer-finalization timeout,
+teardown failures and unresolved raw geometry-channel differences prevent
+qualification. Do not land or repeat this version without a new mechanism or
+stronger evidence. A classification hotspot alone does not establish an end-to-end
+win, and no component-size threshold is justified by these observations. The
+[sanitized screen and limitations](evidence/component-parity-bvh-rejected-2026-09-07/README.md)
+retain the rejected result independently of constraint-recovery and type-ordinal work.
+
+### Rejected constraint-inventory vertex reuse (#4055)
+
+Reusing the CDT constraint inventory during refinement did not establish a substantial cold-load improvement across the expanded corpus. The native processing probe showed a narrow improvement, while the corrected-orientation browser screen remained mixed and failed unchanged raw geometry, spatial-query and browser-lifecycle gates. Exact instrumented producer output on one fixture did not waive downstream browser mismatches. Failed teardown attempts and later contamination-uncertain attempts remain recorded separately from justified clean recovery runs. Stop this experiment without landing the candidate; do not repeat it on a microbenchmark, normalized mesh comparison or selected-fixture timing alone. The [rejected experiment evidence](evidence/rejected-vertex-reuse-2026-09-07/README.md) records the complete disposition and provenance limits.
+
+### Correctness prerequisite: server JSON cache roundtrips (#4064)
+
+Actual HTTP qualification exposed finite metadata coordinates changing during
+JSON cache replay. Enabling the server's serde_json roundtrip parser preserves
+those values without a geometry or tolerance change. The bounded fresh-process
+screen retained exact cold geometry/data-model bytes and corrected replay parity;
+it does not establish a performance gain or neutrality. Keep endpoint readiness,
+cache completion and offline witness cost separate, and never extrapolate a
+processing-probe gain to the shipping HTTP artifact.
+[Sanitized screen and limitations](evidence/server-json-roundtrip-4064/README.md).
+### Rejected owned server mesh-batch transfer (#4066)
+
+An owned sink in the canonical processing loop removed the server bridge's deep
+mesh-buffer copy while preserving borrowed callers, retained output, batching,
+progress, styling and cancellation. Exact output and actual cache replay passed,
+but the prespecified HTTP readiness continuation gate failed: the small and MEP
+models were slower in their single pairs, and the largest model's modest time
+improvement accompanied higher sampled RSS. The implementation was not landed
+or expanded to the wider corpus. A source-level copy removal is not an
+end-to-end gain; unbounded downstream ownership and other pipeline work remain
+relevant costs. This screen does not establish precise attribution or a physical
+memory benefit. [Complete verdict, limits and reproducible rejected source](evidence/rejected-owned-batches-2026-09-07/README.md).
+
+## Current-source native PGO qualification (#4059, not shipped)
+
+Fresh profile training on five public fixtures produced a broad held-out
+processing-probe improvement across the expanded corpus. The largest model
+has an unresolved median regression and estimator disagreement; physical
+footprint increased across many models. All paired ordered geometry
+fingerprints and counts matched, while the pathological model's CSG census
+varied within both arms. This is neither full-result byte identity nor an
+HTTP, browser, or cross-target shipping result.
+
+Separate actual Darwin server qualification is recorded below, using its
+release profile, allocator, features and build-std settings. Do not reuse the
+probe profile as shipping evidence or turn PGO on unconditionally.
+[Sanitized measurements and limits](evidence/native-pgo-current-2026-09-07/README.md).
+
+The separately matched [counter-only HTTP PGO screen](evidence/server-pgo-counter-http-4059/README.md)
+did not meet its predeclared continuation threshold and retained a diagnostic
+mismatch despite exact geometry and data-model payloads. It was rejected before
+repeated qualification; no flags shipped. The full-value experiment below used
+its own fresh training, compatibility audit and endpoint qualification. Do not
+repeat the same counter-only profile as a hidden win.
+
+### Rejected full-value actual-server PGO (#4059)
+
+Fresh full-value profiles from a generator-only graceful shutdown did not qualify the shipping Darwin server. The held-out screen missed its continuation threshold, retained a strict CSG diagnostic mismatch and exposed a largest-model time/memory regression. The separate native processing-probe result does not transfer automatically to the actual endpoint. Stop both server variants without enabling PGO or adding repeated qualification; do not substitute the training cohort or drop failed diagnostics to promote them. The [full-value evidence](evidence/server-pgo-full-value-http-4059/README.md) preserves source/profile provenance, compiler compatibility limits and all corpus outcomes.

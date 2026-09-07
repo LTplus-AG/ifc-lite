@@ -1,0 +1,371 @@
+{
+  "verdict": "rejected; no production implementation landed and no 27-model expansion",
+  "issue": 4066,
+  "attempts": 6,
+  "pairsPerModel": 1,
+  "modelCount": 3,
+  "allAttemptsRetained": true,
+  "allThreeExactGatesPassed": true,
+  "predeclaredContinuationRule": {
+    "allThreeExactGatesMustPass": true,
+    "equalWeightThreeModelGeometricMeanTimeReductionAtLeastPercent": 5,
+    "bothLargeModelsMustHavePositiveTimeReduction": true,
+    "atLeastOneLargeModelTimeReductionAtLeastPercent": 5,
+    "holdIfAnyLargeColdOrWholeProtocolSampledRssIncreaseExceedsPercent": 10,
+    "smallModelTimingRegressions": "Retain and require repeated qualification; one pair cannot establish no regressions.",
+    "action": "Only eligibility for wider27 qualification; no automatic landing/merge; no threshold revision after observing results."
+  },
+  "continuationGates": {
+    "threeModelGM": false,
+    "bothLargePositive": false,
+    "oneLargeAtLeastFivePercent": false,
+    "noLargeCapacityWarning": true
+  },
+  "equalWeightThreeModelTimeReductionPercent": -16.903651949857903,
+  "eligibleFor27": false,
+  "models": [
+    {
+      "label": "small-haus",
+      "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+      "sourceBytes": 2526544,
+      "order": [
+        "base",
+        "candidate"
+      ],
+      "arms": {
+        "base": {
+          "httpFeatureReadyMs": 29.768,
+          "startupReadyMs": 34.268,
+          "peakSampledRss": 113410048,
+          "peakSampledRssThroughColdReady": 113410048,
+          "shutdownStartMs": 79.788,
+          "shutdownEndMs": 84.363,
+          "peakFirstMs": 58.428,
+          "peakPhase": "cold",
+          "wrapperExitCode": 0,
+          "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+          "transportSuccess": true,
+          "cacheReplaySuccess": true,
+          "cacheReplayRequest": "hash-only POST; no source body",
+          "serverExitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "counts": {
+            "total_meshes": 285,
+            "total_vertices": 35940,
+            "total_triangles": 19456
+          }
+        },
+        "candidate": {
+          "httpFeatureReadyMs": 48.42399999999998,
+          "startupReadyMs": 381.502,
+          "peakSampledRss": 85032960,
+          "peakSampledRssThroughColdReady": 85032960,
+          "shutdownStartMs": 448.755,
+          "shutdownEndMs": 451.946,
+          "peakFirstMs": 405.866,
+          "peakPhase": "cold",
+          "wrapperExitCode": 0,
+          "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+          "transportSuccess": true,
+          "cacheReplaySuccess": true,
+          "cacheReplayRequest": "hash-only POST; no source body",
+          "serverExitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "counts": {
+            "total_meshes": 285,
+            "total_vertices": 35940,
+            "total_triangles": 19456
+          }
+        }
+      },
+      "offlineExitCode": 0,
+      "gates": {
+        "transportSuccess": true,
+        "fixtureExact": true,
+        "shutdownComplete": true,
+        "completeExactChannels": true
+      },
+      "comparisons": {
+        "coldBaseCandidate": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        },
+        "baseCache": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        },
+        "candidateCache": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        }
+      },
+      "descriptiveRatios": {
+        "label": "small-haus",
+        "qualified": true,
+        "timeReductionPercent": -62.67132491265781,
+        "timeRatio": 1.626713249126578,
+        "coldSampledRssIncreasePercent": -25.021670037561393,
+        "wholeProtocolSampledRssIncreasePercent": -25.021670037561393
+      }
+    },
+    {
+      "label": "large-mep-1050",
+      "fixtureSha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd",
+      "sourceBytes": 1050352883,
+      "order": [
+        "candidate",
+        "base"
+      ],
+      "arms": {
+        "base": {
+          "httpFeatureReadyMs": 9040.139,
+          "startupReadyMs": 34.324,
+          "peakSampledRss": 19604652032,
+          "peakSampledRssThroughColdReady": 19604652032,
+          "shutdownStartMs": 17657.925,
+          "shutdownEndMs": 17804.007,
+          "peakFirstMs": 4239.319,
+          "peakPhase": "cold",
+          "wrapperExitCode": 0,
+          "fixtureSha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd",
+          "transportSuccess": true,
+          "cacheReplaySuccess": true,
+          "cacheReplayRequest": "hash-only POST; no source body",
+          "serverExitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "counts": {
+            "total_meshes": 227352,
+            "total_vertices": 54578002,
+            "total_triangles": 32358126
+          }
+        },
+        "candidate": {
+          "httpFeatureReadyMs": 9161.886,
+          "startupReadyMs": 24.974,
+          "peakSampledRss": 19817119744,
+          "peakSampledRssThroughColdReady": 19817119744,
+          "shutdownStartMs": 17634.918,
+          "shutdownEndMs": 17783.628,
+          "peakFirstMs": 4563.459,
+          "peakPhase": "cold",
+          "wrapperExitCode": 0,
+          "fixtureSha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd",
+          "transportSuccess": true,
+          "cacheReplaySuccess": true,
+          "cacheReplayRequest": "hash-only POST; no source body",
+          "serverExitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "counts": {
+            "total_meshes": 227352,
+            "total_vertices": 54578002,
+            "total_triangles": 32358126
+          }
+        }
+      },
+      "offlineExitCode": 0,
+      "gates": {
+        "transportSuccess": true,
+        "fixtureExact": true,
+        "shutdownComplete": true,
+        "completeExactChannels": true
+      },
+      "comparisons": {
+        "coldBaseCandidate": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        },
+        "baseCache": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        },
+        "candidateCache": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        }
+      },
+      "descriptiveRatios": {
+        "label": "large-mep-1050",
+        "qualified": true,
+        "timeReductionPercent": -1.3467381419688396,
+        "timeRatio": 1.0134673814196884,
+        "coldSampledRssIncreasePercent": 1.0837617094819896,
+        "wholeProtocolSampledRssIncreasePercent": 1.0837617094819896
+      }
+    },
+    {
+      "label": "downloads-01-1259mb",
+      "fixtureSha256": "887c68571ac721e40c9c0d98a5ca889c3b8ad037a1012c06314a674a798ddc9a",
+      "sourceBytes": 1259429221,
+      "order": [
+        "base",
+        "candidate"
+      ],
+      "arms": {
+        "base": {
+          "httpFeatureReadyMs": 39830.367,
+          "startupReadyMs": 27.93,
+          "peakSampledRss": 20331020288,
+          "peakSampledRssThroughColdReady": 20331020288,
+          "shutdownStartMs": 55805.916,
+          "shutdownEndMs": 55936.391,
+          "peakFirstMs": 5325.726,
+          "peakPhase": "cold",
+          "wrapperExitCode": 0,
+          "fixtureSha256": "887c68571ac721e40c9c0d98a5ca889c3b8ad037a1012c06314a674a798ddc9a",
+          "transportSuccess": true,
+          "cacheReplaySuccess": true,
+          "cacheReplayRequest": "hash-only POST; no source body",
+          "serverExitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "counts": {
+            "total_meshes": 434750,
+            "total_vertices": 79174542,
+            "total_triangles": 36271975
+          }
+        },
+        "candidate": {
+          "httpFeatureReadyMs": 38599.152,
+          "startupReadyMs": 29.449,
+          "peakSampledRss": 20950876160,
+          "peakSampledRssThroughColdReady": 20950876160,
+          "shutdownStartMs": 54667.114,
+          "shutdownEndMs": 54808.109,
+          "peakFirstMs": 4860.282,
+          "peakPhase": "cold",
+          "wrapperExitCode": 0,
+          "fixtureSha256": "887c68571ac721e40c9c0d98a5ca889c3b8ad037a1012c06314a674a798ddc9a",
+          "transportSuccess": true,
+          "cacheReplaySuccess": true,
+          "cacheReplayRequest": "hash-only POST; no source body",
+          "serverExitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "counts": {
+            "total_meshes": 434750,
+            "total_vertices": 79174542,
+            "total_triangles": 36271975
+          }
+        }
+      },
+      "offlineExitCode": 0,
+      "gates": {
+        "transportSuccess": true,
+        "fixtureExact": true,
+        "shutdownComplete": true,
+        "completeExactChannels": true
+      },
+      "comparisons": {
+        "coldBaseCandidate": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        },
+        "baseCache": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        },
+        "candidateCache": {
+          "fullSemanticExact": true,
+          "rawGeometryBatchesExact": true,
+          "rawDataModelExact": true
+        }
+      },
+      "descriptiveRatios": {
+        "label": "downloads-01-1259mb",
+        "qualified": true,
+        "timeReductionPercent": 3.091146511404219,
+        "timeRatio": 0.9690885348859578,
+        "coldSampledRssIncreasePercent": 3.0488183240162225,
+        "wholeProtocolSampledRssIncreasePercent": 3.0488183240162225
+      }
+    }
+  ],
+  "build": {
+    "publicControlSource": "1b95c6652f49409ed102a693e67c8cba7da4f3ae",
+    "measuredControlSource": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+    "publicControlAllRustServerCargoSourceExact": true,
+    "measuredCandidateSource": "3e675edea949456561f23e3112123b69fd6198ab",
+    "measuredCandidateTree": "1c406b6732365e873aa00af6a113b9ca860102d6",
+    "controlBinarySha256": "ea55315adb1f781d51fc0f1e70e5125a58d021ccf0e736e6ce1d0c86531b5169",
+    "candidateBinarySha256": "29524964a99461bd08cd9dc834be6c4fc137ed3584a4ae3c1e4e5935cf9b3468",
+    "command": [
+      "cargo",
+      "build",
+      "--release",
+      "--package",
+      "ifc-lite-server",
+      "--target",
+      "aarch64-apple-darwin"
+    ],
+    "RUSTFLAGS": "",
+    "CARGO_UNSTABLE_BUILD_STD": "std,panic_abort",
+    "features": "default (mimalloc; processing observability)",
+    "profile": "release (panic abort)",
+    "target": "aarch64-apple-darwin",
+    "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: aarch64-apple-darwin\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+    "PGO": false
+  },
+  "validation": {
+    "focusedOwnershipTestsPassed": 4,
+    "canonicalIfcPipelineTestsPassed": 2,
+    "workspaceCommand": "cargo test --workspace -- --show-output",
+    "workspacePassed": 2851,
+    "workspaceFailed": 0,
+    "workspaceIgnored": 36,
+    "fixtureSkipGuidanceLines": 182,
+    "externalDownloadedFixturesPresent": false,
+    "strictClippyCommand": "cargo clippy --workspace --all-targets -- -D warnings",
+    "strictClippyExitCode": 0,
+    "countsOverlap": "Focused tests are included in workspace totals; counts must not be added."
+  },
+  "evidenceHashes": {
+    "prespecifiedProtocol": "00b54fd5ea5f13bc8fa498da0f4077fa5209bb8729952795ade1efdfaecd9af9",
+    "driverAndInputFreeze": "2edf868325b8afa21bbf512785c3434b14e7bff574515e57ec81de21c12b10c6",
+    "privateFinalReport": "b668fe2f7759bb64d3f82172ed20d8aa913c040142edad34fbb427564d298b82",
+    "workspaceTestLog": "ef640a360922fb5798616edbfc0065f63aab86353b8f5d59fbdfa08dff9f62ec",
+    "clippyLog": "b94bfe6acb23f0f9a1ddf5461727d33b4628e4503b3f5ce9b814d75e184138dd",
+    "candidateBuildLog": "aeb877bd6d7bb0c392ff21c6b1b9f12cf1ad8b10b84d2ecde2947de6124a0f5d"
+  },
+  "scope": [
+    "Actual HTTP complete-SSE-plus-data-model readiness from request start; startup separate. Fresh server process for each arm; operating-system caches uncontrolled.",
+    "Actual bodyless hash-only cache replay in every arm; all raw geometry/data-model bytes and full declared witness fields checked. No diagnostic waiver or geometry tolerance.",
+    "Offline v3 reuses only fully byte-validated pure-input fragments with verifier identity; current Complete metadata/diagnostics/counts/cleanup are rechecked. It produced exact v2 bytes on small and largest validation captures.",
+    "All offline decoding and COW retention run after both timed arms. No PGO inputs, prior-pilot timings or unrelated source changes pooled.",
+    "RSS is sampled every 50 ms; cold-readiness and whole-protocol peaks reported separately. It is not physical footprint or an exact peak.",
+    "Single-pair observations cannot attribute exact causal contributions or establish general regressions, wins, or no-regression behavior. Haus absolute penalty and separate startup anomaly are retained.",
+    "Downloaded external Rust fixtures were absent; early skips/ignored tests remain documented. Inline and committed fixtures ran. HTTP inputs are independently SHA-pinned.",
+    "Clone removal is a real source mechanism, but does not establish a material end-to-end improvement. No further corpus screen or production change was justified."
+  ],
+  "witnessDefinition": {
+    "fields": [
+      "geometry occurrence records and schemas",
+      "metadataDigest",
+      "non-timing diagnostics",
+      "symbolicDigest",
+      "all eight data-model tables including spatial sub-tables"
+    ],
+    "diagnosticExclusions": [
+      "*_time_ms",
+      "point_cache_hits",
+      "point_cache_misses",
+      "from_cache"
+    ],
+    "rawGates": [
+      "ordered raw geometry batch files",
+      "complete raw data-model binary"
+    ],
+    "limit": "Exact equality of the declared semantic witness and raw geometry/data-model payloads; not byte identity of every HTTP event including timing/cache identifiers."
+  }
+}

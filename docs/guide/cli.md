@@ -285,6 +285,10 @@ ifc-lite query model.ifc --type IfcWall --limit 10 --offset 20
 | `--offset <N>` | Skip first N results |
 | `--json` | JSON output |
 
+`--type` and `--where` are the CLI's own filter surface, not the IfcOpenShell
+selector syntax. See [Selector Syntax](selector-syntax.md) for how each selector
+construct is spelled here, and for what accepting selector text on the CLI would take.
+
 ---
 
 ### `props` — Entity Properties

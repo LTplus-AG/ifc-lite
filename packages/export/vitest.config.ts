@@ -8,6 +8,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   resolve: {
     alias: {
+      '@ifc-lite/codegen/ifc4': path.resolve(__dirname, '../codegen/generated/ifc4/index.ts'),
+      '@ifc-lite/codegen/ifc4x3': path.resolve(__dirname, '../codegen/generated/ifc4x3/index.ts'),
+      '@ifc-lite/codegen': path.resolve(__dirname, '../codegen/src/index.ts'),
       '@ifc-lite/data': path.resolve(__dirname, '../data/src/index.ts'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../encoding/src/index.ts'),
       '@ifc-lite/geometry': path.resolve(__dirname, '../geometry/src/index.ts'),

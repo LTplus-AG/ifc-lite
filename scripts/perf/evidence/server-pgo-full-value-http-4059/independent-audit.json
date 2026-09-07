@@ -1,0 +1,54 @@
+{
+  "review": "Independent recorded-result audit; no reruns",
+  "completeShaUniqueModels": 27,
+  "fixedTrainingHashesVerified": 5,
+  "heldOut": 22,
+  "transportAndCleanupPassed": 54,
+  "fullGatePassedModels": 26,
+  "failedModel": "model-18",
+  "failedDiagnosticPaths": [
+    {
+      "path": "/geometry_diagnostics/failuresByReason/0/count",
+      "base": 194,
+      "candidate": 196
+    },
+    {
+      "path": "/geometry_diagnostics/totalCsgFailures",
+      "base": 194,
+      "candidate": 196
+    },
+    {
+      "path": "/total_csg_failures",
+      "base": 194,
+      "candidate": 196
+    }
+  ],
+  "metadataSymbolicExact": true,
+  "allRawGeometryDataModelAndCacheGatesPass": true,
+  "estimator": "100*(1-exp(mean(log(candidate_ms/base_ms)))) with equal model weight; cold metric=dataModelReceivedMs-requestStartMs",
+  "coldReadinessReductionPercent": {
+    "primaryAllHeldOut22IncludingFailedDiagnostics": 4.071405917425186,
+    "qualifiedHeldOut21Only": 4.309542353293838,
+    "all27IncludingFailedDiagnostics": 5.6269449570433006,
+    "training5": 12.177109488126359
+  },
+  "startupPlusReadinessReductionPercent": {
+    "heldOut22": 3.7385132562321677,
+    "all27": 5.291690519679237
+  },
+  "slowerPairs": {
+    "heldOut22": 6,
+    "training5": 2,
+    "all27": 8
+  },
+  "largestObservedRssIncreaseAmongFilesAtLeast100MB": {
+    "model": "model-12",
+    "fixtureBytes": 1259429221,
+    "baseBytes": 20142571520,
+    "candidateBytes": 21400420352,
+    "increasePercent": 6.244728140848621,
+    "peakPhase": "cold",
+    "scope": "Same increase for cold and whole-protocol sampled peaks; 50ms RSS, single pair, not physical footprint or repeated capacity qualification"
+  },
+  "verdict": "Reject continuation: primary held-out result below predeclared5%, and diagnostics gate remains failed. All27 aggregate above5% does not override primary cohort. No pooled native-probe/counter-only evidence."
+}

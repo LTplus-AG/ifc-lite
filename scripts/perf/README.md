@@ -853,7 +853,18 @@ fingerprints and counts matched, while the pathological model's CSG census
 varied within both arms. This is neither full-result byte identity nor an
 HTTP, browser, or cross-target shipping result.
 
-The next step is fresh training and qualification of the actual Darwin server
-with its release profile, allocator, features and build-std settings. Do not
-reuse the probe profile as shipping evidence or turn PGO on unconditionally.
+Separate actual Darwin server qualification is recorded below, using its
+release profile, allocator, features and build-std settings. Do not reuse the
+probe profile as shipping evidence or turn PGO on unconditionally.
 [Sanitized measurements and limits](evidence/native-pgo-current-2026-09-07/README.md).
+
+The separately matched [counter-only HTTP PGO screen](evidence/server-pgo-counter-http-4059/README.md)
+did not meet its predeclared continuation threshold and retained a diagnostic
+mismatch despite exact geometry and data-model payloads. It was rejected before
+repeated qualification; no flags shipped. The full-value experiment below used
+its own fresh training, compatibility audit and endpoint qualification. Do not
+repeat the same counter-only profile as a hidden win.
+
+### Rejected full-value actual-server PGO (#4059)
+
+Fresh full-value profiles from a generator-only graceful shutdown did not qualify the shipping Darwin server. The held-out screen missed its continuation threshold, retained a strict CSG diagnostic mismatch and exposed a largest-model time/memory regression. The separate native processing-probe result does not transfer automatically to the actual endpoint. Stop both server variants without enabling PGO or adding repeated qualification; do not substitute the training cohort or drop failed diagnostics to promote them. The [full-value evidence](evidence/server-pgo-full-value-http-4059/README.md) preserves source/profile provenance, compiler compatibility limits and all corpus outcomes.

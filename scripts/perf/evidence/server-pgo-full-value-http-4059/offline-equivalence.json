@@ -1,0 +1,80 @@
+{
+  "smallHaus": {
+    "allFourExactV2Bytes": true,
+    "corruptReferenceRefusal": "Retained validated witness fragment changed",
+    "sourceCapturesUntouched": true,
+    "captures": [
+      {
+        "capture": "base",
+        "v2BytesExact": true,
+        "sha256": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52",
+        "memoHits": 0
+      },
+      {
+        "capture": "base/cache-replay",
+        "v2BytesExact": true,
+        "sha256": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52",
+        "memoHits": 2
+      },
+      {
+        "capture": "candidate",
+        "v2BytesExact": true,
+        "sha256": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52",
+        "memoHits": 2
+      },
+      {
+        "capture": "candidate/cache-replay",
+        "v2BytesExact": true,
+        "sha256": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52",
+        "memoHits": 2
+      }
+    ],
+    "verifier": {
+      "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+      "wire_arrow_v2.py": "604f3291363df316a7c05a61b1cafa53dd0c719e5d1b6dbbbca3f43ecb705b1c",
+      "witness_reuse.py": "cad762e1ac1d527542e01d2b8f4190c53927187d34a11545d1bffe2fe6b87bbb",
+      "python": "3.9.6 (default, May 22 2026, 11:13:45) \n[Clang 21.0.0 (clang-2100.1.1.101)]",
+      "pyarrow": "21.0.0"
+    }
+  },
+  "largest1259": {
+    "allFourExactV2Bytes": true,
+    "corruptReferenceRefusal": "Retained validated witness fragment changed",
+    "sourceCapturesUntouched": true,
+    "staleVerifierMiss": true,
+    "staleEntryRefusal": "Retained cache verifier identity changed",
+    "captures": [
+      {
+        "capture": "base",
+        "v2BytesExact": true,
+        "sha256": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+        "memoHits": 0
+      },
+      {
+        "capture": "base/cache-replay",
+        "v2BytesExact": true,
+        "sha256": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+        "memoHits": 2
+      },
+      {
+        "capture": "candidate",
+        "v2BytesExact": true,
+        "sha256": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+        "memoHits": 2
+      },
+      {
+        "capture": "candidate/cache-replay",
+        "v2BytesExact": true,
+        "sha256": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+        "memoHits": 2
+      }
+    ],
+    "verifier": {
+      "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+      "wire_arrow_v2.py": "604f3291363df316a7c05a61b1cafa53dd0c719e5d1b6dbbbca3f43ecb705b1c",
+      "witness_reuse.py": "cad762e1ac1d527542e01d2b8f4190c53927187d34a11545d1bffe2fe6b87bbb",
+      "python": "3.9.6 (default, May 22 2026, 11:13:45) \n[Clang 21.0.0 (clang-2100.1.1.101)]",
+      "pyarrow": "21.0.0"
+    }
+  }
+}

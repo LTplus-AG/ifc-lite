@@ -1,0 +1,1459 @@
+{
+  "sourceCommit": "2a2c0fb555db988230eafad0f196933078d803e7",
+  "target": "aarch64-apple-darwin",
+  "profile": "server-release",
+  "scope": "Predeclared interleaved fresh-process pairs of frozen native PGO/control process_geometry probes; not HTTP endpoint. Complete call excludes source-file read, post-timing fingerprint and result disposal. FNV mesh payload includes identities, exact geometry/normal/index/color/origin/bounds/placement, excludes text metadata/material definitions/UVs/textures/instancing. OS cache uncontrolled.",
+  "cohorts": {
+    "training5": {
+      "models": 5,
+      "completeModels": 5,
+      "geometricMeanMedianPairedRatio": 0.9142285475245959,
+      "geometricMeanMedianTimeRatio": 0.9089750731316599,
+      "geometryFailureLabels": [],
+      "memberLabels": [
+        "bridge-ifc4x2-15",
+        "large-csg-177",
+        "school-54",
+        "small-haus",
+        "structural-tekla-27"
+      ]
+    },
+    "heldout22": {
+      "models": 22,
+      "completeModels": 22,
+      "geometricMeanMedianPairedRatio": 0.9030494366602873,
+      "geometricMeanMedianTimeRatio": 0.9003467503050537,
+      "geometryFailureLabels": [],
+      "memberLabels": [
+        "csg-129",
+        "downloads-01-1259mb",
+        "downloads-02-1050mb",
+        "downloads-04-1034mb",
+        "downloads-05-1034mb",
+        "downloads-06-511mb",
+        "downloads-07-283mb",
+        "downloads-08-263mb",
+        "downloads-12-13mb",
+        "downloads-13-13mb",
+        "downloads-14-11mb",
+        "downloads-15-5mb",
+        "downloads-16-1mb",
+        "downloads-17-1mb",
+        "downloads-18-1mb",
+        "downloads-19-0mb",
+        "downloads-20-0mb",
+        "large-architecture-192",
+        "large-architecture-343",
+        "large-mep-1050",
+        "large-sanitary-ifc4-218",
+        "services-73"
+      ]
+    },
+    "all27": {
+      "models": 27,
+      "completeModels": 27,
+      "geometricMeanMedianPairedRatio": 0.9051092789846008,
+      "geometricMeanMedianTimeRatio": 0.9019383853192674,
+      "geometryFailureLabels": [],
+      "memberLabels": [
+        "bridge-ifc4x2-15",
+        "csg-129",
+        "downloads-01-1259mb",
+        "downloads-02-1050mb",
+        "downloads-04-1034mb",
+        "downloads-05-1034mb",
+        "downloads-06-511mb",
+        "downloads-07-283mb",
+        "downloads-08-263mb",
+        "downloads-12-13mb",
+        "downloads-13-13mb",
+        "downloads-14-11mb",
+        "downloads-15-5mb",
+        "downloads-16-1mb",
+        "downloads-17-1mb",
+        "downloads-18-1mb",
+        "downloads-19-0mb",
+        "downloads-20-0mb",
+        "large-architecture-192",
+        "large-architecture-343",
+        "large-csg-177",
+        "large-mep-1050",
+        "large-sanitary-ifc4-218",
+        "school-54",
+        "services-73",
+        "small-haus",
+        "structural-tekla-27"
+      ]
+    },
+    "historical11": {
+      "models": 11,
+      "completeModels": 11,
+      "geometricMeanMedianPairedRatio": 0.9109357122788614,
+      "geometricMeanMedianTimeRatio": 0.906363540244964,
+      "geometryFailureLabels": [],
+      "memberLabels": [
+        "bridge-ifc4x2-15",
+        "csg-129",
+        "large-architecture-192",
+        "large-architecture-343",
+        "large-csg-177",
+        "large-mep-1050",
+        "large-sanitary-ifc4-218",
+        "school-54",
+        "services-73",
+        "small-haus",
+        "structural-tekla-27"
+      ]
+    },
+    "expanded16": {
+      "models": 16,
+      "completeModels": 16,
+      "geometricMeanMedianPairedRatio": 0.901125237970689,
+      "geometricMeanMedianTimeRatio": 0.8989086302873085,
+      "geometryFailureLabels": [],
+      "memberLabels": [
+        "downloads-01-1259mb",
+        "downloads-02-1050mb",
+        "downloads-04-1034mb",
+        "downloads-05-1034mb",
+        "downloads-06-511mb",
+        "downloads-07-283mb",
+        "downloads-08-263mb",
+        "downloads-12-13mb",
+        "downloads-13-13mb",
+        "downloads-14-11mb",
+        "downloads-15-5mb",
+        "downloads-16-1mb",
+        "downloads-17-1mb",
+        "downloads-18-1mb",
+        "downloads-19-0mb",
+        "downloads-20-0mb"
+      ]
+    },
+    "independentNewLarge5": {
+      "models": 5,
+      "completeModels": 5,
+      "geometricMeanMedianPairedRatio": 0.9336249557636461,
+      "geometricMeanMedianTimeRatio": 0.9488345043089882,
+      "geometryFailureLabels": [],
+      "memberLabels": [
+        "downloads-01-1259mb",
+        "downloads-04-1034mb",
+        "downloads-06-511mb",
+        "downloads-07-283mb",
+        "downloads-08-263mb"
+      ]
+    }
+  },
+  "trainingLabels": [
+    "large-csg-177",
+    "small-haus",
+    "structural-tekla-27",
+    "bridge-ifc4x2-15",
+    "school-54"
+  ],
+  "attemptCount": 270,
+  "all135PairsGeometryFingerprintAndCountsExact": true,
+  "failedAttemptCount": 0,
+  "rows": [
+    {
+      "label": "bridge-ifc4x2-15",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8956813206272782,
+      "baseMedianWallMs": 31.516416999999997,
+      "candidateMedianWallMs": 28.694833,
+      "medianTimeRatio": 0.9104725641877375,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -3.2877509999999965,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 14,
+          "geometryMs": 16,
+          "totalMs": 30,
+          "fullLoadWallMs": 32.583,
+          "maximumResidentSetBytes": 101466112,
+          "peakMemoryFootprintBytes": 99778992
+        },
+        "candidate": {
+          "parseMs": 12,
+          "geometryMs": 15,
+          "totalMs": 28,
+          "fullLoadWallMs": 29.811,
+          "maximumResidentSetBytes": 102563840,
+          "peakMemoryFootprintBytes": 100843976
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "csg-129",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9497764772836093,
+      "baseMedianWallMs": 617.414875,
+      "candidateMedianWallMs": 593.064875,
+      "medianTimeRatio": 0.9605613648359217,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -31.008750000000077,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 10,
+          "geometryMs": 601,
+          "totalMs": 612,
+          "fullLoadWallMs": 618.288,
+          "maximumResidentSetBytes": 114933760,
+          "peakMemoryFootprintBytes": 112083376
+        },
+        "candidate": {
+          "parseMs": 8,
+          "geometryMs": 579,
+          "totalMs": 589,
+          "fullLoadWallMs": 594.084,
+          "maximumResidentSetBytes": 116342784,
+          "peakMemoryFootprintBytes": 113426864
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            43
+          ],
+          "degenerateDropped": [
+            6
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            43
+          ],
+          "degenerateDropped": [
+            6
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-01-1259mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9766471864052899,
+      "baseMedianWallMs": 15006.005874999999,
+      "candidateMedianWallMs": 15796.913625000001,
+      "medianTimeRatio": 1.0527060802580155,
+      "candidateSlowerPairs": 2,
+      "medianPairedDeltaMs": -350.4324579999993,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 1191,
+          "geometryMs": 13311,
+          "totalMs": 14500,
+          "fullLoadWallMs": 15096.939,
+          "maximumResidentSetBytes": 6943801344,
+          "peakMemoryFootprintBytes": 6673077696
+        },
+        "candidate": {
+          "parseMs": 1004,
+          "geometryMs": 14192,
+          "totalMs": 15200,
+          "fullLoadWallMs": 15884.247,
+          "maximumResidentSetBytes": 6946013184,
+          "peakMemoryFootprintBytes": 6637540848
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            2238
+          ],
+          "degenerateDropped": [
+            391
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            2238
+          ],
+          "degenerateDropped": [
+            391
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-02-1050mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9048934377623488,
+      "baseMedianWallMs": 1873.247458,
+      "candidateMedianWallMs": 1688.491792,
+      "medianTimeRatio": 0.9013714577799257,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -177.20358299999998,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 716,
+          "geometryMs": 952,
+          "totalMs": 1666,
+          "fullLoadWallMs": 1945.407,
+          "maximumResidentSetBytes": 5198987264,
+          "peakMemoryFootprintBytes": 5182787808
+        },
+        "candidate": {
+          "parseMs": 619,
+          "geometryMs": 879,
+          "totalMs": 1499,
+          "fullLoadWallMs": 1761.689,
+          "maximumResidentSetBytes": 5205819392,
+          "peakMemoryFootprintBytes": 5184164088
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            2
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-04-1034mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8767809348478782,
+      "baseMedianWallMs": 2659.880208,
+      "candidateMedianWallMs": 2339.320041,
+      "medianTimeRatio": 0.8794832315997292,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -331.99000000000024,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 900,
+          "geometryMs": 1388,
+          "totalMs": 2295,
+          "fullLoadWallMs": 2733.077,
+          "maximumResidentSetBytes": 3636445184,
+          "peakMemoryFootprintBytes": 3584855208
+        },
+        "candidate": {
+          "parseMs": 746,
+          "geometryMs": 1271,
+          "totalMs": 2011,
+          "fullLoadWallMs": 2412.095,
+          "maximumResidentSetBytes": 3641475072,
+          "peakMemoryFootprintBytes": 3561131128
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            5
+          ],
+          "degenerateDropped": [
+            88
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            5
+          ],
+          "degenerateDropped": [
+            88
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-05-1034mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9037563125951841,
+      "baseMedianWallMs": 1865.219958,
+      "candidateMedianWallMs": 1688.7025,
+      "medianTimeRatio": 0.9053637308335086,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -179.935209,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 716,
+          "geometryMs": 945,
+          "totalMs": 1662,
+          "fullLoadWallMs": 1937.771,
+          "maximumResidentSetBytes": 5179621376,
+          "peakMemoryFootprintBytes": 5156835552
+        },
+        "candidate": {
+          "parseMs": 616,
+          "geometryMs": 871,
+          "totalMs": 1486,
+          "fullLoadWallMs": 1759.95,
+          "maximumResidentSetBytes": 5193302016,
+          "peakMemoryFootprintBytes": 5194191072
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            2
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-06-511mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9197622141290872,
+      "baseMedianWallMs": 14911.985083,
+      "candidateMedianWallMs": 13715.480417,
+      "medianTimeRatio": 0.9197622141290872,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -1196.504665999999,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 614,
+          "geometryMs": 14062,
+          "totalMs": 14681,
+          "fullLoadWallMs": 14948.413,
+          "maximumResidentSetBytes": 4065165312,
+          "peakMemoryFootprintBytes": 3982429592
+        },
+        "candidate": {
+          "parseMs": 536,
+          "geometryMs": 12970,
+          "totalMs": 13516,
+          "fullLoadWallMs": 13752.152,
+          "maximumResidentSetBytes": 4057186304,
+          "peakMemoryFootprintBytes": 3840724376
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            2238
+          ],
+          "degenerateDropped": [
+            303
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            2238
+          ],
+          "degenerateDropped": [
+            303
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-07-283mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9326354598912369,
+      "baseMedianWallMs": 2034.0775830000002,
+      "candidateMedianWallMs": 1902.865416,
+      "medianTimeRatio": 0.9354930371896242,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -137.44454199999973,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 182,
+          "geometryMs": 1846,
+          "totalMs": 2025,
+          "fullLoadWallMs": 2052.749,
+          "maximumResidentSetBytes": 939655168,
+          "peakMemoryFootprintBytes": 935101520
+        },
+        "candidate": {
+          "parseMs": 145,
+          "geometryMs": 1749,
+          "totalMs": 1895,
+          "fullLoadWallMs": 1920.893,
+          "maximumResidentSetBytes": 937934848,
+          "peakMemoryFootprintBytes": 900220032
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            84
+          ],
+          "degenerateDropped": [
+            44
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            84
+          ],
+          "degenerateDropped": [
+            44
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-08-263mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9657083147907567,
+      "baseMedianWallMs": 18934.715583999998,
+      "candidateMedianWallMs": 18279.33175,
+      "medianTimeRatio": 0.9653871836050285,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -648.2447920000013,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 296,
+          "geometryMs": 18590,
+          "totalMs": 18887,
+          "fullLoadWallMs": 18954.74,
+          "maximumResidentSetBytes": 4267474944,
+          "peakMemoryFootprintBytes": 3784953360
+        },
+        "candidate": {
+          "parseMs": 244,
+          "geometryMs": 17990,
+          "totalMs": 18234,
+          "fullLoadWallMs": 18299.843,
+          "maximumResidentSetBytes": 4333928448,
+          "peakMemoryFootprintBytes": 3877555824
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            194,
+            195,
+            197,
+            198
+          ],
+          "degenerateDropped": [
+            43
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            194,
+            195,
+            196,
+            197
+          ],
+          "degenerateDropped": [
+            43
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-12-13mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9002708038636965,
+      "baseMedianWallMs": 83.700583,
+      "candidateMedianWallMs": 73.816166,
+      "medianTimeRatio": 0.8819074294858854,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -8.244666999999993,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 23,
+          "geometryMs": 52,
+          "totalMs": 76,
+          "fullLoadWallMs": 84.76,
+          "maximumResidentSetBytes": 108756992,
+          "peakMemoryFootprintBytes": 105939400
+        },
+        "candidate": {
+          "parseMs": 19,
+          "geometryMs": 47,
+          "totalMs": 66,
+          "fullLoadWallMs": 74.844,
+          "maximumResidentSetBytes": 111312896,
+          "peakMemoryFootprintBytes": 108462512
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            2
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            2
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-13-13mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8827032758288088,
+      "baseMedianWallMs": 84.594167,
+      "candidateMedianWallMs": 74.43862499999999,
+      "medianTimeRatio": 0.8799498551714563,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -9.891667000000012,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 24,
+          "geometryMs": 53,
+          "totalMs": 77,
+          "fullLoadWallMs": 85.669,
+          "maximumResidentSetBytes": 108658688,
+          "peakMemoryFootprintBytes": 105841096
+        },
+        "candidate": {
+          "parseMs": 20,
+          "geometryMs": 47,
+          "totalMs": 67,
+          "fullLoadWallMs": 75.479,
+          "maximumResidentSetBytes": 110739456,
+          "peakMemoryFootprintBytes": 107889072
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            2
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            2
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-14-11mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8677732116865061,
+      "baseMedianWallMs": 18.678166,
+      "candidateMedianWallMs": 16.202375,
+      "medianTimeRatio": 0.8674499948228321,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -2.468834000000001,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 8,
+          "geometryMs": 10,
+          "totalMs": 18,
+          "fullLoadWallMs": 19.519,
+          "maximumResidentSetBytes": 64602112,
+          "peakMemoryFootprintBytes": 62898584
+        },
+        "candidate": {
+          "parseMs": 6,
+          "geometryMs": 9,
+          "totalMs": 15,
+          "fullLoadWallMs": 16.99,
+          "maximumResidentSetBytes": 65994752,
+          "peakMemoryFootprintBytes": 64160152
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-15-5mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.903641621104369,
+      "baseMedianWallMs": 98.402208,
+      "candidateMedianWallMs": 89.193416,
+      "medianTimeRatio": 0.9064168153625171,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -9.536376000000004,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 5,
+          "geometryMs": 90,
+          "totalMs": 96,
+          "fullLoadWallMs": 98.804,
+          "maximumResidentSetBytes": 58605568,
+          "peakMemoryFootprintBytes": 55738776
+        },
+        "candidate": {
+          "parseMs": 4,
+          "geometryMs": 83,
+          "totalMs": 87,
+          "fullLoadWallMs": 89.57,
+          "maximumResidentSetBytes": 59375616,
+          "peakMemoryFootprintBytes": 56459672
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            17
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            17
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-16-1mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8591647535834619,
+      "baseMedianWallMs": 8.7555,
+      "candidateMedianWallMs": 7.522417,
+      "medianTimeRatio": 0.8591647535834619,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -1.2330829999999997,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 2,
+          "geometryMs": 5,
+          "totalMs": 8,
+          "fullLoadWallMs": 8.889,
+          "maximumResidentSetBytes": 23199744,
+          "peakMemoryFootprintBytes": 21496168
+        },
+        "candidate": {
+          "parseMs": 1,
+          "geometryMs": 5,
+          "totalMs": 6,
+          "fullLoadWallMs": 7.631,
+          "maximumResidentSetBytes": 24084480,
+          "peakMemoryFootprintBytes": 22348136
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-17-1mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.876288449370318,
+      "baseMedianWallMs": 6.124125,
+      "candidateMedianWallMs": 5.368625,
+      "medianTimeRatio": 0.8766354377155919,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -0.7576250000000009,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 2,
+          "geometryMs": 2,
+          "totalMs": 5,
+          "fullLoadWallMs": 6.207,
+          "maximumResidentSetBytes": 12566528,
+          "peakMemoryFootprintBytes": 10797392
+        },
+        "candidate": {
+          "parseMs": 2,
+          "geometryMs": 2,
+          "totalMs": 4,
+          "fullLoadWallMs": 5.477,
+          "maximumResidentSetBytes": 12926976,
+          "peakMemoryFootprintBytes": 11125072
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-18-1mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8681410005487542,
+      "baseMedianWallMs": 953.316333,
+      "candidateMedianWallMs": 824.5137500000001,
+      "medianTimeRatio": 0.8648899861028606,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -124.88962500000002,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 1,
+          "geometryMs": 951,
+          "totalMs": 953,
+          "fullLoadWallMs": 953.391,
+          "maximumResidentSetBytes": 27525120,
+          "peakMemoryFootprintBytes": 24740200
+        },
+        "candidate": {
+          "parseMs": 1,
+          "geometryMs": 823,
+          "totalMs": 824,
+          "fullLoadWallMs": 824.593,
+          "maximumResidentSetBytes": 28753920,
+          "peakMemoryFootprintBytes": 25739624
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            133
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            133
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-19-0mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8814477244885007,
+      "baseMedianWallMs": 3.988417,
+      "candidateMedianWallMs": 3.4303329999999996,
+      "medianTimeRatio": 0.8600738087316345,
+      "candidateSlowerPairs": 2,
+      "medianPairedDeltaMs": -0.5052499999999993,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 1,
+          "geometryMs": 2,
+          "totalMs": 3,
+          "fullLoadWallMs": 4.026,
+          "maximumResidentSetBytes": 10321920,
+          "peakMemoryFootprintBytes": 8175952
+        },
+        "candidate": {
+          "parseMs": 0,
+          "geometryMs": 2,
+          "totalMs": 3,
+          "fullLoadWallMs": 3.479,
+          "maximumResidentSetBytes": 11075584,
+          "peakMemoryFootprintBytes": 8913232
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "downloads-20-0mb",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9077174243976653,
+      "baseMedianWallMs": 3.254959,
+      "candidateMedianWallMs": 2.757209,
+      "medianTimeRatio": 0.8470794870227244,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -0.30037599999999953,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 0,
+          "geometryMs": 2,
+          "totalMs": 3,
+          "fullLoadWallMs": 3.285,
+          "maximumResidentSetBytes": 9928704,
+          "peakMemoryFootprintBytes": 7782736
+        },
+        "candidate": {
+          "parseMs": 0,
+          "geometryMs": 1,
+          "totalMs": 2,
+          "fullLoadWallMs": 2.799,
+          "maximumResidentSetBytes": 10551296,
+          "peakMemoryFootprintBytes": 8388944
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "large-architecture-192",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9175002844217452,
+      "baseMedianWallMs": 977.1804579999999,
+      "candidateMedianWallMs": 874.8941249999999,
+      "medianTimeRatio": 0.8953250321753774,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -76.41300000000001,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 255,
+          "geometryMs": 626,
+          "totalMs": 881,
+          "fullLoadWallMs": 990.052,
+          "maximumResidentSetBytes": 887160832,
+          "peakMemoryFootprintBytes": 884786232
+        },
+        "candidate": {
+          "parseMs": 221,
+          "geometryMs": 553,
+          "totalMs": 775,
+          "fullLoadWallMs": 888.268,
+          "maximumResidentSetBytes": 888373248,
+          "peakMemoryFootprintBytes": 885769272
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            891
+          ],
+          "degenerateDropped": [
+            963
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            891
+          ],
+          "degenerateDropped": [
+            963
+          ]
+        }
+      }
+    },
+    {
+      "label": "large-architecture-343",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8643733807376618,
+      "baseMedianWallMs": 496.695541,
+      "candidateMedianWallMs": 430.801583,
+      "medianTimeRatio": 0.8673353139685223,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -67.77949899999993,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 305,
+          "geometryMs": 112,
+          "totalMs": 418,
+          "fullLoadWallMs": 518.323,
+          "maximumResidentSetBytes": 892862464,
+          "peakMemoryFootprintBytes": 890504224
+        },
+        "candidate": {
+          "parseMs": 259,
+          "geometryMs": 96,
+          "totalMs": 358,
+          "fullLoadWallMs": 454.484,
+          "maximumResidentSetBytes": 899563520,
+          "peakMemoryFootprintBytes": 897106976
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            88
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            88
+          ]
+        }
+      }
+    },
+    {
+      "label": "large-csg-177",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9095663393106639,
+      "baseMedianWallMs": 736.988791,
+      "candidateMedianWallMs": 650.595791,
+      "medianTimeRatio": 0.8827756933958578,
+      "candidateSlowerPairs": 2,
+      "medianPairedDeltaMs": -67.63687599999992,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 213,
+          "geometryMs": 392,
+          "totalMs": 606,
+          "fullLoadWallMs": 751.162,
+          "maximumResidentSetBytes": 1014169600,
+          "peakMemoryFootprintBytes": 978601112
+        },
+        "candidate": {
+          "parseMs": 176,
+          "geometryMs": 358,
+          "totalMs": 535,
+          "fullLoadWallMs": 664.976,
+          "maximumResidentSetBytes": 1009958912,
+          "peakMemoryFootprintBytes": 1007600792
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "large-mep-1050",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.912528628679462,
+      "baseMedianWallMs": 1845.2810419999998,
+      "candidateMedianWallMs": 1683.6485420000001,
+      "medianTimeRatio": 0.91240765156032,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -162.00937599999997,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 709,
+          "geometryMs": 942,
+          "totalMs": 1658,
+          "fullLoadWallMs": 1915.967,
+          "maximumResidentSetBytes": 5206638592,
+          "peakMemoryFootprintBytes": 5207576776
+        },
+        "candidate": {
+          "parseMs": 619,
+          "geometryMs": 882,
+          "totalMs": 1503,
+          "fullLoadWallMs": 1753.44,
+          "maximumResidentSetBytes": 5197004800,
+          "peakMemoryFootprintBytes": 5197893856
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            2
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            2
+          ]
+        }
+      }
+    },
+    {
+      "label": "large-sanitary-ifc4-218",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9301682722575281,
+      "baseMedianWallMs": 574.259167,
+      "candidateMedianWallMs": 534.757833,
+      "medianTimeRatio": 0.9312134028153877,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -39.68179199999997,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 142,
+          "geometryMs": 390,
+          "totalMs": 533,
+          "fullLoadWallMs": 588.528,
+          "maximumResidentSetBytes": 1176059904,
+          "peakMemoryFootprintBytes": 1174914272
+        },
+        "candidate": {
+          "parseMs": 124,
+          "geometryMs": 374,
+          "totalMs": 496,
+          "fullLoadWallMs": 549.4,
+          "maximumResidentSetBytes": 1178386432,
+          "peakMemoryFootprintBytes": 1177191672
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "school-54",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9532488130988038,
+      "baseMedianWallMs": 306.598208,
+      "candidateMedianWallMs": 300.987042,
+      "medianTimeRatio": 0.9816986340637711,
+      "candidateSlowerPairs": 1,
+      "medianPairedDeltaMs": -13.713625000000036,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 95,
+          "geometryMs": 183,
+          "totalMs": 279,
+          "fullLoadWallMs": 310.654,
+          "maximumResidentSetBytes": 406405120,
+          "peakMemoryFootprintBytes": 394166944
+        },
+        "candidate": {
+          "parseMs": 80,
+          "geometryMs": 194,
+          "totalMs": 275,
+          "fullLoadWallMs": 305.026,
+          "maximumResidentSetBytes": 403095552,
+          "peakMemoryFootprintBytes": 396821176
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            6
+          ],
+          "degenerateDropped": [
+            298
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            6
+          ],
+          "degenerateDropped": [
+            298
+          ]
+        }
+      }
+    },
+    {
+      "label": "services-73",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8777161719547897,
+      "baseMedianWallMs": 149.254875,
+      "candidateMedianWallMs": 128.695792,
+      "medianTimeRatio": 0.8622551993695349,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -17.929958,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 56,
+          "geometryMs": 78,
+          "totalMs": 136,
+          "fullLoadWallMs": 154.511,
+          "maximumResidentSetBytes": 463093760,
+          "peakMemoryFootprintBytes": 461587152
+        },
+        "candidate": {
+          "parseMs": 48,
+          "geometryMs": 71,
+          "totalMs": 119,
+          "fullLoadWallMs": 134.48,
+          "maximumResidentSetBytes": 467058688,
+          "peakMemoryFootprintBytes": 465519336
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "small-haus",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.9188793285472973,
+      "baseMedianWallMs": 9.996082999999999,
+      "candidateMedianWallMs": 8.766166,
+      "medianTimeRatio": 0.8769601052732356,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -0.7985420000000012,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 3,
+          "geometryMs": 5,
+          "totalMs": 9,
+          "fullLoadWallMs": 10.237,
+          "maximumResidentSetBytes": 22904832,
+          "peakMemoryFootprintBytes": 20136320
+        },
+        "candidate": {
+          "parseMs": 3,
+          "geometryMs": 5,
+          "totalMs": 8,
+          "fullLoadWallMs": 8.994,
+          "maximumResidentSetBytes": 22921216,
+          "peakMemoryFootprintBytes": 20201856
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    },
+    {
+      "label": "structural-tekla-27",
+      "validPairCount": 5,
+      "allGeometryExact": true,
+      "medianPairedWallRatio": 0.8949963002491477,
+      "baseMedianWallMs": 61.481167000000006,
+      "candidateMedianWallMs": 55.134916,
+      "medianTimeRatio": 0.8967773171904819,
+      "candidateSlowerPairs": 0,
+      "medianPairedDeltaMs": -6.455750000000009,
+      "phaseMedians": {
+        "base": {
+          "parseMs": 19,
+          "geometryMs": 40,
+          "totalMs": 59,
+          "fullLoadWallMs": 63.817,
+          "maximumResidentSetBytes": 306544640,
+          "peakMemoryFootprintBytes": 305054296
+        },
+        "candidate": {
+          "parseMs": 15,
+          "geometryMs": 38,
+          "totalMs": 53,
+          "fullLoadWallMs": 57.558,
+          "maximumResidentSetBytes": 307806208,
+          "peakMemoryFootprintBytes": 306299504
+        }
+      },
+      "diagnosticValues": {
+        "base": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        },
+        "candidate": {
+          "csgFailures": [
+            0
+          ],
+          "degenerateDropped": [
+            0
+          ]
+        }
+      }
+    }
+  ],
+  "artifactSha256": {
+    "base": "6857922d643412e92760a50160c124b9be37617e06b1b4b519b94cd74796aa04",
+    "candidate": "a6ae131d88dc63704043058379e16641e1542cc7ebcbbd276e37d0f56d50721c"
+  },
+  "profileCoverage": {
+    "records": 4029,
+    "missingFunctionWarnings": 309,
+    "hashMismatchWarnings": 0
+  },
+  "limitations": [
+    "Native processing probe only; no HTTP or browser claim.",
+    "Largest (1259 MB) MB model median time +5.27%; median paired ratio -2.34%, unresolved.",
+    "Whole-process physical-footprint aggregate +1.39%.",
+    "No full-result byte identity; fingerprint field coverage is limited.",
+    "No shipping flags changed."
+  ],
+  "publicSourceEquivalent": {
+    "commit": "e40992485dd2a0c845225be237c65fd12603d689",
+    "measuredCommit": "2a2c0fb555db988230eafad0f196933078d803e7",
+    "measuredTree": "497a6155b289d50f083045c12212d119af2bd6f3",
+    "publicTree": "497a6155b289d50f083045c12212d119af2bd6f3",
+    "method": "git rev-parse <commit>^{tree}; exact complete Git tree identity, including perf_probe source",
+    "sourceCommitPreserved": true
+  }
+}

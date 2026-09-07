@@ -843,3 +843,17 @@ it does not establish a performance gain or neutrality. Keep endpoint readiness,
 cache completion and offline witness cost separate, and never extrapolate a
 processing-probe gain to the shipping HTTP artifact.
 [Sanitized screen and limitations](evidence/server-json-roundtrip-4064/README.md).
+## Current-source native PGO qualification (#4059, not shipped)
+
+Fresh profile training on five public fixtures produced a broad held-out
+processing-probe improvement across the expanded corpus. The largest model
+has an unresolved median regression and estimator disagreement; physical
+footprint increased across many models. All paired ordered geometry
+fingerprints and counts matched, while the pathological model's CSG census
+varied within both arms. This is neither full-result byte identity nor an
+HTTP, browser, or cross-target shipping result.
+
+The next step is fresh training and qualification of the actual Darwin server
+with its release profile, allocator, features and build-std settings. Do not
+reuse the probe profile as shipping evidence or turn PGO on unconditionally.
+[Sanitized measurements and limits](evidence/native-pgo-current-2026-09-07/README.md).

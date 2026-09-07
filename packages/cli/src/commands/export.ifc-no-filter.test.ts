@@ -56,10 +56,12 @@ describe('export --format ifc with no filter exports the whole model', () => {
 
     await exportCommand([SAMPLE_IFC, '--format', 'ifc', '--out', out]);
 
-    const outputCount = countStepEntities(readFileSync(out, 'utf-8'));
+    const outputText = readFileSync(out, 'utf-8');
+    const outputCount = countStepEntities(outputText);
     // RED before the fix: the unfiltered query's non-empty `refs` triggered the
     // isolation path, so `outputCount` was strictly less than `inputCount`.
     expect(outputCount).toBe(inputCount);
+    expect(outputText).toContain("IFCPROJECT('0KhR8hr7H8eewFRKm6V1bJ'");
   }, 60_000);
 
   it('still narrows correctly when a real filter is given (control)', async () => {

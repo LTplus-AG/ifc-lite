@@ -99,6 +99,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      python: ${{ steps.filter.outputs.python }}
       plato: ${{ steps.filter.outputs.plato }}
       docs: ${{ steps.filter.outputs.docs }}
       agents_md: ${{ steps.filter.outputs.agents_md }}
@@ -260,6 +261,16 @@ jobs:
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.
               - 'tests/models/manifest.json'
+            # `scripts/lib/revert-oracle-python.mjs` (#4079) routes any
+            # `test_*.py` / `*_test.py` under here through `python3 -m
+            # pytest`, but the `revert-oracle` job's runner ships no Python
+            # toolchain of its own — installing one unconditionally would pay
+            # that cost on every PR for a lane most never touch. This gates
+            # that install: true only when the oracle could actually be asked
+            # to run a Python test.
+            python:
+              - 'tools/ifcopenshell_reference/**'
+              - '.github/workflows/test.yml'
             plato:
               - 'tools/plato/**'
               - 'rust/clash/src/generated/**'
@@ -459,6 +470,25 @@ jobs:
         with:
           name: build-output
           path: packages
+      # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
+      # `test_*.py` / `*_test.py` under tools/ifcopenshell_reference through
+      # `python3 -m pytest`, but this runner's base image ships python3 with
+      # NO pytest module — an oracle run over such a diff exits BASELINE-BROKEN
+      # (`No module named pytest`), not a real verdict. Installed only when
+      # the `changes` job's `python` filter says this diff could reach that
+      # lane, mirroring ifcopenshell-parity.yml's own `full` job: the full
+      # requirements.lock, not bare pytest, because test_validate_export.py's
+      # SchemaConformanceHasTeeth cases (#4043) import ifcopenshell and are
+      # `unittest.skipUnless(HAVE_IFCOPENSHELL, ...)` — bare pytest would run
+      # them as silent skips instead of the real assertions the oracle needs
+      # to revert against.
+      - if: needs.changes.outputs.python == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
+        with:
+          python-version: "3.12"
+      - if: needs.changes.outputs.python == 'true'
+        name: Install the Python toolchain the oracle's pytest lane needs
+        run: pip install -r tools/ifcopenshell_reference/requirements.lock pytest
       - name: Prove the changed tests observe the production change
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}

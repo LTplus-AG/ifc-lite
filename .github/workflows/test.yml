@@ -276,10 +276,11 @@ jobs:
             # scripts/lib/revert-oracle.mjs byte-for-byte (any `test_*.py` /
             # `*_test.py`, any depth) rather than naming known marker
             # directories by hand, so a NEW Python test tree can never fall
-            # outside this filter the way rust/python's and
-            # scripts/perf/evidence's Python test fixtures did before this
+            # outside this filter the way rust/python's and the since-removed
+            # scripts/perf/evidence tree's Python test fixtures did before this
             # fix — both already existed unfiltered when this comment was
-            # written.
+            # written. That evidence tree was retired in #4112; the path no
+            # longer exists and nothing needs to be looked for there.
             python:
               - '**/test_*.py'
               - '**/*_test.py'

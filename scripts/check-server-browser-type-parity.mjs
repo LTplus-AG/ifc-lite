@@ -84,6 +84,16 @@
  * divergence not on the list fails loudly; the list only ever grows with a
  * reviewed reason attached, never silently.
  *
+ * STALE-ALLOWLIST DETECTION (#3979) closes the other half of that
+ * mechanism: growth is enforced (an undocumented divergence fails loudly)
+ * but nothing ever checked SHRINKAGE — once a listed PR merges, the entry
+ * keeps muting a divergence that no longer exists, forever, because a muted
+ * concept never fails and nothing prompts a human to go re-read it. The
+ * check itself (`staleAllowlistEntries`, applied to `pending` AND
+ * `deliberate` entries alike, its full rationale and known limit) lives in
+ * `scripts/lib/allowlist-staleness.mjs` — split out purely to stay under
+ * this file's module-size budget, wired in by the runner below.
+ *
  * Run via `node scripts/check-server-browser-type-parity.mjs` (CI node-test
  * job, see .github/workflows/test.yml). `--root <dir>` points every read at
  * an alternate tree; `check-server-browser-type-parity.test.mjs` uses it to
@@ -106,6 +116,9 @@ import {
   tsMaterialTypes,
   ExtractorUnderReadError,
 } from './lib/server-browser-type-extractors.mjs';
+import { staleAllowlistEntries } from './lib/allowlist-staleness.mjs';
+
+export { staleAllowlistEntries };
 
 const rootFlag = process.argv.indexOf('--root');
 const ROOT =
@@ -116,7 +129,6 @@ const ROOT =
 function read(rel) {
   return readFileSync(join(ROOT, rel), 'utf8');
 }
-
 
 // ---------------------------------------------------------------------------
 
@@ -158,24 +170,13 @@ const TS_MATERIALS = 'packages/parser/src/material-resolver.ts';
  * absent from one side today, and a reader of this file can go verify that.
  */
 export const ALLOWLIST = {
-  // #3964: server extracts 9 IfcRel* types, TS ~19. Open PR #3969 adds
-  // IfcRelAssignsToGroup(ByFactor)/Nests/ConnectsPathElements server-side;
-  // the remaining connect/port/space-boundary/referenced-in-spatial-structure
-  // types are the same shape of gap and tracked under the same issue.
-  'relationships:IFCRELNESTS': { status: 'pending', note: '#3964, open PR #3969' },
-  'relationships:IFCRELASSIGNSTOGROUP': { status: 'pending', note: '#3964, open PR #3969' },
-  // Server-side gap only: already present on the TS side (HIERARCHY_REL_TYPES
-  // and REL_TYPE_MAP in columnar-parser-indexes.ts, mapped onto the same
-  // RelationshipType.AssignsToGroup bucket as plain IFCRELASSIGNSTOGROUP, so
-  // the Groups panel/"By Zone" lens/IDS partOf already see it). Verified
-  // against upstream/main directly (`grep -rn IFCRELASSIGNSTOGROUPBYFACTOR
-  // packages/ apps/`) and against PR #3969's diff, which touches only
-  // apps/server — no TS-side change. Kept `pending` rather than `deliberate`:
-  // PR #3969 has an open maintainer question on whether the server should
-  // even carry this type, so the SERVER-side shape (not the browser side) is
-  // what is undecided.
-  'relationships:IFCRELASSIGNSTOGROUPBYFACTOR': { status: 'pending', note: '#3964, open PR #3969 — maintainer question open on whether the server should carry this type at all' },
-  'relationships:IFCRELCONNECTSPATHELEMENTS': { status: 'pending', note: '#3964, open PR #3969' },
+  // #3964: server extracted 9 IfcRel* types, TS ~19. PR #3969 (merged) added
+  // IfcRelAssignsToGroup(ByFactor)/Nests/ConnectsPathElements server-side —
+  // those 4 entries are gone from this list because `staleAllowlistEntries()`
+  // (see the file header) confirmed the Rust source now names them; do not
+  // re-add them without re-confirming they diverge again. The remaining
+  // connect/port/space-boundary/referenced-in-spatial-structure types below
+  // are the same shape of gap, still open, and tracked under the same issue.
   'relationships:IFCRELCONNECTSELEMENTS': { status: 'pending', note: '#3964, tracked with #3969' },
   'relationships:IFCRELCONNECTSPORTTOELEMENT': { status: 'pending', note: '#3964, tracked with #3969' },
   'relationships:IFCRELCONNECTSPORTS': { status: 'pending', note: '#3964, tracked with #3969' },
@@ -246,12 +247,14 @@ const CONCEPTS = [
 ];
 
 /**
- * @returns {{failures: string[], vacuous: boolean, underRead: boolean}}
+ * @returns {{failures: string[], vacuous: boolean, underRead: boolean, rust?: Set<string>, ts?: Set<string>}}
  * failures empty means parity holds (given the allowlist); vacuous means at
- * least one side's extractor returned nothing, so no comparison was actually
- * made; underRead means an extractor detected a sibling binding it cannot be
- * sure it read (see `ExtractorUnderReadError`) and refused to compare rather
- * than silently under-reporting.
+ * least one side's extractor returned nothing; underRead means an extractor
+ * detected a sibling binding it cannot be sure it read (see
+ * `ExtractorUnderReadError`) and refused to compare. `rust`/`ts` are the
+ * extracted sets, present only when trustworthy (not vacuous, not
+ * under-read) — reused by callers (e.g. `staleAllowlistEntries`) instead of
+ * a second read-and-extract pass.
  */
 export function checkConcept(concept) {
   let rust, ts;
@@ -293,7 +296,7 @@ export function checkConcept(concept) {
       `[${concept.name}] the TS parser (${concept.tsLabel}) handles ${missingFromRust.map((t) => `\`${t}\``).join(', ')} but the Rust server (${concept.rustLabel}) does not`,
     );
   }
-  return { failures, vacuous: false, underRead: false };
+  return { failures, vacuous: false, underRead: false, rust, ts };
 }
 
 /** Every allowlist entry must carry a recognized status — an unstructured or
@@ -320,9 +323,11 @@ if (process.argv[1] && process.argv[1].endsWith('check-server-browser-type-parit
   let anyVacuous = false;
   let anyUnderRead = false;
   const okLines = [];
+  const conceptSets = {};
 
   for (const concept of CONCEPTS) {
-    const { failures, vacuous, underRead } = checkConcept(concept);
+    const { failures, vacuous, underRead, rust, ts } = checkConcept(concept);
+    if (rust && ts) conceptSets[concept.name] = { rust, ts };
     if (failures.length === 0) {
       okLines.push(`  ${concept.name}: OK`);
       continue;
@@ -332,6 +337,21 @@ if (process.argv[1] && process.argv[1].endsWith('check-server-browser-type-parit
     if (underRead) anyUnderRead = true;
     console.error(`\ncheck-server-browser-type-parity: ${concept.name} drifted\n`);
     for (const f of failures) console.error(`  ${f}`);
+  }
+
+  const staleEntries = staleAllowlistEntries(ALLOWLIST, conceptSets);
+  const anyStale = staleEntries.length > 0;
+  if (anyStale) {
+    console.error(`\ncheck-server-browser-type-parity: stale ALLOWLIST entries\n`);
+    for (const s of staleEntries) {
+      console.error(`  [${s.key}] (status: ${s.status}) ${s.reason} — remove this entry from ALLOWLIST.`);
+    }
+    console.error(`
+The entries above no longer describe a real divergence, so they are muting
+nothing today — remove them from ALLOWLIST. Leaving a stale entry is not
+just clutter: it stays silently primed to also mute a FUTURE, unrelated
+regression that happens to reintroduce the same type name.
+`);
   }
 
   if (anyFailed) {
@@ -362,14 +382,19 @@ A type present on one side and not the other is either a genuine divergence
 already fixing it — never an undocumented one) or this checker's extractor
 missing a shape it should have recognized (fix the extractor).
 `);
+  }
+
+  if (anyFailed || anyStale) {
     process.exit(1);
   }
 
   console.log('check-server-browser-type-parity: OK');
   for (const line of okLines) console.log(line);
+  // anyStale is false here, so every entry below was just re-confirmed
+  // ("correctly muted", not just "on the list") — see staleAllowlistEntries.
   const pending = Object.entries(ALLOWLIST).filter(([, v]) => v.status === 'pending');
   const deliberate = Object.entries(ALLOWLIST).filter(([, v]) => v.status === 'deliberate');
   console.log(
-    `  allowlist: ${pending.length} pending (open PR/decision), ${deliberate.length} deliberate (settled trade-off)`,
+    `  allowlist: ${pending.length} pending (open PR/decision, divergence confirmed still present), ${deliberate.length} deliberate (settled trade-off, divergence confirmed still present)`,
   );
 }

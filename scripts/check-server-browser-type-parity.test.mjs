@@ -29,7 +29,24 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { checkConcept, ALLOWLIST, validateAllowlist } from './check-server-browser-type-parity.mjs';
+import {
+  checkConcept,
+  ALLOWLIST,
+  validateAllowlist,
+  staleAllowlistEntries,
+} from './check-server-browser-type-parity.mjs';
+import {
+  rustRelationshipTypes,
+  tsRelationshipTypes,
+  rustSpatialTypes,
+  tsSpatialTypes,
+  rustPropertyTypes,
+  tsPropertyTypes,
+  rustQuantityTypes,
+  tsQuantityTypes,
+  rustMaterialTypes,
+  tsMaterialTypes,
+} from './lib/server-browser-type-extractors.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(SCRIPTS, '..');
@@ -111,8 +128,13 @@ test('RELATIONSHIPS: RED when a type not on the allowlist is removed from the TS
   assert.match(out, /Rust server .* handles `IFCRELDEFINESBYPROPERTIES` but the TS parser .* does not/);
 });
 
-test('RELATIONSHIPS: an allowlisted divergence (IFCRELNESTS) does not fail on its own', () => {
-  assert.ok(Object.hasOwn(ALLOWLIST, 'relationships:IFCRELNESTS'));
+test('RELATIONSHIPS: an allowlisted divergence (IFCRELCONNECTSELEMENTS) does not fail on its own', () => {
+  // IFCRELNESTS/IFCRELASSIGNSTOGROUP(BYFACTOR)/IFCRELCONNECTSPATHELEMENTS
+  // used to be the entries checked here, but #3969 merged and added all four
+  // server-side — `staleAllowlistEntries()` (added for #3979) confirmed that
+  // and they were removed from ALLOWLIST, so this now exercises a relationship
+  // type still genuinely missing server-side (#3964, not yet fixed).
+  assert.ok(Object.hasOwn(ALLOWLIST, 'relationships:IFCRELCONNECTSELEMENTS'));
   const { status, out } = runOn({});
   assert.equal(status, 0, out);
 });
@@ -222,26 +244,25 @@ test('QUANTITIES: RED when a quantity type is removed from the Rust chain', () =
   assert.match(out, /TS parser .* handles `IFCQUANTITYWEIGHT` but the Rust server .* does not/);
 });
 
-test('QUANTITIES: RED when the deliberate gap marker is deleted from the TS side without touching the allowlist', () => {
-  // If quantity-collect.ts stops naming IfcPhysicalComplexQuantity at all,
-  // the type disappears from the TS set entirely, and since it is still
-  // allowlisted, both extractors simply agree it is absent from the pair
-  // (Rust never had it either) -- no failure. This proves the allowlist
-  // entry only suppresses the CURRENT direction (Rust-missing), not an
-  // arbitrary one: flip it around by having the type appear on the RUST side
-  // only and confirm parity now compares two non-empty, disjoint concerns
-  // correctly instead of vacuously.
+test('QUANTITIES: making the Rust side also name IFCPHYSICALCOMPLEXQUANTITY now turns the gate RED — stale-allowlist detection, not a silent pass', () => {
+  // Historically (pre-#3979) this proved something narrower: the
+  // `quantities:IFCPHYSICALCOMPLEXQUANTITY` entry only suppresses the
+  // CURRENT direction (Rust-missing), so making Rust ALSO name the type
+  // made both sets agree and the OLD checker passed vacuously — an
+  // undetected stale `deliberate` entry hiding in a passing gate. That is
+  // exactly the defect `staleAllowlistEntries()` (see the file header) now
+  // closes: a `deliberate` entry citing a settled trade-off (#3254) that
+  // has, in this simulation, stopped being true must not stay silent.
   const rust = replaceOnce(
     real.RUST_QTY,
     'ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH")',
     'ifc_type.eq_ignore_ascii_case("IFCQUANTITYLENGTH") || ifc_type.eq_ignore_ascii_case("IFCPHYSICALCOMPLEXQUANTITY")',
   );
   const { status, out } = runOn({ RUST_QTY: rust });
-  // Now BOTH sides name IFCPHYSICALCOMPLEXQUANTITY, which is allowlisted as
-  // a Rust-missing gap; Rust now also has it, so the set intersects fully —
-  // still passes, proving the allowlist does not force a divergence to
-  // exist, it only tolerates one if present.
-  assert.equal(status, 0, out);
+  assert.equal(status, 1, out);
+  assert.match(out, /stale ALLOWLIST entries/);
+  assert.match(out, /quantities:IFCPHYSICALCOMPLEXQUANTITY/);
+  assert.match(out, /status: deliberate/);
 });
 
 // -- materials (control: no divergence expected) ----------------------------
@@ -472,6 +493,10 @@ test('mutation control: disabling the under-read detector lets the same silent-p
     mkdirSync(join(scriptsCopy, 'lib'), { recursive: true });
     writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), readFileSync(CHECKER, 'utf8'));
     writeFileSync(join(scriptsCopy, 'lib', 'server-browser-type-extractors.mjs'), mutatedLib);
+    writeFileSync(
+      join(scriptsCopy, 'lib', 'allowlist-staleness.mjs'),
+      readFileSync(join(SCRIPTS, 'lib', 'allowlist-staleness.mjs'), 'utf8'),
+    );
 
     const relMutated = replaceOnce(
       real.RUST_REL,
@@ -515,4 +540,133 @@ test('PROPERTIES VACUITY (documents the corrected claim): emptying the TS side a
   assert.equal(status, 1, out);
   assert.doesNotMatch(out, /no types extracted from packages\/parser\/src\/property-value-parser\.ts/);
   assert.match(out, /the TS parser .* does not/);
+});
+
+// -- staleAllowlistEntries() unit-level sanity (no subprocess) ----------
+//
+// #3979: nothing ever un-mutes an ALLOWLIST entry once its divergence is
+// fixed. These test the pure detector directly against synthetic rust/ts
+// sets, same pattern as the checkConcept() unit tests above.
+
+test('staleAllowlistEntries(): an entry present on exactly one side is NOT stale (still a real divergence)', () => {
+  const conceptSets = { fake: { rust: new Set(['IFCFOO']), ts: new Set(['IFCFOO', 'IFCBAR']) } };
+  const stale = staleAllowlistEntries(
+    { 'fake:IFCBAR': { status: 'pending', note: 'still missing from rust' } },
+    conceptSets,
+  );
+  assert.deepEqual(stale, []);
+});
+
+test('staleAllowlistEntries(): a `pending` entry now present on BOTH sides is stale', () => {
+  const conceptSets = { fake: { rust: new Set(['IFCFOO', 'IFCBAR']), ts: new Set(['IFCFOO', 'IFCBAR']) } };
+  const stale = staleAllowlistEntries(
+    { 'fake:IFCBAR': { status: 'pending', note: 'the fix landed but nobody removed this' } },
+    conceptSets,
+  );
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].key, 'fake:IFCBAR');
+  assert.match(stale[0].reason, /BOTH/);
+});
+
+test('staleAllowlistEntries(): a `deliberate` entry now present on BOTH sides is ALSO stale — deliberate is not an exemption', () => {
+  const conceptSets = { fake: { rust: new Set(['IFCFOO']), ts: new Set(['IFCFOO']) } };
+  const stale = staleAllowlistEntries(
+    { 'fake:IFCFOO': { status: 'deliberate', note: 'settled trade-off that no longer applies' } },
+    conceptSets,
+  );
+  assert.equal(stale.length, 1);
+  assert.equal(stale[0].status, 'deliberate');
+});
+
+test('staleAllowlistEntries(): an entry present on NEITHER side is stale, with a distinct reason', () => {
+  const conceptSets = { fake: { rust: new Set(['IFCFOO']), ts: new Set(['IFCFOO']) } };
+  const stale = staleAllowlistEntries(
+    { 'fake:IFCRENAMEDAWAY': { status: 'pending', note: 'type was renamed' } },
+    conceptSets,
+  );
+  assert.equal(stale.length, 1);
+  assert.match(stale[0].reason, /NEITHER/);
+});
+
+test('staleAllowlistEntries(): a concept missing from conceptSets (vacuous/under-read this run) is skipped, not judged', () => {
+  const stale = staleAllowlistEntries(
+    { 'notChecked:IFCFOO': { status: 'pending', note: 'concept not in conceptSets' } },
+    {},
+  );
+  assert.deepEqual(stale, []);
+});
+
+test('the real ALLOWLIST has zero stale entries against the real sources today', () => {
+  const conceptSets = {
+    relationships: { rust: rustRelationshipTypes(real.RUST_REL), ts: tsRelationshipTypes(real.TS_REL_INDEXES) },
+    spatialTypes: { rust: rustSpatialTypes(real.RUST_SPATIAL), ts: tsSpatialTypes(real.TS_SPATIAL) },
+    properties: { rust: rustPropertyTypes(real.RUST_PROPS), ts: tsPropertyTypes(real.TS_PROPS) },
+    quantities: {
+      // TS_REL_INDEXES and the quantity map live in the SAME file
+      // (columnar-parser-indexes.ts) — reuse the already-read content.
+      rust: rustQuantityTypes(real.RUST_QTY),
+      ts: tsQuantityTypes(real.TS_REL_INDEXES, real.TS_QTY_COLLECT),
+    },
+    materials: { rust: rustMaterialTypes(real.RUST_MATERIALS), ts: tsMaterialTypes(real.TS_MATERIALS) },
+  };
+  const stale = staleAllowlistEntries(ALLOWLIST, conceptSets);
+  assert.deepEqual(
+    stale.map((s) => s.key),
+    [],
+    `stale ALLOWLIST entries found — the divergence they cite no longer exists, remove them: ${JSON.stringify(stale)}`,
+  );
+});
+
+// -- staleAllowlistEntries() end-to-end via subprocess (real gate output) --
+//
+// Uses the same "copy scripts/ to a temp dir with one file mutated, run the
+// real checker via --root against the real sources" technique as the
+// under-read tests above, so this exercises the actual CLI output/exit code
+// path, not just the pure detector.
+
+test('E2E: a FAKE allowlist entry for a type both sides already handle identically turns the gate RED and says to remove it', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'server-browser-type-parity-stale-'));
+  try {
+    for (const [key, rel] of Object.entries(FILES)) {
+      const abs = join(dir, rel);
+      mkdirSync(dirname(abs), { recursive: true });
+      writeFileSync(abs, real[key]);
+    }
+    const scriptsCopy = join(dir, '__scripts__');
+    mkdirSync(join(scriptsCopy, 'lib'), { recursive: true });
+    const checkerSrc = readFileSync(CHECKER, 'utf8');
+    const marker = 'export const ALLOWLIST = {\n';
+    // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+    assert.ok(checkerSrc.includes(marker), 'ALLOWLIST marker drifted');
+    // IFCRELAGGREGATES is handled by both relationships.rs and
+    // columnar-parser-indexes.ts today (asserted by the RELATIONSHIPS RED
+    // test above, which removes it from the Rust side specifically because
+    // it is present on both sides in the unmutated tree) — an allowlist
+    // entry for it describes a divergence that does not exist.
+    const mutatedChecker = checkerSrc.replace(
+      marker,
+      `${marker}  'relationships:IFCRELAGGREGATES': { status: 'pending', note: 'TEST: fabricated stale entry' },\n`,
+    );
+    writeFileSync(join(scriptsCopy, 'check-server-browser-type-parity.mjs'), mutatedChecker);
+    writeFileSync(
+      join(scriptsCopy, 'lib', 'server-browser-type-extractors.mjs'),
+      readFileSync(join(SCRIPTS, 'lib', 'server-browser-type-extractors.mjs'), 'utf8'),
+    );
+    writeFileSync(
+      join(scriptsCopy, 'lib', 'allowlist-staleness.mjs'),
+      readFileSync(join(SCRIPTS, 'lib', 'allowlist-staleness.mjs'), 'utf8'),
+    );
+    const r = spawnSync(
+      process.execPath,
+      [join(scriptsCopy, 'check-server-browser-type-parity.mjs'), '--root', dir],
+      { encoding: 'utf8' },
+    );
+    const out = `${r.stdout}${r.stderr}`;
+    assert.equal(r.status, 1, out);
+    assert.match(out, /stale ALLOWLIST entries/);
+    assert.match(out, /relationships:IFCRELAGGREGATES/);
+    assert.match(out, /remove this entry from ALLOWLIST/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

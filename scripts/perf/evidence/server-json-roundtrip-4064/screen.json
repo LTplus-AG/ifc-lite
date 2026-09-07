@@ -1,0 +1,718 @@
+{
+  "issue": 4064,
+  "verdict": "retain correctness fix; performance screen only, no gain or neutrality claim",
+  "source": {
+    "base": {
+      "sourceCommit": "e40992485dd2a0c845225be237c65fd12603d689",
+      "sourceTree": "497a6155b289d50f083045c12212d119af2bd6f3",
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--package",
+        "ifc-lite-server",
+        "--target",
+        "aarch64-apple-darwin"
+      ],
+      "RUSTFLAGS": "",
+      "CARGO_UNSTABLE_BUILD_STD": "std,panic_abort",
+      "features": "default (mimalloc; processing observability)",
+      "profile": "release (panic abort)",
+      "target": "aarch64-apple-darwin",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: aarch64-apple-darwin\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+      "binarySha256": "c9b95b510cc502a777c5f18bf3f050ec48b958719448821a02e0507f6b568d2e",
+      "sourceManifestSha256": "a1f7f7bbc948a516fb292c8218be7216ca7f336f9c501c42a611d8b944919ceb",
+      "sourceManifestEntries": 942,
+      "changedSourceSha256": {
+        "apps/server/Cargo.toml": "936171160a981518126f00ec223becd1a1b994b14df1a630809cc7bfa15ecf99",
+        "apps/server/src/routes/parse/cached_replay_tests.rs": "399dab2f1a94c5c614151fa09228ef8088a654959f683681ab6a0c480e036467"
+      }
+    },
+    "candidate": {
+      "sourceCommit": "cf38caabaca57ffe8be54b534da884787e2f5fb8",
+      "sourceTree": "cb8cfc9227ad54039ad0069abe36be3fb05bbccd",
+      "command": [
+        "cargo",
+        "build",
+        "--release",
+        "--package",
+        "ifc-lite-server",
+        "--target",
+        "aarch64-apple-darwin"
+      ],
+      "RUSTFLAGS": "",
+      "CARGO_UNSTABLE_BUILD_STD": "std,panic_abort",
+      "features": "default (mimalloc; processing observability)",
+      "profile": "release (panic abort)",
+      "target": "aarch64-apple-darwin",
+      "rustc": "rustc 1.93.0-nightly (b6d7ff3aa 2025-11-14)\nbinary: rustc\ncommit-hash: b6d7ff3aa71e48e2901b0900f8b5d98126b537ed\ncommit-date: 2025-11-14\nhost: aarch64-apple-darwin\nrelease: 1.93.0-nightly\nLLVM version: 21.1.5\n",
+      "binarySha256": "ea55315adb1f781d51fc0f1e70e5125a58d021ccf0e736e6ce1d0c86531b5169",
+      "sourceManifestSha256": "10a693d58c33915a7e0a445f6464a3176db019cf3faad9de873d027e77c5e25a",
+      "sourceManifestEntries": 942,
+      "changedSourceSha256": {
+        "apps/server/Cargo.toml": "5d6b4efe2a79a9b8a33fae18fdd579c4a873dd875ca119c8162322163b20abf3",
+        "apps/server/src/routes/parse/cached_replay_tests.rs": "a5dfb465a8188b76553ab90487e82cb212590edc7585c5fc7f94fbc6f6f4e13e"
+      }
+    }
+  },
+  "sourceManifestRecipe": "git ls-files rust apps/server Cargo.toml Cargo.lock .cargo/config.toml rust-toolchain.toml .github/workflows/server-binaries.yml; map each path to SHA256(file); hash UTF-8 JSON with sorted keys and compact separators",
+  "scope": {
+    "target": "aarch64-apple-darwin downloadable-server release configuration",
+    "fixtureCount": 3,
+    "freshProcesses": 6,
+    "pairsPerFixture": 1,
+    "freshCachePerProcess": true,
+    "postColdHashOnlyReplay": true,
+    "geometryLayout": "flat",
+    "coldBoundary": "request start through data-model response receipt, after complete geometry SSE",
+    "memory": "server process RSS sampled every 50 ms through cache replay and cleanup, not physical footprint",
+    "clock": "all phase timestamps are milliseconds from process clock unless explicitly named HTTP readiness; startup and request origins separate",
+    "decode": "offline; timing checkpoint saved before exact witness reconstruction",
+    "excludedClaims": [
+      "browser readiness",
+      "other target qualification",
+      "five-pair performance qualification",
+      "performance neutrality",
+      "performance gain",
+      "server-restart cache qualification"
+    ]
+  },
+  "validation": {
+    "focusedBehavioralTestsPassed": 2,
+    "featureRemovalMutation": "both regressions fail on original Haus f64 bits; restored feature passes",
+    "cargoTestWorkspace": {
+      "exitCode": 0,
+      "reportedPassed": 2845,
+      "reportedIgnored": 36,
+      "fixtureDependentSkips": "retained in local logs"
+    },
+    "clippyCommand": "cargo clippy --workspace --all-targets -- -D warnings",
+    "clippyExitCode": 0,
+    "offlineWitnessMutationTestsPassed": 7,
+    "realHausPairwiseDecisionComparisons": 6,
+    "v1V2ValidDomainDecisionsAgree": true,
+    "witnessSources": {
+      "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+      "wire_arrow_v2.py": "604f3291363df316a7c05a61b1cafa53dd0c719e5d1b6dbbbca3f43ecb705b1c",
+      "test_wire_arrow_v2.py": "5dbe81aa0f2efafdb46968abe257cecb773479246376a8b6c09769d1bd62554c"
+    },
+    "offlineRunnerSha256": "35a22391bedff9f10a4b99aad0755f226883c692b366e05a0e15059767eb471e"
+  },
+  "history": [
+    "Initial preflight typo occurred before server launch and was retained.",
+    "Initial replay reader had growing-line overhead; interrupted pilot retained.",
+    "First buffered-reader smoke exposed urllib3 auto-close interaction; retained and corrected.",
+    "Scalar offline reference pilot was interrupted at large scale; its in-memory timings were lost and not reconstructed or pooled.",
+    "Entire three-model screen restarted with one frozen checkpoint/deferred-offline driver.",
+    "Offline validator initially expected replay from_cache=true, but server returns saved original stats; cache proof is bodyless hash-only request.",
+    "A mixed Python tuple versus JSON-list validator report was superseded by consistent persisted-JSON comparisons. No model field normalization."
+  ],
+  "models": [
+    {
+      "model": "public-haus",
+      "pairs": 1,
+      "runs": {
+        "base": {
+          "sourceBytes": 2526544,
+          "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+          "transportSuccess": true,
+          "httpFeatureReadyMs": 31.775000000000006,
+          "startupReadyMs": 34.951,
+          "requestStartMs": 34.961,
+          "uploadSentMs": 35.966,
+          "firstBatchMs": 57.712,
+          "lastBatchMs": 59.57,
+          "streamCompleteMs": 60.286,
+          "dataModelReceivedMs": 66.736,
+          "shutdownStartMs": 84.118,
+          "shutdownEndMs": 88.7,
+          "exitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "peakSampledRss": 110247936,
+          "peakSampledRssThroughColdReady": 110247936,
+          "harnessSha256": {
+            "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+            "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+            "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12"
+          },
+          "dependencies": {
+            "python": "3.9.6",
+            "pyarrow": "21.0.0",
+            "requests": "2.31.0",
+            "psutil": "7.1.0"
+          },
+          "cacheReadyMs": 74.95,
+          "replayCompleteMs": 84.061,
+          "peakFirstMs": 62.217,
+          "peakLastMs": 62.217,
+          "peakPhase": "cold response/data-model receipt",
+          "sampleIntervalMs": 50,
+          "workerThreads": 15,
+          "infoPhases": [
+            {
+              "event": "Parse phase complete",
+              "timestampUtc": "2026-09-07T00:12:00.699918Z",
+              "durationsMs": {
+                "entity_scan_time_ms": 2,
+                "lookup_time_ms": 1,
+                "preprocess_time_ms": 0,
+                "parse_time_ms": 4
+              }
+            },
+            {
+              "event": "Data model extraction complete",
+              "timestampUtc": "2026-09-07T00:12:00.705633Z",
+              "durationsMs": {
+                "extract_time_ms": 11
+              }
+            },
+            {
+              "event": "Geometry processing complete",
+              "timestampUtc": "2026-09-07T00:12:00.708035Z",
+              "durationsMs": {
+                "geometry_time_ms": 8,
+                "total_time_ms": 13
+              }
+            },
+            {
+              "event": "Data model cached from stream",
+              "timestampUtc": "2026-09-07T00:12:00.713832Z",
+              "durationsMs": {}
+            },
+            {
+              "event": "Caching streamed geometry",
+              "timestampUtc": "2026-09-07T00:12:00.715477Z",
+              "durationsMs": {}
+            }
+          ]
+        },
+        "candidate": {
+          "sourceBytes": 2526544,
+          "fixtureSha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+          "transportSuccess": true,
+          "httpFeatureReadyMs": 29.822999999999993,
+          "startupReadyMs": 34.332,
+          "requestStartMs": 34.343,
+          "uploadSentMs": 35.226,
+          "firstBatchMs": 55.464,
+          "lastBatchMs": 57.102,
+          "streamCompleteMs": 57.783,
+          "dataModelReceivedMs": 64.166,
+          "shutdownStartMs": 80.605,
+          "shutdownEndMs": 85.189,
+          "exitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "peakSampledRss": 114589696,
+          "peakSampledRssThroughColdReady": 114589696,
+          "harnessSha256": {
+            "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+            "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+            "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12"
+          },
+          "dependencies": {
+            "python": "3.9.6",
+            "pyarrow": "21.0.0",
+            "requests": "2.31.0",
+            "psutil": "7.1.0"
+          },
+          "cacheReadyMs": 71.984,
+          "replayCompleteMs": 80.555,
+          "peakFirstMs": 62.472,
+          "peakLastMs": 62.472,
+          "peakPhase": "cold response/data-model receipt",
+          "sampleIntervalMs": 50,
+          "workerThreads": 15,
+          "infoPhases": [
+            {
+              "event": "Parse phase complete",
+              "timestampUtc": "2026-09-07T00:12:00.952199Z",
+              "durationsMs": {
+                "entity_scan_time_ms": 2,
+                "lookup_time_ms": 1,
+                "preprocess_time_ms": 0,
+                "parse_time_ms": 4
+              }
+            },
+            {
+              "event": "Data model extraction complete",
+              "timestampUtc": "2026-09-07T00:12:00.957059Z",
+              "durationsMs": {
+                "extract_time_ms": 10
+              }
+            },
+            {
+              "event": "Geometry processing complete",
+              "timestampUtc": "2026-09-07T00:12:00.959282Z",
+              "durationsMs": {
+                "geometry_time_ms": 7,
+                "total_time_ms": 11
+              }
+            },
+            {
+              "event": "Data model cached from stream",
+              "timestampUtc": "2026-09-07T00:12:00.965260Z",
+              "durationsMs": {}
+            },
+            {
+              "event": "Caching streamed geometry",
+              "timestampUtc": "2026-09-07T00:12:00.966559Z",
+              "durationsMs": {}
+            }
+          ]
+        }
+      },
+      "qualification": {
+        "semanticSha256": {
+          "base": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52",
+          "candidate": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52",
+          "baseReplay": "41bb3fc26bf736019f13fbb27d1e14c47971d613e3a09675a7168948ebfef8a5",
+          "candidateReplay": "e0f4286195df8822ab6067d8b8381630ca6ab243b2c6bbf6dc95b573fe18ab52"
+        },
+        "coldBaseVsCandidate": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "baseColdVsReplay": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": false,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "candidateColdVsReplay": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "counts": {
+          "total_meshes": 285,
+          "total_vertices": 35940,
+          "total_triangles": 19456
+        }
+      }
+    },
+    {
+      "model": "model-02",
+      "pairs": 1,
+      "runs": {
+        "base": {
+          "sourceBytes": 1259429221,
+          "fixtureSha256": "887c68571ac721e40c9c0d98a5ca889c3b8ad037a1012c06314a674a798ddc9a",
+          "transportSuccess": true,
+          "httpFeatureReadyMs": 38448.17,
+          "startupReadyMs": 28.252,
+          "requestStartMs": 28.263,
+          "uploadSentMs": 309.445,
+          "firstBatchMs": 2361.467,
+          "lastBatchMs": 36376.651,
+          "streamCompleteMs": 36519.402,
+          "dataModelReceivedMs": 38476.433,
+          "shutdownStartMs": 54521.497,
+          "shutdownEndMs": 54662.244,
+          "exitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "peakSampledRss": 20549419008,
+          "peakSampledRssThroughColdReady": 20549419008,
+          "harnessSha256": {
+            "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+            "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+            "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12"
+          },
+          "dependencies": {
+            "python": "3.9.6",
+            "pyarrow": "21.0.0",
+            "requests": "2.31.0",
+            "psutil": "7.1.0"
+          },
+          "cacheReadyMs": 47184.815,
+          "replayCompleteMs": 54515.428,
+          "peakFirstMs": 5019.141,
+          "peakLastMs": 5019.141,
+          "peakPhase": "cold response/data-model receipt",
+          "sampleIntervalMs": 50,
+          "workerThreads": 15,
+          "infoPhases": [
+            {
+              "event": "Parse phase complete",
+              "timestampUtc": "2026-09-07T00:12:03.852735Z",
+              "durationsMs": {
+                "entity_scan_time_ms": 943,
+                "lookup_time_ms": 213,
+                "preprocess_time_ms": 6,
+                "parse_time_ms": 1188
+              }
+            },
+            {
+              "event": "Data model extraction complete",
+              "timestampUtc": "2026-09-07T00:12:05.998143Z",
+              "durationsMs": {
+                "extract_time_ms": 3715
+              }
+            },
+            {
+              "event": "Data model cached from stream",
+              "timestampUtc": "2026-09-07T00:12:08.778633Z",
+              "durationsMs": {}
+            },
+            {
+              "event": "Geometry processing complete",
+              "timestampUtc": "2026-09-07T00:12:33.595778Z",
+              "durationsMs": {
+                "geometry_time_ms": 29742,
+                "total_time_ms": 30931
+              }
+            },
+            {
+              "event": "Caching streamed geometry",
+              "timestampUtc": "2026-09-07T00:12:37.964415Z",
+              "durationsMs": {}
+            }
+          ]
+        },
+        "candidate": {
+          "sourceBytes": 1259429221,
+          "fixtureSha256": "887c68571ac721e40c9c0d98a5ca889c3b8ad037a1012c06314a674a798ddc9a",
+          "transportSuccess": true,
+          "httpFeatureReadyMs": 31097.369000000002,
+          "startupReadyMs": 34.2,
+          "requestStartMs": 34.207,
+          "uploadSentMs": 316.009,
+          "firstBatchMs": 3492.233,
+          "lastBatchMs": 29001.154,
+          "streamCompleteMs": 29144.035,
+          "dataModelReceivedMs": 31131.576,
+          "shutdownStartMs": 47154.903,
+          "shutdownEndMs": 47288.675,
+          "exitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "peakSampledRss": 20208566272,
+          "peakSampledRssThroughColdReady": 20208566272,
+          "harnessSha256": {
+            "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+            "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+            "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12"
+          },
+          "dependencies": {
+            "python": "3.9.6",
+            "pyarrow": "21.0.0",
+            "requests": "2.31.0",
+            "psutil": "7.1.0"
+          },
+          "cacheReadyMs": 39866.144,
+          "replayCompleteMs": 47148.639,
+          "peakFirstMs": 4960.299,
+          "peakLastMs": 4960.299,
+          "peakPhase": "cold response/data-model receipt",
+          "sampleIntervalMs": 50,
+          "workerThreads": 15,
+          "infoPhases": [
+            {
+              "event": "Parse phase complete",
+              "timestampUtc": "2026-09-07T00:12:59.150549Z",
+              "durationsMs": {
+                "entity_scan_time_ms": 941,
+                "lookup_time_ms": 219,
+                "preprocess_time_ms": 7,
+                "parse_time_ms": 1193
+              }
+            },
+            {
+              "event": "Data model extraction complete",
+              "timestampUtc": "2026-09-07T00:13:01.189782Z",
+              "durationsMs": {
+                "extract_time_ms": 3613
+              }
+            },
+            {
+              "event": "Data model cached from stream",
+              "timestampUtc": "2026-09-07T00:13:04.151340Z",
+              "durationsMs": {}
+            },
+            {
+              "event": "Geometry processing complete",
+              "timestampUtc": "2026-09-07T00:13:21.852380Z",
+              "durationsMs": {
+                "geometry_time_ms": 22701,
+                "total_time_ms": 23895
+              }
+            },
+            {
+              "event": "Caching streamed geometry",
+              "timestampUtc": "2026-09-07T00:13:25.858824Z",
+              "durationsMs": {}
+            }
+          ]
+        }
+      },
+      "qualification": {
+        "semanticSha256": {
+          "base": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+          "candidate": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+          "baseReplay": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b",
+          "candidateReplay": "639b59288cfc3386aa7b35effdf098920fd651f8f6d3352ece75bb2376ddf83b"
+        },
+        "coldBaseVsCandidate": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "baseColdVsReplay": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "candidateColdVsReplay": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "counts": {
+          "total_meshes": 434750,
+          "total_vertices": 79174542,
+          "total_triangles": 36271975
+        }
+      }
+    },
+    {
+      "model": "model-03",
+      "pairs": 1,
+      "runs": {
+        "base": {
+          "sourceBytes": 1050352883,
+          "fixtureSha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd",
+          "transportSuccess": true,
+          "httpFeatureReadyMs": 9263.448,
+          "startupReadyMs": 29.573,
+          "requestStartMs": 29.581,
+          "uploadSentMs": 223.947,
+          "firstBatchMs": 1645.054,
+          "lastBatchMs": 7213.258,
+          "streamCompleteMs": 7397.835,
+          "dataModelReceivedMs": 9293.029,
+          "shutdownStartMs": 18013.85,
+          "shutdownEndMs": 18158.905,
+          "exitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "peakSampledRss": 20786331648,
+          "peakSampledRssThroughColdReady": 20786331648,
+          "harnessSha256": {
+            "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+            "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+            "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12"
+          },
+          "dependencies": {
+            "python": "3.9.6",
+            "pyarrow": "21.0.0",
+            "requests": "2.31.0",
+            "psutil": "7.1.0"
+          },
+          "cacheReadyMs": 13896.195,
+          "replayCompleteMs": 18013.522,
+          "peakFirstMs": 4576.155,
+          "peakLastMs": 4576.155,
+          "peakPhase": "cold response/data-model receipt",
+          "sampleIntervalMs": 50,
+          "workerThreads": 15,
+          "infoPhases": [
+            {
+              "event": "Parse phase complete",
+              "timestampUtc": "2026-09-07T00:13:46.345130Z",
+              "durationsMs": {
+                "entity_scan_time_ms": 732,
+                "lookup_time_ms": 1,
+                "preprocess_time_ms": 2,
+                "parse_time_ms": 759
+              }
+            },
+            {
+              "event": "Data model extraction complete",
+              "timestampUtc": "2026-09-07T00:13:48.661856Z",
+              "durationsMs": {
+                "extract_time_ms": 3394
+              }
+            },
+            {
+              "event": "Geometry processing complete",
+              "timestampUtc": "2026-09-07T00:13:48.903233Z",
+              "durationsMs": {
+                "geometry_time_ms": 2558,
+                "total_time_ms": 3317
+              }
+            },
+            {
+              "event": "Data model cached from stream",
+              "timestampUtc": "2026-09-07T00:13:51.335261Z",
+              "durationsMs": {}
+            },
+            {
+              "event": "Caching streamed geometry",
+              "timestampUtc": "2026-09-07T00:13:52.121085Z",
+              "durationsMs": {}
+            }
+          ]
+        },
+        "candidate": {
+          "sourceBytes": 1050352883,
+          "fixtureSha256": "ce0510a0117b88b34b7c52c4234254155def73d860f5acecbf1f47559f00c5cd",
+          "transportSuccess": true,
+          "httpFeatureReadyMs": 9172.233999999999,
+          "startupReadyMs": 28.208,
+          "requestStartMs": 28.218,
+          "uploadSentMs": 243.395,
+          "firstBatchMs": 1669.399,
+          "lastBatchMs": 7285.205,
+          "streamCompleteMs": 7291.746,
+          "dataModelReceivedMs": 9200.452,
+          "shutdownStartMs": 17942.182,
+          "shutdownEndMs": 18069.855,
+          "exitCode": -15,
+          "shutdownTimedOut": false,
+          "deadlineKilled": false,
+          "peakSampledRss": 20181696512,
+          "peakSampledRssThroughColdReady": 20181696512,
+          "harnessSha256": {
+            "run.py": "8dc81496ca35c578d906b1e8c085268db269fe783d70d7741bbf229c9881db6d",
+            "wire.py": "dd0974bd81c9344870892caa8d9d1311c98c9614b16f0ab54a480969941fd7cb",
+            "cache_phase.py": "39fc08e9449fcef2c4b41e5c36adef5c904dce40283e60f3d415994e789d5b12"
+          },
+          "dependencies": {
+            "python": "3.9.6",
+            "pyarrow": "21.0.0",
+            "requests": "2.31.0",
+            "psutil": "7.1.0"
+          },
+          "cacheReadyMs": 13800.492,
+          "replayCompleteMs": 17941.827,
+          "peakFirstMs": 4369.8,
+          "peakLastMs": 4369.8,
+          "peakPhase": "cold response/data-model receipt",
+          "sampleIntervalMs": 50,
+          "workerThreads": 15,
+          "infoPhases": [
+            {
+              "event": "Parse phase complete",
+              "timestampUtc": "2026-09-07T00:14:05.047268Z",
+              "durationsMs": {
+                "entity_scan_time_ms": 720,
+                "lookup_time_ms": 1,
+                "preprocess_time_ms": 2,
+                "parse_time_ms": 748
+              }
+            },
+            {
+              "event": "Geometry processing complete",
+              "timestampUtc": "2026-09-07T00:14:07.250579Z",
+              "durationsMs": {
+                "geometry_time_ms": 2203,
+                "total_time_ms": 2951
+              }
+            },
+            {
+              "event": "Data model extraction complete",
+              "timestampUtc": "2026-09-07T00:14:07.357757Z",
+              "durationsMs": {
+                "extract_time_ms": 3376
+              }
+            },
+            {
+              "event": "Data model cached from stream",
+              "timestampUtc": "2026-09-07T00:14:09.889505Z",
+              "durationsMs": {}
+            },
+            {
+              "event": "Caching streamed geometry",
+              "timestampUtc": "2026-09-07T00:14:10.692237Z",
+              "durationsMs": {}
+            }
+          ]
+        }
+      },
+      "qualification": {
+        "semanticSha256": {
+          "base": "6727ff87eb63e8c77c545b98682d3cca93c3ff3259cc5a15f002e229692471b8",
+          "candidate": "6727ff87eb63e8c77c545b98682d3cca93c3ff3259cc5a15f002e229692471b8",
+          "baseReplay": "6727ff87eb63e8c77c545b98682d3cca93c3ff3259cc5a15f002e229692471b8",
+          "candidateReplay": "6727ff87eb63e8c77c545b98682d3cca93c3ff3259cc5a15f002e229692471b8"
+        },
+        "coldBaseVsCandidate": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "baseColdVsReplay": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "candidateColdVsReplay": {
+          "exactFields": {
+            "geometry": true,
+            "metadataDigest": true,
+            "diagnostics": true,
+            "symbolicDigest": true,
+            "dataModel": true
+          },
+          "rawBatchBytesMatch": true,
+          "rawDataModelBytesMatch": true
+        },
+        "counts": {
+          "total_meshes": 227352,
+          "total_vertices": 54578002,
+          "total_triangles": 32358126
+        }
+      }
+    }
+  ]
+}

@@ -128,9 +128,15 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           set -uo pipefail
+          # GitHub starts Bash with -e: capture expected findings before
+          # errexit can abort the step (#4062). Keep log-write failures fatal.
+          statuses=(0 0)
           node scripts/scan-dirty-prs.mjs --repo "${{ github.repository }}" \
-            2>&1 | tee "$RUNNER_TEMP/scan.log"
-          rc=${PIPESTATUS[0]}
+            2>&1 | tee "$RUNNER_TEMP/scan.log" || statuses=("${PIPESTATUS[@]}")
+          rc=${statuses[0]}
+          if [ "${statuses[1]}" -ne 0 ]; then
+            exit "${statuses[1]}"
+          fi
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
           # 2 IS "COULD NOT LOOK" AND STILL FAILS THE JOB. Only the FINDING (1)
           # stops reddening main; an API error must not be quietly absorbed,

@@ -39,21 +39,21 @@ interface SelectorFilterBase {
 }
 
 /** `IfcWall` / `! IfcWall` — the class and all its subclasses. */
-export interface SelectorClassFilter extends SelectorFilterBase {
+interface SelectorClassFilter extends SelectorFilterBase {
   kind: 'class';
   name: string;
   negate: boolean;
 }
 
 /** `325Q7Fhnf67OZC$$r43uzK` / `! 325Q7Fhnf67OZC$$r43uzK` — one element. */
-export interface SelectorGlobalIdFilter extends SelectorFilterBase {
+interface SelectorGlobalIdFilter extends SelectorFilterBase {
   kind: 'globalId';
   id: string;
   negate: boolean;
 }
 
 /** `Name=Foo` — an IFC attribute of the element itself. */
-export interface SelectorAttributeFilter extends SelectorFilterBase {
+interface SelectorAttributeFilter extends SelectorFilterBase {
   kind: 'attribute';
   name: string;
   op: SelectorOp;
@@ -61,7 +61,7 @@ export interface SelectorAttributeFilter extends SelectorFilterBase {
 }
 
 /** `Pset_WallCommon.FireRating=2HR` — a property in a property set. */
-export interface SelectorPropertyFilter extends SelectorFilterBase {
+interface SelectorPropertyFilter extends SelectorFilterBase {
   kind: 'property';
   pset: SelectorText;
   prop: SelectorText;
@@ -70,20 +70,26 @@ export interface SelectorPropertyFilter extends SelectorFilterBase {
 }
 
 /** `type=WT01`, `material=concrete`, `location="Level 3"`, … */
-export interface SelectorKeywordFilter extends SelectorFilterBase {
+interface SelectorKeywordFilter extends SelectorFilterBase {
   kind: SelectorKeywordKind;
   op: SelectorOp;
   value: SelectorValue;
 }
 
 /** `query:types.count=0` — a value-query key path. */
-export interface SelectorQueryFilter extends SelectorFilterBase {
+interface SelectorQueryFilter extends SelectorFilterBase {
   kind: 'query';
   keys: string;
   op: SelectorOp;
   value: SelectorValue;
 }
 
+/**
+ * Every filter the grammar can express. The member interfaces stay
+ * module-internal: a consumer narrows on `filter.kind` off this union rather
+ * than naming one, and an exported type nothing consumes is semver liability
+ * with no reader.
+ */
 export type SelectorFilter =
   | SelectorClassFilter
   | SelectorGlobalIdFilter

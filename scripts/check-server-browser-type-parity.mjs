@@ -184,7 +184,6 @@ export const ALLOWLIST = {
   'relationships:IFCRELASSIGNSTOPRODUCT': { status: 'pending', note: '#3964, tracked with #3969' },
   'relationships:IFCRELREFERENCEDINSPATIALSTRUCTURE': { status: 'pending', note: '#3964, tracked with #3969' },
 
-
   // #3254: IfcPhysicalComplexQuantity groups other quantities instead of
   // carrying a measure itself, so neither side resolves it to a Quantity —
   // this is a DELIBERATE, tracked trade-off, not an in-flight fix. The

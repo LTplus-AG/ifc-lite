@@ -20,7 +20,6 @@ use super::extrusion::ExtrudedAreaSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 use super::tessellated::TriangulatedFaceSetProcessor;
-use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
 mod failures;
@@ -31,6 +30,7 @@ mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
 mod polygonal_union;
 mod polygonal_removal;
+mod router_impl;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -608,6 +608,14 @@ impl BooleanClippingProcessor {
         let mut spine: Vec<DecodedEntity> = Vec::new();
         let mut spine_seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
         let mut current = entity.clone();
+        // Whether `mesh` (below) already carries a successfully BATCHED set of
+        // PBHS cutters (`try_union_polygonal_chain`), as opposed to being the
+        // untouched base solid. A leftover `spine` of length 1 is only the
+        // true #3923 single-cutter shape (no sibling cutter anywhere) when
+        // this is false; if a nested batch succeeded first, that node's own
+        // cutter has siblings already folded into `mesh`, even though it is
+        // the only node left in `spine` — see the `solo_step` comment below.
+        let mut based_on_batch = false;
         let mut mesh = loop {
             if !spine_seen.insert(current.id) {
                 // Cyclic FirstOperand chain (malformed input). The recursive
@@ -632,6 +640,7 @@ impl BooleanClippingProcessor {
                 {
                     // Batched PBHS resolution handled this node and everything
                     // below it (see the comment on the sequential step).
+                    based_on_batch = true;
                     break result;
                 }
             }
@@ -646,12 +655,17 @@ impl BooleanClippingProcessor {
         };
 
         // Apply each spine node's operator + SecondOperand, innermost-first.
-        // `spine.len() == 1` is the true #3923 single-cutter shape (no other
-        // node shares the job); `> 1` means a longer chain's batching failed
-        // at every level, so each node here is a one-cutter-at-a-time
-        // fallback — see `single_cutter_gate.rs` for why that distinction
-        // matters to the gate-rejection fallback.
-        let solo_step = spine.len() == 1;
+        // `spine.len() == 1 && !based_on_batch` is the true #3923
+        // single-cutter shape (no other node shares the job, and the mesh it
+        // is cutting is the untouched base). `> 1` means a longer chain's
+        // batching failed at every level, so each node here is a
+        // one-cutter-at-a-time fallback. `spine.len() == 1 && based_on_batch`
+        // is the same "one cutter at a time" shape: a nested batch already
+        // succeeded on the levels below, so this lone leftover node's cutter
+        // has siblings (the batched ones) even though `spine` holds only it —
+        // see `single_cutter_gate.rs` for why that distinction matters to the
+        // gate-rejection fallback.
+        let solo_step = spine.len() == 1 && !based_on_batch;
         for node in spine.iter().rev() {
             if mesh.is_empty() {
                 // An emptied intermediate ends the chain, matching the old
@@ -896,34 +910,6 @@ impl BooleanClippingProcessor {
             BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)
-    }
-}
-
-impl GeometryProcessor for BooleanClippingProcessor {
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
-        quality: TessellationQuality,
-    ) -> Result<Mesh> {
-        let mut visited = OperandPath::default();
-        self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
-    }
-
-    fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
-    }
-
-    /// Hand the log to the router (#3821); rationale on the trait method.
-    fn take_bool_failures(&self) -> Vec<BoolFailure> {
-        self.take_failures()
-    }
-}
-
-impl Default for BooleanClippingProcessor {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

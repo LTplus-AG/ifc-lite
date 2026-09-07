@@ -23,6 +23,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ifc-lite/codegen": "workspace:*",
     "@ifc-lite/data": "workspace:*",
     "@ifc-lite/encoding": "workspace:*",
     "@ifc-lite/parser": "workspace:*",

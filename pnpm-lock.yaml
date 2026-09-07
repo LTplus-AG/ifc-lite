@@ -1002,6 +1002,9 @@ importers:
 
   packages/export:
     dependencies:
+      '@ifc-lite/codegen':
+        specifier: workspace:^
+        version: link:../codegen
       '@ifc-lite/data':
         specifier: workspace:^
         version: link:../data
@@ -1081,6 +1084,9 @@ importers:
 
   packages/ids:
     dependencies:
+      '@ifc-lite/codegen':
+        specifier: workspace:*
+        version: link:../codegen
       '@ifc-lite/data':
         specifier: workspace:*
         version: link:../data

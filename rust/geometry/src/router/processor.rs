@@ -49,4 +49,24 @@ pub trait GeometryProcessor {
     fn take_bool_failures(&self) -> Vec<BoolFailure> {
         Vec::new()
     }
+
+    /// Number of `BoolFailure` records currently buffered (without draining).
+    /// #4083 (double-count half): lets [`crate::GeometryRouter::process_representation_item`]
+    /// snapshot a before/after delta around ONE item's uncached build, so a CSG
+    /// diagnostic can be attributed to that item's `item_dedup_key`. Default:
+    /// 0 — matches [`Self::take_bool_failures`]'s "most processors record
+    /// nothing" default. Overridden by
+    /// [`crate::processors::BooleanClippingProcessor`].
+    fn bool_failure_count(&self) -> usize {
+        0
+    }
+
+    /// Discard every `BoolFailure` recorded after index `since` (a prior
+    /// [`Self::bool_failure_count`]). #4083 (double-count half): the router
+    /// calls this when a racing sibling router already claimed this item's
+    /// `item_dedup_key` for its own diagnostic, so THIS router's redundant
+    /// record of the same logical operation never reaches
+    /// [`Self::take_bool_failures`]. Default: no-op, matching the 0 default
+    /// above (nothing buffered, nothing to discard).
+    fn truncate_bool_failures_to(&self, _since: usize) {}
 }

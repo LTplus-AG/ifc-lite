@@ -20,7 +20,6 @@ use super::extrusion::ExtrudedAreaSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 use super::tessellated::TriangulatedFaceSetProcessor;
-use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
 mod failures;
@@ -896,28 +895,6 @@ impl BooleanClippingProcessor {
             BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)
-    }
-}
-
-impl GeometryProcessor for BooleanClippingProcessor {
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
-        quality: TessellationQuality,
-    ) -> Result<Mesh> {
-        let mut visited = OperandPath::default();
-        self.process_with_depth(entity, decoder, schema, 0, quality, &mut visited)
-    }
-
-    fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
-    }
-
-    /// Hand the log to the router (#3821); rationale on the trait method.
-    fn take_bool_failures(&self) -> Vec<BoolFailure> {
-        self.take_failures()
     }
 }
 

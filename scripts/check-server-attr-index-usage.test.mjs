@@ -31,7 +31,12 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { extractFieldReads, checkUsage, METADATA_REL } from './check-server-attr-index-usage.mjs';
+import {
+  extractFieldReads,
+  checkUsage,
+  findUnauditedLiteralReads,
+  METADATA_REL,
+} from './check-server-attr-index-usage.mjs';
 
 const SCRIPTS = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(SCRIPTS, '..');
@@ -188,4 +193,69 @@ test('a field-read named only in a comment does not count as found', () => {
   const rust = '// let global_id = string_at(&entity, idx.global_id);\n';
   const reads = extractFieldReads(rust);
   assert.equal(reads.has('global_id'), false);
+});
+
+// --- Blind-spot coverage: a SEVENTH field, not in EXPECTED_FIELDS at all ---
+//
+// PR #4082 review finding: checkUsage's EXPECTED_FIELDS list is fixed to the
+// six fields known when this gate was written. A field added later with a
+// hardcoded literal index — the exact #3949 defect shape, just on a name
+// this gate was never told to look for — passed checkUsage with a clean
+// `OK (6/6)` because checkUsage never inspects any field but the six it was
+// given. findUnauditedLiteralReads is the inversion that closes that gap: it
+// scans every string_at/enum_at(&entity, …) call, however named, instead of
+// checking a fixed name list.
+
+// Hand-written, not read from any file (same reasoning as
+// CORRECTLY_WIRED_FIXTURE below): a seventh field, hardcoded to a literal
+// index, appended after the six real ones.
+const SEVENTH_FIELD_HARDCODED_FIXTURE = `
+            let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);
+            let global_id = string_at(&entity, idx.global_id);
+            let name = string_at(&entity, idx.name);
+            let description = string_at(&entity, idx.description);
+            let object_type = string_at(&entity, idx.object_type);
+            let tag = string_at(&entity, idx.tag);
+            let predefined_type = enum_at(&entity, idx.predefined_type);
+            let owner_history = string_at(&entity, 5);
+`;
+
+test('RED (blind spot, #4082): on a hand-written fixture, a SEVENTH field hardcoded to a literal index is invisible to checkUsage (still reports OK 6/6) but caught by findUnauditedLiteralReads', () => {
+  // The pre-existing six-field check alone is blind to it.
+  const { failures, underRead } = checkUsage(SEVENTH_FIELD_HARDCODED_FIXTURE);
+  assert.deepEqual(failures, []);
+  assert.equal(underRead, false);
+
+  // The inversion check is not.
+  const stray = findUnauditedLiteralReads(SEVENTH_FIELD_HARDCODED_FIXTURE);
+  assert.equal(stray.length, 1);
+  assert.match(stray[0], /`owner_history` is read via `string_at\(&entity, 5\)`/);
+});
+
+test('RED (blind spot, #4082): the wired-together checker script fails end to end on the real file mutated the same way', () => {
+  reset();
+  mutate(
+    'let predefined_type = enum_at(&entity, idx.predefined_type);',
+    'let predefined_type = enum_at(&entity, idx.predefined_type);\n            let owner_history = string_at(&entity, 5);',
+  );
+  const { status, out } = runChecker();
+  assert.equal(status, 1, out);
+  assert.match(out, /`owner_history` is read via `string_at\(&entity, 5\)`/);
+  assert.doesNotMatch(out, /check-server-attr-index-usage: OK/);
+});
+
+test('GREEN (no false positive): a new field wired through idx.<field> (not one of the fixed six) passes both checkUsage and findUnauditedLiteralReads', () => {
+  reset();
+  mutate(
+    'let predefined_type = enum_at(&entity, idx.predefined_type);',
+    'let predefined_type = enum_at(&entity, idx.predefined_type);\n            let owner_history = string_at(&entity, idx.owner_history);',
+  );
+  const { status, out } = runChecker();
+  assert.equal(status, 0, out);
+  assert.match(out, /check-server-attr-index-usage: OK \(6\/6 fields wired/);
+});
+
+test('GREEN (no false positive on unmodified source): findUnauditedLiteralReads finds nothing in the real, unmutated metadata.rs', () => {
+  reset();
+  assert.deepEqual(findUnauditedLiteralReads(realRust), []);
 });

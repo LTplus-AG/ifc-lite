@@ -154,13 +154,69 @@ export function checkUsage(rustSource) {
   return { failures, underRead: false };
 }
 
+const KNOWN_FIELDS = new Set(EXPECTED_FIELDS.map((f) => f.field));
+
+/**
+ * INVERSION of checkUsage: instead of asking "are the six fields we know
+ * about wired to idx.<field>?", this asks "is EVERY `string_at`/`enum_at`
+ * call against `&entity`, however named, wired to `idx.<field>` — whatever
+ * that field is?". checkUsage's EXPECTED_FIELDS list is necessarily fixed at
+ * the six fields known when this gate was written; a SEVENTH field added
+ * later with a hardcoded literal index (the exact #3949 defect shape, just
+ * on a field this gate was never told to look for) passes checkUsage with a
+ * clean `OK (6/6)` because checkUsage never looks past the six names it was
+ * given. Verified: adding `let owner_history = string_at(&entity, 5);` to
+ * metadata.rs left the pre-existing checker (fixed six-field EXPECTED_FIELDS
+ * list) reporting `OK (6/6 fields wired ...)` unchanged.
+ *
+ * This scans metadata.rs's own source for every `(string_at|enum_at)(&entity,
+ * <expr>)` call — named via a `let <name> = ...` binding or not — and flags
+ * any whose index expression is not the schema-derived `idx.<field>` shape.
+ * Calls bound to one of the six KNOWN_FIELDS are skipped here: checkUsage
+ * already reports on those specifically (with an accessor-aware regex and a
+ * message naming the exact expected accessor), so this only reports on
+ * fields checkUsage does not know to check — the blind spot. That makes the
+ * two checks complementary rather than duplicative: checkUsage answers "are
+ * the six fields we know about right", this answers "is there any field we
+ * DON'T know about, read at a literal index".
+ *
+ * False-positive check performed against this file itself: the only other
+ * literal index use in metadata.rs is `UNKNOWN_TYPE_FALLBACK`'s struct
+ * literal (`RootAttrIndices { global_id: 0, name: 2, ... }`) and the `idx <
+ * 0` / `idx as usize` literals inside `string_at`/`enum_at`'s OWN bodies —
+ * neither is a `(string_at|enum_at)(&entity, ...)` call, so neither matches.
+ *
+ * @returns {string[]} one failure message per unaudited literal-indexed call
+ * found; empty if every string_at/enum_at(&entity, …) call in the file goes
+ * through `idx.<field>`.
+ */
+export function findUnauditedLiteralReads(rustSource) {
+  const code = stripComments(rustSource);
+  const re = /(?:let\s+(\w+)\s*=\s*)?(string_at|enum_at)\(\s*&entity,\s*([^)]+?)\s*,?\s*\)/g;
+  const failures = [];
+  let m;
+  while ((m = re.exec(code)) !== null) {
+    const [, name, accessor, rawExpr] = m;
+    if (name && KNOWN_FIELDS.has(name)) continue; // already reported by checkUsage
+    const expr = rawExpr.trim();
+    if (/^idx\.[A-Za-z_]\w*$/.test(expr)) continue; // schema-derived, fine
+    const label = name ? `\`${name}\`` : 'an unnamed call';
+    failures.push(
+      `${label} is read via \`${accessor}(&entity, ${expr})\` at a literal/non-schema-derived index, not \`idx.<field>\` — a field this gate's fixed six-field EXPECTED_FIELDS list does not know to check by name, so checkUsage cannot see it. This is the same shape as issue #3949: it will read the same hardcoded position for every entity type, regardless of what that type actually declares. If this is a legitimate new field, wire it through \`idx.<field>\` (adding the field to generated/attr_indices.rs and RootAttrIndices first if needed) and add it to EXPECTED_FIELDS in scripts/check-server-attr-index-usage.mjs so checkUsage audits it by name too.`,
+    );
+  }
+  return failures;
+}
+
 if (process.argv[1] && process.argv[1].endsWith('check-server-attr-index-usage.mjs')) {
   const rustSource = readFileSync(join(ROOT, METADATA_REL), 'utf8');
   const { failures, underRead } = checkUsage(rustSource);
+  const strayFailures = findUnauditedLiteralReads(rustSource);
+  const allFailures = [...failures, ...strayFailures];
 
-  if (failures.length > 0) {
+  if (allFailures.length > 0) {
     console.error(`\ncheck-server-attr-index-usage: ${METADATA_REL} drifted\n`);
-    for (const f of failures) console.error(`  ${f}`);
+    for (const f of allFailures) console.error(`  ${f}`);
     if (underRead) {
       console.error(`
 This gate could not find all six expected field-read assignments, so it
@@ -171,7 +227,7 @@ idx.<field>);\` / \`enum_at(...)\` shape, or update EXPECTED_FIELDS /
 extractFieldReads in scripts/check-server-attr-index-usage.mjs to match the
 new shape.
 `);
-    } else {
+    } else if (failures.length > 0) {
       console.error(`
 A field read at a literal index instead of \`idx.<field>\` silently reverts to
 the pre-#3949 behaviour for every type whose schema position differs from
@@ -179,10 +235,19 @@ that literal. Fix the read in ${METADATA_REL} to go through \`idx\` (from
 \`root_attr_indices\`), the way every other field in the same function does.
 `);
     }
+    if (strayFailures.length > 0) {
+      console.error(`
+This gate's six-field EXPECTED_FIELDS list did not name the field(s) above,
+so checkUsage's per-field comparison never saw them — but every
+\`string_at\`/\`enum_at\` call against \`&entity\` in ${METADATA_REL} is
+checked regardless of name, and a literal index there is the same #3949 risk
+as a literal index on one of the six known fields.
+`);
+    }
     process.exit(1);
   }
 
   console.log(
-    `check-server-attr-index-usage: OK (${EXPECTED_FIELDS.length}/${EXPECTED_FIELDS.length} fields wired to the schema-derived index table in ${METADATA_REL})`,
+    `check-server-attr-index-usage: OK (${EXPECTED_FIELDS.length}/${EXPECTED_FIELDS.length} fields wired to the schema-derived index table in ${METADATA_REL}, and no unaudited literal-indexed string_at/enum_at(&entity, …) calls found)`,
   );
 }

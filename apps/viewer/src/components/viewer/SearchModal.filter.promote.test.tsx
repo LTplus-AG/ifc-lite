@@ -88,6 +88,21 @@ describe('Filter tab — promoting the search bar query', () => {
     assert.deepEqual(rules(), [Rule.name('contains', 'Wand')]);
   });
 
+  it('text that parses but names nothing keeps the Name contains it always had', () => {
+    // These all PARSE — `IFC` and `IFC-Export` as class terms, `Level=1` and
+    // `Ø=100` as attribute terms — and none of them names a class we know or an
+    // attribute we can filter, which is what a plain search term looks like
+    // after parsing. Reporting instead of falling back cost the search box its
+    // oldest behaviour on the most ordinary input there is.
+    for (const q of ['IFC', 'ifc', 'IFC-Export', 'Level=1', 'Ø=100']) {
+      const container = mountWithQuery(q);
+      promote(container);
+      assert.deepEqual(rules(), [Rule.name('contains', q)], q);
+      assert.equal(latestToast(container), '', q);
+      cleanup();
+    }
+  });
+
   it('a selector the adapter can only partly carry applies the rest and says so', () => {
     const container = mountWithQuery('IfcWall, type=WT01');
     promote(container);

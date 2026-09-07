@@ -91,12 +91,18 @@ export function SearchModalFilterBuilder() {
    * elements with nothing to read: the defect #4091 reported, reached from the
    * other entry point. Two surfaces reading the same text cannot disagree
    * about whether the user is owed an explanation.
+   *
+   * The fallback survives for text that PARSES but names nothing — `IFC`,
+   * `IFC-Export`, `Level=1`. Those reach here as a successful parse with no
+   * rule, and reporting them cost the button its oldest behaviour on the most
+   * ordinary input there is: `readsAsPlainText` is how the adapter separates
+   * them from a selector whose construct it genuinely cannot run.
    */
   const promoteSearchQuery = useCallback(() => {
     const q = searchQuery.trim();
     if (!q) return;
     const reading = readSelector(q, { schemaVersion });
-    if (!reading.ok) {
+    if (!reading.ok || reading.readsAsPlainText) {
       addFilterRule(Rule.name('contains', q));
       return;
     }

@@ -55,6 +55,10 @@ export interface SelectorAdaptResult {
   rules: FilterRule[];
   /** One entry per construct that produced no rule, quoting what was typed. */
   unsupported: string[];
+  /** No rule came out and every term is an unknown class or a non-filterable
+   *  attribute — what a plain search term (`IFC-Export`, `Level=1`) parses
+   *  into. A caller holding a free-text fallback keeps it here. */
+  readsAsPlainText: boolean;
 }
 
 /** `= != > >= < <= *= !*=` onto the property `ValueOp` set. */
@@ -71,6 +75,9 @@ const STRING_OPS: Partial<Record<SelectorOp, SharedStringOp>> = {
 const NUMERIC_OPS: Partial<Record<SelectorOp, NumericOp>> = {
   '=': 'eq', '!=': 'ne', '>': 'gt', '>=': 'gte', '<': 'lt', '<=': 'lte',
 };
+
+/** The two attributes with a rule behind them; `isPlainTextTerm` reads it too. */
+const FILTERABLE_ATTRIBUTES = new Set(['name', 'predefinedtype']);
 
 /** A regex value only has a meaning for equality and its negation. */
 const REGEX_OPS: Partial<Record<SelectorOp, 'matches' | 'notMatches'>> = {
@@ -132,7 +139,19 @@ export function selectorToFilterRules(
   if (classAdds.length > 0) head.push(Rule.ifcType(expandClasses(classAdds, options), 'in'));
   if (classSubtracts.length > 0) head.push(Rule.ifcType(expandClasses(classSubtracts, options), 'notIn'));
 
-  return { combinator: 'AND', rules: [...head, ...rules], unsupported };
+  const all = [...head, ...rules];
+  const readsAsPlainText = all.length === 0 && extraGroups.length === 0 && (group?.filters ?? []).every(isPlainTextTerm);
+  return { combinator: 'AND', rules: all, unsupported, readsAsPlainText };
+}
+
+/**
+ * A term carrying nothing selector-specific: a class name no schema knows
+ * (`IFC-Export`), or an attribute with no rule behind it (`Level=1`). Text made
+ * only of these is a search term that happens to parse.
+ */
+function isPlainTextTerm(filter: SelectorFilter): boolean {
+  if (filter.kind === 'class') return !isKnownType(filter.name);
+  return filter.kind === 'attribute' && !FILTERABLE_ATTRIBUTES.has(filter.name.toLowerCase());
 }
 
 /**
@@ -181,7 +200,7 @@ function adaptAttribute(
   text: string,
 ): FilterRule | string {
   const attribute = name.toLowerCase();
-  if (attribute !== 'name' && attribute !== 'predefinedtype') {
+  if (!FILTERABLE_ATTRIBUTES.has(attribute)) {
     return `${quote(text)}: only the Name and PredefinedType attributes are filterable (#4094)`;
   }
   if (value.kind === 'null') return `${quote(text)}: an attribute cannot be compared to NULL`;
@@ -215,11 +234,11 @@ function adaptProperty(
   const propName = literalOf(prop);
   const names = { setNameKind: nameKind(pset), propertyNameKind: nameKind(prop) };
 
-  // A `Qto_` set names the QUANTITY table, which a property rule does not read.
-  // So a term the quantity rule cannot carry is reported rather than emitted as
-  // a property rule against rows it can never find: `Qto_….NetVolume=NULL` did
-  // not merely miss, its `isNotSet` matched every element (#4091). Teaching
-  // property rules to read quantity rows is #4094.
+  // A `Qto_` set names the QUANTITY table, which a property rule does not read,
+  // so a term the quantity rule cannot carry is reported rather than aimed at
+  // rows it can never find: `Qto_….NetVolume=NULL` did not merely miss, its
+  // `isNotSet` matched every element (#4091). Property rules reading quantity
+  // rows is #4094.
   const quantitySet = looksLikeQuantitySet(pset);
 
   if (value.kind === 'null') {
@@ -242,10 +261,8 @@ function adaptProperty(
     const numeric = Number.parseFloat(value.text);
     const numericOp = NUMERIC_OPS[op];
     if (!numericOp || !Number.isFinite(numeric)) return quantityNeedsNumber(text);
-    return Rule.quantity(setName, propName, numericOp, numeric, {
-      setNameKind: names.setNameKind,
-      quantityNameKind: names.propertyNameKind,
-    });
+    const kinds = { setNameKind: names.setNameKind, quantityNameKind: names.propertyNameKind };
+    return Rule.quantity(setName, propName, numericOp, numeric, kinds);
   }
 
   const valueOp = VALUE_OPS[op];
@@ -355,11 +372,10 @@ function regexProblem(value: SelectorText | SelectorValue): string | undefined {
  * Case-SENSITIVE, like the six other `Qto_` prefix tests in this repo (SDK,
  * lists, ids, ifcx): `Qto_` is a buildingSMART prefix with a fixed spelling,
  * and a selector answering differently from the rest of the app for the same
- * set name would be a surface disagreeing with itself.
- *
- * Sets carrying quantities under another name — Revit IFC2x3's
- * `BaseQuantities`, ArchiCAD's `ArchiCADQuantities` — are out of reach from a
- * selector, which `docs/guide/selector-syntax.md` says rather than guessing.
+ * set name would be a surface disagreeing with itself. Quantities written
+ * under a set with no such prefix (Revit's `BaseQuantities`, ArchiCAD's
+ * `ArchiCADQuantities`) are out of reach; `docs/guide/selector-syntax.md`
+ * says so rather than guessing.
  */
 function looksLikeQuantitySet(pset: SelectorText): boolean {
   if (pset.kind !== 'regex') return pset.text.startsWith('Qto_');
@@ -369,7 +385,6 @@ function looksLikeQuantitySet(pset: SelectorText): boolean {
   return /(?:^|[^A-Za-z0-9_])Qto_/.test(pset.source);
 }
 
-/** The sentence a `Qto_` term gets when it cannot become a quantity rule. */
 function quantityNeedsNumber(text: string): string {
   return `${quote(text)}: a Qto_ set is read from the quantity table, so it takes a numeric comparison against a number — not NULL, not "*=", not text`;
 }

@@ -257,10 +257,18 @@ fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
 /// `KernelError` for what is, logically, one operation on one structural
 /// item. Run several iterations and report the observed split honestly
 /// (scheduling races are not guaranteed to reproduce on every run).
-// #4083: see the #[ignore] note on `cache_hit_omits_the_kernel_error_the_cache_miss_recorded`
-// above — same reproduction contract, same reason.
+///
+/// Unlike its sibling `cache_hit_omits_the_kernel_error_the_cache_miss_recorded`
+/// (still `#[ignore]`d — that one exercises the still-open OMISSION half of
+/// #4067, a cache HIT never reaching the recording code at all), this test
+/// exercises the DOUBLE-COUNT half that #4083's `item_dedup_cache.rs`
+/// `claim_diagnostic` latch fixes directly: two racing MISSES of the same
+/// key. With the fix in place it is deterministic (25/25 single-counted,
+/// observed locally over multiple runs; the `Barrier` removes the scheduling
+/// window that made the old, unfixed code merely flaky rather than always
+/// wrong) and is run un-ignored so this is the test the #4083 fix is actually
+/// checked against.
 #[test]
-#[ignore = "known-bug reproduction for #4083 (open determinism half of #4067); fails by design until #4083 is fixed"]
 fn barrier_controlled_concurrent_miss_does_not_double_count() {
     const ITERATIONS: usize = 25;
     let mut double_counted = 0usize;

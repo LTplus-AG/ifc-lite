@@ -25,6 +25,16 @@ export interface PropertyOverride {
   value: string | number | boolean | null;
   /** True when the property was deleted rather than set. */
   deleted?: boolean;
+  /**
+   * The IFC measure dataType (e.g. `"IFCLENGTHMEASURE"`) `value` was
+   * scaled against at WRITE time. Only consulted when this override
+   * targets a property that doesn't already exist (below): the
+   * existing-entry branch always prefers the entity's OWN stored
+   * `dataType`, since that is authoritative over whatever the caller
+   * happened to pass. Absent/undefined behaves exactly as before — no
+   * scale applied, value spliced in as-is.
+   */
+  dataType?: string;
 }
 
 /**
@@ -124,17 +134,33 @@ export function resolveEffectivePropertySets(
           value: toBaseSI(override.value, existing.dataType, scales),
         };
       } else {
-        // No existing entry to read a dataType from, so `override.value`
-        // is spliced in as-is (unscaled). `PropertyOverride` carries no
-        // dataType of its own — see its doc — so a correction that
-        // CREATES a brand-new measure property (rather than correcting an
-        // existing one) is out of scope for this frame conversion.
-        pset.properties.push({ name: override.propName, value: override.value, dataType: '' });
+        // No existing entry to read a dataType from — this is a
+        // PROPERTY_MISSING correction (#3943): the property is being
+        // CREATED, not updated, so there is no sibling entry whose
+        // `dataType` `toBaseSI` could key off. Fall back to the
+        // dataType the override itself carries (the write path's own
+        // dataType — see `PropertyOverride.dataType`'s doc) and run it
+        // through the SAME `toBaseSI` helper as the branch above, so a
+        // brand-new measure property lands in the same base-SI frame as
+        // every other property in the pset instead of the model's raw
+        // frame. A caller that never supplies `dataType` keeps today's
+        // behaviour — no scale applied.
+        pset.properties.push({
+          name: override.propName,
+          value: toBaseSI(override.value, override.dataType, scales),
+          dataType: override.dataType ?? '',
+        });
       }
     } else {
+      // Same "no existing entry" reasoning as directly above, for a
+      // correction whose pset doesn't exist on the entity at all yet.
       result.push({
         name: override.psetName,
-        properties: [{ name: override.propName, value: override.value, dataType: '' }],
+        properties: [{
+          name: override.propName,
+          value: toBaseSI(override.value, override.dataType, scales),
+          dataType: override.dataType ?? '',
+        }],
       });
     }
   }

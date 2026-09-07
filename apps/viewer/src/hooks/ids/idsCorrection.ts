@@ -188,6 +188,7 @@ export interface PropertyMutationSink {
     propName: string,
     value: PropertyValue,
     valueType?: PropertyValueType,
+    dataType?: string,
   ): unknown;
   getPropertyValue(entityId: number, psetName: string, propName: string): PropertyValue | null;
 }
@@ -214,9 +215,10 @@ export function applyPropertyCorrection(
   target: CorrectionTarget,
   value: string | number | boolean,
   valueType: PropertyValueType,
+  dataType?: string,
 ): CorrectionApplyResult {
   try {
-    sink.setProperty(expressId, target.psetName, target.propName, value, valueType);
+    sink.setProperty(expressId, target.psetName, target.propName, value, valueType, dataType);
   } catch (err) {
     return {
       expressId,

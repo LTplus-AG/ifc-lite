@@ -32,6 +32,29 @@ now exposed so a caller projecting the overlay onto an external base can
 tell "no override", "override is a DELETE", and "override is a SET to
 null" apart.
 
+Also fixes a unit-frame mismatch in `resolveEffectivePropertySets`: a
+`PropertyOverride.value` is written in the model's raw storage frame
+(mirroring `MutablePropertyView.setProperty`), but every other property in
+the same pset had already been scaled to base SI by
+`projectProperty`/`applyUnitConversion`. Under a non-1.0 project length
+scale (e.g. a millimetre-authored project), a corrected value read back in
+the wrong frame — 1000x too large or too small — so an IDS re-check
+compared it against a base-SI literal as if it were already base-SI.
+Both directions now go through the same `resolveEntityMeasureScales` the
+base projection already uses: `resolveEffectivePropertySets` forward-scales
+an override's raw value into base SI before splicing it in, and
+`IDSCorrectionDialog.tsx` inverse-scales the user's base-SI input into the
+model's raw frame before writing. This covers a correction to a property
+that already exists in the pset (keyed off the existing entry's own
+`dataType`) AND one that creates a brand-new property (a PROPERTY_MISSING
+requirement): `PropertyOverride` gains an optional `dataType`, threaded
+from the dialog's own write-time dataType resolution through
+`MutablePropertyView.setProperty`'s new optional `dataType` parameter (also
+stored on `PropertyMutation`) so the "no existing entry" branch has
+something to scale by too, instead of splicing the raw value in unscaled.
+Non-measure dataTypes (labels, booleans, identifiers) pass through
+unscaled in both directions and for both cases.
+
 Also fixes a case-sensitivity mismatch in `resolveEffectivePropertySets`
 (the overlay merge behind `createDataAccessor`'s `propertyOverlay`
 parameter above): `getPropertyValue`/`getPropertySets` already match

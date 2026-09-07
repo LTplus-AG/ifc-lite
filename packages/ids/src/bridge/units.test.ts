@@ -164,5 +164,25 @@ describe('applyUnitConversion', () => {
       const result = applyUnitConversion(60, undefined, 'IFCTIMEMEASURE', 0.001);
       expect(result.value).toBe(60);
     });
+
+    /**
+     * Pins the measure-dataType match as EXACT, not "ends with"/"contains".
+     * `IFCMASSPERLENGTHMEASURE` is a real IFC4 type (kg/m — mass per unit
+     * length, unrelated to a length measurement) whose name ends in
+     * `LENGTHMEASURE`. Mutating the production predicate from `===` to
+     * `.includes('LENGTHMEASURE')` (or `.endsWith(...)`) would scale this
+     * by the length factor — silently wrong, kg/m values divided by 1000 —
+     * and every other test in this file, which only ever uses names that
+     * either exactly match or clearly don't, would keep passing regardless.
+     */
+    it('leaves IFCMASSPERLENGTHMEASURE untouched even though its name ends in LENGTHMEASURE', () => {
+      const result = applyUnitConversion(2, undefined, 'IFCMASSPERLENGTHMEASURE', 0.001);
+      expect(result.value).toBe(2);
+    });
+
+    it('control: IFCLENGTHMEASURE itself IS scaled by the same factor', () => {
+      const result = applyUnitConversion(2000, undefined, 'IFCLENGTHMEASURE', 0.001);
+      expect(result.value).toBe(2);
+    });
   });
 });

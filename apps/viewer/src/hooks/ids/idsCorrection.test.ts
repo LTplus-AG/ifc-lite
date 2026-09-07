@@ -254,4 +254,27 @@ describe('applyPropertyCorrection — write-then-verify (#3929)', () => {
     assert.ok(result.applied);
     assert.strictEqual(store.get('2:Pset_WallCommon:FireRating'), 'NONE');
   });
+
+  // #3943: `applyPropertyCorrection` must forward `dataType` to the sink
+  // unchanged — it's the only channel the write-side dataType (computed by
+  // `IDSCorrectionDialog.tsx`) has to reach `MutablePropertyView.setProperty`
+  // and, from there, the read-side overlay resolver that scales a
+  // PROPERTY_MISSING correction (`@ifc-lite/ids/bridge`'s
+  // `property-overlay-resolver.ts`). This pins the plumbing at THIS layer
+  // only — the dialog's own call site (which computes `dataType` and wires
+  // it into the viewer store's `setProperty` action, both untouched by this
+  // suite) is not exercised here; see this task's write-up for why that gap
+  // is accepted rather than closed with a heavier viewer-suite test.
+  it('forwards dataType through to the sink', () => {
+    const seen: Array<string | undefined> = [];
+    const sink: PropertyMutationSink = {
+      setProperty: (_entityId, _pset, _prop, _value, _valueType, dataType) => {
+        seen.push(dataType);
+      },
+      getPropertyValue: () => 900,
+    };
+
+    applyPropertyCorrection(sink, 7, { psetName: 'Pset_WallCommon', propName: 'MaxHeight' }, 900, PropertyValueType.Real, 'IFCLENGTHMEASURE');
+    assert.deepStrictEqual(seen, ['IFCLENGTHMEASURE']);
+  });
 });

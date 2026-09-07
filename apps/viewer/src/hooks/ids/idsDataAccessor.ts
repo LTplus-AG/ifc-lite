@@ -81,7 +81,18 @@ function buildOverlayResolver(mutationView: MutablePropertyView) {
         // rather than write a shape the bridge doesn't expect.
         continue;
       }
-      overrides.push({ psetName: mutation.psetName, propName: mutation.propName, value });
+      // `live.dataType` is set only when the writer knew one (currently
+      // the IDS correction dialog, #3929/#3943) — it lets the bridge's
+      // "no existing entry" branch (a PROPERTY_MISSING correction that
+      // CREATES a property) scale through `toBaseSI` the same way the
+      // "existing entry" branch already does. Absent for every other
+      // writer, which keeps their overrides behaving exactly as before.
+      overrides.push({
+        psetName: mutation.psetName,
+        propName: mutation.propName,
+        value,
+        dataType: live.dataType,
+      });
     }
     return overrides.length > 0 ? overrides : undefined;
   };

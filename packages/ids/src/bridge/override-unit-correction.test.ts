@@ -91,6 +91,39 @@ ${idsSpec('MinArea at least 0.9m2', 'MinArea', 'IFCAREAMEASURE', '0.9')}
 </ids>
 `;
 
+function idsSpecMax(name: string, baseName: string, dataType: string, maxInclusive: string): string {
+  return `    <specification name="${name}" ifcVersion="IFC4">
+      <applicability maxOccurs="unbounded">
+        <entity><name><simpleValue>IFCWALL</simpleValue></name></entity>
+      </applicability>
+      <requirements>
+        <property dataType="${dataType}">
+          <propertySet><simpleValue>Pset_WallCommon</simpleValue></propertySet>
+          <baseName><simpleValue>${baseName}</simpleValue></baseName>
+          <value>
+            <xs:restriction base="xs:double">
+              <xs:maxInclusive value="${maxInclusive}"/>
+            </xs:restriction>
+          </value>
+        </property>
+      </requirements>
+    </specification>`;
+}
+
+// `MaxHeight`/`MinDepth` are absent from `Pset_WallCommon` in `IFC` above —
+// a correction of either takes the "no existing entry" branch of
+// `resolveEffectivePropertySets` (PROPERTY_MISSING, #3943), not the
+// "existing entry" branch `IDS`'s MinWidth/MinArea specs above exercise.
+const IDS_NEW_PROPERTY = `<?xml version="1.0" encoding="utf-8"?>
+<ids xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://standards.buildingsmart.org/IDS http://standards.buildingsmart.org/IDS/1.0/ids.xsd" xmlns="http://standards.buildingsmart.org/IDS">
+  <info><title>Missing-property wall dimensions</title></info>
+  <specifications>
+${idsSpecMax('MaxHeight at most 1.0m', 'MaxHeight', 'IFCLENGTHMEASURE', '1.0')}
+${idsSpec('MinDepth at least 0.5m', 'MinDepth', 'IFCLENGTHMEASURE', '0.5')}
+  </specifications>
+</ids>
+`;
+
 async function parseIfc(source: string) {
   const bytes = new TextEncoder().encode(source);
   return new IfcParser().parseColumnar(bytes.buffer.slice(0) as ArrayBuffer);
@@ -196,5 +229,88 @@ describe('IDS property-correction overlay unit scale (#3929 / #3943)', () => {
     // A string value must pass through byte-identical — no scale applies
     // to IFCLABEL, and `toBaseSI`/`toRaw` must not coerce it to a number.
     expect(fireRating?.value).toBe('F90');
+  });
+
+  // #3943: a correction that CREATES a property (PROPERTY_MISSING — the
+  // property doesn't exist in the pset at all yet) took the "no existing
+  // entry" branch of `resolveEffectivePropertySets`, which spliced the raw
+  // override value in with no `toBaseSI` call — unlike the sibling branch
+  // just above it, which reads the existing entry's `dataType` and scales.
+  // These two cases cover both constraint directions: a `<=` requirement
+  // (the bug shows as a false FAIL — the raw value is 1000x too large) and
+  // a `>=` requirement (the bug coincidentally PASSES, since the
+  // unconverted raw value still clears the threshold — the read-back value
+  // is wrong with no validation-status symptom at all, which is why both
+  // tests assert the read-back value directly and not just spec status).
+
+  it('a corrected override for a MISSING property satisfies a <= requirement (false-fail direction)', async () => {
+    const store = await parseIfc(IFC);
+
+    // Same write-side conversion the dialog performs: user types "0.9"
+    // (metres, IDS-facing), the write path converts to the raw millimetre
+    // frame before storing.
+    const rawWritten = toRaw(0.9, 'IFCLENGTHMEASURE', { length: 0.001 });
+    expect(rawWritten).toBe(900);
+
+    const overrides = new Map<number, PropertyOverride[]>([
+      [7, [{
+        psetName: 'Pset_WallCommon',
+        propName: 'MaxHeight',
+        value: rawWritten as number,
+        dataType: 'IFCLENGTHMEASURE',
+      }]],
+    ]);
+    const accessor = createDataAccessor(store, (id) => overrides.get(id));
+
+    const height = accessor.getPropertySets(7)
+      .find((p) => p.name === 'Pset_WallCommon')
+      ?.properties.find((p) => p.name === 'MaxHeight');
+    expect(height?.value).toBe(0.9);
+
+    const doc = parseIDS(IDS_NEW_PROPERTY);
+    const report = await validateIDS(doc, accessor, {
+      modelId: 'm1',
+      schemaVersion: 'IFC4',
+      entityCount: 1,
+    });
+    const spec = report.specificationResults[0]; // MaxHeight <= 1.0
+    expect(spec.status).toBe('pass');
+    expect(spec.failedCount).toBe(0);
+  });
+
+  it('a corrected override for a MISSING property satisfies a >= requirement while the read-back value itself is correct (coincidental-pass direction)', async () => {
+    const store = await parseIfc(IFC);
+
+    const rawWritten = toRaw(0.9, 'IFCLENGTHMEASURE', { length: 0.001 });
+    expect(rawWritten).toBe(900);
+
+    const overrides = new Map<number, PropertyOverride[]>([
+      [7, [{
+        psetName: 'Pset_WallCommon',
+        propName: 'MinDepth',
+        value: rawWritten as number,
+        dataType: 'IFCLENGTHMEASURE',
+      }]],
+    ]);
+    const accessor = createDataAccessor(store, (id) => overrides.get(id));
+
+    // The value assertion is the one that actually catches this direction
+    // of the bug: 900 (raw, unconverted) satisfies ">= 0.5" numerically
+    // just as much as the correct 0.9 does, so `spec.status` alone stays
+    // 'pass' whether or not the fix is applied.
+    const depth = accessor.getPropertySets(7)
+      .find((p) => p.name === 'Pset_WallCommon')
+      ?.properties.find((p) => p.name === 'MinDepth');
+    expect(depth?.value).toBe(0.9);
+
+    const doc = parseIDS(IDS_NEW_PROPERTY);
+    const report = await validateIDS(doc, accessor, {
+      modelId: 'm1',
+      schemaVersion: 'IFC4',
+      entityCount: 1,
+    });
+    const spec = report.specificationResults[1]; // MinDepth >= 0.5
+    expect(spec.status).toBe('pass');
+    expect(spec.failedCount).toBe(0);
   });
 });

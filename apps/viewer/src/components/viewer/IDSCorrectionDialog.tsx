@@ -213,8 +213,8 @@ export function IDSCorrectionDialog({
 
         const result = applyPropertyCorrection(
           {
-            setProperty: (entityId, pset, prop, v, vt) =>
-              setStoreProperty(modelId, entityId, pset, prop, v, vt),
+            setProperty: (entityId, pset, prop, v, vt, dt) =>
+              setStoreProperty(modelId, entityId, pset, prop, v, vt, dt),
             getPropertyValue: (entityId, pset, prop) =>
               mutationView!.getPropertyValue(entityId, pset, prop),
           },
@@ -222,6 +222,7 @@ export function IDSCorrectionDialog({
           activeRequirement.target,
           value,
           valueType,
+          dataType,
         );
         applied.push(result);
       }

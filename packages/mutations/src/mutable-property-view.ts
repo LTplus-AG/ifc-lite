@@ -419,6 +419,11 @@ export class MutablePropertyView {
    * Set a property value
    * If the property set doesn't exist, creates it automatically
    * @param skipHistory - If true, don't add to mutation history (used for undo/redo)
+   * @param dataType - IFC measure dataType this value was scaled against at
+   *   write time (e.g. an IDS correction, #3929/#3943), stored on the
+   *   `PropertyMutation` for a read-side overlay that needs to convert it
+   *   between unit frames. New, additive, optional — every existing caller
+   *   is unaffected.
    */
   setProperty(
     entityId: number,
@@ -427,7 +432,8 @@ export class MutablePropertyView {
     value: PropertyValue,
     valueType: PropertyValueType = PropertyValueType.String,
     unit?: string,
-    skipHistory: boolean = false
+    skipHistory: boolean = false,
+    dataType?: string
   ): Mutation {
     const key = propertyKey(entityId, psetName, propName);
 
@@ -521,6 +527,7 @@ export class MutablePropertyView {
       value,
       valueType,
       unit,
+      dataType,
     });
 
     const mutation: Mutation = {

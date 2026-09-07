@@ -7,6 +7,7 @@
 //! Includes synchronous and async mesh parsing, instanced geometry,
 //! and GPU-ready geometry generation.
 
+mod affinity_chunks;
 mod batch;
 mod batch_from_source;
 mod batch_partition;

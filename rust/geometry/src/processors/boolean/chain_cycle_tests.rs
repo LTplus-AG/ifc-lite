@@ -896,3 +896,67 @@ fn an_operand_shared_between_two_branches_is_not_a_cycle() {
         );
     }
 }
+
+/// A #3922-review hypothesis: `solo_step` was `spine.len() == 1`, applied
+/// uniformly to every node in `spine`. But a longer chain's top-level batch
+/// can fail for a reason specific to its OUTERMOST cutter while the very
+/// next suffix batches cleanly, leaving `spine` holding only that outermost
+/// node — `spine.len() == 1` — even though its cutter has siblings (the ones
+/// the suffix already folded into the mesh). If that lone node then hits an
+/// accept-gate rejection, the old `solo_step = true` sent it to the riskier
+/// unbounded `FallThrough` instead of the safer `KeepUncut` — exactly the
+/// over-cut `!solo_step` exists to prevent.
+///
+/// House.ifc wall #2152's real chain (fixture: issue #960) reproduces the
+/// shape without any synthetic geometry: entity #2146 (8 PBHS cutters) is
+/// the node whose own top-level batch fails (its accept-gate rejects), while
+/// the very next level, #2145 (7 cutters), batches cleanly. In the full
+/// wall-#2152 chain (topmost #2149, 11 cutters) that leaves #2146 as one of
+/// 4 nodes still in `spine`, so `solo_step` was already correctly `false`
+/// there. Entering the SAME real geometry graph directly at #2146 — a
+/// perfectly valid `IfcBooleanClippingResult` node; nothing in the IFC
+/// schema requires the chain above it to exist — simulates an authored
+/// element whose own representation root IS #2146: `spine` then holds only
+/// `[#2146]`, so the old code set `solo_step = true` even though #2146's
+/// cutter has the same 7 siblings, already batched, right below it.
+#[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+#[test]
+fn solo_step_accounts_for_a_batched_suffix_not_just_spine_length() {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../tests/models/issues/960_house_segmented_roof_clip.ifc");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(s) if !s.starts_with("version https://git-lfs.github.com/spec/") => s,
+        _ => {
+            eprintln!(
+                "skipping: fixture issues/960_house_segmented_roof_clip.ifc not present \
+                 (or an LFS pointer) — run `pnpm fixtures`"
+            );
+            return;
+        }
+    };
+    let mut decoder = EntityDecoder::new(&content);
+    let entity = decoder.decode_by_id(2146).expect("decode #2146");
+    let processor = BooleanClippingProcessor::new();
+    let schema = IfcSchema::new();
+    let mesh = processor
+        .process(&entity, &mut decoder, &schema, TessellationQuality::Medium)
+        .expect("process #2146 chain");
+    assert!(!mesh.is_empty(), "#2146's chain must not render as empty");
+    let (_, mx) = mesh.bounds();
+    // Before the fix: `solo_step` was wrongly `true` here, so the accept-gate
+    // rejection on #2146's own cutter fell through to the unbounded plane
+    // clip and OVER-cut the already-batched 7-cutter result down to max
+    // Z ~= 2735.6 mm. After the fix, `solo_step` is correctly `false` (the
+    // 7-cutter suffix batched below #2146 means it is not alone), so the
+    // rejection keeps that step's host un-cut instead, landing at
+    // max Z ~= 4475.3 mm — the un-cut 7-cutter-batched mesh, not a
+    // secondary over-cut of it.
+    assert!(
+        (mx.z - 4475.3).abs() < 1.0,
+        "#2146 max Z = {:.1} mm, expected ~4475.3 mm (KeepUncut, not an \
+         unbounded-fallback over-cut). A value near 2735.6 means solo_step \
+         was miscomputed from spine.len() alone again, ignoring that a \
+         nested batch already folded this cutter's siblings into the mesh.",
+        mx.z,
+    );
+}

@@ -411,6 +411,22 @@ test('classifyPath: test sources', () => {
   assert.equal(classifyPath('packages/core/src/__snapshots__/a.snap'), 'test');
 });
 
+// #4050: `TEST_FILE_RE` recognised only JS/TS suffixes and Rust `_tests.rs`, so
+// a real file in this repo -- tools/ifcopenshell_reference/test_harness.py --
+// was bucketed as PRODUCTION, making its coverage invisible to the oracle.
+test('classifyPath: Python `test_*.py` / `*_test.py` are tests, not production (#4050)', () => {
+  assert.equal(classifyPath('tools/ifcopenshell_reference/test_harness.py'), 'test');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/test_validate_export.py'), 'test');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/validate_export_test.py'), 'test');
+  assert.equal(classifyPath('a/b/c/test_deep.py'), 'test');
+});
+
+test('classifyPath: a Python module that merely CONTAINS "test" stays production', () => {
+  assert.equal(classifyPath('tools/ifcopenshell_reference/canonical.py'), 'production');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/latest_export.py'), 'production');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/testing_helpers.py'), 'production');
+});
+
 test('#4016: separate Rust sibling modules are tests; inline production stays production', () => {
   for (const path of ['rust/geometry/src/router/processor_registry_tests.rs',
     'rust/geometry/src/router/tests.rs', 'rust/core/src/parser/scanner_tests.rs']) {

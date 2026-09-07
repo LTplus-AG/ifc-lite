@@ -30,12 +30,19 @@ impl BooleanClippingProcessor {
     /// Subtract `bound_mesh` from `mesh` and decide how `apply_boolean_step`'s
     /// `IfcPolygonalBoundedHalfSpace` branch should react.
     ///
-    /// `solo_step` is true when this is the ONLY node the caller's spine walk
-    /// deferred to — a genuine single-PBHS-cutter DIFFERENCE (#3923's target
-    /// shape, e.g. duplex.ifc's "Party Wall"). It is false when this is one
-    /// of several nodes from a longer authored chain that couldn't be
+    /// `solo_step` is true only when this cutter truly has no sibling
+    /// anywhere — the ONLY node the caller's spine walk deferred to AND the
+    /// mesh it is cutting is the untouched base (no nested batch succeeded
+    /// below it): a genuine single-PBHS-cutter DIFFERENCE (#3923's target
+    /// shape, e.g. duplex.ifc's "Party Wall"). It is false both when this is
+    /// one of several nodes from a longer authored chain that couldn't be
     /// batched at any level and is now being applied one cutter at a time
-    /// (House.ifc wall #2152, issue #960).
+    /// (House.ifc wall #2152, issue #960), AND when this is the single
+    /// leftover spine node but a nested `try_union_polygonal_chain` batch
+    /// already folded its own siblings into the mesh one level down — that
+    /// lone node's cutter is not alone either, even though `spine.len() ==
+    /// 1` for it (a longer chain whose top-level batch fails only because of
+    /// this outermost cutter, while the suffix below it batches cleanly).
     ///
     /// `subtract_checked` (the #3919 helper `polygonal_prism.rs` already
     /// uses for the batched-chain path) folds in the accept-gate check: a

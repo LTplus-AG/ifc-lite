@@ -143,3 +143,11 @@ apps/*/tsconfig.tests.json
 # the negation is a no-op, and scripts/check-ci-path-coverage.mjs throws on any
 # negated pattern in this file.
 .cursor/
+
+# scripts/perf/browser-cold-ab.mts (#3978): raw per-sample JSON/console-log/
+# screenshot evidence and any private local-corpus manifest. The corpus
+# manifest points at local file paths outside the repo (private, sometimes
+# multi-GB models) and must never be committed; see browser-corpus.example.json
+# for the shape.
+scripts/perf/.browser-cold-ab-results/
+scripts/perf/browser-corpus.local.json

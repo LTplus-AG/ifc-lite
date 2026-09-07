@@ -14,6 +14,14 @@
 //! Pulled the message choice out into its own pure function so the text can
 //! be asserted directly, without standing up a tracing-subscriber capture
 //! harness just to check a string literal.
+//!
+//! Its tests live in the sibling `csg_summary_tests.rs`, declared from
+//! `processor/mod.rs` (same pattern as `determinism_tests.rs` /
+//! `simplify_session_tests.rs` off `lib.rs`), rather than as an inline
+//! `#[cfg(test)] mod tests` here: an inline `mod tests` lives inside the
+//! same file `scripts/check-test-revert-oracle.mjs` reverts to prove a
+//! changed test observes the production change it covers, so it would be
+//! deleted along with the code on that revert.
 
 /// Choose the summary phrase for the CSG diagnostics warning, given how many
 /// of this load's records are genuine drops (host kept uncut) versus
@@ -28,45 +36,5 @@ pub(super) fn csg_summary_message(dropped: usize, open_topology_accepted: usize)
         "CSG failures during geometry extraction (cut dropped, host kept uncut)"
     } else {
         "CSG diagnostics during geometry extraction (mix of cuts dropped with host kept uncut, and accepted results that recorded an open-topology audit finding with mesh unchanged)"
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::csg_summary_message;
-
-    /// RED before #4067's fix: every record described as a drop, even when
-    /// `open_topology_accepted` (KernelError — mesh unchanged) accounts for
-    /// all of them.
-    #[test]
-    fn all_open_topology_accepts_are_not_described_as_dropped() {
-        let msg = csg_summary_message(0, 3);
-        assert!(
-            !msg.contains("cut dropped"),
-            "an accepted open-topology result must not be described as a dropped cut: {msg:?}"
-        );
-        assert!(
-            msg.contains("open-topology"),
-            "message should name what was actually recorded: {msg:?}"
-        );
-    }
-
-    #[test]
-    fn all_drops_keep_the_original_wording() {
-        let msg = csg_summary_message(4, 0);
-        assert_eq!(
-            msg,
-            "CSG failures during geometry extraction (cut dropped, host kept uncut)"
-        );
-    }
-
-    #[test]
-    fn mixed_records_name_both_kinds() {
-        let msg = csg_summary_message(2, 1);
-        assert!(msg.contains("dropped"), "mixed message drops half: {msg:?}");
-        assert!(
-            msg.contains("open-topology"),
-            "mixed message should still name the accepted half: {msg:?}"
-        );
     }
 }

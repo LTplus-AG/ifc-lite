@@ -24,6 +24,9 @@ use std::sync::Arc;
 
 mod color_layer;
 mod csg_summary;
+#[cfg(test)]
+#[path = "csg_summary_tests.rs"]
+mod csg_summary_tests;
 mod diagnostics;
 mod entity_index;
 use entity_index::{IndexBuilder, ProcessingIndex};

@@ -3,13 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Add <query> as rule" in the Filter tab now reads the search bar as a
- * selector when the whole thing maps cleanly, and keeps the historical
- * `Name contains` otherwise (#4091).
+ * "Add <query> as rule" in the Filter tab reads the search bar as a selector,
+ * and keeps the historical `Name contains` for text that is not one (#4091).
  *
- * The fallback is the half worth pinning: a partial selector reading would
- * drop the part it could not carry, which is the silent-empty-result shape
- * this change exists to remove.
+ * The half worth pinning is the partial reading: it applies what it can and
+ * NAMES what it cannot, the same policy the Selector field above it uses.
+ * Falling back to `Name contains` on the whole string, as this used to, added
+ * a rule matching zero elements with nothing to read — the silent empty result
+ * this change exists to remove, reached from the other entry point.
  */
 
 import '@/test/setup-dom.js';
@@ -17,6 +18,7 @@ import '@/test/setup-dom.js';
 import { afterEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { render, cleanup, click } from '@/test/render.js';
+import { Toaster } from '@/components/ui/toast';
 import { fixtureModel, fixtureModels } from '@/test/store-fixture.js';
 import { useViewerStore } from '@/store';
 import { Rule } from '@/lib/search/filter-rules';
@@ -28,7 +30,12 @@ function mountWithQuery(searchQuery: string): HTMLElement {
     searchQuery,
     searchFilter: { rules: [], combinator: 'AND', limit: 500 },
   });
-  return render(<SearchModalFilterBuilder />);
+  return render(
+    <>
+      <SearchModalFilterBuilder />
+      <Toaster />
+    </>,
+  );
 }
 
 function promote(container: HTMLElement): void {
@@ -67,9 +74,21 @@ describe('Filter tab — promoting the search bar query', () => {
     assert.deepEqual(rules(), [Rule.name('contains', 'Wand')]);
   });
 
-  it('a selector the adapter cannot fully carry falls back rather than dropping a part', () => {
+  it('a selector the adapter can only partly carry applies the rest and says so', () => {
     const container = mountWithQuery('IfcWall, type=WT01');
     promote(container);
-    assert.deepEqual(rules(), [Rule.name('contains', 'IfcWall, type=WT01')]);
+    // The type rule is real and is applied; the `type=` term is named, not
+    // dropped and not turned into a Name-contains that matches nothing.
+    assert.deepEqual(rules(), [
+      Rule.ifcType(['IfcWall', 'IfcWallElementedCase', 'IfcWallStandardCase'], 'in'),
+    ]);
+    assert.match(container.textContent ?? '', /type=WT01/);
+  });
+
+  it('a selector with no rule at all reports instead of adding a guaranteed miss', () => {
+    const container = mountWithQuery('parent=Foo');
+    promote(container);
+    assert.deepEqual(rules(), []);
+    assert.match(container.textContent ?? '', /parent=Foo/);
   });
 });

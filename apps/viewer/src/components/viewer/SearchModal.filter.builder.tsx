@@ -80,20 +80,34 @@ export function SearchModalFilterBuilder() {
   );
 
   /**
-   * The search bar's text as rules. It reads as a selector when it parses
-   * cleanly AND the adapter can carry all of it — `IfcWall, Name=/D[0-9]{2}/`
-   * becomes a type rule and a Name rule. Anything else, including a plain
-   * `Wand`, stays the `Name contains` it has always been.
+   * The search bar's text as rules, through the same reading the Selector
+   * field uses. `IfcWall, Name=/D[0-9]{2}/` becomes a type rule and a Name
+   * rule; text that is not a selector at all — a plain `Wand` — stays the
+   * `Name contains` it has always been.
+   *
+   * A selector the adapter can only partly carry now applies the part it can
+   * and NAMES the rest. It used to fall through to `Name contains` on the
+   * whole string, so `IfcWall, type=WT01` silently added a rule matching zero
+   * elements with nothing to read: the defect #4091 reported, reached from the
+   * other entry point. Two surfaces reading the same text cannot disagree
+   * about whether the user is owed an explanation.
    */
   const promoteSearchQuery = useCallback(() => {
     const q = searchQuery.trim();
     if (!q) return;
     const reading = readSelector(q, { schemaVersion });
-    if (reading.ok && reading.rules.length > 0 && reading.unsupported.length === 0) {
-      for (const rule of reading.rules) addFilterRule(rule);
+    if (!reading.ok) {
+      addFilterRule(Rule.name('contains', q));
       return;
     }
-    addFilterRule(Rule.name('contains', q));
+    if (reading.rules.length === 0) {
+      toast.error(`Nothing in that selector maps to a filter rule yet: ${reading.unsupported.join('; ')}`);
+      return;
+    }
+    for (const rule of reading.rules) addFilterRule(rule);
+    if (reading.unsupported.length > 0) {
+      toast.info(`Added without these parts: ${reading.unsupported.join('; ')}`);
+    }
   }, [addFilterRule, schemaVersion, searchQuery]);
 
   // ── Preset handlers ─────────────────────────────────────────────────

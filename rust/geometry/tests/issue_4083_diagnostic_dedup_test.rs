@@ -140,17 +140,47 @@ fn fresh_decoder(content: &'static str) -> EntityDecoder<'static> {
     EntityDecoder::with_index(content.as_bytes(), index)
 }
 
+/// Did this router record (and keep) its OWN open-topology-tear diagnostic —
+/// as opposed to how MANY raw `BoolFailure` records it produced, or which of
+/// the three mutually-exclusive reasons `audit_and_gate_union` classified the
+/// tear as. Returns `1` if at least one qualifying record survived, else `0`.
+///
+/// `union.rs::audit_and_gate_union` records `KernelError` (the ungated
+/// #3440-step-1 informational tear, `csg/topology_diagnostic.rs`
+/// `record_topology_tear`) only when NEITHER gate rejects; `NonManifoldRejected`
+/// (`csg_manifold_gate`) and `OpenTopologyRejected` (`csg_topology_gate`) are
+/// each decided independently (`accept_gates_reject` ORs, without
+/// short-circuiting, so it can legitimately record BOTH for one tear when
+/// both gate features are on — `topology_diagnostic.rs`'s own doc says so).
+/// So the number of raw records a single operation produces is a build-config
+/// artifact, not a fact about how many DISTINCT operations tore; a raw count
+/// comparison across gate combinations is not meaningful and this test does
+/// not attempt one — it only asks whether each item's own tear was recorded
+/// at all.
+///
+/// WALL_A and WALL_B are two structurally different tears; nothing requires
+/// them to land in the SAME reason bucket, and empirically they do not —
+/// under `csg_manifold_gate` alone WALL_A's tear falls through to
+/// `KernelError` while WALL_B's trips the stricter edge-multiplicity check
+/// and is recorded as `NonManifoldRejected` instead. A filter that only
+/// recognised `KernelError` would read WALL_B as "not counted" even though
+/// its diagnostic was recorded and correctly claimed — conflating "which
+/// bucket" with "was it counted at all", which is what this test actually
+/// asserts.
 fn kernel_error_count(router: &GeometryRouter) -> usize {
-    router
-        .take_csg_failures()
-        .values()
-        .flatten()
-        .filter(|f| matches!(f.reason, BoolFailureReason::KernelError(_)))
-        .count()
+    let recorded = router.take_csg_failures().values().flatten().any(|f| {
+        matches!(
+            f.reason,
+            BoolFailureReason::KernelError(_)
+                | BoolFailureReason::OpenTopologyRejected
+                | BoolFailureReason::NonManifoldRejected { .. }
+        )
+    });
+    usize::from(recorded)
 }
 
 /// Two structurally DISTINCT open-topology unions, sharing ONE
-/// `ItemDedupCache`, must both record their own `KernelError` — the #4083
+/// `ItemDedupCache`, must both record their own tear diagnostic — the #4083
 /// double-count fix's per-`item_dedup_key` claim must not conflate them just
 /// because they share a cache. If this collapsed to 1 the fix would be
 /// undercounting real, independent defects, which #4083's brief calls out as

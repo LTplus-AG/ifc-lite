@@ -843,6 +843,19 @@ it does not establish a performance gain or neutrality. Keep endpoint readiness,
 cache completion and offline witness cost separate, and never extrapolate a
 processing-probe gain to the shipping HTTP artifact.
 [Sanitized screen and limitations](evidence/server-json-roundtrip-4064/README.md).
+### Rejected owned server mesh-batch transfer (#4066)
+
+An owned sink in the canonical processing loop removed the server bridge's deep
+mesh-buffer copy while preserving borrowed callers, retained output, batching,
+progress, styling and cancellation. Exact output and actual cache replay passed,
+but the prespecified HTTP readiness continuation gate failed: the small and MEP
+models were slower in their single pairs, and the largest model's modest time
+improvement accompanied higher sampled RSS. The implementation was not landed
+or expanded to the wider corpus. A source-level copy removal is not an
+end-to-end gain; unbounded downstream ownership and other pipeline work remain
+relevant costs. This screen does not establish precise attribution or a physical
+memory benefit. [Complete verdict, limits and reproducible rejected source](evidence/rejected-owned-batches-2026-09-07/README.md).
+
 ## Current-source native PGO qualification (#4059, not shipped)
 
 Fresh profile training on five public fixtures produced a broad held-out

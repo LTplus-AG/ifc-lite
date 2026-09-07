@@ -1,0 +1,372 @@
+diff --git a/apps/server/src/services/streaming.rs b/apps/server/src/services/streaming.rs
+index ab0569fadd8c27238ca860ef0719cbc53af3d2ca..3efc1fd2c0de4203e6a6e77770c8aeb96777084c 100644
+--- a/apps/server/src/services/streaming.rs
++++ b/apps/server/src/services/streaming.rs
+@@ -8 +8 @@
+-//! blocking task runs `process_geometry_streaming_filtered_with_options`
++//! blocking task runs `process_geometry_streaming_filtered_with_owned_batches`
+@@ -27 +27 @@ use ifc_lite_processing::{
+-    extract_symbolic_data, process_geometry_streaming_filtered_with_options, OpeningFilterMode,
++    extract_symbolic_data, process_geometry_streaming_filtered_with_owned_batches, OpeningFilterMode,
+@@ -109 +109 @@ pub fn process_streaming(
+-        let result = process_geometry_streaming_filtered_with_options(
++        let result = process_geometry_streaming_filtered_with_owned_batches(
+@@ -144 +144 @@ pub fn process_streaming(
+-                        meshes: meshes.to_vec(),
++                        meshes,
+diff --git a/docs/api/rust.md b/docs/api/rust.md
+index 8302d5fada23993800fb0d4e037d5ee1fbb6d20f..30eeb5e9f49378d15303b644a66219370008f95c 100644
+--- a/docs/api/rust.md
++++ b/docs/api/rust.md
+@@ -496,0 +497 @@ pub use processor::{
++    process_geometry_streaming_filtered_with_owned_batches,
+@@ -512,0 +514,8 @@ pub use parallel_scan::build_entity_index_parallel;
++`process_geometry_streaming_filtered_with_owned_batches` delivers each batch as
++`Vec<MeshData>` to a callback receiving the processed and total job counts. With
++`StreamingOptions.retain_emitted_meshes = false`, mesh buffers transfer to that
++callback. With retention enabled, batches are cloned so the callback and returned
++`ProcessingResult` each own their meshes. The existing borrowed callbacks remain
++available; both forms use the same processing loop, batch boundaries, styling
++callbacks and cooperative cancellation checks.
++
+diff --git a/rust/processing/src/lib.rs b/rust/processing/src/lib.rs
+index 9fe4074a684bd8ec3215a2c9542e770193ecfe92..58861ee59f16f75de2ab256fad7963ff1d5e49bb 100644
+--- a/rust/processing/src/lib.rs
++++ b/rust/processing/src/lib.rs
+@@ -77,0 +78 @@ pub use processor::{
++    process_geometry_streaming_filtered_with_owned_batches,
+diff --git a/rust/processing/src/processor/batch_sink.rs b/rust/processing/src/processor/batch_sink.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0814d2663f47ba063db0f5cba6fcfdcf8b831d0d
+--- /dev/null
++++ b/rust/processing/src/processor/batch_sink.rs
+@@ -0,0 +1,92 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! Batch ownership adapters for the single canonical processing loop.
++
++use super::{MeshData, OpeningFilterMode, ProcessingResult, QuickMetadataBootstrap, StreamingOptions};
++
++pub(super) trait BatchSink {
++    fn emit(
++        &mut self,
++        meshes: &mut Vec<MeshData>,
++        size: usize,
++        processed: usize,
++        total: usize,
++        retain: bool,
++    );
++}
++
++struct BorrowedBatch<F>(F);
++
++impl<F: FnMut(&[MeshData], usize, usize)> BatchSink for BorrowedBatch<F> {
++    fn emit(&mut self, meshes: &mut Vec<MeshData>, size: usize, processed: usize, total: usize, _retain: bool) {
++        for batch in meshes.chunks(size) {
++            (self.0)(batch, processed, total);
++        }
++    }
++}
++
++struct OwnedBatch<F>(F);
++
++impl<F: FnMut(Vec<MeshData>, usize, usize)> BatchSink for OwnedBatch<F> {
++    fn emit(&mut self, meshes: &mut Vec<MeshData>, size: usize, processed: usize, total: usize, retain: bool) {
++        if retain {
++            // Dual ownership requires a copy. Preserve returned meshes and the
++            // borrowed API's callback-before-retention order for these callers.
++            for batch in meshes.chunks(size) {
++                (self.0)(batch.to_vec(), processed, total);
++            }
++            return;
++        }
++        let owned = std::mem::take(meshes);
++        if owned.is_empty() {
++            return;
++        }
++        if owned.len() <= size {
++            // Common case: move even the outer allocation into the receiver.
++            (self.0)(owned, processed, total);
++            return;
++        }
++        let mut remaining = owned.into_iter();
++        while remaining.len() > 0 {
++            // Only MeshData descriptors move. Positions, normals, indices and
++            // optional payload buffers retain their allocations and order.
++            (self.0)(remaining.by_ref().take(size).collect(), processed, total);
++        }
++    }
++}
++
++/// Process IFC content with parallel geometry extraction and configurable streaming behavior.
++pub fn process_geometry_streaming_filtered_with_options(
++    content: &[u8],
++    opening_filter: OpeningFilterMode,
++    options: StreamingOptions,
++    on_batch: impl FnMut(&[MeshData], usize, usize),
++    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
++    on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
++) -> ProcessingResult {
++    super::process_geometry_with_sink(content, opening_filter, options, BorrowedBatch(on_batch), on_color_update, on_quick_metadata_bootstrap)
++}
++
++/// Emit owned batches from the canonical processing loop.
++///
++/// With `retain_emitted_meshes = false`, mesh buffers move to the callback
++/// without cloning. With retention enabled, batches are copied so both the
++/// callback and the returned result own their meshes. Batch boundaries,
++/// callback progress, styling and cooperative cancellation match
++/// [`process_geometry_streaming_filtered_with_options`].
++pub fn process_geometry_streaming_filtered_with_owned_batches(
++    content: &[u8],
++    opening_filter: OpeningFilterMode,
++    options: StreamingOptions,
++    on_batch: impl FnMut(Vec<MeshData>, usize, usize),
++    on_color_update: impl FnMut(&[(u32, [f32; 4])]),
++    on_quick_metadata_bootstrap: impl FnMut(&QuickMetadataBootstrap),
++) -> ProcessingResult {
++    super::process_geometry_with_sink(content, opening_filter, options, OwnedBatch(on_batch), on_color_update, on_quick_metadata_bootstrap)
++}
++
++#[cfg(test)]
++#[path = "batch_sink_tests.rs"]
++mod tests;
+diff --git a/rust/processing/src/processor/batch_sink_tests.rs b/rust/processing/src/processor/batch_sink_tests.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0daa413a894348d3242bde72201308339e7f9e2e
+--- /dev/null
++++ b/rust/processing/src/processor/batch_sink_tests.rs
+@@ -0,0 +1,68 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! #4066: ownership transfer must retain buffer identity and batch boundaries.
++
++use super::{BatchSink, BorrowedBatch, MeshData, OwnedBatch};
++
++fn mesh(id: u32) -> MeshData {
++    let mut mesh = MeshData::new(id, "IfcWall".into(), vec![id as f32, -0.0, 1.0], vec![0.0, 0.0, 1.0], vec![0, 0, 0], [0.2, 0.3, 0.4, 1.0]);
++    mesh.uvs = Some(vec![0.25, 0.75]);
++    mesh
++}
++
++#[test]
++fn owned_nonretained_split_moves_every_inner_buffer_without_copying() {
++    let mut input: Vec<_> = (0..5).map(mesh).collect();
++    let pointers: Vec<_> = input.iter().map(|m| (m.positions.as_ptr(), m.normals.as_ptr(), m.indices.as_ptr(), m.uvs.as_ref().unwrap().as_ptr())).collect();
++    let mut batches = Vec::new();
++    OwnedBatch(|batch: Vec<MeshData>, processed, total| batches.push((batch, processed, total)))
++        .emit(&mut input, 2, 7, 11, false);
++    assert!(input.is_empty());
++    assert_eq!(batches.iter().map(|(b, _, _)| b.len()).collect::<Vec<_>>(), [2, 2, 1]);
++    assert!(batches.iter().all(|(_, processed, total)| (*processed, *total) == (7, 11)));
++    let emitted: Vec<_> = batches.iter().flat_map(|(b, _, _)| b).collect();
++    assert_eq!(emitted.iter().map(|m| m.express_id).collect::<Vec<_>>(), [0, 1, 2, 3, 4]);
++    for (index, m) in emitted.iter().enumerate() {
++        assert_eq!((m.positions.as_ptr(), m.normals.as_ptr(), m.indices.as_ptr(), m.uvs.as_ref().unwrap().as_ptr()), pointers[index]);
++        assert_eq!(m.positions[1].to_bits(), (-0.0_f32).to_bits());
++    }
++}
++
++#[test]
++fn owned_single_batch_moves_outer_allocation_too() {
++    let mut input: Vec<_> = (0..3).map(mesh).collect();
++    let pointer = input.as_ptr();
++    let mut received = None;
++    OwnedBatch(|batch: Vec<MeshData>, _, _| received = Some(batch)).emit(&mut input, 3, 3, 3, false);
++    let received = received.unwrap();
++    assert_eq!(received.as_ptr(), pointer);
++    assert!(input.is_empty());
++}
++
++#[test]
++fn retained_owned_batches_keep_two_independent_owners_and_borrowed_stays_borrowed() {
++    let mut input = vec![mesh(1), mesh(2)];
++    let pointer = input[0].positions.as_ptr();
++    let mut received = Vec::new();
++    OwnedBatch(|batch: Vec<MeshData>, _, _| received.extend(batch)).emit(&mut input, 1, 2, 2, true);
++    assert_eq!(input.len(), 2);
++    assert_eq!(input[0].positions.as_ptr(), pointer);
++    assert_ne!(received[0].positions.as_ptr(), pointer);
++    received[0].positions[0] = 99.0;
++    assert_eq!(input[0].positions[0], 1.0);
++    let mut seen = Vec::new();
++    BorrowedBatch(|batch: &[MeshData], _, _| seen.push(batch[0].positions.as_ptr()))
++        .emit(&mut input, 1, 2, 2, false);
++    assert_eq!(seen[0], pointer);
++    assert_eq!(input.len(), 2);
++}
++
++#[test]
++fn empty_chunks_never_emit_callbacks_in_either_ownership_mode() {
++    let mut empty = Vec::new();
++    OwnedBatch(|_: Vec<MeshData>, _, _| panic!("empty owned callback")).emit(&mut empty, 1, 0, 0, false);
++    OwnedBatch(|_: Vec<MeshData>, _, _| panic!("empty retained callback")).emit(&mut empty, 1, 0, 0, true);
++    BorrowedBatch(|_: &[MeshData], _, _| panic!("empty borrowed callback")).emit(&mut empty, 1, 0, 0, false);
++}
+diff --git a/rust/processing/src/processor/mod.rs b/rust/processing/src/processor/mod.rs
+index ce3265d2767ebdbb822c430d4f32781aa4f5d10c..f36707077d486f5bd1ab49f278142af6ea556afb 100644
+--- a/rust/processing/src/processor/mod.rs
++++ b/rust/processing/src/processor/mod.rs
+@@ -24,0 +25,2 @@ use std::sync::Arc;
++mod batch_sink;
++pub use batch_sink::{process_geometry_streaming_filtered_with_options, process_geometry_streaming_filtered_with_owned_batches};
+@@ -461,2 +463,2 @@ pub fn process_geometry_streaming_filtered(
+-/// Process IFC content with parallel geometry extraction and configurable streaming behavior.
+-pub fn process_geometry_streaming_filtered_with_options(
++/// Shared orchestrator; batch adapters change ownership only.
++fn process_geometry_with_sink(
+@@ -466 +468 @@ pub fn process_geometry_streaming_filtered_with_options(
+-    mut on_batch: impl FnMut(&[MeshData], usize, usize),
++    mut on_batch: impl batch_sink::BatchSink,
+@@ -1371 +1373 @@ pub fn process_geometry_streaming_filtered_with_options(
+-        let chunk_meshes: Vec<MeshData> = jobs_chunk
++        let mut chunk_meshes: Vec<MeshData> = jobs_chunk
+@@ -1448,3 +1450 @@ pub fn process_geometry_streaming_filtered_with_options(
+-            for emitted_meshes in chunk_meshes.chunks(emit_mesh_chunk_size) {
+-                on_batch(emitted_meshes, processed_jobs, total_jobs);
+-            }
++            on_batch.emit(&mut chunk_meshes, emit_mesh_chunk_size, processed_jobs, total_jobs, options.retain_emitted_meshes);
+diff --git a/rust/processing/tests/issue_4066_owned_streaming.rs b/rust/processing/tests/issue_4066_owned_streaming.rs
+new file mode 100644
+index 0000000000000000000000000000000000000000..eace9049f242ed5d84b7f73a97887deb0317753e
+--- /dev/null
++++ b/rust/processing/tests/issue_4066_owned_streaming.rs
+@@ -0,0 +1,134 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at https://mozilla.org/MPL/2.0/.
++
++//! #4066: both ownership adapters must traverse the same canonical pipeline.
++
++use ifc_lite_processing::{
++    process_geometry_streaming_filtered_with_options,
++    process_geometry_streaming_filtered_with_owned_batches,
++    MeshData, OpeningFilterMode, ProcessingResult, StreamingOptions,
++};
++use std::cell::RefCell;
++use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
++
++const IFC: &str = r#"ISO-10303-21;
++HEADER;
++FILE_DESCRIPTION(('4066 owned batch invariant'),'2;1');
++FILE_NAME('owned.ifc','2026-09-07T00:00:00',(''),(''),'','','');
++FILE_SCHEMA(('IFC4'));
++ENDSEC;
++DATA;
++#1=IFCPROJECT('0$ScRe4drECQ4DMSqUjd6d',$,'P',$,$,$,$,(#2),#3);
++#2=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#5,$);
++#3=IFCUNITASSIGNMENT((#6));
++#4=IFCCARTESIANPOINT((0.,0.,0.));
++#5=IFCAXIS2PLACEMENT3D(#4,$,$);
++#6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
++#10=IFCBUILDINGELEMENTPROXY('1ProxyOwned0000000001',$,'One',$,$,#11,#12,$,$);
++#20=IFCBUILDINGELEMENTPROXY('1ProxyOwned0000000002',$,'Two',$,$,#11,#12,$,$);
++#21=IFCBUILDINGELEMENTPROXY('1ProxyOwned0000000003',$,'Three',$,$,#11,#12,$,$);
++#22=IFCBUILDINGELEMENTPROXY('1ProxyOwned0000000004',$,'Four',$,$,#11,#12,$,$);
++#23=IFCBUILDINGELEMENTPROXY('1ProxyOwned0000000005',$,'Five',$,$,#11,#12,$,$);
++#11=IFCLOCALPLACEMENT($,#5);
++#12=IFCPRODUCTDEFINITIONSHAPE($,$,(#13));
++#13=IFCSHAPEREPRESENTATION(#2,'Body','Tessellation',(#14));
++#14=IFCTRIANGULATEDFACESET(#15,$,.T.,((1,2,3),(1,2,4),(1,4,3),(2,3,4)),$);
++#15=IFCCARTESIANPOINTLIST3D(((0.,0.,0.),(1.,0.,0.),(0.,1.,0.),(0.,0.,1.)));
++#30=IFCSTYLEDITEM(#14,(#31),$);
++#31=IFCSURFACESTYLE('Blue',.BOTH.,(#32));
++#32=IFCSURFACESTYLERENDERING(#33,$,$,$,$,$,$,$,.FLAT.);
++#33=IFCCOLOURRGB($,0.2,0.3,0.8);
++ENDSEC;
++END-ISO-10303-21;
++"#;
++
++#[derive(Debug, PartialEq)]
++enum Event {
++    Batch(Vec<u32>, usize, usize),
++    Colors(Vec<(u32, [u32; 4])>),
++    Bootstrap(serde_json::Value),
++}
++
++fn run(owned: bool, retain: bool, fast: bool, cancel_after_batch: bool) -> (ProcessingResult, Vec<MeshData>, Vec<Event>) {
++    let events = RefCell::new(Vec::new());
++    let delivered = RefCell::new(Vec::new());
++    let cancel = Arc::new(AtomicBool::new(false));
++    let options = StreamingOptions {
++        initial_batch_size: 1,
++        throughput_batch_size: 2,
++        fast_first_batch: fast,
++        include_presentation_layers: false,
++        emit_quick_metadata_bootstrap: true,
++        retain_emitted_meshes: retain,
++        cancel: Some(Arc::clone(&cancel)),
++        ..StreamingOptions::default()
++    };
++    let record = |batch: Vec<MeshData>, processed, total| {
++        events.borrow_mut().push(Event::Batch(batch.iter().map(|m| m.express_id).collect(), processed, total));
++        delivered.borrow_mut().extend(batch);
++        if cancel_after_batch { cancel.store(true, Ordering::Relaxed); }
++    };
++    let colors = |updates: &[(u32, [f32; 4])]| {
++        events.borrow_mut().push(Event::Colors(updates.iter().map(|(id, color)| (*id, color.map(f32::to_bits))).collect()));
++    };
++    let bootstrap = |value: &ifc_lite_processing::QuickMetadataBootstrap| {
++        events.borrow_mut().push(Event::Bootstrap(serde_json::to_value(value).unwrap()));
++    };
++    let result = if owned {
++        process_geometry_streaming_filtered_with_owned_batches(IFC.as_bytes(), OpeningFilterMode::Default, options, record, colors, bootstrap)
++    } else {
++        process_geometry_streaming_filtered_with_options(IFC.as_bytes(), OpeningFilterMode::Default, options, |batch, processed, total| record(batch.to_vec(), processed, total), colors, bootstrap)
++    };
++    (result, delivered.into_inner(), events.into_inner())
++}
++
++fn assert_meshes_exact(left: &[MeshData], right: &[MeshData]) {
++    assert_eq!(left.len(), right.len());
++    for (a, b) in left.iter().zip(right) {
++        assert_eq!(serde_json::to_value(a).unwrap(), serde_json::to_value(b).unwrap());
++        assert_eq!(a.positions.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), b.positions.iter().map(|x| x.to_bits()).collect::<Vec<_>>());
++        assert_eq!(a.normals.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), b.normals.iter().map(|x| x.to_bits()).collect::<Vec<_>>());
++        assert_eq!(a.local_bounds.map(|v| v.map(f32::to_bits)), b.local_bounds.map(|v| v.map(f32::to_bits)));
++        assert_eq!(a.local_to_world.map(|v| v.map(f64::to_bits)), b.local_to_world.map(|v| v.map(f64::to_bits)));
++    }
++}
++
++#[test]
++fn borrowed_owned_retention_and_deferred_event_sequences_match() {
++    for retain in [false, true] {
++        for fast in [false, true] {
++            let (a, am, ae) = run(false, retain, fast, false);
++            let (b, bm, be) = run(true, retain, fast, false);
++            assert_eq!(ae, be);
++            assert_meshes_exact(&am, &bm);
++            assert_meshes_exact(&a.meshes, &b.meshes);
++            assert_eq!(bm.len(), 5);
++            assert_eq!((a.stats.total_meshes, a.stats.total_vertices, a.stats.total_triangles), (b.stats.total_meshes, b.stats.total_vertices, b.stats.total_triangles));
++            assert_eq!(b.stats.total_meshes, bm.len());
++            assert_eq!(b.meshes.len(), if retain { 5 } else { 0 });
++            assert_eq!(serde_json::to_value(&a.metadata).unwrap(), serde_json::to_value(&b.metadata).unwrap());
++            assert!(matches!(be.first(), Some(Event::Bootstrap(_))));
++            let batches: Vec<_> = be.iter().filter_map(|e| match e { Event::Batch(ids, processed, total) => Some((ids.len(), *processed, *total)), _ => None }).collect();
++            assert_eq!(batches, [(1, 1, 5), (2, 3, 5), (2, 5, 5)]);
++            if fast {
++                let color = be.iter().position(|e| matches!(e, Event::Colors(_))).expect("deferred style callback missing");
++                assert!(matches!(be[color - 1], Event::Batch(_, 1, 5)));
++            }
++        }
++    }
++}
++
++#[test]
++fn cancellation_stops_at_the_same_job_boundary_without_losing_emitted_meshes() {
++    for retain in [false, true] {
++        let (a, am, ae) = run(false, retain, true, true);
++        let (b, bm, be) = run(true, retain, true, true);
++        assert_eq!(ae, be);
++        assert_meshes_exact(&am, &bm);
++        assert_meshes_exact(&a.meshes, &b.meshes);
++        assert_eq!(bm.len(), 1);
++        assert_eq!(b.meshes.len(), usize::from(retain));
++        assert_eq!(be.iter().filter(|e| matches!(e, Event::Batch(_, _, _))).count(), 1);
++    }
++}

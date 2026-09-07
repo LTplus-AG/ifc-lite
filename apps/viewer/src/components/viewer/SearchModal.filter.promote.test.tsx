@@ -48,6 +48,20 @@ function promote(container: HTMLElement): void {
 
 const rules = () => useViewerStore.getState().searchFilter.rules;
 
+/**
+ * The most recent toast's text, scoped to the toast region rather than read off
+ * the whole container. The promote BUTTON renders the query too — its label is
+ * `Add "IfcWall, type=WT01" as rule` — so a container-wide match cannot tell a
+ * toast that named the dropped part from the button's own text: deleting the
+ * `toast.info` / `toast.error` call left both assertions green.
+ *
+ * Read as "the last one": toasts live in a module-level store with a timed
+ * dismissal, so an earlier test's toast can still be on screen.
+ */
+function latestToast(container: HTMLElement): string {
+  return container.querySelector('[role="status"]')?.lastElementChild?.textContent ?? '';
+}
+
 describe('Filter tab — promoting the search bar query', () => {
   afterEach(cleanup);
 
@@ -82,13 +96,13 @@ describe('Filter tab — promoting the search bar query', () => {
     assert.deepEqual(rules(), [
       Rule.ifcType(['IfcWall', 'IfcWallElementedCase', 'IfcWallStandardCase'], 'in'),
     ]);
-    assert.match(container.textContent ?? '', /type=WT01/);
+    assert.match(latestToast(container), /type=WT01/);
   });
 
   it('a selector with no rule at all reports instead of adding a guaranteed miss', () => {
     const container = mountWithQuery('parent=Foo');
     promote(container);
     assert.deepEqual(rules(), []);
-    assert.match(container.textContent ?? '', /parent=Foo/);
+    assert.match(latestToast(container), /parent=Foo/);
   });
 });

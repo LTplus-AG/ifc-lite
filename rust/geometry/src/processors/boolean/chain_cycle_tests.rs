@@ -3,6 +3,7 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use super::*;
+use crate::router::GeometryProcessor;
 
 /// A self-referential clipping result: `#10`'s FirstOperand is `#10` again,
 /// with `#20` an `IfcPolygonalBoundedHalfSpace` cutter. Before the visited-id

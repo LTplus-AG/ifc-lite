@@ -25,7 +25,6 @@ export type {
   SelectorText,
   SelectorValue,
   SelectorFilter,
-  SelectorGroup,
   SelectorQuery,
   SelectorParseError,
   SelectorParseResult,

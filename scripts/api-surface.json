@@ -3909,7 +3909,6 @@
     "QueryResultEntity: class",
     "SQLResult: interface",
     "SelectorFilter: type",
-    "SelectorGroup: interface",
     "SelectorOp: type",
     "SelectorParseError: interface",
     "SelectorParseResult: type",

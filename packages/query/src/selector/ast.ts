@@ -98,7 +98,13 @@ export type SelectorFilter =
   | SelectorKeywordFilter
   | SelectorQueryFilter;
 
-/** Filters chained with `,`. They narrow left to right (AND). */
+/**
+ * Filters chained with `,`. They narrow left to right (AND).
+ *
+ * Not re-exported from the package index: a caller reaches one through
+ * {@link SelectorQuery.groups}, and an export nothing consumes is permanent
+ * semver liability.
+ */
 export interface SelectorGroup {
   filters: SelectorFilter[];
 }

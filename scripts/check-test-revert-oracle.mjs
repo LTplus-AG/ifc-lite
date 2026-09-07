@@ -90,6 +90,7 @@ import {
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
 import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
+import { requiredFeatureCombos } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -211,10 +212,19 @@ function planRuns(testPaths) {
   const plans = [];
   for (const [key, g] of groups) {
     const relFiles = g.files.map((f) => relative(g.dir, join(ROOT, f)) || f);
-    const runner = g.crate
-      ? cargoRunner(g.crate)
-      : (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
-    plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: g.crate });
+    // #4050/#4024: a default build compiles a `#[cfg(feature = "x")]` test OUT
+    // entirely, so run one cargo invocation per feature-combo the changed
+    // files require; none found -> the old, single default-features run.
+    if (g.crate) {
+      const combos = requiredFeatureCombos(ROOT, g.files);
+      for (const features of combos.length > 0 ? combos : [[]]) {
+        const label = features.length > 0 ? `${key}+${features.join('+')}` : key;
+        plans.push({ key: label, dir: g.dir, files: g.files, relFiles, script: g.script, crate: g.crate, runner: cargoRunner(g.crate, features) });
+      }
+      continue;
+    }
+    const runner = (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
+    plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: null });
   }
   return { plans, unassigned };
 }

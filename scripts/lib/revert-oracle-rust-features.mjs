@@ -98,10 +98,122 @@ const CFG_THEN_OTHER_ATTR_RE = new RegExp(
   'g',
 );
 
-/** Strip `//` and `/* *\/` comments, replacing their text with spaces so line/column numbers are unaffected. */
+/**
+ * Strip `//` and `/* *\/` comments, replacing their text with spaces so
+ * line/column numbers are unaffected.
+ *
+ * STRING-LITERAL AWARE. A regex pass that blanks from the first `//` to end
+ * of line, with no notion of "am I inside a string", reads `let s = "//";
+ * #[cfg(...)]` as a comment starting at the `//` INSIDE the string literal
+ * and blanks everything after it on that line — including a real
+ * `#[cfg(...)]` that happens to share the line. Reproduced directly against
+ * this repo's shape (a `#[cfg(feature = "x")]` immediately after a `"//"`
+ * string on the same line): the old regex pass dropped the gate and
+ * `detectRequiredFeatureCombos` returned `[]`. This is a small single-pass
+ * scanner instead, tracking whether it is inside a string/char literal so a
+ * `//` or `/*` there is left alone.
+ *
+ * SCOPE. Handles double-quoted strings (`"…"` with `\"`/`\\` escapes), Rust
+ * raw strings (`r"…"`, `r#"…"#`, `r##"…"##`, …, including the `br"…"` byte
+ * form), and char literals (`'x'`, `'\n'`, `'\''`, `'\u{7f}'`), distinguished
+ * from a lifetime (`'a`) by requiring a matching closing `'`. Byte strings
+ * (`b"…"`) are NOT special-cased — their `\"` escaping is identical to an
+ * ordinary string's, so the string-literal branch handles them correctly
+ * without needing to recognize the leading `b`. This is not a full Rust
+ * lexer (no raw identifiers, no nested-attribute edge cases beyond what the
+ * cfg regexes downstream already assume) but a `//` inside an ordinary
+ * double-quoted string — the shape actually reproduced — is common enough in
+ * test fixtures to matter, so it is handled rather than disclaimed away.
+ */
 export function stripComments(text) {
-  const noBlock = text.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
-  return noBlock.replace(/\/\/[^\n]*/g, (m) => ' '.repeat(m.length));
+  let out = '';
+  const n = text.length;
+  let i = 0;
+  while (i < n) {
+    const c = text[i];
+    const c2 = text[i + 1];
+
+    // Block comment, Rust-nesting aware; content (not newlines) blanked.
+    if (c === '/' && c2 === '*') {
+      out += '  ';
+      i += 2;
+      let depth = 1;
+      while (i < n && depth > 0) {
+        if (text[i] === '/' && text[i + 1] === '*') { out += '  '; i += 2; depth++; continue; }
+        if (text[i] === '*' && text[i + 1] === '/') { out += '  '; i += 2; depth--; continue; }
+        out += text[i] === '\n' ? '\n' : ' ';
+        i++;
+      }
+      continue;
+    }
+
+    // Line comment: blank to end of line (or end of input).
+    if (c === '/' && c2 === '/') {
+      while (i < n && text[i] !== '\n') { out += ' '; i++; }
+      continue;
+    }
+
+    // Raw string: r"...", r#"..."#, ..., and the byte form br"...".
+    if (c === 'r' || (c === 'b' && c2 === 'r')) {
+      let j = c === 'b' ? i + 1 : i;
+      if (text[j] === 'r') {
+        let k = j + 1;
+        let hashes = 0;
+        while (text[k] === '#') { hashes++; k++; }
+        if (text[k] === '"') {
+          const closer = `"${'#'.repeat(hashes)}`;
+          const contentStart = k + 1;
+          const end = text.indexOf(closer, contentStart);
+          const stop = end === -1 ? n : end + closer.length;
+          out += text.slice(i, stop);
+          i = stop;
+          continue;
+        }
+      }
+    }
+
+    // Ordinary (and byte) string literal: "..." with \" / \\ escapes.
+    if (c === '"') {
+      out += c;
+      i++;
+      while (i < n) {
+        if (text[i] === '\\' && i + 1 < n) { out += text[i] + text[i + 1]; i += 2; continue; }
+        if (text[i] === '"') { out += '"'; i++; break; }
+        out += text[i];
+        i++;
+      }
+      continue;
+    }
+
+    // Char literal, e.g. 'x', '\n', '\'', '\u{7f}' — distinguished from a
+    // lifetime ('a) by requiring the escape/char to be followed by a closing '.
+    if (c === "'") {
+      if (c2 === '\\') {
+        let j = i + 2;
+        if (text[j] === 'u' && text[j + 1] === '{') {
+          const close = text.indexOf('}', j);
+          j = close === -1 ? j : close + 1;
+        } else {
+          j += 1; // one char after the backslash: \n, \t, \\, \', \", \0, or the first hex digit of \xNN
+          if (text[i + 2] === 'x') j = i + 4; // \xNN
+        }
+        if (text[j] === "'") {
+          out += text.slice(i, j + 1);
+          i = j + 1;
+          continue;
+        }
+      } else if (c2 !== undefined && c2 !== "'" && text[i + 2] === "'") {
+        out += text.slice(i, i + 3);
+        i += 3;
+        continue;
+      }
+      // Otherwise a lifetime or bare apostrophe — not a literal, fall through.
+    }
+
+    out += c;
+    i++;
+  }
+  return out;
 }
 
 function lineOf(text, index) {
@@ -183,4 +295,65 @@ export function requiredFeatureCombos(root, relFiles) {
     combos.push(...detectRequiredFeatureCombos(text, rel));
   }
   return dedupeCombos(combos);
+}
+
+/**
+ * check-test-revert-oracle.mjs's dedicated exit code for an UnhandledCfgShapeError
+ * that reaches planRuns() (which calls requiredFeatureCombos() above, per test
+ * group, while building each cargo invocation). Defined here, not in the
+ * dispatcher: check-test-revert-oracle.mjs is at its exact module-size budget
+ * (see scripts/module-size-allowlist.txt) with zero headroom, so a defect found
+ * in it by adversarial review (#4090) is fixed by adding logic to this
+ * already-uncapped sibling instead of growing the capped file.
+ *
+ * WHY ITS OWN CODE. planRuns() runs at the dispatcher's module top level,
+ * before its `try{}`/`uncaughtException` handler exist. Left uncaught, a cfg
+ * shape this module refuses to plan a run for (see UnhandledCfgShapeError
+ * above) is a genuine unhandled exception: a raw stack trace on stderr, no
+ * JSON despite `--json`, and Node's default exit code of 1 — which collides
+ * with the dispatcher's own EXIT_UNOBSERVED, so a CI consumer keyed on exit
+ * code cannot tell "the oracle could not even plan this branch's runs" from
+ * "the branch's tests ran and did not observe the change". 6 is free — the
+ * dispatcher's own codes run 0 (OBSERVED) through 5 (EXIT_RESTORE_FAILED).
+ */
+export const EXIT_UNHANDLED_CFG_SHAPE = 6;
+
+/** The `--json` payload for an UnhandledCfgShapeError, in the same shape the
+ * dispatcher's normal report uses (verdict/reason/base/head/production/tests),
+ * plus an `error` object naming what could not be planned and where. */
+export function unhandledCfgShapeReport(err, base, head, production, tests) {
+  return {
+    verdict: 'ERROR',
+    reason: err.message,
+    base,
+    head,
+    production,
+    tests,
+    error: { name: err.name, shape: err.shape, file: err.file, line: err.line },
+  };
+}
+
+/**
+ * Run `planRuns(testPaths)`, catching UnhandledCfgShapeError so it becomes a
+ * structured, distinguishable failure — die()'s ABORT formatting, JSON when
+ * requested, EXIT_UNHANDLED_CFG_SHAPE — instead of an unhandled crash whose
+ * exit code (Node's default 1) is ambiguous with EXIT_UNOBSERVED. Any other
+ * error from `planRuns` is rethrown unchanged; this only narrows the one
+ * shape this module itself can throw.
+ *
+ * Takes `planRuns` and `die` as parameters rather than importing them: both
+ * are defined in check-test-revert-oracle.mjs (`planRuns` closes over its
+ * `ROOT`; `die` closes over its restoration state), and this module has no
+ * dependency on that file today. Keeping the call site there to one line —
+ * matching what it replaces — is what let this defect's fix land without
+ * raising that file's module-size budget.
+ */
+export function requiredFeaturePlanOrDie(planRuns, testPaths, json, base, head, production, die, exitCode) {
+  try {
+    return planRuns(testPaths);
+  } catch (err) {
+    if (!(err instanceof UnhandledCfgShapeError)) throw err;
+    if (json) console.log(JSON.stringify(unhandledCfgShapeReport(err, base, head, production, testPaths), null, 2));
+    die(exitCode, err.message);
+  }
 }

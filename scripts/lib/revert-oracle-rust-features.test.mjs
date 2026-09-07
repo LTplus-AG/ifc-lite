@@ -12,6 +12,7 @@ import {
   detectRequiredFeatureCombos,
   requiredFeatureCombos,
   UnhandledCfgShapeError,
+  stripComments,
 } from './revert-oracle-rust-features.mjs';
 
 test('parseCfgExpr: any(...) -> one combo per name, each alone suffices', () => {
@@ -214,4 +215,46 @@ test('#4085 defect 3: a commented-out gate does not mask a REAL gate on the very
     'fn gated() {}',
   ].join('\n');
   assert.deepEqual(detectRequiredFeatureCombos(text, 'mixed.rs'), [['real_gate']]);
+});
+
+test('stripComments does not treat "//" inside a string literal as a comment start', () => {
+  // Reproduces the reported shape: a `//` inside an ordinary double-quoted
+  // string on the same line as a real #[cfg(...)], immediately above #[test].
+  const text = ['let s = "//"; #[cfg(feature = "real_gate")]', '#[test]', 'fn t() {}', ''].join('\n');
+  assert.equal(stripComments(text), text); // nothing here is an actual comment
+  assert.deepEqual(detectRequiredFeatureCombos(text, 'string_slash.rs'), [['real_gate']]);
+});
+
+test('stripComments still blanks a real "//" comment sitting right after a string literal', () => {
+  const text = 'let s = "a"; // #[cfg(feature = "ghost")]\n#[test]\nfn f() { assert!(true); }\n';
+  const stripped = stripComments(text);
+  assert.equal(stripped.startsWith('let s = "a"; '), true);
+  assert.equal(stripped.includes('ghost'), false);
+  assert.deepEqual(detectRequiredFeatureCombos(text, 'string_then_comment.rs'), []);
+});
+
+test('stripComments leaves an escaped quote inside a string alone (does not end the string early)', () => {
+  const text = 'let s = "a \\" // not a comment"; #[cfg(feature = "real_gate")]\n#[test]\nfn t() {}\n';
+  assert.deepEqual(detectRequiredFeatureCombos(text, 'escaped_quote.rs'), [['real_gate']]);
+});
+
+test('stripComments treats a "//" inside a raw string (r"...") as non-comment text', () => {
+  const text = 'let s = r"//"; #[cfg(feature = "real_gate")]\n#[test]\nfn t() {}\n';
+  assert.deepEqual(detectRequiredFeatureCombos(text, 'raw_string.rs'), [['real_gate']]);
+});
+
+test('stripComments treats a "//" inside a hashed raw string (r#"..."#, containing a bare quote) as non-comment text', () => {
+  const text = 'let s = r#"he said "hi" // not a comment"#; #[cfg(feature = "real_gate")]\n#[test]\nfn t() {}\n';
+  assert.deepEqual(detectRequiredFeatureCombos(text, 'raw_hash_string.rs'), [['real_gate']]);
+});
+
+test('stripComments treats a "/" char literal as non-comment text, not confused with a lifetime', () => {
+  const text = "let c = '/'; let x: &'a str; #[cfg(feature = \"real_gate\")]\n#[test]\nfn t() {}\n";
+  assert.deepEqual(detectRequiredFeatureCombos(text, 'char_literal.rs'), [['real_gate']]);
+});
+
+test('stripComments preserves line numbers exactly when a real comment follows a string on the same line', () => {
+  const text = ['fn a() {}', 'let s = "x"; // #[cfg(feature = "ghost")]', '#[cfg(feature = "real_gate")]', '#[test]', 'fn t() {}', ''].join('\n');
+  const combos = detectRequiredFeatureCombos(text, 'line_numbers.rs');
+  assert.deepEqual(combos, [['real_gate']]);
 });

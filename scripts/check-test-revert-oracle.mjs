@@ -90,7 +90,7 @@ import {
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
 import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
-import { requiredFeatureCombos } from './lib/revert-oracle-rust-features.mjs';
+import { requiredFeatureCombos, requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -342,7 +342,7 @@ if (testPaths.length === 0) {
   );
 }
 
-const { plans, unassigned } = planRuns(testPaths);
+const { plans, unassigned } = requiredFeaturePlanOrDie(planRuns, testPaths, opts.json, baseSha, headSha, prodPaths, die, EXIT_UNHANDLED_CFG_SHAPE);
 if (unassigned.length > 0) {
   die(EXIT_NOTHING_CHECKED, 'could not find an owning package for some test files', unassigned);
 }

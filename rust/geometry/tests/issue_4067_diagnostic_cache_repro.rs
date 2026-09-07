@@ -98,13 +98,35 @@ fn fresh_decoder(content: &'static str) -> EntityDecoder<'static> {
     EntityDecoder::with_index(content.as_bytes(), index)
 }
 
+/// Did this router record (and keep) its own open-topology-tear diagnostic —
+/// as opposed to which of the three mutually-exclusive reasons
+/// `union.rs::audit_and_gate_union` classified it as. `KernelError` is the
+/// ungated #3440-step-1 record (recorded only when neither gate rejects);
+/// `csg_manifold_gate` and `csg_topology_gate` each independently decide
+/// whether to reject instead and, if so, record `NonManifoldRejected` /
+/// `OpenTopologyRejected` in its place (`accept_gates_reject` in
+/// `csg/topology_diagnostic.rs` uses `|`, not `||`, so a mesh that trips both
+/// gates records both). WALL_WITH_OPEN_UNION's tear falls through to
+/// `KernelError` under the default build and `csg_manifold_gate` alone, but
+/// trips the stricter edge-multiplicity check under `csg_topology_gate` and
+/// is recorded as `OpenTopologyRejected` instead — same tear, different
+/// bucket depending on which gate feature is compiled in. A filter that only
+/// recognised `KernelError` would read the topology-gate builds as "not
+/// recorded" even though the diagnostic fired; see 25ae873fa's identical fix
+/// to `issue_4083_diagnostic_dedup_test.rs::kernel_error_count` for the first
+/// occurrence of this exact test defect. Returns `1` if at least one
+/// qualifying record survived, else `0` (a raw count is not meaningful here:
+/// under a combined-gate build one tear can legitimately record twice).
 fn kernel_error_count(router: &GeometryRouter) -> usize {
-    router
-        .take_csg_failures()
-        .values()
-        .flatten()
-        .filter(|f| matches!(f.reason, BoolFailureReason::KernelError(_)))
-        .count()
+    let recorded = router.take_csg_failures().values().flatten().any(|f| {
+        matches!(
+            f.reason,
+            BoolFailureReason::KernelError(_)
+                | BoolFailureReason::OpenTopologyRejected
+                | BoolFailureReason::NonManifoldRejected { .. }
+        )
+    });
+    usize::from(recorded)
 }
 
 fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
@@ -116,9 +138,11 @@ fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
     (mesh.positions.len(), mesh.indices.len(), bits_sum)
 }
 
-/// Sanity control: with NO cache at all, the union really does record
-/// `KernelError` — otherwise every assertion below would trivially pass for
-/// the wrong reason (the geometry never tearing in the first place).
+/// Sanity control: with NO cache at all, the union really does record its
+/// tear diagnostic — otherwise every assertion below would trivially pass for
+/// the wrong reason (the geometry never tearing in the first place). Which of
+/// the three reasons it lands in depends on the gate feature set (see
+/// `kernel_error_count`'s doc); this only asserts that one of them fired.
 #[test]
 fn open_union_records_kernel_error_uncached() {
     let mut decoder = fresh_decoder(WALL_WITH_OPEN_UNION);
@@ -131,8 +155,9 @@ fn open_union_records_kernel_error_uncached() {
     let count = kernel_error_count(&router);
     assert_eq!(
         count, 1,
-        "expected exactly one KernelError (open-topology accept) from the uncached union; \
-         if this is 0 the fixture no longer tears and the repro below is vacuous"
+        "expected exactly one tear diagnostic (open-topology accept, under whichever reason \
+         the active gate features classify it as) from the uncached union; if this is 0 the \
+         fixture no longer tears and the repro below is vacuous"
     );
 }
 

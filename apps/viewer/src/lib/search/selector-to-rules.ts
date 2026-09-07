@@ -18,9 +18,11 @@
  */
 
 import { expandTypes, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
+import { parseSelector } from '@ifc-lite/query';
 import type {
   SelectorFilter,
   SelectorOp,
+  SelectorParseError,
   SelectorQuery,
   SelectorText,
   SelectorValue,
@@ -74,6 +76,26 @@ const NUMERIC_OPS: Partial<Record<SelectorOp, NumericOp>> = {
 const REGEX_OPS: Partial<Record<SelectorOp, 'matches' | 'notMatches'>> = {
   '=': 'matches', '!=': 'notMatches',
 };
+
+/** A parse that failed, or a parse that was adapted. */
+export type SelectorReading =
+  | { ok: false; error: SelectorParseError }
+  | ({ ok: true } & SelectorAdaptResult);
+
+/**
+ * Selector text as filter rules: parse, then adapt, in one call.
+ *
+ * Both surfaces that accept selector text — the Filter tab's Selector field
+ * and its "add the search query as a rule" button — go through here, so the
+ * two cannot read the same string differently. What each does with the answer
+ * is deliberately NOT shared: one replaces the rule list and one appends to
+ * it, and only the caller knows which.
+ */
+export function readSelector(text: string, options: SelectorAdaptOptions = {}): SelectorReading {
+  const parsed = parseSelector(text);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  return { ok: true, ...selectorToFilterRules(parsed.query, options) };
+}
 
 export function selectorToFilterRules(
   query: SelectorQuery,

@@ -14,12 +14,11 @@
 
 import { useCallback, useState } from 'react';
 import { HelpCircle, Wand2 } from 'lucide-react';
-import { useShallow } from 'zustand/react/shallow';
-import { parseSelector, type SelectorParseError } from '@ifc-lite/query';
+import type { SelectorParseError } from '@ifc-lite/query';
 import { useViewerStore } from '@/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { selectorToFilterRules } from '@/lib/search/selector-to-rules';
+import { readSelector } from '@/lib/search/selector-to-rules';
 
 const DOCS_URL = 'https://ifclite.dev/docs/guide/selector-syntax/';
 const PLACEHOLDER = 'IfcWall, Pset_WallCommon.FireRating=/REI.*/';
@@ -29,15 +28,21 @@ interface Feedback {
   lines: string[];
 }
 
-export function SearchModalFilterSelector() {
-  const { limit, models, activeModelId, setSearchFilter } = useViewerStore(
-    useShallow((s) => ({
-      limit: s.searchFilter.limit,
-      models: s.models,
-      activeModelId: s.activeModelId,
-      setSearchFilter: s.setSearchFilter,
-    })),
+/**
+ * The active model's IFC schema version, which is what decides how far a class
+ * term expands. Both selector surfaces need it and neither needs the model
+ * map, so the subscription lives here once.
+ */
+export function useActiveSchemaVersion(): string | undefined {
+  return useViewerStore(
+    (s) => (s.activeModelId ? s.models.get(s.activeModelId) : undefined)?.schemaVersion,
   );
+}
+
+export function SearchModalFilterSelector() {
+  const limit = useViewerStore((s) => s.searchFilter.limit);
+  const setSearchFilter = useViewerStore((s) => s.setSearchFilter);
+  const schemaVersion = useActiveSchemaVersion();
   const [text, setText] = useState('');
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -45,14 +50,13 @@ export function SearchModalFilterSelector() {
     const query = text.trim();
     if (!query) return;
 
-    const parsed = parseSelector(query);
-    if (!parsed.ok) {
-      setFeedback({ tone: 'error', lines: [describeParseError(query, parsed.error)] });
+    const reading = readSelector(query, { schemaVersion });
+    if (!reading.ok) {
+      setFeedback({ tone: 'error', lines: [describeParseError(query, reading.error)] });
       return;
     }
 
-    const schemaVersion = (activeModelId ? models.get(activeModelId) : undefined)?.schemaVersion;
-    const { combinator, rules, unsupported } = selectorToFilterRules(parsed.query, { schemaVersion });
+    const { combinator, rules, unsupported } = reading;
 
     if (rules.length === 0) {
       setFeedback({
@@ -68,7 +72,7 @@ export function SearchModalFilterSelector() {
         ? { tone: 'warning', lines: ['Applied without these parts:', ...unsupported] }
         : null,
     );
-  }, [activeModelId, limit, models, setSearchFilter, text]);
+  }, [limit, schemaVersion, setSearchFilter, text]);
 
   return (
     <div className="flex flex-col gap-1.5 border-b border-zinc-200 px-4 pb-3 pt-4 dark:border-zinc-800">

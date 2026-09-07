@@ -39,16 +39,13 @@ import {
 } from '@/lib/search/saved-filters';
 import { toast } from '@/components/ui/toast';
 import { RuleRow } from './SearchModal.filter.editors';
-import { SearchModalFilterSelector } from './SearchModal.filter.selector';
-import { parseSelector } from '@ifc-lite/query';
-import { selectorToFilterRules } from '@/lib/search/selector-to-rules';
+import { SearchModalFilterSelector, useActiveSchemaVersion } from './SearchModal.filter.selector';
+import { readSelector } from '@/lib/search/selector-to-rules';
 
 export function SearchModalFilterBuilder() {
   const {
     filter,
     searchQuery,
-    models,
-    activeModelId,
     setFilterCombinator,
     setFilterLimit,
     addFilterRule,
@@ -60,8 +57,6 @@ export function SearchModalFilterBuilder() {
     useShallow((s) => ({
       filter: s.searchFilter,
       searchQuery: s.searchQuery,
-      models: s.models,
-      activeModelId: s.activeModelId,
       setFilterCombinator: s.setFilterCombinator,
       setFilterLimit: s.setFilterLimit,
       addFilterRule: s.addFilterRule,
@@ -71,6 +66,7 @@ export function SearchModalFilterBuilder() {
       setSearchFilter: s.setSearchFilter,
     })),
   );
+  const schemaVersion = useActiveSchemaVersion();
 
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
@@ -87,24 +83,18 @@ export function SearchModalFilterBuilder() {
    * The search bar's text as rules. It reads as a selector when it parses
    * cleanly AND the adapter can carry all of it — `IfcWall, Name=/D[0-9]{2}/`
    * becomes a type rule and a Name rule. Anything else, including a plain
-   * `Wand`, stays the `Name contains` it has always been: falling back is the
-   * predictable answer, and a partial selector reading would drop the part it
-   * could not carry without saying so.
+   * `Wand`, stays the `Name contains` it has always been.
    */
   const promoteSearchQuery = useCallback(() => {
     const q = searchQuery.trim();
     if (!q) return;
-    const parsed = parseSelector(q);
-    if (parsed.ok) {
-      const schemaVersion = (activeModelId ? models.get(activeModelId) : undefined)?.schemaVersion;
-      const { rules, unsupported } = selectorToFilterRules(parsed.query, { schemaVersion });
-      if (rules.length > 0 && unsupported.length === 0) {
-        for (const rule of rules) addFilterRule(rule);
-        return;
-      }
+    const reading = readSelector(q, { schemaVersion });
+    if (reading.ok && reading.rules.length > 0 && reading.unsupported.length === 0) {
+      for (const rule of reading.rules) addFilterRule(rule);
+      return;
     }
     addFilterRule(Rule.name('contains', q));
-  }, [activeModelId, addFilterRule, models, searchQuery]);
+  }, [addFilterRule, schemaVersion, searchQuery]);
 
   // ── Preset handlers ─────────────────────────────────────────────────
 

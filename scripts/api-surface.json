@@ -4667,10 +4667,13 @@
     "validateIDS: function"
   ],
   "@ifc-lite/ids/bridge": [
+    "EntityMeasureScales: interface",
     "PropertyOverlayResolver: type",
     "PropertyOverride: interface",
     "createDataAccessor: function",
-    "narrowSchemaVersion: function"
+    "narrowSchemaVersion: function",
+    "resolveEntityMeasureScales: function",
+    "toRaw: function"
   ],
   "@ifc-lite/ifcx": [
     "ATTR: const",

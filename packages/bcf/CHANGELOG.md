@@ -1,5 +1,17 @@
 # @ifc-lite/bcf
 
+## 3.0.1
+
+### Patch Changes
+
+- [#3970](https://github.com/LTplus-AG/ifc-lite/pull/3970) [`8eb1c25`](https://github.com/LTplus-AG/ifc-lite/commit/8eb1c258fafc73bd9c83c7af95ba2feebf00fb34) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix three cases in `@ifc-lite/bcf` where a failure or absence produced a result indistinguishable from success:
+  
+  - Reading a `.bcfzip` where two topic folders declare the same `Topic/@Guid` no longer silently overwrites one topic in the resulting map; the first one read is kept and a `console.warn` reports the collision.
+  - Reading a `Topic/Index` value that is not a valid number now yields `undefined`, matching the treatment of every other numeric field in the reader, instead of a `NaN` stored as a plain `number`.
+  - Writing a viewpoint's snapshot now resolves the snapshot bytes once, before deciding whether to emit the markup `<Snapshot>` reference, so a `data:` URL that fails to decode can no longer produce an archive whose markup references a snapshot file that was never written.
+  
+  Also split `reader.ts`'s BCFV viewpoint-content parsing (camera shapes, point/direction, lines, clipping planes, bitmaps) into `reader-viewpoint-content.ts`, and `writer.ts`'s markup-element writers (header/file, BIM snippet, document reference, line, clipping plane, bitmap) into `writer-markup-elements.ts`, to bring both files back under the repo's module-size budget. Pure internal refactor: no behaviour change, and `@ifc-lite/bcf`'s public API is unchanged.
+
 ## 3.0.0
 
 ### Major Changes

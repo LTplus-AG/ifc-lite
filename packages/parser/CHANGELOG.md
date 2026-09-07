@@ -1,5 +1,26 @@
 # @ifc-lite/parser
 
+## 5.2.0
+
+### Minor Changes
+
+- [#4012](https://github.com/LTplus-AG/ifc-lite/pull/4012) [`a24b8cf`](https://github.com/LTplus-AG/ifc-lite/commit/a24b8cff9598e48c75c5f9fbebd036e72c09063e) Thanks [@louistrue](https://github.com/louistrue)! - Expose borrowed compact entity columns to compatible consumers and reuse them when writing binary cache indexes. Preserve the existing binary layout, normalized type order, generic iterable inputs and borrowed-buffer ownership while avoiding reference-object reconstruction for valid compact indexes.
+
+- [#4013](https://github.com/LTplus-AG/ifc-lite/pull/4013) [`90f4859`](https://github.com/LTplus-AG/ifc-lite/commit/90f4859b73f694114baec821721be498757b9c48) Thanks [@louistrue](https://github.com/louistrue)! - Reuse immutable entity-index publications across parser worker messages, terminate completed workers before receiver hydration, and expose constant-time maxExpressId for model ingestion without scanning all references.
+
+- [#4014](https://github.com/LTplus-AG/ifc-lite/pull/4014) [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b) Thanks [@louistrue](https://github.com/louistrue)! - Share an exact full-source fingerprint from the existing prepass through a fresh optional per-load cell. Preserve previous Rust and JavaScript methods, worker scheduling, parser fallback and partial/final source identity.
+
+- [#3959](https://github.com/LTplus-AG/ifc-lite/pull/3959) [`5cbe8aa`](https://github.com/LTplus-AG/ifc-lite/commit/5cbe8aac32ee1b8871357c7dcd9c1154161322d5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `extractClassificationsOnDemand` now resolves real classification attributes on a server-parsed store instead of always returning `[]`.
+  
+  The server already extracts `IfcRelAssociatesClassification` associations correctly (`system`/`identification`/`name`/`location`, walking the `IfcClassificationReference` chain server-side), but a server-parsed `IfcDataStore` carries no raw source bytes, so `extractClassificationsOnDemand`'s `EntityExtractor`-based decoding always fell through to an empty result — indistinguishable from a genuinely unclassified entity, even when the relationship graph proved otherwise.
+  
+  `IfcDataStore` gains an optional `resolvedClassifications?: Map<number, ClassificationInfo[]>` field. When present, `extractClassificationsOnDemand` consults it (for the entity itself and, via `IfcRelDefinesByType`, its type) when nonempty, otherwise preserving unresolved markers, so a viewer- or MCP-side IDS check against a server-parsed model can now resolve system- and value-constrained classification facets instead of reporting them as unclassified. The wasm/source-bearing path is unaffected — it still resolves attributes directly from `store.source`.
+
+### Patch Changes
+
+- Updated dependencies [[`58504e7`](https://github.com/LTplus-AG/ifc-lite/commit/58504e7ad1cb5377e2ab48fe212a5d14998fccf9), [`9dd8ba1`](https://github.com/LTplus-AG/ifc-lite/commit/9dd8ba133f4d261b3ebc9d37fbf8962a63890b8c), [`2ac2d03`](https://github.com/LTplus-AG/ifc-lite/commit/2ac2d03b874bd9f58637c8c8d194b8f8a9e563af), [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`85089b1`](https://github.com/LTplus-AG/ifc-lite/commit/85089b1ccbf43d7d9982cd8a2f7c31de8e2207df), [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10), [`e409924`](https://github.com/LTplus-AG/ifc-lite/commit/e40992485dd2a0c845225be237c65fd12603d689), [`96ea5f0`](https://github.com/LTplus-AG/ifc-lite/commit/96ea5f08e4872cb50fe9eac7a9878ff607eb3f4a)]:
+  - @ifc-lite/wasm@6.4.0
+
 ## 5.1.0
 
 ### Minor Changes

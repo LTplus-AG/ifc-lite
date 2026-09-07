@@ -1,5 +1,27 @@
 # @ifc-lite/wasm
 
+## 6.4.0
+
+### Minor Changes
+
+- [#4004](https://github.com/LTplus-AG/ifc-lite/pull/4004) [`58504e7`](https://github.com/LTplus-AG/ifc-lite/commit/58504e7ad1cb5377e2ab48fe212a5d14998fccf9) Thanks [@louistrue](https://github.com/louistrue)! - Add reusable-output Rust decoder helpers while preserving allocating wrappers, reduce discarded transient metadata values, and join expired-cache disposal before native processing returns.
+
+- [#4005](https://github.com/LTplus-AG/ifc-lite/pull/4005) [`2ac2d03`](https://github.com/LTplus-AG/ifc-lite/commit/2ac2d03b874bd9f58637c8c8d194b8f8a9e563af) Thanks [@louistrue](https://github.com/louistrue)! - Expose combined Rust geometry classification flags and avoid repeated lexical/schema work while preserving canonical names, legacy mappings and malformed-record diagnostics.
+
+- [#4014](https://github.com/LTplus-AG/ifc-lite/pull/4014) [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b) Thanks [@louistrue](https://github.com/louistrue)! - Share an exact full-source fingerprint from the existing prepass through a fresh optional per-load cell. Preserve previous Rust and JavaScript methods, worker scheduling, parser fallback and partial/final source identity.
+
+- [#4009](https://github.com/LTplus-AG/ifc-lite/pull/4009) [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10) Thanks [@louistrue](https://github.com/louistrue)! - Add installed-source shard scanning and style resolution methods. Reuse matching load-session source bytes and binding-owned index columns, preserve the borrowed Rust index API, and transfer already-owned mesh getter buffers without redundant copies.
+
+### Patch Changes
+
+- [#4006](https://github.com/LTplus-AG/ifc-lite/pull/4006) [`9dd8ba1`](https://github.com/LTplus-AG/ifc-lite/commit/9dd8ba133f4d261b3ebc9d37fbf8962a63890b8c) Thanks [@louistrue](https://github.com/louistrue)! - Reuse per-mesh topology bookkeeping and compact filtered triangle indices in place while preserving geometry output, traversal order and retained buffer bounds.
+
+- [#4002](https://github.com/LTplus-AG/ifc-lite/pull/4002) [`85089b1`](https://github.com/LTplus-AG/ifc-lite/commit/85089b1ccbf43d7d9982cd8a2f7c31de8e2207df) Thanks [@louistrue](https://github.com/louistrue)! - Share immutable built-in geometry processor setup while preserving custom processor replacement and independently owned diagnostics.
+
+- [#4058](https://github.com/LTplus-AG/ifc-lite/pull/4058) [`e409924`](https://github.com/LTplus-AG/ifc-lite/commit/e40992485dd2a0c845225be237c65fd12603d689) Thanks [@louistrue](https://github.com/louistrue)! - Preserve triangle orientation when rotating flat IFC meshes into viewer coordinates. The rotation preserves handedness, so reversing indices made face winding disagree with the transformed normals and with instanced geometry. Apply the same orientation-preserving convention to simplification and native Y-up exports. Viewer caches created before this correction are invalidated and rebuilt on the next IFC open. Previously exported geometry retains its stored indices and needs regeneration to receive the correction.
+
+- [#4052](https://github.com/LTplus-AG/ifc-lite/pull/4052) [`96ea5f0`](https://github.com/LTplus-AG/ifc-lite/commit/96ea5f08e4872cb50fe9eac7a9878ff607eb3f4a) Thanks [@louistrue](https://github.com/louistrue)! - Publish completed geometry affinity chunks while computing subsequent routing keys, preserving job order and existing chunk boundaries.
+
 ## 6.3.0
 
 ### Minor Changes

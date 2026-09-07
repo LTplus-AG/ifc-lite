@@ -94,6 +94,13 @@ function stripComments(src) {
  * For each expected field, finds its `let <field> = <accessor>(&entity, …);`
  * assignment in metadata.rs and captures the exact index EXPRESSION passed as
  * the second argument (e.g. `idx.global_id`, or a bare literal like `0`).
+ * Tolerant of rustfmt wrapping the call onto multiple lines (whitespace
+ * around the opening paren and a trailing comma before the closing one) —
+ * without that, a call that happens to exceed the line-length limit and gets
+ * reformatted would silently fail to match at all and be reported as a
+ * MISSING assignment (see `checkUsage`'s under-read path) rather than
+ * compared, which is a false alarm over formatting, not the field-drift
+ * signal this gate exists to give.
  *
  * @returns {Map<string, string>} field name -> captured index expression,
  * only for fields actually found. A field absent from the map means this
@@ -105,7 +112,9 @@ export function extractFieldReads(rustSource) {
   const code = stripComments(rustSource);
   const found = new Map();
   for (const { field, accessor } of EXPECTED_FIELDS) {
-    const re = new RegExp(`let\\s+${field}\\s*=\\s*${accessor}\\(&entity,\\s*([^)]+?)\\s*\\);`);
+    const re = new RegExp(
+      `let\\s+${field}\\s*=\\s*${accessor}\\(\\s*&entity,\\s*([^)]+?)\\s*,?\\s*\\);`,
+    );
     const m = re.exec(code);
     if (m) found.set(field, m[1].trim());
   }

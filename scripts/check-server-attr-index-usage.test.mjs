@@ -82,6 +82,26 @@ test('the unmutated repo passes', () => {
   assert.match(out, /check-server-attr-index-usage: OK \(6\/6 fields wired/);
 });
 
+test('GREEN (no false positive): a correctly-wired read reformatted onto multiple lines by rustfmt is still found, not reported as vanished', () => {
+  // Adversarial-review finding: the original regex required `accessor\(&entity,`
+  // as one unbroken literal, with no `\s*` between the opening paren and
+  // `&entity`. A call rustfmt wraps across lines once it exceeds the line
+  // length limit — realistic the moment `idx` or a field name grows a few
+  // characters — puts a newline exactly there, so the regex silently failed
+  // to match at all. The `underRead` path then reported `global_id` as
+  // MISSING and warned the function "may have moved, been renamed, or been
+  // reshaped" — a false vacuity failure over pure reformatting, not the
+  // targeted "read as a literal" failure this gate exists to give.
+  reset();
+  mutate(
+    'let global_id = string_at(&entity, idx.global_id);',
+    'let global_id = string_at(\n                &entity,\n                idx.global_id,\n            );',
+  );
+  const { status, out } = runChecker();
+  assert.equal(status, 0, out);
+  assert.match(out, /check-server-attr-index-usage: OK \(6\/6 fields wired/);
+});
+
 test('RED: reintroducing the exact original #3949 defect (GlobalId/Name at hardcoded IfcRoot indices 0/2) fails, naming both fields', () => {
   reset();
   mutate(

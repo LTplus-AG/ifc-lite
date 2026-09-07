@@ -31,6 +31,7 @@ import {
 } from '@/lib/search/filter-rules';
 import { ComboInput } from '@/components/ui/combo-input';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
+import { RULE_KIND_LABEL } from './filter-rule-labels';
 
 const NO_OPTIONS: readonly string[] = [];
 
@@ -55,22 +56,11 @@ const OP_LABEL: Record<string, string> = {
   isSet: 'is set', isNotSet: 'is not set',
 };
 
-export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
-  storey:          'Storey',
-  ifcType:         'IFC Type',
-  predefinedType:  'Predefined Type',
-  name:            'Name',
-  property:        'Property',
-  quantity:        'Quantity',
-  material:        'Material',
-  classification:  'Classification',
-  elevation:       'Elevation',
-};
-
 // ── Rule row dispatcher ───────────────────────────────────────────────
 
 export interface RuleRowProps {
   rule: FilterRule;
+  modelOptions: Array<{ label: string; value: string }>;
   ifcTypeOptions: string[];
   storeyOptions: ReadonlyArray<readonly [string, number | null]>;
   psetQto: { psets: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; qtos: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, string]>]> } | null;
@@ -80,12 +70,21 @@ export interface RuleRowProps {
   onRemove: () => void;
 }
 
-export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
+export function RuleRow({ rule, modelOptions, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
         {RULE_KIND_LABEL[rule.kind]}
       </span>
+
+      {rule.kind === 'model' && (
+        <SetRuleEditor
+          values={rule.values}
+          op={rule.op}
+          options={modelOptions}
+          onChange={(values, op) => onChange(Rule.model(values, op))}
+        />
+      )}
 
       {rule.kind === 'storey' && (
         <SetRuleEditor
@@ -531,4 +530,3 @@ function OpDropdown<T extends string>({
     </DropdownMenu>
   );
 }
-

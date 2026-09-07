@@ -281,6 +281,10 @@ export interface CacheWriteOptions {
    * latency matters more than entry size.
    */
   compressGeometryChunks?: boolean;
+  /** Use one lazy browser module worker for geometry compression (default false).
+   * Requires Worker support and a bundled worker asset; failure rejects the write.
+   * Has no effect when compression is disabled or all chunks are below its floor. */
+  compressGeometryChunksInWorker?: boolean;
 }
 
 /**
@@ -341,7 +345,16 @@ export interface CacheEntityRef {
 }
 
 export interface CacheEntityIndex {
-  byId: Iterable<[number, CacheEntityRef]>;
+  byId: Iterable<[number, CacheEntityRef]> & {
+    /** Optional borrowed columns equivalent to iteration; never mutated/transferred. */
+    getColumns?(): {
+      expressIds: Uint32Array;
+      byteOffsets: Uint32Array;
+      byteLengths: Uint32Array;
+      typeIndices: Uint16Array;
+      typeStrings: string[];
+    };
+  };
 }
 
 export interface CachedEntityIndexColumns {

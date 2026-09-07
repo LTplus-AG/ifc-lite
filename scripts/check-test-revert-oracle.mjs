@@ -89,7 +89,9 @@ import {
   UNOBSERVED,
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
+import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
 import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
+import { pythonTestOwner, pythonRunner } from './lib/revert-oracle-python.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -194,6 +196,13 @@ function planRuns(testPaths) {
       continue;
     }
     if (rel.endsWith('.rs')) { unassigned.push(rel); continue; }
+    if (rel.endsWith('.py')) {
+      const p = pythonTestOwner(abs, ROOT);
+      if (!p) { unassigned.push(rel); continue; }
+      const key = `python:${p.dir}`;
+      if (!groups.has(key)) groups.set(key, { dir: p.dir, files: [], script: undefined, crate: null, python: true });
+      groups.get(key).files.push(rel); continue;
+    }
     const pkgDir = findUp(dirname(abs), 'package.json');
     if (!pkgDir) { unassigned.push(rel); continue; }
     if (!groups.has(pkgDir)) {
@@ -213,7 +222,9 @@ function planRuns(testPaths) {
     const relFiles = g.files.map((f) => relative(g.dir, join(ROOT, f)) || f);
     const runner = g.crate
       ? cargoRunner(g.crate)
-      : (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
+      : g.python
+        ? pythonRunner(relFiles)
+        : (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
     plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: g.crate });
   }
   return { plans, unassigned };
@@ -222,7 +233,7 @@ function planRuns(testPaths) {
 /** Resolve a runner binary the way the package itself would. */
 function resolveBin(bin, pkgDir) {
   if (bin === 'node') return process.execPath;
-  if (bin === 'cargo') return 'cargo';
+  if (bin === 'cargo' || bin === 'python3') return bin;
   let dir = pkgDir;
   for (;;) {
     const candidate = join(dir, 'node_modules', '.bin', bin);
@@ -299,6 +310,14 @@ if (baseSha === headSha) die(EXIT_NOTHING_CHECKED, 'base and head are the same c
 const mergeBase = gitOrDie(['merge-base', baseSha, headSha]).trim();
 const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]));
 if (entries.length === 0) die(EXIT_NOTHING_CHECKED, 'the diff is empty; nothing to check.');
+
+if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries)) {
+  console.log(
+    '  NOT APPLICABLE: Dependabot changed dependency manifests/lockfiles only; ' +
+      'the normal build and test lanes provide the compatibility verdict.',
+  );
+  process.exit(0);
+}
 
 const { production, test: testEntries, ignored, warnings } = classifyDiff(entries);
 for (const w of warnings) console.log(`  WARNING: ${w}`);

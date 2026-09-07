@@ -7,6 +7,9 @@ import { describe, it } from 'node:test';
 import { ServerEntityIndex, type DataModel } from '@ifc-lite/server-client';
 import { IfcTypeEnum, QuantityType, RelationshipType, STOREY_ELEVATION_MATCH_TOLERANCE_M } from '@ifc-lite/data';
 import { EntityQuery } from '@ifc-lite/query';
+import { extractClassificationsOnDemand } from '@ifc-lite/parser';
+import { createDataAccessor } from '@ifc-lite/ids/bridge';
+import { checkClassificationFacet } from '@ifc-lite/ids';
 import { convertServerDataModel, type ServerParseResult } from './serverDataModel';
 
 const parseResult: ServerParseResult = {
@@ -455,5 +458,233 @@ describe('convertServerDataModel', () => {
     );
 
     assert.equal(findByPropertyCalls, 0, 'server store must not take the columnar table path');
+  });
+});
+
+describe('convertServerDataModel classification wiring (#3955)', () => {
+  /**
+   * Build a realistic server DataModel: a wall (4) associated to an
+   * IfcClassificationReference (100) which the server has already resolved
+   * (system/identification/name walked server-side, per
+   * apps/server/src/services/data_model/classifications.rs), a second wall
+   * (5) with NO classification at all (control), plus the general
+   * IFCRELASSOCIATESCLASSIFICATION relationship edge the server always emits
+   * regardless of the dedicated `classifications` field.
+   */
+  function buildClassifiedDataModel(includeClassifications: boolean): DataModel {
+    return {
+      entities: ServerEntityIndex.fromRows([
+        { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'p', name: 'Project', has_geometry: false },
+        { entity_id: 4, type_name: 'IFCWALL', global_id: 'w-classified', name: 'Classified Wall', has_geometry: true },
+        { entity_id: 5, type_name: 'IFCWALL', global_id: 'w-plain', name: 'Plain Wall', has_geometry: true },
+        { entity_id: 100, type_name: 'IFCCLASSIFICATIONREFERENCE', global_id: '', name: 'EF_25_10', has_geometry: false },
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map(),
+      relationships: [
+        // The server emits this edge unconditionally (relationships.rs), so
+        // the relationship graph proves entity 4 is classified independent
+        // of whether `classifications` below is populated.
+        { rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 100, related_id: 4 },
+      ],
+      classifications: includeClassifications
+        ? [
+            {
+              element_id: 4,
+              system_name: 'Uniclass 2015',
+              identification: 'EF_25_10',
+              name: 'Walls',
+              location: undefined,
+            },
+          ]
+        : [],
+      materials: [],
+      documents: [],
+      spatialHierarchy: {
+        nodes: [
+          { entity_id: 1, parent_id: 0, level: 0, path: 'Project', type_name: 'IFCPROJECT', name: 'Project', children_ids: [], element_ids: [4, 5] },
+        ],
+        project_id: 1,
+        element_to_storey: new Map(),
+        element_to_building: new Map(),
+        element_to_site: new Map(),
+        element_to_space: new Map(),
+      },
+    };
+  }
+
+  const systemFacet = {
+    type: 'classification' as const,
+    system: { type: 'simpleValue' as const, value: 'Uniclass 2015' },
+  };
+
+  it('resolves a system-constrained classification facet from DataModel.classifications on a server-parsed store', () => {
+    const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
+
+    // extractClassificationsOnDemand — the parser primitive the IDS bridge
+    // and the properties panel both call — now returns the server-resolved
+    // attributes instead of [] (no source bytes to decode from directly).
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info.length, 1);
+    assert.equal(info[0].system, 'Uniclass 2015');
+    assert.equal(info[0].identification, 'EF_25_10');
+
+    // End-to-end through the real IDS bridge + facet checker (not a
+    // hand-built accessor): a system-constrained facet now PASSES instead of
+    // reporting the entity as unclassified.
+    const accessor = createDataAccessor(store);
+    const result = checkClassificationFacet(systemFacet, 4, accessor);
+    assert.equal(result.passed, true);
+  });
+
+  it('control: a genuinely unclassified entity still reports CLASSIFICATION_MISSING, distinguishably', () => {
+    const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
+    const accessor = createDataAccessor(store);
+
+    const result = checkClassificationFacet(systemFacet, 5, accessor);
+    assert.equal(result.passed, false);
+    assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
+  });
+
+  it('mutation: dropping DataModel.classifications from the payload reverts to CLASSIFICATION_UNRESOLVED, never a false pass', () => {
+    // The relationship graph edge (IFCRELASSOCIATESCLASSIFICATION) is still
+    // present — the graph proves entity 4 IS classified — but the resolved
+    // attribute payload is empty, as it would be from an older server/cache
+    // that predates the `classifications` field. This must not silently
+    // manufacture a passing result for data that never arrived, and — since
+    // #3951 — must not collapse to the same result as a genuinely
+    // unclassified entity (CLASSIFICATION_MISSING) either: the graph still
+    // proves classification, so the correct outcome is the distinct
+    // "classified, but unresolved" marker/failure.
+    const store = convertServerDataModel(buildClassifiedDataModel(false), parseResult, { size: 1 }, []);
+
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.deepEqual(info, [{ unresolved: true }]);
+
+    const accessor = createDataAccessor(store);
+    const result = checkClassificationFacet(systemFacet, 4, accessor);
+    assert.equal(result.passed, false);
+    assert.equal(result.failure?.type, 'CLASSIFICATION_UNRESOLVED');
+  });
+
+  it('resolves canonical repeated classification relationships after graph deduplication (#3959)', () => {
+    const dataModel = buildClassifiedDataModel(true);
+    // Two legal IfcRelAssociatesClassification records share the same pair.
+    // The server emits one classification row per relationship, while the
+    // viewer graph collapses their equal (source, target, type) edges.
+    dataModel.relationships[0].rel_id = 200;
+    dataModel.relationships.push({ ...dataModel.relationships[0], rel_id: 201 });
+    dataModel.classifications.push({ ...dataModel.classifications[0] });
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+    const refs = store.relationships.getRelated(4, RelationshipType.AssociatesClassification, 'inverse');
+    assert.deepEqual(refs, [100]);
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info.length, 2);
+    assert.ok(info.every((row) => row.system === 'Uniclass 2015' && row.identification === 'EF_25_10'));
+    const result = checkClassificationFacet(systemFacet, 4, createDataAccessor(store));
+    assert.equal(result.passed, true);
+    assert.equal(result.failure, undefined);
+  });
+
+  it('mutation: an attribute the server never sent (location) stays undefined, never fabricated', () => {
+    const store = convertServerDataModel(buildClassifiedDataModel(true), parseResult, { size: 1 }, []);
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info[0].location, undefined);
+  });
+
+  it('mutation: a graph/payload disagreement (id present in payload for an entity the graph does not link) never surfaces as a false positive for the unlinked entity', () => {
+    // entity 5 has no IFCRELASSOCIATESCLASSIFICATION edge at all, so
+    // classRefIds is empty for it regardless of what `classifications`
+    // carries — resolvedClassifications must never be consulted independent
+    // of relationship-graph presence.
+    const dataModel = buildClassifiedDataModel(true);
+    // Inject a payload row for entity 5 the graph does NOT corroborate.
+    dataModel.classifications.push({ element_id: 5, system_name: 'Uniclass 2015', identification: 'EF_25_10', name: 'Walls' });
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+
+    const info = extractClassificationsOnDemand(store, 5);
+    assert.deepEqual(info, []);
+
+    const accessor = createDataAccessor(store);
+    const result = checkClassificationFacet(systemFacet, 5, accessor);
+    assert.equal(result.passed, false);
+    assert.equal(result.failure?.type, 'CLASSIFICATION_MISSING');
+  });
+
+  it('aggregates multiple classifications on a single element, preserving all in payload order (#3959)', () => {
+    // An element carrying multiple classifications (e.g., Uniclass and an
+    // in-house system) is realistic. The resolvedClassifications aggregation
+    // loop must exercise the `existing.push(info)` branch when an element
+    // has two or more rows in DataModel.classifications. This pins that the
+    // loop does not lose, merge, deduplicate, or reorder classifications.
+    const dataModel: DataModel = {
+      entities: ServerEntityIndex.fromRows([
+        { entity_id: 1, type_name: 'IFCPROJECT', global_id: 'p', name: 'Project', has_geometry: false },
+        { entity_id: 4, type_name: 'IFCWALL', global_id: 'w-multi', name: 'Multi-classified Wall', has_geometry: true },
+        { entity_id: 100, type_name: 'IFCCLASSIFICATIONREFERENCE', global_id: '', name: 'EF_25_10', has_geometry: false },
+        { entity_id: 101, type_name: 'IFCCLASSIFICATIONREFERENCE', global_id: '', name: 'IN-HOUSE-A1', has_geometry: false },
+      ]),
+      propertySets: new Map(),
+      quantitySets: new Map(),
+      relationships: [
+        // Two IFCRELASSOCIATESCLASSIFICATION edges for element 4, one per system.
+        { rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 100, related_id: 4 },
+        { rel_type: 'IFCRELASSOCIATESCLASSIFICATION', relating_id: 101, related_id: 4 },
+      ],
+      classifications: [
+        // First classification (Uniclass): must survive.
+        {
+          element_id: 4,
+          system_name: 'Uniclass 2015',
+          identification: 'EF_25_10',
+          name: 'Walls',
+          location: undefined,
+        },
+        // Second classification (in-house system): must also survive and NOT
+        // overwrite or merge with the first. The loop's existing.push(info)
+        // branch must be exercised.
+        {
+          element_id: 4,
+          system_name: 'In-House System',
+          identification: 'A1',
+          name: 'Structural Element',
+          location: 'Level 1',
+        },
+      ],
+      materials: [],
+      documents: [],
+      spatialHierarchy: {
+        nodes: [
+          { entity_id: 1, parent_id: 0, level: 0, path: 'Project', type_name: 'IFCPROJECT', name: 'Project', children_ids: [], element_ids: [4] },
+        ],
+        project_id: 1,
+        element_to_storey: new Map(),
+        element_to_building: new Map(),
+        element_to_site: new Map(),
+        element_to_space: new Map(),
+      },
+    };
+
+    const store = convertServerDataModel(dataModel, parseResult, { size: 1 }, []);
+
+    // Both classifications must survive, in payload order.
+    const info = extractClassificationsOnDemand(store, 4);
+    assert.equal(info.length, 2, 'element 4 must have exactly 2 classifications, not 1 or 0');
+
+    // First classification (Uniclass): assert on actual values, not just count.
+    // A count-only check would pass even if both entries were the same object.
+    assert.equal(info[0].system, 'Uniclass 2015', 'first classification system must be preserved');
+    assert.equal(info[0].identification, 'EF_25_10', 'first classification identification must be preserved');
+    assert.equal(info[0].name, 'Walls', 'first classification name must be preserved');
+    assert.equal(info[0].location, undefined, 'first classification location must be undefined');
+
+    // Second classification (In-House System): distinct fields intact.
+    assert.equal(info[1].system, 'In-House System', 'second classification system must be preserved');
+    assert.equal(info[1].identification, 'A1', 'second classification identification must be preserved');
+    assert.equal(info[1].name, 'Structural Element', 'second classification name must be preserved');
+    assert.equal(info[1].location, 'Level 1', 'second classification location must be preserved');
+
+    // Verify they are not deduplicated or merged: the objects must be distinct.
+    assert.notEqual(info[0], info[1], 'classifications must be separate objects, not merged');
   });
 });

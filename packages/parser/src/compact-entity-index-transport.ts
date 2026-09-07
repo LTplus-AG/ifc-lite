@@ -12,37 +12,11 @@
 
 import { CompactEntityIndex } from './compact-entity-index.js';
 
-/**
- * Plain-data column representation of a `CompactEntityIndex`. Holds the
- * five backing arrays plus the deduplicated type-string list. All four
- * typed arrays are transferable.
- */
-export interface CompactEntityIndexColumns {
-  expressIds: Uint32Array;
-  byteOffsets: Uint32Array;
-  byteLengths: Uint32Array;
-  typeIndices: Uint16Array;
-  typeStrings: string[];
-}
+import type { CompactEntityIndexColumns } from './compact-entity-index-columns.js';
+export type { CompactEntityIndexColumns } from './compact-entity-index-columns.js';
 
 export function compactEntityIndexToColumns(index: CompactEntityIndex): CompactEntityIndexColumns {
-  // CompactEntityIndex stores its arrays as private fields; access them
-  // through the prototype's documented columns. We rely on the public
-  // constructor's parameter order to define this contract.
-  const internal = index as unknown as {
-    expressIds: Uint32Array;
-    byteOffsets: Uint32Array;
-    byteLengths: Uint32Array;
-    typeIndices: Uint16Array;
-    typeStrings: string[];
-  };
-  return {
-    expressIds: internal.expressIds,
-    byteOffsets: internal.byteOffsets,
-    byteLengths: internal.byteLengths,
-    typeIndices: internal.typeIndices,
-    typeStrings: internal.typeStrings.slice(),
-  };
+  return index.getColumns();
 }
 
 export function compactEntityIndexFromColumns(columns: CompactEntityIndexColumns): CompactEntityIndex {

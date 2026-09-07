@@ -30,7 +30,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useViewerStore } from '@/store';
 import { runTier0Scan, type SearchResult, type ScanModel } from '@/lib/search/tier0-scan';
 import { queryTier1Indexes, type Tier1Index } from '@/lib/search/tier1-index';
-import { useSearchIndex } from '@/hooks/useSearchIndex';
 import { pushRecentSearch } from '@/lib/search/recent-searches';
 import { SearchModalText } from './SearchModal.text';
 import { SearchModalFilter } from './SearchModal.filter';
@@ -63,10 +62,6 @@ export function SearchModal() {
       setSearchQuery: s.setSearchQuery,
     })),
   );
-
-  // Make sure Tier-1 indexes continue building while the modal is open
-  // (the inline also mounts this hook — cheap re-registration).
-  useSearchIndex();
 
   // Debounce the query the same way the inline does, so fast typing
   // inside the modal doesn't re-scan per keystroke.

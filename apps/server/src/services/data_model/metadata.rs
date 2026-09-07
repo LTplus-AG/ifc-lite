@@ -11,11 +11,14 @@ use rayon::prelude::*;
 use std::sync::Arc;
 
 /// Unknown-type fallback, mirroring the WASM path's
-/// `extractRootAttributesFromEntity`: Description 3, ObjectType 4, Tag 7 (the
-/// IfcElement layout), and NO PredefinedType. Applied only when the type is
-/// absent from the schema registry — a KNOWN type without an attribute keeps
-/// its -1 and stays empty on both parse paths.
+/// `extractRootAttributesFromEntity`: GlobalId 0, Name 2, Description 3,
+/// ObjectType 4, Tag 7 (the IfcElement/IfcRoot layout), and NO PredefinedType.
+/// Applied only when the type is absent from the schema registry — a KNOWN
+/// type without an attribute keeps its -1 and stays empty on both parse
+/// paths (issue #3949 extended this fallback to GlobalId/Name).
 const UNKNOWN_TYPE_FALLBACK: RootAttrIndices = RootAttrIndices {
+    global_id: 0,
+    name: 2,
     description: 3,
     object_type: 4,
     tag: 7,
@@ -59,15 +62,18 @@ pub(super) fn extract_entity_metadata(
             let mut local_decoder =
                 EntityDecoder::with_arc_index(content.as_slice(), entity_index.clone());
             let entity = local_decoder.decode_at(job.start, job.end).ok()?;
-
-            let global_id = entity.get_string(0).map(|s| s.to_string());
-            let name = entity.get_string(2).map(|s| s.to_string());
             let has_geometry = ifc_lite_core::has_geometry_by_name(&job.type_name);
 
             // Root attributes at the SAME schema-registry positions the WASM
             // path resolves them (issue #1765) — see generated/attr_indices.rs.
+            // GlobalId/Name are NOT fixed at 0/2 for every entity: that only
+            // holds for `IfcRoot` subtypes. `IfcClassification`, for example,
+            // has no GlobalId at all and its Name sits at index 3, not 2
+            // (issue #3949).
             let upper = job.type_name.to_uppercase();
             let idx = root_attr_indices(&upper).unwrap_or(UNKNOWN_TYPE_FALLBACK);
+            let global_id = string_at(&entity, idx.global_id);
+            let name = string_at(&entity, idx.name);
             let description = string_at(&entity, idx.description);
             let object_type = string_at(&entity, idx.object_type);
             let tag = string_at(&entity, idx.tag);

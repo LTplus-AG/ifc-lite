@@ -26,8 +26,8 @@
     "@ifc-lite/encoding": "workspace:^"
   },
   "devDependencies": {
-    "@types/node": "^26.4.0",
-    "proj4": "^2.21.0",
+    "@types/node": "^26.4.1",
+    "proj4": "^2.22.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },

@@ -525,6 +525,7 @@ export interface ClassificationInfo {
   value: string; // Classification value/code
   name?: string; // Optional classification name
   unresolved?: boolean; // classified, but system/value/name ('') unreadable (#3948)
+  presenceUnknown?: boolean; // unlike `unresolved`, does NOT prove presence (#3954); paired with `unresolved: true`
 }
 
 /** Material information */

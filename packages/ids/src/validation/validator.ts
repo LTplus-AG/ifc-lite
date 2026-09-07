@@ -10,7 +10,6 @@ import type {
   IDSDocument,
   IDSSpecification,
   IDSRequirement,
-  IDSFacet,
   IDSValidationReport,
   IDSSpecificationResult,
   IDSEntityResult,
@@ -194,7 +193,7 @@ export async function validateIDS(
   modelInfo: IDSModelInfo,
   options: ValidatorOptions = {}
 ): Promise<IDSValidationReport> {
-  const { translator, onProgress, includePassingEntities = true } = options;
+  const { onProgress } = options;
 
   const cachedAccessor = createCachedAccessor(accessor);
   const descriptionCache: DescriptionCache = new Map();
@@ -519,11 +518,11 @@ function checkRequirement(
 ): IDSRequirementResult {
   const facetResult = checkFacet(requirement.facet, expressId, accessor);
 
-  // Apply optionality
+  // Unknown classifications must fail even a prohibition; keep its failure reason (#3996).
   let status: 'pass' | 'fail' | 'not_applicable';
   let failureReason: string | undefined;
 
-  switch (requirement.optionality) {
+  switch (facetResult.failure?.type === 'CLASSIFICATION_UNRESOLVED' ? 'required' : requirement.optionality) {
     case 'required':
       status = facetResult.passed ? 'pass' : 'fail';
       if (!facetResult.passed) {
@@ -749,7 +748,7 @@ export function formatFailureReason(result: FacetCheckResult): string {
     case 'CLASSIFICATION_VALUE_MISMATCH':
       return `Classification value "${actual}" does not match expected ${expected}`;
     case 'CLASSIFICATION_UNRESOLVED':
-      return 'Entity is classified, but classification details cannot be read from this data source';
+      return field === 'presence' ? 'Whether this entity is classified cannot be determined from this data source' : 'Entity is classified, but classification details cannot be read from this data source';
     case 'MATERIAL_MISSING':
       return 'No material assigned';
     case 'MATERIAL_VALUE_MISMATCH':

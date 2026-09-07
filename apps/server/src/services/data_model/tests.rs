@@ -1333,3 +1333,311 @@ fn fixture_without_new_types_is_unaffected() {
         dm.relationships
     );
 }
+
+/// Issue #3963 reporter's minimal fixture: a wall whose only `IfcPropertySet`
+/// ("Pset_Scratch") has, as its ONLY `HasProperties` member, an
+/// `IfcComplexProperty` wrapping one simple sub-property. Before the fix,
+/// `extract_property` has no arm for `IFCCOMPLEXPROPERTY` (falls to `_ =>
+/// None`), so `properties` ends up empty and the whole `PropertySet` is
+/// dropped — `dm.property_sets.len() == 0` even though the wall genuinely
+/// carries a property set in the file.
+const COMPLEX_PROPERTY_ONLY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000002',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000001',$,'W1',$,$,$,$,$,$);
+#80=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#81=IFCCOMPLEXPROPERTY('ComplexName',$,'Usage',(#80));
+#82=IFCPROPERTYSET('Pst0000000000000000001',$,'Pset_Scratch',$,(#81));
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000001',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_whose_only_member_is_a_complex_property_is_not_dropped() {
+    let dm = extract_data_model(COMPLEX_PROPERTY_ONLY_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("Pset_Scratch must survive — issue #3963");
+    assert_eq!(pset.pset_name, "Pset_Scratch");
+
+    // The complex property surfaces as ONE entry under its own Name, with the
+    // nested sub-property flattened into a "Name: value" display string —
+    // mirroring `resolveComplexPropertyValue` in
+    // packages/parser/src/property-value-parser.ts, which is the spec here.
+    let prop = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "ComplexName")
+        .expect("ComplexName entry missing");
+    assert_eq!(prop.property_value, "SubName: SubVal");
+    assert_eq!(prop.property_type, "string");
+    assert_eq!(
+        prop.values.as_deref(),
+        Some(&["SubVal".to_string()][..]),
+        "flat values candidate array must carry the nested display value"
+    );
+}
+
+/// A set mixing a simple and a complex member must yield BOTH — the complex
+/// arm must not crowd out (or be crowded out by) the existing simple-value
+/// arms in the same `match`.
+const MIXED_SIMPLE_AND_COMPLEX_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000003',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000002',$,'W2',$,$,$,$,$,$);
+#90=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 60'),$);
+#91=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#92=IFCCOMPLEXPROPERTY('ComplexName',$,'Usage',(#91));
+#93=IFCPROPERTYSET('Pst0000000000000000002',$,'Pset_Mixed',$,(#90,#92));
+#94=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000002',$,$,$,(#28),#93);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_mixing_simple_and_complex_members_yields_both() {
+    let dm = extract_data_model(MIXED_SIMPLE_AND_COMPLEX_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 93)
+        .expect("Pset_Mixed must be extracted");
+    assert_eq!(pset.properties.len(), 2, "both members must survive");
+    let simple = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "FireRating")
+        .unwrap();
+    assert_eq!(simple.property_value, "REI 60");
+    let complex = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "ComplexName")
+        .unwrap();
+    assert_eq!(complex.property_value, "SubName: SubVal");
+}
+
+/// Nested `IfcComplexProperty` (a complex property whose own `HasProperties`
+/// contains another complex property) must recurse — mirroring
+/// `resolveComplexPropertyValue`'s self-recursion in property-value-parser.ts.
+const NESTED_COMPLEX_PROPERTY_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000004',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000003',$,'W3',$,$,$,$,$,$);
+#95=IFCPROPERTYSINGLEVALUE('Leaf',$,IFCLABEL('LeafVal'),$);
+#96=IFCCOMPLEXPROPERTY('Inner',$,'InnerUsage',(#95));
+#97=IFCCOMPLEXPROPERTY('Outer',$,'OuterUsage',(#96));
+#98=IFCPROPERTYSET('Pst0000000000000000003',$,'Pset_Nested',$,(#97));
+#99=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000003',$,$,$,(#28),#98);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn nested_complex_properties_recurse_two_levels_deep() {
+    let dm = extract_data_model(NESTED_COMPLEX_PROPERTY_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 98)
+        .expect("Pset_Nested must be extracted");
+    let outer = pset
+        .properties
+        .iter()
+        .find(|p| p.property_name == "Outer")
+        .expect("Outer entry missing");
+    // Inner recurses to "Leaf: LeafVal", which is then wrapped as
+    // "Inner: Leaf: LeafVal" by the outer level.
+    assert_eq!(outer.property_value, "Inner: Leaf: LeafVal");
+}
+
+/// Control: a property set with no complex members at all — the displaced
+/// path, and the one that matters most — must still extract identically to
+/// before this change (issue #3963 must not touch simple-value handling).
+const SIMPLE_ONLY_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000005',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000004',$,'W4',$,$,$,$,$,$);
+#100=IFCPROPERTYSINGLEVALUE('Manufacturer',$,IFCLABEL('ACME'),$);
+#101=IFCPROPERTYSET('Pst0000000000000000004',$,'Pset_Simple',$,(#100));
+#102=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000004',$,$,$,(#28),#101);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn a_pset_with_no_complex_members_is_unaffected() {
+    let dm = extract_data_model(SIMPLE_ONLY_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 101)
+        .expect("Pset_Simple must be extracted");
+    assert_eq!(pset.properties.len(), 1);
+    let m = &pset.properties[0];
+    assert_eq!(m.property_name, "Manufacturer");
+    assert_eq!(m.property_value, "ACME");
+    assert_eq!(m.property_type, "string");
+    assert_eq!(m.data_type.as_deref(), Some("IFCLABEL"));
+}
+
+
+const NULL_NAME_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000006',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000005',$,'W5',$,$,$,$,$,$);
+#80=IFCPROPERTYSINGLEVALUE('SubName',$,IFCLABEL('SubVal'),$);
+#82=IFCPROPERTYSET('Pst0000000000000000005',$,$,$,(#80));
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000005',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// A pset with `Name = $` (OPTIONAL per the schema) but a genuinely
+/// resolvable property must still surface, exactly like the browser/WASM
+/// path's `typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''` (never
+/// discards a pset for a non-string Name). Before this fix, the early
+/// `entity.get_string(2)?` bailed the whole extraction closure before the
+/// `properties.is_empty() && pset_name.is_empty()` keep condition ever ran.
+#[test]
+fn a_pset_with_a_null_name_and_a_resolvable_property_is_not_dropped() {
+    let dm = extract_data_model(NULL_NAME_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("pset with Name=$ but a resolvable property must be extracted");
+    assert_eq!(pset.pset_name, "");
+    assert_eq!(pset.properties.len(), 1);
+    assert_eq!(pset.properties[0].property_name, "SubName");
+}
+
+const MALFORMED_HAS_PROPERTIES_PSET_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000007',$,'P',$,$,$,$,$,$);
+#28=IFCWALL('Wall00000000000000006',$,'W6',$,$,$,$,$,$);
+#82=IFCPROPERTYSET('Pst0000000000000000006',$,'Pset_Malformed',$,$);
+#83=IFCRELDEFINESBYPROPERTIES('Rel0000000000000000006',$,$,$,(#28),#82);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+/// `HasProperties` is a mandatory, non-empty SET per the schema, so `$` here
+/// means the file is malformed — but a named pset is still real evidence the
+/// file links this element to it (same rationale as issue #3963's fix), so
+/// it must not be discarded outright just because the malformed attribute
+/// made the list unreadable.
+#[test]
+fn a_pset_with_a_named_but_malformed_has_properties_is_not_dropped() {
+    let dm = extract_data_model(MALFORMED_HAS_PROPERTIES_PSET_IFC);
+    let pset = dm
+        .property_sets
+        .iter()
+        .find(|p| p.pset_id == 82)
+        .expect("named pset with a malformed HasProperties must still be extracted");
+    assert_eq!(pset.pset_name, "Pset_Malformed");
+    assert!(pset.properties.is_empty());
+}
+
+/// #3949: `IfcClassification`'s attribute order is `Source(0), Edition(1),
+/// EditionDate(2), Name(3), ...` — nothing like `IfcRoot`'s
+/// `GlobalId(0), OwnerHistory(1), Name(2)`. Reading it at the hardcoded
+/// `IfcRoot` positions makes `global_id` the classification's `Source` string
+/// and `name` its `EditionDate`.
+const CLASSIFICATION_METADATA_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#90=IFCCLASSIFICATION('Src90','Ed90','2024-01-01','RealName90',$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn ifcclassification_metadata_reads_name_by_schema_position_not_ifcroot_position() {
+    let dm = extract_data_model(CLASSIFICATION_METADATA_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 90)
+        .expect("classification entity #90 missing");
+    assert_eq!(e.type_name, "IFCCLASSIFICATION");
+    // `IfcClassification` has no `GlobalId` attribute at all.
+    assert_eq!(
+        e.global_id, None,
+        "IfcClassification does not declare GlobalId; must not read Source as a GUID"
+    );
+    assert_eq!(
+        e.name.as_deref(),
+        Some("RealName90"),
+        "name must be IfcClassification's own Name attribute (index 3), not EditionDate (index 2)"
+    );
+}
+
+/// Control: a genuine `IfcRoot` subtype (`IfcWall`) must keep extracting
+/// `global_id`/`name` at exactly the same positions as before this fix —
+/// `IfcRoot` subtypes are the overwhelming majority of real-model content.
+#[test]
+fn ifcwall_metadata_still_reads_globalid_and_name_at_ifcroot_positions() {
+    let dm = extract_data_model(ASSOCIATIONS_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 28)
+        .expect("wall entity #28 missing");
+    assert_eq!(e.global_id.as_deref(), Some("Wall00000000000000001"));
+    assert_eq!(e.name.as_deref(), Some("W1"));
+}
+
+/// Control: a type absent from the schema registry falls back to the same
+/// `IfcElement`-layout positions the WASM path uses for unknown types
+/// (Description 3, ObjectType 4, Tag 7) — extended here to GlobalId 0 / Name 2,
+/// matching the pre-fix hardcoded behaviour for the unknown-type case.
+const UNKNOWN_TYPE_METADATA_IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('Proj0000000000000000001',$,'P',$,$,$,$,$,$);
+#95=IFCTOTALLYMADEUPVENDORTYPE('Guid95',$,'Name95','Desc95','ObjType95',$,$,'Tag95');
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+#[test]
+fn unknown_type_metadata_falls_back_to_ifcelement_layout_positions() {
+    let dm = extract_data_model(UNKNOWN_TYPE_METADATA_IFC);
+    let e = dm
+        .entities
+        .iter()
+        .find(|e| e.entity_id == 95)
+        .expect("unknown-type entity #95 missing");
+    assert_eq!(e.global_id.as_deref(), Some("Guid95"));
+    assert_eq!(e.name.as_deref(), Some("Name95"));
+    assert_eq!(e.description.as_deref(), Some("Desc95"));
+    assert_eq!(e.object_type.as_deref(), Some("ObjType95"));
+    assert_eq!(e.tag.as_deref(), Some("Tag95"));
+}

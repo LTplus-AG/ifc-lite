@@ -130,7 +130,7 @@ export class BinaryCacheWriter {
       const geometryBuffer = await buildGeometrySectionV13(
         geometry.meshes,
         geometry.coordinateInfo,
-        { compress: options.compressGeometryChunks ?? true }
+        { compress: options.compressGeometryChunks ?? true, compressInWorker: options.compressGeometryChunksInWorker }
       );
       sectionBuffers.push({ type: SectionType.Geometry, buffer: geometryBuffer });
       totalVertices = geometry.totalVertices;

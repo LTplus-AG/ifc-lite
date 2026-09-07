@@ -1613,7 +1613,7 @@ fn with_result_views<R>(
     // `process_geometry` emits the producer-native IFC **Z-up** frame (the Z-up→Y-up
     // swap normally happens at the wasm FFI, which this path never crosses). glTF
     // mandates +Y-up, so convert each visible mesh to Y-up — positions/normals
-    // swapped, winding reversed, origin swapped — matching the viewer/legacy output.
+    // rotated, winding preserved, origin rotated — matching the viewer/legacy output.
     //
     // The visible indices are collected first so the immutable visibility borrow ends
     // before the in-place mutation; then each visible mesh is converted to Y-up IN PLACE

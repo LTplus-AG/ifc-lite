@@ -1,0 +1,11 @@
+{"file":"README.md","sha256":"314e34e436e5224b7353af78b3131cf1deb1787d36160ffb4d001c5331437eb5","lines":33}
+{"file":"chrome.jsonl","sha256":"6e2098a5b173b95653a432ad6c8f665995118f375b3881c51bba56f9645ca709","lines":110}
+{"file":"dispositions.jsonl","sha256":"b09df94b176f924f525c3bab39b5fadc53e7ae6ab8390ee62912a0d611f0489a","lines":6}
+{"file":"firefox.jsonl","sha256":"953c2df40fdd052d388aa6c66334f158a60ee9c12dc2653bdb0086faff81fb56","lines":110}
+{"file":"functional.jsonl","sha256":"871d77db2178b6e5e846c8d5ffb6c6430532d331f1a352229d4d04a91b8224fa","lines":14}
+{"file":"layer-B-chrome.jsonl","sha256":"67aca16a9635c5e4c72ae08a7389b19c1806011ed8a9b0c3a86fdce7a67ed3df","lines":20}
+{"file":"layers-native.jsonl","sha256":"bfafdf88fc0a3717222955610d14bc8a4641994fea6a6605eba602a1d9fe762a","lines":110}
+{"file":"native-oracle.jsonl","sha256":"2b57f286a041ea106add888324d10c47e4ce076df29ef616e58f6ce7e82628e2","lines":63}
+{"file":"native.jsonl","sha256":"0a3b7f0705c1f66dc6f2e6fd96c7145e955d5586fba67cd943fc536ad642ca11","lines":110}
+{"file":"provenance.jsonl","sha256":"da4b4cf5d900dfc68d0b59974df976aaf71486a4a7266511d5170f2b97c2b67a","lines":16}
+{"file":"summaries.jsonl","sha256":"ceaa55ea78a31ab26e37d54ea82df051732adb9705caf3440a0d2d6ed06ebc69","lines":19}

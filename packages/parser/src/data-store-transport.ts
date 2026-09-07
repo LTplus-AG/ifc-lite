@@ -349,9 +349,12 @@ function sumBytes(payload: DataStoreTransport): number {
  * thread both view the same upstream `SharedArrayBuffer`. Callers must
  * reattach `source` on the receiving side when calling `fromTransport`.
  */
-export function toTransport(store: IfcDataStore): DataStoreTransportEnvelope {
+export function toTransport(
+  store: IfcDataStore,
+  indexOverride?: DataStoreTransport['entityIndex'],
+): DataStoreTransportEnvelope {
   const byTypeEntries: Array<[string, number[]]> = [];
-  for (const [key, value] of store.entityIndex.byType) {
+  for (const [key, value] of indexOverride ? [] : store.entityIndex.byType) {
     byTypeEntries.push([key, [...value]]);
   }
 
@@ -368,7 +371,7 @@ export function toTransport(store: IfcDataStore): DataStoreTransportEnvelope {
     parseTime: store.parseTime,
     lengthUnitScale: store.lengthUnitScale,
 
-    entityIndex: {
+    entityIndex: indexOverride ?? {
       byId: compactEntityIndexToColumns(compactById),
       byType: byTypeEntries,
     },
@@ -414,6 +417,7 @@ export function toTransport(store: IfcDataStore): DataStoreTransportEnvelope {
 export function fromTransport(
   payload: DataStoreTransport,
   source: Uint8Array | IfcSourceBytes,
+  byTypeOverride?: Map<string, number[]>,
 ): IfcDataStore {
   const strings: DataStringTable = StringTable.fromArray(payload.strings);
   const entities = entityTableFromColumns(payload.entities, strings);
@@ -422,7 +426,7 @@ export function fromTransport(
   const relationships = relationshipGraphFromColumns(payload.relationships);
 
   const byIdIndex = compactEntityIndexFromColumns(payload.entityIndex.byId);
-  const byType = new Map<string, number[]>(
+  const byType = byTypeOverride ?? new Map<string, number[]>(
     payload.entityIndex.byType.map(([k, v]) => [k, [...v]]),
   );
   const deferredEntityIndex = payload.deferredEntityIndex

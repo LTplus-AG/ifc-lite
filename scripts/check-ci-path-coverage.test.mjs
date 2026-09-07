@@ -383,25 +383,60 @@ test('the real repository has no gate input outside its trigger', () => {
 });
 
 /**
- * A mirror of the real repo whose `.github/` is a real copy and whose other
- * top-level entries are symlinks, so a mutation of `test.yml` costs a few
- * kilobytes instead of a full tree copy. The check resolves symlinked
+ * A mirror whose `.github/` is copied and whose tracked `tests/` files are
+ * materialized into private directories. Other top-level entries are links,
+ * avoiding a full source or fetched-corpus copy. The check resolves symlinked
  * directories through `statSync`, so the walk sees the real files.
  */
-function mirrorRepo() {
+function mirrorRepo(source = REPO) {
   const root = mkdtempSync(join(tmpdir(), 'ci-path-coverage-mirror-'));
-  for (const entry of readdirSync(REPO)) {
+  for (const entry of readdirSync(source)) {
     if (entry === '.git' || entry === 'node_modules') continue;
-    // `.github` is copied because the hole tests mutate test.yml. `tests` is
-    // copied because the fixture-cache test plants a fetched `.ifc` under
-    // `tests/models`, and writing through a symlink would land it in the real
-    // tree. Both are small; everything else stays a symlink.
-    if (entry === '.github' || entry === 'tests') {
-      cpSync(join(REPO, entry), join(root, entry), { recursive: true });
-    } else symlinkSync(join(REPO, entry), join(root, entry));
+    if (entry === 'tests') {
+      // Copy tracked test inputs into fresh directories. A fetched corpus may
+      // be symlinked at any depth; copying those links lets dummy writes escape.
+      const files = execFileSync('git', ['ls-files', '-z', '--', 'tests'], {
+        cwd: source, encoding: 'utf8',
+      }).split('\0').filter(Boolean);
+      for (const file of files) {
+        const target = join(root, file);
+        mkdirSync(dirname(target), { recursive: true });
+        writeFileSync(target, readFileSync(join(source, file)));
+      }
+    } else if (entry === '.github') {
+      cpSync(join(source, entry), join(root, entry), { recursive: true });
+    } else symlinkSync(join(source, entry), join(root, entry));
   }
   return root;
 }
+
+test('mirror dummy writes preserve external corpus bytes through directory and file links (#4026)', () => {
+  const source = mkdtempSync(join(tmpdir(), 'ci-path-linked-source-'));
+  const external = mkdtempSync(join(tmpdir(), 'ci-path-external-models-'));
+  let mirror;
+  try {
+    mkdirSync(join(source, 'tests/models'), { recursive: true });
+    writeFileSync(join(source, 'tests/models/manifest.json'), '{}\n');
+    execFileSync('git', ['init', '-q', source]);
+    execFileSync('git', ['-C', source, 'add', 'tests/models/manifest.json']);
+    writeFileSync(join(external, 'duplex.ifc'), 'external duplex canary');
+    writeFileSync(join(external, 'AB22.ifc'), 'external AB22 canary');
+    symlinkSync(external, join(source, 'tests/models/ara3d'));
+    symlinkSync(join(external, 'AB22.ifc'), join(source, 'tests/models/AB22.ifc'));
+    mirror = mirrorRepo(source);
+    mkdirSync(join(mirror, 'tests/models/ara3d'), { recursive: true });
+    writeFileSync(join(mirror, 'tests/models/ara3d/duplex.ifc'), 'dummy');
+    writeFileSync(join(mirror, 'tests/models/AB22.ifc'), 'dummy');
+    assert.equal(readFileSync(join(external, 'duplex.ifc'), 'utf8'), 'external duplex canary');
+    assert.equal(readFileSync(join(external, 'AB22.ifc'), 'utf8'), 'external AB22 canary');
+    assert.equal(readFileSync(join(mirror, 'tests/models/manifest.json'), 'utf8'), '{}\n');
+    assert.equal(readFileSync(join(mirror, 'tests/models/AB22.ifc'), 'utf8'), 'dummy');
+  } finally {
+    if (mirror) rmSync(mirror, { recursive: true, force: true });
+    rmSync(source, { recursive: true, force: true });
+    rmSync(external, { recursive: true, force: true });
+  }
+});
 
 /** Delete one `- '<glob>'` line from the mirror's filter block. */
 function dropFilterEntry(root, glob) {

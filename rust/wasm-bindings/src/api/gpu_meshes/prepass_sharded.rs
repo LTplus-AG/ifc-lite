@@ -64,20 +64,9 @@ impl IfcAPI {
         index_lengths: &[u32],
         index_classes: &[u8],
     ) -> Result<JsValue, JsValue> {
-        let prebuilt = ifc_lite_core::ColumnarEntityIndex::from_columns(
-            index_ids,
-            index_starts,
-            index_lengths,
-        );
-        self.pre_pass_streaming_impl(
-            data,
-            on_event,
-            chunk_size,
-            disabled_type_names,
-            skip_type_geometry,
-            Some(prebuilt),
-            true,
-            Some((index_ids, index_starts, index_lengths, index_classes)),
+        self.pre_pass_streaming_sharded_impl(
+            data, on_event, chunk_size, disabled_type_names, skip_type_geometry,
+            index_ids, index_starts, index_lengths, index_classes, false,
         )
     }
 

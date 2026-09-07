@@ -2,6 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { ownedWasmBuffer } from './wasm-owned-buffer.js';
+import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
+import { canReuseWorkerSource, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
 import init, { initSync, IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { largeFilePrepassError } from './huge-file-error.js';
@@ -58,6 +61,7 @@ export interface GeometryWorkerInitMessage {
 export interface GeometryWorkerStreamStartMessage {
   type: 'stream-start';
   sharedBuffer: SharedArrayBuffer;
+  sourceSessionId?: string;
   unitScale: number;
   rtcX: number; rtcY: number; rtcZ: number;
   needsShift: boolean;
@@ -163,6 +167,7 @@ export interface GeometryWorkerSetPrepassColumnsMessage {
 export interface GeometryWorkerScanShardMessage {
   type: 'scan-shard';
   sharedBuffer: SharedArrayBuffer;
+  sourceSessionId?: string;
   shardIndex: number;
   rangeStart: number;
   rangeEnd: number;
@@ -170,6 +175,7 @@ export interface GeometryWorkerScanShardMessage {
 
 export interface GeometryWorkerPrePassMessage {
   type: 'prepass-streaming';
+  sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
   /** Jobs per chunk (defaults to 50_000). */
   chunkSize?: number;
@@ -291,6 +297,7 @@ export interface GeometryWorkerShardResultMessage {
 export interface GeometryWorkerResolveStylesShardMessage {
   type: 'resolve-styles-shard';
   sharedBuffer: SharedArrayBuffer;
+  sourceSessionId?: string;
   sliceIndex: number;
   spans: Uint32Array;
 }
@@ -314,6 +321,7 @@ export interface GeometryWorkerStylesShardResultMessage {
  */
 export interface GeometryWorkerPrePassShardedMessage {
   type: 'prepass-streaming-sharded';
+  sourceFingerprint?: SharedArrayBuffer;
   sharedBuffer: SharedArrayBuffer;
   chunkSize?: number;
   disabledTypes?: string[];
@@ -334,6 +342,7 @@ export interface GeometryWorkerPrePassShardedMessage {
 export interface GeometryWorkerFinalizeStylesMessage {
   type: 'finalize-styles';
   sharedBuffer: SharedArrayBuffer;
+  sourceSessionId?: string;
   orphanIds: Uint32Array;
   orphanColors: Float32Array;
   geomIds: Uint32Array;
@@ -608,16 +617,8 @@ function applySkipSmallCutsToApi(): void {
   skipSmallCutsApplied = true;
 }
 
-/**
- * Cached pre-built entity index (issue #1097). Same replay contract as the
- * flags above, but here it guards a perf cliff rather than a feature toggle:
- * the binary-split recovery in `processBatch` sets `api = null` to force a
- * WASM re-init after a failing entity. Without replay, the freshly-built
- * IfcAPI has no entity index, so its next `processGeometryBatch` falls back to
- * the lazy O(file) re-scan (~5 s on a 1 GB IFC) — a giant silent window that
- * compounds across a cluster of failures. Re-applying the cached index keeps
- * recovery cheap and quiet.
- */
+/** Retain immutable index columns for recovery re-init so a failed geometry
+ * batch does not rescan the source. Cleared at stream-end and replaced per load. */
 let cachedEntityIndex: { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array } | null = null;
 let entityIndexApplied: boolean = false;
 
@@ -674,35 +675,16 @@ function applyPrepassColumnsToApi(): void {
   prepassColumnsApplied = true;
 }
 
-/**
- * Cached session source bytes (cold-load lever 1c). Same replay contract as the
- * entity index above, but it removes a per-call copy rather than a per-load
- * scan: the wasm-bindgen glue `passArray8ToWasm0` mallocs + memcpys the WHOLE
- * source file into the worker's wasm heap on EVERY `processGeometryBatch*` call
- * (~4 ms/call on 169 MB). A huge CSG-dense model adapts down to 64-job batches
- * and makes 600+ calls/worker, so the per-call copy alone is 15-25 s/worker of
- * pure memcpy. `setSourceBytes` copies the file ONCE per load; the `*FromSource`
- * batch variants then read it from the heap. The bytes are identical across a
- * worker's calls (one model per worker), so one copy suffices.
- *
- * Points at the active session's `localBytes`; the SAB fallback in `processBatch`
- * swaps it for the materialised copy and re-applies. `null` between loads
- * (released at `stream-end`). Reset (applied=false) on every fresh IfcAPI so the
- * binary-split recovery re-init (`api = null`) re-installs it, exactly like the
- * entity index. When the loaded wasm predates `setSourceBytes`, the apply is a
- * no-op and `processBatch` stays on the legacy `data`-per-call path.
- */
+/** One owned WASM source per load, reused from shard scanning through meshing
+ * (#3989). The JS view is retained for instance recovery; all source-taking
+ * callers still support older WASM. A shard scan starts the load; stream-start
+ * consumes that preparation instead of discarding it. */
 let cachedSourceBytes: Uint8Array | null = null;
 let sourceBytesApplied: boolean = false;
+let sourcePreparedForStream = false;
+let installedSourceSessionId: string | undefined;
 
-/**
- * Install `cachedSourceBytes` onto the IfcAPI ONCE per instance so the
- * `*FromSource` batch variants read the file from the wasm heap instead of the
- * glue re-copying it every call. MAY THROW if the runtime rejects the
- * (SAB-backed) view during the copy — the `processBatch` caller's SAB fallback
- * materialises and re-applies. No-op on wasm builds without `setSourceBytes`
- * (leaving `sourceBytesApplied` false, so `processBatch` uses the legacy path).
- */
+/** Install once per API; a SAB rejection is retried by the caller with owned JS bytes. */
 function applySourceBytesToApi(): void {
   const ifcApi = api as IfcAPIWithMerge | null;
   if (!ifcApi || sourceBytesApplied || !cachedSourceBytes) return;
@@ -964,9 +946,10 @@ function collectMeshes(
       const mesh = collection.takeMesh(i);
       if (!mesh) continue;
       try {
-        const positions = new Float32Array(mesh.positions);
-        const normals = new Float32Array(mesh.normals);
-        const indices = new Uint32Array(mesh.indices);
+        // #3989: Getters already own JS arrays; retain through free() and transfer.
+        const positions = mesh.positions;
+        const normals = mesh.normals;
+        const indices = mesh.indices;
         // Read the WASM copy-to-JS color getter once; indexing it directly
         // would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
@@ -1014,13 +997,13 @@ function collectMeshes(
           ...(mesh.geometryItemId !== undefined ? { geometryItemId: mesh.geometryItemId } : {}), // #3199: two DISJOINT ids, TWO
           ...(mesh.materialId !== undefined ? { materialId: mesh.materialId } : {}), // spreads as in convertMeshCollectionToBatch
         };
-        session.pendingTransfers.push(positions.buffer, normals.buffer, indices.buffer);
+        session.pendingTransfers.push(ownedWasmBuffer(positions), ownedWasmBuffer(normals), ownedWasmBuffer(indices));
         session.cumulativeMeshBytes += positions.byteLength + normals.byteLength + indices.byteLength;
         // #961: surface texture + per-vertex UVs (decoded to RGBA8 in Rust). Carried
         // as transferables so there is no SAB→scratch copy (see SAB-streaming memo).
         if (mesh.hasTexture) {
-          const uvs = new Float32Array(mesh.uvs);
-          const rgba = new Uint8Array(mesh.textureRgba);
+          const uvs = mesh.uvs;
+          const rgba = mesh.textureRgba;
           meshData.uvs = uvs;
           meshData.texture = {
             rgba,
@@ -1029,14 +1012,14 @@ function collectMeshes(
             repeatS: mesh.textureRepeatS,
             repeatT: mesh.textureRepeatT,
           };
-          session.pendingTransfers.push(uvs.buffer, rgba.buffer);
+          session.pendingTransfers.push(ownedWasmBuffer(uvs), ownedWasmBuffer(rgba));
           session.cumulativeMeshBytes += uvs.byteLength + rgba.byteLength;
         } else if (mesh.textureUrl) {
           // #1781: external image reference (`IfcImageTexture`) — UVs travel as
           // a transferable like #961, but the texture itself is only a URL +
           // repeat flags; the main thread resolves it against the `.ifcZIP`
           // sibling images and decodes ONCE per `textureId`.
-          const uvs = new Float32Array(mesh.uvs);
+          const uvs = mesh.uvs;
           meshData.uvs = uvs;
           meshData.textureRef = {
             textureId: mesh.textureId,
@@ -1044,7 +1027,7 @@ function collectMeshes(
             repeatS: mesh.textureRepeatS,
             repeatT: mesh.textureRepeatT,
           };
-          session.pendingTransfers.push(uvs.buffer);
+          session.pendingTransfers.push(ownedWasmBuffer(uvs));
           session.cumulativeMeshBytes += uvs.byteLength;
         }
         // #924 / #1891: attach the per-entity geometry fingerprint — hash and,
@@ -1365,7 +1348,10 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
         });
         let res;
         try {
-          res = styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
+          const sourceApi = ifcApi as unknown as SourcePrepassApi;
+          res = sourceBytesApplied && canReuseWorkerSource(installedSourceSessionId, e.data.sourceSessionId) && sourceApi.resolveStyledItemsShardFromSource
+            ? sourceApi.resolveStyledItemsShardFromSource(spans)
+            : styleApi.resolveStyledItemsShard(viewSharedBytes(sharedBuffer), spans);
         } catch (err) {
           // SAB-view rejection fallback (see scan-shard above).
           warnSabViewFallbackOnce('resolve-styles-shard', err);
@@ -1401,26 +1387,20 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       const ifcApi = await ensureInit();
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const { sharedBuffer, indexIds, indexStarts, indexLengths, indexClasses } = e.data;
+      const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       const disabledTypes = e.data.disabledTypes ?? undefined;
       const skipTypeGeometry = e.data.skipTypeGeometry === true;
       const onEvent = (event: unknown) => {
+        publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       const run = (
         bytes: Uint8Array,
         ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
       ) =>
-        (ifcApi as unknown as {
-          buildPrePassStreamingSharded: (
-            data: Uint8Array, onEvent: (e: unknown) => void, chunkSize: number,
-            disabledTypes: string[] | undefined, skipTypeGeometry: boolean,
-            ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array, classes: Uint8Array,
-          ) => unknown;
-        }).buildPrePassStreamingSharded(
-          bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry,
-          ids, starts, lengths, classes,
-        );
+        runPrepassWithFingerprint(ifcApi, [bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry],
+          sourceFingerprint, [ids, starts, lengths, classes]);
       try {
         run(viewSharedBytes(sharedBuffer), indexIds, indexStarts, indexLengths, indexClasses);
       } catch (err) {
@@ -1459,18 +1439,22 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           planeAngleToRadians: number,
         ) => Record<string, unknown>;
       });
-      const callFinalize = (bytes: Uint8Array) => finalizeApi.finalizePrepassStyles(
-        bytes, m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
+      const args: FinalizeStyleArgs = [
+        m.orphanIds, m.orphanColors, m.geomIds, m.geomColors,
         m.colourMapSpans, m.materialDefSpans, m.relMaterialSpans,
         m.voidSpans, m.fillsSpans, m.aggregateSpans, m.planeAngleToRadians,
-      );
+      ];
+      const sourceApi = ifcApi as unknown as SourcePrepassApi;
+      const callFinalize = (bytes: Uint8Array) => sourceBytesApplied && canReuseWorkerSource(installedSourceSessionId, m.sourceSessionId) && sourceApi.finalizePrepassStylesFromSource
+        ? sourceApi.finalizePrepassStylesFromSource(...args)
+        : finalizeApi.finalizePrepassStyles(bytes, ...args);
       let payload;
       try {
         payload = callFinalize(viewSharedBytes(m.sharedBuffer));
       } catch (err) {
         // SAB-view rejection fallback (see scan-shard above).
         warnSabViewFallbackOnce('finalize-prepass-styles', err);
-        payload = callFinalize(materialiseSharedBytes(m.sharedBuffer));
+        payload = finalizeApi.finalizePrepassStyles(materialiseSharedBytes(m.sharedBuffer), ...args);
       }
       (self as unknown as Worker).postMessage({ type: 'styles-final', payload });
       return;
@@ -1482,6 +1466,7 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // before the first chunk lands.
       (self as unknown as Worker).postMessage({ type: 'prepass-progress', phase: 'parsing' });
       const sharedBuffer = e.data.sharedBuffer;
+      const sourceFingerprint = e.data.sourceFingerprint;
       const chunkSize = e.data.chunkSize ?? 50_000;
       // #1097 load-time visibility filter (skip disabled types at job gen).
       const disabledTypes = e.data.disabledTypes ?? undefined;
@@ -1492,10 +1477,11 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // zero-copy view first, fall back to a materialised copy only if
       // wasm-bindgen rejects the view.
       const onEvent = (event: unknown) => {
+        publishPrepassFingerprint(sourceFingerprint, sharedBuffer.byteLength, event);
         (self as unknown as Worker).postMessage({ type: 'prepass-stream', event });
       };
       const runPrepass = (bytes: Uint8Array) =>
-        ifcApi.buildPrePassStreaming(bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry);
+        runPrepassWithFingerprint(ifcApi, [bytes, onEvent, chunkSize, disabledTypes, skipTypeGeometry], sourceFingerprint);
       try {
         // Zero-copy SAB view first; wasm-bindgen copies it into linear memory.
         runPrepass(viewSharedBytes(sharedBuffer));
@@ -1528,14 +1514,27 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
           // `malformedStart` is TODO(#3699) -- not returned by Rust yet.
         ) => { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array; handoff: number; oversizedIdStarts?: Uint32Array; malformedStart?: number };
       });
+      const sourceApi = ifcApi as unknown as SourcePrepassApi;
+      sourceBytesApplied = false;
+      cachedSourceBytes = view;
+      sourcePreparedForStream = e.data.sourceSessionId !== undefined;
+      installedSourceSessionId = e.data.sourceSessionId;
+      const scan = (bytes: Uint8Array) => {
+        cachedSourceBytes = bytes;
+        if (sourcePreparedForStream && sourceApi.scanEntityIndexShardFromSource) applySourceBytesToApi();
+        return sourceBytesApplied && sourceApi.scanEntityIndexShardFromSource
+          ? sourceApi.scanEntityIndexShardFromSource(rangeStart, rangeEnd)
+          : scanApi.scanEntityIndexShard(bytes, rangeStart, rangeEnd);
+      };
       let shard;
       try {
-        shard = scanApi.scanEntityIndexShard(view, rangeStart, rangeEnd);
+        shard = scan(view);
       } catch (err) {
         // Some runtimes reject SAB-backed views at the wasm boundary (same
         // fallback the streaming pre-pass ships) — retry with a copy.
         warnSabViewFallbackOnce('scan-entity-index-shard', err);
-        shard = scanApi.scanEntityIndexShard(materialiseSharedBytes(sharedBuffer), rangeStart, rangeEnd);
+        sourceBytesApplied = false;
+        shard = scan(materialiseSharedBytes(sharedBuffer));
       }
       (self as unknown as Worker).postMessage(
         {
@@ -1593,15 +1592,14 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // size from a previous dense model).
       batchSizing = resolveBatchSizing(e.data.batchSizing);
       adaptiveBatchJobs = batchSizing.maxJobs;
-      // Fresh load: drop any source held for a PREVIOUS load so this load's bytes
-      // are re-installed on its first batch. The in-repo host spawns a fresh
-      // worker per load so this is belt-and-braces there, but a host that reuses a
-      // worker across loads without a `stream-end` between them would otherwise
-      // mesh the new load against the previous file's held bytes (a similar-size
-      // stale source decodes wrong entities). Resetting here makes that misuse
-      // fail to the byte-identical legacy path instead of silently meshing wrong.
-      sourceBytesApplied = false;
-      cachedSourceBytes = null;
+      // Shard scanning has already installed this load's source (#3989).
+      // Non-sharded/reused loads still reset before their first geometry batch.
+      if (!sourcePreparedForStream || !canReuseWorkerSource(installedSourceSessionId, e.data.sourceSessionId)) {
+        sourceBytesApplied = false;
+        cachedSourceBytes = null;
+      }
+      sourcePreparedForStream = false;
+      installedSourceSessionId = e.data.sourceSessionId;
       activeSession = startSession({
         sharedBuffer: e.data.sharedBuffer,
         unitScale: e.data.unitScale,
@@ -1747,6 +1745,8 @@ async function handleMessage(e: MessageEvent<GeometryWorkerRequest>): Promise<vo
       // reused instance; mirrors the entity index.
       cachedSourceBytes = null;
       sourceBytesApplied = false;
+      sourcePreparedForStream = false;
+      installedSourceSessionId = undefined;
       return;
     }
   } catch (err) {

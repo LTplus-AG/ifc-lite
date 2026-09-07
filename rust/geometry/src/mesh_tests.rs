@@ -533,3 +533,46 @@ fn clean_degenerate_uses_the_reconcile_grid() {
     mesh.clean_degenerate();
     assert_eq!(mesh.indices, vec![3, 4, 5]);
 }
+
+// #3988: stable in-place compaction must preserve every survivor's index order,
+// handle adjacent drops and discard the same incomplete trailing triangle.
+#[test]
+fn issue_3988_degenerate_compaction_preserves_survivors_and_storage() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.indices = vec![0, 1, 2, 0, 0, 2, 99, 1, 2, 2, 1, 0, 1, 2];
+    let ptr = mesh.indices.as_ptr();
+    let capacity = mesh.indices.capacity();
+    mesh.drop_degenerate_triangles();
+    assert_eq!(mesh.indices, [0, 1, 2, 2, 1, 0]);
+    assert_eq!(mesh.indices.as_ptr(), ptr, "compaction must reuse owned storage");
+    assert_eq!(mesh.indices.capacity(), capacity);
+    mesh.drop_degenerate_triangles();
+    assert_eq!(mesh.indices, [0, 1, 2, 2, 1, 0]);
+    let settled_ptr = mesh.indices.as_ptr();
+    mesh.drop_degenerate_triangles();
+    assert_eq!(mesh.indices.as_ptr(), settled_ptr, "a settled no-op pass must reuse storage");
+}
+
+// #3988: valid-index and geometric-degeneracy filters share the old retained
+// capacity bound even when an upstream builder deliberately over-reserved.
+#[test]
+fn issue_3988_filters_release_excess_reservation_without_reordering() {
+    for filter in [Mesh::validate_indices, Mesh::drop_degenerate_triangles] {
+        let mut mesh = Mesh::new();
+        mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+        mesh.indices = Vec::with_capacity(4096);
+        mesh.indices.extend_from_slice(&[0, 1, 2, 99, 1, 2, 2, 1, 0, 1]);
+        let original_len = mesh.indices.len();
+        filter(&mut mesh);
+        assert_eq!(mesh.indices, [0, 1, 2, 2, 1, 0]);
+        assert_eq!(mesh.indices.capacity(), original_len);
+        // The first pass may retain the old pre-drop length, exactly as before;
+        // the second pass establishes the same bound for its shorter input.
+        filter(&mut mesh);
+        assert_eq!(mesh.indices.capacity(), mesh.indices.len());
+        let settled_ptr = mesh.indices.as_ptr();
+        filter(&mut mesh);
+        assert_eq!(mesh.indices.as_ptr(), settled_ptr);
+    }
+}

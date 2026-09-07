@@ -30,6 +30,7 @@ import { beforeAll, afterEach, describe, expect, it } from 'vitest';
 
 import { IfcParser } from '../src/index.js';
 import { WorkerParser } from '../src/worker-parser.js';
+import { WorkerIndexPublisher } from '../src/worker-index-publication.js';
 import { toTransport } from '../src/data-store-transport.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 
@@ -124,6 +125,92 @@ describe('WorkerParser shares one source accessor across partial + final (#2183)
     if (partial === null) throw new Error('onSpatialReady never fired');
     return { partial, final };
   }
+
+  // #3985: exercise the real publisher, structured clone, and client hydration;
+  // the stub supplies only worker scheduling, never fabricated store results.
+  for (const callback of ['absent', 'throws', 'mutates'] as const) {
+    it(`retains the private packed seed when the partial callback ${callback} (#3985)`, async () => {
+      (globalThis as { Worker?: unknown }).Worker = StubWorker;
+      const encoded = new TextEncoder().encode(STEP);
+      const source = new SharedArrayBuffer(encoded.length);
+      new Uint8Array(source).set(encoded);
+      let partial: IfcDataStore | undefined;
+      const done = new WorkerParser().parseColumnar(source, {
+        onSpatialReady: callback === 'absent' ? undefined : store => {
+          partial = store;
+          if (callback === 'throws') throw new Error('consumer callback failure');
+          store.entityIndex.byType.get('IFCWALL')!.push(999);
+          store.entityIndex.byId.get(1)!.byteOffset = 0;
+        },
+      });
+      const worker = StubWorker.last!;
+      const { id } = worker.posted[0];
+      const publisher = new WorkerIndexPublisher(true);
+      const early = publisher.serialize(parsed, false);
+      worker.deliver({ id, type: 'partial-store', payload: structuredClone(early.payload, { transfer: early.transfers }) });
+      publisher.publishedPartial(parsed);
+      const final = publisher.serialize(parsed, true);
+      worker.deliver({ id, type: 'complete', payload: structuredClone(final.payload), memory: undefined });
+      const store = await done;
+      expect(store.entityIndex.byType.get('IFCWALL')).toEqual([1]);
+      expect(store.getEntity(1)?.attributes).toEqual(parsed.getEntity(1)?.attributes);
+      expect(store.entityIndex.byId.get(1)?.byteOffset).toBeGreaterThan(0);
+      if (partial) {
+        expect(store.source).toBe(partial.source);
+        expect(store.entityIndex.byId).not.toBe(partial.entityIndex.byId);
+        expect(store.entityIndex.byType.get('IFCWALL')).not.toBe(partial.entityIndex.byType.get('IFCWALL'));
+      }
+      expect(worker.terminated).toBe(true);
+    });
+  }
+
+  it('contains malformed partial envelopes and rejects a final missing seed cleanly (#3985)', async () => {
+    (globalThis as { Worker?: unknown }).Worker = StubWorker;
+    const done = new WorkerParser().parseColumnar(new SharedArrayBuffer(64));
+    const worker = StubWorker.last!;
+    const { id } = worker.posted[0];
+    // No callback: capturing the optional early publication must still stay
+    // inside error handling, never leak an uncaught message-handler exception.
+    expect(() => worker.deliver({ id, type: 'partial-store', payload: {} })).not.toThrow();
+    const publisher = new WorkerIndexPublisher(true);
+    publisher.publishedPartial(parsed);
+    worker.deliver({ id, type: 'complete', payload: publisher.serialize(parsed, true).payload });
+    await expect(done).rejects.toThrow('missing partial publication');
+    expect(worker.terminated).toBe(true);
+    expect(worker.onmessage).toBeNull();
+  });
+
+  it('drops an aborted request seed before another model starts (#3985)', async () => {
+    (globalThis as { Worker?: unknown }).Worker = StubWorker;
+    const parser = new WorkerParser();
+    void parser.parseColumnar(new SharedArrayBuffer(64));
+    const abandoned = StubWorker.last!;
+    const publisher = new WorkerIndexPublisher(true);
+    const early = publisher.serialize(parsed, false);
+    abandoned.deliver({ id: abandoned.posted[0].id, type: 'partial-store', payload: structuredClone(early.payload) });
+    publisher.publishedPartial(parsed);
+    parser.terminate();
+    expect(abandoned.terminated).toBe(true);
+    expect(abandoned.onmessage).toBeNull();
+    const done = parser.parseColumnar(new SharedArrayBuffer(64));
+    const current = StubWorker.last!;
+    // A new request cannot resolve an index reference using the old model seed.
+    current.deliver({ id: current.posted[0].id, type: 'complete', payload: publisher.serialize(parsed, true).payload });
+    await expect(done).rejects.toThrow('missing partial publication');
+    expect(current.terminated).toBe(true);
+  });
+
+  it('rejects a missing publication reference and terminates its worker (#3985)', async () => {
+    (globalThis as { Worker?: unknown }).Worker = StubWorker;
+    const done = new WorkerParser().parseColumnar(new SharedArrayBuffer(64));
+    const worker = StubWorker.last!;
+    const publisher = new WorkerIndexPublisher(true);
+    publisher.publishedPartial(parsed);
+    const final = publisher.serialize(parsed, true);
+    worker.deliver({ id: worker.posted[0].id, type: 'complete', payload: final.payload, memory: undefined });
+    await expect(done).rejects.toThrow('missing partial publication');
+    expect(worker.terminated).toBe(true);
+  });
 
   it('retains the worker fingerprint without hashing on first UI read (#3983)', async () => {
     const { partial, final } = await runStreamingParse(true);

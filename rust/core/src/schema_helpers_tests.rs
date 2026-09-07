@@ -676,3 +676,37 @@ fn every_legacy_key_is_unknown_to_the_generated_enum() {
         );
     }
 }
+
+/// #3987: combining existing lookups must preserve inheritance, legacy overrides,
+/// normalization, and unknown-name fallbacks across the complete catalog.
+#[test]
+fn combined_geometry_flags_match_canonical_predicates_3987() {
+    let table_len = classifications().len();
+    for name in crate::generated::IFC_TYPES.iter().map(IfcType::as_str)
+        .chain(crate::legacy_entities::LEGACY_ENTITY_NAMES.iter().copied())
+        .chain([
+            "", "IfcVendorGeometry", "IfcReinforcingVendorExtension",
+            "IfcReinforcedVendorExtension", "IfcVendorReinforcingExtension",
+            "IfcVéndor", "IFCſPACE", "IfcßBuilding", "ifcwall ",
+        ])
+    {
+        let mixed: String = name.chars().enumerate().map(|(i, ch)| {
+            if i % 2 == 0 { ch.to_ascii_lowercase() } else { ch }
+        }).collect();
+        for spelling in [name.to_owned(), name.to_ascii_lowercase(), mixed] {
+            let upper = normalise_uppercase(&spelling);
+            let expected = (
+                compute_has_geometry(upper.as_ref()),
+                compute_is_representationless_spatial_container(upper.as_ref()),
+            );
+            assert_eq!(geometry_flags_by_name(&spelling), expected, "{spelling}");
+            assert_eq!(
+                geometry_flags_by_name(&spelling),
+                (has_geometry_by_name(&spelling),
+                 is_representationless_spatial_container_by_name(&spelling)),
+                "separate public predicates differ for {spelling}",
+            );
+        }
+    }
+    assert_eq!(classifications().len(), table_len);
+}

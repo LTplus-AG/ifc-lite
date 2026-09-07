@@ -78,6 +78,41 @@ async function freePort(): Promise<number> {
   });
 }
 
+/** Two distinct ports that are free after this function returns. Keep the
+ * first probe bound while the OS assigns the second port, so it cannot reuse
+ * the first probe's ephemeral port. */
+async function twoDistinctFreePorts(): Promise<readonly [number, number]> {
+  const first = createServer();
+  const second = createServer();
+
+  try {
+    const firstPort = await listenForPort(first);
+    const secondPort = await listenForPort(second);
+    return [firstPort, secondPort];
+  } finally {
+    await Promise.all([closeProbe(first), closeProbe(second)]);
+  }
+}
+
+function listenForPort(probe: ReturnType<typeof createServer>): Promise<number> {
+  return new Promise((resolve, reject) => {
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const addr = probe.address();
+      if (addr === null || typeof addr === 'string') {
+        reject(new Error('no port'));
+        return;
+      }
+      resolve(addr.port);
+    });
+  });
+}
+
+function closeProbe(probe: ReturnType<typeof createServer>): Promise<void> {
+  if (!probe.listening) return Promise.resolve();
+  return new Promise((resolve, reject) => probe.close(error => error ? reject(error) : resolve()));
+}
+
 describe('ServerConfig.autoOpenViewer / .viewerPort — public API is honoured', () => {
   it('level 3 — neither flag nor config set: no auto-open, defaults win', async () => {
     const server = await bootServer();
@@ -122,9 +157,7 @@ describe('ServerConfig.autoOpenViewer / .viewerPort — public API is honoured',
   });
 
   it('an explicit override port wins over a contradicting config port', async () => {
-    const configPort = await freePort();
-    const overridePort = await freePort();
-    expect(overridePort).not.toBe(configPort);
+    const [configPort, overridePort] = await twoDistinctFreePorts();
     const server = await bootServer({ autoOpenViewer: true, viewerPort: configPort });
     const state = await server.maybeAutoOpenViewer({ port: overridePort });
     expect(state).not.toBeNull();

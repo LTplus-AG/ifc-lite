@@ -91,6 +91,22 @@ pub fn has_geometry_by_name(type_name: &str) -> bool {
     )
 }
 
+/// Return the geometry-bearing and representationless-spatial predicates together.
+/// The tuple matches [`has_geometry_by_name`] and
+/// [`is_representationless_spatial_container_by_name`], respectively, while
+/// sharing one lookup of the immutable schema classification (#3987).
+pub fn geometry_flags_by_name(type_name: &str) -> (bool, bool) {
+    let upper = normalise_uppercase(type_name);
+    classifications().get(upper.as_ref()).map_or_else(
+        || {
+            let geometry = compute_has_geometry(upper.as_ref());
+            // These predicates are disjoint, including legacy and unknown names.
+            (geometry, !geometry && compute_is_representationless_spatial_container(upper.as_ref()))
+        },
+        |class| (class.has_geometry, class.representationless_spatial),
+    )
+}
+
 fn compute_has_geometry(upper: &str) -> bool {
     if let Some(info) = get_legacy_entity_info(upper) {
         return info.has_geometry;

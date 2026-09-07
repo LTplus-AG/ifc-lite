@@ -9,6 +9,7 @@
  * Focus on structural invariants, not exact values.
  */
 
+import { runColdLoadContracts } from './lib/wasm-cold-load-contracts.mjs';
 import { readFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -76,7 +77,7 @@ if (!SPACES_AVAILABLE) {
 // Initialize WASM
 console.log('📦 Loading WASM...');
 const wasmBuffer = readFileSync(WASM_BIN);
-initSync(wasmBuffer);
+const ownershipWasmExports = initSync(wasmBuffer);
 console.log('✅ WASM initialized\n');
 
 // Load fixture files
@@ -468,29 +469,8 @@ if (LAYERED_AVAILABLE) {
     `${LAYERED_IFC} missing \u2014 ${FIXTURES_HINT}`);
 }
 
-test('processGeometryBatchFromSource returns empty when no source is installed (defensive)', () => {
-  const freshApi = new IfcAPI();
-  const bytes = new TextEncoder().encode(columnContent);
-  try {
-    const pre = freshApi.buildPrePassOnce(bytes);
-    // No setSourceBytes: the held bytes are empty → zero meshes, and crucially
-    // NO panic (the decoder validates every byte span). The JS worker gates the
-    // *FromSource path on a successful setSourceBytes, so this is unreachable in
-    // production, but it must degrade gracefully rather than corrupt/crash.
-    const col = freshApi.processGeometryBatchFromSource(
-      pre.jobs, pre.unitScale,
-      pre.rtcOffset[0], pre.rtcOffset[1], pre.rtcOffset[2], pre.needsShift,
-      pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
-    );
-    try {
-      assert.equal(col.length, 0, 'FromSource without setSourceBytes must produce no meshes');
-    } finally {
-      col.free();
-    }
-  } finally {
-    freshApi.clearPrePassCache();
-    freshApi.free();
-  }
+await runColdLoadContracts({
+  IfcAPI, ownershipWasmExports, columnContent, FIXTURES_DIR, FIXTURES_HINT, SPACES_AVAILABLE, SPACES_IFC, test, skip
 });
 
 // ===== Pre-pass contract (viewer boundary) =====

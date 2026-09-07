@@ -7,6 +7,7 @@
 //! Includes synchronous and async mesh parsing, instanced geometry,
 //! and GPU-ready geometry generation.
 
+mod affinity_chunks;
 mod batch;
 mod batch_from_source;
 mod batch_partition;
@@ -14,4 +15,8 @@ mod instancing;
 pub(crate) mod prepass;
 mod prepass_discovery;
 mod prepass_sharded;
+mod source_fingerprint;
+mod prepass_from_source;
 mod void_index;
+mod prepass_affinity;
+mod source_fingerprint_prepass;

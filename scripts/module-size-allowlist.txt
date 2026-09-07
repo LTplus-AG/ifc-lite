@@ -179,22 +179,21 @@
    497 apps/viewer/src/store/slices/visibilitySlice.ts
    415 apps/viewer/src/store/teardown.ts
    696 apps/viewer/src/store/types.ts
-   630 apps/viewer/src/utils/serverDataModel.ts
+   470 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
    413 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
-  1058 packages/bcf/src/reader.ts
+   801 packages/bcf/src/reader.ts
    595 packages/bcf/src/viewpoint.ts
-   900 packages/bcf/src/writer.ts
+   753 packages/bcf/src/writer.ts
    605 packages/cache/src/glb.ts
    414 packages/clash/src/adapters/step.ts
    441 packages/clash/src/bcf-bridge.ts
    433 packages/clash/src/duplicates.ts
    547 packages/cli/src/commands/ask.ts
    495 packages/cli/src/commands/create.ts
-   436 packages/cli/src/commands/export.ts
    518 packages/cli/src/commands/extract-entities.ts
    609 packages/cli/src/commands/query.ts
    791 packages/cli/src/headless-backend.ts
@@ -260,7 +259,7 @@
    743 packages/ids/src/parser/xml-parser.ts
    624 packages/ids/src/translation/service.ts
    639 packages/ids/src/types.ts
-   842 packages/ids/src/validation/validator.ts
+   841 packages/ids/src/validation/validator.ts
    468 packages/ifcx/src/federated-composition.ts
    412 packages/ifcx/src/geometry-extractor.ts
    706 packages/ifcx/src/index.ts
@@ -285,7 +284,7 @@
    573 packages/mutations/src/csv-connector.ts
   2121 packages/mutations/src/mutable-property-view.ts
    422 packages/oauth-pkce/src/token-manager.ts
-  1189 packages/parser/src/columnar-parser.ts
+   920 packages/parser/src/columnar-parser.ts
    474 packages/parser/src/compact-entity-index.ts
    530 packages/parser/src/data-store-transport.ts
    827 packages/parser/src/material-resolver.ts
@@ -352,7 +351,7 @@
    855 scripts/check-review-posted.mjs
    446 scripts/check-source-text-assertions.mjs
    423 scripts/check-test-glob-coverage.mjs
-   612 scripts/check-test-revert-oracle.mjs
+   621 scripts/check-test-revert-oracle.mjs
    703 scripts/check-test-wiring.mjs
    488 scripts/check-wasm-disposal.mjs
    499 scripts/docs/check-doc-samples.mjs

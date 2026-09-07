@@ -141,7 +141,7 @@ export function BCFCreateTopicForm({
           id="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Brief description of the issue"
+          placeholder="Brief description of the topic"
           required
         />
       </div>

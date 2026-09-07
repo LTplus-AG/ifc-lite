@@ -121,15 +121,15 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
     if (models.size === 0) {
       // No models loaded, use date-based name
       const date = new Date().toISOString().split('T')[0];
-      return `BCF_Issues_${date}`;
+      return `BCF_Topics_${date}`;
     }
-    // Use first model's name (without extension) + "_Issues"
+    // Use first model's name (without extension) + "_Topics"
     const firstModel = models.values().next().value;
     if (firstModel?.name) {
       const baseName = firstModel.name.replace(/\.(ifc|ifczip)$/i, '');
-      return `${baseName}_Issues`;
+      return `${baseName}_Topics`;
     }
-    return `BCF_Issues_${new Date().toISOString().split('T')[0]}`;
+    return `BCF_Topics_${new Date().toISOString().split('T')[0]}`;
   }, [models]);
 
   // Initialize project if needed
@@ -194,7 +194,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       setBcfLoading(true);
       const blob = await writeBCF(bcfProject);
       // Use project name, or generate from model name, or date-based fallback
-      const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'issues' });
+      const fileName = sanitizeFilename(bcfProject.name || getDefaultProjectName(), { fallback: 'topics' });
       downloadBlob(blob, `${fileName}.bcfzip`);
       posthog.capture('bcf_exported', { topic_count: bcfProject.topics.size });
     } catch (error) {
@@ -383,7 +383,7 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-2">
           <MessageSquare className="h-4 w-4" />
-          <h2 className="font-medium text-sm">BCF Issues</h2>
+          <h2 className="font-medium text-sm">BCF Topics</h2>
           {topics.length > 0 && (
             <Badge variant="secondary" className="text-xs">
               {topics.length}

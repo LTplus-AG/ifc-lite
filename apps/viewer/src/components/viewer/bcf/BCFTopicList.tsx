@@ -186,7 +186,7 @@ export function BCFTopicList({
               </div>
               {isDefaultEmail && !editingEmail && (
                 <p className="text-xs text-muted-foreground mt-2 text-center">
-                  Set your email to identify your issues and comments
+                  Set your email to identify your topics and comments
                 </p>
               )}
             </div>

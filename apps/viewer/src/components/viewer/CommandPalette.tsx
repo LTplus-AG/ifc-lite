@@ -354,7 +354,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { const s = useViewerStore.getState(); s.setLeftPanelCollapsed(!s.leftPanelCollapsed); } },
       { id: 'panel:script', label: 'Script Editor', keywords: 'code automation console', category: 'Panels', icon: FileCode2,
         action: () => { activateBottomPanel('script'); } },
-      { id: 'panel:bcf', label: 'BCF Issues', keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
+      { id: 'panel:bcf', label: 'BCF Topics', keywords: 'collaboration topics comments viewpoint', category: 'Panels', icon: MessageSquare,
         action: () => { activateRightPanel('bcf'); } },
       { id: 'panel:ids', label: 'IDS Validation', keywords: 'information delivery specification check', category: 'Panels', icon: ClipboardCheck,
         action: () => { activateRightPanel('ids'); } },

@@ -1,6 +1,5 @@
 ---
 source: rust/geometry/tests/geometry_correctness_harness.rs
-assertion_line: 628
 description: tests/models/buildingsmart/annex_e/advanced-geometric-shape/bath-csg-solid.ifc
 ---
 parse_ok: true
@@ -8,7 +7,7 @@ products_attempted: 2
 products_non_empty: 1
 process_errors: 1
 total_triangles: 152
-total_vertices: 216
+total_vertices: 208
 spike_triangles: 0
 total_surface_area: 10.797
 bbox_min: [0.000, 0.000, 0.000]

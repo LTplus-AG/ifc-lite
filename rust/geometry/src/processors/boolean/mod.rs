@@ -30,7 +30,6 @@ mod single_cutter_gate;
 use single_cutter_gate::SingleCutterSubtract;
 mod polygonal_union;
 mod polygonal_removal;
-mod router_impl;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
@@ -910,6 +909,12 @@ impl BooleanClippingProcessor {
             BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)
+    }
+}
+
+impl Default for BooleanClippingProcessor {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

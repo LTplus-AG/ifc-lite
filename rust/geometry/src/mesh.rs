@@ -746,10 +746,10 @@ impl Mesh {
     /// silhouettes (the regression reported on large breps); BIMcollab and
     /// other viewers don't show them because they clean degenerates on import.
     ///
-    /// Deliberately **does not weld vertices**. The pipeline emits per-face
-    /// flat-shaded facet soup on purpose (each facet keeps its own vertices +
-    /// normal so creases stay sharp — see issue #846); welding would share
-    /// vertices across facets and re-smooth every crease. Instead we drop only
+    /// Deliberately **does not weld vertices**: that is the source weld's job
+    /// (`mesh_weld`, run from the placement appliers), and that weld keys on the
+    /// quantized NORMAL too, so two facets meeting at a crease keep their own
+    /// vertices and stay sharp (issue #846). Here we drop only
     /// the genuinely-degenerate triangles via
     /// [`drop_thin_triangles`](Self::drop_thin_triangles) below the kernel's
     /// reconcile grid (`1/65536 ≈ 15.3 µm`): coincident-pair needles (area 0)

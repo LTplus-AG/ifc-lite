@@ -10,6 +10,14 @@ import { dirname, isAbsolute, join, relative, sep } from 'node:path';
  * language, since the oracle has no way to run it as cargo from `root` either
  * way — ownership should fall through to another owner (e.g. `pythonTestOwner`
  * for a `.py` file) or go `unassigned`, not fail with a misleading verdict.
+ *
+ * The array elements are matched loosely on purpose: both TOML string forms
+ * (`"..."` and `'...'`) and an accidental trailing slash (`"rust/python/"`)
+ * are accepted, since either would otherwise silently produce an empty list
+ * and quietly reintroduce #4104. A full TOML parse would be more correct
+ * still (e.g. it would also accept an exclude list split across `+=` or a
+ * dotted-key form), but no manifest in this repo uses those, so the residual
+ * risk is limited to a shape nobody has written.
  */
 function excludedWorkspaceDirs(root) {
   const manifest = join(root, 'Cargo.toml');
@@ -17,13 +25,31 @@ function excludedWorkspaceDirs(root) {
   const toml = readFileSync(manifest, 'utf8');
   const list = /^\s*exclude\s*=\s*\[([^\]]*)\]/m.exec(toml);
   if (!list) return [];
-  return [...list[1].matchAll(/"([^"]+)"/g)].map((m) => join(root, m[1]));
+  return [...list[1].matchAll(/["']([^"']+)["']/g)].map((m) => join(root, m[1].replace(/\/+$/, '')));
+}
+
+/**
+ * A crate manifest that declares its own bare `[workspace]` table (as opposed
+ * to a `[workspace.*]` sub-table, e.g. `[workspace.dependencies]`) is its own
+ * workspace root, independent of the root manifest's `exclude` list (#4104
+ * follow-up): `rust/core/fuzz`, `rust/geometry/fuzz`, and
+ * `rust/csg-thread-bench` all do this so that `cargo build --workspace` from
+ * `root` ignores them entirely. `cargo test -p <crate>` run from `root` fails
+ * the same way it does for an excluded crate ("package ID specification did
+ * not match any packages"), so a file under one of these must not be claimed
+ * either — unless the manifest in question *is* `root`'s own, in which case
+ * a combined `[package]` + `[workspace]` manifest there is the primary
+ * workspace, not a detached one.
+ */
+function hasOwnWorkspaceTable(toml) {
+  return /^\s*\[workspace\]/m.test(toml);
 }
 
 /**
  * Test sources and data share the nearest Cargo package's runner (#3974),
- * unless that package's directory is excluded from the root workspace
- * (#4104), in which case it is not a valid cargo owner for anything under it.
+ * unless that package's directory is excluded from the root workspace, or
+ * is itself the root of a separate workspace (#4104), in which case it is
+ * not a valid cargo owner for anything under it.
  */
 export function cargoTestOwner(file, root) {
   let dir = dirname(file);
@@ -34,7 +60,9 @@ export function cargoTestOwner(file, root) {
       if (excluded.includes(dir)) return null;
       const toml = readFileSync(manifest, 'utf8');
       const name = /^\s*\[package\][\s\S]*?^\s*name\s*=\s*"([^"]+)"/m.exec(toml);
-      return name ? { dir, crate: name[1] } : null;
+      if (!name) return null;
+      if (dir !== root && hasOwnWorkspaceTable(toml)) return null;
+      return { dir, crate: name[1] };
     }
     if (dir === root || dirname(dir) === dir) break;
     dir = dirname(dir);

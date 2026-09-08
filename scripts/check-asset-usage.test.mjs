@@ -14,7 +14,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { findUnreferencedAssets } from './lib/asset-usage.mjs';
+import { findUnreferencedAssets, TEXT_EXTENSIONS } from './lib/asset-usage.mjs';
 
 test('a file mentioned by basename elsewhere in the repo is referenced', () => {
   const { unreferenced } = findUnreferencedAssets({
@@ -78,6 +78,20 @@ test('empty asset list reports nothing (not a vacuous pass the CLI would hide)',
   const { unreferenced, allowlisted } = findUnreferencedAssets({ assetPaths: [], corpusFiles: [], allowlist: [] });
   assert.deepEqual(unreferenced, []);
   assert.deepEqual(allowlisted, []);
+});
+
+test('TEXT_EXTENSIONS covers .mts/.cts (a live asset can be referenced only from a build script)', () => {
+  // tools/demo-kit/derive-variants.mts constructs apps/viewer/public/samples/*
+  // paths at runtime; today those names are ALSO spelled out verbatim in
+  // apps/viewer/src/lib/tours/demo-kit.ts and AGENTS.md, both already-covered
+  // extensions, so the gate currently passes either way. But if that
+  // redundant mention were ever removed while the .mts generator remained
+  // the only reference, a scan that skips .mts would call a live asset dead
+  // and false-positive the gate. Assert the extensions directly, since
+  // findUnreferencedAssets itself is extension-agnostic (the CLI wrapper
+  // does the filtering) — this is the check that would have caught the gap.
+  assert.ok(TEXT_EXTENSIONS.has('.mts'), '.mts must be scanned (e.g. tools/demo-kit/derive-variants.mts)');
+  assert.ok(TEXT_EXTENSIONS.has('.cts'), '.cts is the same TypeScript-module-flavor as .mts');
 });
 
 test('a substring match inside an unrelated word still counts (permissive by design)', () => {

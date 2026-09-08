@@ -20,6 +20,27 @@
  */
 
 /**
+ * Extensions worth reading as text for the substring search. Deliberately
+ * broad — docs (.md), configs (.json/.yml/.toml), markup (.html) and styles
+ * (.css) have all been real consumers in this repo's history. `.mts`/`.cts`
+ * are TypeScript too (tools/demo-kit/derive-variants.mts builds
+ * apps/viewer/public/samples/* paths at lines ~116-120) — omitting them left
+ * a live-asset-flagged-dead trap: the only thing stopping a false positive
+ * today is that those sample names are also spelled out in
+ * apps/viewer/src/lib/tours/demo-kit.ts and AGENTS.md, both already-covered
+ * extensions. `.sh`/`.py`/`.rs` are deliberately NOT added here: none of
+ * them reference a path under apps/viewer/public today (checked by grepping
+ * this repo's tracked .sh/.py/.rs files for every current asset's basename),
+ * so adding them would only cost scan time for extensions this scan dir has
+ * no current consumer in.
+ */
+export const TEXT_EXTENSIONS = new Set([
+  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',
+  '.json', '.html', '.htm', '.css', '.scss',
+  '.md', '.mdx', '.yml', '.yaml', '.txt', '.xml', '.toml',
+]);
+
+/**
  * @param {object} args
  * @param {string[]} args.assetPaths - paths relative to the scanned
  *   directory, e.g. "favicon.ico", "oauth/bcf/callback.html".

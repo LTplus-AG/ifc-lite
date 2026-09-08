@@ -43,7 +43,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
-import { findUnreferencedAssets } from './lib/asset-usage.mjs';
+import { findUnreferencedAssets, TEXT_EXTENSIONS } from './lib/asset-usage.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -55,14 +55,9 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // AGENTS.md asks gates to avoid.
 const SCAN_DIR = 'apps/viewer/public';
 
-// Extensions worth reading as text for the substring search. Deliberately
-// broad — docs (.md), configs (.json/.yml/.toml), markup (.html) and styles
-// (.css) have all been real consumers in this repo's history.
-const TEXT_EXTENSIONS = new Set([
-  '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
-  '.json', '.html', '.htm', '.css', '.scss',
-  '.md', '.mdx', '.yml', '.yaml', '.txt', '.xml', '.toml',
-]);
+// TEXT_EXTENSIONS lives in ./lib/asset-usage.mjs so check-asset-usage.test.mjs
+// can assert on it directly instead of round-tripping through a real git
+// checkout.
 
 // Convention-fetched paths (relative to SCAN_DIR) that legitimately have no
 // in-repo reference. Each row needs a reason a reviewer can check.

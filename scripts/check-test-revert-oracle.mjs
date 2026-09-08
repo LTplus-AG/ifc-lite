@@ -264,7 +264,7 @@ if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries))
   process.exit(0);
 }
 
-const { production, test: testEntries, ignored, warnings } = classifyDiff(entries);
+const { production, test: testEntries, ignored, inert, warnings } = classifyDiff(entries);
 for (const w of warnings) console.log(`  WARNING: ${w}`);
 
 // The changesets release PR ("chore: version packages") changes only
@@ -300,7 +300,9 @@ if (opts.tests.length > 0) {
   if (testPaths.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');
 }
 
-console.log(`  files: ${production.length} production, ${testEntries.length} test, ${ignored.length} ignored`);
+console.log(
+  `  files: ${production.length} production, ${testEntries.length} test, ${ignored.length} ignored, ${inert.length} inert`,
+);
 
 if (prodPaths.length === 0) {
   const message = 'this branch changes no production files; there is nothing whose absence a test could notice.';

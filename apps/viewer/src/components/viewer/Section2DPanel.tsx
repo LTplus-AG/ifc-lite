@@ -44,6 +44,8 @@ import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } f
 import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
 import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
+import { useDrawingMarkupRestoreOnLoad } from '@/hooks/useDrawingMarkupRestoreOnLoad';
+import { SaveMarkupToModelButton, SaveMarkupToModelMenuItem } from './SaveMarkupToModelButton';
 
 interface Section2DPanelProps {
   mergedGeometry?: GeometryResult | null;
@@ -55,6 +57,11 @@ export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
 }: Section2DPanelProps = {}): React.ReactElement | null {
+  // Mount unconditionally, before the `!panelVisible` early return below, so
+  // a model's embedded markup (#4153) restores as soon as it loads even
+  // with the 2D panel closed.
+  useDrawingMarkupRestoreOnLoad();
+
   // ═══════════════════════════════════════════════════════════════════════════
   // STORE SELECTORS
   // ═══════════════════════════════════════════════════════════════════════════
@@ -951,6 +958,7 @@ export function Section2DPanel({
               >
                 <Printer className="h-4 w-4" />
               </Button>
+              <SaveMarkupToModelButton />
 
               <div className="w-px h-4 bg-border mx-1" />
 
@@ -1079,6 +1087,7 @@ export function Section2DPanel({
                     <Printer className="h-4 w-4 mr-2" />
                     Print
                   </DropdownMenuItem>
+                  <SaveMarkupToModelMenuItem />
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={() => generateDrawing(false)} disabled={status === 'generating'}>
                     {status === 'generating' ? (

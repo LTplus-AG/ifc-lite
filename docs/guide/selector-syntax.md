@@ -70,7 +70,7 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `location="Level 3"` | ⚠️ | see below |
 | GlobalId terms, `! <GlobalId>` | ✅ | several terms union (add) or subtract, mirroring class terms |
 | `Description=`, `ObjectType=`, `Tag=`, any other schema attribute | ✅ | all eight operators, `= NULL` / `!= NULL` as presence — see below |
-| `type=WT01` | ✅ | matches the relating type's Name, all eight operators |
+| `type=WT01` | ✅ | matches the relating type's Name; `=`, `!=`, `*=`, `!*=` and `/regex/`, like `Name=` — no `>`, `>=`, `<`, `<=` |
 | `parent=`, `query:` | ❌ | reported, not applied |
 | `+` unions of groups | ❌ | the first group is applied, the rest reported |
 

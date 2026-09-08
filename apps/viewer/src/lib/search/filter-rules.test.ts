@@ -200,6 +200,7 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(isFilterRule(Rule.elevation('gt', 3)), true);
     assert.strictEqual(isFilterRule(Rule.globalId(['325Q7Fhnf67OZC$$r43uzK'])), true);
     assert.strictEqual(isFilterRule(Rule.attribute('Description', 'eq', 'Foo')), true);
+    assert.strictEqual(isFilterRule(Rule.typeName('eq', 'WT01')), true);
   });
   it('rejects unknown kinds and non-objects', () => {
     assert.strictEqual(isFilterRule({ kind: 'bogus' }), false);

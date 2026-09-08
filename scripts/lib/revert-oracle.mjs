@@ -35,6 +35,7 @@
  */
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
+import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 import { isInertPath } from './revert-oracle-inert.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
@@ -195,6 +196,7 @@ export const LOAD_FAILURE = 'load-failure';
 export const NO_TESTS = 'no-tests';
 export const RUNNER_MISSING = 'runner-missing';
 export const UNPARSEABLE = 'unparseable';
+export { ALL_SKIPPED };
 
 /**
  * Errors that mean the module never loaded, so no assertion was ever evaluated.
@@ -312,10 +314,7 @@ export function parseRunnerOutput(run) {
   if (parsed.total === null) {
     return { kind: UNPARSEABLE, passed: null, failed: null, total: null, evidence: ['no test summary found in runner output'] };
   }
-  if (parsed.failed > 0) {
-    return { kind: ASSERTION_FAILURE, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence: parsed.evidence ?? [] };
-  }
-  return { kind: PASS, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence: [] };
+  return classifyExecuted(parsed);
 }
 
 function parseVitest(text) {
@@ -501,14 +500,15 @@ export const SURGICAL_ADVICE =
  * takes the WORST kind, not the most common one: one package whose suite failed
  * to load poisons the whole conclusion, however green the others were.
  */
-const KIND_SEVERITY = [PASS, ASSERTION_FAILURE, NO_TESTS, LOAD_FAILURE, UNPARSEABLE, RUNNER_MISSING];
+const KIND_SEVERITY = [PASS, ASSERTION_FAILURE, ALL_SKIPPED, NO_TESTS, LOAD_FAILURE, UNPARSEABLE, RUNNER_MISSING];
 
 export function aggregate(results) {
   if (!Array.isArray(results) || results.length === 0) {
     return { kind: UNPARSEABLE, passed: null, failed: null, total: null, evidence: ['no packages were run'] };
   }
-  let worst = results[0];
-  for (const r of results) {
+  const candidates = severityCandidates(results);
+  let worst = candidates[0];
+  for (const r of candidates) {
     if (KIND_SEVERITY.indexOf(r.kind) > KIND_SEVERITY.indexOf(worst.kind)) worst = r;
   }
   const sum = (key) =>

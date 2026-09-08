@@ -580,3 +580,54 @@ describe("syncSourceModel — a resync keeps the surviving half of the user's X-
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// #4159 bug 5's compounded form: syncing the ACTIVE model reuses `removeModel`
+// ---------------------------------------------------------------------------
+
+describe('syncSourceModel — 2D drawing markup on the synced (active) model, #4159 bug 5', () => {
+  // `doSyncSourceModel` calls `removeModel(modelId)` (the SAME action
+  // `HierarchyPanel.tsx`'s "X" button calls) on the OLD model while the
+  // replacement is already loaded, then — only `if (wasActive)` — calls
+  // `setActiveModel(replacementId)` itself. Before this fix, when the
+  // replacement ended up first among the survivors (the common case: syncing
+  // the only other loaded model, or the first one in `models`' insertion
+  // order), `removeModel`'s teardown silently moved `activeModelId` straight
+  // to `replacementId` with no markup transition at all (bug 5) — which then
+  // made `doSyncSourceModel`'s own `setActiveModel(replacementId)` call a
+  // NO-OP (the id was "already" replacementId), so its call never restored
+  // the atomic clear either. Net effect: the OLD model's markup stayed
+  // attached to the NEW model's id. Drives the REAL `removeModel` for the
+  // same reason the X-ray describe block above does — the harness stub only
+  // deletes a map entry and cannot see this at all.
+  const realRemoveModel = (id: string): void => { useViewerStore.getState().removeModel(id); };
+
+  it('does not leak the synced model\'s old markup onto the replacement\'s id — MUTATION TARGET', async () => {
+    // Exactly one model loaded (the one being synced) — the reproduction
+    // case: after `addModel` registers the replacement, `removeModel(MODEL_ID)`
+    // leaves the replacement as the ONLY survivor, so `remaining[0]` IS the
+    // replacement id, and the post-sync `setActiveModel` call becomes a no-op
+    // unless `removeModel` itself already did the right thing.
+    seedStore();
+    useViewerStore.setState({
+      measure2DResults: [{ id: 'old-measurement', start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 }],
+    });
+    const h = makeHarness();
+
+    await syncSourceModel({
+      modelId: MODEL_ID,
+      tag: makeTag(),
+      sourceHost: h.sourceHost,
+      addModel: h.addModel,
+      removeModel: realRemoveModel,
+    });
+
+    const after = useViewerStore.getState();
+    assert.notEqual(after.activeModelId, MODEL_ID, 'setup sanity: the id must have actually changed');
+    assert.deepEqual(
+      after.measure2DResults,
+      [],
+      'the old model\'s measurement must not still be attached once the replacement is active',
+    );
+  });
+});

@@ -98,13 +98,25 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  * bodies (`isStale` filtering, `nextActiveModelId` following, the two-flag
  * gates), which is exactly why leaving it unpinned would have made this file
  * read as covering all three scopes while covering two.
+ *
+ * The five `*2D*`/`drawing2DDisplayOptions` entries are a deliberate widening
+ * (#4159 bug 5): `drawing2DSlice.teardown.ts`'s `'model-removed'` arm used to
+ * be `notApplicable` unconditionally, including when the removed model was
+ * the ACTIVE one — the one case that must clear/restore the flat markup
+ * fields exactly like an ordinary `setActiveModel` switch does, or they keep
+ * describing the just-removed model under the survivor's new active id. The
+ * fixture below removes the active model (`activeModelId: 'A'`), so this
+ * scope now always emits these five via `markupTransitionPatch`.
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
-  'contextMenu', 'geometryResult', 'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
+  'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
+  'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
-  'meshColorBackup', 'models', 'pinboardEntities', 'selectedEntities', 'selectedEntitiesSet',
+  'measure2DResults', 'meshColorBackup', 'models', 'pinboardEntities', 'polygonArea2DResults',
+  'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
+  'textAnnotations2D',
 ];
 
 /**

@@ -34,6 +34,7 @@
 
 import { defineSliceTeardown, notApplicable } from '../teardown.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
+import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
 
 export const drawing2DTeardown = defineSliceTeardown(
   'drawing2DSlice',
@@ -111,11 +112,38 @@ export const drawing2DTeardown = defineSliceTeardown(
       };
     },
     // The generated drawing, its overrides and its annotations are all keyed
-    // to the file that was loaded. Removing ONE model from a federation, or
-    // clearing them all, leaves the 2D view to be regenerated on demand and
-    // must not throw away the user's markup, so both of those scopes are
-    // no-ops here.
-    'model-removed': notApplicable,
+    // to the file that was loaded. Clearing every model leaves the 2D view
+    // to be regenerated on demand and must not throw away the user's markup,
+    // so that scope is a no-op here — same reasoning as `'model-removed'`
+    // below when the removed model was NOT the active one.
+    //
+    // #4159 bug 5: when the removed model WAS the active one,
+    // `modelSlice.teardown.ts`'s own arm moves `activeModelId` to
+    // `scope.nextActiveModelId` in this SAME composed patch — and until this
+    // fix, nothing here followed it, so the flat markup fields kept
+    // describing the just-removed model under the new active id's name
+    // (leaking into it, or persisting over its own saved entry, exactly like
+    // bug 2's ordinary switch — `removeModel` and `syncSourceModel`
+    // (`lib/sources/syncSourceModel.ts`, which calls `removeModel` too) both
+    // reach this). Delegating to `markupTransitionPatch` — the same function
+    // `modelSlice.ts`'s `setActiveModel` calls — closes it: the function
+    // itself no-ops (returns `{}`) when `scope.nextActiveModelId` equals the
+    // CURRENT `activeModelId`, i.e. exactly the "removed model was not
+    // active" case this arm used to hard-code as `notApplicable`.
+    'model-removed': (scope, state) => {
+      const defaults = getDefaultDrawing2DState();
+      return markupTransitionPatch(
+        {
+          activeModelId: state.activeModelId ?? null,
+          measure2DResults: state.measure2DResults ?? defaults.measure2DResults,
+          polygonArea2DResults: state.polygonArea2DResults ?? defaults.polygonArea2DResults,
+          textAnnotations2D: state.textAnnotations2D ?? defaults.textAnnotations2D,
+          cloudAnnotations2D: state.cloudAnnotations2D ?? defaults.cloudAnnotations2D,
+          drawing2DDisplayOptions: state.drawing2DDisplayOptions ?? defaults.drawing2DDisplayOptions,
+        },
+        scope.nextActiveModelId,
+      );
+    },
     'all-models-cleared': notApplicable,
   },
 );

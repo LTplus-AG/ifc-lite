@@ -8,6 +8,8 @@ import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import { createModelSlice, type ModelSlice } from './modelSlice.js';
 import type { FederatedModel } from '../types.js';
+import { __resetLiveMarkupCacheForTests } from './drawing2DSlice.markupTransition.js';
+import { getDefaultDrawing2DState, type Measure2DResult } from './drawing2DSlice.js';
 
 /**
  * Store fields other slices own that this harness has to seed.
@@ -58,6 +60,17 @@ interface SelectionFields {
 interface PinboardFields {
   pinboardEntities: Set<string>;
   hierarchyBasketSelection: Set<string>;
+}
+
+/** The 2D drawing markup fields (drawing2DSlice), reached through a cast for
+ *  the same reason as `SelectionFields`/`PinboardFields` above — they live on
+ *  another slice this harness does not construct. */
+interface Drawing2DMarkupFields {
+  measure2DResults: Measure2DResult[];
+}
+
+function sampleMeasure(id: string): Measure2DResult {
+  return { id, start: { x: 0, y: 0 }, end: { x: 3, y: 4 }, distance: 5 };
 }
 
 // Typed setter / getter shim that mirrors zustand's StateCreator
@@ -133,7 +146,9 @@ describe('ModelSlice', () => {
       isolatedEntitiesByModel: new Map(),
       pinboardEntities: new Set<string>(),
       hierarchyBasketSelection: new Set<string>(),
+      ...getDefaultDrawing2DState(),
     };
+    __resetLiveMarkupCacheForTests();
   });
 
   describe('initial state', () => {
@@ -445,6 +460,84 @@ describe('ModelSlice', () => {
 
       state.removeModel('model-2');
       assert.strictEqual(state.activeModelId, 'model-1');
+    });
+
+    describe('2D drawing markup on the active model — #4159 bug 5', () => {
+      // `removeModel` moves `activeModelId` to the survivor through the
+      // teardown-registry composition (`viewerTeardown`), NOT through
+      // `setActiveModel`. Before this fix, `drawing2DSlice.teardown.ts`'s
+      // `'model-removed'` arm was `notApplicable` for every case, including
+      // "the removed model WAS the active one" — so the flat
+      // `measure2DResults` (and its four siblings) kept describing the
+      // just-removed model under the SURVIVOR's new active id, exactly the
+      // cross-model leak bug 2 fixed for an ordinary `setActiveModel` switch.
+      // These tests drive the REAL `removeModel` action (not a stub), which
+      // reaches the real, module-wide `viewerTeardown` registry — so this is
+      // the same code path production and `syncSourceModel.ts` both use.
+      beforeEach(() => {
+        __resetLiveMarkupCacheForTests();
+      });
+
+      it('does not leak the removed active model\'s markup into the survivor\'s fields — MUTATION TARGET', () => {
+        state.addModel(createMockModel('model-1', 'First'));
+        state.addModel(createMockModel('model-2', 'Second'));
+        state.setActiveModel('model-1');
+        Object.assign(state, { measure2DResults: [sampleMeasure('mA')] });
+
+        state.removeModel('model-1');
+
+        assert.strictEqual(state.activeModelId, 'model-2', 'setup sanity: model-2 must be the successor');
+        const after = state as unknown as Drawing2DMarkupFields;
+        assert.deepStrictEqual(
+          after.measure2DResults,
+          [],
+          'model-1\'s measurement must not still be attached once model-2 becomes active',
+        );
+      });
+
+      it('restores a survivor\'s OWN earlier markup on removal, not empty defaults — MUTATION TARGET', () => {
+        // model-2 was active earlier this session (with its own markup) and
+        // was switched away from in favour of model-1 — `setActiveModel`
+        // captured model-2's data into the live cache when that happened.
+        // Removing model-1 (now active) must hand model-2 back its REAL
+        // data, the same way switching back to it manually would.
+        state.addModel(createMockModel('model-1', 'First'));
+        state.addModel(createMockModel('model-2', 'Second'));
+        state.setActiveModel('model-2');
+        Object.assign(state, { measure2DResults: [sampleMeasure('mB')] });
+        state.setActiveModel('model-1');
+        Object.assign(state, { measure2DResults: [sampleMeasure('mA')] });
+
+        state.removeModel('model-1');
+
+        assert.strictEqual(state.activeModelId, 'model-2');
+        const after = state as unknown as Drawing2DMarkupFields;
+        assert.strictEqual(after.measure2DResults[0]?.id, 'mB', 'model-2\'s own earlier markup must come back, not empty defaults or model-1\'s data');
+      });
+
+      it('leaves the markup fields untouched when the removed model was not active', () => {
+        state.addModel(createMockModel('model-1', 'First'));
+        state.addModel(createMockModel('model-2', 'Second'));
+        state.setActiveModel('model-1');
+        Object.assign(state, { measure2DResults: [sampleMeasure('mA')] });
+
+        state.removeModel('model-2');
+
+        assert.strictEqual(state.activeModelId, 'model-1');
+        const after = state as unknown as Drawing2DMarkupFields;
+        assert.strictEqual(after.measure2DResults[0]?.id, 'mA', 'removing an INACTIVE model must not touch the active model\'s own markup');
+      });
+
+      it('clears to defaults when the removed active model was the last one loaded', () => {
+        state.addModel(createMockModel('model-1', 'Only'));
+        Object.assign(state, { measure2DResults: [sampleMeasure('mA')] });
+
+        state.removeModel('model-1');
+
+        assert.strictEqual(state.activeModelId, null);
+        const after = state as unknown as Drawing2DMarkupFields;
+        assert.deepStrictEqual(after.measure2DResults, []);
+      });
     });
 
     it('clears the AddElement panel pin when it names the removed model', () => {

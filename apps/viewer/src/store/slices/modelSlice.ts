@@ -26,7 +26,7 @@ import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
-import { defaultMarkupPatch, suppressNextSaveFor } from './drawing2DSlice.persistence.js';
+import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
 
 export interface ModelSlice {
   // State
@@ -522,21 +522,20 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     const activeModel = modelId ? state.models.get(modelId) : null;
     // 2D drawing markup (#4159): `measure2DResults` and friends are flat,
     // federation-wide fields — not scoped per model — so an `activeModelId`
-    // swap clears them to {@link defaultMarkupPatch} in this SAME atomic
-    // patch (Bug 2 — no subscriber can ever observe the new id paired with
-    // the OLD model's data), and marks that accompanying clear as suppressed
-    // (Bug 4 — it is not a real edit, so the save subscription must not
-    // persist it over the newly-active model's own entry, already cached
-    // under its hash from an earlier visit). Only when the id actually
-    // changes, so re-selecting the already-active model is a no-op.
-    const modelChanged = modelId !== state.activeModelId;
-    const clearedMarkup = modelChanged ? defaultMarkupPatch() : {};
-    if (modelChanged && modelId) suppressNextSaveFor(modelId);
+    // swap must carry them along in this SAME atomic patch. Delegated to
+    // `markupTransitionPatch` (drawing2DSlice.markupTransition.ts), the one
+    // function `drawing2DSlice.teardown.ts`'s `'model-removed'` arm ALSO
+    // calls (that arm fires when `removeModel` moves `activeModelId` via
+    // `modelSlice.teardown.ts`'s own contribution) — see that module's doc
+    // for why a second, independent implementation here is exactly what kept
+    // re-breaking this. A no-op (`{}`) when the id is not actually changing,
+    // so re-selecting the already-active model touches nothing.
+    const markupPatch = markupTransitionPatch(state, modelId);
     return {
       activeModelId: modelId,
       ifcDataStore: activeModel?.ifcDataStore ?? null,
       geometryResult: activeModel?.geometryResult ?? null,
-      ...clearedMarkup,
+      ...markupPatch,
     };
   }),
 

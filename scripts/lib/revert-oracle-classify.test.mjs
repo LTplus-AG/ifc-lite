@@ -106,6 +106,35 @@ test('#4137: a binary that a test claims stays a test, not inert', () => {
   assert.equal(classifyPath('tests/models/tiny.ifc', { binary: true }), 'test');
 });
 
+test('#4137: packages/bcf/test-data/*.bcf are real zip fixtures — test, not inert', () => {
+  // These are read byte-for-byte by packages/bcf/src/reader.test.ts,
+  // schema-validation.test.ts and fabricated-*.test.ts. `test-data` matched
+  // neither TEST_DIR_RE (which had testdata, test-fixtures) nor
+  // TEST_SEGMENT_RE (needs a literal test/tests segment), so once `inert`
+  // existed these dropped out of the oracle's reasoning with no test
+  // required — the silent-miss direction the bucket exists to avoid.
+  for (const p of [
+    'packages/bcf/test-data/AC20-FZK-Haus_BIMcollabZoom.bcf',
+    'packages/bcf/test-data/AC20-FZK-Haus_BIMcollabZoom-CommentOnly.bcf',
+    'packages/bcf/test-data/OrthogonalCamera.bcf',
+    'packages/bcf/test-data/PerspectiveCamera.bcf',
+  ]) {
+    assert.equal(classifyPath(p, { binary: true }), 'test', p);
+  }
+});
+
+test('#4137: a genuinely inert binary (an icon) still classifies inert', () => {
+  assert.equal(classifyPath('apps/viewer/public/favicon.ico', { binary: true }), 'inert');
+});
+
+test('#4137: packages/extensions/src/testing/* stays production, not test', () => {
+  // Looks like test data by name, but exports public SDK API
+  // (runBundleTests, CANONICAL_FIXTURES) — must not be swallowed by a
+  // directory-name rule.
+  assert.equal(classifyPath('packages/extensions/src/testing/index.ts'), 'production');
+  assert.equal(classifyPath('packages/extensions/src/testing/index.ts', { binary: true }), 'production');
+});
+
 // ---------------------------------------------------------------------------
 // classifyDiff — the buckets a caller acts on
 // ---------------------------------------------------------------------------

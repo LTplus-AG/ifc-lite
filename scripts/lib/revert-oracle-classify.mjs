@@ -202,8 +202,16 @@ const JS_TEST_EXTENSIONS = RUNNER_SOURCE_KINDS[0].extensions.map((e) => e.slice(
 const TEST_FILE_RE = new RegExp(
   `(^|/)(?:[^/]*\\.(?:test|spec)\\.(?:${JS_TEST_EXTENSIONS})|test_[^/]*\\.py|[^/]*_test\\.py)$`,
 );
-/** Directories whose entire contents are test scaffolding, not production. */
-const TEST_DIR_RE = /(^|\/)(__tests__|__snapshots__|__fixtures__|test-fixtures|testdata)(\/|$)/;
+/**
+ * Directories whose entire contents are test scaffolding, not production.
+ * `test-data` added for #4137: `packages/bcf/test-data/*.bcf` are real zip
+ * archives read byte-for-byte by `packages/bcf/src/reader.test.ts` and
+ * friends. Before this bucket existed they classified `production`; once
+ * `inert` exists they hit `binary && !isRunnerSource` and drop to `inert`
+ * with no fixture-directory name to save them, dropping out of the oracle's
+ * reasoning entirely — the silent-miss direction this bucket exists to avoid.
+ */
+const TEST_DIR_RE = /(^|\/)(__tests__|__snapshots__|__fixtures__|test-data|test-fixtures|testdata)(\/|$)/;
 /** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
 const TEST_SEGMENT_RE = /(^|\/)tests?(\/)/;
 

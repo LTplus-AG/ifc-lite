@@ -132,6 +132,25 @@ async function flush(): Promise<void> {
   });
 }
 
+/**
+ * Like {@link flush}, but for the two large-buffer (4-5MB) tests below that
+ * hash real content via `computeFullSourceHashFromBlob` (SHA-256 over the
+ * whole buffer, plus a `Blob.arrayBuffer()` read) rather than the ~256-byte
+ * fixtures every other test in this file uses. `flush`'s fixed two ticks are
+ * plenty for that near-instant case but proved NOT enough for a real
+ * multi-MB hash under CI's slower/noisier CPU (observed CI failure:
+ * `loadDrawing2DEntry` returned `null` right after a save that fired before
+ * `hashCache` had resolved) — this ticks far more generously (bounded, not
+ * unbounded) rather than weakening any assertion to tolerate that.
+ */
+async function flushDeep(): Promise<void> {
+  await act(async () => {
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => setTimeout(r, 5));
+    }
+  });
+}
+
 beforeEach(() => {
   clearAllDrawing2DEntries();
   useViewerStore.getState().resetViewerState();
@@ -381,14 +400,17 @@ describe('fingerprint gap collision — MUTATION TARGET: sampled-key data leak',
     await mount();
 
     await act(async () => { useViewerStore.getState().setActiveModel('gap-model-a'); });
-    await flush();
+    // flushDeep, not flush: this activation hashes a real 4MB buffer
+    // (computeFullSourceHashFromBlob), which can take longer than flush's
+    // fixed two ticks under a loaded CI runner.
+    await flushDeep();
     await act(async () => {
       useViewerStore.setState({ measure2DResults: [sampleMeasure('mA')] });
     });
     assert.strictEqual(loadDrawing2DEntry(hashA, DEFAULTS)!.measure2DResults[0].id, 'mA');
 
     await act(async () => { useViewerStore.getState().setActiveModel('gap-model-b'); });
-    await flush();
+    await flushDeep();
 
     const stateForB = useViewerStore.getState();
     assert.deepStrictEqual(
@@ -450,14 +472,14 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
     // a real saved sectionConfig on disk, and (leaving B below) an entry in
     // `liveMarkupCache` for its markup arrays.
     await act(async () => { useViewerStore.getState().setActiveModel('race-model-b'); });
-    await flush();
+    await flushDeep();
     await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
     assert.deepStrictEqual(loadDrawing2DEntry(hashB, DEFAULTS)!.sectionConfig, configB);
 
     // Visit A — this is the "previous model" an in-flight generation is
     // still computing FOR when the user switches away from it.
     await act(async () => { useViewerStore.getState().setActiveModel('race-model-a'); });
-    await flush();
+    await flushDeep();
 
     // The A -> B leg: bare, not wrapped in `act`, so this hook's own restore
     // effect has not run yet even though `setActiveModel`'s synchronous
@@ -484,7 +506,7 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
 
     // Let the restore effect settle and confirm the IN-MEMORY config used
     // for the next save is B's real one too, not the corrupted one.
-    await flush();
+    await flushDeep();
     await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
     assert.deepStrictEqual(loadDrawing2DEntry(hashB, DEFAULTS)!.sectionConfig, configB);
   });

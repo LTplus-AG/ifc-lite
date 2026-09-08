@@ -135,3 +135,20 @@ test('a non-manifest file is never version-only regardless of content', () => {
 test('an empty diff (no hunks) is not version-only', () => {
   assert.equal(isVersionOnlyManifestDiff('package.json', ''), false);
 });
+
+test('a non-manifest file whose diff has the bare cargo version-line shape is NOT version-only', () => {
+  // Pins the `if (!isNpm && !isCargo) return false;` guard: this line shape
+  // (`version = "9.3.0"` -> `version = "9.4.0"`) is exactly what
+  // cargoBareVersionOnly() accepts on Cargo.toml, so without the guard a
+  // non-manifest file (e.g. a Rust source file that happens to define its
+  // own build-time version constant) would fall into the cargo matcher and
+  // be wrongly exempted from the revert oracle.
+  const diff = [
+    '--- a/rust/core/src/build_info.rs',
+    '+++ b/rust/core/src/build_info.rs',
+    '@@ -12 +12 @@',
+    '-version = "9.3.0"',
+    '+version = "9.4.0"',
+  ].join('\n');
+  assert.equal(isVersionOnlyManifestDiff('rust/core/src/build_info.rs', diff), false);
+});

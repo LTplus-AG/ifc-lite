@@ -85,16 +85,24 @@ function stripFencedCode(body) {
 }
 
 // Exported for scripts/lib/partial-close-admission.mjs (#4154), which needs
-// the same fenced-code/inline-span/blockquote stripping before its own
-// admission-phrase scan, for the same reason this module needs it before
-// `REF_KEYWORD_RE`: a `Closes #N (item 1 only)` quoted inside a code fence is
-// not the PR author's own claim. Reused rather than duplicated.
-export function stripNonProse(body) {
+// the fenced-code/inline-span stripping (NOT the blockquote step below)
+// before its own admission-phrase scan, for the same reason this module
+// needs it before `REF_KEYWORD_RE`: a `Closes #N (item 1 only)` quoted
+// inside a code fence or an inline span is not the PR author's own claim --
+// it is someone else's text (a commit message, an example) the author is
+// merely showing. That reasoning does NOT extend to a blockquote; see that
+// module's header for why it deliberately does not call this function.
+export function stripCode(body) {
   let out = stripFencedCode(body);
   // Inline code spans: `...` on a single line. Markdown inline code never
   // spans a blank line, and stopping at `\n` keeps this from ever eating a
   // later, unrelated line if a stray unmatched backtick appears.
   out = out.replace(/`[^`\n]*`/g, (m) => ' '.repeat(m.length));
+  return out;
+}
+
+export function stripNonProse(body) {
+  let out = stripCode(body);
   // Blockquote lines: blank the whole line when its first non-whitespace
   // character is `>`, so a quoted `Refs #12` -- including a quoted reply
   // that itself contains a fenced block -- never reaches the keyword regex.

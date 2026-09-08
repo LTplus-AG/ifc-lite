@@ -26,10 +26,40 @@
  * REUSES `closingIssuesReferences`, NOT A BODY REGEX, FOR "DOES THIS PR
  * CLOSE SOMETHING". `check-issue-queue.mjs`'s header already proves a body
  * regex disagrees with GitHub's own keyword scanner in both directions
- * (#2978). This script asks GraphQL the same question that gate already
- * asks and reuses the same field; the only NEW read is the admission-phrase
- * scan over the body text, which is genuinely new work because
- * `closingIssuesReferences` carries no prose.
+ * (#2978). This script asks the same question that gate already asks and
+ * reuses the same field; the only NEW read is the admission-phrase scan over
+ * the body text, which is genuinely new work because `closingIssuesReferences`
+ * carries no prose.
+ *
+ * NO SECOND GRAPHQL ROUND TRIP (#4180 finding B). `check-issue-queue.mjs`
+ * queries `body` and `closingIssuesReferences` off the SAME PR event, ONE
+ * STEP EARLIER in the same job, and dumps its payload via its own `--dump`.
+ * The workflow now points `--shared-state-file` at that dump instead of
+ * letting this script call `gh api graphql` a second time. That round trip
+ * used to matter for a reason that no longer holds: `Issue queue` became a
+ * REQUIRED status check on `main` (`scripts/issue-queue.config.json`
+ * documents the ruleset change), and this step ran with no
+ * `continue-on-error`, so a transient GitHub API failure in THIS gate's own
+ * independent fetch -- a gate whose entire design says it must never block a
+ * merge -- could block one anyway. Reusing the payload removes the failure
+ * mode at its root rather than papering over it with `continue-on-error`
+ * (which would also swallow a genuine `PartialCloseAdmissionError` this
+ * script wants surfaced when it IS the one making the GraphQL call, e.g. a
+ * manual `--pr` invocation).
+ *
+ * `--shared-state-file` THEREFORE NEVER REFUSES, unlike `--state-file`
+ * (offline testing) and unlike the live `--pr` path. A missing file, an
+ * unparseable one, or a shape `normalisePullRequest` rejects all produce one
+ * `ℹ️  SKIPPED` line and exit 0 -- the finding is silently absent, not a red
+ * job. `.github/workflows/issue-queue.yml`'s step order (checkout, unit
+ * tests, `check-issue-queue.mjs` with `--dump`, THEN this script) means the
+ * file exists whenever this step actually runs, because a prior step's
+ * non-zero exit skips every step after it by GitHub Actions' own default
+ * (no step here sets `continue-on-error` or `if: always()`); the skip path
+ * exists anyway because "the workflow's step order happens to guarantee it"
+ * is not a load-bearing enough promise for a gate whose header (above) says
+ * a refusal is the one thing this gate must never produce from something
+ * that isn't this PR's own body.
  *
  * STATED HOLE: a PR that partly closes an issue and says nothing about it is
  * invisible to a phrase scan. This gate only catches the case where the
@@ -38,7 +68,7 @@
  *
  * WIRED BY `.github/workflows/issue-queue.yml`, alongside
  * `check-issue-queue.mjs` -- same PR event, same round trip's worth of data,
- * one extra field. Its regression harness is
+ * no extra one. Its regression harness is
  * `scripts/check-partial-close-admission.test.mjs` and
  * `scripts/lib/partial-close-admission.test.mjs`, run in the same job,
  * before the gate, matching the existing convention.
@@ -46,7 +76,8 @@
  * Usage:
  *   node scripts/check-partial-close-admission.mjs --pr 4154 --repo LTplus-AG/ifc-lite
  *   node scripts/check-partial-close-admission.mjs --pr 4154 --dump /tmp/pr.json
- *   node scripts/check-partial-close-admission.mjs --state-file /tmp/pr.json   # offline
+ *   node scripts/check-partial-close-admission.mjs --state-file /tmp/pr.json   # offline, strict (tests)
+ *   node scripts/check-partial-close-admission.mjs --shared-state-file /tmp/pr.json   # CI: check-issue-queue.mjs's own dump, never refuses
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -66,15 +97,24 @@ export class PartialCloseAdmissionError extends Error {
 
 /** @param {string[]} argv */
 export function parseArgs(argv) {
-  const out = { pr: null, repo: null, stateFile: null, dump: null };
+  const out = { pr: null, repo: null, stateFile: null, sharedStateFile: null, dump: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => argv[(i += 1)];
     if (a === '--pr') out.pr = next();
     else if (a === '--repo') out.repo = next();
     else if (a === '--state-file') out.stateFile = next();
+    else if (a === '--shared-state-file') out.sharedStateFile = next();
     else if (a === '--dump') out.dump = next();
     else throw new PartialCloseAdmissionError('BAD_ARGS', `Unknown argument \`${a}\`.`);
+  }
+  if (out.stateFile && out.sharedStateFile) {
+    throw new PartialCloseAdmissionError(
+      'BAD_ARGS',
+      '`--state-file` and `--shared-state-file` are mutually exclusive: the first is a strict, ' +
+        'offline test fixture whose failures MUST refuse; the second is a live CI dump whose ' +
+        'failures MUST silently skip. Passing both leaves it undefined which behavior applies.',
+    );
   }
   return out;
 }
@@ -202,6 +242,39 @@ export function normalisePullRequest(payload) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
 
+  // `--shared-state-file`: the CI path (#4180 finding B). ANY failure here --
+  // the file is absent, unparseable, or a shape `normalisePullRequest`
+  // rejects -- is a SKIP, never a refusal. See the module header's
+  // "NO SECOND GRAPHQL ROUND TRIP" note for why this path is not allowed to
+  // exit non-zero: it feeds a required status check that must never fail on
+  // anything but this PR's own body.
+  if (args.sharedStateFile) {
+    let payload;
+    try {
+      payload = JSON.parse(readFileSync(args.sharedStateFile, 'utf8'));
+    } catch (err) {
+      console.log(
+        `ℹ️  SKIPPED: could not read/parse \`--shared-state-file\` (${args.sharedStateFile}): ` +
+          `${err.message}. This step never fails a required job over its own upstream step's ` +
+          'output; see the module header.',
+      );
+      process.exit(0);
+    }
+    let pr;
+    try {
+      pr = normalisePullRequest(payload);
+    } catch (err) {
+      console.log(
+        `ℹ️  SKIPPED: \`--shared-state-file\` did not carry the expected shape (${err.message}). ` +
+          'This step never fails a required job over its own upstream step\'s output; see the ' +
+          'module header.',
+      );
+      process.exit(0);
+    }
+    printVerdict(pr);
+    return;
+  }
+
   let payload;
   if (args.stateFile) {
     payload = JSON.parse(readFileSync(args.stateFile, 'utf8'));
@@ -218,6 +291,20 @@ function main() {
   if (args.dump) writeFileSync(args.dump, JSON.stringify(payload, null, 2));
 
   const pr = normalisePullRequest(payload);
+  printVerdict(pr);
+}
+
+/**
+ * Shared by the live/`--state-file` path and the `--shared-state-file` path
+ * above: print the verdict and exit 0. ALWAYS EXIT 0 ON A VERDICT -- this
+ * gate has no enforcing mode, see the header. Only a refusal (an uncaught
+ * throw on the `--pr`/`--state-file` paths; never on `--shared-state-file`,
+ * which converts every failure into a SKIP before reaching here) fails the
+ * job.
+ *
+ * @param {{ number: number, title: string, body: string, closesAnyIssue: boolean }} pr
+ */
+function printVerdict(pr) {
   console.log(`PR #${pr.number} — ${pr.title}`);
   console.log(`Closes at least one issue: ${pr.closesAnyIssue}`);
   console.log('');
@@ -225,8 +312,6 @@ function main() {
   const { lines } = evaluatePartialCloseAdmission({ body: pr.body, closesAnyIssue: pr.closesAnyIssue });
   for (const l of lines) console.log(l);
 
-  // ALWAYS EXIT 0 ON A VERDICT. This gate has no enforcing mode -- see the
-  // header. Only a refusal (below, via the uncaught throw) fails the job.
   console.log('');
   console.log('This finding does not fail the build; see the module header for why.');
   process.exit(0);

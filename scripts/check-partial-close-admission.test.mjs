@@ -90,3 +90,62 @@ test('bad args refuse with exit 1', () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /BAD_ARGS/);
 });
+
+// ------------------------------------------------- FINDING B: shared payload
+
+/**
+ * `--shared-state-file` is the workflow-wired path (#4180 finding B):
+ * `check-issue-queue.mjs` already reads `body` and `closingIssuesReferences`
+ * off the same PR event in the same job, one step earlier, and dumps it with
+ * its own `--dump`. This gate is wired to read THAT file instead of taking a
+ * second GraphQL round trip -- see .github/workflows/issue-queue.yml and this
+ * script's own header. Unlike `--state-file` (used above, and by the test
+ * harness only), a missing or unreadable shared file NEVER refuses: this
+ * step's whole reason to exist is that it must not be able to fail a
+ * REQUIRED job over something as ordinary as its upstream step not having
+ * produced a file, since a refusal here has the exact blocking effect the
+ * PR's own header says this gate must never have.
+ */
+
+test('--shared-state-file: same payload shape as --state-file, warns normally', () => {
+  const file = join(TMP, `pr-${(seq += 1)}.json`);
+  writeFileSync(file, JSON.stringify(payload({
+    body: 'Closes #4111 (item 1 only). Not in this PR: two more items.',
+    closesIssueNumber: 4111,
+  })));
+  const r = spawnSync('node', [GATE, '--shared-state-file', file], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /PARTIAL_CLOSE_ADMISSION/);
+});
+
+test('--shared-state-file: a missing file degrades to a silent skip, exit 0, never a refusal', () => {
+  const missing = join(TMP, 'does-not-exist.json');
+  const r = spawnSync('node', [GATE, '--shared-state-file', missing], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /SKIPPED/);
+  assert.equal(r.stderr, '');
+});
+
+test('--shared-state-file: unparseable JSON degrades to a silent skip, exit 0', () => {
+  const file = join(TMP, `pr-${(seq += 1)}.json`);
+  writeFileSync(file, '{ not json');
+  const r = spawnSync('node', [GATE, '--shared-state-file', file], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /SKIPPED/);
+});
+
+test('--shared-state-file: a payload check-issue-queue.mjs could not have produced (malformed shape) degrades to a silent skip, exit 0', () => {
+  const file = join(TMP, `pr-${(seq += 1)}.json`);
+  writeFileSync(file, JSON.stringify({ data: { repository: { pullRequest: null } } }));
+  const r = spawnSync('node', [GATE, '--shared-state-file', file], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  assert.match(r.stdout, /SKIPPED/);
+});
+
+test('--shared-state-file and --state-file together is a bad-args refusal (ambiguous source)', () => {
+  const file = join(TMP, `pr-${(seq += 1)}.json`);
+  writeFileSync(file, JSON.stringify(payload({ closesIssueNumber: 1 })));
+  const r = spawnSync('node', [GATE, '--state-file', file, '--shared-state-file', file], { encoding: 'utf8' });
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /BAD_ARGS/);
+});

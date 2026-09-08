@@ -139,24 +139,45 @@ jobs:
           node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
             scripts/check-partial-close-admission.test.mjs scripts/lib/partial-close-admission.test.mjs
 
+      # `--dump` writes the exact GraphQL payload this job read (`body` and
+      # `closingIssuesReferences` included) to $RUNNER_TEMP so the next step
+      # can reuse it instead of asking GitHub the same question again (#4180
+      # finding B). It is written as soon as the read succeeds, before this
+      # script's own pass/fail verdict is computed, so the file exists even
+      # on an ENFORCING-mode failure below -- moot in practice, because a
+      # non-zero exit here skips every later step by GitHub Actions' own
+      # default (no step in this job sets `continue-on-error` or
+      # `if: always()`), so the next step never runs without it regardless.
       - name: Check this PR closes a queued issue
         env:
           GH_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           node scripts/check-issue-queue.mjs \
-            --pr "${{ github.event.pull_request.number }}"
+            --pr "${{ github.event.pull_request.number }}" \
+            --dump "${RUNNER_TEMP}/issue-queue-pr.json"
 
       # #4154: a WARNING, not a gate -- it never fails this job on its own
-      # finding (only a refusal, e.g. `gh` unreachable, does). Kept in the same
+      # finding (only a refusal, e.g. a malformed payload, could, and see
+      # below for why even that no longer applies here). Kept in the same
       # job/workflow as check-issue-queue.mjs because it reads the same
-      # `closingIssuesReferences` field off the same PR event; see
-      # scripts/check-partial-close-admission.mjs's header for why this has no
-      # enforcing mode to graduate to.
+      # `body` and `closingIssuesReferences` fields off the same PR event;
+      # see scripts/check-partial-close-admission.mjs's header for why this
+      # has no enforcing mode to graduate to.
+      #
+      # `--shared-state-file`, NOT `--pr` (#4180 finding B): reads the exact
+      # payload the previous step already fetched and dumped, rather than
+      # spending a second `gh api graphql` round trip on the same two
+      # fields. `Issue queue` is a REQUIRED status check on `main`
+      # (scripts/issue-queue.config.json documents the ruleset), and this
+      # step previously had no `continue-on-error`, so a transient failure
+      # in an independent second fetch could have blocked a merge -- exactly
+      # what a warn-only gate must never do. `--shared-state-file` cannot
+      # cause that: a missing or malformed dump degrades to a silent
+      # `SKIPPED` and exit 0, never a refusal (see the script's header and
+      # its own tests). No `GH_TOKEN`/`GITHUB_REPOSITORY` needed here
+      # anymore -- this step makes no GitHub API call of its own.
       - name: Warn on a Closes/Fixes/Resolves keyword whose own body admits partial coverage
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           node scripts/check-partial-close-admission.mjs \
-            --pr "${{ github.event.pull_request.number }}"
+            --shared-state-file "${RUNNER_TEMP}/issue-queue-pr.json"

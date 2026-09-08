@@ -25,36 +25,23 @@ import {
   type FilterRule,
   type SetOp,
   type StringOp,
-  type ValueOp,
   type NumericOp,
   type ClassificationOp,
 } from '@/lib/search/filter-rules';
 import { ComboInput } from '@/components/ui/combo-input';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
 import { RULE_KIND_LABEL } from './filter-rule-labels';
+import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
+import {
+  SET_OPS,
+  STRING_OPS,
+  VALUE_OPS,
+  NUMERIC_OPS,
+  CLASSIFICATION_OPS,
+  OpDropdown,
+} from './SearchModal.filter.editors.shared';
 
 const NO_OPTIONS: readonly string[] = [];
-
-// ── Op constants ──────────────────────────────────────────────────────
-
-const SET_OPS: SetOp[] = ['in', 'notIn'];
-const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches'];
-const VALUE_OPS: ValueOp[] = [
-  'eq', 'ne', 'contains', 'notContains', 'matches', 'notMatches', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
-];
-const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
-const CLASSIFICATION_OPS: ClassificationOp[] = [
-  'contains', 'eq', 'ne', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
-];
-
-const OP_LABEL: Record<string, string> = {
-  in: 'is one of',  notIn: 'is not one of',
-  eq: '=', ne: '≠',
-  contains: 'contains', notContains: 'does not contain',
-  startsWith: 'starts with', matches: 'matches /regex/', notMatches: 'does not match /regex/',
-  gt: '>', gte: '≥', lt: '<', lte: '≤',
-  isSet: 'is set', isNotSet: 'is not set',
-};
 
 // ── Rule row dispatcher ───────────────────────────────────────────────
 
@@ -122,6 +109,18 @@ export function RuleRow({ rule, modelOptions, ifcTypeOptions, storeyOptions, pse
           value={rule.value}
           onChange={(op, value) => onChange(Rule.name(op, value))}
         />
+      )}
+
+      {rule.kind === 'globalId' && (
+        <GlobalIdEditor
+          values={rule.values}
+          op={rule.op}
+          onChange={(values, op) => onChange(Rule.globalId(values, op))}
+        />
+      )}
+
+      {rule.kind === 'attribute' && (
+        <AttributeEditor rule={rule} onChange={onChange} />
       )}
 
       {rule.kind === 'property' && (
@@ -501,32 +500,3 @@ function ElevationEditor({
   );
 }
 
-// ── Building-block widgets ───────────────────────────────────────────
-
-function OpDropdown<T extends string>({
-  ops,
-  value,
-  onChange,
-}: {
-  ops: ReadonlyArray<T>;
-  value: T;
-  onChange: (next: T) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 min-w-[3.5rem] gap-1 text-xs font-mono">
-          {OP_LABEL[value] ?? value}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {ops.map((op) => (
-          <DropdownMenuItem key={op} onSelect={() => onChange(op)} className="font-mono">
-            {OP_LABEL[op] ?? op}
-            <span className="ml-2 text-[10px] text-muted-foreground">{op}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}

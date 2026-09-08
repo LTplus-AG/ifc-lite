@@ -92,19 +92,20 @@ describe('selectorToFilterRules — the documented examples', () => {
     ]);
   });
 
-  it('4. a GlobalId has no rule kind yet, and says so', () => {
-    const out = adapt(GUID);
-    assert.deepEqual(out.rules, []);
-    assert.equal(out.unsupported.length, 1);
-    assert.match(out.unsupported[0] ?? '', /GlobalId/);
-    assert.match(out.unsupported[0] ?? '', /325Q7Fhnf67OZC/);
+  it('4. a bare GlobalId becomes a globalId rule', () => {
+    assert.deepEqual(rulesOf(GUID), [Rule.globalId([GUID], 'in')]);
   });
 
-  it('5. the wall rule survives, the GlobalId subtraction is reported with its "!"', () => {
-    const out = adapt(`IfcWall, ! ${GUID}`);
-    assert.deepEqual(out.rules, [Rule.ifcType(WALLS, 'in')]);
-    assert.equal(out.unsupported.length, 1);
-    assert.ok(out.unsupported[0]?.includes(`! ${GUID}`), out.unsupported[0]);
+  it('5. the wall rule survives, the GlobalId subtraction becomes a notIn rule', () => {
+    assert.deepEqual(rulesOf(`IfcWall, ! ${GUID}`), [
+      Rule.ifcType(WALLS, 'in'),
+      Rule.globalId([GUID], 'notIn'),
+    ]);
+  });
+
+  it('4b. several bare GlobalId terms union into one rule, mirroring how classes fold', () => {
+    const GUID2 = '925Q7Fhnf67OZC$$r43uzZ';
+    assert.deepEqual(rulesOf(`${GUID}, ${GUID2}`), [Rule.globalId([GUID, GUID2], 'in')]);
   });
 
   it('6. a class subtraction becomes a notIn rule over the expanded subtree', () => {
@@ -171,15 +172,13 @@ describe('selectorToFilterRules — the documented examples', () => {
     assert.deepEqual(rules[1], Rule.classification('', 'matches', 'Pr_.*', 'regex'));
   });
 
-  it('14. everything at once — four rules kept, the GlobalId reported', () => {
-    const out = adapt(`IfcWall, IfcSlab, ! ${GUID}, material=concrete, /Pset_.*Common/.FireRating=2HR`);
-    assert.deepEqual(out.rules, [
+  it('14. everything at once — all five rules kept, nothing reported', () => {
+    assert.deepEqual(rulesOf(`IfcWall, IfcSlab, ! ${GUID}, material=concrete, /Pset_.*Common/.FireRating=2HR`), [
       Rule.ifcType([...WALLS, ...SLABS], 'in'),
+      Rule.globalId([GUID], 'notIn'),
       Rule.material('eq', 'concrete'),
       prop('Pset_.*Common', 'FireRating', 'eq', '2HR', { setNameKind: 'regex' }),
     ]);
-    assert.equal(out.unsupported.length, 1);
-    assert.match(out.unsupported[0] ?? '', /GlobalId/);
   });
 
   it('15. a union keeps the FIRST group and names the rest', () => {
@@ -307,6 +306,27 @@ describe('selectorToFilterRules — operators and value shapes', () => {
     assert.deepEqual(rulesOf('Name="Wand \\"A\\" 1"'), [Rule.name('eq', 'Wand "A" 1')]);
   });
 
+  it('maps every generic-attribute operator, same ValueOp set a property term uses', () => {
+    const cases: Array<[string, FilterRule]> = [
+      ['Description=Foo', Rule.attribute('Description', 'eq', 'Foo')],
+      ['Description!=Foo', Rule.attribute('Description', 'ne', 'Foo')],
+      ['Description*=Foo', Rule.attribute('Description', 'contains', 'Foo')],
+      ['Description!*=Foo', Rule.attribute('Description', 'notContains', 'Foo')],
+      ['Tag>1', Rule.attribute('Tag', 'gt', '1')],
+      ['Tag>=1', Rule.attribute('Tag', 'gte', '1')],
+      ['Tag<1', Rule.attribute('Tag', 'lt', '1')],
+      ['Tag<=1', Rule.attribute('Tag', 'lte', '1')],
+      ['ObjectType=/Fire.*/', Rule.attribute('ObjectType', 'matches', 'Fire.*', 'regex')],
+      ['ObjectType!=/Fire.*/', Rule.attribute('ObjectType', 'notMatches', 'Fire.*', 'regex')],
+    ];
+    for (const [text, expected] of cases) assert.deepEqual(rulesOf(text), [expected], text);
+  });
+
+  it('a generic attribute against NULL is presence, same as property', () => {
+    assert.deepEqual(rulesOf('Description != NULL'), [Rule.attribute('Description', 'isSet', '')]);
+    assert.deepEqual(rulesOf('Description = NULL'), [Rule.attribute('Description', 'isNotSet', '')]);
+  });
+
   it('the schema decides the expansion', () => {
     const valuesFor = (schema: string): string[] => {
       const [rule] = rulesOf('IfcBuildingElement', schema);
@@ -323,10 +343,24 @@ describe('selectorToFilterRules — operators and value shapes', () => {
 describe('selectorToFilterRules — nothing is dropped in silence', () => {
   const reported = (text: string): string[] => adapt(text).unsupported;
 
-  it('an attribute other than Name / PredefinedType', () => {
-    const out = adapt('IfcWall, Description=Foo');
-    assert.deepEqual(out.rules, [Rule.ifcType(WALLS, 'in')]);
-    assert.ok(out.unsupported[0]?.includes('Description=Foo'), out.unsupported[0]);
+  it('an attribute other than Name / PredefinedType becomes a generic attribute rule', () => {
+    assert.deepEqual(rulesOf('IfcWall, Description=Foo'), [
+      Rule.ifcType(WALLS, 'in'),
+      Rule.attribute('Description', 'eq', 'Foo'),
+    ]);
+  });
+
+  it('GlobalId written as a comparison, not a bare term, is still reported', () => {
+    // `GlobalId=X` parses as a generic attribute term, but the on-demand
+    // extraction the attribute rule reads never surfaces GlobalId (it's
+    // skipped as a structural/display attribute), so routing it there would
+    // silently match nothing. The bare-GlobalId literal is the supported
+    // spelling for "find this element by id".
+    const out = adapt(`GlobalId=${GUID}`);
+    assert.deepEqual(out.rules, []);
+    assert.equal(out.unsupported.length, 1);
+    assert.match(out.unsupported[0] ?? '', /GlobalId=/);
+    assert.match(out.unsupported[0] ?? '', /bare GlobalId/);
   });
 
   it('an unknown class name', () => {
@@ -371,8 +405,11 @@ describe('selectorToFilterRules — nothing is dropped in silence', () => {
   });
 
   it('every unsupported entry quotes the text the user typed', () => {
+    // Only `type=WT01`, `parent=Foo` and the dropped "+ IfcDoor" group remain
+    // unsupported here — the GlobalId subtraction and Description=x now both
+    // become rules (#4094).
     const out = adapt(`IfcWall, ! ${GUID}, type=WT01, parent=Foo, Description=x + IfcDoor`);
-    assert.equal(out.unsupported.length, 5);
+    assert.equal(out.unsupported.length, 3);
     for (const entry of out.unsupported) {
       assert.match(entry, /^"/, `entry does not start with the quoted source: ${entry}`);
     }

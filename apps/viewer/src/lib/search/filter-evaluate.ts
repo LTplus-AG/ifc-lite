@@ -40,6 +40,7 @@ import {
   extractTypePropertiesOnDemand,
   extractAllMaterialsOnDemand,
   extractClassificationsOnDemand,
+  extractAllEntityAttributes,
   mergeInheritedPropertySets,
   type IfcDataStore,
   type ClassificationInfo,
@@ -54,6 +55,7 @@ import {
 } from './filter-rules.js';
 import {
   setOpMatches,
+  globalIdOpMatches,
   stringOpMatches,
   matchStringAnyNone,
   numericOpMatches,
@@ -63,6 +65,7 @@ import {
   materialiseNumericIterable,
   toNumericIterable,
 } from './filter-iteration.js';
+import { selectIterationSource, orderRulesByCost } from './filter-iteration-source.js';
 
 import {
   flattenPsets,
@@ -70,12 +73,14 @@ import {
   stringifyValue,
   matchPropertyRule,
   matchQuantityRule,
+  matchAttributeRule,
   defaultStoreyName,
   storeyMatchesRefs,
   unionByStorey,
   materialNamesOf,
   matchClassificationRule,
   elevationOf,
+  type AttrRows,
   type PsetRows,
   type QtyRows,
 } from './filter-match.js';
@@ -143,6 +148,7 @@ export function evaluateFilterRules(
     hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
     hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
     hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
+    hasAttributeRule: orderedRules.some((r) => r.kind === 'attribute'),
     typePsetCache: new Map(),
   };
 
@@ -256,6 +262,7 @@ export async function evaluateFilterRulesFederated(
       hasQuantityRule: orderedRules.some((r) => r.kind === 'quantity'),
       hasMaterialRule: orderedRules.some((r) => r.kind === 'material'),
       hasClassificationRule: orderedRules.some((r) => r.kind === 'classification'),
+      hasAttributeRule: orderedRules.some((r) => r.kind === 'attribute'),
       typePsetCache: new Map(),
     };
 
@@ -303,101 +310,6 @@ export async function evaluateFilterRulesFederated(
   return out;
 }
 
-// ── Iteration source: index prefilter (AND + op:in) ──────────────────────────
-
-/**
- * Decide which expressIds the evaluator walks. Public for testability —
- * consumers should only depend on the results returned, not on the
- * iteration count, but a benchmark / regression test may want to assert
- * the prefilter actually narrows.
- */
-export function selectIterationSource(
-  store: IfcDataStore,
-  rules: readonly FilterRule[],
-  combinator: Combinator,
-  candidateExpressIds: Iterable<number> | undefined,
-  modelId?: string,
-): ArrayLike<number> | Iterable<number> {
-  // Caller-supplied narrowing wins (Tier-1 candidates).
-  if (candidateExpressIds !== undefined) return candidateExpressIds;
-
-  // Prefilter only applies under AND. OR rules are unioned; you can't
-  // shrink the candidate set from a single OR clause without losing
-  // results from the other clauses.
-  if (combinator !== 'AND') return iterateAllExpressIds(store);
-
-  // Try to find the smallest narrowing source. Multiple op:in rules in
-  // the same query can each suggest a candidate bucket; we pick the
-  // smallest one (the per-entity loop re-checks every rule, so any one
-  // valid bucket is correctness-safe — fewer rows = less work).
-  let best: number[] | null = null;
-
-  for (const rule of rules) {
-    if (rule.kind === 'ifcType' && rule.op === 'in' && rule.values.length > 0) {
-      const bucket = unionByType(store, rule.values);
-      if (bucket && (best === null || bucket.length < best.length)) best = bucket;
-    } else if (rule.kind === 'storey' && rule.op === 'in' && rule.values.length > 0) {
-      const bucket = unionByStorey(store, rule, modelId);
-      if (bucket && (best === null || bucket.length < best.length)) best = bucket;
-    }
-  }
-
-  return best ?? iterateAllExpressIds(store);
-}
-
-function unionByType(store: IfcDataStore, names: readonly string[]): number[] | null {
-  const byType = store.entityIndex.byType;
-  if (!byType || byType.size === 0) return null;
-  // STEP type names are stored UPPERCASE; rule values arrive in canonical
-  // PascalCase ("IfcWall") so we uppercase here at the boundary.
-  const out: number[] = [];
-  for (const name of names) {
-    const bucket = byType.get(name.toUpperCase());
-    if (bucket) for (const id of bucket) out.push(id);
-  }
-  return out.length > 0 ? out : null;
-}
-
-// ── Cheap-first rule ordering ────────────────────────────────────────────────
-
-/**
- * AGENTS.md §2: never call `extractPropertiesOnDemand` in a large loop.
- * We can't avoid it entirely for `property`/`quantity` rules, but we can
- * make sure cheap rules check first so AND/OR short-circuit skips the
- * expensive parse for entities that already fail/pass.
- */
-const RULE_COST: Record<FilterRule['kind'], number> = {
-  // Constant-time comparison against the entity's owning model.
-  model:          0,
-  // Column-only — single TypedArray read.
-  ifcType:        0,
-  // Pre-built reverse-map lookup.
-  storey:         1,
-  // Pre-built reverse-map lookup (elementToStorey → storeyElevations).
-  elevation:      1,
-  // String-table indirection.
-  name:           2,
-  // Source-buffer parse (resolveEntityPredefinedType re-reads the entity's
-  // attributes) - same cost class as a pset parse, so order it after the
-  // cheap column checks that can short-circuit it. (#1462)
-  predefinedType: 10,
-  // Source-buffer parse (the AGENTS.md §2 hot path).
-  property:       10,
-  quantity:       10,
-  // Relationship-graph walk + on-demand resolve — as costly as a pset parse.
-  material:       10,
-  classification: 10,
-};
-
-export function orderRulesByCost(rules: readonly FilterRule[]): FilterRule[] {
-  // Stable sort — equal-cost rules retain their authored order so the
-  // user's intent is visible in debug logs / SQL preview.
-  return rules
-    .map((r, i) => ({ r, i, cost: RULE_COST[r.kind] }))
-    .sort((a, b) => a.cost - b.cost || a.i - b.i)
-    .map((x) => x.r);
-}
-
 // ── Per-entity inner loop ────────────────────────────────────────────────────
 
 /** Type-level pset rows in the same shape `extractPropertiesOnDemand` /
@@ -417,6 +329,7 @@ interface EvalContext {
   hasQuantityRule: boolean;
   hasMaterialRule: boolean;
   hasClassificationRule: boolean;
+  hasAttributeRule: boolean;
   /** Per-TYPE pset cache, keyed by the type's expressId and shared across
    *  every entity evaluated against this store (one `EvalContext` per
    *  model/plan). Many instances share one `IfcWallType` etc., so this
@@ -440,6 +353,7 @@ function evaluateOneEntity(
   let qtyCache: QtyRows | null = null;
   let matCache: string[] | null = null;
   let classCache: readonly ClassificationInfo[] | null = null;
+  let attrCache: AttrRows | null = null;
   const psetsFor = (): PsetRows => {
     if (!psetCache) {
       const ownSets = extractPropertiesOnDemand(ctx.store, expressId);
@@ -474,6 +388,10 @@ function evaluateOneEntity(
     if (!classCache) classCache = extractClassificationsOnDemand(ctx.store, expressId);
     return classCache;
   };
+  const attrsFor = (): AttrRows => {
+    if (!attrCache) attrCache = extractAllEntityAttributes(ctx.store, expressId);
+    return attrCache;
+  };
 
   const ruleResults: boolean[] = [];
   for (const rule of orderedRules) {
@@ -485,6 +403,7 @@ function evaluateOneEntity(
       ctx.hasQuantityRule ? qtysFor : null,
       ctx.hasMaterialRule ? matNamesFor : null,
       ctx.hasClassificationRule ? classFor : null,
+      ctx.hasAttributeRule ? attrsFor : null,
     );
     ruleResults.push(result);
     if (combinator === 'AND' && !result) return false;
@@ -536,6 +455,7 @@ function evaluateRule(
   qtysFor: (() => QtyRows) | null,
   matNamesFor: (() => string[]) | null,
   classFor: (() => readonly ClassificationInfo[]) | null,
+  attrsFor: (() => AttrRows) | null,
 ): boolean {
   switch (rule.kind) {
     case 'model': {
@@ -566,6 +486,13 @@ function evaluateRule(
     }
     case 'name': {
       return stringOpMatches(rule.op, ctx.table.getName(expressId), rule.value, rule.valueKind);
+    }
+    case 'globalId': {
+      return globalIdOpMatches(rule.op, ctx.table.getGlobalId(expressId), rule.values);
+    }
+    case 'attribute': {
+      if (!attrsFor) return false;
+      return matchAttributeRule(rule, attrsFor());
     }
     case 'property': {
       if (!psetsFor) return false;
@@ -602,14 +529,6 @@ function buildResult(modelId: string, ctx: EvalContext, expressId: number): Filt
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-/** Return the raw expressId column as the iteration source. The
- *  per-entity loops already skip empty rows (`if (!expressId) continue`)
- *  so the typed-array shape is correctness-safe AND lets the federated
- *  entry report a `total` rather than streaming with `total = -1`. */
-function iterateAllExpressIds(store: IfcDataStore): ArrayLike<number> {
-  return store.entities.expressId;
-}
 
 function throwAbort(signal: AbortSignal): never {
   // Match the shape DOM throws on AbortController.signal.aborted reads —
@@ -652,6 +571,7 @@ export const __internal = {
   stringifyValue,
   matchPropertyRule,
   matchQuantityRule,
+  matchAttributeRule,
   materialNamesOf,
   matchClassificationRule,
   elevationOf,

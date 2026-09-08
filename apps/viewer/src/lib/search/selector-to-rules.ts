@@ -27,22 +27,23 @@ import type {
   SelectorText,
   SelectorValue,
 } from '@ifc-lite/query';
+import { Rule, type FilterRule } from './filter-rules.js';
 import {
-  Rule,
-  type FilterRule,
-  type NumericOp,
-  type SetOp,
-  type TextKind,
-  type ValueOp,
-} from './filter-rules.js';
-
-/**
- * The comparison ops every string-ish dimension shares — Name, material and
- * classification alike. Deliberately narrower than `StringOp`: it omits
- * `startsWith`, which the grammar has no spelling for, and it is assignable to
- * `ClassificationOp` as well, so nothing here needs a cast.
- */
-type SharedStringOp = 'eq' | 'ne' | 'contains' | 'notContains' | 'matches' | 'notMatches';
+  VALUE_OPS,
+  NUMERIC_OPS,
+  FILTERABLE_ATTRIBUTES,
+  REGEX_OPS,
+  setOpFor,
+  stringOpFor,
+  literalOf,
+  nameKind,
+  regexValueKind,
+  regexProblem,
+  looksLikeQuantitySet,
+  quantityNeedsNumber,
+  unsupportedOp,
+  quote,
+} from './selector-adapt-helpers.js';
 
 export interface SelectorAdaptOptions {
   /** The model's IFC schema, so class expansion picks the right subtype table. */
@@ -60,29 +61,6 @@ export interface SelectorAdaptResult {
    *  into. A caller holding a free-text fallback keeps it here. */
   readsAsPlainText: boolean;
 }
-
-/** `= != > >= < <= *= !*=` onto the property `ValueOp` set. */
-const VALUE_OPS: Partial<Record<SelectorOp, ValueOp>> = {
-  '=': 'eq', '!=': 'ne', '>': 'gt', '>=': 'gte', '<': 'lt', '<=': 'lte',
-  '*=': 'contains', '!*=': 'notContains',
-};
-
-/** The subset that survives onto a string-only dimension (Name, material). */
-const STRING_OPS: Partial<Record<SelectorOp, SharedStringOp>> = {
-  '=': 'eq', '!=': 'ne', '*=': 'contains', '!*=': 'notContains',
-};
-
-const NUMERIC_OPS: Partial<Record<SelectorOp, NumericOp>> = {
-  '=': 'eq', '!=': 'ne', '>': 'gt', '>=': 'gte', '<': 'lt', '<=': 'lte',
-};
-
-/** The two attributes with a rule behind them; `isPlainTextTerm` reads it too. */
-const FILTERABLE_ATTRIBUTES = new Set(['name', 'predefinedtype']);
-
-/** A regex value only has a meaning for equality and its negation. */
-const REGEX_OPS: Partial<Record<SelectorOp, 'matches' | 'notMatches'>> = {
-  '=': 'matches', '!=': 'notMatches',
-};
 
 /** A parse that failed, or a parse that was adapted. */
 export type SelectorReading =
@@ -126,6 +104,13 @@ export function selectorToFilterRules(
 
   const classAdds: string[] = [];
   const classSubtracts: string[] = [];
+  // Bare GlobalId terms are additive facets too, per IfcOpenShell's
+  // `instance()`: `325Q7…` ADDS an element by id and `! 325Q7…` REMOVES one,
+  // so several of them in one group union (add) or subtract (remove) rather
+  // than each narrowing the result on its own — the same shape `classAdds`
+  // already folds several class names into one `in` rule for.
+  const globalIdAdds: string[] = [];
+  const globalIdSubtracts: string[] = [];
   const rules: FilterRule[] = [];
 
   for (const filter of group?.filters ?? []) {
@@ -137,6 +122,10 @@ export function selectorToFilterRules(
       (filter.negate ? classSubtracts : classAdds).push(filter.name);
       continue;
     }
+    if (filter.kind === 'globalId') {
+      (filter.negate ? globalIdSubtracts : globalIdAdds).push(filter.id);
+      continue;
+    }
     const adapted = adaptFilter(filter);
     if (typeof adapted === 'string') unsupported.push(adapted);
     else rules.push(adapted);
@@ -145,6 +134,8 @@ export function selectorToFilterRules(
   const head: FilterRule[] = [];
   if (classAdds.length > 0) head.push(Rule.ifcType(expandClasses(classAdds, options), 'in'));
   if (classSubtracts.length > 0) head.push(Rule.ifcType(expandClasses(classSubtracts, options), 'notIn'));
+  if (globalIdAdds.length > 0) head.push(Rule.globalId(globalIdAdds, 'in'));
+  if (globalIdSubtracts.length > 0) head.push(Rule.globalId(globalIdSubtracts, 'notIn'));
 
   const all = [...head, ...rules];
   const readsAsPlainText = all.length === 0 && extraGroups.length === 0 && (group?.filters ?? []).every(isPlainTextTerm);
@@ -152,11 +143,13 @@ export function selectorToFilterRules(
 }
 
 /** A term carrying nothing selector-specific: a class name no schema knows
- *  (`IFC-Export`), or an attribute with no rule behind it (`Level=1`). Text
- *  made only of these is a search term that happens to parse. */
+ *  (`IFC-Export`), or the one attribute comparison with no rule behind it
+ *  (`GlobalId=x` — every other attribute name is now a generic `attribute`
+ *  rule, #4094). Text made only of these is a search term that happens to
+ *  parse. */
 function isPlainTextTerm(filter: SelectorFilter): boolean {
   if (filter.kind === 'class') return !isKnownType(filter.name);
-  return filter.kind === 'attribute' && !FILTERABLE_ATTRIBUTES.has(filter.name.toLowerCase());
+  return filter.kind === 'attribute' && filter.name.toLowerCase() === 'globalid';
 }
 
 /**
@@ -175,7 +168,8 @@ function expandClasses(names: string[], options: SelectorAdaptOptions): string[]
 function adaptFilter(filter: SelectorFilter): FilterRule | string {
   switch (filter.kind) {
     case 'globalId':
-      return `${quote(filter.text)}: GlobalId terms are not supported yet, search for the GlobalId instead (#4094)`;
+      // Folded into the globalId rules by the caller; unreachable here.
+      return `${quote(filter.text)}: unexpected GlobalId filter`;
     case 'attribute':
       return adaptAttribute(filter.name, filter.op, filter.value, filter.text);
     case 'property':
@@ -205,23 +199,55 @@ function adaptAttribute(
   text: string,
 ): FilterRule | string {
   const attribute = name.toLowerCase();
-  if (!FILTERABLE_ATTRIBUTES.has(attribute)) {
-    return `${quote(text)}: only the Name and PredefinedType attributes are filterable (#4094)`;
-  }
-  if (value.kind === 'null') return `${quote(text)}: an attribute cannot be compared to NULL`;
 
-  if (attribute === 'predefinedtype') {
-    const setOp = setOpFor(op);
-    if (!setOp) return `${quote(text)}: PredefinedType takes only "=" and "!="`;
-    if (value.kind === 'regex') return `${quote(text)}: PredefinedType cannot be matched by a regular expression`;
-    return Rule.predefinedType([value.text], setOp);
+  if (attribute === 'globalid') {
+    // A real IFC attribute, but the schema-driven on-demand extraction
+    // (`extractAllEntityAttributes`) deliberately skips GlobalId as a
+    // structural/display attribute — it never appears in the rows an
+    // `attribute` rule reads. Routing it there would silently match
+    // nothing, exactly the #4091 defect class this whole adapter exists to
+    // avoid. The bare-GlobalId literal term already exists to find an
+    // element by id; `GlobalId=` written as a comparison stays unsupported.
+    return `${quote(text)}: "GlobalId=" is not supported, use a bare GlobalId term instead (#4094)`;
   }
 
-  const stringOp = stringOpFor(op, value);
-  if (!stringOp) return unsupportedOp(text, op, value);
-  const invalid = regexProblem(value);
-  if (invalid) return `${quote(text)}: ${invalid}`;
-  return Rule.name(stringOp, literalOf(value), regexValueKind(value));
+  if (FILTERABLE_ATTRIBUTES.has(attribute)) {
+    if (value.kind === 'null') return `${quote(text)}: an attribute cannot be compared to NULL`;
+
+    if (attribute === 'predefinedtype') {
+      const setOp = setOpFor(op);
+      if (!setOp) return `${quote(text)}: PredefinedType takes only "=" and "!="`;
+      if (value.kind === 'regex') return `${quote(text)}: PredefinedType cannot be matched by a regular expression`;
+      return Rule.predefinedType([value.text], setOp);
+    }
+
+    const stringOp = stringOpFor(op, value);
+    if (!stringOp) return unsupportedOp(text, op, value);
+    const invalid = regexProblem(value);
+    if (invalid) return `${quote(text)}: ${invalid}`;
+    return Rule.name(stringOp, literalOf(value), regexValueKind(value));
+  }
+
+  // A generic attribute — Description, ObjectType, Tag, LongName, or any
+  // other schema-named attribute `extractAllEntityAttributes` surfaces
+  // (#4094). Mirrors `adaptProperty`'s non-quantity branch: NULL becomes a
+  // presence check, a `/…/` value takes only "=" / "!=", and everything
+  // else maps through the same `ValueOp` set a property term uses.
+  if (value.kind === 'null') {
+    if (op === '=') return Rule.attribute(name, 'isNotSet', '');
+    if (op === '!=') return Rule.attribute(name, 'isSet', '');
+    return `${quote(text)}: NULL can only be compared with "=" or "!="`;
+  }
+  if (value.kind === 'regex') {
+    const regexOp = REGEX_OPS[op];
+    if (!regexOp) return unsupportedOp(text, op, value);
+    const invalid = regexProblem(value);
+    if (invalid) return `${quote(text)}: ${invalid}`;
+    return Rule.attribute(name, regexOp, value.source, 'regex');
+  }
+  const valueOp = VALUE_OPS[op];
+  if (!valueOp) return unsupportedOp(text, op, value);
+  return Rule.attribute(name, valueOp, value.text);
 }
 
 function adaptProperty(
@@ -313,88 +339,3 @@ function adaptLocation(op: SelectorOp, value: SelectorValue, text: string): Filt
   return Rule.storey([value.text], setOp);
 }
 
-// ── Small shared pieces ──────────────────────────────────────────────────────
-
-function setOpFor(op: SelectorOp): SetOp | undefined {
-  if (op === '=') return 'in';
-  if (op === '!=') return 'notIn';
-  return undefined;
-}
-
-function stringOpFor(op: SelectorOp, value: SelectorValue): SharedStringOp | undefined {
-  return value.kind === 'regex' ? REGEX_OPS[op] : STRING_OPS[op];
-}
-
-/** The bare text of a name or operand: a regex travels as its own source. */
-function literalOf(value: SelectorText): string {
-  return value.kind === 'regex' ? value.source : value.text;
-}
-
-/**
- * A property-set or property NAME's kind, handed to the rule instead of being
- * re-encoded into a spelling the matcher has to guess back out. A name has no
- * operator beside it, so BOTH kinds have to be stated.
- *
- * Re-encoding was the #4091 defect class at this seam. A quoted name is the
- * grammar's only way to ask for a LITERAL, so `"/Wall/".FireRating` written
- * back as `/Wall/` became a pattern matching `Pset_WallCommon`; and a regex
- * source can itself start and end with a slash, so `Name=/\/tmp\//` written
- * back bare became the pattern `tmp`. Both matched the wrong elements and
- * said nothing.
- */
-function nameKind(name: SelectorText): TextKind {
-  return name.kind === 'regex' ? 'regex' : 'literal';
-}
-
-/**
- * The same discriminator for a comparison OPERAND, where only one half needs
- * saying: a value reaches a regex op only by having been written as `/…/`, so
- * a rule with no `valueKind` is one whose op already rules a pattern out.
- */
-function regexValueKind(value: SelectorText): TextKind | undefined {
-  return value.kind === 'regex' ? 'regex' : undefined;
-}
-
-/**
- * A `/…/` that JavaScript cannot compile, reported here rather than at match
- * time. `stringOpMatches` treats an uncompilable pattern as "matches nothing",
- * which is indistinguishable from a correct pattern with no hits — the shape
- * this whole change exists to remove.
- */
-function regexProblem(value: SelectorText | SelectorValue): string | undefined {
-  if (value.kind !== 'regex') return undefined;
-  try {
-    new RegExp(value.source);
-    return undefined;
-  } catch (err) {
-    return `/${value.source}/ is not a valid regular expression: ${(err as Error).message}`;
-  }
-}
-
-/**
- * A set the quantity rule owns: `Qto_WallBaseQuantities`, or a regex over it.
- * Case-SENSITIVE, like the six other `Qto_` prefix tests in this repo (SDK,
- * lists, ids, ifcx): `Qto_` is a buildingSMART prefix with a fixed spelling, and
- * a selector answering differently for the same set name would be a surface
- * disagreeing with itself. Sets carrying quantities under another name are out
- * of reach; see the guide.
- */
-function looksLikeQuantitySet(pset: SelectorText): boolean {
-  if (pset.kind !== 'regex') return pset.text.startsWith('Qto_');
-  // A PATTERN names them when `Qto_` opens it or opens one of its alternatives
-  // (`/(Qto_Wall|Qto_Slab)…/`); one continuing a word (`/Pset_Qto.*/`) does not.
-  return /(?:^|[^A-Za-z0-9_])Qto_/.test(pset.source);
-}
-
-function quantityNeedsNumber(text: string): string {
-  return `${quote(text)}: a Qto_ set is read from the quantity table, so it takes a numeric comparison against a number — not NULL, not "*=", not text`;
-}
-
-function unsupportedOp(text: string, op: SelectorOp, value: SelectorValue): string {
-  const shape = value.kind === 'regex' ? 'a regular expression' : 'this value';
-  return `${quote(text)}: "${op}" is not supported against ${shape} here`;
-}
-
-function quote(text: string): string {
-  return JSON.stringify(text);
-}

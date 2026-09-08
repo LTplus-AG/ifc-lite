@@ -756,4 +756,37 @@ describe('drawing-markup-read: non-positive stored quantities are not trusted', 
     assert.ok(Math.abs(read.value.area - 12) < 1e-9, `area was ${read.value.area}`);
     assert.ok(Math.abs(read.value.perimeter - 14) < 1e-9, `perimeter was ${read.value.perimeter}`);
   });
+
+  it('falls back to a positive geometry-derived Area for a clockwise-wound polygon', () => {
+    // Same 4x3 rectangle as the fixture above (real area 12), but the
+    // vertices are wound CLOCKWISE this time — the shoelace sum is negative
+    // before shoelaceArea's Math.abs, so this exercises that guard: without
+    // it, the fallback for a corrupted non-positive stored Area could itself
+    // come back negative.
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 44,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.POLYGON_AREA,
+      lines: [
+        { line: { start: { x: 0, y: 0 }, end: { x: 0, y: 3 } }, category: 'annotation', ownerId: 44 },
+        { line: { start: { x: 0, y: 3 }, end: { x: 4, y: 3 } }, category: 'annotation', ownerId: 44 },
+        { line: { start: { x: 4, y: 3 }, end: { x: 4, y: 0 } }, category: 'annotation', ownerId: 44 },
+        { line: { start: { x: 4, y: 0 }, end: { x: 0, y: 0 } }, category: 'annotation', ownerId: 44 },
+      ],
+      texts: [],
+      fills: [],
+      // Non-positive stored Area, same as the CCW case above: this is what
+      // forces resolveTrustedOrComputed to actually call shoelaceArea rather
+      // than trusting the stored value.
+      quantities: new Map([['Area', -12], ['Perimeter', 14]]),
+    };
+
+    const read = withWarnSpy((calls) => {
+      const r = readDrawingMarkupAnnotation(source, {});
+      assert.strictEqual(calls.length, 1, 'expected one warning for the non-positive stored Area');
+      return r;
+    });
+
+    assert.ok(read && read.kind === 'polygon');
+    assert.ok(Math.abs(read.value.area - 12) < 1e-9, `area was ${read.value.area}`);
+  });
 });

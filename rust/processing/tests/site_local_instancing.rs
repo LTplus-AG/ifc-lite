@@ -25,9 +25,19 @@ use ifc_lite_processing::{
 /// Site placement translation (metres); zero rotation (RefDirection omitted).
 const SITE_T: (f64, f64, f64) = (10.0, 20.0, 0.0);
 
+/// 30 degree yaw about Z, as an `IfcDirection` RefDirection on the site's
+/// `IfcAxis2Placement3D` — the same fixture rotation used by
+/// `site_rotation.rs`'s `ROTATED_SITE_PLACEMENT`.
+const SITE_ROTATION_30DEG: &str = "#31=IFCDIRECTION((0.,0.,1.));\n#32=IFCDIRECTION((0.866,0.5,0.));";
+
 /// Two `IfcBuildingElementProxy` occurrences of ONE `IfcRepresentationMap`
-/// (a 4 x 1 x 2 box), under an `IfcSite` translated but not rotated.
-fn model() -> String {
+/// (a 4 x 1 x 2 box), under an `IfcSite` translated by `SITE_T` and, when
+/// `rotation` is `Some`, additionally yawed about Z.
+fn model(rotation: Option<&str>) -> String {
+    let (axis_refdir, site_placement) = match rotation {
+        Some(dirs) => (dirs, "#33=IFCAXIS2PLACEMENT3D(#30,#31,#32);"),
+        None => ("", "#33=IFCAXIS2PLACEMENT3D(#30,$,$);"),
+    };
     format!(
         r##"ISO-10303-21;
 HEADER;
@@ -44,7 +54,8 @@ DATA;
 #6=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#5,$,.MODEL_VIEW.,$);
 #7=IFCPROJECT('11tEAnIV5BixApwp1YzpwS',$,'t',$,$,$,$,(#5),#2);
 #30=IFCCARTESIANPOINT(({tx}.,{ty}.,{tz}.));
-#33=IFCAXIS2PLACEMENT3D(#30,$,$);
+{axis_refdir}
+{site_placement}
 #34=IFCLOCALPLACEMENT($,#33);
 #35=IFCSITE('1s1tEAnIV5BixApwp1Yzp0',$,'site',$,$,#34,$,$,.ELEMENT.,$,$,$,$,$);
 #8=IFCCARTESIANPOINT((0.,0.));
@@ -88,8 +99,8 @@ END-ISO-10303-21;
     )
 }
 
-fn run() -> Vec<MeshData> {
-    let ifc = model();
+fn run(rotation: Option<&str>) -> Vec<MeshData> {
+    let ifc = model(rotation);
     let options = StreamingOptions {
         initial_batch_size: usize::MAX,
         throughput_batch_size: usize::MAX,
@@ -119,7 +130,7 @@ fn run() -> Vec<MeshData> {
 /// happens when instancing metadata survives `produce_element_meshes`.
 #[test]
 fn translated_only_site_keeps_instancing_metadata() {
-    let meshes = run();
+    let meshes = run(None);
     let proxy_meshes: Vec<&MeshData> = meshes
         .iter()
         .filter(|m| m.express_id == 48 || m.express_id == 58)
@@ -139,4 +150,32 @@ fn translated_only_site_keeps_instancing_metadata() {
             .map(|m| (m.express_id, m.instance.is_some()))
             .collect::<Vec<_>>()
     );
+}
+
+/// #4118 counterpart: a genuinely ROTATED site must still drop instancing —
+/// this is the property the guard exists to preserve. `site_rotation.rs`
+/// proves a rotated site still rotates positions but never checks `instance`;
+/// the sibling test above proves a translated-only site keeps instancing but
+/// never checks a rotated one. Neither alone can catch the guard being
+/// deleted or inverted; this pins the missing corner.
+#[test]
+fn rotated_site_drops_instancing_metadata() {
+    let meshes = run(Some(SITE_ROTATION_30DEG));
+    let proxy_meshes: Vec<&MeshData> = meshes
+        .iter()
+        .filter(|m| m.express_id == 48 || m.express_id == 58)
+        .collect();
+    assert!(
+        !proxy_meshes.is_empty(),
+        "expected meshes for the two box proxies (#48, #58)"
+    );
+    for m in &proxy_meshes {
+        assert!(
+            m.instance.is_none(),
+            "a 30-degree-yawed site must drop instancing metadata on \
+             express_id {} — a site-local rotation re-transforms positions/origin \
+             and would invalidate the captured instance transform if kept",
+            m.express_id
+        );
+    }
 }

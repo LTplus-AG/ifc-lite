@@ -135,7 +135,7 @@ jobs:
       # that decides whether work was requested should not be able to fail
       # because a registry was slow.
       - name: Unit-test the gate itself
-        run: node --test scripts/check-issue-queue.test.mjs
+        run: node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs
 
       - name: Check this PR closes a queued issue
         env:

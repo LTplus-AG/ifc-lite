@@ -66,9 +66,39 @@ on:
     # that file gives: the scheduler pileup there delays and drops cron runs.
     - cron: '23 4 * * 1'
   workflow_dispatch:
+    inputs:
+      census_timeout:
+        # Exists so the timeout path below can be EXERCISED rather than argued
+        # from the coreutils man page: dispatch with `10s` and the census step
+        # must go red with a message naming #4127 instead of sitting for an
+        # hour and ending `cancelled`.
+        description: 'coreutils timeout for the census step (e.g. 10s, 50m). Blank uses the default.'
+        type: string
+      force_report:
+        # The reporting pair at the end of this job is otherwise `schedule`-only,
+        # so the largest block in this file has no way to be exercised before the
+        # Monday that needs it. `census_timeout` gave the timeout path an
+        # exercise; this gives the report path one. Nothing else would notice its
+        # absence: check-test-wiring.mjs names step conditions as its own stated
+        # blind spot, and a step that never runs looks exactly like a step that
+        # ran and found nothing.
+        #
+        # With it on, a dispatch runs the same pair a scheduled run does: pair it
+        # with `census_timeout: 10s` to make the job fail and file (the issue says
+        # on its face that it is a drill), then dispatch again clean to watch the
+        # all-clear close it. Off by default because both halves write to the real
+        # tracker, and the all-clear half can close a genuinely open weekly
+        # issue, after which the next weekly failure files a fresh one rather than
+        # reopening that thread.
+        description: 'Run the issue report / all-clear steps on this dispatch (they are otherwise schedule-only).'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
+  # For the reporting step at the end of the job. A weekly lane that fails has
+  # to reach a human, and in this repo that means filing an issue (#4127).
+  issues: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -90,6 +120,22 @@ jobs:
     name: Heavy-fixture watertightness census (ISSUE_053 + ISSUE_068)
     runs-on: ubuntu-latest
     # Cold cargo build plus two sweeps over 223 MiB of IFC in a debug build.
+    #
+    # THE RUNNER MERGE RULE, stated once here because two steps below depend
+    # on it. A job GitHub cancels at `timeout-minutes` ends `cancelled`, a
+    # distinct conclusion from `failure` on every notification path, and no
+    # step can correct it from inside the job: the runner merges a step result
+    # into the job result with a function that keeps the current result
+    # whenever it already outranks `Failed`, and `Canceled` does. Even a
+    # failing `if: always()` step leaves the job `cancelled` (#4127).
+    #
+    # So this is the OUTER backstop; the gate is CENSUS_TIMEOUT on the census
+    # step. The two are a PAIR that cannot be single-sourced, because job-level
+    # `timeout-minutes` cannot read the `env` context. CENSUS_JOB_TIMEOUT_MINUTES
+    # is the declared copy, and the census step does not trust it: it reads the
+    # number on the line BELOW out of this file, which the job has checked out,
+    # and fails when the copy disagrees. Editing this line alone is a red step,
+    # not a job GitHub cancels against a budget nothing re-measured.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -191,13 +237,168 @@ jobs:
       # becomes a copy of `open`, so the lane PANICS rather than running a
       # comparison it cannot make: an edit that dropped this flag fails loudly
       # here instead of going green.
+      #
+      # Wrapping the invocation in coreutils `timeout` makes a hang a
+      # DETERMINATE outcome: the deadline sits inside the step, so a hang ends
+      # as a non-zero exit from a step still running normally and the job
+      # result records `failure`. Left to GitHub the job ends `cancelled`,
+      # which nothing downstream can promote (the runner merge rule above).
+      #
+      # `--kill-after=30s` is the escalation, not the deadline: SIGTERM first,
+      # SIGKILL 30 s later for a process that ignores it.
       - name: Heavy census (ISSUE_053 + ISSUE_068)
+        id: census
+        env:
+          # Dispatch-supplied text: it reaches bash as data through the env,
+          # never spliced into the script source via `${{ }}` (the hardening
+          # server-binaries.yml states for RELEASE_TAG). `inputs` is null on
+          # `schedule`, so the fallback carries the default.
+          CENSUS_TIMEOUT: ${{ inputs.census_timeout || '50m' }}
+          # The declared copy of the job's `timeout-minutes`. Below it is
+          # cross-checked against the real line in this workflow file rather
+          # than believed.
+          CENSUS_JOB_TIMEOUT_MINUTES: 60
         run: |
-          cargo test -p ifc-lite-geometry --features triangulation-alt \
-            --test triangulation_invariance \
-            -- --ignored --nocapture --test-threads=1 "$HEAVY_FILTER"
+          set -euo pipefail
 
-      # The rows each sweep measured, uploaded pass or fail — one file per
+          # The two-level timeout is an invariant, so CHECK it instead of
+          # asserting it in a log line: a dispatch can pass `90m` under a
+          # 60-minute job, handing the deadline back to GitHub and restoring
+          # the `cancelled` outcome this wrapper exists to prevent.
+          # Clear the per-fixture reports FIRST, before any validation can exit, so the
+          # count the "Assert the census actually wrote rows" step makes is a count of
+          # what THIS run wrote, and so a run that exits early cannot have last week's
+          # rows published under its artifact by the `if: always()` upload.
+          #
+          # NOT because rust-cache restores them: its `save.ts` calls `cleanTargetDir`,
+          # which deletes every non-directory at `target/` root except `CACHEDIR.TAG`,
+          # so a `.tsv` there never enters the cache. Checked in that action's source
+          # after an earlier version of this comment asserted the opposite. The `rm` is
+          # kept because it is free and it holds on a self-hosted or locally-run job,
+          # where nothing cleans `target/` between runs.
+          rm -f target/watertightness_census.heavy.*.tsv
+
+          if [[ ! "$CENSUS_TIMEOUT" =~ ^([0-9]+(\.[0-9]+)?)([smhd]?)$ ]]; then
+            echo "::error::census timeout '$CENSUS_TIMEOUT' is not a coreutils interval."
+            echo "::error::Use a positive number with an optional s, m, h or d suffix, such as 10s or 50m."
+            exit 1
+          fi
+          case "${BASH_REMATCH[3]}" in
+            ''|s) unit_seconds=1 ;;
+            m) unit_seconds=60 ;;
+            h) unit_seconds=3600 ;;
+            d) unit_seconds=86400 ;;
+          esac
+          census_seconds=$(awk -v n="${BASH_REMATCH[1]}" -v u="$unit_seconds" \
+            'BEGIN { printf "%d", n * u }')
+
+          # BOUND BOTH ENDS, because ZERO IS A DISABLE SWITCH RATHER THAN A
+          # TIGHT BOUND. In coreutils a DURATION of 0 means "no time limit":
+          # `timeout 0 sleep 4` sleeps the whole 4 s and exits 0 (measured on
+          # coreutils 9.11). So `0`, `0s` and `0m` sail through an upper-bound
+          # check, remove the deadline entirely, hand the job back to
+          # `timeout-minutes` and restore the exact `cancelled` outcome this
+          # wrapper exists to prevent, while the log line below claims the
+          # constraint holds. Sub-second intervals truncate to 0 here and are
+          # refused alongside them, which costs nothing for a sweep measured in
+          # minutes.
+          if [ "$census_seconds" -le 0 ]; then
+            echo "::error::census timeout '$CENSUS_TIMEOUT' resolves to ${census_seconds}s."
+            echo "::error::coreutils reads a duration of 0 as NO limit, so this REMOVES the deadline"
+            echo "::error::instead of tightening it, and GitHub would cancel the job. A cancelled job"
+            echo "::error::reports to nobody, which is #4127. Pass a positive interval such as 10s."
+            exit 1
+          fi
+
+          # CENSUS_JOB_TIMEOUT_MINUTES is a hand copy of the job's
+          # `timeout-minutes`, which cannot read the `env` context. A copy
+          # nobody checks goes stale in silence: lower `timeout-minutes` to 30
+          # and the default 50m still validates against a 3300 s budget, then
+          # GitHub cancels at 30 minutes. So the budget is taken from the
+          # workflow file itself, which this job checked out, and the copy is
+          # cross-checked against it rather than believed.
+          workflow_file=.github/workflows/geometry-census-heavy.yml
+          if [ ! -r "$workflow_file" ]; then
+            echo "::error::cannot read $workflow_file, so the job's real timeout-minutes is unknown"
+            echo "::error::and the two-level timeout cannot be checked (#4127)."
+            exit 1
+          fi
+          # Job-level `timeout-minutes` only: indented, bare integer, nothing
+          # else on the line. More than one match means this check cannot tell
+          # which line bounds this job, so it says so instead of guessing.
+          mapfile -t declared_minutes < <(sed -nE \
+            's/^[[:space:]]+timeout-minutes:[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$workflow_file")
+          if [ "${#declared_minutes[@]}" -ne 1 ]; then
+            echo "::error::found ${#declared_minutes[@]} timeout-minutes lines in $workflow_file, expected exactly 1."
+            echo "::error::This step reads the job budget out of that file; it cannot pick between several."
+            exit 1
+          fi
+          job_timeout_minutes="${declared_minutes[0]}"
+          if [ "$job_timeout_minutes" -ne "$CENSUS_JOB_TIMEOUT_MINUTES" ]; then
+            echo "::error::CENSUS_JOB_TIMEOUT_MINUTES is ${CENSUS_JOB_TIMEOUT_MINUTES}, but $workflow_file"
+            echo "::error::declares timeout-minutes: ${job_timeout_minutes}. The copy has gone stale, and a"
+            echo "::error::stale copy validates this census against a budget the job does not have (#4127)."
+            echo "::error::Change both together."
+            exit 1
+          fi
+          # 300 s of headroom for what the wrapper does not cover: checkout, the
+          # toolchain, the filter assertion and the fixture fetch.
+          #
+          # THE 47-66 s THOSE STEPS MEASURED IS A WARM-CACHE FIGURE, and it does
+          # not cover this job's worst case. It cannot be anything else, from its
+          # own size: the filter assertion runs `cargo test --list`, which on a
+          # cold crate graph is minutes rather than seconds, and a fixture-cache
+          # miss downloads 223 MiB. Neither fits inside 66 s. This job's header
+          # says a cold cargo build is what it does, and the weekly cadence sits
+          # exactly on GitHub's 7-day eviction boundary for an untouched cache,
+          # so a Monday landing the wrong side of it can exceed 300 s.
+          #
+          # Kept at 300 rather than widened because no cold run of this lane has
+          # been timed, and a larger invented number is the same unproven
+          # justification further out. What it costs when it is wrong is bounded
+          # and still reported: the job ends `cancelled` instead of `failure`,
+          # and the report step below fires on `job.status != 'success'` for
+          # exactly that case, which cause 4 in the issue body names. Time a cold
+          # run, then widen this and `timeout-minutes` together.
+          budget_seconds=$(( job_timeout_minutes * 60 - 300 ))
+          if [ "$census_seconds" -gt "$budget_seconds" ]; then
+            echo "::error::census timeout '$CENSUS_TIMEOUT' is ${census_seconds}s, over the ${budget_seconds}s"
+            echo "::error::left by the job's ${job_timeout_minutes}-minute timeout-minutes."
+            echo "::error::GitHub would cancel the job first, and a cancelled job reports to nobody (#4127)."
+            echo "::error::Raise timeout-minutes and CENSUS_JOB_TIMEOUT_MINUTES together, or lower this value."
+            exit 1
+          fi
+          echo "census timeout: $CENSUS_TIMEOUT (${census_seconds}s), within the ${budget_seconds}s left by timeout-minutes: ${job_timeout_minutes}"
+
+          # `|| status=$?` rather than a bare call: `set -e` would abort the step
+          # here and the exit-code message below would never print. Nothing is
+          # piped into or out of `timeout`, so its status is the step's status.
+          status=0
+          timeout --kill-after=30s "$CENSUS_TIMEOUT" \
+            cargo test -p ifc-lite-geometry --features triangulation-alt \
+              --test triangulation_invariance \
+              -- --ignored --nocapture --test-threads=1 "$HEAVY_FILTER" || status=$?
+
+          # 124 is the SIGTERM path and 137 the SIGKILL escalation. One message
+          # naming the code: 137 is 128+9, which the kernel OOM killer also
+          # produces, so it does not by itself prove the census ignored SIGTERM.
+          if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+            echo "::error::the heavy census did not finish within $CENSUS_TIMEOUT and was killed (exit $status)."
+            echo "::error::This step fails deliberately rather than let timeout-minutes cancel the job,"
+            echo "::error::because a cancelled job is not a failed job and reports to nobody (#4127)."
+            echo "::error::TWO causes fit this exit code and they take different fixes:"
+            echo "::error::  (a) the harness regressed and something hangs, in"
+            echo "::error::      rust/geometry/tests/triangulation_invariance.rs or its census_rtc helper;"
+            echo "::error::  (b) nothing hangs and the deadline is too tight for what the census now"
+            echo "::error::      costs, so CENSUS_TIMEOUT (and with it timeout-minutes) is what to raise."
+            echo "::error::(b) is not hypothetical: #4127 records both earlier runs spending about 59"
+            echo "::error::minutes in this step without finishing the first fixture. Read the per-fixture"
+            echo "::error::progress printed above before choosing between them."
+          fi
+
+          exit "$status"
+
+      # The rows each sweep measured, uploaded pass or fail, one file per
       # fixture. A run that disagrees with the golden is exactly the run whose
       # rows are wanted, and re-deriving them means reproducing a sweep over a
       # 223 MiB corpus locally. Blessing in CI is refused outright
@@ -210,3 +411,213 @@ jobs:
           name: watertightness-census-heavy-rows
           path: target/watertightness_census.heavy.*.tsv
           if-no-files-found: warn
+
+      # READ THIS BEFORE DELETING THE `timeout` ABOVE. This step cannot rescue
+      # a cancelled job: it RUNS on a `timeout-minutes` cancellation (the
+      # upload above did, and reported `success`), but its red cannot turn the
+      # job red, by the runner merge rule at `timeout-minutes`. Its verdict
+      # counts only in a job that was not cancelled, and the `timeout` wrapper
+      # is what gets a hang into that state.
+      #
+      # What it covers instead: the test exits 0 and writes nothing, reachable
+      # today because the per-fixture report write is deliberately best-effort
+      # (`match std::fs::write` prints and continues, so a read-only `target/`
+      # must not red a passing lane). Without this step that run is a green
+      # job, an empty artifact, `if-no-files-found: warn`, and a census nobody
+      # performed. Absence would read as success, this lane's whole subject.
+      #
+      # It is a hand-rolled `if-no-files-found: error` (the form benchmark.yml,
+      # server-binaries.yml and test.yml use on their uploads), kept separate
+      # for the MESSAGE: the built-in reports only that a path matched nothing,
+      # and a reader needs #4127 by number plus the "could not write" hint.
+      #
+      # TWO files, counted exactly, not "at least one". Each lane writes its own
+      # per-fixture report and each write is best-effort by the same design that
+      # makes this step necessary, so one written and one lost is a HALF census
+      # that a non-empty check reports as a whole one. The HEAVY_FILTER step is
+      # not the answer to that: `--list` proves both tests EXIST, which is a
+      # different claim from both having WRITTEN.
+      #
+      # GATED ON THE CENSUS STEP'S OWN OUTCOME, because the message only makes
+      # sense for the case it was written for. On the `census_timeout: 10s`
+      # exercise this workflow documents, the sweep is killed before it starts
+      # and of course writes nothing; the message would then send the reader
+      # hunting for a "could not write" line that cannot exist, and add a
+      # second red to a job that is already red for a known reason. "The test
+      # exited 0 and wrote nothing" is only a question when the test exited 0.
+      - name: Assert the census actually wrote rows
+        if: always() && steps.census.outcome == 'success'
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          rows=(target/watertightness_census.heavy.*.tsv)
+          if [ "${#rows[@]}" -ne 2 ]; then
+            echo "::error::expected 2 target/watertightness_census.heavy.*.tsv files, got ${#rows[@]}."
+            echo "::error::One per heavy fixture is written, both by the same run:"
+            echo "::error::  target/watertightness_census.heavy.ISSUE_053_20181220Holter_Tower_10.tsv"
+            echo "::error::  target/watertightness_census.heavy.ISSUE_068_ARK_NUS_skolebygg.tsv"
+            echo "::error::so a missing one means that fixture measured nothing, or its report could not"
+            echo "::error::be written. A green census reporting no rows is indistinguishable from a"
+            echo "::error::census that never ran, which is #4127, and half a census is the same"
+            echo "::error::substitution on one fixture. Check the census step's log for a 'could not"
+            echo "::error::write' line before assuming the sweep itself was at fault."
+            if [ "${#rows[@]}" -gt 0 ]; then
+              printf '::error::present: %s\n' "${rows[@]}"
+            fi
+            exit 1
+          fi
+          printf 'census rows written: %s\n' "${rows[@]}"
+
+      # AN ISSUE, NOT A RED RUN, the shape review-lane-canary.yml and
+      # deploy-nightly.yml both use. #4127's complaint is that this lane
+      # "reported nothing to anyone", and a failed scheduled workflow is a row
+      # in a tab nobody opens: the `timeout` above fixes WHICH row it is, this
+      # step is what leaves the run.
+      #
+      # `always() && job.status != 'success'` rather than `failure()`, so a job
+      # CANCELLED at `timeout-minutes` still reports. That is the outcome this
+      # lane has produced and the one no step inside the job can turn red, so
+      # `failure()` would skip exactly the case that happened.
+      #
+      # Scheduled only, unless a dispatch asks for it with `force_report`: a
+      # dispatch has a human watching, and the exercise dispatch described on
+      # `census_timeout` is SUPPOSED to go red, so it must not file by accident.
+      # The opt-in exists because a step that only ever runs on a schedule is a
+      # step nothing has ever run; see `force_report` for what that buys.
+      # Updated in place, so a run of weekly failures is one thread, and closed
+      # by the all-clear step below so an open issue means "still broken" rather
+      # than "broke at least once, ever".
+      - name: Report a census that reported nothing
+        if: always() && job.status != 'success' && (github.event_name == 'schedule' || inputs.force_report)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CENSUS_LABEL: heavy-census-not-reporting
+        run: |
+          set -euo pipefail
+          body="$(printf 'The weekly heavy watertightness census did not complete at %s (job status: %s).\n\nRun: %s/%s/actions/runs/%s\n\nNothing has swept ISSUE_053 or ISSUE_068 since it last succeeded, so a new tear in the heavy fixture class is currently unmeasured, and that is the class AGENTS.md names as where every shipped regression has lived.\n\nUsual causes, in order:\n\n1. The census ran out of time and the in-step `timeout` killed it (exit 124 or 137 in the census step log). Two causes fit: the harness regressed and something hangs in `rust/geometry/tests/triangulation_invariance.rs` or its `census_rtc` helper, OR nothing hangs and the deadline is too tight for what the census currently costs. #4127 records both earlier runs spending about 59 minutes in this step without finishing the first fixture, so raising `CENSUS_TIMEOUT` and `timeout-minutes` together is a legitimate answer here, not a forbidden one. Read the per-fixture progress in the log before choosing.\n2. The sweep ran and disagreed with the golden. Download the `watertightness-census-heavy-rows` artifact; blessing in CI is refused outright, so re-blessing means replacing the golden from those rows.\n3. The sweep exited 0 and wrote fewer than the two per-fixture row files, one per heavy fixture (the "Assert the census actually wrote rows" step, which runs only when the census step itself succeeded). Check the census log for a "could not write" line.\n4. The job status above is `cancelled`, which means GitHub got to the job before the in-step timeout did.\n\nThis issue is updated in place by each failing run, and the next green scheduled run closes it.\n' \
+            "$(date -u +%FT%TZ)" "${{ job.status }}" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")"
+
+          # A `force_report` dispatch writes to the real tracker, so say what it
+          # is at the top of the body. Keyed off the event rather than off the
+          # input: the input is null on `schedule`, and the event is what
+          # actually distinguishes a drill from a Monday.
+          if [ "$GITHUB_EVENT_NAME" != 'schedule' ]; then
+            body="$(printf 'EXERCISE: filed by a manual force_report dispatch (event: %s), not by the weekly schedule. It exists to prove this reporting path runs at all, since it is otherwise reachable only on a Monday. Close it once read.\n\n%s\n' \
+              "$GITHUB_EVENT_NAME" "$body")"
+          fi
+
+          # `if ! existing=...` rather than a bare assignment: under `set -e` a
+          # transient API failure here aborts the step and the whole report is
+          # lost, which is the one outcome this step exists to prevent. Same
+          # shape as the `gh label create` bug recorded below, and this is the
+          # copy with nothing behind it. Falling through with an empty answer
+          # files a NEW issue instead: a duplicate is noise, a missing report is
+          # #4127 happening again.
+          if ! existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --label "$CENSUS_LABEL" --limit 1 --json number --jq '.[0].number // empty')"; then
+            echo "::warning::gh issue list failed, so whether a $CENSUS_LABEL issue is already open is"
+            echo "::warning::unknown. Filing a new issue rather than dropping the report; close any duplicate."
+            existing=""
+          fi
+          if [ -n "$existing" ]; then
+            # Guarded like every lookup above: an unguarded write under `set -e` loses
+            # the whole report on a transient 5xx, which is #4127 happening inside the
+            # fix for #4127. A failed comment is reported and does not red the job.
+            gh issue comment "$existing" --repo "$GITHUB_REPOSITORY" --body "$body" \
+              || echo "::warning::could not comment on #$existing; the report is in this log only."
+            exit 0
+          fi
+
+          # THE LABEL IS A NICETY; THE REPORT IS THE POINT. `gh label create ...
+          # || true` hid why the create failed and then `gh issue create --label`
+          # died under `set -e`, so a label problem cost the entire report: the
+          # one outcome this whole lane exists to prevent. Create it, say so
+          # loudly when that fails, then decide from whether the label EXISTS
+          # rather than from the create's exit code, which is non-zero on every
+          # run after the first ("already exists"). Exactly one `gh issue create`
+          # runs on either branch, so a failure here can never double-file.
+          if ! gh label create "$CENSUS_LABEL" --repo "$GITHUB_REPOSITORY" \
+                 --color b60205 \
+                 --description "The weekly heavy watertightness census did not complete." 2>&1; then
+            echo "gh label create $CENSUS_LABEL exited non-zero; its reason is printed above."
+            echo "That is expected on every run after the first, where the label already exists."
+          fi
+          # Whole list plus an EXACT-name grep, deliberately not `--search`:
+          # that flag is a fuzzy match over names AND descriptions, and asking
+          # it for this label on this repo today returns `wontfix` and `vision`
+          # and not the name asked for. A `--search ... --limit 1` lookup would
+          # therefore answer the wrong question in both directions. The repo has
+          # 32 labels; 300 is the headroom.
+          #
+          # CAPTURED, then matched from a herestring, NOT piped into `grep -q`.
+          # Under `set -o pipefail` a `grep -q` that MATCHES exits the moment it
+          # has its answer, `gh` can then die on SIGPIPE, and the pipeline's
+          # status is `gh`'s: the label EXISTS and the check reads it as absent.
+          # That files the issue unlabelled, and next week's lookup is BY LABEL,
+          # so it finds nothing and files a second issue: a duplicate every
+          # week, caused by a label that was fine all along. A herestring has no
+          # pipe and no reader to race.
+          if ! label_names="$(gh label list --repo "$GITHUB_REPOSITORY" --limit 300 \
+                 --json name --jq '.[].name')"; then
+            echo "::warning::gh label list failed; treating $CENSUS_LABEL as absent and filing without it."
+            label_names=""
+          fi
+          if grep -qxF "$CENSUS_LABEL" <<<"$label_names"; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Weekly heavy watertightness census did not complete" \
+              --label "$CENSUS_LABEL" --body "$body" \
+              || echo "::warning::could not file the report issue; it is in this log only."
+          else
+            echo "::warning::the $CENSUS_LABEL label is absent and could not be created; filing WITHOUT it."
+            echo "::warning::Recreate the label by hand: the lookup above is by label, so an unlabelled"
+            echo "::warning::issue will not be found next week and a second one will be filed."
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Weekly heavy watertightness census did not complete" \
+              --body "$body" \
+              || echo "::warning::could not file the report issue; it is in this log only."
+          fi
+
+      # CLOSING THE LOOP, the shape review-lane-canary.yml's "All clear" step
+      # uses. Without it the issue only ever opens or grows, so an open
+      # heavy-census-not-reporting degrades from "the census is not reporting"
+      # to "the census failed at least once, ever", and a signal that never
+      # goes green is one people mute.
+      #
+      # Same scope as the report, including the `force_report` opt-in: an
+      # ordinary dispatch neither files nor closes, so the exercise dispatch
+      # described on `census_timeout` cannot clear a real weekly failure, while
+      # a dispatch that asked for the reporting path gets both halves of it,
+      # closing being the half a file-only switch would leave unexercised.
+      # `always() && job.status == 'success'` is the exact complement of the
+      # condition above, so on any run that reports, precisely one of the two
+      # steps runs.
+      - name: All clear (close the census issue)
+        if: always() && job.status == 'success' && (github.event_name == 'schedule' || inputs.force_report)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CENSUS_LABEL: heavy-census-not-reporting
+        run: |
+          set -euo pipefail
+          # Same `if !` shape as the report step, and for the same reason: under
+          # `set -e` a bare assignment turns a transient API failure into a red
+          # weekly run that files nothing, while an open issue keeps asserting the
+          # census is broken. This is the LAST step in the job, so nothing behind
+          # it would notice.
+          lookup_ok=1
+          if ! existing="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
+            --label "$CENSUS_LABEL" --limit 1 --json number --jq '.[0].number // empty')"; then
+            echo "::warning::could not look up an open $CENSUS_LABEL issue to close; leaving it open."
+            existing=""
+            lookup_ok=0
+          fi
+          if [ -n "$existing" ]; then
+            # A failure to close is not worth reding a green census run either.
+            gh issue close "$existing" --repo "$GITHUB_REPOSITORY" --comment \
+              "$(printf 'The weekly heavy watertightness census completed at %s and wrote its rows.\n\nRun: %s/%s/actions/runs/%s\n' \
+                "$(date -u +%FT%TZ)" "${GITHUB_SERVER_URL}" "${GITHUB_REPOSITORY}" "${GITHUB_RUN_ID}")" \
+              || echo "::warning::could not close #$existing; it stays open."
+          elif [ "$lookup_ok" = "1" ]; then
+            echo "census completed and no open $CENSUS_LABEL issue to close"
+          else
+            echo "census completed; tracker state unknown because the lookup failed"
+          fi

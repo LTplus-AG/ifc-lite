@@ -64,6 +64,10 @@ pub struct Mesh {
     /// [`InstanceMeta::transform`]). `None` when no placement was applied
     /// (synthetic/test meshes) — see issue #1474.
     pub local_to_world: Option<[f64; 16]>,
+    /// Welded in the OBJECT FRAME by `mesh_weld::weld_mesh`/`weld_sub_mesh`
+    /// (its only setters; `rebuilt_like` clears it like `instance_meta`). The
+    /// real "already welded?" answer `build_mesh_data` today INFERS (#4122).
+    pub welded_in_object_frame: bool,
 }
 
 /// A sub-mesh with its source geometry item ID.
@@ -199,9 +203,7 @@ impl Mesh {
             indices: Vec::new(),
             rtc_applied: false,
             origin: [0.0; 3],
-            instance_meta: None,
-            local_bounds: None,
-            local_to_world: None,
+            instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false,
         }
     }
 
@@ -213,9 +215,7 @@ impl Mesh {
             indices: Vec::with_capacity(index_count),
             rtc_applied: false,
             origin: [0.0; 3],
-            instance_meta: None,
-            local_bounds: None,
-            local_to_world: None,
+            instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false,
         }
     }
 
@@ -259,9 +259,8 @@ impl Mesh {
             indices,
             rtc_applied: self.rtc_applied,
             origin: self.origin,
-            instance_meta: None,
-            local_bounds: self.local_bounds,
-            local_to_world: self.local_to_world,
+            instance_meta: None, local_bounds: self.local_bounds, local_to_world: self.local_to_world,
+            welded_in_object_frame: false,
         }
     }
 

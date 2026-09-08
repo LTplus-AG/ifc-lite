@@ -234,3 +234,77 @@ fn deterministic_and_first_seen_order() {
     assert_eq!(&p1[0..3], &[9.0, 9.0, 9.0]);
     assert_eq!(i1, vec![0, 1, 0]);
 }
+
+/// #4122 — `weld_mesh` (called from `apply_placement`) is one of only two
+/// setters of `Mesh::welded_in_object_frame`, and it must stamp `true` even
+/// when the weld is a no-op (already-welded input): `build_mesh_data`'s
+/// debug_assert reads this bit to check the trust it places in
+/// `instance_meta.is_some()`, so a setter that only fires on an actual merge
+/// would leave an unwelded-but-nothing-to-merge mesh reading `false` forever.
+#[test]
+fn weld_mesh_stamps_welded_in_object_frame_even_on_a_no_op() {
+    // Already-welded triangle soup: one triangle, nothing to merge.
+    let mut mesh = crate::Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 1, 2];
+    assert!(!mesh.welded_in_object_frame, "unset by construction");
+    weld_mesh(&mut mesh);
+    assert!(
+        mesh.welded_in_object_frame,
+        "weld_mesh must stamp the bit regardless of whether anything merged"
+    );
+}
+
+/// [`weld_sub_mesh`]'s half of the same contract.
+#[test]
+fn weld_sub_mesh_stamps_welded_in_object_frame() {
+    let mut mesh = crate::Mesh::new();
+    mesh.positions = vec![
+        0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, //
+        1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, //
+    ];
+    mesh.normals = [0.0f32, 0.0, 1.0].repeat(6);
+    mesh.indices = vec![0, 1, 2, 3, 4, 5];
+    let mut sub = crate::SubMesh::new(1, mesh);
+    assert!(!sub.mesh.welded_in_object_frame);
+    weld_sub_mesh(&mut sub);
+    assert!(
+        sub.mesh.welded_in_object_frame,
+        "weld_sub_mesh must stamp the underlying mesh's bit"
+    );
+}
+
+/// #4122's actual finding: `router::voids::probe::get_opening_item_meshes_world`
+/// bakes with `transform_mesh_world_framed` directly, never calling
+/// `weld_mesh`/`weld_sub_mesh`, so a mesh can legitimately carry
+/// `instance_meta` while `welded_in_object_frame` stays `false`. Before this
+/// field existed nothing could distinguish that mesh from one that went
+/// through a placement applier — this test pins that the two are in fact
+/// independent, which is the gap `build_mesh_data`'s debug_assert now checks.
+#[test]
+fn instance_meta_does_not_imply_welded_in_object_frame() {
+    let mut mesh = crate::Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 1, 2];
+    mesh.instance_meta = Some(crate::InstanceMeta {
+        transform: [
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ],
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 0,
+        instanceable: true,
+    });
+    // No weld ever ran — this is exactly the probe.rs shape.
+    assert!(
+        mesh.instance_meta.is_some() && !mesh.welded_in_object_frame,
+        "a mesh can carry instance_meta without ever being welded in the \
+         object frame — instance_meta.is_some() alone cannot answer \
+         `build_mesh_data`'s \"was this already welded?\" question"
+    );
+}

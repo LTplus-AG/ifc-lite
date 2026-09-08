@@ -502,9 +502,7 @@ fn translate_cutter_mesh(mesh: &Mesh, host_origin: [f64; 3]) -> Mesh {
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
         origin: [0.0; 3],
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
+        instance_meta: None, local_bounds: None, local_to_world: None, welded_in_object_frame: false,
     }
 }
 

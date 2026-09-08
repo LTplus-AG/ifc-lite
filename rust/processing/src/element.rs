@@ -750,9 +750,8 @@ fn build_mesh_data(
     // `voids::probe::get_opening_item_meshes_world` bakes with
     // `transform_mesh_world_framed` directly and so DOES produce unwelded meshes
     // carrying `instance_meta`, but they are cutters and volume probes, never
-    // element MeshData. So "is this shared?" and "was this already welded?" have
-    // the same answer for everything arriving HERE, with nothing asserting it
-    // across the crate boundary. #4122 tracks making that an assertion.
+    // element MeshData. `welded_in_object_frame` (#4122) is the real answer.
+    debug_assert!(mesh.instance_meta.is_none() || mesh.welded_in_object_frame, "instance_meta set but welded_in_object_frame is false");
     let welded_uvs = if mesh.instance_meta.is_some() {
         uvs
     } else {

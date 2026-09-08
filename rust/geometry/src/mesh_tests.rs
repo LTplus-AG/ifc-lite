@@ -156,6 +156,7 @@ fn test_validate_indices_strips_out_of_bounds() {
         instance_meta: None,
         local_bounds: None,
         local_to_world: None,
+        welded_in_object_frame: false,
     };
     mesh.validate_indices();
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -172,6 +173,7 @@ fn test_validate_indices_empty_positions() {
         instance_meta: None,
         local_bounds: None,
         local_to_world: None,
+        welded_in_object_frame: false,
     };
     mesh.validate_indices();
     assert!(mesh.indices.is_empty());
@@ -188,6 +190,7 @@ fn test_validate_indices_incomplete_triangle() {
         instance_meta: None,
         local_bounds: None,
         local_to_world: None,
+        welded_in_object_frame: false,
     };
     mesh.validate_indices();
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -362,6 +365,7 @@ fn test_validate_indices_all_valid() {
         instance_meta: None,
         local_bounds: None,
         local_to_world: None,
+        welded_in_object_frame: false,
     };
     mesh.validate_indices();
     assert_eq!(mesh.indices, vec![0, 1, 2, 1, 2, 3]);
@@ -389,6 +393,7 @@ fn drop_thin_removes_collinear_sliver_keeps_real_triangle() {
         indices: vec![0, 1, 2, 3, 4, 5],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(mesh.indices, vec![3, 4, 5], "sliver dropped, real kept");
@@ -405,6 +410,7 @@ fn drop_thin_removes_coincident_pair_needle() {
         indices: vec![0, 1, 2],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert!(mesh.indices.is_empty(), "coincident-pair needle dropped");
@@ -419,6 +425,7 @@ fn drop_thin_keeps_thin_but_real_triangle_just_above_grid() {
         indices: vec![0, 1, 2],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(mesh.indices, vec![0, 1, 2], "above-grid triangle kept");
@@ -450,6 +457,7 @@ fn drop_thin_does_not_open_a_crack_in_a_closed_solid() {
         ],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(
@@ -471,6 +479,7 @@ fn drop_thin_skips_oob_and_fully_collapsed_without_panic() {
         ],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -493,6 +502,7 @@ fn drop_degenerate_skips_oob_index_without_panic() {
         instance_meta: None,
         local_bounds: None,
         local_to_world: None,
+        welded_in_object_frame: false,
     };
     mesh.drop_degenerate_triangles();
     assert_eq!(mesh.indices, vec![0, 1, 2]);
@@ -509,6 +519,7 @@ fn drop_thin_is_idempotent() {
         indices: vec![0, 1, 2, 3, 4, 5],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.drop_thin_triangles(GRID);
     let once = mesh.indices.clone();
@@ -529,6 +540,7 @@ fn clean_degenerate_uses_the_reconcile_grid() {
         indices: vec![0, 1, 2, 3, 4, 5],
         rtc_applied: false,
         origin: [0.0; 3],
+        welded_in_object_frame: false,
     instance_meta: None, local_bounds: None, local_to_world: None };
     mesh.clean_degenerate();
     assert_eq!(mesh.indices, vec![3, 4, 5]);
@@ -575,4 +587,22 @@ fn issue_3988_filters_release_excess_reservation_without_reordering() {
         filter(&mut mesh);
         assert_eq!(mesh.indices.as_ptr(), settled_ptr);
     }
+}
+
+/// #4122 — `rebuilt_like` must clear `welded_in_object_frame`, the same way
+/// it already nulls `instance_meta`: a rebuild changes the vertices, so a
+/// prior weld's "already welded" answer no longer describes the new buffer.
+#[test]
+fn rebuilt_like_clears_welded_in_object_frame() {
+    let mut mesh = Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 1, 2];
+    mesh.welded_in_object_frame = true;
+
+    let rebuilt = mesh.rebuilt_like(mesh.positions.clone(), mesh.normals.clone(), mesh.indices.clone());
+    assert!(
+        !rebuilt.welded_in_object_frame,
+        "rebuilt_like must clear welded_in_object_frame like it clears instance_meta"
+    );
 }

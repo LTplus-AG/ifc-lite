@@ -204,6 +204,7 @@ pub fn split_mesh_by_indexed_colour(
                 // still yields the correct entity-level box. See issue #1474.
                 local_bounds,
                 local_to_world,
+                welded_in_object_frame: false,
             };
             Some((map.colours[palette], mesh))
         })
@@ -233,6 +234,7 @@ mod tests {
             instance_meta: None,
             local_bounds: None,
             local_to_world: None,
+            welded_in_object_frame: false,
         };
         let map = FullIndexedColourMap {
             geometry_id: 1,

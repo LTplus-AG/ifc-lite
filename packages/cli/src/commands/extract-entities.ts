@@ -140,17 +140,8 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
 
 const REF_RE = /#(\d+)/g;
 
-/**
- * Forward reference closure: every instance transitively referenced by `seeds`.
- *
- * An id a record NAMES but the file never DEFINES (a phantom: `#999` read out
- * of a `'C1 see #999'` Name, or a genuinely broken reference) is NOT added.
- * `keep` is therefore a subset of the defined ids, which is the property the
- * consumers assume: `serializeSubset` skips a phantom, but `subset-relations`
- * intersects a rewritten SET's members against `keep` alone and would emit one
- * as a dangling `#id` (#4128). It also makes the printed instance count the
- * number of records actually written.
- */
+/** Forward closure over `seeds`. An id NAMED but never DEFINED is not added, or
+ * a rewritten SET would emit it as a dangling `#id` (#4128). */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
@@ -305,7 +296,18 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // relation's member SET filtered down to the kept ids rather than the whole
   // relation being dropped. `subset-relations.ts` owns that rule and the
   // no-dangling-reference invariant it preserves.
-  const spatial = planSpatialRelations(parsed.instances.values(), keep);
+  let spatial = planSpatialRelations(parsed.instances.values(), keep);
+  // A relation-private IfcOwnerHistory is reachable from nothing else, so the
+  // plan drops the relation and reports what blocked it. Keep those and replan
+  // (#4126). ONE replan suffices for a SCHEMA-VALID record: an IfcOwnerHistory
+  // subtree names no product, container or relation. On invalid input a second
+  // round is discarded and the relation stays dropped (pre-#4126 behaviour,
+  // never a dangling id). A `while` does NOT terminate here: a phantom blocker
+  // closes over nothing and is reported every round.
+  if (spatial.blockedOn.length > 0) {
+    forwardClosure(spatial.blockedOn, parsed, keep);
+    spatial = planSpatialRelations(parsed.instances.values(), keep);
+  }
   for (const id of spatial.add) keep.add(id);
   return { keep, rewritten: spatial.rewritten };
 }

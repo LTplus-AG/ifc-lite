@@ -136,9 +136,9 @@ pub fn export_glb_from_meshes(
     );
     let n = vertex_counts.len();
     // The viewer's `MeshData` arrives pre-welded from the mesh source
-    // (`ifc_lite_processing::element::build_mesh_data` welds every element via
-    // `ifc_lite_geometry::mesh_weld::weld_indexed`), so this path no longer
-    // re-welds — it slices each mesh's block straight into a borrowing
+    // (`ifc_lite_geometry::mesh_weld`, run in the object frame for shared
+    // geometry and at `element::build_mesh_data` for the rest), so this path no
+    // longer re-welds — it slices each mesh's block straight into a borrowing
     // `MeshView`. Views borrow the caller's buffers, which outlive the call.
     let mut views: Vec<MeshView> = Vec::with_capacity(n);
     let mut vbase = 0usize; // running vertex offset

@@ -76,10 +76,16 @@ describe('deterministicGlobalId', () => {
     // A GUID whose first char used the full 6-bit alphabet decodes to >128 bits
     // and cannot survive uuid -> guid re-encoding. Round-tripping through the
     // canonical compressor proves every emitted char carries only valid bits.
+    // #4110: assert once. Inside the loop the assertion machinery cost more
+    // than the round trip it checks, and a failure named only the first seed.
+    // The scan stays at 10,000 seeds; only the assertion density changes.
+    const broken: string[] = [];
     for (let i = 0; i < 10_000; i++) {
       const id = deterministicGlobalId(`seed-${i}`);
-      expect(uuidToIfcGuid(ifcGuidToUuid(id))).toBe(id);
+      const roundTripped = uuidToIfcGuid(ifcGuidToUuid(id));
+      if (roundTripped !== id) broken.push(`seed-${i}: ${id} -> ${roundTripped}`);
     }
+    expect({ count: broken.length, first: broken.slice(0, 10) }).toEqual({ count: 0, first: [] });
   });
 
   it('produces no collisions across 10,000 sequential seeds', () => {

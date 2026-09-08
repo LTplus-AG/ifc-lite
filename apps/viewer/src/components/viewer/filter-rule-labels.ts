@@ -10,6 +10,8 @@ export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
   ifcType: 'IFC Type',
   predefinedType: 'Predefined Type',
   name: 'Name',
+  globalId: 'Global ID',
+  attribute: 'Attribute',
   property: 'Property',
   quantity: 'Quantity',
   material: 'Material',

@@ -66,7 +66,7 @@ interface SampleEntry {
   url: string;
   approxBytes: number;
 }
-
+// hello-wall.ifc/infra-bridge.ifc urls below are also asset-usage.mjs's only covered reference to those Rust test fixtures — don't drop without re-checking TEXT_EXTENSIONS there.
 const SAMPLES: SampleEntry[] = [
   { id: 'hello-wall',          label: 'Hello Wall',          blurb: 'IFC4 minimal · 1 wall, 1 storey',          url: '/samples/hello-wall.ifc',          approxBytes:  78_000 },
   { id: 'building-architecture', label: 'Building / Architecture', blurb: 'buildingSMART sample · 444 entities, IFC4', url: '/samples/building-architecture.ifc', approxBytes: 220_000 },

@@ -15,11 +15,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageAll, evaluate, shouldKeepPolling } from './check-review-posted.mjs';
+import { pageAll, evaluate, shouldKeepPolling, normaliseComments } from './check-review-posted.mjs';
+import { issueCommentsLastPage } from './lib/review-poll-page.mjs';
 import {
   REVIEW_LANE_TIMEOUT_SECONDS,
   REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
@@ -1274,4 +1275,177 @@ test('MARKER_RE reads the marker at the END of a body, not one embedded in its p
   // And text AFTER the marker means our own writer drifted: loud, not silent.
   const trailing = runOut(comments([REVIEWER, `${marker(SHA, 'clean', 0)} and then some`]));
   assert.match(trailing.out, /MARKER_MALFORMED/);
+});
+
+/**
+ * `issueCommentsLastPage`: the poll probe (in `main`) queries the
+ * `issueComments` endpoint alone, so its page bound must come from the
+ * issueComments count alone -- not from `comments.length`, the three-surface
+ * union `normaliseComments` produces (issueComments + reviewComments +
+ * reviews). Sizing the bound from the union asks the issueComments endpoint
+ * for a page it may not have, once the other two surfaces push the combined
+ * count over a boundary the issueComments count alone never crosses.
+ *
+ * Live case, PR #4018: 97 issueComments + 4 reviewComments + 3 reviews = 104
+ * combined. The old `Math.ceil(comments.length / PER_PAGE)` computed page 2;
+ * the issueComments endpoint alone has only 97 rows -- one page. Every 30s
+ * probe for the full poll window then fetched an empty page 2 and the marker
+ * sitting on page 1 of the real endpoint was never seen.
+ */
+function fakeComments({ issueComments = 0, reviewComments = 0, reviews = 0 }) {
+  const row = (i) => ({ user: { login: `u${i}` }, body: `c${i}` });
+  return normaliseComments({
+    issueComments: Array.from({ length: issueComments }, (_, i) => row(i)),
+    reviewComments: Array.from({ length: reviewComments }, (_, i) => row(i)),
+    reviews: Array.from({ length: reviews }, (_, i) => row(i)),
+  });
+}
+
+test('issueCommentsLastPage: sized from the issueComments surface alone, not the 3-surface union', () => {
+  // The exact #4018 shape: combined (104) crosses 100, issueComments (97)
+  // alone does not. The bound must stay at page 1.
+  const pr4018 = fakeComments({ issueComments: 97, reviewComments: 4, reviews: 3 });
+  assert.equal(pr4018.length, 104, 'sanity: the union really is 104');
+  assert.equal(issueCommentsLastPage(pr4018, 100), 1);
+
+  // MUTATION CHECK: the bug this replaces. Deriving the bound from the union
+  // length instead reproduces the #4018 failure -- it names page 2, which the
+  // issueComments endpoint (97 rows) does not have.
+  const buggyLastPage = Math.max(1, Math.ceil(pr4018.length / 100));
+  assert.equal(buggyLastPage, 2, 'RED: the combined-length computation names a page issueComments does not have');
+});
+
+test('issueCommentsLastPage boundary: exactly 100 issueComments is one page', () => {
+  const exact100 = fakeComments({ issueComments: 100, reviewComments: 0, reviews: 0 });
+  assert.equal(issueCommentsLastPage(exact100, 100), 1);
+});
+
+test('issueCommentsLastPage boundary: exactly 101 issueComments is two pages', () => {
+  const exact101 = fakeComments({ issueComments: 101, reviewComments: 0, reviews: 0 });
+  assert.equal(issueCommentsLastPage(exact101, 100), 2);
+});
+
+test('issueCommentsLastPage: real pagination still works when issueComments itself exceeds one page', () => {
+  // The regression that matters: issueComments genuinely spans multiple pages
+  // (250 rows -> 3 pages), independent of what the other two surfaces add.
+  // Piling more reviewComments/reviews on top must not change the answer,
+  // because the probe only ever reads the issueComments endpoint.
+  const wide = fakeComments({ issueComments: 250, reviewComments: 50, reviews: 50 });
+  assert.equal(issueCommentsLastPage(wide, 100), 3);
+
+  const noExtras = fakeComments({ issueComments: 250 });
+  assert.equal(issueCommentsLastPage(noExtras, 100), 3, 'the other two surfaces must not shift the bound');
+});
+
+test('issueCommentsLastPage: an empty issueComments surface still probes page 1', () => {
+  const empty = fakeComments({ issueComments: 0, reviewComments: 5, reviews: 5 });
+  assert.equal(issueCommentsLastPage(empty, 100), 1);
+});
+
+// ============================================================ THE WIRING: main()'s live poll path
+
+/**
+ * Every test above drives the gate through `--state-file`, which never reaches
+ * the one place `issueCommentsLastPage` is actually called: the live poll loop
+ * inside `main()`, gated behind `!args.stateFile`. A unit under test with no
+ * caller under test is not covered -- reverting ONLY the call site at the
+ * `const lastPage = ...` line back to the old `Math.ceil(comments.length /
+ * PER_PAGE)` left every test above green, because none of them exercise that
+ * line at all.
+ *
+ * This drives `main()` with NO `--state-file`, a fake `gh` on PATH, and the
+ * exact #4018 mixed-surface shape (97 issueComments + 4 reviewComments + 3
+ * reviews) that makes the union bound (page 2) diverge from the
+ * issueComments-alone bound (page 1). The fake `gh` answers the issueComments
+ * probe differently per page: page 1 (correct) returns the marker that
+ * "landed" during the wait; page 2 (buggy) returns an empty page, because the
+ * real endpoint has only 97 rows and no second page. That divergence is what
+ * makes this test able to fail on the wiring alone, with the page-bound
+ * function itself untouched.
+ *
+ * `--timeout-seconds` is set short (5s) so the poll loop's deadline has always
+ * expired by the time the one, real, 30s `POLL_SECONDS` sleep completes --
+ * `POLL_SECONDS` is a module constant with no test hook, so this exercises a
+ * genuine sleep rather than a mocked one, and the test runs exactly one poll
+ * tick either way.
+ */
+function fakeGhForLivePoll(dir) {
+  mkdirSync(dir, { recursive: true });
+  const log = join(dir, 'argv.log');
+  writeFileSync(join(dir, 'issue-97.json'), JSON.stringify(Array.from({ length: 97 }, (_, i) => ({ user: { login: 'someone' }, body: `pre-existing comment ${i}` }))));
+  writeFileSync(
+    join(dir, 'issue-98.json'),
+    JSON.stringify([
+      ...Array.from({ length: 97 }, (_, i) => ({ user: { login: 'someone' }, body: `pre-existing comment ${i}` })),
+      { user: { login: REVIEWER }, body: marker(SHA) },
+    ]),
+  );
+  writeFileSync(
+    join(dir, 'review-comments-4.json'),
+    JSON.stringify(Array.from({ length: 4 }, () => ({ user: { login: 'someone' }, body: 'rc', commit_id: SHA, original_commit_id: SHA }))),
+  );
+  writeFileSync(join(dir, 'reviews-3.json'), JSON.stringify(Array.from({ length: 3 }, () => ({ user: { login: 'someone' }, body: 'r' }))));
+  writeFileSync(join(dir, 'empty.json'), '[]');
+  writeFileSync(join(dir, 'issue-page1-calls.count'), '0');
+  writeFileSync(
+    join(dir, 'gh'),
+    [
+      '#!/bin/sh',
+      `printf '%s\\n' "$*" >> ${JSON.stringify(log)}`,
+      'case "$*" in',
+      // THE PROBE'S FIRST call to page=1 is the initial fetchPayload, before any
+      // marker exists. Every call after that models the marker having landed
+      // during the wait, which is what the probe is polling for.
+      `  *"issues/1/comments?per_page=100&page=1 --method GET")`,
+      `    n=$(cat ${JSON.stringify(join(dir, 'issue-page1-calls.count'))})`,
+      '    n=$((n + 1))',
+      `    echo "$n" > ${JSON.stringify(join(dir, 'issue-page1-calls.count'))}`,
+      `    if [ "$n" -ge 2 ]; then cat ${JSON.stringify(join(dir, 'issue-98.json'))}; else cat ${JSON.stringify(join(dir, 'issue-97.json'))}; fi`,
+      '    ;;',
+      // Page 2 of the SAME endpoint does not exist -- 97 or 98 rows is one page
+      // at PER_PAGE=100 -- so the real API would answer empty. This is the page
+      // the buggy union-sized bound asks for.
+      `  *"issues/1/comments?per_page=100&page=2 --method GET") cat ${JSON.stringify(join(dir, 'empty.json'))} ;;`,
+      `  *"pulls/1/reviews?per_page=100&page=1 --method GET") cat ${JSON.stringify(join(dir, 'reviews-3.json'))} ;;`,
+      `  *"pulls/1/comments?per_page=100&page=1 --method GET") cat ${JSON.stringify(join(dir, 'review-comments-4.json'))} ;;`,
+      // The fork/draft exemption read, reached only on a still-failing verdict.
+      `  *"pulls/1 --method GET") printf '%s' '{"head":{"repo":{"full_name":"${SAME_REPO}"}},"draft":false}' ;;`,
+      `  *) cat ${JSON.stringify(join(dir, 'empty.json'))} ;;`,
+      'esac',
+    ].join('\n'),
+    { mode: 0o755 },
+  );
+  return { dir, log };
+}
+
+function runLivePoll(dir) {
+  const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
+  delete env.GITHUB_OUTPUT;
+  return spawnSync(
+    process.execPath,
+    [GATE, '--pr', '1', '--sha', SHA, '--repo', SAME_REPO, '--timeout-seconds', '5', ...ENFORCING],
+    { encoding: 'utf8', env },
+  );
+}
+
+test('LIVE POLL WIRING: the probe pages the issueComments-only bound, not the 3-surface union (#4018)', { timeout: 60_000 }, () => {
+  const dir = join(TMP, `gh-livepoll-${(seq += 1)}`);
+  const { log } = fakeGhForLivePoll(dir);
+
+  const r = runLivePoll(dir);
+  const out = `${r.stdout}${r.stderr}`;
+  const calls = readFileSync(log, 'utf8').trim().split('\n');
+
+  // The probe must have asked for page 1 -- the issueComments-alone bound --
+  // and never for page 2, which the buggy union-sized bound would have asked
+  // for instead.
+  const page1Probes = calls.filter((c) => c.includes('issues/1/comments?per_page=100&page=1'));
+  const page2Probes = calls.filter((c) => c.includes('issues/1/comments?per_page=100&page=2'));
+  assert.ok(page1Probes.length >= 2, `expected an initial fetch and a probe on page 1, got:\n${calls.join('\n')}`);
+  assert.equal(page2Probes.length, 0, `the probe must never ask for page 2 with this fixture, got:\n${calls.join('\n')}`);
+
+  // With the marker found on the (correctly bounded) probe, the loop refetches
+  // and the verdict is a PASS.
+  assert.equal(r.status, 0, out);
+  assert.match(out, /REVIEW_POSTED/, out);
 });

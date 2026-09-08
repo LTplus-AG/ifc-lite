@@ -115,12 +115,23 @@ jobs:
       # `llm-reviewed` label. Its tests are otherwise reachable only behind
       # test.yml's `scripts/**` path filter, so a PR touching neither would
       # decide the stand-down with an untested predicate.
+      #
+      # `review-poll-page` is the fourth, same rule again (#4018): `main`'s live
+      # poll loop pages the issueComments probe from `issueCommentsLastPage`
+      # alone now, not the three-surface union. A wrong page bound there does not
+      # print a wrong label -- it makes the probe read an empty page for the
+      # whole wait, so a real marker is never seen and the verdict comes back
+      # NOT_POSTED regardless of what the reviewer actually posted. That is the
+      # same class of risk as `certifiesDiff` deciding `full`: an untested
+      # predicate deciding the verdict, reachable only behind the same path
+      # filter this list exists to bypass.
       - name: Unit-test the gate itself
         run: >-
           node --test
           scripts/check-review-posted.test.mjs
           scripts/lib/review-provenance.test.mjs
           scripts/lib/review-marker.test.mjs
+          scripts/lib/review-poll-page.test.mjs
 
       # CLEARED FIRST, BEFORE THE GATE WAITS. This is a race, not a tidy-up.
       #

@@ -1,5 +1,17 @@
 # @ifc-lite/query
 
+## 2.2.0
+
+### Minor Changes
+
+- [#4106](https://github.com/LTplus-AG/ifc-lite/pull/4106) [`202e291`](https://github.com/LTplus-AG/ifc-lite/commit/202e291a030f1b40b120a69cb221afd8eab90e0f) Thanks [@louistrue](https://github.com/louistrue)! - Add `parseSelector`, a parser for the IfcOpenShell selector (filter) syntax, plus its AST types. It reads the whole grammar — class and GlobalId terms with `!` subtraction, attribute and `Pset.Prop` comparisons over `= != > >= < <= *= !*=`, `type=` / `material=` / `classification=` / `location=` / `parent=` keywords, `query:` key paths, quoted values, `/regex/` literals and `+` unions — and answers with either an AST or an error carrying the character offset that broke. Accepting more than any one surface can evaluate is deliberate: an adapter names what it dropped instead of matching nothing in silence.
+
+### Patch Changes
+
+- Updated dependencies [[`a24b8cf`](https://github.com/LTplus-AG/ifc-lite/commit/a24b8cff9598e48c75c5f9fbebd036e72c09063e), [`90f4859`](https://github.com/LTplus-AG/ifc-lite/commit/90f4859b73f694114baec821721be498757b9c48), [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`68c322f`](https://github.com/LTplus-AG/ifc-lite/commit/68c322f91195adcf5b206d020025e11824b80d08), [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10), [`5cbe8aa`](https://github.com/LTplus-AG/ifc-lite/commit/5cbe8aac32ee1b8871357c7dcd9c1154161322d5)]:
+  - @ifc-lite/parser@5.2.0
+  - @ifc-lite/geometry@4.3.0
+
 ## 2.1.0
 
 ### Minor Changes

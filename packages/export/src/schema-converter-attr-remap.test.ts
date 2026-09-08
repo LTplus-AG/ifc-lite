@@ -28,13 +28,41 @@ describe('splitTopLevelAttributes delegates to the shared splitTopLevelArgs', ()
     // schema-converter-door-window-type.test.ts) plus edge cases the old
     // local scanner had to handle: nested parens, quoted strings with an
     // embedded comma, and a doubled-quote escape.
-    ["'1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,.T.,$"],
-    ["'guid',$,'Bridge 1',$,$,$,$,$"],
-    ["'a, b',#1,(#2,#3),$"],
-    ["'it''s escaped',#1,$"],
-    ['#1,#2,#3'],
-  ])('agrees with splitTopLevelArgs for %j', (input) => {
-    expect(splitTopLevelAttributes(input)).toEqual(splitTopLevelArgs(input));
+    //
+    // Expected tokens are authored by hand, not derived from
+    // `splitTopLevelArgs` itself: `splitTopLevelAttributes` is now a pure
+    // delegate to `splitTopLevelArgs` (see the export above), so asserting
+    // one against the other would only ever confirm `f(x) === f(x)` — a
+    // parser defect shared by both sides (e.g. mis-scanning the embedded
+    // comma in `'a, b'`) would pass unnoticed.
+    [
+      "'1mW6gHB0W7lxCAqIKVEzia',#2,'Door Type',$,$,(#3),(#4),'tag',$,.DOOR.,.SINGLE_SWING_LEFT.,.T.,$",
+      [
+        "'1mW6gHB0W7lxCAqIKVEzia'",
+        '#2',
+        "'Door Type'",
+        '$',
+        '$',
+        '(#3)',
+        '(#4)',
+        "'tag'",
+        '$',
+        '.DOOR.',
+        '.SINGLE_SWING_LEFT.',
+        '.T.',
+        '$',
+      ],
+    ],
+    [
+      "'guid',$,'Bridge 1',$,$,$,$,$",
+      ["'guid'", '$', "'Bridge 1'", '$', '$', '$', '$', '$'],
+    ],
+    ["'a, b',#1,(#2,#3),$", ["'a, b'", '#1', '(#2,#3)', '$']],
+    ["'it''s escaped',#1,$", ["'it''s escaped'", '#1', '$']],
+    ['#1,#2,#3', ['#1', '#2', '#3']],
+  ])('splits %j into the expected tokens, in agreement with splitTopLevelArgs', (input, expected) => {
+    expect(splitTopLevelAttributes(input)).toEqual(expected);
+    expect(splitTopLevelArgs(input)).toEqual(expected);
   });
 
   it('a trailing empty argument is dropped, matching splitTopLevelArgs (not the old local scanner, which kept it) — never reached by a fixed-arity IFCDOORTYPE/IFCWINDOWTYPE list', () => {

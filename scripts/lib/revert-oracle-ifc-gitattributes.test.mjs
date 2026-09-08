@@ -53,6 +53,17 @@ const REAL_IFC_SAMPLE_PATHS = [
 ];
 
 test('the four real .ifc samples still carry the -diff gitattributes entry', () => {
+  // `git check-attr` reports an attribute for a path even when that path
+  // isn't tracked, and `classifyPath` below only ever sees the path string —
+  // neither call notices a deleted or renamed sample. Fail loudly first if
+  // any listed path stopped being tracked, so this test can't silently keep
+  // passing (against `unspecified`, not `unset`) while coverage for that
+  // sample is gone.
+  execFileSync(
+    'git',
+    ['ls-files', '--error-unmatch', '--', ...REAL_IFC_SAMPLE_PATHS],
+    { cwd: ROOT, encoding: 'utf8' },
+  );
   const output = execFileSync(
     'git',
     ['check-attr', 'diff', '--', ...REAL_IFC_SAMPLE_PATHS],

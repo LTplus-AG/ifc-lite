@@ -31,6 +31,7 @@ import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
 import { logger } from '../logger.js';
 import { planSpatialRelations, type StepRecord, type Subset } from './subset-relations.js';
+import { spatialAncestors } from './spatial-ancestors.js';
 
 interface ParsedStep {
   header: string;
@@ -241,18 +242,14 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   const keep = new Set<number>();
   forwardClosure(seedProducts, parsed, keep);
 
-  // Context roots: the project + spatial skeleton, closed forward for units,
-  // geometric contexts, and placement chains.
-  const rootSeeds: number[] = [];
+  // Context roots: IfcProject (always — units/contexts hang off it even when
+  // nothing selected reaches it) plus every spatial ancestor of what is
+  // already kept, closed forward. Backward closure, not a type list, so an
+  // unrelated storey/space is never dragged in and a product under an
+  // IfcSpace or IFC4X3 facility class keeps its parent too (#4124).
+  const rootSeeds = spatialAncestors(keep, parsed.instances);
   for (const inst of parsed.instances.values()) {
-    if (
-      inst.type === 'IFCPROJECT' ||
-      inst.type === 'IFCSITE' ||
-      inst.type === 'IFCBUILDING' ||
-      inst.type === 'IFCBUILDINGSTOREY'
-    ) {
-      rootSeeds.push(inst.id);
-    }
+    if (inst.type === 'IFCPROJECT') rootSeeds.push(inst.id);
   }
   forwardClosure(rootSeeds, parsed, keep);
 

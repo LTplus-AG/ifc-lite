@@ -286,11 +286,25 @@ describe('buildSubset: one containment relation per storey (the real exporter sh
     expect(keep.has(76)).toBe(false);
   });
 
-  it('leaves the spatial IfcRelAggregates chain byte-identical (nothing filtered)', () => {
-    for (const id of [94, 95, 96]) {
+  it('leaves the aggregates whose whole membership is kept byte-identical', () => {
+    // #94 (Project->Site) and #95 (Site->Building) each name only ancestors of
+    // the selected products, so both members are kept and nothing is filtered.
+    for (const id of [94, 95]) {
       expect(keep.has(id)).toBe(true);
       expect(rewritten.has(id)).toBe(false);
     }
+  });
+
+  it('does not force-keep the unrelated storey L02, and rewrites #96 without it (#4124)', () => {
+    // #96 (Building->Storeys) names BOTH storeys, but nothing selected sits
+    // under L02 (#45), so backward closure from the selection never reaches
+    // it and it is not force-kept the way a hardcoded root-type list would.
+    // #96 survives (RelatingObject #36 is kept and the intersection is
+    // non-empty) with its SET rewritten down to L01 alone.
+    expect(keep.has(45)).toBe(false);
+    expect(keep.has(96)).toBe(true);
+    expect(rewritten.get(96)).toContain('(#41)');
+    expect(rewritten.get(96)).not.toContain('#45');
   });
 
   it('serializes with zero dangling references, including the rewritten relations', () => {
@@ -304,13 +318,12 @@ describe('buildSubset: one containment relation per storey (the real exporter sh
   });
 });
 
-// The IfcRelAggregates REWRITE path needs the whole kept AND a strict subset of
-// its parts kept, and no selection above produces that shape: the spatial chain's
-// parts (#34, #36, #41, #45) are force-kept context roots, so #94/#95/#96 never
-// lose a member, and #93's whole #76 is never selected, so #93 is always dropped
-// on its parent instead. Without this case the `IFCRELAGGREGATES: [4, 5]` row
-// could be written backwards and every assertion above would still pass
-// (measured: reversing that one row changes no verdict in the block above).
+// #96 above already exercises the IFCRELAGGREGATES rewrite path (#4124's
+// backward closure keeps #36 as a spatial ancestor of L01 but not L02, so its
+// SET loses a member). This block exercises the OTHER shape: a selection whose
+// whole AND a strict subset of its parts are both explicitly selected — #93's
+// whole #76 (an IfcElementAssembly, never a spatial ancestor of anything) is
+// never kept by backward closure, so this is the only case that pins it.
 describe('buildSubset: an IfcRelAggregates keeping its whole and a strict subset of its parts', () => {
   const p = parseStep(STOREY_MODEL);
   // The assembly #76 AND one of its two parts. #71 is left out.
@@ -454,9 +467,10 @@ describe('buildSubset: a private OwnerHistory that owns a subtree', () => {
 });
 
 // The OTHER storey's containment carries the private OwnerHistory, and the
-// selection touches neither of its products. #82's relating parent #45 IS kept
-// (every storey is a force-kept context root), so only the empty member
-// intersection stands between #82 and the blocked path.
+// selection touches neither of its products. #82's relating parent #45 is not
+// kept either (nothing selected sits under L02, so backward closure never
+// reaches it), so #82 is dropped on the relating-parent check before the
+// OwnerHistory loop — and either way it never reports #7 as blocking.
 const STOREY_MODEL_UNRELATED_REL_OWNED = STOREY_MODEL.replace(
   "#82= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000002',#5,",
   "#7= IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n" +
@@ -500,6 +514,45 @@ describe('buildSubset: a relation whose OwnerHistory is never defined', () => {
     const out = serializeSubset({ keep, rewritten }, p);
     expectNoDanglingRefs(out);
     expect(out).not.toContain('#80=');
+  });
+});
+
+// STOREY_MODEL plus a room (#47, an IfcSpace) aggregated under L01 (#41) and
+// one product (#77) contained in the room rather than directly under the
+// storey. `IfcSpace` was never in `buildSubset`'s hardcoded root-type list, so
+// its `RelatingStructure` was never a kept reference and #83 (the room's
+// containment) was always dropped whole, even on a strict selection under a
+// real spatial container (#4124).
+const STOREY_MODEL_WITH_SPACE = STOREY_MODEL.replace(
+  'ENDSEC;\nEND-ISO-10303-21;\n',
+  "#46= IFCLOCALPLACEMENT(#40,#21);\n" +
+    "#47= IFCSPACE('SPAC000000000000000001',#5,'Room 101',$,$,#46,$,$,.ELEMENT.,$);\n" +
+    "#48= IFCRELAGGREGATES('RAGG000000000000000005',#5,$,$,#41,(#47));\n" +
+    "#77= IFCFURNISHINGELEMENT('FURN000000000000000007',#5,'Chair 7',$,$,#46,#64,'c7');\n" +
+    "#83= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000003',#5,'Room contents',$,(#77),#47);\n" +
+    'ENDSEC;\nEND-ISO-10303-21;\n',
+);
+
+describe('buildSubset: containment under an IfcSpace, not a storey (#4124)', () => {
+  const p = parseStep(STOREY_MODEL_WITH_SPACE);
+  const { keep, rewritten } = buildSubset(new Set([77]), p);
+
+  it('keeps the space as a spatial ancestor and its containment relation', () => {
+    expect(keep.has(47)).toBe(true); // IfcSpace
+    expect(keep.has(83)).toBe(true); // containment into the space
+    expect(rewritten.has(83)).toBe(false); // sole member kept → byte-identical
+  });
+
+  it('climbs the space up through its storey/building/site to the project', () => {
+    for (const id of [41, 36, 34, 1]) expect(keep.has(id)).toBe(true);
+  });
+
+  it('does not force-keep the other storey (L02) nothing selected sits under', () => {
+    expect(keep.has(45)).toBe(false);
+  });
+
+  it('serializes with zero dangling references', () => {
+    expectNoDanglingRefs(serializeSubset({ keep, rewritten }, p));
   });
 });
 

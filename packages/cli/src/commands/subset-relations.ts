@@ -137,7 +137,7 @@ export interface SpatialRelationPlan {
  * output "parses and renders on its own". It used to be missing entirely, so a
  * referenced-but-not-contained product was always orphaned.
  */
-const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
+export const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
   IFCRELAGGREGATES: [4, 5],
   IFCRELCONTAINEDINSPATIALSTRUCTURE: [5, 4],
   IFCRELREFERENCEDINSPATIALSTRUCTURE: [5, 4],
@@ -158,10 +158,10 @@ const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
  * returns 7 for that entity and would make row four safe rather than forbidden.
  * Filed as #4123.
  */
-const STRUCTURE_RELATION_ATTRS = 6;
+export const STRUCTURE_RELATION_ATTRS = 6;
 
 /** A single `#id` and nothing else: an object reference in one slot. */
-const SINGLE_REF_RE = /^#(\d+)$/;
+export const SINGLE_REF_RE = /^#(\d+)$/;
 
 /**
  * Decide every spatial-structure relation against a kept-id set.
@@ -358,7 +358,7 @@ function spliceArgument(
  *     attribute-count check instead. Invalid STEP in, valid STEP out, and the
  *     slot indices are the ones the record meant either way.
  */
-function splitTopLevelArgs(text: string): string[] | null {
+export function splitTopLevelArgs(text: string): string[] | null {
   const parts: string[] = [];
   let start = 0;
   let depth = 0;

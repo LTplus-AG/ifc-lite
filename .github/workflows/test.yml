@@ -883,6 +883,21 @@ jobs:
       # the Rust twin's pin and no longer gate anything on this side.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # Five favicon variants sat in apps/viewer/public unreferenced for
+      # months (1.885 MiB shipped to every visitor) until a maintainer's own
+      # grep found them (#4111, deleted by #4114). Nothing caught them when
+      # they were added, and nothing stopped the next one. This fails when
+      # apps/viewer/public gains a file that no tracked text file anywhere in
+      # the repo references; ALLOWLIST in the script covers convention-fetched
+      # paths (favicon.ico, apple-touch-icon.png, robots.txt) that legitimately
+      # have none.
+      - name: Check for unreferenced viewer public assets
+        run: node scripts/check-asset-usage.mjs
+      # Its own tests run against synthetic asset/corpus lists, never this
+      # checkout's real apps/viewer/public, so a future change to the repo's
+      # actual assets can't make these pass vacuously.
+      - name: Check asset-usage gate regressions
+        run: node --test scripts/check-asset-usage.test.mjs
       # An entity can legitimately carry two distinct property/quantity sets
       # sharing the same name (type + occurrence). `sets.find(s => s.name ===
       # x)` only ever sees the first one -- fixed one call site at a time

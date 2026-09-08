@@ -15,11 +15,26 @@ test('#3978 static root rejects encoded traversal into a sibling with the same p
   assert.equal(browserStaticPath(root, '/'), resolve(root, 'index.html'));
   assert.equal(browserStaticPath(root, '/assets/app.js?q=1'), resolve(root, 'assets/app.js'));
 });
-for (const [flag, value, expected] of [['--port', '65536', /port must be an integer/], ['--iters', '1.5', /iters must/], ['--fault-inject-ms', 'abc', /fault-inject-ms must/], ['--timeout-ms', 'abc', /timeout-ms must/], ['--timeout-ms', '-1', /timeout-ms must/], ['--fault-inject-ms', '-1', /fault-inject-ms must/]]) {
+for (const [flag, value, expected] of [['--port', '65536', /port must be an integer/], ['--iters', '1.5', /iters must/], ['--fault-inject-ms', 'abc', /fault-inject-ms must/], ['--timeout-ms', 'abc', /timeout-ms must/], ['--timeout-ms', '-1', /timeout-ms must/], ['--fault-inject-ms', '-1', /fault-inject-ms must/], ['--close-timeout-ms', '2147483648', /close-timeout-ms must not exceed 2147483647/]]) {
   test(`#3978 rejects ${flag} ${value} before opening a browser/server`, () => {
     const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', flag, value], { encoding: 'utf8' });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, expected);
+  });
+}
+
+// #4134: Node clamps any setTimeout delay above 2147483647ms (2^31-1, its
+// signed 32-bit max) and fires it almost immediately instead of throwing, so
+// an oversized --close-timeout-ms would silently invert the user's intent —
+// a healthy close reported as a timeout failure. Values within the documented
+// range must still pass this validation (and fail later, on the unrelated
+// --dist-branch check, proving they cleared --close-timeout-ms cleanly).
+for (const value of ['30000', '1', '2147483647']) {
+  test(`#4134 accepts --close-timeout-ms ${value} and fails later only on --dist-branch`, () => {
+    const result = spawnSync(process.execPath, ['--import', 'tsx', 'scripts/perf/browser-cold-ab.mts', '--close-timeout-ms', value], { encoding: 'utf8' });
+    assert.notEqual(result.status, 0);
+    assert.doesNotMatch(result.stderr, /close-timeout-ms must/);
+    assert.match(result.stderr, /--dist-branch not found/);
   });
 }
 

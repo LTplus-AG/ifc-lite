@@ -140,15 +140,16 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
 
 const REF_RE = /#(\d+)/g;
 
-/** Forward reference closure: every instance transitively referenced by `seeds`. */
+/** Forward closure over `seeds`. An id NAMED but never DEFINED is not added, or
+ * a rewritten SET would emit it as a dangling `#id` (#4128). */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
     const id = stack.pop()!;
     if (into.has(id)) continue;
-    into.add(id);
     const rec = parsed.instances.get(id);
     if (!rec) continue;
+    into.add(id);
     REF_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = REF_RE.exec(rec.body)) !== null) {
@@ -295,7 +296,18 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // relation's member SET filtered down to the kept ids rather than the whole
   // relation being dropped. `subset-relations.ts` owns that rule and the
   // no-dangling-reference invariant it preserves.
-  const spatial = planSpatialRelations(parsed.instances.values(), keep);
+  let spatial = planSpatialRelations(parsed.instances.values(), keep);
+  // A relation-private IfcOwnerHistory is reachable from nothing else, so the
+  // plan drops the relation and reports what blocked it. Keep those and replan
+  // (#4126). ONE replan suffices for a SCHEMA-VALID record: an IfcOwnerHistory
+  // subtree names no product, container or relation. On invalid input a second
+  // round is discarded and the relation stays dropped (pre-#4126 behaviour,
+  // never a dangling id). A `while` does NOT terminate here: a phantom blocker
+  // closes over nothing and is reported every round.
+  if (spatial.blockedOn.length > 0) {
+    forwardClosure(spatial.blockedOn, parsed, keep);
+    spatial = planSpatialRelations(parsed.instances.values(), keep);
+  }
   for (const id of spatial.add) keep.add(id);
   return { keep, rewritten: spatial.rewritten };
 }

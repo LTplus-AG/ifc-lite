@@ -96,6 +96,8 @@ export function blankRuleOfKind(kind: FilterRule['kind']): FilterRule {
     case 'ifcType':        return Rule.ifcType([], 'in');
     case 'predefinedType': return Rule.predefinedType([], 'in');
     case 'name':           return Rule.name('contains', '');
+    case 'globalId':       return Rule.globalId([], 'in');
+    case 'attribute':      return Rule.attribute('', 'eq', '');
     case 'property':       return Rule.property('', '', 'eq', '');
     case 'quantity':       return Rule.quantity('', '', 'gt', 0);
     case 'material':       return Rule.material('contains', '');

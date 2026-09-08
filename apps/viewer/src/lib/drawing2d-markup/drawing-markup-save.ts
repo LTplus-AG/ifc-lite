@@ -25,14 +25,19 @@
  * 'save into model' action" — i.e. this one. It is NOT done here: markup
  * points are written verbatim as the `Drawing2DState` arrays already hold
  * them (drawing-space metres), into a freshly emitted `Annotation`
- * sub-context anchored at the target storey's placement. That mirrors how
- * `drawing-markup-read.ts` reads them back — straight off the parsed
- * geometry, with no inverse section-cut transform either — so save and
- * restore agree with each other. What is NOT yet true: the saved
- * annotation's real-world 3D position/orientation does not track the
- * drawing's actual section cut. Round-tripping (save → export → reopen →
- * restore) works; placing the markup at its true cut-plane pose in a
- * general IFC viewer does not, yet.
+ * sub-context anchored at the target storey's placement. The reader does
+ * NOT read those points back verbatim: it composes the annotation's own
+ * placement chain and inverts the symbolic parser's plan-Y-negation
+ * convention to recover the authored local point, undoing exactly what
+ * this writer did (anchor-then-write-verbatim), not the section cut. That
+ * reader-side inversion is what makes round-tripping (save → export →
+ * reopen → restore) recover the authored coordinates and scalars on a
+ * model whose storey chain isn't the identity — a reader that took the
+ * parsed geometry as-is would not, and did not before that inversion
+ * existed. What is still NOT true, with or without that reader fix: the
+ * saved annotation's real-world 3D position/orientation does not track the
+ * drawing's actual section cut — placing the markup at its true cut-plane
+ * pose in a general IFC viewer does not work, yet.
  *
  * ## Idempotence
  * `addDrawingMarkupToStore` is purely additive — it has no notion of "the

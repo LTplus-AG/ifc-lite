@@ -29,6 +29,52 @@ function excludedWorkspaceDirs(root) {
 }
 
 /**
+ * The root workspace manifest's `members = [...]` entries, as raw glob
+ * patterns (not yet resolved against the filesystem). `null` means the
+ * manifest has no `members` key at all — an oracle-side style this repo
+ * does not use, but if it ever did, refusing to guess is safer than
+ * silently claiming every crate is out of the workspace.
+ */
+function memberPatterns(root) {
+  const manifest = join(root, 'Cargo.toml');
+  if (!existsSync(manifest)) return null;
+  const toml = readFileSync(manifest, 'utf8');
+  const list = /^\s*members\s*=\s*\[([^\]]*)\]/m.exec(toml);
+  if (!list) return null;
+  return [...list[1].matchAll(/["']([^"']+)["']/g)].map((m) => m[1].replace(/\/+$/, ''));
+}
+
+/**
+ * Translate one `members` glob entry (e.g. `"rust/*"`) into a RegExp that
+ * matches a workspace-relative, `/`-joined directory path. `*` matches
+ * within a single path component (never across `/`), mirroring the `glob`
+ * crate cargo itself uses to expand `members`; an entry with no `*` at all
+ * degenerates to an exact match. This repo's root manifest currently uses
+ * an explicit list with no globs, but cargo permits one (`members =
+ * ["rust/*"]`), and an exact-match-only check would silently stop guarding
+ * the day someone adds one.
+ */
+function globToRegExp(pattern) {
+  const parts = pattern.split('*').map((part) => part.replace(/[.+?^${}()|[\]\\]/g, '\\$&'));
+  return new RegExp(`^${parts.join('[^/]*')}$`);
+}
+
+/**
+ * Whether `dir` (an absolute path to a directory holding a `Cargo.toml`) is
+ * reachable from the root workspace manifest's `members` list — the third
+ * way a crate can sit outside the buildable workspace, alongside `exclude`
+ * and an own `[workspace]` table: a crate present on disk, not excluded,
+ * without its own `[workspace]`, simply never listed in `members`. Cargo
+ * cannot `-p` such a crate from `root` any more than an excluded one can.
+ */
+function isWorkspaceMember(dir, root) {
+  const patterns = memberPatterns(root);
+  if (patterns === null) return true;
+  const rel = relative(root, dir).split(sep).join('/');
+  return patterns.some((pattern) => globToRegExp(pattern).test(rel));
+}
+
+/**
  * A crate manifest that declares its own bare `[workspace]` table (as opposed
  * to a `[workspace.*]` sub-table, e.g. `[workspace.dependencies]`) is its own
  * workspace root, independent of the root manifest's `exclude` list (#4104
@@ -47,9 +93,10 @@ function hasOwnWorkspaceTable(toml) {
 
 /**
  * Test sources and data share the nearest Cargo package's runner (#3974),
- * unless that package's directory is excluded from the root workspace, or
- * is itself the root of a separate workspace (#4104), in which case it is
- * not a valid cargo owner for anything under it.
+ * unless that package's directory is excluded from the root workspace, is
+ * itself the root of a separate workspace (#4104), or is simply absent from
+ * the root manifest's `members` list, in which case it is not a valid cargo
+ * owner for anything under it.
  */
 export function cargoTestOwner(file, root) {
   let dir = dirname(file);
@@ -62,6 +109,7 @@ export function cargoTestOwner(file, root) {
       const name = /^\s*\[package\][\s\S]*?^\s*name\s*=\s*"([^"]+)"/m.exec(toml);
       if (!name) return null;
       if (dir !== root && hasOwnWorkspaceTable(toml)) return null;
+      if (dir !== root && !isWorkspaceMember(dir, root)) return null;
       return { dir, crate: name[1] };
     }
     if (dir === root || dirname(dir) === dir) break;

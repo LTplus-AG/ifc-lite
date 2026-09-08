@@ -950,13 +950,73 @@ test('aggregate: an assertion failure alongside passes stays an assertion failur
   assert.equal(a.total, 8);
 });
 
-test('#4108: aggregate: one all-skipped package outranks a genuinely green one', () => {
+test('#4131 regression: aggregate: an all-skipped package no longer outranks a genuinely green one', () => {
+  // #4131's own fix for #4108 made this the false positive: an env-gated
+  // all-skip file (ifcopenshell absent on a TS-only PR) must not poison a run
+  // that also contains a package with real, executed evidence.
   const a = aggregate([
     { kind: PASS, passed: 5, failed: 0, total: 5, evidence: [] },
     { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
   ]);
-  assert.equal(a.kind, ALL_SKIPPED);
+  assert.equal(a.kind, PASS);
   assert.equal(a.total, 7);
+  assert.equal(a.passed, 5);
+});
+
+test('#4131 regression: aggregate: an all-skipped package no longer outranks a real assertion failure', () => {
+  const a = aggregate([
+    { kind: ASSERTION_FAILURE, passed: 2, failed: 1, total: 3, evidence: ['assertion X failed'] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  assert.equal(a.kind, ASSERTION_FAILURE);
+  assert.equal(a.failed, 1);
+  assert.equal(a.total, 5);
+});
+
+test('#4131 regression: multi-package all-skipped-plus-evidence run does not block CI', () => {
+  // The end-to-end shape: a well-tested PR whose reverted run turns real
+  // assertions RED in one package while an unrelated env-gated file stays
+  // all-skipped in both the baseline and the reverted run.
+  const baseline = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const reverted = aggregate([
+    { kind: ASSERTION_FAILURE, passed: 10, failed: 2, total: 12, evidence: ['assertion X failed'] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, OBSERVED);
+  assert.equal(v.exitCode, 0);
+});
+
+test('#4108 (still fixed): aggregate: a SINGLE all-skipped package is still ALL_SKIPPED and still blocks', () => {
+  // With no other package producing real evidence, an all-skipped package
+  // must still poison the run -- this is #4108's actual case and #4131's
+  // fix for it must not be weakened.
+  const results = [{ kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] }];
+  const baseline = aggregate(results);
+  const reverted = aggregate(results);
+  assert.equal(baseline.kind, ALL_SKIPPED);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, BASELINE_BROKEN);
+  assert.equal(v.exitCode, 3);
+});
+
+test('#4108 (still fixed): aggregate: EVERY package all-skipped is still ALL_SKIPPED and still blocks', () => {
+  // No package anywhere produced real evidence, so the "another package has
+  // evidence" exception must not apply -- this must not slip through as a pass.
+  const results = [
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 3, evidence: ['all skipped'] },
+  ];
+  const baseline = aggregate(results);
+  const reverted = aggregate(results);
+  assert.equal(baseline.kind, ALL_SKIPPED);
+  assert.equal(baseline.total, 5);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, BASELINE_BROKEN);
+  assert.equal(v.exitCode, 3);
 });
 
 test('aggregate: zero packages is UNPARSEABLE, never a pass', () => {

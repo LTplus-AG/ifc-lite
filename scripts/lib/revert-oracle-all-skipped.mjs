@@ -60,3 +60,27 @@ export function classifyExecuted(parsed) {
   }
   return { kind: PASS, passed: parsed.passed, failed: parsed.failed, total: parsed.total, evidence: [] };
 }
+
+/**
+ * `aggregate()`'s severity walk (`revert-oracle.mjs`) ranks ALL_SKIPPED above
+ * PASS, which is right when a run's ONLY signal is an all-skipped package —
+ * #4108's own case: the baseline measured nothing, so nothing can be
+ * concluded — but wrong when ANOTHER package in the same run produced real
+ * evidence (a PASS or ASSERTION_FAILURE). An env-gated all-skip file (e.g.
+ * `ifcopenshell-schema-conformance.test.ts` on a TS-only PR, where CI never
+ * installs Python) must not outrank a genuinely observed change and block a
+ * well-tested PR. That was a real regression #4108's fix (#4131) introduced.
+ *
+ * Returns the subset of `results` that should decide the aggregate's worst
+ * kind: with real evidence present, ALL_SKIPPED entries are dropped from the
+ * severity walk (their counts and evidence still fold into the caller's
+ * totals via its own `sum`/`flatMap` over the FULL `results` array, unfiltered
+ * — only the *verdict-deciding* kind ignores them). With no real evidence
+ * anywhere, every result — ALL_SKIPPED included — stays a candidate, so a
+ * single-package or an every-package all-skipped run still poisons to
+ * ALL_SKIPPED exactly as before.
+ */
+export function severityCandidates(results) {
+  const hasEvidence = results.some((r) => r.kind === PASS || r.kind === ASSERTION_FAILURE);
+  return hasEvidence ? results.filter((r) => r.kind !== ALL_SKIPPED) : results;
+}

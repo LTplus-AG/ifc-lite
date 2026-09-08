@@ -18,6 +18,7 @@ import {
   extractEntitiesCommand,
 } from './extract-entities.js';
 import { planSpatialRelations } from './subset-relations.js';
+import { spatialAncestors } from './spatial-ancestors.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 // Committed viewer demo sample with real render geometry, needed for the
@@ -683,6 +684,85 @@ describe('planSpatialRelations: a record it cannot scan, or cannot read as six a
       expect(emit(record(body), new Set([5, 41]))).not.toContain('#80=');
     });
   }
+});
+
+// Two `IfcBuildingStorey`s aggregating EACH OTHER (A aggregates B, B aggregates
+// A — malformed/hostile STEP, `IfcRelAggregates` has no acyclicity guarantee in
+// the schema itself), with a product contained in B. `structureParents` builds a
+// child→parent edge for BOTH directions here, because both #200 and #201 are
+// spatial-structure types, so the parent graph itself is cyclic before
+// `spatialAncestors` ever walks it. Pins the
+// `if (visited.has(parentId)) continue;` guard in `spatial-ancestors.ts`:
+// without it, `stack.push(parentId)` re-enqueues #200/#201 forever and the walk
+// never returns. The 55-test suite passes with that guard deleted (nothing else
+// in it makes an aggregation graph cyclic), so this is the only pin.
+const CYCLE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#5= IFCOWNERHISTORY($,$,$,.NOCHANGE.,$,$,$,0);
+#200= IFCBUILDINGSTOREY('STOR000000000000000010',#5,'A',$,$,$,$,$,.ELEMENT.,0.);
+#201= IFCBUILDINGSTOREY('STOR000000000000000011',#5,'B',$,$,$,$,$,.ELEMENT.,3.);
+#202= IFCFURNISHINGELEMENT('FURN000000000000000010',#5,'Chair',$,$,$,$,'c');
+#210= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000010',#5,$,$,(#202),#201);
+#211= IFCRELAGGREGATES('RAGG000000000000000010',#5,$,$,#200,(#201));
+#212= IFCRELAGGREGATES('RAGG000000000000000011',#5,$,$,#201,(#200));
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+describe('spatialAncestors: a cyclic IfcRelAggregates graph terminates', () => {
+  it(
+    'climbs #202 -> storey B -> storey A and stops, instead of looping forever on the A<->B cycle',
+    () => {
+      const p = parseStep(CYCLE_MODEL);
+      const ancestors = spatialAncestors([202], p.instances);
+      // Correct keep-set: exactly the two storeys, each visited once. An
+      // unguarded walk never reaches `return` at all (this assertion is
+      // unreachable in that case); the test's own completion inside the
+      // timeout below is what proves the closure terminated.
+      expect(new Set(ancestors)).toEqual(new Set([200, 201]));
+      expect(ancestors.length).toBe(2);
+    },
+    // A regression here is an infinite synchronous loop, not a slow one: this
+    // timeout exists so the run is killed and reported as a failure rather
+    // than hanging the whole suite indefinitely.
+    5000,
+  );
+});
+
+// The empty-intersection guard in `subset-relations.ts`'s `relationLine`
+// (`if (kept.length === 0) return null;`) is reached only when the RELATING
+// object is kept but EVERY member of the related SET is dropped. The existing
+// "drops a relation whose kept intersection is empty" test above (#82, the L02
+// storey) never reaches it: #82's relating parent #45 is itself unkept, so the
+// EARLIER `!keep.has(Number(relating[1]))` check returns null first. This one
+// selects only #72 (Chair 3): backward closure keeps #72's containment chain
+// (#41 -> #36 -> #34 -> #1), which keeps #34 — the RelatingStructure of
+// IfcRelReferencedInSpatialStructure #81 — WITHOUT keeping any of #81's
+// RelatedElements (#70, #71, #73, none selected). So #81's relating parent is
+// kept and its member intersection is empty: exactly the guarded branch.
+describe('buildSubset: RelatingStructure kept, every SET member dropped (#4124 review)', () => {
+  const p = parseStep(STOREY_MODEL);
+  const { keep, rewritten } = buildSubset(new Set([72]), p);
+
+  it('keeps the relating structure #34 via backward closure', () => {
+    expect(keep.has(34)).toBe(true);
+  });
+
+  it('drops #81 rather than emit a schema-invalid empty RelatedElements SET', () => {
+    expect(keep.has(81)).toBe(false);
+    expect(rewritten.has(81)).toBe(false);
+  });
+
+  it('serializes with zero dangling references and no #81 line', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).not.toContain('#81=');
+  });
 });
 
 // A wall with a window opening: IfcRelVoidsElement (rel → wall) points BACKWARD

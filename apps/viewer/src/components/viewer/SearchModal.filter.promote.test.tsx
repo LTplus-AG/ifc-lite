@@ -88,17 +88,34 @@ describe('Filter tab — promoting the search bar query', () => {
     assert.deepEqual(rules(), [Rule.name('contains', 'Wand')]);
   });
 
-  it('text that parses but names nothing keeps the Name contains it always had', () => {
-    // These all PARSE — `IFC` and `IFC-Export` as class terms, `Level=1` and
-    // `Ø=100` as attribute terms — and none of them names a class we know or an
-    // attribute we can filter, which is what a plain search term looks like
-    // after parsing. Reporting instead of falling back cost the search box its
-    // oldest behaviour on the most ordinary input there is.
-    for (const q of ['IFC', 'ifc', 'IFC-Export', 'Level=1', 'Ø=100']) {
+  it('a class name nobody knows keeps the Name contains it always had', () => {
+    // `IFC` / `IFC-Export` PARSE as class terms and name no class we know,
+    // which is what a plain search term looks like after parsing.
+    for (const q of ['IFC', 'ifc', 'IFC-Export']) {
       const container = mountWithQuery(q);
       promote(container);
       assert.deepEqual(rules(), [Rule.name('contains', q)], q);
       assert.equal(latestToast(container), '', q);
+      cleanup();
+    }
+  });
+
+  it('a bare "word=value" is now a generic attribute rule, not a Name contains (#4094)', () => {
+    // `Level=1` and `Ø=100` PARSE as attribute comparisons, and every
+    // attribute name is now filterable generically — the same reasoning
+    // that already applied to `Pset.Prop=value` shaped text before this
+    // change. Neither `Level` nor `Ø` is a real IFC schema attribute, so the
+    // rule matches nothing on this fixture; that is the accepted trade-off
+    // of taking the construct seriously rather than falling back silently.
+    for (const q of [
+      ['Level=1', Rule.attribute('Level', 'eq', '1')],
+      ['Ø=100', Rule.attribute('Ø', 'eq', '100')],
+    ] as const) {
+      const [text, expected] = q;
+      const container = mountWithQuery(text);
+      promote(container);
+      assert.deepEqual(rules(), [expected], text);
+      assert.equal(latestToast(container), '', text);
       cleanup();
     }
   });

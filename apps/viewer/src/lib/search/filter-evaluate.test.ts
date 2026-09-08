@@ -140,6 +140,46 @@ describe('evaluateFilterRules — column-only rules', () => {
   });
 });
 
+describe('evaluateFilterRules — globalId rule', () => {
+  it('matches exactly the element with that GlobalId', () => {
+    const store = buildStore(rows);
+    const out = evaluateFilterRules('m1', store, [Rule.globalId(['3abcdefghijklmnopqrstu'])], 'AND');
+    assert.deepStrictEqual(out.map((r) => r.expressId), [30]);
+  });
+
+  it('notIn excludes it and keeps the rest', () => {
+    const store = buildStore(rows);
+    const out = evaluateFilterRules('m1', store, [Rule.globalId(['3abcdefghijklmnopqrstu'], 'notIn')], 'AND');
+    assert.deepStrictEqual(out.map((r) => r.expressId).sort((a, b) => a - b), [10, 20, 40]);
+  });
+
+  it('several GlobalIds in one rule union, like ifcType values do', () => {
+    const store = buildStore(rows);
+    const out = evaluateFilterRules(
+      'm1',
+      store,
+      [Rule.globalId(['1abcdefghijklmnopqrstu', '4abcdefghijklmnopqrstu'])],
+      'AND',
+    );
+    assert.deepStrictEqual(out.map((r) => r.expressId).sort((a, b) => a - b), [10, 40]);
+  });
+
+  // WRONG-RESULT test, not a parses-without-error test: a case-FOLDING
+  // implementation (the same `setOpMatches` every other set rule here uses)
+  // would treat these two different GlobalIds as equal and match BOTH
+  // elements instead of neither. GlobalId is a real IFC identity, unlike a
+  // type or storey name, so folding case here is a correctness bug, not a
+  // convenience.
+  it('is case-SENSITIVE, unlike every other set rule (#4094)', () => {
+    const store = buildStore([
+      { expressId: 100, type: 'IFCWALL', globalId: 'AbCdEfGhIjKlMnOpQrStUv', name: 'Wall-Case-A' },
+      { expressId: 200, type: 'IFCWALL', globalId: 'aBcDeFgHiJkLmNoPqRsTuV', name: 'Wall-Case-B' },
+    ]);
+    const out = evaluateFilterRules('m1', store, [Rule.globalId(['AbCdEfGhIjKlMnOpQrStUv'])], 'AND');
+    assert.deepStrictEqual(out.map((r) => r.expressId), [100]);
+  });
+});
+
 describe('evaluateFilterRules — storey & predefinedType resolvers', () => {
   it('uses storeyNameOf when provided', () => {
     const store = buildStore(rows);
@@ -351,6 +391,49 @@ describe('matchQuantityRule', () => {
       ),
       false,
     );
+  });
+});
+
+describe('matchAttributeRule', () => {
+  const attrs = [
+    { name: 'Description', value: 'Fire-rated' },
+    { name: 'ObjectType', value: 'Structural' },
+    { name: 'Tag', value: 42 },
+  ];
+
+  it('matches by name (case-insensitive) and value', () => {
+    assert.strictEqual(
+      __internal.matchAttributeRule(Rule.attribute('Description', 'eq', 'fire-rated'), attrs),
+      true,
+    );
+    assert.strictEqual(
+      __internal.matchAttributeRule(Rule.attribute('description', 'eq', 'Fire-rated'), attrs),
+      true,
+    );
+  });
+
+  // WRONG-RESULT: a mutation that dropped the name filter (matched on value
+  // alone) would let this pass against the wrong attribute.
+  it('does not match a value under a different attribute name', () => {
+    assert.strictEqual(
+      __internal.matchAttributeRule(Rule.attribute('ObjectType', 'eq', 'Fire-rated'), attrs),
+      false,
+    );
+  });
+
+  it('isSet / isNotSet check presence by name only', () => {
+    assert.strictEqual(__internal.matchAttributeRule(Rule.attribute('Description', 'isSet', ''), attrs), true);
+    assert.strictEqual(__internal.matchAttributeRule(Rule.attribute('LongName', 'isSet', ''), attrs), false);
+    assert.strictEqual(__internal.matchAttributeRule(Rule.attribute('LongName', 'isNotSet', ''), attrs), true);
+  });
+
+  it('a numeric attribute value compares the same way a numeric property does', () => {
+    assert.strictEqual(__internal.matchAttributeRule(Rule.attribute('Tag', 'gt', '10'), attrs), true);
+    assert.strictEqual(__internal.matchAttributeRule(Rule.attribute('Tag', 'lt', '10'), attrs), false);
+  });
+
+  it('an absent attribute never matches a value comparison', () => {
+    assert.strictEqual(__internal.matchAttributeRule(Rule.attribute('LongName', 'eq', ''), attrs), false);
   });
 });
 
@@ -904,5 +987,87 @@ describe('storey rule reach — what location="Level 3" resolves to (#4091)', ()
   it('MEASURED: the space itself IS mapped to its storey', async () => {
     const store = await parseSpatialStore();
     assert.strictEqual(store.spatialHierarchy?.elementToStorey.get(44), 43);
+  });
+});
+
+/**
+ * `attribute` rule end-to-end against a REAL parse: `Description` /
+ * `ObjectType` are read from the source buffer through
+ * `extractAllEntityAttributes`, the same on-demand extraction the IDS
+ * attribute facet uses (#4094). Two walls, one with a Description and one
+ * without, so a wrong implementation that matched on presence-of-any-value
+ * (or ignored the attribute name) would return the wrong SET, not just fail
+ * to parse.
+ */
+const ATTRIBUTE_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0Proj000000000000000001',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#50= IFCWALL('0WallFireRated000000001',$,'Wall-A','Fire-rated','Structural',#40,$,$,$);
+#51= IFCWALL('0WallPlain00000000000001',$,'Wall-B',$,$,#40,$,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+async function parseAttributeStore(): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(ATTRIBUTE_IFC);
+  return new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  );
+}
+
+describe('evaluateFilterRules — attribute rule against a REAL parse (#4094)', () => {
+  it('a Description set on one wall and not the other distinguishes them', async () => {
+    // Scoped to IfcWall: the fixture's non-wall entities (project, units,
+    // placement, …) ALSO lack a Description, so an unscoped isNotSet would
+    // correctly match them too — that's the rule working, not a defect, but
+    // it makes a bad wrong-result test. Scoping to IfcWall is what makes
+    // "distinguishes Wall-A from Wall-B" the actual claim being measured.
+    const store = await parseAttributeStore();
+    const withDesc = evaluateFilterRules(
+      'm1', store, [Rule.ifcType(['IfcWall']), Rule.attribute('Description', 'isSet', '')], 'AND',
+    );
+    assert.deepStrictEqual(withDesc.map((e) => e.expressId), [50]);
+    const withoutDesc = evaluateFilterRules(
+      'm1', store, [Rule.ifcType(['IfcWall']), Rule.attribute('Description', 'isNotSet', '')], 'AND',
+    );
+    assert.deepStrictEqual(withoutDesc.map((e) => e.expressId), [51]);
+  });
+
+  it('Description eq / ObjectType eq read the RIGHT attribute, not just any set value', async () => {
+    const store = await parseAttributeStore();
+    const byDescription = evaluateFilterRules('m1', store, [Rule.attribute('Description', 'eq', 'Fire-rated')], 'AND');
+    assert.deepStrictEqual(byDescription.map((e) => e.expressId), [50]);
+    const byObjectType = evaluateFilterRules('m1', store, [Rule.attribute('ObjectType', 'eq', 'Structural')], 'AND');
+    assert.deepStrictEqual(byObjectType.map((e) => e.expressId), [50]);
+    // Cross-checks that a "match on value alone" mutation would fail: the
+    // Description VALUE does not satisfy an ObjectType comparison.
+    const crossed = evaluateFilterRules('m1', store, [Rule.attribute('ObjectType', 'eq', 'Fire-rated')], 'AND');
+    assert.deepStrictEqual(crossed, []);
+  });
+
+  it('Name eq distinguishes Wall-A from Wall-B through the SAME attribute-extraction path', async () => {
+    // Not a Name rule (that reads a different column) — an ATTRIBUTE rule
+    // named "Name", proving the generic path reaches a real per-entity value
+    // and not just a fixed set of presence checks.
+    const store = await parseAttributeStore();
+    const out = evaluateFilterRules('m1', store, [Rule.attribute('Name', 'eq', 'Wall-A')], 'AND');
+    assert.deepStrictEqual(out.map((e) => e.expressId), [50]);
+  });
+
+  it('a made-up attribute name never matches (adapt-time name validity is not checked)', async () => {
+    const store = await parseAttributeStore();
+    const out = evaluateFilterRules('m1', store, [Rule.attribute('NoSuchAttribute', 'isSet', '')], 'AND');
+    assert.deepStrictEqual(out, []);
   });
 });

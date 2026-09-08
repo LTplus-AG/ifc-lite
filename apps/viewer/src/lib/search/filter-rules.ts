@@ -135,6 +135,37 @@ export interface NameRule {
   valueKind?: TextKind;
 }
 
+/** `325Q7Fhnf67OZC$$r43uzK` / `! 325Q7Fhnf67OZC$$r43uzK` — one element, by
+ *  GlobalId. Multi-valued like `ifcType`/`storey` so several bare-GlobalId
+ *  terms (or a Ctrl-click accumulation) fold into one rule; matching is
+ *  case-SENSITIVE (`values` are 22-character base64 IFC GlobalIds, where
+ *  case is significant), unlike every other set-membership rule here. */
+export interface GlobalIdRule {
+  kind: 'globalId';
+  values: string[];
+  op: SetOp;
+}
+
+/**
+ * `Description=Foo`, `ObjectType != NULL`, … — an IFC attribute other than
+ * Name or PredefinedType, which each have their own rule kind. `name` is the
+ * schema attribute name (matched case-insensitively against what the source
+ * buffer's schema-driven extraction returns); a `GlobalId` name is rejected
+ * at the selector adapter rather than reaching here — `extractAllEntityAttributes`
+ * never surfaces it (it's a structural/display attribute the parser skips),
+ * so routing it here would silently match nothing instead of finding the
+ * element the bare-GlobalId term already exists to find.
+ */
+export interface AttributeRule {
+  kind: 'attribute';
+  name: string;
+  op: ValueOp;
+  /** Raw user input. Numeric ops parse as f64; isSet/isNotSet ignore. */
+  value: string;
+  /** How `value` reads. Only consulted by the `matches` / `notMatches` ops. */
+  valueKind?: TextKind;
+}
+
 export interface PropertyRule {
   kind: 'property';
   setName: string;
@@ -204,6 +235,8 @@ export type FilterRule =
   | IfcTypeRule
   | PredefinedTypeRule
   | NameRule
+  | GlobalIdRule
+  | AttributeRule
   | PropertyRule
   | QuantityRule
   | MaterialRule
@@ -269,6 +302,13 @@ export const Rule = {
     ({ kind: 'predefinedType', values, op }),
   name: (op: StringOp, value: string, valueKind?: TextKind): NameRule =>
     ({ kind: 'name', op, value, ...(valueKind ? { valueKind } : {}) }),
+  globalId: (values: string[], op: SetOp = 'in'): GlobalIdRule => ({ kind: 'globalId', values, op }),
+  attribute: (
+    name: string,
+    op: ValueOp,
+    value: string,
+    valueKind?: TextKind,
+  ): AttributeRule => ({ kind: 'attribute', name, op, value, ...(valueKind ? { valueKind } : {}) }),
   property: (
     setName: string,
     propertyName: string,
@@ -306,6 +346,8 @@ export function isFilterRule(value: unknown): value is FilterRule {
     kind === 'ifcType' ||
     kind === 'predefinedType' ||
     kind === 'name' ||
+    kind === 'globalId' ||
+    kind === 'attribute' ||
     kind === 'property' ||
     kind === 'quantity' ||
     kind === 'material' ||

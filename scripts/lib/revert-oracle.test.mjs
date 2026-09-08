@@ -36,6 +36,7 @@ import {
   NO_TESTS,
   RUNNER_MISSING,
   UNPARSEABLE,
+  ALL_SKIPPED,
   OBSERVED,
   UNOBSERVED,
   INCONCLUSIVE,
@@ -191,6 +192,30 @@ const VITEST_NO_FILES = `
  include: **/*.{test,spec}.?(c|m)[jt]s?(x)
 
 No test files found, exiting with code 1
+`;
+
+/**
+ * vitest 4's summary line for a file behind `describe.skipIf(true)` — every
+ * test collected, none executed. Constructed to match vitest 4's documented
+ * `Tests  N skipped (N)` summary shape (same format the real captures above
+ * use for `passed`/`failed`), and matches #4108's own quoted CI output:
+ * `packages/export (vitest) -> pass (pass 0, fail 0, total 2)`.
+ */
+const VITEST_ALL_SKIPPED = ` ↓ src/__probe/c.test.ts (2 tests | 2 skipped) 1ms
+
+ Test Files  1 passed (1)
+      Tests  2 skipped (2)
+   Start at  15:40:00
+   Duration  55ms
+`;
+
+/** Same shape, but only one of two tests was skipped: real evidence survives. */
+const VITEST_PARTIAL_SKIP = ` ✓ src/__probe/d.test.ts (2 tests | 1 skipped) 2ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 1 skipped (2)
+   Start at  15:41:00
+   Duration  47ms
 `;
 
 const CARGO_PASS = `running 41 tests
@@ -437,6 +462,34 @@ test('#4016: separate Rust sibling modules are tests; inline production stays pr
     'rust/core/src/testing.rs', 'rust/core/src/test_utils.rs']) {
     assert.equal(classifyPath(path), 'production');
   }
+});
+
+// #4142: `packages/ids/src/__corpus__/` alone holds 334 of the repo's 367
+// tracked `.ifc` files, so a branch touching only IDS corpus fixtures was
+// classified as PRODUCTION with no accompanying test and false-aborted. The
+// repo-wide sweep done for #4142 found `__test__` (singular), bare `corpus`
+// (fuzz seed inputs) and `test-data` (hyphenated) in the same shape.
+test('classifyPath: #4142 sibling fixture directories are test, not production', () => {
+  assert.equal(classifyPath('packages/ids/src/__corpus__/IFC4/wall.ifc'), 'test');
+  assert.equal(classifyPath('apps/viewer/src/lib/__test__/stubs.ts'), 'test');
+  assert.equal(
+    classifyPath('rust/core/fuzz/corpus/parse_entity/seed_wall'),
+    'test',
+  );
+  assert.equal(classifyPath('packages/bcf/test-data/OrthogonalCamera.bcf'), 'test');
+});
+
+// The sweep also found directories that LOOK like the same shape but hold
+// real production code or shipped assets, not raw fixture data. Adding any
+// of these would be a regression in the other direction: a genuine
+// production change would stop requiring a test.
+test('classifyPath: #4142 sweep -- look-alike directories that stay production', () => {
+  assert.equal(classifyPath('packages/collab/src/snapshot/from-step.ts'), 'production');
+  assert.equal(classifyPath('packages/source-fixture/src/index.ts'), 'production');
+  assert.equal(classifyPath('packages/world-frame-fixtures/src/index.ts'), 'production');
+  assert.equal(classifyPath('scripts/fixtures/build-manifest.mjs'), 'production');
+  assert.equal(classifyPath('apps/viewer/public/samples/hello-wall.ifc'), 'production');
+  assert.equal(classifyPath('apps/landing/samples/hello-wall.ifc'), 'production');
 });
 
 test('classifyPath: a `test-utils.ts` is production, not a test', () => {
@@ -746,6 +799,32 @@ test('vitest: "No test files found" is NO_TESTS, not a pass', () => {
   assert.equal(r.kind, NO_TESTS);
 });
 
+test('#4108: a WHOLLY skipped vitest file is ALL_SKIPPED, not PASS', () => {
+  const r = parseRunnerOutput({ family: 'vitest', stdout: VITEST_ALL_SKIPPED, stderr: '', exitCode: 0 });
+  assert.equal(r.kind, ALL_SKIPPED);
+  assert.notEqual(r.kind, PASS);
+  assert.equal(r.total, 2);
+  assert.equal(r.passed, 0);
+  assert.equal(r.failed, 0);
+});
+
+test('#4108: a PARTIALLY skipped vitest file stays PASS — it still ran a real assertion', () => {
+  const r = parseRunnerOutput({ family: 'vitest', stdout: VITEST_PARTIAL_SKIP, stderr: '', exitCode: 0 });
+  assert.equal(r.kind, PASS);
+  assert.equal(r.passed, 1);
+  assert.equal(r.total, 2);
+});
+
+test('#4108: an all-skipped baseline is BASELINE-BROKEN, never a green baseline used to certify a change', () => {
+  const baseline = parseRunnerOutput({ family: 'vitest', stdout: VITEST_ALL_SKIPPED, stderr: '', exitCode: 0 });
+  // Reverting production changes nothing about a file that never executes.
+  const reverted = parseRunnerOutput({ family: 'vitest', stdout: VITEST_ALL_SKIPPED, stderr: '', exitCode: 0 });
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, BASELINE_BROKEN);
+  assert.notEqual(v.verdict, UNOBSERVED, 'must not be reported as a finding about the author\'s tests');
+  assert.notEqual(v.exitCode, 0);
+});
+
 test('THE TRAP, VITE FORM: a removed export bound to undefined is NOT an assertion failure', () => {
   const r = parseRunnerOutput({
     family: 'vitest',
@@ -913,7 +992,7 @@ test('verdict: a baseline that collected nothing is INCONCLUSIVE, not OBSERVED',
 });
 
 test('verdict: every non-OBSERVED outcome exits non-zero', () => {
-  for (const kind of [LOAD_FAILURE, NO_TESTS, RUNNER_MISSING, UNPARSEABLE, PASS]) {
+  for (const kind of [LOAD_FAILURE, NO_TESTS, RUNNER_MISSING, UNPARSEABLE, PASS, ALL_SKIPPED]) {
     const v = verdict({ baseline: green, reverted: { kind, passed: 10, failed: 0, total: 10, evidence: ['x'] } });
     assert.notEqual(v.exitCode, 0, `${kind} must not exit 0`);
   }
@@ -960,6 +1039,75 @@ test('aggregate: an assertion failure alongside passes stays an assertion failur
   assert.equal(a.kind, ASSERTION_FAILURE);
   assert.equal(a.failed, 1);
   assert.equal(a.total, 8);
+});
+
+test('#4131 regression: aggregate: an all-skipped package no longer outranks a genuinely green one', () => {
+  // #4131's own fix for #4108 made this the false positive: an env-gated
+  // all-skip file (ifcopenshell absent on a TS-only PR) must not poison a run
+  // that also contains a package with real, executed evidence.
+  const a = aggregate([
+    { kind: PASS, passed: 5, failed: 0, total: 5, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  assert.equal(a.kind, PASS);
+  assert.equal(a.total, 7);
+  assert.equal(a.passed, 5);
+});
+
+test('#4131 regression: aggregate: an all-skipped package no longer outranks a real assertion failure', () => {
+  const a = aggregate([
+    { kind: ASSERTION_FAILURE, passed: 2, failed: 1, total: 3, evidence: ['assertion X failed'] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  assert.equal(a.kind, ASSERTION_FAILURE);
+  assert.equal(a.failed, 1);
+  assert.equal(a.total, 5);
+});
+
+test('#4131 regression: multi-package all-skipped-plus-evidence run does not block CI', () => {
+  // The end-to-end shape: a well-tested PR whose reverted run turns real
+  // assertions RED in one package while an unrelated env-gated file stays
+  // all-skipped in both the baseline and the reverted run.
+  const baseline = aggregate([
+    { kind: PASS, passed: 12, failed: 0, total: 12, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const reverted = aggregate([
+    { kind: ASSERTION_FAILURE, passed: 10, failed: 2, total: 12, evidence: ['assertion X failed'] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, OBSERVED);
+  assert.equal(v.exitCode, 0);
+});
+
+test('#4108 (still fixed): aggregate: a SINGLE all-skipped package is still ALL_SKIPPED and still blocks', () => {
+  // With no other package producing real evidence, an all-skipped package
+  // must still poison the run -- this is #4108's actual case and #4131's
+  // fix for it must not be weakened.
+  const results = [{ kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] }];
+  const baseline = aggregate(results);
+  const reverted = aggregate(results);
+  assert.equal(baseline.kind, ALL_SKIPPED);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, BASELINE_BROKEN);
+  assert.equal(v.exitCode, 3);
+});
+
+test('#4108 (still fixed): aggregate: EVERY package all-skipped is still ALL_SKIPPED and still blocks', () => {
+  // No package anywhere produced real evidence, so the "another package has
+  // evidence" exception must not apply -- this must not slip through as a pass.
+  const results = [
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 3, evidence: ['all skipped'] },
+  ];
+  const baseline = aggregate(results);
+  const reverted = aggregate(results);
+  assert.equal(baseline.kind, ALL_SKIPPED);
+  assert.equal(baseline.total, 5);
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, BASELINE_BROKEN);
+  assert.equal(v.exitCode, 3);
 });
 
 test('aggregate: zero packages is UNPARSEABLE, never a pass', () => {

@@ -883,6 +883,21 @@ jobs:
       # the Rust twin's pin and no longer gate anything on this side.
       - name: Check module-size ratchet gate regressions
         run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # Five favicon variants sat in apps/viewer/public unreferenced for
+      # months (1.885 MiB shipped to every visitor) until a maintainer's own
+      # grep found them (#4111, deleted by #4114). Nothing caught them when
+      # they were added, and nothing stopped the next one. This fails when
+      # apps/viewer/public gains a file that no tracked text file anywhere in
+      # the repo references; ALLOWLIST in the script covers convention-fetched
+      # paths (favicon.ico, apple-touch-icon.png, robots.txt) that legitimately
+      # have none.
+      - name: Check for unreferenced viewer public assets
+        run: node scripts/check-asset-usage.mjs
+      # Its own tests run against synthetic asset/corpus lists, never this
+      # checkout's real apps/viewer/public, so a future change to the repo's
+      # actual assets can't make these pass vacuously.
+      - name: Check asset-usage gate regressions
+        run: node --test scripts/check-asset-usage.test.mjs
       # An entity can legitimately carry two distinct property/quantity sets
       # sharing the same name (type + occurrence). `sets.find(s => s.name ===
       # x)` only ever sees the first one -- fixed one call site at a time
@@ -1029,6 +1044,21 @@ jobs:
       # the real sources, plus a deleted arm and the #3172 misspelling itself.
       - name: Check legacy entity coverage gate regressions
         run: node --test scripts/check-legacy-entity-coverage.test.mjs
+      # `check:server-attr-indices` (below, and its own CI step) only proves the
+      # committed generated/attr_indices.rs TABLE is fresh against the schema
+      # registry -- it never opens metadata.rs, so reintroducing #3949 by
+      # hardcoding a field back to a literal index there leaves that gate green.
+      # This is the other half: metadata.rs must actually read every root
+      # attribute through the table (`idx.<field>`), not a literal, for all six
+      # fields at once -- covering every entity type the function ever runs for,
+      # not just the handful of types this repo's Rust fixtures happen to cover.
+      - name: Check server attr-index usage (metadata.rs threads the index table)
+        run: node scripts/check-server-attr-index-usage.mjs
+      # Executable proof: reintroduces the exact original #3949 defect (GlobalId/
+      # Name hardcoded to 0/2) plus per-field and anti-vacuity variants against a
+      # mutated copy of the real source, and asserts each turns the gate red.
+      - name: Check server attr-index usage gate regressions
+        run: node --test scripts/check-server-attr-index-usage.test.mjs
       # `|| true` on `git tag` is right (a re-run hits an existing tag);
       # on the PUSH it made a failed push silent, and `gh release create` then
       # creates the missing tag ITSELF at default-branch head -- so the run

@@ -101,12 +101,13 @@ describe('BCF Writer', () => {
     const blob = await writeBCF(project);
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
 
-    // Check markup references
+    // Check markup references. A topic's FIRST (only) viewpoint gets the
+    // conventional plain name, not a GUID-qualified one (#3612).
     const markupContent = await zip.file(`${topicGuid}/markup.bcf`)?.async('string');
-    expect(markupContent).toContain(`<Viewpoint>Viewpoint_${viewpointGuid}.bcfv</Viewpoint>`);
+    expect(markupContent).toContain(`<Viewpoint>viewpoint.bcfv</Viewpoint>`);
 
     // Check actual viewpoint file exists with same name
-    const viewpointFile = zip.file(`${topicGuid}/Viewpoint_${viewpointGuid}.bcfv`);
+    const viewpointFile = zip.file(`${topicGuid}/viewpoint.bcfv`);
     expect(viewpointFile).not.toBeNull();
 
     const viewpointContent = await viewpointFile?.async('string');
@@ -149,12 +150,13 @@ describe('BCF Writer', () => {
     const blob = await writeBCF(project);
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
 
-    // Check markup references snapshot with correct name
+    // Check markup references snapshot with correct name. First (only)
+    // viewpoint in the topic -> conventional plain name (#3612).
     const markupContent = await zip.file(`${topicGuid}/markup.bcf`)?.async('string');
-    expect(markupContent).toContain(`<Snapshot>Snapshot_${viewpointGuid}.png</Snapshot>`);
+    expect(markupContent).toContain(`<Snapshot>snapshot.png</Snapshot>`);
 
     // Check actual snapshot file exists with same name
-    const snapshotFile = zip.file(`${topicGuid}/Snapshot_${viewpointGuid}.png`);
+    const snapshotFile = zip.file(`${topicGuid}/snapshot.png`);
     expect(snapshotFile).not.toBeNull();
   });
 
@@ -200,14 +202,15 @@ describe('BCF Writer', () => {
     const blob = await writeBCF(project);
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
 
-    // Check both viewpoints exist
-    expect(zip.file(`${topicGuid}/Viewpoint_${viewpoint1Guid}.bcfv`)).not.toBeNull();
-    expect(zip.file(`${topicGuid}/Viewpoint_${viewpoint2Guid}.bcfv`)).not.toBeNull();
+    // The FIRST viewpoint gets the conventional plain name; additional
+    // viewpoints keep a GUID-qualified name, as a SUFFIX (#3612).
+    expect(zip.file(`${topicGuid}/viewpoint.bcfv`)).not.toBeNull();
+    expect(zip.file(`${topicGuid}/${viewpoint2Guid}_viewpoint.bcfv`)).not.toBeNull();
 
     // Check markup references both
     const markupContent = await zip.file(`${topicGuid}/markup.bcf`)?.async('string');
-    expect(markupContent).toContain(`<Viewpoint>Viewpoint_${viewpoint1Guid}.bcfv</Viewpoint>`);
-    expect(markupContent).toContain(`<Viewpoint>Viewpoint_${viewpoint2Guid}.bcfv</Viewpoint>`);
+    expect(markupContent).toContain(`<Viewpoint>viewpoint.bcfv</Viewpoint>`);
+    expect(markupContent).toContain(`<Viewpoint>${viewpoint2Guid}_viewpoint.bcfv</Viewpoint>`);
   });
 
   it('should write components in BCF 2.1 schema order', async () => {
@@ -249,7 +252,7 @@ describe('BCF Writer', () => {
     const blob = await writeBCF(project);
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
 
-    const viewpointContent = await zip.file(`${topicGuid}/Viewpoint_${viewpointGuid}.bcfv`)?.async('string');
+    const viewpointContent = await zip.file(`${topicGuid}/viewpoint.bcfv`)?.async('string');
     expect(viewpointContent).toBeDefined();
 
     // BCF 2.1 schema requires: Selection BEFORE Visibility
@@ -612,8 +615,11 @@ describe('BCF Writer', () => {
   it('sanitizes a path-traversal viewpoint GUID so no zip entry escapes the archive root (zip-slip), and markup agrees with the entry name', async () => {
     // A viewpoint GUID is parsed unvalidated from untrusted markup XML on read
     // (reader.ts parseViewpointContent), so it can carry the same `../` hazard
-    // as a topic GUID. Using it verbatim in `Viewpoint_${guid}.bcfv` would let
+    // as a topic GUID. Using it verbatim in `<guid>_viewpoint.bcfv` would let
     // a crafted GUID write outside the archive root on a read-modify-save.
+    // A topic's FIRST viewpoint no longer embeds the GUID at all (#3612 --
+    // it gets the plain `viewpoint.bcfv` name), so the sanitizer is only
+    // exercised by the filename here through the SECOND (suffixed) viewpoint.
     const evilGuid = '../../evil';
     const topic: BCFTopic = {
       guid: generateUuid(),
@@ -621,6 +627,7 @@ describe('BCF Writer', () => {
       creationDate: new Date().toISOString(),
       creationAuthor: 'attacker@example.com',
       viewpoints: [
+        { guid: 'first-vp' } as BCFViewpoint,
         {
           guid: evilGuid,
         } as BCFViewpoint,
@@ -653,19 +660,28 @@ describe('BCF Writer', () => {
     const markup = await zip.file(markupPath!)?.async('string');
     expect(markup).toContain(`Guid="${evilGuid}"`);
 
-    const viewpointFilenameMatch = markup?.match(/<Viewpoint>([^<]+)<\/Viewpoint>/);
-    expect(viewpointFilenameMatch).toBeTruthy();
-    const referencedFilename = viewpointFilenameMatch![1];
-
-    // The referenced filename must not itself carry a traversal segment...
-    expect(referencedFilename).not.toContain('..');
-    expect(referencedFilename).not.toContain('/');
-
-    // ...and the archive must actually contain an entry under this topic's
-    // folder with that exact filename (markup reference and zip entry agree).
+    // Two viewpoints -> two <Viewpoint>filename</Viewpoint> references; check
+    // BOTH, since the sanitizer only shows up in the SECOND (suffixed) one.
+    const viewpointFilenameMatches = [...(markup?.matchAll(/<Viewpoint>([^<]+)<\/Viewpoint>/g) ?? [])];
+    expect(viewpointFilenameMatches).toHaveLength(2);
     const topicFolder = markupPath!.slice(0, markupPath!.length - 'markup.bcf'.length);
-    const viewpointEntry = zip.file(`${topicFolder}${referencedFilename}`);
-    expect(viewpointEntry).not.toBeNull();
+    for (const match of viewpointFilenameMatches) {
+      const referencedFilename = match[1];
+
+      // The referenced filename must not itself carry a traversal segment...
+      expect(referencedFilename).not.toContain('..');
+      expect(referencedFilename).not.toContain('/');
+
+      // ...and the archive must actually contain an entry under this topic's
+      // folder with that exact filename (markup reference and zip entry agree).
+      const viewpointEntry = zip.file(`${topicFolder}${referencedFilename}`);
+      expect(viewpointEntry).not.toBeNull();
+    }
+    // The first viewpoint gets the plain conventional name; the SANITIZED
+    // (not the raw) evil GUID shows up as a SUFFIX on the second -- no `..`
+    // or `/` reached the file name, only the sanitizer's safe-character output.
+    expect(viewpointFilenameMatches[0][1]).toBe('viewpoint.bcfv');
+    expect(viewpointFilenameMatches[1][1]).toMatch(/^_+evil-[0-9a-f]{8}_viewpoint\.bcfv$/);
   });
 
   it('keeps distinct GUIDs that sanitize identically in distinct folders (no silent overwrite)', async () => {
@@ -769,7 +785,7 @@ describe('BCF Writer', () => {
     const topic = baseTopic({ viewpoints: [vp] });
     const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
-    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    const content = await zip.file(`${topic.guid}/viewpoint.bcfv`)?.async('string');
 
     expect(content).toContain('DefaultVisibility="true"');
     expect(content).not.toContain('DefaultVisibility="false"');
@@ -787,7 +803,7 @@ describe('BCF Writer', () => {
     const topic = baseTopic({ viewpoints: [vp] });
     const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
-    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    const content = await zip.file(`${topic.guid}/viewpoint.bcfv`)?.async('string');
 
     expect(content).toContain('DefaultVisibility="false"');
   });
@@ -833,11 +849,13 @@ describe('BCF Writer', () => {
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
     const markup = await zip.file(`${topic.guid}/markup.bcf`)?.async('string');
 
-    expect(markup).toContain(`<Snapshot>Snapshot_${jpegVp.guid}.jpg</Snapshot>`);
-    expect(markup).toContain(`<Snapshot>Snapshot_${pngVp.guid}.png</Snapshot>`);
+    // jpegVp is the topic's first viewpoint -> plain conventional name;
+    // pngVp is the second -> GUID-qualified suffix name (#3612).
+    expect(markup).toContain(`<Snapshot>snapshot.jpg</Snapshot>`);
+    expect(markup).toContain(`<Snapshot>${pngVp.guid}_snapshot.png</Snapshot>`);
     // The referenced entries must actually exist under those names.
-    expect(zip.file(`${topic.guid}/Snapshot_${jpegVp.guid}.jpg`)).not.toBeNull();
-    expect(zip.file(`${topic.guid}/Snapshot_${pngVp.guid}.png`)).not.toBeNull();
+    expect(zip.file(`${topic.guid}/snapshot.jpg`)).not.toBeNull();
+    expect(zip.file(`${topic.guid}/${pngVp.guid}_snapshot.png`)).not.toBeNull();
   });
 
   it('falls back to CreationAuthor for ModifiedAuthor, which the schema requires alongside ModifiedDate', async () => {
@@ -891,7 +909,7 @@ describe('BCF Writer', () => {
     const topic = baseTopic({ viewpoints: [vp] });
     const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(await writeBCF(project)));
-    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    const content = await zip.file(`${topic.guid}/viewpoint.bcfv`)?.async('string');
 
     // Exact spec spellings — a typo'd attribute is silently ignored by consumers.
     expect(content).toContain('SpacesVisible="true"');
@@ -916,7 +934,7 @@ describe('BCF Writer', () => {
     const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
     const blob = await writeBCF(project);
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
-    const content = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    const content = await zip.file(`${topic.guid}/viewpoint.bcfv`)?.async('string');
     expect(content).toContain('<Color Color="FFFF0000">');
 
     const readVp = (await readBCF(await blob.arrayBuffer())).topics.get(topic.guid)!.viewpoints[0];
@@ -1466,7 +1484,7 @@ describe('BCF Writer', () => {
 
     // The written form really is the element form, not attributes.
     const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
-    const bcfv = await zip.file(`${topic.guid}/Viewpoint_${vp.guid}.bcfv`)?.async('string');
+    const bcfv = await zip.file(`${topic.guid}/viewpoint.bcfv`)?.async('string');
     expect(bcfv).toContain('<OriginatingSystem>Acme Modeller 2026</OriginatingSystem>');
     expect(bcfv).toContain('<AuthoringToolId>wall-4711</AuthoringToolId>');
 
@@ -1675,6 +1693,137 @@ describe('BCF Writer', () => {
     const readProject = await readBCF(await blobToArrayBuffer(blob));
     expect(readProject.name).toBe(name);
     expect(readProject.projectId).toBe(project.projectId);
+  });
+
+  describe('#3612: viewpoint file naming (Solibri/BIMcollab interop)', () => {
+    // Solibri rejected ifc-lite BCF exports while accepting the same topic
+    // re-exported by BIMcollab. Investigation on #3612 narrowed the
+    // difference to viewpoint/snapshot file naming: BIMcollab writes the
+    // conventional `viewpoint.bcfv`/`snapshot.<ext>` for a topic's first (or
+    // only) viewpoint, and a GUID-qualified SUFFIX (`<guid>_viewpoint.bcfv`)
+    // for any additional viewpoint in the same topic -- where ifc-lite wrote
+    // a GUID PREFIX (`Viewpoint_<guid>.bcfv`) for every viewpoint including
+    // the first. Both forms are schema-legal (markup.bcf names the file), but
+    // a reader that assumes the conventional name rather than reading the
+    // reference fails exactly where the prefix form differs from it.
+
+    it('a single-viewpoint topic emits the plain conventional names, matching in markup and archive', async () => {
+      const vp: BCFViewpoint = {
+        guid: generateUuid(),
+        perspectiveCamera: {
+          cameraViewPoint: { x: 0, y: 0, z: 10 },
+          cameraDirection: { x: 0, y: 0, z: -1 },
+          cameraUpVector: { x: 0, y: 1, z: 0 },
+          fieldOfView: 60,
+        },
+        snapshotData: new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
+      };
+      const topic = baseTopic({ viewpoints: [vp] });
+      const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+
+      const blob = await writeBCF(project);
+      const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+      const markup = await zip.file(`${topic.guid}/markup.bcf`)?.async('string');
+
+      expect(markup).toContain('<Viewpoint>viewpoint.bcfv</Viewpoint>');
+      expect(markup).toContain('<Snapshot>snapshot.png</Snapshot>');
+      expect(zip.file(`${topic.guid}/viewpoint.bcfv`)).not.toBeNull();
+      expect(zip.file(`${topic.guid}/snapshot.png`)).not.toBeNull();
+      // The old prefix form must be gone entirely.
+      expect(markup).not.toContain('Viewpoint_');
+      expect(markup).not.toContain('Snapshot_');
+    });
+
+    it('a multi-viewpoint topic emits the plain names for the first viewpoint and GUID-suffixed names for the rest', async () => {
+      const vp1: BCFViewpoint = { guid: generateUuid(), snapshot: 'data:image/png;base64,AAAA' };
+      const vp2: BCFViewpoint = { guid: generateUuid(), snapshot: 'data:image/png;base64,AAAA' };
+      const vp3: BCFViewpoint = { guid: generateUuid(), snapshot: 'data:image/png;base64,AAAA' };
+      const topic = baseTopic({ viewpoints: [vp1, vp2, vp3] });
+      const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+
+      const blob = await writeBCF(project);
+      const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+      const markup = await zip.file(`${topic.guid}/markup.bcf`)?.async('string');
+
+      // First: plain conventional name.
+      expect(markup).toContain('<Viewpoint>viewpoint.bcfv</Viewpoint>');
+      expect(markup).toContain('<Snapshot>snapshot.png</Snapshot>');
+      expect(zip.file(`${topic.guid}/viewpoint.bcfv`)).not.toBeNull();
+      expect(zip.file(`${topic.guid}/snapshot.png`)).not.toBeNull();
+
+      // Second and third: GUID SUFFIX, not the old PREFIX form.
+      for (const vp of [vp2, vp3]) {
+        expect(markup).toContain(`<Viewpoint>${vp.guid}_viewpoint.bcfv</Viewpoint>`);
+        expect(markup).toContain(`<Snapshot>${vp.guid}_snapshot.png</Snapshot>`);
+        expect(zip.file(`${topic.guid}/${vp.guid}_viewpoint.bcfv`)).not.toBeNull();
+        expect(zip.file(`${topic.guid}/${vp.guid}_snapshot.png`)).not.toBeNull();
+        expect(markup).not.toContain(`Viewpoint_${vp.guid}`);
+        expect(markup).not.toContain(`Snapshot_${vp.guid}`);
+      }
+
+      // Exactly one plain 'viewpoint.bcfv' -- vp2/vp3 must not also collapse to it.
+      const plainCount = (markup!.match(/<Viewpoint>viewpoint\.bcfv<\/Viewpoint>/g) ?? []).length;
+      expect(plainCount).toBe(1);
+    });
+
+    it('two topics each with one viewpoint both emit viewpoint.bcfv in their own directories, without collision', async () => {
+      const vp1: BCFViewpoint = { guid: generateUuid() };
+      const vp2: BCFViewpoint = { guid: generateUuid() };
+      const topicA = baseTopic({ title: 'Topic A', viewpoints: [vp1] });
+      const topicB = baseTopic({ title: 'Topic B', viewpoints: [vp2] });
+      const project: BCFProject = {
+        version: '2.1',
+        topics: new Map([
+          [topicA.guid, topicA],
+          [topicB.guid, topicB],
+        ]),
+      };
+
+      const blob = await writeBCF(project);
+      const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+      expect(zip.file(`${topicA.guid}/viewpoint.bcfv`)).not.toBeNull();
+      expect(zip.file(`${topicB.guid}/viewpoint.bcfv`)).not.toBeNull();
+
+      const markupA = await zip.file(`${topicA.guid}/markup.bcf`)?.async('string');
+      const markupB = await zip.file(`${topicB.guid}/markup.bcf`)?.async('string');
+      expect(markupA).toContain('<Viewpoint>viewpoint.bcfv</Viewpoint>');
+      expect(markupB).toContain('<Viewpoint>viewpoint.bcfv</Viewpoint>');
+
+      const vpA = await zip.file(`${topicA.guid}/viewpoint.bcfv`)?.async('string');
+      const vpB = await zip.file(`${topicB.guid}/viewpoint.bcfv`)?.async('string');
+      // Each directory's viewpoint.bcfv carries ITS OWN topic's viewpoint GUID
+      // -- confirming no cross-topic overwrite happened despite the shared name.
+      expect(vpA).toContain(`Guid="${vp1.guid}"`);
+      expect(vpB).toContain(`Guid="${vp2.guid}"`);
+    });
+
+    it('round trip: literal expected filenames survive write -> read, not merely resolvable (a self round-trip alone cannot see an interop naming bug)', async () => {
+      const vp1: BCFViewpoint = { guid: generateUuid(), snapshotData: new Uint8Array([1, 2, 3]) };
+      const vp2: BCFViewpoint = { guid: generateUuid(), snapshotData: new Uint8Array([4, 5, 6]) };
+      const topic = baseTopic({ viewpoints: [vp1, vp2] });
+      const project: BCFProject = { version: '2.1', topics: new Map([[topic.guid, topic]]) };
+
+      const blob = await writeBCF(project);
+      const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+      // Assert the LITERAL archive filenames first -- this is what a
+      // convention-based external reader actually looks at, and what a pure
+      // round trip through our own reader cannot distinguish from any other
+      // consistent-with-itself naming scheme.
+      expect(zip.file(`${topic.guid}/viewpoint.bcfv`)).not.toBeNull();
+      expect(zip.file(`${topic.guid}/snapshot.png`)).not.toBeNull();
+      expect(zip.file(`${topic.guid}/${vp2.guid}_viewpoint.bcfv`)).not.toBeNull();
+      expect(zip.file(`${topic.guid}/${vp2.guid}_snapshot.png`)).not.toBeNull();
+
+      // THEN confirm our own reader still resolves both viewpoints correctly.
+      const readTopic = (await readBCF(await blobToArrayBuffer(blob))).topics.get(topic.guid)!;
+      expect(readTopic.viewpoints).toHaveLength(2);
+      const readVp1 = readTopic.viewpoints.find((v) => v.guid === vp1.guid)!;
+      const readVp2 = readTopic.viewpoints.find((v) => v.guid === vp2.guid)!;
+      expect(readVp1.snapshot).toMatch(/^data:image\/png;base64,/);
+      expect(readVp2.snapshot).toMatch(/^data:image\/png;base64,/);
+    });
   });
 
 });

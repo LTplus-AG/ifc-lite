@@ -6,10 +6,17 @@
 //!
 //! The faceted-brep mesher emits geometry per `IfcFace` with no cross-face
 //! vertex sharing, so coplanar sub-faces of a shell duplicate the vertices on
-//! their shared edge (identical position AND identical normal). Every element
-//! now passes through `build_mesh_data`, which welds those coincident vertices
-//! at the single per-element funnel, so `process_geometry`'s `MeshData` arrives
-//! pre-welded (which is why the per-export welds were removed).
+//! their shared edge (identical position AND identical normal). Every element is
+//! welded before it ships, so `process_geometry`'s `MeshData` arrives pre-welded
+//! (which is why the per-export welds were removed). Since #4103 the weld runs
+//! in the OBJECT frame, from the router's placement appliers, for anything with
+//! a cross-occurrence identity to protect; `build_mesh_data` still welds the
+//! rest. See `ifc_lite_geometry::mesh_weld`'s module doc.
+//!
+//! This fixture is indifferent to that split: its cube sits at the origin with
+//! an identity placement, so the object and world frames coincide and the two
+//! weld sites see the same coordinates. The assertion below is therefore about
+//! the weld itself, not about which site ran it.
 //!
 //! The fixture is an INLINE minimal IFC (a unit cube authored as an
 //! `IfcFacetedBrep` whose TOP face is split into two coplanar triangles), so

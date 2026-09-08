@@ -101,6 +101,14 @@ for (const [name, value, minimum] of [['--fault-inject-ms', FAULT_MS, 0], ['--ti
     process.exit(2);
   }
 }
+// Node clamps any setTimeout delay above this to fire almost immediately
+// instead of throwing, so an oversized --close-timeout-ms would silently
+// invert the user's intent (a healthy close reported as a timeout failure).
+const NODE_MAX_TIMEOUT_MS = 2_147_483_647;
+if (CLOSE_TIMEOUT_MS > NODE_MAX_TIMEOUT_MS) {
+  console.error(`browser-cold-ab: --close-timeout-ms must not exceed ${NODE_MAX_TIMEOUT_MS} (Node's setTimeout maximum delay)`);
+  process.exit(2);
+}
 
 if (!existsSync(DIST_BRANCH)) {
   console.error(`browser-cold-ab: --dist-branch not found: ${DIST_BRANCH} (build it first, e.g. \`pnpm turbo build --filter=@ifc-lite/viewer\`)`);

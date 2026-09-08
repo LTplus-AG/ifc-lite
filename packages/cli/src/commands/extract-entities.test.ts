@@ -141,6 +141,38 @@ describe('forwardClosure', () => {
     // it must NOT drag in the unrelated wall #90
     expect(keep.has(90)).toBe(false);
   });
+
+  // #4148: a Name/Description literal containing `#<digits>` that happens to
+  // match a REAL id in the model must not be read as a reference. Regression
+  // for `forwardClosure` reading `/#(\d+)/g` over raw record text: unlike
+  // `MODEL`'s `#north` above (not digits, never matched even the naive scan),
+  // this fixture names an actual other entity's id inside a string.
+  const LOOKALIKE_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m','2024',(''),(''),'','','');
+FILE_SCHEMA(('IFC2X3'));
+ENDSEC;
+DATA;
+#70= IFCFURNISHINGELEMENT('CHAIR000000000000000X',$,'Chair pairs with #71',$,$,#50,$,'tag');
+#50= IFCLOCALPLACEMENT($,$);
+#71= IFCFURNISHINGELEMENT('CHAIR100000000000000X',$,'Other chair',$,$,#51,$,'tag2');
+#51= IFCLOCALPLACEMENT($,$);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+  it('does not pull in an id that only appears inside a Name/Description string literal', () => {
+    const p = parseStep(LOOKALIKE_MODEL);
+    const keep = new Set<number>();
+    forwardClosure([70], p, keep);
+    expect(keep.has(70)).toBe(true);
+    expect(keep.has(50)).toBe(true);
+    // #71 is only mentioned inside #70's Name TEXT, never referenced as an
+    // attribute — it and its own placement #51 must not be pulled in.
+    expect(keep.has(71)).toBe(false);
+    expect(keep.has(51)).toBe(false);
+  });
 });
 
 describe('buildSubset + serializeSubset', () => {

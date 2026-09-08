@@ -233,8 +233,14 @@ function relationLine(
  * the six-attribute shape this module rewrites, so its boundaries are not
  * established in general. There, over-counting references (drop the record) is
  * the safe error, while under-counting (emit a dangling `#id`) is not.
+ *
+ * Exported for `extract-entities.ts`'s `forwardClosure`, which has the same
+ * hazard scanning a whole record body for its reference closure: nothing here
+ * assumes `arg` is one split ARGUMENT rather than a whole body, since a comma
+ * or `)` outside a string does not affect the in-string/out-of-string state
+ * this walks.
  */
-function refsOutsideStrings(arg: string): number[] {
+export function refsOutsideStrings(arg: string): number[] {
   const ids: number[] = [];
   let inString = false;
   for (let i = 0; i < arg.length; i++) {

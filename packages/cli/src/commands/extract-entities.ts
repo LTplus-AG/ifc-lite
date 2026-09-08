@@ -30,7 +30,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
 import { logger } from '../logger.js';
-import { planSpatialRelations, type StepRecord, type Subset } from './subset-relations.js';
+import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
 
 interface ParsedStep {
   header: string;
@@ -138,9 +138,23 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
   return id;
 }
 
+// Used by `productsUnderPlacement`, `resolveStoreyPlacement`, and the
+// voids/fills fixpoint below — all narrower, TYPE-POSITIONAL reads (last N
+// refs of a known relation shape) rather than forwardClosure's open-ended
+// "every reference this record names" scan. `forwardClosure` does not use
+// this: see its own doc comment.
 const REF_RE = /#(\d+)/g;
 
-/** Forward reference closure: every instance transitively referenced by `seeds`. */
+/**
+ * Forward reference closure: every instance transitively referenced by
+ * `seeds`.
+ *
+ * Uses `refsOutsideStrings`, not a raw `/#(\d+)/g` scan, because a record's
+ * Name/Description is free TEXT and Revit writes `#`-shaped substrings into
+ * it (`'Chair pairs with #71'`). A raw regex reads that as a reference to
+ * entity 71 and pulls it — and its own closure — into the extraction even
+ * though it was never selected. See #4148.
+ */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
@@ -149,10 +163,7 @@ export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into
     into.add(id);
     const rec = parsed.instances.get(id);
     if (!rec) continue;
-    REF_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = REF_RE.exec(rec.body)) !== null) {
-      const ref = parseInt(m[1], 10);
+    for (const ref of refsOutsideStrings(rec.body)) {
       if (!into.has(ref)) stack.push(ref);
     }
   }

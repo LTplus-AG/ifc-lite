@@ -414,6 +414,45 @@ describe('SpatialHierarchyBuilder', () => {
       };
       expect(shape(buildCrossLinkedFixture('A,B'))).toEqual(shape(buildCrossLinkedFixture('B,A')));
     });
+
+    it('breaks a same-precedence tie by first declaration order, not lowest express id (matches apps/server spatial.rs)', () => {
+      // STEP does not require express ids to ascend with declaration
+      // position. Storey A's IfcRelAggregates is declared FIRST but carries
+      // a HIGH express id (#9999); Storey B's is declared SECOND with a LOW
+      // id (#1). apps/server's canonical_parent (spatial.rs) does
+      // `entry(...).or_insert(...)` while iterating relationships in the
+      // Vec order `extract_relationships` scans the file in - i.e. first
+      // occurrence wins, independent of numeric id. A lowest-express-id
+      // tie-break (the bug) would instead pick Storey B here.
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(6, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'stA', 'Storey A', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'stB', 'Storey B', '', '');
+      entities.add(5, 'IFCSPACE', 'sp0', 'Room', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      relationships.addEdge(1, 2, RelationshipType.Aggregates, 100);
+      relationships.addEdge(1, 3, RelationshipType.Aggregates, 101);
+      // Declared first, high express id.
+      relationships.addEdge(2, 5, RelationshipType.Aggregates, 9999);
+      // Declared second, low express id.
+      relationships.addEdge(3, 5, RelationshipType.Aggregates, 1);
+
+      const hierarchy = new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+
+      const storeyA = hierarchy.project.children.find((n) => n.expressId === 2)!;
+      const storeyB = hierarchy.project.children.find((n) => n.expressId === 3)!;
+
+      expect(storeyA.children.map((n) => n.expressId)).toContain(5);
+      expect(storeyB.children.map((n) => n.expressId)).not.toContain(5);
+    });
   });
 
   it('leaves longName undefined on the source-less cache-restore path', () => {

@@ -76,14 +76,16 @@
  * @param {string} body
  * @returns {string}
  */
-function stripNonProse(body) {
-  // Fenced code blocks first: a ``` or ~~~ fence, opened at the start of a
-  // line (optionally indented, as a list-nested fence is), closed by a
-  // matching fence line or end of string. Multiline, so the fence markers
-  // themselves must anchor per-line, not per-string.
-  let out = body.replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm, (m) =>
+// A ``` or ~~~ fence, factored out so `findNearMissRefIssueNumbers` can reuse
+// just this step of `stripNonProse`.
+function stripFencedCode(body) {
+  return body.replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm, (m) =>
     m.replace(/[^\n]/g, ' '),
   );
+}
+
+function stripNonProse(body) {
+  let out = stripFencedCode(body);
   // Inline code spans: `...` on a single line. Markdown inline code never
   // spans a blank line, and stopping at `\n` keeps this from ever eating a
   // later, unrelated line if a stray unmatched backtick appears.
@@ -134,6 +136,39 @@ export function extractRefIssueNumbers(body) {
     }
   }
   return out;
+}
+
+// The permissive shape `REF_KEYWORD_RE` (#4147) stopped matching: a keyword +
+// `#N` ANYWHERE, not just at line start. Cosmetic-only, never the verdict.
+const NEAR_MISS_REF_RE = /(?:refs?|references?|part of|towards?)[:\s]+#(\d+)/gim;
+
+// Numbers named with a keyword in a shape `REF_KEYWORD_RE` rejects (numbers
+// it DID accept are excluded -- their format was fine). Strips only fenced
+// code, not the full `stripNonProse`: a fence is the confirmed exploit shape
+// ("move it out of the fence" would help an attacker), but a backtick-wrapped
+// or blockquoted mid-sentence mention is the honest near-miss this catches.
+export function findNearMissRefIssueNumbers(body) {
+  if (typeof body !== 'string' || body === '') return [];
+  const accepted = new Set(extractRefIssueNumbers(body));
+  const seen = new Set();
+  for (const m of stripFencedCode(body).matchAll(NEAR_MISS_REF_RE)) {
+    const n = Number(m[1]);
+    if (Number.isInteger(n) && n > 0 && !accepted.has(n)) seen.add(n);
+  }
+  return [...seen];
+}
+
+// A REMEDY hint for NO_LINKED_ISSUE: the body names a keyword + issue number
+// in a shape the gate doesn't accept. Cosmetic-only -- called from inside
+// the failure-message branch, never used to decide `ok`/`verdict`.
+export function nearMissRefsNote(nearMissNumbers) {
+  if (nearMissNumbers.length === 0) return [];
+  const nums = nearMissNumbers.map((n) => `#${n}`).join(', ');
+  return [
+    `   This PR's body mentions ${nums} with a reference keyword, but not in a form this gate ` +
+      'accepts. REMEDY: put `Refs #N` at the start of its own line, optionally after a list ' +
+      'marker (`-`, `*`, `+`, `1.`).',
+  ];
 }
 
 /**

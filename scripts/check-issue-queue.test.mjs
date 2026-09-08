@@ -545,6 +545,65 @@ test('PASS: a genuine Refs #N on the very next line still passes the same PR', (
   assert.match(r.output, /PARTIAL_WORK: references #3525/);
 });
 
+// ================================ NO_LINKED_ISSUE: the near-miss hint (#4161)
+//
+// #4147's tightening correctly rejects a mid-sentence/backtick-wrapped `Refs
+// #N` as too weak to prove intent (see the section above). But the confirmed
+// real cost, verified against actual PR bodies (#4151, #4152): that exact
+// phrasing -- a reference wrapped in backticks mid-sentence -- is silent
+// about WHY it failed. These prove the hint is additive-only: it changes what
+// a FAILING PR's message says, never whether the PR passes or fails.
+
+test('FAIL + HINT: a backtick-wrapped mid-sentence Refs #N still fails, but the message names it', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'This slice continues `Refs #3612`, and requesting the `unqueued` label meanwhile.',
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+  assert.match(r.output, /#3612/);
+  assert.match(r.output, /REMEDY: put `Refs #N` at the start of its own line/);
+});
+
+test('FAIL, no hint: Refs #N only inside a fenced code block stays silent about it', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'This PR fixes an unrelated typo in the README\n\n```\nRefs #3525\n```\n',
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /#3525/);
+  assert.doesNotMatch(r.output, /start of its own line/);
+});
+
+test('FAIL, no hint: a body with no reference at all gets the existing message only', () => {
+  const r = run(prPayload({ issues: [], body: 'just a description, no reference' }), ENFORCING);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /start of its own line/);
+});
+
+test('PASS: a valid line-start Refs #N on a ready issue never reaches the hint path', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'Refs #3525',
+      refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /PARTIAL_WORK/);
+  assert.doesNotMatch(r.output, /start of its own line/);
+});
+
 test("PASS: the maintainer's own PR, closing nothing and carrying no label", () => {
   const r = run(prPayload({ author: MAINTAINER, issues: [] }), ENFORCING);
   assert.equal(r.code, 0, r.output);

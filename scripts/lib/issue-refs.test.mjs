@@ -19,6 +19,8 @@ import {
   fetchRefIssuesIfNeeded,
   partialWorkVerdict,
   unqueuedRefsNote,
+  findNearMissRefIssueNumbers,
+  nearMissRefsNote,
 } from './issue-refs.mjs';
 
 // ------------------------------------------------------- extractRefIssueNumbers
@@ -395,4 +397,69 @@ test('unqueuedRefsNote: names the count when referenced issues exist but none pa
   assert.equal(out.length, 1);
   assert.match(out[0], /2 issue\(s\)/);
   assert.match(out[0], /`ready`/);
+});
+
+// --------------------------------------------------- findNearMissRefIssueNumbers
+
+test('findNearMissRefIssueNumbers: catches a backtick-wrapped mid-sentence Refs #N', () => {
+  // The confirmed real shape (#4151, #4152): "...`Refs #3612`, and requesting
+  // the `unqueued` label..." -- an inline code span, not at line start, so
+  // the strict REF_KEYWORD_RE no longer matches it.
+  const body = 'This slice continues `Refs #3612`, and requesting the `unqueued` label meanwhile.';
+  assert.deepEqual(extractRefIssueNumbers(body), []);
+  assert.deepEqual(findNearMissRefIssueNumbers(body), [3612]);
+});
+
+test('findNearMissRefIssueNumbers: catches a mid-sentence Refs #N with no backticks', () => {
+  const body = 'this change refs #9 as prior art but does not close it';
+  assert.deepEqual(findNearMissRefIssueNumbers(body), [9]);
+});
+
+test('findNearMissRefIssueNumbers: catches a blockquoted Refs #N', () => {
+  const body = '> Refs #5 from the original report';
+  assert.deepEqual(findNearMissRefIssueNumbers(body), [5]);
+});
+
+test('findNearMissRefIssueNumbers: does NOT report a match found only inside a fenced code block', () => {
+  // This is the confirmed exploit shape #4147's tightening closed: quoting
+  // someone else's commit message verbatim. Silently dropped -- no hint that
+  // would tell an attacker to "move it out of the fence".
+  const body = '```\nRefs #12\n```';
+  assert.deepEqual(extractRefIssueNumbers(body), []);
+  assert.deepEqual(findNearMissRefIssueNumbers(body), []);
+});
+
+test('findNearMissRefIssueNumbers: a number the strict matcher DID accept is excluded', () => {
+  // Its format was already fine -- re-flagging it as a near-miss would be false.
+  const body = 'Refs #1\nand also mentions refs #1 again mid-sentence';
+  assert.deepEqual(extractRefIssueNumbers(body), [1]);
+  assert.deepEqual(findNearMissRefIssueNumbers(body), []);
+});
+
+test('findNearMissRefIssueNumbers: empty body or no reference at all yields nothing', () => {
+  assert.deepEqual(findNearMissRefIssueNumbers(''), []);
+  assert.deepEqual(findNearMissRefIssueNumbers('no mention of any issue here'), []);
+  assert.deepEqual(findNearMissRefIssueNumbers(undefined), []);
+});
+
+test('findNearMissRefIssueNumbers: dedupes and preserves first-seen order', () => {
+  // Prefixed with prose so neither mention starts a line (which the strict
+  // matcher would then accept, per its own multiline `^`).
+  const body = 'This slice refs #9, and mid-sentence refs #9 again, then refs #3 later.';
+  assert.deepEqual(extractRefIssueNumbers(body), []);
+  assert.deepEqual(findNearMissRefIssueNumbers(body), [9, 3]);
+});
+
+// ------------------------------------------------------------- nearMissRefsNote
+
+test('nearMissRefsNote: empty when there are no near-miss numbers', () => {
+  assert.deepEqual(nearMissRefsNote([]), []);
+});
+
+test('nearMissRefsNote: names the number(s) and the accepted form', () => {
+  const out = nearMissRefsNote([3612]);
+  assert.equal(out.length, 1);
+  assert.match(out[0], /#3612/);
+  assert.match(out[0], /REMEDY/);
+  assert.match(out[0], /start of its own line/);
 });

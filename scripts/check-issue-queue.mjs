@@ -199,7 +199,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { existsOrThrow } from './lib/exists-or-throw.mjs';
-import { buildRefIssues, fetchRefIssuesIfNeeded, partialWorkVerdict, unqueuedRefsNote } from './lib/issue-refs.mjs';
+import { buildRefIssues, fetchRefIssuesIfNeeded, findNearMissRefIssueNumbers, partialWorkVerdict, unqueuedRefsNote, nearMissRefsNote } from './lib/issue-refs.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'issue-queue.config.json');
@@ -640,7 +640,7 @@ export function normalisePullRequest(payload) {
       labels: labelSet(issue?.labels, `Issue #${issue?.number}`),
       labelHistory: timelineOf(issue?.timelineItems, `Issue #${issue?.number}`),
     })),
-    refIssues: buildRefIssues(pr.body, issuesConn.nodes, payload?.refIssues, labelSet, timelineOf), // #4147
+    refIssues: buildRefIssues(pr.body, issuesConn.nodes, payload?.refIssues, labelSet, timelineOf), nearMissRefs: findNearMissRefIssueNumbers(pr.body), // #4147, cosmetic near-miss hint
   };
 }
 
@@ -778,7 +778,7 @@ export function evaluate({ pr, cfg }) {
       '   If you pushed the linking commit after opening this PR, re-run: the link appears when ' +
         'the commit does.',
     );
-    lines.push(...unqueuedRefsNote(pr.refIssues, cfg.readyLabel)); // #4147
+    lines.push(...unqueuedRefsNote(pr.refIssues, cfg.readyLabel), ...nearMissRefsNote(pr.nearMissRefs)); // #4147
     if (escapeProblem) lines.push('', ...escapeProblem);
     // The PRIMARY failure is the verdict; the escape problem is carried in
     // `lines`. Returning escape.reason here made the field disagree with the

@@ -122,6 +122,53 @@ describe('addPolygonAreaMarkupToStore', () => {
     expect(q['Area']).toBeCloseTo(12, 6);
     expect(q['Perimeter']).toBeCloseTo(14, 6);
   });
+
+  it('does not duplicate the closing vertex when the input polygon is already closed', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const contextId = editor.addEntity('IfcGeometricRepresentationSubContext', [
+      'Annotation', 'Model', '*', '*', '*', '*', `#${ROOT_CONTEXT_ID}`, null, '.PLAN_VIEW.', null,
+    ]).expressId;
+
+    // Already closed: last point repeats the first, bit-identical.
+    const result = addPolygonAreaMarkupToStore(editor, ANCHOR, contextId, {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }, { x: 0, y: 0 }],
+      area: 12,
+      perimeter: 14,
+    });
+
+    const entities = byId(view);
+    const polyline = entities.get(result.polylineId);
+    const pointRefs = polyline?.attributes[0] as string[];
+    // 5 input vertices, no extra closing vertex appended.
+    expect(pointRefs).toHaveLength(5);
+    const first = entities.get(Number(pointRefs[0].slice(1)))?.attributes[0];
+    const last = entities.get(Number(pointRefs[4].slice(1)))?.attributes[0];
+    expect(first).toEqual(last);
+  });
+
+  // POINT_EPSILON in drawing-markup-geometry.ts is 1e-6: a last point within
+  // that of the first counts as "already closed" and is not duplicated.
+  it('treats a last point within POINT_EPSILON of the first as already closed', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const contextId = editor.addEntity('IfcGeometricRepresentationSubContext', [
+      'Annotation', 'Model', '*', '*', '*', '*', `#${ROOT_CONTEXT_ID}`, null, '.PLAN_VIEW.', null,
+    ]).expressId;
+
+    const result = addPolygonAreaMarkupToStore(editor, ANCHOR, contextId, {
+      points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }, { x: 1e-7, y: -1e-7 }],
+      area: 12,
+      perimeter: 14,
+    });
+
+    const entities = byId(view);
+    const polyline = entities.get(result.polylineId);
+    const pointRefs = polyline?.attributes[0] as string[];
+    // Still 5 vertices: the near-duplicate last point is accepted as the
+    // close and nothing further is appended.
+    expect(pointRefs).toHaveLength(5);
+  });
 });
 
 describe('addTextMarkupToStore', () => {
@@ -174,6 +221,33 @@ describe('addCloudMarkupToStore', () => {
     expect(corners[4]).toEqual([0, 0]); // closed back to topLeft
 
     expect(namedP(view, result.annotationId)['Label']).toBe('Revise wall type');
+  });
+
+  // The cloud rectangle's 4 corners are [topLeft, (br.x,tl.y), bottomRight,
+  // (tl.x,br.y)]; corner[0] and corner[3] are only bit-identical when
+  // bottomRight.y === topLeft.y (a zero-height rectangle) — that's the only
+  // shape of cloud input that exercises emitMarkupPolyline's shared
+  // already-closed guard (same guard addPolygonAreaMarkupToStore uses).
+  it('does not duplicate the closing vertex for a degenerate zero-height cloud rectangle', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    const contextId = editor.addEntity('IfcGeometricRepresentationSubContext', [
+      'Annotation', 'Model', '*', '*', '*', '*', `#${ROOT_CONTEXT_ID}`, null, '.PLAN_VIEW.', null,
+    ]).expressId;
+
+    const result = addCloudMarkupToStore(editor, ANCHOR, contextId, {
+      points: [{ x: 0, y: 0 }, { x: 2, y: 0 }],
+      label: 'Zero-height cloud',
+    });
+
+    const entities = byId(view);
+    const polyline = entities.get(result.polylineId);
+    const pointRefs = polyline?.attributes[0] as string[];
+    // 4 rectangle corners, no extra closing vertex appended.
+    expect(pointRefs).toHaveLength(4);
+    const first = entities.get(Number(pointRefs[0].slice(1)))?.attributes[0];
+    const last = entities.get(Number(pointRefs[3].slice(1)))?.attributes[0];
+    expect(first).toEqual(last);
   });
 });
 

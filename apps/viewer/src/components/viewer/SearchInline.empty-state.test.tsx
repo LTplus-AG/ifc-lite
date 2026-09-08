@@ -75,14 +75,16 @@ describe('SearchInline — the empty popover names selector syntax', () => {
     assert.doesNotMatch(text, /selector syntax/i);
   });
 
-  it('an unmatched GlobalId is a search term the box already understands', () => {
-    // A GlobalId parses as a selector term and the adapter has no rule for it
-    // (#4094), so the Filter tab would refuse it too. This box is where
-    // GlobalIds ARE searched, which makes "go elsewhere" the wrong advice.
+  it('a GlobalId unmatched here now points at the Filter tab, which CAN run it (#4094)', () => {
+    // A bare GlobalId now becomes a `globalId` filter rule (#4094), so unlike
+    // an unknown class name the Filter tab would actually find a differently
+    // -cased or otherwise-unmatched GlobalId if one existed in the model.
+    // Sending the user there is the right advice now, where it used to be
+    // the same dead end #4091 reported for every other selector construct.
     const container = mountWithQuery('325Q7Fhnf67OZC$$r43uzK');
     const text = container.textContent ?? '';
-    assert.match(text, /No results/);
-    assert.doesNotMatch(text, /selector syntax/i);
+    assert.match(text, /selector syntax/i);
+    assert.match(text, /Filter tab/i);
   });
 
   it('a bare class name is a selector too, and is named as one', () => {

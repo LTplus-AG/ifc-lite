@@ -464,6 +464,34 @@ test('#4016: separate Rust sibling modules are tests; inline production stays pr
   }
 });
 
+// #4142: `packages/ids/src/__corpus__/` alone holds 334 of the repo's 367
+// tracked `.ifc` files, so a branch touching only IDS corpus fixtures was
+// classified as PRODUCTION with no accompanying test and false-aborted. The
+// repo-wide sweep done for #4142 found `__test__` (singular), bare `corpus`
+// (fuzz seed inputs) and `test-data` (hyphenated) in the same shape.
+test('classifyPath: #4142 sibling fixture directories are test, not production', () => {
+  assert.equal(classifyPath('packages/ids/src/__corpus__/IFC4/wall.ifc'), 'test');
+  assert.equal(classifyPath('apps/viewer/src/lib/__test__/stubs.ts'), 'test');
+  assert.equal(
+    classifyPath('rust/core/fuzz/corpus/parse_entity/seed_wall'),
+    'test',
+  );
+  assert.equal(classifyPath('packages/bcf/test-data/OrthogonalCamera.bcf'), 'test');
+});
+
+// The sweep also found directories that LOOK like the same shape but hold
+// real production code or shipped assets, not raw fixture data. Adding any
+// of these would be a regression in the other direction: a genuine
+// production change would stop requiring a test.
+test('classifyPath: #4142 sweep -- look-alike directories that stay production', () => {
+  assert.equal(classifyPath('packages/collab/src/snapshot/from-step.ts'), 'production');
+  assert.equal(classifyPath('packages/source-fixture/src/index.ts'), 'production');
+  assert.equal(classifyPath('packages/world-frame-fixtures/src/index.ts'), 'production');
+  assert.equal(classifyPath('scripts/fixtures/build-manifest.mjs'), 'production');
+  assert.equal(classifyPath('apps/viewer/public/samples/hello-wall.ifc'), 'production');
+  assert.equal(classifyPath('apps/landing/samples/hello-wall.ifc'), 'production');
+});
+
 test('classifyPath: a `test-utils.ts` is production, not a test', () => {
   // Distinct subject from the `test/` SEGMENT case below: a hyphenated
   // filename must not be swallowed by the directory rule.

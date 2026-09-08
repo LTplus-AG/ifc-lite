@@ -23,6 +23,7 @@ import {
   type PropertyRule,
   type QuantityRule,
   type ClassificationRule,
+  type AttributeRule,
   type StoreyRule,
   type TextKind,
 } from './filter-rules.js';
@@ -123,6 +124,31 @@ export function matchPropertyRule(rule: PropertyRule, rows: PsetRows): boolean {
       nameMatches(rule.propertyName, r.propertyName, rule.propertyNameKind) &&
       valueOpMatches(rule.op, r.value, rule.value, rule.valueKind),
   );
+}
+
+/** One entity's generic named attributes, as `extractAllEntityAttributes`
+ *  returns them — schema-driven, string/number/boolean values only. */
+export type AttrRows = ReadonlyArray<{ name: string; value: string | number | boolean }>;
+
+/**
+ * Match an `attribute` rule (Description, ObjectType, Tag, LongName, any
+ * other schema-named attribute) against one entity's extracted attributes.
+ * Attribute NAME matching is case-insensitive, same as the IDS attribute
+ * facet this reuses the extraction from; the VALUE comparison reuses
+ * `valueOpMatches`, the same comparator `matchPropertyRule` uses, so a
+ * numeric attribute value compares the same way a numeric property does.
+ */
+export function matchAttributeRule(rule: AttributeRule, attrs: AttrRows): boolean {
+  const wanted = rule.name.toLowerCase();
+  const found = attrs.find((a) => a.name.toLowerCase() === wanted);
+  const stringified = found === undefined ? undefined : stringifyValue(found.value);
+
+  if (rule.op === 'isSet' || rule.op === 'isNotSet') {
+    const present = (stringified ?? '').length > 0;
+    return rule.op === 'isSet' ? present : !present;
+  }
+  if (stringified === undefined) return false;
+  return valueOpMatches(rule.op, stringified, rule.value, rule.valueKind);
 }
 
 export function matchQuantityRule(rule: QuantityRule, rows: QtyRows): boolean {

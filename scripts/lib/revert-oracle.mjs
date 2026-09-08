@@ -57,8 +57,8 @@ const DEPLOY_CONFIG_RE = /(^|\/)(vercel\.json|\.vercelignore|vercel-[a-z0-9-]*\.
 
 /** A file that IS a test: JS/TS `*.test.*`/`*.spec.*`, or Python's `test_*.py` / `*_test.py` (#4050). */
 const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)|test_[^/]*\.py|[^/]*_test\.py)$/;
-/** Directories whose entire contents are test scaffolding, not production. */
-const TEST_DIR_RE = /(^|\/)(__tests__|__snapshots__|__fixtures__|test-fixtures|testdata)(\/|$)/;
+/** Directories whose entire contents are test scaffolding, not production. `__corpus__`/`corpus`/`__test__`/`test-data` added for #4142 -- see `revert-oracle.test.mjs` for the trade-off and sibling sweep. */
+const TEST_DIR_RE = /(^|\/)(__corpus__|__fixtures__|__snapshots__|__test__|__tests__|corpus|test-data|test-fixtures|testdata)(\/|$)/;
 /** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
 const TEST_SEGMENT_RE = /(^|\/)tests?(\/)/;
 

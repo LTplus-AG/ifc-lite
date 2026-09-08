@@ -128,7 +128,8 @@ mod census_golden;
 mod census_rtc;
 
 use census_golden::{is_closed_solid, totals, Delta, HostRow, PreVoid};
-use ifc_lite_core::{build_entity_index, EntityDecoder, EntityScanner};
+use census_rtc::ModelFrame;
+use ifc_lite_core::{EntityDecoder, EntityScanner};
 use ifc_lite_geometry::kernel::mesh_volume::mesh_volume;
 use ifc_lite_geometry::take_plane_weld_stats;
 use ifc_lite_geometry::{propagate_voids_to_parts, Mesh};
@@ -244,19 +245,17 @@ fn void_index(content: &str) -> FxHashMap<u32, Vec<u32>> {
 }
 
 /// Same element with NO voids applied: isolates solid construction from CSG.
-fn process_no_voids(content: &str, host_id: u32) -> Option<Mesh> {
-    let ei = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, ei);
+fn process_no_voids(frame: &ModelFrame, host_id: u32) -> Option<Mesh> {
+    let mut decoder = frame.decoder();
     let entity = decoder.decode_by_id(host_id).ok()?;
-    let router = census_rtc::router(content, &mut decoder);
+    let router = frame.router(&mut decoder);
     router.process_element(&entity, &mut decoder).ok()
 }
 
-fn process(content: &str, host_id: u32, voids: &FxHashMap<u32, Vec<u32>>) -> Option<Mesh> {
-    let ei = build_entity_index(content);
-    let mut decoder = EntityDecoder::with_index(content, ei);
+fn process(frame: &ModelFrame, host_id: u32, voids: &FxHashMap<u32, Vec<u32>>) -> Option<Mesh> {
+    let mut decoder = frame.decoder();
     let entity = decoder.decode_by_id(host_id).ok()?;
-    let router = census_rtc::router(content, &mut decoder);
+    let router = frame.router(&mut decoder);
     router.process_element_with_voids(&entity, &mut decoder, voids).ok()
 }
 
@@ -818,14 +817,20 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
             continue; // nothing to index the lines for
         }
         let lines = line_index(&content);
+        // #4127: the entity index and the RTC offset, ONCE per model rather
+        // than once per host. Both are pure functions of `content` (see
+        // `census_rtc`), and re-deriving them inside the loop is what put the
+        // heavy lane past its CI budget. The router and the decoder are still
+        // built per host.
+        let frame = ModelFrame::new(&content);
 
         for id in hosts {
             set_alt(false);
-            let Some(base) = process(&content, id, &voids) else {
+            let Some(base) = process(&frame, id, &voids) else {
                 continue;
             };
             set_alt(true);
-            let alt = process(&content, id, &voids);
+            let alt = process(&frame, id, &voids);
             set_alt(false);
 
             let stats = edge_stats(&base);
@@ -840,7 +845,7 @@ fn sweep(models: &[(String, PathBuf)]) -> (Vec<HostRow>, BTreeSet<String>) {
             let pre = if open == 0 {
                 PreVoid::NotTaken
             } else {
-                match process_no_voids(&content, id).map(|m| open_boundary_edges(&m)) {
+                match process_no_voids(&frame, id).map(|m| open_boundary_edges(&m)) {
                     Some(v) => PreVoid::Open(v),
                     None => PreVoid::Failed,
                 }
@@ -1638,8 +1643,9 @@ fn an_over_cut_on_a_watertight_host_requires_a_bless() {
     for (scale, tris_grow) in [(1.4, false), (1.6, true)] {
         let ifc = over_cut_fixture(scale);
         let voids = void_index(&ifc);
-        let authored = process(&ifc, 50, &voids).expect("authored wall meshes");
-        let over_cut = process(&ifc, 150, &voids).expect("over-cut wall meshes");
+        let frame = ModelFrame::new(&ifc);
+        let authored = process(&frame, 50, &voids).expect("authored wall meshes");
+        let over_cut = process(&frame, 150, &voids).expect("over-cut wall meshes");
 
         let (a, b) = (edge_stats(&authored), edge_stats(&over_cut));
         // The rows exactly as the sweep records a host, through the same
@@ -1739,7 +1745,7 @@ fn one_vertex_rounding_the_other_way_moves_the_reading_by_more_than_the_toleranc
     const STEP: f32 = 1.0 / 65536.0;
     let ifc = over_cut_fixture(1.4);
     let voids = void_index(&ifc);
-    let mesh = process(&ifc, 50, &voids).expect("authored wall meshes");
+    let mesh = process(&ModelFrame::new(&ifc), 50, &voids).expect("authored wall meshes");
     let base = volume_cm3(&mesh);
 
     let mut worst = 0i64;
@@ -2176,7 +2182,8 @@ fn census_rebases_real_covering_before_f32_geometry_3925() {
         return;
     }
     let content = std::fs::read_to_string(path).expect("read rvt01 fixture");
-    let mesh = process(&content, 11232, &void_index(&content)).expect("mesh covering");
+    let frame = ModelFrame::new(&content);
+    let mesh = process(&frame, 11232, &void_index(&content)).expect("mesh covering");
     assert_eq!(edge_stats(&mesh).strict, 0, "covering must remain closed without doubled edges");
     assert!((39_200..=39_500).contains(&volume_cm3(&mesh)),
         "covering volume must agree with the independent solid: {} cm³", volume_cm3(&mesh));
@@ -2196,7 +2203,8 @@ fn repaired_office_covering_matches_independent_solid_3925() {
         return;
     }
     let content = std::fs::read_to_string(path).expect("read office fixture");
-    let mesh = process(&content, 91291, &void_index(&content)).expect("mesh office covering");
+    let frame = ModelFrame::new(&content);
+    let mesh = process(&frame, 91291, &void_index(&content)).expect("mesh office covering");
     assert_eq!(edge_stats(&mesh).strict, 0);
     assert!((75_500..=75_900).contains(&volume_cm3(&mesh)),
         "office covering volume must agree with the independent solid: {} cm³", volume_cm3(&mesh));

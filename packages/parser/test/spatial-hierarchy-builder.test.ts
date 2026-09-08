@@ -337,6 +337,85 @@ describe('SpatialHierarchyBuilder', () => {
     expect(deck.longName).toBe('Bridge Deck');
   });
 
+  describe('cross-linked space (aggregated under one storey, contained under another) (#4095)', () => {
+    // Malformed-but-real authoring pattern: StoreyA aggregates the space via
+    // IfcRelAggregates, StoreyB merely contains it via
+    // IfcRelContainedInSpatialStructure. The Rust server (apps/server, #3973)
+    // resolves this with a canonical-parent pass: aggregation always wins,
+    // computed from ALL IfcRelAggregates edges before any containment is
+    // considered, so the result is independent of traversal/file order. This
+    // builder must agree - both on which storey wins AND that the losing
+    // storey retains no phantom reference to the node.
+    //
+    // #6 (IfcFurniture, contained IN the space) makes a real node
+    // distinguishable from an empty stub: only the storey that gets the real
+    // node has [6] flow through to its elements list via the space's subtree
+    // (checked indirectly via elementToStorey/elementToContainer would need a
+    // deeper walk - here we assert directly on children_ids-equivalent
+    // (`storey.children`) and the space's own `elements`).
+    function buildCrossLinkedFixture(order: 'A,B' | 'B,A') {
+      const strings = new StringTable();
+      const entities = new EntityTableBuilder(6, strings);
+      entities.add(1, 'IFCPROJECT', 'p0', 'Project', '', '');
+      entities.add(2, 'IFCBUILDINGSTOREY', 'stA', 'Storey A', '', '');
+      entities.add(3, 'IFCBUILDINGSTOREY', 'stB', 'Storey B', '', '');
+      entities.add(5, 'IFCSPACE', 'sp0', 'Room', '', '', true);
+      entities.add(6, 'IFCFURNITURE', 'fu0', 'Chair', '', '', true);
+
+      const relationships = new RelationshipGraphBuilder();
+      if (order === 'A,B') {
+        relationships.addEdge(1, 2, RelationshipType.Aggregates, 10);
+        relationships.addEdge(1, 3, RelationshipType.Aggregates, 11);
+      } else {
+        relationships.addEdge(1, 3, RelationshipType.Aggregates, 11);
+        relationships.addEdge(1, 2, RelationshipType.Aggregates, 10);
+      }
+      // StoreyA aggregates the space (canonical parent, per the Rust rule).
+      relationships.addEdge(2, 5, RelationshipType.Aggregates, 20);
+      // StoreyB merely contains the same space (loses the tie).
+      relationships.addEdge(3, 5, RelationshipType.ContainsElements, 21);
+      relationships.addEdge(5, 6, RelationshipType.ContainsElements, 22);
+
+      return new SpatialHierarchyBuilder().build(
+        entities.build(),
+        relationships.build(),
+        strings,
+        new Uint8Array(),
+        { byId: { get: () => undefined } },
+      );
+    }
+
+    it.each([['A,B'], ['B,A']] as const)('resolves storey A as the canonical parent regardless of order (%s)', (order) => {
+      const hierarchy = buildCrossLinkedFixture(order);
+      const storeyA = hierarchy.project.children.find((n) => n.expressId === 2)!;
+      const storeyB = hierarchy.project.children.find((n) => n.expressId === 3)!;
+
+      // Defect 1: the aggregating storey must win regardless of DFS order.
+      const spaceInA = storeyA.children.find((n) => n.expressId === 5);
+      expect(spaceInA).toBeDefined();
+      expect(spaceInA!.elements).toEqual([6]); // real node, not an empty stub
+
+      // Defect 2: the merely-containing storey must NOT retain a phantom
+      // reference to the id at all - asserting only the winner (defect 1)
+      // would miss this; that is how it survived.
+      expect(storeyB.children.map((n) => n.expressId)).not.toContain(5);
+      expect(storeyB.children).toEqual([]);
+    });
+
+    it('produces an identical hierarchy shape for both orderings (order independence)', () => {
+      const shape = (h: ReturnType<typeof buildCrossLinkedFixture>) => {
+        const storeyA = h.project.children.find((n) => n.expressId === 2)!;
+        const storeyB = h.project.children.find((n) => n.expressId === 3)!;
+        return {
+          storeyAChildren: storeyA.children.map((n) => n.expressId),
+          storeyBChildren: storeyB.children.map((n) => n.expressId),
+          spaceElements: storeyA.children.find((n) => n.expressId === 5)?.elements ?? [],
+        };
+      };
+      expect(shape(buildCrossLinkedFixture('A,B'))).toEqual(shape(buildCrossLinkedFixture('B,A')));
+    });
+  });
+
   it('leaves longName undefined on the source-less cache-restore path', () => {
     const strings = new StringTable();
     const entities = new EntityTableBuilder(2, strings);

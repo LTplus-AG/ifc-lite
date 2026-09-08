@@ -6,17 +6,15 @@
  * Steering gate: a PR from outside the maintainer must be work the maintainer
  * ASKED FOR, or must say out loud that it is not.
  *
- * THE MEASURED PROBLEM, because this gate is a policy and a policy without
- * evidence is a preference. This repository takes roughly half its commits from
- * one AI-driven external contributor. Of his 743 commits, 608 -- 82% -- carry
- * NO linked issue. That is not carelessness: the backlog is empty (19 open, 698
- * all-time), so an agent told to be useful has nothing to be useful ABOUT, and
- * manufactures its own work queue by sweeping the tree for defects. The
- * correlation runs the other way too, and it is the important half: when a
- * filed issue directed him he built FEATURES; undirected, he swept, endlessly,
- * at 27.7 PRs/day. The bottleneck is not throughput and never was. It is that
- * setting direction currently costs one review per PR, and there is no channel
- * that costs less.
+ * THE MEASURED PROBLEM, because this gate is a policy and a policy without evidence is a
+ * preference. This repository takes roughly half its commits from one AI-driven external
+ * contributor. Of his 743 commits, 608 -- 82% -- carry NO linked issue. That is not
+ * carelessness: the backlog is empty (19 open, 698 all-time), so an agent told to be useful
+ * has nothing to be useful ABOUT, and manufactures its own work queue by sweeping the tree
+ * for defects. The correlation runs the other way too, and it is the important half: when
+ * a filed issue directed him he built FEATURES; undirected, he swept, endlessly, at 27.7
+ * PRs/day. The bottleneck is not throughput and never was. It is that setting direction
+ * currently costs one review per PR, and there is no channel that costs less.
  *
  * So this gate makes the cheap channel the only one: a label on an issue.
  *
@@ -29,12 +27,6 @@
  * BODY, AND THIS REPO HAS ALREADY PAID FOR THAT LESSON.
  *
  *   #2978: the PR body said `Closes ... #2934` on line 1 and, on line 37, "this
- *   NO_LABELS / NO_TIMELINE / NO_CLOSING_ISSUES  A read came back without the
- *                    field it must have. All three are REACHABLE and all three
- *                    are gate bugs rather than contributor errors, so they carry
- *                    the same remedy as the truncation reasons: file it against
- *                    this gate and re-run the job. Named here because a refusal
- *                    with no next action teaches people to ignore refusals.
  *   PR does not close #2934 on its own". Merging would have closed an issue
  *   that stays open. Changing line 1 to `Addresses` was NOT enough --
  *   `closingIssuesReferences` still returned 2934, because GitHub's keyword
@@ -42,27 +34,24 @@
  *   has no notion of negation. Only rewording the disclaimer to "#2934 stays
  *   open after this PR" cleared the link.
  *
- *   The direction of that failure is what matters here. A body regex and the
- *   real link DISAGREE, in both directions: the body can name an issue that is
- *   not linked (a disclaimer, a "see also", a changelog quote), and the link
- *   can name an issue the body does not (a closing keyword in a BRANCH COMMIT
- *   MESSAGE, or a maintainer's manual sidebar link, neither of which appears in
- *   the body at all). A gate built on a body regex would therefore both pass
- *   work nobody queued and fail work the maintainer linked by hand.
- *   `closingIssuesReferences` is the field GitHub itself acts on at merge time,
- *   so it is the only field whose answer is the same answer.
+ *   The direction of that failure is what matters here. A body regex and the real link
+ *   DISAGREE, in both directions: the body can name an issue that is not linked (a disclaimer,
+ *   a "see also", a changelog quote), and the link can name an issue the body does not
+ *   (a closing keyword in a BRANCH COMMIT MESSAGE, or a maintainer's manual sidebar link,
+ *   neither of which appears in the body at all). A gate built on a body regex would therefore
+ *   both pass work nobody queued and fail work the maintainer linked by hand.
+ *   `closingIssuesReferences` is the field GitHub itself acts on at merge time, so it is the
+ *   only field whose answer is the same answer.
  *
- *   `userLinkedOnly: true` -- which would restrict the read to manual sidebar
- *   links -- is deliberately NOT set. A manual link is if anything the STRONGER
- *   steering signal, since only someone with write access can make one, and
- *   excluding body- and commit-derived links would fail the ordinary "Closes
- *   #N" PR this gate is trying to encourage.
+ *   `userLinkedOnly: true` -- which would restrict the read to manual sidebar links -- is
+ *   deliberately NOT set. A manual link is if anything the STRONGER steering signal, since
+ *   only someone with write access can make one, and excluding body- and commit-derived
+ *   links would fail the ordinary "Closes #N" PR this gate is trying to encourage.
  *
- *   AND `gh pr list --search "<n>"` IS NOT AN ALTERNATIVE. AGENTS.md says so
- *   under "Claiming work", in the same words: it "is a TEXT search: it matches
- *   comment bodies, so it both misses linked PRs that never mention the number
- *   and returns unrelated ones that happen to contain it." Nothing below uses
- *   it.
+ *   AND `gh pr list --search "<n>"` IS NOT AN ALTERNATIVE. AGENTS.md says so under "Claiming
+ *   work", in the same words: it "is a TEXT search: it matches comment bodies, so it
+ *   both misses linked PRs that never mention the number and returns unrelated ones
+ *   that happen to contain it." Nothing below uses it.
  *
  * ---------------------------------------------------------------------------
  * PART 2 -- WHO APPLIED THE LABEL IS CHECKED, BECAUSE IT IS CHECKABLE.
@@ -94,12 +83,11 @@
  *   dependabot and the changeset release PR close no issue and never will, and
  *   a gate that reddens every dependency bump is a gate that gets turned off.
  *
- *   THE LOGIN IS NOT ONE STRING, AND THIS BIT ALREADY. On PR #3333, `gh pr
- *   list --json author` says `app/dependabot`, GraphQL's `author { login }`
- *   says `dependabot`, and REST says `dependabot[bot]`. Three spellings, one
- *   actor. `normaliseLogin` folds case, strips a leading `app/` and a trailing
- *   `[bot]`, and the config lists all three anyway so that the file can be
- *   audited by reading it rather than by trusting this paragraph.
+ *   THE LOGIN IS NOT ONE STRING, AND THIS BIT ALREADY. On PR #3333, `gh pr list --json
+ *   author` says `app/dependabot`, GraphQL's `author { login }` says `dependabot`, and
+ *   REST says `dependabot[bot]`. Three spellings, one actor. `normaliseLogin` folds case,
+ *   strips a leading `app/` and a trailing `[bot]`, and the config lists all three anyway
+ *   so that the file can be audited by reading it rather than by trusting this paragraph.
  *
  * ---------------------------------------------------------------------------
  * THE TEETH, by failure class, each with its own remedy. Every one of these
@@ -132,6 +120,12 @@
  *       be filed. It is a failure and not a pass because a partial read that
  *       reports success is the defect class this repo keeps rediscovering.
  *
+ *   NO_LABELS / NO_TIMELINE / NO_CLOSING_ISSUES -- a read came back without the field
+ *       it must have. All three are REACHABLE and all three are gate bugs rather than
+ *       contributor errors, so they carry the same remedy as the truncation reasons
+ *       above: file it against this gate and re-run the job. Named here because a
+ *       refusal with no next action teaches people to ignore refusals.
+ *
  *   GH_UNAVAILABLE / GH_ERROR / GH_BAD_JSON / GRAPHQL_ERRORS / NO_PULL_REQUEST
  *   / NO_AUTHOR / BAD_CONFIG / NO_CONFIG / BAD_ARGS / NO_REPO -- something
  *       between here and GitHub did not answer.
@@ -142,41 +136,37 @@
  * STATED HOLES. Not caveats -- the things this gate is known not to do, written
  * down so nobody has to discover them by trusting it.
  *
- *   1. IT CANNOT TELL AN URGENT DRIVE-BY FIX FROM UNWANTED WORK. Main is red, a
- *      release is half-published, a crash lands in production: none of that is
- *      visible in `closingIssuesReferences`, and this gate will fail all three
- *      exactly as hard as it fails a cosmetic sweep. THAT IS WHAT `escapeLabel`
- *      IS FOR, and the escape hatch is not an admission of weakness -- a gate
- *      with no escape gets disabled the first time it is wrong, and a disabled
- *      gate steers nothing. The cost is that the escape is a human decision
- *      taken per PR, which is the very cost this gate exists to reduce. It is
- *      a smaller cost than reviewing 27.7 PRs a day, not zero.
+ *   1. IT CANNOT TELL AN URGENT DRIVE-BY FIX FROM UNWANTED WORK. Main is red, a release is
+ *      half-published, a crash lands in production: none of that is visible in
+ *      `closingIssuesReferences`, and this gate will fail all three exactly as hard as it fails
+ *      a cosmetic sweep. THAT IS WHAT `escapeLabel` IS FOR, and the escape hatch is not an
+ *      admission of weakness -- a gate with no escape gets disabled the first time it is wrong,
+ *      and a disabled gate steers nothing. The cost is that the escape is a human decision taken
+ *      per PR, which is the very cost this gate exists to reduce. It is a smaller cost than
+ *      reviewing 27.7 PRs a day, not zero.
  *
- *   2. THE ESCAPE LABEL IS ONLY AS STRONG AS `requireLabelAuthority`. With it
- *      ON (the shipped default) a contributor cannot self-escape: the actor is
- *      read from the timeline and a non-authority is SELF_APPLIED_LABEL. With
- *      it OFF the gate is advisory, because anyone with write access can apply
- *      the label to their own PR. The knob is in the config so that turning it
- *      off is a reviewable act rather than a discovery.
+ *   2. THE ESCAPE LABEL IS ONLY AS STRONG AS `requireLabelAuthority`. With it ON (the shipped
+ *      default) a contributor cannot self-escape: the actor is read from the timeline and a
+ *      non-authority is SELF_APPLIED_LABEL. With it OFF the gate is advisory, because anyone with
+ *      write access can apply the label to their own PR. The knob is in the config so that turning
+ *      it off is a reviewable act rather than a discovery.
  *
- *      AND IT IS STILL DEFEATABLE BY A COLLABORATOR, one level up: someone who
- *      can apply labels can also add themselves to `labelAuthorities`, in this
- *      file, in a PR. What stops that is not this gate -- it is that the edit
- *      is a visible line in a diff, and that `.github/workflows/issue-queue.yml`
- *      has no `paths:` filter, so the PR making the edit is a PR this gate runs
- *      on. A gate cannot outrank the people who can edit it. It can refuse to
- *      let them do it quietly.
+ *      AND IT IS STILL DEFEATABLE BY A COLLABORATOR, one level up: someone who can apply labels
+ *      can also add themselves to `labelAuthorities`, in this file, in a PR. What stops that
+ *      is not this gate -- it is that the edit is a visible line in a diff, and that
+ *      `.github/workflows/issue-queue.yml` has no `paths:` filter, so the PR making the edit
+ *      is a PR this gate runs on. A gate cannot outrank the people who can edit it. It can
+ *      refuse to let them do it quietly.
  *
  *   3. IT SAYS NOTHING ABOUT WHETHER THE WORK IS ANY GOOD. A `ready` issue
  *      closed by a bad patch passes. This is a routing check, not a review.
  *
  *   4. IT CANNOT SEE THE COMMIT-MESSAGE HALF OF THE LINK UNTIL IT EXISTS.
- *      `closingIssuesReferences` is computed by GitHub from the body AND the
- *      branch's commit messages, so it is correct the moment either exists --
- *      but on a PR opened before the linking commit is pushed, the answer is
- *      legitimately empty and the gate legitimately fails. Re-running after the
- *      push is the remedy, and `synchronize` in the workflow's trigger list
- *      means the re-run is automatic.
+ *      `closingIssuesReferences` is computed by GitHub from the body AND the branch's commit
+ *      messages, so it is correct the moment either exists -- but on a PR opened before the
+ *      linking commit is pushed, the answer is legitimately empty and the gate legitimately fails.
+ *      Re-running after the push is the remedy, and `synchronize` in the workflow's trigger
+ *      list means the re-run is automatic.
  *
  *   5. AN ISSUE CAN BE LABELLED `ready` AND THEN UNLABELLED. The gate reads the
  *      CURRENT label set, so an issue whose label was removed stops passing,
@@ -191,12 +181,11 @@
  *      not a wider guess.
  *
  * ---------------------------------------------------------------------------
- * WIRED BY `.github/workflows/issue-queue.yml`, which carries no `paths:`
- * filter for the reason that workflow's own header sets out at length, copied
- * from `.github/workflows/pr-review-signal.yml`: a gate whose input can be
- * filtered out of its own trigger is the defect it is trying to catch. Its
- * regression harness is `scripts/check-issue-queue.test.mjs`, run in the same
- * job, before the gate.
+ * WIRED BY `.github/workflows/issue-queue.yml`, which carries no `paths:` filter for
+ * the reason that workflow's own header sets out at length, copied from
+ * `.github/workflows/pr-review-signal.yml`: a gate whose input can be filtered out
+ * of its own trigger is the defect it is trying to catch. Its regression harness is
+ * `scripts/check-issue-queue.test.mjs`, run in the same job, before the gate.
  *
  * Usage:
  *   node scripts/check-issue-queue.mjs --pr 3540 --repo LTplus-AG/ifc-lite
@@ -210,6 +199,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 import { existsOrThrow } from './lib/exists-or-throw.mjs';
+import { buildRefIssues, fetchRefIssuesIfNeeded, partialWorkVerdict, unqueuedRefsNote } from './lib/issue-refs.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'issue-queue.config.json');
@@ -410,6 +400,7 @@ query($owner:String!, $name:String!, $number:Int!) {
     pullRequest(number:$number) {
       number
       title
+      body
       author { login }
       labels(first:100) { pageInfo { hasNextPage } nodes { name } }
       timelineItems(last:100, itemTypes:[LABELED_EVENT]) {
@@ -649,6 +640,7 @@ export function normalisePullRequest(payload) {
       labels: labelSet(issue?.labels, `Issue #${issue?.number}`),
       labelHistory: timelineOf(issue?.timelineItems, `Issue #${issue?.number}`),
     })),
+    refIssues: buildRefIssues(pr.body, issuesConn.nodes, payload?.refIssues, labelSet, timelineOf), // #4147
   };
 }
 
@@ -757,6 +749,10 @@ export function evaluate({ pr, cfg }) {
         : null;
 
   if (pr.issues.length === 0) {
+    // #4147: honest partial work -- a `ready`, OPEN issue named with a non-closing keyword. Can
+    // only WIDEN this failure into a pass, never narrow a pass into a fail; see lib/issue-refs.mjs.
+    const partial = partialWorkVerdict({ refIssues: pr.refIssues, readyLabel: cfg.readyLabel, adjudicateLabel: (h, l) => adjudicateLabel(h, l, cfg), escapeProblem, escapeReason: escape.reason });
+    if (partial) return partial;
     lines.push(
       // Conditional on escapeProblem: the PR may well CARRY the escape label and
       // have it rejected below. Saying "carries no `unqueued` label" while the
@@ -782,6 +778,7 @@ export function evaluate({ pr, cfg }) {
       '   If you pushed the linking commit after opening this PR, re-run: the link appears when ' +
         'the commit does.',
     );
+    lines.push(...unqueuedRefsNote(pr.refIssues, cfg.readyLabel)); // #4147
     if (escapeProblem) lines.push('', ...escapeProblem);
     // The PRIMARY failure is the verdict; the escape problem is carried in
     // `lines`. Returning escape.reason here made the field disagree with the
@@ -906,6 +903,9 @@ function main() {
       );
     }
     payload = fetchPayload({ repo, pr: args.pr });
+    // #4147: a second round trip, taken only when the first could not already pass.
+    const fail = (reason, message) => { throw new IssueQueueError(reason, message); };
+    payload.refIssues = fetchRefIssuesIfNeeded({ payload, repo, spawn: spawnSync, fail });
   }
   if (args.dump) writeFileSync(args.dump, JSON.stringify(payload, null, 2));
 

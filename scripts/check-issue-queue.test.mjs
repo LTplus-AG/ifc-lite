@@ -98,13 +98,16 @@ function prPayload({
   issues = [],
   issuesTruncated = false,
   prExtra = {},
+  body = '',
+  refIssues = undefined, // #4147: { [number]: issue-node-shape | null }, sibling of `data`
 } = {}) {
-  return {
+  const out = {
     data: {
       repository: {
         pullRequest: {
           number,
           title: `pull request ${number}`,
+          body,
           author: author === null ? null : { login: author },
           ...labelled(prLabels, prExtra),
           closingIssuesReferences: {
@@ -115,6 +118,8 @@ function prPayload({
       },
     },
   };
+  if (refIssues !== undefined) out.refIssues = refIssues;
+  return out;
 }
 
 /** Run the gate over a payload EXACTLY as written. */
@@ -359,6 +364,140 @@ test('FAIL: a PR closing NOTHING', () => {
   assert.match(r.output, /closingIssuesReferences/);
   assert.match(r.output, /#2978/);
   assert.match(r.output, /NOT from the PR body/);
+});
+
+// ========================================== PARTIAL_WORK: honest slices (#4147)
+//
+// A PR that closes nothing but names a `ready`, OPEN issue with a non-closing
+// keyword (`Refs #N`) instead of falsely claiming `Closes #N`. Every case here
+// goes through `--state-file`, so `payload.refIssues` stands in for the
+// second live `gh` round trip -- see check-issue-queue.mjs's `main()` and
+// lib/issue-refs.mjs for the live wiring, and lib/issue-refs.test.mjs for that
+// wiring's own unit tests.
+
+test('PASS: Refs #N on a ready, OPEN issue -- PARTIAL_WORK, not a lie', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'Refs #3525',
+      refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /PARTIAL_WORK: references #3525 \(OPEN\)/);
+  assert.match(r.output, new RegExp(`applied by \`${MAINTAINER}\``));
+  assert.doesNotMatch(r.output, /NO_LINKED_ISSUE/);
+});
+
+test('FAIL: Refs #N where N is NOT ready -- the honest-partial-work shape does not apply', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'Refs #3525',
+      refIssues: { 3525: issue(3525, []) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+  // The diagnostic names the near-miss rather than staying silent about it.
+  assert.match(r.output, /1 issue\(s\) referenced in the body/);
+});
+
+test('FAIL: Refs #N where N is ready but CLOSED -- a closed issue is not a queue entry', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'Refs #3525',
+      refIssues: { 3525: { ...issue(3525, [[READY, MAINTAINER]]), state: 'CLOSED' } },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+});
+
+test('FAIL: Refs #N where the ready label was SELF_APPLIED on the referenced issue', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'Refs #3525',
+      refIssues: { 3525: issue(3525, [[READY, CONTRIBUTOR]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+});
+
+test('FAIL: a PR referencing NO issue at all still fails, unqueued still works', () => {
+  const r = run(prPayload({ issues: [], body: 'just a description, no reference' }), ENFORCING);
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  // unqueued still working, unaffected by #4147:
+  const r2 = run(prPayload({ prLabels: [[ESCAPE, MAINTAINER]], issues: [], body: 'no reference' }), ENFORCING);
+  assert.equal(r2.code, 0, r2.output);
+  assert.match(r2.output, /ESCAPE_LABEL/);
+});
+
+test('PASS: Closes #N on a ready issue is unchanged by #4147 (does not consult refs at all)', () => {
+  const r = run(
+    prPayload({
+      issues: [issue(3525, [[READY, MAINTAINER]])],
+      body: 'Closes #3525',
+    }),
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /READY_ISSUE: closes #3525/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+});
+
+test('PARTIAL_WORK does not fire for a number already in closingIssuesReferences', () => {
+  // Closing AND writing "Refs" for the SAME issue is one link, not two -- and
+  // it must not be double-counted or produce a redundant PARTIAL_WORK banner
+  // once the closing path already failed it.
+  const r = run(
+    prPayload({
+      issues: [issue(3525, [])],
+      body: 'Refs #3525',
+      refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /UNQUEUED_WORK/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+});
+
+test('PASS: a real escape problem on a PARTIAL_WORK pass is reported, not dropped', () => {
+  const r = run(
+    prPayload({
+      prLabels: [[ESCAPE, CONTRIBUTOR]],
+      issues: [],
+      body: 'Refs #3525',
+      refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /PARTIAL_WORK/);
+  assert.match(r.output, /SELF_APPLIED_LABEL/);
+  assert.match(r.output, /passes on its referenced `ready` issue regardless/);
+});
+
+test('PASS: a REFERENCES/Part of/Towards keyword each satisfy the shape', () => {
+  for (const body of ['References #3525', 'Part of #3525', 'Towards #3525', 'refs: #3525']) {
+    const r = run(
+      prPayload({ issues: [], body, refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) } }),
+      ENFORCING,
+    );
+    assert.equal(r.code, 0, `${body}: ${r.output}`);
+    assert.match(r.output, /PARTIAL_WORK/, body);
+  }
 });
 
 test('PASS: a PR carrying the escape label, applied by an authority', () => {

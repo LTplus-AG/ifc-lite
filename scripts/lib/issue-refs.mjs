@@ -84,7 +84,12 @@ function stripFencedCode(body) {
   );
 }
 
-function stripNonProse(body) {
+// Exported for scripts/lib/partial-close-admission.mjs (#4154), which needs
+// the same fenced-code/inline-span/blockquote stripping before its own
+// admission-phrase scan, for the same reason this module needs it before
+// `REF_KEYWORD_RE`: a `Closes #N (item 1 only)` quoted inside a code fence is
+// not the PR author's own claim. Reused rather than duplicated.
+export function stripNonProse(body) {
   let out = stripFencedCode(body);
   // Inline code spans: `...` on a single line. Markdown inline code never
   // spans a blank line, and stopping at `\n` keeps this from ever eating a

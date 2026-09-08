@@ -135,7 +135,9 @@ jobs:
       # that decides whether work was requested should not be able to fail
       # because a registry was slow.
       - name: Unit-test the gate itself
-        run: node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs
+        run: |
+          node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
+            scripts/check-partial-close-admission.test.mjs scripts/lib/partial-close-admission.test.mjs
 
       - name: Check this PR closes a queued issue
         env:
@@ -143,4 +145,18 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           node scripts/check-issue-queue.mjs \
+            --pr "${{ github.event.pull_request.number }}"
+
+      # #4154: a WARNING, not a gate -- it never fails this job on its own
+      # finding (only a refusal, e.g. `gh` unreachable, does). Kept in the same
+      # job/workflow as check-issue-queue.mjs because it reads the same
+      # `closingIssuesReferences` field off the same PR event; see
+      # scripts/check-partial-close-admission.mjs's header for why this has no
+      # enforcing mode to graduate to.
+      - name: Warn on a Closes/Fixes/Resolves keyword whose own body admits partial coverage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-partial-close-admission.mjs \
             --pr "${{ github.event.pull_request.number }}"

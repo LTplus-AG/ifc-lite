@@ -42,6 +42,7 @@ import {
   xsdRequiredString,
 } from './xsd-required-string.js';
 import { generateUuid } from '@ifc-lite/encoding';
+import { viewpointFileName, type ViewpointFileName } from './writer-viewpoint-filename.js';
 
 /**
  * Write a BCFProject to a .bcfzip file
@@ -205,6 +206,10 @@ async function writeTopicFolder(
     sanitizeZipComponent(vp.guid, usedViewpointNames, 'viewpoint'),
   );
 
+  // Derive the actual archive file names ONCE, so viewpointXml (markup) and
+  // writeViewpointFiles (archive entry) can never disagree (#3612).
+  const viewpointFileNames = viewpointBaseNames.map((baseName, i) => viewpointFileName(baseName, i));
+
   // Resolve each viewpoint's snapshot ONCE, before markup.bcf is written, so
   // the `<Snapshot>` reference and the archive entry it names are driven off
   // the SAME decode attempt and can never disagree (#3962): previously the
@@ -214,11 +219,11 @@ async function writeTopicFolder(
   const snapshotBytes = topic.viewpoints.map((vp) => resolveSnapshotBytes(vp));
 
   // Write markup.bcf
-  writeMarkupFile(zip, folderName, topic, version, viewpointBaseNames, snapshotBytes);
+  writeMarkupFile(zip, folderName, topic, version, viewpointFileNames, snapshotBytes);
 
   // Write viewpoints
   for (let i = 0; i < topic.viewpoints.length; i++) {
-    await writeViewpointFiles(zip, folderName, topic.viewpoints[i], viewpointBaseNames[i], version, snapshotBytes[i]);
+    await writeViewpointFiles(zip, folderName, topic.viewpoints[i], viewpointFileNames[i], version, snapshotBytes[i]);
   }
 }
 
@@ -279,7 +284,7 @@ function writeMarkupFile(
   zip: JSZip, folderName: string,
   topic: BCFTopic,
   version: '2.1' | '3.0',
-  viewpointBaseNames: string[],
+  viewpointFileNames: ViewpointFileName[],
   snapshotBytes: (Uint8Array | undefined)[],
 ): void {
   // BCF 3.0's markup.xsd tightens `Topic/@TopicType` and `Topic/@TopicStatus`
@@ -454,14 +459,11 @@ function writeMarkupFile(
   const viewpointXml = (indent: string) =>
     topic.viewpoints
       .map((viewpoint, i) => {
-        // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv,
-        // but the file name component is the sanitized base name (zip-slip
-        // guard) -- the SAME one writeViewpointFiles uses for the actual entry,
-        // so the markup reference and the archive agree. The real GUID is still
-        // written verbatim as the Guid attribute below.
-        const baseName = viewpointBaseNames[i];
-        const filename = `Viewpoint_${baseName}.bcfv`;
-        const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
+        // Shared viewpointFileName() result (#3612) -- the SAME one
+        // writeViewpointFiles uses, so the two can never disagree. The real
+        // GUID is still written verbatim as the Guid attribute below.
+        const filename = viewpointFileNames[i].viewpointFile;
+        const snapshotName = `${viewpointFileNames[i].snapshotBase}.${snapshotExt(viewpoint)}`;
 
         let v = `\n${indent}<${viewpointEntryTag} Guid="${escapeXml(viewpoint.guid)}">`;
         v += `\n${indent}  <Viewpoint>${filename}</Viewpoint>`;
@@ -511,16 +513,14 @@ function writeMarkupFile(
 async function writeViewpointFiles(
   zip: JSZip, folderName: string,
   viewpoint: BCFViewpoint,
-  baseName: string,
+  fileNames: ViewpointFileName,
   version: '2.1' | '3.0',
   snapshot: Uint8Array | undefined,
 ): Promise<void> {
-  // Use standard buildingSMART naming convention: Viewpoint_<guid>.bcfv, but
-  // the file name component is the sanitized base name (zip-slip guard) --
-  // the SAME one the caller wrote into the markup <Viewpoint> reference, so
-  // the archive entry and the markup agree. See sanitizeZipComponent.
-  const filename = `Viewpoint_${baseName}.bcfv`;
-  const snapshotName = `Snapshot_${baseName}.${snapshotExt(viewpoint)}`;
+  // Shared viewpointFileName() result (#3612) -- the SAME one the caller
+  // wrote into the markup reference, so the two can never disagree.
+  const filename = fileNames.viewpointFile;
+  const snapshotName = `${fileNames.snapshotBase}.${snapshotExt(viewpoint)}`;
 
   // Write viewpoint XML - use buildingSMART standard format
   let content = `<?xml version="1.0" encoding="UTF-8"?>

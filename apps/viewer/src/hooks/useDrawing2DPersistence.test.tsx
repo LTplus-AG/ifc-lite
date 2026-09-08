@@ -407,7 +407,20 @@ describe('fingerprint gap collision — MUTATION TARGET: sampled-key data leak',
     await act(async () => {
       useViewerStore.setState({ measure2DResults: [sampleMeasure('mA')] });
     });
-    assert.strictEqual(loadDrawing2DEntry(hashA, DEFAULTS)!.measure2DResults[0].id, 'mA');
+    // Assert on the ENTRY first, with a message, rather than dereferencing
+    // it straight through a non-null assertion: if the persistence key ever
+    // reverts to the sampled fingerprint, this lookup (keyed by the TEST's
+    // own independently-computed full hash) legitimately finds nothing —
+    // and a bare `!.measure2DResults` would crash with an opaque TypeError
+    // instead of failing with a message that says what actually happened.
+    const entryA = loadDrawing2DEntry(hashA, DEFAULTS);
+    assert.ok(
+      entryA,
+      `expected model A's save to be readable back under its full-content hash key (${hashA}); ` +
+      'got nothing — either persistFor never resolved hashCache for this model in time, or the ' +
+      'persistence key is no longer computeFullSourceHashFromBlob',
+    );
+    assert.strictEqual(entryA.measure2DResults[0].id, 'mA');
 
     await act(async () => { useViewerStore.getState().setActiveModel('gap-model-b'); });
     await flushDeep();
@@ -474,7 +487,9 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
     await act(async () => { useViewerStore.getState().setActiveModel('race-model-b'); });
     await flushDeep();
     await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
-    assert.deepStrictEqual(loadDrawing2DEntry(hashB, DEFAULTS)!.sectionConfig, configB);
+    const entryAfterFirstSave = loadDrawing2DEntry(hashB, DEFAULTS);
+    assert.ok(entryAfterFirstSave, `setup: expected an entry under model B's hash (${hashB}) after its first notify`);
+    assert.deepStrictEqual(entryAfterFirstSave.sectionConfig, configB);
 
     // Visit A — this is the "previous model" an in-flight generation is
     // still computing FOR when the user switches away from it.
@@ -492,14 +507,21 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
     // computed against A's geometry/section plane.
     notifyDrawing2DSectionConfig('race-model-b', configAStale);
 
+    // Assert on the entry itself first, with a message: a `null` here (e.g.
+    // if a future change removed the save entirely) must fail with a clear
+    // reason, not an opaque TypeError from dereferencing straight through.
     const savedRightAfter = loadDrawing2DEntry(hashB, DEFAULTS);
+    assert.ok(
+      savedRightAfter,
+      `expected model B's entry under its hash (${hashB}) to still exist after the stray notify`,
+    );
     assert.notDeepStrictEqual(
-      savedRightAfter!.sectionConfig,
+      savedRightAfter.sectionConfig,
       configAStale,
       'model B\'s saved sectionConfig must not be replaced by a stale notify carrying model A\'s plane',
     );
     assert.deepStrictEqual(
-      savedRightAfter!.sectionConfig,
+      savedRightAfter.sectionConfig,
       configB,
       'model B\'s real saved sectionConfig must survive a notify landing before its restore effect runs',
     );
@@ -508,6 +530,8 @@ describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConf
     // for the next save is B's real one too, not the corrupted one.
     await flushDeep();
     await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
-    assert.deepStrictEqual(loadDrawing2DEntry(hashB, DEFAULTS)!.sectionConfig, configB);
+    const entryAfterSettling = loadDrawing2DEntry(hashB, DEFAULTS);
+    assert.ok(entryAfterSettling, `expected model B's entry under its hash (${hashB}) after the restore effect settled`);
+    assert.deepStrictEqual(entryAfterSettling.sectionConfig, configB);
   });
 });

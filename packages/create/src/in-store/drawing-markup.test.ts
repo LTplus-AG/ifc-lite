@@ -296,7 +296,12 @@ describe('addDrawingMarkupToStore (batch, additivity)', () => {
   it('is additive: express ids never collide with the pre-existing store, and no pre-existing entity is touched', () => {
     const preExistingMax = 40;
     const store = makeStore(preExistingMax);
-    const snapshot = new Map(store.entityIndex.byId);
+    // `MutationEntityByIdIndex` only guarantees get/has/size/keys() (see its
+    // JSDoc) — not iteration or Symbol.iterator — so snapshot through those
+    // read methods rather than `new Map(store.entityIndex.byId)`.
+    const snapshot = new Map<number, MutationEntityRef | undefined>(
+      Array.from(store.entityIndex.byId.keys(), (id) => [id, store.entityIndex.byId.get(id)] as const),
+    );
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(store, view);
 

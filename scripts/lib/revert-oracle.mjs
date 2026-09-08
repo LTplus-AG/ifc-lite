@@ -35,94 +35,29 @@
  */
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
-// ---------------------------------------------------------------------------
-// Diff classification
-// ---------------------------------------------------------------------------
-
-/** Paths whose change can neither be reverted usefully nor observed by a test. */
-const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
-const IGNORED_EXACT = new Set([
-  'pnpm-lock.yaml',
-  'package-lock.json',
-  'yarn.lock',
-  'Cargo.lock',
-  'CHANGELOG.md',
-]);
-const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
+// `rootScriptsRunner` below calls classifyPath, and a re-export creates no
+// local binding, so it is imported as well as re-exported.
+import { classifyPath } from './revert-oracle-classify.mjs';
 
 /**
- * Vercel deploy config: read by Vercel's build pipeline, imported by nothing
- * here, so no test can observe it — the same reason `.github/` is ignored.
- * Anchored on the basename on purpose; a blanket `scripts/**` or `*.sh` would
- * swallow `scripts/lib/*.mjs`, which is real tested logic. Both directions are
- * pinned in revert-oracle.test.mjs, which carries the full rationale.
+ * Diff classification (`classifyPath`, `classifyDiff`, `parseNameStatus`,
+ * `parseNumstat`, `isRustFile`) moved to ./revert-oracle-classify.mjs in
+ * #4137: the `inert` bucket needed real prose and this file has no room for
+ * it (module-size budget, zero headroom). Re-exported here so every existing
+ * importer keeps working and the two questions stay visibly separate: that
+ * module answers "what kind of file is this", this one answers "what did the
+ * runner say".
  */
-const DEPLOY_CONFIG_RE = /(^|\/)(vercel\.json|\.vercelignore|vercel-[a-z0-9-]*\.sh)$/;
-
-/** A file that IS a test: JS/TS `*.test.*`/`*.spec.*`, or Python's `test_*.py` / `*_test.py` (#4050). */
-const TEST_FILE_RE = /(^|\/)(?:[^/]*\.(?:test|spec)\.(?:ts|tsx|mts|cts|js|jsx|mjs|cjs)|test_[^/]*\.py|[^/]*_test\.py)$/;
-/** Directories whose entire contents are test scaffolding, not production. */
-const TEST_DIR_RE = /(^|\/)(__tests__|__snapshots__|__fixtures__|test-fixtures|testdata)(\/|$)/;
-/** `tests/` and `test/` as a directory segment (but not `src/test-utils.ts`). */
-const TEST_SEGMENT_RE = /(^|\/)tests?(\/)/;
-
-/**
- * Rust puts unit tests INSIDE the production file behind `#[cfg(test)]`. Such a
- * file is production, but reverting it takes its tests with it — the Rust form
- * of the export-removal trap. Callers get a warning, not a reclassification.
- */
-export function isRustFile(path) {
-  return path.endsWith('.rs');
-}
-
-export function classifyPath(path) {
-  if (IGNORED_EXACT.has(path)) return 'ignored';
-  for (const p of IGNORED_PREFIXES) if (path.startsWith(p)) return 'ignored';
-  for (const s of IGNORED_SUFFIXES) if (path.endsWith(s)) return 'ignored';
-  if (DEPLOY_CONFIG_RE.test(path)) return 'ignored';
-  if (TEST_FILE_RE.test(path) || /(^|\/)(?:[^/]+_tests|tests)\.rs$/.test(path)) return 'test';
-  if (TEST_DIR_RE.test(path)) return 'test';
-  if (TEST_SEGMENT_RE.test(path)) return 'test';
-  return 'production';
-}
-
-/**
- * @param {Array<{status: string, path: string}>} entries from `git diff --name-status`
- */
-export function classifyDiff(entries) {
-  const production = [];
-  const test = [];
-  const ignored = [];
-  const warnings = [];
-  for (const { status, path } of entries) {
-    const kind = classifyPath(path);
-    if (kind === 'production') production.push({ status, path });
-    else if (kind === 'test') test.push({ status, path });
-    else ignored.push({ status, path });
-  }
-  if (production.some((e) => isRustFile(e.path))) {
-    warnings.push(
-      'Rust production files are in the revert set. `#[cfg(test)] mod tests` lives ' +
-        'inside the file it tests, so a whole-file revert deletes those tests as well ' +
-        'as the code — expect INCONCLUSIVE and use --mutation for a surgical revert.',
-    );
-  }
-  return { production, test, ignored, warnings };
-}
-
-/** Parse `git diff --name-status -z`-free plain output. Renames carry two paths. */
-export function parseNameStatus(text) {
-  const out = [];
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue;
-    const parts = line.split('\t');
-    const status = parts[0];
-    // R100 old new / C075 old new -> the NEW path is the one on disk.
-    const path = parts.length >= 3 ? parts[2] : parts[1];
-    if (path) out.push({ status: status[0], path });
-  }
-  return out;
-}
+export {
+  isRustFile,
+  isRunnerSource,
+  classifyPath,
+  classifyDiff,
+  parseNameStatus,
+  parseNumstat,
+  parseDiffAttrOverrides,
+  contentBinaryPaths,
+} from './revert-oracle-classify.mjs';
 
 // ---------------------------------------------------------------------------
 // Runner detection

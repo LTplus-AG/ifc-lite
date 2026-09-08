@@ -1,11 +1,18 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
+/**
+ * The manifest `cargoTestOwner` walks up looking for. Exported so the oracle's
+ * classifier can name it as a cargo source kind (#4137) rather than keeping a
+ * second copy of the string.
+ */
+export const CARGO_MANIFEST = 'Cargo.toml';
+
 /** Test sources and data share the nearest Cargo package's runner (#3974). */
 export function cargoTestOwner(file, root) {
   let dir = dirname(file);
   while (!isAbsolute(relative(root, dir)) && relative(root, dir).split(sep)[0] !== '..') {
-    const manifest = join(dir, 'Cargo.toml');
+    const manifest = join(dir, CARGO_MANIFEST);
     if (existsSync(manifest)) {
       const toml = readFileSync(manifest, 'utf8');
       const name = /^\s*\[package\][\s\S]*?^\s*name\s*=\s*"([^"]+)"/m.exec(toml);

@@ -18,7 +18,14 @@
  * being guarded.
  *
  * WHAT IT DOES.
- *   1. Split `git diff <base>...<head>` into production / test / ignored files.
+ *   1. Split `git diff <base>...<head>` into production / test / ignored /
+ *      inert files. INERT is a file no runner claims as a test and no runner
+ *      compiles, executes or loads as source (an image, a font, any other
+ *      binary asset, and the deletion of one): nothing the oracle can run
+ *      could observe it, so it is neither production nor test, and a diff of
+ *      only inert files is NOT APPLICABLE rather than a finding (#4137). The
+ *      rule and why it is not a deny-list of asset kinds are in
+ *      `lib/revert-oracle-classify.mjs`.
  *   2. Run the branch's own added-or-changed tests. They must be green
  *      (a red baseline proves nothing about the revert).
  *   3. Reverse-apply the production hunks only.
@@ -79,6 +86,8 @@ import { tmpdir } from 'node:os';
 
 import {
   parseNameStatus,
+  parseNumstat,
+  contentBinaryPaths,
   classifyDiff,
   parseRunnerOutput,
   aggregate,
@@ -125,8 +134,8 @@ function git(args, opts = {}) {
   return r;
 }
 
-function gitOrDie(args) {
-  const r = git(args);
+function gitOrDie(args, opts = {}) {
+  const r = git(args, opts);
   if (r.status !== 0) {
     die(EXIT_NOTHING_CHECKED, `git ${args.join(' ')} failed`, (r.stderr || '').trim().split('\n'));
   }
@@ -252,7 +261,22 @@ if (headSha !== checkedOut) {
 if (baseSha === headSha) die(EXIT_NOTHING_CHECKED, 'base and head are the same commit; there is no change to revert.');
 
 const mergeBase = gitOrDie(['merge-base', baseSha, headSha]).trim();
-const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]));
+// Two reads of the same diff. `--name-status` gives the status letter and the
+// NEW path of a rename; `--numstat` is the only one that says whether git could
+// diff the content as text at all, which is half of the `inert` rule (#4137).
+// `--numstat` alone is NOT enough: a `.gitattributes` `-diff` line produces the
+// same `-`/`-` row for a plain-text file (this repo does exactly that to four
+// committed `.ifc` samples that ~20 tests read), so `git check-attr` separates
+// git's own content verdict from a human's decision about diffing. `--stdin`
+// keeps the path list off the command line, which has no length limit here.
+const numstat = gitOrDie(['diff', '--numstat', '--no-renames', '-z', `${mergeBase}`, headSha]);
+const undiffable = [...parseNumstat(numstat)];
+const checkAttr = undiffable.length === 0
+  ? ''
+  : gitOrDie(['check-attr', '-z', '--stdin', 'diff'], { input: undiffable.join('\0') });
+const binaryPaths = contentBinaryPaths(numstat, checkAttr);
+const entries = parseNameStatus(gitOrDie(['diff', '--name-status', `${mergeBase}`, headSha]))
+  .map((e) => ({ ...e, binary: binaryPaths.has(e.path) }));
 if (entries.length === 0) die(EXIT_NOTHING_CHECKED, 'the diff is empty; nothing to check.');
 
 if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries)) {
@@ -263,7 +287,7 @@ if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries))
   process.exit(0);
 }
 
-const { production, test: testEntries, ignored, warnings } = classifyDiff(entries);
+const { production, test: testEntries, ignored, inert, warnings } = classifyDiff(entries);
 for (const w of warnings) console.log(`  WARNING: ${w}`);
 
 let prodPaths = production.map((e) => e.path);
@@ -280,10 +304,19 @@ if (opts.tests.length > 0) {
   if (testPaths.length === 0) die(EXIT_NOTHING_CHECKED, '--test matched none of the branch\'s changed test files.');
 }
 
-console.log(`  files: ${production.length} production, ${testEntries.length} test, ${ignored.length} ignored`);
+console.log(
+  `  files: ${production.length} production, ${testEntries.length} test, ` +
+    `${ignored.length} ignored, ${inert.length} inert`,
+);
+// Print them: an inert classification excludes a file from the revert set, so
+// it must be visible in the log rather than silently dropped.
+for (const e of inert) console.log(`  inert: ${e.path} (no runner compiles, executes or loads it)`);
 
 if (prodPaths.length === 0) {
-  const message = 'this branch changes no production files; there is nothing whose absence a test could notice.';
+  const message = inert.length > 0
+    ? `this branch changes ${inert.length} inert file(s) and no production file; no runner compiles, ` +
+      'executes or loads them, so no test could observe the change either way.'
+    : 'this branch changes no production files; there is nothing whose absence a test could notice.';
   if (opts.ci) { console.log(`  NOT APPLICABLE: ${message}`); process.exit(0); }
   die(EXIT_NOTHING_CHECKED, message);
 }

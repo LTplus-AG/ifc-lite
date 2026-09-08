@@ -32,14 +32,18 @@
 import { existsSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, sep } from 'node:path';
 
-/** Files that anchor a Python project root, checked nearest-first. */
-const PROJECT_MARKERS = ['requirements.lock', 'requirements.txt', 'pyproject.toml', 'setup.py', 'setup.cfg', 'Pipfile'];
+/**
+ * Files that anchor a Python project root, checked nearest-first. Exported as
+ * `PYTHON_PROJECT_MARKERS` so the oracle's classifier can name them as pytest
+ * source kinds (#4137) off this array instead of a second copy of the list.
+ */
+export const PYTHON_PROJECT_MARKERS = ['requirements.lock', 'requirements.txt', 'pyproject.toml', 'setup.py', 'setup.cfg', 'Pipfile'];
 
 /** Mirrors `cargoTestOwner`: walk up from the test file to the nearest project marker. */
 export function pythonTestOwner(file, root) {
   let dir = dirname(file);
   while (!isAbsolute(relative(root, dir)) && relative(root, dir).split(sep)[0] !== '..') {
-    if (PROJECT_MARKERS.some((m) => existsSync(join(dir, m)))) return { dir };
+    if (PYTHON_PROJECT_MARKERS.some((m) => existsSync(join(dir, m)))) return { dir };
     if (dir === root || dirname(dir) === dir) break;
     dir = dirname(dir);
   }

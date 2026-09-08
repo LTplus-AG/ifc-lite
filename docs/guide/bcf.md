@@ -220,7 +220,7 @@ The client implements the BCF API 2.1 routes (projects, extensions, topics with 
 
 In the IFClite viewer, BCF is integrated through the BCF panel:
 
-1. **Load BCF** - Drag and drop a `.bcf` or `.bcfzip` file or use the BCF panel to import
+1. **Load BCF** - Open the BCF panel and use its Import button to pick a `.bcf` or `.bcfzip` file (dropping one onto the main viewport is not supported — it names a model file, not a BCF archive). Load the IFC model a BCF's topics were captured from *before* importing it, so their viewpoints and component references resolve; the panel warns when you import with no model loaded.
 2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
 3. **Browse Topics** - View all issues with status, priority, and labels
 4. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility

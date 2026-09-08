@@ -43,6 +43,7 @@ import { BCFCreateTopicForm } from './bcf/BCFCreateTopicForm';
 import { BCFServerControl } from './bcf/BCFServerControl';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import { downloadBlob, sanitizeFilename } from '@/lib/export/download';
+import { warnIfNoModelLoaded } from './bcf/bcfImportGuidance';
 
 // ============================================================================
 // Main BCF Panel Component
@@ -148,14 +149,13 @@ export function BCFPanel({ onClose }: BCFPanelProps) {
       setBcfError(null);
       const project = await readBCF(file);
       setBcfProject(project);
+      warnIfNoModelLoaded(useViewerStore.getState().models.size);
     } catch (error) {
       console.error('Failed to import BCF:', error);
       setBcfError(error instanceof Error ? error.message : 'Failed to import BCF file');
     } finally {
       setBcfLoading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   }, [setBcfProject, setBcfLoading, setBcfError]);
 

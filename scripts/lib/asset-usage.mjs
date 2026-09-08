@@ -28,11 +28,24 @@
  * a live-asset-flagged-dead trap: the only thing stopping a false positive
  * today is that those sample names are also spelled out in
  * apps/viewer/src/lib/tours/demo-kit.ts and AGENTS.md, both already-covered
- * extensions. `.sh`/`.py`/`.rs` are deliberately NOT added here: none of
- * them reference a path under apps/viewer/public today (checked by grepping
- * this repo's tracked .sh/.py/.rs files for every current asset's basename),
- * so adding them would only cost scan time for extensions this scan dir has
- * no current consumer in.
+ * extensions. `.sh`/`.py` are deliberately NOT added here: none of them
+ * reference a path under apps/viewer/public today (checked by grepping this
+ * repo's tracked .sh/.py files for every current asset's basename), so
+ * adding them would only cost scan time for an extension this scan dir has
+ * no current consumer in. `.rs` is NOT added either, but for a different
+ * reason: two Rust tests (rust/processing/tests/instancing_dont_bake.rs and
+ * rust/geometry/tests/clash_intersection_real_model.rs) do reference
+ * apps/viewer/public sample paths, so omitting `.rs` is a live gap, not an
+ * empty one — it stays safe only because both referenced assets
+ * (hello-wall.ifc, infra-bridge.ifc) are also referenced from an
+ * already-covered extension (apps/viewer/src/components/mcp/McpPlayground.tsx).
+ * Adding `.rs` was tried and rejected: Rust test fixtures reuse generic
+ * basenames like "manifest.json" for their own unrelated corpora, so a
+ * basename-only substring search over ~800 .rs files pulls in matches that
+ * have nothing to do with apps/viewer/public — noise without closing the
+ * gap, since the two real .rs references above are already covered
+ * elsewhere. If that TSX reference is ever removed, this exclusion needs
+ * re-checking.
  */
 export const TEXT_EXTENSIONS = new Set([
   '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts',

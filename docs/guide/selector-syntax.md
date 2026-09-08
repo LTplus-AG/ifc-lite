@@ -68,9 +68,9 @@ exists only as part of `*=`. Use a regular expression for wildcards.
 | `material=` | ⚠️ | matches material **names**; Category is not read yet |
 | `classification=`, `= NULL`, `!= NULL` | ✅ | matches the code or the name |
 | `location="Level 3"` | ⚠️ | see below |
-| GlobalId terms, `! <GlobalId>` | ❌ | reported, not applied |
+| GlobalId terms, `! <GlobalId>` | ✅ | several terms union (add) or subtract, mirroring class terms |
+| `Description=`, `ObjectType=`, `Tag=`, any other schema attribute | ✅ | all eight operators, `= NULL` / `!= NULL` as presence — see below |
 | `type=WT01` | ❌ | reported, not applied |
-| attributes other than `Name` and `PredefinedType` | ❌ | reported, not applied |
 | `parent=`, `query:` | ❌ | reported, not applied |
 | `+` unions of groups | ❌ | the first group is applied, the rest reported |
 
@@ -94,6 +94,19 @@ Quantities written under a set with no `Qto_` prefix are **not reachable** from 
 selector today: Revit's IFC2x3 export writes `BaseQuantities` and ArchiCAD writes
 `ArchiCADQuantities`, so `BaseQuantities.NetVolume > 1` becomes a property rule and
 finds nothing. Reading quantity rows from a property term is part of #4094.
+
+### Generic attribute terms, and the one that stays reported
+
+`Description=`, `ObjectType=`, `Tag=`, `LongName=`, or any other name the IFC schema
+declares as an attribute becomes an `attribute` rule, read from the same on-demand
+per-entity extraction the IDS attribute facet uses. All eight operators work, and
+`= NULL` / `!= NULL` read as "is not set" / "is set", the same as a property term.
+
+`GlobalId=` (the comparison spelling, not the bare-GlobalId term) is the one
+exception: the underlying extraction skips `GlobalId` as a structural/display
+attribute, so routing it through the generic attribute rule would silently match
+nothing. It stays reported; use a bare GlobalId term (`325Q7Fhnf67OZC$$r43uzK`)
+instead, which IS supported — see the grammar table above.
 
 ### How far `location=` reaches
 

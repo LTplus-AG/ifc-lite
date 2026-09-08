@@ -8,10 +8,10 @@ import {
   parseSetArg,
   coerceValue,
   matchesFilter,
-  splitStepArgs,
   applyAttributeMutations,
   entitiesWithObjectType,
 } from './mutate.js';
+import { splitTopLevelStepArgs } from './step-args.js';
 import { PropertyValueType } from '@ifc-lite/data';
 
 describe('parseWhereFilter', () => {
@@ -247,54 +247,6 @@ describe('matchesFilter', () => {
   });
 });
 
-describe('splitStepArgs', () => {
-  it('splits simple comma-separated values', () => {
-    expect(splitStepArgs("'abc',123,$,.T.")).toEqual(["'abc'", '123', '$', '.T.']);
-  });
-
-  it('handles nested parentheses', () => {
-    expect(splitStepArgs("'hello',(1,2,3),$")).toEqual(["'hello'", '(1,2,3)', '$']);
-  });
-
-  it('handles quoted strings with commas', () => {
-    expect(splitStepArgs("'hello, world',42")).toEqual(["'hello, world'", '42']);
-  });
-
-  it('handles escaped quotes in strings (doubled single quotes)', () => {
-    expect(splitStepArgs("'it''s a test',99")).toEqual(["'it''s a test'", '99']);
-  });
-
-  it('handles empty input', () => {
-    expect(splitStepArgs('')).toEqual([]);
-  });
-
-  it('handles single value', () => {
-    expect(splitStepArgs('42')).toEqual(['42']);
-  });
-
-  it('handles deeply nested parens', () => {
-    expect(splitStepArgs('#1,IFCWALL((1,(2,3)),4),#5')).toEqual(['#1', 'IFCWALL((1,(2,3)),4)', '#5']);
-  });
-
-  it('handles STEP null ($) and derived (*) markers', () => {
-    expect(splitStepArgs('$,$,*')).toEqual(['$', '$', '*']);
-  });
-
-  it('handles entity references', () => {
-    expect(splitStepArgs('#1,#2,#3')).toEqual(['#1', '#2', '#3']);
-  });
-
-  it('handles mixed content typical of IFC STEP lines', () => {
-    const result = splitStepArgs("'2aG1gNarLHm9Qs6Q3z97P1',#2,'Wall-001','An external wall',$");
-    expect(result).toHaveLength(5);
-    expect(result[0]).toBe("'2aG1gNarLHm9Qs6Q3z97P1'");
-    expect(result[1]).toBe('#2');
-    expect(result[2]).toBe("'Wall-001'");
-    expect(result[3]).toBe("'An external wall'");
-    expect(result[4]).toBe('$');
-  });
-});
-
 describe('applyAttributeMutations', () => {
   /** A minimal STEP body with one entity line of the given type. */
   const stepFile = (expressId: number, type: string, args: string): string =>
@@ -309,7 +261,7 @@ describe('applyAttributeMutations', () => {
   /** The arguments of the single entity line, after mutation. */
   const argsOf = (content: string): string[] => {
     const line = content.split('\n').find((l) => l.startsWith('#'))!;
-    return splitStepArgs(line.slice(line.indexOf('(') + 1, line.lastIndexOf(')')));
+    return splitTopLevelStepArgs(line.slice(line.indexOf('(') + 1, line.lastIndexOf(')')))!;
   };
 
   // IfcRoot fixes GlobalId(0), OwnerHistory(1), Name(2), Description(3), and
@@ -378,6 +330,176 @@ describe('applyAttributeMutations', () => {
       applyAttributeMutations(before, [mutation(1, 'Name', "O'Brien\\x")], objectTypeEntities),
     );
     expect(args[2]).toBe("'O''Brien\\\\x'");
+  });
+
+  // ---- #4125: a record this pass cannot read is refused, not rewritten ----
+
+  it('refuses the record whose undoubled apostrophes made a 9-attribute wall into 4', () => {
+    // Reproduced against the real command before the fix: exit 0, "Mutated 1
+    // entities", and the output line was
+    //   #2=IFCWALL('1BBBBBBBBBBBBBBBBBBBBB',$,'NewName',.NOTDEFINED.);
+    // with Description, ObjectType, ObjectPlacement, Representation and Tag
+    // gone. `step-args.ts`'s header has the walk-through.
+    const before = stepFile(2, 'IFCWALL', "'1BBBBBBBBBBBBBBBBBBBBB',$,'John's wall',$,$,$,$,'A's',.NOTDEFINED.");
+    expect(() =>
+      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+    ).toThrow(/could not be read as a complete argument list/);
+  });
+
+  it('refuses the same wall when the apostrophes sit inside typed values', () => {
+    // Reproduced against the real command built from the FIRST fix for #4125,
+    // which checked only the top level: exit 0, "Mutated 1 entities", and
+    //   #2=IFCWALL('1BBBBBBBBBBBBBBBBBBBBB',$,'NewName',$,$,'T',.NOTDEFINED.);
+    // Nine attributes down to seven. The phantom string swallows
+    // `),$,IFCLABEL(`, one `)` and one `(`, so the depth still balances and
+    // each part is a keyword applied to one list.
+    const before = stepFile(
+      2,
+      'IFCWALL',
+      "'1BBBBBBBBBBBBBBBBBBBBB',$,IFCLABEL('a's'),$,IFCLABEL('b's'),$,$,'T',.NOTDEFINED.",
+    );
+    expect(() =>
+      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+    ).toThrow(/#2=IFCWALL/);
+  });
+
+  it('refuses a record carrying a STEP block comment, the cause the error names', () => {
+    // Reproduced against the built CLI at the first fix for #4125: a comment
+    // with no whitespace in it broke no bare run, so it was accepted as a
+    // phantom slot and `--set Description` landed on Name.
+    //   $ ifc-lite mutate cmt2.ifc --id 2 --set Description=NEWDESC --out outE.ifc
+    //   Mutated 1 entities: Description = NEWDESC        # exit 0
+    //   #2=IFCWALL('1BBB...',/*edited*/,$,'NEWDESC','MyDescription',$,$,$,$,.NOTDEFINED.);
+    // Name overwritten, Description untouched. "a comment inside the argument
+    // list" is listed as a usual cause in the error below, so it is pinned.
+    const before = stepFile(
+      2,
+      'IFCWALL',
+      "'1BBBBBBBBBBBBBBBBBBBBB',/*edited*/,$,'MyName','MyDescription',$,$,$,$,.NOTDEFINED.",
+    );
+    expect(() =>
+      applyAttributeMutations(before, [mutation(2, 'Description', 'NEWDESC')], objectTypeEntities),
+    ).toThrow(/a comment inside the argument list/);
+  });
+
+  it('still rewrites a record whose Name contains a slash', () => {
+    // The false-positive control for the test above. `/` is what refuses a
+    // comment, and storey and family names carry slashes constantly, so a
+    // scanner that refused these would break `mutate` on ordinary files.
+    const before = stepFile(1, 'IFCWALL', "'guid',$,'Level 1/2',$,$,$,$,$,$");
+    const args = argsOf(applyAttributeMutations(before, [mutation(1, 'Name', 'A/B')], objectTypeEntities));
+    expect(args[2]).toBe("'A/B'");
+    expect(args[3]).toBe('$');
+  });
+
+  it('names the refused record, so the error says which one', () => {
+    const before = stepFile(2, 'IFCWALL', "'guid',$,'John's wall',$,$,$,$,'A's',$");
+    expect(() =>
+      applyAttributeMutations(before, [mutation(2, 'Name', 'X')], objectTypeEntities),
+    ).toThrow(/#2=IFCWALL/);
+  });
+
+  it.each([
+    ['an unterminated string', "'guid',$,'never closed"],
+    ['a stray closing paren', "'guid',$,'N'),$,$,$,$,$"],
+    ['an unclosed nested list', "'guid',$,'N',(1,2,$,$,$,$"],
+    // IfcPerson declares MiddleNames and PrefixTitles as adjacent lists of
+    // strings, so one undoubled apostrophe in each reads eight attributes as
+    // seven with the parens still balanced.
+    ['undoubled apostrophes in two adjacent string lists', "'id','Smith','John',('D'Arcy'),('O'Neill'),$,$,$"],
+  ])('refuses a record with %s', (_label, args) => {
+    const before = stepFile(4, 'IFCWALL', args);
+    expect(() =>
+      applyAttributeMutations(before, [mutation(4, 'Name', 'X')], objectTypeEntities),
+    ).toThrow(/refusing to rewrite 1 record/);
+  });
+
+  it('refuses a record that does not close on its own line instead of reporting a mutation it never made', () => {
+    // The exporter re-emits source lines verbatim, so a wrapped record from the
+    // input file arrives here split across two array entries. Measured against
+    // the real command before the fix: exit 0, "Mutated 1 entities: Name =
+    // NewName", and the wall's Name still 'Old' in the output file.
+    const before = [
+      'ISO-10303-21;',
+      'DATA;',
+      "#2=IFCWALL('guid',$,'Old',$,$,",
+      '$,$,$,$);',
+      'ENDSEC;',
+    ].join('\n');
+    expect(() =>
+      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+    ).toThrow(/#2=IFCWALL/);
+  });
+
+  it('refuses a wrapped record whose first line happens to close a nested list', () => {
+    // `lastIndexOf(')')` finds the `)` of the (#3,#4) set, so this line looks
+    // complete to a scan that only hunts for a closing paren.
+    const before = [
+      'DATA;',
+      "#5=IFCRELDEFINESBYPROPERTIES('guid',$,'Old',$,(#3,#4),",
+      '#6);',
+    ].join('\n');
+    expect(() =>
+      applyAttributeMutations(before, [mutation(5, 'Name', 'NewName')], objectTypeEntities),
+    ).toThrow(/#5=IFCRELDEFINESBYPROPERTIES/);
+  });
+
+  it('collects every unreadable record into one error', () => {
+    const before = [
+      'DATA;',
+      "#2=IFCWALL('guid',$,'John's wall',$,$,$,$,'A's',$);",
+      "#3=IFCWALL('guid3',$,'N'),$,$,$,$,$,$);",
+      'ENDSEC;',
+    ].join('\n');
+    expect(() =>
+      applyAttributeMutations(
+        before,
+        [mutation(2, 'Name', 'X'), mutation(3, 'Name', 'X')],
+        objectTypeEntities,
+      ),
+    ).toThrow(/refusing to rewrite 2 record\(s\).*#2=IFCWALL, #3=IFCWALL/s);
+  });
+
+  it('leaves an unreadable record that was NOT targeted alone', () => {
+    // The refusal is scoped to records this run was asked to rewrite. A
+    // malformed line elsewhere in the file is not this command's business.
+    const before = [
+      'DATA;',
+      "#2=IFCWALL('guid',$,'Old',$,$,$,$,$,$);",
+      "#9=IFCWALL('other',$,'Bob's wall',$,$,$,$,'C's',$);",
+      'ENDSEC;',
+    ].join('\n');
+    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
+    expect(after.split('\n')[2]).toBe(before.split('\n')[2]);
+    expect(after.split('\n')[1]).toContain("'New'");
+  });
+
+  it('rewrites a well-formed record with a # and a comma inside its Name, byte-for-byte elsewhere', () => {
+    const before = stepFile(1, 'IFCWALL', "'guid',#2,'Wall #3, north','Desc',$,#4,$,'TAG',.NOTDEFINED.");
+    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'Renamed')], objectTypeEntities);
+    expect(after).toBe(stepFile(1, 'IFCWALL', "'guid',#2,'Renamed','Desc',$,#4,$,'TAG',.NOTDEFINED."));
+  });
+
+  it('rewrites through doubled-quote escapes and a nested list without touching them', () => {
+    const before = stepFile(1, 'IFCWALL', "'guid',$,'it''s',(1.,2.,3.),$,$,$,'T''AG',$");
+    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
+    expect(after).toBe(stepFile(1, 'IFCWALL', "'guid',$,'New',(1.,2.,3.),$,$,$,'T''AG',$"));
+  });
+
+  it('leaves a record it was not asked to change byte-identical', () => {
+    const before = [
+      'ISO-10303-21;',
+      'DATA;',
+      "#1=IFCWALL('guid',$,'Keep me',$,$,$,$,'TAG',.NOTDEFINED.);",
+      "#2=IFCWALL('guid2', $ , 'Rename me' ,$,$,$,$,$,$);",
+      'ENDSEC;',
+    ].join('\n');
+    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'New')], objectTypeEntities);
+    const beforeLines = before.split('\n');
+    const afterLines = after.split('\n');
+    expect(afterLines[2]).toBe(beforeLines[2]);
+    // and the rewritten one keeps every byte of its other slots, padding included
+    expect(afterLines[3]).toBe("#2=IFCWALL('guid2', $ ,'New',$,$,$,$,$,$);");
   });
 });
 

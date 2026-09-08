@@ -9,6 +9,8 @@ import {
   type MutationEntityRef,
   type MutationStoreShape,
 } from '@ifc-lite/mutations';
+import { IfcParser, extractPropertiesOnDemand } from '@ifc-lite/parser';
+import { StepExporter } from '@ifc-lite/export';
 import {
   addDrawingMarkupToStore,
   addMeasureMarkupToStore,
@@ -20,6 +22,7 @@ import {
   DRAWING_MARKUP_PSET_NAME,
   type MarkupAnchor,
 } from './drawing-markup.js';
+import { resolveSpatialAnchor } from './resolve-anchor.js';
 
 function makeStore(maxId: number): MutationStoreShape {
   const byId = new Map<number, MutationEntityRef>();
@@ -330,5 +333,267 @@ describe('addDrawingMarkupToStore (batch, additivity)', () => {
     for (let id = 1; id <= preExistingMax; id++) {
       expect(view.getPositionalMutationsForEntity(id)).toBeNull();
     }
+  });
+});
+
+describe('addPolygonAreaMarkupToStore: points.length < 3 guard', () => {
+  it('throws for 2 points', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    expect(() =>
+      addPolygonAreaMarkupToStore(editor, ANCHOR, ROOT_CONTEXT_ID, {
+        points: [{ x: 0, y: 0 }, { x: 4, y: 0 }],
+        area: 12,
+        perimeter: 14,
+      }),
+    ).toThrow(/needs at least 3 points/);
+  });
+
+  it('throws for 0 points', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    expect(() =>
+      addPolygonAreaMarkupToStore(editor, ANCHOR, ROOT_CONTEXT_ID, {
+        points: [],
+        area: 12,
+        perimeter: 14,
+      }),
+    ).toThrow(/needs at least 3 points/);
+  });
+
+  it('accepts exactly 3 points (the boundary)', () => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(40), view);
+    expect(() =>
+      addPolygonAreaMarkupToStore(editor, ANCHOR, ROOT_CONTEXT_ID, {
+        points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }],
+        area: 6,
+        perimeter: 12,
+      }),
+    ).not.toThrow();
+  });
+});
+
+// ============================================================================
+// Finiteness guards (NaN/Infinity coordinates and derived quantities).
+//
+// A raw NaN/Infinity coordinate previously reached `IfcCartesianPoint` as a
+// bare number, which the STEP writer serializes as the literal `$` (STEP's
+// "no value" token) inside a mandatory-REAL attribute list — schema-invalid
+// STEP written with no error. A NaN distance/area/perimeter similarly
+// reached `IfcQuantityLength`/`IfcQuantityArea` unguarded. Coordinates only
+// reject non-finite (negative/zero is legitimate drawing-space input, see
+// `spatial-zone.ts`'s Footprint-point guard); distance/area/perimeter/extent
+// additionally reject negative (legitimately zero, but never negative).
+// ============================================================================
+
+describe('finiteness guards', () => {
+  describe('addMeasureMarkupToStore', () => {
+    it('rejects a non-finite start point', () => {
+      expect(() =>
+        addMeasureMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          start: { x: NaN, y: 0 }, end: { x: 5, y: 7 }, distance: 6.4,
+        }),
+      ).toThrow(/addMeasureMarkupToStore: start needs a finite point/);
+    });
+
+    it('rejects a non-finite end point', () => {
+      expect(() =>
+        addMeasureMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          start: { x: 1, y: 2 }, end: { x: Infinity, y: 7 }, distance: 6.4,
+        }),
+      ).toThrow(/addMeasureMarkupToStore: end needs a finite point/);
+    });
+
+    it('rejects a non-finite distance', () => {
+      expect(() =>
+        addMeasureMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          start: { x: 1, y: 2 }, end: { x: 5, y: 7 }, distance: NaN,
+        }),
+      ).toThrow(/addMeasureMarkupToStore: distance must be finite and non-negative/);
+    });
+
+    it('rejects a negative distance', () => {
+      expect(() =>
+        addMeasureMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          start: { x: 1, y: 2 }, end: { x: 5, y: 7 }, distance: -1,
+        }),
+      ).toThrow(/addMeasureMarkupToStore: distance must be finite and non-negative/);
+    });
+
+    it('accepts negative/zero coordinates and a zero distance', () => {
+      expect(() =>
+        addMeasureMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          start: { x: -1, y: -1 }, end: { x: 0, y: 0 }, distance: 0,
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('addPolygonAreaMarkupToStore', () => {
+    it('rejects a non-finite vertex', () => {
+      expect(() =>
+        addPolygonAreaMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: NaN }],
+          area: 12, perimeter: 14,
+        }),
+      ).toThrow(/addPolygonAreaMarkupToStore: points\[2\] needs a finite point/);
+    });
+
+    it('rejects a non-finite area', () => {
+      expect(() =>
+        addPolygonAreaMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }],
+          area: Infinity, perimeter: 14,
+        }),
+      ).toThrow(/addPolygonAreaMarkupToStore: area must be finite and non-negative/);
+    });
+
+    it('rejects a non-finite perimeter', () => {
+      expect(() =>
+        addPolygonAreaMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          points: [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }],
+          area: 12, perimeter: NaN,
+        }),
+      ).toThrow(/addPolygonAreaMarkupToStore: perimeter must be finite and non-negative/);
+    });
+
+    it('accepts negative/zero vertex coordinates', () => {
+      expect(() =>
+        addPolygonAreaMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          points: [{ x: -1, y: -1 }, { x: 4, y: 0 }, { x: 4, y: 3 }],
+          area: 0, perimeter: 0,
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('addTextMarkupToStore', () => {
+    it('rejects a non-finite position', () => {
+      expect(() =>
+        addTextMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          position: { x: NaN, y: 3 }, text: 'note',
+        }),
+      ).toThrow(/addTextMarkupToStore: position needs a finite point/);
+    });
+
+    it('rejects a non-finite extent', () => {
+      expect(() =>
+        addTextMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          position: { x: 2, y: 3 }, text: 'note', extent: { sizeX: Infinity, sizeY: 0.25 },
+        }),
+      ).toThrow(/addTextMarkupToStore: extent\.sizeX must be finite and non-negative/);
+    });
+
+    it('rejects a negative extent', () => {
+      expect(() =>
+        addTextMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          position: { x: 2, y: 3 }, text: 'note', extent: { sizeX: 1, sizeY: -0.25 },
+        }),
+      ).toThrow(/addTextMarkupToStore: extent\.sizeY must be finite and non-negative/);
+    });
+
+    it('accepts a negative/zero position and the default extent', () => {
+      expect(() =>
+        addTextMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          position: { x: -1, y: -1 }, text: 'note',
+        }),
+      ).not.toThrow();
+    });
+  });
+
+  describe('addCloudMarkupToStore', () => {
+    it('rejects a non-finite corner', () => {
+      expect(() =>
+        addCloudMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          points: [{ x: 0, y: 0 }, { x: NaN, y: 1 }], label: 'cloud',
+        }),
+      ).toThrow(/addCloudMarkupToStore: points\[1\] needs a finite point/);
+    });
+
+    it('accepts negative/zero corners', () => {
+      expect(() =>
+        addCloudMarkupToStore(new StoreEditor(makeStore(40), new MutablePropertyView(null, 'm1')), ANCHOR, ROOT_CONTEXT_ID, {
+          points: [{ x: -1, y: -1 }, { x: 0, y: 0 }], label: 'cloud',
+        }),
+      ).not.toThrow();
+    });
+  });
+
+});
+
+// ============================================================================
+// STEP-escaping regression: the full write -> `StepExporter` pipeline.
+//
+// `addTextMarkupToStore`/`addCloudMarkupToStore` store the raw JS string on
+// `IfcTextLiteralWithExtent.Literal` / the markup Pset's `Label` — escaping
+// only happens downstream, when `StepExporter` serializes the overlay-created
+// entity's attributes (`attribute-real-slots.ts` -> `step-serialization.ts`'s
+// `escapeStepString`, re-exported from `@ifc-lite/data`). Nothing in this
+// package's own suite proved that pipeline actually runs for markup text, so a
+// future change to how overlay string attributes serialize could silently
+// corrupt a user's saved note with no red test anywhere in this package.
+// ============================================================================
+
+/** Minimal IFC4 model with one storey — same fixture `guid-determinism.test.ts`
+ *  uses for its own `StepExporter` end-to-end suite. */
+const STOREY_MODEL = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,(#7),#9);
+#5=IFCCARTESIANPOINT((0.,0.,0.));
+#6=IFCAXIS2PLACEMENT3D(#5,$,$);
+#7=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-05,#6,$);
+#8=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#7,$,.MODEL_VIEW.,$);
+#9=IFCUNITASSIGNMENT((#91));
+#91=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#20=IFCLOCALPLACEMENT($,#6);
+#30=IFCBUILDINGSTOREY('0storey000000000000000',$,'Level 0',$,$,#20,$,$,.ELEMENT.,0.);
+ENDSEC;
+END-ISO-10303-21;`;
+
+describe('STEP-escaping regression: text/label round-trip through StepExporter', () => {
+  // Apostrophe, backslash, and CJK (non-ASCII) — the same trio
+  // `step-serialization.test.ts` exercises directly against `escapeStepString`,
+  // here exercised through the real markup-write -> export pipeline instead.
+  const RAW_TEXT = "O'Brien\\path 文字";
+  // escapeStepString: backslash doubled, apostrophe doubled, each non-ASCII
+  // code point wrapped as \X2\<hex>\X0\ (see step-serializers.ts).
+  const ESCAPED_TEXT = "O''Brien\\\\path \\X2\\6587\\X0\\\\X2\\5B57\\X0\\";
+
+  async function exportMarkupModel(): Promise<string> {
+    const store = await new IfcParser().parseColumnar(
+      new TextEncoder().encode(STOREY_MODEL).buffer as ArrayBuffer,
+      { disableWorkerScan: true },
+    );
+    const view = new MutablePropertyView(null, 'm1');
+    view.setOnDemandExtractor((entityId: number) => extractPropertiesOnDemand(store, entityId));
+    const editor = new StoreEditor(store, view);
+    const anchor: MarkupAnchor = resolveSpatialAnchor(store, 30);
+    const subContextId = 8; // pre-existing 'Body' IfcGeometricRepresentationSubContext
+    addTextMarkupToStore(editor, anchor, subContextId, { position: { x: 1, y: 1 }, text: RAW_TEXT });
+    addCloudMarkupToStore(editor, anchor, subContextId, {
+      points: [{ x: 0, y: 0 }, { x: 1, y: 1 }], label: RAW_TEXT,
+    });
+    const result = new StepExporter(store, view).export({ schema: 'IFC4', applyMutations: true });
+    return new TextDecoder().decode(result.content);
+  }
+
+  it('escapes the IfcTextLiteralWithExtent.Literal exactly, apostrophe/backslash/CJK round-trip', async () => {
+    const out = await exportMarkupModel();
+    expect(out).toContain(`IFCTEXTLITERALWITHEXTENT('${ESCAPED_TEXT}'`);
+    // The raw unescaped form must NOT appear bare in a string literal slot —
+    // if it did, the export produced invalid/ambiguous STEP.
+    expect(out).not.toContain(`'${RAW_TEXT}'`);
+  });
+
+  it('escapes the cloud markup Label (Pset property value) exactly', async () => {
+    const out = await exportMarkupModel();
+    expect(out).toMatch(/IFCPROPERTYSINGLEVALUE\('Label',\$,IFCTEXT\('/);
+    expect(out).toContain(`IFCTEXT('${ESCAPED_TEXT}')`);
   });
 });

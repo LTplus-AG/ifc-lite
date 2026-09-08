@@ -145,6 +145,37 @@ export interface CloudMarkupResult {
   productShapeId: number;
 }
 
+/**
+ * A drawing-space coordinate may legitimately be negative or zero — the
+ * caller's own drawing origin, not this module's to constrain — so this only
+ * rejects NaN/Infinity, never a sign check. Same split `spatial-zone.ts`'s
+ * `validateZone` uses for its Footprint points, the closest analog: without
+ * it, a NaN/Infinity coordinate reaches `IfcCartesianPoint` as the literal
+ * `$` inside a mandatory-REAL attribute list — schema-invalid STEP written
+ * with no error.
+ */
+function assertFinitePoint(functionName: string, label: string, p: MarkupPoint2D): void {
+  if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) {
+    throw new Error(`${functionName}: ${label} needs a finite point`);
+  }
+}
+
+/**
+ * Distance/area/perimeter/extent are derived measurements: never negative,
+ * but legitimately zero (a degenerate measurement, e.g. a zero-length
+ * measure). So this rejects NaN/Infinity and negative values, not `<= 0`
+ * like `_emit-helpers.ts`'s `assertPositiveFinite` (which guards true
+ * dimensions — Width, Height — that can never be zero). Without this, a NaN
+ * silently becomes a zeroed quantity value on write (`toNativeLength(NaN)`
+ * multiplies through to `NaN`, which the STEP writer would still need to
+ * catch) rather than failing loudly here.
+ */
+function assertFiniteNonNegative(functionName: string, label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${functionName}: ${label} must be finite and non-negative`);
+  }
+}
+
 /** IfcAnnotation attribute order: GlobalId, OwnerHistory, Name, Description,
  *  ObjectType, ObjectPlacement, Representation — same 7-slot shape across
  *  IFC2X3/IFC4/IFC4X3 (schema-registry.ts `IfcAnnotation.allAttributes`). */
@@ -177,6 +208,9 @@ export function addMeasureMarkupToStore(
   contextId: number,
   params: MeasureMarkupParams,
 ): MeasureMarkupResult {
+  assertFinitePoint('addMeasureMarkupToStore', 'start', params.start);
+  assertFinitePoint('addMeasureMarkupToStore', 'end', params.end);
+  assertFiniteNonNegative('addMeasureMarkupToStore', 'distance', params.distance);
   const n = (metres: number) => toNativeLength(anchor, metres);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, [0, 0, 0]);
   const polylineId = emitMarkupPolyline(
@@ -207,6 +241,11 @@ export function addPolygonAreaMarkupToStore(
   if (params.points.length < 3) {
     throw new Error('addPolygonAreaMarkupToStore: needs at least 3 points');
   }
+  for (const [i, point] of params.points.entries()) {
+    assertFinitePoint('addPolygonAreaMarkupToStore', `points[${i}]`, point);
+  }
+  assertFiniteNonNegative('addPolygonAreaMarkupToStore', 'area', params.area);
+  assertFiniteNonNegative('addPolygonAreaMarkupToStore', 'perimeter', params.perimeter);
   const n = (metres: number) => toNativeLength(anchor, metres);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, [0, 0, 0]);
   const polylineId = emitMarkupPolyline(editor, params.points.map((p): [number, number] => [n(p.x), n(p.y)]), true);
@@ -234,10 +273,13 @@ export function addTextMarkupToStore(
   contextId: number,
   params: TextMarkupParams,
 ): TextMarkupResult {
+  assertFinitePoint('addTextMarkupToStore', 'position', params.position);
+  const extent = params.extent ?? { sizeX: 1, sizeY: 0.25 };
+  assertFiniteNonNegative('addTextMarkupToStore', 'extent.sizeX', extent.sizeX);
+  assertFiniteNonNegative('addTextMarkupToStore', 'extent.sizeY', extent.sizeY);
   const n = (metres: number) => toNativeLength(anchor, metres);
   const placementId = emitLocalPlacement(editor, anchor.storeyPlacementId, [0, 0, 0]);
   const textPlacementId = emitMarkupPoint2DPlacement(editor, [n(params.position.x), n(params.position.y)]);
-  const extent = params.extent ?? { sizeX: 1, sizeY: 0.25 };
   const extentId = editor.addEntity('IfcPlanarExtent', [n(extent.sizeX), n(extent.sizeY)]).expressId;
   const textLiteralId = editor.addEntity('IfcTextLiteralWithExtent', [
     params.text,
@@ -270,8 +312,10 @@ export function addCloudMarkupToStore(
   contextId: number,
   params: CloudMarkupParams,
 ): CloudMarkupResult {
-  const n = (metres: number) => toNativeLength(anchor, metres);
   const [topLeft, bottomRight] = params.points;
+  assertFinitePoint('addCloudMarkupToStore', 'points[0]', topLeft);
+  assertFinitePoint('addCloudMarkupToStore', 'points[1]', bottomRight);
+  const n = (metres: number) => toNativeLength(anchor, metres);
   const corners: Array<[number, number]> = [
     [n(topLeft.x), n(topLeft.y)],
     [n(bottomRight.x), n(topLeft.y)],

@@ -26,11 +26,15 @@ import { splitTopLevelArgs } from './step-argument-parser.js';
  * NOT folded in here: it stops early at a positional budget, which is a
  * genuinely different rule, not a copy of this one.
  *
- * `splitTopLevelArgs` trims each token and drops a trailing empty argument
- * (`"a,"` → `['a']`) rather than keeping it as `['a', '']`; neither
- * `IFCDOORTYPE` nor `IFCWINDOWTYPE`'s fixed-arity attribute list has a
- * trailing comma in well-formed STEP, so this does not change output for
- * `remapRenamedAttributesByName`'s real inputs — pinned by
+ * `splitTopLevelArgs` behaves differently from the old local scanner in two
+ * ways: it drops a trailing empty argument (`"a,"` → `['a']`) rather than
+ * keeping it as `['a', '']`, and it trims each token
+ * (`"a, b,c"` → `['a','b','c']` instead of `['a',' b','c']`). Both are safe
+ * for `remapRenamedAttributesByName`'s real inputs: neither `IFCDOORTYPE`
+ * nor `IFCWINDOWTYPE`'s fixed-arity attribute list has a trailing comma in
+ * well-formed STEP, so the first difference never fires; and STEP has no
+ * semantic significance to whitespace between top-level tokens, so a trimmed
+ * token is the same value either way. Pinned by
  * `schema-converter-attr-remap.test.ts`.
  */
 export function splitTopLevelAttributes(attrsRaw: string): string[] {

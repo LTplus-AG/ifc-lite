@@ -21,3 +21,35 @@ test('#3974: Rust test data and source resolve to Cargo; workspace-only manifest
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('#4104: a crate excluded from the root workspace is not a cargo owner, whatever the file language', () => {
+  const root = mkdtempSync(join(tmpdir(), 'oracle-cargo-excluded-'));
+  try {
+    const excludedDir = join(root, 'rust', 'python');
+    const memberDir = join(root, 'rust', 'geometry');
+    mkdirSync(join(excludedDir, 'tests'), { recursive: true });
+    mkdirSync(join(memberDir, 'tests'), { recursive: true });
+    writeFileSync(
+      join(root, 'Cargo.toml'),
+      '[workspace]\nexclude = ["rust/python"]\nmembers = ["rust/geometry"]\n',
+    );
+    writeFileSync(join(excludedDir, 'Cargo.toml'), '[package]\nname = "ifc-lite-python"\n\n[workspace]\n');
+    writeFileSync(join(memberDir, 'Cargo.toml'), '[package]\nname = "ifc-lite-geometry"\n');
+
+    // The oracle cannot run `cargo test -p ifc-lite-python` from `root` (that
+    // crate is excluded from the root workspace), so neither a `.py` test nor
+    // a `.rs` test under it may be claimed by cargo — both must fall through
+    // (to another owner, or to `unassigned`) instead of failing with
+    // "package ID specification did not match any packages".
+    assert.equal(cargoTestOwner(join(excludedDir, 'tests', 'test_bindings.py'), root), null);
+    assert.equal(cargoTestOwner(join(excludedDir, 'tests', 'extra_test.rs'), root), null);
+
+    // A genuine in-workspace member is unaffected.
+    assert.deepEqual(cargoTestOwner(join(memberDir, 'tests', 'census.rs'), root), {
+      dir: memberDir,
+      crate: 'ifc-lite-geometry',
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

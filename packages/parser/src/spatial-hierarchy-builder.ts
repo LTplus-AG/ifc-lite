@@ -5,14 +5,12 @@
 /**
  * Spatial hierarchy builder - builds the project/site/building/storey tree.
  *
- * Single source for spatial-hierarchy construction. There are two entry points
- * over one shared `buildNode`:
- *   - `build(...)`     fresh parse: extracts storey elevations from the source
- *                      buffer. Throws if there is no IfcProject.
- *   - `buildFromCache` cache restore: no source buffer, so storey elevations
- *                      stay empty. Returns undefined if there is no IfcProject.
- * Both paths get the same cycle guard, aggregate-descendant storey mapping, and
- * spatial-child promotion, so they cannot drift.
+ * Single source for spatial-hierarchy construction, over one shared
+ * `buildNode`: `build(...)` (fresh parse, extracts storey elevations, throws
+ * if there is no IfcProject) and `buildFromCache` (no source so elevations
+ * stay empty, returns undefined if there is no IfcProject) share the same
+ * cycle guard, canonical-parent resolution, storey mapping, and spatial-child
+ * promotion, so they cannot drift.
  */
 
 import type { EntityTable, StringTable, RelationshipGraph, SpatialHierarchy, SpatialNode } from '@ifc-lite/data';
@@ -32,6 +30,7 @@ import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcSourceBytes } from './source-bytes.js';
 import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
+import { computeCanonicalParent } from './spatial-hierarchy-canonical-parent.js';
 
 const log = createLogger('SpatialHierarchy');
 
@@ -55,13 +54,12 @@ interface BuildContext {
   storeyElevations: Map<number, number>;
   elementToStorey: Map<number, number>;
   /** elementId -> nearest containing spatial node at ANY level (see the
-   *  SpatialHierarchy field docs). Covers aggregated descendants of a
-   *  directly-contained element, unlike the storey-only `elementToStorey`. */
+   *  SpatialHierarchy field docs); covers aggregated descendants too, unlike `elementToStorey`. */
   elementToContainer: Map<number, number>;
   visited: Set<number>;
+  canonicalParent: Map<number, number>; // childId -> its one allowed builder (#4095)
   attrSource?: AttributeSource;
-  /** One extractor reused across the recursion when a source is available, so
-   *  LongName reads don't re-allocate per spatial node. */
+  /** One extractor reused across the recursion so LongName reads don't re-allocate per node. */
   attrExtractor?: EntityExtractor;
 }
 
@@ -113,6 +111,7 @@ export class SpatialHierarchyBuilder {
       elementToStorey: new Map(),
       elementToContainer: new Map(),
       visited: new Set(),
+      canonicalParent: computeCanonicalParent(entities, relationships),
       attrSource,
       attrExtractor: attrSource ? new EntityExtractor(attrSource.source) : undefined,
     };
@@ -269,6 +268,7 @@ export class SpatialHierarchyBuilder {
       if (spatialChildIds.has(childId)) return;
       const childType = entities.getTypeEnum(childId);
       if (isSpatialStructureType(childType) && childType !== IfcTypeEnum.IfcProject) {
+        if (ctx.canonicalParent.get(childId) !== expressId) return; // canonical parent only, no phantom stub (#4095)
         spatialChildIds.add(childId);
         childNodes.push(this.buildNode(childId, ctx));
       }

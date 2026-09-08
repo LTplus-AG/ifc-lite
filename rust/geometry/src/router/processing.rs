@@ -642,6 +642,7 @@ impl GeometryRouter {
         let dedup_key = self.item_dedup_key(item, decoder);
         if let (Some(key), Some(cache)) = (dedup_key, self.item_dedup_cache.as_ref()) {
             let hit = cache
+                .meshes
                 .lock()
                 .unwrap_or_else(|e| e.into_inner())
                 .get(&key)
@@ -652,7 +653,44 @@ impl GeometryRouter {
             }
         }
 
+        // #4083 (double-count half only — see the module-level cross-reference
+        // below): snapshot the item's processor's own failure log BEFORE the
+        // uncached build, so any record it adds during THIS call can be
+        // attributed to `dedup_key` and, if a racing router sharing this cache
+        // already claimed that key, retracted below. `None` when the item's
+        // type has no registered processor (nothing to snapshot, nothing to
+        // retract) or dedup is disabled (`dedup_key` is `None`).
+        let failure_mark = dedup_key.and_then(|_| {
+            self.processors
+                .get(&item.ifc_type, self.schema)
+                .map(|p| p.bool_failure_count())
+        });
+
         let mesh = self.process_representation_item_uncached(item, decoder)?;
+
+        // If this call's processor recorded anything new, decide whether THIS
+        // router keeps it: the item-dedup cache's `diagnostic_claimed` set
+        // (shared with every router built from the same
+        // `enable_content_dedup_shared` cache) lets exactly one racing router
+        // keep the diagnostic for one `item_dedup_key`; every other one
+        // retracts its own copy of the same logical operation's record.
+        //
+        // Fixes ONLY the double-count half of #4083: two racing MISSES each
+        // computing (and each initially recording) the same tear now collapse
+        // to one record. Does NOT fix the omission half — a cache HIT never
+        // reaches this code at all (it returns early above, before
+        // `process_representation_item_uncached` runs), so it still reports
+        // zero diagnostics regardless of what the warm MISS recorded.
+        if let (Some(key), Some(before), Some(cache)) =
+            (dedup_key, failure_mark, self.item_dedup_cache.as_ref())
+        {
+            if let Some(processor) = self.processors.get(&item.ifc_type, self.schema) {
+                if processor.bool_failure_count() > before && !cache.claim_diagnostic(key) {
+                    processor.truncate_bool_failures_to(before);
+                }
+            }
+        }
+
         // Compute the instancing rep_identity ONCE for this unique shape so cache
         // hits can reuse it instead of re-hashing the full mesh per occurrence.
         let rep = self.direct_rep_identity(&mesh);
@@ -672,6 +710,7 @@ impl GeometryRouter {
                 // single-Mutex critical section serializes the pool on every miss.
                 let cached = Arc::new((mesh.clone(), rep));
                 cache
+                    .meshes
                     .lock()
                     .unwrap_or_else(|e| e.into_inner())
                     .insert(key, cached);

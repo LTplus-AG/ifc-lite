@@ -211,29 +211,80 @@ fn revolved_beam_is_flat_shaded_so_creases_stay_sharp() {
         mesh.positions.len(),
     );
 
-    let mut mismatched_triangles = 0usize;
-    for tri in mesh.indices.chunks_exact(3) {
-        let (i0, i1, i2) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
-        let n0 = &mesh.normals[i0 * 3..i0 * 3 + 3];
-        let n1 = &mesh.normals[i1 * 3..i1 * 3 + 3];
-        let n2 = &mesh.normals[i2 * 3..i2 * 3 + 3];
-        let eq = |a: &[f32], b: &[f32]| {
-            (a[0] - b[0]).abs() < 1e-5
-                && (a[1] - b[1]).abs() < 1e-5
-                && (a[2] - b[2]).abs() < 1e-5
-        };
-        if !(eq(n0, n1) && eq(n1, n2)) {
-            mismatched_triangles += 1;
+    // How far apart a triangle's three vertex normals may be and still count as
+    // flat. NOT bit-equality: the source weld (`mesh_weld`) merges vertices whose
+    // normals fall in the same 1e-3 quantization cell, so it keeps one of two
+    // normals that agree to within that grid and a triangle can end up with a
+    // few 1e-5 of jitter. That is invisible; a re-smoothed crease is not. This
+    // assertion used to demand 1e-5, which measured bit-identity of the router's
+    // UNWELDED intermediate — where every triangle still owns its three vertices
+    // and carries one exact face normal — rather than crease sharpness. It never
+    // described the shipped mesh: on main the weld ran afterwards, at
+    // `build_mesh_data`, and merging normals within the same 1e-3 cell put this
+    // same jitter into the `MeshData` users actually get. #4103 moved the weld
+    // ahead of the placement, so the router's output now shows what the shipped
+    // mesh always showed.
+    //
+    // Measured here, not asserted: worst within-triangle deviation ~1.6e-4, an
+    // order of magnitude inside the 1e-3 grid, and smooth-shading the same beam
+    // (the control below) puts it at ~2.0 — four orders the other way. The bar
+    // sits in that gap, and the control is what proves it still catches #846.
+    //
+    // This literal is `1.0 / ifc_lite_geometry::grid::NORMAL_QUANT_F32`, the
+    // weld's own normal cell width, and that identity is what ties the bar to the
+    // mechanism rather than to a lucky number: two vertices only merge when their
+    // normals round into the SAME cell. Note the bound is NOT one cell. This
+    // compares three vertices of one triangle, which can survive in three
+    // DIFFERENT cells, so representatives straddling cell boundaries can differ
+    // by about two cells (~2e-3) in the worst case, which is above this bar. The
+    // measured 1.6e-4 is 6x inside it, and the control below is what actually
+    // proves the bar still catches #846; do not read this constant as a proof.
+    // It is written
+    // out because `NORMAL_QUANT_F32` is `pub(crate)` and an integration test
+    // cannot see it — exporting it would put a test-only constant in a published
+    // crate's API forever. If the grid is ever coarsened, this assertion fires
+    // and this paragraph is the reason why; re-derive it, do not just raise it.
+    const FLAT_SHADING_TOLERANCE: f32 = 1.0e-3;
+
+    let deviation = |mesh: &ifc_lite_geometry::Mesh| -> f32 {
+        let mut worst = 0.0f32;
+        for tri in mesh.indices.chunks_exact(3) {
+            let n = |i: u32| {
+                let b = i as usize * 3;
+                [mesh.normals[b], mesh.normals[b + 1], mesh.normals[b + 2]]
+            };
+            let (n0, n1, n2) = (n(tri[0]), n(tri[1]), n(tri[2]));
+            for k in 0..3 {
+                worst = worst
+                    .max((n0[k] - n1[k]).abs())
+                    .max((n1[k] - n2[k]).abs())
+                    .max((n0[k] - n2[k]).abs());
+            }
         }
-    }
-    assert_eq!(
-        mismatched_triangles, 0,
-        "{} triangles have non-identical vertex normals — the revolved \
-         I-beam is being smooth-shaded again, so creases between the \
-         flange faces and the web will render as a rounded blob \
-         (see swept.rs::process — should call \
-         PolygonalFaceSetProcessor::build_flat_shaded_mesh on the \
-         finished mesh)",
-        mismatched_triangles,
+        worst
+    };
+
+    let worst = deviation(&mesh);
+    assert!(
+        worst < FLAT_SHADING_TOLERANCE,
+        "a triangle's vertex normals differ by {worst:e} — the revolved I-beam is \
+         being smooth-shaded again, so creases between the flange faces and the \
+         web will render as a rounded blob (see swept.rs::process — should call \
+         PolygonalFaceSetProcessor::build_flat_shaded_mesh on the finished mesh)",
+    );
+
+    // The control: the tolerance has to be able to FAIL. Sharing vertices by
+    // position and re-deriving normals is exactly what the #846 defect did, and
+    // on this mesh it blows past the bar by three orders of magnitude, so a bar
+    // at 1e-3 is nowhere near the line it is meant to sit behind.
+    let mut smoothed = mesh.welded_by_position(1e-6);
+    ifc_lite_geometry::calculate_normals(&mut smoothed);
+    let smoothed_worst = deviation(&smoothed);
+    assert!(
+        smoothed_worst > FLAT_SHADING_TOLERANCE * 100.0,
+        "control failed: smooth-shading this beam only moved the worst \
+         within-triangle normal deviation to {smoothed_worst:e}, so a tolerance \
+         of {FLAT_SHADING_TOLERANCE:e} would not catch the regression this test \
+         exists for",
     );
 }

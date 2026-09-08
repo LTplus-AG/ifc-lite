@@ -144,12 +144,19 @@ pub(crate) fn mat4_to_row_major(m: &Matrix4<f64>) -> [f64; 16] {
 
 impl GeometryRouter {
     /// Apply local placement transformation to mesh
+    ///
+    /// Welds the source vertices FIRST (#4103). This is the last point at which
+    /// the vertices are still in the object frame, and the weld keys on raw f32
+    /// bits, so welding after the bake makes the merge depend on where the
+    /// element sits and leaves two occurrences of one representation with
+    /// different buffers. See `crate::mesh_weld`'s module doc.
     pub(super) fn apply_placement(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         mesh: &mut Mesh,
     ) -> Result<()> {
+        crate::mesh_weld::weld_mesh(mesh);
         let placement_attr = match element.get(5) {
             Some(attr) if !attr.is_null() => attr,
             _ => {
@@ -191,12 +198,20 @@ impl GeometryRouter {
     /// instances of one shared geometry land at their own positions.
     /// (Moved here from `processing.rs` — placement logic lives with the other
     /// placement appliers, and `processing.rs` sits at its ratchet budget.)
+    ///
+    /// Welds each sub-mesh's source vertices first, for the reason
+    /// [`Self::apply_placement`] gives. Every per-style channel (plain, layered,
+    /// textured) converges here, so one loop covers them all, and the sub-mesh
+    /// weld carries `SubMesh::uvs` through the same remap.
     pub(super) fn apply_submesh_placement(
         &self,
         sub_meshes: &mut SubMeshCollection,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<()> {
+        for sub in &mut sub_meshes.sub_meshes {
+            crate::mesh_weld::weld_sub_mesh(sub);
+        }
         // ObjectPlacement translation is in file units (e.g. mm) but geometry is
         // scaled to metres, so the transform MUST be scaled to match.
         if let Some(placement_attr) = element.get(5) {

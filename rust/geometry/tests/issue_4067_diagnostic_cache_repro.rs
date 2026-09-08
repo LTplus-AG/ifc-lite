@@ -98,39 +98,35 @@ fn fresh_decoder(content: &'static str) -> EntityDecoder<'static> {
     EntityDecoder::with_index(content.as_bytes(), index)
 }
 
+/// Did this router record (and keep) its own open-topology-tear diagnostic —
+/// as opposed to which of the three mutually-exclusive reasons
+/// `union.rs::audit_and_gate_union` classified it as. `KernelError` is the
+/// ungated #3440-step-1 record (recorded only when neither gate rejects);
+/// `csg_manifold_gate` and `csg_topology_gate` each independently decide
+/// whether to reject instead and, if so, record `NonManifoldRejected` /
+/// `OpenTopologyRejected` in its place (`accept_gates_reject` in
+/// `csg/topology_diagnostic.rs` uses `|`, not `||`, so a mesh that trips both
+/// gates records both). WALL_WITH_OPEN_UNION's tear falls through to
+/// `KernelError` under the default build and `csg_manifold_gate` alone, but
+/// trips the stricter edge-multiplicity check under `csg_topology_gate` and
+/// is recorded as `OpenTopologyRejected` instead — same tear, different
+/// bucket depending on which gate feature is compiled in. A filter that only
+/// recognised `KernelError` would read the topology-gate builds as "not
+/// recorded" even though the diagnostic fired; see 25ae873fa's identical fix
+/// to `issue_4083_diagnostic_dedup_test.rs::kernel_error_count` for the first
+/// occurrence of this exact test defect. Returns `1` if at least one
+/// qualifying record survived, else `0` (a raw count is not meaningful here:
+/// under a combined-gate build one tear can legitimately record twice).
 fn kernel_error_count(router: &GeometryRouter) -> usize {
-    router
-        .take_csg_failures()
-        .values()
-        .flatten()
-        .filter(|f| matches!(f.reason, BoolFailureReason::KernelError(_)))
-        .count()
-}
-
-/// Feature-agnostic count of "this open-topology union was flagged at all".
-///
-/// `record_topology_tear` (default build, and the `csg_manifold_gate`-only
-/// build, which never touches `topology_gate_reject`) records this as
-/// `KernelError`. Under `csg_topology_gate`, `union.rs`'s
-/// `accept_gates_reject` intercepts the SAME tear first and records
-/// `OpenTopologyRejected` instead, returning early WITHOUT also calling
-/// `record_topology_tear` (see the comment on that call site) — so under that
-/// feature `kernel_error_count` alone reads 0 even though the fixture tore
-/// exactly as designed. This control only needs to know the tear was
-/// recorded SOME way; which `BoolFailureReason` variant carries it is the
-/// accept-gate's choice, not this fixture's.
-fn open_topology_incident_count(router: &GeometryRouter) -> usize {
-    router
-        .take_csg_failures()
-        .values()
-        .flatten()
-        .filter(|f| {
-            matches!(
-                f.reason,
-                BoolFailureReason::KernelError(_) | BoolFailureReason::OpenTopologyRejected
-            )
-        })
-        .count()
+    let recorded = router.take_csg_failures().values().flatten().any(|f| {
+        matches!(
+            f.reason,
+            BoolFailureReason::KernelError(_)
+                | BoolFailureReason::OpenTopologyRejected
+                | BoolFailureReason::NonManifoldRejected { .. }
+        )
+    });
+    usize::from(recorded)
 }
 
 fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
@@ -142,20 +138,11 @@ fn mesh_signature(mesh: &ifc_lite_geometry::Mesh) -> (usize, usize, u64) {
     (mesh.positions.len(), mesh.indices.len(), bits_sum)
 }
 
-/// Sanity control: with NO cache at all, the union really does get flagged as
-/// an open-topology accept — otherwise every assertion below would trivially
-/// pass for the wrong reason (the geometry never tearing in the first place).
-///
-/// This test is NOT `#[ignore]`d — the CI "CSG accept gates (feature builds)"
-/// job (`.github/workflows/test.yml`) runs `cargo test -p ifc-lite-geometry
-/// --features csg_topology_gate` (and the `csg_manifold_gate,csg_topology_gate`
-/// combination) directly, with no `--ignored`, so this control compiles and
-/// runs under those features too. It therefore reads
-/// `open_topology_incident_count` (either `BoolFailureReason::KernelError` or
-/// `OpenTopologyRejected`), not the narrower `kernel_error_count` the two
-/// `#[ignore]`d #4083 reproductions below use — those only ever run under the
-/// default feature set (`cargo test -p ifc-lite-geometry -- --ignored`),
-/// where `KernelError` is the only variant this fixture can produce.
+/// Sanity control: with NO cache at all, the union really does record its
+/// tear diagnostic — otherwise every assertion below would trivially pass for
+/// the wrong reason (the geometry never tearing in the first place). Which of
+/// the three reasons it lands in depends on the gate feature set (see
+/// `kernel_error_count`'s doc); this only asserts that one of them fired.
 #[test]
 fn open_union_records_kernel_error_uncached() {
     let mut decoder = fresh_decoder(WALL_WITH_OPEN_UNION);
@@ -165,12 +152,12 @@ fn open_union_records_kernel_error_uncached() {
         .process_element(&entity, &mut decoder)
         .expect("mesh the open-union wall");
     assert!(!mesh.positions.is_empty(), "union must produce geometry, not an empty mesh");
-    let count = open_topology_incident_count(&router);
+    let count = kernel_error_count(&router);
     assert_eq!(
         count, 1,
-        "expected exactly one open-topology accept (KernelError, or OpenTopologyRejected under \
-         csg_topology_gate) from the uncached union; if this is 0 the fixture no longer tears \
-         and the repro below is vacuous"
+        "expected exactly one tear diagnostic (open-topology accept, under whichever reason \
+         the active gate features classify it as) from the uncached union; if this is 0 the \
+         fixture no longer tears and the repro below is vacuous"
     );
 }
 
@@ -270,10 +257,18 @@ fn cache_hit_omits_the_kernel_error_the_cache_miss_recorded() {
 /// `KernelError` for what is, logically, one operation on one structural
 /// item. Run several iterations and report the observed split honestly
 /// (scheduling races are not guaranteed to reproduce on every run).
-// #4083: see the #[ignore] note on `cache_hit_omits_the_kernel_error_the_cache_miss_recorded`
-// above — same reproduction contract, same reason.
+///
+/// Unlike its sibling `cache_hit_omits_the_kernel_error_the_cache_miss_recorded`
+/// (still `#[ignore]`d — that one exercises the still-open OMISSION half of
+/// #4067, a cache HIT never reaching the recording code at all), this test
+/// exercises the DOUBLE-COUNT half that #4083's `item_dedup_cache.rs`
+/// `claim_diagnostic` latch fixes directly: two racing MISSES of the same
+/// key. With the fix in place it is deterministic (25/25 single-counted,
+/// observed locally over multiple runs; the `Barrier` removes the scheduling
+/// window that made the old, unfixed code merely flaky rather than always
+/// wrong) and is run un-ignored so this is the test the #4083 fix is actually
+/// checked against.
 #[test]
-#[ignore = "known-bug reproduction for #4083 (open determinism half of #4067); fails by design until #4083 is fixed"]
 fn barrier_controlled_concurrent_miss_does_not_double_count() {
     const ITERATIONS: usize = 25;
     let mut double_counted = 0usize;

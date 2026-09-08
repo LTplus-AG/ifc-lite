@@ -1,5 +1,117 @@
 # @ifc-lite/ids
 
+## 1.16.0
+
+### Minor Changes
+
+- [#3996](https://github.com/LTplus-AG/ifc-lite/pull/3996) [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914) Thanks [@BIMvoice](https://github.com/BIMvoice)! - The full IDS validator preserves `CLASSIFICATION_UNRESOLVED` as a nonpassing outcome for required, optional, and prohibited requirements. In particular, unknown classification presence cannot certify that a prohibition is satisfied.
+  
+  Fix a server-parsed (source-empty) store silently reporting a classification reached via `IfcExternalReferenceRelationship` (the mechanism non-rooted resources — `IfcMaterial`, `IfcProfileDef` — use instead of `IfcRelAssociatesClassification`) as `CLASSIFICATION_MISSING` ([#3954](https://github.com/LTplus-AG/ifc-lite/issues/3954)). `appendExternalReferenceClassifications` (`packages/ids/src/bridge/classifications.ts`) used to bail unconditionally whenever `store.source` was empty, so a genuinely classified material and an unclassified one were byte-identical to the IDS classification facet.
+  
+  Unlike the sibling `IfcRelAssociatesClassification` pathway ([#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948)/[#3951](https://github.com/LTplus-AG/ifc-lite/issues/3951)), there is no relationship-graph fallback for this one: the server pipeline's `IfcTypeEnum` (`packages/data/src/types.ts`) has no slot for `IfcExternalReferenceRelationship`, `IfcMaterial` or `IfcProfileDef`, and the server resolves classifications only via `IfcRelAssociatesClassification`. So presence can be neither proven nor disproven for this pathway on a server-parsed store — the honest answer is `CLASSIFICATION_UNRESOLVED`, not a fabricated pass or a fabricated `CLASSIFICATION_MISSING`.
+  
+  `ClassificationInfo` gains a `presenceUnknown` flag (paired with `unresolved: true`), scoped to entities the IFC schema actually allows to be classified this way (`IfcMaterial`-family and `IfcProfileDef`-family types — an `IfcRoot` subtype like `IfcWall` can never be a `RelatedResourceObjects` target, so its genuinely-unclassified result is untouched). `checkClassificationFacet` (`packages/ids/src/facets/classification-facet.ts`) treats a `presenceUnknown` entry as not proving presence, so a presence-only facet reports `CLASSIFICATION_UNRESOLVED` instead of fabricating a `passed: true`. The `CLASSIFICATION_UNRESOLVED` message formatters (`translation/service.ts`, `validation/validator.ts`, and the `en`/`de`/`fr` locales) gain a distinct "presence cannot be determined" wording so this case never overclaims that the entity IS classified — the existing "classified, but unreadable" wording from [#3951](https://github.com/LTplus-AG/ifc-lite/issues/3951) is unchanged for its own (proven-present) case. The source-bearing (WASM) path is untouched.
+
+- [#3943](https://github.com/LTplus-AG/ifc-lite/pull/3943) [`86c8c47`](https://github.com/LTplus-AG/ifc-lite/commit/86c8c477d96845b6564562b4209bc96b1dac878b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `@ifc-lite/ids/bridge` now exports the unit-scale resolver pair the IDS
+  property-correction write path needs: `resolveEntityMeasureScales`,
+  `toRaw`, and the `EntityMeasureScales` type they exchange.
+  
+  `resolveEffectivePropertySets` already forward-scales an override's raw
+  value into base SI on read. A caller that WRITES a correction has to make
+  the same trip in reverse, and doing that from its own copy of the scale
+  lookup is how the two sides drift apart. Exporting the resolver and its
+  inverse keeps one scale source for both directions.
+  
+  `toBaseSI` stays internal: the read side lives in this package, so nothing
+  outside it consumes that half.
+
+- [#3943](https://github.com/LTplus-AG/ifc-lite/pull/3943) [`86c8c47`](https://github.com/LTplus-AG/ifc-lite/commit/86c8c477d96845b6564562b4209bc96b1dac878b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `createDataAccessor` (`@ifc-lite/ids/bridge`) now accepts an optional
+  `propertyOverlay` resolver: `(expressId) => PropertyOverride[] | undefined`.
+  When provided, `getPropertyValue` and `getPropertySets` apply the returned
+  overrides (set/delete) on top of the store's own property projection before
+  returning results; every other accessor method is unaffected, and omitting
+  the parameter reproduces the exact previous behaviour.
+  
+  This lets a caller with in-memory property edits that have not yet been
+  exported (e.g. the viewer applying an IDS-driven correction through its
+  mutation overlay) re-run IDS validation and see those edits reflected,
+  instead of only ever validating the last parsed/exported bytes.
+  
+  No breaking change: the new parameter is optional and every existing call
+  site is unaffected.
+  
+  Fixes a defect in the viewer's overlay resolver (not part of this package,
+  but depends on the API below): after an undo, IDS re-validation kept
+  reporting a corrected property as still overridden, because the resolver
+  read `MutablePropertyView.getMutationsForEntity()` — the append-only
+  `mutationHistory`, which undo does not pop (it re-applies the inverse
+  mutation with `skipHistory=true`). `MutablePropertyView` gains
+  `getPropertyMutation(entityId, psetName, propName)`, returning the live
+  overlay's current `PropertyMutation` for that key (or `undefined` when the
+  key carries no override right now) — the same live-overlay source
+  `hasChanges()` / `getModifiedEntityCount()` already use instead of history,
+  now exposed so a caller projecting the overlay onto an external base can
+  tell "no override", "override is a DELETE", and "override is a SET to
+  null" apart.
+  
+  Also fixes a unit-frame mismatch in `resolveEffectivePropertySets`: a
+  `PropertyOverride.value` is written in the model's raw storage frame
+  (mirroring `MutablePropertyView.setProperty`), but every other property in
+  the same pset had already been scaled to base SI by
+  `projectProperty`/`applyUnitConversion`. Under a non-1.0 project length
+  scale (e.g. a millimetre-authored project), a corrected value read back in
+  the wrong frame — 1000x too large or too small — so an IDS re-check
+  compared it against a base-SI literal as if it were already base-SI.
+  Both directions now go through the same `resolveEntityMeasureScales` the
+  base projection already uses: `resolveEffectivePropertySets` forward-scales
+  an override's raw value into base SI before splicing it in, and
+  `IDSCorrectionDialog.tsx` inverse-scales the user's base-SI input into the
+  model's raw frame before writing. This covers a correction to a property
+  that already exists in the pset (keyed off the existing entry's own
+  `dataType`) AND one that creates a brand-new property (a PROPERTY_MISSING
+  requirement): `PropertyOverride` gains an optional `dataType`, threaded
+  from the dialog's own write-time dataType resolution through
+  `MutablePropertyView.setProperty`'s new optional `dataType` parameter (also
+  stored on `PropertyMutation`) so the "no existing entry" branch has
+  something to scale by too, instead of splicing the raw value in unscaled.
+  Non-measure dataTypes (labels, booleans, identifiers) pass through
+  unscaled in both directions and for both cases.
+  
+  Also fixes a case-sensitivity mismatch in `resolveEffectivePropertySets`
+  (the overlay merge behind `createDataAccessor`'s `propertyOverlay`
+  parameter above): `getPropertyValue`/`getPropertySets` already match
+  pset/property names case-insensitively (to tolerate real-world IFC files
+  whose Pset/property names don't match the canonical casing), but the
+  overlay merge matched exact-case only. When an override's target name
+  differed only in case from the entity's actual (non-conformant) base
+  property name, the merge appended the override as a SEPARATE,
+  differently-cased property instead of replacing the existing one — and
+  the case-insensitive read then returned the untouched base entry first,
+  since it comes earlier in iteration order. A correction could read back
+  as applied (its own write-then-verify check reads the exact key it just
+  wrote) yet stay permanently invisible to a re-run of IDS validation
+  through this same accessor. The merge now matches case-insensitively too,
+  consistent with the read path it feeds.
+
+### Patch Changes
+
+- [#3996](https://github.com/LTplus-AG/ifc-lite/pull/3996) [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `isNonRootedClassifiableResource` (`packages/ids/src/bridge/classifications.ts`) treating `IfcRelAssociatesProfileDef` (an IFC4X3 entity) as a possible `RelatedResourceObjects` target of an `IfcExternalReferenceRelationship`, because its name contains "PROFILEDEF". It is `SUBTYPE OF (IfcRelAssociates)` — a rooted relationship that POINTS AT a profile def via its own `RelatingProfileDef` attribute, not an `IfcProfileDef` itself — so a genuinely unclassified one was reported `CLASSIFICATION_UNRESOLVED` (presence cannot be determined) instead of the correct `CLASSIFICATION_MISSING`, on a server-parsed (source-empty) store. Excluded any type name starting with `IFCREL`, which every genuine `IfcProfileDef` descendant's name never does.
+
+- [#3996](https://github.com/LTplus-AG/ifc-lite/pull/3996) [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `isNonRootedClassifiableResource` (`packages/ids/src/bridge/classifications.ts`) decided whether an entity type could be a `RelatedResourceObjects` target of an `IfcExternalReferenceRelationship` — used to determine when a server-parsed (source-empty) store should report `CLASSIFICATION_UNRESOLVED` rather than `CLASSIFICATION_MISSING`. Its `IfcProfileDef` half was a substring test (`includes('PROFILEDEF')` excluding an `IFCREL` prefix), the third string-matching predicate in this spot in three days, each wrong at a different edge (`startsWith('IFCMATERIAL')` over-matched; `endsWith('PROFILEDEF')` missed `IfcArbitraryProfileDefWithVoids`; `includes('PROFILEDEF')` over-matched `IfcRelAssociatesProfileDef`, patched ad hoc).
+  
+  Replaced the substring test with an explicit `PROFILE_DEF_TYPES` set (mirroring the existing `MATERIAL_DEFINITION_TYPES`), derived by walking every `SUBTYPE OF` chain in both `packages/codegen/schemas/IFC4_ADD2_TC1.exp` and `IFC4X3.exp` down to `IfcProfileDef`. Added `is-non-rooted-classifiable-resource.exp-derived.test.ts`, which re-derives the same answer directly from both `.exp` files at test time and asserts it against the code's answer for every entity name in both schemas, plus the exact entities each of the three historical bugs got wrong — so a future schema addition or a hand-edit to either set is checked against the schema itself, not just against today's fixtures.
+  
+  No behavior change for any entity type recognized before this patch; extends coverage to `IfcOpenCrossProfileDef` (IFC4X3-only).
+
+- [#4041](https://github.com/LTplus-AG/ifc-lite/pull/4041) [`faf2946`](https://github.com/LTplus-AG/ifc-lite/commit/faf294674d88050501c3f0737cae555555b9ea5b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Export `@ifc-lite/codegen`'s generated schema hierarchy so type-membership questions ("is this entity a subtype of X?") can be answered from the actual EXPRESS `SUBTYPE OF` chain instead of a string test on the type name.
+  
+  `@ifc-lite/codegen` now ships its generated `ifc4` and `ifc4x3` bundles (`SCHEMA_REGISTRY`, entity/type/enum/select interfaces, serializers) as `@ifc-lite/codegen/ifc4` and `@ifc-lite/codegen/ifc4x3` subpath exports, and adds `isSubtypeOf` / `isSubtypeOfAny` / `isProperSubtypeOf` / `isProperSubtypeOfAny` helpers built on each bundle's `inheritanceChain`.
+  
+  `@ifc-lite/ids`'s `isNonRootedClassifiableResourceType` (deciding whether an entity can carry classifications via `IfcExternalReferenceRelationship`) and `@ifc-lite/export`'s LOD0 generator (excluding materials from candidate elements) now use these helpers instead of pinned `startsWith`/`endsWith`/`includes` string tests on the type name — the pattern behind three separate one-string-test-wrong-at-a-different-edge incidents in as many days.
+- Updated dependencies [[`a24b8cf`](https://github.com/LTplus-AG/ifc-lite/commit/a24b8cff9598e48c75c5f9fbebd036e72c09063e), [`90f4859`](https://github.com/LTplus-AG/ifc-lite/commit/90f4859b73f694114baec821721be498757b9c48), [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`68c322f`](https://github.com/LTplus-AG/ifc-lite/commit/68c322f91195adcf5b206d020025e11824b80d08), [`2ac2d03`](https://github.com/LTplus-AG/ifc-lite/commit/2ac2d03b874bd9f58637c8c8d194b8f8a9e563af), [`faf2946`](https://github.com/LTplus-AG/ifc-lite/commit/faf294674d88050501c3f0737cae555555b9ea5b), [`5cbe8aa`](https://github.com/LTplus-AG/ifc-lite/commit/5cbe8aac32ee1b8871357c7dcd9c1154161322d5)]:
+  - @ifc-lite/parser@5.2.0
+  - @ifc-lite/codegen@1.16.0
+
 ## 1.15.54
 
 ### Patch Changes

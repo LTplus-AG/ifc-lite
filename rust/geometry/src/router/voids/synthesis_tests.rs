@@ -495,10 +495,11 @@ mod issue_4119_triangle_count_gate {
         (out, next_id, brep_id)
     }
 
-    /// A 40m×40m×2m plate hosting one opening whose Body is the
-    /// unshared-grid `IfcFacetedBrep` above.
-    fn plate_with_faceted_opening_ifc() -> String {
-        let header = r#"ISO-10303-21;
+    /// Header shared by every fixture in this module: a 40m×40m×2m
+    /// `IfcPlate` (#100) with an `IfcOpeningElement` local placement (#60)
+    /// ready to receive an opening Body appended after it. Entity ids stop
+    /// at #64 so a generator seeded at #1000+ can never collide.
+    const PLATE_HEADER: &str = r#"ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
 FILE_NAME('test.ifc','2024-01-01T00:00:00',(''),(''),'','','');
@@ -541,12 +542,16 @@ DATA;
 #64=IFCDIRECTION((1.,0.,0.));
 "#;
 
-        // Start well past every hand-assigned id in `header` (highest is
-        // #100) so the generator's auto-incrementing ids can never collide.
+    /// A 40m×40m×2m plate hosting one opening whose Body is the
+    /// unshared-grid `IfcFacetedBrep` above.
+    fn plate_with_faceted_opening_ifc() -> String {
+        // Start well past every hand-assigned id in `PLATE_HEADER` (highest
+        // is #100) so the generator's auto-incrementing ids can never
+        // collide.
         let (brep_entities, next_id, brep_id) = build_unshared_grid_faceted_brep(1000, 8);
 
         let mut out = String::new();
-        out.push_str(header);
+        out.push_str(PLATE_HEADER);
         out.push_str(&brep_entities);
 
         let rep_id = next_id;
@@ -569,6 +574,183 @@ DATA;
         );
         out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
         out
+    }
+
+    /// Build an `IfcFacetedBrep` of an EXACT `n`-triangle zigzag strip, each
+    /// triangle authored with its OWN 3 points (the same unshared-duplication
+    /// pattern as `build_unshared_grid_faceted_brep`, but per-triangle
+    /// instead of per-quad so `n` can be any count — odd or even — not just a
+    /// multiple of 2). Strip vertex `j` (`j` in `0..=n+1`) sits at
+    /// `(j/2, j%2, 0)`; triangle `i` uses strip vertices `i, i+1, i+2`, so
+    /// consecutive triangles share an edge's coordinates without sharing any
+    /// `IfcCartesianPoint` entity.
+    ///
+    /// Returns `(entities, next_id, brep_id, welded_vertex_count,
+    /// raw_vertex_count)`: welding-by-position collapses the `n+2` distinct
+    /// strip coordinates, while the unwelded per-item mesh keeps all `3*n`
+    /// authored points — the same 81-vs-256 signal
+    /// `nonrectangular_opening_keeps_the_welded_mesh_not_the_raw_one` uses to
+    /// tell the two classification paths apart.
+    fn build_zigzag_triangle_strip_brep(start_id: u32, n: usize) -> (String, u32, u32, usize, usize) {
+        let mut out = String::new();
+        let mut next_id = start_id;
+        let mut face_ids: Vec<u32> = Vec::with_capacity(n);
+
+        let strip_point = |j: usize| -> (f64, f64) { ((j / 2) as f64, (j % 2) as f64) };
+
+        for i in 0..n {
+            // A naive strip (i, i+1, i+2) for every triangle alternates
+            // winding order every other triangle — each shares an edge with
+            // its neighbour, but consecutive triangles' vertex order
+            // traverses that edge in the SAME rather than opposite
+            // direction, flipping the face normal. Welding is by position
+            // AND normal, so an unswapped strip welds into two disjoint
+            // vertex groups (`2*(n+1)`) instead of one (`n+2`). Swapping the
+            // first two corners on odd `i` keeps every triangle's winding —
+            // and therefore its normal — consistent across the whole strip.
+            let order: [usize; 3] = if i % 2 == 0 {
+                [i, i + 1, i + 2]
+            } else {
+                [i + 1, i, i + 2]
+            };
+            let mut corner_ids = [0u32; 3];
+            for (k, j) in order.into_iter().enumerate() {
+                let (x, y) = strip_point(j);
+                let pid = next_id;
+                let _ = writeln!(out, "#{pid}=IFCCARTESIANPOINT(({:.4},{:.4},0.0));", x, y);
+                next_id += 1;
+                corner_ids[k] = pid;
+            }
+            let loop_id = next_id;
+            let _ = writeln!(
+                out,
+                "#{loop_id}=IFCPOLYLOOP((#{},#{},#{}));",
+                corner_ids[0], corner_ids[1], corner_ids[2]
+            );
+            next_id += 1;
+            let bound_id = next_id;
+            let _ = writeln!(out, "#{bound_id}=IFCFACEOUTERBOUND(#{loop_id},.T.);");
+            next_id += 1;
+            let face_id = next_id;
+            let _ = writeln!(out, "#{face_id}=IFCFACE((#{bound_id}));");
+            next_id += 1;
+            face_ids.push(face_id);
+        }
+
+        let shell_id = next_id;
+        next_id += 1;
+        let refs: Vec<String> = face_ids.iter().map(|id| format!("#{id}")).collect();
+        let _ = writeln!(out, "#{shell_id}=IFCCLOSEDSHELL(({}));", refs.join(","));
+
+        let brep_id = next_id;
+        next_id += 1;
+        let _ = writeln!(out, "#{brep_id}=IFCFACETEDBREP(#{shell_id});");
+
+        let welded_vertex_count = n + 2;
+        let raw_vertex_count = 3 * n;
+        (out, next_id, brep_id, welded_vertex_count, raw_vertex_count)
+    }
+
+    /// A plate hosting one opening whose Body is the `n`-triangle zigzag
+    /// strip above. Returns `(content, welded_vertex_count,
+    /// raw_vertex_count)`.
+    fn plate_with_n_triangle_opening_ifc(n: usize) -> (String, usize, usize) {
+        let (brep_entities, next_id, brep_id, welded_vertex_count, raw_vertex_count) =
+            build_zigzag_triangle_strip_brep(1000, n);
+
+        let mut out = String::new();
+        out.push_str(PLATE_HEADER);
+        out.push_str(&brep_entities);
+
+        let rep_id = next_id;
+        let pds_id = next_id + 1;
+        let opening_id = next_id + 2;
+        let rel_id = next_id + 3;
+
+        let _ = writeln!(
+            out,
+            "#{rep_id}=IFCSHAPEREPRESENTATION(#13,'Body','Brep',(#{brep_id}));"
+        );
+        let _ = writeln!(out, "#{pds_id}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep_id}));");
+        let _ = writeln!(
+            out,
+            "#{opening_id}=IFCOPENINGELEMENT('0001234567890123456790',#2,'Hole',$,$,#60,#{pds_id},$,.OPENING.);"
+        );
+        let _ = writeln!(
+            out,
+            "#{rel_id}=IFCRELVOIDSELEMENT('0001234567890123456791',#2,$,$,#100,#{opening_id});"
+        );
+        out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+        (out, welded_vertex_count, raw_vertex_count)
+    }
+
+    /// Pins the `triangle_count > 100` gate at the exact boundary. The unit
+    /// suite and the corpus census both stay green under a `>` → `>=`
+    /// mutation because no opening in the local corpus has
+    /// `triangle_count == 100` exactly — this test supplies that case
+    /// directly, plus the neighbours on either side, so a `>=` mutation is
+    /// caught here even though nothing else catches it.
+    ///
+    /// For each `n`, builds an opening whose mesh has EXACTLY `n` triangles
+    /// and checks which branch of `classify_openings_impl` ran, using the
+    /// same welded-vs-raw vertex-count signal as
+    /// `nonrectangular_opening_keeps_the_welded_mesh_not_the_raw_one`:
+    /// `n > 100` must take the `if triangle_count > 100` branch (the WELDED
+    /// `opening_mesh`), `n <= 100` must take the `else` per-item branch (the
+    /// UNWELDED `item_mesh`).
+    #[test]
+    fn triangle_count_gate_boundary() {
+        for &(n, takes_high_branch) in &[(99usize, false), (100usize, false), (101usize, true)] {
+            let (content, welded_vertex_count, raw_vertex_count) =
+                plate_with_n_triangle_opening_ifc(n);
+            let entity_index = build_entity_index(&content);
+            let mut decoder = EntityDecoder::with_index(&content, entity_index);
+            let router = GeometryRouter::with_units(&content, &mut decoder);
+            let opening_id = find_opening_id(&content, 100);
+
+            let plate = decoder.decode_by_id(100).expect("decode plate #100");
+            let openings = router.classify_openings(&plate, &[opening_id], &mut decoder);
+            assert_eq!(openings.len(), 1, "n={n}: exactly one opening classified");
+
+            let mesh = match &openings[0] {
+                OpeningType::NonRectangular(mesh, ..) => mesh,
+                other => panic!(
+                    "n={n}: expected NonRectangular (a zigzag strip is never a \
+                     clean box), got a different OpeningType variant: {}",
+                    match other {
+                        OpeningType::Rectangular(..) => "Rectangular",
+                        OpeningType::DiagonalRectangular(..) => "DiagonalRectangular",
+                        OpeningType::NonRectangular(..) => unreachable!(),
+                    }
+                ),
+            };
+
+            let triangle_count = mesh.indices.len() / 3;
+            assert_eq!(
+                triangle_count, n,
+                "n={n}: the embedded mesh's own triangle count should be unaffected \
+                 by which branch was taken"
+            );
+
+            let vertex_count = mesh.positions.len() / 3;
+            if takes_high_branch {
+                assert_eq!(
+                    vertex_count, welded_vertex_count,
+                    "n={n}: triangle_count > 100 must take the `if` branch, whose \
+                     mesh is the WELDED opening_mesh ({welded_vertex_count} \
+                     vertices) — reading {vertex_count} instead means the gate \
+                     let this n through to the per-item branch"
+                );
+            } else {
+                assert_eq!(
+                    vertex_count, raw_vertex_count,
+                    "n={n}: triangle_count <= 100 must take the `else` per-item \
+                     branch, whose mesh is UNWELDED ({raw_vertex_count} vertices) \
+                     — reading {vertex_count} instead means the gate incorrectly \
+                     routed this n through the high-triangle-count branch"
+                );
+            }
+        }
     }
 
     fn find_opening_id(content: &str, host_id: u32) -> u32 {

@@ -121,10 +121,16 @@ impl GeometryHasher {
     /// re-running the orienter and the whole hash pass on every affected
     /// element; refusing is sound, costs nothing, and moves no vertex.
     ///
-    /// The funnel's OTHER post-verdict edit, `mesh_weld::weld_indexed`, needs no
-    /// such treatment: it merges only vertices with bit-identical `f32`
-    /// positions, a strict refinement of the orienter's 10 µm weld grid, so the
-    /// welded edge graph the verdict was read off is unchanged.
+    /// The funnel's OTHER edit, the source vertex weld, needs no such treatment:
+    /// it merges only vertices with bit-identical `f32` positions, a strict
+    /// refinement of the orienter's 10 µm weld grid, so the welded edge graph the
+    /// verdict was read off is unchanged. Since #4103 it also mostly runs BEFORE
+    /// the verdict, in the object frame inside the router's placement appliers;
+    /// what `build_mesh_data` still welds post-verdict (`mesh_weld::weld`,
+    /// whose doc lists the two populations) is covered by the same argument, and
+    /// the reordering does not disturb the verdict either way: the orienter
+    /// derives its adjacency from a 10 µm quantized position grid, which an
+    /// exact-bit weld refines rather than changes.
     pub fn retract_closure_if_mesh_edited(&mut self, triangles_dropped: u64) {
         if triangles_dropped > 0 {
             self.closure.retract();

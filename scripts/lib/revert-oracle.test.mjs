@@ -36,6 +36,7 @@ import {
   NO_TESTS,
   RUNNER_MISSING,
   UNPARSEABLE,
+  ALL_SKIPPED,
   OBSERVED,
   UNOBSERVED,
   INCONCLUSIVE,
@@ -191,6 +192,30 @@ const VITEST_NO_FILES = `
  include: **/*.{test,spec}.?(c|m)[jt]s?(x)
 
 No test files found, exiting with code 1
+`;
+
+/**
+ * vitest 4's summary line for a file behind `describe.skipIf(true)` — every
+ * test collected, none executed. Constructed to match vitest 4's documented
+ * `Tests  N skipped (N)` summary shape (same format the real captures above
+ * use for `passed`/`failed`), and matches #4108's own quoted CI output:
+ * `packages/export (vitest) -> pass (pass 0, fail 0, total 2)`.
+ */
+const VITEST_ALL_SKIPPED = ` ↓ src/__probe/c.test.ts (2 tests | 2 skipped) 1ms
+
+ Test Files  1 passed (1)
+      Tests  2 skipped (2)
+   Start at  15:40:00
+   Duration  55ms
+`;
+
+/** Same shape, but only one of two tests was skipped: real evidence survives. */
+const VITEST_PARTIAL_SKIP = ` ✓ src/__probe/d.test.ts (2 tests | 1 skipped) 2ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 1 skipped (2)
+   Start at  15:41:00
+   Duration  47ms
 `;
 
 const CARGO_PASS = `running 41 tests
@@ -683,6 +708,32 @@ test('vitest: "No test files found" is NO_TESTS, not a pass', () => {
   assert.equal(r.kind, NO_TESTS);
 });
 
+test('#4108: a WHOLLY skipped vitest file is ALL_SKIPPED, not PASS', () => {
+  const r = parseRunnerOutput({ family: 'vitest', stdout: VITEST_ALL_SKIPPED, stderr: '', exitCode: 0 });
+  assert.equal(r.kind, ALL_SKIPPED);
+  assert.notEqual(r.kind, PASS);
+  assert.equal(r.total, 2);
+  assert.equal(r.passed, 0);
+  assert.equal(r.failed, 0);
+});
+
+test('#4108: a PARTIALLY skipped vitest file stays PASS — it still ran a real assertion', () => {
+  const r = parseRunnerOutput({ family: 'vitest', stdout: VITEST_PARTIAL_SKIP, stderr: '', exitCode: 0 });
+  assert.equal(r.kind, PASS);
+  assert.equal(r.passed, 1);
+  assert.equal(r.total, 2);
+});
+
+test('#4108: an all-skipped baseline is BASELINE-BROKEN, never a green baseline used to certify a change', () => {
+  const baseline = parseRunnerOutput({ family: 'vitest', stdout: VITEST_ALL_SKIPPED, stderr: '', exitCode: 0 });
+  // Reverting production changes nothing about a file that never executes.
+  const reverted = parseRunnerOutput({ family: 'vitest', stdout: VITEST_ALL_SKIPPED, stderr: '', exitCode: 0 });
+  const v = verdict({ baseline, reverted });
+  assert.equal(v.verdict, BASELINE_BROKEN);
+  assert.notEqual(v.verdict, UNOBSERVED, 'must not be reported as a finding about the author\'s tests');
+  assert.notEqual(v.exitCode, 0);
+});
+
 test('THE TRAP, VITE FORM: a removed export bound to undefined is NOT an assertion failure', () => {
   const r = parseRunnerOutput({
     family: 'vitest',
@@ -850,7 +901,7 @@ test('verdict: a baseline that collected nothing is INCONCLUSIVE, not OBSERVED',
 });
 
 test('verdict: every non-OBSERVED outcome exits non-zero', () => {
-  for (const kind of [LOAD_FAILURE, NO_TESTS, RUNNER_MISSING, UNPARSEABLE, PASS]) {
+  for (const kind of [LOAD_FAILURE, NO_TESTS, RUNNER_MISSING, UNPARSEABLE, PASS, ALL_SKIPPED]) {
     const v = verdict({ baseline: green, reverted: { kind, passed: 10, failed: 0, total: 10, evidence: ['x'] } });
     assert.notEqual(v.exitCode, 0, `${kind} must not exit 0`);
   }
@@ -897,6 +948,15 @@ test('aggregate: an assertion failure alongside passes stays an assertion failur
   assert.equal(a.kind, ASSERTION_FAILURE);
   assert.equal(a.failed, 1);
   assert.equal(a.total, 8);
+});
+
+test('#4108: aggregate: one all-skipped package outranks a genuinely green one', () => {
+  const a = aggregate([
+    { kind: PASS, passed: 5, failed: 0, total: 5, evidence: [] },
+    { kind: ALL_SKIPPED, passed: 0, failed: 0, total: 2, evidence: ['all skipped'] },
+  ]);
+  assert.equal(a.kind, ALL_SKIPPED);
+  assert.equal(a.total, 7);
 });
 
 test('aggregate: zero packages is UNPARSEABLE, never a pass', () => {

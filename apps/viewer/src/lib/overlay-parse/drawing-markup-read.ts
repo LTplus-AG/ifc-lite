@@ -47,6 +47,10 @@
  * below computes the geometric value too and warns on a mismatch beyond a
  * relative tolerance — evidence for the next person to inspect a
  * hand-edited or unit-changed file, without overriding the trusted value.
+ * That trust has one floor: a stored `Distance`/`Area`/`Perimeter` of zero
+ * or less can never be a real measurement, so it is never trusted — the
+ * geometry-derived value is used instead (see
+ * `drawing-markup-read-trust.ts`'s `resolveTrustedOrComputed`).
  *
  * Malformed input (missing geometry, a missing quantity/property set, or a
  * point count that cannot form the shape) makes a single reader return
@@ -64,8 +68,12 @@ import type { AnnotationFill2D, AnnotationText2D, ParseResult } from './symbolic
 import {
   polygonPointsFromFillRing,
   polygonPointsFromSegmentStarts,
+  shoelaceArea,
   type MarkupPoint2D,
 } from './drawing-markup-read-geometry.js';
+import { resolveTrustedOrComputed } from './drawing-markup-read-trust.js';
+
+export { warnOnDerivedValueMismatch, warnOnNonPositiveStoredValue } from './drawing-markup-read-trust.js';
 
 export type { MarkupPoint2D };
 
@@ -141,29 +149,6 @@ export interface DrawingMarkupUnitAnchor {
   lengthUnitScale?: number;
 }
 
-const RELATIVE_MISMATCH_TOLERANCE = 1e-3;
-const ABSOLUTE_MISMATCH_TOLERANCE = 1e-6;
-
-/** Warn (never throw — a mismatch is evidence, not a defect in the reader)
- *  when a trusted stored value disagrees with the geometry beyond
- *  tolerance. Exported so a caller can redirect/silence it in tests. */
-export function warnOnDerivedValueMismatch(
-  kind: string,
-  expressId: number,
-  quantityName: string,
-  trusted: number,
-  computed: number,
-): void {
-  const tolerance = Math.max(ABSOLUTE_MISMATCH_TOLERANCE, Math.abs(trusted) * RELATIVE_MISMATCH_TOLERANCE);
-  if (Math.abs(trusted - computed) <= tolerance) return;
-  // eslint-disable-next-line no-console
-  console.warn(
-    `[drawing-markup-read] ${kind} #${expressId}: stored ${quantityName} (${trusted}) disagrees with the ` +
-      `geometry-derived value (${computed}) beyond tolerance — using the stored value. The file may have been ` +
-      'hand-edited or its geometry re-projected since the markup was saved.',
-  );
-}
-
 function readMeasure(
   source: DrawingMarkupAnnotationSource,
   anchor: DrawingMarkupUnitAnchor,
@@ -173,9 +158,9 @@ function readMeasure(
   if (typeof rawDistance !== 'number' || !Number.isFinite(rawDistance)) return null;
 
   const { start, end } = source.lines[0].line;
-  const distance = fromNativeLength(anchor, rawDistance);
+  const trustedDistance = fromNativeLength(anchor, rawDistance);
   const computed = Math.hypot(end.x - start.x, end.y - start.y);
-  warnOnDerivedValueMismatch('measure', source.expressId, 'Distance', distance, computed);
+  const distance = resolveTrustedOrComputed('measure', source.expressId, 'Distance', trustedDistance, computed);
 
   return {
     id: `ifc-measure-${source.expressId}`,
@@ -198,19 +183,22 @@ function readPolygonArea(
   const points = polygonPointsFromSegmentStarts(source.lines);
   if (points.length < 3) return null;
 
-  // Area is deliberately NOT unit-scaled (raw SI m², same convention
-  // `space.ts` uses for `GrossFloorArea`) — do not run it through
-  // `fromNativeLength`.
-  const area = rawArea;
-  const perimeter = fromNativeLength(anchor, rawPerimeter);
-
   let computedPerimeter = 0;
   for (let i = 0; i < points.length; i++) {
     const a = points[i];
     const b = points[(i + 1) % points.length];
     computedPerimeter += Math.hypot(b.x - a.x, b.y - a.y);
   }
-  warnOnDerivedValueMismatch('polygon-area', source.expressId, 'Perimeter', perimeter, computedPerimeter);
+  const computedArea = shoelaceArea(points);
+
+  // Area is deliberately NOT unit-scaled (raw SI m², same convention
+  // `space.ts` uses for `GrossFloorArea`) — do not run it through
+  // `fromNativeLength`.
+  const area = resolveTrustedOrComputed('polygon-area', source.expressId, 'Area', rawArea, computedArea);
+  const trustedPerimeter = fromNativeLength(anchor, rawPerimeter);
+  const perimeter = resolveTrustedOrComputed(
+    'polygon-area', source.expressId, 'Perimeter', trustedPerimeter, computedPerimeter,
+  );
 
   return {
     id: `ifc-polygon-${source.expressId}`,

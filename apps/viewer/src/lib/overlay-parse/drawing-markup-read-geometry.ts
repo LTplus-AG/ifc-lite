@@ -65,3 +65,20 @@ export function polygonPointsFromFillRing(points: Float32Array): MarkupPoint2D[]
   }
   return dedupeClosingPoint(out);
 }
+
+/**
+ * Unsigned polygon area (shoelace formula) over the authored vertices
+ * `polygonPointsFromSegmentStarts` recovers. Used by `drawing-markup-read.ts`
+ * as the geometry-derived fallback when a stored `Area` quantity is not a
+ * physically valid (positive) measurement — always >= 0 by construction, so
+ * it is safe to use in place of an untrusted non-positive stored value.
+ */
+export function shoelaceArea(points: readonly MarkupPoint2D[]): number {
+  let sum = 0;
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    sum += a.x * b.y - b.x * a.y;
+  }
+  return Math.abs(sum) / 2;
+}

@@ -51,6 +51,20 @@ import {
   type DrawingMarkupMetaLookup,
 } from './drawing-markup-read.js';
 
+/** Spy on `console.warn`, matching the convention `profile-entries.test.ts`
+ *  (this directory) already uses for the same "did it actually warn?"
+ *  question. Always restores, even if `run` throws. */
+function withWarnSpy<T>(run: (calls: unknown[][]) => T): T {
+  const calls: unknown[][] = [];
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => calls.push(args);
+  try {
+    return run(calls);
+  } finally {
+    console.warn = originalWarn;
+  }
+}
+
 // ── Shared write-side fixture harness (mirrors drawing-markup.test.ts) ────
 
 function makeStore(maxId: number): MutationStoreShape {
@@ -319,6 +333,37 @@ describe('drawing-markup-read: polygon area round trip', () => {
     assert.strictEqual(p.area, 12);
     assert.strictEqual(p.perimeter, 14);
   });
+
+  it('inverts the writer\'s unit scale for a millimetre model, leaving Area unscaled', () => {
+    const { view, editor, contextId } = newEditor();
+    // 1 native unit = 0.001 m (millimetre model).
+    const anchor: MarkupAnchor = { ownerHistoryId: null, storeyPlacementId: 54, lengthUnitScale: 0.001 };
+    const points = [{ x: 0, y: 0 }, { x: 4, y: 0 }, { x: 4, y: 3 }, { x: 0, y: 3 }];
+    const written = addPolygonAreaMarkupToStore(editor, anchor, contextId, {
+      points,
+      area: 12, // raw SI m^2 — the writer never scales Area (see drawing-markup.ts)
+      perimeter: 14, // metres — the writer scales this through toNativeLength
+    });
+
+    const entities = entitiesById(view);
+    // Points and Perimeter were stored in the NATIVE unit (mm): confirm the
+    // writer really scaled before asserting the reader inverts it.
+    const storedPoints = polylinePoints(entities, written.polylineId);
+    assert.deepStrictEqual(storedPoints, [[0, 0], [4000, 0], [4000, 3000], [0, 3000], [0, 0]]);
+
+    const builder = newFlatBuilder();
+    builder.addPolyline(storedPoints, written.annotationId, 0.001);
+    const parseResult = buildParseResult(builder.flat, {});
+
+    const meta = metaLookupFromView(view, entities);
+    const result = readDrawingMarkupFromParseResult(parseResult, meta, { lengthUnitScale: 0.001 });
+
+    assert.strictEqual(result.polygonArea2DResults.length, 1);
+    const p = result.polygonArea2DResults[0];
+    assert.deepStrictEqual(p.points, points);
+    assert.strictEqual(p.area, 12, 'Area must stay raw SI m^2, unlike Perimeter it is never native-unit-scaled');
+    assert.ok(Math.abs(p.perimeter - 14) < 1e-6, `perimeter was ${p.perimeter}`);
+  });
 });
 
 // ── Round trip: text ────────────────────────────────────────────────────
@@ -577,5 +622,138 @@ describe('drawing-markup-read: hand-written fixture', () => {
     // Trusted stored value (5.2) wins over the geometric recompute (5) —
     // a console.warn fires for the mismatch but the value is not overridden.
     assert.strictEqual(m.distance, 5.2);
+  });
+});
+
+// ── warnOnDerivedValueMismatch actually fires (the reader's own evidence
+//    mechanism — nothing else in this suite spies on console.warn) ────────
+
+describe('drawing-markup-read: the stored-vs-computed mismatch warning fires', () => {
+  it('warns when a positive stored Distance disagrees with the geometry beyond tolerance', () => {
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 30,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.MEASURE,
+      // Geometric distance is exactly 5 (3-4-5 triangle); stored Distance
+      // (5.2) disagrees well beyond the 1e-3 relative tolerance.
+      lines: [{ line: { start: { x: 0, y: 0 }, end: { x: 3, y: 4 } }, category: 'annotation', ownerId: 30 }],
+      texts: [],
+      fills: [],
+      quantities: new Map([['Distance', 5.2]]),
+    };
+
+    const read = withWarnSpy((calls) => {
+      const r = readDrawingMarkupAnnotation(source, {});
+      assert.strictEqual(calls.length, 1, 'expected exactly one console.warn call for the mismatch');
+      assert.match(String(calls[0][0]), /disagrees with the/);
+      assert.match(String(calls[0][0]), /Distance/);
+      return r;
+    });
+
+    assert.ok(read && read.kind === 'measure');
+    // The trusted value still wins — the warning is evidence, not an override.
+    assert.strictEqual(read.value.distance, 5.2);
+  });
+
+  it('is a no-op — the control — when stored and computed agree within tolerance', () => {
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 31,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.MEASURE,
+      lines: [{ line: { start: { x: 0, y: 0 }, end: { x: 3, y: 4 } }, category: 'annotation', ownerId: 31 }],
+      texts: [],
+      fills: [],
+      quantities: new Map([['Distance', 5]]),
+    };
+
+    withWarnSpy((calls) => {
+      readDrawingMarkupAnnotation(source, {});
+      assert.deepStrictEqual(calls, [], 'agreeing values must not warn');
+    });
+  });
+});
+
+// ── Non-positive stored quantities are not trusted (Distance/Area/Perimeter
+//    <= 0 can never be a real measurement — fall back to the geometry) ────
+
+describe('drawing-markup-read: non-positive stored quantities are not trusted', () => {
+  it('falls back to the geometry-derived value when stored Distance is negative', () => {
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 40,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.MEASURE,
+      lines: [{ line: { start: { x: 0, y: 0 }, end: { x: 3, y: 4 } }, category: 'annotation', ownerId: 40 }],
+      texts: [],
+      fills: [],
+      quantities: new Map([['Distance', -5]]),
+    };
+
+    const read = withWarnSpy((calls) => {
+      const r = readDrawingMarkupAnnotation(source, {});
+      assert.strictEqual(calls.length, 1, 'expected exactly one console.warn call for the invalid value');
+      assert.match(String(calls[0][0]), /not a physically valid/);
+      return r;
+    });
+
+    assert.ok(read && read.kind === 'measure');
+    assert.ok(Math.abs(read.value.distance - 5) < 1e-9, `distance was ${read.value.distance}`);
+  });
+
+  it('falls back to the geometry-derived value when stored Distance is zero', () => {
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 41,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.MEASURE,
+      lines: [{ line: { start: { x: 0, y: 0 }, end: { x: 3, y: 4 } }, category: 'annotation', ownerId: 41 }],
+      texts: [],
+      fills: [],
+      quantities: new Map([['Distance', 0]]),
+    };
+
+    const read = readDrawingMarkupAnnotation(source, {});
+    assert.ok(read && read.kind === 'measure');
+    assert.ok(Math.abs(read.value.distance - 5) < 1e-9, `distance was ${read.value.distance}`);
+  });
+
+  it('leaves a truly degenerate (coincident-point) measure at its real, computed zero distance', () => {
+    // Not a corrupted-value case: the geometry itself is degenerate (start
+    // === end). A stored, untrustworthy negative value still falls back to
+    // the geometry-derived value — which is honestly 0 here, not a lie.
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 42,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.MEASURE,
+      lines: [{ line: { start: { x: 2, y: 2 }, end: { x: 2, y: 2 } }, category: 'annotation', ownerId: 42 }],
+      texts: [],
+      fills: [],
+      quantities: new Map([['Distance', -1]]),
+    };
+
+    const read = readDrawingMarkupAnnotation(source, {});
+    assert.ok(read && read.kind === 'measure');
+    assert.strictEqual(read.value.distance, 0);
+  });
+
+  it('falls back to the geometry-derived Area and Perimeter when both are stored non-positive', () => {
+    // A 4x3 rectangle: real area 12, real perimeter 14 (matches the round
+    // trip fixture above), but the stored quantities are corrupted negative.
+    const source: DrawingMarkupAnnotationSource = {
+      expressId: 43,
+      objectType: DRAWING_MARKUP_OBJECTTYPE.POLYGON_AREA,
+      lines: [
+        { line: { start: { x: 0, y: 0 }, end: { x: 4, y: 0 } }, category: 'annotation', ownerId: 43 },
+        { line: { start: { x: 4, y: 0 }, end: { x: 4, y: 3 } }, category: 'annotation', ownerId: 43 },
+        { line: { start: { x: 4, y: 3 }, end: { x: 0, y: 3 } }, category: 'annotation', ownerId: 43 },
+        { line: { start: { x: 0, y: 3 }, end: { x: 0, y: 0 } }, category: 'annotation', ownerId: 43 },
+      ],
+      texts: [],
+      fills: [],
+      quantities: new Map([['Area', -12], ['Perimeter', -14]]),
+    };
+
+    const read = withWarnSpy((calls) => {
+      const r = readDrawingMarkupAnnotation(source, {});
+      assert.strictEqual(calls.length, 2, 'expected one warning each for Area and Perimeter');
+      return r;
+    });
+
+    assert.ok(read && read.kind === 'polygon');
+    assert.ok(Math.abs(read.value.area - 12) < 1e-9, `area was ${read.value.area}`);
+    assert.ok(Math.abs(read.value.perimeter - 14) < 1e-9, `perimeter was ${read.value.perimeter}`);
   });
 });

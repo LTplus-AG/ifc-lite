@@ -62,7 +62,7 @@ export const findFireRatedDoors: Prompt = {
           `2. For each non-compliant door, call \`bcf_topic_create\` titled "Fire rating below ${minimum} on <DoorName>" with the GlobalId in the description.`,
           `3. Attach a viewpoint with the door selected via \`bcf_viewpoint_create\`.`,
           `4. Report a summary of how many doors fail and the top 5 by name.`,
-          `5. Offer to export the BCF via \`bcf_export\` to ./fire-rating-issues.bcfzip.`,
+          `5. Offer to export the BCF via \`bcf_export\` to ./fire-rating-topics.bcfzip.`,
         ].join('\n')),
       ],
     };

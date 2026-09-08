@@ -411,6 +411,22 @@ test('classifyPath: test sources', () => {
   assert.equal(classifyPath('packages/core/src/__snapshots__/a.snap'), 'test');
 });
 
+// #4050: `TEST_FILE_RE` recognised only JS/TS suffixes and Rust `_tests.rs`, so
+// a real file in this repo -- tools/ifcopenshell_reference/test_harness.py --
+// was bucketed as PRODUCTION, making its coverage invisible to the oracle.
+test('classifyPath: Python `test_*.py` / `*_test.py` are tests, not production (#4050)', () => {
+  assert.equal(classifyPath('tools/ifcopenshell_reference/test_harness.py'), 'test');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/test_validate_export.py'), 'test');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/validate_export_test.py'), 'test');
+  assert.equal(classifyPath('a/b/c/test_deep.py'), 'test');
+});
+
+test('classifyPath: a Python module that merely CONTAINS "test" stays production', () => {
+  assert.equal(classifyPath('tools/ifcopenshell_reference/canonical.py'), 'production');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/latest_export.py'), 'production');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/testing_helpers.py'), 'production');
+});
+
 test('#4016: separate Rust sibling modules are tests; inline production stays production', () => {
   for (const path of ['rust/geometry/src/router/processor_registry_tests.rs',
     'rust/geometry/src/router/tests.rs', 'rust/core/src/parser/scanner_tests.rs']) {
@@ -480,6 +496,69 @@ test('classifyPath: the deploy-config rule does not swallow neighbouring code', 
   assert.equal(classifyPath('packages/core/src/vercel-client.ts'), 'production');
   assert.equal(classifyPath('apps/viewer/src/vercel/deploy.ts'), 'production');
   assert.equal(classifyPath('vercel.json.ts'), 'production');
+});
+
+// WHY "inert" IS ITS OWN KIND, NOT `ignored` (#4137).
+//
+// A changed file that no runner in this repo claims as a test AND no runner
+// compiles or executes as source has no observable behaviour at all: an
+// image's bytes, a font's glyphs, an archive's contents. Classifying such a
+// file as `production` made the oracle ABORT with "changes production code
+// and adds/changes NO test file" on branches like #4114 (five deleted PNGs)
+// and #4117 (an 87-file archive) — there is no test that could possibly
+// accompany a deleted PNG, so the ABORT was a false positive about the
+// classifier, not a finding about the branch.
+test('classifyPath: images, fonts, and other binaries are inert, not production', () => {
+  assert.equal(classifyPath('apps/viewer/public/favicon-192x192.png'), 'inert');
+  assert.equal(classifyPath('apps/viewer/public/favicon.ico'), 'inert');
+  assert.equal(classifyPath('apps/viewer/src/assets/logo.svg'), 'inert');
+  assert.equal(classifyPath('apps/landing/public/hero.webp'), 'inert');
+  assert.equal(classifyPath('apps/viewer/public/fonts/inter.woff2'), 'inert');
+  assert.equal(classifyPath('apps/viewer/public/fonts/inter.ttf'), 'inert');
+  assert.equal(classifyPath('scripts/perf/evidence/report.pdf'), 'inert');
+  assert.equal(classifyPath('scripts/perf/evidence/archive.zip'), 'inert');
+});
+
+test('classifyPath: inertness is about the file kind, not the operation — a deleted image is still inert', () => {
+  // classifyPath is purely path-based; classifyDiff carries the `status` field
+  // through unchanged. A pure deletion of an inert file must not become
+  // production just because the "operation" is a delete (must-not-regress in
+  // #4137: inertness is about the file kind, not about the operation).
+  const { production, inert } = classifyDiff(parseNameStatus('D\tapps/viewer/public/favicon.png'));
+  assert.deepEqual(production, []);
+  assert.deepEqual(inert.map((e) => e.path), ['apps/viewer/public/favicon.png']);
+});
+
+test('classifyPath: inertness must NOT cover anything a runner compiles or executes', () => {
+  // Extensions a runner in this repo actually builds/executes stay production
+  // even though they sound "asset-like" or are commonly bundled alongside
+  // assets — this is the narrowing #4137 must preserve.
+  assert.equal(classifyPath('packages/core/package.json'), 'production');
+  assert.equal(classifyPath('crates/ifc-lite-geom/src/walk.rs'), 'production');
+  assert.equal(classifyPath('packages/renderer/src/device.ts'), 'production');
+  assert.equal(classifyPath('tools/ifcopenshell_reference/canonical.py'), 'production');
+});
+
+test('classifyDiff: a mixed diff keeps inert files out of BOTH production and test, without giving the real change a free pass', () => {
+  const entries = parseNameStatus(
+    [
+      'M\tpackages/renderer/src/device.ts',
+      'A\tapps/viewer/public/favicon-512x512.png',
+    ].join('\n'),
+  );
+  const { production, test: tests, inert } = classifyDiff(entries);
+  assert.deepEqual(production.map((e) => e.path), ['packages/renderer/src/device.ts']);
+  assert.deepEqual(tests, []);
+  assert.deepEqual(inert.map((e) => e.path), ['apps/viewer/public/favicon-512x512.png']);
+});
+
+test('classifyDiff: a diff of ONLY inert files has no production entries (script-level effect: NOT APPLICABLE, same as #4024 for test-only diffs)', () => {
+  const entries = parseNameStatus(
+    ['D\tapps/viewer/public/favicon-192x192.png', 'D\tapps/viewer/public/favicon-512x512.png'].join('\n'),
+  );
+  const { production, inert } = classifyDiff(entries);
+  assert.deepEqual(production, []);
+  assert.equal(inert.length, 2);
 });
 
 test('classifyDiff splits a real branch shape and never puts a test in production', () => {

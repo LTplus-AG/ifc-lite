@@ -13,6 +13,7 @@ mod content_hash;
 mod diagnostics;
 mod diagnostics_recording;
 mod instancing;
+mod item_dedup_cache;
 mod layers;
 mod mapped_item;
 mod processing;
@@ -24,6 +25,7 @@ pub(crate) mod voids;
 
 pub use processor::GeometryProcessor;
 pub use brep_signatures::SharedBrepSignatureCache;
+pub use item_dedup_cache::{ItemDedupCache, ItemDedupCacheState};
 pub use transforms::local_frame_set_enabled_override;
 pub use voids::{take_bool2d_stats, take_prism_defers, take_prism_stats, RectParam};
 pub use diagnostics::{
@@ -51,17 +53,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock};
-
-/// Shared content-dedup cache: maps a 128-bit structural item hash to the
-/// LOCAL (pre-placement, void-free, colour-free) item mesh PLUS its precomputed
-/// instancing `rep_identity` (`Some` when instancing tagged it, else `None`).
-/// Storing the rep beside the mesh lets a cache hit stamp it without re-running
-/// the O(verts) `compute_mesh_hash_full` per occurrence. Build ONE per loaded
-/// model with [`GeometryRouter::new_dedup_cache`] and inject it into every
-/// per-element / per-batch router via
-/// [`GeometryRouter::enable_content_dedup_shared`] so byte-identical geometry is
-/// meshed once regardless of how the work is partitioned across threads/batches.
-pub type ItemDedupCache = Arc<Mutex<FxHashMap<u128, Arc<(Mesh, Option<u128>)>>>>;
 
 /// Test/env override for [`GeometryRouter::build_dedup_extra_enabled`]:
 /// -1 = env default, 0 = forced off, 1 = forced on.
@@ -340,7 +331,7 @@ impl GeometryRouter {
     /// per model: the key is a per-model entity-structure hash, and the cached
     /// meshes bake in this model's unit scale / tessellation quality.
     pub fn new_dedup_cache() -> ItemDedupCache {
-        Arc::new(Mutex::new(FxHashMap::default()))
+        Arc::new(ItemDedupCacheState::default())
     }
 
     /// Whether content-dedup covers EXTRA item types beyond the proven default
@@ -468,7 +459,7 @@ impl GeometryRouter {
     pub fn dedup_unique_count(&self) -> usize {
         self.item_dedup_cache
             .as_ref()
-            .map(|c| c.lock().unwrap_or_else(|e| e.into_inner()).len())
+            .map(|c| c.meshes.lock().unwrap_or_else(|e| e.into_inner()).len())
             .unwrap_or(0)
     }
 

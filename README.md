@@ -243,7 +243,7 @@ Not sure? Start with the browser setup. You can add a server or switch engines l
 | Export to glTF / IFC / Parquet | + `@ifc-lite/export` |
 | Detect clashes | + `@ifc-lite/clash` |
 | Diff two model versions | + `@ifc-lite/diff` |
-| BCF issue tracking | + `@ifc-lite/bcf` |
+| BCF topic tracking | + `@ifc-lite/bcf` |
 | Filter and colorize in 3D by rules | + `@ifc-lite/lens` |
 | Build schedules and property tables | + `@ifc-lite/lists` |
 | Script models with the `bim.*` API | + `@ifc-lite/sdk` |

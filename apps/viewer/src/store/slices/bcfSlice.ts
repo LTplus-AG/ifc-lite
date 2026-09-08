@@ -5,7 +5,7 @@
 /**
  * BCF (BIM Collaboration Format) state slice
  *
- * Manages BCF topics, comments, and viewpoints for issue tracking.
+ * Manages BCF topics, comments, and viewpoints.
  */
 
 import type { StateCreator } from 'zustand';

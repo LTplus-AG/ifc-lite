@@ -1,6 +1,6 @@
 # @ifc-lite/bcf
 
-BCF (BIM Collaboration Format) support for IFClite. Reads and writes BCF 2.1 and 3.0 files — the issue-tracking format every BIM tool speaks (Revit, Archicad, Solibri, BIMcollab, etc.).
+BCF (BIM Collaboration Format) support for IFClite. Reads and writes BCF 2.1 and 3.0 files — the topic-tracking format every BIM tool speaks (Revit, Archicad, Solibri, BIMcollab, etc.).
 
 ## Installation
 

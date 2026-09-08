@@ -113,7 +113,7 @@ export const COMPARE_TOUR: TourDefinition = {
       panel: 'compare',
       placement: 'left',
       title: 'See exactly what changed',
-      body: 'The detail lists before and after values; a moved element shows its Moved distance. Export a report or raise a BCF issue from here.',
+      body: 'The detail lists before and after values; a moved element shows its Moved distance. Export a report or raise a BCF topic from here.',
     },
   ],
 };

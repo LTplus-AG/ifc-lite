@@ -86,7 +86,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Alt+1..9 / Alt+0 — order frozen since #1200 for the first seven.
   { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect', region: 'side' },
   { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect', region: 'side' },
-  { id: 'bcf', title: 'BCF issues', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
+  { id: 'bcf', title: 'BCF topics', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
   { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck, group: 'review', region: 'side' },
   { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review', region: 'side' },
   { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review', region: 'side' },

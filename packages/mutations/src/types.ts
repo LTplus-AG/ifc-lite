@@ -146,6 +146,17 @@ export interface PropertyMutation {
   valueType?: PropertyValueType;
   /** Unit (optional) */
   unit?: string;
+  /**
+   * IFC measure dataType (e.g. `"IFCLENGTHMEASURE"`) this value was
+   * scaled against at write time, when the caller knows one (e.g. the
+   * IDS correction dialog, which resolves it from the existing property
+   * or the IDS facet, #3929/#3943). A read-side overlay that needs to
+   * convert this value into a different unit frame — see
+   * `@ifc-lite/ids/bridge`'s `PropertyOverride.dataType` — has nowhere
+   * else to read it from, since this is the frame boundary between the
+   * two packages.
+   */
+  dataType?: string;
 }
 
 /**

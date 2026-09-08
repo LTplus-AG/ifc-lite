@@ -99,6 +99,7 @@ jobs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      python: ${{ steps.filter.outputs.python }}
       plato: ${{ steps.filter.outputs.plato }}
       docs: ${{ steps.filter.outputs.docs }}
       agents_md: ${{ steps.filter.outputs.agents_md }}
@@ -260,6 +261,30 @@ jobs:
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.
               - 'tests/models/manifest.json'
+            # `scripts/lib/revert-oracle-python.mjs` (#4079) routes any
+            # `test_*.py` / `*_test.py` ANYWHERE in the repo through `python3
+            # -m pytest` — `pythonTestOwner` walks up from the test file to
+            # the nearest project marker (requirements.lock/.txt,
+            # pyproject.toml, setup.py/.cfg, Pipfile) with no directory
+            # restriction, so the routing is repo-wide, not scoped to
+            # tools/ifcopenshell_reference. The `revert-oracle` job's runner
+            # ships no Python toolchain of its own — installing one
+            # unconditionally would pay that cost on every PR for a lane most
+            # never touch. This gates that install: true only when the diff
+            # could actually be asked to run a Python test. The two globs
+            # mirror `TEST_FILE_RE`'s python alternatives in
+            # scripts/lib/revert-oracle.mjs byte-for-byte (any `test_*.py` /
+            # `*_test.py`, any depth) rather than naming known marker
+            # directories by hand, so a NEW Python test tree can never fall
+            # outside this filter the way rust/python's and the since-removed
+            # scripts/perf/evidence tree's Python test fixtures did before this
+            # fix — both already existed unfiltered when this comment was
+            # written. That evidence tree was retired in #4112; the path no
+            # longer exists and nothing needs to be looked for there.
+            python:
+              - '**/test_*.py'
+              - '**/*_test.py'
+              - '.github/workflows/test.yml'
             plato:
               - 'tools/plato/**'
               - 'rust/clash/src/generated/**'
@@ -459,6 +484,27 @@ jobs:
         with:
           name: build-output
           path: packages
+      # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
+      # `test_*.py` / `*_test.py` ANYWHERE in the repo (routing is
+      # marker-based — `pythonTestOwner` walks up to the nearest project
+      # marker, not scoped to any one directory) through `python3 -m
+      # pytest`, but this runner's base image ships python3 with
+      # NO pytest module — an oracle run over such a diff exits BASELINE-BROKEN
+      # (`No module named pytest`), not a real verdict. Installed only when
+      # the `changes` job's `python` filter says this diff could reach that
+      # lane, mirroring ifcopenshell-parity.yml's own `full` job: the full
+      # requirements.lock, not bare pytest, because test_validate_export.py's
+      # SchemaConformanceHasTeeth cases (#4043) import ifcopenshell and are
+      # `unittest.skipUnless(HAVE_IFCOPENSHELL, ...)` — bare pytest would run
+      # them as silent skips instead of the real assertions the oracle needs
+      # to revert against.
+      - if: needs.changes.outputs.python == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - if: needs.changes.outputs.python == 'true'
+        name: Install the Python toolchain the oracle's pytest lane needs
+        run: pip install -r tools/ifcopenshell_reference/requirements.lock pytest
       - name: Prove the changed tests observe the production change
         env:
           PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
@@ -951,6 +997,23 @@ jobs:
       # real sources in a temp tree and must turn the gate red.
       - name: Check clash degenerate-reason parity gate regressions
         run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # #3966: five defects in two days were the Rust server path and the
+      # TS/WASM path independently implementing the same extraction
+      # (relationships, spatial hierarchy, properties, quantities, materials)
+      # and drifting apart with nothing to notice, because each side stays
+      # internally self-consistent. This compares the two sides' TYPE-NAME
+      # SETS per concept, with a documented, reason-carrying allowlist for
+      # intentional or in-flight divergences. Same call as the clash-reason
+      # and legacy-entity-coverage gates above: reading two sources is banned
+      # in test files, so it is a lint here instead.
+      - name: Check server/browser type parity
+        run: node scripts/check-server-browser-type-parity.mjs
+      # Executable proof: a type removed from either side, in either
+      # direction, per concept, turns this red; the vacuity guard fires when
+      # an extractor is starved; the allowlist suppresses only the exact
+      # type/side it names, never a whole concept.
+      - name: Check server/browser type parity gate regressions
+        run: node --test scripts/check-server-browser-type-parity.test.mjs
       # `legacy_entities.rs` is the table every classification pass is told to
       # consult instead of a bare `IfcType::from_str`, and nothing checked it
       # was complete. Six concrete IFC2X3 products were missing (#3172), and a

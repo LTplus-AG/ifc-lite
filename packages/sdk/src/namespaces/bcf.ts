@@ -7,7 +7,7 @@
  *
  * Full access to @ifc-lite/bcf for reading/writing BCF files,
  * managing collaboration data, creating viewpoints, and
- * converting between IDS reports and BCF issues.
+ * converting between IDS reports and BCF topics.
  */
 
 // ============================================================================
@@ -101,10 +101,10 @@ export class BCFNamespace {
   }
 
   // --------------------------------------------------------------------------
-  // Topic (issue) management
+  // Topic management
   // --------------------------------------------------------------------------
 
-  /** Create a new topic (issue). */
+  /** Create a new topic. */
   async createTopic(options: TopicOptions): Promise<unknown> {
     const mod = await loadBCF();
     return (mod.createBCFTopic as AnyFn)({
@@ -261,7 +261,7 @@ export class BCFNamespace {
   // IDS → BCF conversion
   // --------------------------------------------------------------------------
 
-  /** Convert an IDS validation report into BCF issues (one topic per failed spec). */
+  /** Convert an IDS validation report into BCF topics (one topic per failed spec). */
   async createFromIDSReport(report: unknown, options?: IDSBCFOptions): Promise<unknown> {
     const mod = await loadBCF();
     return (mod.createBCFFromIDSReport as AnyFn)(report, options);

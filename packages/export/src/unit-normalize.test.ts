@@ -282,6 +282,35 @@ describe('rescaleEntityLengths (full entity lines)', () => {
     expect(rescaleEntityLengths(withBinary, 'IFCQUANTITYLENGTH', 0.001, 1, 1))
       .toBe('#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5.,$);');
   });
+
+  /**
+   * ISO-10303-21 comment content is unrestricted: a `/* ... *​/` inside the
+   * argument list can hold a comma, an unbalanced paren, or an odd number of
+   * `'`, none of which are argument-list structure. `splitTopLevelStepArguments`'s
+   * outer scan had no comment awareness, so each of these corrupted its
+   * comma/paren/quote tracking and produced a phantom fragment beginning with
+   * `/` — outside every token charset — which `isWellFormedStepSlot` then
+   * rejected, turning a legal line into a null split. Before #4173 that null
+   * was swallowed as "nothing to scale"; after, it throws. Either way this is
+   * a legal file, so the correct behaviour is neither: rescale it cleanly.
+   */
+  it('rescales past a comma inside a comment without throwing', () => {
+    const line = "#1=IFCQUANTITYLENGTH('Len',/* a, b */$,$,5000.,$);";
+    expect(rescaleEntityLengths(line, 'IFCQUANTITYLENGTH', 0.001, 1, 1))
+      .toBe("#1=IFCQUANTITYLENGTH('Len',/* a, b */$,$,5.,$);");
+  });
+
+  it('rescales past an unbalanced paren inside a comment without throwing', () => {
+    const line = "#1=IFCQUANTITYLENGTH('Len',/* ( */$,$,5000.,$);";
+    expect(rescaleEntityLengths(line, 'IFCQUANTITYLENGTH', 0.001, 1, 1))
+      .toBe("#1=IFCQUANTITYLENGTH('Len',/* ( */$,$,5.,$);");
+  });
+
+  it('rescales past an apostrophe inside a comment without throwing', () => {
+    const line = "#1=IFCQUANTITYLENGTH('Len',/* wall's edge */$,$,5000.,$);";
+    expect(rescaleEntityLengths(line, 'IFCQUANTITYLENGTH', 0.001, 1, 1))
+      .toBe("#1=IFCQUANTITYLENGTH('Len',/* wall's edge */$,$,5.,$);");
+  });
 });
 
 describe('rescaleEntityLengths refuses to guess at a malformed slot', () => {

@@ -199,6 +199,22 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
 
+    // A `/* ... */` comment's content is unrestricted ISO-10303-21 text — a
+    // comma, an unbalanced paren, or an odd number of `'` inside one would
+    // otherwise corrupt this scan's comma/paren/quote state, even though the
+    // comment is not itself an argument boundary. Skip the whole region
+    // (open marker through the matching `*/`, or to the end of the text when
+    // unterminated) as one atomic unit so its content cannot be read as
+    // structure; the per-part `isWellFormedStepSlot` check below still
+    // rejects an unterminated comment via `skipTrivia`.
+    if (!inString && char === '/' && input[i + 1] === '*') {
+      const end = input.indexOf('*/', i + 2);
+      const stop = end === -1 ? input.length : end + 2;
+      current += input.slice(i, stop);
+      i = stop - 1;
+      continue;
+    }
+
     if (char === "'") {
       current += char;
       if (inString && i + 1 < input.length && input[i + 1] === "'") {

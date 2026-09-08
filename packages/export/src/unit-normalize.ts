@@ -57,6 +57,7 @@
 import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
 import { splitTopLevelStepArguments } from './step-argument-parser.js';
+import { findOuterArgs } from './step-outer-args.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
@@ -276,36 +277,6 @@ function scaleScalarArg(arg: string, factor: number): string {
   // is left to the measure pass, so it is never scaled twice.
   if (!Number.isFinite(n)) return arg;
   return toStepRealScaled(n * factor);
-}
-
-/**
- * Locate the outer STEP argument list of one entity line: the first `(` (nothing
- * is quoted before the type name) and its matching `)`, honouring quoted strings
- * (with the `''` escape) so a literal `)` inside a string never closes early.
- * Returns `null` for a line without arguments.
- */
-function findOuterArgs(line: string): { open: number; close: number } | null {
-  const open = line.indexOf('(');
-  if (open === -1) return null;
-  let depth = 0;
-  let inString = false;
-  for (let i = open; i < line.length; i++) {
-    const ch = line[i];
-    if (inString) {
-      if (ch === "'") {
-        if (line[i + 1] === "'") i++; // escaped quote
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") { inString = true; continue; }
-    if (ch === '(') depth++;
-    else if (ch === ')') {
-      depth--;
-      if (depth === 0) return { open, close: i };
-    }
-  }
-  return null;
 }
 
 /**

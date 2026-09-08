@@ -219,6 +219,36 @@ describe('replaceStepArgument rejects a phantom-string mis-split (#4162)', () =>
 });
 
 /**
+ * A `/* ... *​/` comment's content is unrestricted ISO-10303-21 text — nothing
+ * stops it containing a comma, an unbalanced paren, or an odd number of `'`.
+ * The outer scan in `splitTopLevelStepArguments` (unlike `isWellFormedStepSlot`,
+ * which already skips comments via its own `skipTrivia`) had no comment
+ * awareness at all, so it read a comma inside a comment as a top-level
+ * separator, producing a phantom fragment beginning with `/` that
+ * `isWellFormedStepSlot` then rejected — turning a fully legal line into a
+ * `null` split. Previously silent (the null was swallowed as "no change");
+ * #4173 made `rescaleEntityLengths` throw on it instead, so a legal comment
+ * now crashed a legal export.
+ */
+describe('splitTopLevelStepArguments skips comment content in the outer scan', () => {
+  it('does not read a comma inside a comment as a top-level separator', () => {
+    expect(splitTopLevelStepArguments('1,/* a, b */2')).toEqual(['1', '/* a, b */2']);
+  });
+
+  it('does not let an unbalanced paren inside a comment corrupt the depth count', () => {
+    expect(splitTopLevelStepArguments('1,/* ( */2')).toEqual(['1', '/* ( */2']);
+  });
+
+  it('does not let an apostrophe inside a comment toggle string state', () => {
+    expect(splitTopLevelStepArguments("#1,/* wall's edge */5.048")).toEqual(['#1', "/* wall's edge */5.048"]);
+  });
+
+  it('still rejects a comment sitting alone as its own phantom slot (#4162 still holds)', () => {
+    expect(splitTopLevelStepArguments('#1,/* c */,#2')).toBeNull();
+  });
+});
+
+/**
  * ISO 10303-21 binary literal (`"..."`, e.g. `"0123ABC"`) — confirmed legal
  * in any slot against ifcopenshell's own tokenizer (`IfcParse.cpp`,
  * `GeneralTokenPtr`: `else if (first == '"') { token.type = Token_BINARY; }`).

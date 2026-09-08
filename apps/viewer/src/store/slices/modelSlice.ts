@@ -26,7 +26,7 @@ import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
-import { defaultMarkupPatch } from './drawing2DSlice.persistence.js';
+import { defaultMarkupPatch, suppressNextSaveFor } from './drawing2DSlice.persistence.js';
 
 export interface ModelSlice {
   // State
@@ -520,17 +520,18 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
 
   setActiveModel: (modelId) => set((state) => {
     const activeModel = modelId ? state.models.get(modelId) : null;
-    // 2D drawing markup (#4159 Bug 2): `measure2DResults` and friends are
-    // flat, federation-wide fields — not scoped per model — so a plain
-    // `activeModelId` swap would otherwise leave the OUTGOING model's markup
-    // sitting in the store, readable and re-savable under the new model's
-    // identity, until `useDrawing2DPersistence.ts`'s async restore happens to
-    // overwrite it (never, for a model with nothing saved). Clearing them to
-    // {@link defaultMarkupPatch} in this SAME atomic patch — only when the id
-    // actually changes, so re-selecting the already-active model is a no-op —
-    // makes it impossible for any subscriber, that hook's save listener
-    // included, to ever observe the new id together with the old model's data.
-    const clearedMarkup = modelId !== state.activeModelId ? defaultMarkupPatch() : {};
+    // 2D drawing markup (#4159): `measure2DResults` and friends are flat,
+    // federation-wide fields — not scoped per model — so an `activeModelId`
+    // swap clears them to {@link defaultMarkupPatch} in this SAME atomic
+    // patch (Bug 2 — no subscriber can ever observe the new id paired with
+    // the OLD model's data), and marks that accompanying clear as suppressed
+    // (Bug 4 — it is not a real edit, so the save subscription must not
+    // persist it over the newly-active model's own entry, already cached
+    // under its hash from an earlier visit). Only when the id actually
+    // changes, so re-selecting the already-active model is a no-op.
+    const modelChanged = modelId !== state.activeModelId;
+    const clearedMarkup = modelChanged ? defaultMarkupPatch() : {};
+    if (modelChanged && modelId) suppressNextSaveFor(modelId);
     return {
       activeModelId: modelId,
       ifcDataStore: activeModel?.ifcDataStore ?? null,

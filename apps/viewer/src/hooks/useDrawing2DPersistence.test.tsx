@@ -15,12 +15,25 @@
  * `createRoot` tree mounts it, and the tests drive `useViewerStore` directly
  * the same way a real load / model-switch would.
  *
- * Each `describe` below is a MUTATION TARGET pinned to one of the three bugs
- * (see the PR discussion): reload must not overwrite the outgoing model's
- * saved entry (Bug 1), switching models must not merge one model's markup
- * into another's (Bug 2), and — covered separately, at the storage layer —
- * a corrupt entry for one model must not destroy another's
- * (`drawing2DSlice.persistence.test.ts`, Bug 3).
+ * Each `describe` below is a MUTATION TARGET pinned to one of the bugs (see
+ * the PR discussion): reload must not overwrite the outgoing model's saved
+ * entry (Bug 1), switching models must not merge one model's markup into
+ * another's (Bug 2), a corrupt entry for one model must not destroy
+ * another's (`drawing2DSlice.persistence.test.ts`, Bug 3), and — the newest,
+ * below — A → B → A with both hashes already cached must not destroy A's
+ * saved entry with the accompanying clear from the B → A leg (Bug 4).
+ *
+ * Bug 4's test deliberately does NOT wrap the critical `setActiveModel` call
+ * in `await act(async () => …)`. `act` flushes React effects synchronously
+ * as part of awaiting it, which pulls the restore effect forward in time —
+ * production has no such flush; the store's raw `subscribe` listeners run
+ * inside `set()`, strictly before React's (scheduled, asynchronous) effect
+ * pass. A test that awaits `act` around the switch cannot tell "the listener
+ * skipped the accompanying clear" apart from "the listener persisted empty
+ * data and the restore effect silently overwrote it back to correct" — both
+ * end in the same passing assertion. This test instead calls
+ * `setActiveModel` bare and asserts against `localStorage` in the very next
+ * line, before yielding to any scheduler.
  */
 
 import '@/test/setup-dom.js';
@@ -195,5 +208,101 @@ describe('active-model switch — MUTATION TARGET: Bug 2', () => {
 
     // And A's own saved entry must be untouched by the switch.
     assert.strictEqual(loadDrawing2DEntry(hashA, DEFAULTS)!.measure2DResults[0].id, 'mA');
+  });
+});
+
+// ─── Bug 2, independently pinned: the atomic clear itself, not act's flush ─
+
+describe('setActiveModel atomic clear — MUTATION TARGET: Bug 2 (independently pinned)', () => {
+  it('clears the flat markup fields the INSTANT the active model changes, not merely by the time effects flush', async () => {
+    const fileA = fileWithBytes(1, 'a.ifc');
+    const fileB = fileWithBytes(99, 'b.ifc');
+    const modelA = stubModel('model-a', fileA);
+    const modelB = stubModel('model-b', fileB);
+
+    useViewerStore.setState({ models: new Map([['model-a', modelA], ['model-b', modelB]]) });
+    await mount();
+
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await flush();
+    await act(async () => {
+      useViewerStore.setState({ measure2DResults: [sampleMeasure('mA')] });
+    });
+
+    // The critical call is bare — NOT wrapped in `act` — so React's effect
+    // pass (including this hook's own redundant defensive clear) cannot run
+    // before the assertion below. If `setActiveModel`'s own atomic patch
+    // stopped clearing the fields, this assertion is the only thing left to
+    // catch it: the effect's clear would still (eventually) paper over it,
+    // but that happens after this line, not before.
+    useViewerStore.getState().setActiveModel('model-b');
+
+    assert.deepStrictEqual(
+      useViewerStore.getState().measure2DResults,
+      [],
+      'the atomic patch itself must clear markup the instant activeModelId changes, with no effect having run yet',
+    );
+
+    // Let the hook's effects settle so unmount doesn't warn.
+    await flush();
+  });
+});
+
+// ─── Bug 4: A → B → A with both hashes cached must not destroy A's entry ──
+
+describe('A → B → A round trip — MUTATION TARGET: Bug 4', () => {
+  it('does not overwrite A\'s saved entry with the B → A leg\'s accompanying clear', async () => {
+    const fileA = fileWithBytes(1, 'a.ifc');
+    const fileB = fileWithBytes(99, 'b.ifc');
+    const hashA = (await computeSourceFingerprintFromBlob(fileA)).hex;
+    const modelA = stubModel('model-a', fileA);
+    const modelB = stubModel('model-b', fileB);
+
+    useViewerStore.setState({ models: new Map([['model-a', modelA], ['model-b', modelB]]) });
+    await mount();
+
+    // Visit A, draw, and let it save — hash(A) is now cached.
+    await act(async () => { useViewerStore.getState().setActiveModel('model-a'); });
+    await flush();
+    await act(async () => {
+      useViewerStore.setState({ measure2DResults: [sampleMeasure('mA')] });
+    });
+    assert.strictEqual(loadDrawing2DEntry(hashA, DEFAULTS)!.measure2DResults[0].id, 'mA');
+
+    // Visit B — hash(B) becomes cached too, matching the bug report's
+    // precondition ("both content-hashes are already cached").
+    await act(async () => { useViewerStore.getState().setActiveModel('model-b'); });
+    await flush();
+
+    // The B -> A leg: bare, not wrapped in `act`. This is the exact
+    // production ordering the bug report describes — the raw save
+    // subscriber fires synchronously inside `setActiveModel`'s `set()`
+    // call, strictly before the restore effect (a scheduled React effect)
+    // has any chance to run. Asserting inside `act(async () => …)` would
+    // let that restore effect flush BEFORE this line reads storage, which
+    // is exactly the shielding the PR review flagged: the effect restoring
+    // real data back would mask a listener that had just destroyed it.
+    useViewerStore.getState().setActiveModel('model-a');
+
+    const savedRightAfterSwitch = loadDrawing2DEntry(hashA, DEFAULTS);
+    assert.ok(
+      savedRightAfterSwitch,
+      'model A\'s saved entry must not be deleted by the accompanying clear on the B -> A leg',
+    );
+    assert.strictEqual(
+      savedRightAfterSwitch!.measure2DResults[0]?.id,
+      'mA',
+      'model A\'s saved entry must survive an A -> B -> A round trip once both hashes are cached',
+    );
+
+    // Let the restore effect settle so unmount doesn't warn, and confirm the
+    // data is still intact afterwards too (the restore effect's own save,
+    // if any, must persist the SAME real data, not overwrite it again).
+    await flush();
+    assert.strictEqual(
+      loadDrawing2DEntry(hashA, DEFAULTS)!.measure2DResults[0]?.id,
+      'mA',
+      'model A\'s saved entry must still be intact once the restore effect has settled',
+    );
   });
 });

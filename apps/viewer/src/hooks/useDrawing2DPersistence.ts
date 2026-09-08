@@ -65,6 +65,29 @@
  * it protects state seeded directly via `useViewerStore.setState()` (tests,
  * or any future caller that bypasses the `setActiveModel` action) rather
  * than being the thing that makes the fix correct.
+ *
+ * ## The atomic clear's own leak: A → B → A destroys A's saved entry (#4159 Bug 4)
+ * Closing Bug 2 by clearing the fields atomically WITH the id change created
+ * a new failure: the save subscription above cannot tell "the fields were
+ * just cleared because a switch is in progress" apart from "the user
+ * genuinely cleared this model's markup" — both are "new id, default
+ * fields" to a listener that only ever sees committed state. Switching A → B
+ * → A when BOTH hashes are already in `hashCache` (both models visited
+ * earlier this session) hits it: the A → B leg clears to defaults and (no
+ * hash cached for B yet, or B not yet visited — usually a no-op) is
+ * harmless; the B → A leg ALSO clears to defaults, but `hash(A)` IS cached,
+ * so this listener fires with "A active, fields = defaults" and
+ * synchronously overwrites A's real saved entry with an empty one — before
+ * the restore effect below has restored anything. The restore effect then
+ * reads back exactly what this listener just destroyed.
+ *
+ * Fixed by having `setActiveModel` mark its own accompanying clear via
+ * `suppressNextSaveFor(modelId)`, in the SAME atomic patch, and this
+ * listener consuming that mark instead of persisting. The mark is consumed
+ * (not merely checked), so it covers only that one notification — a real
+ * change to the same model right after still saves normally — and it is
+ * keyed by model id, not a single flag, so an A → B switch cannot consume
+ * the mark meant for a later B → A switch.
  */
 
 import { useEffect, useRef } from 'react';
@@ -76,6 +99,8 @@ import {
   loadDrawing2DEntry,
   saveDrawing2DEntry,
   defaultMarkupPatch,
+  consumeSuppressedSave,
+  suppressNextSaveFor,
 } from '@/store/slices/drawing2DSlice.persistence.js';
 
 /** modelId -> resolved content hash, or `null` when one could not be computed (no `sourceFile`). */
@@ -141,6 +166,15 @@ function ensureSaveSubscription(): void {
       state.drawing2DDisplayOptions !== prev.drawing2DDisplayOptions;
     prev = state;
     if (!changed || !modelId) return;
+    // #4159 Bug 4: `setActiveModel`'s atomic patch clears these fields to
+    // defaults in the SAME `set()` that moves `activeModelId` — this
+    // listener fires synchronously inside that call, before the restore
+    // effect below has run, and cannot otherwise tell that accompanying
+    // clear apart from the user genuinely clearing the new model's own
+    // markup. `suppressNextSaveFor` marks exactly that one notification;
+    // consuming it here (rather than checking-without-consuming) means any
+    // later, real change to the same model still saves normally.
+    if (consumeSuppressedSave(modelId)) return;
     persistFor(modelId);
   });
 }
@@ -178,8 +212,18 @@ export function useDrawing2DPersistence(): void {
     // live (and savable) under the new model's identity until the restore
     // below happens to overwrite it, which it may never do (a brand-new
     // file with nothing saved leaves the stale fields untouched forever).
+    //
+    // This `setState` is its own atomic patch, separate from
+    // `setActiveModel`'s — `modelSlice.ts` already suppressed ITS
+    // accompanying clear, but that mark is consumed the instant the save
+    // subscription sees it (synchronously, inside `setActiveModel`'s own
+    // `set()`, before this scheduled effect even runs). Left unmarked, THIS
+    // clear would repeat #4159 Bug 4 on its own: an already-cached model
+    // would have its real entry overwritten with empty data by this exact
+    // call. Mark it again, immediately before the call that fires it.
     lastSectionConfig = null;
     lastSectionConfigModelId = null;
+    suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
 
     const applyHash = (hash: string | null) => {

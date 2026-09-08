@@ -12,9 +12,9 @@
  * Mirrors `annotationsSlice.ts`'s pattern (versioned key, try/catch around
  * quota/parse errors, `console.warn` and continue, per-entry runtime
  * validation that skips malformed data rather than failing the whole load)
- * with one addition: markup is NOT global like the 3D pins. It is keyed per
- * loaded file, because a measurement is meaningless — or actively wrong —
- * shown on top of a DIFFERENT model.
+ * with one addition: markup is NOT global like the 3D pins, but keyed per
+ * loaded file — a measurement is meaningless, or actively wrong, shown on
+ * top of a DIFFERENT model.
  *
  * ## The scoping key
  * The key is the model's spread-sampled content fingerprint
@@ -33,18 +33,18 @@
  * truncation — made every OTHER model's entry unreadable too, and the very
  * next `saveDrawing2DEntry()` call for an unrelated model would `writeRaw()`
  * the degraded `{}` back over the key, permanently deleting every model's
- * markup to save one. Splitting into `${STORAGE_KEY_PREFIX}${modelHash}`
- * keys makes that structurally impossible: reading or writing model A's
- * entry touches only A's `localStorage` key, so corruption under B's key can
- * never be observed, let alone overwritten, by anything A does.
+ * markup to save one. Splitting into `${STORAGE_KEY_PREFIX}${modelHash}` keys
+ * makes that structurally impossible: reading or writing model A's entry
+ * touches only A's key, so corruption under B's key can never be observed,
+ * let alone overwritten, by anything A does.
  *
  * ## What is intentionally NOT here
  * `drawing2D` (the generated `Drawing2D`) is derived output — regenerable
  * from the persisted `sectionConfig` plus the loaded model, and far larger
  * than its inputs — so `PersistedDrawing2DEntry` has no field for it and
  * never will; see `drawing2DSlice.persistence.test.ts` for the test that
- * proves this. `dxfUnderlays` is deferred to a follow-up (IndexedDB — it can
- * embed arbitrary point counts, plausibly over `localStorage`'s ~5MB
+ * proves this. `dxfUnderlays` is deferred to a follow-up (IndexedDB — it
+ * can embed arbitrary point counts, plausibly over `localStorage`'s ~5MB
  * synchronous budget); this module never touches it either.
  */
 
@@ -83,6 +83,19 @@ export function defaultMarkupPatch(): Drawing2DMarkupPatch {
     cloudAnnotations2D: defaults.cloudAnnotations2D,
     drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
   };
+}
+
+/** Model ids whose latest `activeModelId` change carried an accompanying {@link defaultMarkupPatch} clear (`setActiveModel`) not yet skipped by the save subscription (#4159 Bug 4) — that clear looks like a real edit to a listener with no other context, so for an already-cached model it would overwrite the real entry with empty data. Keyed per model id, not a single boolean. */
+const suppressedSaves = new Set<string>();
+
+/** Marks `modelId`'s next save notification as the accompanying clear. Call inside the SAME atomic `set()`, before it notifies subscribers. */
+export function suppressNextSaveFor(modelId: string): void {
+  suppressedSaves.add(modelId);
+}
+
+/** Consumes (returns) `modelId`'s pending suppression — true at most once per mark, so a later genuine change to the same model still saves. */
+export function consumeSuppressedSave(modelId: string): boolean {
+  return suppressedSaves.delete(modelId);
 }
 
 /** One real `localStorage` key per model: `${STORAGE_KEY_PREFIX}${modelHash}`. */

@@ -556,6 +556,48 @@ describe('buildSubset: containment under an IfcSpace, not a storey (#4124)', () 
   });
 });
 
+// A product whose ONLY path into the spatial tree is IfcRelReferencedInSpatialStructure:
+// storey L03 (#43) is aggregated under the building but carries no
+// IfcRelContainedInSpatialStructure at all, and #78 is named by nothing else in
+// the model. Unlike #81 above (also a REFERENCED relation, but #70's RelatingStructure
+// #34 is independently reached through #80's storey #41 -> #96 -> #36 -> #95 -> #34),
+// this fixture makes the REFERENCED-climbing branch of `structureParents` the ONLY
+// way #43 (and everything above it) gets kept — skipping that branch entirely still
+// leaves every other test in this file green.
+const STOREY_MODEL_REFERENCED_ONLY = STOREY_MODEL.replace(
+  'ENDSEC;\nEND-ISO-10303-21;\n',
+  "#42= IFCLOCALPLACEMENT(#35,#21);\n" +
+    "#43= IFCBUILDINGSTOREY('STOR000000000000000003',#5,'L03',$,$,#42,$,$,.ELEMENT.,6.);\n" +
+    "#97= IFCRELAGGREGATES('RAGG000000000000000006',#5,$,$,#36,(#43));\n" +
+    "#78= IFCFURNISHINGELEMENT('FURN000000000000000008',#5,'Chair 8',$,$,#42,#64,'c8');\n" +
+    "#84= IFCRELREFERENCEDINSPATIALSTRUCTURE('RREF000000000000000002',#5,$,$,(#78),#43);\n" +
+    'ENDSEC;\nEND-ISO-10303-21;\n',
+);
+
+describe('buildSubset: a product reachable ONLY via IfcRelReferencedInSpatialStructure (#4124)', () => {
+  const p = parseStep(STOREY_MODEL_REFERENCED_ONLY);
+  const { keep, rewritten } = buildSubset(new Set([78]), p);
+
+  it('keeps the storey reached only through the REFERENCED relation, and the relation itself', () => {
+    expect(keep.has(43)).toBe(true); // IfcBuildingStorey L03
+    expect(keep.has(84)).toBe(true); // the IfcRelReferencedInSpatialStructure
+    expect(rewritten.has(84)).toBe(false); // sole member kept -> byte-identical
+  });
+
+  it('climbs from the storey through the building/site to the project', () => {
+    for (const id of [97, 36, 34, 1]) expect(keep.has(id)).toBe(true);
+  });
+
+  it('does not force-keep the unrelated storeys L01/L02', () => {
+    expect(keep.has(41)).toBe(false);
+    expect(keep.has(45)).toBe(false);
+  });
+
+  it('serializes with zero dangling references', () => {
+    expectNoDanglingRefs(serializeSubset({ keep, rewritten }, p));
+  });
+});
+
 describe('planSpatialRelations: a record it cannot scan, or cannot read as six attributes', () => {
   const record = (body: string) => ({
     id: 80,

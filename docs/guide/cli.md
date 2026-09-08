@@ -440,7 +440,7 @@ ifc-lite extract-entities model.ifc --detect --report --json
 ifc-lite extract-entities model.ifc --type IfcStair --out stairs.ifc --view
 ```
 
-Selectors are unioned. The output carries each selected product's full forward reference closure plus the shared context roots (IfcProject, units, geometric contexts, the site/building/storey skeleton), spatial-containment relations, and each kept host's openings and fillers (IfcRelVoidsElement / IfcRelFillsElement), so the subset parses and renders on its own.
+Selectors are unioned. The output carries each selected product's full forward reference closure plus the shared context roots (IfcProject, units, geometric contexts, and the backward closure of the selection's spatial ancestors — only the site/building/storey/space chain the selection actually sits under, not every spatial-structure instance in the model), spatial-containment relations, and each kept host's openings and fillers (IfcRelVoidsElement / IfcRelFillsElement), so the subset parses and renders on its own.
 
 **Flags:**
 

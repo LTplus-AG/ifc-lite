@@ -14,10 +14,13 @@
  *   --detect [--top N]          the N meshes a geometry-triage pass ranks most unusual
  *
  * The output carries each selected product's full forward reference closure PLUS
- * the shared context roots (IfcProject, unit assignment, geometric contexts, the
- * spatial site/building/storey skeleton) and every spatial-structure relation,
- * its related-objects SET rewritten down to the kept members (see
- * `subset-relations.ts`) — so the result parses and renders on its own.
+ * the shared context roots (IfcProject, unit assignment, geometric contexts, and
+ * the backward closure of the selection's spatial ancestors — only the
+ * site/building/storey/space chain actually reached by what was selected, not
+ * every spatial-structure instance in the model, see `spatial-ancestors.ts`) and
+ * every spatial-structure relation, its related-objects SET rewritten down to
+ * the kept members (see `subset-relations.ts`) — so the result parses and
+ * renders on its own.
  *
  * `--detect --report [--json]` prints the triage report WITHOUT extracting. The
  * report separates HARD defects (non-finite or |coord|>1e4 vertices after the
@@ -235,8 +238,9 @@ function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
 
 /**
  * Assemble the subset: the closure of `seedProducts` + context roots
- * (project/units/contexts + spatial skeleton) + spatial-structure relations,
- * each rewritten down to its kept members (so no dangling references).
+ * (project/units/contexts + the backward closure of spatial ancestors, not
+ * the whole skeleton) + spatial-structure relations, each rewritten down to
+ * its kept members (so no dangling references).
  */
 export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subset {
   const keep = new Set<number>();

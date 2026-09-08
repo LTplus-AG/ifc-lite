@@ -138,11 +138,10 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
   return id;
 }
 
-// Used by `productsUnderPlacement`, `resolveStoreyPlacement`, and the
-// voids/fills fixpoint below — all narrower, TYPE-POSITIONAL reads (last N
-// refs of a known relation shape) rather than forwardClosure's open-ended
-// "every reference this record names" scan. `forwardClosure` does not use
-// this: see its own doc comment.
+// Used only by the voids/fills fixpoint below — a narrower, TYPE-POSITIONAL
+// read (last N refs of a known relation shape) than forwardClosure's
+// open-ended scan. `productsUnderPlacement`/`resolveStoreyPlacement` used
+// this too, until free text tripped it; see `refsOutsideStrings` there, #4148.
 const REF_RE = /#(\d+)/g;
 
 /**
@@ -195,13 +194,13 @@ function productsUnderPlacement(storeyPlacementId: number, parsed: ParsedStep): 
       cur = parents.get(cur) ?? null;
     }
   }
-  // Products referencing a selected placement.
+  // Products referencing a selected placement. `refsOutsideStrings`, not a
+  // raw REF_RE scan: free text (e.g. `'... see also #40'`) could otherwise
+  // seed a product into the wrong storey's extraction.
   const seeds = new Set<number>();
   for (const inst of parsed.instances.values()) {
-    REF_RE.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = REF_RE.exec(inst.body)) !== null) {
-      if (under.has(parseInt(m[1], 10))) {
+    for (const ref of refsOutsideStrings(inst.body)) {
+      if (under.has(ref)) {
         seeds.add(inst.id);
         break;
       }
@@ -236,7 +235,10 @@ function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
   // IfcBuildingStorey ObjectPlacement is attribute 6 (after Guid, Owner, Name,
   // Description, ObjectType) — the last #ref before LongName/Elevation. Grab the
   // placement ref: the storey references exactly one IfcLocalPlacement.
-  const refs = [...storey.body.matchAll(REF_RE)].map((m) => parseInt(m[1], 10));
+  // `refsOutsideStrings`, not a raw REF_RE scan: the storey's own Name/
+  // Description can contain a `#id`-shaped substring (e.g. `'duplicate of
+  // #99'`) naming an unrelated IfcLocalPlacement.
+  const refs = refsOutsideStrings(storey.body);
   const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
   if (placementId === undefined) throw new Error(`Storey #${storeyId} has no IfcLocalPlacement`);
   return placementId;

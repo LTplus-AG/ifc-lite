@@ -95,6 +95,29 @@ export {
   type GenerateSpacesStoreyResult,
   type StoreyInfo,
 } from './in-store/generate-spaces-all.js';
+export {
+  addDrawingMarkupToStore,
+  addMeasureMarkupToStore,
+  addPolygonAreaMarkupToStore,
+  addTextMarkupToStore,
+  addCloudMarkupToStore,
+  DRAWING_MARKUP_OBJECTTYPE,
+  DRAWING_MARKUP_PSET_NAME,
+  DRAWING_MARKUP_QSET_NAME,
+  type DrawingMarkupObjectType,
+  type MarkupAnchor,
+  type MarkupPoint2D,
+  type MeasureMarkupParams,
+  type MeasureMarkupResult,
+  type PolygonAreaMarkupParams,
+  type PolygonAreaMarkupResult,
+  type TextMarkupParams,
+  type TextMarkupResult,
+  type CloudMarkupParams,
+  type CloudMarkupResult,
+  type DrawingMarkupBatchInput,
+  type DrawingMarkupBatchResult,
+} from './in-store/drawing-markup.js';
 
 export type {
   // Geometry primitives

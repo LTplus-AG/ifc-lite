@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { StringTable, EntityTableBuilder } from '@ifc-lite/data';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { IfcParser, type IfcDataStore } from '@ifc-lite/parser';
 import { evaluateFilterRules, evaluateFilterRulesFederated, __internal } from './filter-evaluate.js';
 import { Rule } from './filter-rules.js';
 
@@ -814,5 +814,95 @@ describe('evaluateFilterRulesFederated — async chunking, abort, progress', () 
     assert.strictEqual(out.length, 1);
     // We should have stopped before scanning all four entities.
     assert.ok(lastScanned < rows.length, `expected early termination, scanned ${lastScanned}`);
+  });
+});
+
+/**
+ * How far does a `storey` rule reach? — the question the IfcOpenShell
+ * selector's `location="Level 3"` asks, and the one #4091's docs page has to
+ * answer without guessing.
+ *
+ * The page says `location=` matches an element contained directly OR
+ * INDIRECTLY in a spatial element of that name, and gives `IfcPump,
+ * location="Level 3"` for a pump sitting in a space on Level 3. ifc-lite's
+ * `storey` rule reads `spatialHierarchy.elementToStorey`, which is a different
+ * map, so the answer is measured here against a REAL parse rather than
+ * reasoned about: a pump in a space, a wall directly in the storey, one
+ * `Rule.storey(['Level 3'])`, and whatever comes back is what the docs matrix
+ * says.
+ */
+const SPATIAL_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1= IFCPROJECT('0Proj000000000000000001',$,'Proj',$,$,$,$,(#20),#30);
+#20= IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#21,$);
+#21= IFCAXIS2PLACEMENT3D(#22,$,$);
+#22= IFCCARTESIANPOINT((0.,0.,0.));
+#30= IFCUNITASSIGNMENT((#31));
+#31= IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#40= IFCLOCALPLACEMENT($,#21);
+#41= IFCSITE('0Site00000000000000001',$,'Site',$,$,#40,$,$,.ELEMENT.,$,$,$,$,$);
+#42= IFCBUILDING('0Bldg00000000000000001',$,'Building',$,$,#40,$,$,.ELEMENT.,$,$,$);
+#43= IFCBUILDINGSTOREY('0Storey00000000000001',$,'Level 3',$,$,#40,$,$,.ELEMENT.,9.);
+#44= IFCSPACE('0Space000000000000001',$,'Room 301',$,$,#40,$,$,.ELEMENT.,.INTERNAL.,$);
+#50= IFCPUMP('0Pump0000000000000001',$,'Pump-01',$,$,#40,$,'tag',$);
+#51= IFCWALL('0Wall0000000000000001',$,'Wall-01',$,$,#40,$,'tag',$);
+#60= IFCRELAGGREGATES('0Agg00000000000000001',$,$,$,#1,(#41));
+#61= IFCRELAGGREGATES('0Agg00000000000000002',$,$,$,#41,(#42));
+#62= IFCRELAGGREGATES('0Agg00000000000000003',$,$,$,#42,(#43));
+#63= IFCRELAGGREGATES('0Agg00000000000000004',$,$,$,#43,(#44));
+#70= IFCRELCONTAINEDINSPATIALSTRUCTURE('0Cont0000000000000001',$,$,$,(#50),#44);
+#71= IFCRELCONTAINEDINSPATIALSTRUCTURE('0Cont0000000000000002',$,$,$,(#51),#43);
+ENDSEC;
+END-ISO-10303-21;
+`;
+
+const PUMP_IN_SPACE = 50;
+const WALL_IN_STOREY = 51;
+
+async function parseSpatialStore(): Promise<IfcDataStore> {
+  const bytes = new TextEncoder().encode(SPATIAL_IFC);
+  return new IfcParser().parseColumnar(
+    bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+  );
+}
+
+describe('storey rule reach — what location="Level 3" resolves to (#4091)', () => {
+  it('the fixture really holds a pump in a space and a wall in the storey', async () => {
+    const store = await parseSpatialStore();
+    const ids = evaluateFilterRules('m1', store, [Rule.ifcType(['IfcPump', 'IfcWall'])], 'AND')
+      .map((e) => e.expressId).sort((a, b) => a - b);
+    assert.deepStrictEqual(ids, [PUMP_IN_SPACE, WALL_IN_STOREY]);
+    assert.strictEqual(store.spatialHierarchy?.getContainingSpace(PUMP_IN_SPACE), 44);
+  });
+
+  it('MEASURED: a storey rule matches the directly-contained wall', async () => {
+    const store = await parseSpatialStore();
+    const out = evaluateFilterRules('m1', store, [Rule.storey(['Level 3'])], 'AND');
+    assert.deepStrictEqual(out.map((e) => e.expressId), [WALL_IN_STOREY]);
+  });
+
+  it('MEASURED: it does NOT reach the pump one level down, inside the space', async () => {
+    const store = await parseSpatialStore();
+    const out = evaluateFilterRules(
+      'm1',
+      store,
+      [Rule.ifcType(['IfcPump']), Rule.storey(['Level 3'])],
+      'AND',
+    );
+    // Documented consequence, not an aspiration: the viewer's storey rule is
+    // direct containment (plus aggregated parts), so IfcOpenShell example 17
+    // is only partly answered until a spatial-ancestor rule lands (#4094).
+    assert.deepStrictEqual(out.map((e) => e.expressId), []);
+    assert.strictEqual(store.spatialHierarchy?.elementToStorey.get(PUMP_IN_SPACE), undefined);
+  });
+
+  it('MEASURED: the space itself IS mapped to its storey', async () => {
+    const store = await parseSpatialStore();
+    assert.strictEqual(store.spatialHierarchy?.elementToStorey.get(44), 43);
   });
 });

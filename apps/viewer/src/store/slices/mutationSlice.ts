@@ -285,7 +285,7 @@ export interface MutationSlice {
     psetName: string,
     propName: string,
     value: PropertyValue,
-    valueType?: PropertyValueType
+    valueType?: PropertyValueType, dataType?: string
   ) => Mutation | null;
   /** Delete a property */
   deleteProperty: (
@@ -1192,7 +1192,7 @@ export const createMutationSlice: StateCreator<
   },
 
   // Property Mutations
-  setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String) => {
+  setProperty: (modelId, entityId, psetName, propName, value, valueType = PropertyValueType.String, dataType) => {
     // Collab role gate BEFORE the local commit: in a shared session only
     // editor/admin may write. Gating here (not just at the mirror) keeps the
     // local view/undo/dirty state consistent with what actually syncs — a
@@ -1202,7 +1202,7 @@ export const createMutationSlice: StateCreator<
     const view = get().mutationViews.get(modelId);
     if (!view) return null;
 
-    const mutation = view.setProperty(entityId, psetName, propName, value, valueType);
+    const mutation = view.setProperty(entityId, psetName, propName, value, valueType, undefined, false, dataType);
 
     set((state) => {
       // Add to undo stack

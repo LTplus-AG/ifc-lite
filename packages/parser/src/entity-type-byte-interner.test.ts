@@ -47,13 +47,18 @@ describe('issue #3985 byte type interning', () => {
 
   it('continues exact lookup after a high-cardinality source exceeds the fast dictionary budget', () => {
     const interner = new EntityTypeByteInterner();
+    // #4110: assert once. 8400 in-loop assertions dominated the interning they
+    // check, and a failure named only the first bad token.
+    const wrong: string[] = [];
     for (let round = 0; round < 2; round++) {
       for (let i = 0; i < 4200; i++) {
         const name = `UNKNOWN_${i}`;
         const bytes = new TextEncoder().encode(name);
-        expect(interner.intern(bytes, 0, bytes.length, i)).toBe(name);
+        const interned = interner.intern(bytes, 0, bytes.length, i);
+        if (interned !== name) wrong.push(`round ${round} ${name} -> ${interned}`);
       }
     }
+    expect({ count: wrong.length, first: wrong.slice(0, 10) }).toEqual({ count: 0, first: [] });
   });
 
   it('keeps record-relative spans for a sliced input and the source-accessor read path', () => {

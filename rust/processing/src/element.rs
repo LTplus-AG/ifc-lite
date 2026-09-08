@@ -44,9 +44,7 @@ use ifc_lite_geometry::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 
-use crate::processor::{
-    convert_mesh_to_site_local, get_refs_from_list, site_local_rotation_invalidates_captured_transforms,
-};
+use crate::processor::{convert_mesh_to_site_local, site_local_rotation_invalidates_captured_transforms};
 
 /// The f32-collapse degenerate backstop, its per-element tally, and the reason
 /// that tally now gates the closure verdict. A CHILD module: it exists only to

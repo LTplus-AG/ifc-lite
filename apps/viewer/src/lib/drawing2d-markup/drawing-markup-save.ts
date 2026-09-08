@@ -85,7 +85,7 @@ export interface SaveMarkupInput {
   cloudAnnotations2D: Array<{ id: string; points: Array<{ x: number; y: number }>; label: string }>;
 }
 
-export type SaveMarkupRefusal = 'no-model' | 'no-anchor' | 'no-root-context' | 'nothing-to-save';
+export type SaveMarkupRefusal = 'no-model' | 'no-anchor' | 'no-root-context' | 'nothing-to-save' | 'invalid-markup';
 
 export interface SaveMarkupOutcome {
   measuresSaved: number;
@@ -186,6 +186,76 @@ function findRootGeometricContextId(store: IfcDataStore): number | null {
   return ctxIds[0] ?? null;
 }
 
+/** `p.x`/`p.y` finite — mirrors `@ifc-lite/create`'s `drawing-markup.ts`
+ *  `assertFinitePoint` (a bare `Number.isFinite` pair, not exported: kept in
+ *  sync by inspection, same as this module already mirrors that package's
+ *  `Drawing2DState` shapes structurally per the doc comment above). */
+function isFinitePoint(p: { x: number; y: number }): boolean {
+  return Number.isFinite(p.x) && Number.isFinite(p.y);
+}
+
+/** Non-negative and finite — mirrors `assertFiniteNonNegative`. */
+function isFiniteNonNegative(value: number): boolean {
+  return Number.isFinite(value) && value >= 0;
+}
+
+/**
+ * Reject a batch `addDrawingMarkupToStore` would throw on, WITHOUT calling
+ * it — every write-side guard it can hit, mirrored read-only here (see
+ * `drawing-markup.ts`'s `assertFinitePoint`/`assertFiniteNonNegative` and
+ * `addPolygonAreaMarkupToStore`'s own `points.length < 3` check).
+ *
+ * Why pre-validate rather than try/catch the write: `addDrawingMarkupToStore`
+ * is a multi-item batch call with no transactional guarantee (confirmed —
+ * `StoreEditor` has no checkpoint/rollback) — a NaN/Infinity 3 items in
+ * would leave the sub-context and the first 2 items' entities already added
+ * to the overlay when it throws. Worse, `saveDrawingMarkupToModel` sweeps
+ * the PREVIOUS save's annotations before calling this, so a throw after the
+ * sweep would also destroy the last good save. Validating first, before any
+ * mutation (including the sweep), makes both failure modes structurally
+ * impossible instead of needing to unwind them.
+ *
+ * A restored-from-file markup entry is the one path this actually protects
+ * against in practice: a hand-edited/malformed IFC file can carry an
+ * out-of-range STEP REAL (e.g. `1.E400`) on an `IfcAnnotationFillArea`
+ * boundary ring, which the Rust tessellator has no finiteness guard for on
+ * that specific branch (unlike the polyline/line path a Measure/Polygon
+ * restores from) — parses as `Infinity`, survives the WASM boundary
+ * unchanged, and `readCloud` (`drawing-markup-read.ts`) does not validate
+ * point coordinates, only the Distance/Area/Perimeter quantities. That
+ * `Infinity` then rides `useDrawingMarkupRestoreOnLoad`'s restore straight
+ * into `Drawing2DState.cloudAnnotations2D`, unfiltered.
+ *
+ * Returns the first problem found (for a user-facing/console message), or
+ * `null` if the whole batch is clean.
+ */
+function findInvalidMarkup(input: SaveMarkupInput, validClouds: SaveMarkupInput['cloudAnnotations2D']): string | null {
+  for (const m of input.measure2DResults) {
+    if (!isFinitePoint(m.start) || !isFinitePoint(m.end)) return `measurement "${m.id}" has a non-finite point`;
+    if (!isFiniteNonNegative(m.distance)) return `measurement "${m.id}" has a non-finite or negative distance`;
+  }
+  for (const p of input.polygonArea2DResults) {
+    if (p.points.length < 3) return `area "${p.id}" needs at least 3 points`;
+    if (p.points.some((pt) => !isFinitePoint(pt))) return `area "${p.id}" has a non-finite point`;
+    if (!isFiniteNonNegative(p.area)) return `area "${p.id}" has a non-finite or negative area`;
+    if (!isFiniteNonNegative(p.perimeter)) return `area "${p.id}" has a non-finite or negative perimeter`;
+  }
+  for (const t of input.textAnnotations2D) {
+    if (!isFinitePoint(t.position)) return `text "${t.id}" has a non-finite position`;
+    // `Drawing2DState`'s live `textAnnotations2D` never sets `extent` today
+    // (it is a `TextMarkupParams`-only field, no store equivalent) — this
+    // guards the type-allowed case anyway, mirroring `addTextMarkupToStore`'s
+    // own default.
+    if (t.extent && !(isFiniteNonNegative(t.extent.sizeX) && isFiniteNonNegative(t.extent.sizeY))) {
+      return `text "${t.id}" has a non-finite or negative extent`;
+    }
+  }
+  for (const c of validClouds) {
+    if (!isFinitePoint(c.points[0]) || !isFinitePoint(c.points[1])) return `cloud "${c.id}" has a non-finite point`;
+  }
+  return null;
+}
+
 /**
  * Save the current 2D drawing markup into `modelId`'s overlay.
  *
@@ -212,6 +282,16 @@ export function saveDrawingMarkupToModel(
   const total =
     input.measure2DResults.length + input.polygonArea2DResults.length + input.textAnnotations2D.length + validClouds.length;
 
+  // Validate BEFORE touching the store at all — see `findInvalidMarkup`'s
+  // doc comment for why this has to happen ahead of the sweep below, not
+  // just ahead of the write.
+  const problem = findInvalidMarkup(input, validClouds);
+  if (problem) {
+    // eslint-disable-next-line no-console
+    console.warn(`[saveDrawingMarkupToModel] refusing to save: ${problem}`);
+    return { ...EMPTY_COUNTS, refusal: 'invalid-markup' };
+  }
+
   const context = getDrawingMarkupModelContext(modelId);
   if (!context) return { ...EMPTY_COUNTS, refusal: 'no-model' };
   const { editor, dataStore } = context;
@@ -237,18 +317,37 @@ export function saveDrawingMarkupToModel(
     return { ...EMPTY_COUNTS, previousRemoved, refusal: previousRemoved > 0 ? null : 'nothing-to-save' };
   }
 
-  const result = addDrawingMarkupToStore(
-    editor,
-    anchor,
-    rootContextId,
-    {
-      measure2DResults: input.measure2DResults,
-      polygonArea2DResults: input.polygonArea2DResults,
-      textAnnotations2D: input.textAnnotations2D,
-      cloudAnnotations2D: validClouds,
-    },
-    targetView,
-  );
+  // `findInvalidMarkup` above covers every guard `addDrawingMarkupToStore`
+  // (and the builders it calls) can throw on today, so this should never
+  // fire — kept as a last-resort net, not the primary defense, since
+  // `StoreEditor` has no checkpoint/rollback: without this, a THIRD failure
+  // mode neither guard above catches would leave orphaned overlay entities
+  // (the sub-context, and whichever items were added before the throw) with
+  // no error surfaced and no `markModelsDirty`, i.e. a half-written overlay
+  // that silently looks clean.
+  const idsBeforeWrite = new Set(editor.getNewEntities().map((e) => e.expressId));
+  let result;
+  try {
+    result = addDrawingMarkupToStore(
+      editor,
+      anchor,
+      rootContextId,
+      {
+        measure2DResults: input.measure2DResults,
+        polygonArea2DResults: input.polygonArea2DResults,
+        textAnnotations2D: input.textAnnotations2D,
+        cloudAnnotations2D: validClouds,
+      },
+      targetView,
+    );
+  } catch (error) {
+    for (const entity of editor.getNewEntities()) {
+      if (!idsBeforeWrite.has(entity.expressId)) editor.removeEntity(entity.expressId);
+    }
+    // eslint-disable-next-line no-console
+    console.warn('[saveDrawingMarkupToModel] addDrawingMarkupToStore threw despite pre-validation:', error);
+    return { ...EMPTY_COUNTS, refusal: 'invalid-markup' };
+  }
   useViewerStore.getState().markModelsDirty([modelId]);
 
   return {

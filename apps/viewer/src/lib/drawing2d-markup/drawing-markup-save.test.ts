@@ -98,6 +98,22 @@ const ONE_MEASURE: SaveMarkupInput = {
   cloudAnnotations2D: [],
 };
 
+/** A cloud restored from a hand-edited/malformed IFC file: `fill.rs`'s
+ *  `IfcAnnotationFillArea` boundary-ring path has no `is_finite()` guard, so
+ *  an out-of-range STEP REAL (e.g. `1.E400`) on one corner survives the WASM
+ *  boundary as `Infinity` and reaches `Drawing2DState.cloudAnnotations2D`
+ *  unfiltered — this is that shape, not a synthetic one. */
+const INVALID_CLOUD: SaveMarkupInput = {
+  measure2DResults: [],
+  polygonArea2DResults: [],
+  textAnnotations2D: [],
+  cloudAnnotations2D: [{
+    id: 'cloud-bad',
+    points: [{ x: 0, y: 0 }, { x: Infinity, y: 4 }],
+    label: 'Note',
+  }],
+};
+
 describe('saveDrawingMarkupToModel: what reaches the overlay', () => {
   let store: IfcDataStore;
   beforeEach(async () => {
@@ -203,5 +219,54 @@ END-ISO-10303-21;
     } as never);
     const outcome = saveDrawingMarkupToModel('m2', ONE_MEASURE);
     assert.equal(outcome.refusal, 'no-anchor');
+  });
+});
+
+/**
+ * `#4160` (PR, the write side) added `assertFinitePoint`/
+ * `assertFiniteNonNegative` to `@ifc-lite/create`'s `drawing-markup.ts`:
+ * a NaN/Infinity coordinate that used to write malformed STEP now throws
+ * instead. Before this suite's fix, `saveDrawingMarkupToModel` called
+ * `addDrawingMarkupToStore` with no try/catch, so that throw propagated out
+ * of a plain button click handler as an unhandled exception — and worse,
+ * it fired AFTER `removeDrawingMarkupFromStore`'s sweep had already deleted
+ * the previous save, so a rejected save destroyed the last good one too.
+ * These calls this test drives bare (no `act()`), matching the production
+ * click-handler timing — synchronous, not batched — this whole file's own
+ * top-of-file comment documents that requirement for.
+ */
+describe('saveDrawingMarkupToModel: non-finite markup (the #4160 guard reaching this path)', () => {
+  let store: IfcDataStore;
+  beforeEach(async () => {
+    store = await seedStore();
+  });
+
+  it('refuses cleanly instead of throwing when a markup point is non-finite', () => {
+    const outcome = saveDrawingMarkupToModel('m1', INVALID_CLOUD);
+    assert.equal(outcome.refusal, 'invalid-markup');
+  });
+
+  it('leaves no orphaned overlay entities from a rejected save', () => {
+    const before = overlay().length;
+    saveDrawingMarkupToModel('m1', INVALID_CLOUD);
+    assert.equal(overlay().length, before, 'a rejected save must not add anything to the overlay');
+  });
+
+  it('does not mark the model dirty on a rejected save', () => {
+    const beforeVersion = useViewerStore.getState().mutationVersion;
+    saveDrawingMarkupToModel('m1', INVALID_CLOUD);
+    assert.equal(useViewerStore.getState().mutationVersion, beforeVersion);
+  });
+
+  it('does not destroy a previous successful save when the next save is invalid', () => {
+    saveDrawingMarkupToModel('m1', ONE_MEASURE);
+    assert.equal(annotationEntities().length, 1);
+
+    const outcome = saveDrawingMarkupToModel('m1', INVALID_CLOUD);
+    assert.equal(outcome.refusal, 'invalid-markup');
+    assert.equal(annotationEntities().length, 1, "the earlier save's annotation must survive a rejected next save");
+
+    const step = exportStep(store);
+    assert.equal((step.match(/=IFCANNOTATION\(/g) ?? []).length, 1);
   });
 });

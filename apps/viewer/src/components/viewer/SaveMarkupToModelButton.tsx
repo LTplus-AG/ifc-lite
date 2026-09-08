@@ -43,6 +43,8 @@ function refusalText(refusal: SaveMarkupRefusal | 'no-active-model'): string {
       return 'This model has no 3D representation context to attach markup to.';
     case 'nothing-to-save':
       return 'No markup to save — draw a measurement, area, note or cloud first.';
+    case 'invalid-markup':
+      return 'One of your markup items has an invalid (missing or infinite) measurement and cannot be saved — check the console for which one, delete it, and try again.';
   }
 }
 

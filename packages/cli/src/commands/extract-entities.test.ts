@@ -362,6 +362,38 @@ describe('buildSubset: a `#` inside a relation Name is TEXT, not a reference', (
   // case above is the one that fails if `#71` is read out of the name.
 });
 
+// Same shape as the fixture above, but the `#` in the Name names an id the file
+// never DEFINES, and the containment's SET names it too. That is invalid STEP,
+// and it is the input that separates "kept" from "defined": `forwardClosure`
+// used to add #999 to `keep` on the way to looking it up, after which the SET
+// intersection (which tests `keep` alone) saw a full house and re-emitted
+// `(#70,#999)` verbatim, naming an id no line defines (#4128).
+const STOREY_MODEL_PHANTOM_MEMBER = STOREY_MODEL.replace("'Chair 1'", "'C1 see #999'").replace(
+  '(#70,#71,#72,#73),#41)',
+  '(#70,#999),#41)',
+);
+
+describe('buildSubset: an id that is REFERENCED but never DEFINED', () => {
+  const p = parseStep(STOREY_MODEL_PHANTOM_MEMBER);
+
+  it('forwardClosure keeps only ids the file defines', () => {
+    const keep = new Set<number>();
+    forwardClosure([70], p, keep);
+    expect(keep.has(70)).toBe(true);
+    expect(keep.has(999)).toBe(false);
+  });
+
+  it('rewrites the phantom out of the SET instead of emitting it', () => {
+    const { keep, rewritten } = buildSubset(new Set([70]), p);
+    expect(keep.has(999)).toBe(false);
+    expect(rewritten.get(80)).toContain('(#70)');
+    expect(rewritten.get(80)).not.toContain('#999');
+    // The Name still carries its literal `#999`; only the SET was filtered.
+    expect(rewritten.get(80)).toContain("'L01 contents'");
+    expectNoDanglingRefs(serializeSubset({ keep, rewritten }, p));
+  });
+});
+
 // Same model, but the storey containment carries a DEDICATED IfcOwnerHistory
 // (#6) that nothing else in the file references.
 const STOREY_MODEL_REL_OWNED = STOREY_MODEL.replace(

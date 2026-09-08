@@ -140,15 +140,25 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
 
 const REF_RE = /#(\d+)/g;
 
-/** Forward reference closure: every instance transitively referenced by `seeds`. */
+/**
+ * Forward reference closure: every instance transitively referenced by `seeds`.
+ *
+ * An id a record NAMES but the file never DEFINES (a phantom: `#999` read out
+ * of a `'C1 see #999'` Name, or a genuinely broken reference) is NOT added.
+ * `keep` is therefore a subset of the defined ids, which is the property the
+ * consumers assume: `serializeSubset` skips a phantom, but `subset-relations`
+ * intersects a rewritten SET's members against `keep` alone and would emit one
+ * as a dangling `#id` (#4128). It also makes the printed instance count the
+ * number of records actually written.
+ */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
     const id = stack.pop()!;
     if (into.has(id)) continue;
-    into.add(id);
     const rec = parsed.instances.get(id);
     if (!rec) continue;
+    into.add(id);
     REF_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = REF_RE.exec(rec.body)) !== null) {

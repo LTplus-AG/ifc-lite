@@ -3571,13 +3571,15 @@
     "duplicateInStore: function",
     "existingSpaceFootprintsByStorey: function",
     "extractWallSegmentsForStorey: function",
+    "fromNativeLength: function",
     "generateSpaces: function",
     "generateSpacesFromWalls: function",
     "listStoreys: function",
     "offsetRoomFootprint: function",
     "resolveDuplicateSource: function",
     "resolveSpatialAnchor: function",
-    "spatialZonesSupported: function"
+    "spatialZonesSupported: function",
+    "toNativeLength: function"
   ],
   "@ifc-lite/data": [
     "BUILDING_LIKE_SPATIAL_TYPE_ENUMS: const",

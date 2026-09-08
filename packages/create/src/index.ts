@@ -57,6 +57,7 @@ export { addRoofToStore, type RoofInStoreParams, type RoofRectangleParams, type 
 export { addPlateToStore, type PlateInStoreParams, type PlateRectangleParams, type PlatePolygonParams, type PlateBuildResult } from './in-store/plate.js';
 export { addMemberToStore, type MemberInStoreParams, type MemberBuildResult } from './in-store/member.js';
 export { resolveSpatialAnchor } from './in-store/resolve-anchor.js';
+export { toNativeLength, fromNativeLength } from './in-store/anchor.js';
 export type { SpatialAnchor } from './in-store/anchor.js';
 export {
   duplicateInStore,

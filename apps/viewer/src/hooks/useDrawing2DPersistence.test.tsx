@@ -45,8 +45,18 @@ import { useViewerStore } from '@/store';
 import type { FederatedModel } from '@/store';
 import { useDrawing2DPersistence, notifyDrawing2DSectionConfig } from './useDrawing2DPersistence.js';
 import { loadDrawing2DEntry, clearAllDrawing2DEntries } from '@/store/slices/drawing2DSlice.persistence.js';
-import { computeSourceFingerprintFromBlob } from './sourceFingerprint.js';
+import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
+import { computeSourceFingerprint } from './sourceFingerprint.js';
 import type { Measure2DResult } from '@/store/slices/drawing2DSlice.js';
+import type { SectionConfig } from '@ifc-lite/drawing-2d';
+
+const STALE_CONFIG: SectionConfig = {
+  plane: { axis: 'z', position: 999, flipped: false },
+  projectionDepth: 10,
+  includeHiddenLines: true,
+  creaseAngle: 30,
+  scale: 100,
+};
 
 const DEFAULTS = useViewerStore.getState().drawing2DDisplayOptions;
 
@@ -75,6 +85,24 @@ function stubModel(id: string, sourceFile: File): FederatedModel {
 function fileWithBytes(seed: number, name: string): File {
   const bytes = new Uint8Array(256).map((_, i) => (i + seed) % 256);
   return new File([bytes], name, { type: 'application/octet-stream' });
+}
+
+/**
+ * A 4MB deterministic (xorshift32) fill — same construction
+ * `sourceFingerprint.test.ts` uses to demonstrate the sampler's gap blind
+ * spot at this exact length (see its 'FALSE-HITS a byte-length-preserving
+ * edit in a sampler GAP' test).
+ */
+function fillLarge(len: number, seed: number): Uint8Array<ArrayBuffer> {
+  const buf = new Uint8Array(new ArrayBuffer(len));
+  let x = seed >>> 0;
+  for (let i = 0; i < len; i++) {
+    x ^= x << 13; x >>>= 0;
+    x ^= x >> 17;
+    x ^= x << 5; x >>>= 0;
+    buf[i] = x & 0xff;
+  }
+  return buf;
 }
 
 // ─── Harness ────────────────────────────────────────────────────────────────
@@ -123,7 +151,7 @@ afterEach(async () => {
 describe('reload (session-reset) — MUTATION TARGET: Bug 1', () => {
   it('does not overwrite the outgoing model\'s saved entry with the post-reset wipe', async () => {
     const fileA = fileWithBytes(1, 'a.ifc');
-    const hashA = (await computeSourceFingerprintFromBlob(fileA)).hex;
+    const hashA = (await computeFullSourceHashFromBlob(fileA))!;
     const modelA = stubModel('model-a', fileA);
 
     useViewerStore.setState({ models: new Map([['model-a', modelA]]) });
@@ -163,8 +191,8 @@ describe('active-model switch — MUTATION TARGET: Bug 2', () => {
   it('does not leak the outgoing model\'s markup into the newly-active model\'s saved entry', async () => {
     const fileA = fileWithBytes(1, 'a.ifc');
     const fileB = fileWithBytes(99, 'b.ifc');
-    const hashA = (await computeSourceFingerprintFromBlob(fileA)).hex;
-    const hashB = (await computeSourceFingerprintFromBlob(fileB)).hex;
+    const hashA = (await computeFullSourceHashFromBlob(fileA))!;
+    const hashB = (await computeFullSourceHashFromBlob(fileB))!;
     const modelA = stubModel('model-a', fileA);
     const modelB = stubModel('model-b', fileB);
 
@@ -254,7 +282,7 @@ describe('A → B → A round trip — MUTATION TARGET: Bug 4', () => {
   it('does not overwrite A\'s saved entry with the B → A leg\'s accompanying clear', async () => {
     const fileA = fileWithBytes(1, 'a.ifc');
     const fileB = fileWithBytes(99, 'b.ifc');
-    const hashA = (await computeSourceFingerprintFromBlob(fileA)).hex;
+    const hashA = (await computeFullSourceHashFromBlob(fileA))!;
     const modelA = stubModel('model-a', fileA);
     const modelB = stubModel('model-b', fileB);
 
@@ -304,5 +332,160 @@ describe('A → B → A round trip — MUTATION TARGET: Bug 4', () => {
       'mA',
       'model A\'s saved entry must still be intact once the restore effect has settled',
     );
+  });
+});
+
+// ─── Fingerprint-collision regression (PR #4159 review thread) ────────────
+//
+// `hooks/sourceFingerprint.ts`'s window-sampled fingerprint FALSE-HITS a
+// byte-length-preserving edit that lands entirely in its sampler gap (proven
+// by `sourceFingerprint.test.ts`'s 'FALSE-HITS …' test, same construction
+// reused here). Before this fix, this module used THAT fingerprint as the
+// markup-persistence key, so two distinct 4MB models differing only inside
+// the gap would collide on `hashCache`/`localStorage` key and model B would
+// silently restore model A's saved measurements. The fix switches the key to
+// `computeFullSourceHashFromBlob` (true SHA-256 over the whole file), which
+// cannot share this blind spot. MUTATION TARGET: revert the hook's import
+// back to `computeSourceFingerprintFromBlob` and this test must fail.
+describe('fingerprint gap collision — MUTATION TARGET: sampled-key data leak', () => {
+  it('two 4MB models that collide on the sampled fingerprint do NOT collide on the persistence key', async () => {
+    const len = 4_000_000;
+    const bytesA = fillLarge(len, 202);
+    const bytesB = bytesA.slice();
+    // Same offset `sourceFingerprint.test.ts` uses: between interior windows
+    // 1 and 2, outside the 64KB head/tail — a genuine sampler gap.
+    bytesB[700_000] ^= 0xff;
+
+    // Sanity: this pair really does collide on the OLD (sampled) key — the
+    // exact defect the review thread flagged.
+    assert.equal(
+      computeSourceFingerprint(bytesA).hex,
+      computeSourceFingerprint(bytesB).hex,
+      'setup sanity: the two buffers must collide on the sampled fingerprint',
+    );
+
+    const fileA = new File([bytesA], 'a.ifc', { type: 'application/octet-stream' });
+    const fileB = new File([bytesB], 'b.ifc', { type: 'application/octet-stream' });
+    const hashA = (await computeFullSourceHashFromBlob(fileA))!;
+    const hashB = (await computeFullSourceHashFromBlob(fileB))!;
+    assert.notEqual(hashA, hashB, 'the full-content hash must distinguish the two buffers');
+
+    // Distinct model ids from every other `describe` in this file: the
+    // hook's `hashCache` is module-level and keyed by modelId, not content —
+    // reusing 'model-a'/'model-b' here would read back an earlier test's
+    // STALE cached hash for those ids instead of exercising this test's
+    // actual (colliding) file content.
+    const modelA = stubModel('gap-model-a', fileA);
+    const modelB = stubModel('gap-model-b', fileB);
+    useViewerStore.setState({ models: new Map([['gap-model-a', modelA], ['gap-model-b', modelB]]) });
+    await mount();
+
+    await act(async () => { useViewerStore.getState().setActiveModel('gap-model-a'); });
+    await flush();
+    await act(async () => {
+      useViewerStore.setState({ measure2DResults: [sampleMeasure('mA')] });
+    });
+    assert.strictEqual(loadDrawing2DEntry(hashA, DEFAULTS)!.measure2DResults[0].id, 'mA');
+
+    await act(async () => { useViewerStore.getState().setActiveModel('gap-model-b'); });
+    await flush();
+
+    const stateForB = useViewerStore.getState();
+    assert.deepStrictEqual(
+      stateForB.measure2DResults,
+      [],
+      'model B must not inherit model A\'s markup despite sharing the sampled fingerprint',
+    );
+    assert.equal(
+      loadDrawing2DEntry(hashB, DEFAULTS),
+      null,
+      'nothing has been saved for model B yet — it must not read back model A\'s entry',
+    );
+  });
+});
+
+// ─── Restoration-ordering race (PR #4159 review thread) ────────────────────
+//
+// The review comment describes a stray `notifyDrawing2DSectionConfig` call
+// landing in the window between `setActiveModel`'s atomic clear and this
+// hook's own (React-scheduled, passive-effect) restore. Tracing the ACTUAL
+// current code (`drawing2DSlice.markupTransition.ts`'s in-session
+// `liveMarkupCache`, added after the comment's `applyHash`/`resetViewerState`
+// framing) shows the five flat markup ARRAYS can no longer be wiped that way
+// for a model revisited this session: `setActiveModel` restores them
+// SYNCHRONOUSLY from `liveMarkupCache` in the same `set()` that moves
+// `activeModelId`, so there is no "cleared to defaults" instant a stray
+// notify could observe for those fields. Attempted repros of the literal
+// "writes the defaults" claim (see git history of this describe block) do
+// NOT reproduce against current `main` for that reason.
+//
+// `liveMarkupCache` does NOT cover `sectionConfig` (`Drawing2DMarkupPatch`
+// has no such field — see `markupTransitionPatch`'s own doc: "this cache
+// does not carry [sectionConfig]"). `lastSectionConfig`/
+// `lastSectionConfigModelId` are plain module-level variables outside the
+// store, reset only inside THIS hook's own effect — which still runs on a
+// LATER, separate scheduled task from `setActiveModel`'s synchronous patch.
+// A stray notify landing in that (still-real) gap sets
+// `lastSectionConfigModelId = <new model>` while `lastSectionConfig` holds
+// whatever config the notify's CALLER computed — which, for an in-flight
+// generation that started before the switch, is the OUTGOING model's plane,
+// not the new model's. `persistFor` then writes that mismatched config
+// straight into the new model's saved entry (`activeModelId === modelId`
+// is the only check `notifyDrawing2DSectionConfig` makes), silently
+// swapping its persisted section plane for a different model's.
+describe('restoration-ordering race — MUTATION TARGET: cross-model sectionConfig contamination', () => {
+  it('does not let a notify carrying a stale model\'s config overwrite the new model\'s saved sectionConfig', async () => {
+    const fileB = fileWithBytes(55, 'race-b.ifc');
+    const fileA = fileWithBytes(56, 'race-a.ifc');
+    const hashB = (await computeFullSourceHashFromBlob(fileB))!;
+    const modelA = stubModel('race-model-a', fileA);
+    const modelB = stubModel('race-model-b', fileB);
+    const configB: SectionConfig = { ...STALE_CONFIG, plane: { axis: 'z', position: 5, flipped: false } };
+    const configAStale: SectionConfig = { ...STALE_CONFIG, plane: { axis: 'x', position: 999, flipped: true } };
+
+    useViewerStore.setState({ models: new Map([['race-model-a', modelA], ['race-model-b', modelB]]) });
+    await mount();
+
+    // Visit B, generate a drawing with configB, and let it save — B now has
+    // a real saved sectionConfig on disk, and (leaving B below) an entry in
+    // `liveMarkupCache` for its markup arrays.
+    await act(async () => { useViewerStore.getState().setActiveModel('race-model-b'); });
+    await flush();
+    await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
+    assert.deepStrictEqual(loadDrawing2DEntry(hashB, DEFAULTS)!.sectionConfig, configB);
+
+    // Visit A — this is the "previous model" an in-flight generation is
+    // still computing FOR when the user switches away from it.
+    await act(async () => { useViewerStore.getState().setActiveModel('race-model-a'); });
+    await flush();
+
+    // The A -> B leg: bare, not wrapped in `act`, so this hook's own restore
+    // effect has not run yet even though `setActiveModel`'s synchronous
+    // patch has already restored B's markup ARRAYS via `liveMarkupCache`.
+    useViewerStore.getState().setActiveModel('race-model-b');
+
+    // The stray in-flight generation for A resolves in exactly this window:
+    // it reads the NEW `activeModelId` (B, already switched — the real
+    // `useDrawingGeneration.ts` shape) but the `config` it carries was
+    // computed against A's geometry/section plane.
+    notifyDrawing2DSectionConfig('race-model-b', configAStale);
+
+    const savedRightAfter = loadDrawing2DEntry(hashB, DEFAULTS);
+    assert.notDeepStrictEqual(
+      savedRightAfter!.sectionConfig,
+      configAStale,
+      'model B\'s saved sectionConfig must not be replaced by a stale notify carrying model A\'s plane',
+    );
+    assert.deepStrictEqual(
+      savedRightAfter!.sectionConfig,
+      configB,
+      'model B\'s real saved sectionConfig must survive a notify landing before its restore effect runs',
+    );
+
+    // Let the restore effect settle and confirm the IN-MEMORY config used
+    // for the next save is B's real one too, not the corrupted one.
+    await flush();
+    await act(async () => { notifyDrawing2DSectionConfig('race-model-b', configB); });
+    assert.deepStrictEqual(loadDrawing2DEntry(hashB, DEFAULTS)!.sectionConfig, configB);
   });
 });

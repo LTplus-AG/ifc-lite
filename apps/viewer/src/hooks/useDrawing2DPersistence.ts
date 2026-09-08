@@ -94,7 +94,7 @@ import { useEffect, useRef } from 'react';
 import type { SectionConfig } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
-import { computeSourceFingerprintFromBlob } from './sourceFingerprint.js';
+import { computeFullSourceHashFromBlob } from '@/utils/sourceContentHash.js';
 import {
   loadDrawing2DEntry,
   saveDrawing2DEntry,
@@ -119,13 +119,35 @@ let lastSectionConfig: SectionConfig | null = null;
 let lastSectionConfigModelId: string | null = null;
 
 /**
+ * Set the instant the restore effect below starts working on a model, and
+ * cleared once its `applyHash` step concludes for that SAME model (#4159
+ * review: cross-model `sectionConfig` contamination). `setActiveModel`'s
+ * `liveMarkupCache` (`drawing2DSlice.markupTransition.ts`) restores the five
+ * flat markup ARRAYS synchronously, in the same atomic patch that moves
+ * `activeModelId` — but it deliberately does not carry `sectionConfig`
+ * (see its own doc), which stays owned by `lastSectionConfig` /
+ * `lastSectionConfigModelId` here, reset only by this hook's OWN effect. That
+ * effect runs on a separate, later scheduled task from the atomic patch, so
+ * a `notifyDrawing2DSectionConfig` call landing in that gap — a generation
+ * that started for the OUTGOING model and only reads `activeModelId` fresh
+ * when it finally resolves — would otherwise pass the `modelId` check below
+ * and write the outgoing model's plane into the new model's saved entry.
+ * `restoringModelId` closes that: `notifyDrawing2DSectionConfig` refuses to
+ * persist for `modelId` while its own restore is still in flight.
+ */
+let restoringModelId: string | null = null;
+
+/**
  * Call after a 2D drawing is (re)generated so its `SectionConfig` is folded
  * into the next save for the CURRENTLY active model. A no-op call from a
  * generation that finished after the model changed (`modelId` stale) is
- * ignored rather than misattributed.
+ * ignored rather than misattributed; a call for a model whose restore effect
+ * has not yet run is ALSO ignored — see {@link restoringModelId} — rather
+ * than risk persisting a config computed for a different model.
  */
 export function notifyDrawing2DSectionConfig(modelId: string, config: SectionConfig | null): void {
   if (useViewerStore.getState().activeModelId !== modelId) return;
+  if (restoringModelId === modelId) return;
   lastSectionConfig = config;
   lastSectionConfigModelId = modelId;
   persistFor(modelId);
@@ -158,6 +180,19 @@ function ensureSaveSubscription(): void {
   let prev = useViewerStore.getState();
   useViewerStore.subscribe((state) => {
     const modelId = state.activeModelId;
+    // #4159 review (cross-model sectionConfig contamination): mark
+    // `restoringModelId` the INSTANT `activeModelId` moves — synchronously,
+    // inside this `set()`-driven subscription callback — not inside the
+    // restore effect below. The effect is a React-scheduled passive effect,
+    // a separate (later) task from whatever synchronous `set()` call moved
+    // `activeModelId` (`setActiveModel`, `addModel`, `upsertModel`, a raw
+    // `setState`…); setting the mark only inside the effect would leave that
+    // whole gap unguarded — a stray `notifyDrawing2DSectionConfig` call
+    // landing there would see `restoringModelId` still pointing at (or past)
+    // the PREVIOUS model and persist unchecked. Subscribing here instead
+    // means the mark is live before any other code can observe the new
+    // `activeModelId` at all.
+    if (modelId !== prev.activeModelId) restoringModelId = modelId;
     const changed =
       state.measure2DResults !== prev.measure2DResults ||
       state.polygonArea2DResults !== prev.polygonArea2DResults ||
@@ -173,21 +208,45 @@ function ensureSaveSubscription(): void {
     // clear apart from the user genuinely clearing the new model's own
     // markup. `suppressNextSaveFor` marks exactly that one notification;
     // consuming it here (rather than checking-without-consuming) means any
-    // later, real change to the same model still saves normally.
-    if (consumeSuppressedSave(modelId)) return;
+    // later, real change to the same model still saves normally. Always
+    // consumed, even when the `restoringModelId` check below is what
+    // actually skips this notification — an unconsumed mark would otherwise
+    // wrongly swallow the NEXT, genuinely real, change to this same model.
+    const suppressed = consumeSuppressedSave(modelId);
+    // #4159 review (cross-model sectionConfig contamination): also skip
+    // while `modelId`'s restore is in flight, independent of the suppress
+    // mark above. `drawing2DSlice.markupTransition.ts`'s `liveMarkupCache`
+    // restores a REVISITED model's five markup fields synchronously in
+    // `setActiveModel`'s own atomic patch — a real reference change this
+    // listener sees as "changed" — but does NOT mark it suppressed (it is
+    // not the "genuinely new to this session" case `suppressNextSaveFor`
+    // covers) and does NOT touch `sectionConfig`. Persisting right here,
+    // before the restore effect has re-associated `lastSectionConfig` with
+    // `modelId`, would write `sectionConfig: null` over the model's real
+    // saved plane on every single revisit.
+    if (restoringModelId === modelId) return;
+    if (suppressed) return;
     persistFor(modelId);
   });
 }
 
 /**
- * Resolves the active model's content hash (from `FederatedModel.sourceFile`,
- * the same window-sampled fingerprint `services/ifc-cache.ts` keys its cache
- * on) and restores that model's persisted markup into the store. Restores
- * defaults (i.e. does nothing — the fields are already `[]`/defaults after
- * `resetViewerState`) when nothing is saved for the hash, or when a hash
- * cannot be computed at all (no `sourceFile` — e.g. a cache-restored model),
- * which degrades to today's non-persisted behaviour for that load rather
- * than throwing.
+ * Resolves the active model's content hash (from `FederatedModel.sourceFile`)
+ * and restores that model's persisted markup into the store. This is a TRUE
+ * full-content SHA-256 (`computeFullSourceHashFromBlob`), NOT the
+ * window-sampled fingerprint `services/ifc-cache.ts` keys its geometry cache
+ * on: that sampler is a deliberately O(1) cache-lookup key with a proven
+ * blind spot (an edit landing between its sample windows is invisible to
+ * it — see `hooks/sourceFingerprint.ts`'s docs), safe there only because a
+ * false key-hit is still gated by an mtime guard and this same full hash as
+ * a background revalidation layer. Markup restore has no such second gate —
+ * whatever this resolves to is used directly as the `localStorage` key — so
+ * it must be an identity that cannot collide on two genuinely different
+ * models, not merely a fast one. Restores defaults (i.e. does nothing — the
+ * fields are already `[]`/defaults after `resetViewerState`) when nothing is
+ * saved for the hash, or when a hash cannot be computed at all (no
+ * `sourceFile` — e.g. a cache-restored model), which degrades to today's
+ * non-persisted behaviour for that load rather than throwing.
  */
 export function useDrawing2DPersistence(): void {
   const activeModelId = useViewerStore((s) => s.activeModelId);
@@ -202,6 +261,7 @@ export function useDrawing2DPersistence(): void {
     if (!activeModelId) {
       lastSectionConfig = null;
       lastSectionConfigModelId = null;
+      restoringModelId = null;
       return;
     }
 
@@ -223,6 +283,14 @@ export function useDrawing2DPersistence(): void {
     // call. Mark it again, immediately before the call that fires it.
     lastSectionConfig = null;
     lastSectionConfigModelId = null;
+    // #4159 review (cross-model sectionConfig contamination): mark this
+    // model as "restore in flight" for the SAME reason the clear above is
+    // marked via `suppressNextSaveFor` — until `applyHash` runs below,
+    // `notifyDrawing2DSectionConfig` cannot tell a legitimate save for THIS
+    // model apart from a stray one carrying a config computed for whichever
+    // model was active before it. Cleared inside `applyHash`, once this
+    // model's restore has actually concluded.
+    restoringModelId = activeModelId;
     suppressNextSaveFor(activeModelId);
     useViewerStore.setState(defaultMarkupPatch());
 
@@ -230,6 +298,7 @@ export function useDrawing2DPersistence(): void {
       if (!stillCurrent()) return;
       lastSectionConfig = null;
       lastSectionConfigModelId = null;
+      if (restoringModelId === activeModelId) restoringModelId = null;
       if (!hash) return;
 
       const defaults = getDefaultDrawing2DState().drawing2DDisplayOptions;
@@ -261,14 +330,14 @@ export function useDrawing2DPersistence(): void {
       return;
     }
 
-    computeSourceFingerprintFromBlob(sourceFile)
-      .then((fp) => {
-        hashCache.set(activeModelId, fp.hex);
-        applyHash(fp.hex);
+    computeFullSourceHashFromBlob(sourceFile)
+      .then((hash) => {
+        hashCache.set(activeModelId, hash);
+        applyHash(hash);
       })
       .catch((err) => {
         // eslint-disable-next-line no-console
-        console.warn('[drawing2D] failed to fingerprint model for markup restore', err);
+        console.warn('[drawing2D] failed to hash model for markup restore', err);
         hashCache.set(activeModelId, null);
         applyHash(null);
       });

@@ -17,12 +17,14 @@
  * top of a DIFFERENT model.
  *
  * ## The scoping key
- * The key is the model's spread-sampled content fingerprint
- * (`hooks/sourceFingerprint.ts`'s `computeSourceFingerprintFromBlob`), the
- * SAME hash `services/ifc-cache.ts` already uses to key its cache entries —
- * reused here, not reinvented. It is stable across reloads of the same file
- * and (deliberately) blind to the runtime `modelId`/`FederatedModel.id`,
- * which is a fresh UUID every load and cannot serve as a persistence key.
+ * The key is the model's TRUE full-content hash
+ * (`utils/sourceContentHash.ts`'s `computeFullSourceHashFromBlob`, SHA-256) —
+ * NOT `hooks/sourceFingerprint.ts`'s window-sampled fingerprint, which has a
+ * proven blind spot (an edit between its sample windows is invisible to it)
+ * safe only where an mtime guard and a full-hash revalidation still gate a
+ * false hit — guards this module lacks, so its key must be
+ * collision-resistant on its own. Stable across reloads of the same file;
+ * blind to the runtime `modelId`/`FederatedModel.id`, a fresh UUID every load.
  *
  * ## One localStorage key PER MODEL, not one shared blob (#4159 fix)
  * The first cut of this module kept every model's entry in a single JSON

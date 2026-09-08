@@ -108,6 +108,19 @@ describe('selectorToFilterRules — the documented examples', () => {
     assert.deepEqual(rulesOf(`${GUID}, ${GUID2}`), [Rule.globalId([GUID, GUID2], 'in')]);
   });
 
+  it('4c. a class ADD and a GlobalId ADD in one group is reported, not silently ANDed', () => {
+    // IfcOpenShell's `entity()`/`instance()` both `|=` into one accumulator,
+    // so `IfcWall, <GUID>` means "walls UNION that element" — a GUID naming
+    // a door still matches. This adapter's rule model is AND-only, so an
+    // AND of ifcType-in-walls and globalId-in-GUID would narrow to their
+    // intersection instead, silently dropping a non-wall GUID's match.
+    const out = adapt(`IfcWall, ${GUID}`);
+    assert.deepEqual(out.rules, []);
+    assert.equal(out.unsupported.length, 1);
+    assert.ok(out.unsupported[0]?.includes('IfcWall'), out.unsupported[0]);
+    assert.ok(out.unsupported[0]?.includes(GUID), out.unsupported[0]);
+  });
+
   it('6. a class subtraction becomes a notIn rule over the expanded subtree', () => {
     assert.deepEqual(rulesOf('IfcElement, ! IfcWall'), [
       Rule.ifcType(rulesOf('IfcElement').flatMap((r) => ('values' in r ? r.values : [])), 'in'),

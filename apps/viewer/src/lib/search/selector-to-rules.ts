@@ -103,6 +103,7 @@ export function selectorToFilterRules(
   }
 
   const classAdds: string[] = [];
+  const classAddTexts: string[] = [];
   const classSubtracts: string[] = [];
   // Bare GlobalId terms are additive facets too, per IfcOpenShell's
   // `instance()`: `325Q7…` ADDS an element by id and `! 325Q7…` REMOVES one,
@@ -110,6 +111,7 @@ export function selectorToFilterRules(
   // than each narrowing the result on its own — the same shape `classAdds`
   // already folds several class names into one `in` rule for.
   const globalIdAdds: string[] = [];
+  const globalIdAddTexts: string[] = [];
   const globalIdSubtracts: string[] = [];
   const rules: FilterRule[] = [];
 
@@ -119,11 +121,19 @@ export function selectorToFilterRules(
         unsupported.push(`${quote(filter.text)}: not an entity name in IFC2X3, IFC4 or IFC4X3`);
         continue;
       }
-      (filter.negate ? classSubtracts : classAdds).push(filter.name);
+      if (filter.negate) classSubtracts.push(filter.name);
+      else {
+        classAdds.push(filter.name);
+        classAddTexts.push(filter.text);
+      }
       continue;
     }
     if (filter.kind === 'globalId') {
-      (filter.negate ? globalIdSubtracts : globalIdAdds).push(filter.id);
+      if (filter.negate) globalIdSubtracts.push(filter.id);
+      else {
+        globalIdAdds.push(filter.id);
+        globalIdAddTexts.push(filter.text);
+      }
       continue;
     }
     const adapted = adaptFilter(filter);
@@ -132,9 +142,25 @@ export function selectorToFilterRules(
   }
 
   const head: FilterRule[] = [];
-  if (classAdds.length > 0) head.push(Rule.ifcType(expandClasses(classAdds, options), 'in'));
+  // `IfcWall, 325Q7…` reads as "walls OR that element" upstream — `entity()`
+  // and `instance()` both `|=` into the same accumulator (see the file
+  // header) — but this adapter's rule model is AND-only, so a class ADD and
+  // a GlobalId ADD sharing a group cannot be expressed as one AND rule
+  // without silently narrowing to their intersection instead of their union
+  // (a GUID naming a door would then match nothing under `IfcWall, <GUID>`).
+  // Report it rather than guess, the same defensive call this file already
+  // makes for `+` group unions. The negated form (`! 325Q7…`) stays exact:
+  // it subtracts from whatever the class ADD already produced, which is the
+  // same set an AND + `notIn` rule narrows to.
+  if (classAdds.length > 0 && globalIdAdds.length > 0) {
+    unsupported.push(
+      `${quote([...classAddTexts, ...globalIdAddTexts].join(', '))}: a class and a GlobalId here both add elements rather than narrow (IfcOpenShell unions additive facets), so this cannot be expressed as one AND filter — run the class and the GlobalId as two separate filters`,
+    );
+  } else {
+    if (classAdds.length > 0) head.push(Rule.ifcType(expandClasses(classAdds, options), 'in'));
+    if (globalIdAdds.length > 0) head.push(Rule.globalId(globalIdAdds, 'in'));
+  }
   if (classSubtracts.length > 0) head.push(Rule.ifcType(expandClasses(classSubtracts, options), 'notIn'));
-  if (globalIdAdds.length > 0) head.push(Rule.globalId(globalIdAdds, 'in'));
   if (globalIdSubtracts.length > 0) head.push(Rule.globalId(globalIdSubtracts, 'notIn'));
 
   const all = [...head, ...rules];

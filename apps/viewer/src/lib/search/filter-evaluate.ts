@@ -76,7 +76,6 @@ import {
   matchAttributeRule,
   defaultStoreyName,
   storeyMatchesRefs,
-  unionByStorey,
   materialNamesOf,
   matchClassificationRule,
   elevationOf,

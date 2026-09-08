@@ -26,7 +26,6 @@ import {
   type SetOp,
   type StringOp,
   type NumericOp,
-  type ClassificationOp,
 } from '@/lib/search/filter-rules';
 import { ComboInput } from '@/components/ui/combo-input';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';

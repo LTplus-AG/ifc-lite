@@ -1,5 +1,72 @@
 # @ifc-lite/cli
 
+## 0.28.1
+
+### Patch Changes
+
+- [#4097](https://github.com/LTplus-AG/ifc-lite/pull/4097) [`f48b803`](https://github.com/LTplus-AG/ifc-lite/commit/f48b803ee82824710b315cb768f8b02b658fa101) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Finish renaming the BCF "issues" language to "topics" across the app, docs, and package-facing text. Per the BCF-XML specification, `Topic` is the container element and `Issue` is only one `TopicType` value among several (Request, Comment, Error, Warning, Info); the previous patch fixed the BCF panel's own title, heading, empty-state copy, and topic-title placeholder, and left the rest of the product inconsistent.
+  
+  Remaining app-visible surfaces now fixed: the Analyze ribbon's "BCF issues" toggle button (a fourth site, alongside the command palette, main toolbar, and workspace-panel controls fixed previously), the compare panel's "Create BCF issue" affordance and "Issue for" header, the auto-created BCF project's default name (`<model>_Issues` → `<model>_Topics`, matching the BCF panel's own default), the landing-page hero animation's "Issue" step label, the MCP playground's BCF category blurb and example export path, and BCF-related copy across three in-app tours (`bcf`, `compare`, `clash`) — tour titles/descriptions plus five step titles/bodies.
+  
+  Docs updated to match: `docs/index.md`, `README.md`, `docs/guide/quickstart.md`, `docs/guide/bcf.md`, `docs/api/typescript.md`, and the CLI guide/reference's `bcf` examples (`--out topic.bcf`, `bcf list topics.bcf`), which also renamed the example filenames for consistency — they are illustrative only; the CLI has no default BCF filename.
+  
+  Also reworded now-inconsistent internal comments and JSDoc in the touched files, `@ifc-lite/bcf`'s package README and `createTopic` doc comment, `@ifc-lite/bcf-api`'s README, `@ifc-lite/sdk`'s `bim.bcf` namespace docs, `@ifc-lite/mcp`'s `bcf` tool docblock and fire-rating prompt template, and `@ifc-lite/sandbox`'s clash-to-BCF tool description — all comment/doc-only, no behavior change beyond the CLI's `bcf create` usage-message example (`--title "Issue"` → `--title "Missing door"`, matching the `--help` listing).
+  
+  Left deliberately unchanged: `bcfHelpers.tsx`'s `TOPIC_TYPES` list and every other real `TopicType` spec value (including the MCP `bcf` tool's `type` default and the sandbox playground's `topicType` default, both `'Issue'`), `ClashPanel`'s unrelated clash-detection "issues", GitHub issue-number references, and `registry.ts`'s `id: 'bcf'` panel key.
+
+- [#4047](https://github.com/LTplus-AG/ifc-lite/pull/4047) [`df33d57`](https://github.com/LTplus-AG/ifc-lite/commit/df33d57d2e3b446c6a8a021f6a42f4248c692f93) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `ifc-lite export <model> --format ifc` silently narrowing to fewer entities than the model contains when no `--type`/`--storey`/`--where`/`--limit` filter was given. The export command always passed a populated entity-ref array to the backend's IFC exporter, which treats any non-empty array as an isolation request; an unfiltered export's ref array (every queryable entity) is non-empty, so it took the isolation path instead of a full-model pass-through, dropping entities the query layer doesn't surface directly. An unfiltered export now passes the backend's existing "whole model" signal (an empty ref array, already used elsewhere in this codebase) so it matches calling the writer directly.
+  
+  A genuinely filtered `--format ifc` export now also reports the entity count it wrote versus the model's total on stderr, and fails loudly instead of silently exporting the whole model when a filter matches zero entities (mirroring the existing behavior of the Rust-backed export formats).
+  
+  Also split `export.ts`'s Rust-backed exporters (`obj`/`gltf`/`glb`/`jsonld`/`ifcx`/`usd`/`step`, and the shared wasm `GeometryProcessor` bootstrap they use) into `export-rust-formats.ts`, to bring the file back under the repo's module-size budget after this fix's own growth pushed it over. Pure internal refactor: no behaviour change, and `@ifc-lite/cli`'s public API is unchanged.
+  
+  The zero-match `fatal()` guard above (and the equivalent, pre-existing guard in the Rust-backed formats) is now covered by tests: `packages/cli/src/commands/export.zero-match.test.ts` exercises `--format ifc|obj|gltf|glb|jsonld|step` with a `--type` that matches nothing (fails loudly, nothing written) and with one that matches something (still succeeds and narrows). The "still narrows" control for each format now also compares the filtered output's byte size against an unfiltered export of the same model and asserts it is smaller, closing a coverage gap where the control only checked for a non-empty file: mutating `export-rust-formats.ts` to pass an empty isolation set to the Rust exporters while still failing loudly on a genuine zero-match (i.e. silently exporting the whole model whenever a filter matched) previously left every test green.
+
+- [#4120](https://github.com/LTplus-AG/ifc-lite/pull/4120) [`0546d79`](https://github.com/LTplus-AG/ifc-lite/commit/0546d797a8b680572f5bc1d7019ac7e07da6ca2a) Thanks [@louistrue](https://github.com/louistrue)! - `extract-entities`: keep spatial containment when extracting a strict subset.
+  
+  A real exporter writes ONE `IfcRelContainedInSpatialStructure` per storey listing
+  every product in it, so the previous keep-the-relation-only-when-every-member-is-kept
+  rule dropped containment on every `--product` / `--type` extraction from a real
+  model: the extracted products landed outside the spatial tree and a viewer showed
+  the storey with nothing under it. The relation's `RelatedElements` set is now
+  rewritten down to the kept members instead, and `IfcRelReferencedInSpatialStructure`
+  joins `IfcRelAggregates` and `IfcRelContainedInSpatialStructure` in the same
+  handling. Relations still emit no dangling reference: the relating spatial parent
+  and every non-set reference must be kept, and an empty intersection drops the
+  relation. A relation that loses no member emits byte-identical to its source line.
+
+- [#4174](https://github.com/LTplus-AG/ifc-lite/pull/4174) [`70413fa`](https://github.com/LTplus-AG/ifc-lite/commit/70413fa7b2538423adab75bb0a7dac7f42bb7abc) Thanks [@louistrue](https://github.com/louistrue)! - `mutate` now refuses to rewrite a STEP record whose argument list it cannot read, instead of writing the attribute into whatever a mis-scan accumulated and reporting success ([#4125](https://github.com/LTplus-AG/ifc-lite/issues/4125)).
+  
+  Attribute writes are by index, so a record split into the wrong parts puts the value on the wrong attribute and drops the ones the mis-scan swallowed. Measured on an IFC4 wall carrying two undoubled apostrophes, `--set Name=NewName` took a 9-attribute record down to 4 and exited 0; a record wrapped across two lines was skipped in silence while the run still reported the mutation. Both now fail with an error naming the record, and no output file is written. One legal shape is refused as a side effect: a record whose trailing comment contains a `)` (as in `[#1](https://github.com/LTplus-AG/ifc-lite/issues/1)=IFCWALL(...); /* note (x) */`) is now rejected rather than rewritten, because the argument list is located with `lastIndexOf(')')`. That is tracked as [#4163](https://github.com/LTplus-AG/ifc-lite/issues/4163).
+  
+  The argument list is validated at every nesting depth, so the same corruption inside typed values or adjacent lists of strings is caught as well: `IFCLABEL('a's'),$,IFCLABEL('b's'),$` keeps the parens balanced and still reads four attributes as two, and `IfcPerson`'s MiddleNames and PrefixTitles have that shape.
+  
+  A STEP block comment in the argument list is refused too, whatever it contains. A comment carrying no whitespace read as a whole extra argument, so `--set Description=NEWDESC` on `[#2](https://github.com/LTplus-AG/ifc-lite/issues/2)=IFCWALL('1BBB...',/*edited*/,$,'MyName','MyDescription',...)` overwrote Name and exited 0. The scan now breaks a bare token run on `/`, so the comment can never be mistaken for one; a `/` inside a quoted string is untouched, and storey and family names carrying one still rewrite.
+
+- [#4155](https://github.com/LTplus-AG/ifc-lite/pull/4155) [`4f99998`](https://github.com/LTplus-AG/ifc-lite/commit/4f999988c9d6131e8b9f20fa10ebd5744b86f276) Thanks [@louistrue](https://github.com/louistrue)! - `extract-entities` no longer loses spatial containment when a relation owns a
+  private `IfcOwnerHistory`, and no longer emits a reference to an id the source
+  file never defines.
+  
+  The relation planner now reports the unkept references that block a relation
+  which would otherwise survive, and `buildSubset` keeps them and replans, so an
+  exporter that writes one `IfcOwnerHistory` per relationship keeps its storey
+  contents instead of extracting an orphaned storey ([#4126](https://github.com/LTplus-AG/ifc-lite/issues/4126)). The forward closure
+  no longer adds an id that is referenced but never defined, which is what stops a
+  phantom id, such as `[#999](https://github.com/LTplus-AG/ifc-lite/issues/999)` read out of a `'C1 see [#999](https://github.com/LTplus-AG/ifc-lite/issues/999)'` Name, from surviving
+  into a rewritten `RelatedElements` set ([#4128](https://github.com/LTplus-AG/ifc-lite/issues/4128)).
+- Updated dependencies [[`8eb1c25`](https://github.com/LTplus-AG/ifc-lite/commit/8eb1c258fafc73bd9c83c7af95ba2feebf00fb34), [`49edb1e`](https://github.com/LTplus-AG/ifc-lite/commit/49edb1e62451fe48f799652b2ef95d0c980298d1), [`ad193bd`](https://github.com/LTplus-AG/ifc-lite/commit/ad193bd23fc97b2e7167d740c447ca87680c7c07), [`f48b803`](https://github.com/LTplus-AG/ifc-lite/commit/f48b803ee82824710b315cb768f8b02b658fa101), [`c6e4713`](https://github.com/LTplus-AG/ifc-lite/commit/c6e471329c1685e52277a8927da06c452756a4fd), [`a24b8cf`](https://github.com/LTplus-AG/ifc-lite/commit/a24b8cff9598e48c75c5f9fbebd036e72c09063e), [`58504e7`](https://github.com/LTplus-AG/ifc-lite/commit/58504e7ad1cb5377e2ab48fe212a5d14998fccf9), [`9dd8ba1`](https://github.com/LTplus-AG/ifc-lite/commit/9dd8ba133f4d261b3ebc9d37fbf8962a63890b8c), [`2ac2d03`](https://github.com/LTplus-AG/ifc-lite/commit/2ac2d03b874bd9f58637c8c8d194b8f8a9e563af), [`90f4859`](https://github.com/LTplus-AG/ifc-lite/commit/90f4859b73f694114baec821721be498757b9c48), [`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`85089b1`](https://github.com/LTplus-AG/ifc-lite/commit/85089b1ccbf43d7d9982cd8a2f7c31de8e2207df), [`c7f59ce`](https://github.com/LTplus-AG/ifc-lite/commit/c7f59ce33c94d71a40db223d834cf236256a94f5), [`68c322f`](https://github.com/LTplus-AG/ifc-lite/commit/68c322f91195adcf5b206d020025e11824b80d08), [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914), [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10), [`86c8c47`](https://github.com/LTplus-AG/ifc-lite/commit/86c8c477d96845b6564562b4209bc96b1dac878b), [`86c8c47`](https://github.com/LTplus-AG/ifc-lite/commit/86c8c477d96845b6564562b4209bc96b1dac878b), [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914), [`2f2fb88`](https://github.com/LTplus-AG/ifc-lite/commit/2f2fb88cb59ef0f7ef938b3bea1afde35ceb7914), [`faf2946`](https://github.com/LTplus-AG/ifc-lite/commit/faf294674d88050501c3f0737cae555555b9ea5b), [`202e291`](https://github.com/LTplus-AG/ifc-lite/commit/202e291a030f1b40b120a69cb221afd8eab90e0f), [`e409924`](https://github.com/LTplus-AG/ifc-lite/commit/e40992485dd2a0c845225be237c65fd12603d689), [`96ea5f0`](https://github.com/LTplus-AG/ifc-lite/commit/96ea5f08e4872cb50fe9eac7a9878ff607eb3f4a), [`5cbe8aa`](https://github.com/LTplus-AG/ifc-lite/commit/5cbe8aac32ee1b8871357c7dcd9c1154161322d5)]:
+  - @ifc-lite/bcf@3.0.1
+  - @ifc-lite/sdk@4.0.2
+  - @ifc-lite/mcp@0.13.1
+  - @ifc-lite/sandbox@2.2.3
+  - @ifc-lite/parser@5.2.0
+  - @ifc-lite/wasm@6.4.0
+  - @ifc-lite/geometry@4.3.0
+  - @ifc-lite/export@4.0.1
+  - @ifc-lite/ids@1.16.0
+  - @ifc-lite/mutations@2.1.0
+  - @ifc-lite/query@2.2.0
+
 ## 0.28.0
 
 ### Minor Changes

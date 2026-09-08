@@ -1,5 +1,18 @@
 # @ifc-lite/cache
 
+## 3.3.0
+
+### Minor Changes
+
+- [#4012](https://github.com/LTplus-AG/ifc-lite/pull/4012) [`a24b8cf`](https://github.com/LTplus-AG/ifc-lite/commit/a24b8cff9598e48c75c5f9fbebd036e72c09063e) Thanks [@louistrue](https://github.com/louistrue)! - Expose borrowed compact entity columns to compatible consumers and reuse them when writing binary cache indexes. Preserve the existing binary layout, normalized type order, generic iterable inputs and borrowed-buffer ownership while avoiding reference-object reconstruction for valid compact indexes.
+
+- [#4015](https://github.com/LTplus-AG/ifc-lite/pull/4015) [`ae886b4`](https://github.com/LTplus-AG/ifc-lite/commit/ae886b4d113a227826fdec535a3d66f6d963beb9) Thanks [@louistrue](https://github.com/louistrue)! - Allow browser callers to move geometry cache compression into one bounded worker while preserving cache format and the workerless default. Transfer serialized chunks without cloning model data and terminate the worker on success or failure.
+
+### Patch Changes
+
+- Updated dependencies [[`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10)]:
+  - @ifc-lite/geometry@4.3.0
+
 ## 3.2.0
 
 ### Minor Changes

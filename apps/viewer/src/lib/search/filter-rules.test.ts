@@ -198,6 +198,8 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(isFilterRule(Rule.material('contains', 'Concrete')), true);
     assert.strictEqual(isFilterRule(Rule.classification('Uniclass', 'contains', 'Pr_')), true);
     assert.strictEqual(isFilterRule(Rule.elevation('gt', 3)), true);
+    assert.strictEqual(isFilterRule(Rule.globalId(['325Q7Fhnf67OZC$$r43uzK'])), true);
+    assert.strictEqual(isFilterRule(Rule.attribute('Description', 'eq', 'Foo')), true);
   });
   it('rejects unknown kinds and non-objects', () => {
     assert.strictEqual(isFilterRule({ kind: 'bogus' }), false);

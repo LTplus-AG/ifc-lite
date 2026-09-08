@@ -56,6 +56,18 @@ export function setOpMatches(op: SetOp, candidate: string, values: readonly stri
   return op === 'in' ? hit : !hit;
 }
 
+/**
+ * `globalId` rule matching — exact, case-SENSITIVE, unlike every other
+ * `SetOp` dimension in this module. A GlobalId is a 22-character base64
+ * string (IFC's compressed GUID encoding), where upper/lower case is part of
+ * the identity: folding case would let two DIFFERENT elements' GlobalIds
+ * collide on an `in` match.
+ */
+export function globalIdOpMatches(op: SetOp, candidate: string, values: readonly string[]): boolean {
+  const hit = values.includes(candidate);
+  return op === 'in' ? hit : !hit;
+}
+
 export function stringOpMatches(
   op: StringOp,
   candidate: string,

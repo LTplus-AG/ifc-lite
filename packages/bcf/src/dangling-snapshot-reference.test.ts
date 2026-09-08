@@ -74,8 +74,13 @@ describe('#3962: dangling snapshot reference', () => {
     // The reference must be gone, not merely the file: this is the whole bug.
     expect(markupContent).not.toContain('<Snapshot>');
 
-    const snapshotEntries = Object.keys(zip.files).filter((name) => name.includes('Snapshot_'));
-    expect(snapshotEntries).toHaveLength(0);
+    // No snapshot entry of any name (the topic's single viewpoint would
+    // otherwise get the plain `snapshot.<ext>` name, not the pre-#3612
+    // `Snapshot_<guid>.<ext>` form) -- only markup.bcf and the .bcfv file.
+    const topicEntries = Object.keys(zip.files).filter(
+      (name) => name.startsWith(`${topicGuid}/`) && !zip.files[name].dir,
+    );
+    expect(topicEntries.sort()).toEqual([`${topicGuid}/markup.bcf`, `${topicGuid}/viewpoint.bcfv`]);
 
     expect(warn).toHaveBeenCalled();
   });

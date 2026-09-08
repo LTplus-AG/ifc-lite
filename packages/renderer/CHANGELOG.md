@@ -1,5 +1,13 @@
 # @ifc-lite/renderer
 
+## 2.0.1
+
+### Patch Changes
+
+- [#4007](https://github.com/LTplus-AG/ifc-lite/pull/4007) [`dfc543b`](https://github.com/LTplus-AG/ifc-lite/commit/dfc543b58306b7e457628365e75afb18e1fcfde4) Thanks [@louistrue](https://github.com/louistrue)! - Avoid allocating string cell keys for bounded LOD neighborhoods while preserving full entity IDs, representative selection and triangle order.
+- Updated dependencies [[`62e41d5`](https://github.com/LTplus-AG/ifc-lite/commit/62e41d57ec5a41769b91d01e35d10113de91900b), [`165ee1f`](https://github.com/LTplus-AG/ifc-lite/commit/165ee1fa486f799f59531fe332cad6bf67bd3f10)]:
+  - @ifc-lite/geometry@4.3.0
+
 ## 2.0.0
 
 ### Major Changes

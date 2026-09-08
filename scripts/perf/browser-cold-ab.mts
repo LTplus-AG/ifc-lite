@@ -17,12 +17,18 @@
  *   --dist-branch apps/viewer/dist --iters 5 --headed
  *   --browser-executable /path/to/chrome
  * Use --fault-inject-ms 2000 --fault-inject-side branch to exercise delay detection.
+ * --close-timeout-ms bounds context/browser teardown per sample (default 30000);
+ * a close() that never settles is reported as a named failure, not a hang (#4116).
+ * The same flag also bounds browser.newContext()/context.newPage() setup, which
+ * share the same unbounded-CDP-await risk and (unlike chromium.launch(), which
+ * has Playwright's own 30s default) expose no timeout option of their own.
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { browserStaticPath } from './browser-cold-server-path.js';
 import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtures.js';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
+import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { extname, isAbsolute, join, resolve } from 'node:path';
@@ -49,7 +55,7 @@ function flag(name: string): string | null {
 const FLAGS_WITH_VALUE = new Set([
   '--browser-executable', '--corpus', '--iters', '--dist-base', '--dist-branch', '--port',
   '--base-label', '--branch-label', '--jsonl', '--report-json', '--results-dir',
-  '--fault-inject-ms', '--fault-inject-side', '--fault-inject-pattern', '--timeout-ms',
+  '--fault-inject-ms', '--fault-inject-side', '--fault-inject-pattern', '--timeout-ms', '--close-timeout-ms',
 ]);
 function isFlagValue(i: number): boolean {
   const prev = argv[i - 1];
@@ -87,11 +93,21 @@ const FAULT_MS = Number(flag('--fault-inject-ms') ?? '0');
 const FAULT_SIDE = flag('--fault-inject-side') ?? 'branch'; // 'base' | 'branch'
 const FAULT_PATTERN = flag('--fault-inject-pattern') ?? '\\.wasm(\\?|$)';
 const TIMEOUT_MS = Number(flag('--timeout-ms') ?? '180000');
-for (const [name, value, minimum] of [['--fault-inject-ms', FAULT_MS, 0], ['--timeout-ms', TIMEOUT_MS, 1]] as const) {
+// #4116: a stuck close() must fail loudly, not hang the harness forever.
+const CLOSE_TIMEOUT_MS = Number(flag('--close-timeout-ms') ?? '30000');
+for (const [name, value, minimum] of [['--fault-inject-ms', FAULT_MS, 0], ['--timeout-ms', TIMEOUT_MS, 1], ['--close-timeout-ms', CLOSE_TIMEOUT_MS, 1]] as const) {
   if (!Number.isFinite(value) || value < minimum) {
     console.error(`browser-cold-ab: ${name} must be finite and at least ${minimum}`);
     process.exit(2);
   }
+}
+// Node clamps any setTimeout delay above this to fire almost immediately
+// instead of throwing, so an oversized --close-timeout-ms would silently
+// invert the user's intent (a healthy close reported as a timeout failure).
+const NODE_MAX_TIMEOUT_MS = 2_147_483_647;
+if (CLOSE_TIMEOUT_MS > NODE_MAX_TIMEOUT_MS) {
+  console.error(`browser-cold-ab: --close-timeout-ms must not exceed ${NODE_MAX_TIMEOUT_MS} (Node's setTimeout maximum delay)`);
+  process.exit(2);
 }
 
 if (!existsSync(DIST_BRANCH)) {
@@ -211,8 +227,13 @@ for (let iter = 1; iter <= ITERS; iter++) {
       try {
         browser = await chromium.launch(browserLaunchOptions);
         record.browserVersion = browser.version();
-        context = await browser.newContext();
-        page = await context.newPage();
+        // #4116-class risk: newContext()/newPage() ride the same CDP connection
+        // as close(), but Playwright exposes no `timeout` option for either
+        // (unlike chromium.launch(), which defaults to 30s on its own). Bound
+        // them with the same helper and deadline so a stuck setup is reported
+        // like any other sample failure instead of hanging the harness.
+        context = await raceWithTimeout(browser.newContext(), CLOSE_TIMEOUT_MS, 'browser.newContext()');
+        page = await raceWithTimeout(context.newPage(), CLOSE_TIMEOUT_MS, 'context.newPage()');
         bp = new ViewerBenchmarkPage(page, `http://localhost:${PORT}`);
         if (injectHere) {
           const pattern = new RegExp(FAULT_PATTERN);
@@ -267,14 +288,22 @@ for (let iter = 1; iter <= ITERS; iter++) {
         writeFileSync(`${failBase}.error.txt`, message);
         console.error(`browser-cold-ab: FAILED ${tag}: ${message} (evidence: ${failBase}.*)`);
       } finally {
-        await context?.close().catch(error => {
-          record.contextCloseError = String(error);
-          console.error(`browser-cold-ab: context cleanup failed: ${error}`);
-        });
-        await browser?.close().catch(error => {
-          record.browserCloseError = String(error);
-          console.error(`browser-cold-ab: browser cleanup failed: ${error}`);
-        });
+        // #4116: `await x.close().catch(...)` only handles a *rejection*; a
+        // close() call that never settles (observed on a 1.26 GB fixture, on
+        // both arms of two unrelated experiments) is neither resolved nor
+        // rejected, and blocked the whole harness forever with no diagnosis.
+        // Bound each close with a deadline so a hang becomes a recorded,
+        // named failure instead.
+        const contextCloseError = await closeContextWithTimeout(context, CLOSE_TIMEOUT_MS);
+        if (contextCloseError) {
+          record.contextCloseError = contextCloseError;
+          console.error(`browser-cold-ab: context cleanup failed: ${contextCloseError}`);
+        }
+        const browserCloseError = await closeBrowserWithTimeout(browser, CLOSE_TIMEOUT_MS);
+        if (browserCloseError) {
+          record.browserCloseError = browserCloseError;
+          console.error(`browser-cold-ab: browser cleanup failed: ${browserCloseError}`);
+        }
       }
 
       if (record.ok && (record.contextCloseError || record.browserCloseError)) {

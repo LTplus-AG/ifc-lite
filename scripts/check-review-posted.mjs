@@ -109,6 +109,7 @@ import { gh, GhError } from './lib/gh.mjs';
 import { ReviewProvenanceError, wroteAtCommit } from './lib/review-provenance.mjs';
 import { droppedVerdict, shouldKeepPolling } from './lib/review-dropped-verdict.mjs';
 import { MARKER_RE, MARKER_SHAPE, MARKER_VERDICTS, certifiesDiff, verdictLines } from './lib/review-marker.mjs';
+import { issueCommentsLastPage } from './lib/review-poll-page.mjs';
 
 const SCRIPTS_DIR = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_CONFIG = join(SCRIPTS_DIR, 'review-posted.config.json');
@@ -720,10 +721,9 @@ function main() {
     // the very comment it was waiting for: the full refetch never fired and the
     // gate reported NOT_POSTED after a full budget of waiting, on a PR that had
     // in fact been reviewed. Caught in review of #3580.
-    //
-    // Still one call per tick: `page=` past the end returns an empty array, and
-    // the count from the previous full read tells us where the end is.
-    const lastPage = Math.max(1, Math.ceil(comments.length / PER_PAGE));
+    // Still one call per tick: `page=` past the end returns an empty array. Sized
+    // from issueComments alone, not the union -- ./lib/review-poll-page.mjs (#4018).
+    const lastPage = issueCommentsLastPage(comments, PER_PAGE);
     const probe = normaliseComments({
       issueComments: gh(
         ['api', `repos/${args.repo}/issues/${args.pr}/comments?per_page=${PER_PAGE}&page=${lastPage}`, '--method', 'GET'],

@@ -214,30 +214,9 @@ export function detectPointCloudFormat(
   return null;
 }
 
-/**
- * Map common unsupported formats to a user-facing explanation. Drop
- * handlers call this when nothing else recognises a dropped file so the
- * user sees "this is a Recap project, export to E57" instead of nothing
- * happening.
- */
-export function describeUnsupportedFormat(fileName: string): string | null {
-  const lower = fileName.toLowerCase();
-  if (lower.endsWith('.zip')) {
-    return 'ZIP archive — please extract first. .ply / .las / .laz / .e57 files inside will load.';
-  }
-  if (
-    lower.endsWith('.rwp') || lower.endsWith('.rwi')
-    || lower.endsWith('.rwcx') || lower.endsWith('.dmt')
-    || lower.endsWith('.lay') || lower.endsWith('.db1')
-  ) {
-    return 'Autodesk ReCap (.rwp/.rwi/.rwcx) is a proprietary format we cannot decode. Export to E57 or LAS from ReCap.';
-  }
-  if (lower.endsWith('.skp')) return 'SketchUp model — not a point cloud.';
-  if (lower.endsWith('.fls') || lower.endsWith('.lsproj')) {
-    return 'Faro Scene project — export to E57 from Scene to load it here.';
-  }
-  return null;
-}
+// `describeUnsupportedFormat` moved to ./unsupportedFormat.ts (#4099) — this
+// module was at its module-size budget and that function has no dependency
+// on the point-cloud pipeline below.
 
 /**
  * Counter for synthetic expressIds when callers don't supply one.

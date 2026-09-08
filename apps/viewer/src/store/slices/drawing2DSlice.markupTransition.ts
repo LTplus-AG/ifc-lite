@@ -33,14 +33,30 @@
  * `state.models.size === 0` branch, sets `activeModelId: model.id` directly
  * when the very first model of a session (or of a post-`clearAllModels`
  * federation) is added. That branch now also calls `markupTransitionPatch`.
- * As far as this codebase's own action layer goes, all three of
- * `activeModelId`'s writers with markup consequences —
- * `modelSlice.ts`'s `setActiveModel` and `addModel`, and
- * `modelSlice.teardown.ts`'s `'model-removed'` arm — call
- * `markupTransitionPatch` in the same `set()` that moves the id. That is
- * a property of the action layer, not a guarantee this file can enforce: a
- * caller reaching `useViewerStore.setState()` directly still bypasses it —
- * see "What this does NOT eliminate" below.
+ *
+ * A still later pass (#4159 bug 6) found a FOURTH: `modelSlice.ts`'s
+ * `upsertModel` resolves `activeModelId` as `state.activeModelId ?? model.id`
+ * — the identical "adopt the first model of the session" shape `addModel`
+ * has — and wrote it directly. Routed in `modelSlice.upsert.ts` (a sibling
+ * module, not inline, for the same module-size reason as this file).
+ *
+ * This doc has now named the complete set wrong twice — first two writers,
+ * then three — each time by writing "the ONLY other place" or "all N" before
+ * the next review round found one more. So the honest claim is narrower:
+ * **these four writers** — `modelSlice.ts`'s `setActiveModel`, `addModel` and
+ * `upsertModel`, and `modelSlice.teardown.ts`'s `'model-removed'` arm — are
+ * everywhere `activeModelId` moves in the PRODUCTION action layer as of this
+ * writing, each confirmed by grepping every `activeModelId:` write and every
+ * `useViewerStore.setState()` call under `apps/viewer/src` (excluding tests)
+ * at the time this paragraph was written, and each now calls
+ * `markupTransitionPatch` in the same `set()` that moves the id. That is a
+ * property of the action layer, enforced by convention and this file's own
+ * review history, not a guarantee this file — or any grep — can make
+ * permanent: nothing stops a FIFTH writer from being added tomorrow with the
+ * same field-write shape and no compiler or lint signal pointing here. A
+ * caller reaching `useViewerStore.setState()` directly bypasses this
+ * regardless of how many production call sites currently behave — see "What
+ * this does NOT eliminate" below.
  *
  * ## The in-session live cache
  * Beyond closing bug 5, this also strengthens bug 4's fix: an in-memory,

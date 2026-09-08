@@ -27,6 +27,7 @@ import {
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
 import { markupTransitionPatch } from './drawing2DSlice.markupTransition.js';
+import { upsertModelPatch } from './modelSlice.upsert.js';
 
 export interface ModelSlice {
   // State
@@ -181,20 +182,11 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     }
   }),
 
-  upsertModel: (model) => set((state) => {
-    const newModels = new Map(state.models);
-    const existing = newModels.get(model.id);
-    newModels.set(model.id, existing ? { ...existing, ...model } : model);
-    const activeModelId = state.activeModelId ?? model.id;
-    const activeModel = newModels.get(activeModelId) ?? null;
-
-    return {
-      models: newModels,
-      activeModelId,
-      ifcDataStore: activeModel?.ifcDataStore ?? null,
-      geometryResult: activeModel?.geometryResult ?? null,
-    };
-  }),
+  // #4159 bug 6: routed through `markupTransitionPatch` — see
+  // `modelSlice.upsert.ts`'s doc for why this is a sibling module rather
+  // than inline (this slice is at its module-size budget) and for the
+  // shape of the bug this closes.
+  upsertModel: (model) => set((state) => upsertModelPatch(state, model)),
 
   updateModel: (modelId, patch) => set((state) => {
     const model = state.models.get(modelId);

@@ -312,6 +312,54 @@ describe('ModelSlice', () => {
       state.upsertModel(createMockModel('model-2', 'B'));
       assert.strictEqual(state.activeModelId, 'model-1');
     });
+
+    describe('2D drawing markup on the first-model branch — #4159 bug 6', () => {
+      // `upsertModel` resolves `activeModelId` as `state.activeModelId ??
+      // model.id` — the same "adopt the first model of the session" shape
+      // `addModel`'s `state.models.size === 0` branch has (bug 3, above) —
+      // but wrote it directly instead of through `markupTransitionPatch`.
+      // Reachable in production via `collabSlice.ts`'s room-join path and
+      // `useIfcLoader.ts`'s AI-agent load path, both of which call
+      // `upsertModel` and can be the first model of a session.
+      beforeEach(() => {
+        __resetLiveMarkupCacheForTests();
+      });
+
+      it('does not attribute stale markup to a model adopted via upsertModel after clearAllModels — MUTATION TARGET', () => {
+        state.addModel(createMockModel('model-1', 'First'));
+        Object.assign(state, { measure2DResults: [sampleMeasure('mA')] });
+
+        state.clearAllModels();
+        assert.strictEqual(state.activeModelId, null, 'setup sanity: clearAllModels must drop activeModelId');
+        assert.deepStrictEqual(
+          (state as unknown as Drawing2DMarkupFields).measure2DResults,
+          [sampleMeasure('mA')],
+          'setup sanity: clearAllModels\' teardown arm for markup is a deliberate no-op, so the field is still stale here',
+        );
+
+        state.upsertModel(createMockModel('model-2', 'Second'));
+
+        assert.strictEqual(state.activeModelId, 'model-2');
+        assert.deepStrictEqual(
+          (state as unknown as Drawing2DMarkupFields).measure2DResults,
+          [],
+          'model-1\'s stale measurement must not carry over onto model-2 via the first-model upsertModel branch',
+        );
+      });
+
+      it('leaves a genuinely fresh first upsert unaffected', () => {
+        assert.strictEqual(state.activeModelId, null);
+        assert.deepStrictEqual((state as unknown as Drawing2DMarkupFields).measure2DResults, []);
+
+        const model = createMockModel('model-1', 'Only');
+        state.upsertModel(model);
+
+        assert.strictEqual(state.activeModelId, 'model-1');
+        assert.strictEqual(state.ifcDataStore, model.ifcDataStore);
+        assert.strictEqual(state.geometryResult, model.geometryResult);
+        assert.deepStrictEqual((state as unknown as Drawing2DMarkupFields).measure2DResults, []);
+      });
+    });
   });
 
   describe('updateModel', () => {

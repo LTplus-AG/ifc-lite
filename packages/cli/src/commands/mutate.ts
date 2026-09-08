@@ -16,6 +16,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType, findAttribute, type IfcSchemaVersion } from '@ifc-lite/data';
+import { splitTopLevelStepArgs } from './step-args.js';
 
 /**
  * Parse a --where filter string.
@@ -302,6 +303,22 @@ export async function entitiesWithObjectType(schema: string): Promise<ReadonlySe
 /**
  * Apply attribute mutations to STEP content via text replacement.
  * For each target entity, finds its STEP line and replaces the attribute at the known index.
+ *
+ * THROWS rather than rewriting a record whose text this pass cannot read. The
+ * write below is BY INDEX, so it is only correct if `args[2]` really is the
+ * record's third attribute; when the scan lost its place `args` still has parts
+ * and the write still lands somewhere, silently (#4125, #2470). What a mis-scan
+ * looks like, and why `splitTopLevelStepArgs` refuses one, is in
+ * `step-args.ts`'s header.
+ *
+ * Throwing, not skipping-and-reporting, because this command's whole output is
+ * a FILE: a skip writes one that looks like what was asked for and is missing
+ * the edit, under a `Mutated 1 entities` line. The throw reaches `main().catch`
+ * in `index.ts`, which prints `Error [mutate]: ...` and exits 1 with no output
+ * file, so exit code and filesystem agree. The `Warning: ... skipping` paths
+ * below stay warnings, and they are not both about the request: one names an attribute
+ * the SCHEMA does not give that entity, the other ALSO fires when the record has fewer
+ * arguments than the attribute index. Both stay warnings because the record was read.
  */
 export function applyAttributeMutations(
   content: string,
@@ -316,6 +333,10 @@ export function applyAttributeMutations(
     list.push({ propName: m.propName, value: m.value });
     mutationsByEntity.set(id, list);
   }
+
+  // Records this pass was asked to rewrite and could not read. Collected
+  // rather than thrown on first sight so one run names every one of them.
+  const unreadable: string[] = [];
 
   const lines = content.split('\n');
   for (let i = 0; i < lines.length; i++) {
@@ -332,9 +353,18 @@ export function applyAttributeMutations(
     // Parse the STEP argument list (handle nested parens and quoted strings)
     const argsStart = line.indexOf('(');
     const argsEnd = line.lastIndexOf(')');
-    if (argsStart === -1 || argsEnd === -1) continue;
-
-    const args = splitStepArgs(line.slice(argsStart + 1, argsEnd));
+    // A record wrapped across lines is caught rather than truncated: `argsEnd`
+    // is the LAST ')' on the line and the slice EXCLUDES it, so the nested list
+    // that ')' closed is left open and the split refuses. The exporter re-emits
+    // source lines verbatim, so a wrapped record from the input reaches here
+    // intact, and used to be skipped in silence while the run reported the
+    // mutation as done.
+    const args =
+      argsEnd > argsStart ? splitTopLevelStepArgs(line.slice(argsStart + 1, argsEnd)) : null;
+    if (args === null) {
+      unreadable.push(`#${expressId}=${entityType}`);
+      continue;
+    }
 
     for (const mut of entityMuts) {
       const attrIdx = ATTRIBUTE_INDEX[mut.propName.toLowerCase()];
@@ -355,44 +385,16 @@ export function applyAttributeMutations(
     lines[i] = line.slice(0, argsStart + 1) + args.join(',') + line.slice(argsEnd);
   }
 
-  return lines.join('\n');
-}
-
-/**
- * Split a STEP argument string by commas, respecting nested parens and quoted strings.
- */
-export function splitStepArgs(argsStr: string): string[] {
-  const result: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString = false;
-
-  for (let i = 0; i < argsStr.length; i++) {
-    const ch = argsStr[i];
-    if (inString) {
-      current += ch;
-      if (ch === "'" && argsStr[i + 1] === "'") {
-        current += "'";
-        i++; // skip escaped quote
-      } else if (ch === "'") {
-        inString = false;
-      }
-    } else if (ch === "'") {
-      inString = true;
-      current += ch;
-    } else if (ch === '(') {
-      depth++;
-      current += ch;
-    } else if (ch === ')') {
-      depth--;
-      current += ch;
-    } else if (ch === ',' && depth === 0) {
-      result.push(current);
-      current = '';
-    } else {
-      current += ch;
-    }
+  if (unreadable.length > 0) {
+    throw new Error(
+      `refusing to rewrite ${unreadable.length} record(s) whose STEP text could not be read as a ` +
+        `complete argument list: ${unreadable.join(', ')}. Attributes are written by index, so a ` +
+        `mis-scanned list would put the value on the wrong attribute and drop the ones it swallowed ` +
+        `(LTplus-AG/ifc-lite#4125). Usual causes: an undoubled apostrophe inside a quoted string, an ` +
+        `unbalanced parenthesis, a comment inside the argument list, or a record spanning several ` +
+        `lines. No output file was written.`,
+    );
   }
-  if (current) result.push(current);
-  return result;
+
+  return lines.join('\n');
 }

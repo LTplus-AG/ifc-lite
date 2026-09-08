@@ -218,6 +218,42 @@ describe('replaceStepArgument rejects a phantom-string mis-split (#4162)', () =>
   });
 });
 
+/**
+ * ISO 10303-21 binary literal (`"..."`, e.g. `"0123ABC"`) — confirmed legal
+ * in any slot against ifcopenshell's own tokenizer (`IfcParse.cpp`,
+ * `GeneralTokenPtr`: `else if (first == '"') { token.type = Token_BINARY; }`).
+ * `isWellFormedStepSlot`'s `parseValue` did not recognize it as a value
+ * (only `'`, `(`, `$`, `*`, and a bare-token character class), so a
+ * perfectly legal line containing one was rejected outright by #4162's
+ * per-part check — a regression this suite pins.
+ */
+describe('replaceStepArgument accepts a binary literal in any slot (ISO 10303-21)', () => {
+  it('splits a line whose Description is a binary literal', () => {
+    expect(splitTopLevelStepArguments('\'Len\',"0123ABC",$,5000.,$')).toEqual([
+      "'Len'",
+      '"0123ABC"',
+      '$',
+      '5000.',
+      '$',
+    ]);
+  });
+
+  it('replaces a different slot on a line carrying a binary literal, leaving it byte-identical', () => {
+    const line = '#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5000.,$);';
+    expect(replaceStepArgument(line, 3, '5.')).toBe(
+      '#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5.,$);',
+    );
+  });
+
+  it('rejects an unterminated binary literal (opening quote never closes)', () => {
+    expect(splitTopLevelStepArguments('\'Len\',"0123ABC,$,5000.,$')).toBeNull();
+  });
+
+  it('accepts a binary literal nested inside a typed value / list', () => {
+    expect(splitTopLevelStepArguments('IFCBINARY("00FF"),$')).toEqual(['IFCBINARY("00FF")', '$']);
+  });
+});
+
 describe('replaceStepArgument still accepts every well-formed list', () => {
   it('keeps a comma inside a quoted string out of the split', () => {
     const line = "#5=IFCWALLTYPE('0OSuGGYU',$,'WT1, exterior',$,$,(#30),$,$,$,.STANDARD.);";

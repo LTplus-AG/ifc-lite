@@ -21,3 +21,21 @@ treats a `null` result as "could not repoint" — it keeps the line unrewritten
 for that slot and surfaces a warning rather than dropping the record, so this
 newly-reachable rejection degrades the same way an unparseable record already
 did.
+
+Two follow-ups, since `splitTopLevelStepArguments` has five call sites total
+and the per-part check reaches every one of them, not only
+`replaceStepArgument`:
+
+- The per-part check did not recognize the ISO 10303-21 binary literal
+  (`"..."`, e.g. `"0123ABC"`) as a value, so a perfectly legal line
+  containing one was rejected outright. `isWellFormedStepSlot`/`parseValue`
+  now accept it.
+- `unit-normalize.ts`'s `rescaleEntityLengths` — reached through
+  `MergedExporter`'s cross-unit merge path — treated that `null` as "nothing
+  to do" and returned the line's length/area/volume data UNSCALED, silently:
+  the one call site among the five where "unknown, don't act" is not a safe
+  fallback. It now throws instead. The other three call sites
+  (`merged-context.ts`, `merged-subcontext.ts`) already read `null`
+  permissively as "unresolvable, don't unify" — audited and left as-is, since
+  falling back to not merging is the safe direction for a WCS/kind
+  comparison.

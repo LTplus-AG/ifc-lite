@@ -181,9 +181,9 @@ describe('rescaleEntityLengths (full entity lines)', () => {
     // `findOuterArgs` is where a malformed record stops: it tracks quotes and
     // depth to find the `)` that closes the record's own `(`, so a line that
     // never closes either has no argument span at all and is returned as-is.
-    // That is also why `splitTopLevelStepArguments` returning null is
-    // unreachable from here — the span it is handed is balanced by
-    // construction — so nothing below pretends to exercise that guard.
+    // `splitTopLevelStepArguments` returning null IS separately reachable past
+    // this point — see the "refuses to guess at a malformed slot" describe
+    // block below, which exercises that path directly.
     const unterminated = "#8=IFCBUILDINGSTOREY('g',$,'L1,$,$,$,$,$,.ELEMENT.,3000.);";
     expect(rescaleEntityLengths(unterminated, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unterminated);
 
@@ -266,6 +266,39 @@ describe('rescaleEntityLengths (full entity lines)', () => {
   it('is a no-op when all factors are 1', () => {
     const line = '#6=IFCCARTESIANPOINT((100.,200.,300.));';
     expect(rescaleEntityLengths(line, 'IFCCARTESIANPOINT', 1, 1, 1)).toBe(line);
+  });
+
+  it('rescales a length quantity that carries a binary literal in another slot (#4173 regression repro)', () => {
+    // `isWellFormedStepSlot` (step-argument-parser.ts, #4162) did not recognize
+    // the STEP binary literal `"..."` as a value, so a well-formed line whose
+    // Description happened to be a binary literal made `splitTopLevelStepArguments`
+    // reject the whole split — and this function used to treat that null as
+    // "nothing to do" and hand the line back with its LengthValue UNSCALED.
+    const baseline = "#1=IFCQUANTITYLENGTH('Len',$,$,5000.,$);";
+    expect(rescaleEntityLengths(baseline, 'IFCQUANTITYLENGTH', 0.001, 1, 1))
+      .toBe("#1=IFCQUANTITYLENGTH('Len',$,$,5.,$);");
+
+    const withBinary = '#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5000.,$);';
+    expect(rescaleEntityLengths(withBinary, 'IFCQUANTITYLENGTH', 0.001, 1, 1))
+      .toBe('#1=IFCQUANTITYLENGTH(\'Len\',"0123ABC",$,5.,$);');
+  });
+});
+
+describe('rescaleEntityLengths refuses to guess at a malformed slot', () => {
+  it('throws rather than silently leaving length data in the wrong unit', () => {
+    // `findOuterArgs` only certifies the outer span's SCAN state (balanced
+    // parens/quotes) — it says nothing about whether each top-level slot is
+    // itself a well-formed value. A lone comment sitting between two commas
+    // is exactly such a case (step-argument-parser.test.ts's phantom-slot
+    // suite): it leaves quote parity and paren depth clean but is not a
+    // value, so `isWellFormedStepSlot` rejects it and
+    // `splitTopLevelStepArguments` returns null even though `findOuterArgs`
+    // found a clean span. This line's LengthValue (slot 3) would silently
+    // keep its stale unit if that null were swallowed.
+    const line = "#1=IFCQUANTITYLENGTH('Len',$,/* c */,5000.,$);";
+    expect(() => rescaleEntityLengths(line, 'IFCQUANTITYLENGTH', 0.001, 1, 1)).toThrow(
+      /cannot split/,
+    );
   });
 });
 

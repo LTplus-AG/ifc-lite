@@ -251,9 +251,9 @@ export function splitTopLevelStepArguments(input: string): string[] | null {
 /**
  * Whether `part` — one slot `splitTopLevelStepArguments` already separated on
  * a top-level comma, raw text including any surrounding whitespace/comments —
- * is a single well-formed STEP value (a string literal, `$`, `*`, a bare
- * keyword / enumeration / number / `#`-reference token, or a typed value or
- * list `NAME(...)` / `(...)`), or is empty.
+ * is a single well-formed STEP value (a string literal, a binary literal
+ * (`"..."`), `$`, `*`, a bare keyword / enumeration / number / `#`-reference
+ * token, or a typed value or list `NAME(...)` / `(...)`), or is empty.
  *
  * Empty is deliberately accepted, matching the docstring above: `a,,b` is one
  * empty part, not a rejection, so slot indices after it stay aligned with what
@@ -336,6 +336,20 @@ function isWellFormedStepSlot(part: string): boolean {
     if (c === '(') {
       i++;
       return parseParenList();
+    }
+
+    // Binary literal (ISO 10303-21 `"..."`, e.g. `"0123ABC"` — an
+    // IfcBinary-typed value, distinct from the `'...'` string literal above.
+    // Unlike a string, `"` has no doubled-quote escape in STEP: ifcopenshell's
+    // tokenizer (`IfcParse.cpp`, `GeneralTokenPtr`/`IfcSpfLexer::Next`)
+    // classifies a token as binary purely by its leading `"` and does not
+    // decode escapes inside it, so the first following `"` ends the literal.
+    if (c === '"') {
+      i++;
+      while (i < n && part[i] !== '"') i++;
+      if (i >= n) return false; // unterminated binary literal
+      i++;
+      return true;
     }
 
     if (c === '$' || c === '*') {

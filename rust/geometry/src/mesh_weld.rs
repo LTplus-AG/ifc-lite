@@ -12,14 +12,82 @@
 //! This weld collapses vertices that share an identical f32 position AND a
 //! coinciding (quantized) normal into one, then remaps indices.
 //!
-//! It runs once, at the single per-element mesh funnel `build_mesh_data`
-//! (`ifc_lite_processing::element`), so every element — voided or not, faceted
-//! brep or swept solid — arrives welded in its `MeshData`. Because it keys on
-//! the quantized normal, coincident positions carrying DISTINCT normals (a
-//! crease / cube corner) stay split, so flat shading is preserved (a cube keeps
-//! its 24 vertices). World triangles and the world AABB are preserved exactly
-//! (welded vertices sit at identical positions; triangle count and winding are
-//! unchanged).
+//! It runs AT LEAST once per element, in the OBJECT frame, at the last moment
+//! before the placement is baked in: [`weld_mesh`] from `apply_placement` and
+//! [`weld_sub_mesh`] from `apply_submesh_placement`. Every element — voided or
+//! not, faceted brep or swept solid, single-item or per-style sub-meshes —
+//! therefore arrives welded in its `MeshData`. Some are welded a SECOND time,
+//! post-bake, by [`weld`] called from `build_mesh_data`; its doc says which and
+//! why. Because it keys on the quantized
+//! normal, coincident positions carrying DISTINCT normals (a crease / cube
+//! corner) stay split, so flat shading is preserved (a cube keeps its 24
+//! vertices). Triangles and the AABB are preserved exactly (welded vertices sit
+//! at identical positions; triangle count and winding are unchanged).
+//!
+//! ## Why the object frame, and not after the bake (#4103)
+//!
+//! The position part of the key is the raw f32 BIT PATTERN, so what the weld
+//! merges depends on the magnitude of the coordinates it is handed. An f32 ULP
+//! is ~6e-8 m at 0.5 m and ~2e-6 m at 30 m, so welding baked world coordinates
+//! silently applies an epsilon that grows with the element's distance from the
+//! origin, and welding the same source geometry at two different placements
+//! merges two different sets of vertices.
+//!
+//! That broke a contract the pipeline depends on. Every occurrence of one
+//! `IfcRepresentationMap` is a clone of ONE cached source mesh
+//! (`router::mapped_item`), and every direct-solid `rep_identity` is a hash of
+//! the mesh BEFORE placement (`router::processing::direct_rep_identity`), so
+//! occurrences of one representation are meant to be bit-identical. A post-bake
+//! weld rewrote each of them differently, and `instancing::collate_refs` refuses
+//! a group whose members disagree on vertex count, so nothing ever collated:
+//! ten armchairs sharing one `IfcRepresentationMap` shipped as ten full meshes
+//! with vertex counts spread over 0.9%, and a cached Parquet artifact came out
+//! three times the size of its own IFC.
+//!
+//! In the object frame the key no longer depends on the element's PLACEMENT, so
+//! occurrences that differ only by where they were put weld identically.
+//! Placement is rigid, so nothing that merges here would have failed to merge
+//! after the bake for a geometric reason; only the accidental collisions go
+//! away, and those were never intended.
+//!
+//! ## What this does NOT fix, measured
+//!
+//! Three things survive, all narrower than the bug above but none zero.
+//!
+//! A per-occurrence `IfcMappedItem` MappingTarget is baked in by
+//! `router::mapped_item` BEFORE the mesh reaches `apply_placement`, so the weld
+//! still sees target-transformed coordinates. Occurrences of one
+//! `IfcRepresentationMap` whose targets differ by enough to move the f32
+//! exponent still weld to different vertex counts, and `collate_refs` still
+//! refuses that group. Measured on the `issue_4103_shared_map_buffer_identity`
+//! fixture with the offsets moved from the placement into the target: 8/8/8
+//! vertices when the placement varies (fixed), 8/4/4 when the target varies
+//! (unfixed). Closing that means welding the cached source once, before the
+//! target bake, and suppressing this weld for a mesh already welded — a
+//! different change.
+//!
+//! The invariant this weld establishes — no two vertices sharing a (position
+//! bits, quantized normal) key — holds in the frame the weld RAN in, not
+//! necessarily in the world buffer that ships. A rigid placement can map two
+//! vertices that are distinct in the object frame onto one f32 world position;
+//! main merged those post-bake and this deliberately does not, because doing so
+//! is exactly the placement-dependence being removed. Measured across the six
+//! ara3d models: 104 of 15,211 shipped meshes carry at least one such duplicate
+//! key, 494 of 1,093,616 vertices (0.68% and 0.045%); AC20-FZK-Haus has none.
+//! A post-bake weld to remove them would reintroduce #4103.
+//!
+//! Welding is not the only stage that can make two occurrences disagree. Anything
+//! that edits INDICES after the bake can too, and two do: `degenerate::clean`
+//! compares a triangle height computed from f32 world positions against an
+//! ABSOLUTE threshold, and `mesh_orient`'s adjacency grid is 10 um, which is
+//! finer than the f32 world grid at 128 m and beyond (one ULP there is 1.5e-5 m).
+//! Either can drop or reorient a different triangle in one occurrence than in
+//! another, and `instancing::group` rejects a group whose members' index buffers
+//! differ, which is the #4103 symptom reached by another route. UNMEASURED: this
+//! was reasoned from the thresholds, not observed, and the fixture here uses
+//! half-unit squares that cannot exercise it. Recorded so the next person
+//! investigating a stubborn collation rejection does not assume the weld is the
+//! only candidate.
 //!
 //! ## Per-vertex attributes
 //!
@@ -183,6 +251,78 @@ pub fn weld_indexed(
     // Field borrows have ended (NLL); hand the now-warm scratch back to this worker.
     WELD_SCRATCH.with(|c| *c.borrow_mut() = Some(scratch));
     out
+}
+
+/// Weld a mesh's vertices in place, carrying `uvs` through the same remap and
+/// returning them still 1:1 with the welded positions.
+///
+/// The one body behind every entry point here. It welds in whatever frame the
+/// CALLER hands it, which is the decision the caller owns: see the module doc
+/// for why the object frame is the right one for shared geometry, and what a
+/// world-frame weld does to it.
+///
+/// Computes the normals first when a processor left them absent or short. The
+/// key carries the quantized normal so a crease stays split, and `weld_indexed`
+/// REFUSES a mesh whose normals do not match its positions 1:1 while signalling
+/// that refusal with the same `None` it returns for "nothing collided" — so
+/// without this, a silently skipped weld is indistinguishable from an
+/// already-welded one, on every model. `calculate_normals` accumulates from the
+/// triangle winding, so it needs only positions and indices and is happy in any
+/// frame; `transform_mesh_world` then rotates the result into world space with
+/// the positions. `build_mesh_data`'s call already guarantees 1:1 normals; the
+/// two placement appliers do NOT, which is where this earns its keep.
+///
+/// `None` from `weld_indexed` leaves the mesh and the UVs untouched, with no
+/// reallocation.
+///
+/// ## What legitimately calls this AFTER the bake
+///
+/// `element::build_mesh_data`, for geometry with no cross-occurrence identity to
+/// protect (`instance_meta` absent). Two populations arrive there, and they are
+/// not the same:
+///
+/// - Geometry BORN after the placement bake, which no earlier weld could have
+///   reached: CSG void-cut output, layer slices, the #858 palette-split parts.
+///   This is the weld that collapses the kernel's per-face output for them.
+/// - Geometry already welded in the object frame that merely lost its
+///   `instance_meta` on the way there — a void host (welded in `apply_placement`,
+///   then cut, then nulled at `voids::process_element_with_voids`), a multi-item
+///   element (`processing.rs` keeps the metadata only for a single instanceable
+///   item), a textured face-set sub-mesh. For these it is a SECOND weld: cheap
+///   when nothing new collides, but it CAN merge world-frame coincidences the
+///   object frame kept apart, so their shipped buffers are placement-dependent in
+///   the way the module doc describes. Accepted because none of them is shared.
+///
+/// Shared geometry must not reach that call site. `build_mesh_data` keeps it out
+/// on `instance_meta`; #4122 is about recording the answer instead of inferring
+/// it.
+pub fn weld(mesh: &mut crate::Mesh, uvs: Option<Vec<f32>>) -> Option<Vec<f32>> {
+    if mesh.normals.len() != mesh.positions.len() {
+        crate::csg::calculate_normals(mesh);
+    }
+    match weld_indexed(&mesh.positions, &mesh.normals, uvs.as_deref(), &mesh.indices) {
+        Some((positions, normals, welded_uvs, indices)) => {
+            mesh.positions = positions;
+            mesh.normals = normals;
+            mesh.indices = indices;
+            welded_uvs
+        }
+        None => uvs,
+    }
+}
+
+/// Weld a `Mesh`'s source vertices in place, from `apply_placement`, where the
+/// vertices are still in the object frame. See the module doc for why that is
+/// the frame that matters.
+pub(crate) fn weld_mesh(mesh: &mut crate::Mesh) {
+    weld(mesh, None);
+}
+
+/// [`weld_mesh`] for a `SubMesh`, carrying its UVs through the same remap so they
+/// stay 1:1 with the welded positions. The quantized UV is part of the key, so a
+/// texture seam's coincident corners stay split (#961).
+pub(crate) fn weld_sub_mesh(sub: &mut crate::SubMesh) {
+    sub.uvs = weld(&mut sub.mesh, sub.uvs.take());
 }
 
 #[cfg(test)]

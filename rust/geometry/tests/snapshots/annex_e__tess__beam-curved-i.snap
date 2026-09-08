@@ -7,7 +7,7 @@ products_attempted: 2
 products_non_empty: 1
 process_errors: 1
 total_triangles: 8112
-total_vertices: 24336
+total_vertices: 14950
 spike_triangles: 0
 total_surface_area: 22.222
 bbox_min: [-0.080, -0.076, -0.300]

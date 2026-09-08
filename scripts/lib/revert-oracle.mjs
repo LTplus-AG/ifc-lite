@@ -35,7 +35,7 @@
  */
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
-import { ALL_SKIPPED, classifyExecuted } from './revert-oracle-all-skipped.mjs';
+import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
@@ -511,8 +511,9 @@ export function aggregate(results) {
   if (!Array.isArray(results) || results.length === 0) {
     return { kind: UNPARSEABLE, passed: null, failed: null, total: null, evidence: ['no packages were run'] };
   }
-  let worst = results[0];
-  for (const r of results) {
+  const candidates = severityCandidates(results);
+  let worst = candidates[0];
+  for (const r of candidates) {
     if (KIND_SEVERITY.indexOf(r.kind) > KIND_SEVERITY.indexOf(worst.kind)) worst = r;
   }
   const sum = (key) =>

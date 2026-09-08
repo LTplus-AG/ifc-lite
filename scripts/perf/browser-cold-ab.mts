@@ -19,13 +19,16 @@
  * Use --fault-inject-ms 2000 --fault-inject-side branch to exercise delay detection.
  * --close-timeout-ms bounds context/browser teardown per sample (default 30000);
  * a close() that never settles is reported as a named failure, not a hang (#4116).
+ * The same flag also bounds browser.newContext()/context.newPage() setup, which
+ * share the same unbounded-CDP-await risk and (unlike chromium.launch(), which
+ * has Playwright's own 30s default) expose no timeout option of their own.
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { browserStaticPath } from './browser-cold-server-path.js';
 import { browserFixtureKey, validateBrowserFixtures } from './browser-cold-fixtures.js';
 import { prepareBrowserOutputs } from './browser-cold-outputs.js';
-import { closeBrowserWithTimeout, closeContextWithTimeout } from './browser-cold-teardown.js';
+import { closeBrowserWithTimeout, closeContextWithTimeout, raceWithTimeout } from './browser-cold-teardown.js';
 import { createServer } from 'node:http';
 import { createReadStream, existsSync, readFileSync, statSync, writeFileSync, appendFileSync } from 'node:fs';
 import { extname, isAbsolute, join, resolve } from 'node:path';
@@ -216,8 +219,13 @@ for (let iter = 1; iter <= ITERS; iter++) {
       try {
         browser = await chromium.launch(browserLaunchOptions);
         record.browserVersion = browser.version();
-        context = await browser.newContext();
-        page = await context.newPage();
+        // #4116-class risk: newContext()/newPage() ride the same CDP connection
+        // as close(), but Playwright exposes no `timeout` option for either
+        // (unlike chromium.launch(), which defaults to 30s on its own). Bound
+        // them with the same helper and deadline so a stuck setup is reported
+        // like any other sample failure instead of hanging the harness.
+        context = await raceWithTimeout(browser.newContext(), CLOSE_TIMEOUT_MS, 'browser.newContext()');
+        page = await raceWithTimeout(context.newPage(), CLOSE_TIMEOUT_MS, 'context.newPage()');
         bp = new ViewerBenchmarkPage(page, `http://localhost:${PORT}`);
         if (injectHere) {
           const pattern = new RegExp(FAULT_PATTERN);

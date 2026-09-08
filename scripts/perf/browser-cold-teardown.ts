@@ -16,7 +16,13 @@ import type { Browser, BrowserContext } from '@playwright/test';
  * force-kill it; the harness's own final `process.exit()` still terminates
  * the run itself even if a stuck browser process is left behind.) */
 
-function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+/** Races `promise` against `timeoutMs`; rejects with a named error on expiry
+ * instead of leaving the caller waiting on a promise that never settles.
+ * Exported so callers with the same class of unbounded-CDP-await risk (e.g.
+ * `browser.newContext()` / `context.newPage()`, which Playwright's own
+ * `BrowserContextOptions` expose no `timeout` for) can reuse the identical
+ * bounding mechanism rather than re-implementing it. */
+export function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(`${label} did not resolve within ${timeoutMs}ms`)), timeoutMs);
     promise.then(

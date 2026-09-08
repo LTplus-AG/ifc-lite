@@ -72,6 +72,9 @@ import {
   type MarkupPoint2D,
 } from './drawing-markup-read-geometry.js';
 import { resolveTrustedOrComputed } from './drawing-markup-read-trust.js';
+import { toAuthoredPoint, type DrawingMarkupPlacementAnchor } from './drawing-markup-read-placement.js';
+
+export type { DrawingMarkupPlacementAnchor } from './drawing-markup-read-placement.js';
 
 export { warnOnDerivedValueMismatch, warnOnNonPositiveStoredValue } from './drawing-markup-read-trust.js';
 
@@ -142,12 +145,15 @@ export interface DrawingMarkupAnnotationSource {
   properties?: ReadonlyMap<string, string>;
 }
 
-export interface DrawingMarkupUnitAnchor {
-  /** Model length-unit scale (metres per native unit); see
-   *  `SpatialAnchor.lengthUnitScale`. Defaults to 1 (metre file) when
-   *  unset, matching `toNativeLength`/`fromNativeLength`. */
-  lengthUnitScale?: number;
-}
+/**
+ * Length-unit scale, plus (see `drawing-markup-read-placement.ts`) the
+ * placement context {@link toAuthoredPoint} needs to undo the annotation's
+ * `ObjectPlacement` chain and the symbolic parser's plan-Y negation.
+ * `DrawingMarkupPlacementAnchor` moved to its own module so this one stays
+ * under the ~400 line house limit; re-exported under its historical name so
+ * existing callers/tests are unaffected.
+ */
+export type DrawingMarkupUnitAnchor = DrawingMarkupPlacementAnchor;
 
 function readMeasure(
   source: DrawingMarkupAnnotationSource,
@@ -164,8 +170,8 @@ function readMeasure(
 
   return {
     id: `ifc-measure-${source.expressId}`,
-    start: { x: start.x, y: start.y },
-    end: { x: end.x, y: end.y },
+    start: toAuthoredPoint(source.expressId, anchor, { x: start.x, y: start.y }),
+    end: toAuthoredPoint(source.expressId, anchor, { x: end.x, y: end.y }),
     distance,
   };
 }
@@ -202,13 +208,16 @@ function readPolygonArea(
 
   return {
     id: `ifc-polygon-${source.expressId}`,
-    points,
+    points: points.map((p) => toAuthoredPoint(source.expressId, anchor, p)),
     area,
     perimeter,
   };
 }
 
-function readText(source: DrawingMarkupAnnotationSource): TextAnnotation2D | null {
+function readText(
+  source: DrawingMarkupAnnotationSource,
+  anchor: DrawingMarkupUnitAnchor,
+): TextAnnotation2D | null {
   if (source.texts.length === 0) return null;
   // A multi-line literal splits into one AnnotationText2D per line
   // (`symbolic-parse.ts`), each carrying `lineYOffset` (0, then
@@ -222,7 +231,7 @@ function readText(source: DrawingMarkupAnnotationSource): TextAnnotation2D | nul
 
   return {
     id: `ifc-text-${source.expressId}`,
-    position: { x, y },
+    position: toAuthoredPoint(source.expressId, anchor, { x, y }),
     text,
     fontSize: TEXT_MARKUP_DEFAULT_FONT_SIZE,
     color: TEXT_MARKUP_DEFAULT_COLOR,
@@ -231,7 +240,10 @@ function readText(source: DrawingMarkupAnnotationSource): TextAnnotation2D | nul
   };
 }
 
-function readCloud(source: DrawingMarkupAnnotationSource): CloudAnnotation2D | null {
+function readCloud(
+  source: DrawingMarkupAnnotationSource,
+  anchor: DrawingMarkupUnitAnchor,
+): CloudAnnotation2D | null {
   if (source.fills.length !== 1) return null;
   const fill = source.fills[0];
   if (fill.holesOffsets.length > 0) return null; // a plain rectangle never has holes
@@ -243,7 +255,10 @@ function readCloud(source: DrawingMarkupAnnotationSource): CloudAnnotation2D | n
 
   return {
     id: `ifc-cloud-${source.expressId}`,
-    points: [corners[0], corners[2]],
+    points: [
+      toAuthoredPoint(source.expressId, anchor, corners[0]),
+      toAuthoredPoint(source.expressId, anchor, corners[2]),
+    ],
     color: CLOUD_MARKUP_DEFAULT_COLOR,
     label,
   };
@@ -286,11 +301,11 @@ export function readDrawingMarkupAnnotation(
       return value ? { kind: 'polygon', value } : null;
     }
     case DRAWING_MARKUP_OBJECTTYPE.TEXT: {
-      const value = readText(source);
+      const value = readText(source, anchor);
       return value ? { kind: 'text', value } : null;
     }
     case DRAWING_MARKUP_OBJECTTYPE.CLOUD: {
-      const value = readCloud(source);
+      const value = readCloud(source, anchor);
       return value ? { kind: 'cloud', value } : null;
     }
     default:

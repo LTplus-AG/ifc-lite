@@ -184,9 +184,31 @@ export function applyAttributeMutations(
     // closed this span early -- typically a stray, unmatched ')' inside a
     // malformed argument list -- and the span is shorter than the record
     // actually is.
+    //
+    // The lookahead window starts at 256 bytes but doubles (capped at 1 MiB)
+    // whenever `skipTrivia` stops at a block comment opener (`/*`) that has
+    // no closer within the window fetched so far -- that is the signature of
+    // a legal comment still open at the window's edge, not of a genuine
+    // truncation (`TRIVIA_RE`'s non-greedy `*\/` cannot match past the slice
+    // it is given, so the repetition stops BEFORE consuming that comment at
+    // all rather than consuming up to the window's end). Refusing on a
+    // too-small window would false-refuse a record whose trailing comment
+    // merely runs long.
     const tailStart = rec.offset + rec.length;
-    const tail = decoder.decode(bytes.subarray(tailStart, Math.min(tailStart + 256, bytes.length)));
-    const afterTrivia = skipTrivia(tail, 0);
+    let windowSize = 256;
+    let tail: string;
+    let afterTrivia: number;
+    for (;;) {
+      tail = decoder.decode(bytes.subarray(tailStart, Math.min(tailStart + windowSize, bytes.length)));
+      afterTrivia = skipTrivia(tail, 0);
+      const openCommentAtWindowEdge =
+        tail[afterTrivia] === '/' &&
+        tail[afterTrivia + 1] === '*' &&
+        !tail.slice(afterTrivia + 2).includes('*/');
+      const moreBytesAvailable = tailStart + windowSize < bytes.length;
+      if (!(openCommentAtWindowEdge && moreBytesAvailable) || windowSize >= 1 << 20) break;
+      windowSize *= 2;
+    }
     if (tail[afterTrivia] !== ';') {
       unreadable.push(`#${expressId}=${rec.type}`);
       continue;

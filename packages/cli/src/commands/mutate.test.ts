@@ -453,6 +453,32 @@ describe('applyAttributeMutations', () => {
     );
   });
 
+  it('refuses a record whose line wrap drops the comma between two bare tokens (LTplus-AG/ifc-lite#4163/#4168)', () => {
+    // `step-args.ts`'s header names this exact accident: `splitTopLevelStepArgs`
+    // widened `\t`-only whitespace to space-and-tab, safe only because ITS
+    // caller used to pre-split on newlines. This PR's byte-exact record
+    // location feeds it raw, un-pre-split `argsText`, so a record wrapped
+    // across lines with the comma DROPPED at the wrap merges the two bare
+    // tokens either side of the break into one part. Before `\n`/`\r` joined
+    // `countWhitespace`/`isTokenBreak`, this was accepted as 8 parts for 9
+    // attributes -- exit 0, "Mutated 1 entities", and every attribute past
+    // the merge written to the wrong slot.
+    const before = ["#2=IFCWALL('guid',$,'Old',$", '$,$,$,$,.NOTDEFINED.);'].join('\n');
+    expect(() =>
+      applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities),
+    ).toThrow(/#2=IFCWALL/);
+  });
+
+  it('rewrites a well-formed record wrapped across a line break between two bare tokens, comma kept', () => {
+    // The positive control for the test above: the same shape, correctly
+    // comma-separated. This is the actual multi-line feature this PR adds,
+    // so widening the whitespace sets to refuse the malformed case above
+    // must not also refuse this one.
+    const before = ["#2=IFCWALL('guid',$,'Old',$,", '$,$,$,$,.NOTDEFINED.);'].join('\n');
+    const after = applyAttributeMutations(before, [mutation(2, 'Name', 'NewName')], objectTypeEntities);
+    expect(after).toBe(["#2=IFCWALL('guid',$,'NewName',$,", '$,$,$,$,.NOTDEFINED.);'].join('\n'));
+  });
+
   it('collects every unreadable record into one error', () => {
     const before = [
       'DATA;',
@@ -512,6 +538,20 @@ describe('applyAttributeMutations', () => {
     expect(() =>
       applyAttributeMutations(before, [mutation(6, 'Name', 'X')], objectTypeEntities),
     ).toThrow(/#6=IFCWALL/);
+  });
+
+  it('rewrites a record whose trailing comment before ";" is longer than the truncation guard\'s lookahead window', () => {
+    // The truncation guard's tail lookahead used to be a fixed 256 bytes: a
+    // legal block comment between ')' and ';' longer than that made the
+    // regex-based trivia skip stop mid-comment, so `tail[afterTrivia]` landed
+    // on '/' rather than ';' and a genuine, readable record was false-refused.
+    // It failed safe (refused rather than corrupted), so not a correctness
+    // bug, but this pins that a long trailing comment no longer costs the
+    // rewrite.
+    const longComment = `/*${'x'.repeat(400)}*/`;
+    const before = `#1=IFCWALL('guid',$,'Old',$,$,$,$,$,$)${longComment};\n`;
+    const after = applyAttributeMutations(before, [mutation(1, 'Name', 'New')], objectTypeEntities);
+    expect(after).toBe(`#1=IFCWALL('guid',$,'New',$,$,$,$,$,$)${longComment};\n`);
   });
 
   it('rewrites a well-formed record with a # and a comma inside its Name, byte-for-byte elsewhere', () => {

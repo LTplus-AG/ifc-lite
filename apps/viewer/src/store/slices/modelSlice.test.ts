@@ -228,6 +228,56 @@ describe('ModelSlice', () => {
       assert.strictEqual(state.models.get('model-2')?.ifcDataStore, secondStore);
       assert.strictEqual(state.models.get('model-2')?.geometryResult, secondGeometry);
     });
+
+    describe('2D drawing markup on the first-model branch — #4159 bug 3', () => {
+      // `addModel`'s `state.models.size === 0` branch is a THIRD production
+      // writer of `activeModelId` with markup consequences that the module
+      // doc on `drawing2DSlice.markupTransition.ts` originally missed — see
+      // that file's doc for the corrected claim. Reachable in production via
+      // `useFileCommands.tsx`'s multi-model `handleRefresh`: it calls
+      // `clearAllModels()` (whose `'all-models-cleared'` teardown arm is a
+      // deliberate no-op for the flat markup fields, per
+      // `drawing2DSlice.teardown.ts`) and then reloads every model through
+      // `addModel()`, without an intervening `resetViewerState()`.
+      beforeEach(() => {
+        __resetLiveMarkupCacheForTests();
+      });
+
+      it('does not attribute stale markup to a model loaded via addModel after clearAllModels — MUTATION TARGET', () => {
+        state.addModel(createMockModel('model-1', 'First'));
+        Object.assign(state, { measure2DResults: [sampleMeasure('mA')] });
+
+        state.clearAllModels();
+        assert.strictEqual(state.activeModelId, null, 'setup sanity: clearAllModels must drop activeModelId');
+        assert.deepStrictEqual(
+          (state as unknown as Drawing2DMarkupFields).measure2DResults,
+          [sampleMeasure('mA')],
+          'setup sanity: clearAllModels\' teardown arm for markup is a deliberate no-op, so the field is still stale here',
+        );
+
+        state.addModel(createMockModel('model-2', 'Second'));
+
+        assert.strictEqual(state.activeModelId, 'model-2');
+        assert.deepStrictEqual(
+          (state as unknown as Drawing2DMarkupFields).measure2DResults,
+          [],
+          'model-1\'s stale measurement must not carry over onto model-2 via the first-model addModel branch',
+        );
+      });
+
+      it('leaves a genuinely fresh first load unaffected', () => {
+        assert.strictEqual(state.activeModelId, null);
+        assert.deepStrictEqual((state as unknown as Drawing2DMarkupFields).measure2DResults, []);
+
+        const model = createMockModel('model-1', 'Only');
+        state.addModel(model);
+
+        assert.strictEqual(state.activeModelId, 'model-1');
+        assert.strictEqual(state.ifcDataStore, model.ifcDataStore);
+        assert.strictEqual(state.geometryResult, model.geometryResult);
+        assert.deepStrictEqual((state as unknown as Drawing2DMarkupFields).measure2DResults, []);
+      });
+    });
   });
 
   describe('upsertModel', () => {

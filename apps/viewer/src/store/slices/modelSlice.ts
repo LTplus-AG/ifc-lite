@@ -158,11 +158,17 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
     // If first model, make it active
     // If adding more models, collapse all existing by default
     if (state.models.size === 0) {
+      // #4159 bug 3: this branch also moves `activeModelId` (null -> model.id)
+      // and goes through the same choke point `setActiveModel` uses — see
+      // `drawing2DSlice.markupTransition.ts`'s doc. Fresh session ->
+      // `defaultMarkupPatch()`, restating the fields' own defaults: no-op.
+      const markupPatch = markupTransitionPatch(state, model.id);
       return {
         models: newModels,
         activeModelId: model.id,
         ifcDataStore: model.ifcDataStore ?? null,
         geometryResult: model.geometryResult ?? null,
+        ...markupPatch,
       };
     } else {
       // Collapse existing models when adding new ones

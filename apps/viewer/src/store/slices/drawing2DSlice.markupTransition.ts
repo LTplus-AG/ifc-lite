@@ -26,11 +26,21 @@
  *
  * Rather than teach the teardown arm the same clear-and-suppress incantation
  * `setActiveModel` uses (a FOURTH copy of the convention this class of bug
- * keeps breaking), both now call the ONE function below. There is no third
- * place left to forget it in: `activeModelId` has exactly two writers with
- * markup consequences, `modelSlice.ts`'s `setActiveModel` and
- * `modelSlice.teardown.ts`'s `'model-removed'` arm, and both are edited in
- * this same PR to call `markupTransitionPatch`.
+ * keeps breaking), both now call the ONE function below.
+ *
+ * A later pass (#4159 bug 3) found a THIRD production writer this doc
+ * previously missed: `modelSlice.ts`'s `addModel`, in its
+ * `state.models.size === 0` branch, sets `activeModelId: model.id` directly
+ * when the very first model of a session (or of a post-`clearAllModels`
+ * federation) is added. That branch now also calls `markupTransitionPatch`.
+ * As far as this codebase's own action layer goes, all three of
+ * `activeModelId`'s writers with markup consequences —
+ * `modelSlice.ts`'s `setActiveModel` and `addModel`, and
+ * `modelSlice.teardown.ts`'s `'model-removed'` arm — call
+ * `markupTransitionPatch` in the same `set()` that moves the id. That is
+ * a property of the action layer, not a guarantee this file can enforce: a
+ * caller reaching `useViewerStore.setState()` directly still bypasses it —
+ * see "What this does NOT eliminate" below.
  *
  * ## The in-session live cache
  * Beyond closing bug 5, this also strengthens bug 4's fix: an in-memory,

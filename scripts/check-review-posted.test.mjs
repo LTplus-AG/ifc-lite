@@ -19,7 +19,8 @@ import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageAll, evaluate, shouldKeepPolling } from './check-review-posted.mjs';
+import { pageAll, evaluate, shouldKeepPolling, normaliseComments } from './check-review-posted.mjs';
+import { issueCommentsLastPage } from './lib/review-poll-page.mjs';
 import {
   REVIEW_LANE_TIMEOUT_SECONDS,
   REVIEW_POSTED_JOB_TIMEOUT_SECONDS,
@@ -1274,4 +1275,69 @@ test('MARKER_RE reads the marker at the END of a body, not one embedded in its p
   // And text AFTER the marker means our own writer drifted: loud, not silent.
   const trailing = runOut(comments([REVIEWER, `${marker(SHA, 'clean', 0)} and then some`]));
   assert.match(trailing.out, /MARKER_MALFORMED/);
+});
+
+/**
+ * `issueCommentsLastPage`: the poll probe (in `main`) queries the
+ * `issueComments` endpoint alone, so its page bound must come from the
+ * issueComments count alone -- not from `comments.length`, the three-surface
+ * union `normaliseComments` produces (issueComments + reviewComments +
+ * reviews). Sizing the bound from the union asks the issueComments endpoint
+ * for a page it may not have, once the other two surfaces push the combined
+ * count over a boundary the issueComments count alone never crosses.
+ *
+ * Live case, PR #4018: 97 issueComments + 4 reviewComments + 3 reviews = 104
+ * combined. The old `Math.ceil(comments.length / PER_PAGE)` computed page 2;
+ * the issueComments endpoint alone has only 97 rows -- one page. Every 30s
+ * probe for the full poll window then fetched an empty page 2 and the marker
+ * sitting on page 1 of the real endpoint was never seen.
+ */
+function fakeComments({ issueComments = 0, reviewComments = 0, reviews = 0 }) {
+  const row = (i) => ({ user: { login: `u${i}` }, body: `c${i}` });
+  return normaliseComments({
+    issueComments: Array.from({ length: issueComments }, (_, i) => row(i)),
+    reviewComments: Array.from({ length: reviewComments }, (_, i) => row(i)),
+    reviews: Array.from({ length: reviews }, (_, i) => row(i)),
+  });
+}
+
+test('issueCommentsLastPage: sized from the issueComments surface alone, not the 3-surface union', () => {
+  // The exact #4018 shape: combined (104) crosses 100, issueComments (97)
+  // alone does not. The bound must stay at page 1.
+  const pr4018 = fakeComments({ issueComments: 97, reviewComments: 4, reviews: 3 });
+  assert.equal(pr4018.length, 104, 'sanity: the union really is 104');
+  assert.equal(issueCommentsLastPage(pr4018, 100), 1);
+
+  // MUTATION CHECK: the bug this replaces. Deriving the bound from the union
+  // length instead reproduces the #4018 failure -- it names page 2, which the
+  // issueComments endpoint (97 rows) does not have.
+  const buggyLastPage = Math.max(1, Math.ceil(pr4018.length / 100));
+  assert.equal(buggyLastPage, 2, 'RED: the combined-length computation names a page issueComments does not have');
+});
+
+test('issueCommentsLastPage boundary: exactly 100 issueComments is one page', () => {
+  const exact100 = fakeComments({ issueComments: 100, reviewComments: 0, reviews: 0 });
+  assert.equal(issueCommentsLastPage(exact100, 100), 1);
+});
+
+test('issueCommentsLastPage boundary: exactly 101 issueComments is two pages', () => {
+  const exact101 = fakeComments({ issueComments: 101, reviewComments: 0, reviews: 0 });
+  assert.equal(issueCommentsLastPage(exact101, 100), 2);
+});
+
+test('issueCommentsLastPage: real pagination still works when issueComments itself exceeds one page', () => {
+  // The regression that matters: issueComments genuinely spans multiple pages
+  // (250 rows -> 3 pages), independent of what the other two surfaces add.
+  // Piling more reviewComments/reviews on top must not change the answer,
+  // because the probe only ever reads the issueComments endpoint.
+  const wide = fakeComments({ issueComments: 250, reviewComments: 50, reviews: 50 });
+  assert.equal(issueCommentsLastPage(wide, 100), 3);
+
+  const noExtras = fakeComments({ issueComments: 250 });
+  assert.equal(issueCommentsLastPage(noExtras, 100), 3, 'the other two surfaces must not shift the bound');
+});
+
+test('issueCommentsLastPage: an empty issueComments surface still probes page 1', () => {
+  const empty = fakeComments({ issueComments: 0, reviewComments: 5, reviews: 5 });
+  assert.equal(issueCommentsLastPage(empty, 100), 1);
 });

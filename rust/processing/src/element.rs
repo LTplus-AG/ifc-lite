@@ -736,27 +736,27 @@ fn build_mesh_data(
     // element MeshData, tallying what it removed — `produce_element_meshes`
     // drains that tally both into the result and into the closure retraction.
     degenerate::clean(&mut mesh);
-    // Source vertex weld (see `mesh_weld::weld_indexed`): the faceted-brep
-    // mesher emits per-`IfcFace` geometry duplicating every shared corner once
-    // per incident face (~3-6x). Collapse coincident vertices (identical f32
-    // position + quantized normal + quantized UV) at this single per-element
-    // funnel — the normal/UV keys keep creases and texture seams split (flat
-    // shading, no torn textures), and UVs are remapped WITH the positions.
-    // `None` = nothing merged (already-welded swept solids): keep originals, no
-    // realloc; triangles, winding, and AABB unchanged either way.
-    let welded_uvs = match ifc_lite_geometry::mesh_weld::weld_indexed(
-        &mesh.positions,
-        &mesh.normals,
-        uvs.as_deref(),
-        &mesh.indices,
-    ) {
-        Some((wp, wn, wuv, wi)) => {
-            mesh.positions = wp;
-            mesh.normals = wn;
-            mesh.indices = wi;
-            wuv
-        }
-        None => uvs,
+    // Source vertex weld, second half (#4103). See `mesh_weld`'s module doc for
+    // why a world-frame weld must not touch shared geometry, and `mesh_weld::weld`'s
+    // for what legitimately arrives here.
+    //
+    // `instance_meta` is the discriminator: every producer that sets it
+    // (`router::mapped_item`, `stamp_direct_instance`, the don't-bake placeholder)
+    // REACHES HERE only through a placement applier, which welds in the OBJECT
+    // frame and remaps the UVs with the positions, so those arrive welded with UVs
+    // already 1:1; and every step that rebuilds vertices afterwards nulls it
+    // (`Mesh::rebuilt_like`, `voids::process_element_with_voids`). "Reaches here"
+    // is the load-bearing part, NOT "is baked anywhere":
+    // `voids::probe::get_opening_item_meshes_world` bakes with
+    // `transform_mesh_world_framed` directly and so DOES produce unwelded meshes
+    // carrying `instance_meta`, but they are cutters and volume probes, never
+    // element MeshData. So "is this shared?" and "was this already welded?" have
+    // the same answer for everything arriving HERE, with nothing asserting it
+    // across the crate boundary. #4122 tracks making that an assertion.
+    let welded_uvs = if mesh.instance_meta.is_some() {
+        uvs
+    } else {
+        ifc_lite_geometry::mesh_weld::weld(&mut mesh, uvs)
     };
     let mesh_origin = mesh.origin;
     // Instancing: capture before the fields are moved into MeshData. A site-local

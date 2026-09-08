@@ -14,8 +14,12 @@
  * storey with nothing under it. So the `RelatedElements` SET is rewritten down
  * to the kept members instead of the relation being dropped.
  *
- * The no-dangling-reference invariant is unchanged (every `#id` in an emitted
- * record is an id the subset keeps), which is what the rest of the rules are:
+ * The no-dangling-reference invariant is unchanged: every `#id` in an emitted
+ * record is an id the subset keeps, and since #4128 the caller's forward
+ * closure keeps only ids the file DEFINES, so kept implies defined. That covers
+ * the ids this module CHOOSES; it does not cover the references inside a kept
+ * record, which are emitted verbatim, so a source file that already dangles
+ * still dangles. That is the rest of the rules:
  *   - the RELATING object (`RelatingStructure` / `RelatingObject`, the spatial
  *     parent) is a hard requirement. A containment with no parent is
  *     meaningless, and it would dangle. A KNOWN residual gap follows from that,
@@ -28,17 +32,24 @@
  *     product up its containment and aggregation edges, which keeps exactly the
  *     seeds' ancestors and needs no type list at all. Either way it is a change
  *     to how `buildSubset` seeds, not to the rule here. Filed as #4124.
- *   - every other non-set reference must be kept too. That is attribute 1,
- *     `OwnerHistory`; in practice it already is, because each kept product's
- *     own body names the same shared `IfcOwnerHistory` and the products'
- *     forward closure keeps it. A second REACHABLE residual lives here: an
- *     exporter that writes a PER-RELATIONSHIP `IfcOwnerHistory` referenced by
- *     nothing else hits this rule every time, and the relation is dropped, which
- *     is the orphaned-storey symptom again. `buildSubset` already has the remedy
- *     for that shape (it runs `forwardClosure` over the voids/fills relations it
- *     pulls in, for exactly this reason), but this function takes no `parsed`,
- *     so dropping is the only safe answer available HERE. Filed as #4126.
  *   - an empty intersection drops the relation.
+ *   - every other non-set reference must be kept too. That is attribute 1,
+ *     `OwnerHistory`; usually it already is, because each kept product's own
+ *     body names the same shared `IfcOwnerHistory` and the products' forward
+ *     closure keeps it. An exporter that writes a PER-RELATIONSHIP
+ *     `IfcOwnerHistory` referenced by nothing else hits this rule every time,
+ *     and dropping there was the orphaned-storey symptom again (#4126). This
+ *     function still takes no `parsed`, so it cannot close over such a
+ *     reference; it REPORTS it in {@link SpatialRelationPlan.blockedOn} and the
+ *     caller, which does have `parsed`, keeps it and replans. Purity is intact:
+ *     `blockedOn` is a finding, not a mutation.
+ *
+ * A KNOWN gap: {@link keepWhole}, the fallback for a record this module could
+ * not read as its six attributes, still drops on the same private
+ * `OwnerHistory` and reports nothing. That is deliberate. Its references are
+ * read off the raw body with no established string boundaries, so a `#6` it
+ * names may be text rather than a reference, and forward-closing over it would
+ * re-create the hash-in-a-Name bug the scanner exists to avoid.
  *
  * A relation that loses NO member re-emits its source line verbatim, so an
  * extraction that happened to keep every member does not churn.
@@ -99,23 +110,31 @@ export interface SpatialRelationPlan {
   add: number[];
   /** Relation id → rewritten record text, for the ones that lost a member. */
   rewritten: Map<number, string>;
+  /**
+   * Unkept non-SET references, in practice a relation-private `OwnerHistory`,
+   * of the relations that this plan dropped for THAT reason alone: their
+   * relating parent is kept and their member intersection is non-empty, so
+   * keeping these ids is all that stands between them and surviving. A caller
+   * holding the parsed model can close over them and replan (#4126). Every
+   * other drop is final and reports nothing here.
+   */
+  blockedOn: number[];
 }
 
 /**
- * Spatial-structure relations, as `[relatingAttributeIndex,
- * relatedAttributeIndex]`. `IfcRelAggregates` names the whole
- * (`RelatingObject`) first; the two containment relations name the parts
- * (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS` in
- * `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
+ * Spatial-structure relations, as `[relatingAttributeIndex, relatedAttributeIndex]`.
+ * `IfcRelAggregates` names the whole (`RelatingObject`) first; the two containment
+ * relations name the parts (`RelatedElements`) first. Same table as `STRUCTURE_RELATIONS`
+ * in `@ifc-lite/export`'s `merged-empty-containers.ts`, which reads the same three
  * records, copied rather than imported because that module is internal to
  * `@ifc-lite/export` and exporting it would widen a published API surface for a
  * three-line constant.
  *
- * `IfcRelReferencedInSpatialStructure` is here for the same reason the other
- * two are: same shape (one relating parent, one related SET), same
- * one-per-storey authoring, same claim in the command's own docs that the
- * output "parses and renders on its own". It used to be missing entirely, so a
- * referenced-but-not-contained product was always orphaned.
+ * `IfcRelReferencedInSpatialStructure` is here for the same reason the other two are:
+ * same shape (one relating parent, one related SET), same one-per-storey authoring,
+ * same claim in the command's own docs that the output "parses and renders on its
+ * own". It used to be missing entirely, so a referenced-but-not-contained product was
+ * always orphaned.
  */
 const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
   IFCRELAGGREGATES: [4, 5],
@@ -124,19 +143,18 @@ const STRUCTURE_RELATIONS: Record<string, [number, number]> = {
 };
 
 /**
- * All three are `GlobalId, OwnerHistory, Name, Description` plus the
- * relating/related pair: exactly 6 attributes in every schema that defines
- * them. A record that does not split into 6 was mis-scanned (or is not the
- * entity the type name claims), so it falls back to keep-whole-or-drop-whole
- * rather than having a slot index written into whatever it did split into.
+ * All three are `GlobalId, OwnerHistory, Name, Description` plus the relating/related
+ * pair: exactly 6 attributes in every schema that defines them. A record that does not
+ * split into 6 was mis-scanned (or is not the entity the type name claims), so it falls
+ * back to keep-whole-or-drop-whole rather than having a slot index written into
+ * whatever it did split into.
  *
- * A relation type with a different attribute COUNT (`IfcRelAssignsToGroup` has
- * 7) therefore cannot simply be added as a row above: it would fail this check
- * on every record and fall silently back to keep-whole-or-drop-whole, which is
- * the bug this module exists to fix. Such a type needs the count moved into the
- * table value first, or the whole table derived from the schema registry, which
- * returns 7 for that entity and would make row four safe rather than forbidden.
- * Filed as #4123.
+ * A relation type with a different attribute COUNT (`IfcRelAssignsToGroup` has 7)
+ * therefore cannot simply be added as a row above: it would fail this check on every
+ * record and fall silently back to keep-whole-or-drop-whole, which is the bug this
+ * module exists to fix. Such a type needs the count moved into the table value first,
+ * or the whole table derived from the schema registry, which returns 7 for that entity
+ * and would make row four safe rather than forbidden. Filed as #4123.
  */
 const STRUCTURE_RELATION_ATTRS = 6;
 
@@ -156,25 +174,29 @@ export function planSpatialRelations(
 ): SpatialRelationPlan {
   const add: number[] = [];
   const rewritten = new Map<number, string>();
+  const blockedOn: number[] = [];
   for (const inst of instances) {
     const slots = STRUCTURE_RELATIONS[inst.type];
     if (slots === undefined) continue;
-    const line = relationLine(inst, slots, keep);
+    const line = relationLine(inst, slots, keep, blockedOn);
     if (line === null) continue;
     add.push(inst.id);
     if (line !== inst.full) rewritten.set(inst.id, line);
   }
-  return { add, rewritten };
+  return { add, rewritten, blockedOn };
 }
 
 /**
  * The record text this relation contributes to the subset, or null to drop it.
- * Returns `inst.full` unchanged when nothing was filtered out.
+ * Returns `inst.full` unchanged when nothing was filtered out. Appends to
+ * `blocked` when the ONLY thing standing in the way is an unkept non-SET
+ * reference; see {@link SpatialRelationPlan.blockedOn}.
  */
 function relationLine(
   inst: StepRecord,
   [relatingIdx, relatedIdx]: [number, number],
   keep: ReadonlySet<number>,
+  blocked: number[],
 ): string | null {
   // A null is a REJECTED scan, not an empty list: its parts are wherever the
   // scanner happened to be, so reading `args[relatingIdx]` or writing
@@ -201,17 +223,25 @@ function relationLine(
   const relating = SINGLE_REF_RE.exec(args[relatingIdx]);
   if (relating === null || !keep.has(Number(relating[1]))) return null;
 
+  const kept = memberIds.filter((id) => keep.has(id));
+  if (kept.length === 0) return null;
+
   // Every other non-set reference (OwnerHistory) must be kept or the emitted
-  // record dangles.
+  // record dangles. Ordered AFTER the intersection so `blocked` names only the
+  // references of a relation that would OTHERWISE survive; both checks drop the
+  // relation, so which one runs first changes no verdict.
+  const unkept: number[] = [];
   for (let i = 0; i < args.length; i++) {
     if (i === relatedIdx) continue;
     for (const id of refsOutsideStrings(args[i])) {
-      if (!keep.has(id)) return null;
+      if (!keep.has(id)) unkept.push(id);
     }
   }
+  if (unkept.length > 0) {
+    blocked.push(...unkept);
+    return null;
+  }
 
-  const kept = memberIds.filter((id) => keep.has(id));
-  if (kept.length === 0) return null;
   if (kept.length === memberIds.length) return inst.full;
   return spliceArgument(inst, args, relatedIdx, `(${kept.map((id) => `#${id}`).join(',')})`);
 }

@@ -31,8 +31,9 @@ import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
 import { logger } from '../logger.js';
 import { planSpatialRelations, refsOutsideStrings, type StepRecord, type Subset } from './subset-relations.js';
+import { productsUnderPlacement, resolveStoreyPlacement } from './storey-selection.js';
 
-interface ParsedStep {
+export interface ParsedStep {
   header: string;
   instances: Map<number, StepRecord>;
   /** 22-char GlobalId → expressId, for rooted entities. */
@@ -153,95 +154,22 @@ const REF_RE = /#(\d+)/g;
  * it (`'Chair pairs with #71'`). A raw regex reads that as a reference to
  * entity 71 and pulls it — and its own closure — into the extraction even
  * though it was never selected. See #4148.
+ *
+ * An id NAMED but never DEFINED is not added, or a rewritten SET would emit
+ * it as a dangling `#id` (#4128).
  */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
     const id = stack.pop()!;
     if (into.has(id)) continue;
-    into.add(id);
     const rec = parsed.instances.get(id);
     if (!rec) continue;
+    into.add(id);
     for (const ref of refsOutsideStrings(rec.body)) {
       if (!into.has(ref)) stack.push(ref);
     }
   }
-}
-
-/** Map each IfcLocalPlacement to its parent placement (or null when top-level). */
-function placementParents(parsed: ParsedStep): Map<number, number | null> {
-  const parents = new Map<number, number | null>();
-  for (const inst of parsed.instances.values()) {
-    if (inst.type !== 'IFCLOCALPLACEMENT') continue;
-    const pm = /^\s*(#\d+|\$)/.exec(inst.body);
-    parents.set(inst.id, pm && pm[1].startsWith('#') ? parseInt(pm[1].slice(1), 10) : null);
-  }
-  return parents;
-}
-
-/** Every product whose ObjectPlacement chains up through `storeyPlacementId`. */
-function productsUnderPlacement(storeyPlacementId: number, parsed: ParsedStep): Set<number> {
-  const parents = placementParents(parsed);
-  const under = new Set<number>();
-  for (const pid of parents.keys()) {
-    let cur: number | null = pid;
-    let guard = 0;
-    while (cur != null && guard++ < 128) {
-      if (cur === storeyPlacementId) {
-        under.add(pid);
-        break;
-      }
-      cur = parents.get(cur) ?? null;
-    }
-  }
-  // Products referencing a selected placement. `refsOutsideStrings`, not a
-  // raw REF_RE scan: free text (e.g. `'... see also #40'`) could otherwise
-  // seed a product into the wrong storey's extraction.
-  const seeds = new Set<number>();
-  for (const inst of parsed.instances.values()) {
-    for (const ref of refsOutsideStrings(inst.body)) {
-      if (under.has(ref)) {
-        seeds.add(inst.id);
-        break;
-      }
-    }
-  }
-  return seeds;
-}
-
-/** Resolve a --storey selector (GUID / name / expressId) to its placement id. */
-function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
-  let storeyId: number | undefined;
-  const t = token.trim();
-  if (/^#?\d+$/.test(t)) {
-    storeyId = parseInt(t.replace('#', ''), 10);
-  } else if (parsed.guidToId.has(t)) {
-    storeyId = parsed.guidToId.get(t);
-  } else {
-    // match by name (2nd-to-last-ish quoted arg); scan storeys for a Name match
-    for (const inst of parsed.instances.values()) {
-      if (inst.type !== 'IFCBUILDINGSTOREY') continue;
-      if (inst.body.includes(`'${t}'`)) {
-        storeyId = inst.id;
-        break;
-      }
-    }
-  }
-  if (storeyId === undefined) throw new Error(`Storey not found: ${token}`);
-  const storey = parsed.instances.get(storeyId);
-  if (!storey || storey.type !== 'IFCBUILDINGSTOREY') {
-    throw new Error(`#${storeyId} is ${storey?.type ?? 'missing'}, not an IfcBuildingStorey`);
-  }
-  // IfcBuildingStorey ObjectPlacement is attribute 6 (after Guid, Owner, Name,
-  // Description, ObjectType) — the last #ref before LongName/Elevation. Grab the
-  // placement ref: the storey references exactly one IfcLocalPlacement.
-  // `refsOutsideStrings`, not a raw REF_RE scan: the storey's own Name/
-  // Description can contain a `#id`-shaped substring (e.g. `'duplicate of
-  // #99'`) naming an unrelated IfcLocalPlacement.
-  const refs = refsOutsideStrings(storey.body);
-  const placementId = refs.find((r) => parsed.instances.get(r)?.type === 'IFCLOCALPLACEMENT');
-  if (placementId === undefined) throw new Error(`Storey #${storeyId} has no IfcLocalPlacement`);
-  return placementId;
 }
 
 /**
@@ -308,7 +236,18 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // relation's member SET filtered down to the kept ids rather than the whole
   // relation being dropped. `subset-relations.ts` owns that rule and the
   // no-dangling-reference invariant it preserves.
-  const spatial = planSpatialRelations(parsed.instances.values(), keep);
+  let spatial = planSpatialRelations(parsed.instances.values(), keep);
+  // A relation-private IfcOwnerHistory is reachable from nothing else, so the
+  // plan drops the relation and reports what blocked it. Keep those and replan
+  // (#4126). ONE replan suffices for a SCHEMA-VALID record: an IfcOwnerHistory
+  // subtree names no product, container or relation. On invalid input a second
+  // round is discarded and the relation stays dropped (pre-#4126 behaviour,
+  // never a dangling id). A `while` does NOT terminate here: a phantom blocker
+  // closes over nothing and is reported every round.
+  if (spatial.blockedOn.length > 0) {
+    forwardClosure(spatial.blockedOn, parsed, keep);
+    spatial = planSpatialRelations(parsed.instances.values(), keep);
+  }
   for (const id of spatial.add) keep.add(id);
   return { keep, rewritten: spatial.rewritten };
 }

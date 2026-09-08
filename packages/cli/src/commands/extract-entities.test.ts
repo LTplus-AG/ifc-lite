@@ -394,6 +394,38 @@ describe('buildSubset: a `#` inside a relation Name is TEXT, not a reference', (
   // case above is the one that fails if `#71` is read out of the name.
 });
 
+// Same shape as the fixture above, but the `#` in the Name names an id the file
+// never DEFINES, and the containment's SET names it too. That is invalid STEP,
+// and it is the input that separates "kept" from "defined": `forwardClosure`
+// used to add #999 to `keep` on the way to looking it up, after which the SET
+// intersection (which tests `keep` alone) saw a full house and re-emitted
+// `(#70,#999)` verbatim, naming an id no line defines (#4128).
+const STOREY_MODEL_PHANTOM_MEMBER = STOREY_MODEL.replace("'Chair 1'", "'C1 see #999'").replace(
+  '(#70,#71,#72,#73),#41)',
+  '(#70,#999),#41)',
+);
+
+describe('buildSubset: an id that is REFERENCED but never DEFINED', () => {
+  const p = parseStep(STOREY_MODEL_PHANTOM_MEMBER);
+
+  it('forwardClosure keeps only ids the file defines', () => {
+    const keep = new Set<number>();
+    forwardClosure([70], p, keep);
+    expect(keep.has(70)).toBe(true);
+    expect(keep.has(999)).toBe(false);
+  });
+
+  it('rewrites the phantom out of the SET instead of emitting it', () => {
+    const { keep, rewritten } = buildSubset(new Set([70]), p);
+    expect(keep.has(999)).toBe(false);
+    expect(rewritten.get(80)).toContain('(#70)');
+    expect(rewritten.get(80)).not.toContain('#999');
+    // The Name still carries its literal `#999`; only the SET was filtered.
+    expect(rewritten.get(80)).toContain("'L01 contents'");
+    expectNoDanglingRefs(serializeSubset({ keep, rewritten }, p));
+  });
+});
+
 // Same model, but the storey containment carries a DEDICATED IfcOwnerHistory
 // (#6) that nothing else in the file references.
 const STOREY_MODEL_REL_OWNED = STOREY_MODEL.replace(
@@ -406,9 +438,92 @@ describe('buildSubset: a relation reference outside the rewritten SET', () => {
   const p = parseStep(STOREY_MODEL_REL_OWNED);
   const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
 
-  it('drops the relation rather than emitting a dangling OwnerHistory', () => {
-    // #6 is reachable from nothing the subset keeps, and the rewrite only
-    // touches RelatedElements, so emitting #80 would leave `#6` undefined.
+  it('keeps the private OwnerHistory instead of dropping the containment', () => {
+    // This used to assert that #80 was DROPPED, on the reasoning that a
+    // dangling `#6` is worse than a missing relation. Both are avoidable: #6 is
+    // reachable from nothing else the subset keeps, so the plan reports it as
+    // the one thing blocking #80, `buildSubset` closes over it and replans, and
+    // the storey keeps its contents (#4126).
+    expect(keep.has(6)).toBe(true);
+    expect(keep.has(80)).toBe(true);
+    expect(rewritten.get(80)).toContain('(#70,#72)');
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).toContain('#6=');
+    expect(out).toContain('#80=');
+  });
+});
+
+// The same shape, but the private OwnerHistory owns a SUBTREE. Closing over the
+// blocking id alone would keep #6 and dangle on the four records it names.
+const STOREY_MODEL_REL_OWNED_SUBTREE = STOREY_MODEL.replace(
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,",
+  "#6= IFCOWNERHISTORY(#7,#8,$,.ADDED.,$,$,$,0);\n" +
+    '#7= IFCPERSONANDORGANIZATION(#9,#10,$);\n' +
+    "#9= IFCPERSON($,'p',$,$,$,$,$,$);\n" +
+    "#10= IFCORGANIZATION($,'o',$,$,$);\n" +
+    "#8= IFCAPPLICATION(#10,'1','app','app');\n" +
+    "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#6,",
+);
+
+describe('buildSubset: a private OwnerHistory that owns a subtree', () => {
+  const p = parseStep(STOREY_MODEL_REL_OWNED_SUBTREE);
+  const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
+
+  it('keeps the whole OwnerHistory subtree, not just the blocking id', () => {
+    expect(keep.has(80)).toBe(true);
+    for (const id of [6, 7, 8, 9, 10]) expect(keep.has(id)).toBe(true);
+  });
+
+  it('serializes with zero dangling references', () => {
+    const out = serializeSubset({ keep, rewritten }, p);
+    expectNoDanglingRefs(out);
+    expect(out).toContain('#80=');
+  });
+});
+
+// The OTHER storey's containment carries the private OwnerHistory, and the
+// selection touches neither of its products. #82's relating parent #45 IS kept
+// (every storey is a force-kept context root), so only the empty member
+// intersection stands between #82 and the blocked path.
+const STOREY_MODEL_UNRELATED_REL_OWNED = STOREY_MODEL.replace(
+  "#82= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000002',#5,",
+  "#7= IFCOWNERHISTORY($,$,$,.ADDED.,$,$,$,0);\n" +
+    "#82= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000002',#7,",
+);
+
+describe('buildSubset: a dropped relation does not drag its OwnerHistory in', () => {
+  const p = parseStep(STOREY_MODEL_UNRELATED_REL_OWNED);
+  const { keep } = buildSubset(new Set([70, 72]), p);
+
+  it('reports nothing for a relation the kept intersection already dropped', () => {
+    // The intersection is tested BEFORE the OwnerHistory loop for this reason.
+    // Reversed, #7 is reported as blocking, force-kept, and emitted into the
+    // file as an IfcOwnerHistory nothing references.
+    expect(keep.has(82)).toBe(false);
+    expect(keep.has(7)).toBe(false);
+  });
+});
+
+// The PHANTOM variant, and the reason the two fixes are one change: #80 names an
+// OwnerHistory #6 that no line DEFINES. The replan asks `forwardClosure` for #6,
+// and if the closure could add an undefined id to `keep` (the #4128 defect), the
+// second plan would find every reference "kept" and emit #80 with a dangling
+// `#6`, a worse output than the drop this replaces. Keeping the subset to
+// DEFINED ids is what makes #6 stay unkept and #80 stay dropped.
+const STOREY_MODEL_REL_PHANTOM_OWNER = STOREY_MODEL.replace(
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#5,",
+  "#80= IFCRELCONTAINEDINSPATIALSTRUCTURE('RCON000000000000000001',#6,",
+);
+
+describe('buildSubset: a relation whose OwnerHistory is never defined', () => {
+  const p = parseStep(STOREY_MODEL_REL_PHANTOM_OWNER);
+  const { keep, rewritten } = buildSubset(new Set([70, 72]), p);
+
+  it('drops the relation rather than emitting a reference to nothing', () => {
     expect(keep.has(6)).toBe(false);
     expect(keep.has(80)).toBe(false);
   });
@@ -416,6 +531,7 @@ describe('buildSubset: a relation reference outside the rewritten SET', () => {
   it('serializes with zero dangling references', () => {
     const out = serializeSubset({ keep, rewritten }, p);
     expectNoDanglingRefs(out);
+    expect(out).not.toContain('#80=');
   });
 });
 
@@ -431,7 +547,7 @@ describe('planSpatialRelations: a record it cannot scan, or cannot read as six a
   const emit = (inst: ReturnType<typeof record>, keep: Set<number>): string => {
     const plan = planSpatialRelations([inst], keep);
     return serializeSubset(
-      { keep: new Set([...plan.add]), rewritten: plan.rewritten },
+      { keep: new Set(plan.add), rewritten: plan.rewritten },
       { header: 'DATA;\n', instances: new Map([[inst.id, inst]]), guidToId: new Map() },
     );
   };

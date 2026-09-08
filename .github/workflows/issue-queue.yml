@@ -137,6 +137,7 @@ jobs:
       - name: Unit-test the gate itself
         run: |
           node --test scripts/check-issue-queue.test.mjs scripts/lib/issue-refs.test.mjs \
+            scripts/lib/ref-issues-fetch.test.mjs \
             scripts/check-partial-close-admission.test.mjs scripts/lib/partial-close-admission.test.mjs
 
       # `--dump` writes the exact GraphQL payload this job read (`body` and

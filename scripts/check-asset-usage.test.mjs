@@ -57,9 +57,14 @@ test('an allowlist row for a file that IS referenced does not suppress anything 
 });
 
 test('a nested path is matched by its root-absolute form', () => {
+  // `path` here is a label only -- findUnreferencedAssets matches on
+  // `content`, never on the corpus entry's `path` (see the implementation).
+  // Deliberately a synthetic, not-in-repo name (a real vercel.json exists at
+  // the repo root and would otherwise make check-ci-path-coverage.mjs treat
+  // this literal as a live input the gate reads, which it does not).
   const { unreferenced } = findUnreferencedAssets({
     assetPaths: ['oauth/bcf/callback.html'],
-    corpusFiles: [{ path: 'vercel.json', content: '"destination": "/oauth/bcf/callback.html"' }],
+    corpusFiles: [{ path: 'fixture-rewrite-config.json', content: '"destination": "/oauth/bcf/callback.html"' }],
     allowlist: [],
   });
   assert.deepEqual(unreferenced, []);

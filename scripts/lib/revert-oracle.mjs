@@ -36,19 +36,14 @@
 
 import { parsePython, PYTEST_MISSING_PATTERN } from './revert-oracle-python.mjs';
 import { ALL_SKIPPED, classifyExecuted, severityCandidates } from './revert-oracle-all-skipped.mjs';
+import { isInertPath } from './revert-oracle-inert.mjs';
 // ---------------------------------------------------------------------------
 // Diff classification
 // ---------------------------------------------------------------------------
 
 /** Paths whose change can neither be reverted usefully nor observed by a test. */
 const IGNORED_PREFIXES = ['.changeset/', '.github/', 'docs/', '.vscode/'];
-const IGNORED_EXACT = new Set([
-  'pnpm-lock.yaml',
-  'package-lock.json',
-  'yarn.lock',
-  'Cargo.lock',
-  'CHANGELOG.md',
-]);
+const IGNORED_EXACT = new Set(['pnpm-lock.yaml', 'package-lock.json', 'yarn.lock', 'Cargo.lock', 'CHANGELOG.md']);
 const IGNORED_SUFFIXES = ['.md', '.mdx', '.txt', '.snap.orig'];
 
 /**
@@ -84,7 +79,7 @@ export function classifyPath(path) {
   if (TEST_FILE_RE.test(path) || /(^|\/)(?:[^/]+_tests|tests)\.rs$/.test(path)) return 'test';
   if (TEST_DIR_RE.test(path)) return 'test';
   if (TEST_SEGMENT_RE.test(path)) return 'test';
-  return 'production';
+  return isInertPath(path) ? 'inert' : 'production';
 }
 
 /**
@@ -94,12 +89,12 @@ export function classifyDiff(entries) {
   const production = [];
   const test = [];
   const ignored = [];
+  const inert = [];
   const warnings = [];
   for (const { status, path } of entries) {
     const kind = classifyPath(path);
-    if (kind === 'production') production.push({ status, path });
-    else if (kind === 'test') test.push({ status, path });
-    else ignored.push({ status, path });
+    const bucket = kind === 'production' ? production : kind === 'test' ? test : kind === 'inert' ? inert : ignored;
+    bucket.push({ status, path });
   }
   if (production.some((e) => isRustFile(e.path))) {
     warnings.push(
@@ -108,7 +103,7 @@ export function classifyDiff(entries) {
         'as the code — expect INCONCLUSIVE and use --mutation for a surgical revert.',
     );
   }
-  return { production, test, ignored, warnings };
+  return { production, test, ignored, inert, warnings };
 }
 
 /** Parse `git diff --name-status -z`-free plain output. Renames carry two paths. */

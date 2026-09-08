@@ -150,6 +150,27 @@ fn translated_only_site_keeps_instancing_metadata() {
             .map(|m| (m.express_id, m.instance.is_some()))
             .collect::<Vec<_>>()
     );
+
+    // Strengthened: for this site_local fixture, BOTH occurrences of the
+    // shared IfcRepresentationMap materialize as meshes (the don't-bake
+    // instancing_plan is forced to None for site_local coord spaces, so
+    // there is no `result.instances` fallback path here — see
+    // `processor/mod.rs`'s SITE_LOCAL_MESH_COORDINATE_SPACE guard). The two
+    // assertions above pass on #48 alone, so a regression that dropped #58
+    // — or produced it without `InstanceMeta` — would slip past them
+    // undetected. Require both express ids to be present, each carrying
+    // `instance.is_some()`.
+    let by_id: std::collections::BTreeMap<u32, bool> = proxy_meshes
+        .iter()
+        .map(|m| (m.express_id, m.instance.is_some()))
+        .collect();
+    assert_eq!(
+        by_id,
+        std::collections::BTreeMap::from([(48, true), (58, true)]),
+        "expected both box proxies (#48, #58) to appear in result.meshes, \
+         each carrying instance metadata; got: {:?}",
+        by_id
+    );
 }
 
 /// #4118 counterpart: a genuinely ROTATED site must still drop instancing —

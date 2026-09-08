@@ -24,6 +24,20 @@
  * and (deliberately) blind to the runtime `modelId`/`FederatedModel.id`,
  * which is a fresh UUID every load and cannot serve as a persistence key.
  *
+ * ## One localStorage key PER MODEL, not one shared blob (#4159 fix)
+ * The first cut of this module kept every model's entry in a single JSON
+ * object under one `localStorage` key. That made `readRaw()`'s "corrupt
+ * JSON degrades to `{}` in memory" contract (below) into a cross-model
+ * hazard: `JSON.parse` fails or succeeds for the WHOLE blob, so one bad byte
+ * anywhere — a manual edit, a future version's bug, quota-adjacent
+ * truncation — made every OTHER model's entry unreadable too, and the very
+ * next `saveDrawing2DEntry()` call for an unrelated model would `writeRaw()`
+ * the degraded `{}` back over the key, permanently deleting every model's
+ * markup to save one. Splitting into `${STORAGE_KEY_PREFIX}${modelHash}`
+ * keys makes that structurally impossible: reading or writing model A's
+ * entry touches only A's `localStorage` key, so corruption under B's key can
+ * never be observed, let alone overwritten, by anything A does.
+ *
  * ## What is intentionally NOT here
  * `drawing2D` (the generated `Drawing2D`) is derived output — regenerable
  * from the persisted `sectionConfig` plus the loaded model, and far larger
@@ -42,12 +56,54 @@ import type {
   Point2D,
   TextAnnotation2D,
 } from './drawing2DSlice.js';
+import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 import type { SectionConfig } from '@ifc-lite/drawing-2d';
 
-const STORAGE_KEY = 'ifc-lite:drawing2d-markup:v1';
+/** The five store fields this module persists/restores/clears, as a plain patch. */
+export type Drawing2DMarkupPatch = Pick<
+  Drawing2DState,
+  'measure2DResults' | 'polygonArea2DResults' | 'textAnnotations2D' | 'cloudAnnotations2D' | 'drawing2DDisplayOptions'
+>;
+
+/**
+ * The markup patch a model should start from when it becomes active and
+ * nothing says otherwise: the slice's own defaults. A pure function of no
+ * arguments — no store, no `localStorage` — so both `modelSlice.ts`'s
+ * `setActiveModel` (the atomic clear, #4159 Bug 2) and
+ * `hooks/useDrawing2DPersistence.ts` (a redundant, defensive clear at the
+ * top of its restore effect) can share ONE definition of "defaults" rather
+ * than re-deriving it and risking the two silently drifting apart.
+ */
+export function defaultMarkupPatch(): Drawing2DMarkupPatch {
+  const defaults = getDefaultDrawing2DState();
+  return {
+    measure2DResults: defaults.measure2DResults,
+    polygonArea2DResults: defaults.polygonArea2DResults,
+    textAnnotations2D: defaults.textAnnotations2D,
+    cloudAnnotations2D: defaults.cloudAnnotations2D,
+    drawing2DDisplayOptions: defaults.drawing2DDisplayOptions,
+  };
+}
+
+/** One real `localStorage` key per model: `${STORAGE_KEY_PREFIX}${modelHash}`. */
+const STORAGE_KEY_PREFIX = 'ifc-lite:drawing2d-markup:v1:';
 
 /** Hard cap on distinct models remembered — oldest (by `savedAt`) evicted first. */
 const MAX_ENTRIES = 20;
+
+/** Exported for tests only — the real `localStorage` key a model's entry lives under. */
+export function keyFor(modelHash: string): string {
+  return `${STORAGE_KEY_PREFIX}${modelHash}`;
+}
+
+/** `true` for any real `localStorage` key this module owns. */
+function isOwnKey(key: string | null): key is string {
+  return key !== null && key.startsWith(STORAGE_KEY_PREFIX);
+}
+
+function hashFromKey(key: string): string {
+  return key.slice(STORAGE_KEY_PREFIX.length);
+}
 
 export interface PersistedDrawing2DEntry {
   measure2DResults: Measure2DResult[];
@@ -59,8 +115,6 @@ export interface PersistedDrawing2DEntry {
   sectionConfig: SectionConfig | null;
   savedAt: number;
 }
-
-type StorageShape = Record<string, PersistedDrawing2DEntry>;
 
 // ── Validation ───────────────────────────────────────────────────────
 
@@ -190,31 +244,69 @@ function isValidEntry(v: unknown): v is Omit<PersistedDrawing2DEntry, 'drawing2D
 
 // ── Storage I/O ──────────────────────────────────────────────────────
 
-function readRaw(): StorageShape {
+/**
+ * Read and parse ONE model's own `localStorage` key. A corrupt value under
+ * THIS key degrades to `null` (skipped, never thrown) without touching, or
+ * even looking at, any other key — the property that makes one model's
+ * corruption unable to cascade into another's (#4159).
+ */
+function readEntryRaw(modelHash: string): unknown {
   try {
-    if (typeof localStorage === 'undefined') return {};
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
-    return parsed as StorageShape;
+    if (typeof localStorage === 'undefined') return undefined;
+    const raw = localStorage.getItem(keyFor(modelHash));
+    if (!raw) return undefined;
+    return JSON.parse(raw);
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.warn(`[drawing2D] failed to read ${STORAGE_KEY}`, err);
-    return {};
+    console.warn(`[drawing2D] failed to read ${keyFor(modelHash)}`, err);
+    return undefined;
   }
 }
 
-function writeRaw(map: StorageShape): void {
+/** Returns whether the write actually landed, so a failed write never triggers eviction of someone else's good entry to make room for it. */
+function writeEntryRaw(modelHash: string, entry: PersistedDrawing2DEntry): boolean {
   try {
-    if (typeof localStorage === 'undefined') return;
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+    if (typeof localStorage === 'undefined') return false;
+    localStorage.setItem(keyFor(modelHash), JSON.stringify(entry));
+    return true;
   } catch (err) {
     // Quota exceeded / private mode — markup stays in memory but the
     // warning makes the failure debuggable, matching annotationsSlice.
     // eslint-disable-next-line no-console
-    console.warn(`[drawing2D] failed to persist to ${STORAGE_KEY}`, err);
+    console.warn(`[drawing2D] failed to persist to ${keyFor(modelHash)}`, err);
+    return false;
   }
+}
+
+function removeEntryRaw(modelHash: string): void {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    localStorage.removeItem(keyFor(modelHash));
+  } catch {
+    // Best-effort eviction; a failure here just means that entry lingers
+    // past MAX_ENTRIES until the next successful write, not data loss.
+  }
+}
+
+/**
+ * Every `(modelHash, savedAt)` pair this module currently owns in
+ * `localStorage`, read via `Storage.key(i)` rather than a maintained index —
+ * there is no separate index to drift out of sync with the real keys. A key
+ * whose value is corrupt is skipped (not evicted): eviction is an LRU policy
+ * over readable entries, not a second corruption-recovery path — that stays
+ * `readEntryRaw`'s / `loadDrawing2DEntry`'s job.
+ */
+function listOwnedEntries(): Array<{ modelHash: string; savedAt: number }> {
+  if (typeof localStorage === 'undefined') return [];
+  const out: Array<{ modelHash: string; savedAt: number }> = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (!isOwnKey(key)) continue;
+    const modelHash = hashFromKey(key);
+    const parsed = readEntryRaw(modelHash);
+    if (isValidEntry(parsed)) out.push({ modelHash, savedAt: parsed.savedAt });
+  }
+  return out;
 }
 
 /**
@@ -229,8 +321,7 @@ export function loadDrawing2DEntry(
   modelHash: string,
   defaultDisplayOptions: Drawing2DState['drawing2DDisplayOptions'],
 ): PersistedDrawing2DEntry | null {
-  const all = readRaw();
-  const entry = all[modelHash];
+  const entry = readEntryRaw(modelHash);
   if (!isValidEntry(entry)) {
     if (entry !== undefined) {
       // eslint-disable-next-line no-console
@@ -250,29 +341,44 @@ export function loadDrawing2DEntry(
 }
 
 /**
- * Save markup for one model's content-hash key, evicting the oldest entries
- * (by `savedAt`) past {@link MAX_ENTRIES} so localStorage cannot grow
- * unbounded across many different files opened over time.
+ * Save markup for one model's content-hash key — touching only that key —
+ * then evict the oldest entries (by `savedAt`, across ALL owned keys) past
+ * {@link MAX_ENTRIES} so `localStorage` cannot grow unbounded across many
+ * different files opened over time. Eviction removes each loser's OWN key
+ * directly; it never rewrites a shared blob, so it cannot lose an unrelated
+ * model's entry the way the single-key design used to (#4159).
  */
 export function saveDrawing2DEntry(
   modelHash: string,
   entry: Omit<PersistedDrawing2DEntry, 'savedAt'>,
 ): void {
-  const all = readRaw();
-  all[modelHash] = { ...entry, savedAt: Date.now() };
+  const savedAt = Date.now();
+  const wrote = writeEntryRaw(modelHash, { ...entry, savedAt });
+  // A failed write (quota / private mode) never reaches eviction: the new
+  // entry is not actually in storage, so evicting someone else's valid entry
+  // to make room for it would only trade good data for nothing.
+  if (!wrote) return;
 
-  const keys = Object.keys(all);
-  if (keys.length > MAX_ENTRIES) {
-    keys
-      .sort((a, b) => (all[a].savedAt ?? 0) - (all[b].savedAt ?? 0))
-      .slice(0, keys.length - MAX_ENTRIES)
-      .forEach((k) => { delete all[k]; });
+  const owned = listOwnedEntries();
+  if (owned.length > MAX_ENTRIES) {
+    owned
+      .sort((a, b) => a.savedAt - b.savedAt)
+      .slice(0, owned.length - MAX_ENTRIES)
+      .forEach((e) => { removeEntryRaw(e.modelHash); });
   }
-
-  writeRaw(all);
 }
 
 /** Test/diagnostic helper — not used by the persistence hook itself. */
 export function clearAllDrawing2DEntries(): void {
-  writeRaw({});
+  if (typeof localStorage === 'undefined') return;
+  for (const { modelHash } of listOwnedEntries()) removeEntryRaw(modelHash);
+  // `listOwnedEntries()` skips keys whose value is corrupt, so a prior test
+  // or a real corrupted entry could otherwise survive a "clear everything"
+  // call. Sweep raw key names too, independent of whether they parse.
+  const stale: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (isOwnKey(key)) stale.push(key);
+  }
+  stale.forEach((key) => localStorage.removeItem(key));
 }

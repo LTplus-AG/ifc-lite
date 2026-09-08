@@ -26,6 +26,7 @@ import {
   endClashScenePresentation,
   type ClashSceneTeardown,
 } from '@/lib/clash/visibility-ownership';
+import { defaultMarkupPatch } from './drawing2DSlice.persistence.js';
 
 export interface ModelSlice {
   // State
@@ -519,10 +520,22 @@ export const createModelSlice: StateCreator<ViewerState, [], [], ModelSlice> = (
 
   setActiveModel: (modelId) => set((state) => {
     const activeModel = modelId ? state.models.get(modelId) : null;
+    // 2D drawing markup (#4159 Bug 2): `measure2DResults` and friends are
+    // flat, federation-wide fields — not scoped per model — so a plain
+    // `activeModelId` swap would otherwise leave the OUTGOING model's markup
+    // sitting in the store, readable and re-savable under the new model's
+    // identity, until `useDrawing2DPersistence.ts`'s async restore happens to
+    // overwrite it (never, for a model with nothing saved). Clearing them to
+    // {@link defaultMarkupPatch} in this SAME atomic patch — only when the id
+    // actually changes, so re-selecting the already-active model is a no-op —
+    // makes it impossible for any subscriber, that hook's save listener
+    // included, to ever observe the new id together with the old model's data.
+    const clearedMarkup = modelId !== state.activeModelId ? defaultMarkupPatch() : {};
     return {
       activeModelId: modelId,
       ifcDataStore: activeModel?.ifcDataStore ?? null,
       geometryResult: activeModel?.geometryResult ?? null,
+      ...clearedMarkup,
     };
   }),
 

@@ -21,18 +21,50 @@
  *
  * ## Why the save path derives the hash SYNCHRONOUSLY from `hashCache`
  * rather than from a variable the restore effect maintains
- * A primary reload calls `resetViewerState()`, which wipes `measure2DResults`
- * etc. to `[]` and `activeModelId` to `null` in ONE atomic `set()` (see
- * `store/index.ts`), BEFORE the next model has loaded or its hash resolved.
- * The store's raw `subscribe` listener fires synchronously inside that same
- * `set()` call — synchronously with respect to the reset, not the (async,
+ * A primary reload calls `resetViewerState()`, then `clearAllModels()`,
+ * which together wipe `measure2DResults` etc. to `[]` and `activeModelId` to
+ * `null` — BEFORE the next model has loaded or its hash resolved. The
+ * store's raw `subscribe` listener fires synchronously inside those `set()`
+ * calls — synchronously with respect to the reset, not the (async,
  * React-effect-driven) hash resolution for whatever model loads next. If the
  * save path read its scoping key from a variable the restore effect owns, it
  * would still be pointing at the OLD model's hash at that instant and would
  * persist the wipe — overwriting the old model's saved markup with an empty
- * entry. Deriving the hash from `state.activeModelId` (already `null` in
- * that same atomic patch) instead makes the skip automatic and correct: no
- * hash, no save.
+ * entry. Deriving the hash from `state.activeModelId` instead makes the skip
+ * automatic and correct: no hash, no save.
+ *
+ * That guard only WORKS because `modelSlice.teardown.ts`'s 'session-reset'
+ * contribution nulls `activeModelId` in the SAME atomic patch that wipes the
+ * markup fields (#4159 fix — it used to be `notApplicable`, leaving
+ * `activeModelId` pointing at the OUTGOING model through that patch, so this
+ * exact subscription read a "still-active" model whose markup had just been
+ * wiped and persisted the wipe over its saved entry). This module has no way
+ * to enforce that from the outside; it can only document the dependency.
+ * `modelSlice.teardown.ts`'s own comment explains why nulling it there is
+ * safe — every production call site pairs `resetViewerState()` with an
+ * immediate `clearAllModels()` that already nulls it a moment later.
+ *
+ * ## Cross-model leak on an ordinary model switch (#4159 Bug 2)
+ * `measure2DResults` and friends are flat, federation-wide store fields, not
+ * scoped per model. Left alone, switching from model A to model B via
+ * `setActiveModel()` leaves A's markup sitting in the store as B becomes
+ * active: readable on B's canvas, and — since the save subscription above
+ * keys purely off `activeModelId` — persistable into B's saved entry by any
+ * change at all (drawing something, or `notifyDrawing2DSectionConfig` firing
+ * from a 2D redraw) before B's own hash has even resolved.
+ *
+ * The PRIMARY fix is in `modelSlice.ts`'s `setActiveModel`: it now clears the
+ * five persisted fields to {@link defaultMarkupPatch} in the SAME atomic
+ * `set()` call that moves `activeModelId`, so no subscriber — this module's
+ * save listener included — can ever observe "B is active" together with "the
+ * fields still hold A's data". That is what closes the window completely;
+ * doing it here, in a `useEffect`, would only narrow it (React effects run
+ * after the store has already committed and after any other subscriber's
+ * synchronous reaction to the same change). The clear this effect ALSO
+ * performs below, before resolving B's hash, is a redundant second layer —
+ * it protects state seeded directly via `useViewerStore.setState()` (tests,
+ * or any future caller that bypasses the `setActiveModel` action) rather
+ * than being the thing that makes the fix correct.
  */
 
 import { useEffect, useRef } from 'react';
@@ -40,7 +72,11 @@ import type { SectionConfig } from '@ifc-lite/drawing-2d';
 import { useViewerStore } from '@/store';
 import { getDefaultDrawing2DState } from '@/store/slices/drawing2DSlice.js';
 import { computeSourceFingerprintFromBlob } from './sourceFingerprint.js';
-import { loadDrawing2DEntry, saveDrawing2DEntry } from '@/store/slices/drawing2DSlice.persistence.js';
+import {
+  loadDrawing2DEntry,
+  saveDrawing2DEntry,
+  defaultMarkupPatch,
+} from '@/store/slices/drawing2DSlice.persistence.js';
 
 /** modelId -> resolved content hash, or `null` when one could not be computed (no `sourceFile`). */
 const hashCache = new Map<string, string | null>();
@@ -134,6 +170,17 @@ export function useDrawing2DPersistence(): void {
       lastSectionConfigModelId = null;
       return;
     }
+
+    // Bug 2 fix (#4159): clear the flat, federation-wide markup fields to
+    // defaults THE MOMENT this model becomes active — before the async hash
+    // lookup below, and before any saved entry for it is restored. Without
+    // this, whatever the PREVIOUS active model left in these fields stays
+    // live (and savable) under the new model's identity until the restore
+    // below happens to overwrite it, which it may never do (a brand-new
+    // file with nothing saved leaves the stale fields untouched forever).
+    lastSectionConfig = null;
+    lastSectionConfigModelId = null;
+    useViewerStore.setState(defaultMarkupPatch());
 
     const applyHash = (hash: string | null) => {
       if (!stillCurrent()) return;

@@ -27,7 +27,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * field on every file swap.
  */
 const PINNED_SESSION_RESET_KEYS: readonly string[] = [
-  'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activePresetId',
+  'activeBasketViewId', 'activeChangeSetId', 'activeLensId', 'activeListId', 'activeModelId',
+  'activePresetId',
   'activeSheet', 'activeStorey', 'activeTool', 'activeTopicId', 'activeViewpointId',
   'activeWorkScheduleId', 'animationEnabled', 'annotation2DActiveTool',
   'annotation2DCursorPos', 'basketPresentationVisible', 'basketViews', 'bcfError',

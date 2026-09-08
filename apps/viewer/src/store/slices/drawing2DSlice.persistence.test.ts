@@ -8,13 +8,13 @@ import {
   loadDrawing2DEntry,
   saveDrawing2DEntry,
   clearAllDrawing2DEntries,
+  keyFor,
   type PersistedDrawing2DEntry,
 } from './drawing2DSlice.persistence.js';
 import { getDefaultDrawing2DState } from './drawing2DSlice.js';
 import type { Measure2DResult, PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D } from './drawing2DSlice.js';
 
 const DEFAULT_DISPLAY_OPTIONS = getDefaultDrawing2DState().drawing2DDisplayOptions;
-const STORAGE_KEY = 'ifc-lite:drawing2d-markup:v1';
 
 function installStubStorage(opts?: { throwing?: boolean }): { wipe: () => void } {
   const data = new Map<string, string>();
@@ -131,7 +131,7 @@ describe('drawing2DSlice persistence', () => {
       assert.strictEqual(forOtherModel, null);
     });
 
-    it('keeps two models fully independent in the same storage blob', () => {
+    it('keeps two models fully independent, each under its own localStorage key', () => {
       saveDrawing2DEntry('hash-a', sampleEntry({ measure2DResults: [sampleMeasure('a-measure')] }));
       saveDrawing2DEntry('hash-b', sampleEntry({ measure2DResults: [sampleMeasure('b-measure')] }));
 
@@ -140,27 +140,54 @@ describe('drawing2DSlice persistence', () => {
       assert.strictEqual(a!.measure2DResults[0].id, 'a-measure');
       assert.strictEqual(b!.measure2DResults[0].id, 'b-measure');
     });
+
+    it('a corrupt entry for one model does not destroy other models\' entries (#4159)', () => {
+      // Reproduces the shared-blob cascade: under the old single-key design,
+      // `saveDrawing2DEntry` read the WHOLE blob, degraded it to `{}` on a
+      // parse failure, and wrote that `{}` (plus only the new entry) back
+      // over every other model's data. One model's own real save is exactly
+      // the trigger — nothing exotic has to touch the corrupt key itself.
+      saveDrawing2DEntry('hash-a', sampleEntry({ measure2DResults: [sampleMeasure('a-measure')] }));
+      saveDrawing2DEntry('hash-b', sampleEntry({ measure2DResults: [sampleMeasure('b-measure')] }));
+
+      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(keyFor('hash-a'), '{not valid json');
+
+      // An ordinary save for a THIRD, unrelated model — the real-world
+      // trigger (any user drawing on any model after one entry corrupts).
+      saveDrawing2DEntry('hash-c', sampleEntry({ measure2DResults: [sampleMeasure('c-measure')] }));
+
+      const b = loadDrawing2DEntry('hash-b', DEFAULT_DISPLAY_OPTIONS);
+      assert.ok(b, 'model B\'s entry must survive a save for an unrelated model C while A is corrupt');
+      assert.strictEqual(b!.measure2DResults[0].id, 'b-measure');
+
+      const c = loadDrawing2DEntry('hash-c', DEFAULT_DISPLAY_OPTIONS);
+      assert.ok(c, 'the triggering save itself must still land');
+      assert.strictEqual(c!.measure2DResults[0].id, 'c-measure');
+
+      // A's own corruption is real and un-recovered — that part is expected.
+      assert.strictEqual(loadDrawing2DEntry('hash-a', DEFAULT_DISPLAY_OPTIONS), null);
+    });
   });
 
   describe('malformed storage — MUTATION TARGET 2', () => {
     it('returns null (never throws) for a JSON parse failure and lets the caller fall back to defaults', () => {
-      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(STORAGE_KEY, '{not valid json');
+      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(keyFor('hash-a'), '{not valid json');
       assert.doesNotThrow(() => {
         const result = loadDrawing2DEntry('hash-a', DEFAULT_DISPLAY_OPTIONS);
         assert.strictEqual(result, null);
       });
     });
 
-    it('returns null for a stored value that is an array instead of an object map', () => {
-      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(STORAGE_KEY, '[1,2,3]');
+    it('returns null for a stored value that is an array instead of an entry object', () => {
+      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(keyFor('hash-a'), '[1,2,3]');
       const result = loadDrawing2DEntry('hash-a', DEFAULT_DISPLAY_OPTIONS);
       assert.strictEqual(result, null);
     });
 
     it('skips a malformed entry (missing required arrays) for one hash without throwing', () => {
       (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify({ 'hash-a': { measure2DResults: 'not-an-array' } }),
+        keyFor('hash-a'),
+        JSON.stringify({ measure2DResults: 'not-an-array' }),
       );
       const result = loadDrawing2DEntry('hash-a', DEFAULT_DISPLAY_OPTIONS);
       assert.strictEqual(result, null);
@@ -168,9 +195,9 @@ describe('drawing2DSlice persistence', () => {
 
     it('filters out individually-malformed array entries rather than rejecting the whole load', () => {
       saveDrawing2DEntry('hash-a', sampleEntry());
-      const raw = JSON.parse((globalThis as unknown as { localStorage: Storage }).localStorage.getItem(STORAGE_KEY)!);
-      raw['hash-a'].measure2DResults.push({ id: 'bad', start: { x: 'oops' } });
-      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(STORAGE_KEY, JSON.stringify(raw));
+      const raw = JSON.parse((globalThis as unknown as { localStorage: Storage }).localStorage.getItem(keyFor('hash-a'))!);
+      raw.measure2DResults.push({ id: 'bad', start: { x: 'oops' } });
+      (globalThis as unknown as { localStorage: Storage }).localStorage.setItem(keyFor('hash-a'), JSON.stringify(raw));
 
       const result = loadDrawing2DEntry('hash-a', DEFAULT_DISPLAY_OPTIONS);
       assert.strictEqual(result!.measure2DResults.length, 1);
@@ -214,9 +241,9 @@ describe('drawing2DSlice persistence', () => {
   describe('drawing2D is never persisted', () => {
     it('PersistedDrawing2DEntry has no drawing2D field in what actually gets written', () => {
       saveDrawing2DEntry('hash-a', sampleEntry());
-      const raw = (globalThis as unknown as { localStorage: Storage }).localStorage.getItem(STORAGE_KEY)!;
+      const raw = (globalThis as unknown as { localStorage: Storage }).localStorage.getItem(keyFor('hash-a'))!;
       const parsed = JSON.parse(raw);
-      assert.ok(!('drawing2D' in parsed['hash-a']));
+      assert.ok(!('drawing2D' in parsed));
     });
   });
 

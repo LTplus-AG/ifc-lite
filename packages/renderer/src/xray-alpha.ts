@@ -61,6 +61,23 @@ export const MAX_ALPHA_GROUPS_PER_BATCH = 8;
 const ALPHA_KEY_SCALE = 1000;
 
 /**
+ * Cache-key suffix marking a partial sub-batch slot owned by the alpha split.
+ *
+ * Single-sourced because two sides have to agree on it and they live in
+ * different files: the render loop MINTS these keys, and `Scene` matches them
+ * to retire the slots an X-Ray edit orphaned. A literal in each place would let
+ * the retire sweep silently stop recognising the slots it exists to free.
+ */
+export function alphaSlotSuffix(groupIndex: number): string {
+  return `:x${groupIndex}`;
+}
+
+/** Matches a `sourceBatchKey` that carries an {@link alphaSlotSuffix}. The
+ *  suffix is not always final — the promotion split appends `:promoted` /
+ *  `:remaining` after it — so this looks for the segment, not the tail. */
+export const ALPHA_SLOT_KEY = /:x\d+(?::|$)/;
+
+/**
  * Per-frame X-Ray state: a snapshot of the caller's `transparencyOverrides` /
  * `ghostExceptIds` plus the resolution rules that read them.
  *
@@ -225,16 +242,28 @@ export class XRayEpochTracker {
   private overrides: Map<number, number> | null = null;
   private ghostExcept: Set<number> | null = null;
   private ghostAlpha = DEFAULT_GHOST_ALPHA;
+  private selected: Set<number> = new Set();
 
-  update(options: RenderOptions): number {
+  /**
+   * @param selectedExpressIds Selection exempts an entity from fading, so it
+   * decides group MEMBERSHIP and belongs in this epoch. It only counts while
+   * X-Ray is active: outside that it changes no subset, and bumping on every
+   * click would rebuild the hide/isolate sub-batches for nothing. The snapshot
+   * is still refreshed, so activating X-Ray later compares against the truth.
+   */
+  update(options: RenderOptions, selectedExpressIds: ReadonlySet<number> = EMPTY_SELECTION): number {
     const src = options.transparencyOverrides;
     const live = src != null && src.size > 0 ? src : null;
     const ghost = options.ghostExceptIds ?? null;
     const alpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
+    const active = live != null || ghost != null;
+    const selectionChanged = !setContentEquals(selectedExpressIds, this.selected);
     const changed =
       !alphaMapEquals(live, this.overrides) ||
       !setContentEquals(ghost, this.ghostExcept) ||
-      alpha !== this.ghostAlpha;
+      alpha !== this.ghostAlpha ||
+      (active && selectionChanged);
+    if (selectionChanged) this.selected = new Set(selectedExpressIds);
     if (changed) {
       this.version++;
       this.overrides = live ? new Map(live) : null;
@@ -248,6 +277,8 @@ export class XRayEpochTracker {
     return this.version;
   }
 }
+
+const EMPTY_SELECTION: ReadonlySet<number> = new Set<number>();
 
 function alphaMapEquals(
   live: ReadonlyMap<number, number> | null,

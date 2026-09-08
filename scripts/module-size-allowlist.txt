@@ -306,7 +306,7 @@
    535 packages/query/src/duckdb-integration.ts
    583 packages/renderer/src/camera-controls.ts
    684 packages/renderer/src/camera.ts
-  3759 packages/renderer/src/index.ts
+  3709 packages/renderer/src/index.ts
    756 packages/renderer/src/picker.ts
    952 packages/renderer/src/pipeline.ts
    477 packages/renderer/src/pointcloud/point-cloud-renderer.ts
@@ -314,7 +314,7 @@
    474 packages/renderer/src/raycast-engine.ts
    401 packages/renderer/src/render-section-plane.ts
    462 packages/renderer/src/scene-raycaster.ts
-  4412 packages/renderer/src/scene.ts
+  4401 packages/renderer/src/scene.ts
    639 packages/renderer/src/section-2d-overlay.ts
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts

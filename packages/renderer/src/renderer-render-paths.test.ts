@@ -1194,6 +1194,60 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         assert.ok(lastSolid < firstFaded, 'a solid sub-batch drew after a ghost and would erase it');
     });
 
+    it('re-splits when SELECTION changes, since selection exempts an entity from fading', () => {
+        // Selection is an input to the split (a selected entity is exempt), so it
+        // has to reach the sub-batch cache epoch. It did not: the epoch fast path
+        // returns a cached clone without ever looking at the id set it was asked
+        // for, so the slots kept their old membership. User-visible as: X-Ray an
+        // element, select it, deselect it — and it stays solid.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches(
+            [triangle(1, GREY), triangle(2, GREY), triangle(3, GREY)], device, pipeline, false,
+        );
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+        const overrides = () => new Map([[1, 0.18], [2, 0.18]]);
+
+        // Entity 1 selected → exempt → it belongs to the SOLID group.
+        h.render({ transparencyOverrides: overrides(), selectedIds: new Set([1]) });
+        assertAlpha(h, subBatchFor(h, [2]).uniformBuffer, 0.18);
+        assertAlpha(h, subBatchFor(h, [1, 3]).uniformBuffer, 1);
+
+        // Deselect: entity 1 is X-Rayed again and must rejoin the faded group.
+        h.render({ transparencyOverrides: overrides() });
+        assertAlpha(h, subBatchFor(h, [1, 2]).uniformBuffer, 0.18);
+        assertAlpha(h, subBatchFor(h, [3]).uniformBuffer, 1);
+    });
+
+    it('frees the sub-batch slots of a batch that stops splitting while X-Ray stays on', () => {
+        // The clones live outside the GPU residency budget, and the wholesale
+        // drop only fires once hide/isolate AND X-Ray are all off — so a batch
+        // that stops needing a split mid-session used to pin its slots for the
+        // rest of that session.
+        const h = makeHarness();
+        const { grey } = seedBatches(h);
+        const scene = sceneOf(h);
+
+        h.render({ transparencyOverrides: new Map([[1, 0.18]]) });
+        const faded = subBatchFor(h, [1]);
+        const solid = subBatchFor(h, [2]);
+        assert.strictEqual(scene['partialBatchCache'].size, 2);
+
+        // Move the X-Ray onto the OTHER batch: grey is uniform again and draws
+        // whole, so neither of its slots can ever be revisited.
+        h.render({ transparencyOverrides: new Map([[3, 0.18]]) });
+
+        assert.ok(h.stats.draws.includes(grey.vertexBuffer), 'the un-split batch draws whole again');
+        assert.strictEqual((faded.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'orphaned slot leaked');
+        assert.strictEqual((solid.vertexBuffer as unknown as FakeBuffer).destroyed, 1, 'orphaned slot leaked');
+        assert.ok(
+            ![...scene['partialBatchCache'].values()].some((b) => b === faded || b === solid),
+            'a retired clone must not stay reachable in the cache',
+        );
+    });
+
     it('falls back to the whole batch when its geometry cannot be partitioned', () => {
         // A colour-merged piece carries many entities in ONE MeshData tagged per
         // vertex, so it cannot be handed to one subset without handing it to the

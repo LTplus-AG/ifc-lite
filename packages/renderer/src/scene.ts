@@ -19,7 +19,7 @@ import {
   rayIntersectsBox,
 } from './scene-raycaster.js';
 import { selectBoundingBoxesInRect } from './scene-rect-select.js';
-import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces } from './scene-geometry.js';
+import { mergeGeometry, splitMeshDataForBufferLimit, colorSaltByte, packEntityLane, worldAabbFromPieces, destroyGpuResources } from './scene-geometry.js';
 import { sumResidentGpuBytes, type ResidentGpuBytes } from './render-stats.js';
 import { composeInstancedOverrideColor } from './instanced-override-color.js';
 import { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES } from './lod-simplify.js';
@@ -31,6 +31,12 @@ import { planInstancedGhosting } from './instanced-ghost-plan.js';
 import { selectEvictions, type ResidencyShell, type ColdGeometryProvider } from './residency.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 import { extractEntityFromMergedMesh } from './merged-mesh-extract.js';
+import {
+  dropAllPartialCaches as dropAllPartialCachesIn,
+  dropPartialCacheForBatch as dropPartialCacheForBatchIn,
+  retireUnusedAlphaSlots as retireUnusedAlphaSlotsIn,
+  type PartialBatchCaches,
+} from './partial-batch-cache.js';
 import type { DecodedInstancedShard } from '@ifc-lite/geometry';
 import {
   prepareInstancedRender,
@@ -96,15 +102,6 @@ export interface TexturedMesh {
    *  per `IfcImageTexture`, sampled by many meshes) — released by refcount,
    *  never destroyed per-mesh. Undefined for per-mesh #961 blob/pixel uploads. */
   sharedTextureKey?: number;
-}
-
-function destroyGpuResources(
-  m: { vertexBuffer: GPUBuffer; indexBuffer: GPUBuffer; uniformBuffer?: GPUBuffer; lod1IndexBuffer?: GPUBuffer },
-): void {
-  m.vertexBuffer.destroy();
-  m.indexBuffer.destroy();
-  if (m.uniformBuffer) m.uniformBuffer.destroy();
-  if (m.lod1IndexBuffer) m.lod1IndexBuffer.destroy();
 }
 
 /**
@@ -339,6 +336,14 @@ export class Scene {
   // re-sorting + re-hashing every visible id each frame while the epoch holds
   // (issue: O(elements) per-frame work under hide/isolate). See render loop.
   private partialBatchCacheVersions: Map<string, number> = new Map();
+  /** The three maps above as one record, so the eviction paths in
+   *  `partial-batch-cache.ts` can keep them consistent together. Same Map
+   *  objects, not copies — they are only ever cleared, never reassigned. */
+  private readonly partialCaches: PartialBatchCaches = {
+    batches: this.partialBatchCache,
+    keys: this.partialBatchCacheKeys,
+    versions: this.partialBatchCacheVersions,
+  };
 
   // Color overlay system for lens coloring — NEVER modifies original batches.
   // Overlay batches render on top using depthCompare 'equal', so they only
@@ -814,37 +819,21 @@ export class Scene {
    *  sourceBatchKeys embed the batch id, so they are stale once it is
    *  evicted/replaced). */
   private dropPartialCacheForBatch(batch: BatchedMesh): void {
-    const prefix = `${batch.colorKey}:${batch.id}`;
-    for (const [sourceBatchKey, cacheKey] of this.partialBatchCacheKeys) {
-      if (!sourceBatchKey.startsWith(prefix)) continue;
-      const cached = this.partialBatchCache.get(cacheKey);
-      if (cached) {
-        destroyGpuResources(cached);
-        this.partialBatchCache.delete(cacheKey);
-      }
-      this.partialBatchCacheKeys.delete(sourceBatchKey);
-      this.partialBatchCacheVersions.delete(sourceBatchKey);
-    }
+    dropPartialCacheForBatchIn(this.partialCaches, batch);
   }
 
-  /** Destroy + drop EVERY cached partial sub-batch. The clones built during
-   *  hide/isolate are deliberately excluded from the GPU residency budget and
-   *  are otherwise only freed on clear()/finalize/evict — never when filtering
-   *  ends. The render loop calls this on the transition back to fully-visible so
-   *  the ~model-sized clone VRAM is not pinned until the next model reload. Uses
-   *  the same destroy-then-clear idiom as clear(); safe to call between frames
-   *  because the previous frame is already submitted (WebGPU defers the free
-   *  past in-flight work). */
+  /** Destroy + drop EVERY cached partial sub-batch — called on the transition
+   *  back to "no filtering, no X-Ray" so their VRAM is not pinned until the
+   *  next model reload. See `partial-batch-cache.ts`. */
   dropAllPartialCaches(): void {
-    if (this.partialBatchCache.size === 0
-        && this.partialBatchCacheKeys.size === 0
-        && this.partialBatchCacheVersions.size === 0) {
-      return;
-    }
-    for (const batch of this.partialBatchCache.values()) destroyGpuResources(batch);
-    this.partialBatchCache.clear();
-    this.partialBatchCacheKeys.clear();
-    this.partialBatchCacheVersions.clear();
+    dropAllPartialCachesIn(this.partialCaches);
+  }
+
+  /** Free the X-Ray alpha-split slots this frame did not request, so an X-Ray
+   *  edit that un-splits a batch cannot pin its clones for the session (#4129
+   *  review). See `partial-batch-cache.ts` for why the sweep is scoped. */
+  retireUnusedAlphaSlots(inUse: ReadonlySet<string>): void {
+    retireUnusedAlphaSlotsIn(this.partialCaches, inUse);
   }
 
   /** Free the hydrated (pick / selection-highlight) individual meshes that are

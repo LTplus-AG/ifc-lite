@@ -11,7 +11,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { XRayAlpha, XRayEpochTracker, MAX_ALPHA_GROUPS_PER_BATCH, type AlphaBatchLike } from './xray-alpha.js';
+import { XRayAlpha, XRayEpochTracker, MAX_ALPHA_GROUPS_PER_BATCH, alphaSlotSuffix, ALPHA_SLOT_KEY, type AlphaBatchLike } from './xray-alpha.js';
 import { DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import type { RenderOptions } from './types.js';
 
@@ -176,5 +176,60 @@ describe('XRayEpochTracker invalidates the sub-batch cache by CONTENT', () => {
         const t = tracker();
         const v = t.update({});
         assert.notStrictEqual(t.update({ ghostExceptIds: new Set() }), v);
+    });
+
+    it('bumps when SELECTION changes while X-Ray is active', () => {
+        // Selection exempts an entity from fading, so it decides which group an
+        // id lands in. The cache's epoch fast path never re-reads the id set, so
+        // an unbumped epoch shows up as a stale subset on screen.
+        const t = tracker();
+        const overrides = () => new Map([[1, 0.18], [2, 0.18]]);
+        const v = t.update({ transparencyOverrides: overrides() }, new Set([1]));
+        assert.notStrictEqual(t.update({ transparencyOverrides: overrides() }, new Set()), v);
+    });
+
+    it('does NOT bump when selection changes while X-Ray is off', () => {
+        // Without X-Ray, selection changes no subset — bumping here would rebuild
+        // every hide/isolate sub-batch on each click, for nothing.
+        const t = tracker();
+        const v = t.update({}, new Set([1]));
+        assert.strictEqual(t.update({}, new Set([2])), v);
+        assert.strictEqual(t.update({}, new Set()), v);
+    });
+
+    it('keeps the selection snapshot current while inactive, so activating settles in one bump', () => {
+        const t = tracker();
+        t.update({}, new Set([1]));
+        t.update({}, new Set([7]));              // no bump, but the snapshot must follow
+        const active = t.update({ transparencyOverrides: new Map([[1, 0.18]]) }, new Set([7]));
+        // Same state again: nothing changed, so nothing may bump — a stale
+        // snapshot would report a phantom selection change on this frame.
+        assert.strictEqual(t.update({ transparencyOverrides: new Map([[1, 0.18]]) }, new Set([7])), active);
+    });
+});
+
+describe('alpha-split slot keys', () => {
+    it('marks the slots it mints, and only those', () => {
+        assert.match(`grey:7${alphaSlotSuffix(0)}`, ALPHA_SLOT_KEY);
+        assert.match(`grey:7${alphaSlotSuffix(11)}`, ALPHA_SLOT_KEY);
+        // The promotion split appends after the alpha suffix, so the marker is a
+        // segment rather than a tail.
+        assert.match(`grey:7${alphaSlotSuffix(1)}:promoted`, ALPHA_SLOT_KEY);
+    });
+
+    it('does not match the plain batch slot the sun shadow pass asks for', () => {
+        // The retire sweep frees every matching slot the colour pass did not
+        // request this frame. The shadow pass requests `${colorKey}:${id}` and
+        // runs EARLIER in the frame, so matching that shape would free a clone
+        // another pass is drawing from.
+        assert.doesNotMatch('grey:7', ALPHA_SLOT_KEY);
+        assert.doesNotMatch('grey:7:promoted', ALPHA_SLOT_KEY);
+        assert.doesNotMatch('grey:7:remaining', ALPHA_SLOT_KEY);
+    });
+
+    it('is stateless across calls (a /g regex would alternate)', () => {
+        const key = `grey:7${alphaSlotSuffix(0)}`;
+        assert.match(key, ALPHA_SLOT_KEY);
+        assert.match(key, ALPHA_SLOT_KEY);
     });
 });

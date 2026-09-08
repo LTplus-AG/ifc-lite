@@ -507,6 +507,44 @@ test('PASS: a PR carrying the escape label, applied by an authority', () => {
   assert.match(r.output, /queue is bypassed deliberately/);
 });
 
+// ===================== PARTIAL_WORK requires intent, not just the word (hole fix)
+//
+// `Refs #N` quoted inside a fenced code block, an inline code span, or a
+// blockquote carries no authorial intent to reference a queue entry -- see
+// `scripts/lib/issue-refs.mjs`'s module header and `issue-refs.test.mjs` for
+// the unit-level coverage of `stripNonProse`. These are the end-to-end proof
+// that an otherwise-unrelated PR cannot buy a PARTIAL_WORK pass by quoting a
+// `ready` issue number where it carries no intent.
+
+test('FAIL: Refs #N inside a fenced code block is not a real reference', () => {
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'This PR fixes an unrelated typo in the README\n\n```\nRefs #3525\n```\n',
+      refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 1, r.output);
+  assert.match(r.output, /NO_LINKED_ISSUE/);
+  assert.doesNotMatch(r.output, /PARTIAL_WORK/);
+});
+
+test('PASS: a genuine Refs #N on the very next line still passes the same PR', () => {
+  // The fix must not be so strict that it also eats an honest reference
+  // sitting right next to the quoted/fenced text it is meant to ignore.
+  const r = run(
+    prPayload({
+      issues: [],
+      body: 'This PR fixes an unrelated typo in the README\n\n```\nsome unrelated log line\n```\n\nRefs #3525',
+      refIssues: { 3525: issue(3525, [[READY, MAINTAINER]]) },
+    }),
+    ENFORCING,
+  );
+  assert.equal(r.code, 0, r.output);
+  assert.match(r.output, /PARTIAL_WORK: references #3525/);
+});
+
 test("PASS: the maintainer's own PR, closing nothing and carrying no label", () => {
   const r = run(prPayload({ author: MAINTAINER, issues: [] }), ENFORCING);
   assert.equal(r.code, 0, r.output);

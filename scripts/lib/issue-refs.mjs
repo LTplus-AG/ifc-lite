@@ -35,15 +35,75 @@
  * closing set: `Refs`, `References`, `Part of`, `Towards` (all case
  * insensitive). Anything using `Closes`/`Fixes`/`Resolves` is already read
  * from `closingIssuesReferences` and never reaches this module.
+ *
+ * A MATCH REQUIRES INTENT, NOT JUST THE WORD. A body regex over free text
+ * finds `Refs #12` wherever the four letters happen to sit -- inside a
+ * fenced code block quoting someone else's commit message, inside an inline
+ * code span, inside a `>` quoted reply, or as an ordinary verb ("this
+ * function refs #12 in a loop"). None of those carry the author's intent to
+ * name a queue entry, and because this module can only WIDEN a fail into a
+ * pass (see above), a match with no intent behind it is not a conservative
+ * false positive -- it is a live bypass of the entire queue gate for ANY PR
+ * that happens to quote a `ready` issue number in a code sample or a reply.
+ * `stripNonProse` removes the three container shapes that are never intent
+ * (fence / span / quote) and `REF_KEYWORD_RE` then requires the keyword to
+ * START its line (optionally after a list marker), which is how every real
+ * `Refs #N` in this repo is actually written and which also rejects the
+ * mid-sentence verb case without a second special rule for it.
+ *
+ * NOT A MARKDOWN PARSER. This is a scoped pre-pass, matching the gate's own
+ * convention of staying dependency-light: it recognises exactly the three
+ * shapes above by their line-level markers, not the full CommonMark grammar
+ * (a markdown link's display text, for instance, is left alone -- narrower
+ * scope than "ignore everything that isn't plain prose" but enough to close
+ * the confirmed hole without a new dependency).
  */
 
 /**
- * Matches `Refs #12`, `References #12`, `Part of #12`, `Towards #12` (any
- * case, with or without a colon). The leading `(?:^|[^\w#])` stops `Prefs #12`
- * or a literal `##12` from matching the tail of an unrelated word or a
- * doubled `#`.
+ * Strips the three markdown container shapes that never carry authorial
+ * intent for a reference, so `REF_KEYWORD_RE` never sees inside them:
+ *
+ *  - fenced code blocks, ``` or ~~~, across lines
+ *  - inline code spans, `single backticks`
+ *  - blockquote lines, optional leading whitespace then `>`
+ *
+ * Replaces stripped text with spaces (fences/spans) or blanks out the whole
+ * line (blockquotes) rather than deleting it, so line boundaries -- which
+ * `REF_KEYWORD_RE`'s `^` anchor depends on -- are preserved exactly; nothing
+ * downstream of a strip can accidentally glue two lines into one that now
+ * starts with a keyword it never did.
+ *
+ * @param {string} body
+ * @returns {string}
  */
-export const REF_KEYWORD_RE = /(?:^|[^\w#])(?:refs?|references?|part of|towards?)[:\s]+#(\d+)/gi;
+function stripNonProse(body) {
+  // Fenced code blocks first: a ``` or ~~~ fence, opened at the start of a
+  // line (optionally indented, as a list-nested fence is), closed by a
+  // matching fence line or end of string. Multiline, so the fence markers
+  // themselves must anchor per-line, not per-string.
+  let out = body.replace(/^([ \t]*)(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1\2[ \t]*$/gm, (m) =>
+    m.replace(/[^\n]/g, ' '),
+  );
+  // Inline code spans: `...` on a single line. Markdown inline code never
+  // spans a blank line, and stopping at `\n` keeps this from ever eating a
+  // later, unrelated line if a stray unmatched backtick appears.
+  out = out.replace(/`[^`\n]*`/g, (m) => ' '.repeat(m.length));
+  // Blockquote lines: blank the whole line when its first non-whitespace
+  // character is `>`, so a quoted `Refs #12` -- including a quoted reply
+  // that itself contains a fenced block -- never reaches the keyword regex.
+  out = out.replace(/^[ \t]*>.*$/gm, (m) => ' '.repeat(m.length));
+  return out;
+}
+
+/**
+ * Matches `Refs #12`, `References #12`, `Part of #12`, `Towards #12` (any
+ * case, with or without a colon), only where the keyword STARTS its line --
+ * optionally after a list marker (`- `, `* `, `+ `, `1. `, `1) `) -- which is
+ * how a real reference is actually written in a PR body and which also
+ * rejects the "refs" used as an ordinary verb mid-sentence.
+ */
+export const REF_KEYWORD_RE =
+  /^[ \t]*(?:[-*+]\s+|\d+[.)]\s+)?(?:refs?|references?|part of|towards?)[:\s]+#(\d+)/gim;
 
 /**
  * The distinct issue numbers a PR body names with a non-closing keyword, in
@@ -51,16 +111,22 @@ export const REF_KEYWORD_RE = /(?:^|[^\w#])(?:refs?|references?|part of|towards?
  * references", not a gate refusal -- the field is advisory input to a WIDENING
  * check, not evidence a missing read must fail closed over.
  *
+ * Runs `stripNonProse` first so a fenced code block, inline code span, or
+ * blockquoted line can never supply a match -- see the module header for why
+ * a match with no authorial intent behind it is a live bypass, not a
+ * harmless false positive.
+ *
  * @param {unknown} body
  * @returns {number[]}
  */
 export function extractRefIssueNumbers(body) {
   if (typeof body !== 'string' || body === '') return [];
+  const prose = stripNonProse(body);
   const seen = new Set();
   const out = [];
   const re = new RegExp(REF_KEYWORD_RE.source, REF_KEYWORD_RE.flags);
   let m;
-  while ((m = re.exec(body)) !== null) {
+  while ((m = re.exec(prose)) !== null) {
     const n = Number(m[1]);
     if (Number.isInteger(n) && n > 0 && !seen.has(n)) {
       seen.add(n);

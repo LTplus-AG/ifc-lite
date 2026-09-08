@@ -23,13 +23,22 @@ import {
 
 // ------------------------------------------------------- extractRefIssueNumbers
 
-test('extractRefIssueNumbers: matches Refs, References, Part of, Towards, any case', () => {
-  const body = 'Refs #1. references #2. PART OF #3. towards #4. REF #5.';
+test('extractRefIssueNumbers: matches Refs, References, Part of, Towards, any case, one per line', () => {
+  // Each on its own line, which is how these actually appear in a PR body --
+  // the keyword must START its line (see the module header); a real body
+  // does not run five of these together in one sentence.
+  const body = 'Refs #1.\nreferences #2.\nPART OF #3.\ntowards #4.\nREF #5.';
   assert.deepEqual(extractRefIssueNumbers(body), [1, 2, 3, 4, 5]);
 });
 
 test('extractRefIssueNumbers: a colon after the keyword is accepted', () => {
   assert.deepEqual(extractRefIssueNumbers('Refs: #7'), [7]);
+});
+
+test('extractRefIssueNumbers: after a list marker (-, *, +, 1., 1)) is accepted', () => {
+  assert.deepEqual(extractRefIssueNumbers('- Refs #1\n* References #2\n+ Part of #3\n1. Towards #4\n2) Refs #5'), [
+    1, 2, 3, 4, 5,
+  ]);
 });
 
 test('extractRefIssueNumbers: does NOT match Closes/Fixes/Resolves', () => {
@@ -43,7 +52,7 @@ test('extractRefIssueNumbers: a doubled # or a word ending in the keyword does n
 });
 
 test('extractRefIssueNumbers: de-duplicates and preserves first-seen order', () => {
-  assert.deepEqual(extractRefIssueNumbers('Refs #9. Later, Refs #3. Also Refs #9 again.'), [9, 3]);
+  assert.deepEqual(extractRefIssueNumbers('Refs #9.\nRefs #3.\nRefs #9 again.'), [9, 3]);
 });
 
 test('extractRefIssueNumbers: a non-closing sentence naming Closes inside it still does not match', () => {
@@ -51,7 +60,50 @@ test('extractRefIssueNumbers: a non-closing sentence naming Closes inside it sti
   // scanner having no notion of negation. This regex is not that scanner and
   // is never consulted for the closing signal, but it must not accidentally
   // start matching "close" as if it were "refs" either.
-  assert.deepEqual(extractRefIssueNumbers('This does not close #2934, only refs #10'), [10]);
+  assert.deepEqual(extractRefIssueNumbers('This does not close #2934.\nRefs #10'), [10]);
+});
+
+test('extractRefIssueNumbers: "refs" used as an ordinary verb mid-sentence does not match', () => {
+  // The prose case: the word appears, but not as a line-leading keyword, so
+  // it carries no intent to reference a queue entry. See the module header.
+  assert.deepEqual(extractRefIssueNumbers('this function refs #12 in a loop'), []);
+});
+
+test('extractRefIssueNumbers: a fenced code block is not scanned', () => {
+  assert.deepEqual(extractRefIssueNumbers('This PR fixes a typo.\n\n```\nRefs #12\n```\n'), []);
+});
+
+test('extractRefIssueNumbers: a ~~~ fence and an indented fence are also stripped', () => {
+  assert.deepEqual(extractRefIssueNumbers('~~~\nRefs #12\n~~~'), []);
+  assert.deepEqual(extractRefIssueNumbers('  ```\n  Refs #12\n  ```'), []);
+});
+
+test('extractRefIssueNumbers: an inline code span is not scanned', () => {
+  assert.deepEqual(extractRefIssueNumbers('See the literal text `Refs #12` in the log output.'), []);
+});
+
+test('extractRefIssueNumbers: a blockquoted line is not scanned', () => {
+  assert.deepEqual(extractRefIssueNumbers('> Refs #12\n> was someone else\'s comment'), []);
+});
+
+test('extractRefIssueNumbers: stripping a fence/span/quote does not eat a real reference on another line', () => {
+  const body = [
+    'This PR does the actual work.',
+    '',
+    '```',
+    'Refs #999 -- an example from someone else\'s commit',
+    '```',
+    '',
+    '> quoting a reviewer who wrote Refs #888',
+    '',
+    'Refs #12',
+  ].join('\n');
+  assert.deepEqual(extractRefIssueNumbers(body), [12]);
+});
+
+test('extractRefIssueNumbers: the confirmed hole -- an unrelated PR quoting a ready issue in a code block', () => {
+  const body = "This PR fixes an unrelated typo in the README\n\n```\nRefs #3525\n```\n";
+  assert.deepEqual(extractRefIssueNumbers(body), []);
 });
 
 test('extractRefIssueNumbers: absent, non-string, or empty body is simply no references', () => {

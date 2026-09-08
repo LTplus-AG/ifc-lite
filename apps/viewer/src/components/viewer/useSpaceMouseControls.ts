@@ -64,11 +64,22 @@ export function useSpaceMouseControls(params: UseSpaceMouseControlsParams): void
     let frameId: number | null = null;
     let lastFrameTime = 0;
 
-    // Same behaviour as the keyboard 'F' shortcut.
+    // Same behaviour as the keyboard 'F' shortcut — and, like it, delegates to
+    // `cameraCallbacks.frameSelection` rather than reimplementing framing
+    // from `selectedEntityIdRef` alone. See useKeyboardControls.ts's 'F'
+    // handler for why: `frameSelection` unions the full multi-selection set
+    // and resolves a geometry-less assembly to its aggregated parts (#1133),
+    // neither of which a local `getEntityBounds` lookup does.
     const fitView = () => {
-      const selectedId = selectedEntityIdRef.current;
-      if (selectedId !== null) {
-        const bounds = getEntityBounds(geometryRef.current, selectedId);
+      const state = useViewerStore.getState();
+      const hasSelection = state.selectedEntityIds.size > 0 || selectedEntityIdRef.current !== null;
+      if (hasSelection && state.cameraCallbacks.frameSelection) {
+        state.cameraCallbacks.frameSelection();
+        renderer.requestRender();
+        return;
+      }
+      if (selectedEntityIdRef.current !== null) {
+        const bounds = getEntityBounds(geometryRef.current, selectedEntityIdRef.current);
         if (bounds) {
           void camera.frameBounds(bounds.min, bounds.max, 300);
           renderer.requestRender();

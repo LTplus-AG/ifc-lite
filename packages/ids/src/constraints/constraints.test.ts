@@ -51,6 +51,21 @@ describe('matchConstraint — simpleValue', () => {
     expect(matchConstraint(sv('42'), '42.0000005')).toBe(true); // within tolerance
   });
 
+  it('scales the numeric tolerance with the magnitude of the IDS value', () => {
+    // Every other numeric fixture here has |value| <= 42 and a delta of 5e-7,
+    // so a FLAT 1e-6 passes all of them and the relative term
+    // `1e-6 * (1 + |castValue|)` in numericEpsilon is unexercised. At 1e6 the
+    // two differ by six orders of magnitude: relative gives ~1.0, flat gives
+    // 1e-6. This is the real case — a length in millimetres round-tripped
+    // through text loses more than 1e-6 absolute.
+    expect(matchConstraint(sv('1000000'), 1000000.5)).toBe(true);
+    // ...and the tolerance must stay a tolerance: still bounded, not open.
+    expect(matchConstraint(sv('1000000'), 1000002)).toBe(false);
+    // The scaling is relative, so a small value keeps a small window: 0.5 is
+    // nowhere near 1, even though 0.5 was accepted as slack at 1e6 above.
+    expect(matchConstraint(sv('1'), 1.5)).toBe(false);
+  });
+
   it('matches boolean true (strict lowercase per IDS spec)', () => {
     expect(matchConstraint(sv('true'), true)).toBe(true);
     // Numeric `1` / `0` are NOT valid boolean literals per IDS 1.0.
@@ -322,6 +337,187 @@ describe('matchConstraint — bounds', () => {
   it('no bounds specified accepts any number', () => {
     expect(matchConstraint(bounds({}), 999)).toBe(true);
     expect(matchConstraint(bounds({}), -999)).toBe(true);
+  });
+});
+
+// ============================================================================
+// matchConstraint — bounds: totalDigits / fractionDigits
+//
+// Regression coverage: an `xs:restriction` carrying ONLY `totalDigits`
+// and/or `fractionDigits` (no min/max/enumeration/pattern) used to fall
+// through the parser to an empty `enumeration` constraint, which fails
+// EVERY value unconditionally — a spec-conforming value was reported
+// non-compliant (false FAIL on 100% of inputs).
+// ============================================================================
+
+describe('matchConstraint — bounds: fractionDigits / totalDigits', () => {
+  const bounds = (
+    opts: Partial<IDSBoundsConstraint>
+  ): IDSBoundsConstraint => ({
+    type: 'bounds',
+    ...opts,
+  });
+
+  it('fractionDigits — passes a value at or under the limit', () => {
+    const c = bounds({ fractionDigits: 2 });
+    expect(matchConstraint(c, '0.25')).toBe(true);
+    expect(matchConstraint(c, '0.2')).toBe(true);
+    expect(matchConstraint(c, '5')).toBe(true);
+  });
+
+  it('fractionDigits — fails a value with more fraction digits than the limit', () => {
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), '0.256')).toBe(false);
+  });
+
+  it('fractionDigits — trailing zeros are not significant', () => {
+    // "1.4500" has 2 significant fraction digits (trailing zeros drop).
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), '1.4500')).toBe(true);
+  });
+
+  it('totalDigits — passes a value at or under the limit', () => {
+    const c = bounds({ totalDigits: 4 });
+    expect(matchConstraint(c, '12.34')).toBe(true);
+    expect(matchConstraint(c, '0.0025')).toBe(true);
+  });
+
+  it('totalDigits — fails a value with more significant digits than the limit', () => {
+    expect(matchConstraint(bounds({ totalDigits: 4 }), '123.45')).toBe(false);
+  });
+
+  it('totalDigits — leading zeros in the integer part are not significant', () => {
+    expect(matchConstraint(bounds({ totalDigits: 2 }), '007')).toBe(true);
+  });
+
+  // XSD §4.3.11/§4.3.12: value = i × 10⁻ⁿ. `fractionDigits` is `n` (leading
+  // fraction zeros fix the magnitude, so they DO count); `totalDigits` is
+  // the digit count of `i` (leading zeros — integer part AND fraction,
+  // before the first non-zero digit — are absorbed into 10⁻ⁿ and do
+  // NOT count). The two facets disagree on a value like 0.0025: regression
+  // coverage for a totalDigits miscount that conflated the two rules.
+  it('totalDigits vs fractionDigits count leading fraction zeros differently', () => {
+    const cases: Array<[string, number, number]> = [
+      ['0.0025', 2, 4], // 0.0025 = 25 × 10⁻⁴: totalDigits 2, fractionDigits 4
+      ['0.250', 2, 2], // trailing fraction zero drops from both
+      ['100.5', 4, 1], // integer digits count fully toward totalDigits
+      ['1000', 4, 0], // trailing zeros in the INTEGER part stay significant
+      ['7', 1, 0],
+      ['0', 1, 0],
+    ];
+    for (const [value, expectedTotal, expectedFraction] of cases) {
+      // At the exact count, the facet passes; one below it, it fails.
+      expect(matchConstraint(bounds({ totalDigits: expectedTotal }), value)).toBe(true);
+      expect(matchConstraint(bounds({ totalDigits: expectedTotal - 1 }), value)).toBe(
+        false
+      );
+      expect(matchConstraint(bounds({ fractionDigits: expectedFraction }), value)).toBe(
+        true
+      );
+      if (expectedFraction > 0) {
+        expect(
+          matchConstraint(bounds({ fractionDigits: expectedFraction - 1 }), value)
+        ).toBe(false);
+      }
+    }
+  });
+
+  it('totalDigits — 0.0025 against progressively tighter limits (regression: a prior miscount reported this value as having 4 total digits, not 2)', () => {
+    expect(matchConstraint(bounds({ totalDigits: 3 }), '0.0025')).toBe(true);
+    expect(matchConstraint(bounds({ totalDigits: 2 }), '0.0025')).toBe(true);
+    expect(matchConstraint(bounds({ totalDigits: 1 }), '0.0025')).toBe(false);
+  });
+
+  it('combined totalDigits + fractionDigits', () => {
+    const c = bounds({ totalDigits: 5, fractionDigits: 2 });
+    expect(matchConstraint(c, '123.45')).toBe(true);
+    expect(matchConstraint(c, '123.456')).toBe(false); // exceeds fractionDigits
+    expect(matchConstraint(c, '12345.6')).toBe(false); // exceeds totalDigits
+  });
+
+  it('rejects a non-numeric actual value', () => {
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), 'abc')).toBe(false);
+  });
+
+  it('works against a number actual value, including scientific-notation magnitudes', () => {
+    expect(matchConstraint(bounds({ fractionDigits: 2 }), 0.25)).toBe(true);
+    expect(matchConstraint(bounds({ fractionDigits: 7 }), 1e-7)).toBe(true);
+    expect(matchConstraint(bounds({ fractionDigits: 6 }), 1e-7)).toBe(false);
+  });
+});
+
+// ============================================================================
+// matchConstraint — bounds (string-length facets: xs:length / xs:minLength /
+// xs:maxLength)
+// ============================================================================
+
+describe('matchConstraint — bounds (length facets)', () => {
+  const bounds = (
+    opts: Partial<IDSBoundsConstraint>
+  ): IDSBoundsConstraint => ({
+    type: 'bounds',
+    ...opts,
+  });
+
+  describe('length (exact)', () => {
+    const c = bounds({ length: 4 });
+
+    it('passes when the string length exactly matches', () => {
+      expect(matchConstraint(c, 'abcd')).toBe(true);
+    });
+
+    it('fails when the string is one character shorter', () => {
+      expect(matchConstraint(c, 'abc')).toBe(false);
+    });
+
+    it('fails when the string is one character longer', () => {
+      expect(matchConstraint(c, 'abcde')).toBe(false);
+    });
+  });
+
+  describe('minLength', () => {
+    const c = bounds({ minLength: 3 });
+
+    it('passes exactly at the boundary', () => {
+      expect(matchConstraint(c, 'abc')).toBe(true);
+    });
+
+    it('fails one character below the boundary', () => {
+      expect(matchConstraint(c, 'ab')).toBe(false);
+    });
+
+    it('passes above the boundary', () => {
+      expect(matchConstraint(c, 'abcd')).toBe(true);
+    });
+  });
+
+  describe('maxLength', () => {
+    const c = bounds({ maxLength: 5 });
+
+    it('passes exactly at the boundary', () => {
+      expect(matchConstraint(c, 'abcde')).toBe(true);
+    });
+
+    it('fails one character above the boundary', () => {
+      expect(matchConstraint(c, 'abcdef')).toBe(false);
+    });
+
+    it('passes below the boundary', () => {
+      expect(matchConstraint(c, 'abcd')).toBe(true);
+    });
+  });
+
+  it('minLength and maxLength combined form a range', () => {
+    const c = bounds({ minLength: 2, maxLength: 3 });
+    expect(matchConstraint(c, 'a')).toBe(false);
+    expect(matchConstraint(c, 'ab')).toBe(true);
+    expect(matchConstraint(c, 'abc')).toBe(true);
+    expect(matchConstraint(c, 'abcd')).toBe(false);
+  });
+
+  it('length is evaluated against the string form of a numeric value', () => {
+    // actualValue may arrive as a number (e.g. a numeric IFC attribute);
+    // the length facets still operate on its textual representation.
+    expect(matchConstraint(bounds({ length: 3 }), 123)).toBe(true);
+    expect(matchConstraint(bounds({ length: 3 }), 12)).toBe(false);
   });
 });
 

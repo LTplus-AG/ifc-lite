@@ -121,6 +121,26 @@ function pushContourLines(
 
   const m = profile.transform;
 
+  const extrusion: Vec3 = {
+    x: profile.extrusionDir[0] * profile.extrusionDepth,
+    y: profile.extrusionDir[1] * profile.extrusionDepth,
+    z: profile.extrusionDir[2] * profile.extrusionDepth,
+  };
+
+  // VIEW depth (issue #2639, see projection-bands.ts) of the NEAREST
+  // extrusion extent at a contour point, clamped at the cut plane. Nearest
+  // extent rather than the base contour's own depth: a vertical extrusion's
+  // footprint outline coincides with its whole prism, and base-face depth
+  // would let a slab's own raster hide its own outline.
+  const nearestViewDepth = (w: Vec3): number => {
+    const base = -signedDepth(w, plane);
+    const top = -signedDepth(
+      { x: w.x + extrusion.x, y: w.y + extrusion.y, z: w.z + extrusion.z },
+      plane,
+    );
+    return Math.max(0, Math.min(base, top));
+  };
+
   for (let i = 0; i < n; i++) {
     const j = (i + 1) % n;
 
@@ -147,7 +167,8 @@ function pushContourLines(
       entityId: profile.expressId,
       ifcType: profile.ifcType,
       modelIndex: profile.modelIndex,
-      depth: depthAlong(w0, w1, plane),
+      depth: nearestViewDepth(w0),
+      depthEnd: nearestViewDepth(w1),
     });
   }
 }
@@ -234,13 +255,4 @@ function getProfileDepthRange(
 
 function axisIndex(axis: 'x' | 'y' | 'z'): 0 | 1 | 2 {
   return axis === 'x' ? 0 : axis === 'y' ? 1 : 2;
-}
-
-/**
- * Average flip-adjusted depth of a projected edge along the viewing direction.
- * Smaller depth means nearer the viewer, matching the depth-buffer convention
- * in HiddenLineClassifier.
- */
-function depthAlong(w0: Vec3, w1: Vec3, plane: SectionPlaneConfig): number {
-  return (signedDepth(w0, plane) + signedDepth(w1, plane)) / 2;
 }

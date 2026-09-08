@@ -9,6 +9,7 @@ import { extractProjectUnits, type EntityIndex, type EntityRef, type ProjectUnit
 import { QuantityType } from '@ifc-lite/data';
 import type { ColumnDefinition } from '@ifc-lite/lists';
 import { resolveListColumnUnits } from './list-column-units.js';
+import { zoneVolumeSiScale } from './zone-volume-scale.js';
 
 // Minimal IFC STEP fixtures — mirrors the `indexIfc` helper in display.test.ts
 // / project-units.parity.test.ts (issue #1573).
@@ -57,6 +58,25 @@ DATA;
 #8=IFCSIUNIT(*,.TIMEUNIT.,$,.SECOND.);
 #9=IFCDERIVEDUNITELEMENT(#8,-1);
 #10=IFCDERIVEDUNIT((#7,#9),.VOLUMETRICFLOWRATEUNIT.,$,$);
+ENDSEC;
+END-ISO-10303-21;
+`);
+
+// LENGTHUNIT in mm AND an explicit VOLUMEUNIT in CUBIC METRES (scale 1). The two
+// branches disagree here on purpose: declared gives 1, the LENGTHUNIT-cubed
+// fallback would give 1e-9, so an implementation that ignored the declaration
+// and always cubed the length unit fails rather than coincidentally passing.
+const MM_VOLUME_MODEL = unitsFromSource(`ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X3_ADD2'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0001projectaaaaaaaaaaa',$,'P',$,$,$,$,$,#2);
+#2=IFCUNITASSIGNMENT((#3,#4));
+#3=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#4=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
 ENDSEC;
 END-ISO-10303-21;
 `);
@@ -194,6 +214,58 @@ describe('resolveListColumnUnits (issue #1573 follow-up)', () => {
     assert.strictEqual(ftFirst.unitSymbol(0), 'ft');
     assert.strictEqual(ftFirst.convertCell(0, 1, 'ftModel'), 1); // identity: ft -> ft
     assert.ok(Math.abs((ftFirst.convertCell(0, 1000, 'mmModel') as number) - 3.280839895013123) < 1e-9); // 1000mm -> ft
+  });
+
+  it('converts an Area quantity column when the file declares no explicit AREAUNIT (falls back to LENGTHUNIT²)', () => {
+    // MM_MODEL declares only LENGTHUNIT (millimetre) — no explicit AREAUNIT.
+    // Per IFC convention (and `quantitySiScale`/`resolveMeasureScales`'s
+    // documented fallback), an undeclared AREAUNIT derives from the length
+    // unit SQUARED: 1,000,000 mm² is stored as the raw value 1e6 and must
+    // read back as 1 m².
+    const columns: ColumnDefinition[] = [
+      { id: 'area', source: 'quantity', psetName: 'Qto', propertyName: 'Area', quantityType: QuantityType.Area },
+    ];
+    const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
+    assert.strictEqual(resolver.unitSymbol(0), 'm²');
+    assert.ok(Math.abs((resolver.convertCell(0, 1_000_000, 'm1') as number) - 1) < 1e-9);
+  });
+
+  it('converts a Volume quantity column when the file declares no explicit VOLUMEUNIT (falls back to LENGTHUNIT³)', () => {
+    const columns: ColumnDefinition[] = [
+      { id: 'vol', source: 'quantity', psetName: 'Qto', propertyName: 'Volume', quantityType: QuantityType.Volume },
+    ];
+    const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
+    assert.strictEqual(resolver.unitSymbol(0), 'm³');
+    assert.ok(Math.abs((resolver.convertCell(0, 1_000_000_000, 'm1') as number) - 1) < 1e-9);
+  });
+
+  // Kills the mutation `zoneVolumeSiScale` -> `resolvedForUnitType(...)?.siScale ?? 1`,
+  // i.e. dropping the LENGTHUNIT-cubed fallback. The zone volume cell is produced
+  // by dividing a cubic-metre mesh volume by this scale, and read back by the
+  // resolver's own VOLUMEUNIT source unit. If the two disagree the cell is wrong
+  // by exactly the length factor cubed -- a 30 m3 zone in a millimetre model
+  // displayed as 3e-8 m3.
+  it('zoneVolumeSiScale agrees with the column resolver when no VOLUMEUNIT is declared', () => {
+    const scale = zoneVolumeSiScale(MM_MODEL);
+    assert.ok(Math.abs(scale - 1e-9) < 1e-18, `expected 1e-9, got ${scale}`);
+
+    // Round-trip: the adapter stores volumeM3 / scale, the resolver converts back.
+    const volumeM3 = 30;
+    const homeValue = volumeM3 / scale; // -> 3e10 mm3
+    const columns: ColumnDefinition[] = [
+      { id: 'vol', source: 'quantity', psetName: 'Qto', propertyName: 'Volume', quantityType: QuantityType.Volume },
+    ];
+    const resolver = resolveListColumnUnits(columns, new Map([['m1', MM_MODEL]]), {});
+    const shown = resolver.convertCell(0, homeValue, 'm1') as number;
+    assert.strictEqual(resolver.unitSymbol(0), 'm\u00b3');
+    assert.ok(Math.abs(shown - volumeM3) < 1e-6, `expected ~30 m3, got ${shown}`);
+  });
+
+  it('zoneVolumeSiScale prefers an explicitly declared VOLUMEUNIT over the fallback', () => {
+    const pu = MM_VOLUME_MODEL;
+    assert.notStrictEqual(pu.resolvedForUnitType('VOLUMEUNIT'), undefined);
+    // 1, not the 1e-9 the LENGTHUNIT-cubed fallback would produce for this model.
+    assert.strictEqual(zoneVolumeSiScale(pu), 1);
   });
 
   it('unitSymbol returns null for a non-convertible column', () => {

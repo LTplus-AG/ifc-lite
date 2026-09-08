@@ -31,6 +31,7 @@ import {
   type MeshData,
   type SimplifiedElementMesh,
 } from '@ifc-lite/geometry';
+import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
@@ -198,7 +199,7 @@ export class DemeshSession {
     const meshes = await this.ensureMeshes();
     const byElement = new Map<number, number>();
     for (const m of meshes) {
-      if ((m.geometryClass ?? 0) !== 0) continue;
+      if (geometryClassOf(m) !== GEOM_CLASS_OCCURRENCE) continue;
       byElement.set(m.expressId, (byElement.get(m.expressId) ?? 0) + m.indices.length / 3);
     }
     return [...byElement.entries()]
@@ -235,6 +236,13 @@ export class DemeshSession {
       upconverted = true;
     }
 
+    // Deliberately BARE. This view exists to carry `applySimplifiedGeometry`'s
+    // representation edits and records no property or quantity mutation of any
+    // kind, so it has nothing to resolve a base for; wiring extractors here
+    // would buy a per-entity source walk for a lookup nothing performs. It is
+    // named in #2487 as a site with no extractors, and it is the one site that
+    // does not need them — the exporter supplies the quantity base for any view
+    // that turns out to need one.
     const view = new MutablePropertyView(null, 'default');
     const editor = new StoreEditor(store, view);
     const elements: SimplifiedElementGeometry[] = [...this.applied.values()].map((el) => ({

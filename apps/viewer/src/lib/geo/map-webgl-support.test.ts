@@ -10,7 +10,10 @@ import {
   takeMapWebglReportSlot,
   getMapWebglVerdict,
   isWebglContextCreationError,
+  isMapWebglInitFailureMessage,
   describeMapInitFailure,
+  watchContextCreationStatus,
+  reconstructMapInitFailure,
   resetMapWebglSupportForTests,
 } from './map-webgl-support.js';
 
@@ -46,12 +49,47 @@ const GPU_PROCESS_CONTENTION = JSON.stringify({
 /** MapLibre's other shape: no detail object, so it throws the bare message. */
 const BARE_MESSAGE = 'Failed to initialize WebGL';
 
+/**
+ * maplibre-gl v6's replacement for all of the above.
+ *
+ * v6 no longer throws: `_setupPainter` fires an `error` event carrying a
+ * `GPUInitializationError` and returns with `painter` undefined. The
+ * diagnostics moved off the message and onto real properties, and the class is
+ * exported, so the shape is stable to construct here.
+ */
+function gpuInitializationError(statusMessage: string | null) {
+  const err = new Error(
+    'WebGL2 is required to display this map. We are sorry, but it seems that your '
+    + 'browser does not support WebGL2, a technology for rendering 3D graphics on the web.',
+  ) as Error & { statusMessage: string | null };
+  err.name = 'GPUInitializationError';
+  err.statusMessage = statusMessage;
+  return err;
+}
+
 /** A canvas whose `getContext` always refuses — the unsupported device. */
 function refusingCanvas(calls: string[]) {
   return {
     getContext(type: string) {
       calls.push(type);
       return null;
+    },
+  };
+}
+
+/**
+ * A device that serves WebGL1 but not WebGL2.
+ *
+ * This is the case the v6 bump turns from "works" into "cannot work": v6
+ * dropped WebGL1 entirely, so a probe that accepted a `webgl` context would
+ * report supported and then MapLibre would refuse to start.
+ */
+function webgl1OnlyCanvas(calls: string[]) {
+  return {
+    getContext(type: string) {
+      calls.push(type);
+      if (type !== 'webgl') return null;
+      return { getExtension: () => null };
     },
   };
 }
@@ -89,6 +127,34 @@ describe('isWebglContextCreationError', () => {
     assert.equal(isWebglContextCreationError(new Error(BARE_MESSAGE)), true);
   });
 
+  it('recognises the v6 GPUInitializationError by name alone', () => {
+    // The shape that actually reaches us on the pinned version. Matching on
+    // `.name` and not on `instanceof` keeps maplibre-gl out of this module.
+    //
+    // The message here is deliberately NOT MapLibre's: with the real wording
+    // the message branch would match too and this would pass even with the
+    // name check deleted. A reworded message in some future 6.x is exactly the
+    // drift the name is here to survive.
+    const renamed = new Error('the GPU said no') as Error & { statusMessage: string | null };
+    renamed.name = 'GPUInitializationError';
+    renamed.statusMessage = null;
+    assert.equal(isWebglContextCreationError(renamed), true);
+  });
+
+  it('recognises the real v6 error as shipped', () => {
+    assert.equal(isWebglContextCreationError(gpuInitializationError(null)), true);
+  });
+
+  it('recognises the v6 wording even if the name is lost', () => {
+    // A re-thrown or structured-cloned error can arrive with `name` reset to
+    // 'Error' while the message survives.
+    const stripped = new Error(
+      'WebGL2 is required to display this map. We are sorry, but it seems that your '
+      + 'browser does not support WebGL2, a technology for rendering 3D graphics on the web.',
+    );
+    assert.equal(isWebglContextCreationError(stripped), true);
+  });
+
   it('does not over-match an unrelated error', () => {
     // Guards the narrowness that keeps a real map bug from being swallowed.
     assert.equal(isWebglContextCreationError(new Error('boom')), false);
@@ -96,6 +162,65 @@ describe('isWebglContextCreationError', () => {
     assert.equal(isWebglContextCreationError(null), false);
     assert.equal(isWebglContextCreationError(undefined), false);
     assert.equal(isWebglContextCreationError({}), false);
+  });
+});
+
+describe('isMapWebglInitFailureMessage', () => {
+  // The narrower predicate `analytics-scrub.ts` DROPS on. Its boundaries are a
+  // decision, not an implementation detail: everything it returns true for is
+  // deleted before it leaves the browser, so both directions are pinned here.
+  it('recognises exactly the shapes MapLibre throws', () => {
+    assert.equal(isMapWebglInitFailureMessage(MISSING_EXTENSION), true);
+    assert.equal(isMapWebglInitFailureMessage(GPU_PROCESS_CONTENTION), true);
+    assert.equal(isMapWebglInitFailureMessage(BARE_MESSAGE), true);
+  });
+
+  it('does NOT claim the v6 wording, which stays captured and downgraded', () => {
+    // Deliberate asymmetry with `isWebglContextCreationError`: #2354 keeps the
+    // v6 family (one fingerprint, `warning` severity) rather than deleting it,
+    // so widening the drop set to cover it would undo that decision.
+    assert.equal(
+      isMapWebglInitFailureMessage('WebGL2 is required to display this map. The map could not start.'),
+      false,
+    );
+  });
+
+  it('does not fire on the token or the wording quoted inside another message (#2402)', () => {
+    // Regression for #2402: the drop path's bare `"type": "webglcontextcreation
+    // error"` substring test deleted an actionable upload failure that merely
+    // quoted the driver's payload. Same hazard #1914 anchored the sibling arm
+    // for, and the one #2354 fixed three times over in the classify path.
+    assert.equal(
+      isMapWebglInitFailureMessage(
+        'Upload failed: driver shim logged {"type":"webglcontextcreationerror"} while retrying',
+      ),
+      false,
+    );
+    assert.equal(
+      isMapWebglInitFailureMessage('SectionOverlay: Failed to initialize WebGL'),
+      false,
+    );
+    assert.equal(
+      isMapWebglInitFailureMessage('Failed to initialize WebGL renderer for the section overlay'),
+      false,
+    );
+    // Structural, not "is JSON mentioning the token": the token must BE the
+    // value of `type`, and `message` must be MapLibre's own wording.
+    assert.equal(
+      isMapWebglInitFailureMessage(JSON.stringify({
+        type: 'upload_retry',
+        message: 'Failed to initialize WebGL',
+        note: '"type": "webglcontextcreationerror"',
+      })),
+      false,
+    );
+    assert.equal(
+      isMapWebglInitFailureMessage(JSON.stringify({
+        type: 'webglcontextcreationerror',
+        message: 'Failed to initialize WebGL renderer for the section overlay',
+      })),
+      false,
+    );
   });
 });
 
@@ -118,6 +243,92 @@ describe('describeMapInitFailure', () => {
   it('survives a message that starts like JSON but is not', () => {
     assert.deepEqual(describeMapInitFailure(new Error('{not json')), {});
   });
+
+  it('reads the driver status off the v6 error property', () => {
+    // v6 moved the diagnostics from the JSON message onto the error itself.
+    // Losing this would turn every v6 map failure into one unactionable bucket.
+    const detail = describeMapInitFailure(
+      gpuInitializationError('OES_packed_depth_stencil support is required.'),
+    );
+    assert.equal(detail.status, 'OES_packed_depth_stencil support is required.');
+    assert.equal(detail.eventType, 'webglcontextcreationerror');
+  });
+
+  it('returns nothing extractable when v6 had no creation event to quote', () => {
+    // `statusMessage` is null unless a `webglcontextcreationerror` supplied one.
+    assert.deepEqual(describeMapInitFailure(gpuInitializationError(null)), {});
+  });
+});
+
+describe('watchContextCreationStatus', () => {
+  /** Minimal stand-in for the container: records how the listener was bound. */
+  function fakeContainer() {
+    const bound: Array<{ type: string; capture: boolean; fn: (ev: Event) => void }> = [];
+    return {
+      bound,
+      addEventListener(type: string, fn: (ev: Event) => void, capture: boolean) {
+        bound.push({ type, capture, fn });
+      },
+      removeEventListener(type: string, fn: (ev: Event) => void, capture: boolean) {
+        const i = bound.findIndex(b => b.type === type && b.fn === fn && b.capture === capture);
+        if (i >= 0) bound.splice(i, 1);
+      },
+    };
+  }
+
+  it('binds on the CAPTURE phase, because the event does not bubble', () => {
+    // The whole mechanism rests on this. `webglcontextcreationerror` is
+    // dispatched on the canvas with `bubbles: false`, so a listener on the
+    // container is only ever reached on the way down to the target. Bound on
+    // the bubble phase this would silently never fire.
+    const container = fakeContainer();
+    watchContextCreationStatus(container);
+    assert.equal(container.bound.length, 1);
+    assert.equal(container.bound[0].type, 'webglcontextcreationerror');
+    assert.equal(container.bound[0].capture, true);
+  });
+
+  it('keeps the driver status the event carried', () => {
+    const container = fakeContainer();
+    const watch = watchContextCreationStatus(container);
+    assert.equal(watch.statusMessage(), null);
+    container.bound[0].fn({ statusMessage: 'OES_packed_depth_stencil support is required.' } as unknown as Event);
+    assert.equal(watch.statusMessage(), 'OES_packed_depth_stencil support is required.');
+  });
+
+  it('ignores an event with no usable status', () => {
+    const container = fakeContainer();
+    const watch = watchContextCreationStatus(container);
+    container.bound[0].fn({ statusMessage: '' } as unknown as Event);
+    container.bound[0].fn({} as unknown as Event);
+    assert.equal(watch.statusMessage(), null);
+  });
+
+  it('stop() unbinds, so a remount cannot stack listeners on the container', () => {
+    const container = fakeContainer();
+    const watch = watchContextCreationStatus(container);
+    watch.stop();
+    assert.equal(container.bound.length, 0);
+  });
+});
+
+describe('reconstructMapInitFailure', () => {
+  it('rebuilds an error the rest of the module recognises and can mine', () => {
+    // THE regression assertion for the reported gap: a bare `new Error(...)` on
+    // the no-painter path made `describeMapInitFailure` return nothing, so
+    // `webgl_status` was dropped and every v6 map failure looked identical.
+    const err = reconstructMapInitFailure('BindToCurrentSequence failed: .');
+    assert.equal(isWebglContextCreationError(err), true);
+    const detail = describeMapInitFailure(err);
+    assert.equal(detail.status, 'BindToCurrentSequence failed: .');
+    assert.equal(detail.eventType, 'webglcontextcreationerror');
+  });
+
+  it('is still recognisable when the driver said nothing', () => {
+    const err = reconstructMapInitFailure(null);
+    assert.equal(isWebglContextCreationError(err), true);
+    assert.deepEqual(describeMapInitFailure(err), {});
+  });
 });
 
 describe('probeMapWebglSupport', () => {
@@ -126,8 +337,8 @@ describe('probeMapWebglSupport', () => {
     const result = probeMapWebglSupport(() => refusingCanvas(calls));
     assert.equal(result.supported, false);
     assert.equal(result.reason, 'probe_no_context');
-    // MapLibre's own order: webgl2 first, then webgl.
-    assert.deepEqual(calls, ['webgl2', 'webgl']);
+    // v6 is WebGL2-only, so the probe asks for exactly one context type.
+    assert.deepEqual(calls, ['webgl2']);
   });
 
   it('reports supported and RELEASES the probe context', () => {
@@ -139,6 +350,18 @@ describe('probeMapWebglSupport', () => {
     assert.equal(result.supported, true);
     assert.deepEqual(calls, ['webgl2']);
     assert.equal(released.count, 1);
+  });
+
+  it('reports a WebGL1-only device as unsupported and never asks for webgl', () => {
+    // THE v6 regression assertion. Before the bump the probe fell back to
+    // `getContext('webgl')`, so this device passed and MapLibre v5 ran on it.
+    // v6 requires WebGL2, so accepting a WebGL1 context here would report
+    // "supported" and hand the user a map that cannot start.
+    const calls: string[] = [];
+    const result = probeMapWebglSupport(() => webgl1OnlyCanvas(calls));
+    assert.equal(result.supported, false);
+    assert.equal(result.reason, 'probe_no_context');
+    assert.deepEqual(calls, ['webgl2']);
   });
 
   it('treats a throwing getContext as a refusal rather than propagating', () => {
@@ -162,7 +385,7 @@ describe('probeMapWebglSupport', () => {
     const calls: string[] = [];
     const first = probeMapWebglSupport(() => refusingCanvas(calls));
     assert.equal(first.supported, false);
-    assert.deepEqual(calls, ['webgl2', 'webgl']);
+    assert.deepEqual(calls, ['webgl2']);
 
     for (let i = 0; i < 20; i++) {
       const again = probeMapWebglSupport(() => refusingCanvas(calls));
@@ -170,7 +393,7 @@ describe('probeMapWebglSupport', () => {
       assert.equal(again.reason, 'probe_no_context');
     }
     // Zero further getContext calls: the verdict is a property of the device.
-    assert.deepEqual(calls, ['webgl2', 'webgl']);
+    assert.deepEqual(calls, ['webgl2']);
   });
 
   it('latches success too, so the probe costs one context per session', () => {

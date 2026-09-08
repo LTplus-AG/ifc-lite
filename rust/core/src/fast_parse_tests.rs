@@ -161,3 +161,90 @@ fn test_should_use_fast_path() {
     assert!(!should_use_fast_path("IFCWALL"));
     assert!(!should_use_fast_path("IFCEXTRUDEDAREASOLID"));
 }
+
+/// `extract_entity_type_name`'s own contract, next to the function.
+///
+/// Its only production caller is `legacy_aware_ifc_type_from_record`, and the
+/// cases below were exercised only from that caller's tests until now. If the
+/// caller is ever deleted or rerouted, the contract keeps its coverage here.
+///
+/// The spaced forms are the reason this matters: STEP permits whitespace around
+/// `=`, and buildingSMART's own `column-straight-rectangle-tessellation.ifc`
+/// writes `#71= IFCCOLUMN(` on all 26 of its entity lines. Untrimmed, that
+/// yielded `" IFCCOLUMN"` and matched no lookup.
+#[test]
+fn extract_entity_type_name_trims_and_rejects_empty() {
+    for (record, expected) in [
+        (&b"#12=IFCCOLUMN('g');"[..], Some("IFCCOLUMN")),
+        (&b"#12= IFCCOLUMN('g');"[..], Some("IFCCOLUMN")),
+        (&b"#12=\tIFCCOLUMN('g');"[..], Some("IFCCOLUMN")),
+        // Nothing between `=` and `(`: an empty name is None, not Some("").
+        (&b"#12=();"[..], None),
+        (&b"#12= (  );"[..], None),
+        // No `=` and no `(` are both None rather than a panic.
+        (&b"IFCCOLUMN('g');"[..], None),
+        (&b"#12=IFCCOLUMN"[..], None),
+        (&b""[..], None),
+    ] {
+        assert_eq!(
+            extract_entity_type_name(record),
+            expected,
+            "{:?}",
+            std::str::from_utf8(record)
+        );
+    }
+}
+
+/// `extract_first_entity_ref` and `extract_entity_refs_from_list` are the two
+/// `#<digits>` REFERENCE readers in this file (issue #3421, split from
+/// #3395 which fixed only the definition side). Before this fix both
+/// accumulated with `wrapping_mul`/`wrapping_add`, so a reference above
+/// `u32::MAX` wrapped onto a real low-numbered entity instead of being
+/// refused — the same defect #3395 fixed one hop earlier, in the reference
+/// readers rather than the definition scanner.
+///
+/// `4294967297` is `% 2^32 == 1`: an unfixed reader binds it to a real `#1`
+/// rather than merely erroring, which is the actual defect. `4294967295` is
+/// `u32::MAX` exactly and must still resolve (the bound is inclusive).
+#[test]
+fn extract_first_entity_ref_refuses_above_u32_max_and_resolves_at_the_boundary() {
+    // The defect value: would wrap to 1 without the bound.
+    assert_eq!(
+        extract_first_entity_ref(b"#77=IFCTRIANGULATEDFACESET(#4294967297,$);"),
+        None,
+        "a reference above u32::MAX must be refused, not aliased to #1"
+    );
+    // The inclusive boundary: u32::MAX itself must still resolve.
+    assert_eq!(
+        extract_first_entity_ref(b"#77=IFCTRIANGULATEDFACESET(#4294967295,$);"),
+        Some(u32::MAX)
+    );
+    // An ordinary reference is unaffected.
+    assert_eq!(
+        extract_first_entity_ref(b"#77=IFCTRIANGULATEDFACESET(#78,$);"),
+        Some(78)
+    );
+}
+
+#[test]
+fn extract_entity_refs_from_list_refuses_above_u32_max_and_resolves_at_the_boundary() {
+    // The oversized id is dropped, not aliased to #1 — it must not appear in
+    // the result at all, and the real #1 in the same list must not be
+    // duplicated by the dropped one wrapping onto it.
+    let ids = extract_entity_refs_from_list(b"(#1,#4294967297,#2)");
+    assert_eq!(
+        ids,
+        vec![1, 2],
+        "an out-of-range reference must be dropped, not wrapped onto #1"
+    );
+
+    // The inclusive boundary: u32::MAX itself must still resolve and appear.
+    let ids = extract_entity_refs_from_list(b"(#1,#4294967295,#2)");
+    assert_eq!(ids, vec![1, u32::MAX, 2]);
+}
+
+#[test]
+fn extract_entity_refs_from_list_hash_with_no_digits_does_not_panic() {
+    let ids = extract_entity_refs_from_list(b"(#,#2)");
+    assert_eq!(ids, vec![2]);
+}

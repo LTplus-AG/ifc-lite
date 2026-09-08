@@ -10,21 +10,19 @@
  * rather than pre-building all data upfront during initial parse.
  */
 
-import type { IfcEntity } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
 import {
     RelationshipType,
-    PropertyValueType,
-    QuantityType,
 } from '@ifc-lite/data';
 import type { PropertyValue } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
-import { QUANTITY_TYPE_MAP } from './columnar-parser-indexes.js';
-import { extractGeoreferencing as extractGeorefFromEntities, type GeoreferenceInfo } from './georef-extractor.js';
+import { readQuantitySet } from './quantity-collect.js';
+import { appendSetsFromSecondSource, setIdentityKey } from './property-set-merge.js';
+import type { GeoreferenceInfo } from './georef-extractor.js';
 
 // Re-export classification and material resolvers
-export { extractClassificationsOnDemand } from './classification-resolver.js';
-export type { ClassificationInfo } from './classification-resolver.js';
+export { extractClassificationsOnDemand, extractClassificationSystemsOnDemand } from './classification-resolver.js';
+export type { ClassificationInfo, ClassificationSystemNames } from './classification-resolver.js';
 
 export { extractMaterialsOnDemand, extractAllMaterialsOnDemand } from './material-resolver.js';
 export type { MaterialInfo, MaterialLayerInfo, MaterialProfileInfo, MaterialConstituentInfo } from './material-resolver.js';
@@ -65,7 +63,7 @@ export interface TypePropertyInfo {
 export interface TypeQuantityInfo {
     typeName: string;
     typeId: number;
-    quantities: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }>;
+    quantities: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }>;
 }
 
 /**
@@ -110,213 +108,18 @@ export interface MaterialPsetGroup {
 // ============================================================================
 // Property Value Parsing Helpers
 // ============================================================================
+//
+// Moved to ./property-value-parser.ts to stay under the module-size budget;
+// re-exported here so every existing import of this module keeps resolving.
 
-/**
- * Parse a property entity's value based on its IFC type.
- * Handles all 6 IfcProperty subtypes:
- * - IfcPropertySingleValue: direct value
- * - IfcPropertyEnumeratedValue: list of enum values → joined string
- * - IfcPropertyBoundedValue: upper/lower bounds → "value [min – max]"
- * - IfcPropertyListValue: list of values → joined string
- * - IfcPropertyTableValue: defining/defined value pairs → "Table(N rows)"
- * - IfcPropertyReferenceValue: entity reference → "Reference #ID"
- */
-export function parsePropertyValue(propEntity: IfcEntity): { type: number; value: PropertyValue; values?: string[]; dataType?: string } {
-    const attrs = propEntity.attributes || [];
-    const typeUpper = propEntity.type.toUpperCase();
+export {
+    parsePropertyValue,
+    extractNumericValue,
+    resolveComplexPropertyValue,
+    parsePropertyValueWithComplex,
+} from './property-value-parser.js';
+import { parsePropertyValueWithComplex } from './property-value-parser.js';
 
-    switch (typeUpper) {
-        case 'IFCPROPERTYENUMERATEDVALUE': {
-            // [Name, Description, EnumerationValues (list), EnumerationReference]
-            const enumValues = attrs[2];
-            if (Array.isArray(enumValues)) {
-                const values = enumValues.map(v => {
-                    if (Array.isArray(v) && v.length === 2) return String(v[1]); // Typed value
-                    return String(v);
-                }).filter(v => v !== 'null' && v !== 'undefined');
-                // Surface the raw value list separately so IDS facet
-                // checks can iterate "any matching value passes". The
-                // joined display string remains the primary `value`
-                // for visualisation/property-table consumers.
-                return { type: 0, value: values.join(', ') || null, values };
-            }
-            return { type: 0, value: null };
-        }
-
-        case 'IFCPROPERTYBOUNDEDVALUE': {
-            // [Name, Description, UpperBoundValue, LowerBoundValue, Unit, SetPointValue]
-            const upper = extractNumericValue(attrs[2]);
-            const lower = extractNumericValue(attrs[3]);
-            const setPoint = extractNumericValue(attrs[5]);
-            const displayValue = setPoint ?? upper ?? lower;
-            let display = displayValue != null ? String(displayValue) : '';
-            if (lower != null && upper != null) {
-                display += ` [${lower} – ${upper}]`;
-            }
-            // Surface every defined bound as a candidate value — IDS
-            // bounded-property checks pass when ANY of the bounds /
-            // setpoint matches the constraint, per upstream ifctester.
-            const candidates: string[] = [];
-            if (lower != null) candidates.push(String(lower));
-            if (upper != null && upper !== lower) candidates.push(String(upper));
-            if (setPoint != null && setPoint !== lower && setPoint !== upper) {
-                candidates.push(String(setPoint));
-            }
-            // Carry the IFC-declared measure tag so the IDS-side data
-            // type comparison and unit conversion both work.
-            const inferDataType = (attr: unknown): string | undefined => {
-                if (Array.isArray(attr) && attr.length === 2) {
-                    return String(attr[0]).toUpperCase();
-                }
-                return undefined;
-            };
-            const dataType =
-                inferDataType(attrs[5]) ||
-                inferDataType(attrs[2]) ||
-                inferDataType(attrs[3]);
-            return {
-                type: displayValue != null ? 1 : 0,
-                value: display || null,
-                ...(candidates.length > 0 ? { values: candidates } : {}),
-                ...(dataType ? { dataType } : {}),
-            };
-        }
-
-        case 'IFCPROPERTYLISTVALUE': {
-            // [Name, Description, ListValues (list), Unit]
-            const listValues = attrs[2];
-            if (Array.isArray(listValues)) {
-                const values = listValues.map(v => {
-                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
-                    return String(v);
-                }).filter(v => v !== 'null' && v !== 'undefined');
-                return { type: 0, value: values.join(', ') || null, values };
-            }
-            return { type: 0, value: null };
-        }
-
-        case 'IFCPROPERTYTABLEVALUE': {
-            // [Name, Description, DefiningValues, DefinedValues, ...]
-            const definingValues = attrs[2];
-            const definedValues = attrs[3];
-            const rowCount = Array.isArray(definingValues) ? definingValues.length : 0;
-            if (rowCount > 0 && Array.isArray(definedValues) && Array.isArray(definingValues)) {
-                // Surface both defining and defined values as candidate
-                // matches — IDS table-value checks pass when ANY entry
-                // matches the constraint (per upstream ifctester).
-                const stringify = (v: unknown): string => {
-                    if (Array.isArray(v) && v.length === 2) return String(v[1]);
-                    return String(v);
-                };
-                const values = [
-                    ...definingValues.map(stringify),
-                    ...definedValues.map(stringify),
-                ].filter(v => v !== 'null' && v !== 'undefined');
-                // Tables mix types per column (label / length / …),
-                // so we can't surface a single representative
-                // dataType. Leaving it unset lets the IDS check fall
-                // through to a pure value match against any of the
-                // candidates — which is what upstream ifctester does
-                // for table values.
-                return {
-                    type: 0,
-                    value: `Table (${rowCount} rows)`,
-                    values,
-                };
-            }
-            return { type: 0, value: null };
-        }
-
-        case 'IFCPROPERTYREFERENCEVALUE': {
-            // [Name, Description, PropertyReference]
-            const refValue = attrs[2];
-            if (typeof refValue === 'number') {
-                return { type: 0, value: `#${refValue}` };
-            }
-            return { type: 0, value: null };
-        }
-
-        default: {
-            // IfcPropertySingleValue and fallback: [Name, Description, NominalValue, Unit]
-            const nominalValue = attrs[2];
-            let type: number = PropertyValueType.String;
-            let value: PropertyValue = nominalValue as PropertyValue;
-            let dataType: string | undefined;
-
-            // Handle typed values like IFCBOOLEAN(.T.), IFCREAL(1.5)
-            if (Array.isArray(nominalValue) && nominalValue.length === 2) {
-                const innerValue = nominalValue[1];
-                const typeName = String(nominalValue[0]).toUpperCase();
-                dataType = typeName;
-
-                if (typeName.includes('BOOLEAN')) {
-                    type = PropertyValueType.Boolean;
-                    value = innerValue === '.T.' || innerValue === true;
-                } else if (typeName.includes('LOGICAL')) {
-                    type = PropertyValueType.Logical;
-                    // Preserve .U. (unknown) as null; .T./.F. as boolean
-                    if (innerValue === '.U.' || innerValue === '.X.') {
-                        value = null;
-                    } else {
-                        value = innerValue === '.T.' || innerValue === true;
-                    }
-                } else if (typeof innerValue === 'number') {
-                    // Preserve the IFC-declared numeric measure (IFCREAL,
-                    // IFCINTEGER, IFCLENGTHMEASURE, IFCAREAMEASURE, …) —
-                    // the source explicitly tagged the value, so don't
-                    // re-infer from JS number-ness (which would
-                    // misclassify e.g. `IFCREAL(0.0)` as integer).
-                    if (typeName === 'IFCINTEGER' || typeName === 'IFCCOUNTMEASURE') {
-                        type = PropertyValueType.Integer;
-                    } else if (
-                        typeName === 'IFCREAL' ||
-                        typeName.endsWith('MEASURE') ||
-                        typeName.endsWith('RATIO')
-                    ) {
-                        type = PropertyValueType.Real;
-                    } else if (Number.isInteger(innerValue)) {
-                        type = PropertyValueType.Integer;
-                    } else {
-                        type = PropertyValueType.Real;
-                    }
-                    value = innerValue;
-                } else {
-                    type = PropertyValueType.String;
-                    value = String(innerValue);
-                }
-            } else if (typeof nominalValue === 'number') {
-                type = Number.isInteger(nominalValue) ? PropertyValueType.Integer : PropertyValueType.Real;
-            } else if (typeof nominalValue === 'boolean') {
-                type = PropertyValueType.Boolean;
-            } else if (nominalValue !== null && nominalValue !== undefined) {
-                // Normalize untagged STEP enumeration tokens. Conformant IFC wraps
-                // booleans as IFCBOOLEAN(.T.) (handled above), but some authoring
-                // tools emit the bare tokens directly in the NominalValue slot.
-                if (nominalValue === '.T.') {
-                    type = PropertyValueType.Boolean;
-                    value = true;
-                } else if (nominalValue === '.F.') {
-                    type = PropertyValueType.Boolean;
-                    value = false;
-                } else if (nominalValue === '.U.' || nominalValue === '.X.') {
-                    type = PropertyValueType.Logical;
-                    value = null;
-                } else {
-                    value = String(nominalValue);
-                }
-            }
-
-            return { type, value, ...(dataType ? { dataType } : {}) };
-        }
-    }
-}
-
-/** Extract a numeric value from a possibly typed STEP value. */
-export function extractNumericValue(attr: unknown): number | null {
-    if (typeof attr === 'number') return attr;
-    if (Array.isArray(attr) && attr.length === 2 && typeof attr[1] === 'number') return attr[1];
-    return null;
-}
 
 // ============================================================================
 // Property Set Extraction Helpers
@@ -345,7 +148,7 @@ export function extractPsetsFromIds(
 
         const psetAttrs = psetEntity.attributes || [];
         const psetGlobalId = typeof psetAttrs[0] === 'string' ? psetAttrs[0] : undefined;
-        const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : `PropertySet #${psetId}`;
+        const psetName = typeof psetAttrs[2] === 'string' ? psetAttrs[2] : ''; // not `PropertySet #<id>` (#3530)
         const hasProperties = psetAttrs[4];
 
         const properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> = [];
@@ -364,7 +167,7 @@ export function extractPsetsFromIds(
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
 
-                const parsed = parsePropertyValue(propEntity);
+                const parsed = parsePropertyValueWithComplex(store, extractor, propEntity);
                 const entry: { name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string } = {
                     name: propName,
                     type: parsed.type,
@@ -378,8 +181,9 @@ export function extractPsetsFromIds(
 
         // Only surface sets that actually carry properties. An empty, named set
         // contributes nothing and — because extractTypePropertiesOnDemand dedups
-        // by name — an empty set from one source could otherwise suppress a
-        // populated same-named set from another (symmetric with extractQsetsFromIds).
+        // by (name, globalId) identity — an empty set from one source could
+        // otherwise suppress a populated same-identity set from another
+        // (symmetric with extractQsetsFromIds).
         if (properties.length > 0) {
             result.push({ name: psetName, globalId: psetGlobalId, properties });
         }
@@ -424,33 +228,27 @@ export function extractTypePropertiesOnDemand(
         : typeRef.type;
 
     const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[] }> }> = [];
-    const seenPsetNames = new Set<string>();
+    const seenPsetKeys = new Set<string>();
+    const ownPsetIds = new Set<number>();
 
     // Source 1: HasPropertySets attribute on the type entity (index 5 for IfcTypeObject subtypes)
     // Works for both IFC2X3 and IFC4
     if (typeEntity) {
         const hasPropertySets = typeEntity.attributes?.[5];
         if (Array.isArray(hasPropertySets)) {
-            const psetIds = hasPropertySets.filter((id): id is number => typeof id === 'number');
-            const psets = extractPsetsFromIds(store, extractor, psetIds);
-            for (const pset of psets) {
-                seenPsetNames.add(pset.name);
+            for (const id of hasPropertySets) if (typeof id === 'number') ownPsetIds.add(id);
+            for (const pset of extractPsetsFromIds(store, extractor, [...ownPsetIds])) {
+                seenPsetKeys.add(setIdentityKey(pset));
                 allPsets.push(pset);
             }
         }
     }
 
     // Source 2: onDemandPropertyMap for the type entity (IFC4: via IFCRELDEFINESBYPROPERTIES)
-    if (store.onDemandPropertyMap) {
-        const typePsetIds = store.onDemandPropertyMap.get(typeId);
-        if (typePsetIds && typePsetIds.length > 0) {
-            const psets = extractPsetsFromIds(store, extractor, typePsetIds);
-            for (const pset of psets) {
-                if (!seenPsetNames.has(pset.name)) {
-                    allPsets.push(pset);
-                }
-            }
-        }
+    const typePsetIds = store.onDemandPropertyMap?.get(typeId);
+    if (typePsetIds && typePsetIds.length > 0) {
+        appendSetsFromSecondSource(allPsets, ownPsetIds, seenPsetKeys, typePsetIds,
+            (ids) => extractPsetsFromIds(store, extractor, ids));
     }
 
     if (allPsets.length === 0) return null;
@@ -461,6 +259,7 @@ export function extractTypePropertiesOnDemand(
         properties: allPsets,
     };
 }
+
 
 /**
  * Extract properties from a type entity's own HasPropertySets attribute.
@@ -479,30 +278,24 @@ export function extractTypeEntityOwnProperties(
     if (!typeEntity) return [];
 
     const allPsets: Array<{ name: string; globalId?: string; properties: Array<{ name: string; type: number; value: PropertyValue; values?: string[]; dataType?: string }> }> = [];
-    const seenPsetNames = new Set<string>();
+    const seenPsetKeys = new Set<string>();
+    const ownPsetIds = new Set<number>();
 
     // Source 1: HasPropertySets attribute (index 5 for IfcTypeObject subtypes)
     const hasPropertySets = typeEntity.attributes?.[5];
     if (Array.isArray(hasPropertySets)) {
-        const psetIds = hasPropertySets.filter((id): id is number => typeof id === 'number');
-        const psets = extractPsetsFromIds(store, extractor, psetIds);
-        for (const pset of psets) {
-            seenPsetNames.add(pset.name);
+        for (const id of hasPropertySets) if (typeof id === 'number') ownPsetIds.add(id);
+        for (const pset of extractPsetsFromIds(store, extractor, [...ownPsetIds])) {
+            seenPsetKeys.add(setIdentityKey(pset));
             allPsets.push(pset);
         }
     }
 
     // Source 2: onDemandPropertyMap (IFC4: via IFCRELDEFINESBYPROPERTIES)
-    if (store.onDemandPropertyMap) {
-        const typePsetIds = store.onDemandPropertyMap.get(typeEntityId);
-        if (typePsetIds && typePsetIds.length > 0) {
-            const psets = extractPsetsFromIds(store, extractor, typePsetIds);
-            for (const pset of psets) {
-                if (!seenPsetNames.has(pset.name)) {
-                    allPsets.push(pset);
-                }
-            }
-        }
+    const typePsetIds = store.onDemandPropertyMap?.get(typeEntityId);
+    if (typePsetIds && typePsetIds.length > 0) {
+        appendSetsFromSecondSource(allPsets, ownPsetIds, seenPsetKeys, typePsetIds,
+            (ids) => extractPsetsFromIds(store, extractor, ids));
     }
 
     return allPsets;
@@ -522,8 +315,8 @@ export function extractQsetsFromIds(
     store: IfcDataStore,
     extractor: EntityExtractor,
     qsetIds: number[]
-): Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> {
-    const result: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+): Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> {
+    const result: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
 
     for (const qsetId of qsetIds) {
         const qsetRef = store.entityIndex.byId.get(qsetId);
@@ -532,44 +325,13 @@ export function extractQsetsFromIds(
         // Only extract IFCELEMENTQUANTITY entities (skip property sets etc.)
         if (qsetRef.type.toUpperCase() !== 'IFCELEMENTQUANTITY') continue;
 
-        const qsetEntity = extractor.extractEntity(qsetRef);
-        if (!qsetEntity) continue;
-
-        const qsetAttrs = qsetEntity.attributes || [];
-        const qsetName = typeof qsetAttrs[2] === 'string' ? qsetAttrs[2] : `QuantitySet #${qsetId}`;
-        const hasQuantities = qsetAttrs[5];
-
-        const quantities: Array<{ name: string; type: number; value: number }> = [];
-
-        if (Array.isArray(hasQuantities)) {
-            for (const qtyRef of hasQuantities) {
-                if (typeof qtyRef !== 'number') continue;
-
-                const qtyEntityRef = store.entityIndex.byId.get(qtyRef);
-                if (!qtyEntityRef) continue;
-
-                const qtyEntity = extractor.extractEntity(qtyEntityRef);
-                if (!qtyEntity) continue;
-
-                const qtyAttrs = qtyEntity.attributes || [];
-                const qtyName = typeof qtyAttrs[0] === 'string' ? qtyAttrs[0] : '';
-                if (!qtyName) continue;
-
-                const qtyType = QUANTITY_TYPE_MAP[qtyEntity.type.toUpperCase()] ?? QuantityType.Count;
-                // Value is at index 3 for the simple IfcQuantity* subtypes.
-                const value = typeof qtyAttrs[3] === 'number' ? qtyAttrs[3] : 0;
-
-                quantities.push({ name: qtyName, type: qtyType, value });
-            }
-        }
-
-        // Only surface sets that actually carry quantities. An empty set would
-        // add nothing to a schedule, and (because `extractTypeQuantitiesOnDemand`
-        // dedups by name) an empty set from one source could otherwise suppress a
-        // populated same-named set from another.
-        if (quantities.length > 0) {
-            result.push({ name: qsetName, quantities });
-        }
+        // A set that walks to zero quantities is dropped — see
+        // {@link readQuantitySet}. Here that also stops an empty set from one
+        // source suppressing a populated same-identity set from another, since
+        // `extractTypeQuantitiesOnDemand` still dedups NAMED sets by
+        // `(name, globalId)` identity (see {@link appendSetsFromSecondSource}).
+        const qset = readQuantitySet(store, extractor, qsetRef);
+        if (qset) result.push(qset);
     }
 
     return result;
@@ -608,30 +370,28 @@ export function extractTypeQuantitiesOnDemand(
         ? typeEntity.attributes[2]
         : typeRef.type;
 
-    const allQsets: Array<{ name: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
-    const seenQsetNames = new Set<string>();
+    const allQsets: Array<{ name: string; globalId?: string; quantities: Array<{ name: string; type: number; value: number }> }> = [];
+    const seenQsetKeys = new Set<string>();
+    const ownSetIds = new Set<number>();
 
     // Source 1: HasPropertySets attribute on the type (index 5) — quantity sets
     // live alongside property sets in this IfcPropertySetDefinition list.
     if (typeEntity) {
         const hasPropertySets = typeEntity.attributes?.[5];
         if (Array.isArray(hasPropertySets)) {
-            const ids = hasPropertySets.filter((id): id is number => typeof id === 'number');
-            for (const qset of extractQsetsFromIds(store, extractor, ids)) {
-                seenQsetNames.add(qset.name);
+            for (const id of hasPropertySets) if (typeof id === 'number') ownSetIds.add(id);
+            for (const qset of extractQsetsFromIds(store, extractor, [...ownSetIds])) {
+                seenQsetKeys.add(setIdentityKey(qset));
                 allQsets.push(qset);
             }
         }
     }
 
     // Source 2: onDemandQuantityMap for the type entity (IFC4 IfcRelDefinesByProperties).
-    if (store.onDemandQuantityMap) {
-        const typeQsetIds = store.onDemandQuantityMap.get(typeId);
-        if (typeQsetIds && typeQsetIds.length > 0) {
-            for (const qset of extractQsetsFromIds(store, extractor, typeQsetIds)) {
-                if (!seenQsetNames.has(qset.name)) allQsets.push(qset);
-            }
-        }
+    const typeQsetIds = store.onDemandQuantityMap?.get(typeId);
+    if (typeQsetIds && typeQsetIds.length > 0) {
+        appendSetsFromSecondSource(allQsets, ownSetIds, seenQsetKeys, typeQsetIds,
+            (ids) => extractQsetsFromIds(store, extractor, ids));
     }
 
     if (allQsets.length === 0) return null;
@@ -865,142 +625,11 @@ export function extractGroupMembersOnDemand(
 // On-Demand Georeferencing Extraction
 // ============================================================================
 
-/**
- * Extract georeferencing info from on-demand store (source buffer + entityIndex).
- * Bridges to the entity-based georef extractor by resolving entities lazily.
- *
- * Memoized per store. On models without an IfcMapConversion (e.g. IFC2x3 files
- * that carry CRS in ePSet_MapConversion / ePSet_ProjectedCRS) the underlying
- * scan decodes EVERY IfcPropertySet from the source buffer to match by name —
- * tens of thousands of decodes on property-heavy models. The viewer calls this
- * on the load/render path (ViewportContainer's Cesium-availability check), which
- * re-runs on every streamed geometry batch, so without caching the cost is
- * O(batches x propertySets) and can turn a multi-second load into minutes.
- * Caching collapses it to a single scan per store. Safe because the result is a
- * pure function of the immutable source + entityIndex; georef *edits* are layered
- * on top later in getEffectiveGeoreference(), not here.
- */
-/**
- * Memoize an O(entities) on-demand extraction per store. On-demand extractors
- * derive purely from the immutable source + entityIndex, but the viewer calls
- * them on render/stream hot paths where they can re-run once per geometry batch
- * (regression #1404). Caching by store collapses that to one scan per model.
- * Use this for any new `extract*OnDemand` so the whole family stays O(1)-per-call
- * regardless of how often the render layer invokes it.
- */
-const onDemandCaches = new WeakMap<IfcDataStore, Map<string, unknown>>();
-function oncePerStore<T>(store: IfcDataStore, key: string, compute: () => T): T {
-    let byKey = onDemandCaches.get(store);
-    if (!byKey) { byKey = new Map(); onDemandCaches.set(store, byKey); }
-    if (byKey.has(key)) return byKey.get(key) as T;
-    const value = compute();
-    byKey.set(key, value);
-    return value;
-}
-
-export function extractGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
-    // Don't cache a not-yet-loaded store — it may gain source/entityIndex later.
-    if (!store.source?.length || !store.entityIndex) return null;
-    return oncePerStore(store, 'georef', () => computeGeoreferencingOnDemand(store));
-}
-
-function computeGeoreferencingOnDemand(store: IfcDataStore): GeoreferenceInfo | null {
-    if (!store.source?.length || !store.entityIndex) return null;
-
-    const extractor = new EntityExtractor(store.source);
-    const { byId, byType } = store.entityIndex;
-
-    // Build a lightweight entity map for just the georef-related types
-    const entityMap = new Map<number, { expressId: number; attributes: unknown[] }>();
-    const typeMap = new Map<string, number[]>();
-
-    for (const typeName of ['IFCMAPCONVERSION', 'IFCPROJECTEDCRS', 'IFCSITE']) {
-        const ids = byType.get(typeName);
-        if (!ids?.length) continue;
-
-        // Use mixed-case for the georef extractor's type lookup
-        const displayName = typeName === 'IFCMAPCONVERSION'
-            ? 'IfcMapConversion'
-            : typeName === 'IFCPROJECTEDCRS'
-                ? 'IfcProjectedCRS'
-                : 'IfcSite';
-        typeMap.set(displayName, ids);
-
-        for (const id of ids) {
-            const ref = byId.get(id);
-            if (!ref) continue;
-            const entity = extractor.extractEntity(ref);
-            if (entity) {
-                entityMap.set(id, entity);
-
-                // For IfcProjectedCRS, also resolve the MapUnit reference (attribute [6])
-                // so the georef extractor can determine the actual unit scale
-                if (typeName === 'IFCPROJECTEDCRS' && entity.attributes) {
-                    const mapUnitAttr = entity.attributes[6];
-                    const mapUnitRefId = typeof mapUnitAttr === 'number' ? mapUnitAttr : null;
-                    if (mapUnitRefId && !entityMap.has(mapUnitRefId)) {
-                        const unitRef = byId.get(mapUnitRefId);
-                        if (unitRef) {
-                            const unitEntity = extractor.extractEntity(unitRef);
-                            if (unitEntity) entityMap.set(mapUnitRefId, unitEntity);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // IFC2x3 fallback: models without IfcMapConversion store georeferencing in
-    // ePSet_MapConversion / ePSet_ProjectedCRS property sets. Those aren't
-    // loaded above, so the ePSet path in extractGeorefFromEntities had nothing
-    // to read and the model fell back to the legacy IfcSite EPSG:4326 (wrong
-    // CRS). Only scan property sets when no IfcMapConversion exists, and only
-    // pull in the georef ePSets + their values — not every pset in the model.
-    if (!typeMap.has('IfcMapConversion')) {
-        const psetIds = byType.get('IFCPROPERTYSET');
-        if (psetIds?.length) {
-            const georefPsetIds: number[] = [];
-            const childIds = new Set<number>();
-            for (const id of psetIds) {
-                const ref = byId.get(id);
-                if (!ref) continue;
-                const entity = extractor.extractEntity(ref);
-                if (!entity?.attributes) continue;
-                // IfcPropertySet: Name (2), HasProperties (4)
-                const name = typeof entity.attributes[2] === 'string'
-                    ? (entity.attributes[2] as string).toLowerCase()
-                    : '';
-                if (name !== 'epset_mapconversion' && name !== 'epset_projectedcrs') continue;
-                entityMap.set(id, entity);
-                georefPsetIds.push(id);
-                const props = entity.attributes[4];
-                if (Array.isArray(props)) {
-                    for (const propRef of props) {
-                        const propId = typeof propRef === 'number' ? propRef : null;
-                        if (propId === null || childIds.has(propId)) continue;
-                        // Property atoms may be deferred on huge files (not in
-                        // the primary byId index) — fall back like refFromStore.
-                        const childRef = byId.get(propId) ?? store.deferredEntityIndex?.get(propId);
-                        if (!childRef) continue;
-                        const child = extractor.extractEntity(childRef);
-                        if (child) {
-                            entityMap.set(propId, child);
-                            childIds.add(propId);
-                        }
-                    }
-                }
-            }
-            if (georefPsetIds.length) {
-                typeMap.set('IfcPropertySet', georefPsetIds);
-            }
-        }
-    }
-
-    if (entityMap.size === 0) return null;
-
-    // Cast to IfcEntity (they share the same shape)
-    return extractGeorefFromEntities(entityMap as Parameters<typeof extractGeorefFromEntities>[0], typeMap);
-}
+// The per-store memo now lives in ./on-demand-cache.ts (import it there for
+// any new extract*OnDemand) and the georeferencing extractor in
+// ./on-demand-georeferencing.ts, re-exported here so every existing import
+// of this module keeps resolving.
+export { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 
 // ============================================================================
 // Material Property Set Extraction (issue #978)
@@ -1094,7 +723,7 @@ function getMaterialPropertyIndex(store: IfcDataStore): Map<number, MaterialPset
                 const propAttrs = propEntity.attributes || [];
                 const propName = typeof propAttrs[0] === 'string' ? propAttrs[0] : '';
                 if (!propName) continue;
-                const pv = parsePropertyValue(propEntity);
+                const pv = parsePropertyValueWithComplex(store, extractor, propEntity);
                 const entry: MaterialPsetEntry['properties'][number] = {
                     name: propName,
                     type: pv.type,

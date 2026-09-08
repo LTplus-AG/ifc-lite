@@ -4,6 +4,13 @@
 
 //! Standalone test for AR file wall geometry issues.
 //! Tests wall 1NmE6Wndr2xhGbWU4qRRfr which has elongated openings and far points.
+//!
+//! NOTE: `tests/models/local/AR.ifc` is a private local model — it is not in
+//! `tests/models/manifest.json`, so `pnpm fixtures` cannot supply it and these
+//! tests can never run in CI. They are `#[ignore]` so that is explicit rather
+//! than reading as three passing tests (same convention as `test_infra_rtc.rs`).
+//! With the model in place, run:
+//! `cargo test -p ifc-lite-geometry --test ar_wall_test -- --ignored`
 
 use ifc_lite_core::{EntityDecoder, EntityScanner};
 use ifc_lite_geometry::{calculate_normals, csg::ClippingProcessor, GeometryRouter, Mesh};
@@ -141,6 +148,7 @@ fn analyze_mesh(mesh: &Mesh, name: &str) {
 }
 
 #[test]
+#[ignore = "fixture tests/models/local/AR.ifc is not in the manifest and is not downloadable; supply it locally and run with --ignored"]
 fn test_ar_wall_geometry() {
     let content = match load_ar_file() {
         Some(c) => c,
@@ -253,6 +261,7 @@ fn test_ar_wall_geometry() {
 
 /// Test to diagnose NaN normals issue
 #[test]
+#[ignore = "fixture tests/models/local/AR.ifc is not in the manifest and is not downloadable; supply it locally and run with --ignored"]
 fn test_ar_wall_nan_normals_diagnosis() {
     let content = match load_ar_file() {
         Some(c) => c,
@@ -413,6 +422,7 @@ fn test_ar_wall_nan_normals_diagnosis() {
 }
 
 #[test]
+#[ignore = "fixture tests/models/local/AR.ifc is not in the manifest and is not downloadable; supply it locally and run with --ignored"]
 fn test_csg_subtraction_preserves_normals() {
     let content = match load_ar_file() {
         Some(c) => c,

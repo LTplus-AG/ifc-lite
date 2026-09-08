@@ -152,6 +152,23 @@ describe('SelectionSlice', () => {
       assert.strictEqual(state.selectedEntity, null);
       assert.strictEqual(state.selectedEntityId, null);
     });
+
+    it('does not treat the primary as removed when only expressId matches but modelId differs', () => {
+      // The primary-match guard requires BOTH modelId and expressId to agree.
+      // A ref from a different model that happens to share the same expressId
+      // must NOT be mistaken for the primary and trigger a primary recompute.
+      const other: EntityRef = { modelId: 'model-1', expressId: 456 };
+      state.addEntityToSelection(other);
+      // Force a primary that is not a member of the set (independent field,
+      // legitimate per setSelectedEntity's decoupling from selectedEntitiesSet).
+      setState({ selectedEntity: { modelId: 'model-1', expressId: 123 } });
+
+      // Removing a ref from a DIFFERENT model with the SAME expressId (123)
+      // as the (non-member) primary must be a pure no-op on primary.
+      state.removeEntityFromSelection({ modelId: 'model-2', expressId: 123 });
+
+      assert.deepStrictEqual(state.selectedEntity, { modelId: 'model-1', expressId: 123 });
+    });
   });
 
   describe('multi-model selection: toggleEntitySelection', () => {
@@ -183,7 +200,23 @@ describe('SelectionSlice', () => {
 
       state.toggleEntitySelection(ref2);
       // After removing ref2, primary should go back to ref1
-      assert.ok(state.selectedEntity?.expressId === 123 || state.selectedEntity === null);
+      assert.deepStrictEqual(state.selectedEntity, ref1);
+    });
+
+    it('does not treat the primary as removed when only expressId matches but modelId differs', () => {
+      // Same guard bug class as removeEntityFromSelection: toggling OFF a ref
+      // whose expressId coincidentally equals the primary's expressId, but
+      // whose modelId differs, must not trigger a primary recompute.
+      const decoy: EntityRef = { modelId: 'model-3', expressId: 789 };
+      const toggled: EntityRef = { modelId: 'model-2', expressId: 123 };
+      state.addEntityToSelection(decoy);
+      state.addEntityToSelection(toggled);
+      // Force a primary that is not a member of the set (independent field).
+      setState({ selectedEntity: { modelId: 'model-1', expressId: 123 } });
+
+      state.toggleEntitySelection(toggled); // toggles OFF (was a member)
+
+      assert.deepStrictEqual(state.selectedEntity, { modelId: 'model-1', expressId: 123 });
     });
   });
 
@@ -203,6 +236,21 @@ describe('SelectionSlice', () => {
       state.clearEntitySelection();
 
       assert.strictEqual(state.selectedEntityIds.size, 0);
+    });
+
+    it('should clear the selectedEntities array and selectedModelId too', () => {
+      // setSelectedEntities and setSelectedModelId each clear the other field,
+      // so drive both fields non-empty directly to isolate what
+      // clearEntitySelection itself is responsible for resetting.
+      const refs: EntityRef[] = [
+        { modelId: 'model-1', expressId: 1 },
+        { modelId: 'model-1', expressId: 2 },
+      ];
+      setState({ selectedEntities: refs, selectedModelId: 'model-1' });
+      state.clearEntitySelection();
+
+      assert.deepStrictEqual(state.selectedEntities, []);
+      assert.strictEqual(state.selectedModelId, null);
     });
   });
 
@@ -252,6 +300,135 @@ describe('SelectionSlice', () => {
 
       const result = state.getSelectedEntitiesForModel('model-2');
       assert.deepStrictEqual(result, []);
+    });
+  });
+
+  describe('legacy selection: primary-id bookkeeping', () => {
+    // `selectedEntityId` is the GLOBAL id the renderer highlights. Every
+    // legacy multi-select action has to keep it pointing at the MOST RECENT
+    // survivor of `selectedEntityIds`, otherwise the highlight box jumps to
+    // an element the user did not touch last (or lingers after the last
+    // element was deselected). None of that was pinned before.
+
+    it('addToSelection makes the added id primary', () => {
+      state.addToSelection(10);
+      state.addToSelection(20);
+      assert.deepStrictEqual([...state.selectedEntityIds].sort((a, b) => a - b), [10, 20]);
+      assert.strictEqual(state.selectedEntityId, 20);
+    });
+
+    it('removeFromSelection promotes the LAST remaining id, not the first', () => {
+      state.setSelectedEntityIds([10, 20, 30]);
+      state.removeFromSelection(30);
+
+      assert.deepStrictEqual([...state.selectedEntityIds].sort((a, b) => a - b), [10, 20]);
+      // Insertion order is preserved by Set, so the last survivor is 20.
+      assert.strictEqual(state.selectedEntityId, 20);
+    });
+
+    it('removeFromSelection clears the primary id when the set empties', () => {
+      state.setSelectedEntityIds([10]);
+      state.removeFromSelection(10);
+      assert.strictEqual(state.selectedEntityIds.size, 0);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+
+    it('toggleSelection adds then removes, keeping the primary id in step', () => {
+      state.setSelectedEntityIds([10]);
+      state.toggleSelection(20);
+      assert.strictEqual(state.selectedEntityId, 20);
+
+      state.toggleSelection(20);
+      assert.deepStrictEqual([...state.selectedEntityIds], [10]);
+      assert.strictEqual(state.selectedEntityId, 10);
+    });
+
+    it('setSelectedEntityIds makes the LAST id primary, and [] clears it', () => {
+      state.setSelectedEntityIds([10, 20, 30]);
+      assert.strictEqual(state.selectedEntityId, 30);
+
+      state.setSelectedEntityIds([]);
+      assert.strictEqual(state.selectedEntityIds.size, 0);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+
+    it('clearSelection empties the set and the primary id', () => {
+      state.setSelectedEntityIds([10, 20]);
+      state.clearSelection();
+      assert.strictEqual(state.selectedEntityIds.size, 0);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+  });
+
+  describe('entity vs model selection are mutually exclusive', () => {
+    it('setSelectedEntityId clears selectedModelId when an entity is picked', () => {
+      state.setSelectedModelId('model-1');
+      state.setSelectedEntityId(42);
+      // Otherwise the properties panel shows model metadata AND an element
+      // at the same time — the panel binds to whichever it checks first.
+      assert.strictEqual(state.selectedModelId, null);
+      assert.strictEqual(state.selectedEntityId, 42);
+    });
+
+    it('setSelectedEntityId(null) does NOT clear selectedModelId', () => {
+      // Opposite direction: clearing the entity highlight (e.g. an empty
+      // canvas click while a model row is selected in the hierarchy) must
+      // leave the model selection alone.
+      state.setSelectedModelId('model-1');
+      state.setSelectedEntityId(null);
+      assert.strictEqual(state.selectedModelId, 'model-1');
+    });
+
+    it('setSelectedModelId clears the multi-model entity channels and the primary id', () => {
+      state.setSelectedEntity({ modelId: 'model-1', expressId: 7 });
+      state.setSelectedEntities([
+        { modelId: 'model-1', expressId: 7 },
+        { modelId: 'model-1', expressId: 8 },
+      ]);
+      state.setSelectedEntityIds([7, 8]);
+
+      state.setSelectedModelId('model-1');
+
+      assert.strictEqual(state.selectedModelId, 'model-1');
+      assert.strictEqual(state.selectedEntity, null);
+      assert.deepStrictEqual(state.selectedEntities, []);
+      assert.strictEqual(state.selectedEntityId, null);
+    });
+
+    it('setSelectedModelId clears the legacy selectedEntityIds set', () => {
+      // `setSelectedModelId` (selectionSlice.ts:292) clears `selectedEntity`,
+      // `selectedEntities` and `selectedEntityId`, and must also clear the
+      // legacy global-id set, matching its own comment: "Clear other
+      // selection when selecting a model". Otherwise the set survives and
+      // MainToolbar.tsx:352 and ElementsTab.tsx:44 keep reporting the stale
+      // count, and useAnimationLoop.ts:244 keeps painting the stale
+      // highlight, while the properties panel has already switched to the
+      // model.
+      state.setSelectedEntityIds([7, 8]);
+
+      state.setSelectedModelId('model-1');
+
+      assert.deepStrictEqual([...state.selectedEntityIds], []);
+    });
+
+    it('setSelectedEntities makes the FIRST ref primary and clears the model selection', () => {
+      const refs: EntityRef[] = [
+        { modelId: 'model-1', expressId: 7 },
+        { modelId: 'model-2', expressId: 8 },
+      ];
+      state.setSelectedModelId('model-1');
+      state.setSelectedEntities(refs);
+
+      assert.deepStrictEqual(state.selectedEntities, refs);
+      // Unified-storey display drives the property panel from the FIRST ref.
+      assert.deepStrictEqual(state.selectedEntity, refs[0]);
+      assert.strictEqual(state.selectedModelId, null);
+    });
+
+    it('setSelectedEntities([]) clears the primary entity', () => {
+      state.setSelectedEntity({ modelId: 'model-1', expressId: 7 });
+      state.setSelectedEntities([]);
+      assert.strictEqual(state.selectedEntity, null);
     });
   });
 

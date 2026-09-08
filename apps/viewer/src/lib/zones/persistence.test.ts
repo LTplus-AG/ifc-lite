@@ -139,3 +139,67 @@ describe('zones/persistence', () => {
     });
   });
 });
+
+describe('prism zones on import (#2508 item 4)', () => {
+  function fileWith(zone: Record<string, unknown>): unknown {
+    return {
+      version: 1,
+      exportedAt: '2026-08-13T00:00:00.000Z',
+      zoneSets: [{
+        id: 'set-1', name: 'Takt', visible: true, createdAt: 0, updatedAt: 0,
+        zones: [{ id: 'z-1', name: 'A', center: [0, 1, 0], size: [1, 2, 1], rotationY: 0.7, ...zone }],
+      }],
+    };
+  }
+
+  it('derives the bounding box from the footprint rather than trusting the file', () => {
+    // A hand-written or CAD-exported footprint carries no bounding box, or a
+    // stale one. Every bounds consumer (overlay culling, framing, the broad
+    // phase) reads center/size, so a wrong box silently over- or under-selects.
+    const result = parseZoneSetFile(fileWith({ footprint: [[10, 20], [14, 20], [14, 26]] }));
+    assert.ok(result.ok);
+    const zone = result.zoneSets[0].zones[0];
+    assert.deepEqual(zone.center, [12, 1, 23]);
+    assert.deepEqual(zone.size, [4, 2, 6]);
+    // The vertical extent is NOT derived: it is the only box field a prism
+    // still owns.
+    assert.equal(zone.size[1], 2);
+    // A stale rotation would let a box-path consumer rotate a bounding box
+    // that is not rotated.
+    assert.equal(zone.rotationY, 0);
+  });
+
+  it('rejects a concave footprint rather than importing one that misreports volumes', () => {
+    // An L. The trapezoidal sweep, the point test and the SAT overlap are each
+    // silently wrong for it, so this file must fail loudly like every other
+    // malformed field.
+    const result = parseZoneSetFile(fileWith({
+      footprint: [[0, 0], [3, 0], [3, 1], [1, 1], [1, 3], [0, 3]],
+    }));
+    assert.equal(result.ok, false);
+  });
+
+  it('rejects a footprint that is not pairs of finite numbers', () => {
+    assert.equal(parseZoneSetFile(fileWith({ footprint: [[0, 0], [1, 'x']] })).ok, false);
+    assert.equal(parseZoneSetFile(fileWith({ footprint: [[0, 0], [1, 0]] })).ok, false, 'two points are a line');
+    assert.equal(parseZoneSetFile(fileWith({ footprint: 'square' })).ok, false);
+  });
+
+  it('round-trips a footprint without aliasing it to live state', () => {
+    const zoneSet: ZoneSet = {
+      id: 'set-1', name: 'Takt', visible: true, createdAt: 0, updatedAt: 0,
+      zones: [{
+        id: 'z-1', name: 'A', center: [0, 1, 0], size: [2, 2, 2], rotationY: 0,
+        footprint: [[0, 0], [2, 0], [2, 2]],
+      }],
+    };
+    const file = serializeZoneSets([zoneSet]);
+    const serialized = file.zoneSets[0].zones[0].footprint as Array<[number, number]>;
+    serialized[0][0] = 999;
+    assert.equal(zoneSet.zones[0].footprint![0][0], 0, 'serialize aliased the store');
+
+    const parsed = parseZoneSetFile(JSON.parse(JSON.stringify(serializeZoneSets([zoneSet]))));
+    assert.ok(parsed.ok);
+    assert.deepEqual(parsed.zoneSets[0].zones[0].footprint, [[0, 0], [2, 0], [2, 2]]);
+  });
+});

@@ -96,10 +96,12 @@ export function buildViewerNamespace(): NamespaceSchema {
       },
       {
         name: 'resetColors',
-        doc: 'Reset all colors',
-        args: [],
-        call: (sdk) => {
-          sdk.viewer.resetColors();
+        doc: 'Reset colors. Omit entities (or pass none) to reset every color override; pass entities to reset only theirs.',
+        args: ['entityRefs'],
+        paramNames: ['entities'],
+        tsParamTypes: ['BimEntity[] | undefined'],
+        call: (sdk, args) => {
+          sdk.viewer.resetColors(args[0] as EntityRef[]);
         },
         returns: 'void',
       },

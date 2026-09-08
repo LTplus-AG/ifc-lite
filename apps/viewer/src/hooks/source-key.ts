@@ -4,32 +4,23 @@
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 
-// Per-source-object memo so the full-content hash runs only once per loaded
-// buffer (the same Uint8Array instance is reused across re-renders).
-const SOURCE_KEY_CACHE = new WeakMap<Uint8Array, string>();
-
 /**
- * Stable per-source cache key — a **full-content** FNV-1a hash (not sampled
- * byte windows), so two distinct IFC binaries can't collide and reuse the wrong
- * cache entry (which would render another model's overlay). The O(n) hash is
- * memoised per source object via a WeakMap, so it runs once per loaded buffer.
+ * Stable per-source cache key.
+ *
+ * This used to be a full-content FNV-1a walk over the whole buffer, memoised
+ * in a WeakMap keyed on the source object. `IfcSourceBytes.contentKey` is that
+ * same hash, computed lazily and cached on the source itself, so the walk and
+ * the memo both live in one place now (#2183) — and a compressed source can
+ * carry the key forward across the swap instead of having every consumer
+ * recompute it from bytes it no longer holds contiguously.
+ *
+ * Still full-content rather than sampled: two distinct IFC binaries must not
+ * collide and reuse each other's cache entry, which would render another
+ * model's overlay.
  *
  * Shared by the per-source overlay hooks (alignment + grid lines) so they stay
- * in lockstep — see #967 review (CodeRabbit aliasing finding applied to both).
+ * in lockstep — see #967 review.
  */
 export function sourceKey(store: IfcDataStore | null | undefined): string | null {
-  const source = store?.source;
-  if (!source || source.byteLength === 0) return null;
-
-  const cached = SOURCE_KEY_CACHE.get(source);
-  if (cached) return cached;
-
-  let h = 0x811c9dc5;
-  for (let i = 0; i < source.length; i++) {
-    h ^= source[i];
-    h = Math.imul(h, 0x01000193);
-  }
-  const key = `b${source.byteLength}-${(h >>> 0).toString(16)}`;
-  SOURCE_KEY_CACHE.set(source, key);
-  return key;
+  return store?.source.contentKey ?? null;
 }

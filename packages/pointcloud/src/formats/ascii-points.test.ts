@@ -108,6 +108,36 @@ describe('decodeAsciiPoints — XYZ', () => {
   });
 });
 
+describe('decodeAsciiPoints — originOffset (extends #1804 to PTS/XYZ)', () => {
+  it('subtracts originOffset in f64 before narrowing to f32', () => {
+    // True coordinate: (500_012.345, 5_000_006.789, 104.321) — survey/
+    // GNSS scale, the exact case PTS/XYZ files carry routinely.
+    const buf = enc.encode('500012.345 5000006.789 104.321\n');
+
+    const withoutOffset = decodeAsciiPoints(buf, 'xyz');
+    // f32 cast of a ~5e6-magnitude value cannot exactly represent the
+    // millimetre-level input.
+    expect(withoutOffset.positions[0]).not.toBe(500012.345);
+    expect(withoutOffset.positions[0]).toBeCloseTo(500012.345, 0);
+
+    const withOffset = decodeAsciiPoints(buf, 'xyz', [500_000, 5_000_000, 100]);
+    // Residual is small, so f32 preserves it to micrometre precision —
+    // impossible if the subtraction happened after narrowing to f32 first.
+    expect(withOffset.positions[0]).toBeCloseTo(12.345, 6);
+    expect(withOffset.positions[1]).toBeCloseTo(6.789, 6);
+    expect(withOffset.positions[2]).toBeCloseTo(4.321, 6);
+    expect(withOffset.bbox.min[0]).toBeCloseTo(12.345, 6);
+  });
+
+  it('absent originOffset is bit-identical to today (undefined default)', () => {
+    const buf = enc.encode('1.5 -2.5 3.5\n4 5 6\n');
+    const a = decodeAsciiPoints(buf, 'xyz');
+    const b = decodeAsciiPoints(buf, 'xyz', undefined);
+    expect(Array.from(a.positions)).toEqual(Array.from(b.positions));
+    expect(a.bbox).toEqual(b.bbox);
+  });
+});
+
 describe('decodeAsciiPoints — PTS', () => {
   it('respects header count + 7-column layout', () => {
     // Standard PTS: count line, then X Y Z I(0..255) R G B(0..255)
@@ -131,5 +161,16 @@ describe('decodeAsciiPoints — PTS', () => {
     expect(chunk.colors).toBeUndefined();
     expect(chunk.intensities).toBeDefined();
     expect(chunk.intensities![0]).toBeCloseTo(Math.round(0.5 * 65535), 0);
+  });
+
+  // The observed max sits exactly ON the 0..1/needs-scaling boundary, not
+  // merely near it: `intensityMax > 1.0` must stay a strict `>`, since at
+  // exactly 1.0 the source is already normalised (scale 65535) — treating
+  // 1.0 as "needs 0..255 rescaling" (`>=`) divides the result by ~255.
+  it('treats an intensity max of exactly 1.0 as already-normalised, not 0..255', () => {
+    const buf = enc.encode('1 2 3 1.0\n4 5 6 0.25\n');
+    const chunk = decodeAsciiPoints(buf, 'pts');
+    expect(chunk.intensities![0]).toBe(65535);
+    expect(chunk.intensities![1]).toBeCloseTo(Math.round(0.25 * 65535), 0);
   });
 });

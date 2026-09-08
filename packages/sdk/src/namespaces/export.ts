@@ -10,6 +10,8 @@
  * entities to include, and delegates to the appropriate exporter.
  */
 
+import { escapeCsvCell } from '@ifc-lite/export';
+import { findPropertyInSets, findQuantityInSets } from '@ifc-lite/query';
 import type { BimBackend, EntityRef, EntityData, PropertySetData, QuantitySetData } from '../types.js';
 
 export interface ExportCsvOptions {
@@ -31,6 +33,13 @@ export interface ExportStepOptions {
 
 export interface ExportHbjsonOptions {
   /** Honeybee model identifier / display name (defaults to the model name). */
+  name?: string;
+  /** When set, also trigger a download with this filename. */
+  filename?: string;
+}
+
+export interface ExportDfjsonOptions {
+  /** Dragonfly model identifier / display name (defaults to the model name). */
   name?: string;
   /** When set, also trigger a download with this filename. */
   filename?: string;
@@ -84,20 +93,14 @@ export class ExportNamespace {
 
           // Try property sets first
           if (psets) {
-            const pset = psets.find(p => p.name === setName);
-            if (pset) {
-              const prop = pset.properties.find(p => p.name === valueName);
-              if (prop?.value != null) { row.push(String(prop.value)); continue; }
-            }
+            const prop = findPropertyInSets(psets, setName, valueName);
+            if (prop?.value != null) { row.push(String(prop.value)); continue; }
           }
 
           // Fall back to quantity sets
           if (qsets) {
-            const qset = qsets.find(q => q.name === setName);
-            if (qset) {
-              const qty = qset.quantities.find(q => q.name === valueName);
-              if (qty?.value != null) { row.push(String(qty.value)); continue; }
-            }
+            const qty = findQuantityInSets(qsets, setName, valueName);
+            if (qty?.value != null) { row.push(String(qty.value)); continue; }
           }
 
           row.push('');
@@ -156,20 +159,14 @@ export class ExportNamespace {
 
           // Try property sets first
           if (psets) {
-            const pset = psets.find(p => p.name === setName);
-            if (pset) {
-              const prop = pset.properties.find(p => p.name === valueName);
-              if (prop?.value != null) { row[col] = prop.value; resolved = true; }
-            }
+            const prop = findPropertyInSets(psets, setName, valueName);
+            if (prop?.value != null) { row[col] = prop.value; resolved = true; }
           }
 
           // Fall back to quantity sets
           if (!resolved && qsets) {
-            const qset = qsets.find(q => q.name === setName);
-            if (qset) {
-              const qty = qset.quantities.find(q => q.name === valueName);
-              if (qty?.value != null) { row[col] = qty.value; resolved = true; }
-            }
+            const qty = findQuantityInSets(qsets, setName, valueName);
+            if (qty?.value != null) { row[col] = qty.value; resolved = true; }
           }
 
           if (!resolved) row[col] = null;
@@ -214,22 +211,43 @@ export class ExportNamespace {
   }
 
   /**
+   * Export the model as a Dragonfly DFJSON energy model — each `IfcSpace` becomes an
+   * extruded `Room2D` (floor polygon + floor-to-ceiling height) grouped into stories. This
+   * is the simpler Ladybug Tools target for mostly-vertical-wall models. Loads via
+   * `dragonfly.model.Model.from_dfjson`.
+   *
+   * Requires a geometry-capable backend (the CLI and browser carry the wasm engine); the
+   * data-only SDK never meshes, so this throws on a backend that does not provide it.
+   */
+  async dfjson(options: ExportDfjsonOptions = {}): Promise<string> {
+    if (!this.backend.export.dfjson) {
+      throw new Error('DFJSON export requires a geometry-capable backend; the active backend does not provide it.');
+    }
+    const content = await this.backend.export.dfjson(options.name);
+    if (options.filename) {
+      this.backend.export.download(content, options.filename, 'application/json');
+    }
+    return content;
+  }
+
+  /**
    * Trigger a browser file download with raw content.
    */
   download(content: string, filename: string, mimeType?: string): void {
     this.backend.export.download(content, filename, mimeType ?? 'text/plain');
   }
 
+  /**
+   * RFC 4180 quoting + the CWE-1236 formula-injection guard, delegated to
+   * `@ifc-lite/export`'s single escaper.
+   *
+   * This method used to carry the repo's reference copy of the guard (#1944).
+   * It was the best of nine, but still its own: its invisible class was
+   * `\p{Zs}`, which leaves U+2028 LINE SEPARATOR and U+2029 PARAGRAPH
+   * SEPARATOR usable as hiding places for a trigger. The shared escaper uses
+   * `\p{Z}`, covering `Zl`/`Zp` too.
+   */
   private escapeCsv(value: string, sep: string): string {
-    // CSV/formula-injection guard (CWE-1236): prefix a leading spreadsheet
-    // formula trigger so Excel/Sheets treat the cell as text, not a formula.
-    let str = value;
-    if (/^[=+\-@\t\r]/.test(str)) {
-      str = `'${str}`;
-    }
-    if (str.includes(sep) || str.includes('"') || str.includes('\n') || str.includes('\r')) {
-      return `"${str.replace(/"/g, '""')}"`;
-    }
-    return str;
+    return escapeCsvCell(value, { delimiter: sep });
   }
 }

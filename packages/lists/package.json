@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/lists",
-  "version": "1.22.0",
+  "version": "2.1.0",
   "description": "Configurable property tables and schedules from IFC data for IFC-Lite",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,6 +14,7 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
@@ -22,8 +23,9 @@
     "@ifc-lite/encoding": "workspace:*"
   },
   "devDependencies": {
+    "csv-parse": "7.0.2",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

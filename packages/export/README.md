@@ -61,6 +61,39 @@ const blob = new Blob([stepText], { type: 'application/x-step' });
 
 `exportToStep` is the round-trip path for property edits. Edit via `@ifc-lite/mutations`, export with `applyMutations: true`, ship the resulting `.ifc` to whatever consumes IFC.
 
+## Anonymized isolated export — for bug reports
+
+`collectRelatedEntities` + `exportAnonymizedSubset` pick a seed selection,
+expand it by relationship context (host, openings/fillers, type, materials,
+spatial containment), and export exactly that subset with every
+project-identifying signal removed — while local placement rotations and
+non-orthogonal cuts survive, so a parsing/geometry bug reproduction still
+reproduces:
+
+```typescript
+import { collectRelatedEntities, exportAnonymizedSubset } from '@ifc-lite/export';
+
+const related = collectRelatedEntities(store, new Set([312])); // seed expressId(s)
+const result = exportAnonymizedSubset(store, related.all);
+await saveFile('anonymized.ifc', result.content);
+```
+
+Every `AnonymizeOptions` field defaults to the maximally-scrubbed direction
+(names pseudonymized, `GlobalId`s regenerated, property sets dropped, owner
+history and georeferencing scrubbed) — `ObjectType` and material/style names
+are pseudonymized right along with everything else under the default
+`pseudonymizeAllNames`, and the STEP header's `originating_system` is
+blanked under the default `scrubOwnerHistory`. What stays in the file by
+decision: geometry and local placement rotations/non-orthogonal cuts (only
+the root placement's translation is zeroed), structural entity types,
+material *assignments* (which material, just not its original name), and
+the header's `preprocessor_version` (from `IfcApplication`, defaults to
+`'ifc-lite'`) — that is what makes the file useful for a bug repro. See the
+[Exporting
+Guide](https://ifclite.dev/docs/guide/exporting/#anonymized-isolated-export)
+for the full option list, including how to opt back into authored names via
+`--keep-other-names`.
+
 ## Apache Parquet — for analytics
 
 ```typescript
@@ -78,6 +111,21 @@ const entities = await exporter.exportTable('entities');
 // Each Parquet table is ~15–50× smaller than equivalent JSON
 // Loadable directly from DuckDB, Polars, pandas, BigQuery, …
 ```
+
+Editing via `@ifc-lite/mutations`? Pass the `MutablePropertyView` as the third constructor
+argument to drop overlay-deleted entities (and every row that references one) from
+`Entities`, `Properties`, `Quantities` and `Relationships`:
+
+```typescript
+import { ParquetExporter } from '@ifc-lite/export';
+
+const exporter = new ParquetExporter(store, geometryResult, mutationView);
+```
+
+Property/quantity/attribute *edits* aren't reflected yet — the table writers
+column-copy straight out of the store rather than looping per entity, so
+there is nowhere for those to apply. `StepExporter`/`Ifc5Exporter` cover the
+full edit surface today.
 
 ## IFC5 IFCX — JSON + USD geometry
 
@@ -112,7 +160,7 @@ const bytes = new Uint8Array(await file.arrayBuffer());
 const lod0 = await generateLod0(bytes);
 
 // LOD1 — meshes simplified to bounding boxes / convex hulls, returned as GLB
-const lod1 = await generateLod1(bytes, { quality: 'medium' });
+const lod1 = await generateLod1(bytes);
 //   { glb: Uint8Array, meta: { failedElements, mapping, ... } }
 
 // Falls back gracefully to box geometry if a complex element fails to mesh
@@ -121,6 +169,7 @@ const lod1 = await generateLod1(bytes, { quality: 'medium' });
 ## Also exported
 
 - `MergedExporter` - merge several parsed models into one STEP export
+- `collectRelatedEntities` / `exportAnonymizedSubset` - anonymized isolated export (see above)
 - `convertEntityType` / `convertStepLine` / `needsConversion` - IFC2X3 / IFC4 / IFC4X3 schema conversion helpers
 - `parseGLB` / `parseGLBToMeshData` / `extractGlbMapping` - GLB round-trip readers
 

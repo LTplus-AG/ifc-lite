@@ -48,6 +48,9 @@ for (const spec of report.specificationResults) {
 Reports translate automatically. Supported languages: English (`en`), German (`de`), French (`fr`).
 
 ```typescript
+import { parseIDS, validateIDS, createTranslationService } from '@ifc-lite/ids';
+
+const idsSpec = parseIDS(idsXml);
 const de = createTranslationService('de');
 const report = await validateIDS(idsSpec, accessor, modelInfo, { translator: de });
 // Failures now read: "Anforderung 'FireRating' nicht erfüllt..."
@@ -69,6 +72,8 @@ for (const issue of audit.issues) {
 ## Inspect an IDS specification
 
 ```typescript
+import { parseIDS } from '@ifc-lite/ids';
+
 const idsSpec = parseIDS(idsXml);
 
 for (const spec of idsSpec.specifications) {

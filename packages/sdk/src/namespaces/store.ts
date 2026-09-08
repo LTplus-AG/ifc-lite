@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
+import { isInstantiable, isKnownType, normalizeIfcTypeName } from '@ifc-lite/parser';
 import type {
   AddBeamInStoreParams,
   AddColumnInStoreParams,
@@ -54,8 +54,12 @@ export class StoreNamespace {
    *   - arrays → STEP list `(a,b,c)` (recursed)
    *   - any other string → quoted STEP string
    *
+   * `modelId` must be one the backend answers for: the headless CLI backend
+   * takes `'default'` or the file basename and throws on anything else, rather
+   * than minting a ref that `bim.mutate.*` would then refuse.
+   *
    * @example
-   *   const profile = bim.store.addEntity('arch', {
+   *   const profile = bim.store.addEntity('default', {
    *     type: 'IfcRectangleProfileDef',
    *     attributes: ['.AREA.', null, '#34', 0.6, 0.4],
    *   });
@@ -71,6 +75,18 @@ export class StoreNamespace {
     if (!isKnownType(def.type)) {
       throw new TypeError(
         `addEntity: unknown IFC type '${def.type}'. Pass a canonical PascalCase name (e.g. 'IfcWall').`,
+      );
+    }
+    // `isKnownType` answers "is this a real EXPRESS class" — it says yes for
+    // abstract supertypes (IfcProduct, IfcRoot, IfcRelationship, ...) too,
+    // since they are real classes, just not instantiable ones. Rejecting
+    // those here, before the backend call, gives a caller a useful error
+    // instead of a downstream STEP-emit failure or (absent this check) a
+    // silently invalid `#N=IFCPRODUCT(...)` record in the exported file
+    // (#2035).
+    if (!isInstantiable(def.type)) {
+      throw new TypeError(
+        `addEntity: '${def.type}' is an abstract IFC type and cannot be instantiated directly. Pass a concrete subtype instead.`,
       );
     }
     return this.backend.store.addEntity(modelId, {
@@ -113,7 +129,7 @@ export class StoreNamespace {
    *
    * @example
    *   const storeyId = bim.query.byType('IfcBuildingStorey')[0].ref.expressId;
-   *   const col = bim.store.addColumn('arch', storeyId, {
+   *   const col = bim.store.addColumn('default', storeyId, {
    *     Position: [1, 1, 0],
    *     Width: 0.3, Depth: 0.4, Height: 3,
    *     Name: 'Column 1',
@@ -129,7 +145,7 @@ export class StoreNamespace {
    * and is extruded upward by `Height`.
    *
    * @example
-   *   bim.store.addWall('arch', storeyId, {
+   *   bim.store.addWall('default', storeyId, {
    *     Start: [0, 0, 0], End: [5, 0, 0],
    *     Thickness: 0.2, Height: 3, Name: 'North Wall',
    *   });

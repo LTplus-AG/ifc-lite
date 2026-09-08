@@ -5,7 +5,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   GraphicOverrideEngine,
-  calculateDrawingTransform,
   type Drawing2D,
   type ElementData,
 } from '@ifc-lite/drawing-2d';
@@ -17,6 +16,9 @@ import type { PolygonArea2DResult, TextAnnotation2D, CloudAnnotation2D, Annotati
 import type { DxfUnderlayRenderData } from '@/hooks/useDxfUnderlay';
 import type { AnnotationFill2D, AnnotationText2D } from '@/hooks/useSymbolicAnnotations';
 import type { ScanBandPoint } from '@/hooks/scanSectionMath';
+import { type CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
+import { resolveSheetTransform } from '@/lib/drawing/sheet-transform';
+import { useDrawingElementPropertiesLookup } from '@/hooks/useDrawingElementPropertiesLookup';
 
 // Fill colors for IFC types (architectural convention)
 const IFC_TYPE_FILL_COLORS: Record<string, string> = {
@@ -333,6 +335,7 @@ function drawScanSectionScreenSpace(
 // Static constants to avoid creating new objects/arrays on every render
 const CANVAS_STYLE = { imageRendering: 'crisp-edges' as const };
 const EMPTY_MEASURE_RESULTS: Measure2DResultData[] = [];
+const EMPTY_UNIT_DISPLAY_OVERRIDES: Record<string, string> = {};
 
 export interface Measure2DResultData {
   id: string;
@@ -362,7 +365,7 @@ interface Drawing2DCanvasProps {
   sectionAxis: 'down' | 'front' | 'side';
   // Pinned mode - keep model fixed in place on sheet
   isPinned?: boolean;
-  cachedSheetTransformRef?: React.MutableRefObject<{ translateX: number; translateY: number; scaleFactor: number } | null>;
+  cachedSheetTransformRef?: React.MutableRefObject<CachedSheetTransform | null>;
   // Annotation props
   annotation2DActiveTool?: Annotation2DTool;
   annotation2DCursorPos?: Point2D | null;
@@ -383,6 +386,12 @@ interface Drawing2DCanvasProps {
   // Point-cloud scan overlay, already in drawing space (issue #1805)
   scanPoints?: readonly ScanBandPoint[];
   scanOpacity?: number;
+  // LENGTHUNIT display override for the on-canvas measure distance/perimeter
+  // labels (#2199 slice not covered by #2538, which wired every OTHER
+  // measure-tool readout — MeasurePanel.tsx, MeasurementVisuals.tsx — through
+  // `unitDisplayOverrides` but left this canvas's own `formatDistance()`
+  // calls on the pre-#2199 no-argument (always-metric) form).
+  unitDisplayOverrides?: Record<string, string>;
 }
 
 export function Drawing2DCanvas({
@@ -418,9 +427,12 @@ export function Drawing2DCanvas({
   dxfUnderlays,
   scanPoints,
   scanOpacity = 1,
+  unitDisplayOverrides = EMPTY_UNIT_DISPLAY_OVERRIDES,
 }: Drawing2DCanvasProps): React.ReactElement {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
+  // Resolved once per (model set, polygon set) change, never per draw frame.
+  const getElementProperties = useDrawingElementPropertiesLookup(drawing, overrideEngine, overridesEnabled);
 
   // ResizeObserver to track canvas size changes
   useEffect(() => {
@@ -724,33 +736,33 @@ export function Drawing2DCanvas({
         maxY: drawing.bounds.max.y,
       };
 
-      // Axis-specific flipping
-      const flipY = sectionAxis !== 'down';
-      const flipX = sectionAxis === 'side';
+      // Flips, cache read and the axis-corrected transform all come from the
+      // ONE resolver the print/export path also calls (`resolveSheetTransform`)
+      // — so preview and print cannot derive any of the three separately.
+      // The cached entry is validated against the CURRENT sheet's own
+      // geometry key AND the current section axis inside the resolver (the
+      // transform carries the axis's flips), not trusted because it's present:
+      // `useViewControls`'s effect that nulls this ref on a geometry change
+      // runs in the SAME commit as this drawing effect, but as the PARENT
+      // hook its effect commits AFTER this (child) effect — so on the very
+      // render the sheet's geometry changes, a stale (still non-null) cached
+      // entry would otherwise be reused for one frame, and nothing forces a
+      // second draw to correct it (PR #2853 review).
+      const resolved = resolveSheetTransform({
+        sheet: activeSheet,
+        drawingBounds,
+        axis: sectionAxis,
+        isPinned: Boolean(isPinned),
+        cached: cachedSheetTransformRef?.current,
+      });
+      const { flipX, flipY } = resolved;
+      const drawingTransform = resolved.transform;
 
-      // Use cached transform when pinned, otherwise calculate new one
-      let drawingTransform: { translateX: number; translateY: number; scaleFactor: number };
-
-      if (isPinned && cachedSheetTransformRef?.current) {
-        // Use cached transform to keep model fixed in place
-        drawingTransform = cachedSheetTransformRef.current;
-      } else {
-        // Calculate new transform
-        const baseTransform = calculateDrawingTransform(drawingBounds, viewport, activeSheet.scale);
-
-        // Adjust for axis-specific flipping
-        // calculateDrawingTransform assumes Y-flip (uses maxY), but for 'down' view we don't flip Y
-        drawingTransform = {
-          ...baseTransform,
-          translateY: flipY
-            ? baseTransform.translateY
-            : baseTransform.translateY - (drawingBounds.maxY + drawingBounds.minY) * baseTransform.scaleFactor,
-        };
-
-        // Cache the transform for pinned mode
-        if (cachedSheetTransformRef) {
-          cachedSheetTransformRef.current = drawingTransform;
-        }
+      // The PREVIEW owns the cache: it is the only path that writes. Export
+      // reads through the same resolver but never writes, so printing can
+      // never perturb the placement on screen.
+      if (!resolved.fromCache && cachedSheetTransformRef) {
+        cachedSheetTransformRef.current = { ...drawingTransform, key: resolved.key };
       }
 
       // Apply combined transform: sheet mm -> screen, then drawing coords -> sheet mm
@@ -795,8 +807,7 @@ export function Drawing2DCanvas({
 
         // Fill cut polygons
         for (const polygon of drawing.cutPolygons) {
-          let fillColor = getFillColorForType(polygon.ifcType);
-          let opacity = 1;
+          let fillColor = getFillColorForType(polygon.ifcType), opacity = 1;
 
           if (useIfcMaterials) {
             // Per-layer fill (material-layer wall/slab) wins over the per-entity
@@ -814,7 +825,7 @@ export function Drawing2DCanvas({
           } else if (overridesEnabled) {
             const elementData: ElementData = {
               expressId: polygon.entityId,
-              ifcType: polygon.ifcType,
+              ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
             };
             const result = overrideEngine.applyOverrides(elementData);
             fillColor = result.style.fillColor;
@@ -858,7 +869,7 @@ export function Drawing2DCanvas({
           if (overridesEnabled) {
             const elementData: ElementData = {
               expressId: polygon.entityId,
-              ifcType: polygon.ifcType,
+              ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
             };
             const result = overrideEngine.applyOverrides(elementData);
             strokeColor = result.style.strokeColor;
@@ -967,7 +978,52 @@ export function Drawing2DCanvas({
       // 6. Draw scale bar at BOTTOM LEFT of title block
       // Uses actual drawingTransform.scaleFactor which accounts for dynamic scaling
       // ─────────────────────────────────────────────────────────────────────
-      if (scaleBar.visible && tbH > 10) {
+      // The scale bar is sized by two loops, and BOTH can fail to terminate:
+      //
+      //   while (sbLengthMm > maxBarWidth && targetLengthM > 0.5)   // halving
+      //     targetLengthM = targetLengthM / 2;
+      //   while (sbLengthMm < maxBarWidth * 0.3 && targetLengthM < 100)  // doubling
+      //     targetLengthM = targetLengthM * 2;
+      //
+      // They wedge on different inputs, which is why the guard needs three
+      // clauses and not one. Measured against the real component, each one a
+      // render that had to be killed by the test runner's timeout:
+      //
+      //     totalLengthM=0         doubling loop   0 * 2 is 0, forever
+      //     totalLengthM=-1        doubling loop   halves toward -Infinity,
+      //                                            which stays < 100
+      //     totalLengthM=Infinity  HALVING loop    Infinity / 2 is Infinity
+      //     scaleFactor=NaN        terminates
+      //     scaleFactor=0          terminates
+      //
+      // The Infinity case is the one I missed first time round, because I
+      // reasoned about the doubling loop the bug report named and never looked
+      // at the one above it. `Infinity > 0` passes a positivity check, so a
+      // guard without `Number.isFinite` reads as complete and is not.
+      //
+      // title-block-renderer.ts:410 already had this exactly right, and says so:
+      // "Checked BEFORE the clamp, and the ordering is load-bearing: testing
+      // the clamped result loses the infinite case". This is the canvas
+      // catching up with the exporter, which is also why `calculateOptimal-
+      // ScaleBarLength` is left alone: it returns 0 for "no usable bar" and the
+      // exporter already declines to draw that. The canvas was the half not
+      // holding up its end.
+      //
+      // The two scaleFactor clauses do a different job. Neither prevents a
+      // hang; they stop a bar being drawn with a `NaNm` label when
+      // `actualTotalLength` comes out 0/0.
+      //
+      // Guards only the scale bar: the north arrow is drawn after this block in
+      // the same function, so an early return would silently drop it. That was
+      // my first attempt.
+      if (
+        scaleBar.visible &&
+        tbH > 10 &&
+        scaleBar.totalLengthM > 0 &&
+        Number.isFinite(scaleBar.totalLengthM) &&
+        Number.isFinite(drawingTransform.scaleFactor) &&
+        drawingTransform.scaleFactor > 0
+      ) {
         // Position: bottom left with small margin
         const sbX = tbX + 3;
         const sbY = tbY + tbH - 8; // 8mm from bottom (leaves room for label)
@@ -1114,9 +1170,7 @@ export function Drawing2DCanvas({
       // ═══════════════════════════════════════════════════════════════════════
       for (const polygon of drawing.cutPolygons) {
         // Get fill color - priority: IFC materials > override engine > IFC type fallback
-        let fillColor = getFillColorForType(polygon.ifcType);
-        let strokeColor = '#000000';
-        let opacity = 1;
+        let fillColor = getFillColorForType(polygon.ifcType), strokeColor = '#000000', opacity = 1;
 
         // Use actual IFC material colors from the mesh data
         if (useIfcMaterials) {
@@ -1136,7 +1190,7 @@ export function Drawing2DCanvas({
         } else if (overridesEnabled) {
           const elementData: ElementData = {
             expressId: polygon.entityId,
-            ifcType: polygon.ifcType,
+            ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
           };
           const result = overrideEngine.applyOverrides(elementData);
           fillColor = result.style.fillColor;
@@ -1179,7 +1233,7 @@ export function Drawing2DCanvas({
         if (overridesEnabled) {
           const elementData: ElementData = {
             expressId: polygon.entityId,
-            ifcType: polygon.ifcType,
+            ifcType: polygon.ifcType, properties: getElementProperties(polygon.entityId),
           };
           const result = overrideEngine.applyOverrides(elementData);
           strokeColor = result.style.strokeColor;
@@ -1371,7 +1425,7 @@ export function Drawing2DCanvas({
       const midY = (screenStart.y + screenEnd.y) / 2;
 
       // Format distance using shared utility
-      const labelText = formatDistance(distance);
+      const labelText = formatDistance(distance, unitDisplayOverrides);
 
       // Background for label
       ctx.font = '12px system-ui, sans-serif';
@@ -1488,7 +1542,7 @@ export function Drawing2DCanvas({
       const cx = drawingToScreenX(centroid.x);
       const cy = drawingToScreenY(centroid.y);
       const areaText = formatArea(result.area);
-      const perimText = `P: ${formatDistance(result.perimeter)}`;
+      const perimText = `P: ${formatDistance(result.perimeter, unitDisplayOverrides)}`;
 
       ctx.font = 'bold 12px system-ui, sans-serif';
       const areaMetrics = ctx.measureText(areaText);
@@ -1776,7 +1830,7 @@ export function Drawing2DCanvas({
         }
       }
     }
-  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity]);
+  }, [drawing, transform, showHiddenLines, canvasSize, overrideEngine, overridesEnabled, getElementProperties, entityColorMap, useIfcMaterials, measureMode, measureStart, measureCurrent, measureResults, measureSnapPoint, sheetEnabled, activeSheet, sectionAxis, isPinned, annotation2DActiveTool, annotation2DCursorPos, polygonAreaPoints, polygonAreaResults, textAnnotations, textAnnotationEditing, cloudAnnotationPoints, cloudAnnotations, selectedAnnotation, ifcAnnotationLines, ifcAnnotationTexts, ifcAnnotationFills, dxfUnderlays, scanPoints, scanOpacity, unitDisplayOverrides]);
 
   return (
     <canvas

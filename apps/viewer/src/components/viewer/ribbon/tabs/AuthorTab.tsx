@@ -58,7 +58,7 @@ export function AuthorTab() {
       <RibbonGroup label="Edit">
         <RibbonLargeButton
           icon={EditElement}
-          label="Edit Mode"
+          label="Edit mode"
           tooltip={canEditInSession
             ? (editEnabled ? 'Exit edit mode' : 'Enter edit mode')
             : 'Editing requires editor access in this shared session'}
@@ -91,7 +91,7 @@ export function AuthorTab() {
       <RibbonGroup label="Create">
         <RibbonLargeButton
           icon={AddElement}
-          label="Add Element"
+          label="Add element"
           tooltip="Add element (opens the drawing panel)"
           active={activeWorkspacePanels.has('addElement')}
           activeClassName={EDIT_ACTIVE_CLASS}

@@ -108,6 +108,36 @@
       ],
       "@ifc-lite/viewer/*": [
         "packages/viewer/dist/*"
+      ],
+      "@ifc-lite/plugin-api": [
+        "packages/plugin-api/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-dalux": [
+        "packages/source-dalux/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-dalux/*": [
+        "packages/source-dalux/dist/*"
+      ],
+      "@ifc-lite/oauth-pkce": [
+        "packages/oauth-pkce/dist/index.d.ts"
+      ],
+      "@ifc-lite/oauth-pkce/*": [
+        "packages/oauth-pkce/dist/*"
+      ],
+      "@ifc-lite/source-dropbox": [
+        "packages/source-dropbox/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-dropbox/*": [
+        "packages/source-dropbox/dist/*"
+      ],
+      "@ifc-lite/source-msgraph": [
+        "packages/source-msgraph/dist/index.d.ts"
+      ],
+      "@ifc-lite/source-msgraph/*": [
+        "packages/source-msgraph/dist/*"
+      ],
+      "@ifc-lite/plugin-api/*": [
+        "packages/plugin-api/dist/*"
       ]
     }
   },

@@ -174,16 +174,63 @@ export type { HatchLine, HatchResult, CustomHatchSettings } from './hatch-genera
 export { SVGExporter, exportToSVG } from './svg-exporter.js';
 export type { SVGExportOptions } from './svg-exporter.js';
 
+// Scaled PDF export (issue #2042): pure scale/extent arithmetic only —
+// the PDF is assembled by the viewer using jsPDF, which is not a
+// dependency of this package.
+export {
+  computePdfScaleLayout, worldPointToPdfMm, worldLengthToPdfMm, flipBounds2D, formatScaleFactorLabel,
+  // The ratio a sheet PRINTS: the same number as the filename, hedged with
+  // "about" when 2 decimals had to round it (#2042).
+  formatSheetScaleLabel,
+} from './pdf-scale.js';
+export type { PdfScaleTransform, PdfPage, PdfScaleLayout, AxisFlip } from './pdf-scale.js';
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TO-SCALE 3D-VIEW EXPORT (issue #2042)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Synthetic camera section plane (orthonormal basis, placed in front of the
+// model) + the world bounds helper that folds `MeshData.origin`.
+// `worldBoundsCorners` stays package-private: `buildCameraSectionPlane` does
+// the corner work itself and no external consumer exists, so publishing it
+// would only be permanent semver liability (PR #1871 review).
+export { buildCameraSectionPlane, worldBoundsOfMeshes } from './view-plane.js';
+export type { CameraFrame, CameraSectionPlane, WorldBounds3D } from './view-plane.js';
+
+// CPU half-space clip standing in for the GPU section clip.
+export { clipMeshToHalfSpace, clipMeshesToHalfSpace } from './half-space-clip.js';
+export type {
+  HalfSpaceClipResult,
+  HalfSpaceClipBatchResult,
+  WorldSegment,
+} from './half-space-clip.js';
+
+// World segments -> classified drawing lines (feeds `GeneratorOptions.extraLines`).
+export { projectWorldLineSeeds } from './world-line-seeds.js';
+export type { WorldLineSeed } from './world-line-seeds.js';
+
+// Flat-shaded RGBA underlay for the to-scale PDF: the surfaces the viewport
+// shows, placed under the vector line work. `raster-core.ts` (the primitives
+// this shares with the hidden-line depth raster) stays package-private.
+export {
+  buildColorRaster,
+  fitRasterPixels,
+  DEFAULT_SHADING_DPI,
+  MAX_SHADING_PIXELS,
+  MAX_SHADING_DIMENSION_PX,
+} from './color-raster.js';
+export type { ColorRaster, ColorRasterOptions, RasterFit } from './color-raster.js';
+
 // ═══════════════════════════════════════════════════════════════════════════
 // DXF EXPORT (issue #1861)
 // ═══════════════════════════════════════════════════════════════════════════
 
 // Only the exporter facade is public. The low-level writer internals
-// (DxfWriter, sanitizeDxfLayerName, cssToAci, the linetype/justification
-// types) stay package-private: no external consumer exists, and an unused
-// public export is permanent semver liability (PR #1871 review).
+// (DxfWriter, sanitizeDxfLayerName, cssToAci, linetype/justification types)
+// stay package-private: an unused public export is permanent semver liability.
 export { DXFExporter, exportToDXF } from './dxf-exporter.js';
 export type { DXFExportOptions, DXFUnderlayOptions } from './dxf-exporter.js';
+export { encodeDxfCp1252, type Cp1252EncodeResult } from './dxf/encoding.js'; // public: $DWGCODEPAGE ANSI_1252, not UTF-8
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GPU ACCELERATION
@@ -468,12 +515,16 @@ export {
   // Sheet utilities
   calculateViewportBounds,
   calculateDrawingTransform,
+  calculateDrawingTransformForAxis,
+
+  // Scale stamp: the sheet's own record of the scale it was drawn at (#2042).
+  // Grows the page around an EXISTING to-scale layout and returns its
+  // transform untouched, unlike `calculateDrawingTransform`, which re-fits.
+  addScaleStamp,
 
   // Sheet renderers
   renderFrame,
   renderTitleBlock,
-  renderScaleBar,
-  renderNorthArrow,
 } from './sheet/index.js';
 
 export type {
@@ -497,9 +548,6 @@ export type {
   TitleBlockConfig,
 
   // Scale bar types
-  ScaleBarStyle,
-  ScaleBarPosition,
-  ScaleBarUnits,
   ScaleBarConfig,
   NorthArrowStyle,
   NorthArrowConfig,
@@ -509,10 +557,16 @@ export type {
   DrawingSheet,
   SheetCreationOptions,
 
+  // Scale stamp types
+  ScaleStampRect,
+  ScaleStampText,
+  ScaleStampBar,
+  ScaleStamp,
+  StampedSheetLayout,
+
   // Renderer types
   FrameRenderResult,
   FrameInnerBounds,
   TitleBlockRenderResult,
   TitleBlockExtras,
-  PositionMm,
 } from './sheet/index.js';

@@ -14,7 +14,10 @@ npm install @ifc-lite/lens
 import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
 import type { LensDataProvider } from '@ifc-lite/lens';
 
-const provider: LensDataProvider = createMyProvider(myData);
+// Bridge your data source (IfcDataStore, a server API, IndexedDB, ...)
+// to the engine by implementing LensDataProvider.
+declare const provider: LensDataProvider;
+
 const result = evaluateLens(BUILTIN_LENSES[0], provider);
 // result.colorMap   - Map<globalId, RGBAColor>
 // result.hiddenIds  - Set<globalId>

@@ -24,7 +24,7 @@ export default defineConfig({
   projects: [
     {
       name: 'viewer-e2e',
-      testMatch: /viewer-smoke\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|usd-export|laz-wasm)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
@@ -45,7 +45,7 @@ export default defineConfig({
     },
     {
       name: 'viewer-e2e-ci',
-      testMatch: /viewer-smoke\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|usd-export|laz-wasm)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: 'http://localhost:3000',

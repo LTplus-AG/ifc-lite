@@ -95,6 +95,22 @@ resolved to the nearest AutoCAD Color Index. Layer names follow the strict
 R12 symbol rules (31 chars, `A-Z a-z 0-9 $ - _`); names that collide after
 sanitizing get a numeric suffix instead of merging.
 
+The returned string declares `$DWGCODEPAGE ANSI_1252` in its HEADER — DXF
+has no UTF-8 support before R2007 (AC1021). Encode it with
+`encodeDxfCp1252` before writing it to a file or `Blob`; a plain UTF-8
+encoder mismatches that declared codepage, and any real DXF reader
+(AutoCAD, `ezdxf`, ...) then decodes non-ASCII text as mojibake:
+
+```typescript
+import { exportToDXF, encodeDxfCp1252 } from '@ifc-lite/drawing-2d';
+
+declare const dxf: ReturnType<typeof exportToDXF>;
+const { bytes, hadUnmappable } = encodeDxfCp1252(dxf);
+// bytes is a Uint8Array ready to write to disk or a Blob.
+// hadUnmappable is true if a character outside windows-1252 (e.g. CJK)
+// was replaced with '?' — R12 TEXT has no wider single-byte encoding.
+```
+
 ## Drawing Sheets
 
 For presentation-ready output, drawings can be placed on sheets with frames and title blocks:
@@ -105,8 +121,8 @@ import {
   createTitleBlock,
   renderFrame,
   renderTitleBlock,
-  renderScaleBar,
   DEFAULT_SCALE_BAR,
+  DEFAULT_NORTH_ARROW,
   PAPER_SIZE_REGISTRY,
 } from '@ifc-lite/drawing-2d';
 
@@ -124,9 +140,15 @@ const titleBlock = createTitleBlock('standard');
 
 // Renderers return result objects, not raw SVG strings.
 const frameResult = renderFrame(paper, frame);
-const titleBlockResult = renderTitleBlock(titleBlock, frameResult.innerBounds);
+
+// The scale bar and north arrow are drawn inside the title block; pass them
+// as the fourth `extras` argument rather than rendering them separately.
 const scale = { name: '1:100', factor: 100, useCase: 'Floor plans' };
-const scaleBarSvg = renderScaleBar(DEFAULT_SCALE_BAR, scale, { x: 20, y: 20 });
+const titleBlockResult = renderTitleBlock(titleBlock, frameResult.innerBounds, [], {
+  scaleBar: DEFAULT_SCALE_BAR,
+  northArrow: DEFAULT_NORTH_ARROW,
+  scale,
+});
 
 const frameSvg = frameResult.svgElements;
 const titleBlockSvg = titleBlockResult.svgElements;

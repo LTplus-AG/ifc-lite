@@ -23,6 +23,7 @@ import type { StateCreator } from 'zustand';
 import type { AnimationSettings } from '@/components/viewer/schedule/schedule-animator';
 import { DEFAULT_ANIMATION_SETTINGS } from '@/components/viewer/schedule/schedule-animator';
 import type { ScheduleTimeRange } from './scheduleSlice.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface PlaybackSlice {
   /** Animation master toggle — when false the viewer renders normally. */
@@ -126,3 +127,24 @@ export const createPlaybackSlice: StateCreator<
     set({ playbackTime: next });
   },
 });
+
+/**
+ * Schedule (4D) playback — stop the clock and rewind it on a file swap.
+ *
+ * `playbackSpeed`, `playbackLoop` and `animationSettings` are deliberately
+ * ABSENT from both `owns` and the body: they are user preferences that survive
+ * file loads, exactly as `resetViewerState`'s schedule block says.
+ */
+export const playbackTeardown = defineSliceTeardown(
+  'playbackSlice',
+  ['animationEnabled', 'playbackIsPlaying', 'playbackTime'],
+  {
+    'session-reset': () => ({
+      animationEnabled: false,
+      playbackIsPlaying: false,
+      playbackTime: 0,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
+  },
+);

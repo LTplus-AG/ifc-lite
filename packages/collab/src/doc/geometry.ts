@@ -62,7 +62,12 @@ export function createGeometry(
   const node = new Y.Map<unknown>();
   node.set(GEOMETRY_KEY.TYPE, opts.type);
   node.set(GEOMETRY_KEY.SOURCE, opts.source);
-  if (opts.blobHash) node.set(GEOMETRY_KEY.BLOB_HASH, opts.blobHash);
+  // `!== undefined`, not a truthiness check: an explicit `blobHash: ''`
+  // is a value the caller supplied and must survive, the same contract
+  // `upsertGeometry` already honours below. A truthy guard here silently
+  // drops it before the doc even exists to round-trip from (#1031-adjacent —
+  // see round-trip.test.ts).
+  if (opts.blobHash !== undefined) node.set(GEOMETRY_KEY.BLOB_HASH, opts.blobHash);
 
   const params = new Y.Map<unknown>();
   if (opts.params) {
@@ -79,6 +84,61 @@ export function createGeometry(
   node.set(GEOMETRY_KEY.VERSION_VECTOR, new Y.Map<number>());
 
   geom.set(geomId, node);
+  return node;
+}
+
+/**
+ * Write a carrier's fields onto a geometry record, creating it if absent.
+ *
+ * `createGeometry` returns an existing record untouched, which is what seeding
+ * a fresh doc wants: a file listing the same `geomId` twice must not have the
+ * second mention rewrite the first. An overlay is the opposite case — it exists
+ * precisely to carry edits to records the parent already has — so routing it
+ * through `createGeometry` drops every in-place geometry change silently, with
+ * the merge still reporting success.
+ *
+ * Carriers are PARTIAL: `geometryRecordLookup` in `snapshot/structured-attrs.ts`
+ * omits `blobHash` and `bbox` when absent and `params` entirely when empty.
+ * That is why the optional fields are guarded here — an absent field is "no
+ * opinion", not "clear it".
+ *
+ * `params` therefore MERGE rather than replace, for a reason that was measured:
+ * merging emits one Yjs change per key at `[geomId, 'params']`, which
+ * `conflicts/detector.ts` classifies as a `geometry-param` conflict, while
+ * `node.set(PARAMS, new Y.Map())` emits a single change at `[geomId]` that
+ * `classify` returns null for — so replacing would make a concurrent param edit
+ * stop being a detectable conflict.
+ *
+ * Two costs, both real. A param the branch DELETED cannot be represented, the
+ * same limit the overlay has for structured removals generally. And because
+ * `type`/`source` are required and so always written while the optional fields
+ * are not, a stale carrier can leave a record mixing one representation's
+ * type with another's `blobHash`.
+ *
+ * The version vector is deliberately left alone: it records who replaced this
+ * geometry, and applying someone's overlay is not this peer replacing it.
+ * `bumpGeometryVersion` is the explicit way to say that.
+ */
+export function upsertGeometry(
+  doc: Y.Doc,
+  geomId: string,
+  opts: CreateGeometryOptions,
+): Y.Map<unknown> {
+  const node = getGeometry(doc, geomId);
+  if (!node) return createGeometry(doc, geomId, opts);
+
+  node.set(GEOMETRY_KEY.TYPE, opts.type);
+  node.set(GEOMETRY_KEY.SOURCE, opts.source);
+  if (opts.blobHash !== undefined) node.set(GEOMETRY_KEY.BLOB_HASH, opts.blobHash);
+  if (opts.bbox !== undefined) node.set(GEOMETRY_KEY.BBOX, opts.bbox);
+  if (opts.params) {
+    let params = node.get(GEOMETRY_KEY.PARAMS) as Y.Map<unknown> | undefined;
+    if (!params) {
+      params = new Y.Map<unknown>();
+      node.set(GEOMETRY_KEY.PARAMS, params);
+    }
+    for (const [k, v] of Object.entries(opts.params)) params.set(k, v);
+  }
   return node;
 }
 

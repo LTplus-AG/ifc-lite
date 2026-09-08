@@ -14,7 +14,7 @@
  * the path-B evaluator from a single Run button.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Plus, Trash2, X, Bookmark, Save } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useViewerStore } from '@/store';
@@ -28,31 +28,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
-import { COMMON_IFC_TYPES } from '@/lib/search/common-ifc-types';
-import {
-  Rule,
-  type FilterRule,
-  type Combinator,
-} from '@/lib/search/filter-rules';
-import {
-  discoverFilterSchema,
-  discoverPropertyAndQuantitySchema,
-  discoverFilterValues,
-} from '@/lib/search/filter-schema';
+import { Rule, type FilterRule } from '@/lib/search/filter-rules';
+import { useFilterRuleOptions } from '@/hooks/useFilterRuleOptions';
+import { AddRuleMenu, CombinatorToggle, blankRuleOfKind } from './FilterRuleControls';
 import {
   loadSavedFilters,
   saveFilter,
   deleteSavedFilter,
   type SavedFilterPreset,
 } from '@/lib/search/saved-filters';
-import { RuleRow, RULE_KIND_LABEL } from './SearchModal.filter.editors';
+import { toast } from '@/components/ui/toast';
+import { RuleRow } from './SearchModal.filter.editors';
+import { SearchModalFilterSelector, useActiveSchemaVersion } from './SearchModal.filter.selector';
+import { readSelector } from '@/lib/search/selector-to-rules';
 
 export function SearchModalFilterBuilder() {
   const {
     filter,
-    schemaMap,
-    models,
-    activeModelId,
     searchQuery,
     setFilterCombinator,
     setFilterLimit,
@@ -60,16 +52,10 @@ export function SearchModalFilterBuilder() {
     updateFilterRule,
     removeFilterRule,
     clearFilterRules,
-    setFilterSchema,
-    setFilterPsetQtoSchema,
-    setFilterValueSchema,
     setSearchFilter,
   } = useViewerStore(
     useShallow((s) => ({
       filter: s.searchFilter,
-      schemaMap: s.searchFilterSchema,
-      models: s.models,
-      activeModelId: s.activeModelId,
       searchQuery: s.searchQuery,
       setFilterCombinator: s.setFilterCombinator,
       setFilterLimit: s.setFilterLimit,
@@ -77,112 +63,58 @@ export function SearchModalFilterBuilder() {
       updateFilterRule: s.updateFilterRule,
       removeFilterRule: s.removeFilterRule,
       clearFilterRules: s.clearFilterRules,
-      setFilterSchema: s.setFilterSchema,
-      setFilterPsetQtoSchema: s.setFilterPsetQtoSchema,
-      setFilterValueSchema: s.setFilterValueSchema,
       setSearchFilter: s.setSearchFilter,
     })),
   );
+  const schemaVersion = useActiveSchemaVersion();
 
   const [savedPresets, setSavedPresets] = useState<SavedFilterPreset[]>(() => loadSavedFilters());
 
-  const activeModel = activeModelId ? models.get(activeModelId) : undefined;
-  const activeStore = activeModel?.ifcDataStore ?? null;
-  const schemaEntry = activeModelId ? schemaMap.get(activeModelId) : undefined;
-
-  // Cheap schema discovery — runs once per active model.
-  useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    if (schemaMap.has(activeModelId)) return;
-    setFilterSchema(activeModelId, discoverFilterSchema(activeStore));
-  }, [activeModelId, activeStore, schemaMap, setFilterSchema]);
-
-  // Lazy pset/qto schema — fired the first time a property/quantity rule appears.
-  useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.psetQto) return;
-    const needs = filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity');
-    if (!needs) return;
-    setFilterPsetQtoSchema(activeModelId, discoverPropertyAndQuantitySchema(activeStore));
-  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterPsetQtoSchema]);
-
-  // Lazy value discovery - distinct material / classification / property /
-  // predefined-type values for the chip value suggestions. Fired the first time
-  // a rule that benefits from them appears.
-  useEffect(() => {
-    if (!activeModelId || !activeStore) return;
-    const entry = schemaMap.get(activeModelId);
-    if (entry?.values) return;
-    const needs = filter.rules.some(
-      (r) =>
-        r.kind === 'property' ||
-        r.kind === 'material' ||
-        r.kind === 'classification' ||
-        r.kind === 'predefinedType',
-    );
-    if (!needs) return;
-    setFilterValueSchema(activeModelId, discoverFilterValues(activeStore));
-  }, [activeModelId, activeStore, filter.rules, schemaMap, setFilterValueSchema]);
-
-  const ifcTypeOptions = useMemo<string[]>(() => {
-    if (schemaEntry?.basic.ifcTypes && schemaEntry.basic.ifcTypes.length > 0) {
-      return schemaEntry.basic.ifcTypes;
-    }
-    return COMMON_IFC_TYPES.slice();
-  }, [schemaEntry]);
-  const storeyOptions = schemaEntry?.basic.storeys ?? [];
-
-  // The canonical IFC types the filter selects (ifcType "is one of" rules).
-  const selectedTypes = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of filter.rules) {
-      if (r.kind === 'ifcType' && r.op === 'in') {
-        for (const v of r.values) if (v) set.add(v);
-      }
-    }
-    return Array.from(set);
-  }, [filter.rules]);
-
-  const hasPropOrQty = useMemo(
-    () => filter.rules.some((r) => r.kind === 'property' || r.kind === 'quantity'),
-    [filter.rules],
-  );
-
-  // Pset/Qto dropdown source: when the filter targets specific IFC types, scope
-  // discovery to just those elements so only their (legal + user-defined) psets
-  // show - no scrolling past unrelated MEP/structural sets - and read them
-  // directly so a pset missing from the on-demand map still appears. Otherwise
-  // use the cached whole-model schema. (#1462)
-  const psetQto = useMemo(() => {
-    const cached = schemaEntry?.psetQto ?? null;
-    if (!activeStore || !hasPropOrQty || selectedTypes.length === 0) return cached;
-    return discoverPropertyAndQuantitySchema(activeStore, selectedTypes);
-  }, [activeStore, hasPropOrQty, selectedTypes, schemaEntry?.psetQto]);
+  const ruleOptions = useFilterRuleOptions(filter.rules);
 
   // ── Rule construction ─────────────────────────────────────────────
 
-  const addRuleOfKind = useCallback((kind: FilterRule['kind']) => {
-    let rule: FilterRule;
-    switch (kind) {
-      case 'storey':         rule = Rule.storey([], 'in'); break;
-      case 'ifcType':        rule = Rule.ifcType([], 'in'); break;
-      case 'predefinedType': rule = Rule.predefinedType([], 'in'); break;
-      case 'name':           rule = Rule.name('contains', ''); break;
-      case 'property':       rule = Rule.property('', '', 'eq', ''); break;
-      case 'quantity':       rule = Rule.quantity('', '', 'gt', 0); break;
-      case 'material':       rule = Rule.material('contains', ''); break;
-      case 'classification': rule = Rule.classification('', 'contains', ''); break;
-      case 'elevation':      rule = Rule.elevation('gt', 0); break;
-    }
-    addFilterRule(rule);
-  }, [addFilterRule]);
+  const addRuleOfKind = useCallback(
+    (kind: FilterRule['kind']) => addFilterRule(blankRuleOfKind(kind)),
+    [addFilterRule],
+  );
 
+  /**
+   * The search bar's text as rules, through the same reading the Selector
+   * field uses. `IfcWall, Name=/D[0-9]{2}/` becomes a type rule and a Name
+   * rule; text that is not a selector at all — a plain `Wand` — stays the
+   * `Name contains` it has always been.
+   *
+   * A selector the adapter can only partly carry now applies the part it can
+   * and NAMES the rest. It used to fall through to `Name contains` on the
+   * whole string, so `IfcWall, type=WT01` silently added a rule matching zero
+   * elements with nothing to read: the defect #4091 reported, reached from the
+   * other entry point. Two surfaces reading the same text cannot disagree
+   * about whether the user is owed an explanation.
+   *
+   * The fallback survives for text that PARSES but names nothing — `IFC`,
+   * `IFC-Export`, `Level=1`. Those reach here as a successful parse with no
+   * rule, and reporting them cost the button its oldest behaviour on the most
+   * ordinary input there is: `readsAsPlainText` is how the adapter separates
+   * them from a selector whose construct it genuinely cannot run.
+   */
   const promoteSearchQuery = useCallback(() => {
     const q = searchQuery.trim();
     if (!q) return;
-    addFilterRule(Rule.name('contains', q));
-  }, [addFilterRule, searchQuery]);
+    const reading = readSelector(q, { schemaVersion });
+    if (!reading.ok || reading.readsAsPlainText) {
+      addFilterRule(Rule.name('contains', q));
+      return;
+    }
+    if (reading.rules.length === 0) {
+      toast.error(`Nothing in that selector maps to a filter rule yet: ${reading.unsupported.join('; ')}`);
+      return;
+    }
+    for (const rule of reading.rules) addFilterRule(rule);
+    if (reading.unsupported.length > 0) {
+      toast.info(`Added without these parts: ${reading.unsupported.join('; ')}`);
+    }
+  }, [addFilterRule, schemaVersion, searchQuery]);
 
   // ── Preset handlers ─────────────────────────────────────────────────
 
@@ -191,7 +123,13 @@ export function SearchModalFilterBuilder() {
     // eslint-disable-next-line no-alert
     const name = window.prompt('Save filter as…', '');
     if (!name) return;
-    setSavedPresets(saveFilter(name, filter.combinator, filter.rules));
+    const result = saveFilter(name, filter.combinator, filter.rules);
+    setSavedPresets(result.presets);
+    // A refused write used to return the in-memory catalog as though saved —
+    // the user saw the filter and lost it next session (#2089).
+    if (!result.persisted) {
+      toast.error('Filter could not be saved — browser storage is unavailable or full.');
+    }
   }, [filter.combinator, filter.rules]);
 
   const handleLoadPreset = useCallback((preset: SavedFilterPreset) => {
@@ -203,131 +141,105 @@ export function SearchModalFilterBuilder() {
   }, [filter.limit, setSearchFilter]);
 
   const handleDeletePreset = useCallback((name: string) => {
-    setSavedPresets(deleteSavedFilter(name));
+    const result = deleteSavedFilter(name);
+    setSavedPresets(result.presets);
+    if (!result.persisted) {
+      toast.error('Filter could not be deleted — browser storage is unavailable or full.');
+    }
   }, []);
 
   return (
-    <div className="flex flex-col gap-3 p-4">
-      {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <CombinatorToggle value={filter.combinator} onChange={setFilterCombinator} />
+    <div className="flex flex-col">
+      <SearchModalFilterSelector />
+      <div className="flex flex-col gap-3 p-4">
+        {/* ── Toolbar: AND/OR · Limit · promote-query · Presets · Save · Reset ── */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <CombinatorToggle value={filter.combinator} onChange={setFilterCombinator} />
 
-        <div className="ml-1 flex items-center gap-1">
-          <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Limit
-          </label>
-          <Input
-            type="number"
-            min={0}
-            value={filter.limit}
-            onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}
-            className="h-7 w-20 text-xs"
-          />
-          <span className="text-[10px] text-muted-foreground">0 = none</span>
-        </div>
+          <div className="ml-1 flex items-center gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Limit
+            </label>
+            <Input
+              type="number"
+              min={0}
+              value={filter.limit}
+              onChange={(e) => setFilterLimit(Number.parseInt(e.target.value, 10) || 0)}
+              className="h-7 w-20 text-xs"
+            />
+            <span className="text-[10px] text-muted-foreground">0 = none</span>
+          </div>
 
-        {searchQuery.trim().length > 0 && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={promoteSearchQuery}
-            className="h-7 gap-1 text-[11px]"
-            title="Add a Name contains rule from the search bar query"
-          >
-            <Plus className="h-3 w-3" />
-            Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as rule
-          </Button>
-        )}
-
-        <div className="ml-auto flex items-center gap-1">
-          <PresetMenu
-            presets={savedPresets}
-            onLoad={handleLoadPreset}
-            onDelete={handleDeletePreset}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={handleSavePreset}
-            disabled={filter.rules.length === 0}
-            className="h-7 gap-1 text-[11px]"
-            title="Save the current rules as a named preset"
-          >
-            <Save className="h-3 w-3" /> Save
-          </Button>
-          {filter.rules.length > 0 && (
+          {searchQuery.trim().length > 0 && (
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              onClick={clearFilterRules}
-              className="h-7 gap-1 text-[11px] text-muted-foreground"
+              onClick={promoteSearchQuery}
+              className="h-7 gap-1 text-[11px]"
+              title="Turn the search bar query into filter rules"
             >
-              <X className="h-3 w-3" /> Reset
+              <Plus className="h-3 w-3" />
+              Add &ldquo;{truncate(searchQuery.trim(), 18)}&rdquo; as rule
             </Button>
           )}
-        </div>
-      </div>
 
-      {/* ── Rules list ──────────────────────────────────────────────────── */}
-      <div className="flex flex-col gap-2">
-        {filter.rules.length === 0 && (
-          <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
-            Add a rule to start filtering — pick by storey, IFC type, name,
-            property, quantity, material, classification, or elevation.
-          </p>
-        )}
-        {filter.rules.map((rule, i) => (
-          <RuleRow
-            key={i}
-            rule={rule}
-            ifcTypeOptions={ifcTypeOptions}
-            storeyOptions={storeyOptions}
-            psetQto={psetQto}
-            valueSchema={schemaEntry?.values ?? null}
-            onChange={(next) => updateFilterRule(i, next)}
-            onRemove={() => removeFilterRule(i)}
-          />
-        ))}
-        <AddRuleMenu onAdd={addRuleOfKind} />
+          <div className="ml-auto flex items-center gap-1">
+            <PresetMenu
+              presets={savedPresets}
+              onLoad={handleLoadPreset}
+              onDelete={handleDeletePreset}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={handleSavePreset}
+              disabled={filter.rules.length === 0}
+              className="h-7 gap-1 text-[11px]"
+              title="Save the current rules as a named preset"
+            >
+              <Save className="h-3 w-3" /> Save
+            </Button>
+            {filter.rules.length > 0 && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearFilterRules}
+                className="h-7 gap-1 text-[11px] text-muted-foreground"
+              >
+                <X className="h-3 w-3" /> Reset
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Rules list ──────────────────────────────────────────────────── */}
+        <div className="flex flex-col gap-2">
+          {filter.rules.length === 0 && (
+            <p className="rounded border border-dashed border-zinc-300 bg-zinc-50 px-3 py-3 text-center text-xs italic text-muted-foreground dark:border-zinc-800 dark:bg-zinc-900/30">
+              Add a rule to start filtering — pick by model, storey, IFC type, name,
+              property, quantity, material, classification, or elevation.
+            </p>
+          )}
+          {filter.rules.map((rule, i) => (
+            <RuleRow
+              key={i}
+              rule={rule}
+              {...ruleOptions}
+              onChange={(next) => updateFilterRule(i, next)}
+              onRemove={() => removeFilterRule(i)}
+            />
+          ))}
+          <AddRuleMenu onAdd={addRuleOfKind} />
+        </div>
       </div>
     </div>
   );
 }
 
 // ── Sub-components ────────────────────────────────────────────────────
-
-function CombinatorToggle({
-  value,
-  onChange,
-}: {
-  value: Combinator;
-  onChange: (next: Combinator) => void;
-}) {
-  return (
-    <div
-      className="inline-flex rounded border border-zinc-200 bg-white p-0.5 text-[11px] dark:border-zinc-800 dark:bg-zinc-950"
-      title="AND requires every rule to match. OR matches any rule."
-    >
-      {(['AND', 'OR'] as const).map((c) => (
-        <button
-          key={c}
-          type="button"
-          onClick={() => onChange(c)}
-          className={`rounded px-2 py-0.5 font-mono font-medium transition-colors ${
-            value === c
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:text-foreground'
-          }`}
-        >
-          {c}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function PresetMenu({
   presets,
@@ -390,32 +302,6 @@ function PresetMenu({
             >
               <Trash2 className="h-3 w-3" />
             </button>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function AddRuleMenu({
-  onAdd,
-}: {
-  onAdd: (kind: FilterRule['kind']) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-7 gap-1 self-start text-xs">
-          <Plus className="h-3 w-3" />
-          Add rule
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuLabel className="text-[10px] uppercase">Filter dimension</DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {(Object.keys(RULE_KIND_LABEL) as FilterRule['kind'][]).map((k) => (
-          <DropdownMenuItem key={k} onSelect={() => onAdd(k)}>
-            {RULE_KIND_LABEL[k]}
           </DropdownMenuItem>
         ))}
       </DropdownMenuContent>

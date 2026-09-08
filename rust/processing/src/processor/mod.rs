@@ -23,13 +23,22 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 mod color_layer;
-mod instancing;
+mod csg_summary;
+#[cfg(test)]
+#[path = "csg_summary_tests.rs"]
+mod csg_summary_tests;
+mod diagnostics;
+mod entity_index;
+use entity_index::{IndexBuilder, ProcessingIndex};
+pub(crate) mod instancing;
 mod jobs;
 mod opening_filter;
 mod properties;
 mod quick_metadata;
+mod schema_detection;
 mod site_local;
 
+pub use quick_metadata::is_quick_spatial_type_ci;
 pub use site_local::convert_mesh_to_site_local;
 pub(crate) use site_local::site_local_rotation_invalidates_captured_transforms;
 
@@ -43,8 +52,7 @@ use opening_filter::apply_opening_filter;
 use properties::resolve_space_zone_properties_lazy;
 use quick_metadata::{
     build_quick_spatial_tree_node, extract_name_from_args, extract_storey_elevation_from_args,
-    is_quick_spatial_type_ci, parse_step_arguments, parse_step_ref, parse_step_ref_list,
-    QuickSpatialNodeEntry,
+    parse_step_arguments, parse_step_ref, parse_step_ref_list, QuickSpatialNodeEntry,
 };
 use site_local::{
     translation_is_nonidentity, MODEL_RTC_MESH_COORDINATE_SPACE, RAW_IFC_MESH_COORDINATE_SPACE,
@@ -503,11 +511,7 @@ pub fn process_geometry_streaming_filtered_with_options(
     // index is installed before the first ref-resolving call (`resolve_prepass`).
     let provided_index = options.entity_index.clone();
     let building_index = provided_index.is_none();
-    let mut inline_index: EntityIndex = if building_index {
-        FxHashMap::with_capacity_and_hasher(content.len() / 50, Default::default())
-    } else {
-        FxHashMap::default()
-    };
+    let mut inline_index = IndexBuilder::new(content.len(), building_index);
     let mut decoder = match &provided_index {
         Some(idx) => EntityDecoder::with_arc_index(content, idx.clone()),
         None => EntityDecoder::new(content),
@@ -532,6 +536,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // Collect geometry entities
     let mut scanner = EntityScanner::new(content);
+    let mut georeferencing_candidates = Vec::new();
     let mut entity_jobs: Vec<EntityJob> = Vec::with_capacity(2000);
     // #957: type-product geometry (IfcXxxType + its RepresentationMaps) and the
     // set of RepresentationMaps already instantiated by an IfcMappedItem. After
@@ -580,7 +585,6 @@ pub fn process_geometry_streaming_filtered_with_options(
     } else {
         HashMap::new()
     };
-    let mut schema_version = "IFC2X3".to_string();
     let mut total_entities = 0usize;
     let mut site_entity_pos: Option<(usize, usize)> = None;
     let mut building_entity_pos: Option<(usize, usize)> = None;
@@ -591,6 +595,9 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
         total_entities += 1;
+        if let Some(ifc_type) = crate::georeferencing::georeferencing_candidate_type(type_name) {
+            georeferencing_candidates.push((id, ifc_type));
+        }
         if building_index {
             inline_index.insert(id, (start, end));
         }
@@ -705,7 +712,9 @@ pub fn process_geometry_streaming_filtered_with_options(
             building_entity_pos = Some((start, end));
         }
 
-        if ifc_lite_core::has_geometry_by_name(type_name) {
+        let (has_geometry, representationless_spatial) =
+            ifc_lite_core::geometry_flags_by_name(type_name);
+        if has_geometry {
             // Legacy-aware so a remapped entity (IfcProxy, IfcSolidStratum, …)
             // labels its node with the real base type, not "Unknown", and matches
             // the attribute pass's row type (#1496).
@@ -725,6 +734,34 @@ pub fn process_geometry_streaming_filtered_with_options(
                     },
                 );
             }
+            entity_jobs.push(EntityJob {
+                id,
+                ifc_type,
+                start,
+                end,
+                product_definition_shape_id: None,
+                element_color: crate::style::default_color_for_type(ifc_type).to_array(),
+                global_id: None,
+                name: None,
+                presentation_layer: None,
+                space_zone_properties: None,
+                representation_map_id: None,
+            });
+        } else if representationless_spatial
+            && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6)
+        {
+            // #1910: `has_geometry_by_name` excludes spatial containers like
+            // `IfcBuilding` because in virtually every real file they are
+            // pure hierarchy nodes with a null Representation. A DGM/terrain
+            // export that attaches its `IfcShellBasedSurfaceModel` directly
+            // to `IfcBuilding` (no `IfcBuildingElement` children at all) is
+            // the exceptional counter-example: its geometry must still be
+            // scheduled for meshing, or the file loads with correct metadata
+            // but renders nothing. Deliberately skips the
+            // `quick_element_summaries` insert above — the spatial tree
+            // already carries this entity as a node (`spatial_nodes`), so an
+            // extra "element" summary row would duplicate it in the UI tree.
+            let ifc_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
             entity_jobs.push(EntityJob {
                 id,
                 ifc_type,
@@ -771,9 +808,9 @@ pub fn process_geometry_streaming_filtered_with_options(
             if let Some(type_id) = args.get(5).and_then(|token| parse_step_ref(token)) {
                 instantiated_type_ids.insert(type_id);
             }
-        } else if (type_name.ends_with("TYPE") || type_name.ends_with("STYLE"))
-            && IfcType::from_str(type_name).is_subtype_of(IfcType::IfcTypeProduct)
-        {
+            // Also feed the shared resolver's type-material fallback.
+            prepass_spans.defines_by_type.push((id, start, end));
+        } else if let Some(type_ty) = ifc_lite_core::type_product_ifc_type(type_name) {
             let args = parse_step_arguments(&content[start..end]);
             // IfcTypeProduct.RepresentationMaps is attribute index 6.
             let rep_map_ids = args
@@ -781,16 +818,13 @@ pub fn process_geometry_streaming_filtered_with_options(
                 .map(|token| parse_step_ref_list(token))
                 .unwrap_or_default();
             if !rep_map_ids.is_empty() {
-                type_product_geometry.push((
-                    id,
-                    start,
-                    end,
-                    IfcType::from_str(type_name),
-                    rep_map_ids,
-                ));
+                type_product_geometry.push((id, start, end, type_ty, rep_map_ids));
             }
         }
     }
+
+    // The whole-file scan: refused ids (#3395) + a malformed stop (#3695).
+    ifc_lite_core::report_scan_diagnostics(scanner.skipped_oversized_ids(), scanner.malformed_record_start().is_some());
 
     // #957: synthesize render jobs for orphan type-product geometry — a
     // RepresentationMap on an IfcXxxType that no IfcMappedItem instantiates.
@@ -830,14 +864,11 @@ pub fn process_geometry_streaming_filtered_with_options(
     // the same scanner. Install it into the decoder so `resolve_prepass` and the
     // downstream phases resolve refs against it, and expose it (as before) to the
     // geometry workers further down.
-    let entity_index: Arc<EntityIndex> = match provided_index {
-        Some(idx) => idx,
-        None => {
-            let arc = Arc::new(inline_index);
-            decoder.set_entity_index(arc.clone());
-            arc
-        }
+    let entity_index = match provided_index {
+        Some(idx) => ProcessingIndex::Hash(idx),
+        None => inline_index.finish(),
     };
+    entity_index.install(&mut decoder);
 
     // ── Shared post-scan resolution (`crate::prepass`) ──
     // Styled items (orphan vs attached, defer-aware), IfcIndexedColourMap,
@@ -891,14 +922,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         opening_filter,
     );
 
-    // Detect schema version. SIMD substring search (memmem) instead of the naive
-    // per-position `windows().any()`, which walked the WHOLE file — twice for an
-    // IFC2X3 file where both matches fail. Same predicate, byte-identical result.
-    if memchr::memmem::find(content, b"IFC4X3").is_some() {
-        schema_version = "IFC4X3".into();
-    } else if memchr::memmem::find(content, b"IFC4").is_some() {
-        schema_version = "IFC4".into();
-    }
+    let schema_version = schema_detection::detect_schema_version(content).to_string();
 
     let geometry_entity_count = entity_jobs.len();
     tracing::info!(
@@ -1017,6 +1041,7 @@ pub fn process_geometry_streaming_filtered_with_options(
         unit_scales.length_unit_scale,
         unit_scales.plane_angle_to_radians,
     );
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let mut router = GeometryRouter::with_scale(unit_scales.length_unit_scale);
     router.set_tessellation_quality(options.tessellation_quality);
     // Build the #563 material-layer index from the IfcRelAssociatesMaterial spans
@@ -1087,7 +1112,7 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     // PARALLEL GEOMETRY PROCESSING
     let geometry_start = Clock::now();
-    let entity_index_arc = entity_index; // Already Arc from above
+    let entity_index_arc = entity_index; // Immutable and shared across jobs.
     let unit_scale = router.unit_scale();
     let rtc_offset = router.rtc_offset();
     // Resolve the plane-angle scale ONCE on the warm shared decoder, then seed
@@ -1140,43 +1165,20 @@ pub fn process_geometry_streaming_filtered_with_options(
 
     let mut deferred_styles_applied = !defer_style_updates;
 
-    // CSG-diagnostics sink shared across all per-job routers (drained after
-    // the loop into ProcessingStats + one tracing summary).
-    let csg_failure_collector: std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>> =
-        std::sync::Mutex::new(FxHashMap::default());
-    // Opening-classification + per-host opening diagnostics sinks, drained from
-    // each fresh per-job router and merged here, so the native pass can build the
-    // SAME `GeometryDiagnostics` the WASM batch path produces. Drained from the
-    // local router (not inside `produce_element_meshes`) because the WASM batch path
-    // shares that function and drains classification/host from its own warm router
-    // at batch end — draining there would empty it.
-    let classification_collector: std::sync::Mutex<ifc_lite_geometry::ClassificationStats> =
-        std::sync::Mutex::new(ifc_lite_geometry::ClassificationStats::default());
-    let host_diag_collector: std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>> =
-        std::sync::Mutex::new(FxHashMap::default());
-    // rect_fast engagement is now drained from each per-job router too (request-
-    // local), so this pass's `rectFast` is isolated from any concurrent geometry
-    // pass instead of reading process-global counters.
-    let rect_fast_collector: std::sync::Mutex<ifc_lite_geometry::RectFastStats> =
-        std::sync::Mutex::new(ifc_lite_geometry::RectFastStats::default());
-    // Degenerate-backstop drop tally, summed from each element's
-    // `ProducedElementMeshes::degenerate_triangles_dropped` (request-local,
-    // like the other sinks). Non-zero means the f32-collapse safety net in
-    // `element::build_mesh_data` engaged for this model.
-    let backstop_collector = std::sync::atomic::AtomicU64::new(0);
+    // Every request-local diagnostic sink for this pass, declared and drained as
+    // one subject — see `diagnostics::DiagnosticCollectors`.
+    let diag_collectors = diagnostics::DiagnosticCollectors::new();
 
-    // Shared content-dedup cache for the whole model: every per-job router (built
-    // fresh per element below) dedups against it, so byte-identical geometry the
-    // exporter failed to share via IfcMappedItem (Tekla parts) is meshed once
-    // across the rayon pool instead of once per element. The lock is held only for
-    // a hash get/insert; meshing runs outside it.
+    // Shared content-dedup cache for the whole model: every per-job router dedups
+    // against it, so byte-identical geometry the exporter failed to share via
+    // IfcMappedItem (Tekla parts) is meshed once across the pool, not once per
+    // element. The lock is held only for a hash get/insert; meshing runs outside it.
     let item_dedup_cache = GeometryRouter::new_dedup_cache();
+    let brep_signature_cache = GeometryRouter::new_brep_signature_cache();
 
     // Shared IfcMappedItem source cache for the whole model (#1623): every per-job
-    // router (built fresh per element below) meshes each RepresentationMap source
-    // once against it, instead of once per owning element — the per-router RefCell
-    // cache only dedups within a single element's own mapped items. The lock is
-    // held only for a source-mesh get/insert; the meshing runs outside it.
+    // router meshes each RepresentationMap source once against it, instead of once
+    // per owning element. Lock held only for a source-mesh get/insert.
     let mapped_item_cache = GeometryRouter::new_mapped_item_cache();
 
     // #1623 Phase 2 don't-bake plan (Some only when enabled): filter to repeated
@@ -1299,9 +1301,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                 {
                     return;
                 }
-                let mut local_decoder =
-                    EntityDecoder::with_arc_index(content, entity_index_for_meta.clone());
-                let Ok(entity) = local_decoder.decode_at(job.start, job.end) else {
+                let local_decoder = entity_index_for_meta.decoder(content);
+                // #3987: this decoder is read once; an entity-cache clone is never reused.
+                let Ok(entity) = local_decoder.decode_at_uncached(job.start, job.end) else {
                     return;
                 };
                 job.global_id = normalize_optional_string(entity.get_string(0));
@@ -1421,12 +1423,9 @@ pub fn process_geometry_streaming_filtered_with_options(
                     element_material_colors.as_ref(),
                     texture_index.as_ref(),
                     site_local_rotation,
-                    &csg_failure_collector,
-                    &classification_collector,
-                    &host_diag_collector,
-                    &rect_fast_collector,
-                    &backstop_collector,
+                    &diag_collectors,
                     &item_dedup_cache,
+                    &brep_signature_cache,
                     &mapped_item_cache,
                     instancing_plan.as_ref(),
                     indexed_colour_split_ids.as_ref(),
@@ -1465,7 +1464,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 // block, so deferred and up-front resolution cannot drift.
                 let mut rebuilt_styles = {
                     let mut style_decoder =
-                        EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+                        entity_index_arc.decoder(content);
                     crate::prepass::resolve_styled_item_spans(
                         &deferred_styled_item_positions,
                         &mut style_decoder,
@@ -1492,12 +1491,15 @@ pub fn process_geometry_streaming_filtered_with_options(
     let geometry_time = geometry_start.elapsed();
     // Surface the aggregated CSG diagnostics — same per-reason breakdown the
     // browser console shows on the wasm path.
-    let csg_failures = csg_failure_collector
+    let csg_failures = diag_collectors
+        .csg_failures
         .into_inner()
         .unwrap_or_else(|poisoned| poisoned.into_inner());
     let total_csg_failures: usize = csg_failures.values().map(Vec::len).sum();
-    let products_with_failures = csg_failures.len();
-    let backstop_dropped = backstop_collector.into_inner();
+    let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
+    let backstop_dropped = diag_collectors.backstop.into_inner();
+    // #3421/#3752: refused, not wrapped; surfaced below via GeometryDiagnostics.
+    let oversized_ref_drops = diag_collectors.oversized_ref_drops.into_inner();
     let point_cache_hits = point_cache_hits_collector.into_inner();
     let point_cache_misses = point_cache_misses_collector.into_inner();
     let faceted_brep_time_ms = faceted_brep_ns_collector.into_inner() / 1_000_000;
@@ -1514,6 +1516,12 @@ pub fn process_geometry_streaming_filtered_with_options(
                 *by_reason.entry(f.reason.label()).or_insert(0) += 1;
             }
         }
+        // #4067: `KernelError` (the sole production emitter is
+        // `topology_diagnostic.rs`) records an ACCEPTED open-topology result —
+        // the returned mesh is unchanged — not a dropped cut. Partition the
+        // count before it's consumed into `breakdown` below.
+        let open_topology_accepted = *by_reason.get("KernelError").unwrap_or(&0);
+        let dropped = total_csg_failures - open_topology_accepted;
         let mut breakdown: Vec<(&'static str, usize)> = by_reason.into_iter().collect();
         breakdown.sort_by(|a, b| b.1.cmp(&a.1));
         let breakdown = breakdown
@@ -1524,39 +1532,23 @@ pub fn process_geometry_streaming_filtered_with_options(
         tracing::warn!(
             total_csg_failures,
             products_with_failures,
+            dropped,
+            open_topology_accepted,
             %breakdown,
-            "CSG failures during geometry extraction (cut dropped, host kept uncut)"
+            "{}",
+            csg_summary::csg_summary_message(dropped, open_topology_accepted)
         );
     }
 
-    // Build the full GeometryDiagnostics contract from the drained sinks — the
-    // SAME shape the wasm batch path surfaces, so a native consumer and a browser
-    // consumer see identical diagnostics. `None` when nothing diagnostic-worthy
-    // happened (mirrors the wasm `is_empty` skip).
-    //
-    // Every sink — `classification`, `host_diags`, `csg_failures` AND `rect_fast` —
-    // is request-local: each was drained from this pass's own per-job routers and
-    // merged here, so concurrent in-process geometry passes never cross-contaminate.
     let geometry_diagnostics = tracing::debug_span!("collate_diagnostics").in_scope(|| {
-        // Matches the wasm path's WORST_HOSTS_LIMIT (top-N per-host detail cap).
-        const WORST_HOSTS_LIMIT: usize = 16;
-        let classification = classification_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let host_diags = host_diag_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let rect_fast = rect_fast_collector
-            .into_inner()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        let diag = ifc_lite_geometry::aggregate_diagnostics(
-            classification,
+        diagnostics::collate(
+            diag_collectors.classification,
+            diag_collectors.host_diags,
+            diag_collectors.rect_fast,
+            diag_collectors.unsupported_items,
             &csg_failures,
-            &host_diags,
-            rect_fast,
-            WORST_HOSTS_LIMIT,
-        );
-        (!diag.is_empty()).then_some(diag)
+            oversized_ref_drops,
+        )
     });
 
     // #1623 Phase 2: resolve the don't-bake occurrences into InstanceRecords against
@@ -1587,6 +1579,21 @@ pub fn process_geometry_streaming_filtered_with_options(
         "Geometry processing complete"
     );
 
+    let extract_georeferencing = || crate::georeferencing::extract_georeferencing_from_candidates(
+        &mut entity_index_arc.decoder(content), &georeferencing_candidates,
+    );
+    // #3987: jobs and instance finalization have finished using these caches.
+    // Keep metadata on the caller thread; join ALL disposal before returning,
+    // including on unwind. No cleanup survives the full-load readiness boundary.
+    #[cfg(not(target_arch = "wasm32"))]
+    let georeferencing = rayon::in_place_scope(|scope| {
+        scope.spawn(move |_| drop(decoder));
+        scope.spawn(move |_| drop(item_dedup_cache));
+        extract_georeferencing()
+    });
+    #[cfg(target_arch = "wasm32")]
+    let georeferencing = extract_georeferencing();
+
     ProcessingResult {
         meshes,
         instances,
@@ -1602,7 +1609,7 @@ pub fn process_geometry_streaming_filtered_with_options(
                 is_geo_referenced: has_rtc_offset,
             },
             length_unit_scale: Some(unit_scale),
-            georeferencing: crate::extract_georeferencing(content),
+            georeferencing,
         },
         stats: ProcessingStats {
             total_meshes,
@@ -1616,7 +1623,7 @@ pub fn process_geometry_streaming_filtered_with_options(
             total_time_ms: total_time.as_millis() as u64,
             from_cache: false,
             total_csg_failures: total_csg_failures as u64,
-            products_with_failures: products_with_failures as u64,
+            products_with_failures,
             degenerate_triangles_dropped: backstop_dropped,
             point_cache_hits,
             point_cache_misses,
@@ -1630,5 +1637,5 @@ pub fn process_geometry_streaming_filtered_with_options(
 // `crate::style::default_color_for_type` (issue #913). Do not reintroduce a
 // per-module table here — see `tests/styling_parity.rs` for the guard.
 //
-// `find_geometry_item_color_follows_mapped_item` lives in `crate::element::tests`,
-// next to the resolver it pins.
+// `find_geometry_item_color_follows_mapped_item` lives in `crate::element::tests`;
+// the resolver it pins moved to `element/element_color.rs`.

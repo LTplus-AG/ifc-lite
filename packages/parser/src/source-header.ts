@@ -13,41 +13,38 @@
  * splitter that ignores quote state would mis-split.
  */
 
-import { safeUtf8Decode } from '@ifc-lite/data';
-import type { IfcSourceHeader } from '@ifc-lite/data';
-import { decodeIfcString } from '@ifc-lite/encoding';
+import type { IfcSourceHeader, IfcStoreBase } from '@ifc-lite/data';
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
 
+import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
+
+import { matchesKeywordAt, StepTextScan } from './step-lexing.js';
 /** Headers are tiny; cap the decode so a huge file's body is never scanned. */
 const MAX_HEADER_BYTES = 64 * 1024;
 
 /**
  * Split STEP record arguments at top-level commas, respecting paren/bracket
- * nesting and single-quoted strings (with `''` escapes). Returns the raw,
- * still-escaped argument substrings (trimmed).
+ * nesting, single-quoted strings (with `''` escapes) and comments. Returns the
+ * raw, still-escaped argument substrings (trimmed).
+ *
+ * A comment is dropped rather than copied through: it is not part of the
+ * argument's value, and its commas are not separators.
  */
 function splitTopLevel(inner: string): string[] {
   const args: string[] = [];
   let depth = 0;
-  let inString = false;
   let current = '';
+  const scan = new StepTextScan(inner);
   for (let i = 0; i < inner.length; i++) {
-    const ch = inner[i];
-    if (inString) {
-      current += ch;
-      if (ch === "'") {
-        if (inner[i + 1] === "'") {
-          current += "'";
-          i++;
-        } else {
-          inString = false;
-        }
-      }
+    const skip = scan.skipLexicalAt(i);
+    if (skip >= 0) {
+      // A literal is part of the argument's text; a comment is not.
+      if (inner[i] === "'") current += inner.slice(i, skip);
+      i = skip - 1;
       continue;
     }
-    if (ch === "'") {
-      inString = true;
-      current += ch;
-    } else if (ch === '(' || ch === '[') {
+    const ch = inner[i];
+    if (ch === '(' || ch === '[') {
       depth++;
       current += ch;
     } else if (ch === ')' || ch === ']') {
@@ -70,70 +67,26 @@ function splitTopLevel(inner: string): string[] {
  * Decode a STEP header string argument's inner text (outer quotes already
  * stripped) to its Unicode value.
  *
- * First collapse the `''` doubled-quote escape, then run the canonical
- * ISO-10303-21 backslash decoder ({@link decodeIfcString}), which resolves the
- * `\X2\HHHH\X0\`, `\X\HH`, `\S\` and `\Px\` control directives non-ASCII header
- * fields (author, description, ...) arrive in.
+ * Both escape layers, in one scan, from the shared
+ * {@link decodeStepStringLiteral}: the `''` / `\\` doublings and the
+ * ISO-10303-21 backslash directives (`\X2\HHHH\X0\`, `\X\HH`, `\S\` and
+ * `\Px\`) the non-ASCII header fields (author, description, ...) arrive in.
  *
- * The previous `\\`->`\` regex left those directives untouched on read while the
- * writer's `\`->`\\` escaper doubled every backslash on write, so a round-trip
- * turned `Tr\X2\00FC\X0\mpler` into the literal `Tr\\X2\\00FC\\X0\\mpler`.
- * Decoding to real Unicode here means the writer re-emits plain UTF-8 (no
- * backslashes to double), so the value round-trips intact.
+ * The regex this replaced in #2486 left those directives untouched on read
+ * while the writer's `\`->`\\` escaper doubled every backslash on write, so a
+ * round trip turned `Tr\X2\00FC\X0\mpler` into the literal
+ * `Tr\\X2\\00FC\\X0\\mpler`. Decoding to real Unicode here means the writer
+ * re-emits plain UTF-8 (no backslashes to double), so the value round-trips
+ * intact.
  *
- * `\\` (one literal backslash) is resolved by a left-to-right scan that gives
- * directives precedence over the pair escape: a naive split at every doubled
- * backslash would consume a directive's closing `\` when the directive is
- * immediately followed by an escaped backslash (`\X2\00FC\X0\` + `\\` ends in
- * THREE backslashes, and the split eats the first two), leaving an
- * unterminated `\X2\` that never decodes. The scan consumes each whole
- * directive span first, treats `\\` as a literal backslash only outside a
- * span, and hands the directive text to {@link decodeIfcString} untouched —
- * which also keeps escaped literal text (`\\X2\\...` means the characters
- * `\X2\...`) from being mis-decoded as a real `\X2\` directive, and keeps
- * `C:\\temp` from re-doubling on every round trip ({@link decodeIfcString}
- * deliberately preserves unknown escapes, so it can't collapse `\\` itself).
+ * The implementation moved into `@ifc-lite/encoding` for #2490, where
+ * `@ifc-lite/data`'s `parseStepValue` had grown the SAME directive-blind regex
+ * independently. Two copies of a decoder this subtle is how the second one got
+ * written; see that module for why the two layers cannot be resolved by two
+ * independent passes.
  */
 function unescapeStepString(str: string): string {
-  const value = str.replace(/''/g, "'");
-  let out = '';
-  let seg = ''; // pending directive-bearing text, flushed through decodeIfcString
-  let i = 0;
-  while (i < value.length) {
-    if (value[i] === '\\') {
-      // Whole directive spans move into `seg` atomically so their own
-      // backslashes (terminators, \S\ operands) never match the pair escape.
-      if (value.startsWith('\\X2\\', i) || value.startsWith('\\X4\\', i)) {
-        const end = value.indexOf('\\X0\\', i + 4);
-        if (end !== -1) {
-          seg += value.slice(i, end + 4);
-          i = end + 4;
-          continue;
-        }
-      } else if (value.startsWith('\\S\\', i) && i + 3 < value.length) {
-        seg += value.slice(i, i + 4); // \S\ + operand char (may itself be '\')
-        i += 4;
-        continue;
-      } else if (value.startsWith('\\X\\', i)) {
-        seg += value.slice(i, i + 5); // \X\ + two hex digits
-        i += 5;
-        continue;
-      } else if (/^\\P[A-Z]\\/.test(value.slice(i, i + 4))) {
-        seg += value.slice(i, i + 4);
-        i += 4;
-        continue;
-      }
-      if (value[i + 1] === '\\') {
-        out += decodeIfcString(seg) + '\\';
-        seg = '';
-        i += 2;
-        continue;
-      }
-    }
-    seg += value[i];
-    i += 1;
-  }
-  return out + decodeIfcString(seg);
+  return decodeStepStringLiteral(str);
 }
 
 /**
@@ -166,33 +119,50 @@ function decodeStringList(arg: string): string[] {
     .filter((v): v is string => v !== undefined);
 }
 
+
 /**
- * Extract the argument substring inside the parentheses of `KEYWORD( ... )`,
- * starting the search at `fromIndex`. Quote- and nesting-aware so a quoted
- * `)` never closes the record early. Returns `null` if not found.
+ * Index of `keyword` occurring as a RECORD, outside any string or comment, or
+ * -1.
+ *
+ * A plain `indexOf` is not enough here and the reason is the same one #3278 is
+ * about, one level down: header FREE TEXT is not a declaration. STEP strings
+ * are single-quoted with `''` as the escape, and a `FILE_DESCRIPTION` item is
+ * free to contain the literal text `FILE_SCHEMA(('IFC2X3'))` -- an exporter
+ * stamping its own header into a description, a file round-tripped through a
+ * tool that quotes what it read. `indexOf` would take that quoted copy as the
+ * declaration and answer IFC2X3 for an IFC4X3 file. The same applies to
+ * `ENDSEC`: a quoted one would truncate the header before the real
+ * `FILE_SCHEMA` record, losing the declaration entirely.
  */
-function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string | null {
-  const upper = text.toUpperCase();
-  const at = upper.indexOf(keyword, fromIndex);
+function indexOfRecord(text: string, keyword: string): number {
+  const scan = new StepTextScan(text);
+  for (let i = 0; i < text.length; i++) {
+    const skip = scan.skipLexicalAt(i);
+    if (skip >= 0) { i = skip - 1; continue; }
+    if (matchesKeywordAt(text, i, keyword)) return i;
+  }
+  return -1;
+}
+
+/**
+ * Extract the argument substring inside the parentheses of `KEYWORD( ... )`.
+ * Quote-, comment- and nesting-aware so a quoted
+ * `)` never closes the record early, and so a quoted KEYWORD is never mistaken
+ * for the record itself. Returns `null` if not found.
+ */
+function extractRecordArgs(text: string, keyword: string): string | null {
+  const at = indexOfRecord(text, keyword);
   if (at < 0) return null;
-  let i = at + keyword.length;
-  while (i < text.length && /\s/.test(text[i])) i++;
+  const scan = new StepTextScan(text);
+  let i = scan.skipTrivia(at + keyword.length);
   if (text[i] !== '(') return null;
   const start = i;
   let depth = 0;
-  let inString = false;
   for (; i < text.length; i++) {
+    const skip = scan.skipLexicalAt(i);
+    if (skip >= 0) { i = skip - 1; continue; }
     const ch = text[i];
-    if (inString) {
-      if (ch === "'") {
-        if (text[i + 1] === "'") i++;
-        else inString = false;
-      }
-      continue;
-    }
-    if (ch === "'") {
-      inString = true;
-    } else if (ch === '(') {
+    if (ch === '(') {
       depth++;
     } else if (ch === ')') {
       depth--;
@@ -208,10 +178,13 @@ function extractRecordArgs(text: string, keyword: string, fromIndex = 0): string
  * non-STEP input). Cheap: only the first {@link MAX_HEADER_BYTES} are decoded,
  * truncated at the first `ENDSEC` so the DATA section is never scanned.
  */
-export function parseSourceHeader(buffer: Uint8Array): IfcSourceHeader | undefined {
-  const cap = Math.min(buffer.length, MAX_HEADER_BYTES);
-  let text = safeUtf8Decode(buffer, 0, cap);
-  const endSec = text.toUpperCase().indexOf('ENDSEC');
+export function parseSourceHeader(
+  buffer: Uint8Array | IfcSourceBytes,
+): IfcSourceHeader | undefined {
+  const src = asSourceBytes(buffer);
+  const cap = Math.min(src.byteLength, MAX_HEADER_BYTES);
+  let text = src.decodeUtf8(0, cap);
+  const endSec = indexOfRecord(text, 'ENDSEC');
   if (endSec >= 0) text = text.slice(0, endSec);
 
   const descRecord = extractRecordArgs(text, 'FILE_DESCRIPTION');
@@ -266,4 +239,81 @@ export function parseSourceHeader(buffer: Uint8Array): IfcSourceHeader | undefin
     authorization,
     schemaIdentifiers,
   };
+}
+
+/**
+ * Resolve one `FILE_SCHEMA` identifier to the schema version a store carries.
+ *
+ * Matched by PREFIX, longest first: the spellings that reach us in the wild
+ * carry addendum/corrigendum suffixes (`IFC4X3_ADD2`, `IFC4X1`, `IFC2X3_TC1`),
+ * and `IFC4X3` itself begins with `IFC4`, so the `IFC4X3` branch has to be
+ * tried before the `IFC4` one. Returns `undefined` for an identifier naming no
+ * schema we model, so the caller can keep looking.
+ */
+function schemaFromIdentifier(identifier: string): IfcStoreBase['schemaVersion'] | undefined {
+  const token = identifier.trim().toUpperCase();
+  if (token.startsWith('IFC5')) return 'IFC5';
+  if (token.startsWith('IFC4X3')) return 'IFC4X3';
+  if (token.startsWith('IFC4')) return 'IFC4';
+  if (token.startsWith('IFC2X3')) return 'IFC2X3';
+  return undefined;
+}
+
+/** Upper-case the ASCII letters and nothing else. See `detectSchemaVersion`. */
+function asciiUpper(text: string): string {
+  let out = '';
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    out += c >= 97 && c <= 122 ? String.fromCharCode(c - 32) : text[i];
+  }
+  return out;
+}
+
+/**
+ * Determine which IFC schema a STEP buffer declares (issue #3278).
+ *
+ * The `FILE_SCHEMA` declaration is authoritative and is read from the
+ * already-parsed {@link IfcSourceHeader}; free text elsewhere in the header is
+ * not. That distinction is the whole point. `FILE_DESCRIPTION` and `FILE_NAME`
+ * carry author, organisation, preprocessor and originating-system strings, and
+ * exporters routinely stamp a schema token into their product name ("SomeApp
+ * IFC4 Exporter") — which a raw substring scan of the header bytes cannot tell
+ * apart from a declaration. Reading the record also reaches declarations that
+ * sit past the first 2 KB: ISO 10303-21 puts `FILE_SCHEMA` *after* `FILE_NAME`,
+ * and a long author or organisation list pushes it out of a small fixed window.
+ *
+ * Free on the hot path: {@link parseSourceHeader} already runs on every parse,
+ * so nothing extra is scanned. The raw decode below now happens only for a file
+ * that declares no schema at all.
+ *
+ * When no `FILE_SCHEMA` identifier resolves, fall back to the historical raw
+ * scan of the first 2000 bytes rather than refusing, so every file that
+ * resolves today keeps resolving the same way.
+ */
+export function detectSchemaVersion(
+  buffer: Uint8Array | IfcSourceBytes,
+  header: IfcSourceHeader | undefined,
+): IfcStoreBase['schemaVersion'] {
+  for (const identifier of header?.schemaIdentifiers ?? []) {
+    const version = schemaFromIdentifier(identifier);
+    if (version !== undefined) return version;
+  }
+
+  const src = asSourceBytes(buffer);
+  const headerEnd = Math.min(src.byteLength, 2000);
+  // ASCII-only, for the same reason `matchesKeywordAt` is. `toUpperCase()`
+  // maps `ı` (dotless i) to `I`, so a FILE_DESCRIPTION mentioning `ıFC5` chose
+  // IFC5 for a file that never said so. This scan is already a loose
+  // last-resort substring match -- it only runs when no FILE_SCHEMA identifier
+  // resolved at all -- but loose is not a reason to accept a fold 10303-21
+  // does not use. Offsets are not taken from this copy, so a copy is fine here
+  // where it was not in the record scan.
+  const headerText = asciiUpper(src.decodeUtf8(0, headerEnd));
+
+  if (headerText.includes('IFC5')) return 'IFC5';
+  if (headerText.includes('IFC4X3')) return 'IFC4X3';
+  if (headerText.includes('IFC4')) return 'IFC4';
+  if (headerText.includes('IFC2X3')) return 'IFC2X3';
+
+  return 'IFC4'; // Default fallback
 }

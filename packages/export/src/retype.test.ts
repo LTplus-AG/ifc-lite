@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import type { IfcDataStore } from '@ifc-lite/parser';
+import { asSourceBytes, type IfcDataStore } from '@ifc-lite/parser';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from './step-exporter.js';
 import { retypeStepLine } from './retype.js';
@@ -44,7 +44,7 @@ function buildMockDataStore(
     schemaVersion,
     entityCount: entries.length,
     parseTime: 0,
-    source,
+    source: asSourceBytes(source),
     entityIndex: { byId, byType },
   } as unknown as IfcDataStore;
 }

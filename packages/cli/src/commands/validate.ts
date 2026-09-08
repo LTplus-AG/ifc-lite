@@ -17,7 +17,7 @@
 import { loadIfcFile } from '../loader.js';
 import { hasFlag, fatal, printJson } from '../output.js';
 import { EntityNode } from '@ifc-lite/query';
-import { getInheritanceChainForEntity, type IfcDataStore, type EntityRef } from '@ifc-lite/parser';
+import { expandTypes, getInheritanceChainAcrossSchemas, asSourceBytes, type IfcDataStore, type EntityRef, type IfcSourceBytes } from '@ifc-lite/parser';
 
 export interface ValidationIssue {
   severity: 'error' | 'warning' | 'info';
@@ -43,6 +43,46 @@ interface DanglingReference {
   target: number;
 }
 
+/**
+ * The building-element types the `named-elements` and `quantity-completeness`
+ * rules scan, as base types only.
+ *
+ * Which base types appear here is a **policy** choice and deliberately narrow:
+ * neither rule claims to cover every `IfcProduct`, and widening either list is
+ * a decision about what the report should say, not a bug fix. The two lists are
+ * not identical — `IfcRailing` is scanned for a missing Name but not for a
+ * missing quantity set — and that asymmetry is preserved here unchanged.
+ *
+ * What is *not* a policy choice is whether a listed type's own concrete
+ * subtypes are scanned. `entityIndex.byType` is keyed by the raw STEP type
+ * name, so an `IfcWallStandardCase` sits in its own bucket; a rule that says it
+ * looks at walls and reads only `IFCWALL` walks straight past it. That is why
+ * the scanned lists below are `expandTypes(...)` of these bases rather than
+ * hand-written: the quantity list used to spell six subtypes out by hand and
+ * had drifted four short (`IfcWallElementedCase`, `IfcSlabElementedCase`,
+ * `IfcMemberStandardCase`, `IfcPlateStandardCase`), and the naming list spelled
+ * out none of the ten at all. `expandTypes` is the same expansion every
+ * `byType()` backend uses, so these rules and a `byType('IfcWall')` query
+ * cannot disagree about what counts as a wall.
+ * Which is why they are computed PER STORE, not once at module load:
+ * `expandTypes` reads the model's own `schemaVersion`, and a list frozen at the
+ * IFC4 answer counts records on an IFC2X3 or IFC4X3 file that `byType` does not.
+ */
+export const NAMED_ELEMENT_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
+  'IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCRAILING', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
+
+/** @see NAMED_ELEMENT_BASE_TYPES */
+export const QUANTIFIABLE_BASE_TYPES: readonly string[] = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
+  'IFCDOOR', 'IFCWINDOW', 'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
+
+/** `NAMED_ELEMENT_BASE_TYPES` plus every subtype this store's schema declares under one. */
+export const namedElementTypes = (schemaVersion: string | undefined): readonly string[] =>
+  expandTypes([...NAMED_ELEMENT_BASE_TYPES], schemaVersion);
+
+/** `QUANTIFIABLE_BASE_TYPES` plus every subtype this store's schema declares under one. */
+export const quantifiableTypes = (schemaVersion: string | undefined): readonly string[] =>
+  expandTypes([...QUANTIFIABLE_BASE_TYPES], schemaVersion);
+
 /** Cap on individually-reported dangling references; the remainder is rolled into one summary issue. */
 const DANGLING_REF_ISSUE_CAP = 50;
 
@@ -64,14 +104,27 @@ const CH_STAR = 0x2a; // *
  * skipped.
  */
 function scanEntityForDanglingRefs(
+  src: Uint8Array | IfcSourceBytes,
+  ref: EntityRef,
+  exists: (id: number) => boolean,
+  out: DanglingReference[],
+): void {
+  // Narrow to this record before scanning. `slice` is a `subarray` on a
+  // contiguous source, so the byte walk below is unchanged and zero-copy.
+  const record = asSourceBytes(src).slice(ref.byteOffset, ref.byteOffset + ref.byteLength);
+  scanRecordForDanglingRefs(record, ref, exists, out);
+}
+
+/** The byte walk itself, over one already-narrowed entity record. */
+function scanRecordForDanglingRefs(
   source: Uint8Array,
   ref: EntityRef,
   exists: (id: number) => boolean,
   out: DanglingReference[],
 ): void {
-  const end = ref.byteOffset + ref.byteLength;
+  const end = source.length;
   // References only occur inside the attribute list; skip the "#id = TYPE" prefix.
-  let i = ref.byteOffset;
+  let i = 0;
   while (i < end && source[i] !== CH_LPAREN) i++;
   if (i >= end) return; // malformed record, nothing to scan
 
@@ -184,9 +237,33 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   }
 
   // 3. Check GlobalId uniqueness (only for entity types that inherit from IfcRoot)
+  //
+  // The chain has to come from **every bundled schema** (IFC2X3 + IFC4 +
+  // IFC4X3), not from the parser's IFC4_ADD2_TC1 codegen pin (#2003).
+  // `getInheritanceChainForEntity` answers an empty chain for any class the pin
+  // does not carry, which made this rule quietly skip 39 IFC2X3 `IfcRoot`
+  // classes (`IfcScheduleTimeControl`, `IfcSpaceProgram`, `IfcServiceLife`,
+  // `IfcMove`, `IfcOrderAction`, `IfcTimeSeriesSchedule`, …), 80 IFC4X3 ones
+  // and 4 post-ADD2 IFC4 ones. Skipping is not neutral here: it reports "no
+  // duplicate GlobalIds" for a file it never looked at, and the user gets a
+  // pass they did not earn.
+  //
+  // The membership test is `includes`, so it is indifferent to which end of the
+  // chain the leaf sits at — and it has to be, because the two functions
+  // disagree: the pinned one is root→leaf and the cross-schema one leaf→root,
+  // so 717 of the 776 pinned classes get a different `chain[0]`. Anything
+  // positional here would invert silently; match `diff-scope.ts` and search by
+  // name instead. `packages/parser/test/inheritance-chain-equivalence.test.ts`
+  // holds the measurement: over all 776, zero verdict and zero leaf-name
+  // differences, so no IFC4 file changes behaviour.
+  //
+  // Non-`IfcRoot` types stay out for the reason they always did: the parser
+  // fills slot 0 of a resource entity's record with its **Name**, so comparing
+  // `IfcMaterial` or `IfcSurfaceStyle` here would report two same-named
+  // materials as a duplicate GlobalId.
   const globalIds = new Map<string, number[]>();
   for (const [typeName, ids] of store.entityIndex.byType) {
-    const chain = getInheritanceChainForEntity(typeName);
+    const chain = getInheritanceChainAcrossSchemas(typeName);
     if (!chain.includes('IfcRoot')) continue;
     for (const id of ids) {
       const node = new EntityNode(store, id);
@@ -211,10 +288,8 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   }
 
   // 4. Check for unnamed elements
-  const productTypes = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM', 'IFCDOOR', 'IFCWINDOW',
-    'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCRAILING', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING'];
   let unnamedCount = 0;
-  for (const pt of productTypes) {
+  for (const pt of namedElementTypes(store.schemaVersion)) {
     const ids = store.entityIndex.byType.get(pt) ?? [];
     for (const id of ids) {
       const node = new EntityNode(store, id);
@@ -231,13 +306,9 @@ export function computeValidationIssues(store: IfcDataStore): ValidationIssue[] 
   }
 
   // 6. Quantity completeness — check if product entities have quantity sets
-  const quantifiableTypes = ['IFCWALL', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM', 'IFCDOOR', 'IFCWINDOW',
-    'IFCSTAIR', 'IFCROOF', 'IFCSPACE', 'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING',
-    'IFCWALLSTANDARDCASE', 'IFCSLABSTANDARDCASE', 'IFCBEAMSTANDARDCASE',
-    'IFCCOLUMNSTANDARDCASE', 'IFCDOORSTANDARDCASE', 'IFCWINDOWSTANDARDCASE'];
   let withQuantities = 0;
   let withoutQuantities = 0;
-  for (const qt of quantifiableTypes) {
+  for (const qt of quantifiableTypes(store.schemaVersion)) {
     const ids = store.entityIndex.byType.get(qt) ?? [];
     for (const id of ids) {
       const node = new EntityNode(store, id);

@@ -8,10 +8,14 @@
  */
 
 import type { StringTable } from './string-table.js';
+import { comparePropertyValues, type PropertyValue } from './property-table.js';
 import { QuantityType } from './types.js';
+import { groupQuantitySetsByInstance } from './group-quantity-sets.js';
 
 export interface QuantitySet {
   name: string;
+  /** GlobalId of the source `IfcElementQuantity` instance, when known. */
+  globalId?: string;
   quantities: Quantity[];
 }
 
@@ -28,18 +32,51 @@ export interface QuantityTable {
   
   entityId: Uint32Array;
   qsetName: Uint32Array;
+  qsetGlobalId: Uint32Array;
   quantityName: Uint32Array;
   quantityType: Uint8Array;
   value: Float64Array;
   unitId: Int32Array;
   formula: Uint32Array;
-  
+
   entityIndex: Map<number, number[]>;
   qsetIndex: Map<number, number[]>;
   quantityIndex: Map<number, number[]>;
   
   getForEntity(expressId: number): QuantitySet[];
   getQuantityValue(expressId: number, qsetName: string, quantName: string): number | null;
+  /**
+   * Find entity ids whose quantity `quantityName` satisfies `operator`/`value`.
+   * When `qsetName` is given, only matches within that quantity set; an unknown
+   * quantity-set name matches nothing. The quantity mirror of
+   * `PropertyTable.findByProperty`: same `comparePropertyValues` semantics, and
+   * answered off `quantityIndex`, so the cost scales with the number of rows
+   * carrying that quantity name rather than with the number of entities being
+   * filtered.
+   *
+   * Optional so a duck-typed quantity table stays valid without it.
+   * `EntityQuery.whereProperty` then resolves quantity sets per candidate
+   * through `IfcStoreBase.getQuantities` instead — the same answer, more work.
+   */
+  findByQuantity?(
+    quantityName: string,
+    operator: string,
+    value: PropertyValue,
+    qsetName?: string,
+  ): number[];
+  /**
+   * Sum every `quantityName` row, optionally restricted to entities of
+   * `elementType` (an `IfcTypeEnum` value).
+   *
+   * The columnar implementation here and the cache-restored implementation in
+   * `@ifc-lite/cache`'s `readQuantities` only ever see `entityId` per row —
+   * neither has the entity-type data needed to honor `elementType`, so both
+   * THROW when it is passed rather than silently returning the unfiltered
+   * total. A store that wants type-filtered sums must resolve entity ids via
+   * `entities.getByType(elementType)` itself and total the matching rows (see
+   * `apps/viewer`'s server-backed `QuantityTable`, which does have that data
+   * in scope and implements the filter for real).
+   */
   sumByType(quantityName: string, elementType?: number): number;
 }
 
@@ -60,6 +97,7 @@ export class QuantityTableBuilder {
 
     const entityId = new Uint32Array(count);
     const qsetName = new Uint32Array(count);
+    const qsetGlobalId = new Uint32Array(count);
     const quantityName = new Uint32Array(count);
     const quantityType = new Uint8Array(count);
     const value = new Float64Array(count);
@@ -70,6 +108,7 @@ export class QuantityTableBuilder {
       const row = this.rows[i];
       entityId[i] = row.entityId;
       qsetName[i] = this.strings.intern(row.qsetName);
+      qsetGlobalId[i] = this.strings.intern(row.qsetGlobalId ?? '');
       quantityName[i] = this.strings.intern(row.quantityName);
       quantityType[i] = row.quantityType;
       value[i] = row.value;
@@ -78,7 +117,7 @@ export class QuantityTableBuilder {
     }
 
     return quantityTableFromColumns(
-      { count, entityId, qsetName, quantityName, quantityType, value, unitId, formula },
+      { count, entityId, qsetName, qsetGlobalId, quantityName, quantityType, value, unitId, formula },
       this.strings,
     );
   }
@@ -92,6 +131,7 @@ export interface QuantityTableColumns {
   count: number;
   entityId: Uint32Array;
   qsetName: Uint32Array;
+  qsetGlobalId: Uint32Array;
   quantityName: Uint32Array;
   quantityType: Uint8Array;
   value: Float64Array;
@@ -101,7 +141,7 @@ export interface QuantityTableColumns {
 
 /** Rebuild a live `QuantityTable` (closures + indices) from column data. */
 export function quantityTableFromColumns(columns: QuantityTableColumns, strings: StringTable): QuantityTable {
-  const { count, entityId, qsetName, quantityName, quantityType, value, unitId, formula } = columns;
+  const { count, entityId, qsetName, qsetGlobalId, quantityName, quantityType, value, unitId, formula } = columns;
 
   const entityIndex = new Map<number, number[]>();
   const qsetIndex = new Map<number, number[]>();
@@ -116,6 +156,7 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
     count,
     entityId,
     qsetName,
+    qsetGlobalId,
     quantityName,
     quantityType,
     value,
@@ -127,22 +168,16 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
 
     getForEntity: (id) => {
       const rowIndices = entityIndex.get(id) || [];
-      const qsets = new Map<string, QuantitySet>();
-      for (const idx of rowIndices) {
-        const qsetNameStr = strings.get(qsetName[idx]);
-        if (!qsets.has(qsetNameStr)) {
-          qsets.set(qsetNameStr, { name: qsetNameStr, quantities: [] });
-        }
-        const qset = qsets.get(qsetNameStr)!;
-        const quantNameStr = strings.get(quantityName[idx]);
-        qset.quantities.push({
-          name: quantNameStr,
-          type: quantityType[idx],
-          value: value[idx],
-          formula: formula[idx] > 0 ? strings.get(formula[idx]) : undefined,
-        });
-      }
-      return Array.from(qsets.values());
+      return groupQuantitySetsByInstance(
+        rowIndices,
+        qsetName,
+        qsetGlobalId,
+        quantityName,
+        quantityType,
+        value,
+        formula,
+        strings,
+      );
     },
 
     getQuantityValue: (id, qset, quant) => {
@@ -157,7 +192,28 @@ export function quantityTableFromColumns(columns: QuantityTableColumns, strings:
       return null;
     },
 
-    sumByType: (quantName) => {
+    findByQuantity: (quantName, operator, filterValue, qset) => {
+      const quantIdx = strings.indexOf(quantName);
+      if (quantIdx < 0) return [];
+      const qsetIdx = qset === undefined ? -1 : strings.indexOf(qset);
+      if (qset !== undefined && qsetIdx < 0) return [];
+      const rowIndices = quantityIndex.get(quantIdx) || [];
+      const results: number[] = [];
+      for (const idx of rowIndices) {
+        if (qsetIdx >= 0 && qsetName[idx] !== qsetIdx) continue;
+        if (comparePropertyValues(value[idx], operator, filterValue)) results.push(entityId[idx]);
+      }
+      return results;
+    },
+
+    sumByType: (quantName, elementType) => {
+      if (elementType !== undefined) {
+        throw new Error(
+          'QuantityTable.sumByType: elementType filtering is not supported by this ' +
+            'columnar table — it has no per-row entity-type data. Resolve entity ids via ' +
+            'entities.getByType(elementType) and sum the matching rows yourself.',
+        );
+      }
       const quantIdx = strings.indexOf(quantName);
       if (quantIdx < 0) return 0;
       const rowIndices = quantityIndex.get(quantIdx) || [];
@@ -174,6 +230,7 @@ export function quantityTableToColumns(table: QuantityTable): QuantityTableColum
     count: table.count,
     entityId: table.entityId,
     qsetName: table.qsetName,
+    qsetGlobalId: table.qsetGlobalId,
     quantityName: table.quantityName,
     quantityType: table.quantityType,
     value: table.value,
@@ -185,6 +242,7 @@ export function quantityTableToColumns(table: QuantityTable): QuantityTableColum
 interface QuantityRow {
   entityId: number;
   qsetName: string;
+  qsetGlobalId?: string;
   quantityName: string;
   quantityType: QuantityType;
   value: number;

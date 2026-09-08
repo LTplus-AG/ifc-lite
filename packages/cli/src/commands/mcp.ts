@@ -26,7 +26,43 @@ import {
   type AuthScope,
   VERSION,
 } from '@ifc-lite/mcp';
+import { isMcpValueFlag, MCP_SUBCOMMAND_UNSUPPORTED_FLAGS } from '@ifc-lite/mcp/cli-args';
 import { fatal, hasFlag, getFlag, getAllFlags } from '../output.js';
+
+/**
+ * Collect the positional `.ifc` paths from `ifc-lite mcp`'s argv.
+ *
+ * The naive `args.filter(a => !a.startsWith('-'))` also catches option VALUES
+ * (`8765` after `--port`, `/models` after `--allow`) and turns them into bogus
+ * IFC paths, so the walk has to skip each value-bearing flag's next token. It
+ * needs a list of which flags those are — and that list used to be a local
+ * copy of the standalone `ifc-lite-mcp` binary's flag set.
+ *
+ * The copy drifted. `--allow-origin` was added to the binary and never here,
+ * so `ifc-lite mcp --transport http --allow-origin https://app.example.test
+ * model.ifc` skipped the flag, failed to skip the origin, and called
+ * `resolve('https://app.example.test')` — loading the origin as a model file.
+ * `MCP_VALUE_FLAGS` now comes from `@ifc-lite/mcp/cli-args`, where a test
+ * drives the binary's real parser against it.
+ *
+ * Flags this subcommand cannot act on are reported rather than honoured: their
+ * values are still skipped (that is the bug above), but the caller warns
+ * instead of letting the user believe the flag took effect.
+ */
+export function collectModelPaths(args: string[]): { files: string[]; unsupported: string[] } {
+  const files: string[] = [];
+  const unsupported: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (arg.startsWith('-')) {
+      if (MCP_SUBCOMMAND_UNSUPPORTED_FLAGS.includes(arg)) unsupported.push(arg);
+      if (isMcpValueFlag(arg)) i++; // consume the value as well
+      continue;
+    }
+    files.push(resolve(arg));
+  }
+  return { files, unsupported };
+}
 
 export async function mcpCommand(args: string[]): Promise<void> {
   if (args.length === 0 && (process.stdin.isTTY ?? false)) {
@@ -69,22 +105,11 @@ export async function mcpCommand(args: string[]): Promise<void> {
   const openBrowser = hasFlag(args, '--open');
   const viewerPort = Number(getFlag(args, '--viewer-port') ?? 0);
   const allowedPaths = getAllFlags(args, '--allow').map((p) => resolve(p));
-  // Parse positional .ifc paths. The naive `args.filter(a => !a.startsWith('-'))`
-  // also catches option values (e.g. `8765` after `--port`, `/models` after
-  // `--allow`), turning them into bogus IFC paths. Walk explicitly and skip
-  // each value-bearing flag's next token.
-  const VALUE_FLAGS = new Set([
-    '--transport', '--port', '--host', '--token', '--bsdd',
-    '--allow', '--viewer-port',
-  ]);
-  const files: string[] = [];
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    if (arg.startsWith('-')) {
-      if (VALUE_FLAGS.has(arg)) i++; // consume the value as well
-      continue;
-    }
-    files.push(resolve(arg));
+  const { files, unsupported } = collectModelPaths(args);
+  for (const flag of unsupported) {
+    process.stderr.write(
+      `[ifc-lite mcp] ${flag} is not honoured by this subcommand — run the standalone \`ifc-lite-mcp\` binary for it.\n`,
+    );
   }
   const scope: AuthScope = readOnly ? readOnlyScope() : fullScope();
 
@@ -156,7 +181,12 @@ export async function mcpCommand(args: string[]): Promise<void> {
           // Keys per-session state (layer workspaces) and its disposal
           // (#1030); the transport rejects servers built without it.
           sessionId,
-          config: { readOnly, bsddEndpoint: bsdd, samplingEnabled: false },
+          config: {
+            readOnly,
+            bsddEndpoint: bsdd,
+            allowedPaths: allowedPaths.length > 0 ? allowedPaths : undefined,
+            samplingEnabled: false,
+          },
         });
       },
     };

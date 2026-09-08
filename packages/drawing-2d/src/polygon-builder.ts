@@ -51,6 +51,59 @@ export class PolygonBuilder {
   }
 
   /**
+   * Run `fn` with `this.tolerance` floored to the float32 noise floor of
+   * `segments`' own LOCAL (pre-origin) coordinate magnitude
+   * (`localMaxCoord · 2⁻²²`), restoring the constructor tolerance
+   * afterward.
+   *
+   * `seg.p0_2d`/`p1_2d` are WORLD-frame (the section cutter lifts vertices
+   * by the per-mesh RTC `origin` before projecting to 2D, and never
+   * subtracts it back out) — so their magnitude is the element's distance
+   * from the model origin, NOT its own extent. Sizing the tolerance off
+   * that world magnitude would give a small element sitting at a large RTC
+   * origin a tolerance scaled to that distance, wide enough to weld
+   * genuinely distinct nearby vertices (#2622). `SectionCutter` attaches
+   * `localMaxCoord` — measured on the source triangle's `Float32Array`
+   * values BEFORE `origin` was added — for exactly this reason; that's
+   * what float32 rounding noise actually scales with. This is scoped per
+   * entity, computed from that entity's own segments, not the whole
+   * drawing's. A short element a few metres across leaves the floor at the
+   * constructor's default untouched (bit-identical); only an element whose
+   * own extent is large enough that float32 rounding of its cut
+   * coordinates approaches the default 0.1mm weld tolerance gets a wider
+   * one — exactly the "same physical vertex, two independently-rounded
+   * float32 copies" case that a fixed tolerance can't absorb past that
+   * scale.
+   *
+   * Segments not produced by `SectionCutter` (e.g. hand-built test
+   * fixtures) carry no `localMaxCoord`; those fall back to the segment's
+   * own 2D coordinate magnitude, preserving prior behaviour for callers
+   * that never had an origin to begin with.
+   */
+  private withScaleAwareTolerance<T>(segments: CutSegment[], fn: () => T): T {
+    let maxAbs = 0;
+    for (const seg of segments) {
+      if (seg.localMaxCoord !== undefined) {
+        if (seg.localMaxCoord > maxAbs) maxAbs = seg.localMaxCoord;
+        continue;
+      }
+      const a = seg.p0_2d;
+      const b = seg.p1_2d;
+      if (Math.abs(a.x) > maxAbs) maxAbs = Math.abs(a.x);
+      if (Math.abs(a.y) > maxAbs) maxAbs = Math.abs(a.y);
+      if (Math.abs(b.x) > maxAbs) maxAbs = Math.abs(b.x);
+      if (Math.abs(b.y) > maxAbs) maxAbs = Math.abs(b.y);
+    }
+    const original = this.tolerance;
+    this.tolerance = Math.max(original, maxAbs * 2 ** -22);
+    try {
+      return fn();
+    } finally {
+      this.tolerance = original;
+    }
+  }
+
+  /**
    * Build polygons from cut segments
    * Groups segments by entity and reconstructs closed loops
    */
@@ -70,7 +123,9 @@ export class PolygonBuilder {
     const polygonArrays: DrawingPolygon[][] = [];
 
     for (const [key, entitySegments] of byEntity) {
-      const entityPolygons = this.buildEntityPolygons(entitySegments);
+      const entityPolygons = this.withScaleAwareTolerance(entitySegments, () =>
+        this.buildEntityPolygons(entitySegments),
+      );
       polygonArrays.push(entityPolygons);
     }
 
@@ -105,8 +160,9 @@ export class PolygonBuilder {
       const colors = new Set(entitySegments.map((s) => colorKey(s.color)));
       if (colors.size < 2) continue;
       // Colourless build ⇒ closed-loop path (the combined section is closed).
-      const base = this.buildColorGroupPolygons(entitySegments, undefined)
-        .map((p) => ({ ...p, isLayerBase: true }));
+      const base = this.withScaleAwareTolerance(entitySegments, () =>
+        this.buildColorGroupPolygons(entitySegments, undefined),
+      ).map((p) => ({ ...p, isLayerBase: true }));
       if (base.length > 0) out.push(base);
     }
     return out.flat();
@@ -536,43 +592,68 @@ export class PolygonBuilder {
   }
 
   /**
-   * Classify loops as outer boundaries or holes
-   * Uses containment testing and area sign
+   * Classify loops as outer boundaries or holes.
+   *
+   * Nesting can go more than one level deep — an island (e.g. a mullion
+   * cross-section, or a column stub) fully inside a hole (a window opening,
+   * a shaft) must become its OWN solid outer polygon, not a second hole of
+   * the outermost boundary. Each loop's classification is therefore relative
+   * to its NEAREST containing ancestor (the smallest-area loop that still
+   * contains it), not the top-level outer: walk the ancestor chain to get a
+   * nesting depth, then even depth (0, 2, 4, …) = solid outer boundary, odd
+   * depth (1, 3, …) = hole of its immediate (even-depth) parent.
    */
   private classifyLoops(loops: Loop[]): Array<{ outer: Point2D[]; holes: Point2D[][] }> {
     if (loops.length === 0) return [];
 
-    // Sort by absolute area (largest first)
+    // Sort by absolute area (largest first). The parent search below only
+    // considers EARLIER (larger-or-equal-area) loops as containers: a genuine
+    // container can never be smaller than what it contains, and restricting
+    // parents to earlier indices keeps the relation acyclic even when
+    // overlapping or duplicate loops make the single-point containment test
+    // mutual (A "contains" B's start point and B "contains" A's) — without it
+    // the ancestor walk below would spin forever on such input.
     const sorted = [...loops].sort((a, b) => Math.abs(b.area) - Math.abs(a.area));
+    const n = sorted.length;
+
+    // Nearest containing ancestor: walking earlier loops from smallest area
+    // upward, the first one that contains this loop. -1 = top-level.
+    const parent: number[] = new Array(n).fill(-1);
+    for (let i = 0; i < n; i++) {
+      for (let j = i - 1; j >= 0; j--) {
+        if (this.isLoopContainedIn(sorted[i].points, sorted[j].points)) {
+          parent[i] = j;
+          break;
+        }
+      }
+    }
+
+    // Nesting depth = length of the ancestor chain to the top level.
+    const depth: number[] = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      let d = 0;
+      let p = parent[i];
+      while (p !== -1) {
+        d++;
+        p = parent[p];
+      }
+      depth[i] = d;
+    }
 
     const result: Array<{ outer: Point2D[]; holes: Point2D[][] }> = [];
-    const assigned = new Set<number>();
 
-    for (let i = 0; i < sorted.length; i++) {
-      if (assigned.has(i)) continue;
+    for (let i = 0; i < n; i++) {
+      if (depth[i] % 2 !== 0) continue; // holes are emitted as part of their parent below
 
-      const outer = sorted[i];
-
-      // Ensure outer boundary is CCW
-      const outerPoints = ensureCCW(outer.points);
-
-      // Find holes (smaller loops contained within this one)
+      const outerPoints = ensureCCW(sorted[i].points);
       const holes: Point2D[][] = [];
 
-      for (let j = i + 1; j < sorted.length; j++) {
-        if (assigned.has(j)) continue;
-
-        const inner = sorted[j];
-
-        // Check if inner is contained in outer
-        if (this.isLoopContainedIn(inner.points, outerPoints)) {
-          // Ensure hole is CW (opposite winding)
-          holes.push(ensureCW(inner.points));
-          assigned.add(j);
+      for (let j = 0; j < n; j++) {
+        if (parent[j] === i && depth[j] % 2 === 1) {
+          holes.push(ensureCW(sorted[j].points));
         }
       }
 
-      assigned.add(i);
       result.push({ outer: outerPoints, holes });
     }
 

@@ -7,85 +7,55 @@
  * Leverages Spike 1 approach: ~1,259 MB/s throughput
  */
 
-import { safeUtf8Decode } from '@ifc-lite/data';
+import { isIndexableExpressId } from './express-id.js';
+import { BalancedEntityScan, type ScannedEntityRef } from './scan-entities-balanced.js';
+import {
+  countNewlines,
+  opensComment,
+  opensLiteralOrComment,
+  skipComment,
+  skipLexical,
+  skipTrivia,
+} from './step-lexing.js';
 
 export class StepTokenizer {
   private buffer: Uint8Array;
-  private position: number = 0;
-  private lineNumber: number = 1;
+  private oversizedIds: number = 0;
+  private malformedRecords: number = 0;
 
   constructor(buffer: Uint8Array) {
     this.buffer = buffer;
   }
 
+  /** Records the last scan refused for an out-of-contract express id
+   *  (express-id.ts, #3395). Reset per scan; the caller reports it. */
+  get oversizedIdCount(): number { return this.oversizedIds; }
+
+  /** 0 or 1: whether the last `scanEntitiesFast`/`scanEntities` run stopped
+   *  early on an unclosed `'` string, an unclosed block comment, or a
+   *  declaration cut off before its own '(' -- never a count of how many,
+   *  since the scan has no reliable way to resume past the first one it
+   *  hits. Reset at the start of every scan; the caller reports it. */
+  get malformedRecordCount(): number { return this.malformedRecords; }
+
   /**
    * Scan for all entity declarations (#EXPRESS_ID = TYPE(...))
-   * Returns entity references without parsing full content
+   * Returns entity references without parsing full content.
+   *
+   * Closes each record on the ')' balancing its argument list. The scan itself
+   * lives in `scan-entities-balanced.ts`; only the refusal count comes back
+   * here, and it comes back in a `finally` so an abandoned generator still
+   * reports what it refused.
    */
-  *scanEntities(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
-    this.position = 0;
-    this.lineNumber = 1;
-
-    while (this.position < this.buffer.length) {
-      // Look for '#' character (entity ID marker)
-      if (this.buffer[this.position] === 0x23) { // '#'
-        const startOffset = this.position;
-        const startLine = this.lineNumber;
-
-        // Read express ID
-        const expressId = this.readExpressId();
-        if (expressId === null) {
-          this.position++;
-          continue;
-        }
-
-        // Skip whitespace
-        this.skipWhitespace();
-
-        // Check for '=' (assignment)
-        if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x3D) {
-          this.position++;
-          continue;
-        }
-        this.position++; // Skip '='
-
-        // Skip whitespace
-        this.skipWhitespace();
-
-        // Read type name
-        const type = this.readTypeName();
-        if (!type) {
-          this.position++;
-          continue;
-        }
-
-        // Skip whitespace
-        this.skipWhitespace();
-
-        // Check for '(' (start of parameters)
-        if (this.position >= this.buffer.length || this.buffer[this.position] !== 0x28) {
-          this.position++;
-          continue;
-        }
-
-        // Find matching closing parenthesis to get full entity length
-        const entityLength = this.findEntityLength(startOffset);
-        if (entityLength > 0) {
-          yield {
-            expressId,
-            type,
-            offset: startOffset,
-            length: entityLength,
-            line: startLine,
-          };
-        }
-      } else if (this.buffer[this.position] === 0x0A) {
-        // Newline
-        this.lineNumber++;
-        this.position++;
-      } else {
-        this.position++;
-      }
+  *scanEntities(): Generator<ScannedEntityRef> {
+    const scan = new BalancedEntityScan(this.buffer);
+    this.oversizedIds = 0;
+    this.malformedRecords = 0;
+    try {
+      yield* scan.run();
+    } finally {
+      this.oversizedIds = scan.oversizedIdCount;
+      this.malformedRecords = scan.malformedRecordCount;
     }
   }
 
@@ -93,9 +63,9 @@ export class StepTokenizer {
    * FAST scan - skips to semicolon instead of matching parentheses
    * ~5-10x faster for large files, yields length=0 (calculate on-demand)
    */
-  *scanEntitiesFast(): Generator<{ expressId: number; type: string; offset: number; length: number; line: number }> {
-    this.position = 0;
-    this.lineNumber = 1;
+  *scanEntitiesFast(): Generator<ScannedEntityRef> {
+    this.oversizedIds = 0;
+    this.malformedRecords = 0;
 
     // Pre-compute common byte codes
     const HASH = 0x23;      // '#'
@@ -104,6 +74,7 @@ export class StepTokenizer {
     const SEMICOLON = 0x3B; // ';'
     const QUOTE = 0x27;     // '\''
     const NEWLINE = 0x0A;   // '\n'
+    const SLASH = 0x2F;     // '/'
 
     const buf = this.buffer;
     const len = buf.length;
@@ -113,6 +84,23 @@ export class StepTokenizer {
     // Cache type name strings: IFC files have ~776 unique types repeated
     // across 8M+ entities. Caching avoids millions of String.fromCharCode allocations.
     const typeCache = new Map<string, string>();
+
+    // Set on the way to the single post-loop check at the bottom of this
+    // function, not counted at each site: `stopped` for an unclosed string or
+    // comment that ran the scan to end of buffer with nothing left to find,
+    // `declOpen` while a `#id=TYPE(` header is incomplete. `declOpen` stays
+    // armed ONLY when the reason for abandoning is running out of buffer
+    // (`pos >= len`); a mismatch with buffer still left (bad byte, oversized
+    // id) clears it, because the scan resumes byte-by-byte from wherever it
+    // gave up, and a `#ref` token inside the abandoned record's own argument
+    // list reads as a fresh, equally incomplete attempt -- one that must not
+    // report "cut off" just because nothing later happens to clear it.
+    // Per-site increments used to miss whole shapes -- a leading unterminated
+    // comment before '=', or a declaration cut off before its own '(' --
+    // because each site only knew about its own exit, never the scan's final
+    // state.
+    let stopped = false;
+    let declOpen = false;
 
     while (pos < len) {
       const char = buf[pos];
@@ -137,30 +125,72 @@ export class StepTokenizer {
         }
 
         if (!hasDigits) continue;
+        declOpen = true;
 
-        // Skip whitespace (inline)
+        // Skip whitespace (inline). Kept byte-for-byte in sync with
+        // `isSpaceByte` in step-lexing.ts (space, tab, CR, LF, form feed,
+        // vertical tab) -- this loop, its two twins below in this method, and
+        // the worker's copy in scan-worker-source.ts are the same rule
+        // hand-duplicated for speed, not four independent decisions.
         while (pos < len) {
           const c = buf[pos];
-          if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
+          if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0C || c === 0x0B) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
         }
 
-        // Check for '='
-        if (pos >= len || buf[pos] !== EQUALS) continue;
+        // 10303-21 allows a comment wherever whitespace is allowed, so
+        // `#1 /* was #7 */ =` is a declaration. The inline loop above stays
+        // for the common case; this runs only once a comment actually opens,
+        // and skipTrivia (step-lexing) then takes the whole run of both.
+        if (opensComment(buf, pos, len)) {
+          const t = skipTrivia(buf, pos, len);
+          line += t.lines;
+          pos = t.next;
+          if (t.stop) { stopped = true; break; }
+        }
+
+        // Check for '='. A byte that is not '=' with buffer left to scan is
+        // not a truncation -- clear declOpen so a reference token inside a
+        // LATER abandoned record's argument list (see the oversized-id note
+        // below) cannot leave it stuck armed with nothing left to clear it.
+        if (pos >= len) continue;
+        if (buf[pos] !== EQUALS) { declOpen = false; continue; }
         pos++;
+
+        // Storage contract, not just overflow: see express-id.ts (#3395).
+        // Tested only now that `#<digits>[ws]*=` has matched, which is the
+        // DECLARATION shape Rust's `EntityScanner` validates before it
+        // refuses. Refusing above the '=' check counted references too: the
+        // `continue` resumes inside the refused record's argument list
+        // (unlike the accepted path, which skips to the terminating ';'), so
+        // `#4294967297=IFCWALL(#4294967298,#4294967299,...)` reported three
+        // skipped records for the one record actually dropped. A count that
+        // overstates is the same class of defect as one that undercounts.
+        // Refused for being out of range, not for running out of buffer, so
+        // it does not belong to `declOpen`'s "cut off by EOF" story either.
+        if (!isIndexableExpressId(expressId)) { this.oversizedIds++; declOpen = false; continue; }
 
         // Skip whitespace
         while (pos < len) {
           const c = buf[pos];
-          if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
+          if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0C || c === 0x0B) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
         }
 
-        // Read type name (inline)
+        if (opensComment(buf, pos, len)) {
+          const t = skipTrivia(buf, pos, len);
+          line += t.lines;
+          pos = t.next;
+          if (t.stop) { stopped = true; break; }
+        }
+
+        // Read type name (inline). Must start A-Z; a bad start byte with
+        // buffer left clears declOpen for the same reason as the '=' check.
         const typeStart = pos;
-        if (pos >= len || buf[pos] < 0x41 || buf[pos] > 0x5A) continue; // Must start A-Z
+        if (pos >= len) continue;
+        if (buf[pos] < 0x41 || buf[pos] > 0x5A) { declOpen = false; continue; }
 
         while (pos < len) {
           const c = buf[pos];
@@ -206,16 +236,26 @@ export class StepTokenizer {
         // Skip whitespace
         while (pos < len) {
           const c = buf[pos];
-          if (c === 0x20 || c === 0x09 || c === 0x0D) { pos++; }
+          if (c === 0x20 || c === 0x09 || c === 0x0D || c === 0x0C || c === 0x0B) { pos++; }
           else if (c === NEWLINE) { line++; pos++; }
           else break;
         }
 
-        // Check for '('
-        if (pos >= len || buf[pos] !== LPAREN) continue;
+        if (opensComment(buf, pos, len)) {
+          const t = skipTrivia(buf, pos, len);
+          line += t.lines;
+          pos = t.next;
+          if (t.stop) { stopped = true; break; }
+        }
+
+        // Check for '('. Same EOF-vs-mismatch split as '=' and the type name.
+        if (pos >= len) continue;
+        if (buf[pos] !== LPAREN) { declOpen = false; continue; }
+        declOpen = false; // Header complete: '(' found.
 
         // FAST: Skip to semicolon (handling strings)
         let inString = false;
+        let foundTerminator = false;
         while (pos < len) {
           const c = buf[pos];
           if (c === QUOTE) {
@@ -224,136 +264,64 @@ export class StepTokenizer {
               continue;
             }
             inString = !inString;
+          } else if (c === SLASH && !inString && opensComment(buf, pos, len)) {
+            // The ';' that ends a record can be preceded by a comment holding
+            // its own ';'. Take the comment whole -- which also makes the
+            // quotes and parens inside it text, the other half of the rule the
+            // literal skip above provides in the opposite direction.
+            const end = skipComment(buf, pos, len);
+            if (end < 0) {
+              // Unterminated: this record has no terminator, and neither has
+              // anything after it. Drop it and stop, which is the None Rust's
+              // find_entity_end returns on the same input.
+              pos = len;
+              break;
+            }
+            line += countNewlines(buf, pos, end);
+            pos = end;
+            continue;
           } else if (c === SEMICOLON && !inString) {
             // Found end of entity
             const entityLength = pos - startOffset + 1; // Include semicolon
             yield { expressId, type, offset: startOffset, length: entityLength, line: startLine };
             pos++;
+            foundTerminator = true;
             break;
           } else if (c === NEWLINE) {
             line++;
           }
           pos++;
         }
+
+        // Ran off the end without an unquoted ';' — usually an unescaped `'`
+        // left open, or the unterminated-comment break above; `pos` is
+        // already `len`, ending the scan here. Not resynced: with no known
+        // terminator, guessing a resume point risks fabricating entities from
+        // misaligned bytes. Recorded in `stopped`, not incremented here --
+        // see the post-loop check below.
+        if (!foundTerminator) stopped = true;
       } else if (char === NEWLINE) {
         line++;
         pos++;
+      } else if (opensLiteralOrComment(buf, pos, len)) {
+        // After the newline branch, not before it: the inner loop consumes
+        // entity bodies, so newline is the commonest byte this chain sees.
+        // The byte values are mutually exclusive, so order is
+        // semantics-neutral. See step-lexing for what is skipped and why.
+        const skip = skipLexical(buf, pos, len);
+        line += skip.lines;
+        pos = skip.next;
+        if (skip.stop) { stopped = true; break; }
       } else {
         pos++;
       }
     }
 
-    this.position = pos;
-    this.lineNumber = line;
-  }
-
-  private readExpressId(): number | null {
-    let id = 0;
-    let digits = 0;
-    let pos = this.position + 1; // Skip '#'
-
-    while (pos < this.buffer.length) {
-      const char = this.buffer[pos];
-      if (char >= 0x30 && char <= 0x39) { // '0'-'9'
-        id = id * 10 + (char - 0x30);
-        digits++;
-        pos++;
-      } else {
-        break;
-      }
-    }
-
-    if (digits === 0) return null;
-    this.position = pos;
-    return id;
-  }
-
-  private readTypeName(): string | null {
-    let start = this.position;
-    let end = start;
-
-    // Type names start with uppercase letter
-    if (this.position >= this.buffer.length || this.buffer[this.position] < 0x41 || this.buffer[this.position] > 0x5A) {
-      return null;
-    }
-
-    while (end < this.buffer.length) {
-      const char = this.buffer[end];
-      // Allow letters, numbers, and underscore
-      if (
-        (char >= 0x41 && char <= 0x5A) || // A-Z
-        (char >= 0x61 && char <= 0x7A) || // a-z
-        (char >= 0x30 && char <= 0x39) || // 0-9
-        char === 0x5F // _
-      ) {
-        end++;
-      } else {
-        break;
-      }
-    }
-
-    if (end === start) return null;
-
-    const typeName = safeUtf8Decode(this.buffer, start, end);
-    this.position = end;
-    return typeName;
-  }
-
-  private skipWhitespace(): void {
-    while (this.position < this.buffer.length) {
-      const char = this.buffer[this.position];
-      if (char === 0x20 || char === 0x09 || char === 0x0D || char === 0x0A) { // space, tab, CR, LF
-        if (char === 0x0A) this.lineNumber++;
-        this.position++;
-      } else {
-        break;
-      }
-    }
-  }
-
-  private findEntityLength(startOffset: number): number {
-    let pos = this.position;
-    let depth = 0;
-    let inString = false;
-
-    while (pos < this.buffer.length) {
-      const char = this.buffer[pos];
-
-      if (char === 0x27) { // Single quote (string delimiter)
-        if (inString) {
-          // Check for escaped quote ('') - STEP uses doubled quotes
-          if (pos + 1 < this.buffer.length && this.buffer[pos + 1] === 0x27) {
-            pos += 2; // Skip escaped quote
-            continue;
-          }
-          inString = false;
-        } else {
-          inString = true;
-        }
-        pos++;
-        continue;
-      }
-
-      if (inString) {
-        pos++;
-        continue;
-      }
-
-      if (char === 0x28) { // '('
-        depth++;
-        pos++;
-      } else if (char === 0x29) { // ')'
-        depth--;
-        pos++;
-        if (depth === 0) {
-          // Found matching closing parenthesis
-          return pos - startOffset;
-        }
-      } else {
-        pos++;
-      }
-    }
-
-    return 0; // No matching closing parenthesis found
+    // ONE post-loop check, not an increment at every exit site above: the
+    // scan stopped early if it hit an explicit "no terminator" boundary
+    // (`stopped`), or the last `#id=TYPE(` header was cut short before its
+    // '(' was found (`declOpen`). Always 0 or 1 -- the scan stops at the
+    // first one, so there is nothing further to accumulate.
+    if (stopped || declOpen) this.malformedRecords = 1;
   }
 }

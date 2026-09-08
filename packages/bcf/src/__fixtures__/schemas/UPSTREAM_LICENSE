@@ -1,0 +1,32 @@
+# LICENSE
+
+The `.xsd` files under `v2_1/` and `v3_0/` are verbatim, unmodified copies of the
+official BCF-XML schemas published by buildingSMART International:
+
+  https://github.com/buildingSMART/BCF-XML
+    v2_1/  <- branch `release_2_1`, `Schemas/`
+    v3_0/  <- branch `release_3_0`, `Schemas/`
+
+Only the schemas the tests actually validate against are kept: `markup.xsd`,
+`visinfo.xsd`, `project.xsd`, `version.xsd`, plus `shared-types.xsd`, which
+BCF 3.0's schemas pull in with `<xs:include>`. Upstream also publishes
+`extensions.xsd` (both versions) and `documents.xsd` (3.0); neither is
+vendored, because nothing here validates against them and an unused copy only
+goes stale.
+
+(c) buildingSMART International Ltd.
+
+This work is licensed under the Creative Commons Attribution-NoDerivatives 4.0
+International License.
+To view a copy of this license, visit [http://creativecommons.org/licenses/by-nd/4.0/](http://creativecommons.org/licenses/by-nd/4.0/).
+
+CC BY-ND 4.0 permits redistribution of the material in unmodified form with
+attribution, which is what this directory does: the files are copied byte for
+byte and are never edited. Do not modify them — a local edit would both make the
+copy a derivative work the licence does not permit and destroy their value as an
+independent check on our output. To move to a newer BCF release, replace the
+files wholesale from upstream and update the branch names above.
+
+These schemas are test fixtures only. They are not part of the published
+`@ifc-lite/bcf` package (`package.json` ships `dist` and `README.md` only) and
+are never emitted into a `.bcfzip` archive.

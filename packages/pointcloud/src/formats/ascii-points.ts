@@ -148,19 +148,29 @@ function layoutFromColumnCount(
 export function decodeAsciiPoints(
   bytes: Uint8Array,
   format: AsciiPointsFormat,
+  /**
+   * Native (X, Y, Z)-axis offset subtracted from each decoded point in
+   * f64, BEFORE narrowing to the `Float32Array` (extends #1804's LAS/LAZ
+   * pattern — see `decodeLasPoints`'s `originOffset` doc). PTS/XYZ files
+   * routinely carry GNSS/total-station survey coordinates at ~1e6-1e7 m
+   * magnitude. `undefined` (the default) subtracts nothing, preserving
+   * prior behaviour byte-for-byte.
+   */
+  originOffset?: readonly [number, number, number],
 ): DecodedPointChunk {
   const layout = probeAsciiPointsLayout(bytes, format);
   if (!layout) {
     throw new Error(`${format.toUpperCase()}: file does not look like ASCII point data`);
   }
   const text = TEXT_DECODER.decode(bytes);
-  return decodeAsciiPointsFromText(text, layout);
+  return decodeAsciiPointsFromText(text, layout, originOffset);
 }
 
 /** Same as `decodeAsciiPoints` but takes pre-decoded text. */
 export function decodeAsciiPointsFromText(
   text: string,
   layout: AsciiPointsLayout,
+  originOffset?: readonly [number, number, number],
 ): DecodedPointChunk {
   const lines = text.split(/\r?\n/);
   // Pre-pass: count valid data lines so we can allocate exactly.
@@ -197,6 +207,9 @@ export function decodeAsciiPointsFromText(
   let colorMax = 0;
   let bboxMinX = Infinity, bboxMinY = Infinity, bboxMinZ = Infinity;
   let bboxMaxX = -Infinity, bboxMaxY = -Infinity, bboxMaxZ = -Infinity;
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
 
   headerSkipped = !layout.hasHeaderCount;
   for (const raw of lines) {
@@ -209,10 +222,15 @@ export function decodeAsciiPointsFromText(
     }
     const tokens = trimmed.split(/\s+/);
     if (tokens.length < layout.columns) continue;
-    const x = Number(tokens[xIdx]);
-    const y = Number(tokens[yIdx]);
-    const z = Number(tokens[zIdx]);
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
+    const xRaw = Number(tokens[xIdx]);
+    const yRaw = Number(tokens[yIdx]);
+    const zRaw = Number(tokens[zIdx]);
+    if (!Number.isFinite(xRaw) || !Number.isFinite(yRaw) || !Number.isFinite(zRaw)) continue;
+    // f64 subtraction happens here, before the narrowing `positions[..] =`
+    // assignment below casts to f32 — see the `originOffset` param doc.
+    const x = xRaw - offX;
+    const y = yRaw - offY;
+    const z = zRaw - offZ;
     positions[written * 3] = x;
     positions[written * 3 + 1] = y;
     positions[written * 3 + 2] = z;

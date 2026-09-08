@@ -162,10 +162,15 @@ function runAutoMerges(
   pushedId: string,
   webhooks: readonly RegistryWebhook[]
 ): void {
+  // Containment is by design (see above), but an operator whose auto-merge
+  // ref quietly stopped merging has no other signal that it did — so every
+  // contained failure is logged. Warnings are per push, not per event.
   let manifest;
   try {
     manifest = getProvenance(registry.loadLayer(pushedId));
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(`[collab-server] auto-merge skipped: cannot read pushed layer ${JSON.stringify(pushedId)}:`, err);
     return;
   }
   if (!manifest?.base) return;
@@ -173,6 +178,8 @@ function runAutoMerges(
   // required checks: a failing check the policy forgot to require must
   // still keep the merge attended.
   if ((manifest.checks ?? []).some((check) => check.result !== 'pass')) return;
+  /** Layer ids already reported as unreadable in this pass; caps the log. */
+  const unreadable = new Set<string>();
   for (const [name, entry] of Object.entries(registry.listRefs())) {
     const policy = entry.policy;
     if (!policy?.autoMerge || policy.requireHumanApproval) continue;
@@ -183,7 +190,14 @@ function runAutoMerges(
     const alreadyMerged = entry.layers.some((layerId) => {
       try {
         return getProvenance(registry.loadLayer(layerId))?.merge?.candidate === pushedId;
-      } catch {
+      } catch (err) {
+        // An unreadable layer reads as "not the merge we're looking for",
+        // which can let the same candidate land twice — worth a warning.
+        if (!unreadable.has(layerId)) {
+          unreadable.add(layerId);
+          // eslint-disable-next-line no-console
+          console.warn(`[collab-server] auto-merge: cannot read ref layer ${JSON.stringify(layerId)}:`, err);
+        }
         return false;
       }
     });
@@ -203,8 +217,10 @@ function runAutoMerges(
           ...(outcome.status === 'merged' ? { merge_layer: outcome.mergeLayerId } : {}),
         });
       }
-    } catch {
-      // Contained by contract (see above).
+    } catch (err) {
+      // Contained by contract (see above) — the push still succeeds.
+      // eslint-disable-next-line no-console
+      console.warn(`[collab-server] auto-merge of ${JSON.stringify(pushedId)} into ref ${JSON.stringify(name)} failed:`, err);
     }
   }
 }

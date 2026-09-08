@@ -13,21 +13,78 @@
 import { describe, it, expect } from 'vitest';
 import { WORKER_CODE } from '../src/scan-worker-inline.js';
 
-function runWorkerScan(ifc: string): string[] {
+interface WorkerScanMessage {
+    types: string[];
+    ids: ArrayBuffer;
+    lines: ArrayBuffer;
+    oversizedIds: number;
+}
+
+function runWorkerScanRaw(ifc: string): WorkerScanMessage {
     const buffer = new TextEncoder().encode(ifc).buffer;
     const mockSelf: Record<string, unknown> & {
         onmessage?: (e: { data: ArrayBuffer }) => void;
     } = {};
-    let result: { types: string[] } | undefined;
-    mockSelf.postMessage = (msg: { types: string[] }) => { result = msg; };
+    let result: WorkerScanMessage | undefined;
+    mockSelf.postMessage = (msg: WorkerScanMessage) => { result = msg; };
     // WORKER_CODE assigns `self.onmessage`; execute it with our mock as `self`.
     // eslint-disable-next-line no-new-func
     const install = new Function('self', WORKER_CODE) as (s: unknown) => void;
     install(mockSelf);
     mockSelf.onmessage!({ data: buffer });
     if (!result) throw new Error('worker did not postMessage a result');
-    return result.types;
+    return result;
 }
+
+function runWorkerScan(ifc: string): string[] {
+    return runWorkerScanRaw(ifc).types;
+}
+
+function runWorkerScanIds(ifc: string): number[] {
+    // Uint32Array, matching the worker's own buffer: that IS the express-id
+    // storage contract (#3395). Reading a Float64 buffer this way would yield
+    // garbage, so this decoding also pins the buffer width.
+    return [...new Uint32Array(runWorkerScanRaw(ifc).ids)];
+}
+
+function runWorkerScanLines(ifc: string): number[] {
+    return [...new Uint32Array(runWorkerScanRaw(ifc).lines)];
+}
+
+describe('scan-worker-inline express-id bound (#3395)', () => {
+    // 4294967297 is 2^32 + 1. It used to be admitted and carried in a widened
+    // Float64 buffer, which only moved the truncation one layer down: every
+    // store below this worker keys express ids in 32 bits, so the id landed on
+    // key 1 and served entity #1's record. It is refused here instead.
+    const ABOVE_U32 = 4294967297;
+    const U32_MAX = 4294967295;
+
+    it('refuses an id above 2^32 instead of aliasing it onto a real entity', () => {
+        const result = runWorkerScanRaw(
+            `#1=IFCWALL('a');\n#${ABOVE_U32}=IFCWALL('b');`,
+        );
+        const ids = [...new Uint32Array(result.ids)];
+        expect(ids).toEqual([1]);
+        expect(new Set(ids).size).toBe(ids.length);
+        expect(result.oversizedIds).toBe(1);
+    });
+
+    it('still yields an id of exactly u32::MAX', () => {
+        const result = runWorkerScanRaw(
+            `#1=IFCWALL('a');\n#${U32_MAX}=IFCWALL('b');`,
+        );
+        expect([...new Uint32Array(result.ids)]).toEqual([1, U32_MAX]);
+        expect(result.oversizedIds).toBe(0);
+    });
+
+    it('still refuses an id past the safe-integer range', () => {
+        const result = runWorkerScanRaw(
+            `#1=IFCWALL('a');\n#${'9'.repeat(20)}=IFCWALL('b');`,
+        );
+        expect([...new Uint32Array(result.ids)]).toEqual([1]);
+        expect(result.oversizedIds).toBe(1);
+    });
+});
 
 describe('scan-worker-inline type-name cache (hash-collision safety)', () => {
     it('does not alias two type names sharing a 32-bit hash + length', () => {
@@ -41,5 +98,73 @@ describe('scan-worker-inline type-name cache (hash-collision safety)', () => {
     it('still reuses the cache for genuinely repeated type names', () => {
         const types = runWorkerScan('#1=IFCWALL();\n#2=IFCWALL();\n#3=IFCDOOR();\n');
         expect(types).toEqual(['IFCWALL', 'IFCWALL', 'IFCDOOR']);
+    });
+});
+
+describe('scan-worker-inline and STEP comments', () => {
+    // WORKER_CODE is a third copy of the fast scan loop, and it is the copy the
+    // browser reaches first: entity-scanner.ts tries the worker before the wasm
+    // scan and before StepTokenizer. A comment fix landing only on the tokenizer
+    // would leave the shipping path unchanged, so the rule is pinned here too.
+    it('does not yield a record that is commented out', () => {
+        const src = ["#1=IFCWALL('a');", "/*#2=IFCWALL('b');*/", "#3=IFCWALL('c');"].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1, 3]);
+    });
+
+    it('keeps line numbers correct when a record itself spans lines', () => {
+        const src = ['#1=', "IFCWALL('a');", "#2=IFCWALL('b');"].join('\n');
+        expect(runWorkerScanLines(src)).toEqual([1, 3]);
+    });
+
+    it('keeps line numbers correct across a multi-line comment', () => {
+        const src = ["#1=IFCWALL('a');", '/* two', 'three', 'four */', "#2=IFCWALL('b');"].join('\n');
+        expect(runWorkerScanLines(src)).toEqual([1, 5]);
+    });
+
+    it('stops at an unterminated comment rather than resuming inside it', () => {
+        const src = ["#1=IFCWALL('a');", '/* never closed', "#2=IFCWALL('b');"].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1]);
+    });
+
+    it('a HEADER slash-star closed later in DATA does not eat the records between', () => {
+        // Worst on this path specifically: a partial result is still non-empty,
+        // so scanIfcEntities accepts it rather than falling back to the wasm
+        // scan, and the missing records never surface as an error.
+        const src = [
+            'ISO-10303-21;',
+            'HEADER;',
+            "FILE_NAME('plan /* draft.ifc','2024-01-01T00:00:00',(''),(''),'','','');",
+            'ENDSEC;',
+            'DATA;',
+            "#1=IFCWALL('a');",
+            "#2=IFCWALL('b');",
+            "#3=IFCWALL('note */ done');",
+            "#4=IFCWALL('d');",
+            'ENDSEC;',
+            'END-ISO-10303-21;',
+        ].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1, 2, 3, 4]);
+    });
+
+    it('a slash-star in a HEADER string does not open a comment', () => {
+        const src = [
+            'ISO-10303-21;',
+            'HEADER;',
+            "FILE_DESCRIPTION(('rev /* pending'),'2;1');",
+            'ENDSEC;',
+            'DATA;',
+            "#1=IFCWALL('a');",
+            'ENDSEC;',
+            'END-ISO-10303-21;',
+        ].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1]);
+    });
+
+    it('does not treat a slash-star inside a string literal as a comment', () => {
+        // The outer loop only runs between records: a matched record is consumed
+        // to its semicolon by the inner, string-aware loop. This pins that, so a
+        // later edit cannot quietly expose the outer loop to string bytes.
+        const src = ["#1=IFCWALL('a /* b');", "#2=IFCWALL('c');"].join('\n');
+        expect(runWorkerScanIds(src)).toEqual([1, 2]);
     });
 });

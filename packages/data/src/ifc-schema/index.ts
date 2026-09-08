@@ -68,7 +68,10 @@ const ATTRIBUTES_BY_VERSION: Record<
  */
 export const RESERVED_PSET_PREFIXES: readonly string[] = ['Pset_', 'Qto_'];
 
-const ENTITIES_BY_VERSION: Record<IfcSchemaVersion, readonly IfcEntityInfo[]> = {
+// Exported within the package (not from `packages/data/src/index.ts`, whose
+// export list is explicit) so `./descendants.js` resolves versions against the
+// same map `getEntities` does.
+export const ENTITIES_BY_VERSION: Record<IfcSchemaVersion, readonly IfcEntityInfo[]> = {
   IFC2X3: ENTITIES_IFC2X3,
   IFC4: ENTITIES_IFC4,
   IFC4X3: ENTITIES_IFC4X3,

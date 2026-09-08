@@ -10,7 +10,6 @@ use crate::{Error, Mesh, Point3, Result, Vector3};
 use nalgebra::{Matrix3, Matrix4};
 use rustc_hash::FxHashMap;
 
-
 /// Extract rotation columns from a 4x4 transform matrix.
 pub(super) fn extract_rotation_columns(m: &Matrix4<f64>) -> (Vector3<f64>, Vector3<f64>, Vector3<f64>) {
     (
@@ -29,7 +28,6 @@ pub(super) fn rotate_and_normalize(
         .try_normalize(NORMALIZE_EPSILON)
         .ok_or_else(|| Error::geometry("Zero-length direction vector".to_string()))
 }
-
 
 /// Pick a unit-vector along the wall's thinnest AABB axis. Used as a
 /// last-ditch extrusion direction for the issue #635 AABB fallback when
@@ -310,12 +308,17 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
         normals.push(p[1] as f32);
         normals.push(p[2] as f32);
     }
+    // COMPOSE the input's own origin rather than assigning over it, and ROTATE
+    // it first: `mesh` is in frame F, so its origin is a frame-F offset. A
+    // nested local-frame cut returns a non-zero origin here and assigning would
+    // drop it. A no-op for the origin-0 callers.
+    let o = rotate_point(r, mesh.origin[0], mesh.origin[1], mesh.origin[2]);
     Mesh {
         positions,
         normals,
         indices: mesh.indices.clone(),
         rtc_applied: mesh.rtc_applied,
-        origin: [center.x, center.y, center.z],
+        origin: [center.x + o[0], center.y + o[1], center.z + o[2]],
         // Frame-transformed cut intermediate — not an instanceable occurrence,
         // and pre-placement (issue #1474 fields don't apply here either).
     instance_meta: None, local_bounds: None, local_to_world: None }
@@ -323,7 +326,7 @@ pub(super) fn rotate_mesh_from_frame(mesh: &Mesh, r: &Matrix3<f64>, center: &Poi
 
 /// Signed volume of a (closed) triangle mesh via the divergence theorem. Used to
 /// reconcile a union of parametric boxes against the meshed opening solid by volume.
-pub(super) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
+pub(crate) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
     let v = |i: u32| {
         let b = i as usize * 3;
         [
@@ -346,6 +349,16 @@ pub(super) fn mesh_signed_volume(mesh: &Mesh) -> f64 {
 /// Closed-2-manifold self-check (0.1 mm weld): every undirected edge shared by exactly
 /// two non-degenerate triangles. The parametric path refuses to emit a cut that fails
 /// this, deferring to the exact kernel instead.
+/// NOT a closure test, despite the name reading like one. It pairs DIRECTED
+/// edges, so a genuinely closed solid whose faces carry T-junctions reads as
+/// open: an annulus face around a hole produces exactly that, which is how IFC
+/// breps and pre-cut wall layers are commonly built. The `pre_cut_wall` fixture
+/// self-checks to a signed volume of +5.6, the exact box minus its hole, and
+/// still fails this predicate.
+///
+/// So do not gate "is this mesh closed" on it. For "can I trust a ray parity
+/// here", ask [`point_inside_mesh_agreed`], which asks about the point rather
+/// than the topology and is tolerant of T-junctions.
 pub(super) fn param_cut_watertight(mesh: &Mesh) -> bool {
     let key = |i: u32| -> (i64, i64, i64) {
         let b = i as usize * 3;
@@ -477,15 +490,32 @@ pub(super) fn opening_redundant_with_host(host: &Mesh, opening: &Mesh, axis: &Ve
     true
 }
 
-/// Forward-ray crossing parity: `true` when `point` lies inside the closed
-/// `mesh`. Casts a ray in a fixed off-axis direction and counts triangle
-/// crossings ahead of the origin — an odd count means inside. The skewed
-/// direction keeps the ray from grazing axis-aligned shared edges/vertices
-/// (the common case for box cutters), so the parity stays reliable.
-pub(super) fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
-    // Irrational-ish, non-axis-aligned direction: avoids exact edge/vertex
-    // grazes on the axis-aligned faces that dominate IFC opening boxes.
-    let dir = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+/// Ray parity from two independent directions, or `None` when they disagree.
+///
+/// Disagreement means the surface around `point` is not closed to a ray, so the
+/// crossing count is not evidence of anything. Callers that would ACT on
+/// "inside" need to tell that apart from "inside", because a torn shell answers
+/// this question differently depending on where the ray goes.
+///
+/// Deliberately not `param_cut_watertight`: that pairs directed edges, so a
+/// closed solid whose faces carry T-junctions (an annulus around a hole, which
+/// is how IFC breps and pre-cut wall layers are built) reads as open when it is
+/// not. This asks about the point, not the topology.
+pub(super) fn point_inside_mesh_agreed(mesh: &Mesh, point: Point3<f64>) -> Option<bool> {
+    let a = parity_along(mesh, point, PARITY_DIR_A);
+    let b = parity_along(mesh, point, PARITY_DIR_B);
+    (a == b).then_some(a)
+}
+
+/// Irrational-ish, non-axis-aligned: avoids exact edge and vertex grazes on the
+/// axis-aligned faces that dominate IFC opening boxes. ONE definition, shared by
+/// both callers, so the single-ray and two-ray answers cannot drift apart.
+const PARITY_DIR_A: Vector3<f64> = Vector3::new(0.573_257_1, 0.665_412_3, 0.477_889_5);
+
+/// Shares no plane with [`PARITY_DIR_A`] and no axis with those same facets.
+const PARITY_DIR_B: Vector3<f64> = Vector3::new(-0.412_889_7, 0.734_115_3, -0.538_662_1);
+
+fn parity_along(mesh: &Mesh, point: Point3<f64>, dir: Vector3<f64>) -> bool {
     let mut crossings = 0usize;
     for tri in mesh.indices.chunks_exact(3) {
         let (Some(a), Some(b), Some(c)) = (
@@ -502,6 +532,15 @@ pub(super) fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
         }
     }
     crossings % 2 == 1
+}
+
+/// Forward-ray crossing parity: `true` when `point` lies inside the closed
+/// `mesh`. Casts a ray in a fixed off-axis direction and counts triangle
+/// crossings ahead of the origin — an odd count means inside. The skewed
+/// direction keeps the ray from grazing axis-aligned shared edges/vertices
+/// (the common case for box cutters), so the parity stays reliable.
+pub(super) fn point_inside_mesh(mesh: &Mesh, point: Point3<f64>) -> bool {
+    parity_along(mesh, point, PARITY_DIR_A)
 }
 
 /// `true` when the opening's real solid CONTAINS the host: the host centroid
@@ -790,7 +829,8 @@ pub(super) fn wall_frame_from_depth(depth: Vector3<f64>) -> Option<[Vector3<f64>
 /// Express `mesh` in the orthonormal frame `axes = [a, b, c]` about `center`:
 /// `p' = [ (p-center)·a, (p-center)·b, (p-center)·c ]`. Centering keeps
 /// coordinates small (f32-precise) and the rotation makes a frame-oriented box
-/// axis-aligned. [`mesh_from_frame`] is the exact inverse.
+/// axis-aligned. [`rotate_mesh_from_frame`] inverts it, returning the centre
+/// in [`Mesh::origin`] rather than in the coordinates.
 pub(super) fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) -> Mesh {
     let mut positions = Vec::with_capacity(mesh.positions.len());
     for ch in mesh.positions.chunks_exact(3) {
@@ -805,35 +845,6 @@ pub(super) fn mesh_to_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vecto
         normals.push(n.dot(&axes[0]) as f32);
         normals.push(n.dot(&axes[1]) as f32);
         normals.push(n.dot(&axes[2]) as f32);
-    }
-    Mesh {
-        positions,
-        normals,
-        indices: mesh.indices.clone(),
-        rtc_applied: mesh.rtc_applied,
-        origin: mesh.origin,
-        // Frame-transformed cut intermediate — not an instanceable occurrence.
-        instance_meta: None,
-        local_bounds: None,
-        local_to_world: None,
-    }
-}
-
-/// Inverse of [`mesh_to_frame`]: `p = center + x·a + y·b + z·c`.
-pub(super) fn mesh_from_frame(mesh: &Mesh, axes: &[Vector3<f64>; 3], center: Vector3<f64>) -> Mesh {
-    let mut positions = Vec::with_capacity(mesh.positions.len());
-    for ch in mesh.positions.chunks_exact(3) {
-        let q = center + axes[0] * ch[0] as f64 + axes[1] * ch[1] as f64 + axes[2] * ch[2] as f64;
-        positions.push(q.x as f32);
-        positions.push(q.y as f32);
-        positions.push(q.z as f32);
-    }
-    let mut normals = Vec::with_capacity(mesh.normals.len());
-    for ch in mesh.normals.chunks_exact(3) {
-        let m = axes[0] * ch[0] as f64 + axes[1] * ch[1] as f64 + axes[2] * ch[2] as f64;
-        normals.push(m.x as f32);
-        normals.push(m.y as f32);
-        normals.push(m.z as f32);
     }
     Mesh {
         positions,

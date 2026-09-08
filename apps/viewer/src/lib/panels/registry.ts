@@ -30,8 +30,10 @@ import {
   Table2,
   ListTree,
   Users,
+  Cloud,
   Layers as LayersIcon,
   Box,
+  FileWarning,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -49,12 +51,14 @@ export type WorkspacePanelId =
   | 'lens'
   | 'clash'
   | 'extensions'
+  | 'sources'
   | 'script'
   | 'gantt'
   | 'lists'
   | 'collab'
   | 'layers'
-  | 'zones';
+  | 'zones'
+  | 'loadReport';
 
 /** Activity-bar clustering — a divider is drawn whenever the group changes. */
 export type PanelGroup = 'navigate' | 'inspect' | 'review' | 'author' | 'work';
@@ -82,7 +86,7 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Alt+1..9 / Alt+0 — order frozen since #1200 for the first seven.
   { id: 'properties', title: 'Information', short: 'Info', Icon: Info, group: 'inspect', region: 'side' },
   { id: 'compare', title: 'Compare models', short: 'Compare', Icon: GitCompareArrows, group: 'inspect', region: 'side' },
-  { id: 'bcf', title: 'BCF issues', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
+  { id: 'bcf', title: 'BCF topics', short: 'BCF', Icon: MessageSquare, group: 'review', region: 'side' },
   { id: 'ids', title: 'IDS validation', short: 'IDS', Icon: ClipboardCheck, group: 'review', region: 'side' },
   { id: 'lens', title: 'Lens rules', short: 'Lens', Icon: Palette, group: 'review', region: 'side' },
   { id: 'clash', title: 'Clash detection', short: 'Clash', Icon: Crosshair, group: 'review', region: 'side' },
@@ -100,6 +104,9 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar hides it
   // while the collab feature flag is off (see ActivityBar).
   { id: 'collab', title: 'Collaboration room', short: 'Room', Icon: Users, group: 'review', region: 'side' },
+  // Cloud sources (CDE integrations). APPENDED — no Alt shortcut. Always on
+  // the rail; providers that failed to register are reported inside the panel.
+  { id: 'sources', title: 'Cloud sources', short: 'Sources', Icon: Cloud, group: 'inspect', region: 'side' },
   // IFCX layer stack + per-layer diff (#1717). APPENDED so the frozen
   // Alt+1..0 mapping stays intact (no Alt shortcut). The activity bar only
   // surfaces it while a federated layer stack is loaded.
@@ -107,6 +114,10 @@ export const WORKSPACE_PANELS: readonly WorkspacePanelDef[] = [
   // Location zones (construction sections / takt areas, #1810). APPENDED so
   // the frozen Alt+1..0 mapping stays intact (no Alt shortcut).
   { id: 'zones', title: 'Location zones', short: 'Zones', Icon: Box, group: 'review', region: 'side' },
+  // Flag-free like 'zones' above (#1869 precedent) — no dedicated
+  // `loadReportPanelVisible` boolean; `openWorkspacePanel`'s generic
+  // non-SIDEBAR_PANEL_FLAGS branch adopts it directly (issue #3927).
+  { id: 'loadReport', title: 'Load report', short: 'Load report', Icon: FileWarning, group: 'review', region: 'side' },
 ];
 
 /** The bottom-strip panel ids, mapped to their store visibility flag + setter

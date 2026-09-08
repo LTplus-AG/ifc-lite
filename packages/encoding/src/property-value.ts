@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { decodeIfcString } from './ifc-string.js';
-
 /**
  * Result of parsing a property value.
  * Contains the display value and optional IFC type for tooltip.
@@ -55,9 +53,23 @@ const IFC_TYPE_DISPLAY_NAMES: Record<string, string> = {
  * Handles:
  * - TypedValues like [IFCIDENTIFIER, '100 x 150mm'] -> display '100 x 150mm', tooltip 'Identifier'
  * - Boolean enums like '.T.' -> 'True'
- * - IFC encoded strings with \X2\, \X\ escape sequences
  * - Null/undefined -> '\u2014'
  * - Regular values -> string conversion
+ *
+ * It deliberately does NOT decode STEP escapes. Every producer of a property
+ * value decodes exactly once, at parse time: the TypeScript path via
+ * `EntityExtractor.parseAttributeValue` / `columnar-parser-attributes.ts`, the
+ * Rust/WASM and server paths via `AttributeValue::from_token`. The input here
+ * is therefore already literal text, and decoding a second time is not a no-op
+ * \u2014 since #2394 `decodeIfcString` collapses `\\` to `\`, so an authored UNC
+ * path `\\server\share` would render as `\server\share`. `C:\temp` is a fixed
+ * point of the decoder, which is why the defect hides on the common case.
+ *
+ * Making the decoder idempotent instead would not work: idempotence requires
+ * treating an already-decoded `\` and an authored, still-doubled `\\` the same
+ * way, which is exactly the ambiguity the one-decode rule removes. The
+ * invariant to hold is "decode once, at the parse boundary", not "decode
+ * defensively wherever a string is displayed".
  */
 export function parsePropertyValue(value: unknown): ParsedPropertyValue {
   // Handle null/undefined
@@ -105,12 +117,12 @@ export function parsePropertyValue(value: unknown): ParsedPropertyValue {
         return { displayValue: BOOLEAN_MAP[upperInner], ifcType: friendlyType };
       }
 
-      // Decode IFC string encoding and return
-      return { displayValue: decodeIfcString(innerValue), ifcType: friendlyType };
+      // Already decoded by the parse path (see the note on this function).
+      return { displayValue: innerValue, ifcType: friendlyType };
     }
 
-    // Regular string - decode IFC encoding
-    return { displayValue: decodeIfcString(value) };
+    // Already decoded by the parse path (see the note on this function).
+    return { displayValue: value };
   }
 
   // Handle native booleans

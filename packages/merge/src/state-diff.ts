@@ -11,7 +11,12 @@
  */
 
 import type { IfcxFile } from '@ifc-lite/ifcx';
-import { componentEntries, extractStackState, snapshotOf } from './component-state.js';
+import {
+  attributesContentEqual,
+  componentEntries,
+  extractStackState,
+  snapshotOf,
+} from './component-state.js';
 import type { StackState } from './component-state.js';
 
 export interface ModifiedEntity {
@@ -65,7 +70,10 @@ export function diffStackStates(from: StackState, to: StackState): StackDiff {
       if (a === b) continue;
       const aHash = a === undefined ? undefined : snapshotOf(a).hash;
       const bHash = b === undefined ? undefined : snapshotOf(b).hash;
-      if (aHash !== bHash) changed.push(key);
+      // Hash equality alone would trust a `stableHash` collision as "no
+      // change"; `a === b` was already ruled out above, so a match here
+      // needs an exact-content check too (see `attributesContentEqual`).
+      if (aHash !== bHash || !attributesContentEqual(a, b)) changed.push(key);
     }
     if (changed.length > 0) modified.push({ path, components: changed });
   }

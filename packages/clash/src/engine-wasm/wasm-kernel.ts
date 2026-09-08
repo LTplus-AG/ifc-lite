@@ -3,10 +3,12 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { ClashSession } from '@ifc-lite/wasm';
-import type { AABB, ClashElement, ClashRule, ClashStatus, Mat4, Vec3 } from '../types.js';
+import type { AABB, ClashDistanceKind, ClashElement, ClashRule, ClashStatus, Mat4, Vec3 } from '../types.js';
 import type { ClashKernel, NarrowRecord, RuleDetection } from '../engine-ts/kernel.js';
 
 const STATUS: ClashStatus[] = ['hard', 'clearance', 'touch'];
+/** Mirrors the Rust `DistanceKind` discriminants (`Mesh = 0`, `Estimate = 1`). */
+const DISTANCE_KIND: ClashDistanceKind[] = ['mesh', 'estimate'];
 
 /** Transform a point by a column-major 4x4 matrix. */
 function applyMat4(m: Mat4, x: number, y: number, z: number): Vec3 {
@@ -101,6 +103,7 @@ export class WasmKernel implements ClashKernel {
       const b = res.b;
       const status = res.status;
       const distance = res.distance;
+      const distanceKind = res.distanceKind;
       const points = res.points;
       const bounds = res.bounds;
       for (let k = 0; k < a.length; k += 1) {
@@ -113,6 +116,10 @@ export class WasmKernel implements ClashKernel {
           b: b[k],
           status: STATUS[status[k]] ?? 'hard',
           distance: distance[k],
+          // Defensive: an out-of-range byte would mean the kernel's encoding
+          // and this table had drifted apart. Fall back to the humbler label
+          // rather than claim a measurement the kernel may not have made.
+          distanceKind: DISTANCE_KIND[distanceKind[k]] ?? 'estimate',
           point: [points[k * 3], points[k * 3 + 1], points[k * 3 + 2]],
           bounds: bnds,
         });

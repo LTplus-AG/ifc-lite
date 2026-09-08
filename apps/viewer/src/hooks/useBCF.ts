@@ -30,6 +30,7 @@ import {
   expressIdToGlobalId as expressIdToGlobalIdLookup,
 } from './bcfIdLookup';
 import { fromGlobalIdFromModels } from '@/store/globalId';
+import { resolvePresentationIds } from '@/lib/presentation/resolvePresentationIds';
 import { deriveHeaderFiles } from './bcfHeaderFiles';
 
 // ============================================================================
@@ -103,6 +104,25 @@ export function setGlobalRendererRef(ref: React.RefObject<Renderer | null>): voi
  */
 export function getGlobalRenderer(): Renderer | null {
   return globalRendererRef?.current ?? null;
+}
+
+/**
+ * Get the live viewport canvas (for anything outside the viewport tree that
+ * needs its CSS layout size, e.g. the to-scale PDF export deriving the scale
+ * the viewport is currently displaying at, #2042).
+ *
+ * Read `clientHeight`/`clientWidth`, never `width`/`height`. The attributes are
+ * the BACKING STORE size, which is conventionally `css * devicePixelRatio`, and
+ * reading them for a physical-size derivation is wrong by exactly that ratio on
+ * a Retina display. Today this particular canvas happens to be sized straight
+ * from `getBoundingClientRect()` with no DPR factor (`packages/renderer`), so
+ * the two coincide - which is precisely why the rule is written as a rule: the
+ * day the renderer starts scaling its backing store, a caller that reached for
+ * `width` silently starts reporting a scale that is off by the ratio, and
+ * nothing about the resulting PDF looks wrong.
+ */
+export function getGlobalCanvas(): HTMLCanvasElement | null {
+  return globalCanvasRef?.current ?? null;
 }
 
 /**
@@ -239,6 +259,11 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
     const target = camera.getTarget();
     const up = camera.getUp();
     const fov = camera.getFOV();
+    // BCF 3.0 requires <AspectRatio> on every camera and `@ifc-lite/bcf`
+    // refuses to invent one, so a viewpoint captured without it makes the
+    // WHOLE export throw -- what a user hit after importing another tool's
+    // 3.0 archive (readBCF keeps its version) and adding a topic (#3612).
+    const aspectRatio = camera.getAspect();
 
     return {
       position,
@@ -246,6 +271,7 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
       up, // Use actual camera up vector
       fov,
       isOrthographic: false,
+      aspectRatio,
     };
   }, [getRenderer]);
 
@@ -293,19 +319,25 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         includeHidden = true,
       } = opts;
 
-      const cameraState = getCameraState();
-      if (!cameraState) {
-        console.warn('[useBCF] Cannot create viewpoint: no camera state');
-        return null;
-      }
-
-      // Get snapshot if requested
+      // Snapshot FIRST, camera after: the PNG and the camera's `aspectRatio`
+      // describe one frame, so they must come from one drawing buffer.
+      // `captureSnapshot` awaits `queue.onSubmittedWorkDone()` before
+      // `toDataURL`, and the render loop resizes the canvas and calls
+      // `camera.setAspect` inside that wait (`renderer/src/index.ts`, the
+      // `dimensionsChanged` branch). Reading the camera after closes the
+      // window: an `await` resumes in a microtask, a rAF render is a task.
       let snapshot: string | undefined;
       if (includeSnapshot) {
         const captured = await captureSnapshot();
         if (captured) {
           snapshot = captured;
         }
+      }
+
+      const cameraState = getCameraState();
+      if (!cameraState) {
+        console.warn('[useBCF] Cannot create viewpoint: no camera state');
+        return null;
       }
 
       // Convert section plane state
@@ -539,21 +571,20 @@ export function useBCF(options: UseBCFOptions = {}): UseBCFResult {
         clearEntitySelection();
       }
 
-      // Apply visibility from BCF components
-      // Either isolation mode (visibleGuids with defaultVisibility=false)
-      // or normal mode (hiddenGuids with defaultVisibility=true)
+      // Apply visibility from BCF components: isolation mode (visibleGuids
+      // with defaultVisibility=false) or normal (hiddenGuids, default true).
       if (state.visibleGuids.length > 0) {
         // Isolation mode: only specified entities are visible
         const isolatedExpressIds = new Set<number>();
         for (const guid of state.visibleGuids) {
           const result = globalIdToExpressId(guid);
-          if (result) {
-            isolatedExpressIds.add(result.expressId);
-          }
+          if (result) isolatedExpressIds.add(result.expressId);
         }
 
         if (isolatedExpressIds.size > 0) {
-          setIsolatedEntities(isolatedExpressIds);
+          // #3338: a viewpoint guid may name a geometry-less assembly whose parts carry the mesh.
+          const resolver = useViewerStore.getState().cameraCallbacks.resolveHighlightIds;
+          setIsolatedEntities(new Set(resolvePresentationIds(resolver, [...isolatedExpressIds])));
         } else {
           setIsolatedEntities(null);
         }

@@ -68,6 +68,37 @@ describe('EntityRef utilities', () => {
       // "with:colons:123" parsed as Number results in NaN, which is converted to -1
       assert.strictEqual(result.expressId, -1, 'expressId should be -1 when parsing invalid number');
     });
+
+    it('should return the sentinel {modelId: "", expressId: -1} when the string has no colon at all', () => {
+      // This is the colonIndex === -1 branch specifically (as opposed to the
+      // NaN-after-parsing branch exercised above by 'model:with:colons:123',
+      // which always has a colon). Nothing previously in this suite passed a
+      // string with zero colons.
+      const result = stringToEntityRef('no-colon-here');
+      assert.strictEqual(result.modelId, '');
+      assert.strictEqual(result.expressId, -1);
+    });
+
+    it('should stop at trailing non-digit garbage rather than yielding NaN (parseInt prefix tolerance)', () => {
+      // parseInt('12abc', 10) === 12, not NaN — a value like 'model:12abc'
+      // silently parses to expressId 12 instead of hitting the NaN -> -1
+      // sentinel path. Pin the actual (perhaps surprising) behavior so a
+      // change here is a deliberate decision, not an accident.
+      const result = stringToEntityRef('model:12abc');
+      assert.strictEqual(result.modelId, 'model');
+      assert.strictEqual(result.expressId, 12);
+    });
+
+    it('should parse a leading "0x..." expressId as decimal 0, not hex (radix 10 is explicit)', () => {
+      // parseInt('0x1A', 10) === 0 (stops at the non-digit 'x' after the
+      // leading '0'), whereas parseInt('0x1A') with no radix argument
+      // auto-detects the hex prefix and returns 26. This is the one input
+      // shape that actually distinguishes "radix 10 passed" from "radix
+      // omitted" — a plain 'model:12abc' behaves identically either way.
+      const result = stringToEntityRef('model:0x1A');
+      assert.strictEqual(result.modelId, 'model');
+      assert.strictEqual(result.expressId, 0);
+    });
   });
 
   describe('entityRefToString and stringToEntityRef roundtrip', () => {

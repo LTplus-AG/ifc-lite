@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>laz-perf wasm probe (E2E only, see #2097)</title>
+</head>
+<body>
+  <!--
+    E2E-only page, not linked from the app UI. Loaded by
+    tests/e2e/laz-wasm.e2e.spec.ts against a real `vite build` to prove the
+    laz-perf wasm asset pipeline works end to end (issue #2097).
+  -->
+  <script type="module" src="/src/e2e/laz-wasm-probe-entry.ts"></script>
+</body>
+</html>

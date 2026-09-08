@@ -10,7 +10,7 @@ import {
   projectedInstancedRadiusPx,
   resolveContributionThresholdPx,
   type CullCameraState,
-} from './contribution-cull.ts';
+} from './contribution-cull.js';
 
 const perspectiveCam = (overrides: Partial<CullCameraState> = {}): CullCameraState => ({
   eye: { x: 0, y: 0, z: 0 },
@@ -43,6 +43,31 @@ describe('resolveContributionThresholdPx', () => {
   it('never culls LESS during motion: interacting radius is clamped up to pixelRadius', () => {
     const opts = { pixelRadius: 2, interactingPixelRadius: 0.5 };
     assert.strictEqual(resolveContributionThresholdPx(opts, true), 2);
+  });
+
+  // `pixelRadius <= 0` means DISABLED, and disabled must win over any motion
+  // boost: a viewer that opted out of contribution culling must not start
+  // dropping sub-pixel geometry the moment the user grabs the orbit control.
+  // Guards the `> 0` in the disable check (a `>= 0` there lets the motion
+  // branch resurrect culling from a pixelRadius of exactly 0).
+  it('stays disabled while interacting when pixelRadius is 0, even with a motion boost', () => {
+    assert.strictEqual(
+      resolveContributionThresholdPx({ pixelRadius: 0, interactingPixelRadius: 8 }, true),
+      0,
+    );
+    assert.strictEqual(
+      resolveContributionThresholdPx({ pixelRadius: -1, interactingPixelRadius: 8 }, true),
+      0,
+    );
+    // Both directions: the smallest positive radius is NOT disabled, and the
+    // motion boost applies to it normally.
+    assert.strictEqual(
+      resolveContributionThresholdPx(
+        { pixelRadius: Number.MIN_VALUE, interactingPixelRadius: 8 },
+        true,
+      ),
+      8,
+    );
   });
 });
 
@@ -108,11 +133,59 @@ describe('projectedAabbRadiusPx (perspective)', () => {
     );
     assert.strictEqual(px, Infinity);
   });
+
+  // The tangency boundary itself: depth EXACTLY equal to the bounding-sphere
+  // radius means the sphere touches the camera plane, which the contract
+  // treats as "never cull". Pinned in both directions — one epsilon further
+  // out must produce a finite (cullable) projection, or the guard would be
+  // swallowing everything near the camera.
+  it('fails open at exactly depth === radius, and projects finitely just beyond it', () => {
+    // Box [-1,-1,-2]..[1,1,0] → half-diagonal radius = sqrt(4+4+4)/2 = sqrt(3).
+    const radius = Math.sqrt(3);
+    const cam = perspectiveCam();
+    // Centre at z = -radius → view depth (down -Z) is exactly `radius`.
+    const centreZ = -radius;
+    const atBoundary = projectedAabbRadiusPx(
+      [-1, -1, centreZ - 1],
+      [1, 1, centreZ + 1],
+      cam,
+    );
+    assert.strictEqual(atBoundary, Infinity, 'depth === radius must fail open');
+
+    // Push the same box far enough out that depth > radius: now cullable.
+    const farZ = -radius * 100;
+    const beyond = projectedAabbRadiusPx([-1, -1, farZ - 1], [1, 1, farZ + 1], cam);
+    assert.ok(Number.isFinite(beyond), `depth > radius must project finitely, got ${beyond}`);
+    assert.ok(beyond > 0, `expected a positive pixel radius, got ${beyond}`);
+  });
+
+  // Every other perspective fixture in this file uses fovYRadians = PI/2, and
+  // tan(PI/4) = 1 is the multiplicative identity — so `/ (depth * tanHalfFov)`
+  // and `/ depth` are indistinguishable and the whole FOV term can be deleted
+  // with the suite still green. (The file's only other value is 0, which exits
+  // early at the `!(tanHalfFov > 0)` guard.) A non-identity FOV is the only
+  // thing that pins it, including the half-angle: `tan(fov)` instead of
+  // `tan(fov/2)`, and a degrees-for-radians mix-up of the kind documented in
+  // snap-geometry-utils.ts, all land on different numbers here.
+  it('divides by tan(fovY/2): a 60° FOV magnifies against the 90° baseline', () => {
+    const cam = perspectiveCam({ fovYRadians: Math.PI / 3 });
+    // radius = sqrt(12)/2 = sqrt(3), depth = 100, tan(PI/6) = 1/sqrt(3),
+    // halfViewport = 500 → sqrt(3) / (100 / sqrt(3)) * 500 = 3/100 * 500 = 15.
+    const px = projectedAabbRadiusPx([-1, -1, -101], [1, 1, -99], cam);
+    assert.ok(Math.abs(px - 15) < 1e-9, `expected 15 px at 60° FOV, got ${px}`);
+
+    // Same box at the 90° baseline: sqrt(3)/100*500 = 8.6602540…, i.e. exactly
+    // tan(PI/6) of the above. Dropping the FOV factor collapses both to this.
+    const baseline = projectedAabbRadiusPx([-1, -1, -101], [1, 1, -99], perspectiveCam());
+    assert.ok(Math.abs(baseline - Math.sqrt(3) * 5) < 1e-9, `got ${baseline}`);
+    assert.ok(px > baseline, 'a narrower FOV must project the same box LARGER');
+  });
 });
 
 describe('projectedAabbRadiusPx (orthographic)', () => {
   const orthoCam = (orthoHalfHeight: number): CullCameraState => ({
     eye: { x: 0, y: 0, z: 0 },
+    viewDir: { x: 0, y: 0, z: -1 }, // unused in ortho, required by the interface
     mode: 'orthographic',
     fovYRadians: 0,
     orthoHalfHeight,
@@ -140,6 +213,19 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
     // Union box z ∈ [-200, -100] looking down -Z: nearest depth = 100.
     const px = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, perspectiveCam());
     assert.ok(Math.abs(px - (1 / 100) * 500) < 1e-9, `got ${px}`);
+  });
+
+  // Same identity trap as the projectedAabbRadiusPx case above: this function
+  // has its own copy of the `/ (minDepth * tanHalfFov)` term, so it needs its
+  // own non-identity FOV to keep that copy observable.
+  it('divides by tan(fovY/2) at the nearest union depth too', () => {
+    const cam = perspectiveCam({ fovYRadians: Math.PI / 3 });
+    // maxOccRadius = 1, minDepth = 100, tan(PI/6) = 1/sqrt(3) → 1/(100/sqrt(3))*500
+    const px = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, cam);
+    assert.ok(Math.abs(px - Math.sqrt(3) * 5) < 1e-9, `got ${px}`);
+    const baseline = projectedInstancedRadiusPx([-50, -50, -200], [50, 50, -100], 1, perspectiveCam());
+    assert.ok(Math.abs(baseline - 5) < 1e-9, `got ${baseline}`);
+    assert.ok(px > baseline, 'a narrower FOV must project the same template LARGER');
   });
 
   it('is an upper bound for every real occurrence in the box', () => {
@@ -174,6 +260,76 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
     assert.ok(Math.abs(px - (2 / 100) * 500) < 1e-9, `got ${px}`);
   });
 
+  // The test above only ever exercises the Z axis: with an axis-aligned
+  // viewDir the X and Y corner picks are multiplied by a zero direction
+  // component and cannot affect the result. A real orbit camera looks
+  // obliquely, so all three axes must be pinned independently — picking the
+  // FAR corner on any axis over-estimates the depth, under-estimates the
+  // projected size, and silently culls instanced templates (repeated bolts,
+  // windows, furniture) that are actually large on screen.
+  it('picks the nearest corner on EVERY axis under an oblique view direction', () => {
+    const inv = 1 / Math.sqrt(3);
+    const min: [number, number, number] = [100, 200, 300];
+    const max: [number, number, number] = [140, 260, 380];
+    const centre: [number, number, number] = [
+      (min[0] + max[0]) / 2,
+      (min[1] + max[1]) / 2,
+      (min[2] + max[2]) / 2,
+    ];
+    for (const sx of [1, -1]) {
+      for (const sy of [1, -1]) {
+        for (const sz of [1, -1]) {
+          const viewDir = { x: sx * inv, y: sy * inv, z: sz * inv };
+          // Orbit the eye 500 units BACK along its own view direction from the
+          // box centre, so the box is genuinely in front of the camera in all
+          // eight octants. With the eye pinned at the origin, five of the eight
+          // sign combinations put the box BEHIND the camera, where the nearest
+          // and the far corner both yield a non-positive depth and the function
+          // returns Infinity either way — those iterations assert nothing. A
+          // z-axis corner regression (`nz = unionMin[2]`, ignoring the sign)
+          // survives the origin-eye fixture untouched.
+          const cam = perspectiveCam({
+            viewDir,
+            eye: {
+              x: centre[0] - 500 * viewDir.x,
+              y: centre[1] - 500 * viewDir.y,
+              z: centre[2] - 500 * viewDir.z,
+            },
+          });
+          const px = projectedInstancedRadiusPx(min, max, 2, cam);
+
+          // Independent oracle: brute-force the minimum view depth over all
+          // eight corners of the union box, which is what the per-axis sign
+          // trick is a shortcut for.
+          let minDepth = Infinity;
+          for (const x of [min[0], max[0]]) {
+            for (const y of [min[1], max[1]]) {
+              for (const z of [min[2], max[2]]) {
+                const d =
+                  (x - cam.eye.x) * cam.viewDir.x +
+                  (y - cam.eye.y) * cam.viewDir.y +
+                  (z - cam.eye.z) * cam.viewDir.z;
+                if (d < minDepth) minDepth = d;
+              }
+            }
+          }
+          // Guard the fixture itself: every octant must stay in front of the
+          // camera, or the assertion below degenerates into Infinity ===
+          // Infinity and stops discriminating.
+          assert.ok(
+            minDepth > 2,
+            `sx=${sx} sy=${sy} sz=${sz}: fixture must sit in front of the camera (minDepth ${minDepth})`,
+          );
+          const expected = (2 / minDepth) * 500;
+          assert.ok(
+            Math.abs(px - expected) < 1e-9,
+            `sx=${sx} sy=${sy} sz=${sz}: got ${px}, expected ${expected}`,
+          );
+        }
+      }
+    }
+  });
+
   it('fails open when an occurrence could reach the camera plane (minDepth <= radius)', () => {
     const px = projectedInstancedRadiusPx([-10, -10, -10], [10, 10, -1], 5, perspectiveCam());
     assert.strictEqual(px, Infinity);
@@ -192,6 +348,36 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
     assert.strictEqual(
       projectedInstancedRadiusPx([-1, -1, -101], [1, 1, -99], NaN, perspectiveCam()),
       Infinity,
+    );
+  });
+
+  // The perspective case above is masked: `!(minDepth > Infinity)` and
+  // `!(minDepth > NaN)` both already return Infinity, so the non-finite
+  // guard is invisible there. The ORTHOGRAPHIC branch has no such downstream
+  // check — without the guard, a NaN radius divides straight through and the
+  // function returns NaN, which every `radius < threshold` comparison reads
+  // as false. That happens to avoid culling, but it leaks NaN into the
+  // renderer's cull bookkeeping instead of the documented Infinity.
+  it('orthographic: fails open with Infinity (not NaN) on poisoned/NaN maxOccRadius', () => {
+    const orthoCam: CullCameraState = {
+      eye: { x: 0, y: 0, z: 0 },
+      viewDir: { x: 0, y: 0, z: -1 },
+      mode: 'orthographic',
+      fovYRadians: 0,
+      orthoHalfHeight: 100,
+      viewportHeightPx: 1000,
+    };
+    assert.strictEqual(
+      projectedInstancedRadiusPx([-1, -1, -101], [1, 1, -99], Infinity, orthoCam),
+      Infinity,
+    );
+    assert.strictEqual(
+      projectedInstancedRadiusPx([-1, -1, -101], [1, 1, -99], NaN, orthoCam),
+      Infinity,
+    );
+    // Opposite direction: a finite radius still projects finitely in ortho.
+    assert.ok(
+      Number.isFinite(projectedInstancedRadiusPx([-1, -1, -101], [1, 1, -99], 0.5, orthoCam)),
     );
   });
 
@@ -215,6 +401,7 @@ describe('projectedInstancedRadiusPx (instanced templates)', () => {
   it('orthographic: depth-independent, scales with zoom', () => {
     const cam: CullCameraState = {
       eye: { x: 0, y: 0, z: 0 },
+      viewDir: { x: 0, y: 0, z: -1 }, // unused in ortho, required by the interface
       mode: 'orthographic',
       fovYRadians: 0,
       orthoHalfHeight: 100,

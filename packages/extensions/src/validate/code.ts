@@ -21,7 +21,7 @@
  */
 
 import * as acorn from 'acorn';
-import * as walk from 'acorn-walk';
+import { MAX_AST_DEPTH, walkBounded } from '../ast/bounded-walk.js';
 import type { ValidationError } from '../types.js';
 
 const BANNED_GLOBALS = new Set(['globalThis', 'window', 'process', 'document', 'self']);
@@ -72,65 +72,95 @@ export function validateCode(source: string, opts: CodeValidationOptions = {}): 
     return { ok: false, errors };
   }
 
-  walk.simple(ast as acorn.AnyNode, {
-    Identifier(node) {
-      const n = node as acorn.Identifier;
-      if (BANNED_GLOBALS.has(n.name)) {
-        // This catches identifier *references*. The walker visits identifiers
-        // anywhere they appear, including binding positions — and assignment
-        // to `window.foo` would also flag. That's intentionally conservative:
-        // we don't want to allow `globalThis.foo = bar` either.
-        errors.push({
-          path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
-          code: 'invalid_value',
-          message: `Banned global identifier: "${n.name}".`,
-          hint: 'Use ctx fields instead. The sandbox does not expose host realm globals.',
-        });
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (node, type) => {
+    switch (type) {
+      case 'Identifier': {
+        const n = node as unknown as acorn.Identifier;
+        if (BANNED_GLOBALS.has(n.name)) {
+          // This catches identifier *references*. The walk visits identifiers
+          // anywhere they appear, including binding positions — and assignment
+          // to `window.foo` would also flag. That's intentionally conservative:
+          // we don't want to allow `globalThis.foo = bar` either.
+          errors.push({
+            path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
+            code: 'invalid_value',
+            message: `Banned global identifier: "${n.name}".`,
+            hint: 'Use ctx fields instead. The sandbox does not expose host realm globals.',
+          });
+        }
+        break;
       }
-    },
-    CallExpression(node) {
-      const n = node as acorn.CallExpression;
-      const callee = n.callee;
-      if (callee.type === 'Identifier' && BANNED_CALLS.has(callee.name)) {
-        errors.push({
-          path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
-          code: 'invalid_value',
-          message: `Banned call: "${callee.name}(...)" is not allowed in extension code.`,
-          hint: 'Inline the logic. Dynamic evaluation is out of scope for v1.',
-        });
+      case 'CallExpression': {
+        const n = node as unknown as acorn.CallExpression;
+        const callee = n.callee;
+        if (callee.type === 'Identifier' && BANNED_CALLS.has(callee.name)) {
+          errors.push({
+            path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
+            code: 'invalid_value',
+            message: `Banned call: "${callee.name}(...)" is not allowed in extension code.`,
+            hint: 'Inline the logic. Dynamic evaluation is out of scope for v1.',
+          });
+        }
+        break;
       }
-    },
-    NewExpression(node) {
-      const n = node as acorn.NewExpression;
-      if (n.callee.type === 'Identifier' && n.callee.name === 'Function') {
-        errors.push({
-          path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
-          code: 'invalid_value',
-          message: 'Banned: `new Function(...)`.',
-          hint: 'Dynamic function construction is forbidden in extension code.',
-        });
+      case 'NewExpression': {
+        const n = node as unknown as acorn.NewExpression;
+        if (n.callee.type === 'Identifier' && n.callee.name === 'Function') {
+          errors.push({
+            path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
+            code: 'invalid_value',
+            message: 'Banned: `new Function(...)`.',
+            hint: 'Dynamic function construction is forbidden in extension code.',
+          });
+        }
+        break;
       }
-    },
-    ImportExpression(node) {
-      const n = node as acorn.ImportExpression;
-      if (n.source.type !== 'Literal' || typeof n.source.value !== 'string') {
-        errors.push({
-          path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
-          code: 'invalid_value',
-          message: 'Dynamic import requires a string literal specifier.',
-        });
-        return;
+      case 'ImportExpression': {
+        const n = node as unknown as acorn.ImportExpression;
+        if (n.source.type !== 'Literal' || typeof n.source.value !== 'string') {
+          errors.push({
+            path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
+            code: 'invalid_value',
+            message: 'Dynamic import requires a string literal specifier.',
+          });
+          break;
+        }
+        if (!allowed.has(n.source.value)) {
+          errors.push({
+            path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
+            code: 'invalid_reference',
+            message: `Dynamic import of "${n.source.value}" is not allowed.`,
+            hint: 'Only specifiers internal to the bundle may be imported dynamically.',
+          });
+        }
+        break;
       }
-      if (!allowed.has(n.source.value)) {
-        errors.push({
-          path: `${prefix}[${n.loc?.start.line ?? 0}:${n.loc?.start.column ?? 0}]`,
-          code: 'invalid_reference',
-          message: `Dynamic import of "${n.source.value}" is not allowed.`,
-          hint: 'Only specifiers internal to the bundle may be imported dynamically.',
-        });
-      }
-    },
+    }
   });
+
+  // A truncated walk has not proven the source clean — anything below
+  // the cut-off is unexamined. Report the depth as its own validation
+  // failure rather than returning `ok` on a partial inspection.
+  if (depthExceeded) {
+    errors.push({
+      path: prefix,
+      code: 'invalid_value',
+      message: `Source is nested more than ${MAX_AST_DEPTH} AST levels deep; it was not fully validated.`,
+      hint: 'Flatten the source — extract deeply nested blocks into separate helper functions.',
+    });
+  }
+
+  // Same rule, different cause: a subtree the walker could not descend
+  // is unexamined source. A banned global or an `eval` under it would
+  // have gone unseen, so this cannot come back `ok`.
+  if (unwalkableTypes.length > 0) {
+    errors.push({
+      path: prefix,
+      code: 'invalid_value',
+      message: `Source contains AST node types this validator cannot traverse (${unwalkableTypes.join(', ')}); it was not fully validated.`,
+      hint: 'This usually means the parser is newer than the walker it is paired with — report it rather than working around it.',
+    });
+  }
 
   return { ok: errors.length === 0, errors };
 }

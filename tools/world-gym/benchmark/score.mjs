@@ -37,13 +37,52 @@
  *
  * The emitted row is deterministic (no timestamps): same submission, same
  * split, same spec version -> byte-identical row.
+ *
+ * SALT (B4.3). If the reporting split's salt is configured
+ * (`WORLD_GYM_SALT_TEST`, see splits.mjs#saltForSplit), ground truth is
+ * regenerated in the SALTED universe and the row records the salt's
+ * fingerprint. No salt configured - the default everywhere today - means the
+ * public universe and `saltId: null`, which is the honest label for a row with
+ * no integrity property behind it.
  */
 
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { BENCHMARK_NAME, SPEC_VERSION, DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit } from './splits.mjs';
+import {
+  BENCHMARK_NAME, SPEC_VERSION, DEFECT_TYPES, QUANTITY_KEYS, seedsForSplit,
+  saltForSplit, REPORTING_SPLIT, SALT_ENV_VAR,
+} from './splits.mjs';
 import { groundTruthForSeed } from './ground-truth.mjs';
 import { parseSubmission } from './submission.mjs';
+import { saltFingerprint, redactSalt, SaltFormatError } from '../lib/salt.mjs';
+
+/** Hidden tag naming the universe a regenerated truth map belongs to. */
+const TRUTH_SALT_ID = Symbol.for('world-gym.truthSaltId');
+
+/**
+ * The salt a scoring run uses, and the one place that decides it.
+ *
+ * A scorer that silently scored against the wrong universe would report zeros
+ * for an honest submitter and call it a result, so this fails loudly instead:
+ * a salt configured for a non-reporting split is a configuration error, not a
+ * thing to ignore.
+ */
+export function resolveScoringSalt(split, env = process.env) {
+  // Raw non-empty test, deliberately BEFORE any format validation: on a
+  // non-reporting split the actionable fact is "you configured a salt for the
+  // wrong split", and a format complaint would bury it.
+  if (split !== REPORTING_SPLIT && String(env[SALT_ENV_VAR] ?? '').trim() !== '') {
+    // SaltFormatError, not Error: both CLIs' fatal handlers print the clean
+    // `error: <message>` form for SaltFormatError and fall through to a raw
+    // stack for anything else, so a plain Error would show an operator a stack
+    // trace instead of the actionable one-liner this message exists to be.
+    throw new SaltFormatError(
+      `${SALT_ENV_VAR} is set but split "${split}" is not the reporting split ("${REPORTING_SPLIT}"). `
+      + 'Non-reporting splits are unsalted by design (BENCHMARK.md section 1a); unset the variable or score the reporting split.',
+    );
+  }
+  return saltForSplit(split, env);
+}
 
 function round(v, decimals = 6) {
   const f = 10 ** decimals;
@@ -127,8 +166,29 @@ export function scoreValidityTriage(truthBySeed, lines) {
   return { score: round((concordant + 0.5 * ties) / total), pairs: total, concordant, ties };
 }
 
-/** Score a validated submission; returns the leaderboard row object. */
-export function scoreSubmission(header, lines, split, truthBySeed) {
+/**
+ * Score a validated submission; returns the leaderboard row object.
+ *
+ * `opts.salt` does not affect any score - the truth was already regenerated
+ * under it - it only labels the row. That label matters: two rows on the same
+ * split under different salts are two different model universes and are NOT
+ * comparable, and after a salt rotation `saltId` is how you find the rows that
+ * were scored under the retired one (BENCHMARK.md section 1b).
+ */
+export function scoreSubmission(header, lines, split, truthBySeed, opts = {}) {
+  // The row is about to be stamped with a universe. Refuse to stamp one the
+  // truth did not come from - see the note on TRUTH_SALT_ID in regenerateTruth.
+  // Truth built by some other path carries no tag, and is not second-guessed.
+  const truthSaltId = truthBySeed?.[TRUTH_SALT_ID];
+  const rowSaltId = saltFingerprint(opts.salt ?? '');
+  if (truthSaltId !== undefined && truthSaltId !== rowSaltId) {
+    throw new SaltFormatError(
+      `refusing to score: the ground truth was regenerated in universe ${truthSaltId ?? 'unsalted'} `
+      + `but this row would be stamped ${rowSaltId ?? 'unsalted'}. A row that names a universe it was `
+      + 'not scored against is worse than an unlabelled one. Pass the same salt to regenerateTruth '
+      + 'and scoreSubmission.',
+    );
+  }
   const tasks = header.tasks;
   const scores = {};
   const detail = {};
@@ -154,6 +214,7 @@ export function scoreSubmission(header, lines, split, truthBySeed) {
     ? round((scores['defect-detection'] + scores['quantity-estimation'] + scores['validity-triage']) / 3)
     : null;
 
+  const saltId = saltFingerprint(opts.salt);
   return {
     benchmark: BENCHMARK_NAME,
     specVersion: SPEC_VERSION,
@@ -161,21 +222,43 @@ export function scoreSubmission(header, lines, split, truthBySeed) {
     name: header.name,
     tasks,
     models: truthBySeed.size,
+    salted: saltId !== null,
+    saltId,
     scores: { ...scores, aggregate },
     detail,
   };
 }
 
-/** Regenerate ground truth for a whole split. */
-export function regenerateTruth(split, { onProgress } = {}) {
+/**
+ * Regenerate ground truth for a whole split, in the universe `salt` selects.
+ * `salt` must be the one `saltForSplit(split)` returns for a real scoring run;
+ * it is a parameter rather than an internal lookup only so the B4.3 exam can
+ * score one submission against several universes in one process.
+ */
+export function regenerateTruth(split, { onProgress, salt = '' } = {}) {
   const seeds = seedsForSplit(split);
   const truthBySeed = new Map();
   let done = 0;
   for (const seed of seeds) {
-    truthBySeed.set(seed, groundTruthForSeed(seed));
+    truthBySeed.set(seed, groundTruthForSeed(seed, { salt }));
     done++;
     if (onProgress && done % 200 === 0) onProgress(done, seeds.length);
   }
+  // TAG THE TRUTH WITH THE UNIVERSE THAT PRODUCED IT.
+  //
+  // A scoring run passes the salt TWICE - once here, to regenerate truth, and
+  // once to `scoreSubmission`, which stamps `saltId` on the row. Nothing made
+  // the two agree, so dropping the salt from this call alone produced a row
+  // that CLAIMED a salted universe, carried a valid fingerprint, and had been
+  // scored against PUBLIC truth. No test could see it and the artifact itself
+  // asserted the opposite, which is worse than an unlabelled row.
+  //
+  // Non-enumerable so it never serializes into a row or an artifact; read back
+  // by `scoreSubmission`, which refuses a mismatch.
+  Object.defineProperty(truthBySeed, TRUTH_SALT_ID, {
+    value: saltFingerprint(salt),
+    enumerable: false,
+  });
   return truthBySeed;
 }
 
@@ -212,14 +295,20 @@ async function main() {
     return;
   }
 
-  process.stderr.write(`Regenerating ground truth for split "${split}" (${seedsForSplit(split).length} seeds, spec ${SPEC_VERSION})...\n`);
+  const salt = resolveScoringSalt(split);
+  const saltId = saltFingerprint(salt);
+  process.stderr.write(
+    `Regenerating ground truth for split "${split}" (${seedsForSplit(split).length} seeds, spec ${SPEC_VERSION}, `
+    + `${saltId ? `salted ${saltId}` : 'UNSALTED - no integrity property, see BENCHMARK.md 1a'})...\n`,
+  );
   const t0 = performance.now();
   const truthBySeed = regenerateTruth(split, {
     onProgress: (done, total) => process.stderr.write(`  ${done}/${total}\n`),
+    salt,
   });
   process.stderr.write(`  done in ${((performance.now() - t0) / 1000).toFixed(1)}s\n`);
 
-  const row = scoreSubmission(parsed.header, parsed.lines, split, truthBySeed);
+  const row = scoreSubmission(parsed.header, parsed.lines, split, truthBySeed, { salt });
   const json = JSON.stringify(row, null, 2);
   if (outPath) await writeFile(outPath, `${json}\n`, 'utf-8');
   process.stdout.write(`${json}\n`);
@@ -228,7 +317,16 @@ async function main() {
 const isMain = process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
 if (isMain) {
   main().catch((err) => {
-    process.stderr.write(`${err.stack ?? err.message}\n`);
+    // THIS is the process that holds the live reporting salt (it is in the
+    // environment as SALT_ENV_VAR for the whole run), so its fatal path is the
+    // one that most needs scrubbing: a stack frame, or a third-party throw that
+    // captured an argument, is exactly how a secret escapes, and a leaked salt
+    // retroactively invalidates every row scored under it (BENCHMARK.md 1b).
+    // Redacting from the ENVIRONMENT rather than the resolved value is
+    // deliberate: it also covers a throw that happens before the salt is
+    // resolved, and a salt this run REFUSED as malformed - still a secret.
+    const text = err?.name === 'SaltFormatError' ? `error: ${err.message}` : (err.stack ?? err.message);
+    process.stderr.write(`${redactSalt(text, process.env[SALT_ENV_VAR])}\n`);
     process.exit(1);
   });
 }

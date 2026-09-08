@@ -51,7 +51,8 @@ rayon = "1.10"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
+# #4064: cached JSON must round-trip finite coordinate values exactly.
+serde_json = { version = "1.0", features = ["float_roundtrip"] }
 
 # Streaming
 tokio-stream = "0.1"
@@ -91,7 +92,7 @@ flate2 = "1.0"
 zip = { version = "8", default-features = false, features = ["deflate"] }
 
 # Base64 encoding for SSE payloads
-base64 = "0.22"
+base64 = "0.23"
 
 [dev-dependencies]
 criterion = { version = "0.8", features = ["html_reports"] }

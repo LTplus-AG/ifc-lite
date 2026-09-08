@@ -93,6 +93,7 @@ Packages are versioned independently:
 - **Independent versioning**: `@ifc-lite/*` packages only bump when they have their own changeset or when Changesets propagates an internal dependency update
 - **Automatic sync**: `scripts/sync-versions.js` syncs the root package version, `Cargo.toml` workspace version, and internal Rust workspace dependency versions to the highest released workspace package version
 - **Dependency propagation**: `updateInternalDependencies: "patch"` keeps dependents aligned when an internal package version changes
+- **Rust-only majors**: `rust-major-offset.json` holds one integer — how many majors ahead of npm the published crates run. `sync-versions.js` applies it to the major of the Rust manifests only; npm, the root `package.json` and the `v*` tag keep the version changesets chose. It is `0` today, so both sides carry the same string. Raise it when a change breaks a crate's public API under an npm minor or patch, and give it a `reason` and `refs` (both are required above `0`). `pnpm check:rust-major-offset` fails CI when the manifests and that file disagree; see [docs/contributing/release.md](docs/contributing/release.md#expressing-a-rust-only-major)
 
 ## Publish Authentication
 

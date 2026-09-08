@@ -15,6 +15,15 @@
 
 import { EntityExtractor } from './entity-extractor.js';
 import type { IfcDataStore } from './columnar-parser.js';
+import { parseIso8601Duration } from './iso8601-duration.js';
+
+// Re-exported for backward compatibility — this is where consumers
+// (including this package's own public surface, see index.ts) have always
+// imported it from. The implementation itself now lives in
+// `iso8601-duration.ts`, alongside its encode counterpart
+// `secondsToIso8601Duration`, so the round-trip property between the two is
+// visible in one place.
+export { parseIso8601Duration };
 
 /** IFC4 STEP attribute indices for IfcTask. */
 const TASK_ATTR = {
@@ -276,36 +285,6 @@ function durationTypeFromString(s: string | undefined): TaskDurationType | undef
     default:
       return undefined;
   }
-}
-
-/**
- * Parse an ISO-8601 duration string (e.g. "P1D", "PT2H30M", "P1Y2M3DT4H5M6S")
- * into a number of seconds. Returns undefined on invalid input.
- */
-export function parseIso8601Duration(value: string | undefined): number | undefined {
-  if (!value) return undefined;
-  const match = value.match(
-    /^P(?:(\d+(?:\.\d+)?)Y)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)W)?(?:(\d+(?:\.\d+)?)D)?(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?(?:(\d+(?:\.\d+)?)S)?)?$/,
-  );
-  if (!match) return undefined;
-  const [, y, mo, w, d, h, mi, s] = match;
-  // Reject bare "P" / "PT" which would otherwise silently return 0 and mask
-  // malformed IfcLagTime / IfcTaskTime durations.
-  if (y === undefined && mo === undefined && w === undefined && d === undefined
-    && h === undefined && mi === undefined && s === undefined) {
-    return undefined;
-  }
-  const yearSec = 365.2425 * 86400;
-  const monthSec = yearSec / 12;
-  return (
-    (y ? parseFloat(y) * yearSec : 0) +
-    (mo ? parseFloat(mo) * monthSec : 0) +
-    (w ? parseFloat(w) * 7 * 86400 : 0) +
-    (d ? parseFloat(d) * 86400 : 0) +
-    (h ? parseFloat(h) * 3600 : 0) +
-    (mi ? parseFloat(mi) * 60 : 0) +
-    (s ? parseFloat(s) : 0)
-  );
 }
 
 function extractTaskTime(

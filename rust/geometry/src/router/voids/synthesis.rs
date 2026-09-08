@@ -4,6 +4,8 @@
 
 //! Opening classification, merge/extend, and cutter-mesh synthesis.
 
+mod exit_cap;
+
 use super::geom::*;
 use super::{GeometryRouter, OpeningType, NORMALIZE_EPSILON};
 use crate::{Mesh, Point3, Vector3};
@@ -877,78 +879,27 @@ impl GeometryRouter {
         }
         let d = dir / len;
 
-        // Opening span along `d`.
-        let (mut omn, mut omx) = (f64::INFINITY, f64::NEG_INFINITY);
-        for c in opening_mesh.positions.chunks_exact(3) {
-            let s = c[0] as f64 * d.x + c[1] as f64 * d.y + c[2] as f64 * d.z;
-            omn = omn.min(s);
-            omx = omx.max(s);
-        }
-        let open_span = (omx - omn).abs();
+        // Cutter extents in the penetration frame, and which caps the opening
+        // actually EXITS through. Growing a cap the opening does not exit
+        // through removes host material no authored opening occupied (#3219),
+        // so the decision lives behind one call in `exit_cap`.
+        let Some(frame) = exit_cap::CutterFrame::new(opening_mesh, d) else {
+            return opening_mesh.clone();
+        };
+        let open_span = frame.span();
         if open_span < NORMALIZE_EPSILON {
             return opening_mesh.clone();
         }
-
-        // FLUSH-CAP DETECTION against the host SURFACE (not its AABB): is there a
-        // host triangle whose plane is ~parallel to a cap (normal·d ≈ ±1) and whose
-        // plane the cap's projection `omn`/`omx` sits ON (within `flush_band`)? Only
-        // then is that cap a real flush interface to extend. This is what tells a
-        // #1112 roof-opening cap (flush with a roof facet that is INTERIOR to the
-        // host's projected extent) apart from a wall #552611 horizontal slot whose
-        // caps float inside the wall (no host facet there) — extending the latter
-        // along its authored +Z extrusion would cut the wall in half.
-        let flush_band = open_span.max(1.0) * 1e-3; // 0.1% of opening depth, scale-rel
-        let (mut cap_min_flush, mut cap_max_flush) = (false, false);
-        // Farthest host surface coincident with each cap, along `d` (for the push).
-        let (mut host_at_min, mut host_at_max) = (omn, omx);
-        let vat = |i: u32| {
-            let b = i as usize * 3;
-            [
-                host_mesh.positions[b] as f64,
-                host_mesh.positions[b + 1] as f64,
-                host_mesh.positions[b + 2] as f64,
-            ]
-        };
-        let vc = host_mesh.positions.len() / 3;
-        for t in host_mesh.indices.chunks_exact(3) {
-            if (t[0] as usize) >= vc || (t[1] as usize) >= vc || (t[2] as usize) >= vc {
-                continue;
-            }
-            let (a, b, c) = (vat(t[0]), vat(t[1]), vat(t[2]));
-            let e1 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
-            let e2 = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
-            let n = [
-                e1[1] * e2[2] - e1[2] * e2[1],
-                e1[2] * e2[0] - e1[0] * e2[2],
-                e1[0] * e2[1] - e1[1] * e2[0],
-            ];
-            let nl = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
-            if nl < 1e-12 {
-                continue;
-            }
-            // |n·d| ≈ 1 ⇒ host facet parallel to the caps (normal along the
-            // penetration axis). 0.985 ≈ 10° — absorbs the ~0.1° facet scatter and
-            // a tilted roof's facet wobble without admitting a perpendicular wall.
-            let nd = (n[0] * d.x + n[1] * d.y + n[2] * d.z) / nl;
-            if nd.abs() < 0.985 {
-                continue;
-            }
-            // the facet's offset along d (any vertex; it's ~constant on the facet)
-            let s = a[0] * d.x + a[1] * d.y + a[2] * d.z;
-            if (s - omn).abs() <= flush_band {
-                cap_min_flush = true;
-                host_at_min = host_at_min.min(s);
-            }
-            if (s - omx).abs() <= flush_band {
-                cap_max_flush = true;
-                host_at_max = host_at_max.max(s);
-            }
-        }
-        if !cap_min_flush && !cap_max_flush {
-            return opening_mesh.clone(); // no flush cap ⇒ a clean transversal cut
+        let (omn, omx) = frame.caps();
+        // `pad` is needed by the gate: the veto probes the interval the push
+        // would sweep, which is pad-sized.
+        let pad = (open_span * 0.30).max(0.01);
+        let caps = exit_cap::detect(host_mesh, &frame, pad);
+        if !caps.any_moves() {
+            return opening_mesh.clone(); // no coincident cap => already transversal
         }
 
-        // Push each FLUSH cap a clearance margin PAST its coincident host facet, so
+        // Push each EXIT cap a clearance margin PAST its coincident host facet, so
         // the interface becomes a transversal crossing. The margin is NOT a hairline
         // pad: a near-grazing exit (cap a few µm past a TILTED faceted surface)
         // re-creates a coarse T-junction at the facet seam — two rim vertices a few
@@ -965,24 +916,26 @@ impl GeometryRouter {
         // chamfer), 15 % → a near-grazing 1250:1 resonance, 30–40 % → ~25:1 clean.
         // 30 % is the conservative floor of that clean band; it is still small in
         // absolute terms (a few cm on a ~1 m-deep opening, ~9 cm on a 0.3 m window),
-        // fires ONLY on a detected flush cap (a floating wall-slot cap is untouched),
+        // fires ONLY on a detected exit cap (a floating wall-slot cap is untouched),
         // pushes INTO the host away from neighbouring elements, and stays well short
         // of the engulf guard. Verified: the whole rect-opening + #1007 + #960 suite
         // stays green and `issue_1007_real_opening_no_bridge`'s footprint coverage
         // stays 0 (no bridge).
-        let pad = (open_span * 0.30).max(0.01);
-        let push_back = if cap_min_flush { (omn - host_at_min).max(0.0) + pad } else { 0.0 };
-        let push_fwd = if cap_max_flush { (host_at_max - omx).max(0.0) + pad } else { 0.0 };
-        // Only the flush cap ring(s) move; interior loops are untouched (band = a
-        // quarter of the opening's own depth).
-        let band = (open_span * 0.25).max(1e-6);
+        // A jamb is pulled off its plane by one coincidence band, or a quarter
+        // of the cutter where that is smaller. See `CutterFrame::shrink`.
+        let shrink = frame.shrink();
+        let push_back = caps.push_back(omn, pad, shrink);
+        let push_fwd = caps.push_fwd(omx, pad, shrink);
+        // Only cap rings move, exit and jamb alike; interior loops stay put.
+        // Named for contrast with `CutterFrame::cap_band`, a different quantity.
+        let ring_band = (open_span * exit_cap::RING_BAND_FRACTION).max(1e-6);
         let mut out = opening_mesh.clone();
         for c in out.positions.chunks_exact_mut(3) {
             let p = Point3::new(c[0] as f64, c[1] as f64, c[2] as f64);
             let s = p.x * d.x + p.y * d.y + p.z * d.z;
-            let shift = if cap_min_flush && s <= omn + band {
+            let shift = if caps.min_moves() && s <= omn + ring_band {
                 -push_back
-            } else if cap_max_flush && s >= omx - band {
+            } else if caps.max_moves() && s >= omx - ring_band {
                 push_fwd
             } else {
                 0.0

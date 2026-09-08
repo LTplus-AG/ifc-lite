@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FileBox,
+  RefreshCw,
   X,
 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -44,7 +45,10 @@ export interface HierarchyNodeProps {
   onVisibilityToggle: (node: TreeNode) => void;
   onModelVisibilityToggle: (modelId: string, e: React.MouseEvent) => void;
   onRemoveModel: (modelId: string, e: React.MouseEvent) => void;
+  onSyncSourceModel?: (modelId: string, e: React.MouseEvent) => void;
   onModelHeaderClick: (modelId: string, nodeId: string, hasChildren: boolean) => void;
+  sourceBacked?: boolean;
+  sourceSyncing?: boolean;
 }
 
 export function HierarchyNode({
@@ -60,7 +64,10 @@ export function HierarchyNode({
   onVisibilityToggle,
   onModelVisibilityToggle,
   onRemoveModel,
+  onSyncSourceModel,
   onModelHeaderClick,
+  sourceBacked = false,
+  sourceSyncing = false,
 }: HierarchyNodeProps) {
   const resolvedType = node.ifcType || node.type;
   // Use Lucide icon for non-IFC structural nodes, Material Symbols for IFC classes
@@ -152,6 +159,37 @@ export function HierarchyNode({
               <p className="text-xs">{modelVisible ? 'Hide model' : 'Show model'}</p>
             </TooltipContent>
           </Tooltip>
+
+          {sourceBacked && onSyncSourceModel && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSyncSourceModel(modelId, e);
+                  }}
+                  aria-label={`Sync model ${node.name} from source`}
+                  className={cn(
+                    'p-0.5 opacity-0 group-hover:opacity-100 transition-opacity',
+                    sourceSyncing && 'opacity-100',
+                  )}
+                  disabled={sourceSyncing}
+                >
+                  <RefreshCw
+                    className={cn(
+                      'h-3.5 w-3.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100',
+                      sourceSyncing && 'animate-spin',
+                    )}
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="text-xs">
+                  {sourceSyncing ? 'Syncing model…' : 'Sync from source'}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           {modelsCount > 1 && (
             <Tooltip>
@@ -346,28 +384,6 @@ export function HierarchyNode({
           </Tooltip>
         )}
       </div>
-    </div>
-  );
-}
-
-export interface SectionHeaderProps {
-  icon: React.ElementType;
-  title: string;
-  count?: number;
-}
-
-export function SectionHeader({ icon: IconComponent, title, count }: SectionHeaderProps) {
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-      <IconComponent className="h-3.5 w-3.5 text-zinc-500" />
-      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-600 dark:text-zinc-400">
-        {title}
-      </span>
-      {count !== undefined && (
-        <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500 ml-auto">
-          {count}
-        </span>
-      )}
     </div>
   );
 }

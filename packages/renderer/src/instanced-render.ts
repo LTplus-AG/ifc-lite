@@ -28,9 +28,11 @@
  *
  * PRECISION: the per-instance matrix is f32, so its translation jitters at
  * national-grid magnitudes (the f32-collapse the local-frame work targets). Fine
- * for building-local models; an IFNS v2 with an f64 per-instance origin is the
- * path for georef-scale.
- */
+ * for building-local models; an f64 per-instance origin is the path for
+ * georef-scale. That would be IFNS v3: v2 and header word 7 are both spent —
+ * word 7 now carries the instance record stride (#2985), and an f64 origin is a
+ * per-instance field, so it appends as trailing field 2 behind `itemId` and
+ * moves the stride from 92 to 116 rather than claiming a header word. */
 
 import { MathUtils } from './math.js';
 import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
@@ -123,6 +125,16 @@ export interface InstancedRenderTemplate {
    *  Lets the Scene build an express_id → occurrence map for per-instance
    *  selection-flag + colour-override patching. */
   entityIds: Uint32Array;
+  /** Per-occurrence originating `IfcRepresentationItem` id (#2985), same buffer
+   *  order as {@link entityIds}; `0` for an occurrence whose producer named no
+   *  item. UNDEFINED — not a zero-filled array — when the shard's stride says no
+   *  occurrence carries one (a v1 shard, or a model with no representation items
+   *  to name), so the common case allocates nothing per template. CPU-SIDE ONLY:
+   *  deliberately absent from the GPU per-instance buffer, whose 88-byte layout
+   *  is shading data and is packed identically by the pipeline, shadow pass, and
+   *  picker. This is host-query data: it answers "which entity produced this
+   *  piece", never "how is it drawn". */
+  itemIds?: Uint32Array;
 }
 
 /**
@@ -180,12 +192,18 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
     const buffer = new ArrayBuffer(insts.length * INSTANCE_STRIDE_BYTES);
     const dv = new DataView(buffer);
     const entityIds = new Uint32Array(insts.length);
+    // The shard's stride already answered "does anything here name an item"
+    // (the encoder derives it from the data), so a model with none pays no
+    // per-template allocation and no zero-fill for a column that would be all
+    // zeros — these live for the model's lifetime, one per template per shard.
+    const itemIds = shard.carriesItemIds ? new Uint32Array(insts.length) : undefined;
     for (let i = 0; i < insts.length; i++) {
       const inst = insts[i];
       const mat = composeInstanceMatrix(inst.transform, tmpl.origin);
       // flags = 0: every occurrence starts unselected.
       writeInstanceRecord(dv, i * INSTANCE_STRIDE_BYTES, mat, inst.entityId, inst.color, 0);
       entityIds[i] = inst.entityId >>> 0;
+      if (itemIds) itemIds[i] = (inst.itemId ?? 0) >>> 0;
     }
 
     out.push({
@@ -197,6 +215,7 @@ export function prepareInstancedRender(shard: DecodedInstancedShard): InstancedR
       instanceBuffer: buffer,
       instanceCount: insts.length,
       entityIds,
+      itemIds,
     });
   }
   return out;

@@ -51,6 +51,17 @@ describe('canonicalStringify', () => {
     assert.strictEqual(canonicalStringify({ a: undefined, b: 1 }), '{"b":1}');
     assert.throws(() => canonicalStringify(Number.POSITIVE_INFINITY));
   });
+
+  it('renders booleans as bare true/false literals', () => {
+    // Kills: swapping the `value ? 'true' : 'false'` ternary in the boolean
+    // branch. The only prior use of a boolean literal in this test file was
+    // inside a DERIVED attribute, which computeLayerId strips before it ever
+    // reaches canonicalStringify — so the boolean branch itself was never
+    // directly exercised and either literal would have hashed to something
+    // "deterministic but wrong" without complaint.
+    assert.strictEqual(canonicalStringify(true), 'true');
+    assert.strictEqual(canonicalStringify(false), 'false');
+  });
 });
 
 describe('computeLayerId', () => {

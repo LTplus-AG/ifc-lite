@@ -3,8 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { isTouching, penetrationDepth, sortClashes, TOUCHING_EPSILON } from './analysis.js';
-import type { AABB, Clash, ClashElementRef, ClashSeverity, ClashStatus, Vec3 } from './types.js';
+import { classifyRuleCoverage, isTouching, penetrationDepth, ruleHadNoMatch, sortClashes, summarizeClashes, TOUCHING_EPSILON } from './analysis.js';
+import type { AABB, Clash, ClashElementRef, ClashRuleCoverage, ClashSeverity, ClashStatus, Vec3 } from './types.js';
 
 function ref(key: string, tag: string): ClashElementRef {
   return { key, ref: 1, model: 'm', tag };
@@ -21,6 +21,28 @@ function clash(id: string, distance: number, severity: ClashSeverity, status: Cl
     rule: 'r',
     status,
     distance,
+    point: POINT,
+    bounds: BOUNDS,
+    severity,
+  };
+}
+
+/** Like {@link clash}, but with independently controllable rule and type tags —
+ * for exercising `summarizeClashes`'s `byRule`/`byTypePair` tallies directly. */
+function clashOf(
+  id: string,
+  rule: string,
+  tagA: string,
+  tagB: string,
+  severity: ClashSeverity,
+): Clash {
+  return {
+    id,
+    a: ref(`${id}a`, tagA),
+    b: ref(`${id}b`, tagB),
+    rule,
+    status: 'hard',
+    distance: -0.1,
     point: POINT,
     bounds: BOUNDS,
     severity,
@@ -50,6 +72,81 @@ describe('isTouching', () => {
   it('always flags touch-status clashes', () => {
     expect(isTouching(clash('a', 0.001, 'info', 'touch'))).toBe(true);
   });
+
+  it('includes a depth sitting EXACTLY on the epsilon, and excludes the next value up', () => {
+    // The band is inclusive at its edge. An exclusive `<` re-labels a coincident
+    // face reported at precisely the band edge as a genuine overlap — the
+    // false-positive class #1273 removed — and nothing else in the suite pins it.
+    expect(isTouching(clash('a', -TOUCHING_EPSILON, 'info'))).toBe(true);
+    expect(isTouching(clash('a', -TOUCHING_EPSILON * 1.000001, 'info'))).toBe(false);
+  });
+
+  it('honours a caller-supplied epsilon at its own boundary', () => {
+    const c = clash('a', -0.5, 'info');
+    expect(isTouching(c, 0.5)).toBe(true);
+    expect(isTouching(c, 0.25)).toBe(false);
+    // Default band would reject it — proves the argument, not the default, wins.
+    expect(isTouching(c)).toBe(false);
+  });
+});
+
+describe('isTouching (scale-relative default, far from origin)', () => {
+  // Geometry is ingested from f32 buffers, so a fixed TOUCHING_EPSILON=1e-4
+  // is only valid near the origin: the f32 ULP for a coordinate of magnitude
+  // `extent` is `extent * 2^-22`, which exceeds 1e-4 once `extent` passes
+  // 1024 m (1e-4 / 2^-22 = 419.4, and the ULP only takes power-of-two steps,
+  // so the first step that actually exceeds 1e-4 lands at 1024 m). Past that
+  // distance, a genuinely flush pair's measured depth can exceed the fixed
+  // band on pure rounding noise and reappear as a hard clash.
+  function clashAt(id: string, distance: number, extent: number): Clash {
+    return {
+      id,
+      a: ref(`${id}a`, 'IfcWall'),
+      b: ref(`${id}b`, 'IfcSlab'),
+      rule: 'r',
+      status: 'hard',
+      distance,
+      point: [extent, extent, extent],
+      bounds: { min: [extent - 0.01, extent - 0.01, extent - 0.01], max: [extent, extent, extent] },
+      severity: 'info',
+    };
+  }
+
+  it('RED (documents the old fixed-1e-4 result): a flush pair 5 km out, with only f32-noise-scale penetration, would NOT have been flagged as touching under the fixed constant alone', () => {
+    const c = clashAt('far', -0.00048828125, 5000); // measured noise floor at 5 km, see engine.test.ts-style repro
+    expect(penetrationDepth(c)).toBeGreaterThan(TOUCHING_EPSILON); // the old, unscaled comparison
+  });
+
+  it('GREEN: the same clash IS flagged touching by the scale-relative default', () => {
+    const c = clashAt('far', -0.00048828125, 5000);
+    expect(isTouching(c)).toBe(true);
+  });
+
+  it('also recovers it at 50 km', () => {
+    const c = clashAt('far50k', -0.00390625, 50_000);
+    expect(isTouching(c)).toBe(true);
+  });
+
+  it('still rejects a genuine interpenetration at the same distance (scaling does not hide real clashes)', () => {
+    const c = clashAt('real-clash-5km', -0.05, 5000); // 5 cm, far above any plausible f32 noise floor
+    expect(isTouching(c)).toBe(false);
+  });
+
+  it('unchanged near the origin: matches the fixed TOUCHING_EPSILON exactly on the existing near-origin fixtures', () => {
+    // Same fixtures as the plain `isTouching` describe block above (extent ~1 m,
+    // via the shared `clash()` helper) — near the origin the scale-relative
+    // default must floor to exactly TOUCHING_EPSILON, so behaviour is identical.
+    expect(isTouching(clash('a', 0, 'info'))).toBe(true);
+    expect(isTouching(clash('a', -TOUCHING_EPSILON / 2, 'info'))).toBe(true);
+    expect(isTouching(clash('a', -TOUCHING_EPSILON * 1.5, 'info'))).toBe(false);
+    expect(isTouching(clash('a', -0.05, 'major'))).toBe(false);
+  });
+
+  it('an explicit eps still overrides the scale-relative default entirely', () => {
+    const c = clashAt('explicit', -0.00048828125, 5000);
+    expect(isTouching(c, 1e-6)).toBe(false);
+    expect(isTouching(c, 1)).toBe(true);
+  });
 });
 
 describe('sortClashes', () => {
@@ -73,10 +170,128 @@ describe('sortClashes', () => {
     expect(sortClashes(list, 'distance').map((c) => c.id)).toEqual(['deep', 'touch', 'gap']);
   });
 
+  it('breaks a full tie by clash id, in every sort mode', () => {
+    // Every other fixture in this block has distinct primary keys, so the
+    // `|| cmpId(a, b)` fallback is never reached and deleting it from all three
+    // branches leaves the suite green. That fallback is not a rare edge: a
+    // clearance run reports positive distances, `penetrationDepth` returns 0 for
+    // ALL of them, and if the rule also fixes the severity then id decides the
+    // entire order of the panel (`ClashPanel.tsx` sorts thousands of rows).
+    //
+    // Input order is deliberately the reverse of id order. `Array.prototype.sort`
+    // is stable by specification, so an equal-comparing comparator would return
+    // the input untouched — only an id comparison can reorder it. Size is
+    // irrelevant here (unlike the >22-element TimSort fixture in
+    // duplicates.test.ts, which needs a run long enough for a comparator that
+    // answers NaN to corrupt the merge); this comparator stays a valid total
+    // order under the mutation, it just stops discriminating.
+    const clearance = (id: string) => clash(id, 0.5, 'major', 'clearance');
+    const gaps = [clearance('c'), clearance('b'), clearance('a')];
+    expect(sortClashes(gaps, 'severity').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(sortClashes(gaps, 'depth').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+    expect(sortClashes(gaps, 'distance').map((c) => c.id)).toEqual(['a', 'b', 'c']);
+
+    // And for the severity branch specifically: equal severity AND equal depth,
+    // so both of its leading terms are exhausted before the id is consulted.
+    const hard = [clash('h2', -0.3, 'critical'), clash('h1', -0.3, 'critical')];
+    expect(sortClashes(hard, 'severity').map((c) => c.id)).toEqual(['h1', 'h2']);
+  });
+
   it('does not mutate the input', () => {
     const list = [clash('b', -0.1, 'info'), clash('a', -0.2, 'info')];
     const before = list.map((c) => c.id);
     sortClashes(list, 'depth');
     expect(list.map((c) => c.id)).toEqual(before);
+  });
+});
+
+describe('ruleHadNoMatch', () => {
+  it('is true when side A matched nothing', () => {
+    expect(ruleHadNoMatch({ rule: 'r', matchedA: 0, matchedB: 5 })).toBe(true);
+  });
+
+  it('is true when side B matched nothing', () => {
+    expect(ruleHadNoMatch({ rule: 'r', matchedA: 5, matchedB: 0 })).toBe(true);
+  });
+
+  it('is false when both sides matched, and for a self-clash rule (matchedB null)', () => {
+    expect(ruleHadNoMatch({ rule: 'r', matchedA: 5, matchedB: 5 })).toBe(false);
+    expect(ruleHadNoMatch({ rule: 'r', matchedA: 5, matchedB: null })).toBe(false);
+  });
+});
+
+describe('classifyRuleCoverage', () => {
+  const covered = (matchedA: number, matchedB: number | null): ClashRuleCoverage => ({
+    rule: 'r',
+    matchedA,
+    matchedB,
+  });
+
+  it('is "unknown" when no coverage data is present (older/hand-built results)', () => {
+    expect(classifyRuleCoverage({})).toBe('unknown');
+    expect(classifyRuleCoverage({ ruleCoverage: [] })).toBe('unknown');
+  });
+
+  it('is "clean" when every rule matched on both sides — a real zero-clash result', () => {
+    expect(classifyRuleCoverage({ ruleCoverage: [covered(3, 4), covered(1, 1)] })).toBe('clean');
+  });
+
+  it('is "no-match" when EVERY rule matched nothing — the matrix never ran (the reported bug)', () => {
+    expect(classifyRuleCoverage({ ruleCoverage: [covered(0, 4), covered(5, 0)] })).toBe('no-match');
+  });
+
+  it('is "partial" when some rules matched and others did not', () => {
+    expect(classifyRuleCoverage({ ruleCoverage: [covered(3, 4), covered(0, 4)] })).toBe('partial');
+  });
+});
+
+describe('summarizeClashes', () => {
+  it('totals the clash count', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('2', 'r1', 'IfcDuctSegment', 'IfcWall', 'major'),
+    ]);
+    expect(summary.total).toBe(2);
+  });
+
+  it('tallies byRule per rule id', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('2', 'r1', 'IfcDuctSegment', 'IfcWall', 'major'),
+      clashOf('3', 'r2', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+    ]);
+    expect(summary.byRule).toEqual({ r1: 2, r2: 1 });
+  });
+
+  it('tallies byTypePair keyed by the two element tags, sorted so order does not matter', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      // Same pair, tags reversed — must land in the SAME bucket as above.
+      clashOf('2', 'r1', 'IfcBeam', 'IfcPipeSegment', 'critical'),
+      clashOf('3', 'r1', 'IfcDuctSegment', 'IfcWall', 'major'),
+    ]);
+    expect(summary.byTypePair).toEqual({
+      'IfcBeam vs IfcPipeSegment': 2,
+      'IfcDuctSegment vs IfcWall': 1,
+    });
+  });
+
+  it('tallies bySeverity across all four severities, including zero counts', () => {
+    const summary = summarizeClashes([
+      clashOf('1', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('2', 'r1', 'IfcPipeSegment', 'IfcBeam', 'critical'),
+      clashOf('3', 'r1', 'IfcPipeSegment', 'IfcBeam', 'minor'),
+    ]);
+    expect(summary.bySeverity).toEqual({ critical: 2, major: 0, minor: 1, info: 0 });
+  });
+
+  it('is all-zero for an empty clash list', () => {
+    const summary = summarizeClashes([]);
+    expect(summary).toEqual({
+      total: 0,
+      byRule: {},
+      byTypePair: {},
+      bySeverity: { critical: 0, major: 0, minor: 0, info: 0 },
+    });
   });
 });

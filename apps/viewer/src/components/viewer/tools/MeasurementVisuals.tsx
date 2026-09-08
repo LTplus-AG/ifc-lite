@@ -7,23 +7,41 @@
  */
 
 import React, { useMemo } from 'react';
-import type { Measurement, SnapVisualization } from '@/store';
+import type { Measurement, SnapVisualization, ActivePolyline, PolylineMeasurement } from '@/store';
 import type { MeasurementConstraintEdge } from '@/store/types';
 import { SnapType, type SnapTarget } from '@ifc-lite/renderer';
 import { formatDistance } from './formatDistance';
+import {
+  distanceComponents,
+  formatAxisDeltas,
+  formatHorizontalVertical,
+} from './measure-modes/components';
+import { inclination, formatInclination } from './measure-modes/inclination';
+import { polylineOpenLength, polylineBasisLabel } from './measure-modes/polyline';
+import { CLOSE_LOOP_SCREEN_RADIUS_PX } from '../measureHandlers';
 
 export interface MeasurementOverlaysProps {
   measurements: Measurement[];
   pending: { screenX: number; screenY: number } | null;
-  activeMeasurement: { start: { screenX: number; screenY: number; x: number; y: number; z: number }; current: { screenX: number; screenY: number }; distance: number } | null;
+  // `current` carries world x/y/z (the store's ActiveMeasurement uses a full
+  // MeasurePoint) so the live label can show the same axis breakdown.
+  activeMeasurement: { start: { screenX: number; screenY: number; x: number; y: number; z: number }; current: { screenX: number; screenY: number; x: number; y: number; z: number }; distance: number } | null;
   snapTarget: SnapTarget | null;
   snapVisualization: SnapVisualization | null;
   hoverPosition?: { x: number; y: number } | null;
   projectToScreen?: (worldPos: { x: number; y: number; z: number }) => { x: number; y: number } | null;
   constraintEdge?: MeasurementConstraintEdge | null;
+  /** The user's per-unit-type display override (#1573); defaults to none so
+   *  callers that don't pass it keep the previous auto-scaled-metric labels. */
+  unitDisplayOverrides?: Record<string, string>;
+  /** In-progress multi-click polyline sequence (#2199), or null when the
+   *  Measure tool is in drag mode / has nothing accumulated yet. */
+  activePolyline?: ActivePolyline | null;
+  /** Finished polyline measurements (open length or closed perimeter). */
+  polylineMeasurements?: PolylineMeasurement[];
 }
 
-export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge }: MeasurementOverlaysProps) {
+export const MeasurementOverlays = React.memo(function MeasurementOverlays({ measurements, pending, activeMeasurement, snapTarget, snapVisualization, hoverPosition, projectToScreen, constraintEdge, unitDisplayOverrides = {}, activePolyline = null, polylineMeasurements = [] }: MeasurementOverlaysProps) {
   // Determine snap indicator position
   // Priority: activeMeasurement.current > snapTarget projected position > hoverPosition (fallback)
   const snapIndicatorPos = useMemo(() => {
@@ -75,7 +93,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       </svg>
 
       {/* Completed measurements */}
-      {measurements.map((m) => (
+      {measurements.map((m) => {
+        const components = distanceComponents(m.start, m.end);
+        return (
         <div key={m.id} className="pointer-events-none">
           {/* Line connecting start and end */}
           <svg
@@ -120,10 +140,112 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (m.start.screenY + m.end.screenY) / 2,
             }}
           >
-            {formatDistance(m.distance)}
+            {formatDistance(m.distance, unitDisplayOverrides)}
+            {/* Axis breakdown, derived on render (see measure-modes/components). */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatAxisDeltas(components, unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatHorizontalVertical(components, unitDisplayOverrides)}
+            </div>
+            {/* Inclination to horizontal (#2199 §4), from the same endpoints. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(components))}
+            </div>
           </div>
         </div>
-      ))}
+        );
+      })}
+
+      {/* Completed polyline measurements (#2199 multi-click mode) */}
+      {polylineMeasurements.map((pl) => {
+        if (pl.points.length < 2) return null;
+        const pathPoints = pl.closed ? [...pl.points, pl.points[0]] : pl.points;
+        const d = pathPoints.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.screenX} ${p.screenY}`).join(' ');
+        // Label at the vertex centroid — stable regardless of point order,
+        // and always inside a closed loop rather than off to one side.
+        const cx = pl.points.reduce((sum, p) => sum + p.screenX, 0) / pl.points.length;
+        const cy = pl.points.reduce((sum, p) => sum + p.screenY, 0) / pl.points.length;
+        return (
+          <div key={pl.id} className="pointer-events-none">
+            <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <path d={d} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeDasharray="6,3" filter="url(#glow)" />
+              {pl.points.map((p, i) => (
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="4" fill="white" stroke="hsl(var(--primary))" strokeWidth="2" />
+              ))}
+            </svg>
+            <div
+              className="absolute pointer-events-none z-20 bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 px-2 py-1 font-mono text-xs font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-zinc-900 dark:border-zinc-100 shadow-[2px_2px_0px_0px_rgba(0,0,0,0.3)]"
+              style={{ left: cx, top: cy }}
+            >
+              {/* Basis is printed alongside the number, never left implicit
+                  (#2199 panel discipline: an open length and a closed
+                  perimeter are different claims). */}
+              <div className="font-normal text-[10px] leading-tight opacity-80">{polylineBasisLabel(pl.closed)}</div>
+              {formatDistance(pl.length, unitDisplayOverrides)}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* In-progress polyline sequence (#2199 multi-click mode) */}
+      {activePolyline && activePolyline.points.length >= 1 && (() => {
+        const points = activePolyline.points;
+        const last = points[points.length - 1];
+        const first = points[0];
+        const canClose = points.length >= 3;
+        const placedD = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.screenX} ${p.screenY}`).join(' ');
+        const runningLength = polylineOpenLength(points);
+        return (
+          <div className="pointer-events-none">
+            <svg className="absolute inset-0 pointer-events-none z-20" style={{ overflow: 'visible', pointerEvents: 'none' }}>
+              <path d={placedD} fill="none" stroke="hsl(var(--primary))" strokeWidth="2" strokeDasharray="6,3" strokeOpacity="0.85" filter="url(#glow)" />
+              {/* Rubber-band segment to the cursor's current snap/hover position. */}
+              {hoverPosition && (
+                <line
+                  x1={last.screenX}
+                  y1={last.screenY}
+                  x2={hoverPosition.x}
+                  y2={hoverPosition.y}
+                  stroke="hsl(var(--primary))"
+                  strokeWidth="1.5"
+                  strokeDasharray="3,3"
+                  strokeOpacity="0.5"
+                />
+              )}
+              {points.map((p, i) => (
+                <circle key={i} cx={p.screenX} cy={p.screenY} r="5" fill="white" stroke="hsl(var(--primary))" strokeWidth="2" />
+              ))}
+              {/* First point gets a visible "close the loop here" ring once
+                  there are enough points to close (>= 3) — clicking inside
+                  this ring finishes as a closed perimeter instead of adding
+                  another point (see isNearPolylineStart in measureHandlers.ts,
+                  same radius). */}
+              {canClose && (
+                <circle
+                  cx={first.screenX}
+                  cy={first.screenY}
+                  r={CLOSE_LOOP_SCREEN_RADIUS_PX}
+                  fill="none"
+                  stroke="#FFEB3B"
+                  strokeWidth="1.5"
+                  strokeDasharray="2,2"
+                  strokeOpacity="0.8"
+                />
+              )}
+            </svg>
+            <div
+              className="absolute pointer-events-none z-20 bg-primary text-primary-foreground px-2.5 py-1 font-mono text-sm font-bold -translate-x-1/2 -translate-y-1/2 border-2 border-primary shadow-[3px_3px_0px_0px_rgba(0,0,0,0.2)]"
+              style={{ left: last.screenX, top: last.screenY - 20 }}
+            >
+              <div className="font-normal text-[10px] leading-tight opacity-90">
+                {polylineBasisLabel(false)} so far - {points.length} pts
+              </div>
+              {formatDistance(runningLength, unitDisplayOverrides)}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Active measurement (live preview while dragging) */}
       {activeMeasurement && (
@@ -175,7 +297,20 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
               top: (activeMeasurement.start.screenY + activeMeasurement.current.screenY) / 2,
             }}
           >
-            {formatDistance(activeMeasurement.distance)}
+            {formatDistance(activeMeasurement.distance, unitDisplayOverrides)}
+            {/* Live axis breakdown, derived on render (see measure-modes/components).
+                Mirrors the completed-measurement label: axis deltas first, then
+                horizontal/vertical — the drag is exactly when a setting-out user
+                wants dX/dY/dZ, so the live readout must not be the poorer one. */}
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatAxisDeltas(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatHorizontalVertical(distanceComponents(activeMeasurement.start, activeMeasurement.current), unitDisplayOverrides)}
+            </div>
+            <div className="font-normal text-[10px] leading-tight opacity-80">
+              {formatInclination(inclination(distanceComponents(activeMeasurement.start, activeMeasurement.current)))}
+            </div>
           </div>
         </div>
       )}
@@ -448,7 +583,20 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       )}
     </>
   );
-}, (prevProps, nextProps) => {
+}, measurementOverlaysPropsEqual);
+
+/**
+ * Props-equality for the `React.memo` above. Exported so it can be tested
+ * directly — the stale-readout bug it guards against is invisible in a render
+ * test, because the component renders correctly when it renders at all.
+ *
+ * World coordinates are compared as well as screen ones: the axis breakdown
+ * (`distanceComponents`) is derived from world x/y/z, so two different world
+ * positions that project to the SAME screen point — moving along the view ray,
+ * or snapping to a different depth under an unmoved cursor — must still
+ * re-render. Screen-only comparison would leave a stale dX/dY/dZ on screen.
+ */
+export function measurementOverlaysPropsEqual(prevProps: MeasurementOverlaysProps, nextProps: MeasurementOverlaysProps): boolean {
   // Custom comparison to prevent unnecessary re-renders
   // Return true if props are equal (skip re-render), false if different (re-render)
 
@@ -461,6 +609,9 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
     // Check screen coordinates for zoom/camera changes
     if (prev.start.screenX !== next.start.screenX || prev.start.screenY !== next.start.screenY) return false;
     if (prev.end.screenX !== next.end.screenX || prev.end.screenY !== next.end.screenY) return false;
+    // World coords too — the axis breakdown is derived from them.
+    if (prev.start.x !== next.start.x || prev.start.y !== next.start.y || prev.start.z !== next.start.z) return false;
+    if (prev.end.x !== next.end.x || prev.end.y !== next.end.y || prev.end.z !== next.end.z) return false;
   }
 
   // Compare activeMeasurement - check if it exists and if position changed
@@ -470,7 +621,13 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
       prevProps.activeMeasurement.current.screenX !== nextProps.activeMeasurement.current.screenX ||
       prevProps.activeMeasurement.current.screenY !== nextProps.activeMeasurement.current.screenY ||
       prevProps.activeMeasurement.start.screenX !== nextProps.activeMeasurement.start.screenX ||
-      prevProps.activeMeasurement.start.screenY !== nextProps.activeMeasurement.start.screenY
+      prevProps.activeMeasurement.start.screenY !== nextProps.activeMeasurement.start.screenY ||
+      prevProps.activeMeasurement.current.x !== nextProps.activeMeasurement.current.x ||
+      prevProps.activeMeasurement.current.y !== nextProps.activeMeasurement.current.y ||
+      prevProps.activeMeasurement.current.z !== nextProps.activeMeasurement.current.z ||
+      prevProps.activeMeasurement.start.x !== nextProps.activeMeasurement.start.x ||
+      prevProps.activeMeasurement.start.y !== nextProps.activeMeasurement.start.y ||
+      prevProps.activeMeasurement.start.z !== nextProps.activeMeasurement.start.z
     ) return false;
   }
 
@@ -547,8 +704,62 @@ export const MeasurementOverlays = React.memo(function MeasurementOverlays({ mea
     if (prevProps.constraintEdge.activeAxis !== nextProps.constraintEdge.activeAxis) return false;
   }
 
+  // Compare activePolyline — points array by length + last point (the only
+  // part that changes on every accumulate/click) plus point count for the
+  // in-between points, since a point inserted anywhere would otherwise be
+  // invisible to a length+last-point-only check.
+  const prevPoly = prevProps.activePolyline;
+  const nextPoly = nextProps.activePolyline;
+  if (!!prevPoly !== !!nextPoly) return false;
+  if (prevPoly && nextPoly) {
+    if (prevPoly.points.length !== nextPoly.points.length) return false;
+    for (let i = 0; i < prevPoly.points.length; i++) {
+      const a = prevPoly.points[i];
+      const b = nextPoly.points[i];
+      if (a.screenX !== b.screenX || a.screenY !== b.screenY || a.x !== b.x || a.y !== b.y || a.z !== b.z) return false;
+    }
+  }
+
+  // Compare polylineMeasurements — ids AND point coordinates. An id list is
+  // NOT enough: a finished polyline's points are not immutable, because
+  // `updateMeasurementScreenCoords` reprojects them on every camera move.
+  // Comparing ids only would report "equal" after a reprojection, React.memo
+  // would skip the render, and the finished polyline's vertices, segments and
+  // labels would stay frozen at their click-time screen position while the
+  // model orbits underneath them. Screen coords catch the camera move; world
+  // coords are compared for the same reason as `measurements` above, since a
+  // point can move in world space while projecting to the same pixel.
+  const prevPls = prevProps.polylineMeasurements ?? [];
+  const nextPls = nextProps.polylineMeasurements ?? [];
+  if (prevPls.length !== nextPls.length) return false;
+  for (let i = 0; i < prevPls.length; i++) {
+    const prevPl = prevPls[i];
+    const nextPl = nextPls[i];
+    if (prevPl.id !== nextPl.id) return false;
+    if (prevPl.points.length !== nextPl.points.length) return false;
+    for (let j = 0; j < prevPl.points.length; j++) {
+      const a = prevPl.points[j];
+      const b = nextPl.points[j];
+      if (a.screenX !== b.screenX || a.screenY !== b.screenY || a.x !== b.x || a.y !== b.y || a.z !== b.z) return false;
+    }
+  }
+
+  // Compare unitDisplayOverrides — every distance label routes through it
+  // (#2199 formatDistance/unitDisplayOverrides gap). A shallow key/value
+  // compare, not a reference compare: the store spreads a new object on
+  // every `setUnitDisplayOverride` call, but an unrelated re-render must not
+  // force this component to re-render just because its identity changed.
+  const prevOverrides = prevProps.unitDisplayOverrides ?? {};
+  const nextOverrides = nextProps.unitDisplayOverrides ?? {};
+  const prevKeys = Object.keys(prevOverrides);
+  const nextKeys = Object.keys(nextOverrides);
+  if (prevKeys.length !== nextKeys.length) return false;
+  for (const key of prevKeys) {
+    if (prevOverrides[key] !== nextOverrides[key]) return false;
+  }
+
   return true; // All props are equal, skip re-render
-});
+}
 
 interface SnapIndicatorProps {
   screenX: number;

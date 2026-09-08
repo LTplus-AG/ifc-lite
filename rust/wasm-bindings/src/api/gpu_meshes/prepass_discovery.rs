@@ -124,6 +124,10 @@ pub(super) fn discover_from_columns(
             }
             c if c == p::PREPASS_CLASS_REL_DEFINES_BY_TYPE => {
                 d.rel_defines_by_type_spans.push((id, start, end));
+                // Also feed the shared resolver's material type-fallback
+                // (an occurrence with no material of its own inherits its
+                // type's IfcRelAssociatesMaterial).
+                d.prepass_spans.defines_by_type.push((id, start, end));
                 continue;
             }
             _ => {}
@@ -131,17 +135,32 @@ pub(super) fn discover_from_columns(
         // Flag bits (the serial `_` arm): type candidate and/or geometry job.
         if class & p::PREPASS_CLASS_FLAG_TYPE_CANDIDATE != 0 {
             let kw = keyword_at(content, start, end);
-            d.type_candidate_spans
-                .push((id, start, end, ifc_lite_core::IfcType::from_str(kw)));
+            // The same predicate `classify_type_name` used to SET this flag, so
+            // the label can never disagree with the gate that admitted it.
+            if let Some(ty) = ifc_lite_core::type_product_ifc_type(kw) {
+                d.type_candidate_spans.push((id, start, end, ty));
+            }
         }
         if class & p::PREPASS_CLASS_FLAG_GEOMETRY_JOB != 0 {
             let kw = keyword_at(content, start, end);
             if disabled_types.is_empty() || !disabled_types.contains(kw) {
+                // Legacy-aware, for the same reason the type-candidate branch
+                // above is: `classify_type_name` sets this flag through the
+                // legacy-aware `has_geometry_by_name`, so a bare `from_str`
+                // here labels a job the gate admitted with `Unknown(crc32)` —
+                // the label disagreeing with the gate that let it in. `Unknown`
+                // carries a hash of the keyword rather than the keyword, so
+                // nothing downstream can recover it (#3179).
                 d.buffered_jobs
-                    .push((id, start, end, ifc_lite_core::IfcType::from_str(kw)));
+                    .push((id, start, end, ifc_lite_core::legacy_aware_ifc_type(kw)));
                 d.total_jobs += 1;
             }
         }
     }
     d
 }
+
+
+#[cfg(test)]
+#[path = "prepass_discovery_tests.rs"]
+mod tests;

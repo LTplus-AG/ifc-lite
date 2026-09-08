@@ -322,11 +322,29 @@ async function openSession(devices: HIDDevice[], options: SpaceMouseSessionOptio
 
   let lastError: unknown = null;
   for (const device of candidates) {
+    // Track whether THIS call did the opening — a device that arrived
+    // already `.opened` (e.g. from `getDevices()`) is owned by whatever
+    // opened it, so a later failure here must not close it out from under
+    // that owner. What we open, we are responsible for releasing.
+    const weOpened = !device.opened;
     try {
-      if (!device.opened) await device.open();
+      if (weOpened) await device.open();
       return new SpaceMouseSession(device, options);
     } catch (err) {
       lastError = err;
+      // `device.open()` can succeed and THEN `new SpaceMouseSession(...)`
+      // throw (a malformed descriptor, a device that vanished mid-setup) —
+      // with nothing else holding a reference to the now-open device, it
+      // would otherwise stay open (an exclusive OS-level lock) for the rest
+      // of the tab's lifetime. Release what this call acquired before
+      // moving on to the next candidate.
+      if (weOpened && device.opened) {
+        try {
+          await device.close();
+        } catch {
+          /* already closed / gone */
+        }
+      }
     }
   }
   throw new Error(

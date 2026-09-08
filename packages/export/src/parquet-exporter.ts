@@ -2,13 +2,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Parquet exporter for ara3d BOS-compatible format
- */
+/** Parquet exporter for ara3d BOS-compatible format */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { GeometryResult } from '@ifc-lite/geometry';
-import { IfcTypeEnumToString, IfcTypeEnum, EntityFlags, PropertyValueType, QuantityType, RelationshipType } from '@ifc-lite/data';
+import type { MutablePropertyView } from '@ifc-lite/mutations';
+import { IfcTypeEnum, EntityFlags, RelationshipType, IFC_ENTITY_NAMES, exactTypeName, flattenRelationshipEdges } from '@ifc-lite/data';
+import { getEffectiveEntityIndex, type EffectiveEntityIndex } from './effective-index.js';
+import { columnsToParquet } from './columns-to-parquet.js';
+import { PARQUET_UINT32_COLUMNS } from './parquet-uint32-columns.js';
+import { writePropertiesOnDemand, writeQuantitiesOnDemand } from './parquet-exporter-ondemand.js';
+import { propertyValueTypeToString, quantityTypeToString } from './parquet-type-strings.js';
 
 export interface ParquetExportOptions {
     includeGeometry?: boolean;
@@ -21,10 +25,47 @@ export interface ParquetExportOptions {
 export class ParquetExporter {
     private store: IfcDataStore;
     private geometryResult?: GeometryResult;
+    private mutationView: MutablePropertyView | null;
 
-    constructor(store: IfcDataStore, geometryResult?: GeometryResult) {
+    /**
+     * `mutationView` is OPTIONAL: existing `new ParquetExporter(store)` callers
+     * (README example, `tests/integration.test.ts`) keep working unchanged and
+     * keep exporting the source model as parsed.
+     *
+     * When supplied, entities the overlay tombstoned via
+     * `MutablePropertyView.deleteEntity()` — and every row that references
+     * one — are dropped from `Entities`, `Properties`, `Quantities`,
+     * `Relationships`, `SpatialHierarchy` and the geometry tables
+     * (`VertexBuffer`, `IndexBuffer`, `Meshes`) (#2046; geometry tables
+     * joined the set after they were found still emitting a deleted
+     * entity's mesh into an otherwise-filtered archive). Unlike
+     * `StepExporter`/`Ifc5Exporter`, this is deletion-only: unlike those
+     * two, the writers below column-copy typed arrays out of the store in
+     * one shot rather than looping per entity, so they cannot also apply
+     * the overlay's pset/quantity/attribute edits the way a per-entity
+     * emission pass can. That is a known, separate gap.
+     */
+    constructor(store: IfcDataStore, geometryResult?: GeometryResult, mutationView?: MutablePropertyView) {
         this.store = store;
         this.geometryResult = geometryResult;
+        this.mutationView = mutationView ?? null;
+    }
+
+    /**
+     * The one authority for "does this entity still exist", overlay first —
+     * mirrors `StepExporter`/`Ifc5Exporter` (see `effective-index.ts`).
+     * `null` when no overlay was supplied, so every writer below takes the
+     * unfiltered fast path.
+     */
+    private getEffective(): EffectiveEntityIndex | null {
+        if (!this.mutationView) return null;
+        // Derived per call, never memoised. The overlay is a LIVE view the
+        // caller still holds: caching it here made a second export replay the
+        // first one's deletion set. `ParquetExporter` has no in-repo callers,
+        // so external usage IS the contract and "construct once, export, edit,
+        // export again" is ordinary — there is no call site we control that
+        // would make staleness unreachable. (#2111 review)
+        return getEffectiveEntityIndex(this.store, this.mutationView, true);
     }
 
     /**
@@ -81,69 +122,151 @@ export class ParquetExporter {
 
     private async writeEntities(): Promise<Uint8Array> {
         const { entities, strings } = this.store;
+        const effective = this.getEffective();
 
-        return this.toParquet({
-            ExpressId: Array.from(entities.expressId),
+        const expressId = Array.from(entities.expressId);
+        // Row i's identity IS expressId[i] (columnar layout, one row per
+        // parsed entity) — the same predicate every other column below is
+        // filtered by.
+        const keep = effective ? expressId.map((id) => !effective.isDeleted(id)) : null;
+
+        return this.toParquet(filterColumns({
+            ExpressId: expressId,
             GlobalId: mapTypedArray(entities.globalId, i => strings.get(i)),
             Name: mapTypedArray(entities.name, i => strings.get(i)),
             Description: mapTypedArray(entities.description, i => strings.get(i)),
-            Type: mapTypedArray(entities.typeEnum, i => IfcTypeEnumToString(i)),
+            // Overlay-aware: a `setEntityType` retype changes what
+            // StepExporter/Ifc5Exporter write for this entity's class
+            // (step-exporter.ts effectiveType = typeMut?.newType ?? entity.type);
+            // this column now asks the same `effective` index instead of reading
+            // the pre-retype `entities.typeEnum` unconditionally, so a
+            // retyped-then-exported row no longer disagrees with those two
+            // exporters.
+            //
+            // The unretyped name comes from `exactTypeName`, not `getTypeName`
+            // and not from re-deriving PascalCase out of `typeEnum` through
+            // IFC_ENTITY_NAMES (lossy; already went stale once, #2319).
+            // `getTypeName` resolves through `IfcTypeEnum`, which coalesces
+            // class names so the viewer's scope chips group one per family —
+            // so this column named an `IFCDOORSTANDARDCASE` line `IfcDoor`,
+            // disagreeing with StepExporter, which re-emits classes verbatim.
+            // `@ifc-lite/data`'s exact-type-name.ts lists the coalesced set.
+            //
+            // `typeOf` answers for EVERY indexed entity, not only retyped ones,
+            // so it cannot be the source for untouched rows. Override only when
+            // the overlay actually DISAGREES with the parsed class.
+            Type: expressId.map((id) => {
+                const source = exactTypeName(entities, id);
+                const effectiveType = effective?.typeOf(id);
+                if (effectiveType === undefined || effectiveType === source.toUpperCase()) {
+                    return source;
+                }
+                return IFC_ENTITY_NAMES[effectiveType] ?? effectiveType;
+            }),
             ObjectType: mapTypedArray(entities.objectType, i => strings.get(i)),
             HasGeometry: mapTypedArray(entities.flags, f => (f & EntityFlags.HAS_GEOMETRY) !== 0),
             IsType: mapTypedArray(entities.flags, f => (f & EntityFlags.IS_TYPE) !== 0),
             ContainedInStorey: Array.from(entities.containedInStorey),
             DefinedByType: Array.from(entities.definedByType),
             GeometryIndex: Array.from(entities.geometryIndex),
-        });
+        }, keep));
     }
 
     private async writeProperties(): Promise<Uint8Array> {
         const { properties, strings } = this.store;
+        const effective = this.getEffective();
 
-        return this.toParquet({
-            EntityId: Array.from(properties.entityId),
+        // `IfcParser.parseColumnar` (the sole parse path every real caller of
+        // this exporter goes through — `packages/parser`'s `parseLite`) never
+        // populates `store.properties`: it builds a `PropertyTableBuilder` but
+        // never calls `.add()` on it, relying instead on lazy per-entity
+        // extraction via `onDemandPropertyMap` + `store.getProperties()`
+        // (`extractPropertiesOnDemand`, re-parsing the source buffer on
+        // access). Reading `store.properties` directly here — the bulk table
+        // — silently wrote a zero-row `Properties.parquet` for every model
+        // parsed the normal way, geometry/relationships/entities tables full
+        // alongside it. `store.properties` only carries real rows when a
+        // caller builds a store some other way (e.g. hand-built fixtures in
+        // this file's own tests). Route through the on-demand path first;
+        // fall back to the bulk table when it was actually populated.
+        if (properties.entityId.length === 0 && this.store.onDemandPropertyMap && this.store.onDemandPropertyMap.size > 0) {
+            return writePropertiesOnDemand(this.store, effective);
+        }
+
+        const entityId = Array.from(properties.entityId);
+        // A property row belongs to the entity named in its own EntityId
+        // column, not to its own row index — filter on that, not on ExpressId.
+        const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
+
+        return this.toParquet(filterColumns({
+            EntityId: entityId,
             PsetName: mapTypedArray(properties.psetName, i => strings.get(i)),
             PsetGlobalId: mapTypedArray(properties.psetGlobalId, i => strings.get(i)),
             PropName: mapTypedArray(properties.propName, i => strings.get(i)),
-            PropType: mapTypedArray(properties.propType, t => PropertyValueTypeToString(t)),
+            PropType: mapTypedArray(properties.propType, t => propertyValueTypeToString(t)),
             ValueString: mapTypedArray(properties.valueString, i => i >= 0 && i < strings.count ? strings.get(i) : null),
             ValueReal: Array.from(properties.valueReal),
             ValueInt: Array.from(properties.valueInt),
             ValueBool: mapTypedArray(properties.valueBool, v => v === 255 ? null : v === 1),
-        }, new Set(['ValueReal']));
+        }, keep), new Set(['ValueReal']));
     }
 
     private async writeQuantities(): Promise<Uint8Array> {
         const { quantities, strings } = this.store;
+        const effective = this.getEffective();
 
-        return this.toParquet({
-            EntityId: Array.from(quantities.entityId),
+        // Same gap as `writeProperties`: `store.quantities` is only ever
+        // populated when a caller bulk-builds it directly (this file's own
+        // tests); the real `parseColumnar` path leaves it empty and serves
+        // quantities lazily through `onDemandQuantityMap` +
+        // `store.getQuantities()`.
+        if (quantities.entityId.length === 0 && this.store.onDemandQuantityMap && this.store.onDemandQuantityMap.size > 0) {
+            return writeQuantitiesOnDemand(this.store, effective);
+        }
+
+        const entityId = Array.from(quantities.entityId);
+        const keep = effective ? entityId.map((id) => !effective.isDeleted(id)) : null;
+
+        return this.toParquet(filterColumns({
+            EntityId: entityId,
             QsetName: mapTypedArray(quantities.qsetName, i => strings.get(i)),
             QuantityName: mapTypedArray(quantities.quantityName, i => strings.get(i)),
-            QuantityType: mapTypedArray(quantities.quantityType, t => QuantityTypeToString(t)),
+            QuantityType: mapTypedArray(quantities.quantityType, t => quantityTypeToString(t)),
             Value: Array.from(quantities.value),
             Formula: mapTypedArray(quantities.formula, i => i > 0 ? strings.get(i) : null),
-        }, new Set(['Value']));
+        }, keep), new Set(['Value']));
     }
 
     private async writeRelationships(): Promise<Uint8Array> {
         const { relationships } = this.store;
-        const edges = relationships.forward;
+        const effective = this.getEffective();
 
-        // Flatten CSR format to row-based
+        // One row per `IfcRel*` STEP record, including any collapsed into
+        // an edge's `shadowedRelationshipIds` (#3760/#3782) — not one row
+        // per deduped edge; see `flattenRelationshipEdges`'s doc comment.
         const sourceIds: number[] = [];
         const targetIds: number[] = [];
         const relTypes: string[] = [];
         const relIds: number[] = [];
 
-        for (const [sourceId, offset] of edges.offsets) {
-            const count = edges.counts.get(sourceId)!;
-            for (let i = offset; i < offset + count; i++) {
-                sourceIds.push(sourceId);
-                targetIds.push(edges.edgeTargets[i]);
-                relTypes.push(RelationshipTypeToString(edges.edgeTypes[i]));
-                relIds.push(edges.edgeRelIds[i]);
-            }
+        for (const row of flattenRelationshipEdges(relationships.forward)) {
+            // An edge naming a tombstoned entity on either end no longer
+            // has a live entity to relate — drop the row rather than
+            // leave a dangling SourceId/TargetId in the export.
+            //
+            // `relationshipId` gets the same treatment: an `IfcRel*` record
+            // is itself a row in Entities.parquet (the columnar parser
+            // indexes it like any other line), so emitting a RelId for a
+            // deleted one leaves a dangling reference too. Because each
+            // shadowed id is its own row here, this drops exactly the
+            // deleted record and keeps a live sibling — the same rule
+            // `edgeSurvives` applies to the CLI/MCP `related()` path
+            // (#3782 review).
+            if (effective && (effective.isDeleted(row.sourceId) || effective.isDeleted(row.targetId) || effective.isDeleted(row.relationshipId))) continue;
+            sourceIds.push(row.sourceId);
+            targetIds.push(row.targetId);
+            relTypes.push(RelationshipTypeToString(row.type));
+            relIds.push(row.relationshipId);
         }
 
         return this.toParquet({
@@ -177,11 +300,19 @@ export class ParquetExporter {
             throw new Error('Geometry result not available');
         }
 
+        const effective = this.getEffective();
+
         // Collect all positions and normals from meshes
         const allPositions: number[] = [];
         const allNormals: number[] = [];
 
         for (const mesh of this.geometryResult.meshes) {
+            // Same predicate as writeEntities/writeMeshes: a tombstoned
+            // entity's geometry is not a row in Entities.parquet either, so
+            // leaving its vertices here would let VertexBuffer.parquet name
+            // (via Meshes.VertexStart/VertexCount) an entity no other table
+            // has.
+            if (effective?.isDeleted(mesh.expressId)) continue;
             // Positions are in the element's local frame (world = origin + position).
             // The BOS columnar layout has no transform column, so bake the per-mesh
             // origin into the world vertices. Normals are origin-invariant. No-op
@@ -232,9 +363,12 @@ export class ParquetExporter {
             throw new Error('Geometry result not available');
         }
 
+        const effective = this.getEffective();
+
         // Collect all indices from meshes
         const allIndices: number[] = [];
         for (const mesh of this.geometryResult.meshes) {
+            if (effective?.isDeleted(mesh.expressId)) continue;
             allIndices.push(...Array.from(mesh.indices));
         }
 
@@ -259,6 +393,7 @@ export class ParquetExporter {
         }
 
         const meshes = this.geometryResult.meshes;
+        const effective = this.getEffective();
         const expressIds: number[] = [];
         const vertexStarts: number[] = [];
         const vertexCounts: number[] = [];
@@ -269,6 +404,11 @@ export class ParquetExporter {
         let indexOffset = 0;
 
         for (const mesh of meshes) {
+            // Must match writeVertexBuffer/writeIndexBuffer's skip exactly —
+            // those two accumulate the offsets this loop reports, so a mesh
+            // dropped there but kept here (or vice versa) would misalign
+            // every subsequent VertexStart/IndexStart.
+            if (effective?.isDeleted(mesh.expressId)) continue;
             expressIds.push(mesh.expressId);
             vertexStarts.push(vertexOffset);
             vertexCounts.push(mesh.positions.length / 3);
@@ -302,6 +442,7 @@ export class ParquetExporter {
         }> = [];
 
         const { spatialHierarchy } = this.store;
+        const effective = this.getEffective();
 
         // Build lookup maps for fast parent access
         const storeyToBuilding = new Map<number, number>();
@@ -334,6 +475,18 @@ export class ParquetExporter {
             const siteId = buildingId >= 0 ? (buildingToSite.get(buildingId) ?? -1) : -1;
 
             for (const elementId of elementIds) {
+                // A tombstoned element is not a row in Entities.parquet either
+                // (see writeEntities) — leaving it here would point
+                // SpatialHierarchy.parquet at an id no other table has.
+                //
+                // Deletion-only, and only for the element itself: a deleted
+                // STOREY/BUILDING/SITE still surfaces as StoreyId/BuildingId/
+                // SiteId on a surviving element's row (spatialHierarchy is a
+                // source-parse snapshot with no overlay-aware re-parenting —
+                // the same class of problem Ifc5Exporter's re-parenting pass
+                // solves, #2047 — not addressed here).
+                if (effective?.isDeleted(elementId)) continue;
+
                 // Check if element is in a space by iterating bySpace
                 let spaceId = -1;
                 for (const [sid, spaceElementIds] of spatialHierarchy.bySpace) {
@@ -392,81 +545,7 @@ export class ParquetExporter {
     // ═══════════════════════════════════════════════════════════════
 
     private async toParquet(columns: Record<string, any[]>, floatColumns?: Set<string>): Promise<Uint8Array> {
-        try {
-            // Dynamic imports for better tree-shaking. The package's
-            // browser/node exports map keeps `Arrow.dom.mjs` opaque to
-            // TS5's strict resolver, so the import is typed `any` here
-            // and consumers fall back to runtime checks. See:
-            // https://github.com/apache/arrow/issues/35835
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const arrow: any = await import('apache-arrow');
-
-            // Build Arrow vectors from column data
-            const vectors: Record<string, any> = {};
-
-            for (const [name, data] of Object.entries(columns)) {
-                if (data.length === 0) {
-                    // Empty column - create empty vector with null type
-                    vectors[name] = arrow.vectorFromArray([]);
-                    continue;
-                }
-
-                // Infer type from first non-null element
-                const sample = data.find((v) => v !== null && v !== undefined);
-
-                if (sample === undefined) {
-                    // All nulls - create string vector with nulls
-                    vectors[name] = arrow.vectorFromArray(data);
-                } else if (typeof sample === 'number') {
-                    // Columns declared as REAL-typed by the caller (e.g. ValueReal,
-                    // quantity Value) always use Float64 — content inference alone
-                    // would demote whole-number reals like 3.0/1200.0 to Int32,
-                    // losing the float schema and risking wrap for |x| > 2^31.
-                    if (floatColumns?.has(name)) {
-                        vectors[name] = arrow.vectorFromArray(data, new arrow.Float64());
-                        continue;
-                    }
-                    // Otherwise check if it's integer or float by content.
-                    const isFloat = data.some((v) => typeof v === 'number' && !Number.isInteger(v));
-                    if (isFloat) {
-                        vectors[name] = arrow.vectorFromArray(data, new arrow.Float64());
-                    } else {
-                        // Use Int32 for integers (covers express IDs and most counts)
-                        vectors[name] = arrow.vectorFromArray(data, new arrow.Int32());
-                    }
-                } else if (typeof sample === 'boolean') {
-                    vectors[name] = arrow.vectorFromArray(data, new arrow.Bool());
-                } else {
-                    // String or other - convert to string
-                    vectors[name] = arrow.vectorFromArray(data.map((v) => v === null ? null : String(v)));
-                }
-            }
-
-            // Build Arrow Table
-            const table = new arrow.Table(vectors);
-
-            // Convert to Arrow IPC format
-            const ipcBuffer = arrow.tableToIPC(table, 'stream');
-
-            // Try to use parquet-wasm for conversion
-            try {
-                const parquet = await import('parquet-wasm');
-
-                // parquet-wasm 0.5+ API: read Arrow IPC and write Parquet
-                const arrowTable = parquet.Table.fromIPCStream(ipcBuffer);
-                const parquetBuffer = parquet.writeParquet(arrowTable);
-
-                return new Uint8Array(parquetBuffer);
-            } catch (parquetError) {
-                // Fallback: If parquet-wasm fails, return Arrow IPC format instead
-                // This is still a valid binary format that can be read by many tools
-                console.warn('[ParquetExporter] parquet-wasm conversion failed, returning Arrow IPC format:', parquetError);
-                return new Uint8Array(ipcBuffer);
-            }
-        } catch (error) {
-            // If all else fails, throw a descriptive error
-            throw new Error(`Failed to convert to Parquet format: ${error}. Ensure apache-arrow and parquet-wasm are installed.`);
-        }
+        return columnsToParquet(columns, floatColumns, PARQUET_UINT32_COLUMNS);
     }
 
     private async createZipArchive(files: Map<string, Uint8Array>): Promise<Uint8Array> {
@@ -492,35 +571,26 @@ function mapTypedArray<T extends TypedArray, R>(arr: T, fn: (v: number) => R): R
 
 type TypedArray = Float32Array | Float64Array | Int32Array | Uint32Array | Uint16Array | Uint8Array;
 
-function PropertyValueTypeToString(type: PropertyValueType): string {
-    const names: Record<PropertyValueType, string> = {
-        [PropertyValueType.String]: 'String',
-        [PropertyValueType.Real]: 'Real',
-        [PropertyValueType.Integer]: 'Integer',
-        [PropertyValueType.Boolean]: 'Boolean',
-        [PropertyValueType.Logical]: 'Logical',
-        [PropertyValueType.Label]: 'Label',
-        [PropertyValueType.Identifier]: 'Identifier',
-        [PropertyValueType.Text]: 'Text',
-        [PropertyValueType.Enum]: 'Enum',
-        [PropertyValueType.Reference]: 'Reference',
-        [PropertyValueType.List]: 'List',
-    };
-    return names[type] || 'Unknown';
+/**
+ * Drop row `i` from every column when `keep[i]` is false. `keep === null`
+ * (no overlay supplied) is the identity — returns `columns` unchanged so the
+ * no-overlay export path allocates nothing extra.
+ */
+function filterColumns<T extends Record<string, unknown[]>>(columns: T, keep: boolean[] | null): T {
+    if (!keep) return columns;
+    const out = {} as T;
+    for (const key of Object.keys(columns) as Array<keyof T>) {
+        out[key] = (columns[key] as unknown[]).filter((_, i) => keep[i]) as T[keyof T];
+    }
+    return out;
 }
 
-// Quantity type conversion - exported for future use when quantities are implemented
-export function QuantityTypeToString(type: QuantityType): string {
-    const names: Record<QuantityType, string> = {
-        [QuantityType.Length]: 'Length',
-        [QuantityType.Area]: 'Area',
-        [QuantityType.Volume]: 'Volume',
-        [QuantityType.Count]: 'Count',
-        [QuantityType.Weight]: 'Weight',
-        [QuantityType.Time]: 'Time',
-    };
-    return names[type] || 'Unknown';
-}
+// Kept exported under its original name here (moved to `parquet-type-strings.ts`
+// so the on-demand writers can share it without importing this file, which
+// imports them): nothing in-repo imports it from this path — index.ts never
+// re-exported it — but it was public `export function` surface before the
+// module split, so a re-export costs nothing to keep.
+export { quantityTypeToString as QuantityTypeToString } from './parquet-type-strings.js';
 
 function RelationshipTypeToString(type: RelationshipType): string {
     const names: Record<RelationshipType, string> = {
@@ -535,6 +605,8 @@ function RelationshipTypeToString(type: RelationshipType): string {
         [RelationshipType.FillsElement]: 'IfcRelFillsElement',
         [RelationshipType.ConnectsPathElements]: 'IfcRelConnectsPathElements',
         [RelationshipType.ConnectsElements]: 'IfcRelConnectsElements',
+        [RelationshipType.ConnectsPortToElement]: 'IfcRelConnectsPortToElement',
+        [RelationshipType.ConnectsPorts]: 'IfcRelConnectsPorts',
         [RelationshipType.SpaceBoundary]: 'IfcRelSpaceBoundary',
         [RelationshipType.AssignsToGroup]: 'IfcRelAssignsToGroup',
         [RelationshipType.AssignsToProduct]: 'IfcRelAssignsToProduct',

@@ -63,31 +63,36 @@ export async function diagnoseGeometryCommand(args: string[]): Promise<void> {
   const bytes = new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
 
   const gp = new GeometryProcessor();
-  await gp.init();
-  let diag = gp.diagnoseGeometry(bytes);
+  let diag: ReturnType<typeof gp.diagnoseGeometry>;
+  try {
+    await gp.init();
+    diag = gp.diagnoseGeometry(bytes);
 
-  if (diag && (productArg !== undefined || typeArg !== undefined)) {
-    let productId: number | undefined;
-    if (productArg !== undefined) {
-      if (isExpressId(productArg)) {
-        productId = parseInt(productArg, 10);
-      } else {
-        // GlobalId: resolve via the columnar parser's entity table (the wasm
-        // diagnostics pass never surfaces GlobalIds, only express IDs). Parse
-        // the bytes ALREADY in memory rather than re-reading the file from disk
-        // — the geometry pass above already loaded them, so this avoids a
-        // redundant disk read (the wasm IfcAPI exposes no GlobalId lookup, so a
-        // columnar parse is still required to map GlobalId → expressId).
-        const store = await loadIfcBytes(bytes, filePath);
-        const resolved = store.entities.getExpressIdByGlobalId(productArg);
-        if (resolved === -1) {
-          fatal(`--product: no entity found with GlobalId "${productArg}"`);
-          return;
+    if (diag && (productArg !== undefined || typeArg !== undefined)) {
+      let productId: number | undefined;
+      if (productArg !== undefined) {
+        if (isExpressId(productArg)) {
+          productId = parseInt(productArg, 10);
+        } else {
+          // GlobalId: resolve via the columnar parser's entity table (the wasm
+          // diagnostics pass never surfaces GlobalIds, only express IDs). Parse
+          // the bytes ALREADY in memory rather than re-reading the file from disk
+          // — the geometry pass above already loaded them, so this avoids a
+          // redundant disk read (the wasm IfcAPI exposes no GlobalId lookup, so a
+          // columnar parse is still required to map GlobalId → expressId).
+          const store = await loadIfcBytes(bytes, filePath);
+          const resolved = store.entities.getExpressIdByGlobalId(productArg);
+          if (resolved === -1) {
+            fatal(`--product: no entity found with GlobalId "${productArg}"`);
+            return;
+          }
+          productId = resolved;
         }
-        productId = resolved;
       }
+      diag = { ...diag, worstHosts: filterWorstHosts(diag.worstHosts, { productId, ifcType: typeArg }) };
     }
-    diag = { ...diag, worstHosts: filterWorstHosts(diag.worstHosts, { productId, ifcType: typeArg }) };
+  } finally {
+    gp.dispose();
   }
 
   if (asJson || outPath) {

@@ -265,3 +265,143 @@ fn nested_mapped_composes_outer_and_inner_targets() {
         );
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #2985: the originating representation item rides the instanced shard.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The two source solids under the shared `IfcRepresentationMap` #18 in
+/// `mapped_instances_multi_item.ifc`. These are what a host drilling from a
+/// rendered instanced piece must land on.
+const SOLID_A: u32 = 11;
+const SOLID_B: u32 = 15;
+/// The ids the field must NOT hold: the four `IfcBuildingElementProxy` products,
+/// the four `IfcMappedItem`s, and the `IfcRepresentationMap` itself. Each is a
+/// plausible wrong wiring that a "the id is present and non-zero" assertion alone
+/// would accept.
+const PRODUCTS: [u32; 4] = [40, 47, 54, 61];
+const MAPPED_ITEMS: [u32; 4] = [34, 41, 48, 55];
+const REPRESENTATION_MAP: u32 = 18;
+/// Occurrences of each source solid in the fixture — the group size the assertions
+/// below expect, and the `min_group` this test passes to `collate_and_encode`
+/// itself. NOT the production instancing threshold: that is
+/// `INSTANCE_MIN_OCCURRENCES` in the wasm-only `batch_partition.rs`, and the
+/// routing it gates is covered end to end by the `scripts/test-wasm-contract.mjs`
+/// case named below. What this test needs from `min_group` is only that the two
+/// groups instance rather than fall to singletons.
+const OCCURRENCES_PER_SOLID: usize = 4;
+
+/// WHAT THIS COVERS, exactly: `element.rs` → `MeshData::geometry_item_id` →
+/// encoder → decoder, on real pipeline output, with the ids pinned to the two
+/// source solids and a negative set that rejects every id that would look right
+/// at a glance.
+///
+/// WHAT IT DOES NOT COVER: the production wiring. It builds its own
+/// `InstanceMeshRef`s, because `process_geometry_batch_partitioned` is
+/// `wasm_bindgen`-only and cannot run natively — so a wrong-field or
+/// wrong-discriminator bug in `rust/wasm-bindings/src/api/gpu_meshes/batch.rs`,
+/// which is exactly where such a bug would live, leaves this test green.
+/// `scripts/test-wasm-contract.mjs` ("the partitioned shard carries each
+/// occurrence's representation item") runs the real export and reads the ids out
+/// of the shard bytes; it covers that boundary and cannot assert exact STEP ids
+/// against a negative set, which is why both exist.
+#[test]
+fn instanced_occurrences_carry_their_source_solid_item_id() {
+    let bytes = fixture_bytes("mapped_instances_multi_item.ifc");
+    let res = run(&bytes);
+
+    let non_empty: Vec<&MeshData> = res.meshes.iter().filter(|m| !m.positions.is_empty()).collect();
+    let refs: Vec<ifc_lite_geometry::InstanceMeshRef> = non_empty
+        .iter()
+        .map(|m| ifc_lite_geometry::InstanceMeshRef {
+            positions: &m.positions,
+            normals: &m.normals,
+            indices: &m.indices,
+            origin: m.origin,
+            instance_meta: m.instance.as_ref(),
+            entity_id: m.express_id,
+            color: m.color,
+            item_id: m.geometry_item_id,
+        })
+        .collect();
+    let shard = ifc_lite_geometry::collate_and_encode(
+        &refs,
+        OCCURRENCES_PER_SOLID,
+        [0.0, 0.0, 0.0],
+    );
+    let decoded = ifc_lite_geometry::decode_instanced(&shard).expect("decode IFNS shard");
+
+    // Two source solids, four occurrences each: genuinely instanced (not a pile
+    // of singleton templates that would carry item ids for a different reason).
+    assert_eq!(
+        decoded.templates.len(),
+        2,
+        "expected one template per source solid, got {}",
+        decoded.templates.len()
+    );
+    assert_eq!(decoded.instances.len(), 2 * OCCURRENCES_PER_SOLID);
+
+    let mut items: Vec<u32> = decoded
+        .instances
+        .iter()
+        .map(|i| {
+            i.item_id.unwrap_or_else(|| {
+                panic!(
+                    "occurrence of #{} carries NO item id — the id was computed and dropped",
+                    i.entity_id
+                )
+            })
+        })
+        .collect();
+    items.sort_unstable();
+    // NOT deduped on purpose. Dedup would drop multiplicity, and the property
+    // this pins is the DISTRIBUTION: four occurrences per source solid. With a
+    // dedup the test passes on seven SOLID_A and one SOLID_B, which is exactly
+    // the mis-grouping a per-item identity bug produces.
+    assert_eq!(
+        items,
+        [
+            vec![SOLID_A; OCCURRENCES_PER_SOLID],
+            vec![SOLID_B; OCCURRENCES_PER_SOLID]
+        ]
+        .concat(),
+        "item ids must be {OCCURRENCES_PER_SOLID} each of the two source solids \
+         #{SOLID_A}/#{SOLID_B}, got {items:?}"
+    );
+
+    // Negative: every id that would look right at a glance. A field wired to the
+    // product (the obvious mistake — the occurrence's OWN express id is right
+    // there in the same struct), to the IfcMappedItem, or to the shared map
+    // fails here while still being "present and non-zero".
+    for inst in &decoded.instances {
+        let item = inst.item_id.expect("checked above");
+        assert!(
+            !PRODUCTS.contains(&item),
+            "item id {item} is a product express id, not a representation item"
+        );
+        assert!(
+            !MAPPED_ITEMS.contains(&item),
+            "item id {item} is an IfcMappedItem id, not the solid it maps"
+        );
+        assert_ne!(
+            item, REPRESENTATION_MAP,
+            "item id is the shared IfcRepresentationMap, not the per-item solid"
+        );
+        // The occurrence id and the item id are different questions; a shard where
+        // they coincide has one of them wired to the other.
+        assert_ne!(item, inst.entity_id);
+    }
+
+    // Disjointness (rust/wasm-bindings/src/zero_copy/mesh.rs asserts the same on
+    // the flat path): the id a mesh contributes to the shard is a representation
+    // item, so its material_id must be empty.
+    for m in &non_empty {
+        assert!(
+            m.geometry_item_id.is_none() || m.material_id.is_none(),
+            "mesh of #{} carries BOTH geometry_item_id {:?} and material_id {:?}",
+            m.express_id,
+            m.geometry_item_id,
+            m.material_id
+        );
+    }
+}

@@ -15,13 +15,42 @@
  */
 
 import { useEffect, useRef } from 'react';
-import { useViewerStore } from '@/store';
+import { useViewerStore, resolveEntityRef } from '@/store';
 import { pathForEntity } from '@/lib/collab/mutation-bridge';
+import type { IfcDataStore } from '@ifc-lite/parser';
 
 /** Cursor plane: most viewer models sit near the local-frame ground (y≈0). */
 const CURSOR_PLANE_Y = 0;
 /** Cap raycasts to ~33 Hz; presence coalesces the rest. */
 const MOVE_THROTTLE_MS = 30;
+
+/**
+ * `selectedEntityIds` are federation GLOBAL ids (renderer-space, offset per
+ * model — see `useModelSelection.ts`), not the per-model expressIds
+ * `pathForEntity` expects. Every other globalId → path/EntityRef consumer
+ * (`useModelSelection`, the basket, the context menu) resolves through the
+ * mandated `resolveEntityRef` first (its own doc: "every code path that
+ * needs an EntityRef from a globalId MUST use this function") — this one
+ * skipped that and read the raw id straight off the ACTIVE model's store.
+ * With one model loaded that coincidentally works (offset 0, globalId ===
+ * expressId), which is why it went unnoticed; federated with a second model
+ * selected it looks the id up in the wrong store's entity table (or a
+ * numeric coincidence there), broadcasting a null or wrong peer's GUID.
+ */
+export function pathsForSelection(
+  state: { models: Map<string, { ifcDataStore: IfcDataStore | null }>; ifcDataStore: IfcDataStore | null },
+  selectedEntityIds: Iterable<number>,
+): string[] {
+  const paths: string[] = [];
+  for (const id of selectedEntityIds) {
+    const ref = resolveEntityRef(id);
+    const store = state.models.get(ref.modelId)?.ifcDataStore ?? state.ifcDataStore;
+    if (!store) continue;
+    const p = pathForEntity(store, ref.expressId);
+    if (p) paths.push(p);
+  }
+  return paths;
+}
 
 export function PresenceBroadcaster() {
   const sessionActive = useViewerStore((s) => s.collabSession !== null);
@@ -69,16 +98,9 @@ export function PresenceBroadcaster() {
   const selectedEntityIds = useViewerStore((s) => s.selectedEntityIds);
   useEffect(() => {
     if (!sessionActive) return;
-    const { collabSession, ifcDataStore } = useViewerStore.getState();
-    if (!collabSession) return;
-    const paths: string[] = [];
-    if (ifcDataStore) {
-      for (const id of selectedEntityIds) {
-        const p = pathForEntity(ifcDataStore, id);
-        if (p) paths.push(p);
-      }
-    }
-    collabSession.presence.setSelection(paths);
+    const state = useViewerStore.getState();
+    if (!state.collabSession) return;
+    state.collabSession.presence.setSelection(pathsForSelection(state, selectedEntityIds));
   }, [sessionActive, selectedEntityIds]);
 
   // Camera: poll the viewpoint and broadcast on meaningful movement, so peers can

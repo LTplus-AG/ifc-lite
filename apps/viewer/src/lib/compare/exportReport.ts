@@ -16,28 +16,29 @@
  * not O(elements × meshes).
  */
 
+import { escapeCsvCell } from '@ifc-lite/export';
 import type { DiffEntry, DiffState } from '@ifc-lite/diff';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareResult } from '../../store/slices/compareSlice.js';
 import type { CompareRef } from './buildFingerprints.js';
-import { summarizeGeometryChange, type Aabb } from './describeChange.js';
+import { contentMatchCounts } from './contentMatches.js';
+import { productTypeSplit, type ProductTypeTally } from './productTypeCounts.js';
+import {
+  annotateReviewGroups,
+  contentMatchReportRows,
+  exportedGlobalId,
+  type CompareReportRow,
+} from './reportRows.js';
+import {
+  meshBoundsIndex,
+  placementMoveSummary,
+  renderToWorldShift,
+  summarizeGeometryChange,
+  type WorldAabb,
+} from './geometrySummary.js';
 import { downloadBlob, sanitizeFilename } from '../export/download.js';
 
-/** One row of the exported change report. */
-export interface CompareReportRow {
-  globalId: string;
-  name: string;
-  ifcType: string;
-  /** Raw diff state: added | deleted | modified. */
-  state: DiffState;
-  /** Human change label: "Added", "Deleted", "Moved", "Reshaped",
-   *  "Data changed", or a combination ("Moved, Data changed"). */
-  change: string;
-  /** AABB-centre displacement in metres (0 when not a move). */
-  movedDistance: number;
-  /** Which model this row's element lives in (head for add/modify, base for delete). */
-  model: string;
-}
+export type { CompareReportRow } from './reportRows.js';
 
 export interface CompareReport {
   baseModel: string;
@@ -47,35 +48,45 @@ export interface CompareReport {
   /** IFC classes excluded from the comparison (the blacklist, #1470). Empty when
    *  none were excluded. Recorded so a report reader knows what was ignored. */
   excludedTypes: string[];
-  counts: { added: number; deleted: number; modified: number };
+  /**
+   * `matched` counts elements the content pass retired out of `added`/`deleted`
+   * (#1891); `needsReview` counts entities left in an unresolved group. Both
+   * are 0 when the pass did not run. Without them a reader would take a lower
+   * added/deleted count at face value.
+   *
+   * `added`/`deleted`/`modified` total BOTH products and type objects, the way
+   * the engine's own `DiffCounts` does. `products`/`typeObjects` break that
+   * total down (issue: a certification exercise's expected answer counts
+   * products only, and a reader taking the combined number gets a mismatch —
+   * see `productTypeCounts.ts`). The combined fields stay for readers already
+   * consuming them; the split is additive.
+   */
+  counts: {
+    added: number;
+    deleted: number;
+    modified: number;
+    matched: number;
+    needsReview: number;
+    products: ProductTypeTally;
+    typeObjects: ProductTypeTally;
+  };
   rows: CompareReportRow[];
 }
 
-/** Mutable AABB accumulator. */
-interface Box { minX: number; minY: number; minZ: number; maxX: number; maxY: number; maxZ: number }
-
-/** One pass over a model's meshes → federation-globalId → AABB. */
-function boundsIndex(model: FederatedModel | undefined): Map<number, Aabb> {
-  const out = new Map<number, Aabb>();
-  if (!model?.geometryResult) return out;
-  const acc = new Map<number, Box>();
-  for (const mesh of model.geometryResult.meshes) {
-    let box = acc.get(mesh.expressId);
-    if (!box) {
-      box = { minX: Infinity, minY: Infinity, minZ: Infinity, maxX: -Infinity, maxY: -Infinity, maxZ: -Infinity };
-      acc.set(mesh.expressId, box);
-    }
-    const p = mesh.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1], z = p[i + 2];
-      if (x < box.minX) box.minX = x; if (y < box.minY) box.minY = y; if (z < box.minZ) box.minZ = z;
-      if (x > box.maxX) box.maxX = x; if (y > box.maxY) box.maxY = y; if (z > box.maxZ) box.maxZ = z;
-    }
-  }
-  for (const [id, b] of acc) {
-    out.set(id, { min: [b.minX, b.minY, b.minZ], max: [b.maxX, b.maxY, b.maxZ] });
-  }
-  return out;
+/** One pass over a model's meshes -> federation-globalId -> absolute world
+ *  AABB. Delegates to `meshBoundsIndex` so this path and the detail panel's
+ *  `meshBounds` share one world-bounds computation - a private copy of that
+ *  loop here is how the report summed raw `positions` without the per-element
+ *  `origin` fold and wrote `MovedDistance_m = 0` for a genuinely moved element
+ *  (#2529). Folds THIS model's render-to-world shift so a box measured from
+ *  positions lands in the same absolute frame as a wasm `geometryAabb` on the
+ *  other side (#2659). */
+function boundsIndex(model: FederatedModel | undefined): Map<number, WorldAabb> {
+  if (!model?.geometryResult) return new Map();
+  return meshBoundsIndex(
+    model.geometryResult.meshes,
+    renderToWorldShift(model.geometryResult.coordinateInfo),
+  );
 }
 
 /** The side actually reported for an entry: base for deletions, head otherwise. */
@@ -83,11 +94,35 @@ function reportRef(entry: DiffEntry<CompareRef>): CompareRef | undefined {
   return (entry.state === 'deleted' ? entry.base?.ref : entry.head?.ref) ?? entry.base?.ref;
 }
 
+/**
+ * The GlobalId reported for an entry — taken from the same side as
+ * {@link reportRef}, not from `entry.key`.
+ *
+ * Those are the same string until an identity map is in play. Under
+ * `DiffOptions.keyAliases` (#1891) an aliased pair's `entry.key` is the *base*
+ * key, deliberately: the alias renames the pair, and the head fingerprint keeps
+ * its own key on `entry.head.key`. Keying a head row off `entry.key` would
+ * therefore print the element's OLD GlobalId next to its current name and type
+ * — a row that resolves to nothing in the file it claims to describe, and one
+ * that would silently disagree with every other export.
+ *
+ * The viewer does not pass `keyAliases` today, so no shipped path can produce
+ * an aliased entry; this reads the side it always meant to read, so that adding
+ * the alias to Compare mode is a one-line change and not a data-integrity bug.
+ */
+function reportKey(entry: DiffEntry<CompareRef>): string {
+  return (
+    (entry.state === 'deleted' ? entry.base?.key : entry.head?.key) ?? entry.base?.key ?? entry.key
+  );
+}
+
 /** Classify a modified entry's change kinds into a human label + move distance. */
 function classifyModified(
   entry: DiffEntry<CompareRef>,
-  baseBounds: Map<number, Aabb>,
-  headBounds: Map<number, Aabb>,
+  baseBounds: Map<number, WorldAabb>,
+  headBounds: Map<number, WorldAabb>,
+  baseModel: FederatedModel | undefined,
+  headModel: FederatedModel | undefined,
 ): { change: string; movedDistance: number } {
   const parts: string[] = [];
   let movedDistance = 0;
@@ -95,7 +130,20 @@ function classifyModified(
   if (entry.changeKinds.includes('geometry')) {
     const ba = entry.base ? baseBounds.get(entry.base.ref.globalId) ?? null : null;
     const bb = entry.head ? headBounds.get(entry.head.ref.globalId) ?? null : null;
-    const geom = summarizeGeometryChange(ba, bb);
+    // A pair that is geometry-less on BOTH sides (the summary checks
+    // `ref.meshed`; missing boxes alone also describe a GPU-instanced entity)
+    // is described by its composed world placement (buildFingerprints.ts) —
+    // `summarizeGeometryChange(null, null)` answers "Reshaped", which is false
+    // for a product with no shape, and it leaves `MovedDistance_m` empty on
+    // the one row that column was made for. Same helper as the detail panel
+    // (`describeChange.ts`), so the CSV and the panel cannot disagree.
+    const bothMeshless =
+      !ba && !bb && entry.base?.ref.meshed === false && entry.head?.ref.meshed === false;
+    const geom = bothMeshless
+      ? (entry.base && entry.head
+          ? placementMoveSummary(baseModel, entry.base.ref, headModel, entry.head.ref)
+          : null)
+      : summarizeGeometryChange(ba, bb);
     if (geom) {
       movedDistance = geom.movedDistance;
       if (geom.movedDistance > 0) parts.push('Moved');
@@ -127,6 +175,9 @@ export function buildCompareReport(
   const headBounds = boundsIndex(headModel);
 
   const rows: CompareReportRow[] = [];
+  // Row → the federation global id it was built from, so the unresolved-group
+  // annotation can find its rows without re-deriving the ref.
+  const rowGlobalIds = new Map<CompareReportRow, number>();
   for (const entry of result.diff.entries) {
     if (entry.state === 'unchanged') continue;
     const ref = reportRef(entry);
@@ -136,25 +187,44 @@ export function buildCompareReport(
     const ifcType = (entry.head ?? entry.base)?.ifcType ?? 'IfcProduct';
     // The fingerprint key is the GlobalId; synthetic "missing:" keys (entities
     // without a resolvable GlobalId) export blank rather than the placeholder.
-    const globalId = entry.key.startsWith('missing:') ? '' : entry.key;
+    const globalId = exportedGlobalId(reportKey(entry));
     const modelName = ref.modelId === result.headModelId ? result.headName : result.baseName;
 
     let change: string;
     let movedDistance = 0;
     if (entry.state === 'added') change = 'Added';
     else if (entry.state === 'deleted') change = 'Deleted';
-    else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds));
+    else ({ change, movedDistance } = classifyModified(entry, baseBounds, headBounds, baseModel, headModel));
 
-    rows.push({ globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName });
+    const row: CompareReportRow = { globalId, name, ifcType, state: entry.state, change, movedDistance, model: modelName };
+    rows.push(row);
+    rowGlobalIds.set(row, ref.globalId);
   }
 
-  // Stable order: added, then changed, then deleted; by type then name within.
-  const stateRank: Record<DiffState, number> = { added: 0, modified: 1, deleted: 2, unchanged: 3 };
+  // Content matches (#1891), added on top of the entry-derived rows rather than
+  // replacing anything: retiring matches contribute their own rows, unresolved
+  // groups annotate the add/delete rows that are already here.
+  const matches = result.diff.contentMatches ?? [];
+  rows.push(...contentMatchReportRows(matches, models, result.headName));
+  annotateReviewGroups(rows, matches, rowGlobalIds);
+
+  // Stable order: added, then changed, then matched, then deleted; by type then
+  // name within.
+  const stateRank: Record<DiffState | 'matched', number> = {
+    added: 0,
+    modified: 1,
+    matched: 2,
+    deleted: 3,
+    unchanged: 4,
+  };
   rows.sort((a, b) =>
     stateRank[a.state] - stateRank[b.state] ||
     a.ifcType.localeCompare(b.ifcType) ||
     a.name.localeCompare(b.name),
   );
+
+  const matchTally = contentMatchCounts(result.diff.contentMatches);
+  const split = productTypeSplit(result.diff.entries);
 
   return {
     baseModel: result.baseName,
@@ -167,6 +237,10 @@ export function buildCompareReport(
       added: result.diff.counts.added,
       deleted: result.diff.counts.deleted,
       modified: result.diff.counts.modified,
+      matched: matchTally.matchedElements,
+      needsReview: matchTally.needsReviewElements,
+      products: split.products,
+      typeObjects: split.typeObjects,
     },
     rows,
   };
@@ -177,15 +251,39 @@ export function buildCompareReport(
  *  tab/CR is evaluated as a formula by Excel/Sheets; prefixing a single quote
  *  forces it to be read as text (model/element names are attacker-influenced). */
 function csvField(value: string | number): string {
-  let s = String(value);
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  // Delegates to `@ifc-lite/export`'s single escaper. The copy that used to
+  // live here bought its invisible-handling by DELETING the leading run of
+  // `\p{Cf}\p{Z}`; `\p{Z}` includes U+0020, so every exported cell silently
+  // lost its leading spaces, against RFC 4180 §2.4 ("Spaces are considered
+  // part of a field and should not be ignored"). The shared escaper looks
+  // *past* the run instead of removing it — same payloads guarded, data intact.
+  return escapeCsvCell(String(value), { delimiter: ',' });
 }
 
 /** Serialize the report as RFC-4180 CSV (one element per row). */
 export function reportToCsv(report: CompareReport): string {
-  const header = ['GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model'];
+  // `Match` / `MatchedGlobalId` are appended, never inserted: an existing
+  // consumer reading the first six columns positionally keeps working (#1891).
+  const header = [
+    'GlobalId', 'Name', 'IfcType', 'Change', 'MovedDistance_m', 'Model', 'Match', 'MatchedGlobalId',
+  ];
   const lines: string[] = [];
+  // The row count below totals products AND type objects together (`Change`
+  // in `Added`/`Deleted`/`Modified` counts both), the same conflation the
+  // panel's counts grid has - a certification exercise's expected answer
+  // counts products only. Lead with the split so a reader taking the row
+  // count at face value is not misled the way the combined headline was
+  // (see `productTypeCounts.ts`). Omitted entirely when there are no
+  // type-object changes, so a report with none reads exactly as before.
+  const { products, typeObjects } = report.counts;
+  if (typeObjects.added + typeObjects.modified + typeObjects.deleted > 0) {
+    lines.push(
+      csvField(
+        `# Products: ${products.added} added, ${products.modified} modified, ${products.deleted} deleted` +
+          ` | Type objects: ${typeObjects.added} added, ${typeObjects.modified} modified, ${typeObjects.deleted} deleted`,
+      ),
+    );
+  }
   // Provenance: a blacklist removes rows, so a CSV that looks "complete" would
   // mislead a coordinator (the ignored elements are simply gone). Lead with a
   // comment naming the excluded classes so the omission is never silent (#1470).
@@ -203,6 +301,8 @@ export function reportToCsv(report: CompareReport): string {
       csvField(r.change),
       csvField(r.movedDistance ? r.movedDistance.toFixed(4) : ''),
       csvField(r.model),
+      csvField(r.match ?? ''),
+      csvField(r.matchedGlobalId ?? ''),
     ].join(','));
   }
   return lines.join('\r\n');

@@ -7,10 +7,32 @@
  *
  * All functions in this module are pure (no side-effects, no external state)
  * and deal exclusively with converting data to ISO 10303-21 STEP format strings.
+ *
+ * Three neighbours are deliberately NOT here, because none turns a value into
+ * a token and each has rules of its own worth finding on its own:
+ *   - `step-argument-parser.ts` reads a record's arguments back OUT of a line
+ *     and writes one slot by index (`splitTopLevelArgs`, `replaceStepArgument`,
+ *     `splitTopLevelStepArguments`);
+ *   - `step-file-assembly.ts` joins a finished header and finished entity lines
+ *     into the delivered file (`assembleStepBytes`, `assembleStepBlob`);
+ *   - `property-value-serialization.ts` (split out by #3184) is the IFC
+ *     property `NominalValue` token for a `PropertyValueType`
+ *     (`serializePropertyValue`) — the property-TYPE-NAME mapping table, not a
+ *     generic STEP token, and worth reading on its own.
  */
 
 import { serializeValue, SCHEMA_REGISTRY, type IfcAttributeValue } from '@ifc-lite/parser';
-import { PropertyValueType, QuantityType, formatStepReal } from '@ifc-lite/data';
+import { QuantityType, formatStepReal, escapeStepString } from '@ifc-lite/data';
+
+/**
+ * Re-exported so every existing `import { escapeStepString } from
+ * './step-serialization.js'` call site keeps working. The implementation
+ * lives once, in `@ifc-lite/data` (#3300) — this package used to keep its
+ * own byte-identical copy, which is exactly the duplication
+ * `packages/codegen/test/serialization-generator.test.ts` already forbids
+ * for the schema-agnostic serializer bundles.
+ */
+export { escapeStepString };
 
 /** EXPRESS base primitives a defined type ultimately resolves to. */
 const EXPRESS_PRIMITIVES = new Set(['BOOLEAN', 'LOGICAL', 'INTEGER', 'REAL', 'NUMBER', 'STRING', 'BINARY']);
@@ -26,7 +48,15 @@ export function resolveExpressBase(typeName: string): string | null {
   const seen = new Set<string>();
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
-    const underlying: string | undefined = SCHEMA_REGISTRY.types[cursor];
+    // Own-property, not bare bracket access: SCHEMA_REGISTRY.types is a plain
+    // object literal, so `types['constructor']` reaches Object.prototype and
+    // hands back the Object CONSTRUCTOR. That is truthy, so the `!underlying`
+    // check below passes it through and `.replace()` on the next line throws
+    // `TypeError: underlying.replace is not a function` from a function whose
+    // contract is to return null for a type it does not know. Sibling of #3063.
+    const underlying: string | undefined = Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.types, cursor)
+      ? SCHEMA_REGISTRY.types[cursor]
+      : undefined;
     if (!underlying) return null;
     // Strip width qualifiers like `STRING(255)` before the primitive test.
     const head = underlying.replace(/\(.*$/, '').trim().toUpperCase();
@@ -96,21 +126,6 @@ export function serializeTypedMarker(type: string, value: string | number | bool
 }
 
 /**
- * Escape a string for STEP format (backslash and single-quote escaping).
- *
- * Control characters (CR/LF and other C0 codes) are collapsed to a single
- * space so every generated STEP entity stays on one physical line and
- * round-trips through the line-oriented merge/convert paths.
- */
-export function escapeStepString(str: string): string {
-  return str
-    .replace(/\\/g, '\\\\')
-    .replace(/'/g, "''")
-    // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' ');
-}
-
-/**
  * Convert a number to a valid STEP REAL literal.
  *
  * Handles NaN/Infinity (-> `0.`) and delegates the mantissa/`E` rewrite to the
@@ -134,56 +149,11 @@ export function quantityTypeToIfcType(type: QuantityType): string {
     case QuantityType.Count: return 'IFCQUANTITYCOUNT';
     case QuantityType.Weight: return 'IFCQUANTITYWEIGHT';
     case QuantityType.Time: return 'IFCQUANTITYTIME';
+    case QuantityType.Number: return 'IFCQUANTITYNUMBER';
     default: return 'IFCQUANTITYCOUNT';
   }
 }
 
-/**
- * Serialize a property value to STEP format (e.g. IFCLABEL, IFCREAL, etc.).
- */
-export function serializePropertyValue(value: unknown, type: PropertyValueType): string {
-  if (value === null || value === undefined) {
-    return '$';
-  }
-
-  switch (type) {
-    case PropertyValueType.String:
-    case PropertyValueType.Label:
-    case PropertyValueType.Text:
-      return `IFCLABEL('${escapeStepString(String(value))}')`;
-
-    case PropertyValueType.Identifier:
-      return `IFCIDENTIFIER('${escapeStepString(String(value))}')`;
-
-    case PropertyValueType.Real: {
-      const num = Number(value);
-      if (!Number.isFinite(num)) return '$';
-      return `IFCREAL(${formatStepReal(num)})`;
-    }
-
-    case PropertyValueType.Integer:
-      return `IFCINTEGER(${Math.round(Number(value))})`;
-
-    case PropertyValueType.Boolean:
-    case PropertyValueType.Logical:
-      if (value === true) return `IFCBOOLEAN(.T.)`;
-      if (value === false) return `IFCBOOLEAN(.F.)`;
-      return `IFCLOGICAL(.U.)`;
-
-    case PropertyValueType.Enum:
-      return `.${String(value).toUpperCase()}.`;
-
-    case PropertyValueType.List:
-      if (Array.isArray(value)) {
-        const items = value.map(v => serializePropertyValue(v, PropertyValueType.String));
-        return `(${items.join(',')})`;
-      }
-      return '$';
-
-    default:
-      return `IFCLABEL('${escapeStepString(String(value))}')`;
-  }
-}
 
 /**
  * True when a STEP source token is a REAL literal — a numeric token carrying a
@@ -300,204 +270,4 @@ export function entityRef(expressId: number): string {
  */
 export function stepReal(value: number): { real: number } {
   return { real: value };
-}
-
-/**
- * Split a STEP argument list on top-level commas, respecting nested
- * parentheses and quoted strings. Used by `applyAttributeMutations`.
- */
-export function splitTopLevelArgs(text: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString = false;
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    current += char;
-
-    if (inString) {
-      if (char === '\'') {
-        if (text[i + 1] === '\'') {
-          current += text[i + 1];
-          i++;
-        } else {
-          inString = false;
-        }
-      }
-      continue;
-    }
-
-    if (char === '\'') {
-      inString = true;
-      continue;
-    }
-
-    if (char === '(') {
-      depth++;
-      continue;
-    }
-
-    if (char === ')') {
-      depth--;
-      continue;
-    }
-
-    if (char === ',' && depth === 0) {
-      parts.push(current.slice(0, -1).trim());
-      current = '';
-    }
-  }
-
-  // Trailing tokens: only push if there's actual content. The previous
-  // `text.endsWith(',')` check pushed an empty trailing token for inputs
-  // like `"a,"`, producing `['a', '']` — STEP doesn't allow trailing
-  // commas, so the right answer is just `['a']`. Empty interior args
-  // (e.g. `"a,,b"` → `['a', '', 'b']`) are still produced because the
-  // comma branch above handles them.
-  if (current.trim()) {
-    parts.push(current.trim());
-  }
-
-  return parts;
-}
-
-/**
- * Split a STEP argument list on top-level commas while preserving nested syntax.
- * Similar to `splitTopLevelArgs` but uses a slightly different accumulation style
- * suited for the `replaceEntityAttribute` call-site.
- */
-export function splitTopLevelStepArguments(input: string): string[] {
-  const parts: string[] = [];
-  let current = '';
-  let depth = 0;
-  let inString = false;
-
-  for (let i = 0; i < input.length; i++) {
-    const char = input[i];
-
-    if (char === "'") {
-      current += char;
-      if (inString && i + 1 < input.length && input[i + 1] === "'") {
-        current += input[i + 1];
-        i++;
-        continue;
-      }
-      inString = !inString;
-      continue;
-    }
-
-    if (!inString) {
-      if (char === '(') depth++;
-      else if (char === ')') depth--;
-      else if (char === ',' && depth === 0) {
-        parts.push(current);
-        current = '';
-        continue;
-      }
-    }
-
-    current += char;
-  }
-
-  parts.push(current);
-  return parts;
-}
-
-/**
- * Worst-case UTF-8 bytes per UTF-16 code unit: a lone BMP code unit needs at
- * most 3 bytes, and a surrogate pair (2 units) needs 4 bytes for its combined
- * codepoint — 2 bytes/unit, under the 3x bound. An unpaired surrogate is
- * replaced with U+FFFD (3 bytes) by both `TextEncoder` and `Blob`, which also
- * fits. `str.length * UTF8_WORST_CASE_BYTES_PER_UNIT` therefore always fits
- * the full encoding.
- */
-const UTF8_WORST_CASE_BYTES_PER_UNIT = 3;
-
-/**
- * Assemble a STEP file from header and entity lines as a Uint8Array.
- *
- * Two passes over `entities`, no intermediate per-entity byte arrays:
- * 1. `TextEncoder.encodeInto` each entity into a reusable (grow-on-demand)
- *    scratch buffer just to learn its exact encoded byte length — the
- *    scratch bytes themselves are discarded.
- * 2. Allocate the ONE final buffer sized from the lengths computed in pass 1,
- *    then `encodeInto` each entity directly into its slice.
- *
- * This replaces a previous single-pass version that kept a persistent
- * `Uint8Array[]` of every encoded entity alive simultaneously (a second full
- * copy of the file's content) purely to learn the sizes needed to allocate
- * the final buffer. Output is byte-identical to that version.
- *
- * Shared by the STEP and merged exporters (was duplicated byte-for-byte in
- * both — alignment audit).
- */
-export function assembleStepBytes(header: string, entities: string[]): Uint8Array {
-  const encoder = new TextEncoder();
-
-  const headBytes = encoder.encode(`${header}DATA;\n`);
-  const tailBytes = encoder.encode('ENDSEC;\nEND-ISO-10303-21;\n');
-
-  // Pass 1: exact per-entity byte length via encodeInto into scratch space
-  // (grown on demand), so the final buffer can be allocated once.
-  let scratch = new Uint8Array(4096);
-  const entityLengths = new Array<number>(entities.length);
-  let totalSize = headBytes.byteLength + tailBytes.byteLength;
-  for (let i = 0; i < entities.length; i++) {
-    const str = entities[i];
-    const worstCase = str.length * UTF8_WORST_CASE_BYTES_PER_UNIT;
-    if (scratch.byteLength < worstCase) {
-      scratch = new Uint8Array(Math.max(worstCase, scratch.byteLength * 2));
-    }
-    const { written } = encoder.encodeInto(str, scratch);
-    entityLengths[i] = written;
-    totalSize += written + 1; // +1 for the trailing '\n'
-  }
-
-  // Pass 2: encode each entity directly into its slice of the one final buffer.
-  const result = new Uint8Array(totalSize);
-  let offset = 0;
-
-  result.set(headBytes, offset);
-  offset += headBytes.byteLength;
-
-  for (let i = 0; i < entities.length; i++) {
-    const len = entityLengths[i];
-    encoder.encodeInto(entities[i], result.subarray(offset, offset + len));
-    offset += len;
-    result[offset] = 0x0a; // '\n'
-    offset += 1;
-  }
-
-  result.set(tailBytes, offset);
-  return result;
-}
-
-/**
- * Assemble a STEP file as a multi-part `Blob` instead of one contiguous
- * `Uint8Array`. Built directly from the header, entity strings, and
- * newlines as separate `BlobPart`s — there is no final contiguous copy of
- * the file's content in JS heap memory, since the browser stores/streams
- * each part (and encodes it to UTF-8) independently.
- *
- * Intended for the browser download path: `downloadBlob`
- * (`apps/viewer/src/lib/export/download.ts`) accepts a `Blob` directly,
- * sidestepping the `Uint8Array`-is-not-a-`BlobPart` copy `downloadFile`
- * otherwise has to do under TS 5.7's stricter `BlobPart` typing.
- *
- * Byte content is identical to `assembleStepBytes(header, entities)` — both
- * UTF-8-encode the same header/entity/newline/tail sequence, and `Blob`
- * string parts and `TextEncoder` follow the same WHATWG encoding spec
- * (including replacing unpaired surrogates with U+FFFD).
- */
-export function assembleStepBlob(header: string, entities: string[]): Blob {
-  const parts: BlobPart[] = new Array(entities.length * 2 + 2);
-  parts[0] = `${header}DATA;\n`;
-  let i = 1;
-  for (const entity of entities) {
-    parts[i++] = entity;
-    parts[i++] = '\n';
-  }
-  parts[i] = 'ENDSEC;\nEND-ISO-10303-21;\n';
-  return new Blob(parts, { type: 'model/step' });
 }

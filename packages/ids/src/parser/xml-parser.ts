@@ -22,13 +22,18 @@ import type {
   IDSPartOfFacet,
   IDSConstraint,
   IDSSimpleValue,
-  IDSPatternConstraint,
-  IDSEnumerationConstraint,
-  IDSBoundsConstraint,
   IFCVersion,
   RequirementOptionality,
   PartOfRelation,
 } from '../types.js';
+
+import {
+  getChildElement,
+  getChildElements,
+  getChildElementNS,
+  getChildText,
+} from './dom.js';
+import { parseRestriction } from './parse-restriction.js';
 
 const IDS_NAMESPACE = 'http://standards.buildingsmart.org/IDS';
 const XS_NAMESPACE = 'http://www.w3.org/2001/XMLSchema';
@@ -590,178 +595,3 @@ function parseConstraintElement(el: Element): IDSConstraint {
   };
 }
 
-/**
- * Parse XSD restriction element
- */
-function parseRestriction(el: Element): IDSConstraint {
-  // Capture the `@base` attribute so the auditor can compare against
-  // an IFC dataType's backing XSD type without inferring from the
-  // restriction shape (which is ambiguous for numeric enumerations).
-  const base = el.getAttribute('base') || undefined;
-
-  // Check for pattern(s). Multiple `<xs:pattern>` siblings inside a
-  // single restriction are OR'd per the XSD spec, so collect every
-  // candidate and join them with `|` (each wrapped in a non-capturing
-  // group so anchors apply uniformly).
-  const patternEls = (() => {
-    const ns = getChildElementsNS(el, 'pattern', XS_NAMESPACE);
-    if (ns.length > 0) return ns;
-    return getChildElements(el, 'pattern');
-  })();
-  if (patternEls.length > 0) {
-    const parts = patternEls
-      .map((p) => p.getAttribute('value') || p.textContent || '')
-      .filter((s) => s.length > 0);
-    const pattern =
-      parts.length === 1
-        ? parts[0]
-        : parts.map((p) => `(?:${p})`).join('|');
-    return {
-      type: 'pattern',
-      pattern,
-      base,
-    } satisfies IDSPatternConstraint;
-  }
-
-  // Check for enumeration
-  const enumEls = getChildElementsNS(el, 'enumeration', XS_NAMESPACE);
-  if (enumEls.length === 0) {
-    // Try without namespace
-    const enumElsNoNS = getChildElements(el, 'enumeration');
-    if (enumElsNoNS.length > 0) {
-      return {
-        type: 'enumeration',
-        values: enumElsNoNS.map(
-          (e) => e.getAttribute('value') || e.textContent || ''
-        ),
-        base,
-      } satisfies IDSEnumerationConstraint;
-    }
-  } else {
-    return {
-      type: 'enumeration',
-      values: enumEls.map(
-        (e) => e.getAttribute('value') || e.textContent || ''
-      ),
-      base,
-    } satisfies IDSEnumerationConstraint;
-  }
-
-  // Check for bounds (minInclusive, maxInclusive, minExclusive,
-  // maxExclusive, length, minLength, maxLength).
-  const facetEls: Record<string, Element | null> = {};
-  for (const facet of [
-    'minInclusive',
-    'maxInclusive',
-    'minExclusive',
-    'maxExclusive',
-    'length',
-    'minLength',
-    'maxLength',
-  ]) {
-    facetEls[facet] =
-      getChildElementNS(el, facet, XS_NAMESPACE) ||
-      getChildElement(el, facet);
-  }
-
-  if (Object.values(facetEls).some((e) => e !== null)) {
-    const bounds: IDSBoundsConstraint = { type: 'bounds', base };
-    const readNumber = (e: Element | null): number | undefined => {
-      if (!e) return undefined;
-      const v = parseFloat(e.getAttribute('value') || e.textContent || '');
-      return Number.isFinite(v) ? v : undefined;
-    };
-    const readInt = (e: Element | null): number | undefined => {
-      if (!e) return undefined;
-      const v = parseInt(e.getAttribute('value') || e.textContent || '', 10);
-      return Number.isFinite(v) && v >= 0 ? v : undefined;
-    };
-    bounds.minInclusive = readNumber(facetEls.minInclusive);
-    bounds.maxInclusive = readNumber(facetEls.maxInclusive);
-    bounds.minExclusive = readNumber(facetEls.minExclusive);
-    bounds.maxExclusive = readNumber(facetEls.maxExclusive);
-    bounds.length = readInt(facetEls.length);
-    bounds.minLength = readInt(facetEls.minLength);
-    bounds.maxLength = readInt(facetEls.maxLength);
-    return bounds;
-  }
-
-  // No recognised pattern/enumeration/bounds child. If the element only
-  // carries a `base` attribute (the common "empty restriction" authoring
-  // mistake — e.g. `<xs:restriction base="xs:string"/>`), surface an
-  // empty enumeration so the coherence auditor can flag it. Otherwise
-  // fall through to text content.
-  const text = el.textContent?.trim() || '';
-  if (base && text === '') {
-    return {
-      type: 'enumeration',
-      values: [],
-      base,
-    } satisfies IDSEnumerationConstraint;
-  }
-  if (text) {
-    return { type: 'simpleValue', value: text };
-  }
-  return { type: 'enumeration', values: [], base } satisfies IDSEnumerationConstraint;
-}
-
-// ============================================================================
-// DOM Helper Functions
-// ============================================================================
-
-function getChildElement(parent: Element, localName: string): Element | null {
-  for (const child of Array.from(parent.children)) {
-    if (child.localName.toLowerCase() === localName.toLowerCase()) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function getChildElements(parent: Element, localName: string): Element[] {
-  const elements: Element[] = [];
-  for (const child of Array.from(parent.children)) {
-    if (child.localName.toLowerCase() === localName.toLowerCase()) {
-      elements.push(child);
-    }
-  }
-  return elements;
-}
-
-function getChildElementNS(
-  parent: Element,
-  localName: string,
-  namespace: string
-): Element | null {
-  for (const child of Array.from(parent.children)) {
-    if (
-      child.localName.toLowerCase() === localName.toLowerCase() &&
-      child.namespaceURI === namespace
-    ) {
-      return child;
-    }
-  }
-  return null;
-}
-
-function getChildElementsNS(
-  parent: Element,
-  localName: string,
-  namespace: string
-): Element[] {
-  const elements: Element[] = [];
-  for (const child of Array.from(parent.children)) {
-    if (
-      child.localName.toLowerCase() === localName.toLowerCase() &&
-      child.namespaceURI === namespace
-    ) {
-      elements.push(child);
-    }
-  }
-  return elements;
-}
-
-function getChildText(parent: Element, localName: string): string | undefined {
-  const child = getChildElement(parent, localName);
-  return child?.textContent?.trim() || undefined;
-}

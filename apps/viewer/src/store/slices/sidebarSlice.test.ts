@@ -32,6 +32,22 @@ describe('sidebarSlice (#1208)', () => {
     assert.strictEqual(s.getState().sidebarMode, 'expanded');
   });
 
+  it('keeps customize mode when staying expanded, and drops it when collapsing', () => {
+    // github.com/LTplus-AG/ifc-lite/issues/2765: forcing `sidebarCustomizing`
+    // unconditionally false in `setSidebarMode` left 19 tests green. The
+    // conditional exists because collapsing strands the customize popover with
+    // no UI, while re-selecting expanded must not throw the user out of a
+    // customize session they are in the middle of.
+    const s = make();
+    s.getState().setSidebarCustomizing(true);
+
+    s.getState().setSidebarMode('expanded');
+    assert.strictEqual(s.getState().sidebarCustomizing, true, 'staying expanded keeps the session');
+
+    s.getState().setSidebarMode('collapsed');
+    assert.strictEqual(s.getState().sidebarCustomizing, false, 'collapsing strands the popover, so it exits');
+  });
+
   it('migrates a persisted/captured "hidden" mode to collapsed (rail never hides)', () => {
     const s = make();
     s.getState().applySidebarLayout({ mode: 'hidden' });

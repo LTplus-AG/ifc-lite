@@ -15,7 +15,7 @@ use rustc_hash::FxHashMap;
 mod aabb_clip;
 mod bool2d_path;
 mod coaxial_union;
-mod geom;
+pub(crate) mod geom;
 pub(crate) mod prism_cut;
 mod probe;
 mod synthesis;
@@ -1004,7 +1004,7 @@ impl GeometryRouter {
         let origin = mesh.origin;
         if origin == [0.0, 0.0, 0.0] && ctx.all_cutters_world_framed() {
             // Legacy/world frame on host AND cutters: no relativization needed.
-            return self.apply_void_context_inner(mesh, ctx, element_id, host_world_bounds);
+            return self.apply_void_context_inner(mesh, ctx, element_id, host_world_bounds, true);
         }
         // Work entirely in the host's local frame (origin 0 on every operand).
         // `relativized_by` folds each cutter's OWN origin and subtracts the host
@@ -1014,8 +1014,9 @@ impl GeometryRouter {
         mesh.origin = [0.0, 0.0, 0.0];
         let local_ctx = ctx.relativized_by(origin);
         let mut result =
-            self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds);
-        result.origin = origin;
+            self.apply_void_context_inner(mesh, &local_ctx, element_id, host_world_bounds, true);
+        // Keep an inner local-frame cut's translation when restoring this frame.
+        result.origin = std::array::from_fn(|i| result.origin[i] + origin[i]);
         result
     }
 
@@ -1066,10 +1067,8 @@ impl GeometryRouter {
     /// straight wall enjoys — clean-box openings even reclassify to the
     /// watertight `rect_fast` path. Curved / brep openings keep their mesh and
     /// are subtracted there too. The result is rotated back; the orthonormal,
-    /// origin-centred round-trip is identity for untouched geometry. Recursing
-    /// into [`Self::apply_void_context_inner`] is safe: in the frame every
-    /// opening's depth is +Z (axis-aligned), so this guard returns `None` on the
-    /// inner call.
+    /// origin-centred round-trip is identity for untouched geometry. Recurses
+    /// into [`Self::apply_void_context_inner`] with `allow_local_frame: false` (#3641).
     fn try_cut_wall_local_frame(
         &self,
         mesh: &Mesh,
@@ -1099,14 +1098,9 @@ impl GeometryRouter {
 
         // AABB-only `Rectangular` openings can't be rotated into the frame; a
         // plan-rotated wall never has them (they'd be diagonal), so bail.
-        if ctx
-            .merged_openings
-            .iter()
-            .any(|op| matches!(op, OpeningType::Rectangular(..)))
-        {
+        if ctx.merged_openings.iter().any(|op| matches!(op, OpeningType::Rectangular(..))) {
             return None;
         }
-
         let (mn, mx) = mesh.bounds();
         let center = Vector3::new(
             ((mn.x + mx.x) * 0.5) as f64,
@@ -1176,20 +1170,23 @@ impl GeometryRouter {
 
         // Forward the WORLD host bounds captured before this rotation so the
         // diagnostic reports world coords, not wall-frame (rotated/centred) ones.
-        let result_local =
-            self.apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds);
-        Some(mesh_from_frame(&result_local, &axes, center))
+        let result_local = self
+            .apply_void_context_inner(host_local, &local_ctx, element_id, host_world_bounds, false);
+        let frame = Matrix3::from_columns(&axes);
+        // Rotation-only positions retain the far centre in `Mesh::origin`.
+        Some(rotate_mesh_from_frame(&result_local, &frame, &Point3::from(center)))
     }
 
-    // `host_mutated` is set just before an early `break`, so the final write is
-    // intentionally never read back; keep the flag for readability of the branch.
-    #[allow(unused_assignments)]
+    // `host_mutated` is set just before an early `break` (final write unread; kept
+    // for readability). `allow_local_frame` (#3641) caps local-frame recursion.
+    #[allow(unused_assignments, clippy::too_many_arguments)]
     fn apply_void_context_inner(
         &self,
         mesh: Mesh,
         ctx: &VoidContext,
         element_id: u32,
         host_bounds_capture: ((f32, f32, f32), (f32, f32, f32)),
+        allow_local_frame: bool,
     ) -> Mesh {
         // Capture the input triangle count so the per-host diagnostic can flag
         // the "cuts attempted but produced no change" case — the silent-no-op
@@ -1208,10 +1205,11 @@ impl GeometryRouter {
         // subtract is clean and f32-precise — then the result is rotated back.
         // The world-space tilted cut at large coordinates over-cuts and
         // fragments badly. Scoped to plan-rotated walls; everything else falls
-        // through to the world path unchanged.
-        if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture)
-        {
-            return cut;
+        // through to the world path unchanged. Gated on `allow_local_frame`.
+        if allow_local_frame {
+            if let Some(cut) = self.try_cut_wall_local_frame(&mesh, ctx, element_id, host_bounds_capture) {
+                return cut;
+            }
         }
 
         let clipper = ClippingProcessor::new();
@@ -2031,7 +2029,15 @@ impl GeometryRouter {
         // path targets (multi-layer walls with windows).
         let ctx = self.build_void_context(element, &opening_ids, decoder);
 
-        let mut voided = SubMeshCollection::new();
+        // INHERIT the discriminator rather than assuming rep-item ids. This path
+        // is reached only when `try_layered_sub_meshes` declined above, so the
+        // flag is false today -- but hard-coding that would make a future
+        // layered producer silently relabel material ids as representation
+        // items, which is the exact confusion #3199 removes.
+        let mut voided = SubMeshCollection {
+            sub_meshes: Vec::new(),
+            ids_are_materials: sub_meshes.ids_are_materials,
+        };
         for sub in sub_meshes.sub_meshes {
             let geometry_id = sub.geometry_id;
             let mut voided_mesh = self.apply_void_context(sub.mesh, &ctx, element.id);

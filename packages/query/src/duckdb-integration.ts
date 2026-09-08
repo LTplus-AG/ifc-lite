@@ -8,7 +8,7 @@
  */
 
 import type { IfcDataStore } from '@ifc-lite/parser';
-import { IfcTypeEnumToString, PropertyValueType, QuantityType, RelationshipType } from '@ifc-lite/data';
+import { IfcTypeEnumToString, PropertyValueType, QuantityType, RelationshipType, flattenRelationshipEdges } from '@ifc-lite/data';
 
 export interface SQLResult {
   columns: string[];
@@ -257,14 +257,13 @@ export class DuckDBIntegration {
         const propName = escapeSQL(strings.get(properties.propName[j]));
         const propType = propTypeNames[properties.propType[j]] || 'Unknown';
 
-        const valueStringIdx = properties.valueString[j];
-        const valueString = valueStringIdx >= 0 ? escapeSQL(strings.get(valueStringIdx)) : '';
+        const valueStringLiteral = resolveDuckDBStringLiteral(properties.valueString[j], strings);
         const valueReal = isNaN(properties.valueReal[j]) ? 'NULL' : properties.valueReal[j];
         const valueInt = properties.valueInt[j];
         const valueBoolRaw = properties.valueBool[j];
         const valueBool = valueBoolRaw === 255 ? 'NULL' : valueBoolRaw === 1 ? 'true' : 'false';
 
-        values.push(`(${entityId}, '${psetName}', '${psetGlobalId}', '${propName}', '${propType}', '${valueString}', ${valueReal}, ${valueInt}, ${valueBool})`);
+        values.push(`(${entityId}, '${psetName}', '${psetGlobalId}', '${propName}', '${propType}', ${valueStringLiteral}, ${valueReal}, ${valueInt}, ${valueBool})`);
       }
 
       if (values.length > 0) {
@@ -342,7 +341,6 @@ export class DuckDBIntegration {
     `);
 
     const { relationships } = store;
-    const edges = relationships.forward;
     const batchSize = 1000;
 
     const relTypeNames: Record<number, string> = {
@@ -362,20 +360,15 @@ export class DuckDBIntegration {
       [RelationshipType.ReferencedInSpatialStructure]: 'ReferencedInSpatialStructure',
     };
 
-    // Flatten CSR format to rows
-    const rows: { sourceId: number; targetId: number; relType: string; relId: number }[] = [];
-
-    for (const [sourceId, offset] of edges.offsets) {
-      const count = edges.counts.get(sourceId) || 0;
-      for (let i = offset; i < offset + count; i++) {
-        rows.push({
-          sourceId,
-          targetId: edges.edgeTargets[i],
-          relType: relTypeNames[edges.edgeTypes[i]] || 'Unknown',
-          relId: edges.edgeRelIds[i],
-        });
-      }
-    }
+    // One row per `IfcRel*` STEP record, including any collapsed into an
+    // edge's `shadowedRelationshipIds` (#3760/#3782) — not one row per
+    // deduped edge; see `flattenRelationshipEdges`'s doc comment.
+    const rows = flattenRelationshipEdges(relationships.forward).map((row) => ({
+      sourceId: row.sourceId,
+      targetId: row.targetId,
+      relType: relTypeNames[row.type] || 'Unknown',
+      relId: row.relationshipId,
+    }));
 
     // Insert in batches
     for (let i = 0; i < rows.length; i += batchSize) {
@@ -496,12 +489,41 @@ export class DuckDBIntegration {
 }
 
 /**
- * Escape a string for SQL (prevent SQL injection)
+ * Escape a string for SQL (prevent SQL injection).
+ *
+ * Exported for direct unit testing: the surrounding INSERT-building logic
+ * requires a live DuckDB-WASM connection, so exercising this string-escaping
+ * logic through that path is impractical in a unit test.
  */
-function escapeSQL(value: string | null | undefined): string {
+export function escapeSQL(value: string | null | undefined): string {
   if (value === null || value === undefined) {
     return '';
   }
   // Replace single quotes with two single quotes (SQL escape)
   return value.replace(/'/g, "''");
+}
+
+/**
+ * Resolve a `PropertyTable.valueString` cell to a SQL literal fragment
+ * ready to splice into an INSERT (either `'escaped text'` or the bare
+ * keyword `NULL`).
+ *
+ * `idx` is read from a `Uint32Array`, so the NULL sentinel written by
+ * `StringTable.intern(null)` (-1) wraps to 4294967295 rather than going
+ * negative — an `idx >= 0` guard is therefore always true and never
+ * catches it; only an in-range check (`idx < strings.count`) does. Without
+ * it, a NULL string-typed property value round-tripped through this table
+ * as `''`, indistinguishable from a genuine empty-string property.
+ *
+ * Mirrors the entities table's `containedInStorey`/`definedByType` NULL
+ * handling a few lines above (same file) and `getPropertyValue`'s String
+ * branch in `@ifc-lite/data`'s `property-table.ts` / its cache-restored
+ * twin in `@ifc-lite/cache`'s `properties.ts` — same column family, same
+ * sentinel, now the same guard in all four places.
+ */
+export function resolveDuckDBStringLiteral(
+  idx: number,
+  strings: { get(i: number): string; readonly count: number },
+): string {
+  return idx < strings.count ? `'${escapeSQL(strings.get(idx))}'` : 'NULL';
 }

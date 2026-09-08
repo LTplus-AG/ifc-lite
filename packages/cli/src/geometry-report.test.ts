@@ -45,6 +45,20 @@ describe('formatGeometryReport', () => {
     expect(report).toContain('Silent rect no-ops:  1');
   });
 
+  it('lists dropped representation items by IFC type when present', () => {
+    const report = formatGeometryReport(makeDiagnostics({
+      totalUnsupportedItems: 3,
+      unsupportedItemsByType: [{ reason: 'IfcGeometricSet', count: 3 }],
+    }));
+    expect(report).toContain('Dropped representation items: 3');
+    expect(report).toContain('IfcGeometricSet');
+  });
+
+  it('omits the dropped-items section on a clean model (no spurious warning)', () => {
+    const report = formatGeometryReport(makeDiagnostics());
+    expect(report).not.toContain('Dropped representation items');
+  });
+
   it('lists failures by reason, sorted as given', () => {
     const report = formatGeometryReport(makeDiagnostics({
       failuresByReason: [

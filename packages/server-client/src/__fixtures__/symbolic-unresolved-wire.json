@@ -1,0 +1,61 @@
+{
+  "grid_axes": [
+    {
+      "express_id": 1,
+      "grid_express_id": 2,
+      "tag": "A",
+      "endpoints": [
+        0.0,
+        0.0,
+        1.0,
+        0.0
+      ],
+      "world_y": null
+    }
+  ],
+  "polylines": [
+    {
+      "express_id": 3,
+      "ifc_type": "IfcAnnotation",
+      "points": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "closed": false,
+      "world_y": 0.0,
+      "representation": "Annotation"
+    }
+  ],
+  "circles": [],
+  "texts": [],
+  "fills": [
+    {
+      "express_id": 4,
+      "ifc_type": "IfcAnnotation",
+      "points": [
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "holes_offsets": [],
+      "fill_color": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "has_hatching": true,
+      "hatch_spacing": 0.1,
+      "hatch_angle": 0.0,
+      "hatch_angle_secondary": null,
+      "hatch_line_width": 0.01,
+      "world_y": 3.5,
+      "representation": "Annotation"
+    }
+  ]
+}

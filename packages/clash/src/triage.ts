@@ -9,7 +9,7 @@
  * the actual LLM call.
  */
 
-import type { ClashResult, ClashSeverity } from './types.js';
+import type { Clash, ClashResult, ClashSeverity } from './types.js';
 
 export interface ClashTriageResult {
   summary: string;
@@ -89,7 +89,7 @@ export function buildTriageUserMessage(result: ClashResult): string {
       const aLabel = c.a.name || c.a.key.slice(0, 8);
       const bLabel = c.b.name || c.b.key.slice(0, 8);
       lines.push(
-        `- [${c.severity}] ${c.a.tag} "${aLabel}" vs ${c.b.tag} "${bLabel}" — ${formatDistance(c.distance)} (rule: ${c.rule})`,
+        `- [${c.severity}] ${c.a.tag} "${aLabel}" vs ${c.b.tag} "${bLabel}" — ${formatDistance(c.distance, c.distanceKind)} (rule: ${c.rule})`,
       );
     }
   }
@@ -97,9 +97,17 @@ export function buildTriageUserMessage(result: ClashResult): string {
   return lines.join('\n');
 }
 
-function formatDistance(distance: number): string {
+/**
+ * Render a signed clash distance for the LLM triage prompt. `distanceKind`
+ * absent or `'estimate'` means the value is a box dimension read off the
+ * AABBs, not a mesh measurement (see `Clash.distanceKind`) — labelled so the
+ * prompt does not hand the LLM a bare number it will report as a precise
+ * penetration depth.
+ */
+function formatDistance(distance: number, distanceKind?: Clash['distanceKind']): string {
+  const estimated = distanceKind !== 'mesh';
   return distance < 0
-    ? `penetration ${Math.abs(distance).toFixed(3)} m`
+    ? `penetration ${estimated ? '~' : ''}${Math.abs(distance).toFixed(3)} m${estimated ? ' (AABB estimate)' : ''}`
     : `gap ${distance.toFixed(3)} m`;
 }
 

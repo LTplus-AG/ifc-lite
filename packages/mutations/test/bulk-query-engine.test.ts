@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
-import { BulkQueryEngine, MutablePropertyView } from '../src/index.js';
+import { BulkQueryEngine, MutablePropertyView, MutationGuardError } from '../src/index.js';
 
 /**
  * BulkQueryEngine.select() with propertyFilters exercises the private
@@ -49,6 +49,105 @@ function makeEngineWithProperty(values: Array<string | number | boolean | null>)
   const engine = new BulkQueryEngine(entities, view, null, null, null);
   return engine;
 }
+
+/**
+ * Build an engine with 6 entities spread across a small disjoint spatial
+ * hierarchy: sites 100/200, buildings 10/20 (one per site), storeys 1/2
+ * (one per building), and a space 500 nested inside storey 1.
+ *
+ *   site 100 -> building 10 -> storey 1 -> entities 1, 2 (entity 1 also in space 500)
+ *   site 200 -> building 20 -> storey 2 -> entities 3, 4
+ *   entities 5, 6 are not registered under any spatial container.
+ */
+function makeEngineWithSpatialHierarchy() {
+  const entities = makeEntities(6);
+  const view = new MutablePropertyView(null, 'model-1');
+  view.setOnDemandExtractor(() => []);
+
+  const spatialHierarchy = {
+    project: { expressId: 0, type: 0, name: 'Project', children: [], elements: [] },
+    byStorey: new Map([
+      [1, [1, 2]],
+      [2, [3, 4]],
+    ]),
+    byBuilding: new Map([
+      [10, [1, 2]],
+      [20, [3, 4]],
+    ]),
+    bySite: new Map([
+      [100, [1, 2]],
+      [200, [3, 4]],
+    ]),
+    bySpace: new Map([[500, [1]]]),
+    storeyElevations: new Map(),
+    storeyHeights: new Map(),
+    elementToStorey: new Map(),
+  } as any;
+
+  return new BulkQueryEngine(entities, view, spatialHierarchy, null, null);
+}
+
+describe('BulkQueryEngine spatial filters', () => {
+  it('sites filters to entities contained in the given site IDs (disjoint sites)', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [100] });
+    expect(ids).toEqual([1, 2]);
+  });
+
+  it('sites with a second site ID includes both sites disjoint sets', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [100, 200] });
+    expect(ids).toEqual([1, 2, 3, 4]);
+  });
+
+  it('sites excludes entities outside the requested site (regression: previously ignored, returned everything)', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [200] });
+    expect(ids).not.toContain(1);
+    expect(ids).not.toContain(2);
+    expect(ids).toEqual([3, 4]);
+  });
+
+  it('an empty sites array is treated as no filter, matching the storeys/buildings/spaces sibling behavior', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [] });
+    expect(ids).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it('a site ID absent from bySite matches nothing for that ID', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ sites: [999] });
+    expect(ids).toEqual([]);
+  });
+
+  it('sites combined with storeys intersects (not unions) the two criteria', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    // site 100 -> {1,2}; storey 2 -> {3,4}; intersection is empty.
+    const ids = engine.select({ sites: [100], storeys: [2] });
+    expect(ids).toEqual([]);
+    // site 100 -> {1,2}; storey 1 -> {1,2}; intersection is {1,2}.
+    const idsMatching = engine.select({ sites: [100], storeys: [1] });
+    expect(idsMatching).toEqual([1, 2]);
+  });
+
+  it('storeys filters to entities contained in the given storey IDs', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ storeys: [1] });
+    expect(ids).toEqual([1, 2]);
+  });
+
+  it('buildings filters to entities contained in the given building IDs', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ buildings: [20] });
+    expect(ids).toEqual([3, 4]);
+  });
+
+  it('spaces filters to entities contained in the given space IDs', () => {
+    const engine = makeEngineWithSpatialHierarchy();
+    const ids = engine.select({ spaces: [500] });
+    expect(ids).toEqual([1]);
+  });
+});
 
 describe('BulkQueryEngine property filter operators', () => {
   describe('string operators', () => {
@@ -167,5 +266,108 @@ describe('BulkQueryEngine property filter operators', () => {
         })
       ).toEqual([2]);
     });
+  });
+
+  describe('multiple propertyFilters compose as AND', () => {
+    // Two independent properties per entity so a fixture with only one
+    // filter can't observe whether later filters actually narrow the
+    // candidate set or silently replace it (`select()` applies each
+    // filter in `criteria.propertyFilters` in sequence over the same
+    // `candidates` array — a bug that used only the LAST filter would
+    // pass every single-filter test above unnoticed).
+    function makeEngineWithTwoProperties(rows: Array<[string, number]>) {
+      const entities = makeEntities(rows.length);
+      const view = new MutablePropertyView(null, 'model-1');
+      view.setOnDemandExtractor(() => []);
+      rows.forEach(([category, qty], i) => {
+        const entityId = i + 1;
+        view.setProperty(entityId, 'Pset_Test', 'Category', category, PropertyValueType.Label);
+        view.setProperty(entityId, 'Pset_Test', 'Qty', qty, PropertyValueType.Real);
+      });
+      return new BulkQueryEngine(entities, view, null, null, null);
+    }
+
+    it('narrows on both conditions, not just the last one in the array', () => {
+      const engine = makeEngineWithTwoProperties([
+        ['A', 5], // entity 1: matches Category, fails Qty
+        ['A', 15], // entity 2: matches both
+        ['B', 15], // entity 3: fails Category, matches Qty
+      ]);
+
+      const ids = engine.select({
+        propertyFilters: [
+          { psetName: 'Pset_Test', propName: 'Category', operator: '=', value: 'A' },
+          { psetName: 'Pset_Test', propName: 'Qty', operator: '>', value: 10 },
+        ],
+      });
+
+      expect(ids).toEqual([2]);
+    });
+  });
+});
+
+/**
+ * `BulkQueryEngine.applyAction` writes straight to
+ * `MutablePropertyView.setProperty`/`setEntityType`, bypassing the viewer
+ * store's own actions and `canCollabEdit()` entirely (BulkPropertyEditor.tsx
+ * constructs and drives this class directly — see mutation-guard.ts). These
+ * tests prove the engine refuses a write on its own when constructed with a
+ * `canEdit` predicate that returns false — without any caller having to
+ * remember to check the role first.
+ */
+describe('BulkQueryEngine: local-edit guard (mutation-guard.ts)', () => {
+  it('applyAction throws MutationGuardError and applies nothing when canEdit() is false', () => {
+    const entities = makeEntities(1);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null, () => false);
+
+    expect(() =>
+      engine.applyAction(1, {
+        type: 'SET_PROPERTY',
+        psetName: 'Pset_Test',
+        propName: 'Prop',
+        value: 42,
+        valueType: PropertyValueType.Real,
+      })
+    ).toThrow(MutationGuardError);
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBeNull();
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('applyAction still applies when canEdit() is true (guard is opt-in, not a new default)', () => {
+    const entities = makeEntities(1);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null, () => true);
+
+    const mutation = engine.applyAction(1, {
+      type: 'SET_PROPERTY',
+      psetName: 'Pset_Test',
+      propName: 'Prop',
+      value: 42,
+      valueType: PropertyValueType.Real,
+    });
+
+    expect(mutation).not.toBeNull();
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
+  });
+
+  it('an engine with no canEdit predicate behaves exactly as before (backward compatible)', () => {
+    const entities = makeEntities(1);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const engine = new BulkQueryEngine(entities, view, null, null, null);
+
+    const mutation = engine.applyAction(1, {
+      type: 'SET_PROPERTY',
+      psetName: 'Pset_Test',
+      propName: 'Prop',
+      value: 42,
+      valueType: PropertyValueType.Real,
+    });
+
+    expect(mutation).not.toBeNull();
+    expect(view.getPropertyValue(1, 'Pset_Test', 'Prop')).toBe(42);
   });
 });

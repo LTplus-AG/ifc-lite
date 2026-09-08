@@ -22,8 +22,12 @@ import {
   createClashEngine,
   disciplineMatrixRules,
   groupClashes,
+  isClusterGroupingIneffective,
+  classifyRuleCoverage,
+  ruleHadNoMatch,
   type Clash,
   type ClashMode,
+  sortClashes,
   type ClashResult,
   type ClashRule,
 } from '@ifc-lite/clash';
@@ -35,6 +39,21 @@ import { writeBCF } from '@ifc-lite/bcf';
 const JSON_CLASH_CAP = 1000;
 /** Maximum number of clash rows shown in the human summary. */
 const HUMAN_CLASH_CAP = 20;
+
+/**
+ * Order clashes worst-first before capping.
+ *
+ * Both cap sites below print a "top N" list, but the engine hands back
+ * `result.clashes` in `byKeyThenRule` grouping order — so slicing it directly
+ * showed an ARBITRARY N, not the worst N, and a run with more than the cap hid
+ * its deepest penetrations behind shallow ones. The MCP `clash_check` tool had
+ * already hit this and grown its own local sort; the viewer's panel uses
+ * `sortClashes` from `@ifc-lite/clash`. This routes all three through that one
+ * helper so "top N" means the same N rows on every surface.
+ */
+export function worstFirst(clashes: readonly Clash[]): Clash[] {
+  return sortClashes(clashes, 'distance');
+}
 
 /**
  * Mesh a model once and cache the meshes by model id so repeated clash runs
@@ -61,16 +80,24 @@ async function meshModel(store: IfcDataStore, modelId: string, filePath: string)
   const cached = meshCache.get(modelId);
   if (cached) return cached;
 
-  let bytes: Uint8Array | undefined = store.source;
-  if (!bytes || bytes.byteLength === 0) {
-    const buffer = await readFile(filePath);
-    bytes = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
-  }
+  const mesh = async (bytes: Uint8Array): Promise<MeshData[]> => {
+    const processor = await getProcessor();
+    const result = await processor.process(bytes);
+    return result.meshes;
+  };
 
-  const processor = await getProcessor();
-  const result = await processor.process(bytes);
-  meshCache.set(modelId, result.meshes);
-  return result.meshes;
+  // The wasm mesher is a genuine whole-file consumer, so the source is
+  // materialised — but scoped, so the buffer cannot outlive the mesh pass
+  // (only the meshes are cached).
+  let meshes: MeshData[];
+  if (store.source.byteLength > 0) {
+    meshes = await store.source.withMaterializedAsync(mesh);
+  } else {
+    const buffer = await readFile(filePath);
+    meshes = await mesh(new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength));
+  }
+  meshCache.set(modelId, meshes);
+  return meshes;
 }
 
 function parseMode(raw: string | undefined): ClashMode {
@@ -119,16 +146,90 @@ function buildRules(args: string[], mode: ClashMode, tolerance: number | undefin
   return [rule];
 }
 
-function formatClashRow(clash: Clash): string {
+/**
+ * One clash as a human-readable row.
+ *
+ * A penetration whose `distanceKind` is `'estimate'` was read off the element
+ * AABBs, not measured on the meshes, so it is printed as an approximation and
+ * labelled. Calling it a flat "penetration" is the overclaim this label exists
+ * to stop: for stacked layers that number is a box dimension, and it can equal
+ * an element's own thickness. Exported for direct unit testing.
+ */
+export function formatClashRow(clash: Clash): string {
   const aName = clash.a.name ? `${clash.a.tag} "${clash.a.name}"` : clash.a.tag;
   const bName = clash.b.name ? `${clash.b.tag} "${clash.b.name}"` : clash.b.tag;
+  // Absent `distanceKind` means "unknown provenance" (a clash rehydrated from
+  // a pre-label run, or a producer that has not been updated yet), never
+  // "measured" — so only an explicit 'mesh' renders unqualified.
+  const estimated = clash.distanceKind !== 'mesh';
   const distance = clash.distance < 0
-    ? `penetration ${Math.abs(clash.distance).toFixed(3)}m`
+    ? `penetration ${estimated ? '~' : ''}${Math.abs(clash.distance).toFixed(3)}m${estimated ? ' (AABB estimate)' : ''}`
     : `gap ${clash.distance.toFixed(3)}m`;
   return `  [${clash.severity}] ${aName} x ${bName} (${clash.status}, ${distance})`;
 }
 
-function printHumanSummary(result: ClashResult): void {
+/**
+ * Rule ids whose selectors matched nothing to compare (on either side) in
+ * THIS model, described by WHICH side(s) were empty — never blames "the
+ * matrix" when the run had no matrix to blame (the default `--a`/`--b` path
+ * has exactly one hand-built rule; only `--matrix` runs the discipline
+ * matrix).
+ */
+function emptyRuleDescriptions(result: ClashResult): string[] {
+  const rules = new Map(result.rulesRun.map((r) => [r.id, r]));
+  return (result.ruleCoverage ?? [])
+    .filter(ruleHadNoMatch)
+    .map((c) => {
+      const rule = rules.get(c.rule);
+      if (!rule) return c.rule;
+      const emptySides: string[] = [];
+      if (c.matchedA === 0) emptySides.push(`selector A ("${rule.a}")`);
+      if (c.matchedB === 0) emptySides.push(`selector B ("${rule.b}")`);
+      const sides = emptySides.length > 0 ? emptySides.join(' and ') : 'a selector';
+      return `"${rule.name}": ${sides} matched 0 elements`;
+    });
+}
+
+/**
+ * Case (c) from the design: distinguish "ran and found zero" from "no rule
+ * matched anything, so the check never really ran". Reported as a warning,
+ * never as an error — zero clashes is a legitimate outcome, this only says
+ * which kind of zero it is. See {@link classifyRuleCoverage}.
+ *
+ * `isMatrix` gates the matrix-specific wording: the discipline matrix
+ * (`--matrix`) runs many rules and its "no-match" case really does mean the
+ * matrix as a whole never ran. The default `--a`/`--b` path builds exactly
+ * one ad-hoc rule — when that rule's selector matches nothing on one side
+ * (e.g. `--a IfcWall --b IfcRoof` on a model with no roofs), the OTHER side
+ * still matched and no matrix was ever involved, so the message must name
+ * the empty selector instead of claiming the matrix didn't run.
+ */
+function printCoverageWarning(result: ClashResult, isMatrix: boolean): void {
+  const outcome = classifyRuleCoverage(result);
+  if (outcome === 'no-match') {
+    if (isMatrix) {
+      process.stdout.write(
+        `\n  WARNING: none of the ${result.rulesRun.length} rule(s) matched any elements in this model.\n` +
+          `  The clash matrix did NOT run — "${result.summary.total} clashes" means nothing was checked,\n` +
+          `  not that the model is clean. This matrix is shaped for MEP/HVAC/electrical/fire coordination;\n` +
+          `  it may simply not describe this model's disciplines (e.g. an infrastructure model).\n` +
+          `  Empty rules: ${emptyRuleDescriptions(result).join(', ')}\n`,
+      );
+    } else {
+      process.stdout.write(
+        `\n  WARNING: ${emptyRuleDescriptions(result).join(', ')} — no comparison ran, so\n` +
+          `  "${result.summary.total} clashes" means nothing was checked, not that the model is clean.\n`,
+      );
+    }
+  } else if (outcome === 'partial') {
+    process.stdout.write(
+      `\n  Note: ${emptyRuleDescriptions(result).length} of ${result.rulesRun.length} rule(s) never ran a ` +
+        `comparison: ${emptyRuleDescriptions(result).join(', ')}\n`,
+    );
+  }
+}
+
+function printHumanSummary(result: ClashResult, isMatrix: boolean): void {
   const { summary } = result;
   process.stdout.write(`\n  Clash Detection Results\n`);
   process.stdout.write(`  -----------------------\n`);
@@ -139,8 +240,10 @@ function printHumanSummary(result: ClashResult): void {
     process.stdout.write(`  Truncated:     ${result.truncated.reason} (${result.truncated.droppedPairs} pairs dropped)\n`);
   }
 
+  printCoverageWarning(result, isMatrix);
+
   if (summary.total > 0) {
-    const shown = result.clashes.slice(0, HUMAN_CLASH_CAP);
+    const shown = worstFirst(result.clashes).slice(0, HUMAN_CLASH_CAP);
     process.stdout.write(`\n  Top ${shown.length} of ${summary.total} clashes:\n`);
     for (const clash of shown) {
       process.stdout.write(`${formatClashRow(clash)}\n`);
@@ -168,6 +271,7 @@ export async function clashCommand(args: string[]): Promise<void> {
   }
 
   const jsonOutput = hasFlag(args, '--json');
+  const isMatrix = hasFlag(args, '--matrix');
   const mode = parseMode(getFlag(args, '--mode'));
   const tolerance = parseNumberFlag(getFlag(args, '--tolerance'), '--tolerance');
   const clearance = parseNumberFlag(getFlag(args, '--clearance'), '--clearance');
@@ -178,50 +282,102 @@ export async function clashCommand(args: string[]): Promise<void> {
 
   const { store } = await createHeadlessContext(filePath);
 
-  const modelId = basename(filePath);
-  if (!jsonOutput) process.stderr.write(`  Meshing ${modelId} ...\n`);
-  const meshes = await meshModel(store, modelId, filePath);
+  // `getProcessor()` (called from `meshModel` below) lazily creates and caches
+  // `sharedProcessor` at module scope, session-scoped for this one `clash`
+  // invocation — a fresh CLI process per run, so it was never freed on any
+  // path out of this function (#1959 P2). Wrap the whole run in try/finally
+  // so the WASM handle is freed on success, on a thrown clash/BCF error, and
+  // is a no-op (nothing to dispose) when meshing itself never ran.
+  try {
+    const modelId = basename(filePath);
+    if (!jsonOutput) process.stderr.write(`  Meshing ${modelId} ...\n`);
+    const meshes = await meshModel(store, modelId, filePath);
 
-  const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
+    const { elements, exclusions } = elementsFromStep({ store, meshes, modelId });
 
-  const rules = buildRules(args, mode, tolerance, clearance);
+    const rules = buildRules(args, mode, tolerance, clearance);
 
-  const engine = createClashEngine({ backend: 'ts' });
-  const result = await engine.run(elements, rules, {
-    exclusions,
-    tolerance,
-    onProgress: (p) => {
-      if (!jsonOutput) {
-        process.stderr.write(`\r  Clashing: ${p.phase} ${p.rule} (${p.done}/${p.total})`);
-      }
-    },
-  });
-  if (!jsonOutput) process.stderr.write('\n');
-
-  if (bcfPath) {
-    const groups = groupClashes(result, { by: bcfGroupBy });
-    const project = await createBCFFromClashResult(result, groups, {
-      author: 'ifc-lite clash',
-      projectName: 'Clash report',
-      // Headless: no snapshots (no renderer) — viewer export embeds those.
-      ...(bcfStatus ? { status: bcfStatus } : {}),
-      ...(maxTopics != null ? { maxTopics } : {}),
+    const engine = createClashEngine({ backend: 'ts' });
+    const result = await engine.run(elements, rules, {
+      exclusions,
+      tolerance,
+      onProgress: (p) => {
+        if (!jsonOutput) {
+          process.stderr.write(`\r  Clashing: ${p.phase} ${p.rule} (${p.done}/${p.total})`);
+        }
+      },
     });
-    const blob = await writeBCF(project);
-    const buffer = Buffer.from(await blob.arrayBuffer());
-    await writeFile(bcfPath, buffer);
-    process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s), grouped by ${bcfGroupBy})\n`);
-  }
+    if (!jsonOutput) process.stderr.write('\n');
 
-  if (jsonOutput) {
-    const total = result.clashes.length;
-    const clashes = result.clashes.slice(0, JSON_CLASH_CAP);
-    const truncated = total > clashes.length
-      ? { reason: `capped at ${JSON_CLASH_CAP} clashes for display`, dropped: total - clashes.length }
-      : null;
-    printJson({ summary: result.summary, truncated, clashes });
-    return;
-  }
+    if (bcfPath) {
+      const groups = groupClashes(result, { by: bcfGroupBy });
+      if (bcfGroupBy === 'cluster' && isClusterGroupingIneffective(result.clashes, groups)) {
+        // Common on MEP models: distribution-run contact points sit metres apart,
+        // outside any defensible clustering radius, so clustering consolidates
+        // nothing (every clash landed in its own group). Say so and name the
+        // other modes rather than silently reporting one group per clash.
+        process.stderr.write(
+          `  Note: cluster grouping did not consolidate any clashes (${groups.length} groups from ${result.clashes.length} clashes) — try --group rule, --group typePair, or --group element instead.\n`,
+        );
+      }
+      const project = await createBCFFromClashResult(result, groups, {
+        author: 'ifc-lite clash',
+        projectName: 'Clash report',
+        // Headless: no snapshots (no renderer) — viewer export embeds those.
+        ...(bcfStatus ? { status: bcfStatus } : {}),
+        ...(maxTopics != null ? { maxTopics } : {}),
+      });
+      const blob = await writeBCF(project);
+      const buffer = Buffer.from(await blob.arrayBuffer());
+      await writeFile(bcfPath, buffer);
+      process.stderr.write(`  BCF report written to ${bcfPath} (${groups.length} topic group(s), grouped by ${bcfGroupBy})\n`);
+    }
 
-  printHumanSummary(result);
+    if (jsonOutput) {
+      const total = result.clashes.length;
+      const clashes = worstFirst(result.clashes).slice(0, JSON_CLASH_CAP);
+      const truncated = total > clashes.length
+        ? { reason: `capped at ${JSON_CLASH_CAP} clashes for display`, dropped: total - clashes.length }
+        : null;
+      // `ruleCoverageOutcome` is the machine-readable form of the same signal
+      // printed by `printCoverageWarning` in the human summary: 'no-match'
+      // means no rule in `rulesRun` matched any elements — the matrix never
+      // ran a real comparison, so `summary.total === 0` here does NOT mean
+      // "model is clean". Never fails the command; consumers decide what to
+      // do with it.
+      printJson({
+        summary: result.summary,
+        truncated,
+        ruleCoverageOutcome: classifyRuleCoverage(result),
+        ruleCoverage: result.ruleCoverage ?? null,
+        clashes,
+      });
+      return;
+    }
+
+    printHumanSummary(result, isMatrix);
+  } finally {
+    // Reset BEFORE disposing, and never let a cleanup failure escape.
+    //
+    // Ordering: if `dispose()` throws, an assignment placed after it is
+    // skipped, leaving `sharedProcessor` pointing at a processor whose handle
+    // may be half-freed — the next `clashCommand` in the same host would then
+    // reuse it. That is the dangling-reference case the reset exists to
+    // prevent, reintroduced on the failure path. Clearing first cannot be
+    // skipped. (#2128 review)
+    //
+    // Not hypothetical: #1922 is an OOM inside a drained job aborting the
+    // WASM module at dispose time — precisely a throwing `dispose()`.
+    //
+    // Swallowed: a cleanup failure must not replace the clash/BCF error the
+    // caller was about to see. Warned, not silent, per the no-silent-catch
+    // rule.
+    const processor = sharedProcessor;
+    sharedProcessor = undefined;
+    try {
+      processor?.dispose();
+    } catch (err) {
+      console.warn('[clash] geometry processor dispose failed; continuing', err);
+    }
+  }
 }

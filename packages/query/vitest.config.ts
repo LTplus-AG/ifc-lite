@@ -12,9 +12,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@ifc-lite/data': path.resolve(__dirname, '../data/src/index.ts'),
+      '@ifc-lite/encoding': path.resolve(__dirname, '../encoding/src/index.ts'),
       '@ifc-lite/parser': path.resolve(__dirname, '../parser/src/index.ts'),
       '@ifc-lite/spatial': path.resolve(__dirname, '../spatial/src/index.ts'),
       '@ifc-lite/geometry': path.resolve(__dirname, '../geometry/src/index.ts'),
+      '@ifc-lite/ifcx': path.resolve(__dirname, '../ifcx/src/index.ts'),
+      '@ifc-lite/pointcloud': path.resolve(__dirname, '../pointcloud/src/index.ts'),
     },
   },
   test: {

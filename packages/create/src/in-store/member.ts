@@ -12,10 +12,11 @@
  */
 
 import type { StoreEditor } from '@ifc-lite/mutations';
-import { vecCross, vecNorm } from '../ifc-creator-math.js';
+import { vecCross, vecNorm, assertFinitePoint3 } from '../ifc-creator-math.js';
 import type { Point3D } from '../types.js';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
+  assertPositiveFinite,
   emitBodyRepresentation,
   emitExtrudedSolid,
   emitLocalPlacement,
@@ -59,6 +60,11 @@ export function addMemberToStore(
   anchor: SpatialAnchor,
   params: MemberInStoreParams,
 ): MemberBuildResult {
+  // A non-finite Start/End coordinate makes the derived memberLen NaN, and
+  // `NaN <= 0` is false, so the distinct-points check below never fires.
+  // Validate the source coordinates instead of trusting the derived value.
+  assertFinitePoint3({ Start: params.Start, End: params.End }, 'addMemberToStore');
+
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale).
   params = {
@@ -75,9 +81,7 @@ export function addMemberToStore(
   if (memberLen <= 0) {
     throw new Error('addMemberToStore: Start and End must be distinct points');
   }
-  if (params.Width <= 0 || params.Height <= 0) {
-    throw new Error('addMemberToStore: Width and Height must be positive');
-  }
+  assertPositiveFinite([params.Width, params.Height], 'addMemberToStore: Width and Height must be positive');
   const dir: Point3D = vecNorm([dx, dy, dz]);
   const refDir = computeRefDirection(dir);
 

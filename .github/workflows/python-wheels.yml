@@ -11,7 +11,9 @@ on:
       - "rust/python/**"
       - "rust/processing/**"
       - "rust/geometry/**"
+      - "rust/export/**"
       - "rust/core/**"
+      - "rust-toolchain.toml"
       - ".github/workflows/python-wheels.yml"
   workflow_dispatch:
 
@@ -35,20 +37,55 @@ jobs:
           - { os: macos-14, target: x86_64 }
           - { os: windows-latest, target: x64 }
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v5
         with:
           python-version: "3.9"
+      # Install the pinned toolchain the way rustup honours rust-toolchain.toml's
+      # `components` list. maturin-action installs it with `rustup update
+      # <name>`, i.e. BY NAME, and a named install does not read the file's
+      # components -- so rust-src is absent and build-std fails with
+      # "lib/rustlib/src/rust/library/Cargo.lock does not exist". A file-based
+      # selection (`rustup show` inside the repo) installs the components.
+      # `before-script-linux` below only covers the manylinux container, and
+      # build-std runs on every platform.
+      - name: Setup Rust (pinned by rust-toolchain.toml, with components)
+        run: rustup show
+
       - name: Build wheel
         uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1
+        env:
+          # `build-std` used to live in the repo-root `.cargo/config.toml`'s
+          # `[unstable]` table, which applied to every cargo invocation in the
+          # workspace — including plain host builds with no `--target`, where
+          # it collided with `[profile.release] panic = "abort"` in the root
+          # workspace (duplicate `core` lang item; see
+          # scripts/build-wasm.sh for the wasm side of this fix). It's now
+          # scoped per-invocation via this env var instead, which
+          # maturin-action forwards into the manylinux container (it allowlists
+          # the `CARGO_` prefix — see its `ALLOWED_ENV_PREFIXES`).
+          CARGO_UNSTABLE_BUILD_STD: std,panic_abort
         with:
           working-directory: rust/python
           target: ${{ matrix.target }}
           manylinux: auto
-          # rust-toolchain.toml pins nightly + a global [unstable] build-std, so
-          # the manylinux container's toolchain needs rust-src to rebuild std.
+          # rust-toolchain.toml pins nightly; the manylinux container's
+          # toolchain needs rust-src installed to rebuild std for build-std
+          # (see the CARGO_UNSTABLE_BUILD_STD env var on this step).
           before-script-linux: rustup component add rust-src
           args: --release --out dist
+      # Exercise the wheel that was just built, on the one leg whose artifact is
+      # natively installable on its own runner (the aarch64/cross legs produce
+      # wheels this host cannot import). One leg is enough: the binding layer
+      # under test is platform-independent, and this reuses the existing build
+      # rather than adding a job that recompiles the workspace.
+      - name: Test wheel
+        if: matrix.os == 'ubuntu-latest' && matrix.target == 'x86_64'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install --force-reinstall rust/python/dist/*.whl
+          python -m pytest rust/python/tests -q
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4
         with:
           name: wheels-${{ matrix.os }}-${{ matrix.target }}
@@ -68,7 +105,7 @@ jobs:
           pattern: wheels-*
           merge-multiple: true
           path: dist
-      - uses: pypa/gh-action-pypi-publish@ba38be9e461d3875417946c167d0b5f3d385a247 # release/v1
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
         with:
           packages-dir: dist
           # First publish needs a PyPI trusted-publisher config for `ifclite-geom`

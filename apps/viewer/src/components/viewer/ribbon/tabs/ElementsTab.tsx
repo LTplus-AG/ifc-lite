@@ -89,8 +89,8 @@ export function ElementsTab() {
         />
         <RibbonLargeButton
           icon={DisplayAll}
-          label="Display all"
-          tooltip="Display all (reset filters)"
+          label="Show all"
+          tooltip="Show all (reset filters)"
           shortcut="A"
           onClick={resetVisibilityForHomeFromStore}
         />
@@ -110,7 +110,7 @@ export function ElementsTab() {
           icon={IsolateSelected}
           label="Isolate"
           tooltip="Isolate selection (set basket)"
-          shortcut="I / ="
+          shortcut="I"
           disabled={!hasSelection}
           onClick={() => executeBasketIsolate()}
         />
@@ -125,8 +125,8 @@ export function ElementsTab() {
         <RibbonSmallStack>
           <RibbonSmallButton
             icon={FocusSelected}
-            label="Focus"
-            tooltip="Focus selection"
+            label="Frame"
+            tooltip="Frame selection"
             shortcut="F"
             disabled={!hasSelection}
             onClick={() => cameraCallbacks.frameSelection?.()}

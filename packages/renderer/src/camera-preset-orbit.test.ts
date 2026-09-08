@@ -5,9 +5,9 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { Camera } from './camera.ts';
-import { CAMERA_CONSTANTS as CC } from './constants.ts';
-import type { Vec3 } from './types.ts';
+import { Camera } from './camera.js';
+import { CAMERA_CONSTANTS as CC } from './constants.js';
+import type { Vec3 } from './types.js';
 
 type PresetView = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right';
 

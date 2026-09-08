@@ -12,14 +12,82 @@
 //! This weld collapses vertices that share an identical f32 position AND a
 //! coinciding (quantized) normal into one, then remaps indices.
 //!
-//! It runs once, at the single per-element mesh funnel `build_mesh_data`
-//! (`ifc_lite_processing::element`), so every element — voided or not, faceted
-//! brep or swept solid — arrives welded in its `MeshData`. Because it keys on
-//! the quantized normal, coincident positions carrying DISTINCT normals (a
-//! crease / cube corner) stay split, so flat shading is preserved (a cube keeps
-//! its 24 vertices). World triangles and the world AABB are preserved exactly
-//! (welded vertices sit at identical positions; triangle count and winding are
-//! unchanged).
+//! It runs AT LEAST once per element, in the OBJECT frame, at the last moment
+//! before the placement is baked in: [`weld_mesh`] from `apply_placement` and
+//! [`weld_sub_mesh`] from `apply_submesh_placement`. Every element — voided or
+//! not, faceted brep or swept solid, single-item or per-style sub-meshes —
+//! therefore arrives welded in its `MeshData`. Some are welded a SECOND time,
+//! post-bake, by [`weld`] called from `build_mesh_data`; its doc says which and
+//! why. Because it keys on the quantized
+//! normal, coincident positions carrying DISTINCT normals (a crease / cube
+//! corner) stay split, so flat shading is preserved (a cube keeps its 24
+//! vertices). Triangles and the AABB are preserved exactly (welded vertices sit
+//! at identical positions; triangle count and winding are unchanged).
+//!
+//! ## Why the object frame, and not after the bake (#4103)
+//!
+//! The position part of the key is the raw f32 BIT PATTERN, so what the weld
+//! merges depends on the magnitude of the coordinates it is handed. An f32 ULP
+//! is ~6e-8 m at 0.5 m and ~2e-6 m at 30 m, so welding baked world coordinates
+//! silently applies an epsilon that grows with the element's distance from the
+//! origin, and welding the same source geometry at two different placements
+//! merges two different sets of vertices.
+//!
+//! That broke a contract the pipeline depends on. Every occurrence of one
+//! `IfcRepresentationMap` is a clone of ONE cached source mesh
+//! (`router::mapped_item`), and every direct-solid `rep_identity` is a hash of
+//! the mesh BEFORE placement (`router::processing::direct_rep_identity`), so
+//! occurrences of one representation are meant to be bit-identical. A post-bake
+//! weld rewrote each of them differently, and `instancing::collate_refs` refuses
+//! a group whose members disagree on vertex count, so nothing ever collated:
+//! ten armchairs sharing one `IfcRepresentationMap` shipped as ten full meshes
+//! with vertex counts spread over 0.9%, and a cached Parquet artifact came out
+//! three times the size of its own IFC.
+//!
+//! In the object frame the key no longer depends on the element's PLACEMENT, so
+//! occurrences that differ only by where they were put weld identically.
+//! Placement is rigid, so nothing that merges here would have failed to merge
+//! after the bake for a geometric reason; only the accidental collisions go
+//! away, and those were never intended.
+//!
+//! ## What this does NOT fix, measured
+//!
+//! Three things survive, all narrower than the bug above but none zero.
+//!
+//! A per-occurrence `IfcMappedItem` MappingTarget is baked in by
+//! `router::mapped_item` BEFORE the mesh reaches `apply_placement`, so the weld
+//! still sees target-transformed coordinates. Occurrences of one
+//! `IfcRepresentationMap` whose targets differ by enough to move the f32
+//! exponent still weld to different vertex counts, and `collate_refs` still
+//! refuses that group. Measured on the `issue_4103_shared_map_buffer_identity`
+//! fixture with the offsets moved from the placement into the target: 8/8/8
+//! vertices when the placement varies (fixed), 8/4/4 when the target varies
+//! (unfixed). Closing that means welding the cached source once, before the
+//! target bake, and suppressing this weld for a mesh already welded — a
+//! different change.
+//!
+//! The invariant this weld establishes — no two vertices sharing a (position
+//! bits, quantized normal) key — holds in the frame the weld RAN in, not
+//! necessarily in the world buffer that ships. A rigid placement can map two
+//! vertices that are distinct in the object frame onto one f32 world position;
+//! main merged those post-bake and this deliberately does not, because doing so
+//! is exactly the placement-dependence being removed. Measured across the six
+//! ara3d models: 104 of 15,211 shipped meshes carry at least one such duplicate
+//! key, 494 of 1,093,616 vertices (0.68% and 0.045%); AC20-FZK-Haus has none.
+//! A post-bake weld to remove them would reintroduce #4103.
+//!
+//! Welding is not the only stage that can make two occurrences disagree. Anything
+//! that edits INDICES after the bake can too, and two do: `degenerate::clean`
+//! compares a triangle height computed from f32 world positions against an
+//! ABSOLUTE threshold, and `mesh_orient`'s adjacency grid is 10 um, which is
+//! finer than the f32 world grid at 128 m and beyond (one ULP there is 1.5e-5 m).
+//! Either can drop or reorient a different triangle in one occurrence than in
+//! another, and `instancing::group` rejects a group whose members' index buffers
+//! differ, which is the #4103 symptom reached by another route. UNMEASURED: this
+//! was reasoned from the thresholds, not observed, and the fixture here uses
+//! half-unit squares that cannot exercise it. Recorded so the next person
+//! investigating a stubborn collation rejection does not assume the weld is the
+//! only candidate.
 //!
 //! ## Per-vertex attributes
 //!
@@ -150,15 +218,11 @@ pub fn weld_indexed(
             Some(u) => [u[v * 2], u[v * 2 + 1]],
             None => [0.0, 0.0],
         };
-        let id = match map.get(&vkey(p, n, uv)) {
-            Some(&id) => id,
-            None => {
-                let id = first_vert.len() as u32;
-                first_vert.push(v as u32);
-                map.insert(vkey(p, n, uv), id);
-                id
-            }
-        };
+        let id = *map.entry(vkey(p, n, uv)).or_insert_with(|| {
+            let id = first_vert.len() as u32;
+            first_vert.push(v as u32);
+            id
+        });
         remap[v] = id;
     }
 
@@ -189,210 +253,78 @@ pub fn weld_indexed(
     out
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn merges_coplanar_shared_vertices() {
-        // Two triangles sharing an edge, all four vertices coplanar with the
-        // same +Z normal, but authored per-face (6 vertices, the shared edge
-        // duplicated). The weld collapses to the 4 unique corners.
-        let positions = vec![
-            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, // tri A
-            1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // tri B (shares 2 verts)
-        ];
-        let normals = [0.0f32, 0.0, 1.0].repeat(6); // 6 verts, all +Z
-        let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p, n, uv, i) = weld_indexed(&positions, &normals, None, &indices).expect("merged");
-        assert!(uv.is_none(), "no uvs in, no uvs out");
-        assert_eq!(p.len() / 3, 4, "6 authored verts -> 4 unique corners");
-        assert_eq!(n.len(), p.len());
-        assert_eq!(i.len(), 6, "triangle count unchanged");
-        // Every remapped index is in range and reproduces the same world points.
-        for (orig, &ni) in indices.iter().zip(i.iter()) {
-            let o = *orig as usize * 3;
-            let w = ni as usize * 3;
-            assert_eq!(&positions[o..o + 3], &p[w..w + 3], "world position preserved");
+/// Weld a mesh's vertices in place, carrying `uvs` through the same remap and
+/// returning them still 1:1 with the welded positions.
+///
+/// The one body behind every entry point here. It welds in whatever frame the
+/// CALLER hands it, which is the decision the caller owns: see the module doc
+/// for why the object frame is the right one for shared geometry, and what a
+/// world-frame weld does to it.
+///
+/// Computes the normals first when a processor left them absent or short. The
+/// key carries the quantized normal so a crease stays split, and `weld_indexed`
+/// REFUSES a mesh whose normals do not match its positions 1:1 while signalling
+/// that refusal with the same `None` it returns for "nothing collided" — so
+/// without this, a silently skipped weld is indistinguishable from an
+/// already-welded one, on every model. `calculate_normals` accumulates from the
+/// triangle winding, so it needs only positions and indices and is happy in any
+/// frame; `transform_mesh_world` then rotates the result into world space with
+/// the positions. `build_mesh_data`'s call already guarantees 1:1 normals; the
+/// two placement appliers do NOT, which is where this earns its keep.
+///
+/// `None` from `weld_indexed` leaves the mesh and the UVs untouched, with no
+/// reallocation.
+///
+/// ## What legitimately calls this AFTER the bake
+///
+/// `element::build_mesh_data`, for geometry with no cross-occurrence identity to
+/// protect (`instance_meta` absent). Two populations arrive there, and they are
+/// not the same:
+///
+/// - Geometry BORN after the placement bake, which no earlier weld could have
+///   reached: CSG void-cut output, layer slices, the #858 palette-split parts.
+///   This is the weld that collapses the kernel's per-face output for them.
+/// - Geometry already welded in the object frame that merely lost its
+///   `instance_meta` on the way there — a void host (welded in `apply_placement`,
+///   then cut, then nulled at `voids::process_element_with_voids`), a multi-item
+///   element (`processing.rs` keeps the metadata only for a single instanceable
+///   item), a textured face-set sub-mesh. For these it is a SECOND weld: cheap
+///   when nothing new collides, but it CAN merge world-frame coincidences the
+///   object frame kept apart, so their shipped buffers are placement-dependent in
+///   the way the module doc describes. Accepted because none of them is shared.
+///
+/// Shared geometry must not reach that call site. `build_mesh_data` keeps it out
+/// on `instance_meta`; #4122 is about recording the answer instead of inferring
+/// it.
+pub fn weld(mesh: &mut crate::Mesh, uvs: Option<Vec<f32>>) -> Option<Vec<f32>> {
+    if mesh.normals.len() != mesh.positions.len() {
+        crate::csg::calculate_normals(mesh);
+    }
+    match weld_indexed(&mesh.positions, &mesh.normals, uvs.as_deref(), &mesh.indices) {
+        Some((positions, normals, welded_uvs, indices)) => {
+            mesh.positions = positions;
+            mesh.normals = normals;
+            mesh.indices = indices;
+            welded_uvs
         }
-    }
-
-    #[test]
-    fn faceted_plate_welds_to_grid() {
-        // A flat GxG plate authored per-cell — each cell carries its OWN four
-        // coplanar corners (the faceted-brep duplication pattern). The weld
-        // collapses the 4*G*G raw vertices to the (G+1)^2 unique grid points,
-        // leaving triangles unchanged.
-        const G: usize = 4;
-        let mut positions: Vec<f32> = Vec::new();
-        let mut normals: Vec<f32> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
-        for i in 0..G {
-            for j in 0..G {
-                let base = (positions.len() / 3) as u32;
-                let (x, y) = (i as f32, j as f32);
-                for (dx, dy) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)] {
-                    positions.extend_from_slice(&[x + dx, y + dy, 0.0]);
-                    normals.extend_from_slice(&[0.0, 0.0, 1.0]);
-                }
-                indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
-            }
-        }
-        let raw_verts = positions.len() / 3;
-        let (p, _n, _uv, idx) = weld_indexed(&positions, &normals, None, &indices).expect("merged");
-        assert_eq!(raw_verts, 4 * G * G);
-        assert_eq!(p.len() / 3, (G + 1) * (G + 1), "welded to unique grid points");
-        assert_eq!(idx.len(), indices.len(), "triangle count unchanged");
-    }
-
-    #[test]
-    fn out_of_range_index_is_a_no_op_not_a_panic() {
-        // A malformed mesh (index >= vertex count) must not panic: the weld
-        // returns None (caller keeps the unvalidated originals), exactly as the
-        // pre-weld emit path handled it - no OOB access.
-        let positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
-        let normals = [0.0f32, 0.0, 1.0].repeat(3);
-        let indices = vec![0, 1, 9]; // 9 is out of range (only 3 verts)
-        assert!(
-            weld_indexed(&positions, &normals, None, &indices).is_none(),
-            "malformed input is a no-op (None), not a panic"
-        );
-    }
-
-    #[test]
-    fn keeps_creases_split() {
-        // Same corner position, two DIFFERENT normals (a 90-degree crease): the
-        // two vertices must NOT merge (or flat shading would break), so nothing
-        // collides and the weld returns None (the 2-vertex input is kept as-is).
-        let positions = vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
-        let normals = vec![0.0, 0.0, 1.0, 1.0, 0.0, 0.0];
-        let indices = vec![0, 1];
-        assert!(
-            weld_indexed(&positions, &normals, None, &indices).is_none(),
-            "distinct normals: nothing merges, weld is a no-op"
-        );
-    }
-
-    #[test]
-    fn flat_shaded_cube_keeps_24_verts() {
-        // A unit cube authored as 6 quads, each with its OWN 4 corners and a
-        // per-face outward normal (flat shading). Every cube corner is shared by
-        // 3 faces carrying 3 DISTINCT normals, so no vertex merges: the welded
-        // cube keeps all 24 vertices (flat shading preserved).
-        let faces: [([f32; 3], [[f32; 3]; 4]); 6] = [
-            // +Z / -Z
-            ([0.0, 0.0, 1.0], [[0.0, 0.0, 1.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]]),
-            ([0.0, 0.0, -1.0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [0.0, 1.0, 0.0]]),
-            // +X / -X
-            ([1.0, 0.0, 0.0], [[1.0, 0.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], [1.0, 0.0, 1.0]]),
-            ([-1.0, 0.0, 0.0], [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 1.0, 1.0], [0.0, 0.0, 1.0]]),
-            // +Y / -Y
-            ([0.0, 1.0, 0.0], [[0.0, 1.0, 0.0], [1.0, 1.0, 0.0], [1.0, 1.0, 1.0], [0.0, 1.0, 1.0]]),
-            ([0.0, -1.0, 0.0], [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 0.0, 1.0], [0.0, 0.0, 1.0]]),
-        ];
-        let mut positions: Vec<f32> = Vec::new();
-        let mut normals: Vec<f32> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
-        for (nrm, corners) in faces {
-            let base = (positions.len() / 3) as u32;
-            for c in corners {
-                positions.extend_from_slice(&c);
-                normals.extend_from_slice(&nrm);
-            }
-            indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
-        }
-        assert_eq!(positions.len() / 3, 24, "6 faces * 4 corners = 24 raw verts");
-        assert!(
-            weld_indexed(&positions, &normals, None, &indices).is_none(),
-            "distinct per-face normals: nothing merges, all 24 verts kept (flat shading)"
-        );
-    }
-
-    #[test]
-    fn uv_seam_stays_split_and_uvs_stay_aligned() {
-        // Two triangles sharing an edge, all 6 verts coplanar with the SAME +Z
-        // normal — but the shared edge is a texture SEAM: its two duplicated
-        // corners carry DIFFERENT UVs on each triangle (u=1 vs u=0). Position +
-        // normal alone would merge them (as `merges_coplanar_shared_vertices`
-        // shows: 6 -> 4); the UV key must keep the two seam corners split, so
-        // the UV key keeps them split so nothing merges (weld is a no-op) and
-        // the original UVs stay 1:1 with the 6 positions. Without the UV in the
-        // key these two corners would collapse (as `merges_coplanar_shared_vertices`
-        // shows: 6 -> 4) and tear the texture.
-        let positions = vec![
-            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, // tri A
-            1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // tri B (shares the (1,0)&(1,1) corners)
-        ];
-        let normals = [0.0f32, 0.0, 1.0].repeat(6);
-        // Seam: tri A's shared corners have u=1, tri B's identical-position
-        // corners have u=0 — a distinct UV on the same position+normal.
-        let uvs = vec![
-            0.0, 0.0, 1.0, 0.0, 1.0, 1.0, // tri A uvs (u=1 at the shared corners)
-            0.0, 0.0, 0.0, 1.0, 0.0, 1.0, // tri B uvs (u=0 at the identical-position corners)
-        ];
-        let indices = vec![0, 1, 2, 3, 4, 5];
-        assert!(
-            weld_indexed(&positions, &normals, Some(&uvs), &indices).is_none(),
-            "the UV seam keeps all 6 verts split (nothing merges, UVs stay 1:1)"
-        );
-    }
-
-    #[test]
-    fn coplanar_same_uv_still_welds_and_carries_uvs() {
-        // The seam counterpart: two coplanar tris sharing an edge whose shared
-        // corners carry the SAME UV weld to 4 verts (like the untextured case),
-        // and the surviving UVs stay 1:1 with positions.
-        let positions = vec![
-            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, // tri A
-            1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, // tri B (shares 2 verts)
-        ];
-        let normals = [0.0f32, 0.0, 1.0].repeat(6);
-        // UV == position.xy, so shared corners share a UV and DO merge.
-        let uvs = vec![
-            0.0, 0.0, 1.0, 0.0, 0.0, 1.0, //
-            1.0, 0.0, 1.0, 1.0, 0.0, 1.0, //
-        ];
-        let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p, _n, uv, _i) =
-            weld_indexed(&positions, &normals, Some(&uvs), &indices).expect("merged");
-        let uv = uv.expect("uvs carried through");
-        assert_eq!(p.len() / 3, 4, "same-uv shared corners still weld to 4");
-        assert_eq!(uv.len(), (p.len() / 3) * 2, "uvs stay 1:1 with welded positions");
-    }
-
-    #[test]
-    fn weld_is_idempotent() {
-        // The first weld merges the shared edge (6 -> 4); welding the RESULT is
-        // a no-op (returns None), which is what makes removing the redundant
-        // per-export weld safe.
-        let positions = vec![
-            0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, //
-            1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, //
-        ];
-        let normals = [0.0f32, 0.0, 1.0].repeat(6);
-        let indices = vec![0, 1, 2, 3, 4, 5];
-        let (p1, n1, _uv1, i1) =
-            weld_indexed(&positions, &normals, None, &indices).expect("first weld merges");
-        assert_eq!(p1.len() / 3, 4);
-        assert!(
-            weld_indexed(&p1, &n1, None, &i1).is_none(),
-            "second weld of an already-welded mesh is a no-op"
-        );
-    }
-
-    #[test]
-    fn deterministic_and_first_seen_order() {
-        let positions = vec![9.0, 9.0, 9.0, 0.0, 0.0, 0.0, 9.0, 9.0, 9.0];
-        let normals = vec![0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0];
-        let indices = vec![0, 1, 2];
-        let (p1, n1, _uv1, i1) =
-            weld_indexed(&positions, &normals, None, &indices).expect("merged");
-        let (p2, n2, _uv2, i2) =
-            weld_indexed(&positions, &normals, None, &indices).expect("merged");
-        assert_eq!((&p1, &n1, &i1), (&p2, &n2, &i2), "stable across runs");
-        assert_eq!(p1.len() / 3, 2, "the repeated vertex 0/2 merges");
-        // First-seen: vertex 0's position takes new id 0, vertex 1 takes id 1.
-        assert_eq!(&p1[0..3], &[9.0, 9.0, 9.0]);
-        assert_eq!(i1, vec![0, 1, 0]);
+        None => uvs,
     }
 }
+
+/// Weld a `Mesh`'s source vertices in place, from `apply_placement`, where the
+/// vertices are still in the object frame. See the module doc for why that is
+/// the frame that matters.
+pub(crate) fn weld_mesh(mesh: &mut crate::Mesh) {
+    weld(mesh, None);
+}
+
+/// [`weld_mesh`] for a `SubMesh`, carrying its UVs through the same remap so they
+/// stay 1:1 with the welded positions. The quantized UV is part of the key, so a
+/// texture seam's coincident corners stay split (#961).
+pub(crate) fn weld_sub_mesh(sub: &mut crate::SubMesh) {
+    sub.uvs = weld(&mut sub.mesh, sub.uvs.take());
+}
+
+#[cfg(test)]
+#[path = "mesh_weld_tests.rs"]
+mod tests;

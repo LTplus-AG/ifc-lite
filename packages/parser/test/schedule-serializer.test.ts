@@ -189,6 +189,75 @@ describe('serializeScheduleToStep', () => {
     expect(result.stats.lagTimes).toBe(1);
   });
 
+  it('emits a signed IfcLagTime for a negative timeLagSeconds (a lead) when timeLagDuration is missing', () => {
+    // Maintainer ruling on PR #1963 (reversing an earlier drop-and-warn
+    // implementation): a dropped lead is silently lossy in our own
+    // ifc-lite -> IFC -> ifc-lite round trip, which is the worse failure.
+    // Emit the ISO 8601-2 signed form instead and accept that some
+    // third-party `^P...` IfcDuration parsers reject it — see
+    // .changeset/lag-time-lead-magnitude.md.
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-lead-no-dur',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'START_START',
+      timeLagSeconds: -2 * 86_400, // 2-day lead
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
+
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('-P2D')");
+    expect(result.stats.lagTimes).toBe(1);
+
+    const seq = result.lines.find(l => l.includes('=IFCRELSEQUENCE('));
+    expect(seq).toBeDefined();
+    expect(result.stats.sequences).toBe(1);
+  });
+
+  it('still exports IfcLagTime normally for a genuine positive lag (no timeLagDuration)', () => {
+    // Regression guard the other way: a positive lag reconstructed from
+    // seconds alone must keep exporting unsigned, exactly as before.
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-lag-no-dur',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'FINISH_START',
+      timeLagSeconds: 2 * 86_400, // genuine 2-day lag
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('P2D')");
+    expect(result.stats.lagTimes).toBe(1);
+  });
+
+  it('emits IFCLAGTIME for an explicit timeLagSeconds: 0 (item 5, #1963 second round)', () => {
+    // schedule-serializer.ts:229 used `seq.timeLagSeconds ? ... : undefined`,
+    // truthiness, so an explicit 0 was treated the same as "absent" and
+    // dropped the IFCLAGTIME — while an explicit timeLagDuration: 'PT0S'
+    // *is* emitted via the `??` a few lines up. Two spellings of the same
+    // zero lag should not behave differently.
+    const data = makeExtraction();
+    data.sequences = [{
+      globalId: 'seq-zero-seconds',
+      relatingTaskGlobalId: 'task-a',
+      relatedTaskGlobalId: 'task-b',
+      sequenceType: 'FINISH_START',
+      timeLagSeconds: 0,
+      // timeLagDuration intentionally omitted
+    }];
+    const result = serializeScheduleToStep(data, { nextId: 1 });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('PT0S')");
+    expect(result.stats.lagTimes).toBe(1);
+  });
+
   it('creationDate falls back deterministically to startTime / finishTime (not Date.now())', () => {
     const data = makeExtraction();
     data.workSchedules[0].creationDate = undefined;

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, type IfcDataStore, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
+import { CompactEntityIndex, parseIfcx, createSyntheticDataStore, attachDataStoreAccessors, contiguousSourceBytes, type IfcDataStore, type IfcSourceBytes, type IfcStoreData, type PointCloudExtraction } from '@ifc-lite/parser';
 import { type GeometryResult, type MeshData, type PointCloudAsset } from '@ifc-lite/geometry';
 import { loadGLBToMeshData } from '@ifc-lite/cache';
 import type { SchemaVersion } from '../../store/types.js';
@@ -67,11 +67,14 @@ export function createMinimalGlbDataStore(buffer: ArrayBuffer, meshCount: number
   });
 }
 
-export function getMaxExpressId(dataStore: IfcDataStore, meshes: MeshData[]): number {
+export function getMaxExpressId(dataStore: IfcDataStore | null, meshes: MeshData[]): number {
   const maxExpressIdFromMeshes = meshes.reduce((max, mesh) => Math.max(max, mesh.expressId), 0);
   let maxExpressIdFromEntities = 0;
-  if (dataStore.entityIndex?.byId) {
-    for (const key of dataStore.entityIndex.byId.keys()) {
+  const entityIndex = dataStore?.entityIndex?.byId;
+  if (entityIndex instanceof CompactEntityIndex) {
+    maxExpressIdFromEntities = entityIndex.maxExpressId;
+  } else if (entityIndex) {
+    for (const key of entityIndex.keys()) {
       if (key > maxExpressIdFromEntities) {
         maxExpressIdFromEntities = key;
       }
@@ -108,12 +111,20 @@ type IfcxStoreInput = Pick<
  * `type`, and name/GlobalId come from the entity table via the store's other accessors.)
  */
 export function buildIfcxDataStore(ifcxResult: IfcxStoreInput, buffer: ArrayBuffer): IfcDataStore {
+  // Annotated deliberately. The object literal below ends in `as unknown as
+  // IfcStoreData` (the IFCX tables do not have the STEP shape), and that cast
+  // silences every field inside it -- including this one. When `source` became
+  // an accessor (#2183) this producer kept handing over a bare Uint8Array and
+  // the whole-monorepo typecheck stayed green, so every IFCX model reached
+  // consumers calling `.materialize()` on a plain array. The annotation puts a
+  // compiler gate back on the one field the cast must not be allowed to cover.
+  const source: IfcSourceBytes = contiguousSourceBytes(new Uint8Array(buffer));
   const dataStore = attachDataStoreAccessors({
     fileSize: ifcxResult.fileSize,
     schemaVersion: 'IFC5' as const,
     entityCount: ifcxResult.entityCount,
     parseTime: ifcxResult.parseTime,
-    source: new Uint8Array(buffer),
+    source,
     entityIndex: { byId: new Map(), byType: new Map() },
     strings: ifcxResult.strings,
     entities: ifcxResult.entities,

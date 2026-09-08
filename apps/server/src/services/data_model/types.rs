@@ -126,6 +126,9 @@ pub struct Quantity {
 pub struct Relationship {
     /// Relationship type (e.g., "IfcRelDefinesByProperties").
     pub rel_type: String,
+    /// Express id of the `IfcRel*` entity this row came from. `0` for the
+    /// synthetic `TYPEHASPROPERTYSETS` edges, which no IFC entity declares.
+    pub rel_id: u32,
     /// Relating entity ID.
     pub relating_id: u32,
     /// Related entity ID (one Relationship per related entity).

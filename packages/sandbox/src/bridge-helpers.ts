@@ -9,8 +9,22 @@
 import type { EntityRef, EntityData } from '@ifc-lite/sdk';
 
 /**
- * Add PascalCase IFC aliases to entity data for script flexibility.
- * Scripts can use either e.name or e.Name, e.type or e.Type, etc.
+ * Expose entity data under both spellings, symmetrically: `e.Name` and
+ * `e.name` are always present and always carry the same value.
+ *
+ * **PascalCase is the canonical spelling** — it is the EXPRESS attribute name
+ * for `GlobalId`, `Name`, `Description` and `ObjectType`, it is what the
+ * built-in templates and the assistant's system prompt write, and it is what
+ * new scripts should use. (`ref` and `type`/`Type` have no EXPRESS counterpart
+ * at all: `Type` is the entity's class name, not an attribute. The
+ * `IfcTypeObject` is reached with `bim.query.typeProperties`.)
+ *
+ * The camelCase half is kept, not deprecated (#2422). Sandbox scripts are
+ * user-authored and have no version channel, and the script editor is
+ * CodeMirror with syntax highlighting only — no TypeScript service — so a
+ * `@deprecated` tag would reach nobody while a removal would break saved
+ * scripts silently at runtime. Symmetry is pinned by `bridge-helpers.test.ts`;
+ * dropping a spelling here also makes `bim-globals.d.ts` wrong.
  */
 export function withAliases(entity: EntityData): Record<string, unknown> {
   return {
@@ -24,6 +38,17 @@ export function withAliases(entity: EntityData): Record<string, unknown> {
 }
 
 /**
+ * An express id is a STEP entity's 1-based instance number: always a finite
+ * positive integer. `typeof x === 'number'` alone is not a shape check — it
+ * is also true of NaN, +/-Infinity, negative numbers and fractions, none of
+ * which name a real entity. bridge-store.ts's `requireStoreyId` already
+ * holds storey ids to `Number.isInteger(id) && id > 0`; this mirrors that.
+ */
+function isValidExpressId(id: unknown): id is number {
+  return typeof id === 'number' && Number.isInteger(id) && id > 0;
+}
+
+/**
  * Extract an EntityRef from a dumped entity object.
  * Accepts both { ref: { modelId, expressId } } and { modelId, expressId }.
  */
@@ -32,11 +57,11 @@ export function toRef(raw: unknown): EntityRef | null {
   if (!obj) return null;
   if (obj.ref && typeof obj.ref === 'object') {
     const ref = obj.ref as Record<string, unknown>;
-    if (typeof ref.modelId === 'string' && typeof ref.expressId === 'number') {
+    if (typeof ref.modelId === 'string' && isValidExpressId(ref.expressId)) {
       return ref as unknown as EntityRef;
     }
   }
-  if (typeof obj.modelId === 'string' && typeof obj.expressId === 'number') {
+  if (typeof obj.modelId === 'string' && isValidExpressId(obj.expressId)) {
     return obj as unknown as EntityRef;
   }
   return null;

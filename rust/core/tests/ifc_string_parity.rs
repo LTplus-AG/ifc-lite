@@ -16,6 +16,33 @@ fn parsed_string_attribute_is_decoded() {
     }
 }
 
+/// End-to-end half of the shared contract (#2323): `decode_ifc_string` never
+/// touches quotes, so `''` is only collapsed if the caller un-doubles FIRST.
+/// These vectors pin the composed behaviour, which is what a CSV/JSON/Parquet
+/// consumer actually sees — the two decoders agreeing is not enough on its own.
+#[test]
+fn parsed_string_attribute_matches_shared_literal_vectors() {
+    let raw = include_str!("fixtures/ifc_string_vectors.json");
+    let doc: serde_json::Value = serde_json::from_str(raw).expect("fixture is valid JSON");
+    let cases = doc["literal_cases"].as_array().expect("literal_cases is an array");
+    assert!(!cases.is_empty(), "fixture has at least one literal case");
+
+    for case in cases {
+        let name = case["name"].as_str().unwrap_or("<unnamed>");
+        let inner = case["raw"].as_str().expect("raw is a string");
+        let expected = case["value"].as_str().expect("value is a string");
+        let line = format!("#1=IFCWALL('{inner}',$,$);");
+        let (_id, _ty, tokens) = parse_entity(line.as_bytes())
+            .unwrap_or_else(|_| panic!("case `{name}`: {line} parses"));
+        match AttributeValue::from_token(&tokens[0]) {
+            AttributeValue::String(got) => {
+                assert_eq!(got, expected, "case `{name}`: literal {inner:?}");
+            }
+            other => panic!("case `{name}`: expected String, got {other:?}"),
+        }
+    }
+}
+
 #[test]
 fn rust_decoder_matches_shared_vectors() {
     let raw = include_str!("fixtures/ifc_string_vectors.json");

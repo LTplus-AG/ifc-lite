@@ -29,7 +29,11 @@ thread_local! {
     /// special-cased `IfcMappedItem` before it could ever be reached; see the
     /// D5 dead-code sweep), so nothing pushes into this today. Kept + still
     /// drained by `take_csg_failures` in case a future non-router boolean
-    /// context needs the same escape hatch.
+    /// context needs the same escape hatch. Think twice before adding one: a
+    /// thread-local is not scoped to a router, so records a router never
+    /// drains go to whichever router drains next on that thread. A transient
+    /// processor with a router-held PARENT has a better route out — see
+    /// `CsgSolidProcessor::take_failures` (#3821).
     static PENDING_MAPPED_BOOL_FAILURES: RefCell<Vec<BoolFailure>> =
         const { RefCell::new(Vec::new()) };
 }
@@ -119,6 +123,58 @@ pub enum BoolFailureReason {
     /// viewers do in practice) and records this so the loss surfaces in
     /// diagnostics rather than as a silently missing element.
     DifferenceEmptiedHost,
+    /// A boolean operand's `IfcRepresentationItem` type has no meshing branch
+    /// in `BooleanClippingProcessor::process_operand_with_depth`, so the operand
+    /// resolved to an EMPTY mesh. Carries the operand's IFC type name.
+    ///
+    /// As a FIRST operand this is a real element-geometry loss: the base solid
+    /// is empty, the whole boolean result is empty, and the element renders
+    /// nothing from that item. As a SECOND operand it means "unsupported
+    /// cutter" — the host renders un-cut, and the pre-existing `EmptyOperand`
+    /// record for the same step is also emitted (one record for the cause, one
+    /// for the consequence).
+    UnsupportedOperand(String),
+    /// #3440 step 2: the kernel result passed `validate_mesh` (finite,
+    /// in-bounds) but failed the directed-edge closure audit
+    /// (`topology_gate_reject` — same predicate `KernelError`'s step-1
+    /// informational record already checks) and was REJECTED rather than
+    /// merely flagged. Only ever constructed when this crate is built with
+    /// the `csg_topology_gate` feature, which is off by default and enabled
+    /// by nothing downstream — so this variant exists in every build (a
+    /// stable thing for consumers to match on, per the crate's convention for
+    /// its other rarely-emitted variants above) but is only ever actually
+    /// recorded in a `--features csg_topology_gate` build.
+    OpenTopologyRejected,
+    /// #3440 step 3: the kernel result passed `validate_mesh` AND the signed
+    /// closure audit, but carries an edge-multiplicity defect that audit
+    /// cannot express — an undirected edge used by more than two triangles, or
+    /// used twice the same way round (`edge_multiplicity_defects`). Rejected,
+    /// and the caller falls back exactly as it does for
+    /// `KernelOutputInvalid`.
+    ///
+    /// Like [`Self::OpenTopologyRejected`], only ever constructed under a
+    /// feature — its own `csg_manifold_gate`, kept separate from
+    /// `csg_topology_gate` so a census can attribute a flip to one defect
+    /// class rather than to whichever gate fired first. The variant exists in
+    /// every build, per this enum's convention for its other rarely-emitted
+    /// reasons.
+    ///
+    /// The gate reads a defect class benign tessellation cannot produce, so it
+    /// was tried as a default; the fallback a rejection reaches turned out to
+    /// be worse than the tear it replaces. The numbers behind that live in one
+    /// place — `csg_manifold_gate` in `Cargo.toml` — with the corpus sweep in
+    /// `tests/issue_3440_manifold_gate_census.rs`.
+    ///
+    /// Carries the two counts (as `OperandTooLarge` carries its operand sizes)
+    /// so the census can break the flip set down by defect class without a
+    /// second sweep: the two say different things about the kernel, and a bare
+    /// variant would force anyone measuring to re-derive them.
+    NonManifoldRejected {
+        /// Undirected edges used by more than two triangles.
+        over_used: usize,
+        /// Undirected edges used twice, both uses the same way round.
+        same_direction: usize,
+    },
 }
 
 impl BoolFailureReason {
@@ -141,6 +197,9 @@ impl BoolFailureReason {
             BoolFailureReason::ManifoldOutputDegenerate { .. } => "ManifoldOutputDegenerate",
             BoolFailureReason::KernelError(_) => "KernelError",
             BoolFailureReason::DifferenceEmptiedHost => "DifferenceEmptiedHost",
+            BoolFailureReason::OpenTopologyRejected => "OpenTopologyRejected",
+            BoolFailureReason::UnsupportedOperand(_) => "UnsupportedOperand",
+            BoolFailureReason::NonManifoldRejected { .. } => "NonManifoldRejected",
         }
     }
 }
@@ -181,6 +240,19 @@ impl fmt::Display for BoolFailureReason {
                 "Manifold difference returned implausibly small result ({result_tris} triangles from {host_tris}-triangle host) — fell back to BSP"
             ),
             BoolFailureReason::KernelError(msg) => write!(f, "kernel error: {msg}"),
+            BoolFailureReason::OpenTopologyRejected => f.write_str(
+                "CSG kernel output passed validate_mesh but failed the closure audit; rejected under csg_topology_gate (#3440)",
+            ),
+            BoolFailureReason::UnsupportedOperand(ty) => {
+                write!(f, "boolean operand type '{ty}' has no processor; operand meshed empty")
+            }
+            BoolFailureReason::NonManifoldRejected {
+                over_used,
+                same_direction,
+            } => write!(
+                f,
+                "CSG kernel output passed validate_mesh but carries {over_used} non-manifold and {same_direction} reversed-winding edge(s); rejected (#3440)"
+            ),
         }
     }
 }

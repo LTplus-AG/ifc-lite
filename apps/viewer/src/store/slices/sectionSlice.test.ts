@@ -124,6 +124,50 @@ describe('SectionSlice', () => {
     });
   });
 
+  describe('setSectionPlanePosition in custom (face-picked) mode', () => {
+    /** A picked plane at distance 2 along +Z, with the slider at 40%. */
+    function pickedPlane(): CustomSectionPlane {
+      return {
+        normal: [0, 0, 1],
+        distance: 2,
+        pickedAt: [0, 0, 0],
+        tangent: [1, 0, 0],
+        bitangent: [0, 1, 0],
+      };
+    }
+
+    it('shifts the picked distance ALONG the normal as the slider rises', () => {
+      // github.com/LTplus-AG/ifc-lite/issues/2765: flipping this formula's sign
+      // left 73 tests green. The only custom-mode test asserted what got
+      // persisted to localStorage, never the number the formula produces, so a
+      // slider that cut the model backwards had nothing to disagree with it.
+      state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+
+      state.setSectionPlanePosition(60);
+
+      // +20% of a 10-unit fallback span = +2 world units along the normal.
+      assert.strictEqual(state.sectionPlane.custom?.distance, 4);
+    });
+
+    it('shifts it the other way as the slider falls', () => {
+      state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+
+      state.setSectionPlanePosition(20);
+
+      assert.strictEqual(state.sectionPlane.custom?.distance, 0);
+    });
+
+    it('keeps the pick anchor so later deltas stay relative to the picked face', () => {
+      state.sectionPlane = { ...state.sectionPlane, position: 40, custom: pickedPlane() };
+      state.setSectionPlanePosition(60);
+      state.setSectionPlanePosition(80);
+      // Two +20% steps compose: the anchor is the running distance, not a
+      // re-derivation from the slider's absolute value.
+      assert.strictEqual(state.sectionPlane.custom?.distance, 6);
+      assert.deepStrictEqual(state.sectionPlane.custom?.pickedAt, [0, 0, 0]);
+    });
+  });
+
   describe('setSectionPlanePosition', () => {
     it('should update the position', () => {
       state.setSectionPlanePosition(75);
@@ -414,6 +458,66 @@ describe('SectionSlice', () => {
       // case of the guard above).
       state.setSectionPickPreview(null);
       assert.strictEqual(state.sectionPickPreview, null);
+    });
+
+    /**
+     * #2495. The commit path (`setSectionPlaneFromFace`) has screened its
+     * normal since #243; the hover path screened nothing, so it was the one
+     * route by which a raw picked normal reached a basis derivation. The
+     * screen has to ask about finiteness, not just magnitude: `Infinity < 1e-6`
+     * is false and `NaN < 1e-6` is false, so a magnitude floor alone waves
+     * both through and the division that follows produces NaN.
+     */
+    for (const [label, normal, point] of [
+      ['an infinite normal component', [Infinity, 0, 0], [1, 2, 3]],
+      ['a negative-infinite normal component', [0, -Infinity, 0], [1, 2, 3]],
+      ['a NaN normal component', [NaN, 0, 0], [1, 2, 3]],
+      ['the zero normal', [0, 0, 0], [1, 2, 3]],
+      ['an infinite picked point', [0, 1, 0], [Infinity, 2, 3]],
+      ['a NaN picked point', [0, 1, 0], [1, NaN, 3]],
+    ] as Array<[string, [number, number, number], [number, number, number]]>) {
+      it(`setSectionPickPreview refuses ${label}`, () => {
+        state.setSectionPickMode(true);
+        state.setSectionPickPreview({ normal, point, faceKey: 'bad' });
+        assert.strictEqual(
+          state.sectionPickPreview, null,
+          `expected ${label} to be refused, got ${JSON.stringify(state.sectionPickPreview)}`,
+        );
+        assert.strictEqual(state.sectionPickMode, true, 'a bad hover must not disarm pick mode');
+      });
+    }
+
+    it('setSectionPickPreview drops an already-shown preview when a bad one arrives', () => {
+      state.setSectionPickMode(true);
+      state.setSectionPickPreview({ normal: [0, 1, 0], point: [1, 2, 3], faceKey: 'good' });
+      assert.ok(state.sectionPickPreview);
+      state.setSectionPickPreview({ normal: [Infinity, 0, 0], point: [1, 2, 3], faceKey: 'bad' });
+      assert.strictEqual(state.sectionPickPreview, null, 'the stale good preview must not linger');
+    });
+
+    // Anti-mutation: a magnitude-only reading of this guard would reject a
+    // legitimately short raycast normal, which is a perfectly good direction.
+    it('setSectionPickPreview still accepts a short but perfectly valid normal', () => {
+      state.setSectionPickMode(true);
+      const p: import('./sectionSlice.js').SectionPickPreview = {
+        normal:  [0, 0, 1e-5],
+        point:   [1, 2, 3],
+        faceKey: 'short',
+      };
+      state.setSectionPickPreview(p);
+      assert.deepStrictEqual(state.sectionPickPreview, p);
+    });
+
+    it('setSectionPlaneFromFace refuses a non-finite picked POINT, not just the normal', () => {
+      // `point` only ever reached `distance` and `pickedAt`, so the normal
+      // check never saw it and a NaN hit point produced a NaN plane offset.
+      state.setSectionPickMode(true);
+      state.setSectionPlaneFromFace([0, 0, 1], [0, NaN, 5]);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
+      assert.strictEqual(state.sectionPickMode, false);
+      state.setSectionPickMode(true);
+      state.setSectionPlaneFromFace([0, 0, 1], [Infinity, 0, 5]);
+      assert.strictEqual(state.sectionPlane.custom, undefined);
     });
 
     it('setSectionPickMode(false) clears any active preview', () => {

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { planeBasis, nearestCardinalAxis } from './section-plane-basis.ts';
+import { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 
 const EPS = 1e-6;
 const dot = (a: readonly number[], b: readonly number[]) =>
@@ -41,7 +41,7 @@ describe('planeBasis', () => {
     const tilts: Array<[number, number, number]> = [
       [0.5, 0.5, Math.SQRT1_2],
       [Math.SQRT1_2, 0, Math.SQRT1_2],
-      [0.1, 0.99, 0.05],   // near-vertical — exercises the X-fallback branch
+      [0.1, 0.99, 0.05],   // near-vertical normal (near-horizontal plane)
       [-0.3, -0.6, 0.74],
       [Math.SQRT1_2, Math.SQRT1_2, 0],
     ];
@@ -60,13 +60,218 @@ describe('planeBasis', () => {
   });
 
   it('is sign-stable around the +Y / -Y boundary', () => {
-    // The reference-axis switch (Y vs X) happens at |ny| = 0.9. Stepping
-    // through the boundary should not produce a NaN or zero-length basis.
+    // Stepping through the old |ny| = 0.9 reference-axis switch must not
+    // produce a NaN or zero-length basis.
     for (let nyStep = 0.85; nyStep <= 0.95; nyStep += 0.01) {
       const ny = nyStep;
       const nx = Math.sqrt(Math.max(0, 1 - ny * ny));
       assertOrthonormal([nx, ny, 0], `near-Y ny=${ny.toFixed(2)}`);
     }
+  });
+});
+
+/**
+ * Continuity (#2714).
+ *
+ * The basis IS the coordinate frame a face-picked drawing is generated in
+ * (`useDrawingGeneration` hands `custom.tangent`/`custom.bitangent` to the
+ * cutter as `customPlane`). A discontinuity in it is therefore a drawing that
+ * jumps orientation between two picks on nearly-identical faces.
+ *
+ * The old derivation switched its reference axis at `|ny| = 0.9` — a plane
+ * 25.8 degrees off horizontal, i.e. an ordinary ~6:12 roof pitch, reachable
+ * from `setSectionPlaneFromFace`. Measured across that boundary at nz = 0 the
+ * tangent inverted exactly (dot = -1); with nz = 0.3 it was an arbitrary
+ * 133-degree rotation, and the jump was asymmetric — `ny < 0` did not flip.
+ *
+ * Continuity everywhere is impossible (hairy-ball theorem: a tangent field on
+ * the sphere must vanish somewhere), so what is asserted is continuity
+ * everywhere EXCEPT the two poles `n = ±Y`, where the plane is exactly
+ * horizontal and its in-plane rotation is a free choice anyway.
+ */
+describe('planeBasis is continuous away from the ±Y poles (#2714)', () => {
+  /** Neighbouring-sample floor: 1-degree steps may not move the frame >8deg. */
+  const MIN_DOT = 0.99;
+
+  const sphere = (theta: number, phi: number): [number, number, number] => [
+    Math.sin(theta) * Math.cos(phi),
+    Math.cos(theta),
+    Math.sin(theta) * Math.sin(phi),
+  ];
+
+  const assertClose = (
+    a: readonly [number, number, number],
+    b: readonly [number, number, number],
+    label: string,
+  ) => {
+    const A = planeBasis(a);
+    const B = planeBasis(b);
+    const dt = dot(A.tangent, B.tangent);
+    const db = dot(A.bitangent, B.bitangent);
+    assert.ok(dt > MIN_DOT, `${label}: tangent jumped, dot = ${dt.toFixed(4)}`);
+    assert.ok(db > MIN_DOT, `${label}: bitangent jumped, dot = ${db.toFixed(4)}`);
+  };
+
+  it('does not jump across the old |ny| = 0.9 reference-axis boundary', () => {
+    // Straddle the boundary at a range of nz, since the size of the old jump
+    // depended on nz (180 degrees at nz = 0, 133 degrees at nz = 0.3).
+    for (let nz = 0; nz <= 0.43; nz += 0.01) {
+      for (const sign of [1, -1]) {
+        const at = (ny: number): [number, number, number] => {
+          const nx = Math.sqrt(Math.max(0, 1 - ny * ny - nz * nz));
+          return [nx, sign * ny, nz];
+        };
+        assertClose(at(0.8999), at(0.9001), `nz=${nz.toFixed(2)} sign=${sign}`);
+      }
+    }
+  });
+
+  it('is continuous over the whole sphere except the poles', () => {
+    // 1-degree lat/long grid, skipping only a 1-degree cap around each pole.
+    const step = Math.PI / 180;
+    for (let theta = step; theta < Math.PI - step / 2; theta += step) {
+      for (let phi = 0; phi < 2 * Math.PI; phi += step) {
+        const label = `theta=${((theta * 180) / Math.PI).toFixed(0)} phi=${((phi * 180) / Math.PI).toFixed(0)}`;
+        assertClose(sphere(theta, phi), sphere(theta + step, phi), `${label} +dtheta`);
+        assertClose(sphere(theta, phi), sphere(theta, phi + step), `${label} +dphi`);
+      }
+    }
+  });
+
+  it('stays continuous in the pole neighbourhood the new construction is sensitive at', () => {
+    // The replacement's only singular points are n = ±Y. Approaching one and
+    // walking all the way around it must still move the frame smoothly — the
+    // fix must not trade the 0.9 circle for a new jump next to the pole.
+    const step = Math.PI / 180;
+    for (const theta of [1e-3, 1e-6, 1e-9, Math.PI - 1e-3, Math.PI - 1e-6]) {
+      for (let phi = 0; phi < 2 * Math.PI; phi += step) {
+        assertClose(
+          sphere(theta, phi),
+          sphere(theta, phi + step),
+          `pole theta=${theta} phi=${phi.toFixed(3)}`,
+        );
+      }
+    }
+  });
+
+  it('never points the bitangent downward, so elevations stay upright', () => {
+    // `bitangent` is the drawing's +Y (screen up). The old X-fallback branch
+    // gave `bitangent · Y < 0` for every normal with ny > 0.9 while the
+    // ny < -0.9 half stayed upright — the asymmetry, seen from the drawing's
+    // side: two picks either side of a ridge produced one upside-down sheet.
+    for (let theta = 0; theta <= Math.PI; theta += Math.PI / 180) {
+      for (let phi = 0; phi < 2 * Math.PI; phi += Math.PI / 12) {
+        const n = sphere(theta, phi);
+        const { bitangent } = planeBasis(n);
+        assert.ok(
+          bitangent[1] >= -EPS,
+          `theta=${((theta * 180) / Math.PI).toFixed(0)} phi=${((phi * 180) / Math.PI).toFixed(0)}: bitangent points down (${bitangent[1].toFixed(4)})`,
+        );
+      }
+    }
+  });
+});
+
+/**
+ * `planeBasis` is total: every input yields a finite, unit, orthonormal pair
+ * (#2489).
+ *
+ * It used to read the caller's magnitudes directly, so each of its magnitude
+ * tests answered a question about LENGTH while its comment claimed an ANGLE.
+ * A non-finite component passed both (`Infinity > 1e-9` is true, `NaN < 1e-9`
+ * is false) and came back as an all-NaN pair — which the section gizmo writes
+ * into a vertex buffer and the cap renderer uses to lift 2D cut polygons back
+ * to 3D. Normalising the normal first is what makes the tests angular.
+ *
+ * Every assertion here is on the returned VALUES. A "does not throw" test
+ * would pass on the broken code: NaN never throws, it just draws nothing.
+ */
+describe('planeBasis is total (#2489)', () => {
+  /**
+   * Compare bases by value. Cross products routinely produce `-0` where the
+   * literal spelling is `0`, and `deepStrictEqual` treats those as different
+   * while no consumer of an axis can; `+ 0` folds `-0` onto `0` and leaves
+   * every other value alone.
+   */
+  const plain = (b: { tangent: readonly number[]; bitangent: readonly number[] }) => ({
+    tangent: b.tangent.map((v) => v + 0),
+    bitangent: b.bitangent.map((v) => v + 0),
+  });
+  const sameBasis = (
+    actual: ReturnType<typeof planeBasis>,
+    expected: { tangent: readonly number[]; bitangent: readonly number[] },
+    label?: string,
+    // node:assert's typed overload takes `Error | AssertMessageFunction`, not a
+    // bare string, once the `expected` argument is narrowed. Wrap so the label
+    // still reaches the failure output.
+  ) => assert.deepStrictEqual(plain(actual), plain(expected), label === undefined ? undefined : new Error(label));
+
+  /** What a normal with no usable direction degrades to: the horizontal plane. */
+  const DEGENERATE = planeBasis([0, 1, 0]);
+
+  it('degrades an Infinity component instead of returning NaN axes', () => {
+    sameBasis(planeBasis([Infinity, 0, 0]), DEGENERATE);
+    sameBasis(planeBasis([0, -Infinity, 0]), DEGENERATE);
+  });
+
+  it('degrades a NaN component', () => {
+    sameBasis(planeBasis([NaN, 0, 0]), DEGENERATE);
+    sameBasis(planeBasis([0, 0, NaN]), DEGENERATE);
+  });
+
+  it('degrades a mixed NaN + Infinity normal', () => {
+    // `Math.hypot(Infinity, NaN, 0)` is Infinity, not NaN — the length test
+    // has to reject both ends of the range, not just the NaN one.
+    sameBasis(planeBasis([Infinity, NaN, 0]), DEGENERATE);
+  });
+
+  it('degrades a finite normal whose magnitude overflows', () => {
+    sameBasis(planeBasis([1.7e308, 1.7e308, 0]), DEGENERATE);
+  });
+
+  it('degrades the zero normal to a UNIT pair, not a zero bitangent', () => {
+    // The zero normal always reached the tangent fallback, but the bitangent
+    // was then `cross(tangent, [0,0,0])` = `[0,0,0]` — a documented-unit axis
+    // that was not unit, silently collapsing the cap's 2D→3D lift.
+    sameBasis(planeBasis([0, 0, 0]), DEGENERATE);
+    assertOrthonormal([0, 0, 0], 'zero normal');
+  });
+
+  it('returns a fresh mutable pair each call', () => {
+    // `PlaneBasis` exposes mutable tuples and this is a public export, so the
+    // degenerate answer must not be a shared constant a caller can corrupt.
+    const a = planeBasis([NaN, 0, 0]);
+    a.tangent[0] = 99;
+    assert.strictEqual(planeBasis([NaN, 0, 0]).tangent[0], DEGENERATE.tangent[0]);
+  });
+
+  it('still resolves a short but perfectly valid normal', () => {
+    // Anti-mutation. `[1e-12, 0, 0]` points cleanly along +X; only its length
+    // is small. The pre-#2489 code declared it degenerate — its `1e-9` floor
+    // was on the cross product's LENGTH, which scales with the normal's — and
+    // returned a zero bitangent. An over-broad floor reintroduced anywhere in
+    // this function fails here rather than passing quietly.
+    assertOrthonormal([1e-12, 0, 0], 'tiny +X');
+    sameBasis(planeBasis([1e-12, 0, 0]), planeBasis([1, 0, 0]));
+  });
+
+  it('routes a non-unit normal by its ANGLE to Y, not its length', () => {
+    // `[10, 1, 0]` is 6 degrees off horizontal, nowhere near the |ny| = 0.9
+    // near-vertical case the X-fallback exists for — but `|ny| = 1 >= 0.9`
+    // sent it down that branch anyway, flipping the hatch axis 180 degrees
+    // purely because the caller had not normalised. The docstring always
+    // described this threshold as an angle; now it is one.
+    const l = Math.hypot(10, 1, 0);
+    sameBasis(planeBasis([10, 1, 0]), planeBasis([10 / l, 1 / l, 0]));
+    assertOrthonormal([10, 1, 0], 'non-unit 6deg-off-horizontal');
+  });
+
+  it('leaves the basis for a unit normal unchanged', () => {
+    // The guard is a gate on unusable input, not a change to the derivation:
+    // the cap hatch must not rotate for any normal callers actually pass.
+    sameBasis(planeBasis([0, 1, 0]),  { tangent: [0, 0, -1], bitangent: [1, 0, 0] });
+    sameBasis(planeBasis([1, 0, 0]),  { tangent: [0, 0, 1],  bitangent: [0, 1, 0] });
+    sameBasis(planeBasis([0, 0, -1]), { tangent: [1, 0, 0],  bitangent: [0, 1, 0] });
   });
 });
 

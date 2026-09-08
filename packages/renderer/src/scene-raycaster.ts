@@ -9,13 +9,20 @@
  * No dependency on Scene internal state.
  */
 
+import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3, PickClipState } from './types.js';
 import { MathUtils } from './math.js';
+import { reportableItemId } from './pick-resolve.js';
 
 export interface BoundingBox {
   min: Vec3;
   max: Vec3;
 }
+
+/** The `MeshData` fields the triangle raycast reads. Taken from the real type,
+ *  never re-spelled inline: an ad-hoc structural copy is why `geometryItemId`
+ *  was invisible here in the first place (#2985), after two hand-widenings. */
+export type RaycastPiece = Pick<MeshData, 'positions' | 'indices' | 'entityIds' | 'modelIndex' | 'origin' | 'geometryItemId'>;
 
 /** True when `clip` actually clips anything (a section plane or an enabled box). */
 export function clipIsActive(clip?: PickClipState | null): boolean {
@@ -291,6 +298,13 @@ export interface RaycastHit {
   expressId: number;
   distance: number;
   modelIndex?: number;
+  /** Source `MeshData.geometryItemId` of the piece hit, so the CPU pick fallback
+   *  reports the same representation item the GPU path does rather than
+   *  collapsing to the product on any model over the pick-mesh budget (#2985).
+   *  `undefined` where there is nothing to report: this is an internal hit, so
+   *  `PickingManager` is what turns that into a missing KEY on the PickResult.
+   *  Which absences, and why: {@link PickResult.geometryItemId}. */
+  geometryItemId?: number;
 }
 
 /**
@@ -351,7 +365,7 @@ export function raycastBoundingBoxes(
  *
  * @param rayOrigin  - Ray origin in world space
  * @param rayDir     - Normalised ray direction
- * @param meshDataMap - Map expressId -> MeshData[] (positions, normals, indices, entityIds)
+ * @param meshDataMap - Map expressId -> the {@link RaycastPiece} slice of each MeshData
  * @param getEntityBoundingBox - Function to obtain/cache a bounding box per entity
  * @param hiddenIds  - Optional set of hidden expressIds to skip
  * @param isolatedIds - Optional set; when non-null only these expressIds are tested
@@ -361,7 +375,7 @@ export function raycastTriangles(
   rayDir: Vec3,
   rayDirInv: Vec3,
   rayDirSign: [number, number, number],
-  meshDataMap: Map<number, { positions: Float32Array; indices: Uint32Array; entityIds?: Uint32Array; modelIndex?: number; origin?: [number, number, number] }[]>,
+  meshDataMap: Map<number, RaycastPiece[]>,
   getEntityBoundingBox: (expressId: number) => BoundingBox | null,
   hiddenIds?: Set<number>,
   isolatedIds?: Set<number> | null,
@@ -397,6 +411,9 @@ export function raycastTriangles(
       const positions = piece.positions;
       const indices = piece.indices;
       const pieceEntityIds = piece.entityIds;
+      // A piece holding entities beyond `expressId` — the map key, who this hit
+      // attributes to — has an id belonging to none of them. Shared with hydration.
+      const pieceItemId = reportableItemId(piece, expressId);
 
       // Positions are in the element's local frame (world = origin + position).
       // Rather than offset every triangle vertex, shift the ray origin into the
@@ -435,7 +452,7 @@ export function raycastTriangles(
             rayOrigin.z + t * rayDir.z,
           )) continue;
           closestDistance = t;
-          closestHit = { expressId, distance: t, modelIndex: piece.modelIndex };
+          closestHit = { expressId, distance: t, modelIndex: piece.modelIndex, geometryItemId: pieceItemId };
         }
       }
     }

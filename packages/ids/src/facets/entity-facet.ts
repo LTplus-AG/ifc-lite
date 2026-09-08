@@ -13,12 +13,62 @@ import type {
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint } from '../constraints/index.js';
+import { IFC2X3_MAPPED_ALIASES, rowsForOccurrence } from './ifc2x3-type-mapping.js';
+import { matchPredefinedType } from './predefined-type-match.js';
 
-/** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
+/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
+ *  types are NOT — see `predefined-type-match.ts`. */
 const IFC_CASE_INSENSITIVE = { caseInsensitive: true } as const;
 
 /**
+ * Does `facet.name` match this entity through buildingSMART's IFC2X3
+ * occurrence/type mapping table, when a direct type-name comparison
+ * already failed?
+ *
+ * "The following table lists all special cases for checking IFC2X3
+ * models['] identification of model subsets is further restricted by
+ * the type object." — an IDS facet naming an IFC4-only class
+ * (`IfcAirTerminal`) must still match the IFC2X3 (occurrence, type)
+ * pair that represents it (`IfcFlowTerminal` typed by
+ * `IfcAirTerminalType`).
+ * https://github.com/buildingSMART/IDS/blob/master/Documentation/ImplementersDocumentation/ifc2x3-occurrence-type-mapping-table.md
+ *
+ * Scoped to IFC2X3: IFC4+ already has a dedicated class for every alias
+ * in the table, so this must not also fire there.
+ */
+function matchesIfc2x3Mapping(
+  facet: IDSEntityFacet,
+  entityType: string,
+  expressId: number,
+  accessor: IFCDataAccessor
+): boolean {
+  if ((accessor.getSchemaVersion?.() || '').toUpperCase() !== 'IFC2X3') return false;
+  const rows = rowsForOccurrence(entityType.toUpperCase());
+  if (rows.length === 0) return false;
+  const typeEntityType = accessor.getTypeEntityType?.(expressId);
+  if (!typeEntityType) return false;
+  const typeEntityUpper = typeEntityType.toUpperCase();
+  for (const row of rows) {
+    if (row.typeEntity !== typeEntityUpper) continue;
+    if (matchConstraint(facet.name, row.alias, IFC_CASE_INSENSITIVE)) return true;
+  }
+  return false;
+}
+
+/**
  * Check if an entity matches an entity facet
+ *
+ * Deliberately exact-match, not subtype-aware: buildingSMART's IDS spec is
+ * explicit that entity facet matching has no automatic inheritance —
+ * `Documentation/UserManual/entity-facet.md` (buildingSMART/IDS) says "There
+ * is no automatic inheritance in IDS entity facet interpretation. In other
+ * words, all the entities need to be listed explicitly. […] to create a
+ * requirement applicable to all IfcElement objects, one should list all
+ * IfcElement sub-entities, such as IfcWall, IfcDoor, etc. Also, the
+ * IfcElement should not be listed, as it is an abstract entity […] and would
+ * not appear in a model." Do not "fix" this into a descendant-closure match
+ * the way `@ifc-lite/parser`'s `expandTypes` (a different, non-IDS query
+ * surface) does — that would make this checker non-conformant.
  */
 export function checkEntityFacet(
   facet: IDSEntityFacet,
@@ -63,7 +113,10 @@ export function checkEntityFacet(
   }
 
   // Check entity type (case-insensitive per IDS spec — IFC entity names are case-agnostic)
-  if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
+  if (
+    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
+  ) {
     return {
       passed: false,
       actualValue: entityType,
@@ -77,21 +130,18 @@ export function checkEntityFacet(
     };
   }
 
-  // Check predefined type if specified
+  // Check predefined type if specified. The matching rule itself lives
+  // in `predefined-type-match.ts` — shared verbatim with the partOf
+  // facet, whose nested `<entity>` is the same IDS construct. Only the
+  // failure wording below is entity-facet-specific.
   if (facet.predefinedType) {
-    // Per IDS spec, predefined-type matching has two distinct paths:
-    //   1. Compare against the raw IFC `PredefinedType` enum token
-    //      (BEAM, USERDEFINED, NOTDEFINED, …) — case-insensitive.
-    //   2. When the raw token is `USERDEFINED`, fall back to the
-    //      user-defined name (`ObjectType`/`ElementType`/`ProcessType`)
-    //      — case-sensitive.
-    // The order matters: a fixture asking for `USERDEFINED` literally
-    // must match an entity whose enum is `USERDEFINED` regardless of
-    // its accompanying user-defined name.
-    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
-    const userDefinedType = accessor.getObjectType(expressId);
+    const outcome = matchPredefinedType(
+      facet.predefinedType,
+      accessor.getPredefinedTypeRaw?.(expressId),
+      accessor.getObjectType(expressId)
+    );
 
-    if (!rawType && !userDefinedType) {
+    if (outcome.kind === 'absent') {
       return {
         passed: false,
         actualValue: entityType,
@@ -104,40 +154,15 @@ export function checkEntityFacet(
       };
     }
 
-    let matched = false;
-    // Predefined-type enum tokens (BEAM, USERDEFINED, …) MUST be
-    // uppercase per the IFC schema, and the IDS literal MUST match
-    // exactly. Case-sensitive comparison is the spec.
-    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
-      matched = true;
-    } else if (
-      rawType === 'USERDEFINED' &&
-      userDefinedType &&
-      userDefinedType !== rawType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      // Case-sensitive comparison for user-defined names.
-      matched = true;
-    } else if (
-      !rawType &&
-      userDefinedType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      // No raw enum reported (legacy accessor) — case-sensitive match
-      // against the substituted form.
-      matched = true;
-    }
-
-    if (!matched) {
-      const display = userDefinedType || rawType || '(none)';
+    if (outcome.kind === 'mismatch') {
       return {
         passed: false,
-        actualValue: `${entityType}[${display}]`,
+        actualValue: `${entityType}[${outcome.actual}]`,
         expectedValue: `${formatConstraint(facet.name)} with predefinedType ${formatConstraint(facet.predefinedType)}`,
         failure: {
           type: 'PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: display,
+          actual: outcome.actual,
           expected: formatConstraint(facet.predefinedType),
         },
       };
@@ -181,35 +206,21 @@ export function entityFacetPasses(
     return false;
   }
 
-  if (!matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE)) {
+  if (
+    !matchConstraint(facet.name, entityType, IFC_CASE_INSENSITIVE) &&
+    !matchesIfc2x3Mapping(facet, entityType, expressId, accessor)
+  ) {
     return false;
   }
 
   if (facet.predefinedType) {
-    const rawType = accessor.getPredefinedTypeRaw?.(expressId);
-    const userDefinedType = accessor.getObjectType(expressId);
-
-    if (!rawType && !userDefinedType) return false;
-
-    if (rawType && matchConstraint(facet.predefinedType, rawType)) {
-      return true;
-    }
-    if (
-      rawType === 'USERDEFINED' &&
-      userDefinedType &&
-      userDefinedType !== rawType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      return true;
-    }
-    if (
-      !rawType &&
-      userDefinedType &&
-      matchConstraint(facet.predefinedType, userDefinedType)
-    ) {
-      return true;
-    }
-    return false;
+    return (
+      matchPredefinedType(
+        facet.predefinedType,
+        accessor.getPredefinedTypeRaw?.(expressId),
+        accessor.getObjectType(expressId)
+      ).kind === 'match'
+    );
   }
 
   return true;
@@ -224,13 +235,32 @@ export function filterByEntityFacet(
 ): number[] | undefined {
   const constraint = facet.name;
 
+  // IFC2X3: a literal naming a mapping-table alias (`IFCAIRTERMINAL`)
+  // never appears as an actual entity type in the model — only its
+  // mapped occurrence class does (`IFCFLOWTERMINAL`). A type-indexed
+  // broadphase filter keyed on the alias itself would come back empty
+  // and wrongly prune every candidate before the per-entity check (and
+  // its type-object lookup) ever runs. Falling back to a full scan
+  // keeps `matchesIfc2x3Mapping` as the single source of truth instead
+  // of duplicating its (occurrence, type) resolution here.
+  const isIfc2x3 = (accessor.getSchemaVersion?.() || '').toUpperCase() === 'IFC2X3';
+
   // For simple values, we can efficiently filter by type
   if (constraint.type === 'simpleValue') {
+    if (isIfc2x3 && IFC2X3_MAPPED_ALIASES.has(constraint.value.toUpperCase())) {
+      return undefined;
+    }
     return accessor.getEntitiesByType(constraint.value);
   }
 
   // For enumerations, collect entities of all specified types
   if (constraint.type === 'enumeration') {
+    if (
+      isIfc2x3 &&
+      constraint.values.some((v) => IFC2X3_MAPPED_ALIASES.has(v.toUpperCase()))
+    ) {
+      return undefined;
+    }
     const ids: number[] = [];
     for (const value of constraint.values) {
       ids.push(...accessor.getEntitiesByType(value));
@@ -266,6 +296,10 @@ export function getMatchingEntityTypes(
         const regex = new RegExp(`^${constraint.pattern}$`, 'i');
         return allTypes.filter((t) => regex.test(t));
       } catch {
+        // Legitimately silent: an uncompilable pattern matches no entity type,
+        // and the IDS audit reports the bad pattern itself under
+        // W_REGEX_UNVERIFIED / the coherence regex check. Warning here would
+        // duplicate that per candidate-type resolution.
         return [];
       }
     default:

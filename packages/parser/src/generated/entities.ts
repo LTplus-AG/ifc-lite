@@ -6297,7 +6297,7 @@ export interface IfcStructuralLoadCase extends IfcStructuralLoadGroup {
  */
 export interface IfcStructuralLoadConfiguration extends IfcStructuralLoad {
   Values: IfcStructuralLoadOrResult[];
-  Locations?: number[];
+  Locations?: IfcLengthMeasure[][];
 }
 
 /**

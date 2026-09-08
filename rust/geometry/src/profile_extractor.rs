@@ -18,7 +18,8 @@
 //! Lengths are in metres (unit scale applied).
 
 use crate::profiles::ProfileProcessor;
-use crate::{Error, Point3, Result, TessellationQuality, Vector3};
+use crate::{profile_skip::SkippedProfile, Error, Point3, Result, TessellationQuality, Vector3};
+pub(crate) use ifc_lite_core::MAX_PLACEMENT_DEPTH;
 use ifc_lite_core::{
     build_entity_index, AttributeValue, DecodedEntity, EntityDecoder, EntityScanner, IfcSchema,
     IfcType,
@@ -77,15 +78,12 @@ pub struct ExtractedProfile {
 // PUBLIC ENTRY POINT
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Extract profiles for every building element in `content`.
-///
-/// Extracts `IfcExtrudedAreaSolid` representations, including those nested
-/// inside `IfcMappedItem` chains (up to 3 levels deep).
-/// Returns an empty `Vec` for models with no such elements.
-pub fn extract_profiles<T>(content: &T, model_index: u32) -> Vec<ExtractedProfile>
-where
-    T: AsRef<[u8]> + ?Sized,
-{
+/// Extract `IfcExtrudedAreaSolid` profiles (incl. nested `IfcMappedItem`) for every element in `content`. Drops are silent — see [`extract_profiles_with_diagnostics`].
+pub fn extract_profiles<T: AsRef<[u8]> + ?Sized>(content: &T, model_index: u32) -> Vec<ExtractedProfile> {
+    extract_profiles_with_diagnostics(content, model_index).0
+}
+/// Same as [`extract_profiles`], plus every [`SkippedProfile`] (default features — unlike `diag_debug!`).
+pub fn extract_profiles_with_diagnostics<T: AsRef<[u8]> + ?Sized>(content: &T, model_index: u32) -> (Vec<ExtractedProfile>, Vec<SkippedProfile>) {
     let content = content.as_ref();
     let entity_index = build_entity_index(content);
     let mut decoder = EntityDecoder::with_index(content, entity_index);
@@ -96,7 +94,7 @@ where
     let schema = IfcSchema::new();
     let profile_processor = ProfileProcessor::new(schema);
 
-    let mut results = Vec::new();
+    let (mut results, mut skipped) = (Vec::new(), Vec::new());
     let mut scanner = EntityScanner::new(content);
 
     while let Some((id, type_name, start, end)) = scanner.next_entity() {
@@ -110,13 +108,14 @@ where
         };
 
         // Issue #979: feature elements (IfcOpeningElement and the rest of the
-        // void/feature family) are boolean subtraction/addition operands, not
-        // building structure — they must never emit a construction-projection
-        // profile. `is_subtype_of` walks the supertype chain, so this single
-        // check covers Opening / Voiding / Earthworks / Projection / Surface
-        // features without touching IfcDoor/IfcWindow (which descend from
-        // IfcBuiltElement, not IfcFeatureElement).
-        if entity.ifc_type.is_subtype_of(IfcType::IfcFeatureElement) {
+        // void/feature family) are boolean operands, not building structure —
+        // they must never emit a construction-projection profile, and walking
+        // the supertype chain covers the whole family in one check. Resolved
+        // from `type_name`, NOT `entity.ifc_type`: the decoder sets that with a
+        // bare `from_str`, so a legacy keyword arrives as `Unknown` (a subtype
+        // of nothing) and `IFCOPENINGSTANDARDCASE` emitted a profile (#3172).
+        let resolved_type = ifc_lite_core::legacy_aware_ifc_type(type_name);
+        if resolved_type.is_subtype_of(IfcType::IfcFeatureElement) {
             continue;
         }
 
@@ -146,7 +145,7 @@ where
             Err(_) => continue,
         };
 
-        let ifc_type_name = entity.ifc_type.name().to_string();
+        let ifc_type_name = resolved_type.name().to_string();
 
         for shape_rep in representations {
             if shape_rep.ifc_type != IfcType::IfcShapeRepresentation {
@@ -191,6 +190,7 @@ where
                                     eprintln!("[profile_extractor] Skipping #{id} ({ifc_type_name}): {_e}");
                                 }
                             );
+                            skipped.push(SkippedProfile { express_id: id, ifc_type: ifc_type_name.clone(), reason: _e.to_string() });
                         }
                     }
                 } else if item.ifc_type == IfcType::IfcMappedItem {
@@ -204,14 +204,14 @@ where
                         &mut decoder,
                         model_index,
                         0,
-                        &mut results,
+                        &mut results, &mut skipped,
                     );
                 }
             }
         }
     }
 
-    results
+    (results, skipped)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -241,7 +241,7 @@ fn extract_mapped_item_profiles(
     decoder: &mut EntityDecoder,
     model_index: u32,
     depth: usize,
-    results: &mut Vec<ExtractedProfile>,
+    results: &mut Vec<ExtractedProfile>, skipped: &mut Vec<SkippedProfile>,
 ) {
     if depth > MAX_MAPPED_DEPTH {
         crate::diag::diag_debug!(
@@ -252,6 +252,7 @@ fn extract_mapped_item_profiles(
                 eprintln!("[profile_extractor] #{element_id} ({ifc_type}): max mapped item depth exceeded");
             }
         );
+        skipped.push(SkippedProfile { express_id: element_id, ifc_type: ifc_type.to_string(), reason: "max mapped item depth exceeded".to_string() });
         return;
     }
 
@@ -265,16 +266,45 @@ fn extract_mapped_item_profiles(
         None => return,
     };
 
-    // Attr 1: MappingTarget → IfcCartesianTransformationOperator3D
-    let target_tf = mapped_item
-        .get(1)
-        .and_then(|a| if a.is_null() { None } else { Some(a) })
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| parse_cartesian_transformation_operator(&e, decoder).ok())
-        .unwrap_or_else(Matrix4::identity);
+    // Attr 1: MappingTarget → IfcCartesianTransformationOperator3D.
+    // A PRESENT but unparseable target/origin abandons this mapped item instead of
+    // falling back to the identity: the mesh path propagates that failure and skips
+    // the item, so silently drawing the profile in an un-transformed frame would put
+    // the drawing somewhere the model isn't. Absent/null stays the identity.
+    let target_tf = match resolve_present_ref(mapped_item.get(1), decoder) {
+        Err(()) => return,
+        Ok(resolved) => match resolved {
+            Some(e) => match parse_cartesian_transformation_operator(&e, decoder) {
+                Ok(m) => m,
+                Err(_) => return,
+            },
+            None => Matrix4::identity(),
+        },
+    };
 
-    // Scale the target transform translation from file units to metres
-    let scaled_target = scale_translation(target_tf, unit_scale);
+    // Attr 0 of the RepresentationMap: MappingOrigin, the placement of the mapped
+    // items INSIDE the map. It composes innermost (`MappingTarget · MappingOrigin`),
+    // exactly as the mesh path now does — dropping it put every 2D profile of a
+    // non-identity-origin map at the wrong spot. #1985
+    // A map carrying a 2D representation writes an IfcAxis2Placement2D here, which
+    // the mesh path also honours — handling only the 3D form would leave exactly
+    // the plan/footprint maps this extractor exists for unfixed.
+    let origin_tf = match resolve_present_ref(source.get(0), decoder) {
+        Err(()) => return,
+        Ok(Some(e)) => {
+            let parsed = match e.ifc_type {
+                IfcType::IfcAxis2Placement3D => parse_axis2_placement_3d(&e, decoder).ok(),
+                IfcType::IfcAxis2Placement2D => parse_axis2_placement_2d(&e, decoder).ok(),
+                _ => None,
+            };
+            let Some(m) = parsed else { return };
+            m
+        }
+        Ok(None) => Matrix4::identity(),
+    };
+
+    // Scale the composed transform's translation from file units to metres
+    let scaled_target = scale_translation(target_tf * origin_tf, unit_scale);
     let composed = elem_transform * scaled_target;
 
     // MappedRepresentation (attr 1 of RepresentationMap) → items
@@ -317,6 +347,7 @@ fn extract_mapped_item_profiles(
                             eprintln!("[profile_extractor] #{element_id} ({ifc_type}) mapped: {_e}");
                         }
                     );
+                    skipped.push(SkippedProfile { express_id: element_id, ifc_type: ifc_type.to_string(), reason: _e.to_string() });
                 }
             }
         } else if sub_item.ifc_type == IfcType::IfcMappedItem {
@@ -330,60 +361,23 @@ fn extract_mapped_item_profiles(
                 decoder,
                 model_index,
                 depth + 1,
-                results,
+                results, skipped,
             );
         }
     }
 }
 
-/// Parse IfcCartesianTransformationOperator3D into a Matrix4<f64>.
+/// Parse an `IfcCartesianTransformationOperator` (2D or 3D, uniform or not).
 ///
-/// Attributes:
-///   0: Axis1 (X direction, optional)
-///   1: Axis2 (Y direction, optional)
-///   2: LocalOrigin (IfcCartesianPoint)
-///   3: Scale (f64, default 1.0)
-///   4: Axis3 (Z direction, optional, 3D only)
+/// Delegates to the router's parser so the 2D drawing profiles and the 3D mesh
+/// can never disagree about the same `MappingTarget`. This file used to carry a
+/// private copy, which had drifted: it ignored the non-uniform per-axis scales,
+/// the 2D attribute layout, and `Axis2`. #1985
 fn parse_cartesian_transformation_operator(
     entity: &DecodedEntity,
     decoder: &mut EntityDecoder,
 ) -> Result<Matrix4<f64>> {
-    // LocalOrigin (attr 2)
-    let origin = parse_cartesian_point(entity, decoder, 2).unwrap_or(Point3::new(0.0, 0.0, 0.0));
-
-    // Scale (attr 3)
-    let scale = entity.get(3).and_then(|v| v.as_float()).unwrap_or(1.0);
-
-    // Axis1 / X direction (attr 0)
-    let x_axis = entity
-        .get(0)
-        .filter(|a| !a.is_null())
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| parse_direction_entity(&e).ok())
-        .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0))
-        .normalize();
-
-    // Axis3 / Z direction (attr 4, 3D only)
-    let z_axis = entity
-        .get(4)
-        .filter(|a| !a.is_null())
-        .and_then(|a| decoder.resolve_ref(a).ok().flatten())
-        .and_then(|e| parse_direction_entity(&e).ok())
-        .unwrap_or_else(|| Vector3::new(0.0, 0.0, 1.0))
-        .normalize();
-
-    // Derive orthogonal axes (right-hand system)
-    let y_axis = z_axis.cross(&x_axis).normalize();
-    let x_axis = y_axis.cross(&z_axis).normalize();
-
-    #[rustfmt::skip]
-    let m = Matrix4::new(
-        x_axis.x * scale, y_axis.x * scale, z_axis.x * scale, origin.x,
-        x_axis.y * scale, y_axis.y * scale, z_axis.y * scale, origin.y,
-        x_axis.z * scale, y_axis.z * scale, z_axis.z * scale, origin.z,
-        0.0,              0.0,              0.0,              1.0,
-    );
-    Ok(m)
+    crate::router::transforms::operator::parse_transformation_operator(entity, decoder)
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -527,9 +521,8 @@ fn get_placement_transform(
     }
 }
 
-const MAX_PLACEMENT_DEPTH: usize = 100;
-
-fn get_placement_recursive(
+/// `pub(crate)` so the #2873 divergence test can drive this walk and the mesh path's.
+pub(crate) fn get_placement_recursive(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,
     depth: usize,
@@ -577,6 +570,36 @@ fn get_placement_recursive(
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Parse IfcAxis2Placement3D → Matrix4<f64> in IFC Z-up space (native units).
+/// Resolve an OPTIONAL entity reference, distinguishing the three cases a mapped
+/// item's `MappingTarget` / `MappingOrigin` can be in: absent or explicitly null
+/// (`Ok(None)` — the identity is correct), resolvable (`Ok(Some)`), or PRESENT
+/// but dangling / unreadable (`Err` — the caller must abandon the item, because
+/// the mesh path errors out on it too and silently substituting the identity
+/// would draw the profile in an un-transformed frame). #1985
+fn resolve_present_ref(
+    attr: Option<&AttributeValue>,
+    decoder: &mut EntityDecoder,
+) -> std::result::Result<Option<DecodedEntity>, ()> {
+    match attr {
+        None => Ok(None),
+        Some(a) if a.is_null() => Ok(None),
+        Some(a) => match decoder.resolve_ref(a) {
+            Ok(Some(e)) => Ok(Some(e)),
+            _ => Err(()),
+        },
+    }
+}
+
+/// Parse `IfcAxis2Placement2D` into a 4x4 acting in the XY plane. Delegates to
+/// the router's definition so the 2D drawing path and the mesh path cannot
+/// drift on a 2D `MappingOrigin`. #1985
+fn parse_axis2_placement_2d(
+    placement: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+) -> Result<Matrix4<f64>> {
+    crate::router::transforms::mapped::axis2_placement_2d_matrix(placement, decoder)
+}
+
 fn parse_axis2_placement_3d(
     placement: &DecodedEntity,
     decoder: &mut EntityDecoder,

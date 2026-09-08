@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuditLog } from './log.js';
 
 describe('AuditLog — append + list', () => {
@@ -115,5 +115,38 @@ describe('AuditLog — clear', () => {
     expect(log.size()).toBe(0);
     const next = log.append({ kind: 'install', extensionId: 'b' });
     expect(next.seq).toBe(2);
+  });
+});
+
+describe('AuditLog — faulting listeners', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('warns once per faulting listener and keeps delivering to the others', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = new AuditLog();
+    const bad = () => { throw new Error('subscriber blew up'); };
+    const seen: string[] = [];
+    log.subscribe(bad);
+    log.subscribe((e) => { seen.push(e.extensionId); });
+
+    log.append({ kind: 'install', extensionId: 'ext-a' });
+    log.append({ kind: 'install', extensionId: 'ext-b' });
+    log.append({ kind: 'install', extensionId: 'ext-c' });
+
+    // Every event still reaches the healthy listener.
+    expect(seen).toEqual(['ext-a', 'ext-b', 'ext-c']);
+    // ...and the fault is reported exactly once, not once per event.
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0]?.[0])).toContain('[audit]');
+  });
+
+  it('latches per listener, so a second faulting subscriber still warns', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const log = new AuditLog();
+    log.subscribe(() => { throw new Error('one'); });
+    log.subscribe(() => { throw new Error('two'); });
+    log.append({ kind: 'install', extensionId: 'ext-a' });
+    log.append({ kind: 'install', extensionId: 'ext-b' });
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 });

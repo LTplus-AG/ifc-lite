@@ -21,6 +21,14 @@ type TypeVisibilityKey = keyof Pick<
 >;
 
 /**
+ * The slice of `typeVisibility` these helpers read — the toggles that gate a
+ * whole IFC class. Consumers that only forward the gate (the 2D drawing hook)
+ * take this rather than the full `TypeVisibility`, which also carries controls
+ * with no class mapping (`ifcGrid`).
+ */
+export type TypeVisibilityGate = Pick<TypeVisibility, TypeVisibilityKey>;
+
+/**
  * IFC class → toggle key. When the mapped toggle is `false` the class is
  * hidden from the viewport / export.
  *
@@ -49,7 +57,7 @@ const IFC_TYPE_TO_VISIBILITY_KEY: Readonly<Record<string, TypeVisibilityKey>> = 
  */
 export function isTypeVisible(
   ifcType: string | undefined,
-  typeVisibility: Pick<TypeVisibility, TypeVisibilityKey>,
+  typeVisibility: TypeVisibilityGate,
 ): boolean {
   if (!ifcType) return true;
   const key = IFC_TYPE_TO_VISIBILITY_KEY[ifcType];
@@ -63,7 +71,7 @@ export function isTypeVisible(
  * matches the viewport.
  */
 export function buildHiddenIfcTypes(
-  typeVisibility: Pick<TypeVisibility, TypeVisibilityKey>,
+  typeVisibility: TypeVisibilityGate,
 ): Set<string> {
   const out = new Set<string>();
   for (const [ifcType, key] of Object.entries(IFC_TYPE_TO_VISIBILITY_KEY)) {

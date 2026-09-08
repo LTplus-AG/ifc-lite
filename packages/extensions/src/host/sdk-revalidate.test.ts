@@ -136,4 +136,22 @@ describe('revalidateAgainstSdk', () => {
     expect(summary.items[0].compatibility.status).toBe('compatible');
     expect(summary.items[1].compatibility.status).toBe('outdated');
   });
+
+  it('flags a permissive, self-unverifiable extension for repair', async () => {
+    // Wildcard range -> compatibility.status 'permissive' (sdk-version.ts:
+    // "worth a re-test, even if the range technically passes"). With no
+    // declared tests the run is 'skipped', so nothing actually confirmed
+    // the extension still works across the major SDK bump — it must not
+    // be silently treated as fine.
+    const bundle = makeBundle({ declared: '2.x', withTests: false });
+    const summary = await revalidateAgainstSdk({
+      sdk: '3.0.0',
+      installed: [{ id: bundle.manifest.id, engines: bundle.manifest.engines, grants: [] }],
+      resolveBundle: () => bundle,
+      runtime,
+    });
+    expect(summary.items[0].compatibility.status).toBe('permissive');
+    expect(summary.items[0].outcome).toBe('skipped');
+    expect(summary.needsRepair).toHaveLength(1);
+  });
 });

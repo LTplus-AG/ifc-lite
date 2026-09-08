@@ -15,6 +15,8 @@
  */
 
 import type { MeshData } from './types.js';
+import { meshColumns, numericColumn, transformFields } from './parquet-columns.js';
+import { applyInstanceRotation, readRotationColumns } from './parquet-rotation.js';
 
 /**
  * Structural view of the bits of `apache-arrow`'s `Table` this module uses.
@@ -31,65 +33,20 @@ export interface ArrowTableLike {
   getChild(name: string): ArrowColumnLike | null | undefined;
 }
 
-/** Read a numeric column, or `undefined` when the table does not carry it. */
-function numericColumn(table: ArrowTableLike, name: string): ArrayLike<number> | undefined {
-  return table.getChild(name)?.toArray();
-}
-
 /**
- * True when all three origin components are present AND parallel to `rowCount`.
- *
- * A short or partial set (truncated payload, or a server predating the columns)
- * must fall back to "no origin" rather than index past the end into `undefined`
- * -> NaN. Shared by both decoders so the standard and instanced paths can never
- * disagree about when the origin is trustworthy.
- */
-function originIsUsable(
-  x: ArrayLike<number> | undefined,
-  y: ArrayLike<number> | undefined,
-  z: ArrayLike<number> | undefined,
-  rowCount: number
-): boolean {
-  return (
-    !!x && !!y && !!z && x.length === rowCount && y.length === rowCount && z.length === rowCount
-  );
-}
-
-/**
- * The canonical per-mesh transform metadata, spread into the `MeshData` literal.
- *
- * `origin` is omitted when the frame IS the world origin and `geometry_class`
- * when it is 0 (occurrence), so a world-baked mesh decodes to exactly the shape
- * it had before these columns existed — and to the same shape on every
- * transport (JSON, standard Parquet, optimized Parquet).
- */
-function transformFields(
-  index: number,
-  originX: ArrayLike<number> | undefined,
-  originY: ArrayLike<number> | undefined,
-  originZ: ArrayLike<number> | undefined,
-  hasOrigin: boolean,
-  geometryClass: ArrayLike<number> | undefined,
-  hasGeometryClass: boolean
-): Partial<MeshData> {
-  const origin =
-    hasOrigin && (originX![index] || originY![index] || originZ![index])
-      ? ([originX![index], originY![index], originZ![index]] as [number, number, number])
-      : undefined;
-  const geometry_class =
-    hasGeometryClass && geometryClass![index] ? geometryClass![index] : undefined;
-
-  return {
-    ...(origin ? { origin } : {}),
-    ...(geometry_class ? { geometry_class } : {}),
-  };
-}
-
-/**
- * Rebuild `MeshData[]` from the standard (non-instanced) three-table layout.
+ * Rebuild `MeshData[]` from the standard three-table layout.
  *
  * Positions/normals are already Y-up metres — the server applies the axis swap
  * once, in `services::axis` (issue #1841), so every transport agrees.
+ *
+ * "Non-instanced" until `-parquet-v6` (issue #3888): several mesh rows can now
+ * name the SAME `vertex_start`/`index_start` block, each placed by its own
+ * `origin_x/y/z` plus a `rot0..rot8` rotation (`world = origin + R * p`) — the
+ * rotation-aware sharing the optimized transport has carried since #3575. Two
+ * things follow, and both are what keeps a `-parquet-v5` blob decoding here
+ * unchanged: the rotation columns are ABSENT on v5, and absent means identity;
+ * and `origin` was zero on every v5 flat row, so folding it in was a no-op
+ * there and is load-bearing here.
  */
 export function buildMeshesFromTables(
   meshArrow: ArrowTableLike,
@@ -107,14 +64,6 @@ export function buildMeshesFromTables(
   const colorG = numericColumn(meshArrow, 'color_g');
   const colorB = numericColumn(meshArrow, 'color_b');
   const colorA = numericColumn(meshArrow, 'color_a');
-  // Per-mesh local-frame origin + geometry provenance (issue #1841). Additive
-  // columns — absent on payloads/caches from servers predating this field, in
-  // which case origin defaults to [0,0,0] (world-baked, the prior behaviour).
-  const originX = numericColumn(meshArrow, 'origin_x');
-  const originY = numericColumn(meshArrow, 'origin_y');
-  const originZ = numericColumn(meshArrow, 'origin_z');
-  const geometryClass = numericColumn(meshArrow, 'geometry_class');
-
   if (!expressIds || !vertexStarts || !vertexCounts || !indexStarts || !indexCounts) {
     throw new Error('Malformed Parquet geometry: missing required mesh column');
   }
@@ -156,13 +105,19 @@ export function buildMeshesFromTables(
 
   // Reconstruct MeshData array
   const meshCount = expressIds.length;
+  // Additive per-mesh columns (#1841, #3215) — absent on payloads and caches
+  // from servers predating them, where origin defaults to [0,0,0] and the
+  // source ids simply do not appear.
+  const cols = meshColumns(meshArrow, meshCount);
+  // Absent on every pre-#3888 payload. The flat transport has no version byte
+  // to tell a truncated v6 from a genuine v5, so absence reads as the identity
+  // it is on a v5 blob (see `readRotationColumns`).
+  const rotationCols = readRotationColumns(meshArrow, meshCount, 'identity');
   const meshes: MeshData[] = new Array(meshCount);
 
   // Only consume the additive origin/geometry_class columns when all three
   // origin components are present AND parallel to the mesh rows — a short or
   // partial set (malformed/truncated payload) must not read `undefined` → NaN.
-  const hasOrigin = originIsUsable(originX, originY, originZ, meshCount);
-  const hasGeometryClass = !!geometryClass && geometryClass.length === meshCount;
 
   for (let i = 0; i < meshCount; i++) {
     const vertexStart = vertexStarts[i];
@@ -187,10 +142,8 @@ export function buildMeshesFromTables(
       );
     }
 
-    // Reconstruct interleaved positions from columnar format
-    // OPTIMIZATION: Z-up to Y-up transform is now done server-side
-    // Server already transforms: X stays same, new Y = old Z, new Z = -old Y
-    // So we just copy directly without per-vertex transformation
+    // Reconstruct interleaved positions from columnar format. The server
+    // already applies the Z-up -> Y-up swap, so this just copies through.
     const positions = new Float32Array(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;
@@ -199,7 +152,7 @@ export function buildMeshesFromTables(
       positions[v * 3 + 2] = posZ[srcIdx];
     }
 
-    // Reconstruct interleaved normals (also pre-transformed server-side)
+    // Reconstruct interleaved normals (also pre-transformed server-side).
     const normals = new Float32Array(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexStart + v;
@@ -208,9 +161,13 @@ export function buildMeshesFromTables(
       normals[v * 3 + 2] = normZ[srcIdx];
     }
 
-    // Reconstruct triangle indices from columnar format
-    const triangleCount = indexCount / 3;
-    const triangleStart = indexStart / 3;
+    // Rotate the shared block onto THIS occurrence before `origin` translates
+    // it (`world = origin + R * p`). A no-op on an identity row, which is every
+    // row of a v5 payload and every unshared row of a v6 one.
+    if (rotationCols) applyInstanceRotation(positions, normals, rotationCols, i);
+
+    // Reconstruct triangle indices from columnar format.
+    const triangleCount = indexCount / 3, triangleStart = indexStart / 3;
     const indices = new Uint32Array(indexCount);
     for (let t = 0; t < triangleCount; t++) {
       const srcIdx = triangleStart + t;
@@ -227,15 +184,7 @@ export function buildMeshesFromTables(
       indices,
       color: [colorR[i], colorG[i], colorB[i], colorA[i]],
       // world vertex = origin + position (both Y-up metres).
-      ...transformFields(
-        i,
-        originX,
-        originY,
-        originZ,
-        hasOrigin,
-        geometryClass,
-        hasGeometryClass
-      ),
+      ...transformFields(i, cols),
     };
   }
 
@@ -253,6 +202,7 @@ export interface OptimizedTables {
   hasNormals: boolean;
   /** Quantization divisor: metres = quantized / vertexMultiplier. */
   vertexMultiplier: number;
+  wireVersion: 2 | 3;
 }
 
 /**
@@ -279,14 +229,6 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
   const ifcTypes = instanceArrow.getChild('ifc_type');
   const meshIndices = numericColumn(instanceArrow, 'mesh_index');
   const materialIndices = numericColumn(instanceArrow, 'material_index');
-  // Per-instance placement + provenance (issue #1841). Additive columns —
-  // absent on payloads from servers predating them, where origin defaults to
-  // [0,0,0].
-  const instOriginX = numericColumn(instanceArrow, 'origin_x');
-  const instOriginY = numericColumn(instanceArrow, 'origin_y');
-  const instOriginZ = numericColumn(instanceArrow, 'origin_z');
-  const instGeometryClass = numericColumn(instanceArrow, 'geometry_class');
-
   // Extract mesh columns
   const meshVertexOffsets = numericColumn(meshArrow, 'vertex_offset');
   const meshVertexCounts = numericColumn(meshArrow, 'vertex_count');
@@ -343,13 +285,21 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
 
   // Reconstruct MeshData array from instances
   const instanceCount = entityIds.length;
+  // Per INSTANCE, not per template: two instances sharing one geometry template
+  // can come from different representation items (#3215).
+  const cols = meshColumns(instanceArrow, instanceCount);
   const meshes: MeshData[] = new Array(instanceCount);
   const dequantMultiplier = 1.0 / vertexMultiplier;
+  // Wire version 3 states the columns are there (#3575), so absence is
+  // truncated data, not an older payload; version 2 predates them.
+  const rotationCols = readRotationColumns(
+    instanceArrow,
+    instanceCount,
+    tables.wireVersion === 3 ? 'throw' : 'identity'
+  );
 
   // Additive per-instance origin/geometry_class columns (issue #1841): consume
   // only when present AND parallel to the instance rows.
-  const hasInstOrigin = originIsUsable(instOriginX, instOriginY, instOriginZ, instanceCount);
-  const hasInstGeometryClass = !!instGeometryClass && instGeometryClass.length === instanceCount;
 
   for (let i = 0; i < instanceCount; i++) {
     const meshIdx = meshIndices[i];
@@ -386,9 +336,7 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
       );
     }
 
-    // Dequantize and reconstruct positions
-    // OPTIMIZATION: Z-up to Y-up transform is now done server-side for optimized format too
-    // Server already transforms before quantization, so we just dequantize directly
+    // Dequantize (the server already applied Z-up -> Y-up before quantizing).
     const positions = new Float32Array(vertexCount * 3);
     for (let v = 0; v < vertexCount; v++) {
       const srcIdx = vertexOffset + v;
@@ -403,25 +351,28 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
       meshIndicesArray[j] = indices[indexOffset + j];
     }
 
-    // Reconstruct normals (pre-transformed server-side, or compute if not present)
-    let normals: Float32Array;
+    // Server-provided normals, read BEFORE rotating (#3575) so a flat
+    // recompute below, when absent, starts from already-rotated positions.
+    let providedNormals: Float32Array | undefined;
     if (hasNormals && normalX && normalY && normalZ) {
-      normals = new Float32Array(vertexCount * 3);
+      providedNormals = new Float32Array(vertexCount * 3);
       for (let v = 0; v < vertexCount; v++) {
         const srcIdx = vertexOffset + v;
-        normals[v * 3] = normalX[srcIdx];
-        normals[v * 3 + 1] = normalY[srcIdx];
-        normals[v * 3 + 2] = normalZ[srcIdx];
+        providedNormals[v * 3] = normalX[srcIdx];
+        providedNormals[v * 3 + 1] = normalY[srcIdx];
+        providedNormals[v * 3 + 2] = normalZ[srcIdx];
       }
-    } else {
-      // Compute flat normals from triangle faces
-      normals = computeFlatNormals(positions, meshIndicesArray);
     }
 
-    // Convert byte colors to float [0-1]. `positions` are the TEMPLATE-local
-    // vertices; `origin` (not baked in, to keep f32 precision at building scale)
-    // carries the per-instance placement so the renderer reconstructs
-    // world = origin + position — the same contract as the standard path.
+    // Rotate into this instance's own frame (#3575); no-op for identity rows.
+    if (rotationCols) applyInstanceRotation(positions, providedNormals, rotationCols, i);
+
+    const normals = providedNormals ?? computeFlatNormals(positions, meshIndicesArray);
+
+    // Convert byte colors to float [0-1]. `origin` (not baked in, for f32
+    // precision at building scale) carries the remaining translation: world
+    // = origin + position, same contract as the standard path (#1841),
+    // extended with the rotation already applied to `positions` above.
     meshes[i] = {
       express_id: entityIds[i],
       ifc_type: (ifcTypes?.get(i) as string) ?? 'Unknown',
@@ -434,15 +385,7 @@ export function buildMeshesFromOptimizedTables(tables: OptimizedTables): MeshDat
         matB[materialIdx] / 255,
         matA[materialIdx] / 255,
       ],
-      ...transformFields(
-        i,
-        instOriginX,
-        instOriginY,
-        instOriginZ,
-        hasInstOrigin,
-        instGeometryClass,
-        hasInstGeometryClass
-      ),
+      ...transformFields(i, cols),
     };
   }
 

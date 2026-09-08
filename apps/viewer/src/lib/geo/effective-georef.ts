@@ -43,7 +43,45 @@ export function hasStandardGeoreferencing(
     georef
     && georef.source !== 'siteLocation'
     && georef.projectedCRS?.name
-    && georef.mapConversion,
+    && georef.mapConversion
+    // PR #1965 review: presence alone isn't enough -- a malformed
+    // IfcMapConversion with a NaN eastings/northings/orthogonalHeight must
+    // not pass this gate. `hasUsableMapGeoref` (pick-to-geo.ts) delegates
+    // here for the XYZ readout and federation-alignment gate, so this
+    // finiteness check protects both, not just the DXF underlay path.
+    // `orthogonalHeight` joins eastings/northings here (2nd PR #1965 review
+    // round) because every consumer reads it straight through with no
+    // fallback -- `viewerPointToProjected` (pick-to-geo.ts) adds it directly
+    // into the returned height, and `federationAlign.ts`'s `hC`/`hS`/`ifcZr`
+    // computations multiply it by the map-unit scale and add it to the IFC Z
+    // used to align two models. A NaN here has nowhere to go but straight
+    // into Z.
+    && Number.isFinite(georef.mapConversion.eastings)
+    && Number.isFinite(georef.mapConversion.northings)
+    && Number.isFinite(georef.mapConversion.orthogonalHeight)
+    // Scale and the XAxisAbscissa/XAxisOrdinate axis pair are DELIBERATELY
+    // NOT part of this finiteness gate, unlike orthogonalHeight above. The
+    // DXF export/underlay path (`dxfExportGeoref.ts`'s
+    // `resolveGeorefLinearParams`) already substitutes finite fallbacks for
+    // exactly this case -- Scale=0/NaN/negative becomes 1, a degenerate or
+    // non-finite axis becomes the no-rotation default (1, 0) -- specifically
+    // so a malformed Scale/axis still renders the DXF underlay somewhere
+    // rather than disabling it outright (see that file's "GUARD PHILOSOPHY"
+    // header comment). `selectAnchorGeoref` (useAnchorGeoreference.ts) gates
+    // anchor selection through this same function, so adding Scale/axis here
+    // would make `hasUsableMapGeoref` reject that model as an anchor before
+    // `resolveGeorefLinearParams` ever gets a chance to apply its fallback --
+    // turning a georeference that currently renders (via the fallback) into
+    // one that's silently disabled instead. `orthogonalHeight` has no such
+    // downstream fallback anywhere, which is why it's guarded here and
+    // Scale/axis are not.
+    //
+    // This does leave `federationAlign.ts`'s `getAxis()` and
+    // `getEffectiveHorizontalScale()` reading a NaN Scale or axis pair
+    // without an equivalent fallback (unlike the DXF path) -- a real gap,
+    // but a pre-existing one this gate change doesn't widen, and fixing it
+    // belongs in that file's own math, not in loosening/tightening this
+    // shared presence gate.
   );
 }
 
@@ -79,8 +117,27 @@ export function mergeProjectedCRS(
 ): ProjectedCRS | undefined {
   if (!original && !mutations) return undefined;
   const mapUnit = mutations?.mapUnit ?? original?.mapUnit;
+  // A CLEARED MapUnit is an ABSENT MapUnit, not an unparseable one.
+  //
+  // The panel's MapUnit editor is a `<select>` whose first option has an empty
+  // value, and `commitEdit` deliberately permits an empty commit for selects
+  // (`if (!trimmed && !hint.isSelect) return;`). So `''` reaches here as an
+  // edit. `''` is not `undefined`, so it took the edited branch, and
+  // `inferMapUnitScale('', lengthUnitScale)` returns the FALLBACK — the
+  // project's length-unit scale.
+  //
+  // That is precisely the reading `resolveMapUnitToMetreScale` exists to
+  // reject: its doc says "when no explicit MapUnit is set, treat the offsets
+  // as metres", because surveying pipelines emit metre offsets regardless of
+  // the project unit. So clearing the field opted the user INTO the failure
+  // the heuristic was written to avoid — for a millimetre project, a 1000×
+  // under-scale that flings the model outside the CRS's valid range.
+  //
+  // Passing `undefined` as the fallback for an empty string routes it to the
+  // absent path (scale 1). A non-empty but unparseable MapUnit keeps today's
+  // length-unit fallback.
   const mapUnitScale = mutations?.mapUnit !== undefined
-    ? inferMapUnitScale(mapUnit, lengthUnitScale)
+    ? inferMapUnitScale(mapUnit, mapUnit ? lengthUnitScale : undefined)
     : original?.mapUnitScale ?? inferMapUnitScale(mapUnit, undefined);
   return {
     id: original?.id ?? 0,
@@ -95,6 +152,21 @@ export function mergeProjectedCRS(
   };
 }
 
+/**
+ * `?? 0` alone lets a malformed `IfcMapConversion` (or a bad mutation edit)
+ * pass a NaN eastings/northings/orthogonalHeight straight through -- PR #1965
+ * review: `mergeMapConversion` used to do exactly that, and the NaN then
+ * poisons every point `dxfExportGeoref.ts`'s forward/inverse transform
+ * touches, permanently (the corrupted value can land in the DXF underlay's
+ * stored `placement`, which survives toggling "georeferenced" back off --
+ * see `resolveGeorefLinearParams` and `dxfUnderlayDrawingBounds`). Falls
+ * back to 0 exactly like `?? 0` already did for the "missing" case, just
+ * extended to the "present but non-finite" case too.
+ */
+function finiteOr0(value: number | undefined): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
 export function mergeMapConversion(
   original: MapConversion | undefined,
   mutations: Partial<MapConversion> | undefined,
@@ -104,9 +176,9 @@ export function mergeMapConversion(
     id: original?.id ?? 0,
     sourceCRS: original?.sourceCRS ?? 0,
     targetCRS: original?.targetCRS ?? 0,
-    eastings: (mutations?.eastings ?? original?.eastings ?? 0) as number,
-    northings: (mutations?.northings ?? original?.northings ?? 0) as number,
-    orthogonalHeight: (mutations?.orthogonalHeight ?? original?.orthogonalHeight ?? 0) as number,
+    eastings: finiteOr0(mutations?.eastings ?? original?.eastings),
+    northings: finiteOr0(mutations?.northings ?? original?.northings),
+    orthogonalHeight: finiteOr0(mutations?.orthogonalHeight ?? original?.orthogonalHeight),
     xAxisAbscissa: mutations?.xAxisAbscissa ?? original?.xAxisAbscissa,
     xAxisOrdinate: mutations?.xAxisOrdinate ?? original?.xAxisOrdinate,
     scale: mutations?.scale ?? original?.scale,

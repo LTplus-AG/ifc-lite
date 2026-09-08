@@ -253,6 +253,40 @@ describe('Georeferencing Extractor', () => {
     expect(description).toBe('Local Engineering Coordinates');
   });
 
+  // The spec's canonical sign encoding puts the sign on the first non-zero
+  // component (0°30'S is `(0, -30, 0)`), which `main` already handled via
+  // `minutesRaw < 0`. This fixture instead covers a writer that carries the
+  // hemisphere sign on a zero-magnitude degree token (`-0`, e.g.
+  // `(-0, 30, 0)` for the same 0°30'S) — a non-canonical but plausible
+  // encoding, defensively worth honouring rather than a spec requirement.
+  // IfcCompoundPlaneAngleMeasure degrees are STEP INTEGER literals, and the
+  // tokenizer preserves a "-0" token as IEEE-754 negative zero
+  // (`parseFloat('-0') === -0`), but `-0 < 0` is `false` in JS, so a sign
+  // test built only from `< 0` silently drops it and reports the site
+  // north/east of the equator/meridian instead of south/west.
+  it('honours a zero-magnitude negative-zero degree component in RefLatitude/RefLongitude', () => {
+    const entities = new Map<number, IfcEntity>();
+    const siteAttrNames = getAttributeNames('IfcSite');
+    const attributes = new Array(siteAttrNames.length).fill(null);
+    // -0°30'0" and -0°45'0": south of the equator, west of the meridian.
+    attributes[siteAttrNames.indexOf('RefLatitude')] = [-0, 30, 0];
+    attributes[siteAttrNames.indexOf('RefLongitude')] = [-0, 45, 0];
+
+    entities.set(301, {
+      expressId: 301,
+      type: 'IfcSite',
+      attributes,
+    });
+
+    const entitiesByType = new Map<string, number[]>();
+    entitiesByType.set('IfcSite', [301]);
+
+    const georef = extractGeoreferencing(entities, entitiesByType);
+
+    expect(georef.mapConversion?.northings).toBeCloseTo(-0.5, 9);
+    expect(georef.mapConversion?.eastings).toBeCloseTo(-0.75, 9);
+  });
+
   it('extracts legacy IFC2X3 IfcSite geolocation', () => {
     const entities = new Map<number, IfcEntity>();
     const siteAttrNames = getAttributeNames('IfcSite');
@@ -480,4 +514,146 @@ describe('Georeferencing Extractor', () => {
     expect(georef.projectedCRS?.mapUnit).toBe('FOOT');
     expect(georef.projectedCRS?.mapUnitScale).toBe(0.3048);
   });
+
+  it('reads an IfcConversionBasedUnit MapUnit, the form ifc-lite itself writes for feet', () => {
+    // packages/export/src/step-georeferencing.ts writes a FOOT map unit as
+    //   #d=IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0);
+    //   #s=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+    //   #m=IFCMEASUREWITHUNIT(IFCLENGTHMEASURE(0.3048),#s);
+    //   #c=IFCCONVERSIONBASEDUNIT(#d,.LENGTHUNIT.,'FOOT',#m);
+    // MapUnit is an IfcNamedUnit, so it is EITHER an IfcSIUnit or an
+    // IfcConversionBasedUnit -- and attribute 2 is `Prefix` on the first but
+    // `Name` on the second. Reading slot 2 as a prefix unconditionally means
+    // 'FOOT' matches no prefix and the unit silently reads back as metres at
+    // scale 1: a 3.28x error on every coordinate. No fixture had ever set a
+    // non-metre MapUnit, so the round trip only ever exercised METRE.
+    const entities = new Map<number, IfcEntity>();
+    entities.set(300, {
+      expressId: 300,
+      type: 'IfcDimensionalExponents',
+      attributes: [1, 0, 0, 0, 0, 0, 0],
+    });
+    entities.set(301, {
+      expressId: 301,
+      type: 'IfcSIUnit',
+      attributes: ['*', '.LENGTHUNIT.', '$', '.METRE.'],
+    });
+    entities.set(302, {
+      expressId: 302,
+      type: 'IfcMeasureWithUnit',
+      attributes: [['IFCLENGTHMEASURE', 0.3048], '#301'],
+    });
+    entities.set(303, {
+      expressId: 303,
+      type: 'IfcConversionBasedUnit',
+      attributes: ['#300', '.LENGTHUNIT.', 'FOOT', '#302'],
+    });
+    entities.set(304, {
+      expressId: 304,
+      type: 'IfcProjectedCRS',
+      attributes: ['EPSG:2264', null, 'NAD83', null, 'Lambert Conformal Conic', null, '#303'],
+    });
+
+    const entitiesByType = new Map<string, number[]>([['IfcProjectedCRS', [304]]]);
+    const georef = extractGeoreferencing(entities, entitiesByType);
+
+    expect(georef.projectedCRS?.mapUnit).toBe('FOOT');
+    expect(georef.projectedCRS?.mapUnitScale).toBe(0.3048);
+  });
+
+  it('distinguishes the US survey foot from the international foot in a MapUnit', () => {
+    // 1200/3937 m vs 0.3048 m differ by 2 ppm -- metres of drift across a
+    // State Plane coordinate, which is exactly where survey feet are used.
+    const entities = new Map<number, IfcEntity>();
+    entities.set(311, {
+      expressId: 311,
+      type: 'IfcSIUnit',
+      attributes: ['*', '.LENGTHUNIT.', '$', '.METRE.'],
+    });
+    entities.set(312, {
+      expressId: 312,
+      type: 'IfcMeasureWithUnit',
+      attributes: [['IFCLENGTHMEASURE', 1200 / 3937], '#311'],
+    });
+    entities.set(313, {
+      expressId: 313,
+      type: 'IfcConversionBasedUnit',
+      attributes: [null, '.LENGTHUNIT.', 'US SURVEY FOOT', '#312'],
+    });
+    entities.set(314, {
+      expressId: 314,
+      type: 'IfcProjectedCRS',
+      attributes: ['EPSG:2264', null, 'NAD83', null, null, null, '#313'],
+    });
+
+    const georef = extractGeoreferencing(
+      entities,
+      new Map<string, number[]>([['IfcProjectedCRS', [314]]])
+    );
+
+    expect(georef.projectedCRS?.mapUnit).toBe('US SURVEY FOOT');
+    expect(georef.projectedCRS?.mapUnitScale).toBe(1200 / 3937);
+    expect(georef.projectedCRS?.mapUnitScale).not.toBe(0.3048);
+  });
+
+  it('falls back to the declared ConversionFactor for a MapUnit name it does not know', () => {
+    // A vendor unit name absent from the table must still scale correctly:
+    // the file declares its own ratio, and the value is expressed IN the
+    // measure's unit component, so a prefixed SI component multiplies it.
+    const entities = new Map<number, IfcEntity>();
+    entities.set(321, {
+      expressId: 321,
+      type: 'IfcSIUnit',
+      attributes: ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.'],
+    });
+    entities.set(322, {
+      expressId: 322,
+      type: 'IfcMeasureWithUnit',
+      // 25.4 millimetres, i.e. 0.0254 m -- the component prefix must apply.
+      attributes: [['IFCLENGTHMEASURE', 25.4], '#321'],
+    });
+    entities.set(323, {
+      expressId: 323,
+      type: 'IfcConversionBasedUnit',
+      attributes: [null, '.LENGTHUNIT.', 'VENDOR UNIT', '#322'],
+    });
+    entities.set(324, {
+      expressId: 324,
+      type: 'IfcProjectedCRS',
+      attributes: ['EPSG:1234', null, null, null, null, null, '#323'],
+    });
+
+    const georef = extractGeoreferencing(
+      entities,
+      new Map<string, number[]>([['IfcProjectedCRS', [324]]])
+    );
+
+    expect(georef.projectedCRS?.mapUnit).toBe('VENDOR UNIT');
+    expect(georef.projectedCRS?.mapUnitScale).toBeCloseTo(0.0254, 12);
+  });
+
+  it('still reads a prefixed IfcSIUnit MapUnit as before', () => {
+    // The other arm of the new branch: an SI unit must keep resolving through
+    // the prefix table, not fall into the conversion-based path.
+    const entities = new Map<number, IfcEntity>();
+    entities.set(331, {
+      expressId: 331,
+      type: 'IfcSIUnit',
+      attributes: ['*', '.LENGTHUNIT.', '.MILLI.', '.METRE.'],
+    });
+    entities.set(332, {
+      expressId: 332,
+      type: 'IfcProjectedCRS',
+      attributes: ['EPSG:1234', null, null, null, null, null, '#331'],
+    });
+
+    const georef = extractGeoreferencing(
+      entities,
+      new Map<string, number[]>([['IfcProjectedCRS', [332]]])
+    );
+
+    expect(georef.projectedCRS?.mapUnit).toBe('MILLIMETRE');
+    expect(georef.projectedCRS?.mapUnitScale).toBe(0.001);
+  });
+
 });

@@ -7,6 +7,7 @@
 
 import { FilePersistence, startCollabServer } from './server.js';
 import { FsBlobStorage } from './blob-route.js';
+import { resolveBlobGcConfig, startBlobGc } from './blob-gc-worker.js';
 import { FsLayerRegistry } from './layer-registry-fs.js';
 import { createAccessControl } from './access-control.js';
 
@@ -73,6 +74,8 @@ async function main() {
         ),
       })
     : null;
+  const blobStorage = new FsBlobStorage(dataDir);
+  const blobGcConfig = resolveBlobGcConfig();
   const handle = await startCollabServer({
     port,
     host,
@@ -80,7 +83,7 @@ async function main() {
     // Disk-backed blobs (not the in-RAM default): mesh blobs dominate a room's
     // size, so keeping them in memory made memory the top hosting cost and lost
     // them on restart. On a mounted volume this is durable and far cheaper.
-    blobStorage: new FsBlobStorage(dataDir),
+    blobStorage,
     maxRooms,
     // Evict idle rooms so a long-lived server doesn't accumulate loaded rooms
     // up to `maxRooms` and then reject all new connections (see const above).
@@ -91,13 +94,21 @@ async function main() {
     ...(accessControl ? accessControl.serverOptions : {}),
   });
   // eslint-disable-next-line no-console
+  const blobGc = startBlobGc({
+    dataDir,
+    storage: blobStorage,
+    roomManager: handle.roomManager,
+    config: blobGcConfig,
+  });
+  // eslint-disable-next-line no-console
   console.log(
-    `[collab-server] listening at ${handle.url} (data: ${dataDir}, auth: ${tokenSecret ? 'room-token' : 'anonymous'}, registry: ${layerRegistryEnabled ? 'fs' : 'off'})`,
+    `[collab-server] listening at ${handle.url} (data: ${dataDir}, auth: ${tokenSecret ? 'room-token' : 'anonymous'}, registry: ${layerRegistryEnabled ? 'fs' : 'off'}, blob-gc: ${blobGc ? `every ${Math.round(blobGcConfig.intervalMs / 60000)}m` : 'off'})`,
   );
 
   const shutdown = async () => {
     // eslint-disable-next-line no-console
     console.log('[collab-server] shutting down…');
+    blobGc?.stop();
     await handle.stop();
     // A SIGTERM during the persist debounce (or mid-write) must not lose
     // claims/revocations: await the pending/in-flight state write. flush()

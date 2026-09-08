@@ -61,6 +61,7 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
 import { downloadFile, sanitizeFilename } from '@/lib/export/download';
+import { ExtensionExportSlot } from '@/components/extensions/ExtensionExportSlot';
 
 type ExportScope = 'single' | 'merged';
 type SchemaVersion = 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5';
@@ -454,10 +455,22 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         const federatedModel = models.get(selectedModelId);
         const idOffset = federatedModel?.idOffset ?? 0;
 
-        // Include GPU-instanced occurrences (absent from geometryResult.meshes) for
-        // the primary model (idOffset 0) so the USD/IFC5 export isn't missing them.
+        // Include GPU-instanced occurrences (absent from geometryResult.meshes) so
+        // the USD/IFC5 export isn't missing them. GPU instancing stopped being
+        // primary-only on 2026-08-06 (#2255) — a federated model can carry
+        // instanced occurrences too — so scope by THIS model's
+        // `{ idOffset, maxExpressId }` bracket rather than an `idOffset === 0`
+        // gate, or a federation of N models would splice every other model's
+        // instanced entities into this one's export. `federatedModel` is
+        // undefined only for the legacy slot, which is provably the sole model
+        // loaded, so `null` (no filter) is correct there (#2865/#2878 follow-up).
         const exportGeometry = selectedModel.geometryResult
-          ? withInstancedMeshes(selectedModel.geometryResult, idOffset === 0)
+          ? withInstancedMeshes(
+              selectedModel.geometryResult,
+              federatedModel
+                ? { idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+                : null,
+            )
           : selectedModel.geometryResult;
 
         const exporter = new Ifc5Exporter(
@@ -814,6 +827,16 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
               <AlertDescription>{exportResult.message}</AlertDescription>
             </Alert>
           )}
+
+          {/* Extension-contributed exporters (#1907). Rendered alongside the
+              built-in formats so a third-party exporter is actually reachable. */}
+          <ExtensionExportSlot
+            baseName={
+              selectedModel
+                ? sanitizeFilename(selectedModel.name.replace(/\.[^.]+$/, ''), { fallback: 'model' })
+                : 'model'
+            }
+          />
         </div>
 
         <DialogFooter>

@@ -11,6 +11,23 @@ import { Tag } from 'lucide-react';
 import type { ClassificationInfo } from '@ifc-lite/parser';
 
 export function ClassificationCard({ classification }: { classification: ClassificationInfo }) {
+  // Matches the "unavailable on this data source" treatment in
+  // ModelMetadataPanel: a server-parsed store (#3948) can prove the entity
+  // is classified via the relationship graph without being able to read
+  // any of the classification's own attributes. Without this branch the
+  // card fell through to the general case below and rendered a
+  // content-free "Classification / Unknown" card.
+  if (classification.unresolved) {
+    return (
+      <div className="border-2 border-emerald-200 dark:border-emerald-800 bg-emerald-50/20 dark:bg-emerald-950/20 w-full max-w-full overflow-hidden flex items-center gap-2 p-2.5">
+        <Tag className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+        <span className="text-xs text-zinc-500 dark:text-zinc-400">
+          Classification present, but unavailable on this data source
+        </span>
+      </div>
+    );
+  }
+
   const displayName = classification.identification || classification.name || 'Unknown';
   const systemName = classification.system;
 

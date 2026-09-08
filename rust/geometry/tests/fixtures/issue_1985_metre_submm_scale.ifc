@@ -1,0 +1,96 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('issue_1985_metre_submm_scale.ifc','2026-08-04T00:00:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCAXIS2PLACEMENT3D(#1,$,$);
+#3=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#4=IFCUNITASSIGNMENT((#3));
+#5=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-5,#2,$);
+#9=IFCDIRECTION((0.,0.,1.));
+#10=IFCAXIS2PLACEMENT3D(#1,$,$);
+/* ---- Map A: extruded circle authored in MILLIMETRE numbers (r=50, L=1734.5) ---- */
+#6=IFCCARTESIANPOINT((0.,0.));
+#7=IFCAXIS2PLACEMENT2D(#6,$);
+#8=IFCCIRCLEPROFILEDEF(.AREA.,'P',#7,50.);
+#11=IFCEXTRUDEDAREASOLID(#8,#10,#9,1734.5);
+#12=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#11));
+#13=IFCREPRESENTATIONMAP(#2,#12);
+/* ---- Map A2: a SEPARATE copy of map A's solid, used only by the nested wrap
+   below. The router's occurrence-count plan (#1623 Phase 2) tallies every
+   IfcMappedItem referencing a source, including one nested inside another
+   map's representation -- so if the nested wrap pointed at #13 itself, its
+   IfcMappedItem (#15) would inflate #13's count to 3 and (being the
+   lowest express id) get PICKED as the don't-bake template, even though it
+   never runs through the top-level template/retag path (only depth == 0
+   items do, see router/processing.rs). That starves both top-level
+   occurrences of #13 of a real template and routes them through orphan
+   recovery instead -- silently correct output, but instancing never
+   actually engages. Giving the nested wrap its own source keeps #13's count
+   at exactly 2 (occurrences A and B below), so instancing engages for real. ---- */
+#200=IFCCARTESIANPOINT((0.,0.));
+#201=IFCAXIS2PLACEMENT2D(#200,$);
+#202=IFCCIRCLEPROFILEDEF(.AREA.,'P',#201,50.);
+#203=IFCEXTRUDEDAREASOLID(#202,#10,#9,1734.5);
+#204=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#203));
+#205=IFCREPRESENTATIONMAP(#2,#204);
+/* ---- Map B: wraps map A2 through a NESTED IfcMappedItem (inner Scale=0.001) ---- */
+#14=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,0.001,$);
+#15=IFCMAPPEDITEM(#205,#14);
+#16=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#15));
+#17=IFCREPRESENTATIONMAP(#2,#16);
+/* ---- Operators ---- */
+#50=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,0.001,$);
+#51=IFCCARTESIANTRANSFORMATIONOPERATOR3DNONUNIFORM($,$,#1,0.001,$,0.001,0.002);
+#52=IFCCARTESIANTRANSFORMATIONOPERATOR3D($,$,#1,1.,$);
+/* ---- Spatial structure ---- */
+#60=IFCLOCALPLACEMENT($,#2);
+#61=IFCSITE('0SITE56789ABCDEFGHIJKL',$,'Site',$,$,#60,$,$,.ELEMENT.,$,$,$,$,$);
+#62=IFCLOCALPLACEMENT(#60,#2);
+#63=IFCBUILDING('0BLDG56789ABCDEFGHIJKL',$,'Building',$,$,#62,$,$,.ELEMENT.,$,$,$);
+#64=IFCLOCALPLACEMENT(#62,#2);
+#65=IFCBUILDINGSTOREY('0STRY56789ABCDEFGHIJKL',$,'Storey',$,$,#64,$,$,.ELEMENT.,0.);
+#66=IFCPROJECT('0PRJ456789ABCDEFGHIJKL',$,'Proj',$,$,$,$,(#5),#4);
+/* ---- Occurrence A: uniform Scale = 0.001 ---- */
+#70=IFCMAPPEDITEM(#13,#50);
+#71=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#70));
+#72=IFCPRODUCTDEFINITIONSHAPE($,$,(#71));
+#73=IFCLOCALPLACEMENT(#64,#2);
+#74=IFCPIPESEGMENT('0PIPA56789ABCDEFGHIJKL',$,'A_uniform_0001',$,$,#73,#72,$,$);
+/* ---- Occurrence B: NON-UNIFORM (0.001, 0.001, 0.002) ---- */
+#75=IFCMAPPEDITEM(#13,#51);
+#76=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#75));
+#77=IFCPRODUCTDEFINITIONSHAPE($,$,(#76));
+#78=IFCCARTESIANPOINT((2.,0.,0.));
+#79=IFCAXIS2PLACEMENT3D(#78,$,$);
+#80=IFCLOCALPLACEMENT(#64,#79);
+#81=IFCPIPESEGMENT('0PIPB56789ABCDEFGHIJKL',$,'B_nonuniform',$,$,#80,#77,$,$);
+/* ---- Occurrence C: NESTED map (outer Scale = 1, inner Scale = 0.001) ---- */
+#82=IFCMAPPEDITEM(#17,#52);
+#83=IFCSHAPEREPRESENTATION(#5,'Body','MappedRepresentation',(#82));
+#84=IFCPRODUCTDEFINITIONSHAPE($,$,(#83));
+#85=IFCCARTESIANPOINT((4.,0.,0.));
+#86=IFCAXIS2PLACEMENT3D(#85,$,$);
+#87=IFCLOCALPLACEMENT(#64,#86);
+#88=IFCPIPESEGMENT('0PIPC56789ABCDEFGHIJKL',$,'C_nested_map',$,$,#87,#84,$,$);
+/* ---- Occurrence D: the same pipe authored DIRECTLY in metres ---- */
+#90=IFCCARTESIANPOINT((0.,0.));
+#91=IFCAXIS2PLACEMENT2D(#90,$);
+#92=IFCCIRCLEPROFILEDEF(.AREA.,'P',#91,0.05);
+#93=IFCEXTRUDEDAREASOLID(#92,#10,#9,1.7345);
+#94=IFCSHAPEREPRESENTATION(#5,'Body','SweptSolid',(#93));
+#95=IFCPRODUCTDEFINITIONSHAPE($,$,(#94));
+#96=IFCCARTESIANPOINT((6.,0.,0.));
+#97=IFCAXIS2PLACEMENT3D(#96,$,$);
+#98=IFCLOCALPLACEMENT(#64,#97);
+#99=IFCPIPESEGMENT('0PIPD56789ABCDEFGHIJKL',$,'D_direct_metre',$,$,#98,#95,$,$);
+/* ---- Aggregation + containment ---- */
+#120=IFCRELAGGREGATES('0REL156789ABCDEFGHIJKL',$,$,$,#66,(#61));
+#121=IFCRELAGGREGATES('0REL256789ABCDEFGHIJKL',$,$,$,#61,(#63));
+#122=IFCRELAGGREGATES('0REL356789ABCDEFGHIJKL',$,$,$,#63,(#65));
+#123=IFCRELCONTAINEDINSPATIALSTRUCTURE('0REL456789ABCDEFGHIJKL',$,$,$,(#74,#81,#88,#99),#65);
+ENDSEC;
+END-ISO-10303-21;

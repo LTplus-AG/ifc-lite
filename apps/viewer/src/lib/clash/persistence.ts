@@ -11,8 +11,9 @@
  *   editable items with `enabled`/`builtin`); the user may toggle/edit them
  *   (stored as overrides) and add custom presets. Only customs + modified
  *   built-ins are persisted, so shipping a new built-in just works.
- * - Settings: one flat JSON blob (mode/tolerance/clearance/clusterEpsilon/
- *   reportTouch/groupBy), every numeric clamped to a sane range on load.
+ * - Settings: one flat JSON blob (mode/tolerance/clearance/duplicateTolerance/
+ *   clusterEpsilon/reportTouch/groupBy), every numeric clamped to a sane range
+ *   on load.
  */
 
 import {
@@ -25,10 +26,24 @@ import {
   type ClashReviewStatus,
   type ClashSeverity,
 } from '@ifc-lite/clash';
+import {
+  MAX_EXCLUSION_LABEL,
+  type ClashExclusionKind,
+  type ClashExclusionRule,
+} from './exclusions.js';
+import { parseClashSetFilters, type ClashSetFilters } from './set-filter.js';
 import { downloadFile } from '../export/download.js';
+import { optionalLocalStorage, preserveUnreadableEntry } from '../storage/unreadable-entry.js';
 
-/** A built-in or user-defined clash rule preset, with editor/runtime flags. */
-export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean };
+/**
+ * A built-in or user-defined clash rule preset, with editor/runtime flags.
+ *
+ * `filterA` / `filterB` are the optional advanced-filter definition of each
+ * side (#3902). Absent on every preset saved before they existed and on every
+ * built-in, which is exactly what makes them additive: a side with no filter
+ * keeps resolving through its `selectorA` / `selectorB` type selector.
+ */
+export type ClashPreset = ClashRulePreset & { enabled: boolean; builtin: boolean } & ClashSetFilters;
 
 /** How the panel groups the flat clash list (display only). */
 export type ClashSettingsGroupBy = 'severity' | 'rule' | 'typePair';
@@ -38,20 +53,51 @@ export interface ClashGlobalSettings {
   mode: ClashMode;
   tolerance: number;
   clearance: number;
+  /** Duplicate-scan position tolerance (m): how far apart two elements may be
+   *  and still count as the same object (`findDuplicates.positionTolerance`).
+   *  An upper bound, not the whole gate: the effective tolerance per axis is
+   *  `min(this, extent on that axis)` — see `findDuplicates.positionTolerance`.
+   *  Distinct from `tolerance`, which is the clash engine's touching band. */
+  duplicateTolerance: number;
   clusterEpsilon: number;
   reportTouch: boolean;
   groupBy: ClashSettingsGroupBy;
 }
 
+/**
+ * Why a save was refused.
+ *
+ * `rollback_failed` is the odd one out: no writer in this module returns it.
+ * It is raised by a caller that writes more than one key and could not undo
+ * the half that landed after a later write was refused (see
+ * `applyClashFlavorConfig` in `clashSlice.ts`). The others all mean "nothing
+ * changed"; this one means storage is now holding a mix the user never chose,
+ * so it is the one value a caller must be able to tell apart without reading
+ * the message.
+ *
+ * A failed undo is necessary but not sufficient: if the write being undone
+ * stored the same rule set that was already stored, nothing was stranded and
+ * the caller reports the refused write's own reason instead. See
+ * `presetsStoreIdentically`.
+ */
+export type ClashSaveFailureReason =
+  | 'quota'
+  | 'serialize'
+  | 'too_many'
+  | 'unreadable'
+  | 'rollback_failed';
+
 export type SaveResult =
   | { ok: true }
-  | { ok: false; reason: 'quota' | 'serialize' | 'too_many'; message: string };
+  | { ok: false; reason: ClashSaveFailureReason; message: string };
 
 const PRESETS_KEY = 'ifc-lite-clash-presets';
 const SETTINGS_KEY = 'ifc-lite-clash-settings';
 /** Per-clash review status + comments, keyed by the durable `clashReviewKey`. (#1468) */
 const REVIEWS_KEY = 'ifc-lite-clash-reviews';
-const SCHEMA_VERSION = 1;
+/** The user's own "these two may overlap" rules (type pairs + element pairs). */
+const EXCLUSIONS_KEY = 'ifc-lite-clash-exclusions';
+export const SCHEMA_VERSION = 1;
 
 const MAX_PRESETS = 200;
 const MAX_NAME = 100;
@@ -59,11 +105,14 @@ const MAX_NAME = 100;
 const MAX_REVIEWS = 10_000;
 /** Cap on a single review comment; longer notes belong in a real issue tracker. */
 const MAX_COMMENT = 2_000;
+/** Cap on stored exclusion rules. Type-pair rules keep the realistic count low. */
+const MAX_EXCLUSIONS = 2_000;
 
 /** [min, max] clamps applied to settings numerics on load and on commit. */
 export const CLASH_BOUNDS = {
   tolerance: [0, 1] as const,
   clearance: [0, 5] as const,
+  duplicateTolerance: [0, 1] as const,
   clusterEpsilon: [0.01, 50] as const,
 };
 
@@ -71,6 +120,7 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
   mode: 'hard',
   tolerance: 0.002,
   clearance: 0.05,
+  duplicateTolerance: 0.01,
   clusterEpsilon: 1.5,
   reportTouch: false,
   groupBy: 'severity',
@@ -83,9 +133,33 @@ export const DEFAULT_CLASH_SETTINGS: ClashGlobalSettings = {
 // of undefined" on boot. Deferring to first call sidesteps the chunk
 // initialization-order hazard entirely.
 let builtinPresetIdsCache: Set<string> | null = null;
-function builtinPresetIds(): Set<string> {
+export function builtinPresetIds(): Set<string> {
   return (builtinPresetIdsCache ??= new Set(CLASH_RULE_PRESETS.map((p) => p.id)));
 }
+
+/**
+ * Keys whose stored value we failed to read *and* failed to move aside. Both
+ * loaders below degrade to defaults on a read failure, so without this the next
+ * ordinary edit would serialize those defaults over data we never managed to
+ * see. Entries are added by the loader and cleared by a later clean read.
+ */
+const unwritableKeys = new Set<string>();
+
+/** Handle a loader throwing: preserve what is stored, or block writes to `key`. */
+function onReadFailure(key: string, cause: unknown): void {
+  if (preserveUnreadableEntry(optionalLocalStorage(), key, cause)) unwritableKeys.delete(key);
+  else unwritableKeys.add(key);
+}
+
+/** A refusal to overwrite a value we could neither read nor preserve. */
+function refuseOverwrite(what: string): SaveResult {
+  return {
+    ok: false,
+    reason: 'unreadable',
+    message: `Stored ${what} could not be read and could not be backed up — they were left untouched.`,
+  };
+}
+
 const SEVERITIES: ClashSeverity[] = ['critical', 'major', 'minor', 'info'];
 const GROUP_BYS: ClashSettingsGroupBy[] = ['severity', 'rule', 'typePair'];
 
@@ -107,7 +181,7 @@ export function validateSelector(selector: string): string | null {
   return t ? t : null;
 }
 
-function isValidStoredPreset(p: unknown): p is ClashPreset {
+export function isValidStoredPreset(p: unknown): p is ClashPreset {
   if (!p || typeof p !== 'object') return false;
   const r = p as Record<string, unknown>;
   return (
@@ -119,11 +193,33 @@ function isValidStoredPreset(p: unknown): p is ClashPreset {
   );
 }
 
+/**
+ * The one projection from a validated stored preset to a live one. Every read
+ * path — localStorage, file import, flavor restore — goes through it, so a
+ * field added to `ClashPreset` cannot survive on some of them and vanish on
+ * the others (#3902 added two and would otherwise have had to edit three
+ * near-identical literals in two files).
+ */
+export function storedPresetToPreset(p: ClashPreset, builtin: boolean): ClashPreset {
+  return {
+    id: p.id,
+    name: p.name,
+    description: typeof p.description === 'string' ? p.description : '',
+    severity: p.severity,
+    selectorA: p.selectorA,
+    selectorB: p.selectorB,
+    enabled: p.enabled !== false,
+    builtin,
+    ...parseClashSetFilters(p),
+  };
+}
+
 /** Read stored presets, accepting the versioned wrapper or a legacy bare array. */
 function readStoredPresets(): ClashPreset[] {
   try {
+    unwritableKeys.delete(PRESETS_KEY);
     const raw = localStorage.getItem(PRESETS_KEY);
-    if (!raw) return [];
+    if (raw === null) return [];
     const parsed: unknown = JSON.parse(raw);
     const list = Array.isArray(parsed)
       ? parsed
@@ -132,17 +228,9 @@ function readStoredPresets(): ClashPreset[] {
         : [];
     return list
       .filter(isValidStoredPreset)
-      .map((p) => ({
-        id: p.id,
-        name: p.name,
-        description: typeof p.description === 'string' ? p.description : '',
-        severity: p.severity,
-        selectorA: p.selectorA,
-        selectorB: p.selectorB,
-        enabled: p.enabled !== false,
-        builtin: builtinPresetIds().has(p.id),
-      }));
-  } catch {
+      .map((p) => storedPresetToPreset(p, builtinPresetIds().has(p.id)));
+  } catch (err) {
+    onReadFailure(PRESETS_KEY, err);
     return [];
   }
 }
@@ -180,6 +268,7 @@ function builtinDiffersFromDefault(p: ClashPreset): boolean {
   if (!orig) return true;
   return (
     !p.enabled ||
+    !!p.filterA || !!p.filterB ||
     p.name !== orig.name ||
     p.severity !== orig.severity ||
     p.selectorA !== orig.selectorA ||
@@ -196,17 +285,53 @@ export function presetsToStore(presets: ClashPreset[]): ClashPreset[] {
   ];
 }
 
+/**
+ * The exact string `savePresets` hands to `localStorage.setItem`, or null if
+ * the rule set cannot be serialized. The single source of those bytes, so a
+ * caller comparing two rule sets compares what would actually be written.
+ */
+function presetsPayload(presets: ClashPreset[]): string | null {
+  try {
+    return JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: presetsToStore(presets) });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether storing `a` and storing `b` would write the same bytes under the
+ * presets key — i.e. whether replacing `a` with `b` leaves the store's
+ * serialized form unchanged.
+ *
+ * Not the same question as "would the bytes on disk change": `readStoredPresets`
+ * also accepts a legacy bare array, so the key can already be in sync with a
+ * value that is not what `savePresets` writes, and storing either of these rule
+ * sets over it would rewrite it into the current wrapper. What this answers is
+ * that both rule sets persist as the same thing, so whichever one lands, a
+ * reload rebuilds the same state.
+ *
+ * Built through `presetsPayload`, the same function `savePresets` writes from,
+ * so this cannot drift from the real payload the way a structural or reference
+ * comparison could: `presetsToStore` drops built-ins that match their default,
+ * so two rule sets that differ as arrays can still store identically.
+ *
+ * A rule set that fails to serialize is reported as differing from everything,
+ * including itself: nothing can be concluded about bytes that cannot be built.
+ */
+export function presetsStoreIdentically(a: ClashPreset[], b: ClashPreset[]): boolean {
+  const payloadA = presetsPayload(a);
+  return payloadA !== null && payloadA === presetsPayload(b);
+}
+
 /** Persist only custom presets + modified built-ins (quota-safe). */
 export function savePresets(presets: ClashPreset[]): SaveResult {
+  if (unwritableKeys.has(PRESETS_KEY)) return refuseOverwrite('clash rules');
   const custom = presets.filter((p) => !p.builtin);
   if (custom.length > MAX_PRESETS) {
     return { ok: false, reason: 'too_many', message: `Too many custom rules (max ${MAX_PRESETS}).` };
   }
-  const toStore = presetsToStore(presets);
-  let payload: string;
-  try {
-    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, presets: toStore });
-  } catch {
+  const payload = presetsPayload(presets);
+  if (payload === null) {
     return { ok: false, reason: 'serialize', message: 'Could not serialize clash rules.' };
   }
   try {
@@ -227,6 +352,7 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
     mode: s.mode === 'clearance' ? 'clearance' : 'hard',
     tolerance: clampToBounds(s.tolerance, CLASH_BOUNDS.tolerance, DEFAULT_CLASH_SETTINGS.tolerance),
     clearance: clampToBounds(s.clearance, CLASH_BOUNDS.clearance, DEFAULT_CLASH_SETTINGS.clearance),
+    duplicateTolerance: clampToBounds(s.duplicateTolerance, CLASH_BOUNDS.duplicateTolerance, DEFAULT_CLASH_SETTINGS.duplicateTolerance),
     clusterEpsilon: clampToBounds(s.clusterEpsilon, CLASH_BOUNDS.clusterEpsilon, DEFAULT_CLASH_SETTINGS.clusterEpsilon),
     reportTouch: s.reportTouch === true,
     groupBy: GROUP_BYS.includes(s.groupBy as ClashSettingsGroupBy) ? (s.groupBy as ClashSettingsGroupBy) : 'severity',
@@ -235,17 +361,79 @@ export function normalizeSettings(raw: unknown): ClashGlobalSettings {
 
 export function loadSettings(): ClashGlobalSettings {
   try {
+    unwritableKeys.delete(SETTINGS_KEY);
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return { ...DEFAULT_CLASH_SETTINGS };
+    if (raw === null) return { ...DEFAULT_CLASH_SETTINGS };
     return normalizeSettings(JSON.parse(raw));
-  } catch {
+  } catch (err) {
+    onReadFailure(SETTINGS_KEY, err);
     return { ...DEFAULT_CLASH_SETTINGS };
   }
 }
 
-export function saveSettings(settings: ClashGlobalSettings): SaveResult {
+/**
+ * The exact string `saveSettings` hands to `localStorage.setItem`. The single
+ * source of those bytes, so a caller asking whether a settings write would
+ * change anything compares what would actually be written.
+ *
+ * The settings object is rebuilt here, field by field, rather than serialized
+ * as handed in: `JSON.stringify` takes its key order from its input, so
+ * stringifying the caller's object would put that order — not this function —
+ * in charge of the bytes. The two settings objects production compares are
+ * built by two unshared literals in two files (`snapshotSettings` in
+ * `store/slices/clashSlice.ts` builds what is written; `normalizeSettings`
+ * below builds what a flavor carries, via `deserializeClashConfig`), and they
+ * matched only by convention. Reorder either literal and every "is this
+ * already stored?" answer flips to `false` forever, with nothing to catch it.
+ *
+ * Rebuilding here makes the order this function's own, so both sides of any
+ * comparison — and the write itself — serialize the same way regardless of how
+ * their object was assembled. The annotation, not `satisfies`, is deliberate: a
+ * field added to `ClashGlobalSettings` and forgotten here is a compile error
+ * rather than a field silently dropped from storage.
+ */
+function settingsPayload(settings: ClashGlobalSettings): string {
+  const canonical: ClashGlobalSettings = {
+    mode: settings.mode,
+    tolerance: settings.tolerance,
+    clearance: settings.clearance,
+    duplicateTolerance: settings.duplicateTolerance,
+    clusterEpsilon: settings.clusterEpsilon,
+    reportTouch: settings.reportTouch,
+    groupBy: settings.groupBy,
+  };
+  return JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings: canonical });
+}
+
+/**
+ * Whether the settings key already holds exactly the bytes `saveSettings`
+ * would write for `settings` — i.e. whether that write would change nothing.
+ *
+ * Built through `settingsPayload`, the same function `saveSettings` writes
+ * from, so the compared bytes are the written bytes by construction — the key
+ * order included, since that builder fixes it rather than inheriting it from
+ * whichever object literal produced these settings.
+ *
+ * One-directional on purpose: `false` only means "not provably a no-op". A
+ * stored value that normalizes to these settings through some other encoding
+ * (a legacy blob without the wrapper, or one an older build wrote in another
+ * key order) answers `false`, because the write really would rewrite the key.
+ * A caller uses this to let a refused write pass, and letting one pass that
+ * would have changed the stored bytes is the failure that matters.
+ */
+export function settingsAlreadyStored(settings: ClashGlobalSettings): boolean {
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify({ schemaVersion: SCHEMA_VERSION, settings }));
+    return localStorage.getItem(SETTINGS_KEY) === settingsPayload(settings);
+  } catch {
+    // No storage, or a blocked one: nothing is provably stored.
+    return false;
+  }
+}
+
+export function saveSettings(settings: ClashGlobalSettings): SaveResult {
+  if (unwritableKeys.has(SETTINGS_KEY)) return refuseOverwrite('clash settings');
+  try {
+    localStorage.setItem(SETTINGS_KEY, settingsPayload(settings));
     return { ok: true };
   } catch {
     return { ok: false, reason: 'quota', message: 'Browser storage is full — clash settings were not saved.' };
@@ -276,8 +464,9 @@ function isReviewStatus(v: unknown): v is ClashReviewStatus {
 export function loadReviews(): Map<string, ClashReview> {
   const map = new Map<string, ClashReview>();
   try {
+    unwritableKeys.delete(REVIEWS_KEY);
     const raw = localStorage.getItem(REVIEWS_KEY);
-    if (!raw) return map;
+    if (raw === null) return map;
     const parsed: unknown = JSON.parse(raw);
     const reviews =
       parsed && typeof parsed === 'object' ? (parsed as { reviews?: unknown }).reviews : null;
@@ -295,7 +484,11 @@ export function loadReviews(): Map<string, ClashReview> {
       // Skip default entries a stale writer may have left behind.
       if (isMeaningfulReview(review)) map.set(key, review);
     }
-  } catch {
+  } catch (err) {
+    // A half-built map is as destructive as an empty one: the next triage edit
+    // writes it back and the entries we never parsed are gone. (#2085)
+    map.clear();
+    onReadFailure(REVIEWS_KEY, err);
     return map;
   }
   return map;
@@ -303,6 +496,7 @@ export function loadReviews(): Map<string, ClashReview> {
 
 /** Persist reviews (default-state entries pruned, capped, quota-safe). */
 export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
+  if (unwritableKeys.has(REVIEWS_KEY)) return refuseOverwrite('clash reviews');
   const entries: Record<string, ClashReview> = {};
   let count = 0;
   for (const [key, review] of reviews) {
@@ -327,6 +521,88 @@ export function saveReviews(reviews: Map<string, ClashReview>): SaveResult {
   }
 }
 
+// User-defined clash exclusions.
+// A coordinator's decision that a given overlap is by design (ballast around a
+// rail, a girder cast into a deck). Persisted as workspace state alongside
+// presets and reviews — never wiped by a re-run or by `clearClash`, because the
+// decision outlives any one detection run. Rule semantics live in
+// `./exclusions.ts`; this section only reads and writes them.
+
+// A rule whose `kind` this build does not know is dropped rather than guessed
+// at: the safe failure for a suppression rule is to show the clashes, never to
+// hide something on a semantics we cannot read.
+const EXCLUSION_KINDS: ClashExclusionKind[] = ['typeAny', 'typePair', 'elementPair'];
+
+function isValidStoredExclusion(v: unknown): v is ClashExclusionRule {
+  if (!v || typeof v !== 'object') return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.id === 'string' && r.id.length > 0 &&
+    typeof r.kind === 'string' && EXCLUSION_KINDS.includes(r.kind as ClashExclusionKind) &&
+    typeof r.a === 'string' && r.a.length > 0 &&
+    typeof r.b === 'string' && r.b.length > 0
+  );
+}
+
+/** Read stored exclusion rules; an unreadable entry blocks writes, never a silent reset. */
+export function loadExclusions(): ClashExclusionRule[] {
+  try {
+    unwritableKeys.delete(EXCLUSIONS_KEY);
+    const raw = localStorage.getItem(EXCLUSIONS_KEY);
+    if (!raw) return [];
+    const parsed: unknown = JSON.parse(raw);
+    const list =
+      parsed && typeof parsed === 'object' && Array.isArray((parsed as { exclusions?: unknown }).exclusions)
+        ? (parsed as { exclusions: unknown[] }).exclusions
+        : [];
+    return list.filter(isValidStoredExclusion).map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      a: r.a,
+      b: r.b,
+      // Fallback label for an entry stored without one. A `typeAny` rule
+      // repeats its class in `b`, so the pair form would read "X × X" — which
+      // is a DIFFERENT rule the panel also offers; spell out the wide one.
+      label:
+        typeof r.label === 'string' && r.label
+          ? r.label.slice(0, MAX_EXCLUSION_LABEL)
+          : r.kind === 'typeAny'
+            ? `${r.a} × anything`
+            : `${r.a} × ${r.b}`,
+      // Fail CLOSED on the enabled flag: an exclusion's whole job is to hide
+      // clashes, so a corrupted or partially-written entry that loaded as
+      // enabled would silently hide real clashes with no signal. Only the
+      // literal `true` that `saveExclusions` writes may suppress; anything
+      // else keeps the rule visible in the panel but disabled. (#2535)
+      enabled: r.enabled === true,
+      createdAt: typeof r.createdAt === 'number' && Number.isFinite(r.createdAt) ? r.createdAt : 0,
+    }));
+  } catch (err) {
+    onReadFailure(EXCLUSIONS_KEY, err);
+    return [];
+  }
+}
+
+/** Persist the exclusion rule list (capped, quota-safe). */
+export function saveExclusions(rules: readonly ClashExclusionRule[]): SaveResult {
+  if (unwritableKeys.has(EXCLUSIONS_KEY)) return refuseOverwrite('clash exclusions');
+  if (rules.length > MAX_EXCLUSIONS) {
+    return { ok: false, reason: 'too_many', message: `Too many clash exclusions (max ${MAX_EXCLUSIONS}).` };
+  }
+  let payload: string;
+  try {
+    payload = JSON.stringify({ schemaVersion: SCHEMA_VERSION, exclusions: rules });
+  } catch {
+    return { ok: false, reason: 'serialize', message: 'Could not serialize clash exclusions.' };
+  }
+  try {
+    localStorage.setItem(EXCLUSIONS_KEY, payload);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: 'quota', message: 'Browser storage is full — clash exclusions were not saved.' };
+  }
+}
+
 /** Download the user's presets (customs + modified built-ins) as a JSON file. */
 export function exportPresets(presets: ClashPreset[]): void {
   const custom = presets.filter((p) => !p.builtin || builtinDiffersFromDefault(p));
@@ -344,53 +620,8 @@ export async function importPresets(file: File): Promise<ClashPreset[]> {
       ? (parsed as { presets: unknown[] }).presets
       : [];
   return list.filter(isValidStoredPreset).map((p) => ({
+    ...storedPresetToPreset(p, false),
     id: `custom-${crypto.randomUUID()}`,
     name: p.name.slice(0, MAX_NAME),
-    description: typeof p.description === 'string' ? p.description : '',
-    severity: p.severity,
-    selectorA: p.selectorA,
-    selectorB: p.selectorB,
-    enabled: p.enabled !== false,
-    builtin: false,
   }));
-}
-
-// ── Flavor integration ───────────────────────────────────────────────────────
-// Clash config rides inside a flavor's generic `settings.clash` blob, so each
-// flavor/profile carries its own rule-set + detection settings (and they travel
-// with flavor export/import). Serialize stores the minimal shape (customs +
-// modified built-ins + settings); deserialize rebuilds the full, validated state.
-
-/** Plain-JSON snapshot of clash config stored in a flavor. */
-export interface ClashFlavorConfig {
-  schemaVersion: number;
-  settings: ClashGlobalSettings;
-  /** Customs + modified built-ins only (built-ins are re-merged on restore). */
-  presets: ClashPreset[];
-}
-
-export function serializeClashConfig(presets: ClashPreset[], settings: ClashGlobalSettings): ClashFlavorConfig {
-  return { schemaVersion: SCHEMA_VERSION, settings: { ...settings }, presets: presetsToStore(presets) };
-}
-
-/**
- * Rebuild clash state from a flavor blob: the full resolved preset list (defaults
- * + the blob's overrides/customs) and bounds-clamped settings. Returns null when
- * the blob is missing/garbage so the caller can skip the restore.
- */
-export function deserializeClashConfig(blob: unknown): { presets: ClashPreset[]; settings: ClashGlobalSettings } | null {
-  if (!blob || typeof blob !== 'object') return null;
-  const b = blob as Partial<ClashFlavorConfig>;
-  const storedRaw = Array.isArray(b.presets) ? b.presets : [];
-  const stored = storedRaw.filter(isValidStoredPreset).map((p) => ({
-    id: p.id,
-    name: p.name,
-    description: typeof p.description === 'string' ? p.description : '',
-    severity: p.severity,
-    selectorA: p.selectorA,
-    selectorB: p.selectorB,
-    enabled: p.enabled !== false,
-    builtin: builtinPresetIds().has(p.id),
-  }));
-  return { presets: mergeStoredPresets(stored), settings: normalizeSettings(b.settings) };
 }

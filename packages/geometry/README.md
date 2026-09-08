@@ -26,9 +26,11 @@ console.log(`${result.meshes.length} meshes, ${result.totalTriangles} triangles`
 ## Stream geometry (recommended for large models)
 
 ```typescript
+const buffer = new Uint8Array(await file.arrayBuffer());
+
 for await (const event of processor.processStreaming(buffer)) {
   if (event.type === 'batch') {
-    renderer.appendMeshes(event.meshes);
+    renderer.addMeshes(event.meshes, true);
     console.log(`Loaded ${event.totalSoFar} meshes so far`);
   } else if (event.type === 'complete') {
     console.log(`Done: ${event.totalMeshes} meshes`);
@@ -54,8 +56,7 @@ Unset / `'medium'` reproduces the engine's historical densities byte-for-byte. L
 ## Coordinate handling
 
 ```typescript
-import { CoordinateHandler } from '@ifc-lite/geometry';
-
+const buffer = new Uint8Array(await file.arrayBuffer());
 const result = await processor.process(buffer);
 
 // Models with large world coordinates (geo-referenced) get auto-shifted
@@ -92,6 +93,8 @@ If your bundler can't transform
 wasm URLs through the `processAdaptive` / `processParallel` `wasmUrls`
 option:
 
+<!-- Reason: Vite-only `?url` import specifier, unresolvable by tsc. -->
+<!-- docs-check: skip -->
 ```ts
 // Vite's `?url` suffix yields a fully-resolved URL string at build time.
 // `@ifc-lite/wasm` exposes the binary at the `./ifc-lite_bg.wasm` subpath

@@ -365,10 +365,20 @@ fn real_1112_roof_openings_have_no_bridging_triangle() {
 /// real-world axis-aligned flush window; if the corpus model is present in this
 /// checkout it must also cut clean via the exact path. (Host id is read from the
 /// env so the corpus model can be wired without hardcoding an entity id.)
+///
+/// NOTE: `SCHEP_HOST` is never set in CI, so this test could only ever skip; it
+/// is `#[ignore]` to make that explicit (same convention as `dedup_validate.rs`).
+/// Verified locally against the manifest fixture with a partition wall that has
+/// two openings:
+/// `SCHEP_HOST=534371 cargo test -p ifc-lite-geometry --test issue_1007_real_opening_no_bridge -- --ignored`
 #[test]
+#[ignore = "manual; needs SCHEP_HOST=<wall entity id> (e.g. 534371)"]
 fn real_schependomlaan_window_has_no_bridging_triangle() {
     // Common staging locations; first hit wins.
     let candidates = [
+        // The manifest ships the fixture here (`pnpm fixtures`); the rest are
+        // legacy staging locations kept for local checkouts.
+        "../../tests/models/ara3d/schependomlaan.ifc",
         "../../tests/models/various/schependomlaan.ifc",
         "../../tests/models/local/schependomlaan.ifc",
         "../../tests/models/issues/schependomlaan.ifc",

@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { asSourceBytes } from '@ifc-lite/parser';
+
 /**
  * Hook for IFC file caching operations
  * Handles loading from and saving to binary cache for fast subsequent loads
@@ -18,6 +20,7 @@ import {
   openGeometryChunksV13,
   readInstancedShards,
   BufferReader,
+  toCacheDataStore,
   type CachedEntityIndexColumns,
   type CacheDataStore,
   type GeometryData,
@@ -102,7 +105,7 @@ function hydrateCacheStore(
     entityCount: cacheStore.entityCount,
     fileSize: extras.fileSize,
     parseTime: 0,
-    source: extras.source,
+    source: asSourceBytes(extras.source),
     strings: cacheStore.strings,
     entities: cacheStore.entities,
     properties: cacheStore.properties,
@@ -180,11 +183,40 @@ export function useIfcCache() {
   const loadFromCache = useCallback(async (
     cacheResult: CacheResult,
     fileName: string,
+    // Owning model id for the restored instanced shards (#1912) — this path
+    // is PRIMARY-only (a federated add never caches), so its id-offset is
+    // always 0 and the modelId only needs to match the model useIfcLoader.ts
+    // registers via `upsertModel` for the same load.
+    modelId: string,
     cacheKey?: string,
     fallbackSourceBuffer?: ArrayBufferLike,
+    /**
+     * Optional staleness check — returns true if this load has been
+     * superseded. Same contract as `loadFromServer`'s (useIfcServer.ts:120),
+     * and it exists for the same reason: an IndexedDB read is slow enough to
+     * finish after a newer load has already painted, and the writes below go
+     * straight into the ACTIVE model slot. Without it a superseded cache hit
+     * blanks the new model's geometry and then repopulates it with the
+     * previous file's.
+     *
+     * Optional so existing callers are unaffected; a caller that omits it
+     * keeps the old behaviour.
+     */
+    isStale?: () => boolean,
   ): Promise<CacheLoadResult> => {
     try {
       const cacheLoadStart = performance.now();
+
+      // Re-check before the first write — and `setProgress` below IS a write
+      // into the shared (active-model) progress state, so the check has to come
+      // first: `getCached` was awaited by the caller, so a newer load can
+      // already own the active slot by now, and a superseded load posting
+      // "Loading from cache" over the newer load's progress is visible to the
+      // user even though no geometry moved.
+      if (isStale?.()) {
+        return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+      }
+
       setProgress({ phase: 'Loading from cache', percent: 10 });
 
       // Reset geometry first so Viewport detects this as a new file
@@ -343,11 +375,28 @@ export function useIfcCache() {
         loadedTotalVertices = open.totalVertices;
         loadedTotalTriangles = open.totalTriangles;
 
+        // Re-check before the streaming flag: `reader.read` above was awaited,
+        // so a newer load can own the slot by now. The flag is global
+        // (active-model) state — a superseded load raising it here, or lowering
+        // it in the `finally` below, would drive the NEWER load's stream.
+        if (isStale?.()) {
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+        }
+
         setGeometryStreamingActive(true);
         const allMeshes: MeshData[] = [];
+        let superseded = false;
         try {
           for (let i = 0; i < open.chunks.length; i++) {
             const chunkMeshes = await open.readChunk(i);
+            // Per-chunk re-check: every iteration awaits `readChunk` AND yields
+            // to the event loop at the end of the body, so supersession can
+            // land BETWEEN chunks. Without this, the remaining chunks of the
+            // old file keep appending into the new model's geometry.
+            if (isStale?.()) {
+              superseded = true;
+              break;
+            }
             allMeshes.push(...chunkMeshes);
             appendGeometryBatch(chunkMeshes, open.coordinateInfo);
             if ((i & 3) === 3 || i === open.chunks.length - 1) {
@@ -364,12 +413,28 @@ export function useIfcCache() {
           // A corrupt/truncated entry can fail AFTER earlier chunks were
           // already appended. Roll the partial geometry back so the caller's
           // fallback fresh stream starts from a clean scene instead of
-          // appending onto half a cached model.
-          setGeometryResult(null);
+          // appending onto half a cached model. Only when we still own the
+          // slot: for a superseded load the partial geometry is the NEWER
+          // model's, and clearing it would blank the file the user is looking
+          // at (this path's own fallback reparse is abandoned anyway).
+          if (!isStale?.()) setGeometryResult(null);
           throw chunkErr;
         } finally {
-          setGeometryStreamingActive(false);
+          // Same ownership condition: only the load that raised the flag (and
+          // still owns the slot) may lower it. A superseded load lowering it
+          // ends the newer load's stream early and finalizes half a model.
+          if (!isStale?.()) setGeometryStreamingActive(false);
         }
+
+        // Re-check after the chunk loop: it awaits per chunk (and yields to the
+        // event loop after each append), so a newer load can have taken the
+        // active slot mid-stream — including after the LAST chunk's yield. This
+        // sits ahead of the shard append, which is an active-slot write too:
+        // shards from the old file would be instanced into the new model.
+        if (superseded || isStale?.()) {
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+        }
+
         meshCount = allMeshes.length;
 
         // Restore the GPU-instancing shards (opaque repeated occurrences that
@@ -379,7 +444,7 @@ export function useIfcCache() {
           const shardsReader = new BufferReader(cacheBuffer);
           shardsReader.position = shardsSection.offset;
           const shards = readInstancedShards(shardsReader);
-          if (shards.length > 0) appendInstancedShards(shards);
+          if (shards.length > 0) appendInstancedShards(modelId, shards);
         }
 
         setIfcDataStore(dataStore);
@@ -400,6 +465,15 @@ export function useIfcCache() {
           }));
         }
       } else {
+        // The no-geometry entry bypasses BOTH guards in the geometry branch
+        // above, yet it still crosses the awaited `reader.read` (and the
+        // Blob `arrayBuffer()` materialization) after the entry check — so it
+        // needs its own re-check before writing the store and the progress
+        // line below, or a superseded metadata-only hit hands the new model the
+        // previous file's entities.
+        if (isStale?.()) {
+          return { success: false, meshCount: 0, totalVertices: 0, totalTriangles: 0 };
+        }
         setIfcDataStore(dataStore);
       }
 
@@ -462,18 +536,12 @@ export function useIfcCache() {
       console.log(`[useIfcCache] Starting cache write for: ${fileName} (persistSource=${persistSource})`);
       const writer = new BinaryCacheWriter();
 
-      // Adapt dataStore to cache format
-      const cacheDataStore: CacheDataStore = {
-        schema: dataStore.schemaVersion === 'IFC4' ? 1 : dataStore.schemaVersion === 'IFC4X3' ? 2 : 0,
-        entityCount: dataStore.entityCount || dataStore.entities?.count || 0,
-        strings: dataStore.strings,
-        entities: dataStore.entities,
-        properties: dataStore.properties,
-        quantities: dataStore.quantities,
-        relationships: dataStore.relationships,
-        spatialHierarchy: dataStore.spatialHierarchy,
-        entityIndex: dataStore.entityIndex,
-      };
+      // Adapt dataStore to cache format. `toCacheDataStore` is the package's
+      // own runtime→cache adapter and now the ONLY schemaVersion→SchemaVersion
+      // mapping: this hook used to keep an inline copy that spelled the enum
+      // out as bare 1/2/0 literals, so the two could drift apart silently.
+      // It carries the same entityCount fallback the inline copy had.
+      const cacheDataStore: CacheDataStore = toCacheDataStore(dataStore);
 
       // Compute the true full-file validation hash off the main thread (runs in
       // parallel with the cache-buffer serialization below). ONLY for the
@@ -486,7 +554,7 @@ export function useIfcCache() {
 
       console.log('[useIfcCache] Writing cache buffer...');
       const cacheBuffer = await writer.write(cacheDataStore, geometry, sourceBuffer, {
-        includeGeometry: true,
+        includeGeometry: true, compressGeometryChunksInWorker: true,
         omitSourceHash: true,
       });
       console.log('[useIfcCache] Cache buffer written:', cacheBuffer.byteLength, 'bytes');

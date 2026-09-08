@@ -11,6 +11,22 @@
  * Designed as a *narrow* boundary: the host catches everything else
  * via the dispatcher's per-command try/catch. This boundary covers
  * render-time failures (bad bindings, missing fields, etc.).
+ *
+ * Deliberately does NOT self-heal: once `getDerivedStateFromError` sets
+ * `state.error`, nothing inside this component ever clears it — there is
+ * no `componentDidUpdate` reset on prop change. That is intentional, not
+ * an oversight: this boundary cannot tell "the same widget re-rendering
+ * after a transient failure" from "the widget still throws every render"
+ * without re-running the (possibly still-broken) children to find out,
+ * which would turn a caught crash into a crash-retry loop.
+ *
+ * Instead, callers that want a fresh attempt at *different* content are
+ * expected to remount by changing `key` — see `ExtensionDockHost`, which
+ * keys this boundary (and its `DockBody` parent) on the widget's
+ * identity (`extensionId/widget` path) so switching the active dock tab
+ * discards a crashed instance and mounts a new one, while re-rendering
+ * the *same* widget (unchanged key) correctly keeps showing its error
+ * instead of silently retrying forever.
  */
 
 import { Component, type ErrorInfo, type ReactNode } from 'react';

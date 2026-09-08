@@ -38,6 +38,23 @@ export interface Zone {
   /** Optional display colour (0-1 RGB). Falls back to the parent set's
    *  palette-derived colour when absent. */
   color?: [r: number, g: number, b: number];
+  /**
+   * Optional CONVEX footprint in world X/Z metres (issue #2508 item 4). When
+   * present the zone is a vertical PRISM over this polygon rather than a box:
+   * `center[1] +/- size[1]/2` is still its vertical extent, and `rotationY` is
+   * ignored because the polygon is already in world coordinates.
+   *
+   * `center` and `size` in X/Z stay the footprint's BOUNDING BOX, maintained by
+   * whoever writes the footprint (`normalizePrismBounds`). Every existing
+   * bounds consumer -- overlay culling, viewport framing, storey generation --
+   * therefore keeps working unchanged and merely over-approximates, and the
+   * exact tests refine it.
+   *
+   * Convexity is a REQUIREMENT, not a convention: the trapezoidal sweep, the
+   * point test and the separating-axis overlap are each silently wrong for a
+   * concave polygon. `isConvexFootprint` gates every entry point.
+   */
+  footprint?: ReadonlyArray<readonly [x: number, z: number]>;
 }
 
 /** A named, independent collection of zones (e.g. "Sections", "Takt areas").

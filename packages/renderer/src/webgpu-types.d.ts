@@ -78,6 +78,7 @@ interface GPUDevice extends EventTarget {
   createTexture(descriptor: GPUTextureDescriptor): GPUTexture;
   createBindGroup(descriptor: GPUBindGroupDescriptor): GPUBindGroup;
   createBindGroupLayout(descriptor: GPUBindGroupLayoutDescriptor): GPUBindGroupLayout;
+  createQuerySet(descriptor: GPUQuerySetDescriptor): GPUQuerySet;
   pushErrorScope(filter: GPUErrorFilter): void;
   popErrorScope(): Promise<{ readonly message: string } | null>;
   onuncapturederror: ((this: GPUDevice, event: GPUUncapturedErrorEvent) => void) | null;
@@ -134,6 +135,7 @@ interface GPUCommandEncoder {
   finish(): GPUCommandBuffer;
   copyBufferToBuffer(source: GPUBuffer, sourceOffset: number, destination: GPUBuffer, destinationOffset: number, size: number): void;
   copyTextureToBuffer(source: GPUImageCopyTexture, destination: GPUImageCopyBuffer, copySize: GPUExtent3D): void;
+  resolveQuerySet(querySet: GPUQuerySet, firstQuery: number, queryCount: number, destination: GPUBuffer, destinationOffset: number): void;
 }
 
 interface GPURenderPassEncoder {
@@ -376,6 +378,17 @@ interface GPUPipelineLayoutDescriptor {
 
 interface GPUQuerySet {
   readonly label?: string;
+  readonly type?: GPUQueryType;
+  readonly count?: number;
+  destroy(): void;
+}
+
+type GPUQueryType = 'occlusion' | 'timestamp';
+
+interface GPUQuerySetDescriptor {
+  type: GPUQueryType;
+  count: number;
+  label?: string;
 }
 
 interface GPURenderPassTimestampWrites {

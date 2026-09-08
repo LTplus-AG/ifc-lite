@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import type { MeshData } from '@ifc-lite/geometry';
+import { OPAQUE_ALPHA_CUTOFF } from '@ifc-lite/renderer';
 
 /**
  * Build a minimal GLB with all geometry merged into a SINGLE mesh, for the
@@ -14,26 +15,42 @@ import type { MeshData } from '@ifc-lite/geometry';
  * Packs POSITION + NORMAL + COLOR_0 and a lit double-sided PBR material so
  * Cesium shades the model with its sun: recessed faces (window/door reveals)
  * read as 3D instead of flat strips that look like wrong cuts (#1355 follow-up).
+ *
+ * Emits up to TWO primitives over the same vertex buffers — one opaque, one
+ * `alphaMode: 'BLEND'` — because a glTF material without `alphaMode` is OPAQUE
+ * per spec, and Cesium then ignores the alpha in COLOR_0 entirely. That is why
+ * the world view drew X-Ray ghosting and authored glass as solid (#2591).
+ * Splitting rather than blending everything keeps the bulk of the model out of
+ * the translucent pass, where triangles are not depth-sorted against each other.
+ *
+ * The split is per source mesh, which is exact here: the merge below assigns
+ * one colour — and therefore one alpha — to every vertex of a given mesh.
  */
 export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
-  // Pass 1: calculate total sizes
+  // Pass 1: calculate total sizes, splitting the index count by alpha bucket.
+  const isBlended = (m: MeshData) => (m.color?.[3] ?? 1) < OPAQUE_ALPHA_CUTOFF;
   let totalVerts = 0;
-  let totalIdxs = 0;
+  let opaqueIdxs = 0;
+  let blendedIdxs = 0;
   for (const m of meshes) {
     if (!m.positions?.length || !m.indices?.length) continue;
     totalVerts += m.positions.length / 3;
-    totalIdxs += m.indices.length;
+    if (isBlended(m)) blendedIdxs += m.indices.length;
+    else opaqueIdxs += m.indices.length;
   }
 
-  // Allocate merged buffers
+  // Allocate merged buffers. Vertices are shared by both primitives; only the
+  // index buffers and the material differ, so nothing is duplicated.
   const positions = new Float32Array(totalVerts * 3);
   const normals = new Float32Array(totalVerts * 3);
   const colors = new Uint8Array(totalVerts * 4);
-  const indices = new Uint32Array(totalIdxs);
+  const opaqueIndices = new Uint32Array(opaqueIdxs);
+  const blendedIndices = new Uint32Array(blendedIdxs);
 
   // Pass 2: merge
   let vertOff = 0;
-  let idxOff = 0;
+  let opaqueOff = 0;
+  let blendedOff = 0;
   for (const m of meshes) {
     if (!m.positions?.length || !m.indices?.length) continue;
     const nv = m.positions.length / 3;
@@ -71,11 +88,15 @@ export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
       const ci = (vertOff + i) * 4;
       colors[ci] = r; colors[ci + 1] = g; colors[ci + 2] = b; colors[ci + 3] = a;
     }
-    for (let i = 0; i < m.indices.length; i++) {
-      indices[idxOff + i] = m.indices[i] + vertOff;
+    // Route this mesh's triangles into the bucket its alpha belongs to.
+    if (isBlended(m)) {
+      for (let i = 0; i < m.indices.length; i++) blendedIndices[blendedOff + i] = m.indices[i] + vertOff;
+      blendedOff += m.indices.length;
+    } else {
+      for (let i = 0; i < m.indices.length; i++) opaqueIndices[opaqueOff + i] = m.indices[i] + vertOff;
+      opaqueOff += m.indices.length;
     }
     vertOff += nv;
-    idxOff += m.indices.length;
   }
 
   // Compute bounds
@@ -89,39 +110,72 @@ export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
   }
   if (totalVerts === 0) { minX = minY = minZ = 0; maxX = maxY = maxZ = 0; }
 
-  // Build minimal glTF JSON. BIN layout: positions, normals, colors, indices.
+  // Build minimal glTF JSON. BIN layout: positions, normals, colors, then the
+  // opaque index range followed by the blended one.
   const posByteLen = positions.byteLength;
   const nrmByteLen = normals.byteLength;
   const colByteLen = colors.byteLength;
-  const idxByteLen = indices.byteLength;
+  const opaqueByteLen = opaqueIndices.byteLength;
+  const blendedByteLen = blendedIndices.byteLength;
+  const idxByteLen = opaqueByteLen + blendedByteLen;
   const totalBinLen = posByteLen + nrmByteLen + colByteLen + idxByteLen;
+  const attributes = { POSITION: 0, NORMAL: 1, COLOR_0: 2 };
+  const idxViewBase = posByteLen + nrmByteLen + colByteLen;
 
+  // Only emit the buckets that have triangles: a model with no translucent
+  // geometry keeps exactly the single opaque primitive it had before, and an
+  // all-glass one carries no empty opaque primitive.
+  const accessors: Array<Record<string, unknown>> = [
+    { bufferView: 0, componentType: 5126, count: totalVerts, type: 'VEC3', min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
+    { bufferView: 1, componentType: 5126, count: totalVerts, type: 'VEC3' },
+    { bufferView: 2, componentType: 5121, count: totalVerts, type: 'VEC4', normalized: true },
+  ];
+  const bufferViews: Array<Record<string, unknown>> = [
+    { buffer: 0, byteOffset: 0, byteLength: posByteLen, target: 34962 },
+    { buffer: 0, byteOffset: posByteLen, byteLength: nrmByteLen, target: 34962 },
+    { buffer: 0, byteOffset: posByteLen + nrmByteLen, byteLength: colByteLen, target: 34962 },
+  ];
+  const primitives: Array<Record<string, unknown>> = [];
+
+  // Lit PBR (NOT unlit): Cesium shades these with its sun via the per-vertex
+  // normals so recessed reveals/cuts read in 3D. Vertex colours (COLOR_0)
+  // multiply the white baseColorFactor, so element colours show. Double-sided
+  // because IFC winding isn't reliably outward (see AGENTS.md).
+  const PBR = { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.9 };
+  const materials: Array<Record<string, unknown>> = [];
+
+  // Only the buckets that have triangles get a primitive AND a material: an
+  // all-opaque model keeps exactly the single primitive it had before this
+  // change, and an all-glass one carries no empty opaque half.
+  if (opaqueIdxs > 0) {
+    bufferViews.push({ buffer: 0, byteOffset: idxViewBase, byteLength: opaqueByteLen, target: 34963 });
+    accessors.push({ bufferView: bufferViews.length - 1, componentType: 5125, count: opaqueIdxs, type: 'SCALAR' });
+    materials.push({ pbrMetallicRoughness: PBR, doubleSided: true });
+    primitives.push({ attributes, indices: accessors.length - 1, material: materials.length - 1 });
+  }
+  if (blendedIdxs > 0) {
+    bufferViews.push({ buffer: 0, byteOffset: idxViewBase + opaqueByteLen, byteLength: blendedByteLen, target: 34963 });
+    accessors.push({ bufferView: bufferViews.length - 1, componentType: 5125, count: blendedIdxs, type: 'SCALAR' });
+    // BLEND is what makes COLOR_0's alpha mean anything to Cesium at all.
+    materials.push({ pbrMetallicRoughness: PBR, doubleSided: true, alphaMode: 'BLEND' });
+    primitives.push({ attributes, indices: accessors.length - 1, material: materials.length - 1 });
+  }
+
+  // Nothing to draw — everything hidden, or an empty model. glTF requires a
+  // mesh to have at least one primitive, so emit an empty scene rather than an
+  // invalid mesh. (The previous shape, a primitive over zero-count accessors,
+  // was also invalid; Cesium tolerates both, but there is no reason to hand it
+  // something out of spec.)
+  const empty = primitives.length === 0;
   const gltf = {
     asset: { version: '2.0', generator: 'IFC-Lite-Cesium' },
     scene: 0,
-    scenes: [{ nodes: [0] }],
-    nodes: [{ mesh: 0 }],
-    // Lit PBR material (NOT unlit): Cesium shades it with its sun via the
-    // per-vertex normals so recessed reveals/cuts read in 3D. Vertex colours
-    // (COLOR_0) multiply the white baseColorFactor, so element colours show.
-    // Double-sided because IFC winding isn't reliably outward (see AGENTS.md).
-    materials: [{
-      pbrMetallicRoughness: { baseColorFactor: [1, 1, 1, 1], metallicFactor: 0, roughnessFactor: 0.9 },
-      doubleSided: true,
-    }],
-    meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1, COLOR_0: 2 }, indices: 3, material: 0 }] }],
-    accessors: [
-      { bufferView: 0, componentType: 5126, count: totalVerts, type: 'VEC3', min: [minX, minY, minZ], max: [maxX, maxY, maxZ] },
-      { bufferView: 1, componentType: 5126, count: totalVerts, type: 'VEC3' },
-      { bufferView: 2, componentType: 5121, count: totalVerts, type: 'VEC4', normalized: true },
-      { bufferView: 3, componentType: 5125, count: totalIdxs, type: 'SCALAR' },
-    ],
-    bufferViews: [
-      { buffer: 0, byteOffset: 0, byteLength: posByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen, byteLength: nrmByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen + nrmByteLen, byteLength: colByteLen, target: 34962 },
-      { buffer: 0, byteOffset: posByteLen + nrmByteLen + colByteLen, byteLength: idxByteLen, target: 34963 },
-    ],
+    scenes: [{ nodes: empty ? [] : [0] }],
+    nodes: empty ? [] : [{ mesh: 0 }],
+    materials,
+    meshes: empty ? [] : [{ primitives }],
+    accessors,
+    bufferViews,
     buffers: [{ byteLength: totalBinLen }],
   };
 
@@ -157,7 +211,8 @@ export function buildMergedGLB(meshes: MeshData[]): Uint8Array {
   new Uint8Array(glb, off, posByteLen).set(new Uint8Array(positions.buffer)); off += posByteLen;
   new Uint8Array(glb, off, nrmByteLen).set(new Uint8Array(normals.buffer)); off += nrmByteLen;
   new Uint8Array(glb, off, colByteLen).set(colors); off += colByteLen;
-  new Uint8Array(glb, off, idxByteLen).set(new Uint8Array(indices.buffer)); off += idxByteLen;
+  new Uint8Array(glb, off, opaqueByteLen).set(new Uint8Array(opaqueIndices.buffer)); off += opaqueByteLen;
+  new Uint8Array(glb, off, blendedByteLen).set(new Uint8Array(blendedIndices.buffer)); off += blendedByteLen;
 
   return new Uint8Array(glb);
 }

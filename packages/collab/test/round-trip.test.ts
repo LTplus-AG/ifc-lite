@@ -56,9 +56,8 @@ function summarise(doc: ReturnType<typeof createCollabDoc>): {
   return { entityPaths: paths, attrCount };
 }
 
-describe('seedFromIfcx + snapshotToIfcx', {
-  skip: !FIXTURES_AVAILABLE && 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx missing — run `pnpm fixtures`',
-}, () => {
+// Skipped when tests/models/ifc5/Hello_Wall_hello-wall.ifcx is absent — run `pnpm fixtures`.
+describe.skipIf(!FIXTURES_AVAILABLE)('seedFromIfcx + snapshotToIfcx', () => {
   it('preserves entity set and attributes across one round-trip', () => {
     const text = loadFixture('Hello_Wall_hello-wall.ifcx');
     const docA = createCollabDoc();
@@ -201,6 +200,35 @@ describe('structured branches across snapshot → seed (#1031)', () => {
 
     // Fixed point: the re-seeded doc snapshots to the same wire form.
     expect(snapshotToIfcx(docB).data).toEqual(ifcx.data);
+  });
+
+  // `createGeometry` used to gate `blobHash` on truthiness (`if
+  // (opts.blobHash)`), so an explicit empty-string hash never made it
+  // into the doc in the first place — the value was lost before there
+  // was anything to snapshot or seed. `upsertGeometry` already used the
+  // correct `!== undefined` check (see upsert-geometry.test.ts); this
+  // pins `createGeometry` to the same contract end-to-end.
+  it('an explicit empty-string blobHash survives snapshot -> seed', () => {
+    const doc = createCollabDoc();
+    createEntity(doc, 'wall');
+    createGeometry(doc, 'geom-9', { type: 'mesh', source: 'mesh-blob', blobHash: '' });
+    setGeometryRef(doc, 'wall', { geomIds: ['geom-9'] });
+
+    // The write itself must keep the value, before any snapshot happens.
+    expect(getGeometry(doc, 'geom-9')?.get('blobHash')).toBe('');
+
+    const ifcx = snapshotToIfcx(doc);
+    const node = ifcx.data.find((n) => n.path === 'wall')!;
+    expect(node.attributes?.['ifclite::geometryRef']).toEqual({
+      geomId: 'geom-9',
+      type: 'mesh',
+      source: 'mesh-blob',
+      blobHash: '',
+    });
+
+    const docB = createCollabDoc();
+    seedFromIfcx(docB, ifcx);
+    expect(getGeometry(docB, 'geom-9')?.get('blobHash')).toBe('');
   });
 
   it('typed records under Qto_* sets inflate into quantities, not psets', () => {

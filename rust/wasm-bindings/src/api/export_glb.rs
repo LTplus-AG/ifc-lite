@@ -60,21 +60,25 @@ impl IfcAPI {
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect();
-        let opts = ifc_lite_export::GltfOptions {
-            include_metadata,
-            hidden: hidden.to_vec(),
-            isolated: isolated.to_vec(),
-            hidden_types,
-            lit: lit.unwrap_or(true),
-            emissive: emissive.unwrap_or(false),
+        let opts = ifc_lite_export::GltfOptions::default()
+            .with_include_metadata(include_metadata)
+            .with_hidden(hidden.to_vec())
+            .with_isolated(isolated.to_vec())
+            .with_hidden_types(hidden_types)
+            .with_lit(lit.unwrap_or(true))
+            .with_emissive(emissive.unwrap_or(false))
             // Federation (modelId stamping) is a server-side concern; the viewer's
             // wasm export path is single-model. Add a parameter here if/when the
             // browser needs to federate.
-            model_id: None,
+            .with_model_id(None)
             // The viewer loads the GLB directly; quantization is a server/export-pipeline
             // concern (KHR_mesh_quantization needs loader support the viewer doesn't wire).
-            quantize: false,
-        };
+            .with_quantize(false)
+            // Stated rather than inherited from `setTessellationQuality`, so this
+            // export keeps emitting exactly what it emitted before. Whether an
+            // export should follow the density the viewer is displaying at is a
+            // separate question from whether a caller can name one.
+            .with_tessellation_quality(ifc_lite_export::TessellationQuality::Medium);
         ifc_lite_export::try_export_glb(content, &opts)
             .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
@@ -84,6 +88,13 @@ impl IfcAPI {
     /// taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
     /// RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
     /// per-mesh local). The caller passes exactly the meshes it wants emitted.
+    ///
+    /// Fails CLOSED: if the declared vertex/index counts run past the flattened
+    /// `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
+    /// is empty or too short to cover every vertex, this throws an `Error` whose message
+    /// starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
+    /// meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
+    /// this only fires on a caller bug.)
     #[wasm_bindgen(js_name = exportGlbFromMeshes)]
     #[allow(clippy::too_many_arguments)]
     pub fn export_glb_from_meshes(
@@ -99,8 +110,8 @@ impl IfcAPI {
         include_metadata: bool,
         lit: Option<bool>,
         emissive: Option<bool>,
-    ) -> Vec<u8> {
-        ifc_lite_export::export_glb_from_meshes(
+    ) -> Result<Vec<u8>, JsValue> {
+        ifc_lite_export::try_export_glb_from_meshes(
             positions,
             normals,
             indices,
@@ -113,7 +124,8 @@ impl IfcAPI {
             lit.unwrap_or(true),
             emissive.unwrap_or(false),
         )
-        .0
+        .map(|(glb, _)| glb)
+        .map_err(|e| JsValue::from(js_sys::Error::new(&e.to_string())))
     }
 
     /// Package an already-produced **GLB** + georeference into a **KMZ** (`Uint8Array`)

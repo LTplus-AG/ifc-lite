@@ -89,4 +89,44 @@ describe('parseLite on-demand property extraction', () => {
     expect(byName.FireRating.value).toBe('REI60');
     expect(byName.Height.value).toBe(3000.0);
   });
+
+  // Nothing in EXPRESS forbids two IfcRelDefinesByProperties instances from
+  // naming the same (pset, object) pair (#3760). extractPropertiesOnDemand
+  // reads onDemandPropertyMap in preference to the relationship graph, so
+  // that map needs its own dedup or a redundant IfcRel makes the pset come
+  // back twice even though the graph itself only counts it once (#3782 review).
+  it('does not double a pset when a redundant IfcRelDefinesByProperties repeats it', async () => {
+    const ifc = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);
+#10=IFCWALLSTANDARDCASE('wall-guid',#1,'Wall A',$,$,$,$,$);
+#20=IFCPROPERTYSINGLEVALUE('FireRating',$,'REI60',$);
+#30=IFCPROPERTYSET('pset-guid',#1,'Pset_WallCommon',$,(#20));
+#40=IFCRELDEFINESBYPROPERTIES('rel-guid-1',#1,$,$,(#10),#30);
+#41=IFCRELDEFINESBYPROPERTIES('rel-guid-2',#1,$,$,(#10),#30);`;
+
+    const source = new TextEncoder().encode(ifc);
+    const tokenizer = new StepTokenizer(source);
+    const entityRefs: Array<{
+      expressId: number;
+      type: string;
+      byteOffset: number;
+      byteLength: number;
+      lineNumber: number;
+    }> = [];
+    for (const ref of tokenizer.scanEntitiesFast()) {
+      entityRefs.push({
+        expressId: ref.expressId,
+        type: ref.type,
+        byteOffset: ref.offset,
+        byteLength: ref.length,
+        lineNumber: ref.line,
+      });
+    }
+
+    const parser = new ColumnarParser();
+    const store = await parser.parseLite(source.buffer.slice(0), entityRefs, {});
+    const psets = extractPropertiesOnDemand(store, 10);
+
+    expect(psets).toHaveLength(1);
+    expect(psets[0].name).toBe('Pset_WallCommon');
+  });
 });

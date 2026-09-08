@@ -70,12 +70,17 @@ describe('modelMinZMeters', () => {
     assert.strictEqual(modelMinZMeters(info), 512.25);
   });
 
-  it('folds the origin shift back in', () => {
+  it('does not double-count the origin shift (originalBounds is already world-frame)', () => {
+    // Producer contract (localParsingUtils.ts createCoordinateInfo):
+    // shiftedBounds = originalBounds - originShift. So a real CoordinateInfo
+    // with this originalBounds/originShift pair has this exact shiftedBounds -
+    // it is not a free variable.
     const info = coordInfo({
       originalBounds: { min: { x: 0, y: 12.25, z: 0 }, max: { x: 5, y: 30, z: 5 } },
+      shiftedBounds: { min: { x: -100, y: -487.75, z: 20 }, max: { x: -95, y: -470, z: 25 } },
       originShift: { x: 100, y: 500, z: -20 },
     });
-    assert.strictEqual(modelMinZMeters(info), 512.25);
+    assert.strictEqual(modelMinZMeters(info), 12.25);
   });
 
   it('folds the wasm RTC offset back in (Z-up z is the vertical component)', () => {

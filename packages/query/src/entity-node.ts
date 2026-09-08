@@ -8,6 +8,7 @@
 
 import type { IfcStoreBase as IfcDataStore, IfcEntity, IfcAttributeValue, PropertySet, QuantitySet, PropertyValue } from '@ifc-lite/data';
 import { getRawNamedAttributes, extractRootAttributesFromEntity } from '@ifc-lite/parser';
+import { resolveEntityTypeName } from './resolve-type-name.js';
 import { RelationshipType } from '@ifc-lite/data';
 
 function coerceRaw(raw: IfcAttributeValue): string | number | boolean | null {
@@ -130,8 +131,9 @@ export class EntityNode {
   }
 
   get type(): string {
-    return this.store.entities.getTypeName(this.expressId);
+    return resolveEntityTypeName(this.store, this.expressId);
   }
+
 
   // Spatial containment
   contains(): EntityNode[] {
@@ -154,13 +156,23 @@ export class EntityNode {
   }
   
   // Types
+  /**
+   * The type object defining this occurrence.
+   *
+   * `IfcRelDefinesByType` has the type as its relating object, and the parser
+   * stores edges relating -> related, so the type is the source and each
+   * occurrence the target. Reaching the type from an occurrence is therefore
+   * an inverse traversal — matching the element -> type lookups in
+   * `on-demand-extractors.ts`.
+   */
   definingType(): EntityNode | null {
-    const nodes = this.getRelated(RelationshipType.DefinesByType, 'forward');
+    const nodes = this.getRelated(RelationshipType.DefinesByType, 'inverse');
     return nodes[0] ?? null;
   }
   
+  /** The occurrences defined by this type — forward, from the type source. */
   instances(): EntityNode[] {
-    return this.getRelated(RelationshipType.DefinesByType, 'inverse');
+    return this.getRelated(RelationshipType.DefinesByType, 'forward');
   }
   
   // Openings
@@ -168,8 +180,16 @@ export class EntityNode {
     return this.getRelated(RelationshipType.VoidsElement, 'forward');
   }
   
+  /**
+   * The elements filling this opening (doors, windows).
+   *
+   * `IfcRelFillsElement` is (RelatingOpeningElement, RelatedBuildingElement),
+   * so the opening is the relating object and the filler the related one —
+   * reaching the filler from the opening is a forward traversal, the same
+   * orientation `voids()` uses to reach the opening from its host.
+   */
   filledBy(): EntityNode[] {
-    return this.getRelated(RelationshipType.FillsElement, 'inverse');
+    return this.getRelated(RelationshipType.FillsElement, 'forward');
   }
 
   // Multi-hop traversal
@@ -234,9 +254,19 @@ export class EntityNode {
   }
 
   property(psetName: string, propName: string): PropertyValue | null {
-    const props = this.store.getProperties(this.expressId);
-    const pset = props.find(p => p.name === psetName);
-    return pset?.properties.find(p => p.name === propName)?.value ?? null;
+    // Two distinct IfcPropertySet entities sharing the same Name is a
+    // legitimate model shape, and the on-demand extraction path returns one
+    // array entry per underlying set rather than merging them. `.find()`
+    // would stop at the first same-named set and miss a property that only
+    // lives on a later one with that name (the same defect fixed in
+    // `PropertyTable.getProperty`, #2907) — so every same-named set is
+    // checked here instead.
+    for (const pset of this.store.getProperties(this.expressId)) {
+      if (pset.name !== psetName) continue;
+      const prop = pset.properties.find(p => p.name === propName);
+      if (prop) return prop.value;
+    }
+    return null;
   }
 
   quantities(): QuantitySet[] {
@@ -244,9 +274,14 @@ export class EntityNode {
   }
 
   quantity(qsetName: string, quantityName: string): number | null {
-    const qsets = this.store.getQuantities(this.expressId);
-    const qset = qsets.find(q => q.name === qsetName);
-    return qset?.quantities.find(q => q.name === quantityName)?.value ?? null;
+    // Mirrors property() above: check every same-named quantity set rather
+    // than stopping at the first one.
+    for (const qset of this.store.getQuantities(this.expressId)) {
+      if (qset.name !== qsetName) continue;
+      const quantity = qset.quantities.find(q => q.name === quantityName);
+      if (quantity) return quantity.value;
+    }
+    return null;
   }
 
   private getRelated(relType: RelationshipType, direction: 'forward' | 'inverse'): EntityNode[] {

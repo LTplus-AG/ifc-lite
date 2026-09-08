@@ -265,7 +265,12 @@ export function validateProvenance(value: unknown): string[] {
     }
   }
 
-  if (m.merge !== null && m.merge !== undefined) {
+  // `merge` is a required field (ProvenanceManifest.merge: MergeRecord | null,
+  // §3.1's example always carries the key, even as `"merge": null`) -- unlike
+  // the optional ProvenanceInit.merge builder input, an untrusted manifest
+  // that omits the key entirely is malformed, not merely "not a merge layer".
+  // Match the `base` field's pattern above: only a literal `null` is exempt.
+  if (m.merge !== null) {
     const merge = m.merge as Record<string, unknown>;
     if (
       typeof merge !== 'object' ||

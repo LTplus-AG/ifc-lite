@@ -13,25 +13,13 @@
 import type { MeshData } from '@ifc-lite/geometry';
 import type { DataModel } from '@ifc-lite/server-client';
 import type { IfcDataStore } from '@ifc-lite/parser';
+import { REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP, EMPTY_SOURCE_BYTES, type ClassificationInfo } from '@ifc-lite/parser';
 import {
-  REL_TYPE_MAP as CANONICAL_REL_TYPE_MAP,
-  CompactEntityIndexBuilder,
-  type CompactEntityIndex,
-} from '@ifc-lite/parser';
-import {
-  findStoreyByElevation,
-  IfcTypeEnum,
-  RelationshipType,
-  IfcTypeEnumFromString,
+  comparePropertyValues,
   IfcTypeEnumToString,
-  EntityFlags,
   PropertyValueType,
   QuantityType,
-  isBuildingLikeSpatialType,
-  isStoreyLikeSpatialType,
-  type SpatialHierarchy,
-  type SpatialNode,
-  type EntityTable,
+  RelationshipGraphBuilder,
   type RelationshipGraph,
   type PropertyTable,
   type PropertySet,
@@ -41,6 +29,8 @@ import {
 } from '@ifc-lite/data';
 import { StringTable } from '@ifc-lite/data';
 import type { SpatialIndex } from '@ifc-lite/spatial';
+import { buildEntityTable } from './serverEntityTable';
+import { buildSpatialHierarchy } from './serverSpatialHierarchy';
 
 // ============================================================================
 // Types
@@ -83,334 +73,6 @@ export interface ServerParseResult {
 }
 
 // ============================================================================
-// Spatial Hierarchy Building
-// ============================================================================
-
-/** Server spatial node shape (mirrors SpatialNode from @ifc-lite/server-client) */
-interface ServerSpatialNode {
-  entity_id: number;
-  parent_id: number;
-  level: number;
-  path: string;
-  type_name: string;
-  name?: string;
-  elevation?: number;
-  children_ids: number[];
-  element_ids: number[];
-}
-
-/** Maximum recursion depth for spatial tree building */
-const MAX_SPATIAL_TREE_DEPTH = 100;
-
-/**
- * Build recursive SpatialNode tree from server data
- *
- * @param nodeId - Entity ID of the spatial node to build
- * @param nodesMap - Map of all spatial nodes by entity ID
- * @param depth - Current recursion depth (default 0)
- * @param visited - Set of visited node IDs for cycle detection
- */
-function buildSpatialNodeTree(
-  nodeId: number,
-  nodesMap: Map<number, ServerSpatialNode>,
-  depth: number = 0,
-  visited: Set<number> = new Set()
-): SpatialNode {
-  // Guard against excessive depth
-  if (depth > MAX_SPATIAL_TREE_DEPTH) {
-    throw new Error(`Spatial tree max depth (${MAX_SPATIAL_TREE_DEPTH}) exceeded at node ${nodeId}`);
-  }
-
-  // Guard against cycles
-  if (visited.has(nodeId)) {
-    throw new Error(`Cycle detected in spatial tree at node ${nodeId}`);
-  }
-
-  const node = nodesMap.get(nodeId);
-  if (!node) {
-    throw new Error(`Spatial node ${nodeId} not found`);
-  }
-
-  // Add current node to visited set
-  visited.add(nodeId);
-
-  const typeEnum = IfcTypeEnumFromString(node.type_name);
-
-  const result: SpatialNode = {
-    expressId: node.entity_id,
-    type: typeEnum,
-    name: node.name || node.type_name,
-    elevation: node.elevation,
-    children: node.children_ids.map((childId: number) =>
-      buildSpatialNodeTree(childId, nodesMap, depth + 1, visited)
-    ),
-    elements: node.element_ids,
-  };
-
-  // Remove from visited after processing (allows node in different branches)
-  visited.delete(nodeId);
-
-  return result;
-}
-
-/**
- * Build spatial hierarchy from server data model
- */
-function buildSpatialHierarchy(
-  dataModel: DataModel,
-  entityToPsets: Map<number, Array<{ pset_name: string; properties: Array<{ property_name: string; property_value: string | number | boolean | null }> }>>
-): SpatialHierarchy {
-  const byStorey = new Map<number, number[]>();
-  const byBuilding = new Map<number, number[]>();
-  const bySite = new Map<number, number[]>();
-  const bySpace = new Map<number, number[]>();
-  const storeyElevations = new Map<number, number>();
-  const storeyHeights = new Map<number, number>();
-
-  const nodesMap = new Map<number, ServerSpatialNode>(
-    dataModel.spatialHierarchy.nodes.map((n: ServerSpatialNode) => [n.entity_id, n])
-  );
-
-  // Build lookup maps from spatial hierarchy data
-  for (const node of dataModel.spatialHierarchy.nodes) {
-    const typeEnum = IfcTypeEnumFromString(node.type_name);
-    if (isStoreyLikeSpatialType(typeEnum)) {
-      byStorey.set(node.entity_id, node.element_ids);
-      if (node.elevation !== undefined) {
-        storeyElevations.set(node.entity_id, node.elevation);
-      }
-    } else if (isBuildingLikeSpatialType(typeEnum)) {
-      byBuilding.set(node.entity_id, node.element_ids);
-    } else if (typeEnum === IfcTypeEnum.IfcSite) {
-      bySite.set(node.entity_id, node.element_ids);
-    } else if (typeEnum === IfcTypeEnum.IfcSpace) {
-      bySpace.set(node.entity_id, node.element_ids);
-    }
-  }
-
-  // Extract storey heights from property sets
-  for (const storeyId of byStorey.keys()) {
-    const psets = entityToPsets.get(storeyId);
-    if (!psets) continue;
-    for (const pset of psets) {
-      for (const prop of pset.properties) {
-        const propName = prop.property_name.toLowerCase();
-        if (propName === 'grossheight' || propName === 'netheight' || propName === 'height') {
-          const val = typeof prop.property_value === 'number' ? prop.property_value : parseFloat(String(prop.property_value));
-          if (!isNaN(val) && val > 0) {
-            storeyHeights.set(storeyId, val);
-            break;
-          }
-        }
-      }
-      if (storeyHeights.has(storeyId)) break;
-    }
-  }
-
-  // Fallback: calculate heights from elevation differences
-  if (storeyHeights.size === 0 && storeyElevations.size > 1) {
-    const sortedStoreys = Array.from(storeyElevations.entries()).sort((a, b) => a[1] - b[1]);
-    for (let i = 0; i < sortedStoreys.length - 1; i++) {
-      const [storeyId, elevation] = sortedStoreys[i];
-      const nextElevation = sortedStoreys[i + 1][1];
-      const height = nextElevation - elevation;
-      if (height > 0) {
-        storeyHeights.set(storeyId, height);
-      }
-    }
-    console.log(`[serverDataModel] Calculated ${storeyHeights.size} storey heights from elevation differences`);
-  }
-
-  // Build project node tree
-  const projectNode = buildSpatialNodeTree(dataModel.spatialHierarchy.project_id, nodesMap);
-
-  const findPath = (node: SpatialNode, targetId: number, path: SpatialNode[] = []): SpatialNode[] => {
-    const nextPath = [...path, node];
-    if (node.elements.includes(targetId)) {
-      return nextPath;
-    }
-    for (const child of node.children) {
-      const childPath = findPath(child, targetId, nextPath);
-      if (childPath.length > 0) {
-        return childPath;
-      }
-    }
-    return [];
-  };
-
-  return {
-    project: projectNode,
-    byStorey,
-    byBuilding,
-    bySite,
-    bySpace,
-    storeyElevations,
-    storeyHeights,
-    elementToStorey: dataModel.spatialHierarchy.element_to_storey,
-    getStoreyElements: (storeyId: number) => byStorey.get(storeyId) || [],
-    // Canonical resolver shared with the parser path (#1841). This used to
-    // always snap to the nearest storey while the parser returned null beyond
-    // 1m, so the same Z resolved to a different storey depending on whether the
-    // model came from the server or from wasm.
-    getStoreyByElevation: (z: number) => findStoreyByElevation(storeyElevations, z),
-    getContainingSpace: (elementId: number) => {
-      return dataModel.spatialHierarchy.element_to_space.get(elementId) || null;
-    },
-    getPath: (elementId: number) => {
-      return findPath(projectNode, elementId);
-    },
-  };
-}
-
-// ============================================================================
-// Entity Table Building
-// ============================================================================
-
-/**
- * Build EntityTable from server data model
- */
-function buildEntityTable(
-  dataModel: DataModel,
-  strings: StringTable
-): { entities: EntityTable; entityById: CompactEntityIndex; typeGroups: Map<IfcTypeEnum, number[]> } {
-  // Columnar consumption (issue #1841): iterate the decoder's raw columns by
-  // index instead of a per-entity Map (V8 caps Map at 2^24 entries).
-  const cols = dataModel.entities.columns;
-  const entityCount = cols.count;
-
-  // Pre-allocate TypedArrays
-  const expressId = new Uint32Array(entityCount);
-  const typeEnumArr = new Uint16Array(entityCount);
-  const globalIdArr = new Uint32Array(entityCount);
-  const nameArr = new Uint32Array(entityCount);
-  const descriptionArr = new Uint32Array(entityCount);
-  const objectTypeArr = new Uint32Array(entityCount);
-  // Tag / PredefinedType from the v4 data-model payload (issue #1765).
-  const tagArr = new Uint32Array(entityCount);
-  const predefinedTypeArr = new Uint32Array(entityCount);
-  const flagsArr = new Uint8Array(entityCount);
-  const containedInStoreyArr = new Int32Array(entityCount).fill(-1);
-  const definedByTypeArr = new Int32Array(entityCount).fill(-1);
-  const geometryIndexArr = new Int32Array(entityCount).fill(-1);
-
-  // Maps for fast lookup
-  const globalIdToExpressId = new Map<string, number>();
-  const typeGroups = new Map<IfcTypeEnum, number[]>();
-
-  // Canonical compact byId index (replaces the hand-rolled Map of faked
-  // EntityRef objects). The server has no source buffer, so byteOffset /
-  // byteLength are 0 — matching the previous faked EntityRef exactly.
-  const byIdBuilder = new CompactEntityIndexBuilder(entityCount);
-
-  // Single pass through entity columns
-  for (let idx = 0; idx < entityCount; idx++) {
-    const id = cols.expressId[idx];
-    expressId[idx] = id;
-    const typeName = cols.typeName[idx] ?? '';
-    const typeVal = IfcTypeEnumFromString(typeName);
-    typeEnumArr[idx] = typeVal;
-    const globalIdString = cols.globalId[idx] || '';
-    globalIdArr[idx] = strings.intern(globalIdString);
-    if (globalIdString) {
-      globalIdToExpressId.set(globalIdString, id);
-    }
-    nameArr[idx] = strings.intern(cols.name[idx] || '');
-    descriptionArr[idx] = strings.intern(cols.description?.[idx] || '');
-    objectTypeArr[idx] = strings.intern(cols.objectType?.[idx] || '');
-    tagArr[idx] = strings.intern(cols.tag?.[idx] || '');
-    predefinedTypeArr[idx] = strings.intern(cols.predefinedType?.[idx] || '');
-    flagsArr[idx] = cols.hasGeometry[idx] !== 0 ? EntityFlags.HAS_GEOMETRY : 0;
-
-    byIdBuilder.add(id, typeName, 0, 0);
-
-    if (!typeGroups.has(typeVal)) {
-      typeGroups.set(typeVal, []);
-    }
-    typeGroups.get(typeVal)!.push(idx);
-  }
-
-  const entityById = byIdBuilder.build();
-
-  // Rows above were filled in column order, so the ServerEntityIndex row
-  // position IS the EntityTable index — binary search instead of an
-  // idToIndex Map (which would hit the same 2^24 ceiling).
-  const indexOfId = (id: number): number => dataModel.entities.rowIndexOf(id);
-
-  // Additive display-class overrides (UI retype). See entity-table.ts.
-  const typeOverrides = new Map<number, string>();
-
-  const entities: EntityTable = {
-    count: entityCount,
-    expressId,
-    typeEnum: typeEnumArr,
-    globalId: globalIdArr,
-    name: nameArr,
-    description: descriptionArr,
-    objectType: objectTypeArr,
-    flags: flagsArr,
-    containedInStorey: containedInStoreyArr,
-    definedByType: definedByTypeArr,
-    geometryIndex: geometryIndexArr,
-    typeRanges: new Map(), // Deprecated - use getByType which uses typeGroups directly
-    getGlobalId: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(globalIdArr[i]) : '';
-    },
-    getName: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(nameArr[i]) : '';
-    },
-    getDescription: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(descriptionArr[i]) : '';
-    },
-    getObjectType: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(objectTypeArr[i]) : '';
-    },
-    getTag: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(tagArr[i]) : '';
-    },
-    getPredefinedType: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? strings.get(predefinedTypeArr[i]) : '';
-    },
-    getTypeName: (id) => {
-      const override = typeOverrides.get(id);
-      if (override !== undefined) return override;
-      const i = indexOfId(id);
-      return i >= 0 ? IfcTypeEnumToString(typeEnumArr[i]) : 'Unknown';
-    },
-    hasGeometry: (id) => {
-      const i = indexOfId(id);
-      return i >= 0 ? (flagsArr[i] & EntityFlags.HAS_GEOMETRY) !== 0 : false;
-    },
-    getByType: (type) => {
-      // Use typeGroups directly - indices stored there map to expressId array
-      const indices = typeGroups.get(type);
-      if (!indices) return [];
-      return indices.map(idx => expressId[idx]);
-    },
-    getTypeEnum: (id) => {
-      const override = typeOverrides.get(id);
-      if (override !== undefined) return IfcTypeEnumFromString(override);
-      const i = indexOfId(id);
-      return i >= 0 ? typeEnumArr[i] as IfcTypeEnum : IfcTypeEnum.Unknown;
-    },
-    setTypeOverride: (id, typeName) => {
-      if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
-    },
-    getExpressIdByGlobalId: (gid) => {
-      return globalIdToExpressId.get(gid) ?? -1;
-    },
-  };
-
-  return { entities, entityById, typeGroups };
-}
-
-// ============================================================================
 // Relationship Graph Building
 // ============================================================================
 
@@ -424,8 +86,14 @@ function buildRelationships(
   entityToPsets: Map<number, Array<any>>;
   entityToQsets: Map<number, Array<ServerQuantitySet>>;
 } {
-  const forwardEdges = new Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>();
-  const inverseEdges = new Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>();
+  // Feed the same builder the WASM path uses (#3827). Building real CSR
+  // columns is what makes every `offsets`/`counts` walk downstream — the
+  // Parquet Relationships table, the DuckDB relationships table — see the
+  // server path's edges at all, and it is what makes the builder's
+  // repeated-edge handling apply here instead of only to locally parsed
+  // models. `build()` derives the inverse half from the same edge list, so
+  // only the forward direction is added below.
+  const graphBuilder = new RelationshipGraphBuilder();
   const entityToPsets = new Map<number, Array<any>>();
   const entityToQsets = new Map<number, Array<ServerQuantitySet>>();
   // Type-owned sets (issue #1751): the server emits synthetic TYPEHASPROPERTYSETS
@@ -436,6 +104,8 @@ function buildRelationships(
   const typeOwnPsets = new Map<number, Array<any>>();
   const typeOwnQsets = new Map<number, Array<ServerQuantitySet>>();
   const unmappedRelTypes = new Set<string>();
+  // Whether the payload carried the rel_id column at all (#3860).
+  let sawRelId = false;
 
   // Combined loop - process relationships once for both graph building AND property mapping
   for (const rel of dataModel.relationships) {
@@ -470,21 +140,22 @@ function buildRelationships(
       continue;
     }
 
-    // Forward: relating -> related
-    if (!forwardEdges.has(rel.relating_id)) {
-      forwardEdges.set(rel.relating_id, []);
-    }
-    forwardEdges.get(rel.relating_id)!.push({ target: rel.related_id, type: relType, relationshipId: 0 });
-
-    // Inverse: related -> relating
-    if (!inverseEdges.has(rel.related_id)) {
-      inverseEdges.set(rel.related_id, []);
-    }
-    inverseEdges.get(rel.related_id)!.push({ target: rel.relating_id, type: relType, relationshipId: 0 });
+    // The IfcRel express id (#3860). Absent only against a server older than
+    // the column; 0 is then the placeholder every edge used to get.
+    if (rel.rel_id !== undefined) sawRelId = true;
+    graphBuilder.addEdge(rel.relating_id, rel.related_id, relType, rel.rel_id ?? 0);
   }
 
   if (unmappedRelTypes.size > 0) {
     console.warn(`[serverDataModel] Found ${unmappedRelTypes.size} unmapped relationship types: ${Array.from(unmappedRelTypes).join(', ')}`);
+  }
+
+  // Every edge then carries relationshipId 0, which looks exactly like a real
+  // graph until an export writes RelId = 0 on every row (#3860). Say it once.
+  if (!sawRelId && dataModel.relationships.length > 0) {
+    console.warn(
+      `[serverDataModel] Server sent no rel_id column: all ${dataModel.relationships.length} relationship(s) get id 0. Exported RelId will be 0 — the server predates the data-model v6 payload.`
+    );
   }
 
   // Merge each type's own (HasPropertySets) sets into its entry, FIRST and
@@ -505,47 +176,7 @@ function buildRelationships(
   mergeOwnFirst(typeOwnPsets, entityToPsets, (s) => s.pset_name ?? '');
   mergeOwnFirst(typeOwnQsets, entityToQsets, (s) => s.qset_name ?? '');
 
-  const createEdgeAccessor = (edges: Map<number, Array<{ target: number; type: RelationshipType; relationshipId: number }>>) => ({
-    offsets: new Map<number, number>(),
-    counts: new Map<number, number>(),
-    edgeTargets: new Uint32Array(0),
-    edgeTypes: new Uint16Array(0),
-    edgeRelIds: new Uint32Array(0),
-    getEdges: (entityId: number, type?: RelationshipType) => {
-      const e = edges.get(entityId) || [];
-      return type !== undefined ? e.filter((edge) => edge.type === type) : e;
-    },
-    getTargets: (entityId: number, type?: RelationshipType) => {
-      const e = edges.get(entityId) || [];
-      const filtered = type !== undefined ? e.filter((edge) => edge.type === type) : e;
-      return filtered.map((edge) => edge.target);
-    },
-    hasAnyEdges: (entityId: number) => (edges.get(entityId)?.length ?? 0) > 0,
-  });
-
-  const relationships: RelationshipGraph = {
-    forward: createEdgeAccessor(forwardEdges),
-    inverse: createEdgeAccessor(inverseEdges),
-    getRelated: (entityId, relType, direction) => {
-      const edgeMap = direction === 'forward' ? forwardEdges : inverseEdges;
-      const edges = edgeMap.get(entityId) || [];
-      return edges.filter((e) => e.type === relType).map((e) => e.target);
-    },
-    hasRelationship: (sourceId, targetId, relType) => {
-      const edges = forwardEdges.get(sourceId) || [];
-      return edges.some((e) => e.target === targetId && (relType === undefined || e.type === relType));
-    },
-    getRelationshipsBetween: (sourceId, targetId) => {
-      const edges = forwardEdges.get(sourceId) || [];
-      return edges
-        .filter((e) => e.target === targetId)
-        .map((e) => ({
-          relationshipId: e.relationshipId,
-          type: e.type,
-          typeName: RelationshipType[e.type] || 'Unknown',
-        }));
-    },
-  };
+  const relationships = graphBuilder.build();
 
   return { relationships, entityToPsets, entityToQsets };
 }
@@ -571,6 +202,22 @@ export function convertServerDataModel(
 ): IfcDataStore {
   const strings = new StringTable();
 
+  // Regroup server-resolved classifications by element_id (#3955).
+  const resolvedClassifications = new Map<number, ClassificationInfo[]>();
+  for (const c of dataModel.classifications ?? []) {
+    const info: ClassificationInfo = {
+      system: c.system_name,
+      identification: c.identification,
+      name: c.name,
+      location: c.location,
+    };
+    const existing = resolvedClassifications.get(c.element_id);
+    if (existing) {
+      existing.push(info);
+    } else {
+      resolvedClassifications.set(c.element_id, [info]);
+    }
+  }
   // Build relationships first (needed for property/quantity mappings)
   const { relationships, entityToPsets, entityToQsets } = buildRelationships(dataModel);
 
@@ -664,20 +311,24 @@ export function convertServerDataModel(
     },
     findByProperty: (
       propName: string,
-      _operator: string,
+      operator: string,
       value: PropertyValue,
       psetName?: string,
     ): number[] => {
       // Server-converted data: search psets for matching property name + value.
       // When a pset is named, restrict to it so a same-named property in
-      // another pset does not match.
+      // another pset does not match. The comparison must go through
+      // `comparePropertyValues` (the same function the columnar
+      // `PropertyTable.findByProperty` uses) — a bare `===` here silently
+      // degraded every relational operator to equality, so `'>' 10` answered
+      // `= 10`.
       const matchingEntityIds: number[] = [];
       for (const [entityId, psets] of entityToPsets) {
         let found = false;
         for (const pset of psets) {
           if (psetName !== undefined && pset.pset_name !== psetName) continue;
           for (const prop of pset.properties) {
-            if (prop.property_name === propName && materializeValue(prop) === value) {
+            if (prop.property_name === propName && comparePropertyValues(materializeValue(prop), operator, value)) {
               matchingEntityIds.push(entityId);
               found = true;
               break;
@@ -690,8 +341,7 @@ export function convertServerDataModel(
     },
   };
 
-  /** Map server quantity type strings to QuantityType enum */
-  const mapQuantityType = (type: string): QuantityType => {
+  const mapQuantityType = (type: string): QuantityType => { // server quantity type string -> QuantityType
     switch (type.toLowerCase()) {
       case 'length': return QuantityType.Length;
       case 'area': return QuantityType.Area;
@@ -699,14 +349,14 @@ export function convertServerDataModel(
       case 'count': return QuantityType.Count;
       case 'weight': return QuantityType.Weight;
       case 'time': return QuantityType.Time;
+      case 'number': return QuantityType.Number; // IfcQuantityNumber, #3266's sibling here
       default: return QuantityType.Count;
     }
   };
 
   const quantities: QuantityTable = {
     count: 0,
-    entityId: new Uint32Array(0),
-    qsetName: new Uint32Array(0),
+    entityId: new Uint32Array(0), qsetName: new Uint32Array(0), qsetGlobalId: new Uint32Array(0),
     quantityName: new Uint32Array(0),
     quantityType: new Uint8Array(0),
     value: new Float64Array(0),
@@ -718,7 +368,7 @@ export function convertServerDataModel(
     getForEntity: (exprId: number): QuantitySet[] => {
       const qsets = entityToQsets.get(exprId) || [];
       return qsets.map((qset) => ({
-        name: qset.qset_name,
+        name: qset.qset_name, globalId: '',
         quantities: qset.quantities.map((q) => ({
           name: q.quantity_name,
           type: mapQuantityType(q.quantity_type),
@@ -786,13 +436,14 @@ export function convertServerDataModel(
     schemaVersion,
     entityCount: dataModel.entities.size,
     parseTime: parseResult.stats.total_time_ms,
-    source: new Uint8Array(0),
+    source: EMPTY_SOURCE_BYTES,
     entityIndex: { byId: entityById, byType },
     strings,
     entities,
     properties,
     quantities,
     relationships,
+    resolvedClassifications,
     spatialHierarchy,
     spatialIndex,
     // IfcStoreBase accessors: server-parsed models carry pre-built property/

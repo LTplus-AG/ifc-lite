@@ -39,7 +39,7 @@ export function createServerNativeTemplate(targetDir: string, projectName: strin
       '@types/node': '^20.0.0',
     },
     optionalDependencies: {
-      'parquet-wasm': '^0.6.0',
+      'parquet-wasm': '^0.7.2',
       'apache-arrow': '^17.0.0',
     },
   }, null, 2));

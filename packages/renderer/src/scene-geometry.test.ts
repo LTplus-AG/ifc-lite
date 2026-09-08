@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { colorSaltByte, packEntityLane } from './scene-geometry.ts';
+import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 
 /**
  * Mirror the WGSL depth-nudge hash from `main.wgsl.ts` (`vs_main`) so the test

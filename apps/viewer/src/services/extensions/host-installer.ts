@@ -150,11 +150,20 @@ export async function installFromBytes(
   // Snapshot the previous install so we can restore it if the new
   // bundle fails to load. Without this, a bad update wipes the
   // user's previously-working install entirely.
+  //
+  // The snapshot is taken for every previous install, not only for a version
+  // change. Bundle bytes are keyed by `id + version`, so a reinstall of the
+  // same version overwrites them in `putBundle` below — that is exactly the
+  // case where the rollback has nothing left to read, and it deletes the
+  // record and the bundle of an install the failed write never changed the
+  // identity of. The teardown stays conditional: replacing the bytes under a
+  // version that is already loaded is not a version change, and unloading a
+  // still-working extension is not this function's business.
   const previous = await deps.storage.getExtension(id);
   let previousBundleBytes: Uint8Array | undefined;
-  if (previous && previous.version !== version) {
+  if (previous) {
     previousBundleBytes = await deps.storage.getBundle(id, previous.version);
-    await teardownExtension(deps, id);
+    if (previous.version !== version) await teardownExtension(deps, id);
   }
 
   const record: InstalledExtensionRecord = {
@@ -171,23 +180,91 @@ export async function installFromBytes(
 
   const status = await deps.loader.load(id);
   if (!status || !status.ok) {
-    // Roll back. Delete the new bundle + record we just wrote.
-    await deps.storage.deleteBundle(id, version);
-    await deps.storage.deleteExtension(id);
+    // `load` is an await point, so the record in storage may no longer be the
+    // one written above: the user can hit Uninstall while a slow load is in
+    // flight. An uninstall is explicit and it wins. Rolling back over it would
+    // both delete bytes this install no longer owns and put `previous` back —
+    // undoing the removal the user asked for and leaving a listed record
+    // behind whose bundle is gone.
+    //
+    // This is a record-identity check, not the byte gate the rest of this
+    // rollback deliberately does without: it asks whether the record we wrote
+    // is still the record in storage, never whether any bundle bytes exist. A
+    // previous install whose bytes were already missing still has its record
+    // restored below, which is the case a byte gate here would break.
+    //
+    // A failed read proves nothing either way, so it falls back to rolling
+    // back — what happens when no one touched storage, which is every case
+    // but this one.
+    let ownsStoredRecord = true;
+    try {
+      const current = await deps.storage.getExtension(id);
+      ownsStoredRecord = current?.version === version && current?.bundleHash === bundleHash;
+    } catch (readErr) {
+      console.error(
+        `[ext-host] Could not re-read the record of ${id} before rolling back:`,
+        readErr,
+      );
+    }
 
-    // Restore the previous install if we had one — re-write its
-    // record and bundle bytes, then re-load. Best effort: log if
-    // restore itself fails, don't mask the original error.
-    if (previous && previousBundleBytes) {
-      try {
-        await deps.storage.putBundle(id, previous.version, previousBundleBytes);
-        await deps.storage.putExtension(previous);
-        await deps.loader.load(id);
-      } catch (restoreErr) {
-        console.error(
-          `[ext-host] Failed to restore previous install of ${id}:`,
-          restoreErr,
-        );
+    if (ownsStoredRecord) {
+      // Roll back. Delete the new bundle + record we just wrote.
+      await deps.storage.deleteBundle(id, version);
+      await deps.storage.deleteExtension(id);
+
+      // Restore the previous install if we had one — re-write its record and
+      // bundle bytes, then re-load. Best effort: log if a step fails, don't
+      // mask the original error.
+      //
+      // The record and the bytes are restored under independent guards, so
+      // neither takes the other down. That is what is load-bearing here, not
+      // the order of the two writes: the record is not gated on the byte
+      // snapshot, and a failing `putBundle` — the plausible failure, since it
+      // is the step with a quota path — leaves the record standing.
+      //
+      // Keeping a record whose bundle is missing is deliberate. The record
+      // carries the capability grants, the enabled bit, the install time and
+      // the source, none of which need bytes and none of which the user can
+      // reconstruct; unloaded *and* deleted is strictly worse than unloaded.
+      // The loader already names the resulting state (`invalid_reference`,
+      // "Bundle for X@Y not found in storage"). Reinstalling the same version
+      // repairs it and keeps the grants, but the app offers the user no route
+      // to that: the Repair queue passes any extension whose engine range
+      // still matches, so it never reaches the missing bytes, and fork reads
+      // an in-memory cache that is empty after a boot. Treat the reinstall as
+      // something a user who still holds the `.iflx` can do, not as a repair
+      // path the UI provides.
+      if (previous) {
+        try {
+          await deps.storage.putExtension(previous);
+        } catch (restoreErr) {
+          console.error(
+            `[ext-host] Failed to restore the previous record of ${id}:`,
+            restoreErr,
+          );
+        }
+        if (previousBundleBytes) {
+          try {
+            await deps.storage.putBundle(id, previous.version, previousBundleBytes);
+          } catch (restoreErr) {
+            console.error(
+              `[ext-host] Failed to restore the previous bundle of ${id}:`,
+              restoreErr,
+            );
+          }
+        }
+        try {
+          // Best effort either way: with the bytes back this reloads the
+          // working install; without them the loader reports
+          // `invalid_reference` and nothing is left running, which is the
+          // truthful state and not something a throw here would improve.
+          await deps.loader.load(id);
+        } catch (restoreErr) {
+          console.error(
+            `[ext-host] Failed to reload the previous install of ${id}:`,
+            restoreErr,
+          );
+        }
       }
     }
     throw new ExtensionInstallError(

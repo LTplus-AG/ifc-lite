@@ -25,6 +25,12 @@ describe('isFeatureElementType', () => {
     }
   });
 
+  it('flags the IFC2X3 edge-feature family (IfcEdgeFeature and its leaves)', () => {
+    for (const t of ['IfcChamferEdgeFeature', 'IfcRoundedEdgeFeature', 'IfcEdgeFeature']) {
+      expect(isFeatureElementType(t)).toBe(true);
+    }
+  });
+
   it('is case-insensitive', () => {
     expect(isFeatureElementType('IFCOPENINGELEMENT')).toBe(true);
     expect(isFeatureElementType('ifcopeningelement')).toBe(true);

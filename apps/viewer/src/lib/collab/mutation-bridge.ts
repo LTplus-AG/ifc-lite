@@ -264,6 +264,10 @@ export interface RemoteApplyHandlers {
   onPlacement?(entityId: number, placement: LocalPlacement): void;
   /** A peer tombstoned an entity — hide/remove its rendered mesh locally. */
   onEntityDelete?(entityId: number): void;
+  /** The whole Pset vanished. Property names are unavailable by design: Yjs
+   *  detaches the map before the event is observed, so `forEach` yields 0
+   *  entries. The consumer drops the entire set for (entityId, pset). */
+  onPsetDelete?(entityId: number, pset: string): void;
 }
 
 /**
@@ -275,9 +279,19 @@ export interface RemoteApplyHandlers {
 export function attachRemoteApply(
   api: CollabDocApi,
   session: CollabSession,
-  store: IfcDataStore,
+  /**
+   * The store a remote path is resolved against — the ROOM's model, not
+   * whatever is active. Pass a resolver (not a value) when it can change or
+   * does not exist yet: a recipient's room model is registered by the first
+   * reconstruct, which can land after this observer is attached, and a
+   * captured store would keep resolving room paths against a stale — possibly
+   * entirely unrelated — model. A resolver returning `null` drops the event.
+   */
+  storeOrResolver: IfcDataStore | (() => IfcDataStore | null),
   handlers: RemoteApplyHandlers,
 ): () => void {
+  const resolveStore = (): IfcDataStore | null =>
+    typeof storeOrResolver === 'function' ? storeOrResolver() : storeOrResolver;
   // `entities` is inferred as Y.Map<unknown>; deriving the observer type from
   // its method signature avoids importing yjs (not a direct viewer dep).
   const entities = session.doc.getMap('entities');
@@ -285,6 +299,8 @@ export function attachRemoteApply(
 
   const observer: DeepObserver = (events, txn) => {
     if (txn.local) return; // ignore our own writes (seed + outbound mirror)
+    const store = resolveStore();
+    if (!store) return;
     for (const ev of events) {
       const path = ev.path;
       // Top-level entity add/remove on the `entities` map root (path === []).
@@ -328,6 +344,42 @@ export function attachRemoteApply(
           const pv = target.get(prop) as { type?: string; value?: ScalarValue } | undefined;
           if (!pv) continue;
           handlers.onProperty(entityId, psetName, prop, pv.value ?? null, propertyValueTypeFor(pv.type ?? 'IfcLabel'));
+        }
+      } else if (path[1] === 'psets' && path.length === 2) {
+        // A pset appearing (or vanishing) wholesale. When a remote peer writes
+        // the FIRST property of a brand-new pset, Yjs reports it as a single
+        // `add` on the `psets` map itself — the nested pset map does not exist
+        // yet when the transaction is observed, so no `path.length === 3`
+        // event is ever emitted. Without this branch that first property lands
+        // in the Y.Doc but never reaches the live view until a full
+        // reconstruct.
+        //
+        // The mirror case — deleting a pset's LAST property, which cascades to
+        // removing the pset entry — reports as a single `delete` here too. By
+        // the time the event is observed the removed map is already detached
+        // — `oldValue.forEach` yields nothing, `size` is 0 and `toJSON()` is
+        // `{}` — so the property names are unrecoverable. `onPsetDelete` tells
+        // the consumer to drop the whole set for (entityId, pset) rather than
+        // trying to replay per-property deletes it has no names for.
+        for (const [psetName, change] of ev.changes.keys) {
+          if (change.action === 'delete') {
+            if (handlers.onPsetDelete) handlers.onPsetDelete(entityId, psetName);
+            continue;
+          }
+          const added = target.get(psetName) as
+            | { forEach?(fn: (v: unknown, k: string) => void): void }
+            | undefined;
+          added?.forEach?.((v, prop) => {
+            const pv = v as { type?: string; value?: ScalarValue } | undefined;
+            if (!pv) return;
+            handlers.onProperty(
+              entityId,
+              psetName,
+              prop,
+              pv.value ?? null,
+              propertyValueTypeFor(pv.type ?? 'IfcLabel'),
+            );
+          });
         }
       }
     }

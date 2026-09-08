@@ -76,6 +76,50 @@ export type InboundCommandType =
   | 'GET_SCREENSHOT'
   | 'GET_MODEL_INFO';
 
+/**
+ * Every `SET_TYPE_VISIBILITY` flag, in declaration order.
+ *
+ * This list mirrors the viewer store's `TypeVisibility` one-to-one. It exists
+ * as a runtime value, not just a type, so the embed's command handler can loop
+ * it instead of naming flags by hand: three of the seven were named and the
+ * other four were silently dropped for as long as the store had them, because
+ * nothing tied the protocol's spelling of the set to the store's. The bridge
+ * test pins that equality in both directions, at compile time and at runtime.
+ *
+ * Which IFC classes each flag gates:
+ *
+ * - `spaces` - `IfcSpace`.
+ * - `spatialZones` - `IfcSpatialZone`, the modelled gross-area volumes; a
+ *   separate toggle from `spaces` so net and gross can be shown apart (#1075).
+ * - `openings` - `IfcOpeningElement`.
+ * - `virtualElements` - `IfcVirtualElement`, the non-physical space-boundary
+ *   and clearance placeholders (#1133).
+ * - `site` - `IfcSite` and `IfcGeographicElement`; the row is "Terrain &
+ *   context", and modelled terrain disappears with it (#1480).
+ * - `ifcAnnotations` - `IfcAnnotation`: both the 2D symbolic curve/text
+ *   overlay and the 3D annotation solids some exporters write (#1354, #1480).
+ * - `ifcGrid` - `IfcGrid` axis lines and bubble tags. It has no mesh class of
+ *   its own; it gates an overlay, and was split out of `ifcAnnotations` so a
+ *   dense-grid model can lose grids without losing dimensions (#862).
+ */
+export const TYPE_VISIBILITY_FLAG_KEYS = [
+  'spaces',
+  'spatialZones',
+  'openings',
+  'virtualElements',
+  'site',
+  'ifcAnnotations',
+  'ifcGrid',
+] as const;
+
+/**
+ * The `SET_TYPE_VISIBILITY` payload: any subset of the flags above. An omitted
+ * flag is left alone, so a host can drive one toggle without restating the rest.
+ */
+export type TypeVisibilityFlags = {
+  [K in (typeof TYPE_VISIBILITY_FLAG_KEYS)[number]]?: boolean;
+};
+
 /** Payload types for each inbound command */
 export interface InboundPayloads {
   INIT: { token?: string; config?: EmbedConfig };
@@ -93,11 +137,21 @@ export interface InboundPayloads {
   SET_COLORS: { colorMap: Record<string, [number, number, number, number]> };
   RESET_COLORS: void;
   FIT_TO_VIEW: { ids?: number[] };
+  /**
+   * Absolute camera orientation in degrees: `azimuth` horizontal (normalized
+   * into 0-360), `elevation` from the horizon (clamped just inside ±90°, where
+   * the view matrix degenerates). The target and the orbit distance are kept —
+   * this rotates the camera, it does not reframe; use `FIT_TO_VIEW` for that.
+   *
+   * `zoom` is NOT applied. It has no defined meaning on this side (factor?
+   * distance? relative to what?), and the viewer deliberately ignores it rather
+   * than guessing — see #2934. Treat it as reserved.
+   */
   SET_CAMERA: { azimuth: number; elevation: number; zoom?: number };
   SET_VIEW: { preset: ViewPreset };
   SET_SECTION: { axis?: SectionAxis; position?: number; enabled?: boolean; flipped?: boolean };
   SET_THEME: { theme: 'light' | 'dark'; bg?: string };
-  SET_TYPE_VISIBILITY: { spaces?: boolean; openings?: boolean; site?: boolean };
+  SET_TYPE_VISIBILITY: TypeVisibilityFlags;
   GET_PROPERTIES: { id: number };
   GET_SCREENSHOT: { width?: number; height?: number };
   GET_MODEL_INFO: void;
@@ -141,6 +195,23 @@ export interface OutboundPayloads {
   ENTITY_SELECTED: { id: number; globalId?: string; modelId?: string; ifcType?: string };
   ENTITY_DESELECTED: void;
   ENTITY_HOVERED: { id: number; globalId?: string; ifcType?: string };
+  /**
+   * A change of camera ORIENTATION -- `azimuth`/`elevation`, the direction from
+   * the camera's target to the camera. Fires for an orbit drag, the keyboard
+   * orbit keys, the ViewCube and the preset views, and for a programmatic
+   * SET_CAMERA.
+   *
+   * It does NOT fire for a pan or for a zoom/dolly: panning translates the
+   * camera and its target by the same offset and zooming changes only the
+   * distance between them, so in both cases the orientation this event reports
+   * is unchanged, and an unchanged pose is not re-sent. A host that needs to
+   * follow a pan or a zoom cannot use this event -- `zoom` below is optional
+   * and the embed viewer does not currently populate it.
+   *
+   * Cadence: at most one event per 100ms while the orientation keeps changing,
+   * plus one trailing event carrying the orientation it settled on -- never one
+   * per animation frame. The same pose is never reported twice in a row.
+   */
   CAMERA_CHANGED: { azimuth: number; elevation: number; zoom?: number };
   SECTION_CHANGED: { axis: SectionAxis; position: number; enabled: boolean };
 }
@@ -204,19 +275,57 @@ export interface ModelInfo {
 // URL Parameter Types
 // ============================================================================
 
-/** Parameters that can be passed via URL to the embed viewer */
+/**
+ * Parameters that can be passed via URL to the embed viewer.
+ *
+ * Every field here is parsed by the viewer AND applied, as of #2934 --
+ * `hideAxis`/`hideScale` and `controls` were marked NOT YET IMPLEMENTED here
+ * until then. The one deliberate exception is `camera.zoom`; see its doc
+ * below. Read that as a statement about the fields below, not as a
+ * guarantee this type enforces on fields added later: nothing here fails a
+ * build when a new field is parsed and then ignored, which is exactly how the
+ * three above drifted. A new field owes its own applying call site and a test
+ * that observes the effect.
+ */
 export interface EmbedUrlParams {
+  /** Model to fetch on load. http(s) only; other schemes are rejected. */
   modelUrl?: string;
   theme?: 'light' | 'dark';
+  /** Background colour, hex digits without the leading `#`. */
   bg?: string;
+  /**
+   * Restricts interactive orbit/pan/zoom (mouse, touch, keyboard, and
+   * spacemouse gestures) at the renderer's `Camera`. `'orbit'` allows only
+   * orbit, `'pan'` only pan, `'none'` freezes the view (orbit, pan AND zoom
+   * all inert), `'all'` is unrestricted. Does not gate programmatic moves —
+   * `SET_CAMERA`, `?camera=`/`?view=`, or host SDK calls still work in every
+   * mode.
+   */
   controls?: 'orbit' | 'pan' | 'all' | 'none';
+  /** `false` suppresses the automatic fetch of `modelUrl`. Default: load. */
   autoLoad?: boolean;
+  /** `true` hides the axis triad overlay. */
   hideAxis?: boolean;
+  /** `true` hides the scale bar overlay. */
   hideScale?: boolean;
+  /** Entity ids to select once the first model is on screen. */
   select?: number[];
+  /** Entity ids to isolate once the first model is on screen. */
   isolate?: number[];
+  /**
+   * IFC class names to hide, e.g. `IfcSpace`. Arbitrary class names are
+   * accepted and matched case-insensitively, so `IFCSPACE`, `ifcspace` and
+   * `IfcSpace` all name the same class.
+   */
   hideTypes?: string[];
+  /**
+   * Initial absolute camera orientation in degrees; the model is framed at
+   * that orientation. `zoom` is accepted for backwards compatibility and is
+   * NOT applied — the viewer has no absolute-zoom actuator and the field
+   * carries no unit, so framing comes from a fit instead.
+   */
   camera?: { azimuth: number; elevation: number; zoom?: number };
+  /** Preset view direction. Takes precedence over `camera`. */
   view?: ViewPreset;
 }
 

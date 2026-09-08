@@ -165,6 +165,51 @@ describe('extractTypeQuantitiesOnDemand', () => {
     expect(result!.quantities[0].quantities[0].name).toBe('Width');
   });
 
+  // Same #3530 hazard as the property side: an unnamed IfcElementQuantity now
+  // reports `name: ''`, so folding the two sources on the name alone dropped
+  // every unnamed set the second source contributed.
+  it('keeps two DIFFERENT unnamed quantity sets, one per source', () => {
+    const lines = [
+      `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,
+      // Source 1 (HasPropertySets): an UNNAMED set.
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type U',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCELEMENTQUANTITY('guid3',$,$,$,$,(#310));`,
+      `#310=IFCQUANTITYLENGTH('FromHasPropertySets',$,$,0.3);`,
+      // Source 2 (onDemandQuantityMap): a DIFFERENT, also unnamed set.
+      `#400=IFCELEMENTQUANTITY('guid4',$,$,$,$,(#410));`,
+      `#410=IFCQUANTITYLENGTH('FromRelDefines',$,$,0.4);`,
+    ];
+    const store = buildStoreFromStep(lines, {
+      quantityMap: new Map<number, number[]>([[200, [400]]]),
+      relationships: [{ entityId: 100, relType: RelationshipType.DefinesByType, direction: 'inverse', targetIds: [200] }],
+    });
+
+    const result = extractTypeQuantitiesOnDemand(store, 100);
+    expect(result).not.toBeNull();
+    expect(result!.quantities).toHaveLength(2);
+    expect(result!.quantities.map((q) => q.name)).toEqual(['', '']);
+    expect(result!.quantities.flatMap((q) => q.quantities.map((x) => x.name)))
+      .toEqual(['FromHasPropertySets', 'FromRelDefines']);
+  });
+
+  it('lists ONE entry for a single unnamed quantity set reachable through both sources', () => {
+    const lines = [
+      `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type V',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCELEMENTQUANTITY('guid3',$,$,$,$,(#310));`,
+      `#310=IFCQUANTITYLENGTH('Once',$,$,0.3);`,
+    ];
+    const store = buildStoreFromStep(lines, {
+      // The SAME set #300, reached again via IfcRelDefinesByProperties.
+      quantityMap: new Map<number, number[]>([[200, [300]]]),
+      relationships: [{ entityId: 100, relType: RelationshipType.DefinesByType, direction: 'inverse', targetIds: [200] }],
+    });
+
+    const result = extractTypeQuantitiesOnDemand(store, 100);
+    expect(result).not.toBeNull();
+    expect(result!.quantities).toHaveLength(1);
+  });
+
   it('returns null when the type carries no quantities', () => {
     const lines = [
       `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,

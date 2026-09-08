@@ -206,3 +206,55 @@ describe('zones/assignment', () => {
     });
   });
 });
+
+describe('prism zones classify by the polygon (#2508 item 4)', () => {
+  /** A triangular takt area covering the lower-left half of a 10 x 10 plan. */
+  const prism: Zone = {
+    id: 'p',
+    name: 'Takt triangle',
+    center: [5, 5, 5],
+    size: [10, 10, 10],
+    rotationY: 0,
+    footprint: [[0, 0], [10, 0], [0, 10]],
+  };
+  const set: ZoneSet = {
+    id: 's', name: 'Takt', zones: [prism], visible: true, createdAt: 0, updatedAt: 0,
+  };
+
+  it('takes an element inside the polygon', () => {
+    const result = assignElementsToZoneSet(
+      [{ globalId: 1, min: [1, 1, 1], max: [2, 2, 2] }],
+      set,
+    );
+    assert.equal(result.get(1)?.zoneId, 'p');
+  });
+
+  it('leaves an element that is inside the BOUNDING BOX but outside the polygon', () => {
+    // (8, 8) is well inside the 10 x 10 bounding box and clearly on the far
+    // side of the diagonal. A box-shaped implementation claims it.
+    const result = assignElementsToZoneSet(
+      [{ globalId: 2, min: [8, 1, 8], max: [9, 2, 9] }],
+      set,
+    );
+    assert.equal(result.get(2)?.zoneId, null);
+    assert.deepEqual(result.get(2)?.touchedZoneIds, []);
+  });
+
+  it('flags an element crossing the polygon edge as a straddler', () => {
+    const second: Zone = {
+      id: 'q',
+      name: 'Takt other',
+      center: [5, 5, 5],
+      size: [10, 10, 10],
+      rotationY: 0,
+      footprint: [[10, 0], [10, 10], [0, 10]],
+    };
+    const both: ZoneSet = { ...set, zones: [prism, second] };
+    const result = assignElementsToZoneSet(
+      [{ globalId: 3, min: [4, 1, 4], max: [6, 2, 6] }],
+      both,
+    );
+    assert.equal(result.get(3)?.straddles, true);
+    assert.deepEqual(result.get(3)?.touchedZoneIds, ['p', 'q']);
+  });
+});

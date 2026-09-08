@@ -28,11 +28,12 @@ import type { ToolContext } from '../context.js';
 import type { ViewerManager } from '../viewer-manager.js';
 import { okResult, resolveModel } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
+import { expandAssemblyRefs } from './viewer-assembly-expansion.js';
+import { formatMaterialsBlock } from './material-summary.js';
 
 function requireViewer(ctx: ToolContext): ViewerManager {
-  const viewer = ctx.viewer;
-  if (!viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
-  return viewer;
+  if (!ctx.viewer) throw new ToolExecutionError({ code: ToolErrorCode.UNSUPPORTED_OPERATION, message: 'No viewer manager attached.' });
+  return ctx.viewer;
 }
 
 function refsForGlobalIds(m: ReturnType<typeof resolveModel>, gids: string[]): EntityRef[] {
@@ -52,6 +53,14 @@ function refsForExpressIds(m: ReturnType<typeof resolveModel>, eids: number[]): 
   return eids.map((expressId) => ({ modelId: m.id, expressId }));
 }
 
+/**
+ * The ids a viewer tool acts on, given its selector input -- assemblies
+ * already expanded (#3338). Expansion lives HERE, not at each tool, so a tool
+ * cannot get it wrong by forgetting: all five selector-taking viewer tools
+ * used to pair this call with `expandAssemblyRefs` themselves, which is the
+ * "one call site every channel must remember" shape #3338 describes. See
+ * `viewer-assembly-expansion.ts` for what goes wrong without it.
+ */
 function resolveTargetRefs(m: ReturnType<typeof resolveModel>, input: Record<string, unknown>): EntityRef[] {
   const refs: EntityRef[] = [];
   if (Array.isArray(input.global_ids)) refs.push(...refsForGlobalIds(m, input.global_ids as string[]));
@@ -61,7 +70,7 @@ function resolveTargetRefs(m: ReturnType<typeof resolveModel>, input: Record<str
   if (typeof input.type === 'string') {
     for (const e of m.bim.query().byType(input.type).toArray()) refs.push(e.ref);
   }
-  return refs;
+  return expandAssemblyRefs(m, refs);
 }
 
 function parseColor(input: unknown): [number, number, number, number] {
@@ -159,6 +168,22 @@ const viewerStatus: Tool = {
 
 // ── visibility / paint ────────────────────────────────────────────────────
 
+/**
+ * The selector properties every entity-targeting viewer tool accepts, matching
+ * exactly what `resolveTargetRefs` reads. Shared rather than repeated: the
+ * singular `global_id`/`express_id` were handled by `resolveTargetRefs` but
+ * missing from three of the five schemas, and with `additionalProperties:
+ * false` that made an advertised selector unreachable.
+ */
+const TARGET_SELECTOR_PROPS = {
+  model_id: { type: 'string' },
+  type: { type: 'string' },
+  global_ids: { type: 'array', items: { type: 'string' } },
+  express_ids: { type: 'array', items: { type: 'integer' } },
+  global_id: { type: 'string' },
+  express_id: { type: 'integer' },
+} as const;
+
 const viewerColorize: Tool = {
   name: 'viewer_colorize',
   description: 'Paint a set of entities with a color. Pass `type`, `global_ids`, or `express_ids` to pick the set; pass `color` as [r,g,b]/[r,g,b,a] (0–1), a #hex, or a named color.',
@@ -166,12 +191,7 @@ const viewerColorize: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
       color: { description: '[r,g,b], [r,g,b,a], hex, or named color.' },
       reset_others: { type: 'boolean', default: false, description: 'When true, reset all other element colors first.' },
     },
@@ -198,10 +218,7 @@ const viewerIsolate: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -223,10 +240,7 @@ const viewerHide: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -247,10 +261,7 @@ const viewerShow: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -286,12 +297,7 @@ const viewerFlyTo: Tool = {
   inputSchema: {
     type: 'object',
     properties: {
-      model_id: { type: 'string' },
-      type: { type: 'string' },
-      global_ids: { type: 'array', items: { type: 'string' } },
-      express_ids: { type: 'array', items: { type: 'integer' } },
-      global_id: { type: 'string' },
-      express_id: { type: 'integer' },
+      ...TARGET_SELECTOR_PROPS,
     },
     additionalProperties: false,
   },
@@ -546,19 +552,8 @@ function buildSelectionPayload(
       blocks.push(`  Classifications: ${c}`);
     }
     if (e.materials) {
-      const mat = e.materials as {
-        layers?: Array<{ materialName?: string; name?: string }>;
-        materials?: Array<{ name?: string }>;
-        name?: string;
-        materialName?: string;
-      };
-      if (Array.isArray(mat.layers) && mat.layers.length > 0) {
-        blocks.push(`  Materials: ${mat.layers.map((l) => l.materialName ?? l.name ?? '?').join(', ')}`);
-      } else if (Array.isArray(mat.materials) && mat.materials.length > 0) {
-        blocks.push(`  Materials: ${mat.materials.map((l) => l.name ?? '?').join(', ')}`);
-      } else if (mat.name ?? mat.materialName) {
-        blocks.push(`  Material: ${mat.name ?? mat.materialName}`);
-      }
+      const block = formatMaterialsBlock(e.materials);
+      if (block) blocks.push(block);
     }
   }
   return { selection: enriched, modelId, text: blocks.join('\n') };

@@ -28,7 +28,7 @@ function makeStore(maxId: number): MutationStoreShape {
   return { entityIndex: { byId } };
 }
 
-const ANCHOR = { ownerHistoryId: 5, bodyContextId: 14, storeyId: 43, storeyPlacementId: 54 };
+const ANCHOR = { ownerHistoryId: 5, bodyContextId: 14, axisContextId: 15, storeyId: 43, storeyPlacementId: 54 };
 
 describe('addRoofToStore', () => {
   it('emits IfcRoof with .FLAT_ROOF. PredefinedType for IFC4', () => {
@@ -113,5 +113,44 @@ describe('addMemberToStore', () => {
     expect(() => addMemberToStore(editor, ANCHOR, {
       Start: [0, 0, 0], End: [0, 0, 0], Width: 0.1, Height: 0.1,
     })).toThrow(/distinct/);
+  });
+
+  it('falls back to world X for a near-vertical member instead of degenerating', () => {
+    // Mirrors the beam.ts fallback (same computeRefDirection shape): a
+    // vertical axis is parallel to the default worldUp = [0,0,1], so
+    // cross(worldUp, axis) is the zero vector and vecNorm() would throw.
+    // computeRefDirection switches to worldUp = [1,0,0] once |axis.z| >= 0.9
+    // specifically to dodge that. No existing member fixture used a
+    // vertical member, so this branch (and the crash it prevents) was
+    // unexercised.
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(50), view);
+    let result!: ReturnType<typeof addMemberToStore>;
+    expect(() => {
+      result = addMemberToStore(editor, ANCHOR, {
+        Start: [0, 0, 0], End: [0, 0, 5], Width: 0.1, Height: 0.1,
+      });
+    }).not.toThrow();
+
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const placement = byId.get(result.placementId);
+    const axisPlacement = byId.get(Number((placement?.attributes[1] as string).replace('#', '')));
+    const refDirRef = axisPlacement?.attributes[2] as string;
+    const refDir = byId.get(Number(refDirRef.replace('#', '')));
+    // cross([1,0,0], [0,0,1]) normalised = [0,-1,0].
+    expect(refDir?.attributes[0]).toEqual([0, -1, 0]);
+  });
+
+  it.each([
+    ['NaN Start[0]', [Number.NaN, 0, 0] as const, [5, 0, 0] as const],
+    ['Infinity Start[2]', [0, 0, Number.POSITIVE_INFINITY] as const, [5, 0, 0] as const],
+    ['NaN End[1]', [0, 0, 0] as const, [5, Number.NaN, 0] as const],
+    ['-Infinity End[2]', [0, 0, 0] as const, [5, 0, Number.NEGATIVE_INFINITY] as const],
+  ])('rejects non-finite coordinates (%s)', (_label, Start, End) => {
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(makeStore(50), view);
+    expect(() => addMemberToStore(editor, ANCHOR, {
+      Start: [...Start], End: [...End], Width: 0.1, Height: 0.1,
+    })).toThrow(/finite/);
   });
 });

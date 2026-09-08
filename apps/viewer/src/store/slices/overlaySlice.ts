@@ -89,6 +89,18 @@ export interface OverlaySlice {
     hiddenIds: Set<number>;
     colorOverrides: Map<number, RGBA>;
   };
+
+  /**
+   * Drop every registered layer. Used on full model teardown
+   * (`modelSlice.clearAllModels`) — each layer's `hiddenIds` /
+   * `colorOverrides` are stored as already-translated GLOBAL ids (see e.g.
+   * `useConstructionSequence.ts`, which converts via `toGlobalIdFromModels`
+   * at registration time, not at read time), so with every model gone none
+   * of those ids describe anything real. Unconditional bulk clear rather
+   * than a per-owner `removeOverlayLayer`, mirroring how `clearAllModels`
+   * unconditionally clears every other global-id channel.
+   */
+  clearOverlayLayers: () => void;
 }
 
 export const createOverlaySlice: StateCreator<OverlaySlice, [], [], OverlaySlice> = (set, get) => ({
@@ -112,6 +124,10 @@ export const createOverlaySlice: StateCreator<OverlaySlice, [], [], OverlaySlice
   },
 
   computeCompositeOverlay: () => composeLayers(get().overlayLayers),
+
+  clearOverlayLayers: () => {
+    set((s) => (s.overlayLayers.size === 0 ? {} : { overlayLayers: new Map() }));
+  },
 });
 
 /**

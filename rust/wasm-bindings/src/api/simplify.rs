@@ -17,6 +17,132 @@ use crate::api::IfcAPI;
 use ifc_lite_processing::simplify_session::{simplify_element, SimplifyRecordInput, SimplifySkip};
 use wasm_bindgen::prelude::*;
 
+/// One element's per-record inputs, grouped in first-seen `express_ids` order
+/// and validated to share a single demesher `level`.
+pub(crate) struct GroupedElementRecords<'a> {
+    pub id: u32,
+    pub level: u8,
+    pub records: Vec<SimplifyRecordInput<'a>>,
+}
+
+/// Pure core of `simplifyMeshes`: validate the wire arrays, slice the
+/// concatenated `positions`/`normals`/`indices` into per-record views grouped
+/// by element (first-seen order), and check every record of an element
+/// agrees on `level`. No `JsValue` on this path so it is callable — and
+/// testable — on the native target; the `#[wasm_bindgen]` entry point below
+/// is a thin wrapper that maps the `String` error to a `js_sys::Error`.
+///
+/// Guarantees pinned here: per-record array lengths must all equal
+/// `express_ids.len()` (`n`); `normals` must be empty or exactly 1:1 with
+/// `positions`; the running offset totals must equal
+/// `positions.len()` / `indices.len()`
+/// EXACTLY — no trailing slack tolerated; a record's normals slice reuses
+/// its position offset/length; `localToWorld` is a 16-wide stride gated by
+/// `local_to_world_present`; records sharing an `express_ids` entry must all
+/// carry the same `level`.
+///
+/// Documented but NOT pinned: offsets accumulate in `u64` because wasm32
+/// `usize` is 32-bit. No test here can hold that -- the native test target's
+/// `usize` is already 64-bit, so reverting every `u64` to `usize` keeps the
+/// suite green. It is a wasm32-only property and the tests run natively.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn group_and_slice_records<'a>(
+    express_ids: &[u32],
+    levels: &[u8],
+    positions: &'a [f32],
+    normals: &'a [f32],
+    indices: &'a [u32],
+    vertex_counts: &[u32],
+    index_counts: &[u32],
+    origins: &[f64],
+    local_to_world: &'a [f64],
+    local_to_world_present: &[u8],
+) -> Result<Vec<GroupedElementRecords<'a>>, String> {
+    let n = express_ids.len();
+    if levels.len() != n
+        || vertex_counts.len() != n
+        || index_counts.len() != n
+        || origins.len() != n * 3
+        || local_to_world.len() != n * 16
+        || local_to_world_present.len() != n
+    {
+        return Err("simplifyMeshes: per-record array lengths disagree".to_string());
+    }
+    let has_normals = !normals.is_empty();
+    if has_normals && normals.len() != positions.len() {
+        return Err("simplifyMeshes: normals must be empty or 1:1 with positions".to_string());
+    }
+
+    // Slice the concatenated arrays into per-record views, grouped by
+    // element in first-seen order.
+    // Accumulate offsets in u64: on wasm32 `usize` is 32-bit, so a hostile
+    // `vertexCounts` entry near u32::MAX would overflow `count * 3` /
+    // the running sum and could slip past the bounds check below.
+    let mut order: Vec<u32> = Vec::new();
+    let mut groups: rustc_hash::FxHashMap<u32, Vec<usize>> = rustc_hash::FxHashMap::default();
+    let mut pos_offsets: Vec<u64> = Vec::with_capacity(n);
+    let mut idx_offsets: Vec<u64> = Vec::with_capacity(n);
+    let (mut pos_off, mut idx_off) = (0u64, 0u64);
+    for i in 0..n {
+        pos_offsets.push(pos_off);
+        idx_offsets.push(idx_off);
+        pos_off += vertex_counts[i] as u64 * 3;
+        idx_off += index_counts[i] as u64;
+        if !groups.contains_key(&express_ids[i]) {
+            order.push(express_ids[i]);
+        }
+        groups.entry(express_ids[i]).or_default().push(i);
+    }
+    // Exact totals: trailing unaccounted positions/indices are a malformed
+    // wire payload, not slack to ignore.
+    if pos_off != positions.len() as u64 || idx_off != indices.len() as u64 {
+        return Err("simplifyMeshes: counts do not match concatenated array lengths".to_string());
+    }
+
+    let mut out = Vec::with_capacity(order.len());
+    for id in order {
+        let record_indices = &groups[&id];
+        let level = levels[record_indices[0]];
+        if record_indices.iter().any(|&i| levels[i] != level) {
+            return Err(format!(
+                "simplifyMeshes: records for element {id} have conflicting levels"
+            ));
+        }
+        let records: Vec<SimplifyRecordInput<'a>> = record_indices
+            .iter()
+            .map(|&i| {
+                // In-bounds by the total check above, so the u64->usize
+                // casts cannot truncate.
+                let (po, pn) = (pos_offsets[i] as usize, (vertex_counts[i] as u64 * 3) as usize);
+                let io = idx_offsets[i] as usize;
+                let pos = &positions[po..po + pn];
+                let nrm = if has_normals { &normals[po..po + pn] } else { &[][..] };
+                let idx = &indices[io..io + index_counts[i] as usize];
+                let l2w = if local_to_world_present[i] != 0 {
+                    let mut m = [0.0f64; 16];
+                    m.copy_from_slice(&local_to_world[i * 16..i * 16 + 16]);
+                    Some(m)
+                } else {
+                    None
+                };
+                SimplifyRecordInput {
+                    positions: pos,
+                    normals: nrm,
+                    indices: idx,
+                    origin: [origins[i * 3], origins[i * 3 + 1], origins[i * 3 + 2]],
+                    local_to_world: l2w,
+                }
+            })
+            .collect();
+        out.push(GroupedElementRecords { id, level, records });
+    }
+    Ok(out)
+}
+
+#[cfg(test)]
+#[path = "simplify_tests.rs"]
+mod tests;
+
 /// Flat result of `simplifyMeshes`: per surviving element `i`,
 /// `vertexCounts[i]` vertices and `indexCounts[i]` indices taken in order
 /// from the concatenated arrays (mirrors the `exportGlbFromMeshes` wire
@@ -162,54 +288,19 @@ impl IfcAPI {
         unit_scale: f64,
         y_up: bool,
     ) -> Result<SimplifiedMeshes, JsValue> {
-        let n = express_ids.len();
-        if levels.len() != n
-            || vertex_counts.len() != n
-            || index_counts.len() != n
-            || origins.len() != n * 3
-            || local_to_world.len() != n * 16
-            || local_to_world_present.len() != n
-        {
-            return Err(
-                js_sys::Error::new("simplifyMeshes: per-record array lengths disagree").into(),
-            );
-        }
-        let has_normals = !normals.is_empty();
-        if has_normals && normals.len() != positions.len() {
-            return Err(js_sys::Error::new(
-                "simplifyMeshes: normals must be empty or 1:1 with positions",
-            )
-            .into());
-        }
-
-        // Slice the concatenated arrays into per-record views, grouped by
-        // element in first-seen order.
-        // Accumulate offsets in u64: on wasm32 `usize` is 32-bit, so a hostile
-        // `vertexCounts` entry near u32::MAX would overflow `count * 3` /
-        // the running sum and could slip past the bounds check below.
-        let mut order: Vec<u32> = Vec::new();
-        let mut groups: rustc_hash::FxHashMap<u32, Vec<usize>> = rustc_hash::FxHashMap::default();
-        let mut pos_offsets: Vec<u64> = Vec::with_capacity(n);
-        let mut idx_offsets: Vec<u64> = Vec::with_capacity(n);
-        let (mut pos_off, mut idx_off) = (0u64, 0u64);
-        for i in 0..n {
-            pos_offsets.push(pos_off);
-            idx_offsets.push(idx_off);
-            pos_off += vertex_counts[i] as u64 * 3;
-            idx_off += index_counts[i] as u64;
-            if !groups.contains_key(&express_ids[i]) {
-                order.push(express_ids[i]);
-            }
-            groups.entry(express_ids[i]).or_default().push(i);
-        }
-        // Exact totals: trailing unaccounted positions/indices are a malformed
-        // wire payload, not slack to ignore.
-        if pos_off != positions.len() as u64 || idx_off != indices.len() as u64 {
-            return Err(js_sys::Error::new(
-                "simplifyMeshes: counts do not match concatenated array lengths",
-            )
-            .into());
-        }
+        let groups = group_and_slice_records(
+            express_ids,
+            levels,
+            positions,
+            normals,
+            indices,
+            vertex_counts,
+            index_counts,
+            origins,
+            local_to_world,
+            local_to_world_present,
+        )
+        .map_err(|e| js_sys::Error::new(&e))?;
 
         let mut out = SimplifiedMeshes {
             element_ids: Vec::new(),
@@ -229,49 +320,8 @@ impl IfcAPI {
             skipped_reasons: Vec::new(),
         };
 
-        for id in order {
-            let record_indices = &groups[&id];
-            let level = levels[record_indices[0]];
-            if record_indices.iter().any(|&i| levels[i] != level) {
-                return Err(js_sys::Error::new(&format!(
-                    "simplifyMeshes: records for element {id} have conflicting levels"
-                ))
-                .into());
-            }
-            let records: Vec<SimplifyRecordInput<'_>> = record_indices
-                .iter()
-                .map(|&i| {
-                    // In-bounds by the total check above, so the u64->usize
-                    // casts cannot truncate.
-                    let (po, pn) = (
-                        pos_offsets[i] as usize,
-                        (vertex_counts[i] as u64 * 3) as usize,
-                    );
-                    let io = idx_offsets[i] as usize;
-                    let pos = &positions[po..po + pn];
-                    let nrm = if has_normals {
-                        &normals[po..po + pn]
-                    } else {
-                        &[][..]
-                    };
-                    let idx = &indices[io..io + index_counts[i] as usize];
-                    let l2w = if local_to_world_present[i] != 0 {
-                        let mut m = [0.0f64; 16];
-                        m.copy_from_slice(&local_to_world[i * 16..i * 16 + 16]);
-                        Some(m)
-                    } else {
-                        None
-                    };
-                    SimplifyRecordInput {
-                        positions: pos,
-                        normals: nrm,
-                        indices: idx,
-                        origin: [origins[i * 3], origins[i * 3 + 1], origins[i * 3 + 2]],
-                        local_to_world: l2w,
-                    }
-                })
-                .collect();
-
+        for group in groups {
+            let (id, level, records) = (group.id, group.level, group.records);
             match simplify_element(&records, level, [rtc_x, rtc_y, rtc_z], unit_scale, y_up) {
                 Ok(res) => {
                     out.element_ids.push(id);

@@ -1,5 +1,202 @@
 # @ifc-lite/collab
 
+## 0.6.1
+
+### Patch Changes
+
+- [#3604](https://github.com/LTplus-AG/ifc-lite/pull/3604) [`53a92b1`](https://github.com/LTplus-AG/ifc-lite/commit/53a92b1f7cc5770f164dc4867fc2adc33470e245) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `createGeometry` no longer drops an explicit empty-string `blobHash` (`if (opts.blobHash)` was a truthiness check, so `blobHash: ''` never made it into the Y.Doc — the value was lost before there was anything to snapshot or seed back). `createGeometry` now checks `!== undefined`, matching the contract `upsertGeometry` already used.
+
+- [#3469](https://github.com/LTplus-AG/ifc-lite/pull/3469) [`c78ce8c`](https://github.com/LTplus-AG/ifc-lite/commit/c78ce8c3f1da3b8b2c6fa0f982595adc8c48b7d6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MemoryBlobStore.put()` keeping the FIRST upload's `uploadedAt` forever on a re-put of already-known content, instead of refreshing it like `IndexedDbBlobStore` and `HttpBlobStore` already do.
+  
+  `put()` deduplicates by content hash and returned a fresh `meta` object either way, but only wrote it to the store on the first call for a given hash — a later `put()` of the same bytes handed the caller a meta claiming the current time while `stat()`/`get()` kept reporting the original upload time. Blob GC's grace-window check (`planBlobSweep` in `packages/collab/src/geometry/gc.ts`) reads that stored `uploadedAt` to decide whether an unreferenced-right-now blob is too young to sweep; a client re-references (and re-PUTs) a blob specifically to refresh that clock, per the race-protection this store's own sibling implementations already rely on. With the stale timestamp, a blob re-uploaded long after its original upload read back as old enough to sweep immediately.
+  
+  `put()` now always writes the fresh `meta` (reusing the already-stored bytes rather than copying them again), matching `IndexedDbBlobStore` and `HttpBlobStore`.
+
+- [#3569](https://github.com/LTplus-AG/ifc-lite/pull/3569) [`4735f1c`](https://github.com/LTplus-AG/ifc-lite/commit/4735f1cbb6635016e83c7890f670e615bbdc48c3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `applyIfcxOverlay` silently resurrecting an entity a previous, separately-arriving layer had deleted.
+  
+  `applyIfcxOverlay` writes a file's opinions onto a doc that may already hold the paths involved — used by `mergeBranch(parent, branch, 'layer')` and by any other caller applying a sequence of layers/ops to the same doc. Within one call, a delete-then-resurrect sequence already resolved correctly ("the last opinion wins"), but `deleteEntity` purges the path from `entitiesMap` entirely, so once that call's transaction ended there was nothing left on the doc distinguishing "deleted, no opinion since" from "never existed". A later, separate `applyIfcxOverlay` call touching the same path with no opinion on deletion at all read `hasEntity() === false` as "brand new" and silently recreated the entity via `createNodeEntity`, losing the deletion and every attribute the deleted entity had carried that the new layer did not itself restate. Two layers applied in different orders — a delete-op and an unrelated set-op on the same path — converged to two different final states depending only on which was applied first: order A (delete, then set) left the entity alive; order B (set, then delete) left it deleted.
+  
+  `applyIfcxOverlay` now records paths it deletes in a small persistent set on the doc's meta map, and a later call that touches such a path without itself stating a deletion opinion leaves it deleted rather than recreating it. An explicit revive (`ifclite::deleted: false`) still resurrects the entity as before, and the tombstone is cleared once it does.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`bcbe7b9`](https://github.com/LTplus-AG/ifc-lite/commit/bcbe7b9afa38e8dafb5900e73575c71a8fd96012), [`793fce2`](https://github.com/LTplus-AG/ifc-lite/commit/793fce217039f11d6b74f898daed03f48c33809d), [`586fa29`](https://github.com/LTplus-AG/ifc-lite/commit/586fa292b69cdb3ba6e45764b4ff742b2fa7b9a9), [`1000dce`](https://github.com/LTplus-AG/ifc-lite/commit/1000dce72e9ec75c59848efefc1f709d01172e72), [`cebcb21`](https://github.com/LTplus-AG/ifc-lite/commit/cebcb2133ef672e9199ee2f158578499d449d9e0), [`e986c81`](https://github.com/LTplus-AG/ifc-lite/commit/e986c81bf6d28fec57f1953fa53bf315dbd80a3a), [`8c181c9`](https://github.com/LTplus-AG/ifc-lite/commit/8c181c99f91964402ad352aead36d9619af5b427), [`6e48c4c`](https://github.com/LTplus-AG/ifc-lite/commit/6e48c4c5f441e8a42e4cc55440cf747ad8679f0a), [`8f08715`](https://github.com/LTplus-AG/ifc-lite/commit/8f087158a662a02c01a21dd2546fb863bb24e665), [`9b709c5`](https://github.com/LTplus-AG/ifc-lite/commit/9b709c51480fbabb68167aa4892f7e4c87b0e4e6), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`32b31bc`](https://github.com/LTplus-AG/ifc-lite/commit/32b31bc8501f04e110733289bde0389b9899bc76), [`89c4cf2`](https://github.com/LTplus-AG/ifc-lite/commit/89c4cf22e83d76115035f7dcbf6e34f9c06dd091), [`19f1312`](https://github.com/LTplus-AG/ifc-lite/commit/19f13120a05cd3a3b729eeaf5550cff71b7506d9), [`82c77c1`](https://github.com/LTplus-AG/ifc-lite/commit/82c77c118d5a4be8e5ee5b7f7e0648514e9fb74e), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e), [`a1aebc8`](https://github.com/LTplus-AG/ifc-lite/commit/a1aebc822b819221258f4759edf4c82ff0d140f7), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`dc8198c`](https://github.com/LTplus-AG/ifc-lite/commit/dc8198ce3f9b9be4b2420dce90343822e0079465), [`1060a30`](https://github.com/LTplus-AG/ifc-lite/commit/1060a30187c8f6bb327f9e356056f2364568e8ff), [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0)]:
+  - @ifc-lite/data@4.0.0
+  - @ifc-lite/mutations@2.0.0
+  - @ifc-lite/ifcx@4.0.0
+
+## 0.6.0
+
+### Minor Changes
+
+- [#3090](https://github.com/LTplus-AG/ifc-lite/pull/3090) [`228bbe7`](https://github.com/LTplus-AG/ifc-lite/commit/228bbe730522148ea797780c5acd08502b18a3a3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `mergeBranch(parent, branch, 'layer')` silently dropping every edit the branch made to an entity that already existed in the parent.
+  
+  The `'layer'` strategy snapshotted the branch as IFCX and fed the result to
+  `seedFromIfcx`. That seeder routes every node through `createEntity`, which
+  is a deliberate no-op on a path the doc already holds — right for seeding a
+  doc from a snapshot, wrong for merging. Since a branch forks from its
+  parent, essentially every entity the branch *modified* was already present
+  in the merge target, so the merge landed only the branch's brand-new
+  entities and discarded all of the modifications: attributes, children,
+  inherits, psets, quantities, classifications, materials and geometry refs
+  alike.
+  
+  A new `applyIfcxOverlay(doc, file)` applies an IFCX file as a layer of
+  opinions rather than as a seed, and `mergeBranch('layer')` now uses it. It
+  creates entities the doc lacks exactly as the seeder does; for entities
+  already present it writes the file's opinions on top — values overwrite,
+  `null` removes a flat attribute, child or inherit, an `ifclite::deleted:
+  true` node deletes — and leaves untouched anything the file says nothing
+  about.
+  
+  Read that last clause narrowly. `mergeBranch('layer')` sends a FULL snapshot,
+  so the file has an opinion on nearly everything: a value the parent changed
+  after the fork is overwritten by the branch's fork-time value even when the
+  branch never edited it. This is the trade the release makes: previously a
+  layer merge dropped the branch's edits, now it applies them, and the price is
+  that the branch's fork-time value can win over a newer parent one. Attributes
+  and geometry behave the same way here; geometry is not a special case.
+  
+  One consequence is specific to geometry. Blob GC derives the set it RETAINS
+  from the live doc and sweeps the complement, so reverting a `blobHash` flips
+  which blob counts as an orphan; a sweep between the parent's re-mesh and the
+  merge can leave the restored reference pointing at a blob that has been
+  deleted.
+  
+  Geometry records go through `upsertGeometry` rather than `createGeometry`,
+  which returns an existing record untouched. Without that, a branch that
+  re-meshed geometry the parent already had merged "successfully" and left the
+  parent on the old blob hash.
+  
+  `seedFromIfcx` is unchanged in both its behaviour and its options: it stays
+  additive and idempotent, because `apps/viewer` and `snapshot/worker.ts` use
+  it to seed live session docs, where overlaying a snapshot onto live edits
+  would be the worse bug on the more common path.
+  
+  One limit is worth stating plainly, since it is a property of the wire
+  format and not of this fix: a full IFCX snapshot emits only what an entity
+  *has*, so an entity or attribute the branch deleted is simply absent rather
+  than nulled or tombstoned. `mergeBranch('layer')` therefore still does not
+  propagate deletions made on the branch. `applyIfcxOverlay` does honour
+  deletions when a layer states them explicitly.
+  
+  A second limit, this one in the code: a nulled pset or quantity property is
+  NOT removed. `extractMinimalLayer` flattens those into
+  `bsi::ifc::v5a::<Set>::<Prop>` attribute keys, so the removal arrives as an
+  attribute null and is looked for in the flat attribute map, where it never
+  was. The property survives and the call returns normally. Only flat
+  attributes, children and inherits are removed today.
+
+- [#3092](https://github.com/LTplus-AG/ifc-lite/pull/3092) [`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop a collab snapshot round trip from inventing per-entity provenance, and carry the real thing on the wire.
+  
+  `snapshotToIfcx` wrote nothing about who created an entity or when, because
+  IFCX nodes had no provenance slot. `seedFromIfcx` then filled both fields in
+  from the file header — which names whoever serialized the *file*, not
+  whoever authored each entity, and for a snapshot of a collab doc that is the
+  snapshotter plus the write clock. An entity carrying `createdBy: 'ada'` /
+  `createdAt: '2019-05-05'` came back claiming a different author and a
+  different date, in a shape indistinguishable from genuine attribution. A
+  missing field reads as "unknown"; a fabricated one gets trusted.
+  
+  Two changes:
+  
+  - **A wire carrier.** `ifclite::meta` (new member of `IFCLITE_ATTR`, the
+    extension namespace that already carries collab's classifications,
+    materials and geometry refs) holds `createdBy`, `createdAt`,
+    `lastEditedBy`, `lastEditedAt` and `previousPath`, so real provenance
+    survives snapshot → seed. Values are shape-gated on the way in: only
+    strings are read, and a foreign value under the key stays an ordinary
+    flat attribute. Every field carried is written once at entity creation
+    and never re-stamped — a per-edit stamp would put this attribute in
+    every minimal layer and give the merge engine a component that conflicts
+    on every concurrent edit.
+  - **No more header defaults.** `seedFromIfcx` and `seedFromStep` no longer
+    copy `header.author` / `header.timestamp` onto every entity, and no longer
+    stamp the read clock as `createdAt`. What the wire does not say now stays
+    unset. The file-level record is still available as `meta.header` /
+    `meta.stepHeader`.
+  
+  `createEntity` also now writes the `bsi::ifc::class` attribute when given an
+  `ifcClass`. `meta.ifcClass` is doc-local bookkeeping with no wire form, so
+  an entity whose class was only ever passed as that option snapshotted
+  without a class and came back classless; the MCP draft path had already
+  open-coded the attribute at its own call site to work around this.
+  
+  Scope: `lastEditedBy` / `lastEditedAt` survive only because nothing
+  re-stamps them today. Relationships (the doc's separate `relationships`
+  map) still do not survive a snapshot — IFCX has no relationship node and
+  no first-party writer populates that map; `snapshot-relationships.test.ts`
+  pins that as a tripwire rather than papering over it.
+
+### Patch Changes
+
+- [#3022](https://github.com/LTplus-AG/ifc-lite/pull/3022) [`66697fc`](https://github.com/LTplus-AG/ifc-lite/commit/66697fc57de1de4475a2c5eed4361e0e378e0f7a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `sweepBlobs` reporting a blob as reclaimed even when the underlying `store.delete()` call failed.
+  
+  `sweepBlobs` computed how many deletes actually succeeded but then discarded that count and returned `decision.reclaimBytes` unconditionally — the full byte total `planBlobSweep` had planned to free, regardless of whether any individual `delete()` call reported failure (a remote backend 404, a race with another sweep, a transient error). A caller using the return value for storage-capacity accounting would believe more space was freed than actually was, while the undeleted blob kept consuming storage. `planBlobSweep` now records each dropped hash's byte length on the `SweepDecision`, and `sweepBlobs` sums only the bytes for hashes whose `delete()` actually returned `true`.
+
+- [#3004](https://github.com/LTplus-AG/ifc-lite/pull/3004) [`2580830`](https://github.com/LTplus-AG/ifc-lite/commit/25808308bbbc63eb0fd8b25e6dd0c08864adb6a8) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `snapshotToIfcx` writing a literal `null` for a flat attribute value that its own counterpart, `seedFromIfcx`, treats as an IFCX removal opinion and silently drops.
+  
+  A doc attribute can legitimately hold `null` (e.g. a user clearing a root
+  attribute like `Description` through the viewer's mutation bridge). Before
+  this fix, `snapshotToIfcx` serialized that value verbatim, so a
+  snapshot -> seed -> snapshot cycle was not idempotent: the first snapshot
+  carried `"Description": null`, the intervening seed dropped the key per
+  `from-ifcx.ts`'s documented contract, and the second snapshot of the
+  re-seeded doc omitted the key entirely - two snapshots of "the same" doc
+  state disagreeing with each other.
+  
+  `snapshotToIfcx` now drops null-valued attributes on the way out, matching
+  the reader's contract instead of handing it a value it is guaranteed to
+  discard on the next round-trip.
+- Updated dependencies [[`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/ifcx@3.0.0
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/mutations@1.27.0
+
+## 0.5.0
+
+### Minor Changes
+
+- [#2801](https://github.com/LTplus-AG/ifc-lite/pull/2801) [`b14e710`](https://github.com/LTplus-AG/ifc-lite/commit/b14e710ae8d56f518f84abb4d4ec8d1f98aacad8) Thanks [@louistrue](https://github.com/louistrue)! - `BlobStore.put` now accepts an optional `AbortSignal`, and `HttpBlobStore`
+  forwards it to `fetch`.
+  
+  A hung upload was worse than a failed one: a rejection is counted, retried and
+  can trip a caller's failure ceiling, but a request that never settles produces
+  no failure at all, so nothing retries, no ceiling trips, and a geometry seed
+  never resolves while the UI reports work in progress. `LayeredBlobStore` also
+  forwards the signal, since its `Promise.all` cannot settle while the remote half
+  hangs and its `.catch` never runs when nothing rejects.
+  
+  Additive and optional: existing callers are unaffected, and implementations that
+  cannot abort may ignore the option.
+
+### Patch Changes
+
+- [#2706](https://github.com/LTplus-AG/ifc-lite/pull/2706) [`4ce3879`](https://github.com/LTplus-AG/ifc-lite/commit/4ce38798211b6b5f84e5b21ed335aa80fe1514c4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Dispose the presence object (and its two live timers — the awareness eviction sweep and y-protocols' own outdated-clients timer) when `createCollabSession` fails after `createPresence` has already run, instead of leaking it. `presence` is constructed before either persistence provider comes up; if the IndexedDB or WebSocket provider then throws (for example `createIndexedDbProvider` rejecting outside a browser, where `indexedDB` is undefined), the function rejected without a `session` object for the caller to call `.dispose()` on, so nothing ever cleared those timers. In a browser this went unnoticed because navigating away reclaims everything; in a Node test process it kept the event loop alive indefinitely — `startCollab`'s entry-race regression test, run together with its sibling collab test files in one process, would pass every assertion and then never let the process exit.
+- Updated dependencies [[`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`a29b040`](https://github.com/LTplus-AG/ifc-lite/commit/a29b04069fec3c6b726f49fc58054e535c255034), [`cc19a8d`](https://github.com/LTplus-AG/ifc-lite/commit/cc19a8d4a79a5e8563a90ab663b28e1b93ef9c18), [`36e4eca`](https://github.com/LTplus-AG/ifc-lite/commit/36e4eca3b19a2fe02f1679acc9a2a43cd90aa163), [`a7b8a20`](https://github.com/LTplus-AG/ifc-lite/commit/a7b8a201eaecd411a4246421893e887bf55aafd3), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/mutations@1.26.1
+  - @ifc-lite/data@3.4.0
+  - @ifc-lite/ifcx@2.3.7
+
+## 0.4.2
+
+### Patch Changes
+
+- [#2336](https://github.com/LTplus-AG/ifc-lite/pull/2336) [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `promoteEntityType` silently discarding data when its target path already exists. `createEntity` is documented as idempotent — a pre-existing path is a no-op that returns the existing entity unchanged — but `promoteEntityType` deletes the source path unconditionally before calling it. If the target already existed (e.g. seeded by a concurrent peer, or a prior promotion that landed on the same path), the call reported success with a truthy `Y.Map` while the source entity's carried attributes, children and meta were permanently lost and the target kept its stale data. `promoteEntityType` now throws before deleting the source when the target path is already occupied, matching this file's existing convention of throwing on precondition violations (`setAttribute`, `setChild`, etc.) instead of silently discarding data.
+
+- [#2337](https://github.com/LTplus-AG/ifc-lite/pull/2337) [`29409e5`](https://github.com/LTplus-AG/ifc-lite/commit/29409e57227d3c458707dbc2cf0cb2e8ae8fcf7b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix two gaps found while auditing files with no direct test coverage:
+
+  - `createConflictDetector` classified concurrent writes to a Pset property as a `pset-property` conflict but had no matching case for the structurally identical Qset (quantity) shape — concurrent quantity writes from two peers landed silently with no conflict event, a false negative. `classify()` now handles `ENTITY_KEY.QUANTITIES` the same way it handles `ENTITY_KEY.PSETS`, emitting a new `quantity` `ConflictKind`.
+  - `redactAuthorMeta` (the "anonymise this project" GDPR helper) blanked `createdBy`/`lastEditedBy` on every entity but never touched the `annotations` map, so a markup pin's `authorId`/`authorName` (real display name) survived redaction untouched. It now blanks both fields on every annotation alongside the existing entity-meta redaction; annotation `note` text and position are left as-is.
+
+- [#2220](https://github.com/LTplus-AG/ifc-lite/pull/2220) [`512406f`](https://github.com/LTplus-AG/ifc-lite/commit/512406f0d21c7e33b8c84a83865ffaff299e7cc1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a snapshot -> seed round trip silently dropping an explicitly-cleared `classifications` or `materials` attribute.
+
+  `inflateStructuredAttributes` (`packages/collab/src/snapshot/structured-attrs.ts`) shape-gated these attributes with `Array.isArray(value) && value.every(isClassificationRefShaped)` (same for materials). `[].every(...)` is vacuously true, so an entity whose classifications/materials were explicitly cleared to `[]` passed the gate, got pulled out of the flat attributes into the structured branch, and `flattenStructuredBranches` only re-emits that branch when it's non-empty — so the key never came back on the next snapshot. A reader who took a snapshot after the clearing landed would see the attribute vanish entirely rather than resolve to `[]`, and could keep serving a stale non-empty value from before the clear. Both branches now require a non-empty array before taking the structured path (mirroring the existing `geometryRefs` guard), so an explicit `[]` stays in the flat attributes and survives the round trip.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7), [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72), [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/ifcx@2.3.4
+  - @ifc-lite/mutations@1.24.2
+
 ## 0.4.1
 
 ### Patch Changes
@@ -248,7 +445,7 @@
   already closed in prior batches.
 
 - [#616](https://github.com/louistrue/ifc-lite/pull/616) [`2fc15b4`](https://github.com/louistrue/ifc-lite/commit/2fc15b45fbd06ebb57120d87db9a0ab06ed18142) Thanks [@louistrue](https://github.com/louistrue)! - Big reach-for-the-stars batch. Closes (or near-closes) the remaining
-  substantial items in `docs/architecture/collab-plan.md` for v0.2,
+  substantial items in `docs/architecture/collaboration.md` for v0.2,
   v0.5, v0.7, and v1.0. **+21 tests, total 140 passing.**
 
   `@ifc-lite/collab`
@@ -448,7 +645,7 @@ name, buckets, help)` accumulates observations into upper-bound
   end-to-end sync through the websocket server, undo isolation, and
   per-user layer extraction.
 
-  See `docs/architecture/collab-plan.md` for the v0.1 → v1.0 roadmap.
+  See `docs/architecture/collaboration.md` for the v0.1 → v1.0 roadmap.
 
 - [#616](https://github.com/louistrue/ifc-lite/pull/616) [`2fc15b4`](https://github.com/louistrue/ifc-lite/commit/2fc15b45fbd06ebb57120d87db9a0ab06ed18142) Thanks [@louistrue](https://github.com/louistrue)! - Continuing the v0.1 → v1.0 plan. Lands foundational pieces of v0.3
   (geometry), v0.4 (federation), and v0.6 (MCP) so each upstack consumer
@@ -640,7 +837,7 @@ getModelForGlobalId` contract. `passThroughResolver` is the default
 
 ### Minor Changes
 
-- Initial release. v0.1 Foundation per `docs/architecture/collab-plan.md`:
+- Initial release. v0.1 Foundation per `docs/architecture/collaboration.md`:
   - Y.Doc schema with `entities`, `relationships`, `geometry` top-level maps.
   - IFCX seed (`from-ifcx`) and snapshot (`to-ifcx`) round-trip.
   - Per-user layer extraction.

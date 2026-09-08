@@ -24,7 +24,16 @@ function applyMat4(m: Mat4, x: number, y: number, z: number): Vec3 {
   ];
 }
 
-/** Axis-aligned bounds of a packed `[x,y,z,...]` position buffer. */
+/**
+ * Axis-aligned bounds of a packed `[x,y,z,...]` position buffer.
+ *
+ * Non-finite coordinates (NaN and ±Infinity, checked after `transform` is
+ * applied) never become bounds: an infinite bound makes `boxDistance` return
+ * NaN, and a NaN distance passes every comparison-shaped gate downstream. If
+ * NO vertex contributes a finite coordinate on an axis, the box is returned
+ * inverted (`min > max`) on that axis, which is rejected by `boxesTouch`
+ * rather than silently paired.
+ */
 export function fromPositions(positions: Float32Array, transform?: Mat4): AABB {
   if (positions.length < 3) {
     return { min: [0, 0, 0], max: [0, 0, 0] };
@@ -42,12 +51,23 @@ export function fromPositions(positions: Float32Array, transform?: Mat4): AABB {
     if (transform) {
       [x, y, z] = applyMat4(transform, x, y, z);
     }
-    if (x < minX) minX = x;
-    if (y < minY) minY = y;
-    if (z < minZ) minZ = z;
-    if (x > maxX) maxX = x;
-    if (y > maxY) maxY = y;
-    if (z > maxZ) maxZ = z;
+    // Only finite coordinates may become bounds. NaN was already excluded as a
+    // side effect (it fails both `<` and `>`), but ±Infinity propagated, and an
+    // infinite bound turns `boxDistance` into NaN — which `boxesTouch` passes.
+    // The rule is per coordinate, matching what NaN already got: the finite
+    // coordinates of a partly poisoned vertex still count.
+    if (Number.isFinite(x)) {
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+    }
+    if (Number.isFinite(y)) {
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    if (Number.isFinite(z)) {
+      if (z < minZ) minZ = z;
+      if (z > maxZ) maxZ = z;
+    }
   }
   return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
 }

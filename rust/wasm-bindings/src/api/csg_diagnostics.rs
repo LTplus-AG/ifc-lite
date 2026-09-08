@@ -31,14 +31,19 @@ pub(super) fn drain_and_log_csg_diagnostics(
         csg_failures.entry(product_id).or_default().extend(fails);
     }
     let host_diags = router.take_host_opening_diagnostics();
+    let oversized_ref_drops = router.take_content_hash_oversized_ref_drops() as u64;
+    let unsupported_items = router.take_unsupported_items();
 
     let cls_total = cls.rectangular + cls.diagonal + cls.non_rectangular;
     let total_failures: usize = csg_failures.values().map(|v| v.len()).sum();
 
-    // Only emit the headline at WARN level when the kernel actually
-    // dropped a cut. Zero-failure parses shouldn't spam every embedded
-    // viewer. The full diagnostics summary is still returned to JS so
-    // callers can opt into deeper inspection.
+    // Only emit the headline at WARN level when something was recorded.
+    // "Failure" here is the record channel, not "the kernel dropped a cut":
+    // `CutterUnionUnavailable`, `PolygonalBoundedHalfSpaceFallback` and
+    // #3440's open-topology record all leave the cut applied. The per-reason
+    // breakdown below is what says which. Zero-failure parses shouldn't spam
+    // every embedded viewer. The full diagnostics summary is still returned
+    // to JS so callers can opt into deeper inspection.
     if total_failures > 0 {
         web_sys::console::warn_1(
             &format!(
@@ -67,7 +72,7 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
-    let products_with_failures = csg_failures.len();
+    let products_with_failures = ifc_lite_geometry::count_attributed_products(&csg_failures);
 
     if total_failures > 0 || !host_diags.is_empty() {
         // Per-reason breakdown for the warn line.
@@ -257,8 +262,54 @@ pub(super) fn drain_and_log_csg_diagnostics(
         );
     }
 
+    if oversized_ref_drops > 0 {
+        // #3752: a content-hash reference above u32::MAX is refused (issue
+        // #3421), not wrapped onto a real entity — the dedup key stays
+        // correct, but until now nothing told the caller this model has an
+        // id ifc-lite cannot represent.
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] {oversized_ref_drops} content-hash reference(s) above the \
+                 u32 express-id bound were refused (see issue #3421)"
+            )
+            .into(),
+        );
+    }
+
+    // Dropped representation items: no processor registered for the IFC type,
+    // or the registered processor errored (degenerate/failed geometry). An
+    // element with a Body representation item that reaches here produced no
+    // geometry for that item — the #3678-shaped gap this counter closes (the
+    // reason string existed at the drop site all along; it just never left
+    // the function). warn_1, not info — this is a genuine content gap, not a
+    // perf/engagement note, and healthy models never populate the map so this
+    // never fires on a clean load.
+    let total_unsupported_items: u64 = unsupported_items.values().sum();
+    if total_unsupported_items > 0 {
+        // Shared with the native tracing warning so the two surfaces cannot drift.
+        let breakdown = ifc_lite_geometry::format_unsupported_breakdown(&unsupported_items);
+        web_sys::console::warn_1(
+            &format!(
+                "[IFC-LITE] {total_unsupported_items} representation item(s) dropped \
+                 (unsupported type or failed geometry) — these elements are missing or \
+                 incomplete: {}",
+                breakdown,
+            )
+            .into(),
+        );
+    }
+
     // The console logging above is the human-facing surface; this is the typed,
     // serializable contract the worker/event path consumes (built from the same
-    // single drain — `rf`/`cls`/`csg_failures`/`host_diags` are not re-taken).
-    ifc_lite_geometry::aggregate_diagnostics(cls, &csg_failures, &host_diags, rf, WORST_HOSTS_LIMIT)
+    // single drain — `rf`/`cls`/`csg_failures`/`host_diags`/`unsupported_items`
+    // are not re-taken).
+    ifc_lite_geometry::aggregate_diagnostics(
+        cls,
+        &csg_failures,
+        &host_diags,
+        rf,
+        WORST_HOSTS_LIMIT,
+        oversized_ref_drops,
+        &unsupported_items,
+    )
 }

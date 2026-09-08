@@ -46,6 +46,17 @@ export interface ScriptEditorSelection {
   to: number;
 }
 
+/**
+ * One text splice from an assistant edit batch.
+ *
+ * Coordinates are **sequential**: within a batch, each change's `from`/`to`
+ * index the content *after* every preceding change has been applied (they are
+ * the literal arguments to the applier's own running splice). This is NOT
+ * CodeMirror's array-of-specs convention, which reads every spec against the
+ * original document — pass a batch through `planScriptEditorChanges`
+ * (`./script-editor-changes.ts`) to convert it, never straight to `dispatch`
+ * (#2357 / #2300).
+ */
 export interface ScriptEditorTextChange {
   from: number;
   to: number;
@@ -165,10 +176,12 @@ export interface LLMModel {
   openaiApi?: 'chat' | 'responses';
   /**
    * Whether the model accepts the classic sampling parameters (`temperature`,
-   * `top_p`, `top_k`). Default: true. Set to `false` for models that reject
-   * them (Anthropic Claude Opus 4.7 and later — see
-   * https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7).
-   * When `false`, the stream client omits these params from the request body.
+   * `top_p`, `top_k`). Defaults to false, because every current frontier model
+   * rejects them with a 400: Claude from Opus 4.7 on (see
+   * https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7)
+   * and the GPT-5 reasoning family. Set it to `true` for a model that still
+   * takes a tuned temperature, and the stream client will send the params.
+   * Forgetting it costs a default temperature, not a failed request.
    */
   acceptsSamplingParams?: boolean;
 }

@@ -67,7 +67,7 @@ export const LIST_PRESETS: ListDefinition[] = [
       quant('Qto_WallBaseQuantities', 'Height'),
       quant('Qto_WallBaseQuantities', 'Width'),
       quant('Qto_WallBaseQuantities', 'GrossVolume'),
-      quant('Qto_WallBaseQuantities', 'NetArea'),
+      quant('Qto_WallBaseQuantities', 'NetSideArea'),
     ],
   ),
 

@@ -1,0 +1,458 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `query-output.ts` backs every non-error path of `ifc-lite query` — count,
+ * sum, avg/min/max, group-by, and entity listing — and had no test file.
+ * Each test below is paired with a concrete mutation that left the package's
+ * 310 tests green; see the doc comment on each `it` for the mutation it kills.
+ */
+
+import { describe, expect, it, vi, afterEach } from 'vitest';
+import {
+  outputCount,
+  outputSum,
+  outputAggregation,
+  outputGroupBy,
+  outputEntities,
+  computeUniqueValues,
+} from './query-output.js';
+
+interface FakeEntity {
+  ref: number;
+  name?: string;
+  type?: string;
+  globalId?: string;
+}
+
+function fakeBim(opts: {
+  quantities?: Record<number, Array<{ name: string; quantities: Array<{ name: string; value: unknown }> }>>;
+  properties?: Record<number, Array<{ name: string; properties: Array<{ name: string; value: unknown }> }>>;
+  storeys?: Record<number, { name: string } | undefined>;
+  materials?: Record<number, { materials?: unknown[]; name?: string } | undefined>;
+} = {}) {
+  return {
+    quantities: (ref: number) => opts.quantities?.[ref] ?? [],
+    properties: (ref: number) => opts.properties?.[ref] ?? [],
+    storey: (ref: number) => opts.storeys?.[ref],
+    materials: (ref: number) => opts.materials?.[ref],
+  };
+}
+
+function captureStdout() {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stdout, 'write').mockImplementation(((chunk: string) => {
+    chunks.push(String(chunk));
+    return true;
+  }) as typeof process.stdout.write);
+  return { chunks, spy };
+}
+
+function captureStderr() {
+  const chunks: string[] = [];
+  const spy = vi.spyOn(process.stderr, 'write').mockImplementation(((chunk: string) => {
+    chunks.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write);
+  return { chunks, spy };
+}
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe('outputCount', () => {
+  /**
+   * Kills swapping `if (jsonOutput)` for `if (!jsonOutput)` in outputCount:
+   * with the branches inverted, `--json` prints the bare number to stdout
+   * and plain mode prints `{"count":...}`.
+   */
+  it('routes json vs. plain output to the matching branch', () => {
+    const json = captureStdout();
+    outputCount(5, true);
+    json.spy.mockRestore();
+    expect(JSON.parse(json.chunks.join(''))).toEqual({ count: 5 });
+
+    const plain = captureStdout();
+    outputCount(5, false);
+    plain.spy.mockRestore();
+    expect(plain.chunks.join('')).toBe('5\n');
+  });
+});
+
+describe('outputSum', () => {
+  const bim = fakeBim({
+    quantities: {
+      1: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 10 }] }],
+      2: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+    },
+  });
+
+  /**
+   * Kills flipping `matched === 0` to `matched !== 0` in the not-found guard:
+   * inverted, a quantity that IS present on every entity takes the "not
+   * found" error branch instead of reporting the real total.
+   */
+  it('sums a present quantity instead of reporting it missing', () => {
+    const out = captureStdout();
+    outputSum([{ ref: 1 }, { ref: 2 }] as FakeEntity[], 'NetVolume', bim, false);
+    out.spy.mockRestore();
+    expect(out.chunks.join('')).toBe('15\n');
+  });
+
+  it('reports zero and an error when the quantity is absent everywhere', () => {
+    const out = captureStdout();
+    const err = captureStderr();
+    outputSum([{ ref: 1 }] as FakeEntity[], 'NoSuchQty', bim, false);
+    out.spy.mockRestore();
+    err.spy.mockRestore();
+    expect(out.chunks.join('')).toBe('0\n');
+    expect(err.chunks.join('')).toContain('not found');
+  });
+
+  /**
+   * Kills changing the area/surface similarity check from `||` to `&&` in
+   * the disambiguation warning: with `&&`, a quantity named "GrossSideArea"
+   * (contains "area" but not "surface") stops being flagged as a possible
+   * mix-up for a `--sum Area` query, silently dropping the warning.
+   */
+  // Oracle test: compare the engine's --sum output against a plain loop
+  // over the same fixture. A STEP REAL literal with an extreme exponent
+  // (e.g. 1.0E400) parses to f64::INFINITY without erroring at the parse
+  // boundary, so an Infinity quantity value is reachable from a real file.
+  // `Number(q.value) || 0` in outputSum's own accumulation loop does not
+  // catch Infinity (it is truthy), so one bad entity poisons the total for
+  // every other entity in the query — a silent wrong number, not a crash.
+  it('does not let one non-finite quantity value poison the sum for every other entity', () => {
+    const bimWithInfinity = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 10 }] }],
+        2: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: Infinity }] }],
+        3: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const entities = [{ ref: 1 }, { ref: 2 }, { ref: 3 }] as FakeEntity[];
+
+    // Direct-loop oracle: a non-finite value should not dominate the
+    // aggregate — it is treated the same as the existing, already-tested
+    // "present but unparseable" case (substituted with 0), not skipped and
+    // not propagated.
+    const oracleTotal = entities.reduce((sum, e) => {
+      const raw = bimWithInfinity.quantities(e.ref)[0]?.quantities[0]?.value;
+      const n = Number(raw);
+      return sum + (Number.isFinite(n) ? n : 0);
+    }, 0);
+    expect(oracleTotal).toBe(15);
+
+    const out = captureStdout();
+    outputSum(entities, 'NetVolume', bimWithInfinity, false);
+    out.spy.mockRestore();
+    expect(out.chunks.join('')).toBe(`${oracleTotal}\n`);
+  });
+
+  it('warns about a similarly-named quantity that was not summed', () => {
+    const bimWithAmbiguity = fakeBim({
+      quantities: {
+        1: [{
+          name: 'Qto_WallBaseQuantities',
+          quantities: [
+            { name: 'Area', value: 4 },
+            { name: 'GrossSideArea', value: 12 },
+          ],
+        }],
+      },
+    });
+    const json = captureStdout();
+    outputSum([{ ref: 1 }] as FakeEntity[], 'Area', bimWithAmbiguity, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(parsed.alternatives.map((a: { name: string }) => a.name)).toContain(
+      'Qto_WallBaseQuantities.GrossSideArea',
+    );
+  });
+});
+
+describe('outputAggregation', () => {
+  const bim = fakeBim({
+    quantities: {
+      1: [{ name: 'Qto', quantities: [{ name: 'Area', value: 30 }] }],
+      2: [{ name: 'Qto', quantities: [{ name: 'Area', value: 10 }] }],
+      3: [{ name: 'Qto', quantities: [{ name: 'Area', value: 20 }] }],
+    },
+  });
+
+  /**
+   * Kills flipping `matched === 0` to `matched !== 0`: entities with real
+   * values would report "not found" instead of an average.
+   */
+  it('computes an average over present values', () => {
+    const out = captureStdout();
+    outputAggregation([{ ref: 1 }, { ref: 2 }, { ref: 3 }] as FakeEntity[], 'Area', 'avg', bim, false);
+    out.spy.mockRestore();
+    expect(out.chunks.join('')).toBe('20\n');
+  });
+
+  /**
+   * Kills flipping `val < minVal` to `val > minVal` in the min/max tracking
+   * loop: with the comparison flipped, `--min` reports the maximum value
+   * (and its entity) instead of the minimum.
+   */
+  it('reports the correct min value and its owning entity', () => {
+    const json = captureStdout();
+    outputAggregation([{ ref: 1, name: 'A' }, { ref: 2, name: 'B' }, { ref: 3, name: 'C' }] as FakeEntity[], 'Area', 'min', bim, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(parsed.min).toBe(10);
+    expect(parsed.entity.Name).toBe('B');
+  });
+
+  it('reports zero-match error for a missing quantity', () => {
+    const err = captureStderr();
+    outputAggregation([{ ref: 1 }] as FakeEntity[], 'Missing', 'max', bim, false);
+    err.spy.mockRestore();
+    expect(err.chunks.join('')).toContain('not found');
+  });
+});
+
+describe('outputGroupBy', () => {
+  const entities: FakeEntity[] = [
+    { ref: 1, type: 'IfcWall' },
+    { ref: 2, type: 'IfcWall' },
+    { ref: 3, type: 'IfcDoor' },
+  ];
+  const bim = fakeBim();
+
+  /**
+   * Kills flipping the validation guard from
+   * `!VALID_GROUP_BY_KEYS.includes(k) && !k.includes('.')` to `||`: every
+   * plain `--group-by type` call (a valid built-in key with no dot) then
+   * fails validation and calls fatal() instead of grouping.
+   */
+  it('accepts a plain built-in grouping key without calling fatal', () => {
+    const out = captureStdout();
+    expect(() => outputGroupBy(entities, 'type', undefined, bim, false)).not.toThrow();
+    out.spy.mockRestore();
+    expect(out.chunks.join('')).toContain('IfcWall: 2');
+  });
+
+  /**
+   * Kills swapping `[psetName, propName] = groupByKey.split('.', 2)` to
+   * `[propName, psetName]`: a dotted `--group-by Pset.Prop` would then look
+   * up a pset named after the property and never find a match.
+   */
+  it('groups by a dotted PsetName.PropName path in the correct order', () => {
+    const propBim = fakeBim({
+      properties: {
+        1: [{ name: 'Pset_WallCommon', properties: [{ name: 'Reference', value: 'R1' }] }],
+        2: [{ name: 'Pset_WallCommon', properties: [{ name: 'Reference', value: 'R2' }] }],
+      },
+    });
+    const json = captureStdout();
+    outputGroupBy([{ ref: 1 }, { ref: 2 }] as FakeEntity[], 'Pset_WallCommon.Reference', undefined, propBim, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed).sort()).toEqual(['R1', 'R2']);
+  });
+
+  /**
+   * Kills flipping the non-json sort comparator from `b[1].length -
+   * a[1].length` (descending by group size) to ascending: the largest group
+   * (IfcWall, 2 entities) would print after the smaller one instead of first.
+   */
+  it('lists groups largest-first in table mode', () => {
+    const out = captureStdout();
+    outputGroupBy(entities, 'type', undefined, bim, false);
+    out.spy.mockRestore();
+    const text = out.chunks.join('');
+    expect(text.indexOf('IfcWall: 2')).toBeLessThan(text.indexOf('IfcDoor: 1'));
+  });
+
+  /**
+   * Kills widening `entries.slice(0, groupLimit)` to `slice(0, groupLimit +
+   * 1)` in the json branch: `--limit 1 --group-by type --json` would then
+   * return 2 groups instead of the requested 1.
+   */
+  it('limits the number of groups, not entities, under --limit', () => {
+    const json = captureStdout();
+    outputGroupBy(entities, 'type', undefined, bim, true, 1);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).toHaveLength(1);
+  });
+
+  /**
+   * Regression: a present-but-blank storey Name (`IFCBUILDINGSTOREY('...','',...)`)
+   * was chained with `storey?.name ?? '(no storey)'`, which only falls
+   * through on null/undefined. A blank name short-circuited the chain and
+   * was emitted verbatim as an empty-string JSON key instead of falling
+   * through to the "(no storey)" placeholder. Kills reverting the fix back
+   * to a bare `??`.
+   */
+  it('falls a blank storey Name through to "(no storey)", not an empty-string key', () => {
+    const blankStoreyBim = fakeBim({ storeys: { 1: { name: '' }, 2: { name: '   ' } } });
+    const json = captureStdout();
+    outputGroupBy(
+      [{ ref: 1, type: 'IfcWall' }, { ref: 2, type: 'IfcWall' }] as FakeEntity[],
+      'storey',
+      undefined,
+      blankStoreyBim,
+      true,
+    );
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).not.toContain('');
+    expect(parsed['(no storey)']?.count).toBe(2);
+  });
+
+  /** Control: a genuine storey Name is still returned unchanged. */
+  it('groups by a genuine storey Name unchanged', () => {
+    const namedStoreyBim = fakeBim({ storeys: { 1: { name: 'Level 1' } } });
+    const json = captureStdout();
+    outputGroupBy([{ ref: 1, type: 'IfcWall' }] as FakeEntity[], 'storey', undefined, namedStoreyBim, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).toEqual(['Level 1']);
+  });
+
+  /**
+   * Regression: same defect on the material chain
+   * (`mat?.materials?.[0] ?? mat?.name ?? '(no material)'`) — a blank
+   * `materials[0]` short-circuited to an empty-string key.
+   */
+  it('falls a blank material name through to "(no material)", not an empty-string key', () => {
+    const blankMatBim = fakeBim({ materials: { 1: { materials: [''] } } });
+    const json = captureStdout();
+    outputGroupBy([{ ref: 1, type: 'IfcWall' }] as FakeEntity[], 'material', undefined, blankMatBim, true);
+    json.spy.mockRestore();
+    const parsed = JSON.parse(json.chunks.join(''));
+    expect(Object.keys(parsed)).not.toContain('');
+    expect(parsed['(no material)']?.count).toBe(1);
+  });
+
+  /**
+   * Pins the ACTUAL non-finite-value behaviour of --group-by's
+   * avg/min/max aggregation (aggMode), which routes through
+   * getQuantityValue -> aggregateFinite. getQuantityValue itself already
+   * substitutes 0 for a non-finite quantity value BEFORE aggregateFinite
+   * ever sees it (query-aggregation.ts), so aggregateFinite's own
+   * `!Number.isFinite(v)) continue` guard never actually fires on this
+   * path — the group's avg/min/max is computed over the SUBSTITUTED 0,
+   * not with the poisoned entity excluded. (Compare this to what a
+   * genuinely `aggregateFinite`-protected avg/min/max would report if the
+   * poisoned entity were dropped instead of zeroed: avg 7.5, min 5,
+   * max 10 — not what this test observes.) See the corrected comments on
+   * `query-aggregation.ts`/`schedule-aggregate.ts` and the changeset for
+   * what is and is not actually guarded by aggregateFinite.
+   */
+  it('avg/min/max on a poisoned (Infinity) quantity value: getQuantityValue already zeroed it before aggregateFinite runs', () => {
+    const bimWithInfinity = fakeBim({
+      quantities: {
+        1: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 10 }] }],
+        2: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: Infinity }] }],
+        3: [{ name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetVolume', value: 5 }] }],
+      },
+    });
+    const wallEntities = [{ ref: 1, type: 'IfcWall' }, { ref: 2, type: 'IfcWall' }, { ref: 3, type: 'IfcWall' }] as FakeEntity[];
+
+    const avgJson = captureStdout();
+    outputGroupBy(wallEntities, 'type', 'NetVolume', bimWithInfinity, true, undefined, 'avg');
+    avgJson.spy.mockRestore();
+    expect(JSON.parse(avgJson.chunks.join(''))['IfcWall'].NetVolume).toBe(5); // (10 + 0 + 5) / 3
+
+    const minJson = captureStdout();
+    outputGroupBy(wallEntities, 'type', 'NetVolume', bimWithInfinity, true, undefined, 'min');
+    minJson.spy.mockRestore();
+    expect(JSON.parse(minJson.chunks.join(''))['IfcWall'].NetVolume).toBe(0); // the substituted 0, not 5
+
+    const maxJson = captureStdout();
+    outputGroupBy(wallEntities, 'type', 'NetVolume', bimWithInfinity, true, undefined, 'max');
+    maxJson.spy.mockRestore();
+    expect(JSON.parse(maxJson.chunks.join(''))['IfcWall'].NetVolume).toBe(10);
+  });
+});
+
+describe('computeUniqueValues', () => {
+  /**
+   * Regression: `--unique storey` chained `storey?.name ?? '(no storey)'`,
+   * only falling through on null/undefined. A blank/whitespace-only storey
+   * Name short-circuited the chain and produced a blank-label distinct
+   * value instead of the "(no storey)" placeholder.
+   */
+  it('falls a blank/whitespace storey Name through to "(no storey)"', () => {
+    const bim = fakeBim({ storeys: { 1: { name: '' }, 2: { name: '   ' } } });
+    const counts = computeUniqueValues([{ ref: 1 }, { ref: 2 }] as FakeEntity[], 'storey', bim);
+    expect(counts.has('')).toBe(false);
+    expect(counts.has('   ')).toBe(false);
+    expect(counts.get('(no storey)')).toBe(2);
+  });
+
+  it('a genuine storey Name is returned unchanged', () => {
+    const bim = fakeBim({ storeys: { 1: { name: 'Level 1' } } });
+    const counts = computeUniqueValues([{ ref: 1 }] as FakeEntity[], 'storey', bim);
+    expect(counts.get('Level 1')).toBe(1);
+  });
+
+  /** Same defect on the material chain. */
+  it('falls a blank/whitespace material name through to "(no material)"', () => {
+    const bim = fakeBim({ materials: { 1: { materials: [''] }, 2: { name: '   ' } } });
+    const counts = computeUniqueValues([{ ref: 1 }, { ref: 2 }] as FakeEntity[], 'material', bim);
+    expect(counts.has('')).toBe(false);
+    expect(counts.has('   ')).toBe(false);
+    expect(counts.get('(no material)')).toBe(2);
+  });
+
+  it('a genuine material name is returned unchanged', () => {
+    const bim = fakeBim({ materials: { 1: { materials: ['Concrete'] } } });
+    const counts = computeUniqueValues([{ ref: 1 }] as FakeEntity[], 'material', bim);
+    expect(counts.get('Concrete')).toBe(1);
+  });
+
+  /** Control: a truly absent storey/material still gets the placeholder. */
+  it('a truly absent storey still yields "(no storey)" (control)', () => {
+    const bim = fakeBim();
+    const counts = computeUniqueValues([{ ref: 1 }] as FakeEntity[], 'storey', bim);
+    expect(counts.get('(no storey)')).toBe(1);
+  });
+});
+
+describe('outputEntities', () => {
+  const entities: FakeEntity[] = [
+    { ref: 1, type: 'IfcWall', name: 'Wall-1', globalId: 'G1' },
+    { ref: 2, type: 'IfcDoor', name: 'Door-1', globalId: 'G2' },
+  ];
+  const bim = fakeBim();
+
+  /**
+   * Kills swapping the table row mapping from `[e.type, e.name, e.globalId]`
+   * to `[e.name, e.type, e.globalId]`: the header still reads "Type | Name |
+   * GlobalId" but the printed cells would be transposed under the wrong
+   * column.
+   */
+  it('prints table columns in Type, Name, GlobalId order', () => {
+    const out = captureStdout();
+    outputEntities(entities, [], bim, false);
+    out.spy.mockRestore();
+    const lines = out.chunks.join('').split('\n');
+    // Header row establishes the column order this asserts against.
+    expect(lines[0]).toMatch(/Type.*Name.*GlobalId/);
+    const wallRow = lines.find((l) => l.includes('Wall-1'))!;
+    expect(wallRow.indexOf('IfcWall')).toBeLessThan(wallRow.indexOf('Wall-1'));
+  });
+
+  /**
+   * Kills dropping `showQuantities` from the `needsDetail` OR-chain: without
+   * it, `--quantities` (with no `--json`) would fall through to the plain
+   * table branch instead of emitting per-entity quantity detail.
+   */
+  it('switches to detailed JSON-shaped output when --quantities is set, even without --json', () => {
+    const quantityBim = fakeBim({
+      quantities: { 1: [{ name: 'Qto', quantities: [{ name: 'Area', value: 5 }] }] },
+    });
+    const out = captureStdout();
+    outputEntities([{ ref: 1, type: 'IfcWall', name: 'Wall-1', globalId: 'G1' }] as FakeEntity[], ['--quantities'], quantityBim, false);
+    out.spy.mockRestore();
+    const parsed = JSON.parse(out.chunks.join(''));
+    expect(parsed[0].quantities).toEqual([{ name: 'Qto', quantities: [{ name: 'Area', value: 5 }] }]);
+  });
+});

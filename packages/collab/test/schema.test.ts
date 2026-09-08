@@ -111,6 +111,30 @@ describe('entity ops', () => {
     expect(newJson.children).toEqual({ Body: 'body-1' });
   });
 
+  it('promoteEntityType does not silently drop data when the target path already exists', () => {
+    // createEntity is documented as idempotent: a pre-existing target is a
+    // no-op. promoteEntityType builds its "carried" attributes/children/meta
+    // and hands them to createEntity — if it silently no-oped instead of
+    // throwing here, `old` would already be deleted (see below) while
+    // `new`'s stale data survived untouched: a promotion that reports
+    // success (a truthy Y.Map) but permanently loses `old`'s state.
+    const doc = createCollabDoc();
+    createEntity(doc, 'old', {
+      ifcClass: 'IfcWall',
+      attributes: { Name: 'Wall-1' },
+    });
+    // `new` already exists — e.g. seeded by another concurrent operation.
+    createEntity(doc, 'new', { ifcClass: 'IfcSlab' });
+
+    expect(() => promoteEntityType(doc, 'old', 'new', 'IfcCurtainWall')).toThrow(
+      /already exists/,
+    );
+    // Failing loudly must not have deleted `old` on the way: the caller
+    // can retry against a different target path without data loss.
+    expect(entitiesMap(doc).has('old')).toBe(true);
+    expect(entityToJSON(entitiesMap(doc).get('new')!).meta.ifcClass).toBe('IfcSlab');
+  });
+
   it('deleteEntity removes the entity', () => {
     const doc = createCollabDoc();
     createEntity(doc, 'gone');

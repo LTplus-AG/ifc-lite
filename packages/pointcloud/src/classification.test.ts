@@ -89,6 +89,19 @@ describe('classification count aggregation (#1783)', () => {
     expect(counts.reduce((a, b) => a + b, 0)).toBe(3);
   });
 
+  it('stops at pointCount when the buffer is longer than the chunk claims', () => {
+    // Buffer holds 5 codes but the chunk says only 2 points are valid —
+    // the extra 3 slots are stale/uninitialised and must not be counted.
+    const counts = createClassificationCounts();
+    accumulateClassificationCounts(counts, {
+      classifications: new Uint8Array([2, 2, 9, 9, 9]),
+      pointCount: 2,
+    });
+    expect(counts[2]).toBe(2);
+    expect(counts[9]).toBe(0);
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(2);
+  });
+
   it('lists only non-zero entries, ascending by code', () => {
     const counts = createClassificationCounts();
     accumulateClassificationCounts(counts, {

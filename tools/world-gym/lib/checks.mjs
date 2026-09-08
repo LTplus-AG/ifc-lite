@@ -145,11 +145,16 @@ export function schemaCheckInProcess(store) {
 export async function clashCheckInProcess(store, modelId = 'model.ifc', probeExpressIds = []) {
   const processor = await initChecks();
   return withQuietConsole(async () => {
-    const bytes = store.source;
-    if (!bytes || bytes.byteLength === 0) {
+    // `store.source` is an IfcSourceBytes ACCESSOR since #2339, not a
+    // Uint8Array. It still answers `byteLength`, so the guard below passes --
+    // but `GeometryProcessor.process(buffer: Uint8Array)` then meshes nothing
+    // and returns 0 entries, which silently zeroes every clash rule. Scope the
+    // materialized buffer to the call, matching packages/cli gym/channels.ts.
+    const source = store.source;
+    if (!source || source.byteLength === 0) {
       return { ok: false, error: 'store did not retain source bytes' };
     }
-    const result = await processor.process(bytes);
+    const result = await source.withMaterializedAsync((bytes) => processor.process(bytes));
     const meshes = result.meshes;
     const meshedIds = new Set(meshes.map((m) => m.expressId));
     const probesMeshed = {};

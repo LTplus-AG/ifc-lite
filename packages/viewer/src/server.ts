@@ -108,6 +108,11 @@ async function resolveWasmDir(): Promise<string> {
     return resolvePackageDirFromModuleUrl(entryUrl);
   } catch {
     // Fallback: resolve from the sibling @ifc-lite/wasm package directory.
+    // Legitimately silent: `import.meta.resolve` throws on runtimes that
+    // don't implement it and in bundles where the specifier isn't resolvable,
+    // both of which the workspace-relative layout covers. A genuinely missing
+    // wasm directory surfaces as a 404 on the asset request, which is
+    // reported there.
     return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'wasm');
   }
 }
@@ -357,14 +362,46 @@ export async function startViewerServer(opts: ViewerServerOptions): Promise<View
     }
   });
 
-  return new Promise((promiseResolve) => {
+  // `promiseReject` matters: `opts.onReady` runs inside the `listen`
+  // callback, outside any surrounding try/catch the caller can see. Without
+  // it, a throwing `onReady` would silently drop `promiseResolve` and the
+  // returned promise would hang forever. On that path the server is already
+  // bound to the port, so close it before rejecting -- otherwise the caller
+  // gets a rejection with no handle to the still-listening socket, leaking
+  // the port for the life of the process.
+  return new Promise((promiseResolve, promiseReject) => {
+    // A bind failure (e.g. EADDRINUSE) emits `error` and NEVER runs the
+    // `listen` callback below -- so without this listener neither
+    // `promiseResolve` nor `promiseReject` would ever fire and the returned
+    // promise would hang forever, the same defect class as the onReady-throw
+    // path above. `once` self-removes: `listen`'s success callback also
+    // strips it below, and a bind failure vs. a successful bind are mutually
+    // exclusive outcomes of a single `listen()` call, so this can only ever
+    // fire once and cannot race the resolve path.
+    const onListenError = (err: NodeJS.ErrnoException) => {
+      // The server never bound on this path, so there is no listening
+      // socket to leak -- unlike the onReady-throw path, close() is neither
+      // needed nor safe to rely on here (a server that failed to bind is
+      // not "running", and close() on it just reports that back via its
+      // optional callback rather than doing anything useful).
+      promiseReject(err);
+    };
+    server.once('error', onListenError);
+
     server.listen(requestedPort, () => {
+      server.off('error', onListenError);
       const addr = server.address();
       const port = typeof addr === 'object' && addr ? addr.port : requestedPort;
       const url = `http://localhost:${port}`;
 
       if (opts.onReady) {
-        opts.onReady(port, url);
+        try {
+          opts.onReady(port, url);
+        } catch (err) {
+          server.close();
+          promiseReject(err);
+          return;
+        }
       }
 
       promiseResolve({

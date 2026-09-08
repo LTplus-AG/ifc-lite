@@ -128,6 +128,15 @@ pub enum IfcType {
     Unknown(u32),
 }
 
+/// Every entity type the schema declares, in declaration order, re-exported
+/// from `ifc_lite_core` as `IFC_TYPES`.
+///
+/// The enum is exhaustive but not enumerable — `Unknown(u32)` makes it open and
+/// the ids are sparse — so anything reasoning about the WHOLE schema (mapping
+/// every class into another vocabulary, auditing coverage, generating a table)
+/// needs this rather than re-parsing the EXPRESS file.
+pub static ALL: &[IfcType];
+
 impl IfcType {
     /// Parse from an (upper-case) type name
     pub fn from_str(s: &str) -> Self;
@@ -143,6 +152,22 @@ impl IfcType {
 
     /// Type name (CamelCase)
     pub fn name(&self) -> &'static str;
+
+    /// This entity's attributes, in STEP declaration order — the order
+    /// `DecodedEntity::get` indexes. Supertype attributes come first, so
+    /// position 0 is `IfcRoot::GlobalId` on every rooted entity.
+    ///
+    /// These names are the GENERATED schema's (IFC4X3). An entity whose
+    /// attribute list grew between IFC releases has a different length, and
+    /// possibly different indices, in a file declaring an older `FILE_SCHEMA` —
+    /// so the positions match `DecodedEntity::get` for that file only when its
+    /// schema matches. Check `FILE_SCHEMA` before treating an index from here
+    /// as authoritative.
+    pub fn attribute_names(&self) -> &'static [&'static str];
+
+    /// The position of a named attribute, for `DecodedEntity::get`.
+    /// Case-sensitive; EXPRESS names are PascalCase.
+    pub fn attribute_index(&self, name: &str) -> Option<usize>;
 
     /// Direct supertype in the schema hierarchy
     pub fn parent(&self) -> Option<Self>;
@@ -211,6 +236,8 @@ impl<'a> EntityDecoder<'a> {
     pub fn with_arc_index<T>(content: &'a T, index: Arc<EntityIndex>) -> Self;
     /// Wasm path: attach a shared columnar index (binary-search lookup)
     pub fn with_arc_columnar_index<T>(content: &'a T, index: Arc<ColumnarEntityIndex>) -> Self;
+    /// Install a direct-address index for a source with u32 byte offsets
+    pub fn set_dense_index(&mut self, index: Arc<DenseEntityIndex>);
 
     /// Decode an entity by express id (cached)
     pub fn decode_by_id(&mut self, entity_id: u32) -> Result<DecodedEntity>;
@@ -224,6 +251,16 @@ impl<'a> EntityDecoder<'a> {
 ```
 
 The decoder also exposes fast single-purpose accessors used by the geometry pipeline (`get_cartesian_point_fast`, `get_polyloop_coords_cached`, `get_entity_ref_list_fast`, ...); see `rust/core/src/decoder.rs`.
+
+`DenseEntityIndex::try_from_columns(ids, starts, lengths)` accepts sorted, unique
+IDs and `u32` span columns. It returns `None` if the columns disagree or direct
+addressing would allocate more than compact columns. `lookup(id)` preserves
+missing IDs and empty spans. Install an index only on a decoder for the same
+source. Native loading selects this representation when suitable, uses compact
+sorted columns for sparse IDs, and retains the hash-index path for sources whose
+offsets exceed `u32`. Caller-supplied `Arc<EntityIndex>` values remain supported.
+Compact staging has a source-based row budget; denser record streams switch to
+hash indexing during the scan, coalescing duplicate IDs as they arrive.
 
 ### Streaming Module
 
@@ -434,6 +471,14 @@ pub struct GeometryRouter {
 
 Built-in processors (all re-exported at the crate root): `ExtrudedAreaSolidProcessor`, `ExtrudedAreaSolidTaperedProcessor`, `FacetedBrepProcessor`, `AdvancedBrepProcessor`, `BooleanClippingProcessor`, `FaceBasedSurfaceModelProcessor`, `PolygonalFaceSetProcessor`, `RevolvedAreaSolidProcessor`, `SurfaceOfLinearExtrusionProcessor`, `SweptDiskSolidProcessor`, `TriangulatedFaceSetProcessor`.
 
+For routers processing batches from one immutable model,
+`GeometryRouter::new_brep_signature_cache()` creates a `SharedBrepSignatureCache`.
+Pass a clone to each router's `enable_shared_brep_signature_cache` to reuse
+completed faceted-BREP signatures when item deduplication is enabled. Create a
+new cache whenever the source model changes: signatures are keyed by express
+ID. Tessellation quality, unit scale and RTC remain router-local and are folded
+into the final deduplication key. The native processing pipeline manages this lifetime automatically.
+
 Other notable re-exports: `orient_mesh_outward`, `calculate_normals`, `ClippingProcessor`, `Plane`, `Triangle` (CSG), `hash_mesh_world` / `GeometryHasher` (geometry-diff hashing), instancing encode/decode helpers, and the nalgebra types `Point2`, `Point3`, `Vector2`, `Vector3`.
 
 ---
@@ -455,7 +500,9 @@ pub use processor::{
 // Analysis-ready export document (welded, Z-up, world metres)
 pub use geometry_export::{build_geometry_data_export, ExportedElement, GeometryDataExport};
 
-pub use georeferencing::{extract_georeferencing, Georeferencing};
+pub use georeferencing::{
+    extract_georeferencing, extract_georeferencing_with_index, Georeferencing,
+};
 pub use ifc_lite_geometry::TessellationQuality;
 pub use style::{default_color_for_type, Rgba};
 pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
@@ -473,6 +520,13 @@ Domain-format exporters. Every exporter takes IFC bytes (or already-produced mes
 pub use csv::{export_csv, CsvMode, CsvOptions};
 pub use gltf::{export_glb, export_glb_from_meshes, export_glb_with_stats,
                export_gltf_streaming, try_export_glb, GltfOptions, GltfStats /* ... */};
+// `GltfOptions::tessellation_quality` picks the curve tessellation density for
+// the glTF paths, re-exporting `TessellationQuality` so a caller does not need
+// a direct `ifc-lite-processing` dependency to name a level. The default is
+// `Medium`, which is the golden-output identity every byte-comparison test in
+// this crate rests on - coarser levels trade curve fidelity for vertex count
+// on tube-heavy models, and DO change the emitted bytes.
+pub use ifc_lite_processing::TessellationQuality;
 pub use hbjson::Model;
 pub use ifc5::{export_ifc5, Ifc5Options};
 pub use json::{export_json, JsonOptions};
@@ -483,6 +537,30 @@ pub use obj::{export_obj, export_obj_with_stats, ObjOptions, ObjStats};
 pub use step::{export_step, export_step_json, export_step_with_stats,
                AttrMutation, PropMutation, StepOptions, StepStats};
 pub use model::{build_export_model, stream_export_model, ExportModel /* ... */};
+// `ExportModel` and both streaming entry points carry the model's UnitScales.
+// Attribute values are in the FILE's units, unlike the geometry exporters'
+// output, which is normalised to metres — so a consumer writing a quantity
+// beside exported geometry needs this to interpret it.
+pub use ifc_lite_processing::prepass::UnitScales;
+
+// Attribute access beyond the eight fields `EntityRow` carries. The callback
+// receives the `DecodedEntity` each row was built from, borrowed — read any
+// attribute from it without this crate guessing which ones matter.
+pub use model::{stream_export_model_with_options, build_export_model_with_options,
+                ModelOptions, Placement};
+pub use ifc_lite_core::{AttributeValue, DecodedEntity, IfcType};
+```
+
+`ModelOptions::default().with_placements(true)` resolves each product's
+`ObjectPlacement` into
+`EntityRow::placement`. Off by default: the memo is ~128 B per distinct
+placement, one per product in most files.
+
+`Placement` is a column-major 4x4 whose translation is in **metres**, with **no**
+RTC rebase and **no** Z-up to Y-up conversion — the IFC world frame, which is
+the file's own frame and not the frame the glTF or OBJ exporters emit.
+
+```rust
 
 // Behind the `parquet-bos` feature (native only; kept out of the wasm bundle):
 pub use parquet_bos::{export_bos, ParquetBosOptions};

@@ -42,6 +42,7 @@ export function idsDataTypeForQuantity(type: number): string {
     case 3: return 'IFCCOUNTMEASURE';
     case 4: return 'IFCMASSMEASURE';
     case 5: return 'IFCTIMEMEASURE';
+    case 6: return 'IFCNUMERICMEASURE';
     default: return 'IFCLABEL';
   }
 }

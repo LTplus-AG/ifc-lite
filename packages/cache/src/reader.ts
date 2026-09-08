@@ -99,7 +99,7 @@ export class BinaryCacheReader {
       throw new Error('Missing required Entities section');
     }
     reader.position = entitiesSection.offset;
-    const entities = readEntities(reader, strings);
+    const entities = readEntities(reader, strings, header.version);
 
     // Read properties
     const propertiesSection = sectionMap.get(SectionType.Properties);
@@ -123,7 +123,7 @@ export class BinaryCacheReader {
       throw new Error('Missing required Relationships section');
     }
     reader.position = relationshipsSection.offset;
-    const relationships = readRelationships(reader);
+    const relationships = readRelationships(reader, header.version);
 
     const dataStore: CacheDataStore = {
       schema: header.schema,

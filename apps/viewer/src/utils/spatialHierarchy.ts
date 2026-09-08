@@ -18,6 +18,7 @@ import {
   type RelationshipGraph,
 } from '@ifc-lite/data';
 import { SpatialHierarchyBuilder } from '@ifc-lite/parser';
+import { MATERIAL_DEF_TYPES } from './materialDefinitionTypes';
 
 /**
  * Rebuild the spatial hierarchy from cache data (entities + relationships only,
@@ -133,8 +134,8 @@ export interface SpatialAncestryIndex {
  *
  * `getName` resolves an entity's real IFC `Name` — pass the store's
  * `entities.getName` so an UNNAMED container resolves to '' (matching how the
- * storey column behaves), rather than the `SpatialNode.name` placeholder the
- * hierarchy builder synthesizes (`Entity #N`). `getClass` (optional) resolves an
+ * storey column behaves). The hierarchy builder no longer synthesizes an
+ * `Entity #N` placeholder for `SpatialNode.name` (#3530). `getClass` (optional) resolves an
  * entity's IFC class name, used only as the `containerOf` fallback for an
  * unnamed immediate container. "Building" spans every
  * building-like spatial type (IFC4X3 IfcFacility / IfcBridge / IfcRoad / …), so
@@ -291,29 +292,6 @@ export interface OnDemandMaps {
   onDemandMaterialMap: Map<number, number[]>;
 }
 
-/** IFC material *definition* classes that can be the RelatingMaterial of an
- *  IfcRelAssociatesMaterial — the source nodes of AssociatesMaterial edges. */
-const MATERIAL_DEF_TYPES = new Set([
-  'IFCMATERIAL',
-  'IFCMATERIALLAYERSET',
-  'IFCMATERIALLAYERSETUSAGE',
-  'IFCMATERIALPROFILESET',
-  'IFCMATERIALPROFILESETUSAGE',
-  'IFCMATERIALCONSTITUENTSET',
-  'IFCMATERIALLIST',
-  // Bare IfcMaterialSelect members — legal (if unusual) RelatingMaterial
-  // targets. Without these a fresh parse maps the association but a cache
-  // rebuild silently drops it (parse/cache divergence).
-  'IFCMATERIALLAYER',
-  'IFCMATERIALPROFILE',
-  'IFCMATERIALCONSTITUENT',
-  // IFC4 subtypes — also legal RelatingMaterial targets; completes the
-  // IfcMaterialSelect membership so cache rebuilds match fresh parses.
-  'IFCMATERIALLAYERWITHOFFSETS',
-  'IFCMATERIALPROFILEWITHOFFSETS',
-  'IFCMATERIALPROFILESETUSAGETAPERING',
-]);
-
 /**
  * Rebuild on-demand property/quantity maps from relationships and entity types
  * Uses FORWARD direction: pset -> elements (more efficient than inverse lookup)
@@ -410,6 +388,9 @@ export function rebuildOnDemandMaps(
     // cache load could disagree with a fresh parse of the same file.
     const materialRelIds = new Map<number, number[]>();
     for (const [typeKey, ids] of entityIndex.byType) {
+      // Source nodes of AssociatesMaterial edges: every class an
+      // IfcMaterialSelect can resolve to. Anything omitted here is an
+      // association a fresh parse maps and a cache rebuild drops.
       if (!MATERIAL_DEF_TYPES.has(typeKey.toUpperCase())) continue;
       for (const materialId of ids) {
         materialDefCount += 1;

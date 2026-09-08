@@ -2,6 +2,84 @@
 /* eslint-disable */
 
 /**
+ * The overlap solid of one clashing pair, or the reason there is none.
+ */
+export class ClashIntersectionSolidJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * `""` when `isSolid`, otherwise one of:
+     * - `"malformed-operand"` — any of FOUR malformations, all rejected
+     *   before the boolean runs, because computing on them would silently
+     *   drop the offending triangle (or worse) rather than report the true
+     *   operand:
+     *   1. `positionsA`/`positionsB` is not a flat `[x, y, z, …]` triple
+     *      (length not a multiple of 3);
+     *   2. `indicesA`/`indicesB` has a length that is not a multiple of 3,
+     *      so it does not describe whole triangles;
+     *   3. `indicesA`/`indicesB` references a vertex past the end of its own
+     *      operand's positions;
+     *   4. a position is **non-finite** (NaN or infinity). This one is worth
+     *      calling out to callers: a NaN coordinate is caught by neither
+     *      length check, and left alone it can be absorbed into a
+     *      normal-looking answer or corrupt a face enough to report a
+     *      genuinely overlapping pair as `"no-overlap"`. So if you are
+     *      debugging an unexpected `"no-overlap"`, check your inputs for
+     *      NaN — it surfaces here, not there.
+     * - `"empty-operand"` — an operand had no triangles.
+     * - `"no-overlap"` — the exact intersection is empty. Covers a disjoint
+     *   pair AND a *touching* pair, including any graze below the kernel's
+     *   `2^-16 m ≈ 15.26 µm` snap grid (both faces snap flush).
+     * - `"below-kernel-resolution"` — the pair overlaps, but too shallowly for
+     *   the kernel to resolve as a solid rather than a coplanar contact. See
+     *   `thicknessM` / `requiredM`.
+     * - `"budget-exhausted"` — the escalation budget tripped; the arrangement
+     *   is partial and nothing about it is trustworthy.
+     */
+    readonly degenerateReason: string;
+    /**
+     * Triangle indices into `positions / 3`.
+     */
+    readonly indices: Uint32Array;
+    /**
+     * True when a trustworthy overlap solid was produced. When false, every
+     * geometry getter is empty and `degenerateReason` says why.
+     */
+    readonly isSolid: boolean;
+    /**
+     * World-space vertex positions, flat `[x, y, z, …]`, f64.
+     *
+     * f64 rather than the f32 the rest of the mesh pipeline uses because the
+     * caller reports this solid's volume: the f32 round-trip costs ~1e-7
+     * relative, a thousand times the exactness the kernel actually delivers.
+     * Downcast to f32 at the GPU upload if the renderer wants it.
+     */
+    readonly positions: Float64Array;
+    /**
+     * For `"below-kernel-resolution"`: the depth this pair would have needed
+     * for the kernel to resolve a solid, in metres. `0` otherwise. Grows with
+     * distance from the world origin, as the kernel's own tolerance does.
+     */
+    readonly requiredM: number;
+    /**
+     * For `"below-kernel-resolution"`: the overlap's measured thinnest extent,
+     * in metres. `0` otherwise. Useful to tell the user how shallow the clash
+     * is even though no solid can be drawn.
+     */
+    readonly thicknessM: number;
+    /**
+     * Triangle count of the solid; `0` when degenerate.
+     */
+    readonly triangleCount: number;
+    /**
+     * Enclosed volume in m³. `0` when not a solid — check `isSolid` first;
+     * "no measurable overlap" and "an overlap of zero" are different claims.
+     */
+    readonly volumeM3: number;
+}
+
+/**
  * Packed result of one rule run. Parallel arrays, one entry per clash record;
  * `points` has 3 per record and `bounds` has 6 per record.
  */
@@ -13,6 +91,7 @@ export class ClashRunResult {
     readonly b: Uint32Array;
     readonly bounds: Float64Array;
     readonly distance: Float64Array;
+    readonly distanceKind: Uint8Array;
     readonly points: Float64Array;
     readonly status: Uint8Array;
 }
@@ -227,6 +306,14 @@ export class IfcAPI {
      */
     buildPrePassStreamingSharded(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array, index_classes: Uint8Array): any;
     /**
+     * Existing sharded prepass plus an exact full-source key in complete.
+     */
+    buildPrePassStreamingShardedWithSourceFingerprint(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean, index_ids: Uint32Array, index_starts: Uint32Array, index_lengths: Uint32Array, index_classes: Uint8Array): any;
+    /**
+     * Existing streaming prepass plus an exact full-source key in complete.
+     */
+    buildPrePassStreamingWithSourceFingerprint(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
+    /**
      * Clear the cached entity index (call between loads when reusing
      * the same `IfcAPI` instance — e.g. the parser worker keeps one
      * `IfcAPI` alive across multiple `parse` requests).
@@ -248,6 +335,19 @@ export class IfcAPI {
      * flattened `Pset_Prop` columns to the entities view.
      */
     exportCsv(content: Uint8Array, mode: string, delimiter: string, include_properties: boolean): Uint8Array;
+    /**
+     * Export the `IfcSpace` volumes in `content` as a Dragonfly **DFJSON** string.
+     *
+     * Each space becomes an extruded `Room2D` (floor polygon + floor-to-ceiling height)
+     * grouped into stories — the simpler Ladybug Tools target for mostly-vertical-wall
+     * models. Loads via `dragonfly.model.Model.from_dfjson`.
+     *
+     * ```javascript
+     * const api = new IfcAPI();
+     * const dfjson = api.exportDfjson(ifcContent, "my_model");
+     * ```
+     */
+    exportDfjson(content: Uint8Array, name: string): string;
     /**
      * Export the render geometry in `content` as a binary **GLB** (`Uint8Array`).
      *
@@ -276,6 +376,13 @@ export class IfcAPI {
      * taken in order from the concatenated `positions`/`normals`/`indices`; `colors` is
      * RGBA per mesh, `origins` xyz per mesh, `express_ids` labels each mesh (indices are
      * per-mesh local). The caller passes exactly the meshes it wants emitted.
+     *
+     * Fails CLOSED: if the declared vertex/index counts run past the flattened
+     * `positions` / `indices`, there are fewer `index_counts` than meshes, or `normals`
+     * is empty or too short to cover every vertex, this throws an `Error` whose message
+     * starts with `MALFORMED_MESH_INPUT` — instead of silently emitting a GLB with those
+     * meshes dropped. (The viewer always passes fully-backed, normal-covered arrays, so
+     * this only fires on a caller bug.)
      */
     exportGlbFromMeshes(positions: Float32Array, normals: Float32Array, indices: Uint32Array, vertex_counts: Uint32Array, index_counts: Uint32Array, colors: Float32Array, origins: Float64Array, express_ids: Uint32Array, include_metadata: boolean, lit?: boolean | null, emissive?: boolean | null): Uint8Array;
     /**
@@ -295,6 +402,24 @@ export class IfcAPI {
      * ```
      */
     exportHbjson(content: Uint8Array, name: string): Uint8Array;
+    /**
+     * Like [`Self::export_hbjson`], but also returns the export's coverage stats
+     * (`HbjsonStats`: spaces seen, rooms emitted, spaces skipped as degenerate, plus
+     * apertures / doors / shades / constructions / interior adjacencies) so a caller
+     * can tell whether the "success" result silently dropped input.
+     *
+     * Returns a plain JS object `{ content: Uint8Array, stats: HbjsonStats }`; `content`
+     * is UTF-8 HBJSON bytes (same encoding rationale as [`Self::export_hbjson`] — not
+     * capped by the V8 max-string ceiling). Runs the export once — `content` and `stats`
+     * come from the same pass, not two separate exports.
+     *
+     * ```javascript
+     * const api = new IfcAPI();
+     * const { content, stats } = api.exportHbjsonWithStats(ifcContent, "my_model");
+     * if (stats.skipped > 0) console.warn(`${stats.skipped} spaces skipped as degenerate`);
+     * ```
+     */
+    exportHbjsonWithStats(content: Uint8Array, name: string): any;
     /**
      * Export **IFC5 / IFCX** (the USD-style node graph). `only_known_properties` keeps
      * only properties with an official IFC5 schema.
@@ -372,8 +497,17 @@ export class IfcAPI {
      * `#`-reference closure is added so the subset never dangles a reference.
      * `mutations_json` carries `MutablePropertyView` edits (attribute updates +
      * property-set synthesis); empty ⇒ none. See `export_step_json` for the shape.
+     * A non-empty but malformed `mutations_json` throws rather than silently
+     * exporting the model with none of the caller's edits applied — mirrors
+     * `exportGlb`'s and `exportMerged`'s fail-closed contract on this same API.
      */
     exportStep(content: Uint8Array, schema: string, included: Uint32Array, mutations_json: string): Uint8Array;
+    /**
+     * Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
+     * `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
+     * metadata as custom attributes. Whole-model (geometry-backed).
+     */
+    exportUsd(content: Uint8Array): Uint8Array;
     /**
      * Extract raw profile polygons from all building elements with `IfcExtrudedAreaSolid`
      * representations.
@@ -407,6 +541,10 @@ export class IfcAPI {
      */
     finalizePrepassStyles(data: Uint8Array, orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
     /**
+     * Finalize prepass styles against the installed source and entity index.
+     */
+    finalizePrepassStylesFromSource(orphan_ids: Uint32Array, orphan_colors: Float32Array, geom_ids: Uint32Array, geom_colors: Float32Array, colour_map_spans: Uint32Array, material_def_spans: Uint32Array, rel_material_spans: Uint32Array, void_spans: Uint32Array, fills_spans: Uint32Array, aggregate_spans: Uint32Array, plane_angle_to_radians: number): any;
+    /**
      * Get WASM memory for zero-copy access
      */
     getMemory(): any;
@@ -428,7 +566,7 @@ export class IfcAPI {
      * `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
      * the renderer's Y-up world space (RTC-subtracted, metres). Consecutive
      * samples form line segments. Feed straight to
-     * `renderer.uploadAnnotationLines3D(...)`.
+     * `renderer.setLineOverlay('alignment', ...)`.
      *
      * Returns an empty array when the file has no alignments (or none with a
      * resolvable Axis curve), so the caller can clear the overlay cheaply.
@@ -444,7 +582,7 @@ export class IfcAPI {
      * Parse the file and return every `IfcGridAxis` as a flat `Float32Array`
      * of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per
      * axis) in the renderer's Y-up world space (RTC-subtracted, metres). Feed
-     * straight to a line pipeline (e.g. `uploadAnnotationLines3D`).
+     * straight to a line pipeline (e.g. `renderer.setLineOverlay('grid', …)`).
      *
      * Returns an empty array when the file has no grids, so the caller can
      * clear the overlay cheaply.
@@ -471,8 +609,8 @@ export class IfcAPI {
      * Process geometry for a subset of pre-scanned entities → flat
      * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
      * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
-     * to MeshDataJs (the IFC Z-up→WebGL Y-up swap + winding reversal happen
-     * there). Output is byte-for-byte what the pre-refactor method produced.
+     * to MeshDataJs (the IFC Z-up→WebGL Y-up rotation with preserved winding happens
+     * there). Flat indices preserve source order through this proper rotation.
      */
     processGeometryBatch(data: Uint8Array, jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): MeshCollection;
     /**
@@ -529,6 +667,10 @@ export class IfcAPI {
      */
     resolveStyledItemsShard(data: Uint8Array, spans: Uint32Array): any;
     /**
+     * Resolve styled-item spans against the installed source and entity index.
+     */
+    resolveStyledItemsShardFromSource(spans: Uint32Array): any;
+    /**
      * Fast entity scanning using SIMD-accelerated Rust scanner
      * Returns array of entity references for data model parsing
      * Much faster than TypeScript byte-by-byte scanning (5-10x speedup)
@@ -547,18 +689,42 @@ export class IfcAPI {
      * range_end)` shard; the main thread stitches the returned columns into the
      * full entity index (byte-identical to the single-threaded
      * `build_entity_index`) by binary-searching each shard for the previous
-     * shard's `handoff`. Delegates to `ifc_lite_processing::scan_shard`, the
-     * exact per-chunk primitive the native `build_entity_index_parallel` fans
-     * across cores — so the sharded merge cannot drift from the serial builder.
+     * shard's `handoff`. Delegates to
+     * `ifc_lite_processing::scan_shard_classified_with_refusals` — a
+     * separately-maintained loop over the same `EntityScanner` primitive as
+     * `scan_shard` (the one the native `build_entity_index_parallel` fans across
+     * cores), plus a per-record class column this sharded path also needs. The
+     * two loops' records/handoff are kept in parity by a dedicated test
+     * (`rust/processing/tests/issue_2053_shard_scan_parity.rs`), not by
+     * delegation — edit one without the other and that test catches the drift.
      *
      * Byte offsets returned are GLOBAL (relative to file start), so shards
      * concatenate without rewriting. Returns a plain object:
      *   `{ ids: Uint32Array, starts: Uint32Array, lengths: Uint32Array,
-     *      handoff: number }`
-     * where `handoff` is the global start of the first entity at/after
+     *      classes: Uint8Array, handoff: number,
+     *      oversizedIdStarts: Uint32Array }`
+     * where `classes` is the parallel per-record prepass class byte
+     * (`PREPASS_CLASS_*`: named code in the low bits plus the geometry-job /
+     * type-candidate flags) the host filters on to rebuild pre-pass span
+     * lists, and `handoff` is the global start of the first entity at/after
      * `range_end` (the next shard's first real entity), or `-1` at EOF.
+     *
+     * `oversizedIdStarts` carries the global start byte of every record this
+     * shard refused for an express id above `u32::MAX` (#3395). Offsets, not
+     * a count, and deliberately NOT reported from here: a shard begins at an
+     * arbitrary byte, so it can start inside a quoted value and refuse a
+     * string literal shaped like `#4294967297=IFCWALL(` — text no file
+     * declared. Reporting per shard would warn "skipped N records" on a file
+     * that is fine. The host's stitch keeps only the offsets at/after the
+     * retained boundary it computed for this shard and reports once, which is
+     * what makes the number attributable to a record the stitch retained
+     * (#3430).
      */
     scanEntityIndexShard(data: Uint8Array, range_start: number, range_end: number): any;
+    /**
+     * Scan a shard of the source installed by `setSourceBytes`.
+     */
+    scanEntityIndexShardFromSource(start: number, end: number): any;
     /**
      * Fast geometry-only entity scanning
      * Scans only entities that have geometry, skipping 99% of non-geometry entities
@@ -570,11 +736,13 @@ export class IfcAPI {
      * Enable or disable per-entity geometry fingerprinting in
      * `processGeometryBatch`, used by the viewer's revision-diff feature.
      *
-     * Pass a positive `tolerance` (metres) to enable — it is the quantization
-     * grid the hash snaps positions to (larger = more tolerant of float noise,
-     * smaller = catches finer edits; the `f32` precision floor of model-local
-     * coordinates means values below ~1 mm mostly hash noise). Pass `null`/
-     * `undefined` (or a non-positive value) to disable. Default: disabled.
+     * Pass a positive `tolerance` (metres) to enable — the quantization grid
+     * positions snap to (larger tolerates more float noise, smaller catches
+     * finer edits; below the `f32` precision floor of model-local coordinates,
+     * ~1 mm, mostly hashes noise). Finer than
+     * `ifc_lite_geometry::MIN_GEOM_HASH_TOLERANCE` (1e-6 m) is clamped up to it
+     * — see that constant's doc for why (an `i128` overflow surface, not a
+     * precision win). `null`/`undefined`/non-positive disables. Default: off.
      */
     setComputeGeometryHashes(tolerance?: number | null): void;
     /**
@@ -587,10 +755,10 @@ export class IfcAPI {
      * even though the pre-pass worker built the same index minutes
      * earlier.
      *
-     * Builds a compact [`ColumnarEntityIndex`] from the three input slices
+     * Adopts the three binding-owned columns into a compact [`ColumnarEntityIndex`]
      * (sorted `u32` columns + binary search) instead of a per-worker
      * `FxHashMap` — ~229 MB vs ~436 MB on a 19.1 M-entity model (#1682).
-     * [`ColumnarEntityIndex::from_columns`] verifies the id ordering once
+     * [`ColumnarEntityIndex::from_owned_columns`] verifies the id ordering once
      * (O(n)) and only argsorts if the producer did not emit sorted columns.
      *
      * `lengths[i]` is the byte length of entity `ids[i]`, so lookup returns
@@ -774,7 +942,10 @@ export class MeshCollection {
      * worker reads each mesh exactly once, so moving avoids the full vertex-
      * data clone `get` pays — one fewer copy of positions/normals/indices/uvs/
      * texture per mesh (the JS getters still do the single Rust→JS copy). Calling
-     * it twice for the same index yields the second call an empty mesh.
+     * it twice for the same index yields the second call a DEFAULT mesh:
+     * `expressId` 0 and every buffer empty, rather than the metadata-bearing
+     * husk the hand-written copy used to leave. The method is read-once by
+     * contract and the wasm-contract test pins this.
      */
     takeMesh(index: number): MeshDataJs | undefined;
     /**
@@ -789,6 +960,47 @@ export class MeshCollection {
      * nested shape as a single FFI crossing instead of dozens of getters.
      */
     readonly diagnostics: any;
+    /**
+     * Per-entity world-space AABBs as a `Float64Array`, SIX values per entry
+     * (`minx, miny, minz, maxx, maxy, maxz`), in the same order as
+     * [`Self::geometry_hash_ids`] — entry `i` spans `[6*i, 6*i+6)`. Empty
+     * unless geometry hashing was enabled; the same
+     * `IfcAPI.setComputeGeometryHashes` switch gates both, so nothing is
+     * computed when the diff feature is off.
+     *
+     * Unquantized world `f64` (the file's RTC folded back in), so two
+     * revisions that chose different RTC offsets report the same box. This is
+     * what lets a consumer say "MOVED" honestly instead of inferring it from a
+     * changed hash, which also fires on reshape and on retriangulation.
+     *
+     * **Frame: WebGL Y-up**, like every other box, position, origin and
+     * placement that crosses this boundary (see `MeshDataJs::local_bounds`).
+     * The hasher accumulates in the producer's IFC Z-up frame, so the swap
+     * `(x,y,z) -> (x,z,-y)` is applied here, on the way out. Unconverted, the
+     * boxes would not enclose the very meshes `processGeometryBatch` returns
+     * alongside them. Positions are RTC-relative and this box is absolute, so
+     * a consumer comparing the two folds `rtcOffset*` in — itself Y-up-swapped.
+     *
+     * Present for every hashed entity. Its companion
+     * [`Self::geometry_volume_values`] is not — see there.
+     */
+    readonly geometryAabbValues: Float64Array;
+    /**
+     * Per-entity topology verdict as a `Uint8Array`, one packed byte per entry
+     * in [`Self::geometry_hash_ids`] order:
+     *
+     * * bit 0 (`1`) — every segment closed (no boundary / non-manifold edge)
+     * * bit 1 (`2`) — every segment orientable
+     * * bit 2 (`4`) — every segment a single connected component
+     * * bit 3 (`8`) — the entity produced exactly one segment
+     *
+     * `0x0F` is exactly the set that carries a volume in
+     * [`Self::geometry_volume_values`]. The individual bits are the diagnosis:
+     * a model checker can distinguish "this wall is an open shell" (bit 0
+     * clear) from "this door is a multi-item assembly whose parts may overlap"
+     * (bit 3 clear), which are different findings with different fixes.
+     */
+    readonly geometryClosureFlags: Uint8Array;
     /**
      * Number of per-entity geometry fingerprints recorded.
      */
@@ -806,6 +1018,28 @@ export class MeshCollection {
      * geometry hashing was enabled.
      */
     readonly geometryHashValues: BigUint64Array;
+    /**
+     * Per-entity enclosed volume in CUBIC METRES as a `Float64Array`, one
+     * value per entry in [`Self::geometry_hash_ids`] order. `NaN` means NO
+     * TRUSTWORTHY VOLUME — the same absent convention as
+     * [`Self::geometry_aabb_values`] — and it is `NaN` for roughly a third of
+     * entities by design, not by failure.
+     *
+     * A value is emitted only when that entity's produced geometry was
+     * PROVABLY a single closed, orientable, single-component solid, as decided
+     * by the mesher's own orientation pass. Read
+     * `ifc_lite_geometry::GeometryHasher::volume` before treating a `NaN` as a
+     * bug: an open `SurfaceModel`, a material-layered wall (whose slices are
+     * open bands by construction), and any element assembled from more than one
+     * representation item all correctly report nothing rather than a plausible
+     * wrong number. [`Self::geometry_closure_flags`] says which.
+     *
+     * This is NOT a substitute for an IFC `BaseQuantities` `GrossVolume`: it is
+     * the volume of the geometry that was actually meshed, after opening cuts,
+     * and it says nothing about whether a CSG degradation left the host uncut
+     * (see the `diagnostics` getter).
+     */
+    readonly geometryVolumeValues: Float64Array;
     /**
      * Get number of meshes
      */
@@ -835,6 +1069,27 @@ export class MeshCollection {
 
 /**
  * Individual mesh data with express ID and color (matches MeshData interface)
+ *
+ * `Clone` is derived so the three sites that used to enumerate all 21 fields
+ * by hand -- `get`, `takeMesh` and `MeshCollection`'s own `Clone` -- reduce to
+ * `.cloned()`, `mem::take` and `.clone()`. Adding a field to #3199 meant
+ * editing three literals in lockstep; the allowlist row for this file records
+ * exactly that cost.
+ *
+ * To be precise about what this does and does not buy, because the obvious
+ * claim is wrong: an exhaustive struct literal that OMITS a field is a compile
+ * error, so those literals were never silently lossy. What they were is three
+ * places to edit for one field, and `..Default::default()` is the shortcut a
+ * hurried author reaches for when the compiler complains -- which WOULD be
+ * silently lossy. `Default` is what makes `takeMesh` a one-liner, so the rule
+ * is: TWO literals remain, `new` and `Default` below (both spelled
+ * `Self { .. }`, which is why a grep for `MeshDataJs {` finds neither). Both
+ * must stay exhaustive AND must agree on every field `new` does not take as an
+ * argument. The compiler catches an omitted field in either; it cannot catch
+ * the two DISAGREEING, which is the failure the pair exists to prevent, so
+ * `default_agrees_with_new_on_the_fields_new_does_not_take` covers that.
+ * Never spread `Default` into `new` -- `new` is the only place a field's
+ * initial value is decided, so a field defaulted there is inert everywhere.
  */
 export class MeshDataJs {
     private constructor();
@@ -854,6 +1109,11 @@ export class MeshDataJs {
      * type geometry (hidden in Model mode, shown in Types mode).
      */
     readonly geometryClass: number;
+    /**
+     * Source `IfcRepresentationItem`, or `undefined` where identity is merged
+     * away. Never set alongside `materialId` (#3199).
+     */
+    readonly geometryItemId: number | undefined;
     /**
      * True when this mesh carries a surface texture (#961).
      */
@@ -878,6 +1138,10 @@ export class MeshDataJs {
      * `local_bounds` above).
      */
     readonly localToWorld: Float64Array | undefined;
+    /**
+     * `IfcMaterial` layer sliced, or `undefined` (#3199).
+     */
+    readonly materialId: number | undefined;
     /**
      * Get normals as Float32Array (copy to JS)
      */
@@ -1012,6 +1276,12 @@ export class ProfileCollection {
      * Number of profiles.
      */
     readonly length: number;
+    /**
+     * Express IDs of elements that had an `IfcExtrudedAreaSolid` (direct or
+     * mapped) but whose profile could not be extracted, so they are MISSING
+     * from this collection. Empty on a clean model.
+     */
+    readonly skippedExpressIds: Uint32Array;
 }
 
 /**
@@ -1389,7 +1659,8 @@ export class SymbolicRepresentationCollection {
      */
     readonly fillCount: number;
     /**
-     * Check if collection is empty
+     * Check if collection is empty. A TRUNCATED result never is, even with no
+     * primitives; the reasoning and the parity test are in `symbolic_truncation.rs`.
      */
     readonly isEmpty: boolean;
     /**
@@ -1404,6 +1675,23 @@ export class SymbolicRepresentationCollection {
      * Get total count of all symbolic items
      */
     readonly totalCount: number;
+    /**
+     * Primitive count at which extraction stopped, else `undefined`.
+     */
+    readonly truncatedAt: number | undefined;
+    /**
+     * The bound's numeric value, when the reason has one, else `undefined`.
+     * Absent for the per-item reasons, whose bound is per item and not
+     * comparable with `truncatedAt`.
+     */
+    readonly truncatedLimit: number | undefined;
+    /**
+     * Which bound stopped extraction, else `undefined`. One of
+     * `element-count`, `output-bytes`, `item-depth`, `item-revisits`,
+     * `item-cycle` — the same kebab-case strings the JSON path emits, so a
+     * consumer reading either surface reads one vocabulary.
+     */
+    readonly truncatedReason: string | undefined;
 }
 
 /**
@@ -1440,6 +1728,87 @@ export class SymbolicText {
 }
 
 /**
+ * One closed solid of a split element.
+ */
+export class ZonePieceJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Flat triangle indices into `positions`.
+     */
+    readonly indices: Uint32Array;
+    /**
+     * Flat `[x, y, z, ...]` in the caller's frame.
+     */
+    readonly positions: Float64Array;
+    /**
+     * Enclosed volume of this piece, cubic units of the caller's frame.
+     */
+    readonly volume: number;
+    /**
+     * Index into the zone array that was passed in, or `-1` for the part of
+     * the element inside no zone.
+     */
+    readonly zoneIndex: number;
+}
+
+/**
+ * The result of splitting one element.
+ */
+export class ZoneSplitJs {
+    private constructor();
+    free(): void;
+    [Symbol.dispose](): void;
+    /**
+     * Piece `index`, or `undefined` when out of range. Each call COPIES the
+     * piece out, matching the rest of this API surface.
+     */
+    piece(index: number): ZonePieceJs | undefined;
+    readonly pieceCount: number;
+    /**
+     * The part of the element inside NO zone could not be built.
+     *
+     * Separate from `sumErrorRel` because the two have opposite fixes: a
+     * raised sum means the zones overlap and want redrawing, while this means
+     * real volume is MISSING from the result. A caller must refuse the split
+     * outright rather than publish the zone pieces alone.
+     */
+    readonly remainderFailed: boolean;
+    /**
+     * How far the pieces are from summing to the whole, relative.
+     *
+     * The invariant #2508 puts above everything else here. Exposed rather than
+     * enforced: the caller decides what to do with a split that does not add
+     * up (the expected cause is zones that overlap each other), and a number
+     * it can show beats a silent refusal.
+     */
+    readonly sumErrorRel: number;
+    /**
+     * Enclosed volume of the input element.
+     */
+    readonly wholeVolume: number;
+}
+
+/**
+ * Compute the intersection solid of one clashing pair.
+ *
+ * `positionsA` / `positionsB` are flat world-space XYZ; `indicesA` /
+ * `indicesB` are flat triangle indices into their own operand.
+ *
+ * ```javascript
+ * const solid = clashIntersectionSolid(posA, idxA, posB, idxB);
+ * if (solid.isSolid) {
+ *   draw(solid.positions, solid.indices, solid.volumeM3);
+ * } else {
+ *   keepContactMarker(solid.degenerateReason); // e.g. "no-overlap"
+ * }
+ * solid.free();
+ * ```
+ */
+export function clashIntersectionSolid(positions_a: Float32Array, indices_a: Uint32Array, positions_b: Float32Array, indices_b: Uint32Array): ClashIntersectionSolidJs;
+
+/**
  * `a - b`, keeping EVERY disjoint remnant.
  *
  * This is the operation the existing `subtract_2d` could not stand in for: it
@@ -1460,7 +1829,8 @@ export function get_memory(): any;
  * Initialize the WASM module.
  *
  * This function is called automatically when the WASM module is loaded.
- * It sets up panic hooks for better error messages in the browser console.
+ * It sets up panic hooks for better error messages in the browser console,
+ * and points core's scan diagnostics at that console too.
  */
 export function init(): void;
 
@@ -1496,6 +1866,50 @@ export function meshOutline2d(positions: Float32Array, indices: Uint32Array, axi
 export function resolve2d(a: Contours2D): Contours2D;
 
 /**
+ * Split a mesh into one closed solid per zone, plus the remainder.
+ *
+ * `positions` is flat XYZ (f64, caller's frame), `indices` flat triangle
+ * indices. `zones` is flat, SEVEN numbers per zone:
+ * `[cx, cy, cz, sx, sy, sz, rotationY]`, where the sizes are FULL extents
+ * (matching the viewer's `Zone.size`) and the rotation is radians about the
+ * vertical axis. A trailing partial zone is ignored rather than guessed at.
+ *
+ * A zone becomes a PRISM (#2508 item 4) when `footprint_counts[i]` is at
+ * least 3: it then takes that many `[x, z]` pairs from `footprints`, in order,
+ * and uses the 7-tuple only for its vertical extent (`cy +/- sy/2`). The
+ * footprint must be CONVEX; the viewer gates that on import, because a concave
+ * polygon fans into overlapping triangles and would cut wrong rather than
+ * fail. A count of 1 or 2 is not a polygon: it still consumes its pairs, so
+ * later zones stay aligned, and leaves that zone a box. Passing empty arrays
+ * keeps every zone a box.
+ *
+ * The caller must have established that the mesh is a closed orientable solid
+ * first, exactly as it must before quoting a volume at all (#1891/#1993): a
+ * clip of an open shell produces pieces whose volumes are arbitrary rather
+ * than approximate.
+ *
+ * A triangle with an out-of-range index or a non-finite coordinate is DROPPED
+ * rather than reported, matching `kernel::mesh_bridge::mesh_to_tris`, which is
+ * panic-free for the same reason: the alternative is a crash deep in the
+ * predicates. It does mean a malformed caller can open the surface and get
+ * meaningless volumes with a plausible `sumErrorRel`, so the closure proof
+ * above is the caller's responsibility and not a formality.
+ *
+ * ```javascript
+ * const split = splitMeshByZones(positions, indices, new Float64Array([
+ *   0, 0, 0, 10, 10, 10, 0,
+ * ]));
+ * for (let i = 0; i < split.pieceCount; i++) {
+ *   const piece = split.piece(i);
+ *   // piece.zoneIndex, piece.positions, piece.indices, piece.volume
+ *   piece.free();
+ * }
+ * split.free();
+ * ```
+ */
+export function splitMeshByZones(positions: Float64Array, indices: Uint32Array, zones: Float64Array, footprints?: Float64Array | null, footprint_counts?: Uint32Array | null): ZoneSplitJs;
+
+/**
  * `a ∪ b`.
  */
 export function union2d(a: Contours2D, b: Contours2D): Contours2D;
@@ -1519,6 +1933,7 @@ export type InitInput = RequestInfo | URL | Response | BufferSource | WebAssembl
 
 export interface InitOutput {
     readonly memory: WebAssembly.Memory;
+    readonly __wbg_clashintersectionsolidjs_free: (a: number, b: number) => void;
     readonly __wbg_clashrunresult_free: (a: number, b: number) => void;
     readonly __wbg_clashsession_free: (a: number, b: number) => void;
     readonly __wbg_contours2d_free: (a: number, b: number) => void;
@@ -1538,10 +1953,22 @@ export interface InitOutput {
     readonly __wbg_symbolicpolyline_free: (a: number, b: number) => void;
     readonly __wbg_symbolicrepresentationcollection_free: (a: number, b: number) => void;
     readonly __wbg_symbolictext_free: (a: number, b: number) => void;
+    readonly __wbg_zonepiecejs_free: (a: number, b: number) => void;
+    readonly __wbg_zonesplitjs_free: (a: number, b: number) => void;
+    readonly clashIntersectionSolid: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
+    readonly clashintersectionsolidjs_degenerateReason: (a: number, b: number) => void;
+    readonly clashintersectionsolidjs_indices: (a: number, b: number) => void;
+    readonly clashintersectionsolidjs_isSolid: (a: number) => number;
+    readonly clashintersectionsolidjs_positions: (a: number, b: number) => void;
+    readonly clashintersectionsolidjs_requiredM: (a: number) => number;
+    readonly clashintersectionsolidjs_thicknessM: (a: number) => number;
+    readonly clashintersectionsolidjs_triangleCount: (a: number) => number;
+    readonly clashintersectionsolidjs_volumeM3: (a: number) => number;
     readonly clashrunresult_a: (a: number, b: number) => void;
     readonly clashrunresult_b: (a: number, b: number) => void;
     readonly clashrunresult_bounds: (a: number, b: number) => void;
     readonly clashrunresult_distance: (a: number, b: number) => void;
+    readonly clashrunresult_distanceKind: (a: number, b: number) => void;
     readonly clashrunresult_points: (a: number, b: number) => void;
     readonly clashrunresult_status: (a: number, b: number) => void;
     readonly clashsession_ingest: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
@@ -1569,12 +1996,16 @@ export interface InitOutput {
     readonly ifcapi_buildPrePassOnce: (a: number, b: number, c: number) => number;
     readonly ifcapi_buildPrePassStreaming: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
+    readonly ifcapi_buildPrePassStreamingShardedWithSourceFingerprint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
+    readonly ifcapi_buildPrePassStreamingWithSourceFingerprint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_clearPrePassCache: (a: number) => void;
     readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly ifcapi_exportDfjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportGlb: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number) => void;
     readonly ifcapi_exportGlbFromMeshes: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number) => void;
     readonly ifcapi_exportHbjson: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_exportHbjsonWithStats: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly ifcapi_exportIfcx: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_exportJson: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
     readonly ifcapi_exportJsonld: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number) => void;
@@ -1583,8 +2014,10 @@ export interface InitOutput {
     readonly ifcapi_exportMerged: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_exportObj: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
     readonly ifcapi_exportStep: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => void;
+    readonly ifcapi_exportUsd: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_extractProfiles: (a: number, b: number, c: number, d: number) => number;
     readonly ifcapi_finalizePrepassStyles: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number) => void;
+    readonly ifcapi_finalizePrepassStylesFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number) => void;
     readonly ifcapi_getMemory: (a: number) => number;
     readonly ifcapi_getPipelineDiagnostics: (a: number) => number;
     readonly ifcapi_is_ready: (a: number) => number;
@@ -1599,9 +2032,11 @@ export interface InitOutput {
     readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntitiesFastBytes: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanEntityIndexShard: (a: number, b: number, c: number, d: number, e: number) => number;
+    readonly ifcapi_scanEntityIndexShardFromSource: (a: number, b: number, c: number) => number;
     readonly ifcapi_scanGeometryEntitiesFast: (a: number, b: number, c: number) => number;
     readonly ifcapi_setComputeGeometryHashes: (a: number, b: number, c: number) => void;
     readonly ifcapi_setEntityIndex: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => void;
@@ -1620,9 +2055,12 @@ export interface InitOutput {
     readonly meshOutline2d: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly meshcollection_buildingRotation: (a: number, b: number) => void;
     readonly meshcollection_diagnostics: (a: number) => number;
+    readonly meshcollection_geometryAabbValues: (a: number) => number;
+    readonly meshcollection_geometryClosureFlags: (a: number) => number;
     readonly meshcollection_geometryHashCount: (a: number) => number;
     readonly meshcollection_geometryHashIds: (a: number) => number;
     readonly meshcollection_geometryHashValues: (a: number) => number;
+    readonly meshcollection_geometryVolumeValues: (a: number) => number;
     readonly meshcollection_get: (a: number, b: number) => number;
     readonly meshcollection_hasRtcOffset: (a: number) => number;
     readonly meshcollection_length: (a: number) => number;
@@ -1635,11 +2073,13 @@ export interface InitOutput {
     readonly meshdatajs_color: (a: number, b: number) => void;
     readonly meshdatajs_expressId: (a: number) => number;
     readonly meshdatajs_geometryClass: (a: number) => number;
+    readonly meshdatajs_geometryItemId: (a: number) => number;
     readonly meshdatajs_hasTexture: (a: number) => number;
     readonly meshdatajs_ifcType: (a: number, b: number) => void;
     readonly meshdatajs_indices: (a: number) => number;
     readonly meshdatajs_localBounds: (a: number, b: number) => void;
     readonly meshdatajs_localToWorld: (a: number, b: number) => void;
+    readonly meshdatajs_materialId: (a: number) => number;
     readonly meshdatajs_normals: (a: number) => number;
     readonly meshdatajs_origin: (a: number) => number;
     readonly meshdatajs_positions: (a: number) => number;
@@ -1662,6 +2102,7 @@ export interface InitOutput {
     readonly partitionedbatch_takeShard: (a: number, b: number) => void;
     readonly profilecollection_get: (a: number, b: number) => number;
     readonly profilecollection_length: (a: number) => number;
+    readonly profilecollection_skippedExpressIds: (a: number) => number;
     readonly profileentryjs_expressId: (a: number) => number;
     readonly profileentryjs_extrusionDepth: (a: number) => number;
     readonly profileentryjs_extrusionDir: (a: number) => number;
@@ -1709,6 +2150,7 @@ export interface InitOutput {
     readonly spaceplatehandle_snapshot: (a: number, b: number) => void;
     readonly spaceplatehandle_splitEdge: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly spaceplatehandle_splitFace: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly splitMeshByZones: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => number;
     readonly symboliccircle_centerX: (a: number) => number;
     readonly symboliccircle_centerY: (a: number) => number;
     readonly symboliccircle_endAngle: (a: number) => number;
@@ -1751,6 +2193,9 @@ export interface InitOutput {
     readonly symbolicrepresentationcollection_polylineCount: (a: number) => number;
     readonly symbolicrepresentationcollection_textCount: (a: number) => number;
     readonly symbolicrepresentationcollection_totalCount: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedAt: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedLimit: (a: number) => number;
+    readonly symbolicrepresentationcollection_truncatedReason: (a: number, b: number) => void;
     readonly symbolictext_alignment: (a: number, b: number) => void;
     readonly symbolictext_colorA: (a: number) => number;
     readonly symbolictext_content: (a: number, b: number) => void;
@@ -1759,7 +2204,12 @@ export interface InitOutput {
     readonly symbolictext_targetPx: (a: number) => number;
     readonly union2d: (a: number, b: number) => number;
     readonly version: (a: number) => void;
-    readonly init: () => void;
+    readonly zonepiecejs_indices: (a: number) => number;
+    readonly zonepiecejs_positions: (a: number) => number;
+    readonly zonepiecejs_zoneIndex: (a: number) => number;
+    readonly zonesplitjs_piece: (a: number, b: number) => number;
+    readonly zonesplitjs_pieceCount: (a: number) => number;
+    readonly zonesplitjs_remainderFailed: (a: number) => number;
     readonly meshoutlinejs_contourCount: (a: number) => number;
     readonly symbolicpolyline_pointCount: (a: number) => number;
     readonly get_memory: () => number;
@@ -1775,6 +2225,10 @@ export interface InitOutput {
     readonly symbolictext_worldY: (a: number) => number;
     readonly symbolictext_x: (a: number) => number;
     readonly symbolictext_y: (a: number) => number;
+    readonly zonepiecejs_volume: (a: number) => number;
+    readonly zonesplitjs_sumErrorRel: (a: number) => number;
+    readonly zonesplitjs_wholeVolume: (a: number) => number;
+    readonly init: () => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

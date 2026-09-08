@@ -161,7 +161,12 @@ let cleanedUp = false;
 function cleanupStaging() {
   if (cleanedUp) return;
   cleanedUp = true;
-  try { rmSync(staging, { recursive: true, force: true }); } catch {}
+  try {
+    rmSync(staging, { recursive: true, force: true });
+  } catch (err) {
+    // Best-effort: the tempdir is the OS's to reap. Say where it was left.
+    console.error(`  warning: could not remove staging dir ${staging}: ${err.message}`);
+  }
 }
 process.on('exit', cleanupStaging);
 process.on('SIGINT', () => { cleanupStaging(); process.exit(130); });
@@ -199,7 +204,12 @@ try {
       failed.push({ entry, err });
       console.error(`    FAILED: ${err.message}`);
     } finally {
-      try { unlinkSync(stagedPath); } catch {}
+      try {
+        unlinkSync(stagedPath);
+      } catch (err) {
+        // Best-effort: cleanupStaging() removes the whole dir at exit anyway.
+        console.error(`    warning: could not unlink staged ${assetName}: ${err.message}`);
+      }
     }
   }
 } finally {

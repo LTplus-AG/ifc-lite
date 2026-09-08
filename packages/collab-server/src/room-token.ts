@@ -31,7 +31,7 @@ const VALID_ROLES: ReadonlySet<string> = new Set([
 ]);
 
 const DEFAULT_TTL_SECONDS = 7 * 24 * 60 * 60; // 7 days
-const DEFAULT_CLOCK_TOLERANCE_SEC = 30;
+export const DEFAULT_CLOCK_TOLERANCE_SEC = 30; // sec; reused by principal-expiry.ts
 
 export interface RoomTokenClaims {
   /** Room id this token grants access to. */

@@ -10,6 +10,7 @@ import {
   PropertyValueType,
   QuantityType,
 } from './mock-store.js';
+import type { IfcStoreBase } from '@ifc-lite/data';
 
 // ── Fixtures ────────────────────────────────────────────────────
 
@@ -50,8 +51,15 @@ function buildSpatialStore() {
       { source: 4, target: 11, type: RelationshipType.ContainsElements, relId: 201 },
       // Wall voids opening
       { source: 10, target: 20, type: RelationshipType.VoidsElement, relId: 300 },
-      // Wall defined by type (forward = instance -> type; inverse = type -> instances)
-      { source: 10, target: 30, type: RelationshipType.DefinesByType, relId: 400 },
+      // Opening filled by door. IfcRelFillsElement is
+      // (RelatingOpeningElement, RelatedBuildingElement), so the opening is
+      // the source and the filler is the target — the same relating -> related
+      // orientation VoidsElement uses above.
+      { source: 20, target: 11, type: RelationshipType.FillsElement, relId: 301 },
+      // Type defines wall. The parser calls addEdge(relatingObject, related),
+      // and for IfcRelDefinesByType the relating object is the TYPE, so the
+      // type is the source and the instance the target.
+      { source: 30, target: 10, type: RelationshipType.DefinesByType, relId: 400 },
     ],
   });
 }
@@ -64,49 +72,49 @@ describe('EntityNode', () => {
   describe('attribute access', () => {
     it('should expose the expressId', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 10);
+      const node = new EntityNode(store, 10);
       expect(node.expressId).toBe(10);
     });
 
     it('should return the stored name', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 10);
+      const node = new EntityNode(store, 10);
       expect(node.name).toBe('Exterior Wall');
     });
 
     it('should return the stored globalId', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 10);
+      const node = new EntityNode(store, 10);
       expect(node.globalId).toBe('wall-1');
     });
 
     it('should return the IFC type name', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 10);
+      const node = new EntityNode(store, 10);
       expect(node.type).toBe('IfcWall');
     });
 
     it('should return description when present', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 3);
+      const node = new EntityNode(store, 3);
       expect(node.description).toBe('Main building');
     });
 
     it('should return objectType when present', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 3);
+      const node = new EntityNode(store, 3);
       expect(node.objectType).toBe('Office');
     });
 
     it('should return empty string for name of non-existent entity', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 9999);
+      const node = new EntityNode(store, 9999);
       expect(node.name).toBe('');
     });
 
     it('should return empty globalId for non-existent entity', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 9999);
+      const node = new EntityNode(store, 9999);
       expect(node.globalId).toBe('');
     });
   });
@@ -116,7 +124,7 @@ describe('EntityNode', () => {
   describe('spatial containment', () => {
     it('contains() should return child elements of a spatial container', () => {
       const store = buildSpatialStore();
-      const storey = new EntityNode(store as any, 4);
+      const storey = new EntityNode(store, 4);
       const children = storey.contains();
       expect(children).toHaveLength(2);
       const childIds = children.map(c => c.expressId).sort();
@@ -125,13 +133,13 @@ describe('EntityNode', () => {
 
     it('contains() should return empty array when no children', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       expect(wall.contains()).toEqual([]);
     });
 
     it('containedIn() should return the spatial container', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const container = wall.containedIn();
       expect(container).not.toBeNull();
       expect(container!.expressId).toBe(4);
@@ -139,7 +147,7 @@ describe('EntityNode', () => {
 
     it('containedIn() should return null when no container', () => {
       const store = buildSpatialStore();
-      const project = new EntityNode(store as any, 1);
+      const project = new EntityNode(store, 1);
       expect(project.containedIn()).toBeNull();
     });
   });
@@ -149,7 +157,7 @@ describe('EntityNode', () => {
   describe('aggregation', () => {
     it('decomposes() should return aggregate children', () => {
       const store = buildSpatialStore();
-      const building = new EntityNode(store as any, 3);
+      const building = new EntityNode(store, 3);
       const storeys = building.decomposes();
       expect(storeys).toHaveLength(2);
       expect(storeys.map(s => s.expressId).sort()).toEqual([4, 5]);
@@ -157,7 +165,7 @@ describe('EntityNode', () => {
 
     it('decomposedBy() should return the aggregate parent', () => {
       const store = buildSpatialStore();
-      const storey = new EntityNode(store as any, 4);
+      const storey = new EntityNode(store, 4);
       const parent = storey.decomposedBy();
       expect(parent).not.toBeNull();
       expect(parent!.expressId).toBe(3);
@@ -165,7 +173,7 @@ describe('EntityNode', () => {
 
     it('decomposedBy() should return null for root entity', () => {
       const store = buildSpatialStore();
-      const project = new EntityNode(store as any, 1);
+      const project = new EntityNode(store, 1);
       expect(project.decomposedBy()).toBeNull();
     });
   });
@@ -175,7 +183,7 @@ describe('EntityNode', () => {
   describe('type relationships', () => {
     it('definingType() should return the type entity', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const typeNode = wall.definingType();
       expect(typeNode).not.toBeNull();
       expect(typeNode!.expressId).toBe(30);
@@ -184,7 +192,7 @@ describe('EntityNode', () => {
 
     it('instances() should return entities of a given type', () => {
       const store = buildSpatialStore();
-      const wallType = new EntityNode(store as any, 30);
+      const wallType = new EntityNode(store, 30);
       const instances = wallType.instances();
       expect(instances).toHaveLength(1);
       expect(instances[0].expressId).toBe(10);
@@ -192,7 +200,7 @@ describe('EntityNode', () => {
 
     it('definingType() should return null when entity has no type', () => {
       const store = buildSpatialStore();
-      const door = new EntityNode(store as any, 11);
+      const door = new EntityNode(store, 11);
       expect(door.definingType()).toBeNull();
     });
   });
@@ -202,15 +210,28 @@ describe('EntityNode', () => {
   describe('openings', () => {
     it('voids() should return openings in the element', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const openings = wall.voids();
       expect(openings).toHaveLength(1);
       expect(openings[0].expressId).toBe(20);
     });
 
+    it('filledBy() should return the element filling the opening', () => {
+      // `filledBy()` had zero callers in any test file. IfcRelFillsElement
+      // stores the opening as the relating object and the filler as the
+      // related one, so reaching the filler from the opening is a forward
+      // traversal — the same direction `voids()` uses to reach the opening
+      // from its host. Traversing inverse from the opening finds nothing and
+      // silently returns [], which is indistinguishable from "no filler".
+      const store = buildSpatialStore();
+      const opening = new EntityNode(store, 20);
+      const fillers = opening.filledBy();
+      expect(fillers.map((f) => f.expressId)).toEqual([11]);
+    });
+
     it('voids() should return empty for element with no openings', () => {
       const store = buildSpatialStore();
-      const door = new EntityNode(store as any, 11);
+      const door = new EntityNode(store, 11);
       expect(door.voids()).toEqual([]);
     });
   });
@@ -220,7 +241,7 @@ describe('EntityNode', () => {
   describe('spatial shortcuts', () => {
     it('building() should walk up to the IfcBuilding', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const building = wall.building();
       expect(building).not.toBeNull();
       expect(building!.expressId).toBe(3);
@@ -229,7 +250,7 @@ describe('EntityNode', () => {
 
     it('storey() should walk up to the IfcBuildingStorey', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const storey = wall.storey();
       expect(storey).not.toBeNull();
       expect(storey!.expressId).toBe(4);
@@ -238,7 +259,7 @@ describe('EntityNode', () => {
 
     it('building() should return itself if already IfcBuilding', () => {
       const store = buildSpatialStore();
-      const building = new EntityNode(store as any, 3);
+      const building = new EntityNode(store, 3);
       const result = building.building();
       expect(result).not.toBeNull();
       expect(result!.expressId).toBe(3);
@@ -246,7 +267,7 @@ describe('EntityNode', () => {
 
     it('storey() should return itself if already IfcBuildingStorey', () => {
       const store = buildSpatialStore();
-      const storey = new EntityNode(store as any, 4);
+      const storey = new EntityNode(store, 4);
       const result = storey.storey();
       expect(result).not.toBeNull();
       expect(result!.expressId).toBe(4);
@@ -254,14 +275,14 @@ describe('EntityNode', () => {
 
     it('building() should return null when cannot reach a building', () => {
       const store = buildSpatialStore();
-      const project = new EntityNode(store as any, 1);
+      const project = new EntityNode(store, 1);
       const result = project.building();
       expect(result).toBeNull();
     });
 
     it('storey() should return null when cannot reach a storey', () => {
       const store = buildSpatialStore();
-      const project = new EntityNode(store as any, 1);
+      const project = new EntityNode(store, 1);
       const result = project.storey();
       expect(result).toBeNull();
     });
@@ -272,14 +293,14 @@ describe('EntityNode', () => {
   describe('traverse', () => {
     it('should traverse aggregation forward with depth 1', () => {
       const store = buildSpatialStore();
-      const building = new EntityNode(store as any, 3);
+      const building = new EntityNode(store, 3);
       const result = building.traverse(RelationshipType.Aggregates, 1, 'forward');
       expect(result.map(n => n.expressId).sort()).toEqual([4, 5]);
     });
 
     it('should traverse aggregation forward with depth 2 (building -> storeys)', () => {
       const store = buildSpatialStore();
-      const site = new EntityNode(store as any, 2);
+      const site = new EntityNode(store, 2);
       const result = site.traverse(RelationshipType.Aggregates, 2, 'forward');
       // depth 1: building(3), depth 2: storeys(4,5)
       expect(result.map(n => n.expressId).sort()).toEqual([3, 4, 5]);
@@ -287,7 +308,7 @@ describe('EntityNode', () => {
 
     it('should not revisit nodes (cycle safety)', () => {
       const store = buildSpatialStore();
-      const building = new EntityNode(store as any, 3);
+      const building = new EntityNode(store, 3);
       const result = building.traverse(RelationshipType.Aggregates, 100, 'forward');
       const ids = result.map(n => n.expressId);
       // No duplicates
@@ -296,9 +317,55 @@ describe('EntityNode', () => {
 
     it('should return empty array when no edges of the given type', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const result = wall.traverse(RelationshipType.Aggregates, 5, 'forward');
       expect(result).toEqual([]);
+    });
+
+    // A node reached first down a LONG branch must be re-expanded when a later,
+    // shorter branch reaches it, or every descendant that only fits inside
+    // `depth` via the short route is silently dropped. `bestDepth` exists for
+    // exactly this; a plain "already visited" guard regresses it.
+    it('re-expands a node re-reached at a shallower depth (diamond, long branch first)', () => {
+      // 1 ─┬─> 2 ──> 4 ──> 5 ──> 6      (5 first seen at depth 3)
+      //    └─> 3 ──────────> 5          (5 re-reached at depth 2, so 6 at 3)
+      // Edge insertion order puts the LONG branch (via 2) first, so the naive
+      // visited-set walk commits 5 at depth 3 and never re-expands it.
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCPROJECT', globalId: 'g1', name: 'root' },
+          { expressId: 2, type: 'IFCSITE', globalId: 'g2', name: 'long-a' },
+          { expressId: 3, type: 'IFCSITE', globalId: 'g3', name: 'short' },
+          { expressId: 4, type: 'IFCSITE', globalId: 'g4', name: 'long-b' },
+          { expressId: 5, type: 'IFCBUILDING', globalId: 'g5', name: 'join' },
+          { expressId: 6, type: 'IFCBUILDINGSTOREY', globalId: 'g6', name: 'leaf' },
+        ],
+        relationships: [
+          { source: 1, target: 2, type: RelationshipType.Aggregates, relId: 900 },
+          { source: 1, target: 3, type: RelationshipType.Aggregates, relId: 901 },
+          { source: 2, target: 4, type: RelationshipType.Aggregates, relId: 902 },
+          { source: 4, target: 5, type: RelationshipType.Aggregates, relId: 903 },
+          { source: 3, target: 5, type: RelationshipType.Aggregates, relId: 904 },
+          { source: 5, target: 6, type: RelationshipType.Aggregates, relId: 905 },
+        ],
+      });
+      const root = new EntityNode(store, 1);
+
+      // depth 3: 6 sits at distance 3 via 1→3→5→6 and at distance 4 via
+      // 1→2→4→5→6. It MUST be returned.
+      const d3 = root.traverse(RelationshipType.Aggregates, 3, 'forward');
+      const d3Ids = d3.map(n => n.expressId);
+      expect(d3Ids).toContain(6);
+      expect([...d3Ids].sort()).toEqual([2, 3, 4, 5, 6]);
+      // Re-expansion must not duplicate the join node in the result.
+      expect(new Set(d3Ids).size).toBe(d3Ids.length);
+
+      // Counter-example: `depth` is still honoured. At depth 2, node 6 is out
+      // of range on BOTH routes, so a "return everything reachable"
+      // implementation would fail here.
+      const d2Ids = root.traverse(RelationshipType.Aggregates, 2, 'forward').map(n => n.expressId);
+      expect(d2Ids).not.toContain(6);
+      expect([...d2Ids].sort()).toEqual([2, 3, 4, 5]);
     });
   });
 
@@ -307,7 +374,7 @@ describe('EntityNode', () => {
   describe('properties', () => {
     it('properties() should return property sets (via fallback table)', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const props = wall.properties();
       expect(props.length).toBeGreaterThan(0);
       const psetNames = props.map(p => p.name);
@@ -316,22 +383,50 @@ describe('EntityNode', () => {
 
     it('property() should return a single property value', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const value = wall.property('Pset_WallCommon', 'FireRating');
       expect(value).toBe('REI60');
     });
 
     it('property() should return null for non-existent property', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const value = wall.property('Pset_WallCommon', 'NoSuchProp');
       expect(value).toBeNull();
     });
 
     it('properties() should return empty for entity with no properties', () => {
       const store = buildSpatialStore();
-      const project = new EntityNode(store as any, 1);
+      const project = new EntityNode(store, 1);
       expect(project.properties()).toEqual([]);
+    });
+
+    // Two distinct IfcPropertySet entities sharing the same Name is a
+    // legitimate model shape (two separate IfcRelDefinesByProperties
+    // relationships pointing at two different property sets that happen to
+    // be named alike). The on-demand extraction path used for a raw STEP
+    // parse (columnar-parser.ts's extractPropertiesOnDemand) returns one
+    // array entry per underlying IfcPropertySet, so `store.getProperties`
+    // can legitimately return two entries with the same `name`, each
+    // carrying different properties -- unlike the columnar PropertyTable's
+    // `getForEntity`, which merges same-named sets into one entry (fixed for
+    // the analogous drop in `PropertyTable.getProperties`).
+    it('property() checks every same-named property set, not just the first (regression, mirrors #2907)', () => {
+      const store = buildSpatialStore();
+      const duckStore: IfcStoreBase = {
+        ...store,
+        getProperties: (expressId: number) => {
+          if (expressId !== 10) return store.getProperties(expressId);
+          return [
+            { name: 'Pset_WallCommon', globalId: 'pset-a', properties: [{ name: 'IsExternal', type: PropertyValueType.Boolean, value: true }] },
+            { name: 'Pset_WallCommon', globalId: 'pset-b', properties: [{ name: 'FireRating', type: PropertyValueType.Label, value: 'REI60' }] },
+          ];
+        },
+      };
+      const wall = new EntityNode(duckStore, 10);
+      // FireRating only lives on the second same-named pset -- must not be
+      // dropped just because the first same-named pset was checked first.
+      expect(wall.property('Pset_WallCommon', 'FireRating')).toBe('REI60');
     });
   });
 
@@ -340,7 +435,7 @@ describe('EntityNode', () => {
   describe('quantities', () => {
     it('quantities() should return quantity sets', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const qsets = wall.quantities();
       expect(qsets.length).toBe(1);
       expect(qsets[0].name).toBe('Qto_WallBaseQuantities');
@@ -349,22 +444,41 @@ describe('EntityNode', () => {
 
     it('quantity() should return a single quantity value', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const length = wall.quantity('Qto_WallBaseQuantities', 'Length');
       expect(length).toBe(5.0);
     });
 
     it('quantity() should return null for non-existent quantity', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const val = wall.quantity('Qto_WallBaseQuantities', 'NoSuchQty');
       expect(val).toBeNull();
     });
 
     it('quantities() should return empty for entity with no quantities', () => {
       const store = buildSpatialStore();
-      const door = new EntityNode(store as any, 11);
+      const door = new EntityNode(store, 11);
       expect(door.quantities()).toEqual([]);
+    });
+
+    // Same shape as the property() regression above: two distinct
+    // IfcElementQuantity entities sharing the same Name, as returned
+    // unmerged by the on-demand extraction path.
+    it('quantity() checks every same-named quantity set, not just the first', () => {
+      const store = buildSpatialStore();
+      const duckStore: IfcStoreBase = {
+        ...store,
+        getQuantities: (expressId: number) => {
+          if (expressId !== 10) return store.getQuantities(expressId);
+          return [
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'Length', type: QuantityType.Length, value: 5.0 }] },
+            { name: 'Qto_WallBaseQuantities', quantities: [{ name: 'NetSideArea', type: QuantityType.Area, value: 15.0 }] },
+          ];
+        },
+      };
+      const wall = new EntityNode(duckStore, 10);
+      expect(wall.quantity('Qto_WallBaseQuantities', 'NetSideArea')).toBe(15.0);
     });
   });
 
@@ -373,7 +487,7 @@ describe('EntityNode', () => {
   describe('allAttributes', () => {
     it('should return known attributes when no source buffer is available', () => {
       const store = buildSpatialStore();
-      const building = new EntityNode(store as any, 3);
+      const building = new EntityNode(store, 3);
       const attrs = building.allAttributes();
       const attrNames = attrs.map(a => a.name);
       expect(attrNames).toContain('Name');
@@ -383,7 +497,7 @@ describe('EntityNode', () => {
 
     it('should omit attributes that are empty strings', () => {
       const store = buildSpatialStore();
-      const wall = new EntityNode(store as any, 10);
+      const wall = new EntityNode(store, 10);
       const attrs = wall.allAttributes();
       // Wall has no description or objectType set, so those should be omitted
       for (const attr of attrs) {
@@ -397,7 +511,7 @@ describe('EntityNode', () => {
   describe('attribute caching', () => {
     it('repeated access to the same attribute should be consistent', () => {
       const store = buildSpatialStore();
-      const node = new EntityNode(store as any, 3);
+      const node = new EntityNode(store, 3);
       const name1 = node.name;
       const name2 = node.name;
       expect(name1).toBe(name2);

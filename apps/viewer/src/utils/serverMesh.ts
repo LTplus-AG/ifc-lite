@@ -34,5 +34,18 @@ export function convertServerMesh(m: ServerMeshData): MeshData {
     // make the same mesh decode to a different shape depending on transport.
     ...(m.origin?.some((v) => v !== 0) ? { origin: m.origin } : {}),
     ...(m.geometry_class ? { geometryClass: m.geometry_class } : {}),
+    // The two DISJOINT source ids (#3199). Tested against `undefined`, never for
+    // truthiness -- unlike the two optionals above, which are correctly
+    // truthiness-gated because a zero origin and class 0 are both the default.
+    //
+    // The server never sends `0` for either id (`#0` is not a STEP instance
+    // name; an air-gap layer is sent as absent), so this converter would be
+    // gating on a value it can never see. That is exactly why it must NOT gate:
+    // a converter enforcing a producer's invariant turns a future producer bug
+    // into silent data loss here instead of a visible wrong id upstream, and
+    // dropping an id is how the REST path keeps rendering identically while a
+    // host loses the ability to drill from a picked piece to its source.
+    ...(m.geometry_item_id !== undefined ? { geometryItemId: m.geometry_item_id } : {}),
+    ...(m.material_id !== undefined ? { materialId: m.material_id } : {}),
   };
 }

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { GeometryQuality, GeometryResult, MeshData } from '@ifc-lite/geometry';
+import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import { GeometryProcessor } from '@ifc-lite/geometry';
 import { extractGlbMapping } from './glb.js';
 import { generateLod0 } from './lod0-generator.js';
@@ -10,7 +10,6 @@ import type { GenerateLod1Result, Lod1MetaJson, Lod0Json, LodInput, Vec3 } from 
 import { toIfcArrayBuffer } from './lod-geometry-utils.js';
 
 export type GenerateLod1Options = {
-  quality?: GeometryQuality;
   /**
    * Test-only hook to simulate meshing failure and force fallback.
    * Not intended for production use.
@@ -77,6 +76,11 @@ function buildFallbackGeometryFromLod0(lod0: Lod0Json): { meshes: MeshData[]; fa
     try {
       meshes.push(buildBoxMeshFromAabb(el.bbox.min, el.bbox.max, el.expressID));
     } catch {
+      // Legitimately silent: `buildBoxMeshFromAabb` is pure arithmetic over
+      // `el.bbox`, which `generateLod0` always populates, so this is
+      // defence-in-depth against a malformed LOD0 rather than a runtime path.
+      // The caller's `meta.failedElements` already lists every element on the
+      // fallback path, so a dropped box is not additionally hidden.
       failed.push(el.expressID);
     }
   }
@@ -131,15 +135,22 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     }
 
     const buffer = toIfcArrayBuffer(input);
-    const gp = new GeometryProcessor({ quality: options.quality });
-    await gp.init();
-    const geom = await processGeometryAdaptive(gp, buffer);
+    const gp = new GeometryProcessor();
+    let glb: Uint8Array;
+    let mapping: ReturnType<typeof extractGlbMapping>;
+    try {
+      await gp.init();
+      const geom = await processGeometryAdaptive(gp, buffer);
 
-    // Assemble the GLB in Rust over the meshes (no re-meshing); extractGlbMapping
-    // reads node `extras.expressId`, which the from-meshes path emits.
-    const glb = gp.exportGlbFromMeshes(geom.meshes, true);
-    if (!glb) throw new Error('GLB assembly returned no data');
-    const mapping = extractGlbMapping(glb);
+      // Assemble the GLB in Rust over the meshes (no re-meshing); extractGlbMapping
+      // reads node `extras.expressId`, which the from-meshes path emits.
+      const result = gp.exportGlbFromMeshes(geom.meshes, true);
+      if (!result) throw new Error('GLB assembly returned no data');
+      glb = result;
+      mapping = extractGlbMapping(glb);
+    } finally {
+      gp.dispose();
+    }
 
     const mappedIds = new Set<number>(Object.keys(mapping).map((k) => Number(k)).filter((n) => Number.isFinite(n)));
     const failedElements: number[] = [];
@@ -170,8 +181,13 @@ export async function generateLod1(input: LodInput, options: GenerateLod1Options
     const { meshes } = buildFallbackGeometryFromLod0(lod0);
 
     const gp = new GeometryProcessor();
-    await gp.init();
-    const glb = gp.exportGlbFromMeshes(meshes, true);
+    let glb: Uint8Array | null;
+    try {
+      await gp.init();
+      glb = gp.exportGlbFromMeshes(meshes, true);
+    } finally {
+      gp.dispose();
+    }
     if (!glb) throw e;
     const mapping = extractGlbMapping(glb);
 

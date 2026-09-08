@@ -76,6 +76,8 @@ function globToRegExp(glob) {
       }
     } else if (c === '?') {
       re += '[^/]';
+      // A set of regex metacharacters to escape, not a template.
+      // eslint-disable-next-line no-template-curly-in-string
     } else if ('.+^${}()|[]\\'.includes(c)) {
       re += '\\' + c;
     } else {
@@ -89,13 +91,41 @@ const IGNORE_PATTERNS = loadIgnorePatterns();
 const IGNORE_RES = IGNORE_PATTERNS.map(globToRegExp);
 const isIgnored = (relPath) => IGNORE_RES.some((re) => re.test(relPath));
 
+// The previous manifest, read ONCE and reused below for both the silent-add
+// guard and the release_tag/base_url carry-over.
+//
+// Fail CLOSED for the same reason `loadIgnorePatterns` does: only a genuinely
+// absent manifest means "no prior state". Any other failure (unparseable JSON,
+// EACCES, I/O error) used to be swallowed, and the consequences were invisible —
+// `release_tag`/`base_url` silently snapped back to the hardcoded defaults below
+// and the rewritten manifest was reported as a success, pointing `fixtures:fetch`
+// at the wrong bucket and `fixtures:upload` at the wrong release tag.
+function readPreviousManifest() {
+  let text;
+  try {
+    text = readFileSync(MANIFEST_PATH, 'utf8');
+  } catch (error) {
+    if (error && typeof error === 'object' && error.code === 'ENOENT') return null;
+    throw new Error(`cannot read ${MANIFEST_PATH}: ${error.message}`, { cause: error });
+  }
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    throw new Error(
+      `${MANIFEST_PATH} exists but is not valid JSON (${error.message}). Refusing to ` +
+        'overwrite it, because doing so would reset "release_tag"/"base_url" to the ' +
+        'built-in defaults without saying so. Fix or delete the file and re-run.',
+      { cause: error },
+    );
+  }
+}
+
+const previousManifest = readPreviousManifest();
+
 // Previous manifest's path set — used to flag NEW fixtures (silent-add guard).
 let prevPaths = new Set();
-try {
-  const prev = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
-  if (Array.isArray(prev.files)) prevPaths = new Set(prev.files.map((f) => f.path));
-} catch {
-  // No prior manifest — every fixture is "new"; the warning below still fires.
+if (Array.isArray(previousManifest?.files)) {
+  prevPaths = new Set(previousManifest.files.map((f) => f.path));
 }
 
 // Files at the top level of tests/models/ that aren't fixtures.
@@ -175,12 +205,9 @@ let header = {
   release_tag: 'fixtures-v1',
   base_url: 'https://github.com/LTplus-AG/ifc-lite/releases/download/fixtures-v1',
 };
-try {
-  const existing = JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
-  if (existing.release_tag) header.release_tag = existing.release_tag;
-  if (existing.base_url) header.base_url = existing.base_url;
-} catch {
-  // No existing manifest — use defaults.
+if (previousManifest) {
+  if (previousManifest.release_tag) header.release_tag = previousManifest.release_tag;
+  if (previousManifest.base_url) header.base_url = previousManifest.base_url;
 }
 
 const out = {

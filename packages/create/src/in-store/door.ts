@@ -19,6 +19,7 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
+  assertPositiveFinite,
   emitBodyRepresentation,
   emitExtrudedSolid,
   emitLocalPlacement,
@@ -89,12 +90,11 @@ export function addDoorToStore(
   anchor: SpatialAnchor,
   params: DoorInStoreParams,
 ): DoorBuildResult {
-  if (params.Width <= 0 || params.Height <= 0) {
-    throw new Error('addDoorToStore: Width and Height must be positive');
-  }
-  if ((params.FrameThickness ?? 0.05) <= 0) {
-    throw new Error('addDoorToStore: FrameThickness must be positive');
-  }
+  assertPositiveFinite([params.Width, params.Height], 'addDoorToStore: Width and Height must be positive');
+  assertPositiveFinite(
+    [params.FrameThickness ?? 0.05],
+    'addDoorToStore: FrameThickness must be positive',
+  );
   // Params are metres; convert dimensioned fields (incl. the OverallWidth/
   // OverallHeight attributes emitted below) to the file's native length
   // unit before emit (see SpatialAnchor.lengthUnitScale).

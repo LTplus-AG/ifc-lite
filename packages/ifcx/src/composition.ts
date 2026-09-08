@@ -70,14 +70,12 @@ function flattenNodes(path: string, nodes: IfcxNode[]): PreComposedNode {
   // Later nodes override earlier (layer semantics)
   for (const node of nodes) {
     if (node.children) {
-      for (const [key, value] of Object.entries(node.children)) {
-        if (value === null) {
-          // null means remove this child
-          delete result.children[key];
-        } else {
-          result.children[key] = value;
-        }
-      }
+      // Later wins, INCLUDING null: a null is a removal opinion and must
+      // survive flattening as a mask — composeNode resolves it after
+      // inheritance so a removed child also shadows an inherited child of
+      // the same name, mirroring the attribute mask (#1031). A later
+      // non-null opinion overwrites the mask (resurrect).
+      Object.assign(result.children, node.children);
     }
     if (node.inherits) {
       for (const [key, value] of Object.entries(node.inherits)) {
@@ -163,9 +161,12 @@ function composeNode(
     }
   }
 
-  // Resolve children
+  // Resolve children. A null opinion is a removal mask: it deletes the
+  // (possibly inherited) child and never appears in composed output.
   for (const [name, childPath] of Object.entries(pre.children)) {
-    if (childPath) {
+    if (childPath === null) {
+      node.children.delete(name);
+    } else if (childPath) {
       const child = composeNode(childPath, preComposed, composed, new Set(visited));
       node.children.set(name, child);
     }
@@ -200,7 +201,17 @@ export function findRoots(composed: Map<string, ComposedNode>): ComposedNode[] {
 }
 
 /**
- * Get all descendant nodes of a given node.
+ * Get all descendant nodes of a given node — the whole subtree, not just
+ * the direct children. Each node appears once; a cycle terminates.
+ *
+ * The child is marked visited by the recursive call that opens on it, NOT
+ * by the loop before it. Marking it here and then recursing made
+ * `traverse`'s own `visited.has(n.path)` guard fire on entry every single
+ * time, so the walk returned after one level: `a -> b -> c -> d` answered
+ * `[b]` instead of `[b, c, d]`. The two tests over this function could not
+ * see it — one asserts only that the result is duplicate-free (true of a
+ * one-level result) and the other's expectation, `['b']` for a two-node
+ * cycle, is what the truncated walk produces anyway.
  */
 export function getDescendants(node: ComposedNode): ComposedNode[] {
   const descendants: ComposedNode[] = [];
@@ -213,7 +224,6 @@ export function getDescendants(node: ComposedNode): ComposedNode[] {
     for (const child of n.children.values()) {
       if (visited.has(child.path)) continue;
       descendants.push(child);
-      visited.add(child.path);
       traverse(child);
     }
   }

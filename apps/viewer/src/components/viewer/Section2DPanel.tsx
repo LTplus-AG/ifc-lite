@@ -22,10 +22,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useViewerStore } from '@/store';
+import { toast } from '@/components/ui/toast';
 import { toGlobalIdFromModels } from '@/store/globalId';
 import { useIfc } from '@/hooks/useIfc';
 import { useDraggablePanel } from '@/hooks/useDraggablePanel';
-import { GraphicOverrideEngine } from '@ifc-lite/drawing-2d';
+import { GraphicOverrideEngine, COMMON_SCALES } from '@ifc-lite/drawing-2d';
 import { type GeometryResult } from '@ifc-lite/geometry';
 import { DrawingSettingsPanel } from './DrawingSettingsPanel';
 import { DxfUnderlayPanel } from './DxfUnderlayPanel';
@@ -39,9 +40,10 @@ import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
-import { useSymbolicAnnotationsForDrawing } from '@/hooks/useSymbolicAnnotations';
-import { useDxfUnderlaysForDrawing, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
+import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
+import { useDxfUnderlaysForDrawing, useDxfMapToWorldTransform, dxfWorldShift, dxfUnderlayDrawingBounds } from '@/hooks/useDxfUnderlay';
 import { useScanSectionLayer } from '@/hooks/useScanSectionLayer';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 
 interface Section2DPanelProps {
   mergedGeometry?: GeometryResult | null;
@@ -52,7 +54,6 @@ interface Section2DPanelProps {
 export function Section2DPanel({
   mergedGeometry,
   computedIsolatedIds,
-  modelIdToIndex
 }: Section2DPanelProps = {}): React.ReactElement | null {
   // ═══════════════════════════════════════════════════════════════════════════
   // STORE SELECTORS
@@ -72,12 +73,15 @@ export function Section2DPanel({
   const setDrawingError = useViewerStore((s) => s.setDrawing2DError);
   const displayOptions = useViewerStore((s) => s.drawing2DDisplayOptions);
   const updateDisplayOptions = useViewerStore((s) => s.updateDrawing2DDisplayOptions);
+  // LENGTHUNIT display override for the on-canvas measure distance/perimeter
+  // labels (#2199 slice not covered by #2538 — see Drawing2DCanvas.tsx).
+  const unitDisplayOverrides = useViewerStore((s) => s.unitDisplayOverrides);
+  // Class-level Visibility toggles — the section honours them like the 3D
+  // viewport does, so a hidden IfcSpace/IfcOpeningElement is not cut (#2060).
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
   // Graphic overrides
-  const graphicOverridePresets = useViewerStore((s) => s.graphicOverridePresets);
   const activePresetId = useViewerStore((s) => s.activePresetId);
-  const setActivePreset = useViewerStore((s) => s.setActivePreset);
   const overridesEnabled = useViewerStore((s) => s.overridesEnabled);
-  const toggleOverridesEnabled = useViewerStore((s) => s.toggleOverridesEnabled);
   const getActiveOverrideRules = useViewerStore((s) => s.getActiveOverrideRules);
   const customOverrideRules = useViewerStore((s) => s.customOverrideRules);
 
@@ -103,7 +107,6 @@ export function Section2DPanel({
 
   // 2D Measure tool state
   const measure2DMode = useViewerStore((s) => s.measure2DMode);
-  const toggleMeasure2DMode = useViewerStore((s) => s.toggleMeasure2DMode);
   const measure2DStart = useViewerStore((s) => s.measure2DStart);
   const measure2DCurrent = useViewerStore((s) => s.measure2DCurrent);
   const setMeasure2DStart = useViewerStore((s) => s.setMeasure2DStart);
@@ -114,7 +117,6 @@ export function Section2DPanel({
   const measure2DResults = useViewerStore((s) => s.measure2DResults);
   const completeMeasure2D = useViewerStore((s) => s.completeMeasure2D);
   const cancelMeasure2D = useViewerStore((s) => s.cancelMeasure2D);
-  const clearMeasure2DResults = useViewerStore((s) => s.clearMeasure2DResults);
   const measure2DSnapPoint = useViewerStore((s) => s.measure2DSnapPoint);
   const setMeasure2DSnapPoint = useViewerStore((s) => s.setMeasure2DSnapPoint);
 
@@ -129,7 +131,6 @@ export function Section2DPanel({
   const addPolygonArea2DPoint = useViewerStore((s) => s.addPolygonArea2DPoint);
   const completePolygonArea2D = useViewerStore((s) => s.completePolygonArea2D);
   const cancelPolygonArea2D = useViewerStore((s) => s.cancelPolygonArea2D);
-  const clearPolygonArea2DResults = useViewerStore((s) => s.clearPolygonArea2DResults);
   // Text annotation state
   const textAnnotations2D = useViewerStore((s) => s.textAnnotations2D);
   const textAnnotation2DEditing = useViewerStore((s) => s.textAnnotation2DEditing);
@@ -179,7 +180,7 @@ export function Section2DPanel({
   // ═══════════════════════════════════════════════════════════════════════════
   // LOCAL STATE
   // ═══════════════════════════════════════════════════════════════════════════
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [isExpanded] = useState(false);
   const [panelSize, setPanelSize] = useState({ width: 400, height: 300 });
   const [isNarrow, setIsNarrow] = useState(false);  // Track if panel is too narrow for all buttons
   const [isPinned, setIsPinned] = useState(true);  // Default ON: keep position on regenerate
@@ -193,7 +194,7 @@ export function Section2DPanel({
   // Track resize event handlers for cleanup
   const resizeHandlersRef = useRef<{ move: ((e: MouseEvent) => void) | null; up: (() => void) | null }>({ move: null, up: null });
   // Cache sheet drawing transform when pinned (to keep model fixed in place)
-  const cachedSheetTransformRef = useRef<{ translateX: number; translateY: number; scaleFactor: number } | null>(null);
+  const cachedSheetTransformRef = useRef<CachedSheetTransform | null>(null);
 
   // Track panel width for responsive header
   useEffect(() => {
@@ -276,10 +277,10 @@ export function Section2DPanel({
   // EXTRACTED HOOKS
   // ═══════════════════════════════════════════════════════════════════════════
 
-  const { generateDrawing, doRegenerate, isRegenerating } = useDrawingGeneration({
-    geometryResult, ifcDataStore, sectionPlane, displayOptions,
+  const { generateDrawing, isRegenerating } = useDrawingGeneration({
+    geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
     combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
-    models, panelVisible, drawing,
+    models, panelVisible, activeTool, drawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });
 
@@ -326,7 +327,7 @@ export function Section2DPanel({
   }, [geometryResult, sectionPlane.axis, sectionPlane.position]);
 
   const ifcAnnotationData = useSymbolicAnnotationsForDrawing({
-    enabled: displayOptions.showIfcAnnotations && status === 'ready',
+    enabled: symbolicAnnotationsOverlayEnabled(displayOptions.showIfcAnnotations, status, typeVisibility.ifcAnnotations),
     axis: sectionPlane.axis,
     sectionPosWorld: ifcAnnotationsForDrawing.sectionPosWorld,
     viewDepth: ifcAnnotationsForDrawing.viewDepth,
@@ -416,20 +417,44 @@ export function Section2DPanel({
 
   // Centre an underlay on the generated drawing: offset = model-drawing
   // centre − underlay centre at zero offset (same world→drawing mapping
-  // the render hook applies, including the current rotation/scale).
+  // the render hook applies, including the current rotation/scale and,
+  // for a georeferenced underlay, the inverse IfcMapConversion — issue
+  // #1929, same transform `dxfUnderlayData` above resolves).
+  const { transform: dxfMapToWorld, available: dxfGeoreferenceAvailable } = useDxfMapToWorldTransform();
   const handleCenterDxfUnderlay = useCallback((id: string) => {
     const entry = dxfUnderlays.find((u) => u.id === id);
     if (!entry || !drawing) return;
     const shift = dxfWorldShift(geometryResult?.coordinateInfo);
     const mirrorX = sectionPlane.flipped && sectionPlane.custom === undefined;
-    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX);
-    if (!underlayBounds) return;
+    const underlayBounds = dxfUnderlayDrawingBounds(entry, shift, mirrorX, dxfMapToWorld, dxfGeoreferenceAvailable);
+    if (!underlayBounds) {
+      // PR #1965 review: this guard fires when the underlay has no usable
+      // bounds AT ALL (missing extents) OR the georeference produced a
+      // non-finite corner (`dxfUnderlayDrawingBounds` collapses both into
+      // `null` — see its docstring). Either way the button used to do
+      // nothing with no explanation; tell the user so a malformed
+      // `IfcMapConversion` doesn't read as an unresponsive button.
+      toast.error("Couldn't centre this underlay: its bounds are missing or the georeference produced non-finite coordinates.");
+      return;
+    }
     const modelCx = (drawing.bounds.min.x + drawing.bounds.max.x) / 2;
     const modelCy = (drawing.bounds.min.y + drawing.bounds.max.y) / 2;
     const underlayCx = (underlayBounds.min.x + underlayBounds.max.x) / 2;
     const underlayCy = (underlayBounds.min.y + underlayBounds.max.y) / 2;
-    updateDxfUnderlayPlacement(id, { offsetX: modelCx - underlayCx, offsetY: modelCy - underlayCy });
-  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement]);
+    const offsetX = modelCx - underlayCx;
+    const offsetY = modelCy - underlayCy;
+    // Defense-in-depth (PR #1965 review): `dxfUnderlayDrawingBounds`
+    // already returns null on a non-finite bound (so `underlayBounds`
+    // above would have short-circuited), but guard the DERIVED offset too
+    // — `drawing.bounds` comes from the generated drawing, not the
+    // underlay, and a NaN here would otherwise still get written into the
+    // stored placement, which survives toggling georeferencing back off.
+    if (!Number.isFinite(offsetX) || !Number.isFinite(offsetY)) {
+      toast.error("Couldn't centre this underlay: the drawing bounds are not finite.");
+      return;
+    }
+    updateDxfUnderlayPlacement(id, { offsetX, offsetY });
+  }, [dxfUnderlays, drawing, geometryResult, sectionPlane.flipped, sectionPlane.custom, updateDxfUnderlayPlacement, dxfMapToWorld, dxfGeoreferenceAvailable]);
 
   // Point-cloud scan overlay (issue #1805): a thin band of the loaded
   // scan(s) around the active section plane, projected into the SAME
@@ -445,14 +470,49 @@ export function Section2DPanel({
     legacyPointClouds: geometryResult?.pointClouds,
   });
 
-  const { formatDistance, handleExportSVG, handleExportDXF, handlePrint } = useDrawingExport({
+  const { handleExportSVG, handleExportDXF, handleExportPDF, handlePrint } = useDrawingExport({
     drawing, displayOptions, sectionPlane, activePresetId,
     entityColorMap, overridesEnabled, overrideEngine,
     measure2DResults, polygonArea2DResults, textAnnotations2D, cloudAnnotations2D,
     sheetEnabled, activeSheet, dxfUnderlays: dxfUnderlayData,
     ifcDataStore, coordinateInfo: geometryResult?.coordinateInfo,
     scanSection: scanSectionLayer,
+    // Pin View state and the preview's transform cache: without these the
+    // print/export path recomputed the sheet placement from the CURRENT
+    // bounds while a pinned preview kept the held one, so a regenerate at a
+    // new elevation printed a different layout from the one on screen. Pin
+    // View defaults ON, so this was the default path. The hook only READS
+    // the ref — the preview canvas owns the write.
+    isPinned, cachedSheetTransformRef,
   });
+
+  // Scale prompt for the scaled PDF export (issue #2042). A proper
+  // scale-selector dropdown (presets + custom input, matching the issue's
+  // exact wording) is a follow-up; this is the "smallest useful version"
+  // — it still gives every requested scale (defaults to "as displayed",
+  // accepts any of the common presets or a fully custom denominator) and
+  // never guesses silently. `window.prompt` matches this hook's existing
+  // `alert`-based error surface (no toast wiring here); see useDrawingExport.
+  const handleExportPdfPrompt = useCallback(() => {
+    const presetHint = COMMON_SCALES.map((s) => s.name).join(', ');
+    const asDisplayed = displayOptions.scale || 100;
+    const input = window.prompt(
+      `Export PDF at scale 1:N — enter N, or leave blank for "as displayed" (currently 1:${asDisplayed}).\nCommon scales: ${presetHint}`,
+      String(asDisplayed)
+    );
+    if (input === null) return; // cancelled
+    const trimmed = input.trim();
+    if (trimmed === '') {
+      handleExportPDF();
+      return;
+    }
+    const n = Number(trimmed.replace(/^1:/, ''));
+    if (!Number.isFinite(n) || n <= 0) {
+      window.alert(`Invalid scale "${input}". Enter a positive number, e.g. 100 for 1:100.`);
+      return;
+    }
+    handleExportPDF(n);
+  }, [displayOptions.scale, handleExportPDF]);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // CALLBACKS
@@ -474,10 +534,6 @@ export function Section2DPanel({
     setDrawing(null);
     setDrawingStatus('idle');
   }, [displayOptions.useSymbolicRepresentations, updateDisplayOptions, setDrawing, setDrawingStatus]);
-
-  const toggleExpanded = useCallback(() => {
-    setIsExpanded((prev) => !prev);
-  }, []);
 
   const togglePinned = useCallback(() => {
     setIsPinned((prev) => !prev);
@@ -880,6 +936,15 @@ export function Section2DPanel({
               <Button
                 variant="ghost"
                 size="icon-sm"
+                onClick={handleExportPdfPrompt}
+                disabled={!drawing}
+                title="Download PDF (to scale)"
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 onClick={handlePrint}
                 disabled={!drawing}
                 title="Print"
@@ -1006,6 +1071,10 @@ export function Section2DPanel({
                     <FileDown className="h-4 w-4 mr-2" />
                     Download DXF
                   </DropdownMenuItem>
+                  <DropdownMenuItem onClick={handleExportPdfPrompt} disabled={!drawing}>
+                    <FileText className="h-4 w-4 mr-2" />
+                    Download PDF (to scale)
+                  </DropdownMenuItem>
                   <DropdownMenuItem onClick={handlePrint} disabled={!drawing}>
                     <Printer className="h-4 w-4 mr-2" />
                     Print
@@ -1105,6 +1174,7 @@ export function Section2DPanel({
               dxfUnderlays={dxfUnderlayData}
               scanPoints={displayOptions.showScanSection ? scanSectionLayer.points : undefined}
               scanOpacity={displayOptions.scanSectionOpacity}
+              unitDisplayOverrides={unitDisplayOverrides}
             />
             {/* Subtle updating indicator - shows while regenerating without hiding the drawing */}
             {isRegenerating && (
@@ -1249,6 +1319,7 @@ export function Section2DPanel({
             onClose={() => setDxfPanelOpen(false)}
             onCenterOnModel={handleCenterDxfUnderlay}
             planViewActive={sectionPlane.axis === 'down' && sectionPlane.custom === undefined}
+            georeferenceAvailable={dxfGeoreferenceAvailable}
           />
         </div>
       )}

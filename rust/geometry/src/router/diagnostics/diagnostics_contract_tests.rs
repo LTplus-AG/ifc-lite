@@ -18,8 +18,12 @@ fn aggregate_empty_is_all_zero() {
         &FxHashMap::default(),
         RectFastStats::default(),
         16,
+        0,
+        &FxHashMap::default(),
     );
     assert_eq!(d.total_csg_failures, 0);
+    assert_eq!(d.total_unsupported_items, 0);
+    assert!(d.unsupported_items_by_type.is_empty());
     assert_eq!(d.products_with_failures, 0);
     assert!(d.failures_by_reason.is_empty());
     assert!(d.worst_hosts.is_empty());
@@ -73,7 +77,7 @@ fn aggregate_summarizes_failures_hosts_classification_and_silent_noops() {
     let cls = ClassificationStats { rectangular: 3, diagonal: 1, non_rectangular: 0 };
     let rf = RectFastStats { fired: 2, openings_cut: 4, ..Default::default() };
 
-    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16);
+    let d = aggregate_diagnostics(cls, &csg, &hosts, rf, 16, 0, &FxHashMap::default());
     assert_eq!(d.total_csg_failures, 3);
     assert_eq!(d.products_with_failures, 2);
     assert_eq!(d.hosts_with_openings, 2);
@@ -117,7 +121,15 @@ fn worst_host_triangle_count_falls_back_to_tris_before_when_no_cut_ran() {
     );
     let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
     csg.insert(3, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::EmptyOperand)]);
-    let d = aggregate_diagnostics(ClassificationStats::default(), &csg, &hosts, RectFastStats::default(), 16);
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &csg,
+        &hosts,
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
     assert_eq!(d.worst_hosts[0].triangle_count, Some(80));
     assert!(d.worst_hosts[0].bbox.is_none());
 }
@@ -142,13 +154,20 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
     );
     let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
     csg.insert(7, vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::KernelOutputInvalid)]);
+    let mut unsupported: FxHashMap<String, u64> = FxHashMap::default();
+    unsupported.insert("IfcSectionedSpine".to_string(), 3);
     let d = aggregate_diagnostics(
         ClassificationStats { rectangular: 1, ..Default::default() },
         &csg,
         &hosts,
         RectFastStats::default(),
         16,
+        0,
+        &unsupported,
     );
+    assert_eq!(d.total_unsupported_items, 3);
+    assert_eq!(d.unsupported_items_by_type[0].reason, "IfcSectionedSpine");
+    assert_eq!(d.unsupported_items_by_type[0].count, 3);
     let v = serde_json::to_value(&d).expect("serializes");
     for key in [
         "totalCsgFailures",
@@ -159,6 +178,9 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
         "silentNoOps",
         "rectFast",
         "worstHosts",
+        "oversizedRefDrops",
+        "totalUnsupportedItems",
+        "unsupportedItemsByType",
     ] {
         assert!(v.get(key).is_some(), "missing top-level key {key}");
     }
@@ -181,16 +203,217 @@ fn serializes_camelcase_keys_matching_the_ts_contract() {
     assert!(fr.get("reason").is_some() && fr.get("count").is_some());
 }
 
+/// RED for issue #3752: `oversized_ref_drops` must pass through
+/// `aggregate_diagnostics` unchanged and must NOT be swallowed by
+/// `is_empty`'s all-zero gate — a model whose ONLY diagnostic-worthy event is
+/// a refused oversized reference must still be surfaced, not suppressed.
+#[test]
+fn oversized_ref_drops_passes_through_and_defeats_is_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        3,
+        &FxHashMap::default(),
+    );
+    assert_eq!(d.oversized_ref_drops, 3);
+    assert!(
+        !d.is_empty(),
+        "a nonzero oversized_ref_drops must defeat is_empty so the diagnostics object is attached"
+    );
+}
+
+/// Control: zero refusals is genuinely empty (all other fields already zero).
+#[test]
+fn zero_oversized_ref_drops_stays_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
+    assert!(d.is_empty());
+}
+
 #[test]
 fn schema_version_round_trips_and_defaults() {
     let d = GeometryDiagnostics::default();
     assert_eq!(d.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     let json = serde_json::to_string(&d).unwrap();
-    assert!(json.contains("\"schemaVersion\":2"), "serialized unconditionally: {json}");
+    assert!(json.contains("\"schemaVersion\":3"), "serialized unconditionally: {json}");
     let back: GeometryDiagnostics = serde_json::from_str(&json).unwrap();
     assert_eq!(back.schema_version, GEOMETRY_DIAGNOSTICS_SCHEMA_VERSION);
     // A pre-versioned producer (field absent) deserializes to 0, distinguishable.
     let legacy: GeometryDiagnostics =
-        serde_json::from_str(&json.replace("\"schemaVersion\":2,", "")).unwrap();
+        serde_json::from_str(&json.replace("\"schemaVersion\":3,", "")).unwrap();
     assert_eq!(legacy.schema_version, 0);
+}
+
+/// A `WorstHost` field the TypeScript mirrors declare as `field?: T` must be
+/// ABSENT from the JSON when it is `None`, not present as an explicit `null`.
+///
+/// The two are different wire states and `?:` means absent: an HTTP consumer
+/// doing `if (h.triangleCount !== undefined) h.triangleCount.toLocaleString()`
+/// typechecks and then throws on a `null`. The wasm boundary hid this because
+/// `serde_wasm_bindgen` writes `None` as `undefined`; `serde_json`, which is
+/// what the server response goes through, writes it as `null`.
+///
+/// Both directions are asserted, so "always skip" fails this test too.
+#[test]
+fn worst_host_optional_fields_are_omitted_when_none_and_present_when_some() {
+    let none = WorstHost {
+        product_id: 1,
+        ifc_type: "IfcWall".to_string(),
+        openings: 2,
+        csg_failures: 1,
+        first_failure_label: None,
+        bbox: None,
+        triangle_count: None,
+    };
+    let obj = serde_json::to_value(&none).unwrap();
+    let obj = obj.as_object().expect("serializes to a JSON object");
+    for key in ["firstFailureLabel", "bbox", "triangleCount"] {
+        assert!(
+            !obj.contains_key(key),
+            "`{key}` must be absent when None, not null: {obj:?}"
+        );
+    }
+
+    let some = WorstHost {
+        first_failure_label: Some("difference_emptied_host".to_string()),
+        bbox: Some(HostBbox { min: [0.0, 0.0, 0.0], max: [1.0, 2.0, 3.0] }),
+        triangle_count: Some(42),
+        ..none
+    };
+    let obj = serde_json::to_value(&some).unwrap();
+    let obj = obj.as_object().expect("serializes to a JSON object");
+    for key in ["firstFailureLabel", "bbox", "triangleCount"] {
+        assert!(
+            obj.contains_key(key),
+            "`{key}` must be present when Some: {obj:?}"
+        );
+    }
+    assert_eq!(obj["triangleCount"], serde_json::json!(42));
+
+    // A legacy payload that still writes explicit nulls stays readable.
+    let legacy = serde_json::json!({
+        "productId": 1, "ifcType": "IfcWall", "openings": 2, "csgFailures": 1,
+        "firstFailureLabel": null, "bbox": null, "triangleCount": null,
+    });
+    let back: WorstHost = serde_json::from_value(legacy).unwrap();
+    assert!(back.bbox.is_none() && back.triangle_count.is_none());
+}
+
+#[test]
+fn the_unattributed_bucket_counts_in_the_totals_but_is_not_a_product() {
+    // One real host plus one record swept in with no owner (a boolean
+    // processor's own log, or PENDING_MAPPED_BOOL_FAILURES). Id 0 is not a
+    // valid express id, so reporting it as a product would tell the user
+    // "2 products failed" for a model where one product failed and one failure
+    // has an unknown owner.
+    let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
+    csg.insert(
+        42,
+        vec![BoolFailure::new(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost)],
+    );
+    csg.insert(
+        UNATTRIBUTED_PRODUCT_ID,
+        vec![BoolFailure::new(
+            BoolOp::Unknown,
+            BoolFailureReason::UnsupportedOperand("IfcSectionedSpine".to_string()),
+        )],
+    );
+
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &csg,
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
+
+    assert_eq!(d.products_with_failures, 1, "the synthetic bucket is not a product");
+    assert_eq!(d.total_csg_failures, 2, "but its records still count as failures");
+    let reasons: Vec<&str> = d.failures_by_reason.iter().map(|r| r.reason.as_str()).collect();
+    assert!(
+        reasons.contains(&"UnsupportedOperand"),
+        "and still appear in the reason breakdown: {reasons:?}"
+    );
+}
+
+#[test]
+fn an_unattributed_only_pass_reports_zero_products_and_still_has_issues() {
+    // The boundary the count must not round the wrong way: failures exist, no
+    // product owns them. `has_issues` must still fire, or the pass would look
+    // clean to every caller that gates on it.
+    let mut csg: FxHashMap<u32, Vec<BoolFailure>> = FxHashMap::default();
+    csg.insert(
+        UNATTRIBUTED_PRODUCT_ID,
+        vec![BoolFailure::new(BoolOp::Union, BoolFailureReason::EmptyOperand)],
+    );
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &csg,
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
+    assert_eq!(d.products_with_failures, 0);
+    assert_eq!(d.total_csg_failures, 1);
+    assert!(d.has_issues(), "an unowned failure is still a failure");
+    assert!(!d.is_empty(), "and must not be skipped as an empty diagnostic");
+}
+
+/// RED for the #3691 counter, mirroring #3752's pair above: a model whose ONLY
+/// diagnostic-worthy event is a dropped representation item must still be
+/// surfaced. `is_empty()` gates whether `processor/mod.rs` attaches the
+/// diagnostics object at all — `(!diag.is_empty()).then_some(diag)` — so
+/// deleting the `total_unsupported_items == 0` arm does not merely loosen a
+/// predicate, it throws the whole object away on exactly the models this
+/// counter was added for. Nothing failed when that arm was deleted.
+#[test]
+fn unsupported_items_pass_through_and_defeat_is_empty() {
+    let mut unsupported: FxHashMap<String, u64> = FxHashMap::default();
+    unsupported.insert("IfcGeometricSet".to_string(), 2);
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &unsupported,
+    );
+    assert_eq!(d.total_unsupported_items, 2);
+    assert_eq!(d.unsupported_items_by_type[0].reason, "IfcGeometricSet");
+    assert!(
+        !d.is_empty(),
+        "a nonzero total_unsupported_items must defeat is_empty, or processor/mod.rs drops the \
+         diagnostics object and the drop is invisible again"
+    );
+}
+
+/// Control: no dropped items is genuinely empty, so the arm above cannot be
+/// satisfied by making `is_empty` always false.
+#[test]
+fn zero_unsupported_items_stays_empty() {
+    let d = aggregate_diagnostics(
+        ClassificationStats::default(),
+        &FxHashMap::default(),
+        &FxHashMap::default(),
+        RectFastStats::default(),
+        16,
+        0,
+        &FxHashMap::default(),
+    );
+    assert!(d.is_empty());
 }

@@ -21,7 +21,11 @@ const WINDOW_A_PATH = '2c2d549f-f9fe-4e22-8590-562fda81a690';
 const WINDOW_B_PATH = '592504dc-469a-44d6-9ae8-c801b591679b';
 
 function toArrayBuffer(buffer: Buffer): ArrayBuffer {
-  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
+  // `Buffer#buffer` is `ArrayBufferLike` (it may be a SharedArrayBuffer), so
+  // copy the view's bytes into a plain ArrayBuffer instead of slicing it.
+  const copy = new ArrayBuffer(buffer.byteLength);
+  new Uint8Array(copy).set(buffer);
+  return copy;
 }
 
 describe('buildHierarchy', { skip: !FIXTURES_AVAILABLE && 'tests/models/ifc5/Hello_Wall_hello-wall.ifcx missing — run `pnpm fixtures`' }, () => {

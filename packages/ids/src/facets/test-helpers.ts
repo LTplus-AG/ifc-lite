@@ -33,7 +33,13 @@ interface MockEntity {
   }>;
   classifications?: Array<{ system?: string; value?: string }>;
   materials?: Array<{ name: string; category?: string }>;
-  parent?: { expressId?: number; type: string; relation: string; predefinedType?: string };
+  parent?: {
+    expressId?: number;
+    type: string;
+    relation: string;
+    predefinedType?: string;
+    objectType?: string;
+  };
   attributes?: Record<string, string | number | boolean>;
   /**
    * Optional per-attribute XSD-type metadata, mirroring the schema
@@ -135,6 +141,7 @@ export function createMockAccessor(entities: MockEntity[]): IFCDataAccessor {
         expressId: entity.parent.expressId,
         entityType: entity.parent.type,
         predefinedType: entity.parent.predefinedType,
+        objectType: entity.parent.objectType,
       };
     },
     getAttribute(

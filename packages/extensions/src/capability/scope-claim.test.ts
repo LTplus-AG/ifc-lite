@@ -61,6 +61,22 @@ describe('scopeClaimCovers (claim within grant)', () => {
     expect(scopeClaimCovers(grant, claim('model.mutate:Pset_FireSafety*@IfcWall'))).toBe(false);
   });
 
+  it('requires EVERY grant constraint to match, not just the first', () => {
+    // Regression: the constraint check is a loop over multiple key=value
+    // pairs. A claim that satisfies the first constraint but fails a
+    // later one must still be denied — a loop that only inspects the
+    // first entry would wrongly grant coverage here.
+    const grant = claim('model.mutate:Pset_*@IfcWall&storey=EG&fireRating=required');
+    // Counterfactual: matching only the first constraint is NOT enough.
+    expect(
+      scopeClaimCovers(grant, claim('model.mutate:Pset_*@IfcWall&storey=EG&fireRating=optional')),
+    ).toBe(false);
+    // Both constraints must match for coverage to hold.
+    expect(
+      scopeClaimCovers(grant, claim('model.mutate:Pset_*@IfcWall&storey=EG&fireRating=required')),
+    ).toBe(true);
+  });
+
   it('matches IFC type prefix globs one-way', () => {
     const grant = claim('model.mutate:Pset_*@IfcWall*');
     expect(scopeClaimCovers(grant, claim('model.mutate:Pset_*@IfcWallStandardCase'))).toBe(true);
@@ -109,6 +125,29 @@ describe('opMatchesScopeClaim (write/publish-time enforcement)', () => {
         ifcType: 'IfcWall',
       }),
     ).toBe(false);
+  });
+
+  it('requires EVERY claim constraint to match an op tag, not just the first', () => {
+    // Regression: same multi-constraint loop as scopeClaimCovers, on the
+    // op-enforcement side. A single satisfied constraint must not be
+    // enough when the claim has more than one.
+    const twoConstraint = claim('model.mutate:Pset_FireSafety*@IfcWall&storey=EG&zone=A');
+    // Counterfactual: op satisfies "storey" but fails "zone" — must deny.
+    expect(
+      opMatchesScopeClaim(twoConstraint, {
+        capability: 'model.mutate:Pset_FireSafety',
+        ifcType: 'IfcWall',
+        tags: { storey: 'EG', zone: 'B' },
+      }),
+    ).toBe(false);
+    // Both constraints satisfied — must accept.
+    expect(
+      opMatchesScopeClaim(twoConstraint, {
+        capability: 'model.mutate:Pset_FireSafety',
+        ifcType: 'IfcWall',
+        tags: { storey: 'EG', zone: 'A' },
+      }),
+    ).toBe(true);
   });
 
   it('findCoveringClaim returns the matching claim or undefined', () => {

@@ -34,30 +34,31 @@
 //! it already reports best-of-N to shave scheduler/GC noise, but treat single
 //! runs as noisy and compare medians across runs.
 //!
-//! WASM parity note: `std::time::Instant` traps on wasm32, so in the browser
-//! only `geometry_ms`/`total_ms` are self-timed; the parse/scan phases run in
-//! JS workers and are timed there (viewer `ifc_model_loaded` PostHog milestones
-//! and the console `[stream]` timeline). The *algorithmic* hotspots this probe
-//! surfaces are identical on both targets because the Rust code is shared; the
-//! WASM-only concerns (per-worker file re-decode, no-threads, memory bandwidth)
-//! are orchestration-level and covered by the viewer benchmark, not here. See
-//! `scripts/perf/README.md`.
+//! `--fingerprint` checks ordered mesh payloads after timing (excludes text,
+//! material definitions, UVs, textures and instancing); see `perf_probe/fingerprint.rs`.
 
-use std::time::Instant;
+#[path = "perf_probe/fingerprint.rs"]
+mod fingerprint;
 
-use ifc_lite_core::build_entity_index;
-use ifc_lite_geometry::csg::{reset_csg_census, take_csg_census};
-use ifc_lite_processing::{process_geometry, ProcessingStats};
+#[path = "perf_probe/measurement.rs"]
+mod measurement;
+
+use ifc_lite_geometry::csg::take_csg_census;
+use ifc_lite_processing::ProcessingStats;
 
 /// One fixture's best-of-N measurement plus the isolated scan.
 struct Probe {
     path: String,
     file_mb: f64,
     entities: usize,
-    index_build_ms: f64,
+    index_build_ms: Option<f64>,
+    cold_timing: Option<measurement::ColdTiming>,
     // Best-of-N run (selected by minimum total_time_ms).
     stats: ProcessingStats,
     all_totals_ms: Vec<u64>,
+    /// Full process_geometry call, including metadata after ProcessingStats closes.
+    all_wall_ms: Vec<f64>,
+    fingerprints: Option<Vec<String>>,
     census: Option<CensusSummary>,
 }
 
@@ -73,10 +74,7 @@ struct CensusSummary {
     operand_tris: u64,
 }
 
-// CSG op codes as recorded in `CsgOpRecord.op` (a `u8`, not an exported enum).
-// Mirrors ifc_lite_geometry's census numbering; kept as named constants so a
-// reorder there surfaces as a one-line change here rather than silently
-// swapping the reported counts.
+// CSG op codes match `CsgOpRecord.op`.
 const OP_SUBTRACT: u8 = 0;
 const OP_UNION: u8 = 1;
 const OP_INTERSECTION: u8 = 2;
@@ -97,62 +95,6 @@ fn summarize_census() -> CensusSummary {
     s
 }
 
-fn run(path: &str, iters: usize, want_census: bool) -> Option<Probe> {
-    let content = match std::fs::read(path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("skip {path}: {e}");
-            return None;
-        }
-    };
-    let file_mb = content.len() as f64 / 1.048_576e6;
-
-    // Isolated scan: build_entity_index alone times the pure structural scan
-    // that the pipeline otherwise folds into entity_scan_ms. Best-of-3.
-    let mut index_build_ms = f64::INFINITY;
-    let mut entities = 0usize;
-    for _ in 0..3 {
-        let t = Instant::now();
-        let idx = build_entity_index(&content);
-        let ms = t.elapsed().as_secs_f64() * 1e3;
-        entities = idx.len();
-        index_build_ms = index_build_ms.min(ms);
-    }
-
-    // Full pipeline, best-of-N by total_time_ms. Census (if requested) is
-    // drained from the run that was kept, so the op counts match the timing.
-    let mut best: Option<ProcessingStats> = None;
-    let mut best_total = u64::MAX;
-    let mut best_census: Option<CensusSummary> = None;
-    let mut all_totals_ms = Vec::with_capacity(iters);
-    for _ in 0..iters.max(1) {
-        if want_census {
-            reset_csg_census();
-        }
-        let result = process_geometry(&content);
-        let census = if want_census {
-            Some(summarize_census())
-        } else {
-            None
-        };
-        all_totals_ms.push(result.stats.total_time_ms);
-        if result.stats.total_time_ms <= best_total {
-            best_total = result.stats.total_time_ms;
-            best = Some(result.stats);
-            best_census = census;
-        }
-    }
-
-    Some(Probe {
-        path: path.to_string(),
-        file_mb,
-        entities,
-        index_build_ms,
-        stats: best?,
-        all_totals_ms,
-        census: best_census,
-    })
-}
 
 fn pct(part: u64, whole: u64) -> f64 {
     if whole == 0 {
@@ -185,17 +127,25 @@ fn print_human(p: &Probe) {
         "  best total {} ms  (runs: {:?} ms)",
         s.total_time_ms, p.all_totals_ms
     );
+    if let Some(hashes) = &p.fingerprints {
+        eprintln!("  ordered mesh FNV-1a64 (per run): {hashes:?}");
+    }
     eprintln!("  phase                    ms        % total");
+    eprintln!("  full pipeline wall: {:?} ms (includes final metadata)", p.all_wall_ms);
     eprintln!(
         "  parse (pre-geometry)  {:>8}   {:>5.1}%",
         parse,
         pct(parse, total)
     );
-    eprintln!(
-        "    - index-scan alone  {:>8.1}   {:>5.1}%   (isolated build_entity_index)",
-        p.index_build_ms,
-        pct(p.index_build_ms as u64, total)
-    );
+    if let Some(index_ms) = p.index_build_ms {
+        eprintln!("    - index-scan alone  {index_ms:>8.1}   {:>5.1}%", pct(index_ms as u64, total));
+    } else {
+        eprintln!("    - isolated index scan skipped (--cold)");
+    }
+    if let Some(cold) = &p.cold_timing {
+        eprintln!("  file read {:.2} ms; full load {:.2} ms (fresh process; OS cache uncontrolled)",
+            cold.file_read_ms, cold.full_load_wall_ms);
+    }
     eprintln!(
         "    - entity_scan       {:>8}   {:>5.1}%",
         s.entity_scan_time_ms,
@@ -265,21 +215,28 @@ fn print_json(probes: &[Probe]) {
                 )
             })
             .unwrap_or_default();
+        let hashes = p.fingerprints.as_ref()
+            .map(|h| format!(r#","meshFingerprintsFnv1a64":{h:?}"#)).unwrap_or_default();
+        let cold = p.cold_timing.as_ref().map(|t| format!(
+            r#","fileReadMs":{:.3},"fullLoadWallMs":{:.3},"cold":true"#,
+            t.file_read_ms, t.full_load_wall_ms,
+        )).unwrap_or_default();
         out.push_str(&format!(
             concat!(
                 "  {{",
-                r#""path":{:?},"fileMb":{:.3},"entities":{},"meshes":{},"vertices":{},"triangles":{},"#,
-                r#""indexBuildMs":{:.2},"parseMs":{},"entityScanMs":{},"lookupMs":{},"preprocessMs":{},"#,
+                r#""path":{},"fileMb":{:.3},"entities":{},"meshes":{},"vertices":{},"triangles":{},"#,
+                r#""indexBuildMs":{},"parseMs":{},"entityScanMs":{},"lookupMs":{},"preprocessMs":{},"#,
                 r#""geometryMs":{},"facetedBrepMs":{},"totalMs":{},"allTotalsMs":{:?},"#,
-                r#""pointCacheHits":{},"pointCacheMisses":{},"csgFailures":{},"degenerateDropped":{}{}}}"#,
+                r#""allWallMs":{:?},"#,
+                r#""pointCacheHits":{},"pointCacheMisses":{},"csgFailures":{},"degenerateDropped":{}{}{}{}}}"#,
             ),
-            p.path,
+            serde_json::to_string(&p.path).expect("serialize fixture path"),
             p.file_mb,
             p.entities,
             s.total_meshes,
             s.total_vertices,
             s.total_triangles,
-            p.index_build_ms,
+            p.index_build_ms.map(|ms| format!("{ms:.2}")).unwrap_or_else(|| "null".into()),
             s.parse_time_ms,
             s.entity_scan_time_ms,
             s.lookup_time_ms,
@@ -288,11 +245,14 @@ fn print_json(probes: &[Probe]) {
             s.faceted_brep_time_ms,
             s.total_time_ms,
             p.all_totals_ms,
+            p.all_wall_ms,
             s.point_cache_hits,
             s.point_cache_misses,
             s.total_csg_failures,
             s.degenerate_triangles_dropped,
             census,
+            hashes,
+            cold,
         ));
         out.push_str(if i + 1 < probes.len() { ",\n" } else { "\n" });
     }
@@ -318,7 +278,9 @@ fn main() {
     let mut iters = 3usize;
     let mut json = false;
     let mut census = false;
+    let mut fingerprint = false;
     let mut suite = false;
+    let mut cold = false;
     let mut fixtures: Vec<String> = Vec::new();
 
     let mut args = std::env::args().skip(1);
@@ -336,10 +298,12 @@ fn main() {
             }
             "--json" => json = true,
             "--census" => census = true,
+            "--fingerprint" => fingerprint = true,
             "--suite" => suite = true,
+            "--cold" => cold = true,
             other if other.starts_with("--") => {
                 eprintln!("unknown flag: {other}");
-                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--census] [--json]");
+                eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--census] [--fingerprint] [--json]");
                 std::process::exit(2);
             }
             other => fixtures.push(other.to_string()),
@@ -351,8 +315,13 @@ fn main() {
         }
     }
     if fixtures.is_empty() {
-        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--census] [--json]");
+        eprintln!("usage: perf_probe [<file.ifc>...] [--suite] [--iters N] [--cold] [--census] [--fingerprint] [--json]");
         eprintln!("  no fixtures given; try --suite (uses catalogued models on disk)");
+        std::process::exit(2);
+    }
+
+    if let Err(message) = measurement::validate_cold(cold, iters, fixtures.len()) {
+        eprintln!("{message}");
         std::process::exit(2);
     }
 
@@ -365,7 +334,7 @@ fn main() {
 
     let mut probes = Vec::new();
     for f in &fixtures {
-        if let Some(p) = run(f, iters, census) {
+        if let Some(p) = measurement::run(f, iters, census, fingerprint, cold) {
             print_human(&p);
             probes.push(p);
         }

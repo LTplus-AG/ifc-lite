@@ -1,0 +1,304 @@
+# CodeRabbit configuration for ifc-lite.
+# Schema: https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# WHY THIS FILE EXISTS.
+#
+# Measured over August 2026, on 830 merged PRs from the project's highest-volume
+# contributor: 174 of them (21%, 46,717 lines) merged with NO review of any kind,
+# while 0% of the maintainer's own PRs did. On a 40-PR sample of that contributor's
+# merges, CodeRabbit was rate-limited on 27 and produced a real review on 12, and
+# `cursor[bot]` appeared 0 times against 92 appearances across the maintainer's own
+# last 40 PRs. The review layer was attached to the MAINTAINER'S TOOLING SEAT rather
+# than to the repository, so the contributor producing the most code received the
+# least review.
+#
+# That gap has already cost something concrete. PR #3175 corrected TWELVE changesets
+# by hand that would have shipped breaking changes as `patch`; the release was one
+# command from publishing. Its own body names the cause: CodeRabbit was rate-limited
+# across the whole 42-PR batch, 39 of 41 PRs had no review on their head, and the
+# changesets were the one artifact class nobody looked at.
+#
+# So this file is written against one principle the repo has learned the hard way:
+# ABSENCE MUST NOT READ AS SUCCESS. A reviewer that did not run has to look different
+# from a reviewer that ran and found nothing.
+
+language: en-US
+
+tone_instructions: >-
+  Be direct and concrete. State the failing input or the file:line, not a general
+  concern. Do not soften a real defect and do not manufacture one to seem useful.
+  No praise openers.
+
+reviews:
+  profile: chill
+
+  # THE LOAD-BEARING LINE. Default is `false`, which is what let a rate-limited run
+  # publish a green tick: `success / Review rate limited` is a PASS to every consumer
+  # that reads the status. With this true, a review that ERRORED fails its status
+  # instead of passing, so "the reviewer never read this diff" is visible on the PR
+  # rather than indistinguishable from "the reviewer read it and was happy".
+  #
+  # KNOWN COST, STATED RATHER THAN DISCOVERED: a rate-limited status never self-heals.
+  # The history on such a SHA is `queued -> in progress -> error`, and then nothing.
+  # The quota recovers; the status on that commit does not. So this WILL hold PRs red
+  # during a quota exhaustion until someone pushes a commit, triggers an on-demand
+  # review, or bypasses. That is the intended trade: a visible block beats a silent
+  # false green. If it becomes intolerable, buy review capacity rather than setting
+  # this back to false.
+  fail_commit_status: true
+  commit_status: true
+
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  estimate_code_review_effort: true
+
+  # Spam/low-quality classification, labelled rather than silently dropped so the
+  # maintainer can audit what it caught.
+  slop_detection:
+    enabled: true
+    label: slop
+
+  auto_review:
+    enabled: true
+    drafts: false
+
+    # THE STAND-DOWN, and the direction of the signal is the whole design.
+    #
+    # `!llm-reviewed` is a NEGATIVE match: CodeRabbit skips any PR carrying
+    # that label. It preserves this account's scarce Fair Usage allowance -- both
+    # identities on this repo sit at the 1-2 reviews/hour floor permanently, so
+    # roughly 444 of 1,200 monthly PRs is the ceiling whatever is paid -- for the
+    # PRs the Claude lane did NOT cover.
+    #
+    # THE LABEL IS APPLIED BY THE GATE, NEVER BY THE REVIEWER. scripts/
+    # check-review-posted.mjs sets it only after verifying a marker for the exact
+    # head, and clears it on every new head. The obvious wiring, letting the
+    # reviewer label its own PRs, would be a third route to an unreviewed merge:
+    # claude-code-action #1679 exits 0 after posting nothing, so a self-labelling
+    # reviewer that silently did nothing would suppress its own backup and the PR
+    # would show green having been read by neither.
+    #
+    # KNOWN GAP, STATED: CodeRabbit reads labels at PUSH time and does not
+    # re-review on `unlabeled`, so the gate clears the label up front on
+    # `synchronize` rather than after its poll. The worst case is therefore
+    # CodeRabbit reviewing a PR the Claude lane also covered, which costs quota;
+    # the other ordering costs a review.
+    # AIMED, NOT STOOD DOWN. `!low-risk` is a NEGATIVE match: CodeRabbit skips a
+    # PR carrying `low-risk`, which `pr-risk-label.yml` applies only when EVERY
+    # file it touches is prose, a lockfile, or generated output -- things nobody
+    # reviews line by line anyway. The Claude lane still reviews them.
+    #
+    # THIS IS THE OPPOSITE OF THE RULE IT REPLACES, and the difference is what
+    # the label depends on. `!llm-reviewed` skipped a PR because the OTHER
+    # REVIEWER had an opinion about it, and measured on live traffic that
+    # forfeited the allowance rather than moving it: 21 PRs skipped on a `clean`
+    # verdict whose total findings were zero. `!low-risk` skips a PR because of
+    # what the DIFF IS, which no reviewer's verdict can move.
+    #
+    # The classifier fails toward reviewing: an unrecognised path, an unreadable
+    # file list, a changeset, a workflow file and a test-only diff all count as
+    # needing review. Losing a review is worse than wasting one.
+    labels:
+      - '!low-risk'
+
+    # SUSPENDED 2026-09-01, ON MEASUREMENT, NOT ON PRINCIPLE.
+    #
+    # The stand-down assumed a `clean` verdict from the Claude lane means the
+    # diff is fine, so CodeRabbit could skip it and save quota. Measured on live
+    # traffic the day it went on:
+    #
+    #   21 open PRs carried `llm-reviewed`, so CodeRabbit skipped them.
+    #   The lane's verdict on all 21: `clean`. Total findings it produced: ZERO.
+    #   On six PRs where both reviewers ran, CodeRabbit produced ELEVEN findings
+    #   and the lane produced none -- including one Major defect that reopened a
+    #   hole, and one where the lane's own author had mis-described the design.
+    #
+    # So the label was suppressing the reviewer that finds things, in favour of
+    # one that had found nothing, on ~70% of new PRs. That is not a saving, it is
+    # review getting WORSE than before this system existed, compounding at
+    # several PRs an hour.
+    #
+    # The lane's rubric buys precision with recall deliberately, and that trade
+    # may be right for a repo whose PRs are already reviewed. It is the wrong
+    # trade here, where the alternative to a finding is often NO review: 174 PRs
+    # merged unreviewed in August, which is the problem this whole system exists
+    # to fix.
+    #
+    # WHAT IS NOT SUSPENDED: the lane still runs and still posts a marker, and
+    # `check-review-posted.mjs` still verifies a review reached each head. Only
+    # the stand-down is off, so both reviewers now see every PR. Re-enable it
+    # when the lane demonstrates recall worth trading for -- the marker's
+    # `count=` field is the measurement, and it currently reads 0 everywhere.
+    #
+    # labels:
+    #   - '!llm-reviewed'
+    # NO `ignore_usernames`, DELIBERATELY. Excluding dependabot was tried and
+    # reverted: it saves ~21 PRs/month of allowance and buys a silent blind spot.
+    # An ignored author gets no CodeRabbit CONTEXT at all, and nothing detects
+    # that: check-pr-review-signal.mjs part 1 checks lane names derived from
+    # test.yml, and part 2 adjudicates the description of contexts that are
+    # PRESENT. An absent reviewer is silent. Dependency bumps would become the one
+    # PR class with zero review signal and no marker saying so -- the class that
+    # produced the arrow/parquet lockstep and lockfile-drift incidents here.
+    auto_incremental_review: true
+    # KEPT HIGH, AND THIS REVERSES A REVERSAL. It was raised to 30, then lowered
+    # to 1 on a Fair Usage argument, then put back. The Fair Usage economics are
+    # real -- CodeRabbit throttles PER DEVELOPER IDENTITY over a rolling 7-day
+    # window, both identities here sit at the floor, and every incremental
+    # re-review counts toward the total that sets the refill rate -- but they are
+    # not the deciding consideration, because the two failure modes are not
+    # equally visible.
+    #
+    # A PAUSED review publishes `success / Review completed` on a head nothing
+    # read. That is recorded in this repo's own
+    # scripts/pr-review-signal.config.json, measured live on #3227 and #2952, and
+    # NOTHING CATCHES IT: the four `phrases` there cover rate-limited and skipped,
+    # not paused, and `staleReviewPolicy` ships `off`. So a low pause converts the
+    # rare false green into the DEFAULT one -- review commit 1, contributor pushes
+    # a fix, head goes green unread -- which is precisely the #3175 shape and
+    # precisely what this file's own header says must not happen.
+    #
+    # An EXHAUSTED allowance, by contrast, is visible: `fail_commit_status: true`
+    # above turns it red. Burning allowance is therefore the safer failure,
+    # because it is the honest one.
+    #
+    # The allowance lever is elsewhere and costs no visibility: batch pushes (five
+    # commits pushed separately trigger five reviews, pushed together one), and
+    # open fewer, larger PRs. Both lower the 7-day count without ever publishing a
+    # green tick over an unreviewed diff.
+    auto_pause_after_reviewed_commits: 30
+
+  pre_merge_checks:
+    # Only requested reviewers can wave a failing check through, never the PR author.
+    # Without this an agent-driven contributor overrides the check that exists to
+    # catch it.
+    override_requested_reviewers_only: true
+
+    title:
+      mode: warning
+    description:
+      mode: warning
+
+    # The repo now requires a PR to close a `ready`-labelled issue
+    # (scripts/check-issue-queue.mjs). This is the semantic half of that gate: the
+    # deterministic gate proves a linked issue EXISTS and is labelled, this proves
+    # the diff actually addresses it. 82% of one contributor's 743 commits carried no
+    # linked issue at all, which is the condition both halves exist to end.
+    issue_assessment:
+      mode: warning
+
+    custom_checks:
+      - name: Changeset bump matches the API surface
+        mode: error
+        instructions: >-
+          Applies only when the PR adds or edits a file under `.changeset/`.
+
+          SCOPE, and read the boundary carefully because it is not "all removals".
+          `scripts/check-changeset-bump.mjs` decides name-level removals and renames
+          from `scripts/api-surface.json`, and is right by construction FOR THE
+          PACKAGES THAT SNAPSHOT COVERS -- `packages/*` only. Do not re-derive those:
+          agreeing is noise, disagreeing is a false finding to triage.
+          It covers NOTHING ELSE, and those gaps are yours:
+            - `apps/*` workspace members. `@ifc-lite/viewer` and
+              `@ifc-lite/viewer-embed` are private but VERSIONED
+              (`privatePackages.version: true`, `ignore: []`), and neither is in the
+              snapshot. A removed export there declared `patch` is checked by no
+              deterministic gate at all.
+            - The Rust side of `@ifc-lite/wasm`. Its snapshot is the committed
+              `pkg/ifc-lite.d.ts`, so a signature change behind a `pub use` does not
+              move it.
+          For those, judge removals and renames as well as behaviour changes.
+
+          What the snapshot CANNOT see, and what you are here for: an exported
+          function that starts throwing where it returned a value; a return type
+          existing callers cannot absorb (`String` -> `Result<String, String>`, a Blob
+          -> a throw); a narrowed parameter type; a widened thrown-error contract; a
+          default that changes meaning. Each is a break on a surviving name, so the
+          snapshot is byte-identical and only reading the diff finds it.
+          FAIL when such a change is declared `patch`, or `minor` for a package at
+          >= 1.0.0.
+          The repo rule is AGENTS.md, not generic semver: "removing/renaming an export
+          is major (>=1.0 pkg) or minor (0.x), never patch when the surface shrank."
+          Note the Rust crate version derives from the highest npm workspace version,
+          so a bump chosen for a TypeScript API also governs a crates.io publish.
+          PASS when no changeset is touched, or when every behaviour change on a
+          surviving export is declared at or above the level it requires.
+          Worked example, the one that made this check exist: #3175's
+          `bcf-validate-against-official-xsds` declared `patch` while `writeBCF` began
+          throwing where it had returned a Blob. `writeBCF` never left the surface, so
+          the deterministic gate is blind to it and you are not.
+
+      - name: Verification evidence is present
+        mode: error
+        instructions: >-
+          The PR description must state what was RUN and what was OBSERVED, not what
+          should work. FAIL when the description claims user-visible behaviour (a bug
+          is fixed, a feature works, output changed) and offers no evidence for it:
+          no command and its output, no test that asserts the new behaviour, no
+          measurement, no named fixture or model file, no screenshot.
+          A ticked template checkbox is NOT evidence; the box is unverified text.
+          "Should work", "this fixes it", and a restatement of the diff are not
+          evidence.
+          PASS when the claim is mechanical and the diff is self-evidently its own
+          proof (a typo, a comment, a dependency bump), or when the stated evidence
+          names something a reader could re-run.
+          The rule this enforces: you do not need to be able to write the code, you
+          do need to be able to demonstrate what it does.
+
+      - name: One defect class per PR
+        mode: warning
+        instructions: >-
+          FAIL when the PR fixes the SAME defect class at several unrelated call
+          sites and the diff shows no shared fix, no shared helper, and no gate that
+          would prevent the next instance. The repo has paid for this: one
+          state-reset defect class shipped as nine separate PRs, one call site each,
+          which is nine review contexts for one decision.
+          Say which call sites share the class and what the unifying fix would be.
+          PASS when the PR fixes one class once, or when it fixes several sites AND
+          adds the shared predicate, helper, or gate that holds the class closed.
+          Do NOT fire on a PR that is large but coherent, or on a mechanical
+          rename across many files.
+
+  path_instructions:
+    - path: '.changeset/**'
+      instructions: >-
+        Read the frontmatter bump level against what the referenced commit actually
+        did to the public surface, never against the changeset's own prose. The prose
+        describes intent; the bump is a contract. This is the artifact class that
+        merged unreviewed and produced twelve wrong bumps in one batch.
+
+    - path: 'scripts/check-*.mjs'
+      instructions: >-
+        These are CI gates. For each one ask the two questions the repo's own
+        incidents turned into rules: can this gate FAIL (a gate that cannot fail is
+        the same absence as no gate), and is it INVOKED by a workflow step (a
+        package.json entry is not invocation, see #3062). Also check that each
+        distinct failure class names a remedy, and that the remedy does not
+        contradict the finding.
+
+    - path: 'rust/**/*.rs'
+      instructions: >-
+        CI runs `cargo clippy --workspace --all-targets -- -D warnings`, so a
+        warning-only defect is a hard failure. Do not suggest numeric clippy rewrites
+        (`.clamp()`, `RangeInclusive::contains`, `partial_cmp`) in geometry code:
+        they change NaN and panic behaviour. See rust/AGENTS.md.
+
+    - path: 'apps/viewer/**'
+      instructions: >-
+        Selection has two channels and the multi-model actions do not write
+        `selectedEntityId`. `main.tsx` import order is load-bearing. Never construct
+        a GPU context straight from a mount effect. See apps/viewer/AGENTS.md.
+
+    - path: '**/*.test.ts'
+      instructions: >-
+        Ask whether this test can fail. Check specifically for the failure modes this
+        repo has catalogued: an oracle that shares the defect under test, an expected
+        value derived FROM the thing under test, a ratio assertion that is trivially
+        true at zero, a fixture where two distinct things are accidentally identical,
+        and an assertion aimed at an index while the corruption would be in the
+        payload. Never assert on a source file's text.
+
+knowledge_base:
+  learnings:
+    scope: local

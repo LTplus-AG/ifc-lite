@@ -1,0 +1,106 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: PR risk label
+
+# AIMS CODERABBIT'S SCARCE ALLOWANCE, and replaces a stand-down that forfeited it.
+#
+# CodeRabbit's fair usage is keyed to a developer identity on a rolling window,
+# not to a repository: measured, it was rate-limited on 27 of a 40-PR sample. So
+# its reviews land on whichever PRs arrive when the window has room, which is
+# arrival order, which is noise. This labels the PRs nobody reviews line by line
+# anyway -- prose, lockfiles, generated output -- so `.coderabbit.yaml` can skip
+# those and the allowance falls on work that needs a reader.
+#
+# THIS IS NOT THE OLD STAND-DOWN. That one skipped any PR the Claude lane had
+# covered, and measured on live traffic it did not redistribute the allowance, it
+# FORFEITED it: 21 PRs skipped on a `clean` verdict whose total findings were
+# zero, because the lane covers nearly everything and almost nothing was left to
+# redistribute to. This labels by what the DIFF IS, which does not depend on
+# either reviewer's opinion of it.
+#
+# TIMING IS THE WHOLE DESIGN. `.coderabbit.yaml` records that CodeRabbit reads
+# labels at PUSH time and does not re-review on `unlabeled`, so a label applied
+# after it has already looked buys nothing. This job therefore does the least
+# work that can decide -- one API read of the file list, no checkout of the PR's
+# code, no install -- and runs on `opened` and `synchronize` only.
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# `pull_request_target` runs from the BASE branch, deliberately. A PR must not be
+# able to edit the classifier that decides whether it gets a second reviewer, and
+# under `pull_request` it could. Nothing here checks out or executes PR code: the
+# only input is the file LIST, read from the API.
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-risk-label-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: PR risk label
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The BASE commit, never the PR's head. See the permissions note above.
+          ref: ${{ github.event.pull_request.base.sha }}
+          lfs: false
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Unit-test the classifier itself
+        run: node --test scripts/review/classify-pr-risk.test.mjs
+
+      - name: Classify
+        id: risk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # `--paginate` because a truncated file list would read as "fewer risky
+          # files", and the direction of that error is the one that loses a review.
+          gh api --paginate \
+            "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+            --jq '.[].filename' > "$RUNNER_TEMP/files.txt"
+          node scripts/review/classify-pr-risk.mjs "$RUNNER_TEMP/files.txt"
+
+      # Applied and REMOVED, because a PR that grows a real file after its first
+      # push must lose the label -- otherwise the first commit's verdict would
+      # silence CodeRabbit for the whole PR.
+      - name: Apply or clear the label
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr="${{ github.event.pull_request.number }}"
+          if [ "${{ steps.risk.outputs.low_risk }}" = "true" ]; then
+            gh label create low-risk --repo "${{ github.repository }}" --color ededed \
+              --description "Prose, lockfiles or generated output: CodeRabbit skips these." 2>/dev/null || true
+            gh api "repos/${{ github.repository }}/issues/$pr/labels" \
+              --method POST -f "labels[]=low-risk" --silent || true
+          else
+            gh api "repos/${{ github.repository }}/issues/$pr/labels/low-risk" \
+              --method DELETE --silent 2>/dev/null || true
+          fi
+
+          # READ IT BACK. This step is best-effort by necessity -- a fork PR's
+          # token cannot write labels -- so it cannot report its own failure. The
+          # stand-down label spent a whole day silently never being applied
+          # behind three green steps; the fix was to say which way it went.
+          have=$(gh api "repos/${{ github.repository }}/issues/$pr/labels?per_page=100" \
+                   --jq '.[].name' 2>/dev/null || true)
+          if printf '%s\n' "$have" | grep -qx 'low-risk'; then
+            echo "✅ low-risk is ON: CodeRabbit skips this PR, and the Claude lane DOES review it."
+          else
+            echo "➖ low-risk is OFF: CodeRabbit reviews this PR."
+          fi

@@ -15,6 +15,11 @@ Cargo.lock linguist-generated=true
 # Test fixtures (.ifc/.IFC/.ifcx) are fetched on demand via
 # `pnpm fixtures`. See tests/models/manifest.json for the catalogue and
 # tests/models/README.md for the rationale. The repo no longer uses Git LFS.
+# History still holds LFS pointers, so a stale `git lfs install` pre-push hook
+# in an older clone can still block pushes to a fork. `pnpm check:git-lfs`
+# detects that and prints the fixes; read them before running one, because
+# `git lfs uninstall` deletes hooks from whatever `core.hooksPath` resolves to,
+# which other checkouts can share. docs/contributing/setup.md has the detail.
 # These overrides on the playground samples are kept as defense-in-depth:
 # if LFS is ever re-introduced for *.ifc, they ensure Vercel still serves
 # the real file bytes for the in-browser playground rather than pointers.

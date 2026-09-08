@@ -10,6 +10,7 @@
       "@ifc-lite/parser": ["../../packages/parser/src"],
       "@ifc-lite/parser/browser": ["../../packages/parser/src/browser"],
       "@ifc-lite/geometry": ["../../packages/geometry/src"],
+      "@ifc-lite/geometry/geometry-class": ["../../packages/geometry/src/geometry-class"],
       "@ifc-lite/renderer": ["../../packages/renderer/src"],
       "@ifc-lite/query": ["../../packages/query/src"],
       "@ifc-lite/spatial": ["../../packages/spatial/src"],
@@ -20,6 +21,8 @@
       "@ifc-lite/sdk": ["../../packages/sdk/src"],
       "@ifc-lite/lens": ["../../packages/lens/src"],
       "@ifc-lite/bcf": ["../../packages/bcf/src"],
+      "@ifc-lite/bcf-api": ["../../packages/bcf-api/src"],
+      "@ifc-lite/oauth-pkce": ["../../packages/oauth-pkce/src"],
       "@ifc-lite/mutations": ["../../packages/mutations/src"],
       "@ifc-lite/drawing-2d": ["../../packages/drawing-2d/src"],
       "@ifc-lite/server-client": ["../../packages/server-client/src"],
@@ -29,7 +32,11 @@
       "@ifc-lite/encoding": ["../../packages/encoding/src"],
       "@ifc-lite/lists": ["../../packages/lists/src"],
       "@ifc-lite/sandbox": ["../../packages/sandbox/src"],
-      "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"]
+      "@ifc-lite/sandbox/schema": ["../../packages/sandbox/src/bridge-schema"],
+      "@ifc-lite/plugin-api": ["../../packages/plugin-api/src"],
+      "@ifc-lite/source-dalux": ["../../packages/source-dalux/src"],
+      "@ifc-lite/source-dropbox": ["../../packages/source-dropbox/src"],
+      "@ifc-lite/source-msgraph": ["../../packages/source-msgraph/src"]
     }
   },
   "include": ["src/**/*", "../../packages/renderer/src/webgpu-types.d.ts"],

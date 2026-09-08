@@ -25,18 +25,29 @@ export class PcdStreamingSource implements StreamingPointSource {
   private label?: string;
   private chunk: DecodedPointChunk | null = null;
   private served = false;
+  /** See `decodePcd`'s `originOffset` param (extends #1804's LAS/LAZ
+   *  pattern). */
+  private originOffset?: readonly [number, number, number];
 
-  constructor(blob: Blob, options: { label?: string; downsample?: DownsampleHint } = {}) {
+  constructor(
+    blob: Blob,
+    options: {
+      label?: string;
+      downsample?: DownsampleHint;
+      originOffset?: readonly [number, number, number];
+    } = {},
+  ) {
     this.blob = blob;
     this.downsample = options.downsample ?? { stride: 1 };
     this.label = options.label;
+    this.originOffset = options.originOffset;
   }
 
   async open(signal?: AbortSignal): Promise<PointSourceInfo> {
     abortIfAborted(signal);
     const buf = await this.blob.arrayBuffer();
     abortIfAborted(signal);
-    const decoded = decodePcd(new Uint8Array(buf));
+    const decoded = decodePcd(new Uint8Array(buf), this.originOffset);
     this.chunk = applyStride(decoded, this.downsample.stride);
     return {
       totalPointCount: this.chunk.pointCount,

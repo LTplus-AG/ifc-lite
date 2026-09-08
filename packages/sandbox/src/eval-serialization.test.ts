@@ -1,0 +1,196 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * `Sandbox.eval` serializes per sandbox (#2110).
+ *
+ * The bridge's capture state — the `logs` array, the byte total and the
+ * `truncated` flag — is created once per *sandbox* in `buildBridge` and closed
+ * over by the console functions, so it is shared by every run. `eval()` clears
+ * it at the start of each run. Two overlapping `eval()` calls therefore fought
+ * over one buffer: the second call's reset wiped state the first was still
+ * filling, and entries produced by one run surfaced in the other's
+ * `ScriptResult.logs`.
+ *
+ * Overlap is reachable because `eval()` awaits the TypeScript transpile before
+ * touching the VM, which yields to the microtask queue with the reset already
+ * applied. The fix queues each run behind the previous one on a per-sandbox
+ * promise chain, so capture state is only ever owned by one run at a time.
+ */
+
+import { describe, expect, it, vi } from 'vitest';
+import type { BimContext } from '@ifc-lite/sdk';
+import { createSandbox, type Sandbox } from './sandbox.js';
+
+/**
+ * Lets one test park a single run at the transpile await — the only
+ * suspension point in `runEval`, and therefore the only place a `dispose()`
+ * can land while runs are queued behind it. Armed for exactly one call and
+ * cleared by it; every other transpile in this file goes to the real one.
+ */
+const transpileGate = vi.hoisted(() => ({
+  hold: null as ((code: string) => Promise<string>) | null,
+}));
+
+vi.mock('./transpile.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./transpile.js')>();
+  return {
+    ...actual,
+    transpileTypeScript: async (code: string): Promise<string> => {
+      const hold = transpileGate.hold;
+      if (!hold) return actual.transpileTypeScript(code);
+      transpileGate.hold = null;
+      return hold(code);
+    },
+  };
+});
+
+const EMPTY_SDK = {} as unknown as BimContext;
+
+/** Collects the string arguments of every captured entry, in order. */
+function messages(logs: { args: unknown[] }[]): string[] {
+  return logs.map((entry) => String(entry.args[0]));
+}
+
+describe('Sandbox.eval serialization (#2110)', () => {
+  it('keeps each run\'s logs to itself when two evals overlap', async () => {
+    const sandbox = await createSandbox(EMPTY_SDK);
+    try {
+      // Started without awaiting, so both runs are in flight at once. The
+      // transpile await inside eval() is what lets the second one interleave.
+      const first = sandbox.eval('console.log("first");');
+      const second = sandbox.eval('console.log("second");');
+      const [a, b] = await Promise.all([first, second]);
+
+      expect(messages(a.logs)).toEqual(['first']);
+      expect(messages(b.logs)).toEqual(['second']);
+    } finally {
+      sandbox.dispose();
+    }
+  }, 60000);
+
+  it('keeps every run\'s logs to itself across a wider fan-out', async () => {
+    const sandbox = await createSandbox(EMPTY_SDK);
+    try {
+      // Six submitted without awaiting. Under serialization each result holds
+      // exactly its own line; without it the shared buffer accumulates and the
+      // later results carry the earlier runs' output.
+      const tags = ['a', 'b', 'c', 'd', 'e', 'f'];
+      const results = await Promise.all(
+        tags.map((tag) => sandbox.eval(`console.log("${tag}"); "${tag}"`)),
+      );
+
+      expect(results.map((r) => r.value)).toEqual(tags);
+      expect(results.map((r) => messages(r.logs))).toEqual(tags.map((tag) => [tag]));
+    } finally {
+      sandbox.dispose();
+    }
+  }, 60000);
+
+  it('does not let one run\'s exhausted log budget silence the next', async () => {
+    const sandbox = await createSandbox(EMPTY_SDK);
+    try {
+      // The 4 MB byte budget is sandbox state too, and `truncated` latches for
+      // the run that trips it. A run submitted alongside a budget-exhausting
+      // one must still capture its own output.
+      const hog =
+        '(() => { const p = "x".repeat(1048576); for (let i = 0; i < 6; i++) console.log(p); })(); 1';
+      const [, quiet] = await Promise.all([
+        sandbox.eval(hog),
+        sandbox.eval('console.log("quiet"); 1'),
+      ]);
+
+      expect(messages(quiet.logs)).toEqual(['quiet']);
+    } finally {
+      sandbox.dispose();
+    }
+  }, 60000);
+
+  it('reports a dispose that lands mid-run as a disposed sandbox, not a null deref', async () => {
+    // The disposal guard runs once, before `runEval`'s only await (the
+    // TypeScript transpile), and `this.vm` is dereferenced after it. A
+    // `dispose()` arriving in that window surfaced as a raw
+    // `TypeError: Cannot read properties of null (reading 'evalCode')` —
+    // precisely the React-cleanup case the `disposed` getter documents.
+    //
+    // The offset is swept rather than guessed: the window is only a couple of
+    // microtasks wide and its width depends on the transpiler, so a single
+    // offset would pin nothing. Every offset must yield either a clean result
+    // or the documented error — never a TypeError.
+    for (let slack = 0; slack <= 5; slack += 1) {
+      const sandbox = await createSandbox(EMPTY_SDK);
+      const run = sandbox.eval('console.log("mid-run"); 1');
+      for (let tick = 0; tick < slack; tick += 1) await Promise.resolve();
+      sandbox.dispose();
+      const failure = await run.then(
+        () => undefined,
+        (err: unknown) => err,
+      );
+      if (failure !== undefined) {
+        expect(String(failure), `slack=${slack}`).toMatch(/Sandbox disposed/);
+      }
+    }
+  }, 120000);
+
+  it('settles every queued caller when dispose lands mid-queue', async () => {
+    // Serialization must not turn a mid-queue dispose into a hang: the runs
+    // behind the one that was cut off still have to settle, and settle with
+    // the documented error rather than a null dereference.
+    //
+    // The dispose is placed deterministically instead of after a fixed number
+    // of microtask ticks. Ticking and then accepting every outcome — which is
+    // what this test did when it was written — passes unchanged in a build
+    // where disposal never reaches the queue at all, because all four runs can
+    // simply finish first. Parking the head run at the transpile await pins the
+    // state the test is about: run `a` suspended past its pre-await guard, runs
+    // `b`–`d` still queued behind it, and the dispose landing on all four.
+    const sandbox = await createSandbox(EMPTY_SDK);
+    let reached!: () => void;
+    const parked = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    transpileGate.hold = async (code) => {
+      reached();
+      await held;
+      return code;
+    };
+
+    const tags = ['a', 'b', 'c', 'd'];
+    const runs = tags.map((tag) => sandbox.eval(`console.log("${tag}"); "${tag}"`));
+    await parked;
+    sandbox.dispose();
+    release();
+
+    const outcomes = await Promise.all(
+      runs.map((run) => run.then(() => 'ok', (err: unknown) => String(err))),
+    );
+    expect(outcomes).toHaveLength(tags.length);
+    // Not one of them may report success: `a` observes the disposal on the far
+    // side of the transpile, and every run queued behind it observes it before
+    // starting. An 'ok' here means a run touched a torn-down realm.
+    expect(outcomes.filter((outcome) => outcome === 'ok')).toEqual([]);
+    for (const [i, outcome] of outcomes.entries()) {
+      expect(outcome, `run ${tags[i]}`).toMatch(/Sandbox disposed/);
+    }
+  }, 120000);
+
+  it('lets a queued eval run after the one ahead of it throws', async () => {
+    const sandbox: Sandbox = await createSandbox(EMPTY_SDK);
+    try {
+      const failing = sandbox.eval('console.log("before-boom"); throw new Error("boom");');
+      const following = sandbox.eval('console.log("after"); 42');
+
+      await expect(failing).rejects.toThrow('boom');
+      const after = await following;
+      expect(after.value).toBe(42);
+      expect(messages(after.logs)).toEqual(['after']);
+    } finally {
+      sandbox.dispose();
+    }
+  }, 60000);
+});

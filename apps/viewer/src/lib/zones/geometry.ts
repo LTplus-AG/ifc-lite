@@ -11,6 +11,7 @@
  * separating-axis machinery.
  */
 
+import { footprintOverlapsRect, isPointInFootprint } from './prism.js';
 import type { ElementAABB, Zone } from './types.js';
 
 export interface Vec3Like {
@@ -105,6 +106,10 @@ export interface CompiledZone {
   sin: number;
   minY: number;
   maxY: number;
+  /** Present only for a PRISM zone (#2508 item 4). When set, the box fields
+   *  above still hold its bounding box, and every exact test below uses the
+   *  polygon instead. */
+  footprint?: ReadonlyArray<readonly [number, number]>;
 }
 
 /** Precompute a zone's trig + half-extents once, for reuse across every
@@ -129,6 +134,7 @@ export function compileZone(zone: Zone): CompiledZone {
     sin,
     minY: cy - hy,
     maxY: cy + hy,
+    ...(zone.footprint ? { footprint: zone.footprint } : {}),
   };
 }
 
@@ -141,6 +147,9 @@ export function isPointInCompiledZone(
   eps = 1e-6,
 ): boolean {
   if (y < zone.minY - eps || y > zone.maxY + eps) return false;
+  // A prism's footprint is already world-aligned, so there is no rotation to
+  // undo: the vertical test above plus the polygon test is the whole answer.
+  if (zone.footprint) return isPointInFootprint(x, z, zone.footprint, eps);
   const dx = x - zone.cx;
   const dz = z - zone.cz;
   // World -> zone-local rotation by -rotationY: cos(-t)=cos(t), sin(-t)=-sin(t).
@@ -182,6 +191,10 @@ export function zoneOverlapsAABBCompiled(
   eps = 1e-6,
 ): boolean {
   if (maxY < zone.minY - eps || minY > zone.maxY + eps) return false;
+  // Same decomposition as the box case (independent vertical test plus a 2-D
+  // test in the footprint plane), with the rotated rectangle replaced by the
+  // polygon. `eps` keeps its meaning, sign included.
+  if (zone.footprint) return footprintOverlapsRect(minX, minZ, maxX, maxZ, zone.footprint, eps);
 
   const acx = (minX + maxX) / 2;
   const acz = (minZ + maxZ) / 2;
@@ -204,11 +217,27 @@ export function zoneOverlapsAABBCompiled(
   return true;
 }
 
-/** World-space corners of a zone's box (for rendering a wireframe/translucent
- *  hull). Order: bottom face (0-3) then top face (4-7), each CCW looking
- *  down -Y, matching the common "box corner index" convention used by
- *  `AddElementOverlay`'s box-hull projection. */
+/**
+ * World-space corners of a zone's hull, for rendering.
+ *
+ * For a BOX: the eight corners, bottom face (0-3) then top face (4-7), each CCW
+ * looking down -Y, matching the "box corner index" convention
+ * `AddElementOverlay`'s box-hull projection uses.
+ *
+ * For a PRISM: the footprint's `n` points at the bottom followed by the same
+ * `n` at the top, which is the same convention generalised (a box IS the
+ * four-point case). Callers that index corners by hand must therefore read the
+ * length rather than assume eight.
+ */
 export function zoneWorldCorners(zone: Zone): Array<[number, number, number]> {
+  if (zone.footprint) {
+    const y0 = zone.center[1] - zone.size[1] / 2;
+    const y1 = zone.center[1] + zone.size[1] / 2;
+    return [
+      ...zone.footprint.map(([x, z]) => [x, y0, z] as [number, number, number]),
+      ...zone.footprint.map(([x, z]) => [x, y1, z] as [number, number, number]),
+    ];
+  }
   const hx = zone.size[0] / 2;
   const hy = zone.size[1] / 2;
   const hz = zone.size[2] / 2;

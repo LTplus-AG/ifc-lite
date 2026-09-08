@@ -19,6 +19,8 @@ export type NodeType =
   | 'IfcBridgePart'       // IFC4.3 bridge part
   | 'IfcRoadPart'         // IFC4.3 road part
   | 'IfcRailwayPart'      // IFC4.3 railway part
+  | 'IfcMarinePart'       // IFC4.3 marine facility part
+  | 'IfcFacilityPartCommon' // IFC4.3 generic facility part
   | 'IfcSpace'            // Space node (net room area)
   | 'IfcSpatialZone'      // Spatial zone node (modelled gross area / GFA)
   | 'type-group'          // IFC class grouping header (e.g., "IfcWall (47)")
@@ -32,8 +34,24 @@ export interface TreeNode {
   id: string;  // Unique ID for the node (can be composite)
   /** Local express IDs this node represents */
   expressIds: number[];
-  /** Federated global IDs for selection/visibility operations */
+  /**
+   * Federated global IDs for selection/visibility operations. For a
+   * `type-group`/`ifc-type` node, a geometry-less assembly member is
+   * substituted for its geometry-bearing `IfcRelAggregates` parts and the
+   * list is deduped — so it is NOT index-aligned with `expressIds`/
+   * `memberGlobalIds` (different length, different order). Use `globalIds`
+   * for "what to isolate / eye-toggle"; use `memberGlobalIds` (or
+   * `expressIds`) for "which entity is this row's Nth member".
+   */
   globalIds: number[];
+  /**
+   * Index-aligned with `expressIds`: each member's OWN global ID, never a
+   * substituted aggregated part. Only populated on grouping nodes
+   * (`type-group`, `ifc-type`) where `globalIds` above is not aligned —
+   * lets a click resolve "the first member of this group" to the group's
+   * own first entity instead of an arbitrary aggregated part of it.
+   */
+  memberGlobalIds?: number[];
   /** Structured entity expressId for selectable non-element nodes (for example IFC type entities) */
   entityExpressId?: number;
   /** Model IDs this node belongs to */
@@ -121,5 +139,7 @@ const SPATIAL_CONTAINER_TYPES: Set<NodeType> = new Set([
   'IfcBridgePart',
   'IfcRoadPart',
   'IfcRailwayPart',
+  'IfcMarinePart',
+  'IfcFacilityPartCommon',
 ]);
 export const isSpatialContainer = (type: NodeType): boolean => SPATIAL_CONTAINER_TYPES.has(type);

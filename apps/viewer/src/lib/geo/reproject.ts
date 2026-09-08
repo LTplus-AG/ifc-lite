@@ -20,6 +20,9 @@ import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import type { CoordinateInfo } from '@ifc-lite/geometry';
 import { lookupEpsgByCode } from '@ifc-lite/data';
 import { getEffectiveHorizontalScale, resolveMapUnitToMetreScale } from './geo-scale';
+import { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
+
+export { computeModelCenterInIfcMeters, effectiveMapConversionForGeometry } from './map-absolute';
 import { resolvePrecisionDef } from './precision-grids';
 
 export interface LatLon {
@@ -143,8 +146,12 @@ function utmProj4String(zone: string): string | null {
  * DHDN shift). Accuracy is typically ~1-5 m, sufficient for map display.
  */
 const DATUM_TOWGS84: Record<string, string> = {
-  // United Kingdom — OSGB36 (Airy 1830)
+  // United Kingdom — OSGB36 (Airy 1830). The bundled EPSG index (packages/data)
+  // reports this datum as the bare "OSGB36" for EPSG:27700 — keep both forms
+  // keyed since IFC files and EPSG metadata are inconsistent about which one
+  // they emit.
   'osgb 1936': '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489',
+  'osgb36': '+towgs84=446.448,-125.157,542.06,0.15,0.247,0.842,-20.489',
   // North America — NAD27 (Clarke 1866)
   'north american datum 1927': '+towgs84=-8,160,176,0,0,0,0',
   'nad27': '+towgs84=-8,160,176,0,0,0,0',
@@ -166,9 +173,16 @@ const DATUM_TOWGS84: Record<string, string> = {
   // Austria — MGI (Bessel 1841)
   'militar-geographische institut': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
   'mgi': '+towgs84=577.326,90.129,463.919,5.137,1.474,5.297,2.4232',
-  // Czech Republic — S-JTSK (Bessel 1841)
+  // Czech Republic — S-JTSK (Bessel 1841). EPSG:2065 (Ferro Krovak) — the
+  // exact code #1357 was filed against, and the only S-JTSK code with no
+  // precision-grid coverage (see precision-grids.ts) so this fallback is its
+  // ONLY datum shift — reports its datum as "S-JTSK (Ferro)" in the bundled
+  // EPSG index, not the bare "S-JTSK" below. Without this key the lookup
+  // silently missed (no warning either, since there's no +nadgrids to trigger
+  // one) and EPSG:2065 got zero datum shift.
   'system of the unified trigonometrical cadastral network': '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56',
   's-jtsk': '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56',
+  's-jtsk (ferro)': '+towgs84=570.8,85.7,462.8,4.998,1.587,5.261,3.56',
   // New Zealand — NZGD49 (International 1924)
   'new zealand geodetic datum 1949': '+towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993',
   'nzgd49': '+towgs84=59.47,-5.04,187.44,0.47,-0.1,1.024,-4.5993',
@@ -387,11 +401,14 @@ export async function resolveProjection(crs: ProjectedCRS): Promise<string | nul
  *   northing = mapConversion.northings + scale * (sin*ifc_x + cos*ifc_y)
  */
 function computeProjectedCenter(
-  conversion: MapConversion,
+  rawConversion: MapConversion,
   coordinateInfo: CoordinateInfo | undefined,
   mapUnitScale: number,
   lengthUnitScale: number,
 ): { easting: number; northing: number } {
+  // Map-absolute geometry (#2526): neutralise a conversion the geometry
+  // already carries, or the offsets/rotation get applied twice.
+  const conversion = effectiveMapConversionForGeometry(rawConversion, mapUnitScale, coordinateInfo);
   const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
 
   // Geometry coordinates (ifcX, ifcY) are already in metres — the geometry engine
@@ -543,38 +560,6 @@ export function reprojectionInputKey(
 }
 
 /**
- * Compute the model's center in IFC Z-up metres from coordinate info.
- * This is the geometry center before MapConversion is applied.
- */
-export function computeModelCenterInIfcMeters(
-  coordinateInfo?: CoordinateInfo,
-): { ifcX: number; ifcY: number; ifcZ: number } {
-  if (!coordinateInfo) return { ifcX: 0, ifcY: 0, ifcZ: 0 };
-
-  const bounds = coordinateInfo.originalBounds;
-  const shift = coordinateInfo.originShift;
-  const rtc = coordinateInfo.wasmRtcOffset;
-
-  const rtcYup = rtc
-    ? { x: rtc.x, y: rtc.z, z: -rtc.y }
-    : { x: 0, y: 0, z: 0 };
-
-  const cx = (bounds.min.x + bounds.max.x) / 2;
-  const cy = (bounds.min.y + bounds.max.y) / 2;
-  const cz = (bounds.min.z + bounds.max.z) / 2;
-
-  const worldYupX = cx + shift.x + rtcYup.x;
-  const worldYupY = cy + shift.y + rtcYup.y;
-  const worldYupZ = cz + shift.z + rtcYup.z;
-
-  return {
-    ifcX: worldYupX,
-    ifcY: -worldYupZ,
-    ifcZ: worldYupY,
-  };
-}
-
-/**
  * Reverse-project a WGS84 lat/lon into the IfcMapConversion eastings/northings
  * values that would place the model center at the given location.
  *
@@ -604,6 +589,17 @@ export async function reprojectFromLatLon(
     // Convert projected metres back to MapConversion's unit.
     // Geometry offsets (ifcX/Y) are already in metres.
     const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+    // Map-absolute geometry (#2526): this inverse DELIBERATELY uses the
+    // AUTHORED conversion, not `effectiveMapConversionForGeometry`. Its only
+    // consumer is the map-pick Apply flow, which SAVES the returned E/N into
+    // the mutated MapConversion while the authored rotation stays. Inverting
+    // the authored conversion keeps that loop self-consistent: the saved
+    // anchor moves the mutated conversion out of the map-absolute detection
+    // window, and the forward math then applies the authored rotation to the
+    // same values this inverse accounted for — the pin lands where picked.
+    // Inverting the NEUTRALISED conversion instead would save a near-zero
+    // anchor next to the authored rotation, un-fire the detection, and fling
+    // the model by the double-applied rotation on the very next recompute.
     const invScale = mapScale !== 0 ? 1 / mapScale : 1;
     const { ifcX, ifcY } = computeModelCenterInIfcMeters(coordinateInfo);
     // Effective horizontal scale for metre-converted geometry — see issue #595.
@@ -634,7 +630,7 @@ export async function reprojectFromLatLon(
  * @returns A single GeoJSON-compatible polygon: closed ring of [lon, lat] pairs
  */
 export async function computeFootprintGeoJSON(
-  conversion: MapConversion,
+  rawConversion: MapConversion,
   crs: ProjectedCRS,
   coordinateInfo: CoordinateInfo,
   lengthUnitScale = 1,
@@ -654,6 +650,8 @@ export async function computeFootprintGeoJSON(
 
   // Effective horizontal scale for metre-converted geometry — see issue #595.
   const mapScale = resolveMapUnitToMetreScale(crs.mapUnitScale, lengthUnitScale);
+  // Map-absolute geometry (#2526): same neutralisation as the centre pin.
+  const conversion = effectiveMapConversionForGeometry(rawConversion, mapScale, coordinateInfo);
   const scale = getEffectiveHorizontalScale(conversion.scale, mapScale, lengthUnitScale);
   const abscissa = conversion.xAxisAbscissa ?? 1.0;
   const ordinate = conversion.xAxisOrdinate ?? 0.0;

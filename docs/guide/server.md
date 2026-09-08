@@ -129,7 +129,7 @@ console.log(`From cache: ${result.stats.from_cache}`);
 | `/api/v1/parse/parquet` | POST | Full parse, Parquet response (~15x smaller) |
 | `/api/v1/parse/parquet/optimized` | POST | Optimized Parquet (~50x smaller) |
 | `/api/v1/parse/stream` | POST | Streaming JSON (SSE) |
-| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE) |
+| `/api/v1/parse/parquet-stream` | POST | Streaming Parquet (SSE); `?sha256=` replays a cache hit with no upload |
 | `/api/v1/parse/metadata` | POST | Quick metadata only (no geometry) |
 
 All parse endpoints that return geometry also surface the 2D symbol stream
@@ -213,7 +213,9 @@ const result = await client.parseParquetOptimized(file);
 // Same as parseParquet but with:
 // - Integer vertex quantization (0.1mm precision)
 // - Byte colors (0-255 instead of 0-1)
-// - Mesh deduplication (instancing)
+// - Mesh deduplication (instancing), rotation-aware: repeated occurrences of
+//   one shape at different orientations (e.g. IfcMappedItem reuse) share one
+//   template mesh, placed per instance by an origin + a 3x3 rotation
 ```
 
 #### parseParquetStream
@@ -270,6 +272,28 @@ const metadata = await client.getMetadata(file);
 // - entity_count: number
 // - geometry_count: number
 // - file_size: number
+// - oversized_id_count?: number  // records the scan refused (#3395)
+// - malformed_record_found?: boolean  // the scan stopped early (#3695)
+```
+
+The last two report that `entity_count` covers less than the file declares:
+`oversized_id_count` is how many records were skipped for an instance name
+too large to represent, and `malformed_record_found` means the scan hit a
+record with no terminating `;` (an unterminated string or comment, or a
+truncated upload) and stopped there, so the count covers only the bytes
+before the break.
+
+Both are **optional**, and absence is not the same as zero. A server older
+than these fields sends neither, which means "not scanned for" — never
+"clean". Branch on presence before reading the value:
+
+```typescript
+const metadata = await client.getMetadata(file);
+if (metadata.malformed_record_found) {
+  console.warn('This file is truncated — the counts above are partial.');
+} else if (metadata.malformed_record_found === undefined) {
+  console.warn('This server does not check; the counts may still be partial.');
+}
 ```
 
 ### Cache Methods
@@ -407,6 +431,33 @@ interface Quantity {
 }
 ```
 
+### Relationships
+
+One row per (relating, related) pair: an `IfcRel*` record naming several
+related objects is flattened into one row each, so the same `rel_id` can appear
+on several rows.
+
+```typescript
+interface Relationship {
+  rel_type: string;      // e.g. 'IFCRELAGGREGATES', as declared in the file
+  relating_id: number;
+  related_id: number;
+  rel_id?: number;       // express id of the IfcRel entity
+}
+```
+
+`rel_id` is what a Parquet or DuckDB export writes as `RelId`, and what
+identifies the record to delete or edit. Two cases where it is not a live
+express id:
+
+- **Absent** (`undefined`) when the server predates the `datamodel-v6` payload,
+  which is where the column was added. Consumers fall back to `0`; the viewer
+  warns once naming the column, since every id reading 0 otherwise looks like a
+  normal graph.
+- **`0`** on the synthetic `TYPEHASPROPERTYSETS` rows. Those are read off
+  `IfcTypeObject.HasPropertySets` to attach a type's own property sets, and no
+  IFC entity declares them, so there is no id to carry.
+
 ### Spatial Hierarchy
 
 ```typescript
@@ -445,6 +496,39 @@ The server uses Apache Parquet for efficient binary serialization.
 - **Mesh Table**: express_id, ifc_type, vertex/index offsets, RGBA color
 - **Vertex Table**: x, y, z (Float32), nx, ny, nz (Float32)
 - **Index Table**: i0, i1, i2 (Uint32 triangle indices)
+
+#### Shared-shape layout (opt-in)
+
+`POST /api/v1/parse/parquet` and `/parse/parquet-stream` accept
+`?parquet_layout=shared-shapes`. Occurrences of one shape — repeated furniture,
+pipe runs, structural members — then share a single block of vertices instead of
+each carrying a full copy, and the mesh table gains nine `rot0..rot8` columns
+(row-major 3x3, Float32) placing each occurrence:
+
+```text
+world_vertex = origin + R * position
+```
+
+Both values in the same Y-up metres frame as the positions. On a model with
+repeats this is typically 2.4x to 4.8x smaller; a model with nothing to share is
+unchanged apart from the identity rotation columns.
+
+**It is opt-in, and it must stay that way.** The layout renders incorrectly on a
+client that does not apply the rotation — every occurrence of a shared shape
+lands at the template's placement — and this format carries no version marker
+such a client could reject, so the server cannot produce it unless the request
+says the client understands it. Omit the parameter and you get the layout above,
+byte for byte.
+
+Two further consequences:
+
+- **`origin_x/y/z` must be read.** On the default layout from a stock server it
+  is zero on every row, so a decoder could ignore it and be accidentally right.
+  Under `shared-shapes` it carries the placement.
+- **Send the same parameter to `/cache/check/{hash}` and
+  `/cache/geometry/{hash}`.** The two layouts are cached separately
+  (`-parquet-v5` / `-parquet-v6`) and never cross-serve, so a check that omits
+  it answers about the other entry. `@ifc-lite/server-client` does this for you.
 
 ### Optimized Format
 
@@ -486,11 +570,42 @@ Cache keys are derived from file content:
 ```
 # {filter} is the opening filter (e.g. "default"); a non-default tessellation
 # quality appends a "-q{level}" suffix after it
-{SHA256}-{filter}-parquet-v4          # Geometry
+{SHA256}-{filter}-parquet-v5          # Geometry (default layout)
+{SHA256}-{filter}-parquet-v6          # Geometry (parquet_layout=shared-shapes)
 {SHA256}-{filter}-parquet-metadata-v4 # Metadata header
-{SHA256}-{filter}-datamodel-v2        # Properties & hierarchy
+{SHA256}-{filter}-datamodel-v6        # Properties & hierarchy
 {SHA256}-{filter}-symbolic-v1         # 2D symbol stream
+
+# POST /parse/parquet/optimized has its own pair (issue #3889): the optimized
+# payload is quantized and deduplicated, so a hit on one route must never
+# satisfy the other. Both pairs are built from the same geometry pipeline, so
+# a bump of -parquet-v5 almost always needs a bump of -parquet-optimized-v1.
+{SHA256}-{filter}-parquet-optimized-v1          # Optimized geometry
+{SHA256}-{filter}-parquet-optimized-metadata-v1 # Optimized metadata header
 ```
+
+The two geometry keys are LAYOUTS, not versions: they coexist, and a request
+reaches one or the other according to its `parquet_layout` parameter (below).
+They never cross-serve, because the shared-shape layout renders incorrectly on
+a client that does not know to apply its rotation columns.
+
+The `{SHA256}` half is what a client can supply itself, and two endpoints let
+it: `GET /api/v1/cache/check/{hash}` and `POST /api/v1/parse/parquet-stream?sha256=`
+(above). A client-supplied hash is a SELECTOR for entries that already exist and
+nothing more: it never causes a parse or a write, and on a request that also
+carries a file body it is discarded in favour of hashing that body. The stream
+probe additionally requires it to be 64 lowercase hex characters and answers
+`400` otherwise, because the value is concatenated into the keys above and a
+caller-shaped hash would otherwise be a caller-shaped key. `/cache/check` and
+`/cache/geometry` do not check the shape; a malformed hash there simply names a
+key nobody wrote, and they answer `404`.
+
+Each suffix is bumped whenever the payload it names changes shape: a column
+added to or removed from its tables, or a change in what an existing column
+means. Without the bump a warm cache replays the old blob, the client decodes
+it cleanly as if an older server had answered, and the change is silently
+absent. The keys above are built in `apps/server/src/routes/parse/cache_keys.rs`;
+that module is the single definition of each one.
 
 ### Cache Flow
 
@@ -642,6 +757,55 @@ sequenceDiagram
     Server->>Client: SSE: complete {stats, metadata}
 ```
 
+### Skipping the upload on a cache hit
+
+The cache key is the SHA-256 of the bytes the server receives, so the upload
+used to finish before the cache could be consulted: a hit on a 40 MB model
+still paid for 40 MB on the wire. `POST /api/v1/parse/parquet-stream` therefore
+accepts the hash on its own (issue #3901):
+
+```bash
+# No body. The hash names the entry; the query names which entry.
+curl -X POST "$SERVER/api/v1/parse/parquet-stream?sha256=$SHA&parquet_layout=shared-shapes"
+```
+
+- **200** with the SSE stream: everything the replay needs was cached, and it
+  replays exactly the events a live parse emits, batch by batch.
+- **404**: nothing cached under that key. Resend the request with the multipart
+  `file` body, which is the normal path. This is the same status
+  `GET /api/v1/cache/check/{hash}` uses for "upload it".
+- **400**: the `sha256` value is not 64 lowercase hex characters.
+
+Two rules keep the parameter honest:
+
+- **A hash sent alongside a body is ignored.** The received bytes decide which
+  entry is read and written, always. A client cannot store one file's geometry
+  under another file's key.
+- **The hash only selects.** It can not cause anything to be parsed or written;
+  a key with nothing behind it is a 404, never a parse.
+
+Send the same `opening_filter`, `tessellation_quality` and `parquet_layout` you
+would send with the file. They are part of the cache identity, so a hash paired
+with a different layout asks about a different entry.
+
+`@ifc-lite/server-client` does this for you: `parseParquetStream` hashes the
+file locally, probes, and uploads on the 404. It also uploads when the probe is
+not answered at all, which is what a server built before this change does (its
+route still requires a multipart body, so a bodyless POST is rejected as a bad
+boundary), when a proxy refuses the shape, when admission sheds the probe, or
+when it times out. A probe gets a 5 second budget for its headers, not the
+client's full request timeout, because a probe that is not fast is not worth
+the upload it is delaying. Pass `{ skipCacheProbe: true }` to go straight to
+the upload.
+
+!!! note "Compressed uploads never hit the probe"
+
+    The server keys on the bytes it parses, which is what it receives after
+    unwrapping `.ifcZIP` or gzip. A probe carrying the hash of a still-packed
+    file names a key nothing was written under, so it answers 404 and the
+    client uploads. That is correct, just not a saving. `GET /cache/check`
+    behaves the same way, for the same reason.
+
 ### Client-Side Streaming
 
 ```typescript
@@ -713,6 +877,10 @@ try {
 
 ### Streaming Errors
 
+A stream can fail in two different ways, and they surface differently.
+
+The server can **report** a failure, which arrives as an `error` event:
+
 ```typescript
 for await (const event of client.parseStream(file)) {
   if (event.type === 'error') {
@@ -721,6 +889,31 @@ for await (const event of client.parseStream(file)) {
   }
 }
 ```
+
+Or the stream can simply **stop** — the connection drops, or the server dies
+mid-parse — in which case no `error` event is ever sent. There is nothing to
+inspect in the loop, so `parseStream()` **throws** once the body ends without a
+terminal event. Handle both:
+
+```typescript
+try {
+  for await (const event of client.parseStream(file)) {
+    if (event.type === 'error') {
+      console.error('Stream error:', event.message);
+      break;
+    }
+  }
+} catch (error) {
+  // "Stream ended without a complete event (connection dropped or the server
+  // failed mid-parse)" — the parse did NOT finish, and no partial result
+  // should be treated as one.
+  console.error('Stream did not complete:', error);
+}
+```
+
+Checking only for `event.type === 'error'` leaves the second case unhandled: the
+loop ends early and the throw escapes uncaught. `parseStreamToParquet()` raises
+the same error for the same condition.
 
 ### Connection Errors
 

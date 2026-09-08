@@ -4,8 +4,10 @@
 
 export {
   seedFromIfcx,
+  applyIfcxOverlay,
   parseIfcxInput,
   type SeedOptions,
+  type OverlayOptions,
   type IfcxInput,
 } from './from-ifcx.js';
 export {

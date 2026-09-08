@@ -17,7 +17,7 @@ import {
   DEFAULT_CAP_STYLE,
   HATCH_PATTERN_IDS,
   type HatchPatternId,
-} from './section-cap-style.ts';
+} from './section-cap-style.js';
 
 describe('HATCH_PATTERN_IDS', () => {
   it('assigns a unique non-negative integer id to every pattern', () => {

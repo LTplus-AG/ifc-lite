@@ -250,7 +250,10 @@ export default function App() {
       try {
         const processor = new GeometryProcessor();
         await processor.init();
-        if (cancelled || initId !== loadIdRef.current) return;
+        if (cancelled || initId !== loadIdRef.current) {
+          processor.dispose();
+          return;
+        }
 
         processorRef.current = processor;
         const viewer = await createViewer(canvasRef.current);
@@ -277,6 +280,8 @@ export default function App() {
       loadIdRef.current += 1;
       viewerRef.current?.destroy();
       viewerRef.current = null;
+      processorRef.current?.dispose();
+      processorRef.current = null;
     };
   }, []);
 

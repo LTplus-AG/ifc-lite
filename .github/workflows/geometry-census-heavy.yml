@@ -1,0 +1,212 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# The heavy half of the watertightness census (#3434).
+#
+# `MAX_FIXTURE_BYTES` in rust/geometry/tests/triangulation_invariance.rs caps
+# the per-PR census at 50 MiB per fixture, and it filters BEFORE any file is
+# opened, so the two biggest ara3d models were not merely un-pinned — the sweep
+# never read them. AGENTS.md's perf section names that exact gap: Holter/
+# ISSUE_053 is where "every shipped regression has lived". This lane closes it
+# weekly. Per-PR CI still does not sweep that class, which is what AGENTS.md
+# now says; it deliberately does not carry a gate list, and this file is the
+# authoritative record of when the heavy class is measured.
+#
+# #3436 added the two `#[ignore]`d tests that reach them. Nothing ran the tests:
+# no workflow step, no script, no `--ignored` anywhere under .github/ or
+# scripts/, so their golden was a ratchet nobody turned. This workflow is what
+# turns it.
+#
+# WHAT IT GATES
+#
+#   ISSUE_053 (169 MB) is clean and is pinned clean, per host.
+#   ISSUE_068 (54 MB) carries a live CSG tear, tracked as #3435. The tear is
+#   pinned PER HOST in the same golden, so a tear on a host that was clean, a
+#   host that stops meshing, and a host the golden has never seen are three
+#   separate red outcomes, distinguishable from #3435 itself. The size of that
+#   population is pinned separately as ISSUE_068_KNOWN_TORN_HOSTS, checked
+#   against the checked-in golden by a test that needs no fixture and therefore
+#   runs in the ordinary per-PR `cargo test --workspace`.
+#
+# So this job answers "did anything NEW tear", every week, and the per-PR suite
+# answers "was the record of what is already torn edited" on every commit. What
+# neither answers is which PR caused a new tear: between two weekly runs that
+# takes `workflow_dispatch`, which is the same on-demand escape hatch
+# determinism.yml carries and is worth spending before a kernel-sensitive merge
+# (CSG, exact predicates, triangulation order, boolean operand ordering).
+#
+# COST
+#
+# Weekly plus on demand, deliberately NOT per PR. GitHub-hosted `ubuntu-latest`
+# is free for public repos — the same reason the per-PR `geometry-census` job in
+# test.yml states for choosing it over Depot — so the recurring cost is
+# wall-clock, not metered minutes. Per-PR would put a 223 MiB fixture download
+# and a second full sweep on top of a census job that already runs ~20 minutes
+# on every geometry-touching PR, to re-answer a question whose answer changes on
+# the timescale of kernel work rather than of commits.
+#
+# Only the two fixtures this lane sweeps are fetched, not the whole corpus:
+# fetch-fixtures.mjs takes explicit manifest paths and exits 2 on a path the
+# manifest does not list, so the narrowing cannot silently become an empty
+# corpus.
+#
+# x86_64, not the free `ubuntu-24.04-arm` runner determinism.yml uses. The
+# golden is per-host mesh readings, and telling an architecture divergence from
+# a geometry regression is determinism.yml's job, not this one's: this lane
+# would report the first as the second and name the wrong cause. Matching the
+# per-PR census job's platform keeps that question where it belongs.
+
+name: Geometry watertightness census (heavy fixtures)
+
+on:
+  schedule:
+    # Weekly, Monday 04:23 UTC. After determinism.yml's 03:17 so the two heavy
+    # scheduled jobs do not contend, and off the top of the hour for the reason
+    # that file gives: the scheduler pileup there delays and drops cron runs.
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # ONE spelling of the filter, shared by the assertion and the lane it guards.
+  # Two spellings would leave the assertion checking its own copy: a typo in the
+  # census step alone still selects nothing, still exits 0, and the assertion
+  # still reports 2 and passes. That is the same false green one level further
+  # in, which is the whole subject of this workflow.
+  #
+  # The fixture PATHS below are deliberately NOT single-sourced this way. A
+  # mismatch there fails loudly (fetch-fixtures.mjs exits 2 on a path the
+  # manifest does not list), so spelling them out keeps the actual filenames
+  # readable in the log; a mismatched FILTER fails silently, which is why only
+  # it needs the indirection.
+  HEAVY_FILTER: heavy_fixture
+
+jobs:
+  heavy-census:
+    name: Heavy-fixture watertightness census (ISSUE_053 + ISSUE_068)
+    runs-on: ubuntu-latest
+    # Cold cargo build plus two sweeps over 223 MiB of IFC in a debug build.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-census-heavy
+
+      # libtest exits 0 when a filter selects NOTHING. Without this step the
+      # census below would go green forever, measuring nothing, if `#[ignore]`
+      # were removed from either test (the shape #3436's own doc invited: "once
+      # #3435 is fixed, remove `#[ignore]` here") or if a test were renamed off
+      # the shared `HEAVY_FILTER` substring. The build, the fetch and the hash
+      # check would all still pass, and `if-no-files-found: warn` would keep the
+      # empty artifact quiet too.
+      #
+      # That is this workflow's own subject reproduced one level up, in the
+      # wiring rather than in the test, so the selection is asserted BEFORE the
+      # lane runs. Counted from `--list` rather than grepped out of the run's
+      # own "N passed" line: the census step's exit code then stays the gate,
+      # with no pipeline in front of it to mask it.
+      #
+      # Placed before the fixture download: it needs no fixture, and a broken
+      # filter should not cost 223 MiB first.
+      - name: Assert the filter still selects both heavy lanes
+        run: |
+          set -euo pipefail
+          cargo test -p ifc-lite-geometry --features triangulation-alt \
+            --test triangulation_invariance \
+            -- --ignored --list "$HEAVY_FILTER" > "$RUNNER_TEMP/heavy-lanes.txt"
+          cat "$RUNNER_TEMP/heavy-lanes.txt"
+          n=$(grep -c ': test$' "$RUNNER_TEMP/heavy-lanes.txt" || true)
+          echo "heavy lanes selected by '$HEAVY_FILTER': $n"
+          # `${n:-0}`, not `$n`: an unreadable file makes grep print nothing, and
+          # `[ "" -ne 2 ]` errors with status 2, which `if` reads as FALSE and
+          # the step would PASS. A fail-open in the step whose job is closing
+          # one.
+          if [ "${n:-0}" -ne 2 ]; then
+            echo "::error::expected $HEAVY_FILTER to select 2 ignored tests, got ${n:-0}"
+            exit 1
+          fi
+
+      # Node only, for the fixture fetch script — it has no npm dependencies,
+      # so there is nothing here for pnpm to install.
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Cache the two heavy fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          # `-heavy` keeps this two-file tree out of the full-corpus jobs' cache
+          # namespace (`ci-fixtures-Linux-…` in test.yml), which would otherwise
+          # restore a 2-fixture tree into a job expecting the full 112-model corpus.
+          key: ci-fixtures-heavy-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+
+      - name: Fetch the heavy fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: |
+          node scripts/fixtures/fetch-fixtures.mjs \
+            ara3d/ISSUE_053_20181220Holter_Tower_10.ifc \
+            ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc
+
+      # Unconditional, for the reason test.yml and determinism.yml both give:
+      # the fetch above is gated on a cache miss, so on a cache HIT nothing has
+      # confirmed the restored tree still matches the manifest. This lane
+      # panics on an absent fixture rather than skipping, but a TRUNCATED or
+      # stale one would sweep and produce wrong rows, and only the hash sees
+      # that.
+      - name: Verify the heavy fixtures
+        run: |
+          node scripts/fixtures/fetch-fixtures.mjs --check \
+            ara3d/ISSUE_053_20181220Holter_Tower_10.ifc \
+            ara3d/ISSUE_068_ARK_NUS_skolebygg.ifc
+
+      # `--ignored` is the whole point: both tests are `#[ignore]`d so the
+      # per-PR suite does not pay for 223 MiB of fixture, and until this step
+      # existed no `--ignored` appeared anywhere in this repo's CI.
+      #
+      # `--test-threads=1` is not tidiness. The two tests share one golden file
+      # and each writes a per-fixture run report; run concurrently they also
+      # hold both fixtures in memory at once. Serial is the only mode in which
+      # the bless path (documented on HEAVY_BLESS_CMD) is correct, so the gating
+      # invocation matches it rather than diverging from the command the failure
+      # message tells you to run.
+      #
+      # `triangulation-alt` links the second ear-clipper the census diffs
+      # against. Without it `set_alt` is a no-op and the `alt` column silently
+      # becomes a copy of `open`, so the lane PANICS rather than running a
+      # comparison it cannot make: an edit that dropped this flag fails loudly
+      # here instead of going green.
+      - name: Heavy census (ISSUE_053 + ISSUE_068)
+        run: |
+          cargo test -p ifc-lite-geometry --features triangulation-alt \
+            --test triangulation_invariance \
+            -- --ignored --nocapture --test-threads=1 "$HEAVY_FILTER"
+
+      # The rows each sweep measured, uploaded pass or fail — one file per
+      # fixture. A run that disagrees with the golden is exactly the run whose
+      # rows are wanted, and re-deriving them means reproducing a sweep over a
+      # 223 MiB corpus locally. Blessing in CI is refused outright
+      # (census_golden::bless_mode), so downloading these and replacing the
+      # golden is the supported way to re-bless what a runner saw.
+      - name: Upload the heavy census rows
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: watertightness-census-heavy-rows
+          path: target/watertightness_census.heavy.*.tsv
+          if-no-files-found: warn

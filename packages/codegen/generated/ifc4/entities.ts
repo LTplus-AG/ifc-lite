@@ -530,7 +530,7 @@ export interface IfcTypeObject extends IfcObjectDefinition {
  * @extends IfcTypeObject
  */
 export interface IfcTypeProduct extends IfcTypeObject {
-  RepresentationMaps?: UNIQUE IfcRepresentationMap[];
+  RepresentationMaps?: IfcRepresentationMap[];
   Tag?: IfcLabel;
 }
 
@@ -3492,9 +3492,9 @@ export interface IfcGeometricRepresentationSubContext extends IfcGeometricRepres
  * @extends IfcProduct
  */
 export interface IfcGrid extends IfcProduct {
-  UAxes: UNIQUE IfcGridAxis[];
-  VAxes: UNIQUE IfcGridAxis[];
-  WAxes?: UNIQUE IfcGridAxis[];
+  UAxes: IfcGridAxis[];
+  VAxes: IfcGridAxis[];
+  WAxes?: IfcGridAxis[];
   PredefinedType?: IfcGridTypeEnum;
 }
 
@@ -3619,7 +3619,7 @@ export interface IfcIndexedPolygonalFace extends IfcTessellatedItem {
  * @extends IfcIndexedPolygonalFace
  */
 export interface IfcIndexedPolygonalFaceWithVoids extends IfcIndexedPolygonalFace {
-  InnerCoordIndices: UNIQUE IfcPositiveInteger[][];
+  InnerCoordIndices: IfcPositiveInteger[][];
 }
 
 /**
@@ -4389,7 +4389,7 @@ export interface IfcOwnerHistory {
  * @extends IfcTopologicalRepresentationItem
  */
 export interface IfcPath extends IfcTopologicalRepresentationItem {
-  EdgeList: UNIQUE IfcOrientedEdge[];
+  EdgeList: IfcOrientedEdge[];
 }
 
 /**
@@ -4615,7 +4615,7 @@ export interface IfcPointOnSurface extends IfcPoint {
  * @extends IfcLoop
  */
 export interface IfcPolyLoop extends IfcLoop {
-  Polygon: UNIQUE IfcCartesianPoint[];
+  Polygon: IfcCartesianPoint[];
 }
 
 /**
@@ -4829,7 +4829,7 @@ export interface IfcPropertyEnumeratedValue extends IfcSimpleProperty {
  */
 export interface IfcPropertyEnumeration extends IfcPropertyAbstraction {
   Name: IfcLabel;
-  EnumerationValues: UNIQUE IfcValue[];
+  EnumerationValues: IfcValue[];
   Unit?: IfcUnit;
 }
 
@@ -4883,7 +4883,7 @@ export interface IfcPropertySingleValue extends IfcSimpleProperty {
  * @extends IfcSimpleProperty
  */
 export interface IfcPropertyTableValue extends IfcSimpleProperty {
-  DefiningValues?: UNIQUE IfcValue[];
+  DefiningValues?: IfcValue[];
   DefinedValues?: IfcValue[];
   Expression?: IfcText;
   DefiningUnit?: IfcUnit;
@@ -6297,7 +6297,7 @@ export interface IfcStructuralLoadCase extends IfcStructuralLoadGroup {
  */
 export interface IfcStructuralLoadConfiguration extends IfcStructuralLoad {
   Values: IfcStructuralLoadOrResult[];
-  Locations?: number[];
+  Locations?: IfcLengthMeasure[][];
 }
 
 /**
@@ -7196,7 +7196,7 @@ export interface IfcVirtualElement extends IfcElement {
  * IfcVirtualGridIntersection
  */
 export interface IfcVirtualGridIntersection {
-  IntersectingAxes: UNIQUE IfcGridAxis[];
+  IntersectingAxes: IfcGridAxis[];
   OffsetDistances: number[];
 }
 
@@ -7397,4 +7397,3 @@ export interface IfcZShapeProfileDef extends IfcParameterizedProfileDef {
 export interface IfcZone extends IfcSystem {
   LongName?: IfcLabel;
 }
-

@@ -5,9 +5,10 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert';
 
-import type { Vec3, Camera, Mat4 } from './types.ts';
-import { CameraControls, type CameraInternalState } from './camera-controls.ts';
-import { CAMERA_CONSTANTS as CC } from './constants.ts';
+import type { Vec3, Camera, Mat4 } from './types.js';
+import { CameraControls } from './camera-controls.js';
+import type { CameraInternalState } from './camera-state.js';
+import { CAMERA_CONSTANTS as CC } from './constants.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -71,6 +72,9 @@ function makeState(camera: Camera): CameraInternalState {
     projectionMode: 'perspective',
     orthoSize: 10,
     sceneBounds: null,
+    // `null` is the "no tighter orbit anchor, fall back to sceneBounds" state
+    // Camera itself starts in (camera.ts), which is what these tests exercise.
+    orbitAnchorBounds: null,
   };
 }
 
@@ -388,4 +392,160 @@ describe('CameraControls – orbit from preset top view', () => {
     approxEqual(x3, 0, 1e-4);
   });
 
+});
+
+// ---------------------------------------------------------------------------
+// interactionMode — embed `?controls=` (#2934). Was parsed and never applied:
+// the URL param reached `EmbedViewerUrlParams.controls` and stopped there,
+// with no gate anywhere in the camera controller to restrict orbit/pan/zoom
+// against (packages/embed-protocol/src/index.ts used to document this
+// explicitly as "NOT YET IMPLEMENTED").
+// ---------------------------------------------------------------------------
+
+describe('CameraControls – setInteractionMode (#2934)', () => {
+  function setup() {
+    const state = makeState(makeCamera(vec3(0, 10, 20), vec3(0, 0, 0)));
+    const controls = new CameraControls(state, () => {});
+    return { state, controls };
+  }
+
+  it('defaults to unrestricted: orbit and pan both move the camera', () => {
+    const { state, controls } = setup();
+    const posBefore = { ...state.camera.position };
+    controls.orbit(50, 0);
+    assert.notDeepStrictEqual(state.camera.position, posBefore);
+
+    const tgtBefore = { ...state.camera.target };
+    controls.pan(50, 0);
+    assert.notDeepStrictEqual(state.camera.target, tgtBefore);
+  });
+
+  it("'pan' mode: orbit is inert, pan still moves the camera", () => {
+    const { state, controls } = setup();
+    controls.setInteractionMode('pan');
+
+    const posBefore = { ...state.camera.position };
+    controls.orbit(50, 30);
+    assert.deepStrictEqual(state.camera.position, posBefore, 'orbit must be a no-op in pan mode');
+
+    const tgtBefore = { ...state.camera.target };
+    controls.pan(50, 0);
+    assert.notDeepStrictEqual(state.camera.target, tgtBefore, 'pan must still work in pan mode');
+  });
+
+  it("'orbit' mode: pan is inert, orbit still moves the camera", () => {
+    const { state, controls } = setup();
+    controls.setInteractionMode('orbit');
+
+    const tgtBefore = { ...state.camera.target };
+    const posBefore = { ...state.camera.position };
+    controls.pan(50, 0);
+    assert.deepStrictEqual(state.camera.target, tgtBefore, 'pan must be a no-op in orbit mode');
+    assert.deepStrictEqual(state.camera.position, posBefore, 'pan must be a no-op in orbit mode');
+
+    controls.orbit(50, 0);
+    assert.notDeepStrictEqual(state.camera.position, posBefore, 'orbit must still work in orbit mode');
+  });
+
+  // The doc contract for `controls` is "Restricts interactive orbit/pan/zoom
+  // ... `'all'` is unrestricted", so zoom is restricted in every mode that is
+  // not `'all'` -- not only in `'none'`. Gating zoom on `'none'` alone left
+  // `'orbit'` and `'pan'` able to dolly the camera, which the prose already
+  // promised they could not.
+  it("'orbit' and 'pan' modes: zoom is inert, and 'all' still zooms", () => {
+    for (const mode of ['orbit', 'pan'] as const) {
+      const { state, controls } = setup();
+      controls.setInteractionMode(mode);
+      const posBefore = { ...state.camera.position };
+      controls.zoom(-50);
+      assert.deepStrictEqual(
+        state.camera.position,
+        posBefore,
+        `zoom must be a no-op in ${mode} mode`,
+      );
+    }
+
+    const { state, controls } = setup();
+    controls.setInteractionMode('all');
+    const posBefore = { ...state.camera.position };
+    controls.zoom(-50);
+    assert.notDeepStrictEqual(state.camera.position, posBefore, "zoom must work in 'all' mode");
+  });
+
+  it("'none' mode: orbit, pan and zoom are all inert", () => {
+    const { state, controls } = setup();
+    controls.setInteractionMode('none');
+
+    const posBefore = { ...state.camera.position };
+    const tgtBefore = { ...state.camera.target };
+    controls.orbit(50, 30);
+    controls.pan(50, 30);
+    controls.zoom(-50);
+    assert.deepStrictEqual(state.camera.position, posBefore);
+    assert.deepStrictEqual(state.camera.target, tgtBefore);
+  });
+
+  it('switching back to \'all\' restores both gestures', () => {
+    const { state, controls } = setup();
+    controls.setInteractionMode('none');
+    controls.setInteractionMode('all');
+
+    const posBefore = { ...state.camera.position };
+    controls.orbit(50, 0);
+    assert.notDeepStrictEqual(state.camera.position, posBefore);
+  });
+});
+
+// `orbit`/`pan`/`zoom` report back whether the gesture applied, so `Camera`
+// can gate its own side effects (resetPresetTracking, inertia) on the same
+// decision one level up rather than half-applying a rejected gesture
+// (#2934 review).
+describe('CameraControls – orbit/pan/zoom report whether they applied', () => {
+  function setup() {
+    const state = makeState(makeCamera(vec3(0, 10, 20), vec3(0, 0, 0)));
+    const controls = new CameraControls(state, () => {});
+    return { state, controls };
+  }
+
+  it('orbit returns false when the mode refuses it, true when it applies', () => {
+    const { controls } = setup();
+    controls.setInteractionMode('pan');
+    assert.strictEqual(controls.orbit(50, 0), false, 'refused by interactionMode');
+
+    controls.setInteractionMode('all');
+    assert.strictEqual(controls.orbit(50, 0), true, 'applied');
+  });
+
+  it('orbit returns false for a non-finite delta', () => {
+    const { controls } = setup();
+    assert.strictEqual(controls.orbit(Number.NaN, 0), false, 'refused for a non-finite delta');
+  });
+
+  it('pan returns false when the mode refuses it, true when it applies', () => {
+    const { controls } = setup();
+    controls.setInteractionMode('orbit');
+    assert.strictEqual(controls.pan(50, 0), false, 'refused by interactionMode');
+
+    controls.setInteractionMode('all');
+    assert.strictEqual(controls.pan(50, 0), true, 'applied');
+  });
+
+  it('pan returns false for a non-finite delta', () => {
+    const { controls } = setup();
+    assert.strictEqual(controls.pan(Number.NaN, 0), false, 'refused for a non-finite delta');
+  });
+
+  it("zoom returns false outside 'all', true within it", () => {
+    const { controls } = setup();
+    controls.setInteractionMode('orbit');
+    assert.strictEqual(controls.zoom(-50), false, 'refused by interactionMode');
+
+    controls.setInteractionMode('all');
+    assert.strictEqual(controls.zoom(-50), true, 'applied');
+  });
+
+  it('zoom returns false for a non-finite delta', () => {
+    const { controls } = setup();
+    assert.strictEqual(controls.zoom(Number.NaN), false, 'refused for a non-finite delta');
+  });
 });

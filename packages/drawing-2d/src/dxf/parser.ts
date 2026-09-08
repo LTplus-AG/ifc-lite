@@ -92,6 +92,7 @@ export function stripMtextFormatting(raw: string): string {
   s = s.replace(/\\[ACFHQTWfp][^;]*;/g, ''); // parametrised format codes
   s = s.replace(/\\[LlOoKkX]/g, ''); // toggle codes
   s = s.replace(/[{}]/g, '');
+  // eslint-disable-next-line no-control-regex
   s = s.replace(/\u0001/g, '\\');
   return decodeDxfText(s);
 }

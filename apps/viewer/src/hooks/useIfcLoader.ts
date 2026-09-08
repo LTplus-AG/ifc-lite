@@ -11,11 +11,12 @@
  */
 
 import { useCallback, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { getViewerStoreApi, useViewerStore, type FederatedModel } from '@/store';
+import { useViewerStore, type FederatedModel } from '@/store';
 import { getGeomWorkerOverride, resolveLoadTessellationTier, isMeshOnlyCacheEnabled } from '../store/constants.js';
-import { planCacheWrite, decideMeshOnlyCacheHit } from './cacheTier.js';
+import { buildModelLoadedGeometryProps, warnGeometryDiagnostics } from './modelLoadedGeometryProps.js';
+import { planCacheWrite, decideMeshOnlyCacheHit, decideCacheLoadOutcome } from './cacheTier.js';
+import { buildModelLoadReportPatch, type ModelLoadReportFields } from '../lib/loadReport';
 import { computeSourceFingerprint } from './sourceFingerprint.js';
 import { computeFullSourceHash } from '../utils/sourceContentHash.js';
 import { IfcParser, detectFormat, unwrapIfcZipWithResources, type IfcDataStore } from '@ifc-lite/parser';
@@ -24,17 +25,21 @@ import { WorkerParser } from '@ifc-lite/parser/browser';
 import { memoryAccounting } from '../lib/perf/memoryAccounting.js';
 import {
   GeometryProcessor,
-  GeometryQuality,
+  geometryAabbAt,
+  geometryVolumeAt,
   getGeometryStreamWatchdogMs as getGeometryStreamWatchdogMsImpl,
   type MeshData,
   type CoordinateInfo,
+  type EntityWorldAabb,
   type GeometryResult,
   type TessellationQuality,
+  type GeometryDiagnostics,
 } from '@ifc-lite/geometry';
 import { resolveResourceRetryTier } from '../lib/resource-retry.js';
 import { acquireFileBuffer, type AcquiredBuffer } from '../utils/acquireFileBuffer.js';
 import { buildSpatialIndexGuarded, buildSpatialIndexForModel } from '../utils/loadingUtils.js';
 import { buildGeometryCacheKey } from './geometryCacheKey.js';
+import { forwardEntityIndexTo, createSourceFingerprintCell, type EntityIndexSink } from './entityIndexHandoff.js';
 import { type GeometryData } from '@ifc-lite/cache';
 
 import { SERVER_URL, USE_SERVER, CACHE_SIZE_THRESHOLD, CACHE_MAX_SOURCE_SIZE, CACHE_MESH_ONLY_MAX_SIZE, getDynamicBatchConfig } from '../utils/ifcConfig.js';
@@ -54,15 +59,25 @@ import { useIfcServer } from './useIfcServer.js';
 
 import { getMaxExpressId, parseGlbViewerModel, parseIfcxViewerModel } from './ingest/viewerModelIngest.js';
 import { boundedIteratorReturn } from './ingest/streamCleanup.js';
+import {
+  createGeometryProcessorDisposer,
+  type GeometryProcessorDisposer,
+} from './ingest/geometryHandleDisposal.js';
 import { detectPointCloudFormat, ingestPointCloud } from './ingest/pointCloudIngest.js';
 import { removePointCloudScanCache } from './ingest/pointCloudScanCache.js';
 import { getGlobalRenderer } from './useBCF.js';
 import { extractModelGeoref, alignGeometryToReference, findReferenceGeorefModel } from './ingest/federationAlign.js';
-import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment } from './ingest/pointCloudAlignment.js';
+import { capturePreAlignment } from './ingest/federationRealign.js';
+import type { PreAlignmentSnapshot } from '../store/index.js';
+import { computePointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment, type PointCloudSourceUnit } from './ingest/pointCloudAlignment.js';
 import { toast } from '../components/ui/toast.js';
 import { posthog } from '../lib/analytics.js';
 import { reportRenderStats } from '../utils/renderStatsReport.js';
-import { classifyLoadError, errorCaptureProps, formatLoadError, type LoadErrorKind } from '../lib/load-errors.js';
+import { nextFrameOrTimeout } from '../utils/frameWait.js';
+import { visibilityWitness } from '../utils/visibilityWitness.js';
+import { buildModelLoadedPayload, captureModelLoaded, clearModelLoadedSnapshot, snapshotFromGeometry } from '../utils/loadTelemetry.js';
+import { classifyLoadError, errorCaptureProps, type LoadErrorKind } from '../lib/load-errors.js';
+import { formatLoadError } from '../lib/load-error-message.js';
 
 /**
  * The skip-tiny-cuts flag is no longer a hard constant: it is derived per-load
@@ -131,6 +146,59 @@ function getGeometryStreamWatchdogMs(
   });
 }
 
+
+/**
+ * Upper bound on the "let the last batch paint" frame wait at stream complete.
+ * Generous on purpose: on a heavy final batch a *visible* tab's next frame can
+ * be several hundred ms out, and this budget exists to bound a HIDDEN tab
+ * (where no frame ever arrives), not to cut a real frame short. (#2385)
+ */
+const COMPLETE_FRAME_WAIT_MS = 1000;
+
+/**
+ * Re-home, in place, every express id one flat mesh carries onto the
+ * federation's global id space: **every express id on a mesh is global once
+ * this has run.**
+ *
+ * Why the whole mesh must move together. Resolving a global id back to
+ * (model, expressId) is RANGE-based (`modelSlice.resolveGlobalIdFromModels`,
+ * `FederationRegistry.fromGlobalId` / `getModelForGlobalId`), so an id left
+ * unshifted does not resolve to nothing — it lands in whichever model's range
+ * contains the raw local number, which for a small item id in a model loaded at
+ * offset 1,000,000 is the PRIMARY model. A real entity in the wrong model is a
+ * plausible answer, and nothing downstream can tell it from a correct one.
+ *
+ * The ids: `expressId` (the element); `textureRef.textureId`, an express id too
+ * (#1781), or model B's texture `#34` samples model A's image out of the
+ * renderer's shared registry; `geometryItemId`, the `IfcRepresentationItem` the
+ * mesh was tessellated from (#2985/#3199) — `Scene.getInstancedMeshDataPieces`
+ * is already called with a GLOBAL id (`useZoneGeometrySplit`,
+ * `useZoneApportionment`), so an unshifted item id beside a shifted `expressId`
+ * on one mesh is exactly the mixed-space case above.
+ *
+ * `materialId`, the other #3199 source id, is an `IfcMaterial` express id from
+ * the same file as `expressId`, so it moves with it too: every TS-side
+ * consumer only copies it (census: PR #3525; #3211's Rust lookups differ).
+ *
+ * Absence must stay absence: `geometryItemId` is legitimately absent, and both
+ * naive shifts are wrong in a way a "the number changed" test accepts —
+ * `undefined + idOffset` is `NaN`, `(x ?? 0) + idOffset` invents the bare
+ * offset, itself a resolvable wrong answer — while a truthiness guard would
+ * drop a real `0`. Hence `typeof === 'number'`.
+ *
+ * The instanced half is `applyFederationOffsetToShard` in
+ * `useGeometryStreaming.ts`; a `MeshData` and a `DecodedInstance` are different
+ * shapes, so they are two functions, tested together so they cannot drift.
+ */
+export function applyFederationOffsetToMesh(mesh: MeshData, idOffset: number): void {
+  if (idOffset <= 0) return;
+  mesh.expressId = mesh.expressId + idOffset;
+  if (mesh.textureRef) {
+    mesh.textureRef = { ...mesh.textureRef, textureId: mesh.textureRef.textureId + idOffset };
+  }
+  if (typeof mesh.geometryItemId === 'number') mesh.geometryItemId = mesh.geometryItemId + idOffset;
+  if (typeof mesh.materialId === 'number') mesh.materialId = mesh.materialId + idOffset;
+}
 
 /**
  * Hook providing file loading operations for single-model path
@@ -268,6 +336,17 @@ export function useIfcLoader() {
     // exists, or the primary's cold chunks would be stranded shells (their
     // geometry unreachable). Primary loads skip the drain: the scene is
     // replaced wholesale anyway.
+    // Wall-clock timings absorb the time the user spends on another tab, so
+    // stamp every load with whether that happened. Lets the perf queries drop
+    // contaminated rows on evidence rather than on a duration threshold.
+    // Taken BEFORE the first awaited work below (the federated cold-tier
+    // drain): a tab hidden and re-shown entirely within that drain would
+    // otherwise go unrecorded, and the drain is slowest exactly when it is
+    // most likely to span a tab switch. `totalStartTime` deliberately stays
+    // where it is — the drain sits outside `total_elapsed_ms`, so moving it
+    // would silently redefine the metric. (#2385)
+    const wasHidden = visibilityWitness();
+
     {
       const scene = getGlobalRenderer()?.getScene();
       if (scene) {
@@ -282,12 +361,33 @@ export function useIfcLoader() {
     // Track total elapsed time for complete user experience
     const totalStartTime = performance.now();
 
+    // Device-loss telemetry (#2624), fail-safe half: a primary load REPLACES
+    // the model, so the previous model's last-load snapshot is wrong the
+    // moment this load starts. Clear it now, before any completing path can
+    // return - a path that then records nothing (an error exit, or a future
+    // load path missing its `captureModelLoaded` call) makes a later loss
+    // report OMIT the last-load fields instead of describing a model that is
+    // no longer on the GPU. Federated adds do not clear: while the add is in
+    // flight the retained snapshot (the last COMPLETED load) is still true,
+    // and when the add completes its own `captureModelLoaded` replaces the
+    // snapshot with the added file's numbers. So `last_load_*` describes the
+    // last completed load, primary or federated - not the whole resident
+    // scene, and after a federated add not the primary model either.
+    if (target.kind === 'primary') {
+      clearModelLoadedSnapshot();
+    }
+
     // Records the tier the WASM tessellation path actually ran at, for the
     // resource-retry decision in the catch. Declared out here (not in the try)
     // so the catch can read it. Stays `null` until that path runs (a GLB /
     // point-cloud / server / cache load never sets it), so a lower IFC tier is
     // never pointlessly retried for a load it cannot help.
     let attemptedTessellationTier: TessellationQuality | null | undefined = null;
+    // Geometry diagnostics from the stream's `complete` event, hoisted so the
+    // `ifc_model_loaded` capture below can attribute a triangle-count anomaly
+    // to CSG fallbacks instead of guessing (#2388). `null` = no producer sent
+    // any, which the capture reports as absent rather than as a zero.
+    let loadDiagnostics: GeometryDiagnostics | null = null;
 
     /**
      * Which phase of the load was in flight, for the captured exception (#1903).
@@ -303,6 +403,14 @@ export function useIfcLoader() {
     let loadStage:
       | 'read-file' | 'cache-lookup' | 'server-fetch' | 'engine-init'
       | 'parse' | 'geometry-stream' | 'finalize' = 'read-file';
+
+    /**
+     * Frees the geometry processor's WASM handle (#1959). Declared at function
+     * scope so the outer `finally` reaches it from every exit — the cache,
+     * server and error paths above return before a processor exists, and it
+     * stays null for those.
+     */
+    let geometryHandle: GeometryProcessorDisposer | null = null;
 
     /**
      * Resource-limit recovery, shared by BOTH failure paths.
@@ -332,7 +440,7 @@ export function useIfcLoader() {
       // analytics — the retry only gives the user a shot at a result first.
       posthog.captureException(err, {
         context,
-        ...errorCaptureProps(err),
+        ...errorCaptureProps(err, context),
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
         resource_retry: retryTier,
@@ -429,7 +537,15 @@ export function useIfcLoader() {
         dataStore: IfcDataStore | null,
         geometryResult: GeometryResult | null,
         schemaVersion: 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5',
-        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number },
+        patch?: { loadState?: 'pending' | 'streaming-geometry' | 'hydrating-metadata' | 'complete' | 'error'; cacheState?: 'none' | 'hit' | 'miss' | 'writing'; loadError?: string | null; pointCloudHandleId?: number } & Pick<ModelLoadReportFields, 'loadPath' | 'tessellationTier' | 'skipSmallCuts'>, // #3927, per-call-site like buildModelLoadReportPatch's doc explains
+        // GPU-instancing shard bytes (#1912), forwarded explicitly rather than
+        // closed over: the WASM streaming section's `allInstancedShards` is
+        // declared ~800 lines below this closure, so a plain closure read would
+        // hit its TDZ on every non-WASM format (GLB/IFCX/point-cloud), whose
+        // finalizeModel calls all happen before that declaration executes.
+        // Those formats have no instancing concept, so the correct value on
+        // their path is simply "none" — the default below.
+        instancedShards: ArrayBuffer[] = [],
       ): Promise<void> => {
         // Ordering notice (issue #1804): alignment is baked into a scan at
         // ITS load time (an f64 decode-time offset — it cannot be applied
@@ -464,18 +580,31 @@ export function useIfcLoader() {
           const referenceGeoref = findReferenceGeorefModel()?.georef ?? null;
           const parsedGeorefMutations = useViewerStore.getState().georefMutations.get(modelId);
           const parsedGeoref = extractModelGeoref(dataStore, geometryResult.coordinateInfo, parsedGeorefMutations);
-          let preAlignmentPositions: Float32Array[] | undefined;
-          let preAlignmentNormals: (Float32Array | undefined)[] | undefined;
-          let preAlignmentCoordinateInfo: CoordinateInfo | undefined;
+          // The snapshot `realignFederation` later restores from. Captured by
+          // the same function that restores it (ingest/federationRealign.ts) so
+          // the two cannot cover different fields — #1891's world boxes are
+          // re-framed by the alignment exactly like the positions and normals,
+          // and a snapshot that misses one lets a later re-align transform it a
+          // second time.
+          let preAlignment: PreAlignmentSnapshot | undefined;
           let federationAlignmentStatus: FederatedModel['federationAlignmentStatus'] = 'none';
           if (referenceGeoref && parsedGeoref) {
             setProgress({ phase: 'Aligning georeferenced model', percent: 90 });
-            preAlignmentPositions = geometryResult.meshes.map((mesh) => new Float32Array(mesh.positions));
-            preAlignmentNormals = geometryResult.meshes.map((mesh) =>
-              mesh.normals && mesh.normals.length > 0 ? new Float32Array(mesh.normals) : undefined,
-            );
-            preAlignmentCoordinateInfo = geometryResult.coordinateInfo;
+            preAlignment = capturePreAlignment(geometryResult);
             const status = await alignGeometryToReference(geometryResult, parsedGeoref, referenceGeoref);
+            // Stale-guard-after-await sweep: `alignGeometryToReference` is real
+            // reprojection work — the only await in the federated branch (every
+            // write below it, registerModelOffset/addModel/buildSpatialIndex-
+            // ForModel/appendInstancedShards/relabelPointCloudAsset, is
+            // synchronous, so one check here covers the whole branch). Nothing
+            // has been acquired yet at this point — no offset registered, no
+            // model added, no spatial index built, no renderer asset relabeled
+            // — so, exactly like the IFCX branch above, there is nothing to
+            // unwind: write nothing and return.
+            if (loadSessionRef.current !== currentSession) {
+              console.warn(`[useIfc] federated finalize ABORTED after alignment: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — alignment result discarded`);
+              return;
+            }
             federationAlignmentStatus = status;
             if (status === 'reprojected') {
               toast.info(
@@ -498,17 +627,35 @@ export function useIfcLoader() {
           const maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
           const idOffset = registerModelOffset(modelId, maxExpressId);
           if (idOffset > 0) {
+            // Every express id the mesh carries — the element, its texture ref
+            // (#1781) and its source representation item (#2985) — moves to the
+            // global space together. See `applyFederationOffsetToMesh` for why a
+            // partly-shifted mesh resolves to a WRONG entity rather than to none.
             for (const mesh of geometryResult.meshes) {
-              mesh.expressId = mesh.expressId + idOffset;
-              // #1781: textureId is an express id too — offset it with the same
-              // shift so two federated models can't collide in the renderer's
-              // shared-texture registry (model B's texture #34 must never sample
-              // model A's image).
-              if (mesh.textureRef) {
-                mesh.textureRef = { ...mesh.textureRef, textureId: mesh.textureRef.textureId + idOffset };
-              }
+              applyFederationOffsetToMesh(mesh, idOffset);
             }
             for (const asset of geometryResult.pointClouds ?? []) asset.expressId = asset.expressId + idOffset;
+            // #924/#1912: instanced-ONLY entities (no flat mesh, so the loop
+            // above never touches them) carry the same RAW ids the worker
+            // parsed with — re-home them too, or compare's
+            // `buildEntityFingerprints` (which subtracts idOffset from every
+            // key expecting it to already be global) would derive the wrong
+            // localId for every one of them.
+            if (geometryResult.instancedGeometryHashes) {
+              geometryResult.instancedGeometryHashes = new Map(
+                Array.from(geometryResult.instancedGeometryHashes, ([id, v]) => [id + idOffset, v]),
+              );
+            }
+            if (geometryResult.instancedGeometryAabbs) {
+              geometryResult.instancedGeometryAabbs = new Map(
+                Array.from(geometryResult.instancedGeometryAabbs, ([id, v]) => [id + idOffset, v]),
+              );
+            }
+            if (geometryResult.instancedGeometryVolumes) {
+              geometryResult.instancedGeometryVolumes = new Map(
+                Array.from(geometryResult.instancedGeometryVolumes, ([id, v]) => [id + idOffset, v]),
+              );
+            }
           }
           if (idOffset > 0 && patch?.pointCloudHandleId !== undefined) {
             const renderer = getGlobalRenderer();
@@ -519,6 +666,7 @@ export function useIfcLoader() {
           const federatedModel: FederatedModel = {
             id: modelId,
             name: target.name ?? file.name,
+            sourceFingerprint: modelSourceIdentity,
             ifcDataStore: dataStore,
             geometryResult,
             visible: target.visible ?? true,
@@ -531,22 +679,31 @@ export function useIfcLoader() {
             idOffset,
             maxExpressId,
             pointCloudHandleId: patch?.pointCloudHandleId,
-            preAlignmentPositions,
-            preAlignmentNormals,
-            preAlignmentCoordinateInfo,
+            preAlignment,
             federationAlignmentStatus,
+            ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
           };
           useViewerStore.getState().addModel(federatedModel);
           // Spatial index AFTER id offset + alignment (final ids + world positions)
           // and AFTER addModel so it attaches to THIS model, not the active slot.
           buildSpatialIndexForModel(geometryResult.meshes, modelId, dataStore);
+          // GPU-instancing (#1912): forward this model's shards now — NOT during
+          // streaming — because `useGeometryStreaming`'s drain re-homes each
+          // occurrence's raw entity id by `idOffset`, which is only known now
+          // (registerModelOffset ran a few lines up). AFTER addModel, so the
+          // renderer-side modelId → modelIndex / idOffset lookups
+          // (Viewport.tsx's `modelIdToIndex` / `modelIdToOffset`) already see
+          // this model when the drain effect runs.
+          if (instancedShards.length > 0) {
+            appendInstancedShards(modelId, instancedShards);
+          }
           return;
         }
 
-        // PRIMARY — unchanged from the former finalizePrimaryModel.
+        // PRIMARY. Registration needs only `geometryResult`, not `dataStore` (a primary GLB keeps `dataStore: null`).
         let idOffset = 0;
         let maxExpressId = 0;
-        if (dataStore && geometryResult) {
+        if (geometryResult) {
           maxExpressId = getMaxExpressId(dataStore, geometryResult.meshes);
           idOffset = registerModelOffset(modelId, maxExpressId);
         }
@@ -561,6 +718,7 @@ export function useIfcLoader() {
           cacheState: patch?.cacheState ?? 'none',
           loadError: patch?.loadError ?? null,
           pointCloudHandleId: patch?.pointCloudHandleId,
+          ...buildModelLoadReportPatch(loadDiagnostics, format, patch),
         });
       };
       const getSchemaVersion = (dataStore: IfcDataStore | null): 'IFC2X3' | 'IFC4' | 'IFC4X3' | 'IFC5' => {
@@ -627,6 +785,9 @@ export function useIfcLoader() {
         }
       }
 
+      const sourceKeyFingerprint = computeSourceFingerprint(buffer);
+      const modelSourceIdentity = `${file.name}:${sourceKeyFingerprint.hex}`;
+      if (target.kind === 'primary') updateModel(modelId, { sourceFingerprint: modelSourceIdentity });
       // IFCX/IFC5 vs IFC4 STEP vs GLB resolved from the full buffer; point
       // cloud format was already resolved from the head slice above.
       const format = pointCloudFormat ?? detectFormat(buffer);
@@ -645,7 +806,34 @@ export function useIfcLoader() {
         // Dropping a point cloud BEFORE an IFC — i.e. right after mount,
         // before init resolves — used to throw "Renderer not initialized"
         // from `beginPointCloudStream`. Wait for the device to be ready.
-        await renderer.whenReady();
+        //
+        // The wait REJECTS for two reasons, and they read differently to a
+        // user. `RendererDestroyedError`: the viewport unmounted underneath it
+        // — `Viewport` builds a new Renderer per mount, so the instance
+        // captured above is gone for good and no readiness will ever be
+        // published on it (a layout swap, or a StrictMode remount in dev).
+        // `RendererDeviceLostError`: the GPU device died mid-drop, which the
+        // device-loss toast already reports; the drop still has to stop, since
+        // nothing can be streamed into a dead device. Neither is a
+        // decode/stream failure, so both are handled here rather than by the
+        // outer catch — which would file them as load errors and capture an
+        // exception for something that is not one.
+        try {
+          await renderer.whenReady();
+        } catch (err) {
+          console.warn('[useIfc] renderer was not usable while waiting for readiness:', err);
+          if (loadSessionRef.current !== currentSession) return;
+          const deviceLost = err instanceof Error && err.name === 'RendererDeviceLostError';
+          setError(deviceLost
+            ? 'The graphics device was lost during the load — reload the page and drop the point cloud again.'
+            : 'Viewer was reinitialised during the load — drop the point cloud again.');
+          updateModel(modelId, {
+            loadState: 'error',
+            loadError: deviceLost ? 'renderer-device-lost' : 'renderer-destroyed',
+          });
+          setLoading(false);
+          return;
+        }
         setProgress({ phase: `Streaming ${format.toUpperCase()}`, percent: 5 });
         setGeometryStreamingActive(false);
         const blob = file;
@@ -657,20 +845,20 @@ export function useIfcLoader() {
         // model is the federation anchor, not necessarily the one just
         // dropped. `null` (no loaded model has a usable IfcMapConversion)
         // leaves the scan at its raw native coordinates, unchanged from
-        // before this feature existed. LAS/LAZ only: other decoders can't
-        // consume the decode-time offset (ingestPointCloud gates too);
-        // tell the user instead of silently skipping.
-        const alignmentSupported = format === 'las' || format === 'laz';
+        // before this feature existed. Every format's decoder now consumes
+        // the decode-time offset (originally LAS/LAZ-only; extended to
+        // E57/PLY/PCD/PTS/XYZ), so alignment applies uniformly — no
+        // per-format gate or "unsupported format" toast needed.
+        //
+        // PR #2623 review: the offset and the aligned matrix's linear
+        // factor must agree on a UNIT, and that unit is per-format, not
+        // universal (see `pointCloudAlignment.ts`'s module doc). LAS/LAZ
+        // coordinates are natively `IfcProjectedCRS.MapUnit`; E57 is
+        // metres by spec (ASTM E2807) and PCD/PLY/PTS/XYZ have no format
+        // convention so metres is the documented assumption here too.
+        const sourceUnit: PointCloudSourceUnit = format === 'las' || format === 'laz' ? 'mapUnit' : 'metre';
         const reference = findReferenceGeorefModel();
-        const alignment = reference && alignmentSupported
-          ? computePointCloudAlignment(reference.georef)
-          : null;
-        if (reference && !alignmentSupported && computePointCloudAlignment(reference.georef)) {
-          toast.info(
-            `Georeference alignment currently supports LAS/LAZ only — this ${format.toUpperCase()} `
-            + 'scan loads at its raw coordinates.',
-          );
-        }
+        const alignment = reference ? computePointCloudAlignment(reference.georef, sourceUnit) : null;
         const setAlignmentAvailable = useViewerStore.getState().setPointCloudAlignmentAvailable;
         const alignmentEnabled = useViewerStore.getState().pointCloudAlignmentEnabled;
         const ingest = ingestPointCloud({
@@ -783,10 +971,13 @@ export function useIfcLoader() {
           setIfcDataStore(ingest.dataStore);
         }
         await finalizeModel(ingest.dataStore, ingest.geometryResult, ingest.schemaVersion, {
-          pointCloudHandleId: ingest.rendererHandle.id,
+          pointCloudHandleId: ingest.rendererHandle.id, loadPath: 'point-cloud',
         });
         setProgress({ phase: 'Complete', percent: 100 });
-        posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+        // Snapshot: points, not meshes - the ingest GeometryResult's zero
+        // triangle/mesh totals are placeholders, not measurements, so only the
+        // file size is recorded (absent != 0, see ModelLoadedSnapshot).
+        captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'point-cloud', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, { fileSizeMB });
         setLoading(false);
         return;
       }
@@ -798,17 +989,37 @@ export function useIfcLoader() {
 
         try {
           const result = await parseIfcxViewerModel(buffer, setProgress);
+          // Stale-guard-after-await sweep: `parseIfcxViewerModel` is a real
+          // (client-side) parse — the only await in this branch — and a
+          // newer load (or model removal) may have superseded this one while
+          // it ran. The point-cloud branch immediately above unwinds
+          // cleanly on the same check (renderer asset removed, counts
+          // cleared); IFCX acquires no renderer/registry resource before
+          // this point, so there is nothing to unwind — write nothing,
+          // exactly like the cache branch's `if (cacheOutcome === 'stale')
+          // return;`.
+          if (loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] IFCX finalize ABORTED: stale session (mine=${currentSession}, current=${loadSessionRef.current}) — result discarded`);
+            return;
+          }
           if (target.kind === 'primary') {
             setGeometryResult(result.geometryResult);
             setIfcDataStore(result.dataStore);
           }
-          await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion);
+          await finalizeModel(result.dataStore, result.geometryResult, result.schemaVersion, { loadPath: 'wasm' });
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+          captureModelLoaded({ format: 'ifcx', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
           setLoading(false);
           return;
         } catch (err: unknown) {
+          // Same guard on the error path (#stale-guard sweep): a superseded
+          // load's OWN parse failure must not clobber the newer load's model
+          // record with an `error` state it never had.
+          if (loadSessionRef.current !== currentSession) {
+            console.warn(`[useIfc] IFCX parse failed on an already-stale session (mine=${currentSession}, current=${loadSessionRef.current}) — error discarded:`, err);
+            return;
+          }
           if (err instanceof Error && err.message === 'overlay-only-ifcx') {
             console.warn(`[useIfc] IFCX file "${file.name}" has no geometry - this appears to be an overlay file that adds properties to a base model.`);
             console.warn('[useIfc] To use this file, load it together with a base IFCX file (select both files at once).');
@@ -842,12 +1053,11 @@ export function useIfcLoader() {
           // ids + register the model (matches the old addModel GLB path).
           await finalizeModel(
             target.kind === 'federated' ? result.dataStore : null,
-            result.geometryResult,
-            result.schemaVersion,
+            result.geometryResult, result.schemaVersion, { loadPath: 'wasm' },
           );
 
           setProgress({ phase: 'Complete', percent: 100 });
-          posthog.capture('ifc_model_loaded', { format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+          captureModelLoaded({ format: 'glb', file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'wasm', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden() }, snapshotFromGeometry(fileSizeMB, result.geometryResult));
           setLoading(false);
           return;
         } catch (err: unknown) {
@@ -866,7 +1076,6 @@ export function useIfcLoader() {
       // itself the validation — a genuinely different file can't key the same
       // entry. `.hash` is reused as the cache header's `sourceHash` so the write
       // path never pays a full-file hash either.
-      const fingerprint = computeSourceFingerprint(buffer);
       // Snapshot the merge-layers flag *before* the cache lookup: it is a
       // load-time WASM tessellation input (issue #540) and must discriminate
       // the cache key, otherwise toggling it + reloading serves geometry built
@@ -891,13 +1100,20 @@ export function useIfcLoader() {
       // serving the failed attempt's cached bytes.
       const loadTessellationTier = options?.tierOverride ??
         resolveLoadTessellationTier(fileSizeMB, geometryModeAtLoad);
+      // Geometry attribution (#2388): read ONCE here, next to the tier it must
+      // be reported alongside, so every `ifc_model_loaded` capture site below
+      // states the same fact. The tier cannot stand in for it — a retry always
+      // runs at `lowest` (`lib/resource-retry.ts`) and a first attempt reaches
+      // `lowest` on its own at >= AUTO_LOWEST_TIER_MB or under a pinned
+      // `?geomTier=lowest`, so the two are indistinguishable without the flag.
+      const isResourceRetryLoad = options?.isResourceRetry === true;
       // Desktop Tauri cache commands only accept [A-Za-z0-9_-], so the key
       // stays filename-safe and independent of the original filename. Pinned
       // to FORMAT_VERSION so a format bump invalidates stale entries (e.g. v5
       // added the geometryClass tag the Model/Types switch needs).
       const cacheKey = buildGeometryCacheKey(
         buffer.byteLength,
-        fingerprint.hex,
+        sourceKeyFingerprint.hex,
         mergeLayersAtLoad,
         undefined,
         skipSmallCutsAtLoad,
@@ -951,15 +1167,52 @@ export function useIfcLoader() {
             // Pass the freshly read file buffer as the source fallback: the
             // desktop cache doesn't persist a sourceBuffer, and without one the
             // restored store can't carry the lazy entity accessors.
-            const cacheLoadResult = await loadFromCache(cacheResult, file.name, cacheKey, buffer);
-            if (cacheLoadResult.success) {
+            // Pass the same staleness check `loadFromServer` already takes
+            // (see its `isStale` param): `getCached` above is an awaited
+            // IndexedDB read, so a second primary load can own the active
+            // slot by the time this resolves.
+            const cacheLoadResult = await loadFromCache(
+              cacheResult,
+              file.name,
+              modelId,
+              cacheKey,
+              buffer,
+              () => loadSessionRef.current !== currentSession,
+            );
+            // `loadFromCache` returns the SAME `{ success: false }` for a
+            // superseded load as for an ordinary miss, so branching on
+            // `success` alone would send a superseded load on to a full
+            // server/WASM reparse of the OLD file below — the very race the
+            // `isStale` guards close, just later and far more expensive.
+            // Re-check the session here (the predicate is already in scope) and
+            // name the three outcomes explicitly.
+            const cacheOutcome = decideCacheLoadOutcome({
+              loadSucceeded: cacheLoadResult.success,
+              isStale: loadSessionRef.current !== currentSession,
+            });
+            if (cacheOutcome === 'stale') {
+              // A newer load owns the active slot: write nothing, parse
+              // nothing. The newer load drives `setLoading`/progress itself.
+              return;
+            }
+            if (cacheOutcome === 'serve') {
               const state = useViewerStore.getState();
               await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), {
-                loadState: 'complete',
-                cacheState: 'hit',
+                loadState: 'complete', cacheState: 'hit',
+                loadPath: 'cache', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
               });
               console.log(`[useIfc] TOTAL LOAD TIME (from cache): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-              posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+              // Geometry attribution (#2388) on a cache HIT: `loadTessellationTier`/
+              // `skipSmallCutsAtLoad` are the same const bindings that gate
+              // `buildGeometryCacheKey` above, so a hit is only reachable when they
+              // match what built the cached bytes — they are provably correct for
+              // THIS geometry, not stale or speculative. `diagnostics` is left
+              // undefined on purpose: a cache hit runs no streaming `complete`
+              // event, so there is no CSG-failure count to report for this load;
+              // reporting `loadDiagnostics` here would attribute a PRIOR load's
+              // counters (or a fabricated 0) to this one. The builder already
+              // turns an undefined/null diagnostics into absent CSG fields.
+              captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'cache', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), ...buildModelLoadedGeometryProps({ diagnostics: undefined, tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad, isResourceRetry: isResourceRetryLoad }) }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
               // Steady-state draw-call/GPU telemetry — same reporter as the
               // fresh path so warm (cache) loads are comparable (issue #1682).
               void reportRenderStats({
@@ -1018,9 +1271,24 @@ export function useIfcLoader() {
         const serverSuccess = await loadFromServer(file, buffer, () => loadSessionRef.current !== currentSession);
         if (serverSuccess) {
           const state = useViewerStore.getState();
-          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore));
+          await finalizeModel(state.ifcDataStore, state.geometryResult, getSchemaVersion(state.ifcDataStore), { loadPath: 'server' });
           console.log(`[useIfc] TOTAL LOAD TIME (server): ${(performance.now() - totalStartTime).toFixed(0)}ms`);
-          posthog.capture('ifc_model_loaded', { format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime) });
+          // Geometry attribution (#2388), server row: `is_resource_retry` and
+          // ONLY that. The retry re-enters `loadFile`, so a first attempt that
+          // fell through to WASM because the server was momentarily down, then
+          // OOMed, then retried into a recovered server, lands HERE — and
+          // without the flag that row is indistinguishable from a normal load.
+          //
+          // The two fidelity fields are deliberately NOT reported here. They
+          // describe LOCAL-WASM tessellation; the server produces canonical
+          // full-fidelity geometry under its own cache key and applies neither
+          // (see the comment on the branch condition above). Spreading
+          // `buildModelLoadedGeometryProps` would state `tessellation_tier`
+          // and `skip_small_cuts` values this load never applied — a
+          // fabricated attribution of exactly the kind #2388 exists to
+          // prevent. Absent stays absent; `is_resource_retry` is the one fact
+          // that is true on this path.
+          captureModelLoaded({ format, file_size_mb: Math.round(fileSizeMB * 100) / 100, load_target: target.kind, load_path: 'server', total_elapsed_ms: Math.round(performance.now() - totalStartTime), was_hidden: wasHidden(), is_resource_retry: isResourceRetryLoad }, snapshotFromGeometry(fileSizeMB, state.geometryResult));
           setLoading(false);
           return;
         }
@@ -1045,7 +1313,6 @@ export function useIfcLoader() {
       // Reuses the merge-layers snapshot taken above for the cache key so the
       // key and the WASM tessellation always agree (issues #540, #1107).
       const geometryProcessor = new GeometryProcessor({
-        quality: GeometryQuality.Balanced,
         // Auto-low vertex density for heavy models (or `?geomTier=` override);
         // `undefined` keeps the engine default (medium, full-density curves).
         // Must match the tier folded into `cacheKey` above so the cached bytes
@@ -1059,12 +1326,21 @@ export function useIfcLoader() {
         // Issue #540: snapshot at load time so the WASM bridge applies
         // the flag before the first parseMeshes* call.
         mergeLayers: mergeLayersAtLoad,
-        // GPU instancing is primary-model only (single global scene, primary id
-        // space). A federated load must keep all geometry flat, else its opaque
-        // repeated occurrences would be partitioned into shards the federated path
-        // doesn't consume and silently dropped.
-        enableInstancing: target.kind === 'primary',
+        // GPU instancing (#1912 step 2): enabled for every load, primary and
+        // federated. It used to be primary-only — the scene's instanced
+        // templates were untagged, so a federated model's opaque repeated
+        // occurrences would land in shards the federated path never consumed
+        // and silently dropped. `addInstancedShard` now takes an owning
+        // `modelIndex` (#2172) and the federated finalize branch below
+        // forwards its collected shards with that model's index + its
+        // express-id offset, so the shards this produces have somewhere to
+        // go.
+        enableInstancing: true,
       });
+      // Armed BEFORE init() so an engine-init failure still frees whatever the
+      // partially-initialised bridge allocated (dispose() is a no-op when it
+      // allocated nothing).
+      geometryHandle = createGeometryProcessorDisposer(() => geometryProcessor.dispose());
       // The engine binary's own download lives here (wasm-bindgen fetches
       // `ifc-lite_bg.wasm` from `import.meta.url`), so this is the one stage a
       // first-visit user can fail in before a single IFC byte is touched.
@@ -1081,10 +1357,8 @@ export function useIfcLoader() {
       // the geometry workers read the same memory zero-copy. When
       // `acquireFileBuffer` already streamed the file directly into a SAB
       // (large-file entry path, issue #600), reuse it — no second copy.
-      // `WorkerParser.isSupported()` rolls together: COI enabled, SAB
-      // available, AND TextDecoder accepts SAB-backed views (Firefox fails
-      // the third check; we skip the worker path entirely there so the
-      // SAB allocation isn't wasted).
+      // `WorkerParser.isSupported()` checks COI, SAB and Worker availability.
+      // The parser's UTF-8 reader handles SAB-backed views in Firefox too.
       const useParserWorker = WorkerParser.isSupported();
       let sharedSource: SharedArrayBuffer | null = null;
       if (useParserWorker) {
@@ -1167,13 +1441,19 @@ export function useIfcLoader() {
       // Receiving the index lets the parser worker skip its own ~10 s
       // `scanEntitiesFastBytes` call — the streaming pre-pass already
       // walked the file and built the same index.
-      let workerParserInstance: WorkerParser | null = null;
+      // `& EntityIndexSink` so a setEntityIndex that stops taking the pre-pass's counts (#3395/#3790) breaks the build HERE.
+      let workerParserInstance: (WorkerParser & EntityIndexSink) | null = null;
+      // Scale the geometry head start with metadata work; bound the wait on
+      // geometry-heavy files, and keep small files immediate.
+      const parserWaitBudgetMs = Math.min(10_000, Math.max(1_000, fileSizeMB * 8));
+      const parserEntityIndexHandoff = forwardEntityIndexTo(() => workerParserInstance, useParserWorker && fileSizeMB >= 32, parserWaitBudgetMs);
 
       // The geometry pre-pass only emits `entity-index` on the parallel
       // streaming path inside `processAdaptive`. Files smaller than the
       // sync threshold (2 MB) and the desktop-stable path don't fire it
       // — gate `waitForEntityIndex` so the parser doesn't hang.
       const ADAPTIVE_SYNC_THRESHOLD_MB = 2;
+      const sourceFingerprint = createSourceFingerprintCell(sharedSource, useParserWorker);
       const geometryWillEmitEntityIndex =
         useParserWorker
         && fileSizeMB >= ADAPTIVE_SYNC_THRESHOLD_MB;
@@ -1188,16 +1468,11 @@ export function useIfcLoader() {
           if (!useParserWorker || !sharedSource) {
             return Promise.reject(new Error('parser worker disabled (no SAB / native file)'));
           }
-          // NOTE: `deferPropertyAtomIndex` is not enabled here. The current
-          // implementation in `columnar-parser.ts` calls
-          // `entityRefs.filter(...)` to split property atoms out of the
-          // primary index, which costs more on a 14 M-entity file (~3 s
-          // for the filter pass) than the index-build time it saves.
-          // Re-enable once the categorization loop builds the two
-          // ref arrays inline so there is no second O(N) walk.
+          // Keep the existing non-deferred atom policy while qualifying source ownership.
           const worker = new WorkerParser();
           workerParserInstance = worker;
           return worker.parseColumnar(sharedSource, {
+            sourceFingerprint,
             onSpatialReady: onPartialDataStore,
             // Hold the parser's WASM scan until the pre-pass hands over
             // the entity index — but only when we know the geometry
@@ -1228,10 +1503,22 @@ export function useIfcLoader() {
             console.log(`[useIfc] Data model parsing failed for ${file.name}: ${metadataFailedMs.toFixed(0)}ms`);
             memoryAccounting.recordPhase({ phase: 'parser-failed' });
             rejectDataStore(err);
+          })
+          // The parser is done with the raw handle here on EVERY ending —
+          // including the one `dataStorePromise` never reports: a stale
+          // `onFullDataStore` returns without resolving it (#1959). Gating
+          // disposal on the chain rather than on the promise is what keeps a
+          // superseded load from leaking its handle.
+          .finally(() => {
+            geometryHandle?.parseSettled();
           });
       };
 
       // Start data model parsing IMMEDIATELY — runs in parallel with geometry.
+      // Declared pending before the timer is armed: the chain can hand the raw
+      // WASM handle to IfcParser.parseColumnar (main-thread fallback), so the
+      // handle must outlive it.
+      geometryHandle.parseScheduled();
       setTimeout(startDataModelParsing, 0);
 
       // Use adaptive processing: sync for small files, streaming for large files
@@ -1243,7 +1530,24 @@ export function useIfcLoader() {
       // (their meshes never enter `allMeshes`). Folded onto the GeometryResult so
       // buildEntityFingerprints can still diff repeated opaque geometry.
       const allInstancedGeometryHashes = new Map<number, bigint>();
+      // #1891: and their world boxes, so the diff's positional tiers reach the
+      // repeated components instancing exists for. A separate map because an
+      // entity can be hashed with no box (NaN span on the wire).
+      const allInstancedGeometryAabbs = new Map<number, EntityWorldAabb>();
+      // #1993: and their proved enclosed volumes, so the split/merge detector
+      // can weigh one element against several without an IFC quantity set. A
+      // third map for the same reason the boxes are a second one: an entity can
+      // be hashed and boxed with no proved volume, and absence must stay
+      // distinguishable from "no fingerprint at all".
+      const allInstancedGeometryVolumes = new Map<number, number>();
       let finalCoordinateInfo: CoordinateInfo | null = null;
+      // Kept at function scope so the load telemetry below can report it. Two
+      // loads of the SAME file on the SAME build have been observed emitting
+      // different `total_triangles` with an identical mesh roster; a CSG
+      // void-cut that failed and fell back on one run and not the other is the
+      // leading explanation, and without this counter the field data cannot
+      // distinguish that from a genuine determinism defect. (#2385)
+      let finalCsgFailures: number | null = null;
       // Capture RTC offset from WASM for proper multi-model alignment
       let capturedRtcOffset: { x: number; y: number; z: number } | null = null;
       // Track all deferred style updates so cache data always uses final colors.
@@ -1304,15 +1608,11 @@ export function useIfcLoader() {
               // Federated adds share the anchor's RTC origin so all models sit in
               // one coordinate space (pixel-perfect alignment, no post-shift).
               sharedRtcOffset: target.kind === 'federated' ? target.sharedRtcOffset : undefined,
-              // Hand the streaming pre-pass's entity index to the parser
-              // worker so it skips a duplicate ~10 s WASM scan. Safe even
-              // when the parser falls back to main-thread (instance is
-              // null then; the callback no-ops).
-              onEntityIndex: (ids, starts, lengths) => {
-                if (workerParserInstance) {
-                  workerParserInstance.setEntityIndex(ids, starts, lengths);
-                }
-              },
+              // Let a geometry worker finish before materializing large parser
+              // reference arrays. Small loads still receive immediately.
+              // Refusal counts and malformed-stop diagnostics remain attached.
+              onEntityIndex: parserEntityIndexHandoff,
+              sourceFingerprint,
               // `?geomWorkers=N` A/B knob — overrides the cores/memory worker-
               // count heuristic so the host's thermal sweet spot can be measured.
               // Still clamped to the memory budget by the engine. Geometry output
@@ -1322,12 +1622,14 @@ export function useIfcLoader() {
         const geometryIterator = geometryEvents[Symbol.asyncIterator]();
         let geometryIteratorClosed = false;
         closeGeometryIterator = async () => {
-          if (geometryIteratorClosed || typeof geometryIterator.return !== 'function') return;
-          geometryIteratorClosed = true;
-          // Bound the shutdown: `return()` cannot interrupt a generator parked
-          // on a stalled worker await, so an unbounded await would re-wedge on
-          // the very stall the watchdog escaped. See boundedIteratorReturn.
-          await boundedIteratorReturn(geometryIterator);
+          try { parserEntityIndexHandoff.release(); } finally {
+            if (!geometryIteratorClosed && typeof geometryIterator.return === 'function') {
+              geometryIteratorClosed = true;
+              // return() cannot interrupt a stalled worker await; bound shutdown
+              // so the watchdog still escapes it, even if index delivery throws.
+              await boundedIteratorReturn(geometryIterator);
+            }
+          }
         };
 
         while (true) {
@@ -1426,6 +1728,8 @@ export function useIfcLoader() {
               break;
             }
             case 'workerMemory': {
+              // This report is sent once at the worker's session end.
+              parserEntityIndexHandoff.release();
               // Aggregated by memoryAccounting for per-load summaries.
               memoryAccounting.recordWorkerMemory(`geom-${event.workerIndex}`, event.wasmHeapBytes);
               memoryAccounting.addGeometryBytes(event.meshBytes);
@@ -1433,10 +1737,6 @@ export function useIfcLoader() {
             }
             case 'batch': {
               batchCount++;
-
-              // Track time to first geometry
-              if (batchCount === 1) {
-              }
 
               // #1781: resolve external texture references against the decoded
               // .ifcZIP sibling images BEFORE the meshes fan out to the
@@ -1451,27 +1751,46 @@ export function useIfcLoader() {
               if (event.instancedGeometryHashIds && event.instancedGeometryHashValues) {
                 const hashIds = event.instancedGeometryHashIds;
                 const hashVals = event.instancedGeometryHashValues;
+                // #1891: six values per id, NaN span = no box for that entity.
+                // Absent array (older wasm / no box in the batch) leaves the
+                // aabb map empty and compare falls back to a bare `moved`.
+                const aabbVals = event.instancedGeometryAabbValues;
+                // One value per id, NaN = volume not proved for that entity.
+                const volumeVals = event.instancedGeometryVolumeValues;
                 const hashN = Math.min(hashIds.length, hashVals.length);
                 for (let i = 0; i < hashN; i++) {
                   allInstancedGeometryHashes.set(hashIds[i], hashVals[i]);
+                  const aabb = geometryAabbAt(aabbVals, i);
+                  if (aabb) allInstancedGeometryAabbs.set(hashIds[i], aabb);
+                  const volume = geometryVolumeAt(volumeVals, i);
+                  if (volume !== undefined) allInstancedGeometryVolumes.set(hashIds[i], volume);
                 }
               }
               finalCoordinateInfo = event.coordinateInfo ?? null;
               totalMeshes = event.totalSoFar;
               lastTotalMeshes = event.totalSoFar;
 
+              // GPU-instancing: retain the raw IFNS shard bytes for BOTH target
+              // kinds — a primary load also writes them into the cache (the
+              // decode/upload only reads them, never detaches), and a federated
+              // load forwards them once at finalize (#1912), once its
+              // express-id offset is known (see the `target.kind === 'federated'`
+              // branch of `finalizeModel` below). Empty for non-instanced
+              // models / older wasm.
+              if (event.instancedShards && event.instancedShards.length > 0) {
+                for (let i = 0; i < event.instancedShards.length; i++) {
+                  allInstancedShards.push(event.instancedShards[i]);
+                }
+              }
+
               if (target.kind === 'primary') {
-                // GPU-instancing: hand the batch's IFNS shards to the store so
-                // useGeometryStreaming decodes + uploads them via the instanced path.
-                // Also retain the raw bytes so they're written into the cache (the
-                // decode/upload only reads them, never detaches) — otherwise a cache
-                // reload would drop every instanced occurrence. Empty for non-
-                // instanced models / older wasm.
+                // Live GPU-instancing: hand the batch's IFNS shards to the store
+                // so useGeometryStreaming decodes + uploads them via the
+                // instanced path AS THEY STREAM IN. Primary-only: its id-offset
+                // is always 0 (the federation registry is cleared before every
+                // primary load), so there is nothing to wait on.
                 if (event.instancedShards && event.instancedShards.length > 0) {
-                  appendInstancedShards(event.instancedShards);
-                  for (let i = 0; i < event.instancedShards.length; i++) {
-                    allInstancedShards.push(event.instancedShards[i]);
-                  }
+                  appendInstancedShards(modelId, event.instancedShards);
                 }
                 // Accumulate meshes for batched rendering
                 for (let i = 0; i < event.meshes.length; i++) pendingMeshes.push(event.meshes[i]);
@@ -1511,6 +1830,7 @@ export function useIfcLoader() {
               break;
             }
             case 'complete':
+              parserEntityIndexHandoff.release();
               streamCompleteMs = performance.now() - totalStartTime;
               // Flush remaining pending meshes — PRIMARY only. A federated add
               // never pushed to pendingMeshes; it paints atomically at finalize.
@@ -1532,19 +1852,14 @@ export function useIfcLoader() {
               }
 
               // Geometry diagnostics (the typed GeometryDiagnostics contract on the
-              // streaming `complete` event). Surface a concise main-thread summary
-              // when CSG failures or silent no-ops were recorded (for the primary
-              // model and each federated add — file.name disambiguates); the full
-              // object stays on `event.diagnostics` for any UI/telemetry consumer.
+              // streaming `complete` event). Both warnings live in
+              // modelLoadedGeometryProps.ts; the full object stays on
+              // `event.diagnostics` for any UI/telemetry consumer.
               if (event.diagnostics) {
                 const d = event.diagnostics;
-                if (d.totalCsgFailures > 0 || d.silentNoOps > 0) {
-                  console.info(
-                    `[useIfc] ${file.name} geometry diagnostics: ${d.totalCsgFailures} CSG failure(s) ` +
-                      `across ${d.productsWithFailures} product(s), ${d.silentNoOps} silent no-op(s)`,
-                    d,
-                  );
-                }
+                loadDiagnostics = event.diagnostics;
+                finalCsgFailures = d.totalCsgFailures;
+                warnGeometryDiagnostics(file.name, d);
               }
 
               if (target.kind === 'primary') {
@@ -1562,7 +1877,16 @@ export function useIfcLoader() {
                 if (allInstancedGeometryHashes.size > 0) {
                   const gr = useViewerStore.getState().geometryResult;
                   if (gr) {
-                    setGeometryResult({ ...gr, instancedGeometryHashes: allInstancedGeometryHashes });
+                    setGeometryResult({
+                      ...gr,
+                      instancedGeometryHashes: allInstancedGeometryHashes,
+                      ...(allInstancedGeometryAabbs.size > 0
+                        ? { instancedGeometryAabbs: allInstancedGeometryAabbs }
+                        : {}),
+                      ...(allInstancedGeometryVolumes.size > 0
+                        ? { instancedGeometryVolumes: allInstancedGeometryVolumes }
+                        : {}),
+                    });
                   }
                 }
               }
@@ -1571,7 +1895,25 @@ export function useIfcLoader() {
               memoryAccounting.endPhase('geometry');
               memoryAccounting.recordPhase({ phase: 'geometry-complete' });
               console.log(memoryAccounting.formatSummary());
-              await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+              // Let the final geometry batch paint before flipping the streaming
+              // flag — but BOUNDED. `requestAnimationFrame` never fires while the
+              // tab is hidden, and everything that completes this load sits after
+              // this await: `setGeometryStreamingActive(false)`, the whole
+              // `finalizePromise` (finalizeModel → spatial index → cache write),
+              // `closeGeometryIterator()` (which frees the WASM handles), and
+              // `setLoading(false)`. An unbounded wait here therefore left a
+              // tabbed-away load permanently unfinalized with its WASM handles
+              // pinned, and inflated `total_elapsed_ms` by the entire hidden
+              // duration — which is what poisoned the load-time telemetry. (#2385)
+              //
+              // Primary only: the wait exists so the last streamed batch is on
+              // screen before the streaming flag drops, and a federated add
+              // never streamed into the active slot — it paints atomically at
+              // finalize. Waiting for a frame it does not need is pure latency
+              // on the one path that also blocks `loadFilesSequentially`.
+              if (target.kind === 'primary') {
+                await nextFrameOrTimeout(COMPLETE_FRAME_WAIT_MS);
+              }
               if (loadSessionRef.current === currentSession && target.kind === 'primary') {
                 setGeometryStreamingActive(false);
               }
@@ -1600,15 +1942,22 @@ export function useIfcLoader() {
                     totalVertices: allMeshes.reduce((sum, m) => sum + m.positions.length / 3, 0),
                     totalTriangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
                     coordinateInfo: finalCoordinateInfo ?? createCoordinateInfo(calculateMeshBounds(allMeshes).bounds),
-                    // Empty for federated (instancing is primary-only) but kept for
-                    // shape consistency / future-proofing. (#924 compare parity)
+                    // Populated for federated too now that instancing runs for both
+                    // target kinds (#1912); empty only for older wasm / models with
+                    // no instanced-only entities. (#924 compare parity)
                     ...(allInstancedGeometryHashes.size > 0
                       ? { instancedGeometryHashes: allInstancedGeometryHashes }
                       : {}),
+                    ...(allInstancedGeometryAabbs.size > 0
+                      ? { instancedGeometryAabbs: allInstancedGeometryAabbs }
+                      : {}),
+                    ...(allInstancedGeometryVolumes.size > 0
+                      ? { instancedGeometryVolumes: allInstancedGeometryVolumes }
+                      : {}),
                   };
                   await finalizeModel(dataStore, federatedGeometry, getSchemaVersion(dataStore), {
-                    loadState: 'complete',
-                  });
+                    loadState: 'complete', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
+                  }, allInstancedShards);
                   return;
                 }
 
@@ -1616,8 +1965,8 @@ export function useIfcLoader() {
                   loadState: 'complete',
                   // Only show "writing" when this file will actually be cached
                   // under the current plan (respects the size bands + kill switch).
-                  cacheState: cachePlan.shouldCache ? 'writing' : 'none',
-                });
+                  cacheState: cachePlan.shouldCache ? 'writing' : 'none', loadPath: 'wasm', tessellationTier: loadTessellationTier, skipSmallCuts: skipSmallCutsAtLoad,
+                }, allInstancedShards);
                 // Build spatial index from meshes in time-sliced chunks (non-blocking).
                 // Previously this was synchronous inside requestIdleCallback, blocking
                 // the main thread for seconds on 200K+ mesh models (190M+ float reads
@@ -1695,11 +2044,11 @@ export function useIfcLoader() {
                   // registered on success via finalizeModel→addModel), so
                   // updateModel would no-op and the failure would vanish —
                   // addModel just returns null. Surface it to the user instead.
-                  toast.error(formatLoadError(err, file.name));
+                  toast.error(formatLoadError(err, file.name, 'geometry_processing'));
                 } else {
                   updateModel(modelId, {
                     loadState: 'error',
-                    loadError: formatLoadError(err, file.name),
+                    loadError: formatLoadError(err, file.name, 'geometry_processing'),
                   });
                 }
               });
@@ -1722,16 +2071,16 @@ export function useIfcLoader() {
         // A WASM engine-load failure (e.g. the geometry binary 404'd) surfaces
         // here as a cryptic `compile on 'WebAssembly'` TypeError — humanise it
         // and tag the captured exception so it is filterable in error tracking.
-        const kind = classifyLoadError(err);
+        const kind = classifyLoadError(err, 'geometry_processing');
         // The stall / worker-crash / OOM failures land HERE, not in the outer
         // catch — retry once at lower detail before surfacing a dead end.
         if (await tryResourceRetry(err, kind, 'geometry_processing')) return;
-        setError(formatLoadError(err, file.name));
+        setError(formatLoadError(err, file.name, 'geometry_processing'));
         // Flat properties: posthog-js spreads this object onto the event, so a
         // wrapper key would bury `error_kind` in an unfilterable nested blob.
         posthog.captureException(err, {
           context: 'geometry_processing',
-          ...errorCaptureProps(err),
+          ...errorCaptureProps(err, 'geometry_processing'),
           load_stage: loadStage,
           is_retry: options?.isResourceRetry === true,
         });
@@ -1779,25 +2128,48 @@ export function useIfcLoader() {
       console.log(
         `[ifc-lite] ${file.name} (${fileSizeMB.toFixed(1)}MB) → ${allMeshes.length} meshes, ${(totalVertices / 1000).toFixed(0)}k verts in ${(totalElapsedMs / 1000).toFixed(1)}s`
       );
-      posthog.capture('ifc_model_loaded', {
-        format,
-        file_size_mb: Math.round(fileSizeMB * 100) / 100,
-        load_target: target.kind,
-        load_path: 'wasm',
-        mesh_count: allMeshes.length,
-        total_elapsed_ms: Math.round(totalElapsedMs),
-        // Field perf telemetry: vertices/triangles size the model, and the
-        // milestones (read → metadata → first batch → first paint → stream
-        // done) let us spot where real-world loads regress. CSG itself runs
-        // in the geometry workers, so the stream window is its best proxy.
-        total_vertices: totalVertices,
-        total_triangles: allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0),
-        file_read_ms: Math.round(fileReadMs),
-        metadata_complete_ms: metadataCompleteMs != null ? Math.round(metadataCompleteMs) : undefined,
-        first_geometry_batch_ms: firstAppendGeometryBatchMs != null ? Math.round(firstAppendGeometryBatchMs) : undefined,
-        first_visible_geometry_ms: firstVisibleGeometryMs != null ? Math.round(firstVisibleGeometryMs) : undefined,
-        stream_complete_ms: streamCompleteMs != null ? Math.round(streamCompleteMs) : undefined,
-      });
+      const totalTriangles = allMeshes.reduce((sum, m) => sum + m.indices.length / 3, 0);
+      // Single home for this payload — see `utils/loadTelemetry.ts` for why
+      // `was_hidden: false` and `total_csg_failures: 0` must survive to the
+      // wire. captureModelLoaded also retains the snapshot for the device-loss
+      // report (#2624): if the GPU device later dies, its capture can say how
+      // big the model on the device was.
+      captureModelLoaded(
+        {
+          ...buildModelLoadedPayload({
+            format,
+            fileSizeMB,
+            loadTarget: target.kind,
+            loadPath: 'wasm',
+            meshCount: allMeshes.length,
+            totalElapsedMs,
+            totalVertices,
+            totalTriangles,
+            fileReadMs,
+            metadataCompleteMs,
+            firstGeometryBatchMs: firstAppendGeometryBatchMs,
+            firstVisibleGeometryMs,
+            streamCompleteMs,
+            totalCsgFailures: finalCsgFailures,
+            wasHidden: wasHidden(),
+          }),
+          // Geometry attribution (#2388): the CSG-failure counts this load
+          // actually recorded, plus the two fidelity inputs (tier + small-cut
+          // skip) that change triangle counts WITHOUT changing the mesh roster
+          // and that no failure counter can see. Without these, a repeat of
+          // #2388 is unattributable from telemetry. `total_csg_failures` here
+          // is the same value `buildModelLoadedPayload` already put on the
+          // payload (both read the streaming `complete` event's diagnostics),
+          // so the spread below is a same-value overwrite, not a conflicting one.
+          ...buildModelLoadedGeometryProps({
+            diagnostics: loadDiagnostics,
+            tessellationTier: loadTessellationTier,
+            skipSmallCuts: skipSmallCutsAtLoad,
+            isResourceRetry: isResourceRetryLoad,
+          }),
+        },
+        { fileSizeMB, totalTriangles, meshCount: allMeshes.length },
+      );
       // Steady-state draw-call/GPU-memory telemetry (issue #1682) — fired
       // separately from ifc_model_loaded because it must wait for the scene
       // to settle (queue drain + fragment finalize), which happens after this
@@ -1820,14 +2192,14 @@ export function useIfcLoader() {
     } catch (err) {
       console.error(`[useIfc] loadFile THREW (session=${currentSession}, current=${loadSessionRef.current}):`, err);
       if (loadSessionRef.current !== currentSession) return;
-      const kind = classifyLoadError(err);
+      const kind = classifyLoadError(err, 'ifc_model_load');
 
       // Resource-limit recovery — see tryResourceRetry. A failure that reaches
       // this outer catch (rather than the streaming loop's inner one) still
       // qualifies, e.g. an allocation failure outside the stream.
       if (await tryResourceRetry(err, kind, 'ifc_model_load')) return;
 
-      const friendly = formatLoadError(err, file.name);
+      const friendly = formatLoadError(err, file.name, 'ifc_model_load');
       updateModel(modelId, {
         loadState: 'error',
         loadError: friendly,
@@ -1839,12 +2211,20 @@ export function useIfcLoader() {
       // signal there is. See errorCaptureProps in ../lib/load-errors.ts.
       posthog.captureException(err, {
         context: 'ifc_model_load',
-        ...errorCaptureProps(err),
+        ...errorCaptureProps(err, 'ifc_model_load'),
         load_stage: loadStage,
         is_retry: options?.isResourceRetry === true,
       });
       setLoading(false);
       setGeometryStreamingActive(false);
+    } finally {
+      // #1959: the one release point that no exit path can skip. Every early
+      // `return` in this function — stale session, resource retry, the inner
+      // geometry catch, the cache and server fast paths — runs through here,
+      // and a `dispose()` placed after the last statement would miss all of
+      // them. The free itself still waits on the parse chain; see
+      // createGeometryProcessorDisposer.
+      geometryHandle?.release();
     }
   }, [setLoading, setGeometryStreamingActive, setError, setProgress, setIfcDataStore, setGeometryResult, appendGeometryBatch, appendInstancedShards, updateMeshColors, updateCoordinateInfo, loadFromCache, saveToCache, loadFromServer, revalidateSourceDecoupledHit]);
 

@@ -1,0 +1,61 @@
+{
+  "$comment": "NEGATIVE CASE. Reviewed on 2026-09-01 and found clean by an adversarial pass prompted with this repo's defect families, then merged. `expected` is empty on purpose: every finding here counts as EXTRA, which is how a rubric change that buys recall by inventing findings is caught. A negative set is what makes the EXTRA column mean anything.",
+  "pr": 3660,
+  "negative": true,
+  "input": {
+    "headSha": "56244b1b6aa39111911c793af361ed6f37c5c562",
+    "files": [
+      {
+        "path": ".changeset/assigns-to-group-by-factor-membership.md",
+        "patch": "@@ -0,0 +1,5 @@\n+---\n+'@ifc-lite/parser': patch\n+---\n+\n+Fix `IfcRelAssignsToGroupByFactor` (the proportional-factor subtype of `IfcRelAssignsToGroup`) being silently dropped from the relationship graph. It matched none of the parser's relationship-type gates (`RELATIONSHIP_TYPES` / `HIERARCHY_REL_TYPES` / `REL_TYPE_MAP`) or the `extractRelFast` byte scanner, so an element assigned to a zone/system exclusively through this relationship never appeared in that group's members, and the group never appeared in the element's own group list. `extractGroupMembersOnDemand` and `extractRelationshipsOnDemand` now resolve both relationship kinds.",
+        "addedLineRanges": [
+          [
+            1,
+            5
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/columnar-parser-indexes.ts",
+        "patch": "@@ -67,7 +67,12 @@ export const RELATIONSHIP_TYPES = new Set([\n     'IFCRELCONNECTSPATHELEMENTS', 'IFCRELCONNECTSELEMENTS',\n     'IFCRELCONNECTSPORTTOELEMENT', 'IFCRELCONNECTSPORTS',\n     'IFCRELSPACEBOUNDARY',\n-    'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT',\n+    // IfcRelAssignsToGroupByFactor is a subtype of IfcRelAssignsToGroup\n+    // (adds a proportional Factor attribute, e.g. zone occupancy share) and\n+    // is written to STEP with its own distinct entity keyword \u2014 it does not\n+    // match the 'IFCRELASSIGNSTOGROUP' string, so it needs its own entry or\n+    // every membership assigned through it is silently invisible.\n+    'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR', 'IFCRELASSIGNSTOPRODUCT',\n     'IFCRELREFERENCEDINSPATIALSTRUCTURE',\n ]);\n \n@@ -93,6 +98,9 @@ export const REL_TYPE_MAP: Record<string, RelationshipType> = {\n     'IFCRELCONNECTSPORTS': RelationshipType.ConnectsPorts,\n     'IFCRELSPACEBOUNDARY': RelationshipType.SpaceBoundary,\n     'IFCRELASSIGNSTOGROUP': RelationshipType.AssignsToGroup,\n+    // Subtype of IfcRelAssignsToGroup (adds a Factor); same RelatingGroup /\n+    // RelatedObjects membership semantics, so it shares the same edge type.\n+    'IFCRELASSIGNSTOGROUPBYFACTOR': RelationshipType.AssignsToGroup,\n     'IFCRELASSIGNSTOPRODUCT': RelationshipType.AssignsToProduct,\n     'IFCRELREFERENCEDINSPATIALSTRUCTURE': RelationshipType.ReferencedInSpatialStructure,\n };\n@@ -134,7 +142,11 @@ export const HIERARCHY_REL_TYPES = new Set([\n     // themselves were parsed.\n     'IFCRELCONNECTSPORTTOELEMENT', 'IFCRELCONNECTSPORTS',\n     'IFCRELSPACEBOUNDARY',\n-    'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOPRODUCT',\n+    // IfcRelAssignsToGroupByFactor is a distinct STEP keyword (subtype of\n+    // IfcRelAssignsToGroup); omitting it here means it never reaches\n+    // relationshipRefs / extractRelFast, so every group/zone/system\n+    // membership assigned through it is silently dropped.\n+    'IFCRELASSIGNSTOGROUP', 'IFCRELASSIGNSTOGROUPBYFACTOR', 'IFCRELASSIGNSTOPRODUCT',\n     'IFCRELREFERENCEDINSPATIALSTRUCTURE',\n ]);\n ",
+        "addedLineRanges": [
+          [
+            70,
+            75
+          ],
+          [
+            101,
+            103
+          ],
+          [
+            145,
+            149
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/src/columnar-parser-relationships.ts",
+        "patch": "@@ -43,7 +43,14 @@ export function extractRelFast(\n         const [relating, _] = readRefId(buffer, pos, end);\n         if (relating < 0 || related.length === 0) return null;\n         return { relatingObject: relating, relatedObjects: related };\n-    } else if (typeUpper === 'IFCRELASSIGNSTOGROUP' || typeUpper === 'IFCRELASSIGNSTOPRODUCT') {\n+    } else if (\n+        typeUpper === 'IFCRELASSIGNSTOGROUP'\n+        // Subtype of IfcRelAssignsToGroup: same attr[4]=RelatedObjects,\n+        // attr[5]=RelatedObjectsType, attr[6]=RelatingGroup layout, plus a\n+        // trailing Factor we don't need to read.\n+        || typeUpper === 'IFCRELASSIGNSTOGROUPBYFACTOR'\n+        || typeUpper === 'IFCRELASSIGNSTOPRODUCT'\n+    ) {\n         const [related, rp] = readRefList(buffer, pos, end);\n         // `readRefList` returns `rp` pointing AT the closing `)` of\n         // the list. `skipCommas` tracks paren depth, so leaving `rp`",
+        "addedLineRanges": [
+          [
+            46,
+            53
+          ]
+        ]
+      },
+      {
+        "path": "packages/parser/test/group-membership-by-factor.test.ts",
+        "patch": "@@ -0,0 +1,94 @@\n+/* This Source Code Form is subject to the terms of the Mozilla Public\n+ * License, v. 2.0. If a copy of the MPL was not distributed with this\n+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */\n+\n+import { describe, it, expect } from 'vitest';\n+import { StepTokenizer } from '../src/tokenizer.js';\n+import {\n+  ColumnarParser,\n+  extractRelationshipsOnDemand,\n+  extractGroupMembersOnDemand,\n+} from '../src/columnar-parser.js';\n+\n+// IfcRelAssignsToGroupByFactor (IFC2X3/IFC4/IFC4X3) is a SUBTYPE of\n+// IfcRelAssignsToGroup \u2014 same RelatingGroup/RelatedObjects membership\n+// semantics, plus a proportional Factor attribute \u2014 but it is written to\n+// STEP under its own distinct entity keyword. `HIERARCHY_REL_TYPES` /\n+// `RELATIONSHIP_TYPES` / `REL_TYPE_MAP` (columnar-parser-indexes.ts) and the\n+// `extractRelFast` byte scanner (columnar-parser-relationships.ts) matched\n+// only the literal 'IFCRELASSIGNSTOGROUP' string, so a ByFactor relationship\n+// never reached the categorized `relationshipRefs` bucket: it fell through\n+// to CAT_RELEVANT (its keyword starts with 'IFCREL') and was parsed only for\n+// GlobalId/Name, never turned into a graph edge. Any element assigned to a\n+// zone/system exclusively through IfcRelAssignsToGroupByFactor was silently\n+// invisible to both \"members of this group\" and \"groups of this element\".\n+const IFC = `#1=IFCOWNERHISTORY($,$,$,$,$,$,$,0);\n+#10=IFCWALL('wall-1',#1,'Wall A',$,$,$,$,$);\n+#11=IFCWALL('wall-2',#1,'Wall B',$,$,$,$,$);\n+#12=IFCWALL('wall-3',#1,'Wall C',$,$,$,$,$);\n+#30=IFCSYSTEM('sys-1',#1,'HVAC System',$,'HVAC');\n+#31=IFCZONE('zone-1',#1,'Thermal Zone',$,$,$);\n+// wall-1 -> sys-1 via the plain (non-factor) relationship: control.\n+#40=IFCRELASSIGNSTOGROUP('rel-plain',#1,$,$,(#10),$,#30);\n+// wall-2 -> sys-1 EXCLUSIVELY via IfcRelAssignsToGroupByFactor.\n+#41=IFCRELASSIGNSTOGROUPBYFACTOR('rel-factor',#1,$,$,(#11),$,#30,0.5);\n+// wall-3 -> zone-1 via factor AND independently assigned into sys-1 via the\n+// plain relationship (multiple membership across both relationship kinds).\n+#42=IFCRELASSIGNSTOGROUPBYFACTOR('rel-factor-2',#1,$,$,(#12),$,#31,0.75);\n+#43=IFCRELASSIGNSTOGROUP('rel-plain-2',#1,$,$,(#12),$,#30);`;\n+\n+async function parse() {\n+  const source = new TextEncoder().encode(IFC.split('\\n').filter(l => !l.trim().startsWith('//')).join('\\n'));\n+  const tokenizer = new StepTokenizer(source);\n+  const entityRefs = Array.from(tokenizer.scanEntitiesFast()).map((ref) => ({\n+    expressId: ref.expressId,\n+    type: ref.type,\n+    byteOffset: ref.offset,\n+    byteLength: ref.length,\n+    lineNumber: ref.line,\n+  }));\n+  const parser = new ColumnarParser();\n+  return parser.parseLite(source.buffer.slice(0), entityRefs, {});\n+}\n+\n+describe('IfcRelAssignsToGroupByFactor membership', () => {\n+  it('resolves group -> members through the ByFactor relationship, not just the plain one', async () => {\n+    const store = await parse();\n+    const sysMembers = extractGroupMembersOnDemand(store, 30).map(m => m.id).sort((a, b) => a - b);\n+    // wall-1 (plain) + wall-3 (plain) are the control; wall-2 is assigned\n+    // EXCLUSIVELY via IfcRelAssignsToGroupByFactor \u2014 the regression is that\n+    // it used to be dropped entirely from this list.\n+    expect(sysMembers).toEqual([10, 11, 12]);\n+\n+    const zoneMembers = extractGroupMembersOnDemand(store, 31).map(m => m.id);\n+    expect(zoneMembers).toEqual([12]);\n+  });\n+\n+  it('resolves element -> groups for an element assigned only via ByFactor', async () => {\n+    const store = await parse();\n+    const wall2Groups = extractRelationshipsOnDemand(store, 11).groups.map(g => g.id);\n+    expect(wall2Groups).toEqual([30]);\n+  });\n+\n+  it('keeps multiple membership: an element in two distinct groups via two different relationship kinds', async () => {\n+    const store = await parse();\n+    const wall3Groups = extractRelationshipsOnDemand(store, 12).groups.map(g => g.id).sort();\n+    expect(wall3Groups).toEqual([30, 31]);\n+  });\n+\n+  it('bidirectional consistency: every group->member edge has a matching member->group edge', async () => {\n+    const store = await parse();\n+    for (const groupId of [30, 31]) {\n+      for (const member of extractGroupMembersOnDemand(store, groupId)) {\n+        const memberGroups = extractRelationshipsOnDemand(store, member.id).groups.map(g => g.id);\n+        expect(memberGroups).toContain(groupId);\n+      }\n+    }\n+  });\n+\n+  it('control: a plain-only group membership is unaffected', async () => {\n+    const store = await parse();\n+    const wall1Groups = extractRelationshipsOnDemand(store, 10).groups.map(g => g.id);\n+    expect(wall1Groups).toEqual([30]);\n+  });\n+});",
+        "addedLineRanges": [
+          [
+            1,
+            94
+          ]
+        ]
+      }
+    ],
+    "unreviewable": [],
+    "excluded": []
+  },
+  "expected": []
+}

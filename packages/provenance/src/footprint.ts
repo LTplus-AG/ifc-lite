@@ -3,11 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Region footprints and a conflict predicate (Bet B1.4, docs/vision/
- * moonshots-execution-plan.md Phase 1 — "the M1-to-M4 handoff"; M4's kill
- * criterion, docs/vision/moonshots-execution-plan.md §5: "if footprint
- * tightening cannot get false-conflict rate below 20% on real traces,
- * provable merging is technically true but practically annoying").
+ * Region footprints and the conflict predicate used by certified merges.
  *
  * An {@link EditOp} declares what it writes two ways: `targetNodeIds` (the
  * DAG nodes it directly mutates — a pset leaf, a mesh leaf, an element node)
@@ -63,7 +59,7 @@
  * ancestor walk excludes the storey node. Direct edits to container-kind
  * nodes are outside the `property-edit` / `geometry-edit` vocabulary this
  * file models and are not exercised by the tightness benchmark
- * (scripts/moonshot/g2-footprint-tightness.mjs); if a future op kind targets
+ * (packages/provenance/src/footprint.test.ts); if a future op kind targets
  * containers directly, this rule needs revisiting.
  *
  * ## Spatial conflict and epsilon
@@ -73,10 +69,8 @@
  * are metres throughout ifc-lite's authoring/geometry pipeline, so the
  * inflation is `epsilonMm / 1000` per axis). Default: {@link
  * DEFAULT_EPSILON_MM} = 50mm — not an arbitrary round number: it is the exact
- * clearance tolerance already load-bearing elsewhere in the M1 plan
- * (docs/vision/moonshots-tech.md §M1: "clearance to structure >= 50mm
- * everywhere" is the certificate-claim example given for geometric
- * invariants). Reusing it here means the spatial conflict test asks "are
+ * clearance tolerance used by the geometric-invariant examples. Reusing it
+ * here means the spatial conflict test asks "are
  * these two edits closer than the minimum clearance this system already
  * promises elsewhere" — if two edits' regions come within 50mm of touching,
  * treating them as potentially conflicting is consistent with the rest of
@@ -173,9 +167,7 @@ export function computeFootprint(dag: ProvenanceDag, op: EditOp): Footprint {
   return { opId: op.opId, writtenNodes, region: op.region ?? null };
 }
 
-/** 50mm — see module docstring for why this specific value (it is the
- *  clearance-to-structure tolerance already named in the M1 midterm exam,
- *  docs/vision/moonshots-tech.md §M1). */
+/** 50mm — see module docstring for why this specific value. */
 export const DEFAULT_EPSILON_MM = 50;
 
 /** Inflate an AABB by `epsilonMm` per axis, per side (world units are
@@ -211,14 +203,37 @@ export interface ConflictResult {
   spatial: boolean;
 }
 
+/**
+ * Whether {@link conflictPredicate} evaluates its SPATIAL half at all.
+ *
+ * `'enabled'` is the predicate the system defines and the only configuration
+ * under which a commutation certificate means anything. `'disabled'` — the
+ * predicate reduced to structural overlap, spatial region intersection
+ * ignored — exists for exactly one purpose: the spatial-rule ablation in
+ * `packages/provenance/test/merge-battery.test.ts` §7.
+ *
+ * The soundness argument for the coupled op model (merge-model.ts module
+ * docstring) *depends* on the spatial rule: a host and its openings overlap
+ * spatially by construction, so every host-op/opening-op cross pair is refused
+ * a certificate. An argument of that shape is only worth stating if turning
+ * the rule off breaks it — so the battery runs the same 1,000 schedules with
+ * this set to `'disabled'` and counts the cross pairs the reduced predicate
+ * then CLEARS that do not actually commute (`runSpatialAblation` in
+ * merge-battery.ts). This is a measuring instrument, never a production
+ * configuration.
+ */
+export type SpatialRuleMode = 'enabled' | 'disabled';
+
 export interface ConflictOptions {
   /** Default {@link DEFAULT_EPSILON_MM}. */
   epsilonMm?: number;
+  /** Default `'enabled'`. `'disabled'` is the spatial ablation knob and makes
+   *  the predicate structural-only — see {@link SpatialRuleMode}. */
+  spatialRule?: SpatialRuleMode;
 }
 
 /**
- * SOUND conflict predicate (M4, docs/vision/moonshots-execution-plan.md §2
- * M4 risk 5 / §5 kill criterion): two ops conflict if (a) their
+ * Sound conflict predicate: two ops conflict if (a) their
  * `writtenNodes` intersect — a structural conflict, computed per the module
  * docstring's crux rule so aggregator ancestors don't cause false positives
  * — or (b) both carry a region and the epsilon-inflated regions intersect —
@@ -229,6 +244,11 @@ export interface ConflictOptions {
  * elements) — over-reporting is exactly what the tightness benchmark
  * measures, per the task brief ("may over-report, that is what tightness
  * measures").
+ *
+ * `options.spatialRule: 'disabled'` drops (b) entirely. That is an ABLATION,
+ * not a tuning knob: under the coupled op model (merge-model.ts) it is
+ * unsound by design, and measuring exactly how unsound is the point — see
+ * {@link SpatialRuleMode}.
  */
 export function conflictPredicate(
   fpA: Footprint,
@@ -236,6 +256,7 @@ export function conflictPredicate(
   options: ConflictOptions = {},
 ): ConflictResult {
   const epsilonMm = options.epsilonMm ?? DEFAULT_EPSILON_MM;
+  const spatialRule = options.spatialRule ?? 'enabled';
 
   let structural = false;
   // Iterate the smaller set for a cheap constant-factor win; correctness
@@ -250,7 +271,7 @@ export function conflictPredicate(
   }
 
   let spatial = false;
-  if (fpA.region && fpB.region) {
+  if (spatialRule === 'enabled' && fpA.region && fpB.region) {
     spatial = aabbsIntersect(inflateAabb(fpA.region, epsilonMm), inflateAabb(fpB.region, epsilonMm));
   }
 

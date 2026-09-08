@@ -22,24 +22,37 @@ import {
   extractTypeQuantitiesOnDemand,
 } from '@ifc-lite/parser';
 import type { PropertySet, QuantitySet } from '@ifc-lite/data';
-import { RelationshipType } from '@ifc-lite/data';
+import { RelationshipType, exactTypeName } from '@ifc-lite/data';
 import { ENTITY_ATTRIBUTES } from '@ifc-lite/lists';
 import type { ListDataProvider, ListClassificationRef, DiscoveredColumns } from '@ifc-lite/lists';
 import { resolveEntityPredefinedType } from '../entity-predefined-type.js';
 import { buildSpatialAncestryIndex, type SpatialAncestryIndex } from '../../utils/spatialHierarchy.js';
-import type { ZoneSet, ZoneAssignmentsByElement } from '../zones/index.js';
+import type { ZoneSet, ZoneAssignmentsByElement, ZoneApportionmentCache } from '../zones/index.js';
+import { validEntry } from '../zones/index.js';
 
 /**
- * Zone assignment data (issue #1810), threaded in from the store so the
- * `zone` column/condition source can resolve without the adapter knowing
- * anything about how zones are authored. `toGlobalId` converts THIS model's
- * local express id to the federated global id `zoneAssignments` is keyed by
- * (single-model fallback: `globalId === expressId`, same contract as
- * `FederationRegistry`).
+ * Per-model list context: zone data (issue #1810) plus later loosely-related
+ * extras (volume units, World Coordinates — issue #3671) threaded the same
+ * way. `toGlobalId` maps THIS model's local express id to the federated
+ * global id these are keyed by (single-model fallback: identity).
  */
 export interface ZoneListContext {
   zoneSets: ZoneSet[];
   zoneAssignments: ZoneAssignmentsByElement;
+  /** Per-zone-set volume apportionment (issue #2508). Read through
+   *  `validEntry`, so a result computed before the zones moved is not served.
+   *  Absent / empty until the user asks for one — the `Volume` columns then
+   *  read `null`, which is the honest answer, not a reason to clip a whole
+   *  model behind their back. */
+  apportionment?: ZoneApportionmentCache;
+  /** The model's declared VOLUMEUNIT scale to SI, from `ProjectUnits`. Zone
+   *  volumes are computed in SI cubic metres (the viewer's world frame is
+   *  metres); dividing by this hands the list engine a value in the same unit
+   *  the model's own `NetVolume` is in, so the shared per-column resolver
+   *  converts and labels it identically instead of needing a second path. */
+  volumeSiScale?: number;
+  /** World Coordinate in the model's own unit (issue #3671). */
+  getWorldPosition?: (expressId: number) => { x: number; y: number; z: number } | null;
   toGlobalId: (expressId: number) => number;
 }
 
@@ -66,10 +79,9 @@ function materialNamesOf(info: MaterialInfo | null): string[] {
  * several models can tell which file each row came from. Defaults to '' for the
  * single-model legacy path where there's nothing to disambiguate.
  *
- * `zoneContext`, when supplied, enables the `zone` column/condition source
- * (issue #1810). Omit it (the default) and every `zone` column simply
- * resolves to `null` — the same graceful-degradation contract every other
- * optional `ListDataProvider` accessor follows.
+ * `zoneContext`, when supplied, enables the `zone`/`geometry` column sources
+ * (issues #1810, #3671); omitted fields resolve to `null`, same as every
+ * other optional `ListDataProvider` accessor.
  */
 export function createListDataProvider(
   store: IfcDataStore,
@@ -229,7 +241,7 @@ export function createListDataProvider(
     getEntityObjectType: (id) => store.entities.getObjectType(id) || getOnDemandAttrs(id).objectType,
     getEntityPredefinedType: (id) => getPredefinedTypeFor(id),
     getEntityTag: (id) => store.entities.getTag?.(id) || getOnDemandAttrs(id).tag,
-    getEntityTypeName: (id) => store.entities.getTypeName(id),
+    getEntityTypeName: (id) => exactTypeName(store.entities, id), // declared class, not coalesced (#3325)
 
     getPropertySets: getPropertySetsFor,
     getQuantitySets: getQuantitySetsFor,
@@ -285,6 +297,7 @@ export function createListDataProvider(
     getModelName(): string {
       return modelName;
     },
+    getWorldPosition: (id) => zoneContext?.getWorldPosition?.(id) ?? null,
 
     discoverAllColumns(): DiscoveredColumns {
       if (columnsCache) return columnsCache;
@@ -378,6 +391,25 @@ export function createListDataProvider(
           .map((zoneId) => zoneSet?.zones.find((z) => z.id === zoneId)?.name)
           .filter((n): n is string => !!n);
         return { zoneName: assignment.zoneName, straddles: assignment.straddles, touchedZoneNames };
+      },
+      getZoneVolumeShares(expressId: number, zoneSetId: string) {
+        const zoneSet = zoneContext.zoneSets.find((zs) => zs.id === zoneSetId);
+        if (!zoneSet || !zoneContext.apportionment) return null;
+        const entry = validEntry(zoneContext.apportionment, zoneSet);
+        if (!entry) return null;
+        const globalId = zoneContext.toGlobalId(expressId);
+        const apportionment = entry.byElement.get(globalId);
+        if (!apportionment) return null;
+        const scale = zoneContext.volumeSiScale && zoneContext.volumeSiScale > 0 ? zoneContext.volumeSiScale : 1;
+        const homeZoneId = zoneContext.zoneAssignments.get(globalId)?.[zoneSetId]?.zoneId ?? null;
+        const shares = apportionment.shares.map((s) => ({ zoneName: s.zoneName, value: s.volumeM3 / scale }));
+        // The HOME zone is v1's centroid-containment answer, which is the zone
+        // the element's `Zone` column already names — so the numeric column and
+        // the name column describe the same zone rather than two different ones.
+        const home = homeZoneId === null
+          ? null
+          : apportionment.shares.find((s) => s.zoneId === homeZoneId)?.volumeM3 ?? null;
+        return { homeValue: home === null ? null : home / scale, shares };
       },
       getZoneSetNames() {
         return zoneContext.zoneSets.map((zs) => ({ id: zs.id, name: zs.name }));

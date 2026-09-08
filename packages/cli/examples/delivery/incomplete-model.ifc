@@ -1,0 +1,11 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('incomplete-model.ifc','2026-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0Project_GUID_000002',$,'Delivery Example Project (incomplete)',$,$,$,$,$,$);
+#5=IFCWALL('0Wall_GUID_00000002',$,'Wall-02',$,$,$,$,$,$);
+ENDSEC;
+END-ISO-10303-21;

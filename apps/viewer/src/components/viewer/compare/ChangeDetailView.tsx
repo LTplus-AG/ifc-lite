@@ -10,7 +10,8 @@
 import { PencilLine } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
-import type { ChangeDetail, FieldDelta, GeometrySummary } from '@/lib/compare/describeChange';
+import type { ChangeDetail, FieldDelta } from '@/lib/compare/describeChange';
+import type { GeometrySummary } from '@/lib/compare/geometrySummary';
 import type { CompareRow } from './changeRow';
 
 export function ChangeDetailView({ row, detail }: { row: CompareRow; detail: ChangeDetail }) {

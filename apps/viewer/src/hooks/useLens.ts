@@ -13,9 +13,16 @@
  * React lifecycle and Zustand integration.
  *
  * Performance notes:
- * - Does NOT subscribe to `models` or `ifcDataStore` — reads them from
- *   getState() only when the active lens changes. This prevents re-evaluation
- *   during model loading.
+ * - Does NOT subscribe to `models` or `ifcDataStore` directly — reads them
+ *   from getState() only when the active lens changes OR the loaded MODEL
+ *   SET changes (add/remove — tracked via a cheap id-set fingerprint, see
+ *   `modelSetKey` below). This prevents re-evaluation on every in-place model
+ *   field patch during loading (progress, visibility, …) while still
+ *   invalidating when a model is actually added or removed (#2853-class:
+ *   removeModel/clearAllModels can leave colorMap/hiddenIds/ruleEntityIds
+ *   referencing entities that no longer exist, or — after clearAllModels
+ *   resets the federation registry's offset counter — that a NEW model now
+ *   occupies at the same global id).
  * - Uses color overlay system: pendingColorUpdates triggers
  *   scene.setColorOverrides() which builds overlay batches rendered on top
  *   of original geometry. Original batches are NEVER modified — clearing
@@ -47,6 +54,25 @@ export function useLens() {
   // Track the previously active lens to detect deactivation
   const prevLensIdRef = useRef<string | null>(null);
 
+  // Fingerprint of the loaded MODEL SET (add/remove only) — deliberately not
+  // `models` itself, which gets a new Map reference on every in-place field
+  // patch (loading progress, visibility, etc.) and would defeat the whole
+  // point of reading models from getState() instead of subscribing to them.
+  // Two string values with the same content are `===` in JS, so this selector
+  // only actually changes the deps array when the id SET changes.
+  //
+  // Why this matters: `removeModel` / `clearAllModels` can drop or replace
+  // every model the last evaluation's colorMap/hiddenIds/ruleEntityIds refer
+  // to. Worse, `clearAllModels` resets the federation registry's offset
+  // counter (`federation-registry.ts`), so the next model loaded can be
+  // handed the EXACT global-id range the stale entries still reference —
+  // a stale lens color then keeps "matching" whatever unrelated entity now
+  // occupies that id, not just dangling harmlessly.
+  const modelSetKey = useViewerStore((s) => {
+    const ids = Array.from(s.models.keys()).sort().join('\x00');
+    return `${ids}|${s.ifcDataStore ? 1 : 0}`;
+  });
+
   useEffect(() => {
 
     // Lens deactivated — clear overlay (instant, no batch rebuild)
@@ -69,7 +95,26 @@ export function useLens() {
     // Read data sources from getState() — NOT subscribed, so model loading
     // doesn't trigger re-evaluation
     const { models, ifcDataStore } = useViewerStore.getState();
-    if (models.size === 0 && !ifcDataStore) return;
+    if (models.size === 0 && !ifcDataStore) {
+      // Every model the last evaluation referenced is gone. Its
+      // colorMap/hiddenIds/ruleEntityIds are not just dangling — after
+      // clearAllModels resets the registry, the next model can reuse the
+      // exact global-id range they point at, so leaving them in place risks
+      // misapplying stale colors to an unrelated entity the moment anything
+      // (e.g. useCompareOverlay's teardown) resends `lensAppliedColors`.
+      // Clear the same way lens deactivation does.
+      if (prevLensIdRef.current !== null) {
+        prevLensIdRef.current = null;
+        useViewerStore.getState().setLensColorMap(new Map());
+        useViewerStore.getState().setLensHiddenIds(new Set());
+        useViewerStore.getState().setLensRuleCounts(new Map());
+        useViewerStore.getState().setLensRuleEntityIds(new Map());
+        useViewerStore.getState().setLensAutoColorLegend([]);
+        useViewerStore.getState().setLensAppliedColors(null);
+        useViewerStore.getState().setPendingColorUpdates(new Map());
+      }
+      return;
+    }
 
     prevLensIdRef.current = activeLensId;
 
@@ -118,7 +163,7 @@ export function useLens() {
       matched_entity_count: colorMap.size,
       hidden_entity_count: hiddenIds.size,
     });
-  }, [activeLensId, activeLens]);
+  }, [activeLensId, activeLens, modelSetKey]);
 
   return {
     activeLensId,

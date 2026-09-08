@@ -18,6 +18,15 @@ export interface IDSValidationSummary {
   totalSpecifications: number;
   passedSpecifications: number;
   failedSpecifications: number;
+  /**
+   * Specifications whose applicability matched no entities and whose
+   * cardinality does not require a match (e.g. no `minOccurs`). Neither
+   * a pass nor a fail — kept separate so `passed + failed +
+   * notApplicable === total` always holds, matching
+   * `@ifc-lite/ids`'s `IDSValidationSummary.overallPassRate` denominator
+   * semantics (not_applicable specs are never counted as passed there).
+   */
+  notApplicableSpecifications: number;
   totalEntities: number;
   passedEntities: number;
   failedEntities: number;
@@ -38,8 +47,15 @@ export interface IDSValidationProgress {
 export interface IDSValidateOptions {
   /** IFC data accessor — maps IFC model data for validation */
   accessor: unknown;
-  /** Model info (schema version, name, etc.) for spec applicability checks */
-  modelInfo?: { schemaVersion?: string; name?: string; [key: string]: unknown };
+  /**
+   * Model info for spec applicability checks. Mirrors the shape
+   * `@ifc-lite/ids`'s `IDSModelInfo` expects (`modelId`, `schemaVersion`,
+   * `entityCount`) without importing that type, keeping this namespace
+   * decoupled from `@ifc-lite/ids` at compile time (see the summary type
+   * above). All fields are optional here — the validator is called with
+   * `options.modelInfo ?? {}`, so a caller may supply only what it knows.
+   */
+  modelInfo?: { modelId?: string; schemaVersion?: string; entityCount?: number };
   /** Progress callback */
   onProgress?: (progress: IDSValidationProgress) => void;
   /** Locale for human-readable messages */
@@ -95,9 +111,16 @@ export class IDSNamespace {
    */
   async validate(idsDocument: unknown, options: IDSValidateOptions): Promise<unknown> {
     const mod = await loadIDS();
+    // `ValidatorOptions` has no `locale` field — the validator only
+    // understands a `translator` (see @ifc-lite/ids `ValidatorOptions`).
+    // Build one from the requested locale so `locale` actually reaches
+    // the human-readable messages instead of being silently dropped.
+    const translator = options.locale
+      ? (mod.createTranslationService as AnyFn)(options.locale)
+      : undefined;
     return (mod.validateIDS as AnyFn)(idsDocument, options.accessor, options.modelInfo ?? {}, {
       onProgress: options.onProgress,
-      locale: options.locale,
+      translator,
       includePassingEntities: options.includePassingEntities,
     });
   }
@@ -209,7 +232,7 @@ export class IDSNamespace {
       status?: 'pass' | 'fail' | 'not_applicable';
     }>;
   }): IDSValidationSummary {
-    let totalSpecs = 0, passedSpecs = 0, failedSpecs = 0;
+    let totalSpecs = 0, passedSpecs = 0, failedSpecs = 0, notApplicableSpecs = 0;
     let totalEntities = 0, passedEntities = 0, failedEntities = 0;
 
     for (const spec of report.specificationResults) {
@@ -225,11 +248,31 @@ export class IDSNamespace {
       // entities), which entity results alone cannot express. Deriving
       // from entities here used to make this summary disagree with the
       // validator's report.summary for exactly those specs.
+      //
+      // A spec explicitly marked not_applicable is neither pass nor
+      // fail. It used to fall through to an unconditional `else` and get
+      // counted as passed — silently inflating the spec-level pass rate
+      // for any IDS containing a spec that matched nothing. There is no
+      // legacy-shape fallback for `status === undefined` here because
+      // `not_applicable` only ever comes from the validator, which always
+      // sets `status`.
+      if (spec.status === 'not_applicable') {
+        notApplicableSpecs++;
+        continue;
+      }
       const specFailed = spec.status !== undefined ? spec.status === 'fail' : anyEntityFailed;
       if (specFailed) failedSpecs++;
       else passedSpecs++;
     }
 
-    return { totalSpecifications: totalSpecs, passedSpecifications: passedSpecs, failedSpecifications: failedSpecs, totalEntities, passedEntities, failedEntities };
+    return {
+      totalSpecifications: totalSpecs,
+      passedSpecifications: passedSpecs,
+      failedSpecifications: failedSpecs,
+      notApplicableSpecifications: notApplicableSpecs,
+      totalEntities,
+      passedEntities,
+      failedEntities,
+    };
   }
 }

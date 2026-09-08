@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import { startCollabServer } from '../src/server.js';
 import { MemoryPersistence } from '../src/persistence.js';
@@ -41,6 +41,39 @@ describe('path-locks', () => {
     expect(paths.some((p) => p === 'entities/wall' || p === 'entities/wall/attributes')).toBe(true);
   });
 
+  it('harvests every top-level shared type, including ones the harvester does not pre-create', () => {
+    // `harvestUpdatePaths` pre-creates four maps on its throwaway doc
+    // (entities/relationships/geometry/meta) but `TOP` in @ifc-lite/collab has
+    // five — `annotations` is not among them. That reads like an enumeration
+    // with one missing, and an unenforceable lock prefix would be a real
+    // security hole, so pin what actually happens: `Y.applyUpdate` registers
+    // any top-level type the update names, and `topLevelKeyOf` scans
+    // `doc.share`, so the path IS harvested. The pre-creation is a no-op for
+    // this purpose. If that ever stops being true — a Yjs change, or someone
+    // "tidying" the scan into a fixed list — a lock on `annotations/…` would
+    // silently stop matching, and this fails instead.
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      doc.getMap('annotations').set('pin1', new Y.Map<unknown>());
+      doc.getMap('entities').set('wall1', new Y.Map<unknown>());
+    });
+    const paths = harvestUpdatePaths(Y.encodeStateAsUpdate(doc));
+    expect(paths).toContain('annotations/pin1');
+    expect(paths).toContain('entities/wall1');
+  });
+
+  it('an annotations lock is enforceable, not merely declarable', () => {
+    const reg = createPathLockRegistry();
+    reg.add({ prefix: 'annotations/', label: 'markup-freeze' });
+    const doc = new Y.Doc();
+    doc.transact(() => {
+      doc.getMap('annotations').set('pin1', new Y.Map<unknown>());
+    });
+    const paths = harvestUpdatePaths(Y.encodeStateAsUpdate(doc));
+    const hit = paths.map((p) => reg.matches(p, { userId: 'u1', role: 'editor' })).find(Boolean);
+    expect(hit?.label).toBe('markup-freeze');
+  });
+
   it('registry add / matches / remove', () => {
     const reg = createPathLockRegistry();
     const lock = reg.add({
@@ -53,6 +86,23 @@ describe('path-locks', () => {
     expect(reg.matches('entities/other', { userId: 'bob', role: 'editor' })).toBeNull();
     reg.remove(lock);
     expect(reg.matches('entities/storey-1/wall', { userId: 'bob', role: 'editor' })).toBeNull();
+  });
+
+  // `exemptRoles` had no coverage at all: a mutation turning the
+  // `lock.exemptRoles?.has(principal.role)` check into a no-op (so the
+  // exemption is silently ignored) survived the full suite unchanged
+  // (142/142 still green), because no existing test ever set
+  // `exemptRoles` on a lock. This pins the "the locking admin can still
+  // edit" behaviour documented in the module header.
+  it('registry matches respects exemptRoles', () => {
+    const reg = createPathLockRegistry();
+    const lock = reg.add({
+      prefix: 'entities/storey-1/',
+      label: 'mep-review',
+      exemptRoles: new Set(['admin']),
+    });
+    expect(reg.matches('entities/storey-1/wall', { userId: 'bob', role: 'editor' })).toBe(lock);
+    expect(reg.matches('entities/storey-1/wall', { userId: 'alice', role: 'admin' })).toBeNull();
   });
 
   it('rejects writes to locked prefixes via verifyAgainstPathLocks', async () => {
@@ -88,6 +138,65 @@ describe('path-locks', () => {
     expect(rejects.some((e) => String((e.detail as { reason?: string } | undefined)?.reason).startsWith('locked:'))).toBe(true);
 
     prov.destroy();
+    await handle.stop();
+  }, 10_000);
+
+  // The reject-path test above only proves the verifier can say no. It
+  // does not prove an allowed write actually reaches other peers — that
+  // is a separate, unverified claim about how `handleMessage` dispatches
+  // an `{ ok: true }` decision. In the sibling replay-protector verifier,
+  // the accept path was silently broken (the transformed `payload` it
+  // returned was never dispatched, so every accepted edit vanished)
+  // while its own reject-path test stayed green (fixed in #2846). This
+  // test drives two real peers through a real `startCollabServer` with
+  // `verifyAgainstPathLocks` installed and asserts the downstream
+  // effect — peer 2 observing peer 1's write to an *unlocked* path —
+  // not just the verifier's return value.
+  it('accepts writes to unlocked prefixes and propagates them to other peers via verifyAgainstPathLocks', async () => {
+    const reg = createPathLockRegistry();
+    reg.add({ prefix: 'entities/locked', label: 'frozen' });
+    const audit = new MemoryAuditSink();
+
+    const handle = await startCollabServer({
+      port: 0,
+      persistence: new MemoryPersistence(),
+      auditSink: audit,
+      verifyMessage: verifyAgainstPathLocks(reg),
+    });
+    const port = (handle.httpServer.address() as { port: number }).port;
+    const url = `ws://127.0.0.1:${port}`;
+
+    const doc1 = new Y.Doc();
+    const prov1 = new WebsocketProvider(url, 'project/main', doc1, {
+      WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
+    });
+    const doc2 = new Y.Doc();
+    const prov2 = new WebsocketProvider(url, 'project/main', doc2, {
+      WebSocketPolyfill: WebSocket as never,
+      disableBc: true,
+    });
+    await Promise.all([
+      new Promise<void>((res) => (prov1.synced ? res() : prov1.once('sync', () => res()))),
+      new Promise<void>((res) => (prov2.synced ? res() : prov2.once('sync', () => res()))),
+    ]);
+
+    // Write to an UNLOCKED path from peer 1.
+    const ents1 = doc1.getMap('entities');
+    doc1.transact(() => {
+      const wall = new Y.Map<unknown>();
+      wall.set('kind', 'wall');
+      ents1.set('open-wall', wall);
+    });
+
+    // Assert the downstream effect on peer 2, not the verifier's decision.
+    await vi.waitFor(() => {
+      const ents2 = doc2.getMap('entities');
+      expect(ents2.has('open-wall')).toBe(true);
+    }, { timeout: 5_000, interval: 25 });
+
+    prov1.destroy();
+    prov2.destroy();
     await handle.stop();
   }, 10_000);
 });

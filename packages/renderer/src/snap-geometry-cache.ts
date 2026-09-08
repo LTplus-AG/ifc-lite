@@ -5,199 +5,172 @@
 /**
  * Geometry cache building for snap detection.
  *
- * Extracts vertices, edges, and connectivity information from mesh data
- * for efficient snap-target lookups.
+ * Three stages, in order, because each one is what makes the next answerable:
+ *
+ * 1. WELD by position (`snap-weld.ts`). The wasm mesh is unwelded across
+ *    creases, so classifying edges by vertex INDEX made every physical edge
+ *    arrive twice with one adjacent triangle each — every edge looked like a
+ *    boundary edge, the coplanarity test below could never fire, and the cache
+ *    filled with triangulation diagonals (911 of 1755 distinct edges on
+ *    `building-architecture.ifc`) that a user can snap to and measure.
+ * 2. CLASSIFY: keep boundary and crease edges, drop the diagonals shared by two
+ *    coplanar triangles.
+ * 3. MERGE collinear runs (`snap-edge-runs.ts`), so a straight model edge that
+ *    several triangles cross becomes ONE edge of the length the user sees.
  */
 
 import type { MeshData } from '@ifc-lite/geometry';
 import type { Vec3 } from './raycaster.js';
+import { snapToleranceFor, weldVertices } from './snap-weld.js';
+import { mergeCollinearRuns, type SnapEdge, type WeldedSegment } from './snap-edge-runs.js';
+
+export type { SnapEdge } from './snap-edge-runs.js';
 
 export interface MeshGeometryCache {
   vertices: Vec3[];
-  edges: Array<{ v0: Vec3; v1: Vec3; index: number }>;
-  // Vertex valence map: vertex key -> number of edges connected
-  vertexValence: Map<string, number>;
-  // Edges at each vertex: vertex key -> array of edge indices
-  vertexEdges: Map<string, number[]>;
+  edges: SnapEdge[];
 }
 
 /**
- * Build a geometry cache for a mesh: deduplicated vertices, filtered edges,
- * and vertex-valence / vertex-edge connectivity maps.
+ * Dot-product threshold above which two triangles sharing an edge count as
+ * coplanar, so their shared edge is an internal triangulation diagonal rather
+ * than a model edge.
+ *
+ * NEAR-EXACT on purpose. Measured over every two-manifold welded edge of the
+ * three committed samples (the `pnpm test:snap-edges` pipeline), the two
+ * populations this constant separates do not overlap for five decades:
+ *
+ * - triangulation diagonals of flat faces sit at dot >= 1 - 8.1e-8, pure f32
+ *   position noise (10k+ edges on building-architecture.ifc and
+ *   infra-bridge.ifc);
+ * - real creases sit at dot <= 1 - 3.66e-5 (0.49 degrees and steeper).
+ *
+ * 1 - 1e-6 sits between them: 12x above the diagonal noise floor, 36x below
+ * the flattest measured crease (both in 1-dot terms). As an angle it is a
+ * 0.081 degree cutoff, flatter than any slope BIM geometry encodes on purpose
+ * (a 2% drainage fall is 1.15 degrees, a 0.5% minimum interior fall 0.29
+ * degrees), so shallow real creases stay snappable. An earlier 0.98 cutoff
+ * (~11.5 degrees) deleted them wholesale: 1093 real creases on
+ * infra-bridge.ifc alone, among them a 3.500 m bridge-deck edge whose faces
+ * meet at 3.617 degrees (IfcBuildingElementProxy #723) - and it cleared the
+ * coarsest shipped circle facet (32 segments = 11.25 degrees, dot 0.98079) by
+ * only 0.0008, so tessellated arcs kept their edges by luck.
+ *
+ * The trade is asymmetric and this errs on the KEEP side deliberately: a
+ * sliver triangle noisier than the measured floor slips its diagonal under
+ * the cutoff and adds a benign extra snap edge on a flat face, while a cutoff
+ * low enough to chase such noise deletes real edges a user has to be able to
+ * measure. Keeping more edges on curved geometry is the conservative
+ * direction for snapping. Pinned from both sides by
+ * `snap-geometry-cache.test.ts`.
+ */
+const COPLANAR_THRESHOLD = 1 - 1e-6;
+
+const EMPTY_CACHE: MeshGeometryCache = { vertices: [], edges: [] };
+
+/**
+ * Build a geometry cache for a mesh: welded vertices plus reconstructed model
+ * edges with their corner valences.
  */
 export function buildGeometryCache(mesh: MeshData): MeshGeometryCache {
   const positions = mesh.positions;
-
-  // Validate input
   if (!positions || positions.length === 0) {
-    return {
-      vertices: [],
-      edges: [],
-      vertexValence: new Map(),
-      vertexEdges: new Map(),
-    };
+    return { ...EMPTY_CACHE };
   }
 
   // Positions are stored in the element's local frame (world = origin + local).
   // Snap targets are compared against world-space raycast hit points, so the
   // cache is built in WORLD space by lifting every absolute vertex read by the
   // per-mesh origin. (Triangle-normal math below uses position *differences*,
-  // where the origin cancels — those reads are left untouched.)
+  // where the origin cancels — those reads are left untouched, and the
+  // tolerance is likewise derived from the LOCAL magnitudes.)
   const ox = mesh.origin ? mesh.origin[0] : 0;
   const oy = mesh.origin ? mesh.origin[1] : 0;
   const oz = mesh.origin ? mesh.origin[2] : 0;
 
-  const vertexMap = new Map<string, Vec3>();
+  const tolerance = snapToleranceFor(positions);
+  const { ids, points } = weldVertices(positions, ox, oy, oz, tolerance);
 
-  for (let i = 0; i < positions.length; i += 3) {
-    const vertex: Vec3 = {
-      x: positions[i] + ox,
-      y: positions[i + 1] + oy,
-      z: positions[i + 2] + oz,
-    };
-
-    // Skip invalid vertices
-    if (!isFinite(vertex.x) || !isFinite(vertex.y) || !isFinite(vertex.z)) {
-      continue;
-    }
-
-    // Use reduced precision for deduplication
-    const key = `${vertex.x.toFixed(4)}_${vertex.y.toFixed(4)}_${vertex.z.toFixed(4)}`;
-    vertexMap.set(key, vertex);
-  }
-
-  const vertices = Array.from(vertexMap.values());
-
-  // Compute and cache edges + vertex valence for corner detection
-  // Filter out internal triangulation edges (diagonals) - only keep real model edges
-  const edges: Array<{ v0: Vec3; v1: Vec3; index: number }> = [];
-  const vertexValence = new Map<string, number>();
-  const vertexEdges = new Map<string, number[]>();
   const indices = mesh.indices;
+  if (!indices) {
+    return { vertices: points, edges: [] };
+  }
 
-  if (indices) {
-    // First pass: collect edges and their adjacent triangle normals
-    const edgeData = new Map<string, {
-      v0: Vec3; v1: Vec3; idx0: number; idx1: number;
-      normals: Vec3[]; // Normals of triangles sharing this edge
-    }>();
+  // Collect each welded edge with the normals of the triangles that use it.
+  const edgeData = new Map<string, { segment: WeldedSegment; normals: Vec3[] }>();
 
-    // Helper to compute triangle normal
-    const computeTriangleNormal = (i: number): Vec3 => {
-      const i0 = indices[i] * 3;
-      const i1 = indices[i + 1] * 3;
-      const i2 = indices[i + 2] * 3;
+  for (let i = 0; i < indices.length; i += 3) {
+    const normal = triangleNormal(positions, indices, i);
+    // A degenerate triangle has no meaningful normal and its edges are junk;
+    // letting one through would make a real crease read as coplanar.
+    if (!normal) continue;
 
-      const ax = positions[i1] - positions[i0];
-      const ay = positions[i1 + 1] - positions[i0 + 1];
-      const az = positions[i1 + 2] - positions[i0 + 2];
-      const bx = positions[i2] - positions[i0];
-      const by = positions[i2 + 1] - positions[i0 + 1];
-      const bz = positions[i2 + 2] - positions[i0 + 2];
+    const a = ids[indices[i]];
+    const b = ids[indices[i + 1]];
+    const c = ids[indices[i + 2]];
+    if (a < 0 || b < 0 || c < 0) continue;
+    // Welding can collapse a triangle even when its PRE-weld positions gave a
+    // valid normal. Skipping only the collapsed edge is not enough: if a === b
+    // then (b,c) and (c,a) are the SAME pair, so the survivor is registered
+    // twice and receives two normals from one degenerate triangle. It then
+    // reads as a two-manifold edge whose crease angle is computed against a
+    // duplicate of itself, which can turn a boundary edge into a false crease.
+    if (a === b || b === c || c === a) continue;
 
-      // Cross product
-      const nx = ay * bz - az * by;
-      const ny = az * bx - ax * bz;
-      const nz = ax * by - ay * bx;
-
-      // Normalize
-      const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-      return len > 0 ? { x: nx / len, y: ny / len, z: nz / len } : { x: 0, y: 1, z: 0 };
-    };
-
-    for (let i = 0; i < indices.length; i += 3) {
-      const triNormal = computeTriangleNormal(i);
-      const triangleEdges = [
-        [indices[i], indices[i + 1]],
-        [indices[i + 1], indices[i + 2]],
-        [indices[i + 2], indices[i]],
-      ];
-
-      for (const [idx0, idx1] of triangleEdges) {
-        const i0 = idx0 * 3;
-        const i1 = idx1 * 3;
-
-        const v0: Vec3 = {
-          x: positions[i0] + ox,
-          y: positions[i0 + 1] + oy,
-          z: positions[i0 + 2] + oz,
-        };
-        const v1: Vec3 = {
-          x: positions[i1] + ox,
-          y: positions[i1 + 1] + oy,
-          z: positions[i1 + 2] + oz,
-        };
-
-        // Create canonical edge key (smaller index first)
-        const key = idx0 < idx1 ? `${idx0}_${idx1}` : `${idx1}_${idx0}`;
-
-        if (!edgeData.has(key)) {
-          edgeData.set(key, { v0, v1, idx0, idx1, normals: [triNormal] });
-        } else {
-          const existing = edgeData.get(key);
-          if (existing) {
-            existing.normals.push(triNormal);
-          }
-        }
-      }
-    }
-
-    // Second pass: filter to only real edges (boundary or crease edges)
-    // Skip internal triangulation edges (shared by coplanar triangles)
-    const COPLANAR_THRESHOLD = 0.98; // Dot product threshold for coplanar check
-
-    for (const [, data] of edgeData) {
-      const { v0, v1, normals } = data;
-
-      // Boundary edge: only one triangle uses it - always a real edge
-      if (normals.length === 1) {
-        const edgeIndex = edges.length;
-        edges.push({ v0, v1, index: edgeIndex });
-
-        // Track vertex valence
-        const v0Key = `${v0.x.toFixed(4)}_${v0.y.toFixed(4)}_${v0.z.toFixed(4)}`;
-        const v1Key = `${v1.x.toFixed(4)}_${v1.y.toFixed(4)}_${v1.z.toFixed(4)}`;
-        vertexValence.set(v0Key, (vertexValence.get(v0Key) || 0) + 1);
-        vertexValence.set(v1Key, (vertexValence.get(v1Key) || 0) + 1);
-        if (!vertexEdges.has(v0Key)) vertexEdges.set(v0Key, []);
-        if (!vertexEdges.has(v1Key)) vertexEdges.set(v1Key, []);
-        const v0Edges = vertexEdges.get(v0Key);
-        const v1Edges = vertexEdges.get(v1Key);
-        if (v0Edges) v0Edges.push(edgeIndex);
-        if (v1Edges) v1Edges.push(edgeIndex);
-        continue;
-      }
-
-      // Shared edge: check if triangles are coplanar (internal triangulation edge)
-      if (normals.length >= 2) {
-        const n1 = normals[0];
-        const n2 = normals[1];
-        const dot = Math.abs(n1.x * n2.x + n1.y * n2.y + n1.z * n2.z);
-
-        // If normals are nearly parallel, triangles are coplanar - skip this edge
-        // (it's an internal triangulation diagonal, not a real model edge)
-        if (dot > COPLANAR_THRESHOLD) {
-          continue; // Skip internal edge
-        }
-
-        // Crease edge: triangles meet at an angle - this is a real edge
-        const edgeIndex = edges.length;
-        edges.push({ v0, v1, index: edgeIndex });
-
-        // Track vertex valence
-        const v0Key = `${v0.x.toFixed(4)}_${v0.y.toFixed(4)}_${v0.z.toFixed(4)}`;
-        const v1Key = `${v1.x.toFixed(4)}_${v1.y.toFixed(4)}_${v1.z.toFixed(4)}`;
-        vertexValence.set(v0Key, (vertexValence.get(v0Key) || 0) + 1);
-        vertexValence.set(v1Key, (vertexValence.get(v1Key) || 0) + 1);
-        if (!vertexEdges.has(v0Key)) vertexEdges.set(v0Key, []);
-        if (!vertexEdges.has(v1Key)) vertexEdges.set(v1Key, []);
-        const v0CreaseEdges = vertexEdges.get(v0Key);
-        const v1CreaseEdges = vertexEdges.get(v1Key);
-        if (v0CreaseEdges) v0CreaseEdges.push(edgeIndex);
-        if (v1CreaseEdges) v1CreaseEdges.push(edgeIndex);
-      }
+    for (const [idx0, idx1] of [[a, b], [b, c], [c, a]]) {
+      const key = idx0 < idx1 ? `${idx0}_${idx1}` : `${idx1}_${idx0}`;
+      const existing = edgeData.get(key);
+      if (existing) existing.normals.push(normal);
+      else edgeData.set(key, { segment: { a: idx0, b: idx1 }, normals: [normal] });
     }
   }
 
-  return { vertices, edges, vertexValence, vertexEdges };
+  const segments: WeldedSegment[] = [];
+  for (const [, data] of edgeData) {
+    if (isModelEdge(data.normals)) segments.push(data.segment);
+  }
+
+  return { vertices: points, edges: mergeCollinearRuns(segments, points, tolerance) };
+}
+
+/**
+ * A model edge is one that is not flat: a boundary edge (a single adjacent
+ * triangle), a non-manifold edge (three or more), or a crease where some pair
+ * of adjacent triangles meets at more than the coplanar cutoff.
+ *
+ * `Math.abs` on the dot is deliberate: a mesh with inconsistent winding gives
+ * coplanar neighbours a dot of -1, and without it every such diagonal would be
+ * kept as a "crease".
+ */
+function isModelEdge(normals: Vec3[]): boolean {
+  if (normals.length !== 2) return true;
+  const [n1, n2] = normals;
+  const dot = Math.abs(n1.x * n2.x + n1.y * n2.y + n1.z * n2.z);
+  return dot <= COPLANAR_THRESHOLD;
+}
+
+/** Unit normal of triangle `i`, or null when the triangle is degenerate. */
+function triangleNormal(
+  positions: ArrayLike<number>,
+  indices: ArrayLike<number>,
+  i: number
+): Vec3 | null {
+  const i0 = indices[i] * 3;
+  const i1 = indices[i + 1] * 3;
+  const i2 = indices[i + 2] * 3;
+
+  const ax = positions[i1] - positions[i0];
+  const ay = positions[i1 + 1] - positions[i0 + 1];
+  const az = positions[i1 + 2] - positions[i0 + 2];
+  const bx = positions[i2] - positions[i0];
+  const by = positions[i2 + 1] - positions[i0 + 1];
+  const bz = positions[i2 + 2] - positions[i0 + 2];
+
+  const nx = ay * bz - az * by;
+  const ny = az * bx - ax * bz;
+  const nz = ax * by - ay * bx;
+
+  const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+  if (!(len > 0) || !isFinite(len)) return null;
+  return { x: nx / len, y: ny / len, z: nz / len };
 }

@@ -48,8 +48,26 @@ export interface MeshData {
   presentation_layer?: string;
   /** Resolved material name for this (sub-)mesh, when known. */
   material_name?: string;
-  /** Source geometry item id for per-item styled sub-meshes. */
+  /**
+   * The `IfcRepresentationItem` this (sub-)mesh was tessellated from — ALWAYS a
+   * representation item, never a material. Before #3199 the server sent an
+   * `IfcMaterial` id here for material-layered walls, so a consumer following it
+   * to source landed on the wrong entity. Absent where the identity is genuinely
+   * merged away (single-mesh fallback, cached `IfcMappedItem`, instanced).
+   *
+   * Never `0`: `#0` is not a STEP instance name. The same filter applies to
+   * `material_id` below.
+   */
   geometry_item_id?: number;
+  /**
+   * The `IfcMaterial` whose layer this (sub-)mesh slices — ALWAYS a material,
+   * never a representation item. DISJOINT from `geometry_item_id`: the server
+   * never sends both. Never `0` either, and here that is load-bearing rather
+   * than trivially true: an unreferenced layer (an air gap) decodes to
+   * `material_id 0` in the mesher, and is sent as ABSENT rather than as
+   * `IfcMaterial #0`, which is not an entity anyone can navigate to (#3199).
+   */
+  material_id?: number;
   /** Space/zone properties attached to the element, when extracted. */
   properties?: Record<string, string>;
   /**
@@ -188,154 +206,33 @@ export interface ProcessingStats {
   geometry_diagnostics?: GeometryDiagnostics;
 }
 
-/**
- * CSG / opening diagnostics for a geometry pass. Mirrors the Rust
- * `GeometryDiagnostics` (camelCase serde) the server and the WASM batch path both
- * emit. `totalCsgFailures` and the classification counts are exact;
- * `productsWithFailures`, `hostsWithOpenings` and `silentNoOps` are batch-summed
- * upper bounds.
- */
-export interface GeometryDiagnostics {
-  totalCsgFailures: number;
-  productsWithFailures: number;
-  hostsWithOpenings: number;
-  classification: {
-    rectangular: number;
-    diagonal: number;
-    nonRectangular: number;
-    total: number;
-  };
-  failuresByReason: Array<{ reason: string; count: number }>;
-  silentNoOps: number;
-  rectFast: {
-    fired: number;
-    openingsCut: number;
-    deferHostNotBox: number;
-    deferNotThrough: number;
-    deferOffFace: number;
-    deferNearEdge: number;
-    deferNoOpenings: number;
-    deferTooManyOpenings?: number;
-  };
-  worstHosts: Array<{
-    productId: number;
-    ifcType: string;
-    openings: number;
-    csgFailures: number;
-    firstFailureLabel?: string;
-  }>;
-}
+// The `GeometryDiagnostics` wire shape lives in `geometry-diagnostics-types.ts`
+// and is re-exported here, so this module's public surface is unchanged (#3857).
+// `export *` re-exports without binding locally, so the name this file still
+// REFERENCES above is imported too.
+import type { GeometryDiagnostics } from './geometry-diagnostics-types.js';
+export * from './geometry-diagnostics-types.js';
 
 // ============================================
 // 2D Symbol Data (IfcAnnotation + IfcGrid)
 // ============================================
+//
+// UNRESOLVED SCALARS. `world_y` and `hatch_angle_secondary` arrive as `null`
+// when the server could not resolve them — the Rust model spells that
+// `f32::NAN` and `serde_json` writes a non-finite float as JSON `null`.
+//
+// `null` is NOT `0`. `world_y: 0` is a real elevation at datum; `world_y:
+// null` means the placement chain never produced one. Branch on `x === null`
+// (or `typeof x === 'number'`) — do not coerce, because `Number(null)` is `0`
+// and would silently invent a datum-level elevation. Anything that buckets or
+// sorts by elevation must exclude the `null`s rather than treat them as zero.
 
-/**
- * A single `IfcGridAxis` tag + axis curve (compact endpoint-pair shape).
- */
-export interface SymbolicGridAxis {
-  express_id: number;
-  grid_express_id: number;
-  tag: string;
-  /** Endpoint pair `[x0, y0, x1, y1]` in metres (plan view). */
-  endpoints: [number, number, number, number];
-  world_y: number;
-}
-
-/**
- * A 2D polyline (`IfcPolyline`, `IfcIndexedPolyCurve`, tessellated ellipses,
- * trimmed-curve arcs, grid axis lines).
- */
-export interface SymbolicPolyline {
-  express_id: number;
-  ifc_type: string;
-  /** Flat `[x0, y0, x1, y1, …]` plan-view coordinates. */
-  points: number[];
-  closed: boolean;
-  world_y: number;
-  representation: string;
-}
-
-/**
- * A 2D circle / arc (`IfcCircle`).
- */
-export interface SymbolicCircle {
-  express_id: number;
-  ifc_type: string;
-  center_x: number;
-  center_y: number;
-  radius: number;
-  world_y: number;
-  /** Start angle in radians (0 for a full circle). */
-  start_angle: number;
-  /** End angle in radians (`2π` for a full circle). */
-  end_angle: number;
-  representation: string;
-}
-
-/**
- * A 2D text annotation (`IfcTextLiteral` / grid bubble glyphs + tags).
- */
-export interface SymbolicText {
-  express_id: number;
-  ifc_type: string;
-  x: number;
-  y: number;
-  /** Baseline orientation as a `(cos, sin)` pair. */
-  dir_x: number;
-  dir_y: number;
-  /** Font cap height in model units (already unit-scaled). */
-  height: number;
-  content: string;
-  /** IFC `BoxAlignment` (`top-left`, `center`, …). Empty when absent. */
-  alignment: string;
-  world_y: number;
-  /** sRGB straight-alpha colour `[r, g, b, a]`. */
-  color: [number, number, number, number];
-  /** Per-instance target screen-pixel cap height (`0` = renderer default). */
-  target_px: number;
-  representation: string;
-}
-
-/**
- * A 2D filled region (`IfcAnnotationFillArea`). Outer ring + optional holes
- * packed into a single `points` buffer; `holes_offsets[i]` is the vertex index
- * where hole `i` begins.
- */
-export interface SymbolicFillArea {
-  express_id: number;
-  ifc_type: string;
-  points: number[];
-  holes_offsets: number[];
-  fill_color: [number, number, number, number];
-  has_hatching: boolean;
-  hatch_spacing: number;
-  hatch_angle: number;
-  /**
-   * Secondary cross-hatch angle. `null` when absent — the Rust model uses
-   * `f32::NAN`, which `serde_json` serializes as JSON `null` (not `NaN`).
-   */
-  hatch_angle_secondary: number | null;
-  hatch_line_width: number;
-  world_y: number;
-  representation: string;
-}
-
-/**
- * 2D symbol data extracted from `IfcAnnotation` and `IfcGrid` entities.
- *
- * Returned inline by `POST /api/v1/parse` and the streaming `complete` events,
- * and fetched by cache key from `GET /api/v1/parse/symbolic/{cache_key}` for the
- * binary (Parquet) transports. Arrays may be empty when the model carries no
- * 2D symbols.
- */
-export interface SymbolicData {
-  grid_axes: SymbolicGridAxis[];
-  polylines: SymbolicPolyline[];
-  circles: SymbolicCircle[];
-  texts: SymbolicText[];
-  fills: SymbolicFillArea[];
-}
+// The symbolic (2D drawing) wire shapes live in `symbolic-types.ts` and are
+// re-exported here, so this module's public surface is unchanged (#3199).
+// `export *` re-exports without binding locally, so the names this file still
+// REFERENCES are imported too.
+import type { SymbolicData } from './symbolic-types.js';
+export * from './symbolic-types.js';
 
 /**
  * Full parse response with all meshes.
@@ -365,9 +262,7 @@ export interface ParseResponse {
   symbolic_data?: SymbolicData;
 }
 
-/**
- * Metadata-only response (no geometry).
- */
+/** Metadata-only response (no geometry). */
 export interface MetadataResponse {
   /** Total number of entities */
   entity_count: number;
@@ -377,11 +272,13 @@ export interface MetadataResponse {
   schema_version: string;
   /** File size in bytes */
   file_size: number;
+  /** Records refused for a `u32`-overflowing name (#3395). Absent on older servers: "not scanned for", never "clean". */
+  oversized_id_count?: number;
+  /** The scan stopped at a record with no `;` (#3695), so `entity_count` is partial. Absent on older servers, as above. */
+  malformed_record_found?: boolean;
 }
 
-/**
- * Health check response.
- */
+/** Health check response. */
 export interface HealthResponse {
   /** Server status */
   status: string;

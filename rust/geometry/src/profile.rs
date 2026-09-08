@@ -4,7 +4,9 @@
 
 //! 2D Profile definitions and triangulation
 
-use crate::error::{Error, Result};
+use crate::error::Result;
+pub(crate) use crate::profile_generic::{rectangle_ring, triangulate_rings};
+pub use crate::profile_generic::{Triangulation, TriangulationOf};
 use crate::tessellation::TessellationQuality;
 use nalgebra::Point2;
 
@@ -75,63 +77,10 @@ impl Profile2D {
     /// Triangulate the profile using earcutr
     /// Returns triangle indices into the flattened vertex array
     pub fn triangulate(&self) -> Result<Triangulation> {
-        if self.outer.len() < 3 {
-            return Err(Error::InvalidProfile(
-                "Profile must have at least 3 vertices".to_string(),
-            ));
-        }
-
-        // Flatten vertices for earcutr
-        let mut vertices = Vec::with_capacity(
-            (self.outer.len() + self.holes.iter().map(|h| h.len()).sum::<usize>()) * 2,
-        );
-
-        // Add outer boundary
-        for p in &self.outer {
-            vertices.push(p.x);
-            vertices.push(p.y);
-        }
-
-        // Add holes
-        let mut hole_indices = Vec::with_capacity(self.holes.len());
-        for hole in &self.holes {
-            hole_indices.push(vertices.len() / 2);
-            for p in hole {
-                vertices.push(p.x);
-                vertices.push(p.y);
-            }
-        }
-
-        // Triangulate (guarded — see `triangulation::safe_earcut`)
-        let indices = if hole_indices.is_empty() {
-            crate::triangulation::safe_earcut(&vertices, &[], 2)
-                .map_err(Error::TriangulationError)?
-        } else {
-            crate::triangulation::safe_earcut(&vertices, &hole_indices, 2)
-                .map_err(Error::TriangulationError)?
-        };
-
-        // Convert to Point2 array
-        let mut points = Vec::with_capacity(vertices.len() / 2);
-        for i in (0..vertices.len()).step_by(2) {
-            if i + 1 >= vertices.len() {
-                break;
-            }
-            points.push(Point2::new(vertices[i], vertices[i + 1]));
-        }
-
-        Ok(Triangulation { points, indices })
+        triangulate_rings(&self.outer, &self.holes)
     }
 }
 
-/// Triangulated profile result
-#[derive(Debug, Clone)]
-pub struct Triangulation {
-    /// All vertices (outer + holes)
-    pub points: Vec<Point2<f64>>,
-    /// Triangle indices
-    pub indices: Vec<usize>,
-}
 
 /// Void metadata for depth-aware extrusion
 ///
@@ -288,15 +237,7 @@ impl ProfileType {
 /// Create a rectangular profile
 #[inline]
 pub fn create_rectangle(width: f64, height: f64) -> Profile2D {
-    let half_w = width / 2.0;
-    let half_h = height / 2.0;
-
-    Profile2D::new(vec![
-        Point2::new(-half_w, -half_h),
-        Point2::new(half_w, -half_h),
-        Point2::new(half_w, half_h),
-        Point2::new(-half_w, half_h),
-    ])
+    Profile2D::new(rectangle_ring(width, height))
 }
 
 /// Create a circular profile (with optional hole)

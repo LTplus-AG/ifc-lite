@@ -4,11 +4,10 @@
 
 //! Per-entity geometry job execution.
 //!
-//! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job`
-//! is the body of the parallel batch loop's `map_init` closure — one job = one
-//! product, meshed on a fresh router with the worker's warm CartesianPoint
-//! cache moved in and back out. `build_color_updates_for_jobs` backfills
-//! deferred/orphan-type colours.
+//! Split out of `processor/mod.rs` (module-size ratchet). `process_entity_job` is
+//! the body of the parallel batch loop's `map_init` closure — one job = one product,
+//! meshed on a fresh router with the worker's warm CartesianPoint cache moved in and
+//! back out. `build_color_updates_for_jobs` backfills deferred/orphan-type colours.
 
 use super::*;
 
@@ -16,10 +15,9 @@ use super::*;
 /// worker thread, indexed by `rayon::current_thread_index()`.
 pub(super) type WorkerPointCaches = Vec<std::sync::Mutex<FxHashMap<u32, (f64, f64, f64)>>>;
 
-/// Per-rayon-worker placement-transform caches: one `FxHashMap` behind a `Mutex`
-/// per worker thread, indexed by `rayon::current_thread_index()`. Mirrors
-/// [`WorkerPointCaches`] exactly; the value is the opaque column-major `[f64; 16]`
-/// world transform the geometry router memoizes per IfcObjectPlacement id.
+/// Per-rayon-worker placement-transform caches, indexed like [`WorkerPointCaches`];
+/// value is the opaque column-major `[f64; 16]` world transform the geometry
+/// router memoizes per IfcObjectPlacement id.
 pub(super) type WorkerPlacementCaches = Vec<std::sync::Mutex<FxHashMap<u32, [f64; 16]>>>;
 
 /// One persistent CartesianPoint cache per rayon worker thread, indexed by
@@ -100,7 +98,7 @@ impl std::ops::DerefMut for WorkerCacheGuard<'_, '_> {
 pub(super) fn process_entity_job(
     job: &EntityJob,
     content: &[u8],
-    entity_index_arc: &Arc<EntityIndex>,
+    entity_index_arc: &ProcessingIndex,
     unit_scale: f64,
     rtc_offset: (f64, f64, f64),
     // Pre-resolved scales seeded into this job's decoder so arc tessellation and
@@ -118,24 +116,15 @@ pub(super) fn process_entity_job(
     // Present only when the selected coordinate space is `site_local`; rotates
     // mesh vertices into the site's axis frame.
     site_local_rotation: Option<&Vec<f64>>,
-    // Shared sink for per-job router CSG diagnostics (parity with the wasm
-    // path's `drain_and_log_csg_diagnostics`).
-    csg_failure_collector: &std::sync::Mutex<FxHashMap<u32, Vec<ifc_lite_geometry::BoolFailure>>>,
-    // Shared sinks for opening classification + per-host opening diagnostics, drained
-    // from this job's router so the native pass aggregates the full GeometryDiagnostics.
-    classification_collector: &std::sync::Mutex<ifc_lite_geometry::ClassificationStats>,
-    host_diag_collector: &std::sync::Mutex<FxHashMap<u32, ifc_lite_geometry::HostOpeningDiagnostic>>,
-    rect_fast_collector: &std::sync::Mutex<ifc_lite_geometry::RectFastStats>,
-    // Shared tally of degenerate-backstop triangle drops (see
-    // `element::build_mesh_data`); relaxed atomic, added to only when non-zero.
-    backstop_collector: &std::sync::atomic::AtomicU64,
-    // Model-wide content-dedup cache shared by every per-job router so identical
-    // geometry is meshed once across the rayon pool (#1109 follow-up).
+    // Every request-local diagnostic sink this job feeds (CSG failures, opening
+    // classification, per-host diagnostics, rect_fast, dropped representation
+    // items, the degenerate backstop, refused oversized refs).
+    diag: &super::diagnostics::DiagnosticCollectors,
+    // Model-wide content-dedup cache shared by every per-job router (#1109).
     item_dedup_cache: &ifc_lite_geometry::ItemDedupCache,
-    // Model-wide IfcMappedItem source cache shared by every per-job router so a
-    // RepresentationMap source shared across owning elements is meshed once
-    // model-wide instead of once per element (a fresh router is built per element,
-    // so its RefCell cache only dedups within one element) — #1623.
+    brep_signature_cache: &ifc_lite_geometry::SharedBrepSignatureCache,
+    // Model-wide IfcMappedItem source cache so a RepresentationMap source shared
+    // across owning elements is meshed once model-wide, not once per element — #1623.
     mapped_item_cache: &ifc_lite_geometry::SharedMappedItemCache,
     // #1623 Phase 2: don't-bake plan (Some only when enabled) armed on this job's
     // router, + the shared sink for its emitted don't-bake occurrences.
@@ -168,7 +157,7 @@ pub(super) fn process_entity_job(
         return Vec::new();
     }
 
-    let mut local_decoder = EntityDecoder::with_arc_index(content, entity_index_arc.clone());
+    let mut local_decoder = entity_index_arc.decoder(content);
     // Adopt this worker's persistent point cache so faceted-brep polyloop points
     // shared across elements are served from memory instead of re-parsed per element.
     local_decoder.set_point_cache(std::mem::take(worker_point_cache));
@@ -196,6 +185,7 @@ pub(super) fn process_entity_job(
     let mut local_router = GeometryRouter::with_scale_and_quality(unit_scale, tessellation_quality);
     local_router.set_rtc_offset(rtc_offset);
     local_router.enable_content_dedup_shared(item_dedup_cache.clone());
+    local_router.enable_shared_brep_signature_cache(brep_signature_cache.clone());
     local_router.enable_shared_mapped_item_cache(mapped_item_cache.clone());
     // #1623 Phase 2: arm the don't-bake plan so single-solid occurrences of a repeated
     // mapped source emit instance placeholders instead of full meshes.
@@ -290,7 +280,7 @@ pub(super) fn process_entity_job(
 
     // Fold this element's degenerate-backstop drops into the pass tally.
     if produced.degenerate_triangles_dropped > 0 {
-        backstop_collector.fetch_add(
+        diag.backstop.fetch_add(
             produced.degenerate_triangles_dropped,
             std::sync::atomic::Ordering::Relaxed,
         );
@@ -300,7 +290,7 @@ pub(super) fn process_entity_job(
     // wasm path logs them in the browser console; without this the server
     // would silently discard every failed opening cut.
     if !produced.csg_failures.is_empty() {
-        if let Ok(mut collector) = csg_failure_collector.lock() {
+        if let Ok(mut collector) = diag.csg_failures.lock() {
             for (product_id, fails) in produced.csg_failures {
                 collector.entry(product_id).or_default().extend(fails);
             }
@@ -314,7 +304,7 @@ pub(super) fn process_entity_job(
     // accumulate-then-drain, giving the same GeometryDiagnostics counts.
     let cls = local_router.take_classification_stats();
     if cls.rectangular != 0 || cls.diagonal != 0 || cls.non_rectangular != 0 {
-        if let Ok(mut acc) = classification_collector.lock() {
+        if let Ok(mut acc) = diag.classification.lock() {
             acc.rectangular += cls.rectangular;
             acc.diagonal += cls.diagonal;
             acc.non_rectangular += cls.non_rectangular;
@@ -322,12 +312,15 @@ pub(super) fn process_entity_job(
     }
     let host_diags = local_router.take_host_opening_diagnostics();
     if !host_diags.is_empty() {
-        if let Ok(mut acc) = host_diag_collector.lock() {
+        if let Ok(mut acc) = diag.host_diags.lock() {
             // Product ids are disjoint across jobs (one product = one job), so this
             // is an insert; `extend` is robust if that ever changes.
             acc.extend(host_diags);
         }
     }
+    // Content-hash oversized-ref refusals (#3421/#3752), diagnostic only.
+    let oversized_refs = local_router.take_content_hash_oversized_ref_drops() as u64;
+    diag.oversized_ref_drops.fetch_add(oversized_refs, std::sync::atomic::Ordering::Relaxed);
     // Drain this job's router rect_fast counters into the request-local collector
     // (process-global counters are gone — see GeometryRouter::record_rect_fast).
     let rf = local_router.take_rect_fast_stats();
@@ -339,7 +332,7 @@ pub(super) fn process_entity_job(
         || rf.defer_near_edge != 0
         || rf.defer_no_openings != 0
     {
-        if let Ok(mut acc) = rect_fast_collector.lock() {
+        if let Ok(mut acc) = diag.rect_fast.lock() {
             acc.fired += rf.fired;
             acc.openings_cut += rf.openings_cut;
             acc.defer_host_not_box += rf.defer_host_not_box;
@@ -349,6 +342,7 @@ pub(super) fn process_entity_job(
             acc.defer_no_openings += rf.defer_no_openings;
         }
     }
+    super::diagnostics::drain_unsupported_items(&local_router, &diag.unsupported_items);
 
     // #1623 Phase 2: hand this element's don't-bake occurrences to the shared
     // collector (resolved into InstanceRecords later; empty on the flat path).
@@ -365,9 +359,9 @@ pub(super) fn build_color_updates_for_jobs(
     jobs: &[EntityJob],
     geometry_styles: &FxHashMap<u32, GeometryStyleInfo>,
     content: &[u8],
-    entity_index: &Arc<EntityIndex>,
+    entity_index: &ProcessingIndex,
 ) -> Vec<(u32, [f32; 4])> {
-    let mut decoder = EntityDecoder::with_arc_index(content, entity_index.clone());
+    let mut decoder = entity_index.decoder(content);
     let mut updates: Vec<(u32, [f32; 4])> = Vec::new();
 
     for job in jobs {

@@ -106,6 +106,18 @@ describe('duplicateInStore', () => {
     expect(point?.attributes[0]).toEqual([10, 20, 3]);
   });
 
+  it('honours an explicit name override instead of auto-suffixing', () => {
+    const store = makeStore(100);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    const result = duplicateInStore(editor, baseSource(), { name: 'Wall B' });
+
+    const byId = new Map(view.getNewEntities().map((e) => [e.expressId, e]));
+    const wall = byId.get(result.newId);
+    expect(wall?.attributes[2]).toBe('Wall B'); // explicit name wins, no auto-suffix
+  });
+
   it('skips spatial rel when source has no storey', () => {
     const store = makeStore(100);
     const view = new MutablePropertyView(null, 'm1');

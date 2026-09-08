@@ -204,3 +204,7 @@ pub fn process_streaming(
         }
     })
 }
+
+#[cfg(test)]
+#[path = "streaming_tests.rs"]
+mod streaming_tests;

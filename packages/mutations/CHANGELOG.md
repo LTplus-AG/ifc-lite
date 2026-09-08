@@ -1,5 +1,235 @@
 # @ifc-lite/mutations
 
+## 2.0.0
+
+### Major Changes
+
+- [#3456](https://github.com/LTplus-AG/ifc-lite/pull/3456) [`793fce2`](https://github.com/LTplus-AG/ifc-lite/commit/793fce217039f11d6b74f898daed03f48c33809d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `CsvConnector.generateMutations` silently wrote `0` for a Real/Integer property whenever the source CSV cell wasn't a number at all (`"N/A"`, `"TBD"`, a blank cell after a bad delimiter split, ...). `parseFloat(value) || 0` and `parseInt(value, 10) || 0` both coerce `NaN` to `0`, so an unparseable cell produced a mutation indistinguishable from a genuinely-imported zero, applied to the model with no error and no warning.
+  
+  `parseValue` now returns a private sentinel for a Real/Integer cell that fails to parse, and `generateMutations` skips that cell instead of writing the fabricated `0` — matching how the sibling Express-ID match strategy already handles an unparseable numeric column (`isNaN` guard, warning, no phantom match). `generateMutations` also takes an optional `warnings` array to report which cells were skipped and why; `import()` and `importAsync()` now pass their own `stats.warnings` through it, so a CSV import surfaces the skip instead of hiding it.
+  
+  A genuinely-zero cell (`"0"`) still writes `0` as before — only cells that don't parse as a number at all are skipped.
+  
+  A `List` cell is handled the same way. The branch used to choose between the two accepted encodings by catching a `JSON.parse` throw, so a malformed JSON list fell through to the semicolon path and `[1,2` was imported as the one-element array `['[1,2']`, the same fabricated value the sentinel exists to prevent. The encoding is now resolved in three steps: a valid JSON *array* wins, a semicolon marks the other form, and only a cell that starts with `[`, carries no semicolon, and still will not parse is skipped and reported. Valid JSON that is not an array (`5`, `{"a":1}`) is not a list, so it takes the semicolon path and becomes a one-element list exactly as it did before. Semicolon-separated lists are unaffected, including ones whose entries are bracketed (`[EXT];[LOAD]`).
+
+### Patch Changes
+
+- [#3468](https://github.com/LTplus-AG/ifc-lite/pull/3468) [`586fa29`](https://github.com/LTplus-AG/ifc-lite/commit/586fa292b69cdb3ba6e45764b4ff742b2fa7b9a9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix queries, filters, and CSV/JSON exports that silently dropped or omitted data when an entity carried two property (or quantity) sets with the same name -- e.g. one from the type definition and one from the occurrence, which is valid IFC.
+  
+  Affected symptoms, now fixed:
+  - MCP and CLI entity queries with a property filter (`query_entities`, `ifc-lite query --where`) could wrongly exclude a matching entity from the results, with no indication anything was omitted, when the filtered property lived ONLY on the entity's second same-named property set. (When both sets carry it, the filter still reads the first one's value -- see the closing paragraph.)
+  - CSV/JSON export with a `Pset.Property` or `Qto.Quantity` column could emit an empty cell instead of the real value, for the same reason.
+  - The viewer's advanced-filter query could likewise drop a matching entity from the result count/highlight.
+  - `ifc-lite query`'s `--sort`, `--group-by` and `--unique` on a `Pset.Property` path, and `ifc-lite export`'s dotted columns, read only the first same-named set and so sorted, grouped, or exported a blank where a value existed.
+  - Editing a quantity whose base value lived on a second same-named quantity set recorded the wrong "old value" and the wrong create-vs-update classification, which undo relied on.
+  - Deleting a property or quantity set that the entity carried twice under the same name removed only the first one's members: the panel showed the whole set gone while the exported file still carried the second one's properties.
+  
+  All of these now scan every same-named set, not just the first, before deciding a property or quantity is absent.
+  
+  Which member they then use is still first-match, and that is the remaining gap: when two same-named sets both carry the property, only the first one's value is read. Emitting one cell wants exactly that, but a filter does not -- `ifc-lite query --where Pset_WallCommon.FireRating=REI60` still drops a wall whose first `Pset_WallCommon` says `REI30` and whose second says `REI60`. That behaviour predates this change and is tracked in [#3490](https://github.com/LTplus-AG/ifc-lite/issues/3490).
+
+- [#3539](https://github.com/LTplus-AG/ifc-lite/pull/3539) [`19f1312`](https://github.com/LTplus-AG/ifc-lite/commit/19f13120a05cd3a3b729eeaf5550cff71b7506d9) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MutablePropertyView.setProperty`/`deleteProperty` and `setQuantity` mutating an existing property or quantity on EVERY base property/quantity set sharing a name, instead of only the first one that carries it. An entity that carries two same-named psets or qsets (a type set and an occurrence set, say) both holding a `FireRating` property or a `Width` quantity now has edits and deletes land on the first same-named instance only, matching the first-match-wins semantics `getPropertyValue`/`PropertyTable.getProperty` already use for reads. `getForEntity`/`getQuantitiesForEntity` are the single source of truth the STEP exporter reads from, so no separate export-side fix was needed.
+
+- [#3614](https://github.com/LTplus-AG/ifc-lite/pull/3614) [`82c77c1`](https://github.com/LTplus-AG/ifc-lite/commit/82c77c118d5a4be8e5ee5b7f7e0648514e9fb74e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `MutablePropertyView.exportMutations()` no longer lets a non-finite quantity value (`NaN`/`Infinity`/`-Infinity`) collapse to `0` across `importMutations()`. `JSON.stringify` maps a non-finite number to `null`, and the quantity replay path (`applyMutations`) did `Number(mutation.newValue)`, where `Number(null)` is `0` — so a serialize→deserialize round trip silently changed the value, even though applying the same mutations directly (no serialization in between) preserved it exactly. `exportMutations`/`importMutations` now wrap a non-finite `newValue`/`oldValue`/whole-set member `value` in a JSON-safe marker and restore it on import; an ordinary finite value is unaffected, and a string property value is never mistaken for the marker.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
+- [#3538](https://github.com/LTplus-AG/ifc-lite/pull/3538) [`dc8198c`](https://github.com/LTplus-AG/ifc-lite/commit/dc8198ce3f9b9be4b2420dce90343822e0079465) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `MutablePropertyView.getForEntity` and `MutablePropertyView.getQuantitiesForEntity` no longer copy a property or quantity onto every base set that shares its `name`. Traced from the viewer's bSDD "jump to added property" highlight ([#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107)): an entity can carry two distinct `IfcPropertySet`s — or two `IfcElementQuantity`s — with the same `Name`, and `setProperty`/`setQuantity` record the mutation under a key that stops at that name, so both views replayed the one mutation once per same-named instance. Two shapes followed, and both are fixed on both paths. A property or quantity that no same-named instance carried was written into all of them — a genuine duplicate in the output the properties panel renders and the STEP exporter writes back into the file, not just a display ambiguity; it now goes to the first same-named instance and nowhere else. One that a same-named instance already carried is an edit, not an addition: it is applied in place wherever it already sits, and the phantom copy that used to be stamped onto the first instance as well is gone, so a value no longer appears on a set that never had it. `packages/mutations/test/mutable-property-view.duplicate-pset.test.ts` pins both shapes on both paths; a companion viewer test (`PropertySetCard.same-name-focus.test.tsx`) confirms the existing highlight logic then lands on exactly the mutated set. `getEffectiveChanges`'s change list is not part of this fix: for an edit to a property only the second same-named set carries, it still reports two rows.
+- Updated dependencies [[`bcbe7b9`](https://github.com/LTplus-AG/ifc-lite/commit/bcbe7b9afa38e8dafb5900e73575c71a8fd96012), [`1000dce`](https://github.com/LTplus-AG/ifc-lite/commit/1000dce72e9ec75c59848efefc1f709d01172e72), [`89c4cf2`](https://github.com/LTplus-AG/ifc-lite/commit/89c4cf22e83d76115035f7dcbf6e34f9c06dd091), [`a1aebc8`](https://github.com/LTplus-AG/ifc-lite/commit/a1aebc822b819221258f4759edf4c82ff0d140f7), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`1060a30`](https://github.com/LTplus-AG/ifc-lite/commit/1060a30187c8f6bb327f9e356056f2364568e8ff), [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0)]:
+  - @ifc-lite/data@4.0.0
+
+## 1.27.0
+
+### Minor Changes
+
+- [#3000](https://github.com/LTplus-AG/ifc-lite/pull/3000) [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Added an opt-in write guard for collaborative/multi-user setups: `BulkQueryEngine` and `CsvConnector` now accept a `canEdit` callback that is checked before any write is applied, throwing a new `MutationGuardError` if it returns false. A `MutationGuard` type is exported for the callback shape. Callers that do not pass `canEdit` see no behaviour change.
+
+### Patch Changes
+
+- [#3032](https://github.com/LTplus-AG/ifc-lite/pull/3032) [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MutablePropertyView.setProperty()` misclassifying the first edit of an already-present-but-null base property (an unset Boolean parsed from the source IFC file, the same shape as issue [#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107)) as `CREATE_PROPERTY` instead of `UPDATE_PROPERTY`.
+  
+  `propExistedBefore` relied on `oldValue !== null` plus an in-session `newPsets` check, but neither test covers a property that exists in the *base* property table with a null value: `getPropertyValue()` legitimately returns null for it before any edit. `deleteProperty()` already avoids this trap with its own `propExistsInBase` lookup against the base pset's property list; `setProperty()` now checks the same thing, so the mutation is correctly classified as an update — keeping the exported mutation type consistent for any consumer that treats CREATE vs UPDATE differently (e.g. an undo that should restore the prior unset state rather than deleting the property outright).
+  
+  The base-pset lookup only counts a row that is still visible: a property the user has already deleted — directly, or by deleting its whole pset — is masked out of `getForEntity()`, so re-setting it stays a `CREATE_PROPERTY`. Otherwise undoing that re-set would replay `oldValue: null` and bring the deleted property back as a present-but-unset row instead of removing it.
+- Updated dependencies [[`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/data@3.4.1
+
+## 1.26.1
+
+### Patch Changes
+
+- [#2786](https://github.com/LTplus-AG/ifc-lite/pull/2786) [`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `BulkQueryEngine.select()` silently ignoring `SelectionCriteria.sites`.
+  
+  `sites?: number[]` was declared on `SelectionCriteria` ("Filter by site IDs")
+  and `SpatialHierarchy.bySite` was populated to serve it, but `select()` had no
+  branch reading `criteria.sites` — unlike its `storeys`, `buildings` and
+  `spaces` siblings, which each filter candidates through their matching
+  `SpatialHierarchy` map. A caller who scoped a bulk `SET_PROPERTY`,
+  `DELETE_PROPERTY`, or `SET_ENTITY_TYPE` to one site got the whole model
+  mutated instead, with no error.
+  
+  The new `sites` branch is structurally identical to `storeys` / `buildings` /
+  `spaces`: same guard (`criteria.sites.length > 0 && this.spatialHierarchy`),
+  same per-ID lookup through `bySite.get(id)` skipping unknown IDs, same
+  intersection semantics when combined with other criteria. An empty `sites`
+  array is treated as no filter, matching the existing sibling behavior.
+  
+  Known, separately-tracked gaps left unfixed (both already self-documented as
+  incomplete, so not a silent bug like the one above): `applyAction`'s
+  `SET_ATTRIBUTE` case returns `null` unconditionally ("would need to be
+  implemented"), and `CsvConnector.matchRow`'s `'property'` strategy warns
+  "not yet implemented" and matches nothing.
+- Updated dependencies [[`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/data@3.4.0
+
+## 1.26.0
+
+### Minor Changes
+
+- [#2579](https://github.com/LTplus-AG/ifc-lite/pull/2579) [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee) Thanks [@louistrue](https://github.com/louistrue)! - `MutablePropertyView.deleteQuantitySet(entityId, qsetName)` - the inverse of `createQuantitySet`, and the exact mirror of the `deletePropertySet` that has always existed one level up.
+
+  It was missing, which is why `deletedQsets` was read by `getQuantitiesForEntity`, `hasPendingChanges` and `collectSetLevelChanges` while nothing populated it outside the restore path. Without it, a writer that REPLACES an entity's quantity set can shrink it but never empty it: re-running with nothing left to write leaves the previous run's numbers standing. [#2508](https://github.com/LTplus-AG/ifc-lite/issues/2508)'s zone write-back hits that directly, where it produces a file stating cubic metres beside a property saying the volume could not be computed.
+
+  It records its own `DELETE_QUANTITY_SET` mutation type rather than a `DELETE_QUANTITY` with no property name: both replay consumers (`applyMutations` and `change-set-to-ops`) key the member-delete case off the property name, so a whole-set removal filed under it matched nothing, resurrected the set on import and vanished from a layer publish without reaching `skipped`.
+
+  Semantics follow `deletePropertySet`: an in-session quantity set is dropped along with the per-quantity mutations its creation recorded, and a DELETE marker is recorded only against a set that genuinely exists in the base file, so a create-then-delete in one session nets to no reported change.
+
+  Paired with it, `MutablePropertyView.isQuantitySetDeleted(entityId, qsetName)`: `getQuantitiesForEntity` reports a deleted set and a never-existing one identically, and the STEP exporter needs the difference. It withholds a source `IfcElementQuantity` when it is writing a replacement for it, and a deletion has no replacement to be recognised by, so without this a set the session deleted was still in the exported bytes.
+
+### Patch Changes
+
+- Updated dependencies [[`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718)]:
+  - @ifc-lite/data@3.3.0
+
+## 1.25.0
+
+### Minor Changes
+
+- [#2496](https://github.com/LTplus-AG/ifc-lite/pull/2496) [`97ed6ef`](https://github.com/LTplus-AG/ifc-lite/commit/97ed6ef3addb81de2bba175882be35760eb25bc9) Thanks [@louistrue](https://github.com/louistrue)! - Two ways a re-export wrote wrong data into the file a user keeps: a regenerated property set re-declared its neighbours' types ([#2482](https://github.com/LTplus-AG/ifc-lite/issues/2482)), and a source `IfcElementQuantity` was deleted with nothing written in its place ([#2487](https://github.com/LTplus-AG/ifc-lite/issues/2487)).
+
+  **A regenerated property keeps the type its source line declared.** Editing one property regenerates the whole property set, so every other property in it is re-serialized too — and they were written from `PropertyValueType` alone, which is a shape and not a type. The extractor collapses `IFCLABEL` / `IFCTEXT` / `IFCIDENTIFIER` to `String` and every `…MEASURE` / `…RATIO` to `Real`, keeping the source token only in `Property.dataType`, which the generator never read. So one edit rewrote its untouched neighbours: `IFCTEXT('…')` and `IFCIDENTIFIER('A-01')` came back as `IFCLABEL`, and `IFCLENGTHMEASURE(2500.)` and `IFCAREAMEASURE(12.5)` came back as `IFCREAL` — on the numeric side the measure token IS the unit semantics, so the number stopped saying what it measures. A re-export that touches a property set now writes each property's own declared type back, under four gates: the token must name a member of the `IfcValue` SELECT (resolved from the schema registry, so all 106 IFC4 leaves qualify and a vendor token like `IFCACMEWIDGETCODE` does not — it falls back to `IFCLABEL`, lossy but valid, rather than putting a non-member in the slot); its EXPRESS base must agree with the effective value type (so a session that retyped the property with `setProperty(…, valueType)` wins, and a property nobody edited always agrees, since the extractor derived both from the same token); the value must be representable in that base (so an `IfcPropertyBoundedValue`'s measure `dataType` is not wrapped around the display string it is extracted as, and no `IFCLENGTHMEASURE(NaN)` is written where the old path wrote `$`); and the value must satisfy the declared type's own EXPRESS domain, since six `IfcValue` members are constrained defined types and `setProperty` performs no schema validation. Editing an `IFCPOSITIVELENGTHMEASURE(5.)` to `-1`, or an `IFCNORMALISEDRATIOMEASURE(0.5)` to `2`, therefore no longer re-declares the constrained type over a value that violates it; the property relaxes to the nearest unconstrained ancestor of the same measure family (`IFCLENGTHMEASURE(-1.)`, `IFCRATIOMEASURE(2.)`), which is schema-valid and still says what the number measures. Properties AUTHORED in the session are unaffected — they carry no `dataType` and are written from the type they were created with, exactly as before. `null` values are untouched too: a null is the extractor's reading of `IFCLOGICAL(.U.)` as much as of an absent value, and which it is belongs to the mapping table ([#2472](https://github.com/LTplus-AG/ifc-lite/issues/2472)), not here.
+
+  **A quantity edit no longer deletes the source quantity set.** A full export withheld a source `IfcElementQuantity` — the container, its quantity atoms and the `IfcRelDefinesByProperties` attaching it — whenever the session's mutation history merely NAMED that set, and then regenerated it from `getQuantitiesForEntity`. Those two disagree whenever the overlay has no base under it, and it has none by default: properties fall back to the view's `baseTable` or its on-demand extractor, but base quantities have only `setQuantityExtractor`, which is opt-in with no diagnostic when it is missing. Two reachable shapes followed. Editing one quantity of a source set regenerated that set holding ONLY the edited quantity, and the siblings the file came with were withheld and never rewritten. Undoing a quantity creation (`setQuantity` then `removeQuantityMutation`, which is what Ctrl+Z runs) left the append-only `CREATE_QUANTITY` record still naming the set while the overlay had dropped it, so the source lines were withheld and nothing at all replaced them: the export of a file WITH the quantity set was byte-identical to an export of the file WITHOUT it, under `modifiedEntityCount: 1` and no warning. Fixed in two independent places. The exporter now supplies the missing base itself — it is handed the very store the view is an overlay on, so it installs a store-backed quantity extractor when, and only when, the view has none, which covers every caller including external embedders of the published API rather than the in-tree callers we happened to find. And the skip loop now withholds a source quantity set only when the generator actually wrote a replacement for that name, rather than on the strength of a name in the history; there is no quantity-set REMOVAL this could suppress, because `deletedQsets` has no public populator, so withholding without a replacement was always the bug. A view that resolves its own quantities (the viewer, MCP, the CLI headless backend) is untouched — its extractor is never overwritten, whether it was installed before the first export or after one, and both view methods are feature-probed so a partial or older view falls back instead of throwing mid-export.
+
+  What a re-export now produces, precisely. A property set the session edited: every property that came from the file keeps its source `NominalValue` token instead of the shape-derived one, so the same file re-exported through an edited pset differs from before on those lines and only on those lines (a property with a vendor or unrecognized token, a bounded/enumerated/list/table property, and every authored property are byte-identical to before). A quantity set the session edited: the emitted `IfcElementQuantity` now carries the source set's other quantities alongside the edited one, where it used to carry the edited one alone; an edit that was undone leaves the quantity set in the file, either as the untouched source lines or as a regenerated set with the same values and fresh express ids and GlobalId, where the whole set used to disappear. Counts are unchanged in shape: an edit that regenerates a set still counts as one modification of its host.
+
+  `MutablePropertyView` gains `hasQuantityBase()` (minor), which is how a consumer holding the base data tells "this entity has no quantities" apart from "this view cannot see them". `packages/cli`'s `mutate`, `gym` and `generate-spaces` now wire `setQuantityExtractor` alongside the property extractor they already wired, so their views report quantity sets whole and not only at export time.
+
+### Patch Changes
+
+- Updated dependencies [[`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/data@3.2.3
+
+## 1.24.2
+
+### Patch Changes
+
+- [#2317](https://github.com/LTplus-AG/ifc-lite/pull/2317) [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MutablePropertyView.setQuantity()` reporting a wrong `oldValue`/mutation type on the first edit of an already-existing base quantity.
+
+  Before this fix, `oldValue` was resolved only from a prior overlay mutation for the same key (`this.quantityMutations.get(key)?.value`), never from the base quantity's own value — unlike `setProperty()`, which resolves `oldValue` via `getPropertyValue()` (overlay-or-base). So editing a base quantity for the first time produced `{ type: 'UPDATE_QUANTITY', oldValue: null }` even though a real prior value existed. Consumers that gate reverting a quantity edit on `oldValue` being non-null (e.g. `apps/viewer`'s undo handler) silently did nothing on undo — the same "reports success, reverts nothing" shape as [#2297](https://github.com/LTplus-AG/ifc-lite/issues/2297), but for quantities, and in `@ifc-lite/mutations` rather than `@ifc-lite/mcp`.
+
+  A second, related defect: adding a _new_ quantity name to an already-existing quantity set was classified as `UPDATE_QUANTITY` (since `qsetExistsInBase` was checked instead of the specific quantity), so undo of that create also tried to restore a nonexistent prior value instead of removing the mutation.
+
+  `setQuantity()` now resolves `oldValue`/the CREATE-vs-UPDATE classification from the overlay mutation when present, falling back to the specific base quantity's value (existence keyed on quantity name, not just qset name) — mirroring `setProperty()`'s existing resolution order.
+
+- [#2277](https://github.com/LTplus-AG/ifc-lite/pull/2277) [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `changeSetToOps` silently dropping a whole quantity set created with zero quantities (`createQuantitySet(entity, name, [])`, e.g. `StoreEditor.addQuantitySet` called before any quantity is added).
+
+  The whole-qset `CREATE_QUANTITY` branch (added in [#2263](https://github.com/LTplus-AG/ifc-lite/issues/2263) for the non-empty case) looped over `newValue` to populate the published component's `values`, but never first materialized the component the way the sibling `CREATE_PROPERTY_SET` branch does. An empty `newValue` array meant the loop ran zero times, so the component was never added to the fold at all — the mutation matched the `CREATE_QUANTITY` case (so it never reached the `default` branch that records unrepresentable mutations either), and the set vanished from the published layer with `ops: []` and `skipped: []`: no diagnostic, no trace. Same failure shape as [#2263](https://github.com/LTplus-AG/ifc-lite/issues/2263), in the one corner (empty array) that fix's test coverage didn't reach.
+
+- [#2263](https://github.com/LTplus-AG/ifc-lite/pull/2263) [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix silent data loss for whole-property-set and whole-quantity-set creations (`StoreEditor.addPropertySet` / `addQuantitySet`, or the underlying `MutablePropertyView.createPropertySet` / `createQuantitySet`) in two downstream consumers of `Mutation` records.
+
+  `createPropertySet()` and `createQuantitySet()` each record a single `CREATE_PROPERTY_SET` / `CREATE_QUANTITY` mutation for the whole set, carrying the full member array on `newValue` — unlike `setProperty()` / `setQuantity()`, which always record `psetName` **and** `propName` together for one member at a time.
+
+  - `changeSetToOps()` (the layer-publish bridge in `change-set-to-ops.ts`) treated `CREATE_PROPERTY_SET` as "materialize an empty component; members follow" — but for this whole-set form nothing else in the change set ever populated the values, so the published op carried `values: {}` and every property the user entered was dropped from the layer. The `CREATE_QUANTITY`/`UPDATE_QUANTITY` case required `propName`, so the whole-set form matched the case and produced nothing at all — not even a `skipped` entry, so the loss was invisible.
+  - `MutablePropertyView.applyMutations()` (backing `exportMutations()` → `importMutations()`) had the same `psetName && propName` gap for `CREATE_QUANTITY`, so a `createQuantitySet()` batch silently vanished on round trip through a fresh view.
+
+  Both paths now read the member array off `newValue` for the whole-set form, mirroring the per-member fold. No change to the per-member (`setProperty`/`setQuantity`) mutation shapes.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6)]:
+  - @ifc-lite/data@3.2.2
+
+## 1.24.1
+
+### Patch Changes
+
+- [#2109](https://github.com/LTplus-AG/ifc-lite/pull/2109) [`4c739be`](https://github.com/LTplus-AG/ifc-lite/commit/4c739be2aba74ad6868b6dca51dad441c6fa9903) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Document that `MutablePropertyView.importMutations()` is not a full inverse of `exportMutations()` for overlay-created entities ([#2044](https://github.com/LTplus-AG/ifc-lite/issues/2044)).
+
+  A `CREATE_ENTITY` record only carries the expressId in the mutation history, not the entity's type and attributes, so `importMutations()` cannot rebuild the entity from the record alone — it logs a `console.warn` and skips the record, dropping every other mutation recorded against that same id in the same batch too. This behaviour was already correct (fixed in [#2045](https://github.com/LTplus-AG/ifc-lite/issues/2045)), but was undocumented on the public surface: neither the package README nor the `exportMutations`/`importMutations` JSDoc (which reaches the published `.d.ts`) said so. Both now state the asymmetry plainly and point at `restoreNewEntity()` as the companion path a caller must use to carry a created entity across before calling `importMutations()`. No runtime behaviour changes.
+
+- [#2045](https://github.com/LTplus-AG/ifc-lite/pull/2045) [`f493930`](https://github.com/LTplus-AG/ifc-lite/commit/f4939309aed136979bd5cc1f95a25c2a0ebe779f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop `importMutations` from orphaning property/attribute/quantity edits under a created entity it skipped ([#2044](https://github.com/LTplus-AG/ifc-lite/issues/2044)).
+
+  `applyMutations` deliberately skips `CREATE_ENTITY` records — the history alone doesn't carry the type+attributes payload, so callers must restore it via `restoreNewEntity()` — but it still replayed every property, attribute, quantity, and positional-attribute mutation recorded against that entity's expressId. The receiving view ended up with a property set (or attribute/quantity/type edit) keyed to an id that existed in neither the source buffer nor `newEntities` — surfaced by `getForEntity()` and counted as a pending change by `hasChanges()` / `hasPendingChanges()`.
+
+  `applyMutations` now skips every mutation recorded against an id whose `CREATE_ENTITY` it skipped in the same batch _and_ which nothing else supplied. Both halves matter: keying off the skip set rather than "id absent from `newEntities`" leaves replay against a normal, pre-existing source-buffer entity unaffected, and requiring the id to be absent from `newEntities` keeps the documented recovery flow — `restoreNewEntity()` first, then `importMutations()` — from having its own edits dropped as orphans. The round trip for an overlay-created entity is now lossy (the entity and its edits are both dropped) instead of corrupting (edits surviving without their entity). The `console.warn` now also states that dependent mutations were dropped.
+
+  `applyMutations` also now builds that skip set in a dedicated first pass over the whole input array before applying anything, instead of populating it incrementally as the main loop reaches each `CREATE_ENTITY`. `exportMutations()` always produces an append-ordered array, so this wasn't reachable through any current caller, but `applyMutations`/`importMutations` are documented to accept an arbitrary `Mutation[]` (e.g. an imported change set). Under the old single-pass logic, a dependent mutation appearing before its own `CREATE_ENTITY` in such an array would see an empty skip set and replay anyway — the same orphaning bug, reached via ordering instead of the original bug shape. The two-pass version is order-independent.
+
+- Updated dependencies [[`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47)]:
+  - @ifc-lite/data@3.2.1
+
+## 1.24.0
+
+### Minor Changes
+
+- [#1967](https://github.com/LTplus-AG/ifc-lite/pull/1967) [`14b8e45`](https://github.com/LTplus-AG/ifc-lite/commit/14b8e45b2d4aa6c2490f6e7263d8f84731ea812e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `MutablePropertyView.getModifiedEntityCount()` and `hasChanges()` to read the live overlay instead of the append-only `mutationHistory` (issue [#1915](https://github.com/LTplus-AG/ifc-lite/issues/1915)). Undo does not pop `mutationHistory` — it either re-applies the inverse or clears the overlay entry directly — so after an undo, `getModifiedEntityCount()` could over-report entities that no longer have any pending change, disagreeing with `hasPendingChanges()`. Both methods now agree with `hasPendingChanges()` in every case, including entities restored via `restoreNewEntity` (which never touches `mutationHistory` at all).
+
+  Add `getEffectiveChanges()`, returning every change the overlay currently carries — attribute, property, quantity, pset/qset add-or-delete, retype, and entity create/delete — with `previousValue` derived from the base data (property table / on-demand extractor / the new optional `AttributeExtractor`, set via `setAttributeExtractor()`), never from `mutationHistory`, so an undo→redo cycle reports the true original value instead of a stale history entry. For a tombstoned entity, only its `entity-deleted` row is reported — any attribute/property/quantity/retype edits made before the delete are dropped, matching the STEP exporter's own behavior of skipping those mutations for a deleted entity. Backs the export-review dialog in `@ifc-lite/viewer`, which lets a user see what an "Export Changes" click will actually apply before committing to it.
+
+  Fix `deleteEntity` to purge, rather than leave orphaned, a forgotten-created entity's property/quantity/attribute/type overlay entries, its `newPsets`/`newQsets` entries, and its own `mutationHistory` records. Previously only the export-review enumeration filtered these out; `StepExporter` itself still read them directly (`getMutations()`, `getForEntity()`, `getQuantitiesForEntity()`), so a create → edit → delete entity could leave a dangling `IFCPROPERTYSET` / `IFCRELDEFINESBYPROPERTIES` in the exported file pointing at an expressId that was never actually created, invisible to the review dialog. The purged data is stashed internally and restored by `restoreNewEntity`, so undo of the delete brings back the rows, the modified-entity count, and what the exporter would see — not just the bare entity record.
+
+  Fix two related overlay leaks that kept `getModifiedEntityCount()` disagreeing with `getEffectiveChanges()`: deleting the last property of an auto-created (in-session-only) property set left an empty, still-truthy `Map` in `newPsets` (and the equivalent for `newQsets`/quantities); and deleting an in-session-only property left a `DELETE` tombstone marker in `propertyMutations` that had no base value to mask. `collectModifiedEntityIds()` is now derived directly from `getEffectiveChanges()` instead of a second hand-rolled walk over the overlay maps, so the two structurally cannot diverge again.
+
+  Fix `getEffectiveChanges()` to drop no-op rows: undoing an edit re-applies the inverse and lands the overlay back at the base value, so `previousValue === newValue` — previously still reported as a change (e.g. `Status: Original -> Original`) even though the user had undone it.
+
+  Add `EffectiveChange.deleted`, set on a `'property' | 'quantity'` row only when the overlay entry is a genuine DELETE operation. Previously a row's `newValue` alone was the only signal callers had for "this will be removed on export" — but a SET whose stored value is `null` (an unset Boolean added from bSDD, issue [#1107](https://github.com/LTplus-AG/ifc-lite/issues/1107), which is present-but-empty, not absent) stringifies to `undefined` too, the same as a DELETE's `newValue`. The export-review dialog in `@ifc-lite/viewer` now renders that distinction: a SET-to-null value reads as empty, not as a row export will drop.
+
+  Fix `deletePropertySet` for a property set that only ever existed in-session (created via `createPropertySet`, never present in the base file): deleting it no longer records a `deletedPsets` entry, so `getEffectiveChanges()`/the review dialog no longer report a `pset-deleted` row — and `hasPendingChanges()`/`hasChanges()` no longer stay dirty — for an add-then-remove that nets to no change at all. Same reasoning `deleteProperty` already applied one level down: a purely in-session entry has nothing in the base data to mask, so there is nothing to report as deleted. Also clears the now-orphaned per-property `SET` mutations the in-session pset's `createPropertySet` call recorded, and applies the same empty-map cleanup to `newPsets` that `deleteProperty` already had (an empty `Map` is still truthy). A property set that genuinely exists in the base file is unaffected and still reports `pset-deleted` as before.
+
+  Fix `restoreNewEntity` reordering `mutationHistory` for a create → edit → delete → restore sequence on an overlay-created entity. `deleteEntity` purges the entity's history via `stashAndPurgeEntityOverlay` before pushing its own `DELETE_ENTITY` record, and `unstashEntityOverlay` was re-appending the stashed `CREATE_ENTITY`/`CREATE_PROPERTY` records at the tail of `mutationHistory` — behind that `DELETE_ENTITY`, instead of restoring create-before-delete order. That defeated `applyMutations()`'s `skippedCreateIds` guard (issue [#2036](https://github.com/LTplus-AG/ifc-lite/issues/2036)) on replay: the `DELETE_ENTITY` was processed before the `CREATE_ENTITY` it should pair with, so it tombstoned an id `skippedCreateIds` hadn't seen yet. The practical effect was silent data loss through the public `exportMutations()` → `importMutations()` round trip — an entity that was only ever created, edited, and (transiently) deleted-then-restored in the same session came back as a bare tombstone (`isDeleted() === true`) instead of untouched, and repeated undo/redo cycles piled up additional stale tombstones ahead of the create. `unstashEntityOverlay` now drops the superseded `DELETE_ENTITY` instead of re-appending behind it — the create and the delete cancel, the same reasoning already applied to `forgottenCreatedEntities` in the effective-changes filter one layer down. A tombstoned _source_ entity restored via `restoreFromTombstone` is a separate code path and is unaffected.
+
+## 1.23.1
+
+### Patch Changes
+
+- [#2050](https://github.com/LTplus-AG/ifc-lite/pull/2050) [`d9abe5b`](https://github.com/LTplus-AG/ifc-lite/commit/d9abe5b48eee9066ff1b21d7408350f152c9f4f1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Drop component ops for entities whose final change-set state is `tombstone-entity` ([#2048](https://github.com/LTplus-AG/ifc-lite/issues/2048)).
+
+  `changeSetToOps` folds `entityOps` (last-write-wins per entity) and `components` (per componentKey) in the same pass over the mutation list, but previously emitted every accumulated component op regardless of whether the entity ended up deleted. A `CREATE_PROPERTY` mutation followed later by `DELETE_ENTITY` for the same entity produced both a `tombstone-entity` op and a `set-component` op carrying the now-meaningless property values — which `apps/viewer`'s `buildDeltaNodes` merged onto the same `IfcxNode`, publishing live property values alongside `IFCLITE_ATTR.DELETED: true`.
+
+  Component ops are now filtered against each entity's final `entityOps` state after both passes complete (not during the fold, since an entity's terminal state — LWW — is only known once the whole mutation list has been consumed). An entity tombstoned and then recreated in the same change set keeps its components, since `entityOps` resolves to `add-entity` for that identity.
+
+## 1.23.0
+
+### Minor Changes
+
+- [#2036](https://github.com/LTplus-AG/ifc-lite/pull/2036) [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab) Thanks [@louistrue](https://github.com/louistrue)! - `deleteEntity` now tombstones an overlay-created entity as well as forgetting it ([#2012](https://github.com/LTplus-AG/ifc-lite/issues/2012)).
+
+  It used to only remove the entity from the new-entity list, which made `isDeleted()` answer `false` for something that no longer exists. Every consumer that asks "was this deleted" therefore got the wrong answer about a created-then-deleted entity, and could only work around it by asking a different question instead — which is what `StepExporter` does on main today, and what its comment says it is doing.
+
+  The entity is still dropped from `getNewEntities()`, so something created and deleted in one session is emitted nowhere. `restoreNewEntity` lifts the tombstone, so undo of a delete is still a complete inverse.
+
+  `getTombstones()` now names created-and-deleted ids as well as source ones. A consumer that counts entities must intersect it with the store's own index rather than subtracting its size, or a created-then-deleted entity is subtracted twice.
+
+### Patch Changes
+
+- Updated dependencies [[`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275)]:
+  - @ifc-lite/data@3.2.0
+
+## 1.22.0
+
+### Minor Changes
+
+- [#1966](https://github.com/LTplus-AG/ifc-lite/pull/1966) [`80051a5`](https://github.com/LTplus-AG/ifc-lite/commit/80051a51868b7343c4c3e08e335c0d5bdf900424) Thanks [@louistrue](https://github.com/louistrue)! - Fix undone attribute edits being resurrected on STEP export ([#1957](https://github.com/LTplus-AG/ifc-lite/issues/1957)).
+
+  `StepExporter` reconstructed attribute values by replaying `MutablePropertyView.getMutations()` — the append-only mutation history. Undo applies its reverse edit with `skipHistory: true`, so a superseded `UPDATE_ATTRIBUTE` record keeps its stale `newValue` forever and the exporter baked the pre-undo value into the output. The editor showed the reverted value; the file did not. Silent, with no error and nothing in the output signalling it, and directional: it restored data the user had explicitly reverted.
+
+  The exporter now reads attribute values from the overlay via the new `MutablePropertyView.getAttributeMutationsByEntity()`, which returns the current state — an undone edit has had its overlay entry reset to the pre-edit value, or removed outright when the attribute was newly set. This makes attributes consistent with every other overlay-backed path in the exporter: property sets (`getForEntity`), quantities (`getQuantitiesForEntity`), positional attributes (`getPositionalMutationsForEntity`) and retypes (`getEntityTypeMutation`) already read current state, so attributes were the sole outlier rather than an instance of a general pattern.
+
+  **Scope.** Only the attribute path was affected. Property and quantity edits take their _values_ from the overlay and use the history only to decide which pset names to re-emit, so an undone property edit was already re-emitted with its correct current value. Georeferencing edits reach the exporter through `ExportOptions.georefMutations`, not through the view, and are untouched.
+
+  `getAttributeMutationsByEntity()` and the existing `getAttributeMutationsForEntity()` are both backed by a new entityId-keyed secondary index, mirroring the one already used for property and quantity mutations. That also removes a full-map `startsWith` scan from the per-entity accessor, which the properties panel calls on every selection.
+
+  No migration: the overlay and the history are both in-process state, and any edit that was not undone exports exactly as before.
+
 ## 1.21.1
 
 ### Patch Changes

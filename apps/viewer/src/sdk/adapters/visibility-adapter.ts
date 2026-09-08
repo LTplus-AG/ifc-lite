@@ -8,6 +8,7 @@ import { getModelForRef, type ModelLike } from './model-compat.js';
 import { collectSpatialSubtreeElementsWithIfcSpace } from '../../store/basketVisibleSet.js';
 import { toGlobalIdForRef, toGlobalIdFromModels } from '../../store/globalId.js';
 import type { AggregationRelationships } from '../../utils/aggregation.js';
+import { resolvePresentationIds } from '../../lib/presentation/resolvePresentationIds.js';
 import { isSpaceLikeSpatialTypeName, isSpatialStructureTypeName, type SpatialNode } from '@ifc-lite/data';
 
 function findDescendantNode(root: SpatialNode, expressId: number): SpatialNode | null {
@@ -62,7 +63,11 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         globalIds.push(toGlobalIdForRef(state.models, ref));
       }
       if (globalIds.length > 0) {
-        state.hideEntities(globalIds);
+        // #3338: `hiddenEntities` is matched against MESH ids, so a
+        // geometry-less `IfcElementAssembly` ref hides nothing at all unless
+        // it becomes its `IfcRelAggregates` parts first. Same resolver, same
+        // union policy as `isolate()` below.
+        state.hideEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },
@@ -74,7 +79,10 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         globalIds.push(toGlobalIdForRef(state.models, ref));
       }
       if (globalIds.length > 0) {
-        state.showEntities(globalIds);
+        // #3338: must expand for the reason `hide()` does, plus one of its
+        // own — after `hide()` expands, `hiddenEntities` holds the PARTS, so
+        // a `show()` that removed only the parent id could never undo it.
+        state.showEntities(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },
@@ -91,7 +99,18 @@ export function createVisibilityAdapter(store: StoreApi): VisibilityBackendMetho
         }
       }
       if (globalIds.length > 0) {
-        state.isolateEntities?.(globalIds);
+        // #3338: this is a selection/isolation channel like LensPanel,
+        // PropertiesPanel and both SearchModal isolate paths, so it must
+        // resolve the same way they do — a geometry-less `IfcElementAssembly`
+        // ref (spatial expansion above leaves it untouched) has to become its
+        // geometry-bearing `IfcRelAggregates` parts, or the viewport isolates
+        // an id with nothing to render and shows an empty scene.
+        //
+        // #3382's union policy, now via the shared `resolvePresentationIds` so
+        // `check-isolate-expansion-routing.mjs` can require every channel to
+        // use the same one: the resolved ids are unioned with the raw ids, and
+        // an empty resolve keeps the raw ids rather than isolating nothing.
+        state.isolateEntities?.(resolvePresentationIds(state.cameraCallbacks.resolveHighlightIds, globalIds));
       }
       return undefined;
     },

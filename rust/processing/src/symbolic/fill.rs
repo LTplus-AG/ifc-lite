@@ -2,11 +2,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::output_cap::SymbolicAccumulator;
+use super::rebase::RenderFrameRebase;
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcType};
 use std::collections::HashMap;
 
 use super::color::resolve_color_via_styles;
-use super::primitives::{SymbolicData, SymbolicFillArea};
+use super::primitives::{SymbolicFillArea};
 use super::transform::{circle_center, Transform2D};
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -22,13 +24,12 @@ pub(super) fn extract_annotation_fill_area(
     rep_identifier: &str,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
     styled_items: &HashMap<u32, Vec<u32>>,
-    out: &mut SymbolicData,
+    out: &mut SymbolicAccumulator,
 ) {
     let Some(outer_ref) = item.get_ref(0) else { return };
-    let mut points = extract_curve_ring(outer_ref, decoder, unit_scale, transform, rtc_x, rtc_z);
+    let mut points = extract_curve_ring(outer_ref, decoder, unit_scale, transform, rebase);
     if points.len() < 6 {
         return;
     }
@@ -37,7 +38,7 @@ pub(super) fn extract_annotation_fill_area(
     if let Some(inners_attr) = item.get(1) {
         if let Ok(inner_list) = decoder.resolve_ref_list(inners_attr) {
             for inner in inner_list {
-                let hole = extract_curve_ring(inner.id, decoder, unit_scale, transform, rtc_x, rtc_z);
+                let hole = extract_curve_ring(inner.id, decoder, unit_scale, transform, rebase);
                 if hole.len() >= 6 {
                     let vertex_index = (points.len() / 2) as u32;
                     holes_offsets.push(vertex_index);
@@ -49,9 +50,9 @@ pub(super) fn extract_annotation_fill_area(
 
     let fill_color = resolve_color_via_styles(item.id, styled_items, decoder)
         .unwrap_or([0.0, 0.0, 0.0, 1.0]);
-    let world_y = sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz;
+    let world_y = rebase.elevation(sample_curve_world_y(outer_ref, decoder, unit_scale) + transform.tz);
 
-    out.fills.push(SymbolicFillArea {
+    out.push_fill(SymbolicFillArea {
         express_id,
         ifc_type: ifc_type.to_string(),
         points,
@@ -74,8 +75,7 @@ fn extract_curve_ring(
     decoder: &mut EntityDecoder,
     unit_scale: f32,
     transform: &Transform2D,
-    rtc_x: f32,
-    rtc_z: f32,
+    rebase: RenderFrameRebase,
 ) -> Vec<f32> {
     let Ok(curve) = decoder.decode_by_id(curve_id) else {
         return Vec::new();
@@ -95,8 +95,9 @@ fn extract_curve_ring(
                 let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
-                out.push(wx - rtc_x);
-                out.push(-wy + rtc_z);
+                let (px, py) = rebase.plan(wx, wy);
+                out.push(px);
+                out.push(py);
             }
             out
         }
@@ -111,8 +112,9 @@ fn extract_curve_ring(
                 let x = coords.first().and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let y = coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0) as f32 * unit_scale;
                 let (wx, wy) = transform.transform_point(x, y);
-                out.push(wx - rtc_x);
-                out.push(-wy + rtc_z);
+                let (px, py) = rebase.plan(wx, wy);
+                out.push(px);
+                out.push(py);
             }
             out
         }
@@ -130,8 +132,9 @@ fn extract_curve_ring(
                 let lx = cx_local + semi_a * theta.cos();
                 let ly = cy_local + semi_b * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
-                out.push(wx - rtc_x);
-                out.push(-wy + rtc_z);
+                let (px, py) = rebase.plan(wx, wy);
+                out.push(px);
+                out.push(py);
             }
             out
         }
@@ -149,8 +152,9 @@ fn extract_curve_ring(
                 let lx = cx_local + radius * theta.cos();
                 let ly = cy_local + radius * theta.sin();
                 let (wx, wy) = transform.transform_point(lx, ly);
-                out.push(wx - rtc_x);
-                out.push(-wy + rtc_z);
+                let (px, py) = rebase.plan(wx, wy);
+                out.push(px);
+                out.push(py);
             }
             out
         }

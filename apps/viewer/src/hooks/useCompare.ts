@@ -21,22 +21,61 @@ import { diffModels, type EntityFingerprint } from '@ifc-lite/diff';
 import { useViewerStore } from '@/store';
 import { posthog } from '@/lib/analytics';
 import type { CompareResult } from '@/store/slices/compareSlice';
+import { buildEntityFingerprints, type CompareRef } from '@/lib/compare/buildFingerprints';
 import {
-  buildEntityFingerprints,
-  hasGeometryHashes,
-  type CompareRef,
-} from '@/lib/compare/buildFingerprints';
+  geometryVolumesSurviveAlignment,
+  resolveGeometryChannel,
+} from '@/lib/compare/geometryCapability';
+import { contentMatchCounts, contentMatchingRan } from '@/lib/compare/contentMatches';
+import { productTypeSplit } from '@/lib/compare/productTypeCounts';
+import { buildAtCurrentVersion } from '@/lib/compare/versionedBuild';
+
+/** Read the live mesh-content version. A FUNCTION, not a captured number: the
+ *  whole point is to observe the value moving across an extraction's awaits, so
+ *  a caller that snapshots it once defeats the guard it feeds. */
+export const readGeometryContentVersion = (): number =>
+  useViewerStore.getState().geometryContentVersion;
 
 type Side = EntityFingerprint<CompareRef>[];
 interface BuiltPair {
-  key: string;
+  baseModelId: string;
+  headModelId: string;
   baseName: string;
   headName: string;
   base: Side;
   head: Side;
+  /**
+   * `geometryContentVersion` the fingerprints were extracted at (#1891).
+   *
+   * The A/B model ids are NOT enough to key this cache. Federation re-alignment
+   * re-frames vertices and their world `geometryAabb`s IN PLACE, under the same
+   * ids and the same `geometryResult` object, so fingerprints built before it
+   * carry pre-alignment boxes while the meshes carry post-alignment ones — and
+   * every move distance the engine derives from them is then measured between
+   * two coordinate frames. That store counter is bumped by exactly one caller,
+   * `realignFederation`, and only when something actually moved, so it is the
+   * precise "mesh content was mutated under you" signal this cache was missing.
+   */
+  contentVersion: number;
 }
 
-const pairKey = (a: string, b: string): string => `${a} ${b}`;
+/** Are these fingerprints the ones for this A/B pair, extracted from the mesh
+ *  content the store holds NOW? (Ids compared field-wise rather than through a
+ *  joined key string, so two ids can never alias.)
+ *
+ *  THE staleness predicate for the compare path — asked before a cached pair is
+ *  reused, again after the extraction's awaits, and again before a cheap
+ *  re-diff. One definition, so the three cannot drift apart. */
+export function isCurrentFor(
+  built: Pick<BuiltPair, 'baseModelId' | 'headModelId' | 'contentVersion'>,
+  baseModelId: string,
+  headModelId: string,
+  contentVersion: number,
+): boolean {
+  return built.baseModelId === baseModelId
+    && built.headModelId === headModelId
+    && built.contentVersion === contentVersion;
+}
 
 /** Canonical, order-independent signature of a blacklist so a re-render with a
  *  fresh-but-equivalent array reference doesn't trigger a re-diff. Compared
@@ -72,31 +111,93 @@ function collectExcludedHiddenIds(built: BuiltPair, excludedTypes: string[]): Se
   return ids;
 }
 
-/** Run the (cheap) diff pass + derive the overlay's hidden set for one pair,
- *  scope and blacklist. Fingerprint extraction (the expensive part) already
- *  happened; this is safe to re-run on every scope / blacklist change. */
-function buildCompareResult(
-  built: BuiltPair,
-  baseModelId: string,
-  headModelId: string,
-  scope: CompareResult['scope'],
-  excludedTypes: string[],
-): CompareResult {
-  const diff = diffModels(built.base, built.head, { scope, excludeTypes: excludedTypes });
-  // Geometry hashes are produced only on the WASM mesh path; if either side was
-  // loaded without them (e.g. a huge native desktop load), geometry/both scopes
-  // can't see shape changes - flag it so the panel can warn.
-  const geometryUnavailable = !hasGeometryHashes(built.base) || !hasGeometryHashes(built.head);
-  return {
-    baseModelId,
-    headModelId,
+/**
+ * Run the (cheap) diff pass for the cached fingerprints, derive the overlay's
+ * hidden set, and publish the whole comparison to the store. The single place a
+ * `CompareResult` is ever produced - both the Run button and the reconciliation
+ * effect below go through here.
+ *
+ * INVARIANT this function exists to protect (the #1891 P1 fix). The diff options
+ * are read HERE, and nothing may `await` between that read and
+ * `setCompareResult`:
+ *
+ * - **Read here, never in a caller.** The scope / blacklist / matching controls
+ *   stay live while a comparison is in flight, so a value captured before
+ *   `runComparison`'s awaits (the frame yield plus fingerprint extraction) can be
+ *   stale by the time the fingerprints land. Publishing such a value made the
+ *   panel disagree with its own controls - counts, rows, overlay and exported CSV
+ *   all - until the user moved some other option or re-ran. Latent since #924 for
+ *   scope + blacklist; the content-matching checkbox is merely the first of the
+ *   three a user reaches for mid-run.
+ * - **Stay synchronous.** With no `await` between the read and the publish, no
+ *   event handler can interleave, so the published result cannot be stale by even
+ *   one option change. Adding an `await` in here reintroduces the P1.
+ *
+ * Together those are what let the reconciliation effect below omit `result` from
+ * its deps: a published result always agrees with the store, so there is nothing
+ * for a `result`-triggered re-run to catch, and no `setCompareResult` ->
+ * re-render -> re-diff cycle.
+ *
+ * Fingerprint extraction (the expensive part) already happened, so this is cheap
+ * enough to re-run on every scope / blacklist / matching change.
+ *
+ * @returns the published result, plus the matching flag it ran with - telemetry
+ *   reports the OPTION, of which `diff.contentMatches` is only a derivation.
+ */
+function publishCompareResult(built: BuiltPair): {
+  result: CompareResult;
+  matchByContent: boolean;
+} {
+  const store = useViewerStore.getState();
+  const scope: CompareResult['scope'] = store.compareScope;
+  const excludedTypes = store.compareExcludedTypes;
+  const matchByContent = store.compareMatchByContent;
+
+  // The strip decision, the warning flag and its placement-only nuance are ONE
+  // resolution (`resolveGeometryChannel`), so the panel's warning can never
+  // disagree with what the engine was actually given: a MIXED-capability pair
+  // (one side mesh-hashed) has placement fingerprints stripped from both sides
+  // so the engine's asymmetry abstention can fire; a symmetric mesh-less pair
+  // keeps them, still reports placement-driven moves, and the warning must say
+  // reshapes-only.
+  const {
+    base,
+    head,
+    geometryUnavailable,
+    placementOnlyGeometry,
+  } = resolveGeometryChannel(built.base, built.head);
+
+  const diff = diffModels(base, head, {
+    scope,
+    excludeTypes: excludedTypes,
+    // #1891. On by default: a from-scratch re-export re-GUIDs every element,
+    // and a pure key diff then reports the entire model as deleted-and-added.
+    // The world `aabb` rides on the fingerprints (#2005), so a 1:1 geometry
+    // mismatch reports a real distance; an entity the wasm pass produced no box
+    // for still degrades to a bare `moved`, the engine's documented fallback.
+    matchUnpairedByContent: matchByContent,
+  });
+  const result: CompareResult = {
+    baseModelId: built.baseModelId,
+    headModelId: built.headModelId,
     baseName: built.baseName,
     headName: built.headName,
     scope,
     geometryUnavailable,
+    placementOnlyGeometry,
     excludedHiddenIds: collectExcludedHiddenIds(built, excludedTypes),
     diff,
   };
+  store.setCompareResult(result);
+  // Completed-comparison signal for baseline consumers (compare tour). An
+  // option change re-diffing the cached fingerprints is a completed comparison
+  // too, so it bumps the same counter.
+  store.bumpCompareRunSeq();
+  // A retired pair's entries are gone, so a selection made under one setting can
+  // dangle under the other - drop it rather than leave a detail panel pointing
+  // at nothing.
+  store.setCompareSelectedKey(null);
+  return { result, matchByContent };
 }
 
 export function useCompare() {
@@ -104,20 +205,53 @@ export function useCompare() {
   const headModelId = useViewerStore((s) => s.compareHeadModelId);
   const scope = useViewerStore((s) => s.compareScope);
   const excludedTypes = useViewerStore((s) => s.compareExcludedTypes);
+  const matchByContent = useViewerStore((s) => s.compareMatchByContent);
   const running = useViewerStore((s) => s.compareRunning);
   const result = useViewerStore((s) => s.compareResult);
   const error = useViewerStore((s) => s.compareError);
+  const geometryContentVersion = useViewerStore((s) => s.geometryContentVersion);
 
   // Cache the built fingerprints for the current pair so a scope / blacklist
   // change is a cheap re-diff rather than a full re-extraction.
   const builtRef = useRef<BuiltPair | null>(null);
 
+  /**
+   * Supersession epoch for `runComparison()` itself (#2802 sweep).
+   *
+   * `isCurrentFor` / `buildAtCurrentVersion` protect the fingerprint CACHE
+   * against a federation re-alignment; they say nothing about whether THIS
+   * `runComparison()` call is still the one whose answer the user wants. Two
+   * gaps that check cannot see:
+   *
+   * - A newer `runComparison()` call (same pair or a different one, started
+   *   after the user changed the selection) must win over an older one still
+   *   finishing its extraction, regardless of which resolves first.
+   * - An explicit `clearCompare()` mid-flight must stick - a run that was
+   *   already in the air when the user cleared must not resurrect the result
+   *   they just dismissed.
+   *
+   * Bumped at the start of every `runComparison()` call and by `clearCompare`
+   * below (the ONLY two events that make an in-flight run's eventual answer
+   * unwanted). Each run captures the epoch value once, and every place that
+   * writes to the store re-checks it immediately before writing - never
+   * earlier, so nothing can supersede between the check and the write.
+   */
+  const epochRef = useRef(0);
+
+  /** Bump the epoch and clear, so an in-flight run's `then`/`catch` cannot
+   *  write the result the user just dismissed back into the store. Routes
+   *  through here rather than the raw store action for every caller in this
+   *  file and in `ComparePanel` - a `clearCompare()` invoked directly on the
+   *  store instead of through this wrapper would not be seen. */
+  const clearCompare = useCallback(() => {
+    epochRef.current += 1;
+    useViewerStore.getState().clearCompare();
+  }, []);
+
   const runComparison = useCallback(async () => {
     const store = useViewerStore.getState();
     const baseId = store.compareBaseModelId;
     const headId = store.compareHeadModelId;
-    const activeScope = store.compareScope;
-    const activeExcluded = store.compareExcludedTypes;
 
     if (!baseId || !headId) {
       store.setCompareError('Select a model for both A and B.');
@@ -138,6 +272,30 @@ export function useCompare() {
       store.setCompareError('Version B is not fully loaded yet.');
       return;
     }
+    // Pin the validated handles for the extraction closure below. `geometryResult`
+    // survives a re-align by IDENTITY - it is mutated in place, not replaced - so
+    // a retry re-reads the re-framed meshes through these same references.
+    const baseStore = baseModel.ifcDataStore;
+    const baseGeometry = baseModel.geometryResult;
+    const headStore = headModel.ifcDataStore;
+    const headGeometry = headModel.geometryResult;
+
+    // Supersedes any run already in flight (same pair or not) - see the epoch
+    // doc comment above. Captured once; re-checked at every write below.
+    const myEpoch = ++epochRef.current;
+
+    /** Is THIS run still the one whose answer the user is waiting on? Both
+     *  conjuncts matter and neither alone is enough: the epoch alone misses a
+     *  selection change that never triggers a second `runComparison()` call
+     *  (scenario 3 - #2802), and the pair-match alone misses a `clearCompare()`
+     *  that leaves the pair untouched (scenario 2 - #2802, `clearCompare`
+     *  "keeps the A/B + scope choices" by design). Read fresh, never cached -
+     *  the whole point is to observe the store as it is right now. */
+    const stillWanted = (): boolean => {
+      if (epochRef.current !== myEpoch) return false;
+      const live = useViewerStore.getState();
+      return live.compareBaseModelId === baseId && live.compareHeadModelId === headId;
+    };
 
     store.setCompareError(null);
     store.setCompareRunning(true);
@@ -146,69 +304,179 @@ export function useCompare() {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     try {
-      const key = pairKey(baseId, headId);
-      let built = builtRef.current;
-      if (!built || built.key !== key) {
-        built = {
-          key,
+      // Reuse-if-current, extract otherwise, and re-check after the awaits.
+      // Federation re-alignment re-frames meshes IN PLACE under these very ids,
+      // so a run that started before it must not publish what it read across
+      // it - the invalidation effect below would have cleared the panel, and
+      // this run would put the stale answer straight back. Re-extracting rather
+      // than abandoning is deliberate: the user pressed Run.
+      const built = await buildAtCurrentVersion<BuiltPair>({
+        readVersion: readGeometryContentVersion,
+        cached: builtRef.current,
+        isCurrent: (candidate, version) => isCurrentFor(candidate, baseId, headId, version),
+        extract: async (contentVersion) => ({
+          baseModelId: baseId,
+          headModelId: headId,
+          contentVersion,
           baseName: baseModel.name,
           headName: headModel.name,
           base: await buildEntityFingerprints({
             modelId: baseId,
-            store: baseModel.ifcDataStore,
-            meshes: baseModel.geometryResult.meshes,
-            instancedGeometryHashes: baseModel.geometryResult.instancedGeometryHashes,
+            store: baseStore,
+            meshes: baseGeometry.meshes,
+            instancedGeometryHashes: baseGeometry.instancedGeometryHashes,
+            instancedGeometryAabbs: baseGeometry.instancedGeometryAabbs,
+            instancedGeometryVolumes: baseGeometry.instancedGeometryVolumes,
+            // #1993: a re-baked model's volumes describe a size that is no
+            // longer on screen, and nothing on this side can re-measure them.
+            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+              baseModel.federationAlignmentStatus,
+            ),
             idOffset: baseModel.idOffset,
           }),
           head: await buildEntityFingerprints({
             modelId: headId,
-            store: headModel.ifcDataStore,
-            meshes: headModel.geometryResult.meshes,
-            instancedGeometryHashes: headModel.geometryResult.instancedGeometryHashes,
+            store: headStore,
+            meshes: headGeometry.meshes,
+            instancedGeometryHashes: headGeometry.instancedGeometryHashes,
+            instancedGeometryAabbs: headGeometry.instancedGeometryAabbs,
+            instancedGeometryVolumes: headGeometry.instancedGeometryVolumes,
+            geometryVolumesTrusted: geometryVolumesSurviveAlignment(
+              headModel.federationAlignmentStatus,
+            ),
             idOffset: headModel.idOffset,
           }),
-        };
-        builtRef.current = built;
+        }),
+      });
+      if (!built) {
+        // Never silently: `finally` clears the running flag, so returning with
+        // no message would leave the panel blank after the user pressed Run -
+        // but only when this run is still the one the user is waiting on; a
+        // superseded run reporting its own failure into a newer run's state
+        // is the scenario-5 clobber (#2802).
+        if (stillWanted()) {
+          store.setCompareError(
+            'The model geometry kept changing while comparing. Run the comparison again.',
+          );
+        }
+        return;
       }
 
-      const payload = buildCompareResult(built, baseId, headId, activeScope, activeExcluded);
-      store.setCompareResult(payload);
-      // Completed-comparison signal for baseline consumers (compare tour).
-      store.bumpCompareRunSeq();
-      store.setCompareSelectedKey(null);
+      // Re-checked immediately before every write below, synchronously with no
+      // `await` in between - see the epoch doc comment above. A run that lost
+      // the race (a newer run started, the pair changed, or the user cleared)
+      // must publish nothing: not the result, not its cache entry either,
+      // since a stale cache entry for a pair that is no longer selected would
+      // silently defeat the reconciliation effect's `isCurrentFor` check on
+      // the NEXT option change (see that effect's comment).
+      if (!stillWanted()) return;
+      builtRef.current = built;
+
+      // The diff options are read inside `publishCompareResult`, AFTER every
+      // `await` above, and published atomically with it - see the invariant
+      // documented on that function. Nothing here may capture them earlier.
+      const { result: payload, matchByContent: ranMatchByContent } = publishCompareResult(built);
+
+      // Per-kind match counts are the default-on rollout's evidence (#1891):
+      // they say how often the pass fires in the field, and how much of what it
+      // finds it resolves versus hands back for review.
+      const matches = contentMatchCounts(payload.diff.contentMatches);
+      // Products vs type objects (headline-count confusion, see
+      // `productTypeCounts.ts`): the field's evidence for how often a run's
+      // engine-wide counts actually include type-object changes.
+      const split = productTypeSplit(payload.diff.entries);
       posthog.capture('model_compare_run', {
-        scope: activeScope,
+        scope: payload.scope,
         changed_entity_count: payload.diff.entries.length,
         geometry_unavailable: payload.geometryUnavailable,
         excluded_type_count: payload.diff.excludedTypes.length,
+        content_matching: ranMatchByContent,
+        content_match_count: matches.total,
+        content_matched_elements: matches.matchedElements,
+        content_needs_review_elements: matches.needsReviewElements,
+        content_match_renamed: matches.renamed,
+        content_match_moved: matches.moved,
+        content_match_reshaped: matches.reshaped,
+        content_match_duplicated: matches.duplicated,
+        content_match_deduplicated: matches.deduplicated,
+        content_match_ambiguous: matches.ambiguous,
+        product_added: split.products.added,
+        product_modified: split.products.modified,
+        product_deleted: split.products.deleted,
+        type_object_added: split.typeObjects.added,
+        type_object_modified: split.typeObjects.modified,
+        type_object_deleted: split.typeObjects.deleted,
       });
     } catch (err) {
       console.error('[compare] comparison failed', err);
-      store.setCompareError((err as Error).message ?? 'Comparison failed.');
-      store.setCompareResult(null);
+      // Same guard as above: a superseded run's own failure must set an error
+      // state for a run nobody is waiting on, not clobber whatever a newer
+      // run already published (#2802 scenario 5).
+      if (stillWanted()) {
+        store.setCompareError((err as Error).message ?? 'Comparison failed.');
+        store.setCompareResult(null);
+      }
     } finally {
-      store.setCompareRunning(false);
+      // A superseded run's `finally` must not flip `compareRunning` back to
+      // false out from under a newer run that owns it now (or that
+      // `clearCompare` already set it false for) - whichever run IS still
+      // wanted controls the flag via its own `finally`.
+      if (epochRef.current === myEpoch) {
+        store.setCompareRunning(false);
+      }
     }
   }, []);
 
-  // Scope OR blacklist change with an existing result for the same pair ->
-  // re-diff from the cached fingerprints (instant). No-op when nothing has been
-  // compared yet, or when neither actually changed (equivalent array refs).
+  // Federation re-alignment re-frames vertices and their world boxes IN PLACE
+  // (#1891), so a comparison published before it describes geometry that has
+  // since moved and the cached fingerprints hold pre-alignment boxes. Retire
+  // both. Clearing the RESULT as well as the cache is what keeps
+  // `publishCompareResult`'s invariant intact: leaving a result on screen with
+  // no usable fingerprints behind it would make the effect below early-return
+  // on an option change, and the panel would disagree with its own controls -
+  // exactly the staleness that function exists to prevent.
+  //
+  // Declared BEFORE the re-diff effect so a commit that changes both the
+  // version and an option clears first. Seeded with the mounted value so a
+  // remount is not mistaken for a bump; a re-align while this panel is
+  // unmounted leaves no cache to reuse, and `runComparison` re-extracts.
+  const lastContentVersionRef = useRef(geometryContentVersion);
+  useEffect(() => {
+    if (lastContentVersionRef.current === geometryContentVersion) return;
+    lastContentVersionRef.current = geometryContentVersion;
+    builtRef.current = null;
+    clearCompare();
+  }, [geometryContentVersion, clearCompare]);
+
+  // Scope, blacklist OR content-matching change with an existing result for the
+  // same pair -> re-diff from the cached fingerprints (instant). No-op when
+  // nothing has been compared yet, or when none actually changed (equivalent
+  // array refs). `contentMatches`' PRESENCE is the result's record of the flag
+  // it ran with (see `contentMatchingRan`).
+  //
+  // This is only the change DETECTOR - the options it publishes are re-read from
+  // the store by `publishCompareResult`, which is what makes the published
+  // result agree with the store rather than with this render's props.
+  //
+  // `result` is deliberately NOT a dep - the effect writes it, so depending on
+  // it would be a re-render/re-diff cycle guarded only by the equality checks
+  // below. That omission is safe only because every publish reads these same
+  // options at publish time: a result can never land carrying options older than
+  // the ones this effect last saw, so there is nothing for a `result`-triggered
+  // re-run to catch.
   useEffect(() => {
     const built = builtRef.current;
     if (!result || !built) return;
-    if (built.key !== pairKey(result.baseModelId, result.headModelId)) return;
+    if (!isCurrentFor(built, result.baseModelId, result.headModelId, geometryContentVersion)) return;
     const sameScope = result.scope === scope;
     const sameExcluded =
       excludedSignature(result.diff.excludedTypes) === excludedSignature(excludedTypes);
-    if (sameScope && sameExcluded) return;
+    const sameMatching = contentMatchingRan(result.diff.contentMatches) === matchByContent;
+    if (sameScope && sameExcluded && sameMatching) return;
 
-    const payload = buildCompareResult(built, result.baseModelId, result.headModelId, scope, excludedTypes);
-    useViewerStore.getState().setCompareResult(payload);
-    // A scope / blacklist re-diff is also a completed comparison - bump the run signal.
-    useViewerStore.getState().bumpCompareRunSeq();
+    publishCompareResult(built);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scope, excludedTypes]);
+  }, [scope, excludedTypes, matchByContent]);
 
-  return { baseModelId, headModelId, scope, running, result, error, runComparison };
+  return { baseModelId, headModelId, scope, running, result, error, runComparison, clearCompare };
 }

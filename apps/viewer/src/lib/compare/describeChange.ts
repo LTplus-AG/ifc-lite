@@ -9,8 +9,9 @@
  * signals* changed (`changeKinds`), but not *what*. This computes the
  * human-readable per-field delta lazily on selection — it re-extracts both
  * revisions of the entity from their `IfcDataStore`s and walks attributes +
- * property sets, plus a geometry summary (centroid move / bbox reshape) from
- * the tessellated meshes. Kept out of the engine result so a 100k-entity diff
+ * property sets + resolved materials, plus a geometry summary (box-centre move
+ * / bbox reshape, or a composed-placement move for a geometry-less product —
+ * `geometrySummary.ts`). Kept out of the engine result so a 100k-entity diff
  * stays cheap; only the selected element is described.
  */
 
@@ -18,14 +19,22 @@ import type { DiffEntry } from '@ifc-lite/diff';
 import { RelationshipType } from '@ifc-lite/data';
 import {
   extractAllEntityAttributes,
+  extractAllMaterialsOnDemand,
   extractPropertiesOnDemand,
   extractQuantitiesOnDemand,
   type IfcDataStore,
 } from '@ifc-lite/parser';
-import type { MeshData } from '@ifc-lite/geometry';
+import { lensMaterialNames } from '../lens-material-names.js';
 import type { FederatedModel } from '../../store/types.js';
 import type { CompareRef } from './buildFingerprints.js';
 import { isGeometricDataName } from './geometricData.js';
+import {
+  meshBounds,
+  placementMoveSummary,
+  renderToWorldShift,
+  summarizeGeometryChange,
+  type GeometrySummary,
+} from './geometrySummary.js';
 
 /** One changed/added/removed field between the A and B revisions. */
 export interface FieldDelta {
@@ -41,24 +50,6 @@ export interface FieldDelta {
   after?: string;
   kind: 'changed' | 'added' | 'removed';
 }
-
-export interface GeometrySummary {
-  /** Bounding-box-centre displacement A→B, in model units (metres in the
-   *  renderer frame). 0 when below {@link MOVE_EPS} (tessellation/float noise). */
-  movedDistance: number;
-  delta: { x: number; y: number; z: number };
-  /** True when the bounding-box size changed beyond tolerance (not a pure move). */
-  reshaped: boolean;
-  /** Per-axis bounding-box size change A→B in the display frame (x, y=plan, z=up). */
-  sizeDelta: { x: number; y: number; z: number };
-}
-
-/** A centre shift below this (renderer metres) is tessellation / float noise,
- *  not a move — keeps a re-cut or re-tessellated element that stayed put from
- *  reading as "moved" (#1197). */
-const MOVE_EPS = 2e-3;
-/** Per-axis bounding-box size change above this counts as a reshape. */
-const RESHAPE_EPS = 1e-3;
 
 export interface ChangeDetail {
   /** Non-geometric attribute/property changes (the "Data" story). */
@@ -249,71 +240,61 @@ function typeAssignmentLabel(store: IfcDataStore, localId: number): string {
     .join(', ');
 }
 
-/** Axis-aligned bounding box in the renderer world frame. */
-export interface Aabb { min: readonly [number, number, number]; max: readonly [number, number, number] }
-
-/** Axis-aligned bounding box of an entity's meshes (renderer world frame). */
-function meshBounds(meshes: readonly MeshData[], globalId: number): Aabb | null {
-  let any = false;
-  let minX = Infinity, minY = Infinity, minZ = Infinity;
-  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-  for (const mesh of meshes) {
-    if (mesh.expressId !== globalId) continue;
-    const p = mesh.positions;
-    for (let i = 0; i < p.length; i += 3) {
-      const x = p[i], y = p[i + 1], z = p[i + 2];
-      any = true;
-      if (x < minX) minX = x; if (y < minY) minY = y; if (z < minZ) minZ = z;
-      if (x > maxX) maxX = x; if (y > maxY) maxY = y; if (z > maxZ) maxZ = z;
-    }
-  }
-  if (!any) return null;
-  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] };
+/**
+ * The element's resolved material names as one display label, or `''` when it
+ * names none.
+ *
+ * Mirrors the `materials` slice of the data fingerprint
+ * (`buildFingerprints.ts`) so the panel explains exactly the thing that moved
+ * the hash. Sorted, because the fingerprint sorts: a label that reordered
+ * between revisions would read as a change the diff did not make.
+ */
+function materialLabel(store: IfcDataStore, localId: number): string {
+  return extractAllMaterialsOnDemand(store, localId)
+    .flatMap(lensMaterialNames)
+    .sort()
+    .join(', ');
 }
 
 function geometrySummary(
   a: FederatedModel | undefined,
-  aGlobalId: number,
+  aRef: CompareRef,
   b: FederatedModel | undefined,
-  bGlobalId: number,
+  bRef: CompareRef,
 ): GeometrySummary | null {
-  const ba = a?.geometryResult ? meshBounds(a.geometryResult.meshes, aGlobalId) : null;
-  const bb = b?.geometryResult ? meshBounds(b.geometryResult.meshes, bGlobalId) : null;
+  // Each side folds its OWN model's render-to-world shift: the two revisions
+  // may have chosen different RTC offsets, and a side that lost its wasm box
+  // to the NaN drop must land in the same absolute frame as a side that kept
+  // it (#2659).
+  const ba = a?.geometryResult
+    ? meshBounds(a.geometryResult.meshes, aRef.globalId, renderToWorldShift(a.geometryResult.coordinateInfo))
+    : null;
+  const bb = b?.geometryResult
+    ? meshBounds(b.geometryResult.meshes, bRef.globalId, renderToWorldShift(b.geometryResult.coordinateInfo))
+    : null;
+  // No boxes to compare. For a pair that is geometry-less on BOTH sides (the
+  // summary checks `ref.meshed` — missing boxes alone also describe a
+  // GPU-instanced entity, which must stay on the box path), the geometry
+  // signal came from the composed world placement (`buildFingerprints.ts`).
+  // Describe THAT, rather than falling through to
+  // `summarizeGeometryChange(null, null)` — which answers "reshaped", and a
+  // product with no representation cannot reshape. That is the same false
+  // "Reshaped" the field report flagged, arriving from the other direction.
+  if (!ba && !bb) {
+    const placement = placementMoveSummary(a, aRef, b, bRef);
+    if (placement) return placement;
+    // Both sides are the recorded-geometry-less case
+    // (`ref.meshed === false` on BOTH — `placementMoveSummary` re-checks this
+    // itself) and the placement composition abstained (unreadable chain,
+    // cycle, missing store). There is no box AND no trustworthy placement
+    // delta, so answering `summarizeGeometryChange(null, null)`'s "Reshaped"
+    // would be the exact false positive this function exists to avoid,
+    // arriving from the abstention path instead of the meshed-mismatch path.
+    if (aRef.meshed === false && bRef.meshed === false) return null;
+  }
   return summarizeGeometryChange(ba, bb);
 }
 
-/**
- * Classify an A→B bounding-box change as a move and/or reshape. Pure (takes
- * pre-computed AABBs) so a bulk report can pre-index every element's bounds in
- * one pass instead of re-scanning the mesh array per element (#1202).
- */
-export function summarizeGeometryChange(ba: Aabb | null, bb: Aabb | null): GeometrySummary | null {
-  const zero = { x: 0, y: 0, z: 0 };
-  if (!ba || !bb) return { movedDistance: 0, delta: zero, reshaped: true, sizeDelta: zero };
-
-  // Position is the AABB *centre*, not a vertex-weighted centroid: a void re-cut
-  // or a different triangulation redistributes mesh vertices and drags a weighted
-  // centroid metres away while the element occupies the exact same space — that
-  // was the phantom "moved 1.09 m" on a wall that never moved (#1197). The box
-  // centre only shifts when the element's spatial extent actually translates.
-  const dx = (bb.min[0] + bb.max[0]) / 2 - (ba.min[0] + ba.max[0]) / 2;
-  const dy = (bb.min[1] + bb.max[1]) / 2 - (ba.min[1] + ba.max[1]) / 2;
-  const dz = (bb.min[2] + bb.max[2]) / 2 - (ba.min[2] + ba.max[2]) / 2;
-  const rawMoved = Math.hypot(dx, dy, dz);
-  const movedDistance = rawMoved < MOVE_EPS ? 0 : rawMoved;
-
-  // Renderer is Y-up; report deltas in IFC-ish terms (x, y=plan, z=up) by mapping
-  // renderer (x, y_up, z) → display (x, z, y_up) so "z" reads as height.
-  const delta = movedDistance === 0 ? zero : { x: dx, y: dz, z: dy };
-
-  const sdx = (bb.max[0] - bb.min[0]) - (ba.max[0] - ba.min[0]);
-  const sdy = (bb.max[1] - bb.min[1]) - (ba.max[1] - ba.min[1]);
-  const sdz = (bb.max[2] - bb.min[2]) - (ba.max[2] - ba.min[2]);
-  const reshaped = Math.abs(sdx) > RESHAPE_EPS || Math.abs(sdy) > RESHAPE_EPS || Math.abs(sdz) > RESHAPE_EPS;
-  const sizeDelta = reshaped ? { x: sdx, y: sdz, z: sdy } : zero;
-
-  return { movedDistance, delta, reshaped, sizeDelta };
-}
 
 /**
  * Describe what changed for one `modified` compare entry. Returns null for
@@ -353,11 +334,25 @@ export function describeChange(
           kind: aType && bType ? 'changed' : bType ? 'added' : 'removed',
         });
       }
+      // Material, on the same rule and for the same reason: it is in the data
+      // fingerprint, so it has to be explainable. Compared as resolved NAMES,
+      // so a re-save that only renumbered the `IfcMaterial` produces no row.
+      const aMaterial = materialLabel(aStore, aRef.localId);
+      const bMaterial = materialLabel(bStore, bRef.localId);
+      if (aMaterial !== bMaterial) {
+        data.push({
+          category: 'attribute',
+          name: 'Material',
+          before: aMaterial || undefined,
+          after: bMaterial || undefined,
+          kind: aMaterial && bMaterial ? 'changed' : bMaterial ? 'added' : 'removed',
+        });
+      }
     }
   }
 
   const geometry = entry.changeKinds.includes('geometry')
-    ? geometrySummary(models.get(aRef.modelId), aRef.globalId, models.get(bRef.modelId), bRef.globalId)
+    ? geometrySummary(models.get(aRef.modelId), aRef, models.get(bRef.modelId), bRef)
     : null;
 
   const dataOnlyGeometric = entry.changeKinds.includes('data') && data.length === 0;

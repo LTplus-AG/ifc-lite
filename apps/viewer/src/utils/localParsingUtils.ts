@@ -9,6 +9,7 @@
  * Extracted from useIfc.ts for reusability and testability
  */
 
+import { NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
 
 // ============================================================================
@@ -47,11 +48,16 @@ export interface GeometryStats {
 // ============================================================================
 
 /**
- * Maximum coordinate threshold for valid geometry (10km)
- * Matches CoordinateHandler's NORMAL_COORD_THRESHOLD
- * Coordinates beyond this are likely corrupted or unshifted original coordinates
+ * Maximum coordinate threshold for valid geometry (10km).
+ * Coordinates beyond this are likely corrupted or unshifted original coordinates.
+ *
+ * Re-exported from `CoordinateHandler`'s own threshold rather than restated:
+ * this file, `viewportUtils` and `useGeometryStreaming` each used to hold their
+ * own `10000`, two of them with a comment claiming they match it. Raising all
+ * three to 250 km left the whole viewer suite green, so nothing enforced the
+ * claim.
  */
-export const MAX_VALID_COORD = 10000;
+export const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 
 /**
  * Create an initial bounds object with infinite values

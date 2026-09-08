@@ -71,7 +71,7 @@ function sanitizeBundledProj4(def: string, datumName?: string | null): string {
   return def.replace(/\+nadgrids=\S+/g, '').replace(/\s+/g, ' ').trim() + ' ' + towgs84;
 }
 
-interface ControlPointFixture {
+export interface ControlPointFixture {
   epsg: string;
   name: string;
   control_point: {
@@ -91,7 +91,7 @@ const FIXTURES_PATH = path.resolve(
   'fixtures/epsg-control-points.json',
 );
 
-function loadFixtures(): ControlPointFixture[] {
+export function loadFixtures(): ControlPointFixture[] {
   const raw = fs.readFileSync(FIXTURES_PATH, 'utf8');
   const parsed = JSON.parse(raw) as FixturesFile;
   if (!Array.isArray(parsed.fixtures)) {
@@ -113,7 +113,7 @@ function degreesToMeters(latDeg: number, lonDeg: number, atLatDeg: number): numb
   return Math.sqrt((latDeg * mPerDegLat) ** 2 + (lonDeg * mPerDegLon) ** 2);
 }
 
-interface FixtureResult {
+export interface FixtureResult {
   fixture: ControlPointFixture;
   pass: boolean;
   forwardErrorM: number | null;
@@ -121,7 +121,7 @@ interface FixtureResult {
   reason?: string;
 }
 
-async function verifyFixture(fixture: ControlPointFixture): Promise<FixtureResult> {
+export async function verifyFixture(fixture: ControlPointFixture): Promise<FixtureResult> {
   const entry = await lookupEpsgByCode(fixture.epsg);
   if (!entry) {
     return {
@@ -261,4 +261,44 @@ async function main(): Promise<number> {
   return 1;
 }
 
-process.exitCode = await main();
+/**
+ * Is this file the process entry point?
+ *
+ * Compare REAL paths on both sides. `import.meta.url` is already resolved
+ * through symlinks; `process.argv[1]` is not, so a plain `path.resolve`
+ * comparison returns false whenever the script is reached through a link —
+ * and the failure is silent, because `main()` simply never runs and the
+ * process exits 0. `pnpm verify:epsg` would report success having checked
+ * nothing, which is worse than the problem this guard solves.
+ *
+ * On macOS that is not hypothetical: `os.tmpdir()` is `/var/folders`,
+ * symlinked to `/private/var/folders`. Same reasoning and same shape as
+ * `isMainEntry()` in `scripts/check-refwalk-guards.mjs`.
+ *
+ * The `resolve` fallback covers a path that has since been removed, where
+ * `realpathSync` throws. It is best-effort by construction and does NOT
+ * handle symlinks — nothing can, once realpath is unavailable — so it can
+ * still answer false for a linked invocation. That is deliberate: the shape
+ * is kept identical to `check-refwalk-guards.mjs` rather than "improved"
+ * here, because two entry-point guards that drift apart is a worse problem
+ * than a fallback that degrades on a path that no longer exists.
+ */
+function isMainEntry(): boolean {
+  const invoked = process.argv[1];
+  if (!invoked) return false;
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return fs.realpathSync(self) === fs.realpathSync(invoked);
+  } catch {
+    return self === path.resolve(invoked);
+  }
+}
+
+// Only run the CLI report when this file is the entry point. The fixtures and
+// `verifyFixture` are also imported by `verify-epsg-roundtrip.test.ts`, which
+// runs the same checks as part of `pnpm test`; without this guard that import
+// would print the whole report and set a failing `process.exitCode` from
+// inside the test run.
+if (isMainEntry()) {
+  process.exitCode = await main();
+}

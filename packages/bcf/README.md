@@ -1,6 +1,6 @@
 # @ifc-lite/bcf
 
-BCF (BIM Collaboration Format) support for IFClite. Reads and writes BCF 2.1 and 3.0 files — the issue-tracking format every BIM tool speaks (Revit, Archicad, Solibri, BIMcollab, etc.).
+BCF (BIM Collaboration Format) support for IFClite. Reads and writes BCF 2.1 and 3.0 files — the topic-tracking format every BIM tool speaks (Revit, Archicad, Solibri, BIMcollab, etc.).
 
 ## Installation
 
@@ -54,7 +54,12 @@ const url = URL.createObjectURL(blob);
 ## Add a viewpoint with selection
 
 ```typescript
-import { createViewpoint, addViewpointToTopic } from '@ifc-lite/bcf';
+import { createBCFTopic, createViewpoint, addViewpointToTopic } from '@ifc-lite/bcf';
+
+const topic = createBCFTopic({
+  title: 'Missing fire rating on east-facade walls',
+  author: 'reviewer@example.com',
+});
 
 const viewpoint = createViewpoint({
   camera: {
@@ -62,6 +67,12 @@ const viewpoint = createViewpoint({
     target: { x: 0, y: 0, z: 0 },
     up: { x: 0, y: 0, z: 1 },
     fov: Math.PI / 3, // field of view in radians (60 degrees)
+    // Required for BCF 3.0 (viewport width / height, must be > 0). v3_0's
+    // visinfo.xsd makes `<AspectRatio>` mandatory on every camera and this
+    // package will not invent one, so `writeBCF` throws for the whole archive
+    // on the first camera that lacks it. Omit it only when writing 2.1, which
+    // has no such element.
+    aspectRatio: 16 / 9,
   },
   // Highlight specific entities by their IFC GlobalId
   selectedGuids: ['1abc2def3GhI4jKlM5nOpQ', '2bcd3efg4HiJ5kLmN6oPqR'],

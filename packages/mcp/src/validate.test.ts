@@ -57,4 +57,50 @@ describe('validateInput', () => {
     expect(r.valid).toBe(false);
     expect(r.errors[0].path).toBe('$.ids[1]');
   });
+
+  // Kills a mutation of `schema.additionalProperties === false` to `=== true`
+  // (or a dropped check). Every hand-authored MCP tool schema sets
+  // `additionalProperties: false` to reject unrecognised fields from the
+  // LLM caller; without this test that guard had zero assertions and the
+  // whole suite stayed green even with the check disabled.
+  it('rejects unexpected properties when additionalProperties is false', () => {
+    const r = validateInput({
+      type: 'object',
+      properties: { name: { type: 'string' } },
+      additionalProperties: false,
+    }, { name: 'a', extra: 'nope' });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].path).toBe('$.extra');
+    expect(r.errors[0].message).toMatch(/Unexpected property/);
+  });
+
+  it('allows unexpected properties when additionalProperties is not false', () => {
+    const r = validateInput({
+      type: 'object',
+      properties: { name: { type: 'string' } },
+    }, { name: 'a', extra: 'ok' });
+    expect(r.valid).toBe(true);
+  });
+
+  // Kills a mutation of `input.length < schema.minLength` to `<=` (previously
+  // untested): a string exactly at the minimum length must still be valid.
+  // No existing test exercised this boundary, so an off-by-one that rejects
+  // the exact-minimum case stayed green.
+  it('accepts a string exactly at minLength and rejects one below it', () => {
+    const schema = { type: 'object' as const, properties: { s: { type: 'string' as const, minLength: 3 } } };
+    expect(validateInput(schema, { s: 'abc' }).valid).toBe(true);
+    const r = validateInput(schema, { s: 'ab' });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].message).toMatch(/shorter than 3/);
+  });
+
+  // Kills a mutation of `input.length > schema.maxLength` to `>=` (previously
+  // untested): a string exactly at the maximum length must still be valid.
+  it('accepts a string exactly at maxLength and rejects one above it', () => {
+    const schema = { type: 'object' as const, properties: { s: { type: 'string' as const, maxLength: 3 } } };
+    expect(validateInput(schema, { s: 'abc' }).valid).toBe(true);
+    const r = validateInput(schema, { s: 'abcd' });
+    expect(r.valid).toBe(false);
+    expect(r.errors[0].message).toMatch(/longer than 3/);
+  });
 });

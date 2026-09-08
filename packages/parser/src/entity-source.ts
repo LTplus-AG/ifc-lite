@@ -5,6 +5,7 @@
 import type { IfcEntity } from '@ifc-lite/data';
 import type { EntityByIdIndex } from './columnar-parser-indexes.js';
 import { EntityExtractor } from './entity-extractor.js';
+import type { IfcSourceBytes } from './source-bytes.js';
 
 interface EntityLookup {
   byId: EntityByIdIndex;
@@ -15,7 +16,7 @@ export class BufferEntitySource {
   private extractor: EntityExtractor;
   private index: EntityLookup;
 
-  constructor(source: Uint8Array, index: EntityLookup) {
+  constructor(source: Uint8Array | IfcSourceBytes, index: EntityLookup) {
     this.extractor = new EntityExtractor(source);
     this.index = index;
   }

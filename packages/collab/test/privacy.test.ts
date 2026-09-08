@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createCollabSession } from '../src/session.js';
 import { createEntity, setAttribute, entityToJSON } from '../src/doc/entity.js';
 import { entitiesMap } from '../src/doc/schema.js';
+import { createAnnotation, getAnnotation } from '../src/doc/annotation.js';
 import { exportAndLeave, redactAuthorMeta } from '../src/privacy.js';
 
 describe('privacy / GDPR helpers', () => {
@@ -72,6 +73,34 @@ describe('privacy / GDPR helpers', () => {
     const a = entityToJSON(entitiesMap(session.doc).get('a')!);
     expect(a.meta.createdBy).toBeNull();
     expect(a.meta.lastEditedBy).toBeNull();
+    session.dispose();
+  });
+
+  it('redactAuthorMeta also blanks annotation authorId / authorName, leaving the note body intact', async () => {
+    const session = await createCollabSession({
+      roomId: 'r5',
+      user: { id: 'sven', name: 'Sven' },
+      provider: 'memory',
+    });
+    session.transact(() => {
+      createAnnotation(session.doc, 'pin-1', {
+        position: { x: 0, y: 0, z: 0 },
+        note: 'leaky pipe here',
+        authorId: 'sven',
+        authorName: 'Sven Realname',
+        authorColor: '#fff',
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
+    const touched = redactAuthorMeta(session);
+    expect(touched).toBe(1);
+    const ann = getAnnotation(session.doc, 'pin-1')!;
+    expect(ann.authorId).toBe('');
+    expect(ann.authorName).toBe('');
+    // Only authorship is redacted — the pin content and position survive.
+    expect(ann.note).toBe('leaky pipe here');
+    expect(ann.position).toEqual({ x: 0, y: 0, z: 0 });
     session.dispose();
   });
 });

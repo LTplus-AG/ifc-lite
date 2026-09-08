@@ -395,6 +395,42 @@ function collectVisibleCandidates(state: ViewerStateSnapshot): VisibleCandidate[
   return candidates;
 }
 
+/**
+ * The isolation ALLOWLIST currently in force, in global-id space: storey
+ * selection ∩ class filter ∩ manual isolation, or `null` when no isolation
+ * channel is active at all.
+ *
+ * This is the same quantity `ViewportContainer` memoises as
+ * `computedIsolatedIds` and hands the renderer as `isolatedIds`. It is exported
+ * because that memo is prop-drilled through the viewport tree and is therefore
+ * unreachable from the toolbar — where the to-scale PDF export lives (#2042).
+ * An exporter that read only `isolatedEntities` would print every storey while
+ * the screen shows one, which is the #2578 "the export disagrees with the
+ * viewport" class; deriving it here instead of restating the intersection is
+ * what stops a third copy appearing.
+ */
+export function computeIsolationFilterSet(state: ViewerStateSnapshot): Set<number> | null {
+  // Collect all active filter sets and intersect them
+  const filters: Set<number>[] = [];
+  const storeyIsolation = computeStoreyIsolation(state);
+  if (storeyIsolation !== null) filters.push(storeyIsolation);
+  if (state.classFilter !== null) filters.push(state.classFilter.ids);
+  if (state.isolatedEntities !== null) filters.push(state.isolatedEntities);
+
+  if (filters.length === 0) return null;
+  if (filters.length === 1) return filters[0];
+
+  // Intersect all active filters — start from smallest for efficiency
+  const sorted = filters.sort((a, b) => a.size - b.size);
+  const intersection = new Set<number>();
+  for (const id of sorted[0]) {
+    if (sorted.every((s) => s.has(id))) {
+      intersection.add(id);
+    }
+  }
+  return intersection;
+}
+
 function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
   const candidates = collectVisibleCandidates(state);
 
@@ -403,26 +439,7 @@ function getVisibleGlobalIds(state: ViewerStateSnapshot): Set<number> {
     globalHidden.add(id);
   }
 
-  // Collect all active filter sets and intersect them
-  const filters: Set<number>[] = [];
-  const storeyIsolation = computeStoreyIsolation(state);
-  if (storeyIsolation !== null) filters.push(storeyIsolation);
-  if (state.classFilter !== null) filters.push(state.classFilter.ids);
-  if (state.isolatedEntities !== null) filters.push(state.isolatedEntities);
-
-  let globalIsolation: Set<number> | null = null;
-  if (filters.length === 1) {
-    globalIsolation = filters[0];
-  } else if (filters.length > 1) {
-    // Intersect all active filters — start from smallest for efficiency
-    const sorted = filters.sort((a, b) => a.size - b.size);
-    globalIsolation = new Set<number>();
-    for (const id of sorted[0]) {
-      if (sorted.every(s => s.has(id))) {
-        globalIsolation.add(id);
-      }
-    }
-  }
+  const globalIsolation = computeIsolationFilterSet(state);
 
   const visible = new Set<number>();
   for (const candidate of candidates) {

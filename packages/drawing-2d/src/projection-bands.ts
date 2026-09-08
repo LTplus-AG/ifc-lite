@@ -18,13 +18,20 @@
  *
  *   `d = flipped ? -(coord - position) : (coord - position)`
  *
- * which is exactly `depthAlong` (profile-projector) / the
- * `HiddenLineClassifier` depth-buffer convention, and the mirror of the
- * annotation-cull half-space test in `useDrawingGeneration`.
- * With `d`:
+ * which is the mirror of the annotation-cull half-space test in
+ * `useDrawingGeneration`. With `d`:
  *
- *   - `d < 0` ⇒ BELOW the cut (toward the floor, nearer the viewer) ⇒ VISIBLE
- *   - `d > 0` ⇒ ABOVE the cut (overhead, farther from the viewer)  ⇒ OVERHEAD
+ *   - `d < 0` => BELOW the cut (toward the floor, nearer the viewer) => VISIBLE
+ *   - `d > 0` => ABOVE the cut (overhead, farther from the viewer)  => OVERHEAD
+ *
+ * # View depth (hidden-line removal, issue #2639)
+ * The hidden-line classifier and `DrawingLine.depth` / `depthEnd` carry the
+ * VIEW DEPTH `-d`: 0 at the cut plane, increasing into the kept half,
+ * smaller means nearer the viewer. The occluder depth raster stores the
+ * per-pixel minimum view depth of the kept half (`d` in
+ * `[-occluderDepth, 0]`), and a line sample is visible where
+ * `lineDepth <= bufferDepth + bias`. Every depth a line producer emits MUST
+ * be in this convention or hidden-line removal silently degrades.
  *
  * `flipped` only mirrors which half-space is "below"; it never re-derives a
  * flipped plane normal (the cutter keeps the unflipped normal — see
@@ -228,13 +235,26 @@ export function outlineToProjectionLines(
   plane: SectionPlaneConfig,
   depths: ProjectionBandDepths,
 ): DrawingLine[] {
-  // The outline path is cardinal-only (the toggle is gated off for custom
-  // planes), so classify against the cardinal plane position.
+  // The outline provider itself is cardinal-only: `axisMin`/`axisMax` are
+  // coordinates along the cardinal cut axis, and the contours are in cardinal
+  // projection space (the Rust `meshOutline2d` binding knows nothing of
+  // custom planes). The generator therefore never calls this with a custom
+  // plane active - it bypasses the provider for the plane-aware silhouette
+  // path (PR #2644 review). Classify against the cardinal plane position; the
+  // custom-plane `distance` is only the best-available offset if a direct
+  // caller ever passes one despite that.
   const pos = plane.customPlane ? plane.customPlane.distance : plane.position;
   const dMin = signedAxisDepth(outline.axisMin, pos, plane.flipped);
   const dMax = signedAxisDepth(outline.axisMax, pos, plane.flipped);
   const visibility = bandVisibility(classifyDepthRange(dMin, dMax, depths));
   if (visibility === null) return [];
+
+  // Contours are 2D-only, so a scalar depth is all the geometry supports:
+  // use the element's nearest in-band extent as VIEW depth (issue #2639).
+  // Nearest is the conservative choice, biased toward visible - it prevents
+  // an element's own raster from hiding its own footprint outline. Accepted
+  // trade-off: base edges of tall elements are slightly under-hidden.
+  const depth = Math.max(0, -Math.max(dMin, dMax));
 
   const lines: DrawingLine[] = [];
   for (const ring of outline.contours) {
@@ -254,7 +274,7 @@ export function outlineToProjectionLines(
         entityId: meta.entityId,
         ifcType: meta.ifcType,
         modelIndex: meta.modelIndex,
-        depth: 0,
+        depth,
       });
     }
   }

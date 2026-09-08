@@ -1,5 +1,187 @@
 # @ifc-lite/encoding
 
+## 2.2.0
+
+### Minor Changes
+
+- [#3856](https://github.com/LTplus-AG/ifc-lite/pull/3856) [`142b84c`](https://github.com/LTplus-AG/ifc-lite/commit/142b84c41036b749e7b64418a882424b9c386edb) Thanks [@louistrue](https://github.com/louistrue)! - Write the `DocumentReference/@Guid` that BCF 3.0 requires.
+  
+  2.1's markup.xsd leaves the attribute optional and 3.0's
+  `DocumentReferenceAttributes` marks it `use="required"`, so a 3.0 topic
+  carrying a document reference without one produced a `markup.bcf` that fails
+  validation, and a viewer that rejects markup.bcf drops the topic entirely. A
+  guid is now derived when the caller supplied none, and written back onto the
+  reference so the in-memory project matches the file. A caller-supplied guid is
+  kept, and BCF 2.1 output is unchanged.
+  
+  The guid is a pure function of the topic, the document and the position, so two
+  exports of one unchanged project are byte-identical. `uuidFromSeed` moved from
+  `@ifc-lite/clash` to `@ifc-lite/encoding` to make that sharing possible without
+  a package cycle (`@ifc-lite/clash` depends on `@ifc-lite/bcf`); it is now
+  exported from `@ifc-lite/encoding`, and `@ifc-lite/clash` re-exports it from its
+  existing path, so no clash caller changes.
+
+### Patch Changes
+
+- [#3454](https://github.com/LTplus-AG/ifc-lite/pull/3454) [`82343f7`](https://github.com/LTplus-AG/ifc-lite/commit/82343f75dd2e6029946cbcd0990d3f8fd38a26ad) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Correction to `encodeIfcString`'s doc. The `1.14.4` changelog entry for [#357](https://github.com/louistrue/ifc-lite/pull/357) introduced the function as being "for producing STEP-safe string escapes"; that published entry is left as-is and this note is the correction to it. It is not accurate: `encodeIfcString` emits `\X\`/`\X2\`/`\X4\` directive escapes for non-ASCII and the reverse solidus, but it does NOT double the apostrophe (`'`, code point 39, is printable ASCII and passes through unchanged). Placed directly inside a STEP single-quoted string literal, its output for a value like `O'Brien` produces `'O'Brien'`, which no conformant reader parses as intended.
+  
+  The doc now says plainly what the function does and does not do, and points to `escapeStepString` (`@ifc-lite/data`) for the full literal-context contract — doubling `'` and `\`, mapping control characters to a space, and encoding non-ASCII per ISO 10303-21 6.3.3.4.
+  
+  This corrects the documentation only; `encodeIfcString`'s behaviour is unchanged, and a test now pins the current apostrophe handling so a future change is a deliberate decision, not a silent one. Whether apostrophe-doubling belongs in `encodeIfcString` itself is an open question — see [#3445](https://github.com/LTplus-AG/ifc-lite/issues/3445).
+
+- [#3556](https://github.com/LTplus-AG/ifc-lite/pull/3556) [`80a0cd9`](https://github.com/LTplus-AG/ifc-lite/commit/80a0cd9b946a5ff1aa6ca214ddb427a5d1f5303c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `decodeIfcString`'s `\S\` escape to honor the `\P?\` code page a STEP string literal selects, instead of always treating the result as ISO 8859-1 (ISO 10303-21 6.4.3).
+  
+  `\S\C` decodes to the code point of `C` plus 128, then that 0x80..0xFF value is looked up in the code page most recently selected by a `\P?\` directive within the same string (default: ISO 8859-1, letter `A`). The decoder previously consumed and dropped every `\P?\` directive without tracking which page it selected, so `\S\` always added 128 to the operand's code point and used that as the Unicode code point directly — correct only for the default page, and silently wrong for any other one. `\PE\\S\P` (ISO 8859-5, Cyrillic) decoded to U+00D0 (LATIN CAPITAL LETTER ETH) instead of U+0430 (CYRILLIC SMALL LETTER A); every other non-default page (`\PB\`..`\PI\`, ISO 8859-2..9) was affected the same way. Old ArchiCAD/Allplan-era files using a non-default code page for `\S\` would decode incorrectly; the far more common `\X2\`/`\X4\` Unicode directives and files that never use `\P?\` were unaffected.
+  
+  `decodeIfcString` now tracks the active code page across `\P?\` directives (letters `A`..`I` select ISO 8859-1..9; any other letter is dropped without changing the page) and maps `\S\`'s result through the matching table. A byte position the selected ISO 8859 part itself leaves unassigned falls back to the raw code point (the same answer the default page gives) rather than U+FFFD, since ISO 10303-21 does not define decoder behaviour there.
+  
+  The equivalent Rust decoder (`ifc_lite_core::decode_ifc_string`, bundled into `@ifc-lite/wasm`) had the same bug and is fixed the same way; both are pinned to the same code-page test vectors in the shared `ifc_string_vectors.json` fixture so they cannot drift again.
+
+## 2.1.0
+
+### Minor Changes
+
+- [#3115](https://github.com/LTplus-AG/ifc-lite/pull/3115) [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330) Thanks [@louistrue](https://github.com/louistrue)! - CSV: numeric cells export as numbers. **The formula guard's default changed.**
+  Pass `exemptNumbers: false` to `escapeCsvCell` / `guardSpreadsheetFormula` to
+  keep the old behaviour.
+  
+  **Read this first if you consume `@ifc-lite/export`.** The CWE-1236 guard
+  prefixes a leading `=`, `+`, `-`, `@`, TAB or CR with `'` so a spreadsheet reads
+  the cell as text. It now makes one exception by default: a cell that is *wholly*
+  a signed number is left alone. Nothing in your code has to change for the
+  behaviour to change, which is why this is called out here rather than in a
+  footnote.
+  
+  The exception cannot weaken the guard. The exempted language contains only
+  `+ - . e E` and the digits `0-9`, which cannot spell a function name, a cell
+  reference or a `(`. `=`, `@`, TAB and CR are never exempted, `-0.35=cmd` is not
+  wholly a number and stays guarded, and a leading invisible character defeats the
+  exemption rather than the guard, so `<ZWSP>-1` is still prefixed.
+  
+  **What it costs.** The default has to guess from the text, because most callers
+  hand it a bare string, and guessing gets identifiers wrong: a `+`-prefixed phone
+  number is wholly numeric as text, so it is written bare and Excel renders
+  `4.1791E+10` with the `+` gone. `-007` becomes `-7`. Both were previously kept
+  exactly, as `'`-prefixed text.
+  
+  The viewer's Lists CSV does not guess, because it has the value itself: it
+  exempts a cell when the value really is a number and guards it otherwise, so a
+  phone number stays text there and a measure stays summable even in a column that
+  also holds text. So this cost applies to the writers that only ever see strings,
+  which is the CLI, the SDK, MCP, the compare report, search results, zone tables
+  and `@ifc-lite/lists`' own CSV. Pass `exemptNumbers: false` to opt any of them
+  out.
+  
+  **Why the exception exists.** `@ifc-lite/lists` had exempted numbers since [#1772](https://github.com/LTplus-AG/ifc-lite/issues/1772)
+  ("`-0.35` exported as `'-0.35` and broke Excel SUM()") while every other writer
+  guarded them, so the same list exported two ways did not match. The policy is
+  now one default rather than eleven call-site decisions that drift.
+  
+  **The viewer's Lists CSV stopped formatting numbers before writing them.** It
+  ran every value through the display formatter, which calls `toLocaleString()` on
+  integers. Under en-US that wrote `"-1,000"`, quoted because of the comma, so the
+  column stopped summing. Under a locale that groups with `.` it wrote a bare
+  `-3.000`, which a spreadsheet in a `,`-grouping locale reads back as **-3**, a
+  silent 1000x error in a quantity column. Exempting numbers fixes neither, since
+  neither string is wholly numeric in the locale that produced it. CSV is
+  machine-readable output, so it now writes the number, matching what the XLSX
+  writer always did. PDF, which a human reads, is unchanged.
+  
+  Two consequences of that, both deliberate. Unit-converted values now show their
+  full double precision (3 ft in metres is `0.9144000000000001`, not `0.9144`),
+  which is the same value the XLSX export already carried, so the two agree. And grouping a
+  list by a numeric column used to hard-code that column as non-numeric in the
+  schedule/pivot export, where the grouping value is the *only* place the value
+  appears; it wrote `"'-3,000"` and nothing else for -3000. Schedule grouping
+  columns now inherit `numeric` and carry the raw value, falling back to the group
+  label where a bucket holds values that merely format alike.
+  
+  **The numeric test no longer backtracks.** It was
+  `/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/`, quadratic on a failing match and
+  reached only after a trigger matched, so `-` plus 60k digits took ~1.8s. IFC
+  property text is attacker-controllable, which made that a denial of service on
+  an export. It is a linear scan now, and lives in `@ifc-lite/encoding` (no
+  dependencies, already depended on by both callers) as the new `isWhollyNumeric`
+  export, so there is one copy per language rather than one per package. The
+  accepted language is unchanged, checked by sweeping every string up to four
+  characters over the alphabet it is built from against the old regex.
+
+## 2.0.0
+
+### Major Changes
+
+- [#2501](https://github.com/LTplus-AG/ifc-lite/pull/2501) [`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797) Thanks [@louistrue](https://github.com/louistrue)! - Stop decoding STEP strings a second time at display
+
+  `parsePropertyValue` decoded its input, but every producer of a property value
+  already decodes exactly once at the parse boundary — `EntityExtractor` /
+  `columnar-parser-attributes.ts` on the TypeScript path,
+  `AttributeValue::from_token` on the Rust/WASM and server paths.
+
+  That double decode was harmless while `decodeIfcString` passed `\\` through
+  untouched. Since [#2394](https://github.com/LTplus-AG/ifc-lite/issues/2394) the decoder correctly collapses `\\` to `\`, which makes
+  it non-idempotent: an authored UNC path `\\server\share` is stored, exported and
+  round-tripped correctly but was **displayed** as `\server\share`. `C:\temp` is a
+  fixed point of the decoder, which is why the defect hid on the common case.
+
+  Making the decoder idempotent is not the alternative: idempotence requires
+  treating an already-decoded `\` and an authored, still-doubled `\\` alike, which
+  is exactly the ambiguity [#2394](https://github.com/LTplus-AG/ifc-lite/issues/2394) removed. The invariant is "decode once, at the
+  parse boundary".
+
+  **Behaviour change for callers outside this repo.** If you were handing
+  `parsePropertyValue` a _still-encoded_ STEP literal, it decoded it for you and
+  now returns it unchanged: `'Br\X2\00FC\X0\cke'` comes back as written rather
+  than as `Brücke`. Decode at your parse boundary instead —
+  `parsePropertyValue(decodeIfcString(literal))` — with `decodeIfcString` still
+  exported for exactly that. Every in-repo caller (the viewer's property and
+  quantity cards, `filter-match`, `@ifc-lite/lists`) sits downstream of a parse
+  path that already decoded, so none of them changes meaning. The package README's
+  `parsePropertyValue` entry is corrected in this PR; it said "raw STEP property
+  values", which is what made the second decode look intended.
+
+  Bump level: `major`, on a >= 1.0 package. No export is added, removed or renamed
+  and no signature changes — but the DOCUMENTED INPUT changes, and that is the
+  distinction against the earlier `patch` corrections this package has shipped.
+  [#2394](https://github.com/LTplus-AG/ifc-lite/issues/2394) (`decodeIfcString` collapses `\\`), [#1773](https://github.com/LTplus-AG/ifc-lite/issues/1773) (`\X4\` out-of-range throws →
+  U+FFFD) and [#1500](https://github.com/LTplus-AG/ifc-lite/issues/1500) (`\S\` multi-byte) each fixed what the function returned for
+  the SAME documented input; here the README moves from "raw STEP property values"
+  to "a parsed STEP property value", so a caller who followed the old README and
+  kept working code now gets a wrong answer with no error. A silent break needs a
+  louder version than a loud one, and the migration is one call:
+  `parsePropertyValue(decodeIfcString(literal))`.
+
+## 1.16.0
+
+### Minor Changes
+
+- [#2497](https://github.com/LTplus-AG/ifc-lite/pull/2497) [`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171) Thanks [@louistrue](https://github.com/louistrue)! - `parseStepValue` decodes ISO 10303-21 backslash directives, and the decoder that does it now lives in one place ([#2490](https://github.com/LTplus-AG/ifc-lite/issues/2490)).
+
+  **What changes for a caller.** `@ifc-lite/data`'s `parseStepValue` un-doubled the two lexical doublings (`''` and `\\`) with a directive-blind pair of regexes and stopped there, so a string literal taken from a real IFC file came back with its directives intact: `'\X2\00FC\X0\'` returned those nine characters where the shared decoder returns `ü`, and `'\X2\00FC\X0\\'` returned `\X2\00FC\X0\` where it should return `ü\`. `\X\HH`, `\S\x` and `\Px\` were equally untouched, and the same gap applied inside a list, since `parseStepList` recurses through the same function. All of those now decode. Values written by this module's own escaper are unaffected — it emits non-ASCII raw and never emits a directive, so every `\\` it produces really is a doubled reverse solidus and the round trip was, and remains, exact. That is why this was invisible from inside the package: the reader was the exact inverse of the writer, and only a literal from somewhere else could tell them apart. `parseStepValue` is a public export, so that is a supported way to reach it.
+
+  **Why the escaper does not move with it.** The pair is still closed. Emitting non-ASCII raw stays valid against the new reader — there are no backslashes to double and nothing to decode — and the directive-precedence rule in the shared scan is what keeps a value that merely LOOKS like a directive round-tripping as literal text: `\X2\00FC\X0\` written out as `\\X2\\00FC\\X0\\` reads back as those characters rather than decoding to `ü`. Switching the writer to emit `\X2\` directives would also round-trip, and is a separate decision about output bytes rather than a correctness fix.
+
+  **One decoder instead of two.** The implementation is now `decodeStepStringLiteral`, exported from `@ifc-lite/encoding` (the additive API, hence the minor there). `packages/parser/src/source-header.ts` had written the same scan privately in [#2486](https://github.com/LTplus-AG/ifc-lite/issues/2486) after its own directive-blind regex corrupted non-ASCII header fields on round trip; that copy is deleted and both readers call the shared one. Its behaviour is unchanged — the code moved verbatim — so header parsing is byte-for-byte what it was. Two independent copies of a decoder this subtle is exactly how the second directive-blind regex survived, and the resolution is genuinely not two passes: a doubling pass run first eats a directive's own terminator whenever an escaped backslash follows it (`\X2\00FC\X0\` + `\\` ends in three backslashes), leaving an unterminated `\X2\` that never decodes.
+
+  **A new dependency edge, `@ifc-lite/data` -> `@ifc-lite/encoding`.** It is acyclic — `@ifc-lite/encoding` has no dependencies of its own and imports nothing from `@ifc-lite/data` — and free in practice: every package that consumes `@ifc-lite/data` (parser, export, sdk, bcf, create, lists) already installs `@ifc-lite/encoding`. Released as a patch for `@ifc-lite/data`: no exported API changes, and the behavioural difference is a decode that was missing.
+
+### Patch Changes
+
+- [#2394](https://github.com/LTplus-AG/ifc-lite/pull/2394) [`eb39b27`](https://github.com/LTplus-AG/ifc-lite/commit/eb39b27f5eba186b23b3a683c25fff2c60084d9c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `decodeIfcString` now collapses the doubled reverse solidus (`\\` → `\`), so a Windows path or a regex stored in an IFC string attribute reads back as its real value instead of with every separator doubled.
+
+  ISO 10303-21 doubles two characters inside a STEP string literal: the apostrophe (`''`) and the reverse solidus (`\\`). The apostrophe is un-doubled by this decoder's callers (they strip the surrounding quotes and un-double before decoding, which must happen in that order). The reverse solidus was collapsed by nobody at all — it fell into the "unknown escape, pass through" branch — so `C:\\temp` in a file surfaced as `C:\\temp` rather than `C:\temp`.
+
+  The pair is collapsed **after** the `\X2\` / `\X4\` / `\X\` / `\S\` / `\P..\` directive arms, not in a pre-pass. A directive immediately followed by an escaped backslash ends in three backslashes (`\X2\00FC\X0\` + `\\`); collapsing pairs left-to-right first would eat the directive's own terminator and leave an unterminated `\X2\`. Conversely a leading escaped backslash makes the text after it literal (`\\X2\00FC\X0\` is the characters `\X2\00FC\X0\`, not `ü`).
+
+  Strings with no escapes are unchanged, and `\X2\00E9\X0\` still decodes to `é`. The one behaviour change beyond the fix itself is on malformed input: `\X4\\X0\` (an empty, and therefore invalid, hex payload) now decodes to `\X4\X0\` rather than keeping both backslashes, because what is left after the invalid directive genuinely is a doubled reverse solidus.
+
+  The Rust decoder in `ifc-lite-core` gets the same arm, and the shared cross-language vector fixture gains cases for both escapes plus a new end-to-end set that pins the composed un-double-then-decode contract — the two decoders agreeing was not enough to catch this, since neither of them owns the `''` half.
+
+## 1.15.1
+
+### Patch Changes
+
+- [#2311](https://github.com/LTplus-AG/ifc-lite/pull/2311) [`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Reject a UUID string containing non-hexadecimal characters in `uuidToIfcGuid` instead of silently zeroing them. The function stripped dashes and checked the resulting string's length (32), but never checked that every character was actually a hex digit — `parseInt('gg', 16)` returns `NaN`, and `Uint8Array` coerces `NaN` to `0`, so a garbage input like `'gggggggg-gggg-gggg-gggg-gggggggggggg'` silently produced the all-zero UUID's GUID instead of throwing. `uuidToIfcGuid` is reachable with arbitrary caller-supplied strings via the SDK's `bcf.uuidToIfcGuid`.
+
 ## 1.15.0
 
 ### Minor Changes

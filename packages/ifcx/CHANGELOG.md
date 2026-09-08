@@ -1,5 +1,223 @@
 # @ifc-lite/ifcx
 
+## 4.0.0
+
+### Major Changes
+
+- [#3482](https://github.com/LTplus-AG/ifc-lite/pull/3482) [`cebcb21`](https://github.com/LTplus-AG/ifc-lite/commit/cebcb2133ef672e9199ee2f158578499d449d9e0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `BUILDING_ELEMENT_TYPES` (`packages/ifcx/src/types.ts`), a hand-maintained 15-name list, missing most of the `IfcBuildingElement`/`IfcBuiltElement` family and wrongly including `IfcOpeningElement`.
+  
+  It is now derived from `@ifc-lite/data`'s generated IFC2X3/IFC4/IFC4X3 entity tables (already a runtime dependency of `@ifc-lite/ifcx`) instead of a hand list, walking `IfcBuildingElement` for IFC2X3/IFC4 and `IfcBuiltElement` for IFC4X3 — IFC4X3 replaced the family root, so a naive schema-derived walk of only the IFC4 name would have silently returned nothing for IFC4X3. Each root is a member of its own family: `IfcBuildingElement` is abstract in IFC2X3/IFC4, but IFC4X3's `IfcBuiltElement` is concrete, so a file can carry an `IFCBUILTELEMENT` instance and dropping the root would classify it as not a building element. The set is 53 names.
+  
+  No code in this repo reads `BUILDING_ELEMENT_TYPES` apart from the parity test added below (it is re-exported public API with zero internal consumers), so this changes what the exported set contains for any external consumer of `@ifc-lite/ifcx`, not internal behavior:
+  
+  - Previously missing even for IFC4: `IfcFooting`, `IfcPile`, `IfcMember`, `IfcPlate`, `IfcShadingDevice`, `IfcChimney`, `IfcStairFlight`, `IfcRampFlight`, `IfcDoorStandardCase`, `IfcWindowStandardCase`.
+  - Previously entirely absent for IFC4X3's renamed root: `IfcBuiltElement` itself, `IfcBearing`, `IfcCaissonFoundation`, `IfcCourse`, `IfcDeepFoundation`, `IfcEarthworksFill`, `IfcKerb`, `IfcMooringDevice`, `IfcNavigationElement`, `IfcPavement`, `IfcRail`, `IfcReinforcedSoil`, `IfcTrackElement`.
+  - Previously wrongly included: `IfcOpeningElement` (a subtraction feature under `IfcFeatureElement`, not a building element). This is the breaking part, hence `major`: a consumer on a caret range that reads `BUILDING_ELEMENT_TYPES.has('IfcOpeningElement')` sees `true` become `false`.
+  
+  Adds `building-element-types-authority.test.ts`, mirroring `spatial-types-authority.test.ts` in this same package: it re-derives the descendant set from the generated schemas with its own copy of the walk and asserts `BUILDING_ELEMENT_TYPES` agrees in both directions — every member of each schema's universe is in the set, and every name in the set is in the union of the three universes — so neither a schema bump that drops a name nor a hand-edit that adds an unrelated class passes unnoticed.
+
+### Minor Changes
+
+- [#3608](https://github.com/LTplus-AG/ifc-lite/pull/3608) [`32b31bc`](https://github.com/LTplus-AG/ifc-lite/commit/32b31bc8501f04e110733289bde0389b9899bc76) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `extractProperties` (the `PropertyTable` a `.ifcx` file resolves through, `packages/ifcx/src/property-extractor.ts`) no longer silently drops `ifclite::classifications`. The blanket `ifclite::*` skip added for [#1031](https://github.com/LTplus-AG/ifc-lite/issues/1031)'s internal carriers (deletion/derived markers, collab materials/geometryRef/provenance) also caught this key, but — unlike `bsi::ifc::material`, which has a real v5a schema attribute to unpack — there is no `bsi::ifc::classification` in the spec to fall back to, so a classification written under `ifclite::classifications` (as `@ifc-lite/export`'s `Ifc5Exporter` now does, [#3608](https://github.com/LTplus-AG/ifc-lite/issues/3608)) was write-only: present in the file, invisible to every reader of `parsed.properties`.
+  
+  Each classification ref (`{ system, code, uri?, description? }`) now unpacks into a `Classification - <system>` pset (`Code`/`Uri`/`Description` properties), the same way `bsi::ifc::material` already unpacks into a `Material` pset. A ref with no `code` carries nothing to show and is skipped, matching how a codeless material is already handled. Every other `ifclite::*` key is still skipped as before.
+  
+  Refs are grouped by system before naming their pset, so a system that carries more than one ref (ordinary Uniclass practice: an element classified under both a Systems and a Products code, e.g. `Ss_25_10_30` and `Pr_20_93_47` both under "Uniclass 2015") does not collapse into a single pset that keeps only the last ref's `Code` paired with the first ref's `Uri`. The common single-ref-per-system case still reads as the plain `Classification - <system>`; a system with multiple refs disambiguates each into its own `Classification - <system> - <code>` pset so every ref keeps its own `Code`/`Uri` pairing.
+
+### Patch Changes
+
+- [#3522](https://github.com/LTplus-AG/ifc-lite/pull/3522) [`e986c81`](https://github.com/LTplus-AG/ifc-lite/commit/e986c81bf6d28fec57f1953fa53bf315dbd80a3a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `extractEntities` dropping entity descriptions (`EntityTable.description`, read via `entities.getDescription(id)`) when reading an IFCX archive.
+  
+  `IfcxWriter` writes `EntityTable.description` out as `bsi::ifc::prop::Description`, alongside the name it writes as `bsi::ifc::prop::Name` (see its "IFC5 uses bsi::ifc::prop:: namespace for name/description" comment). `entity-extractor.ts`'s `extractEntities` read `bsi::ifc::prop::Name` back via `extractName`, but hardcoded `description` to `''` for every entity instead of reading `bsi::ifc::prop::Description` back the same way — so an entity's description survived nowhere on a round trip through an IFCX archive (write, then read back), even though the writer faithfully emitted it.
+  
+  `extractEntities` now reads `bsi::ifc::prop::Description` via a new `extractDescription`, mirroring `extractName`'s direct-attribute lookup (with no incoming-edge-name fallback, since an edge name is a plausible stand-in for a missing name but not for a missing description).
+
+- [#3529](https://github.com/LTplus-AG/ifc-lite/pull/3529) [`8c181c9`](https://github.com/LTplus-AG/ifc-lite/commit/8c181c99f91964402ad352aead36d9619af5b427) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `extractProperties` silently dropping an element's `bsi::ifc::material` attribute when reading an IFCX archive.
+  
+  `bsi::ifc::material` (`{ code, uri }`) is the only channel IFCX carries an element's material on — buildingSMART's PCERT sample scenes author it on most physical elements (walls, beams, columns, pipe and track segments). `property-extractor.ts`'s `SKIP_ATTRIBUTES` set treated it the same as graph-structural attributes (`bsi::ifc::class`, `usd::usdgeom::mesh`, `usd::xformop`), so it was skipped before ever reaching a property or a relationship: nothing else in the package read it either, so the material vanished entirely on import, with no error. A STEP-sourced model surfaces the same information via `IfcRelAssociatesMaterial` in the viewer's Material tab and the query engine.
+  
+  `bsi::ifc::material` is now unpacked into its own `Material` property set (`Material` = the material code, `Uri` = its buildingSMART identifier) instead of being skipped.
+
+- [#3677](https://github.com/LTplus-AG/ifc-lite/pull/3677) [`6e48c4c`](https://github.com/LTplus-AG/ifc-lite/commit/6e48c4c5f441e8a42e4cc55440cf747ad8679f0a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - An IFCX entity or spatial node with no `Name` (no `bsi::ifc::name`, `prop::Name`, `prop::TypeName`/`prop::ObjectName`, or usable incoming edge name) decoded with a fabricated name: an 8-character slice of its internal IFCX path (e.g. `4f9c1a3e`). That reads as a plausible short name or code no source data backs, indistinguishable from an authored one, and it pre-empted the viewer's own "Name absent" fallback (`getName(id) || '<Type> #<id>'` in the entity tree, `<Type>` alone in the hierarchy panel) since that only fires on a falsy name. Both extractors (`entity-extractor.ts`'s `EntityTable.name`, `hierarchy-builder.ts`'s `SpatialNode.name`) now leave the name `''` when the source genuinely has none, matching the STEP parser's own convention and letting the existing UI fallback show a clearly-synthetic placeholder instead.
+
+- [#3602](https://github.com/LTplus-AG/ifc-lite/pull/3602) [`8f08715`](https://github.com/LTplus-AG/ifc-lite/commit/8f087158a662a02c01a21dd2546fb863bb24e665) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a wrong mesh normal under a non-uniform-scale or shearing `usd::xformop`. `extractGeometry` transformed an explicit `usd::usdgeom::mesh` `normals` entry by the same matrix it uses for vertex positions; that only preserves perpendicularity to the surface when the accumulated local-to-world transform is orthogonal (pure rotation/translation). A real PCERT fixture (`tests/models/ifc5/Tunnel_Excavation_07_Invert.ifcx`) carries a `usd::xformop` with a 2x non-uniform scale on one axis composed with a rotation, so a producer that ships explicit normals under such a transform previously came out shaded wrong. Normals now transform by the inverse-transpose of the transform's linear part, per the USD/ifcx spec.
+
+- [#3524](https://github.com/LTplus-AG/ifc-lite/pull/3524) [`9b709c5`](https://github.com/LTplus-AG/ifc-lite/commit/9b709c51480fbabb68167aa4892f7e4c87b0e4e6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `extractEntities` fabricating `ObjectType` from the IFC class code for every entity read from an IFCX archive — `entities.getObjectType(id)` for an entity of class `IfcWall` returned the string `'IfcWall'` no matter what the source said. Any consumer of `ObjectType` (CSV/Parquet export, the query engine's `ObjectType` column, IDS's `getObjectType`, the lens summary line) saw that invented value, indistinguishable from a real authored one.
+  
+  `extractEntities` now reads `ObjectType` from the node's `bsi::ifc::prop::ObjectType` attribute, mirroring how it reads `bsi::ifc::prop::Name` and `bsi::ifc::prop::Description`, and falls back to `''` when the node carries no such attribute — the same default the STEP parser uses for an entity with no `ObjectType` value. buildingSMART's official v5a `prop` schema defines no `ObjectType`, so a third-party IFCX archive usually leaves the field empty; ifc-lite's own collaboration seed does write the key, and it now survives the snapshot round trip instead of being overwritten with the class code.
+
+- [#3606](https://github.com/LTplus-AG/ifc-lite/pull/3606) [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `buildQuantities` now passes `qsetGlobalId: ''` explicitly when building `QuantityTable` rows, documenting (rather than silently defaulting) that IFCX's flat node-attribute model has no distinct backing qset entity with its own GlobalId — mirroring `property-extractor.ts`'s existing `psetGlobalId: ''`.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`bcbe7b9`](https://github.com/LTplus-AG/ifc-lite/commit/bcbe7b9afa38e8dafb5900e73575c71a8fd96012), [`793fce2`](https://github.com/LTplus-AG/ifc-lite/commit/793fce217039f11d6b74f898daed03f48c33809d), [`586fa29`](https://github.com/LTplus-AG/ifc-lite/commit/586fa292b69cdb3ba6e45764b4ff742b2fa7b9a9), [`445d813`](https://github.com/LTplus-AG/ifc-lite/commit/445d813b8ea3b6a09f2930a3e409ccaeff316a85), [`801e697`](https://github.com/LTplus-AG/ifc-lite/commit/801e697ea09cad23839b032fd593eb363bf8455b), [`1000dce`](https://github.com/LTplus-AG/ifc-lite/commit/1000dce72e9ec75c59848efefc1f709d01172e72), [`89c4cf2`](https://github.com/LTplus-AG/ifc-lite/commit/89c4cf22e83d76115035f7dcbf6e34f9c06dd091), [`19f1312`](https://github.com/LTplus-AG/ifc-lite/commit/19f13120a05cd3a3b729eeaf5550cff71b7506d9), [`82c77c1`](https://github.com/LTplus-AG/ifc-lite/commit/82c77c118d5a4be8e5ee5b7f7e0648514e9fb74e), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e), [`a1aebc8`](https://github.com/LTplus-AG/ifc-lite/commit/a1aebc822b819221258f4759edf4c82ff0d140f7), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`dc8198c`](https://github.com/LTplus-AG/ifc-lite/commit/dc8198ce3f9b9be4b2420dce90343822e0079465), [`1060a30`](https://github.com/LTplus-AG/ifc-lite/commit/1060a30187c8f6bb327f9e356056f2364568e8ff), [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0)]:
+  - @ifc-lite/data@4.0.0
+  - @ifc-lite/mutations@2.0.0
+  - @ifc-lite/pointcloud@0.7.2
+
+## 3.0.1
+
+### Patch Changes
+
+- [#3318](https://github.com/LTplus-AG/ifc-lite/pull/3318) [`c658213`](https://github.com/LTplus-AG/ifc-lite/commit/c658213bfa5c17a767c8534e68f2416bac780979) Thanks [@BIMvoice](https://github.com/BIMvoice)! - IFCX export writes each entity's own IFC class, and the IFCX spatial tree keeps its IFC4.3 facility levels.
+  
+  The writer mapped an entity's `typeEnum` to the `bsi::ifc::class` code through a 26-row table written out by hand. `IfcTypeEnum` has 128 members and its numbering had moved on since the table was typed, so the table was both incomplete and shifted against the enum it claimed to decode: 14 of its 26 rows named a different class than the id actually holds. An `IfcStair` was exported as `IfcRoof`, an `IfcMember` as `IfcPile`, an `IfcDistributionElement` as `IfcOpeningElement` — a wrong class written into the file, not a display glitch — and the 102 ids with no row at all (every MEP, infrastructure and furniture class) lost their class attribute entirely. The synthesized `ifc:<Type>.<expressId>` path of a GlobalId-less entity carried the same wrong name. The class now comes from the entity table, which resolves an override, then the enum, then the raw parsed class name — so `IfcAirTerminal`, which the enum does not carry, also keeps its own name.
+  
+  Separately, the set deciding which classes are *levels* of the IFCX spatial tree listed the five building-storey levels and none of IFC4.3's twelve. Because the same set is the stop condition for element collection, an infrastructure model's `IfcRoad` / `IfcRoadPart` were not merely missing from the tree — they and everything beneath them were flattened into the site's element list, and an `IfcSite -> IfcRoad` edge was reported as containment rather than aggregation. Both call sites now read `SPATIAL_STRUCTURE_TYPE_ENUMS` from `@ifc-lite/data`, the same answer the parser and the viewer's hierarchy already use.
+- Updated dependencies [[`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2), [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665)]:
+  - @ifc-lite/data@3.5.0
+
+## 3.0.0
+
+### Major Changes
+
+- [#3089](https://github.com/LTplus-AG/ifc-lite/pull/3089) [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `IfcxWriter` discarding every entity's IFC GlobalId.
+  
+  A node's `path` IS its identity in IFCX: `entity-extractor.ts` hands the path straight back as the GlobalId, `packages/export`'s IFC5 exporter keys its nodes by GlobalId for exactly that reason, and the buildingSMART v5a schemas committed under `packages/export/src/__fixtures__/schemas/` define no attribute that could carry a GlobalId instead — there is no other slot for it.
+  
+  `IfcxWriter` read each entity's GlobalId into a local variable, never used it, and synthesized `ifc:<Type>.<expressId>` as the path instead. So a STEP → IFCX export replaced every real IFC GlobalId with an invented one, and expressId is not stable across files, so nothing downstream could re-match or federate the node. The GlobalId is now the path when the entity has one; the synthetic form remains the fallback for an entity without one, and an explicit `idToPath` entry still wins over both so a round-trip preserves the paths the source file authored.
+  
+  Invisible until now because the writer's test helper accepted a `globalId` field that no fixture ever set: every path assertion in the suite only exercised the fallback.
+
+### Minor Changes
+
+- [#3092](https://github.com/LTplus-AG/ifc-lite/pull/3092) [`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop a collab snapshot round trip from inventing per-entity provenance, and carry the real thing on the wire.
+  
+  `snapshotToIfcx` wrote nothing about who created an entity or when, because
+  IFCX nodes had no provenance slot. `seedFromIfcx` then filled both fields in
+  from the file header — which names whoever serialized the *file*, not
+  whoever authored each entity, and for a snapshot of a collab doc that is the
+  snapshotter plus the write clock. An entity carrying `createdBy: 'ada'` /
+  `createdAt: '2019-05-05'` came back claiming a different author and a
+  different date, in a shape indistinguishable from genuine attribution. A
+  missing field reads as "unknown"; a fabricated one gets trusted.
+  
+  Two changes:
+  
+  - **A wire carrier.** `ifclite::meta` (new member of `IFCLITE_ATTR`, the
+    extension namespace that already carries collab's classifications,
+    materials and geometry refs) holds `createdBy`, `createdAt`,
+    `lastEditedBy`, `lastEditedAt` and `previousPath`, so real provenance
+    survives snapshot → seed. Values are shape-gated on the way in: only
+    strings are read, and a foreign value under the key stays an ordinary
+    flat attribute. Every field carried is written once at entity creation
+    and never re-stamped — a per-edit stamp would put this attribute in
+    every minimal layer and give the merge engine a component that conflicts
+    on every concurrent edit.
+  - **No more header defaults.** `seedFromIfcx` and `seedFromStep` no longer
+    copy `header.author` / `header.timestamp` onto every entity, and no longer
+    stamp the read clock as `createdAt`. What the wire does not say now stays
+    unset. The file-level record is still available as `meta.header` /
+    `meta.stepHeader`.
+  
+  `createEntity` also now writes the `bsi::ifc::class` attribute when given an
+  `ifcClass`. `meta.ifcClass` is doc-local bookkeeping with no wire form, so
+  an entity whose class was only ever passed as that option snapshotted
+  without a class and came back classless; the MCP draft path had already
+  open-coded the attribute at its own call site to work around this.
+  
+  Scope: `lastEditedBy` / `lastEditedAt` survive only because nothing
+  re-stamps them today. Relationships (the doc's separate `relationships`
+  map) still do not survive a snapshot — IFCX has no relationship node and
+  no first-party writer populates that map; `snapshot-relationships.test.ts`
+  pins that as a tripwire rather than papering over it.
+
+### Patch Changes
+
+- Updated dependencies [[`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`20264d8`](https://github.com/LTplus-AG/ifc-lite/commit/20264d8b1ee82169a02f9dc588decc45fb8fdc00), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729)]:
+  - @ifc-lite/data@3.4.1
+  - @ifc-lite/mutations@1.27.0
+  - @ifc-lite/pointcloud@0.7.1
+
+## 2.3.7
+
+### Patch Changes
+
+- [#2891](https://github.com/LTplus-AG/ifc-lite/pull/2891) [`a29b040`](https://github.com/LTplus-AG/ifc-lite/commit/a29b04069fec3c6b726f49fc58054e535c255034) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bakeLayers`' `dedupeImports` keeping the weakest layer's import metadata (e.g. a pinned `integrity` hash) for a URI shared across layers, while `mergeSchemas` in the same file resolves same-key conflicts with the strongest (last) layer winning. `dedupeImports` now agrees with `mergeSchemas` and with `composeIfcx`'s layer semantics generally: the strongest layer's import wins.
+
+- [#2890](https://github.com/LTplus-AG/ifc-lite/pull/2890) [`cc19a8d`](https://github.com/LTplus-AG/ifc-lite/commit/cc19a8d4a79a5e8563a90ab663b28e1b93ef9c18) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `composeFederated`'s handling of a node with multiple simultaneous `inherits` keys: it resolved conflicting attributes/children with the first-listed inherit winning, while `composeIfcx` (and the buildingSMART IFC5 reference composer) resolve them with the last-listed inherit winning. Given identical input, the two composers previously disagreed on the composed value; `resolveInheritance` in `federated-composition.ts` now matches `composeNode` in `composition.ts`, and own (occurrence-level) attributes still always outrank any inherited value in both.
+
+- [#2782](https://github.com/LTplus-AG/ifc-lite/pull/2782) [`36e4eca`](https://github.com/LTplus-AG/ifc-lite/commit/36e4eca3b19a2fe02f1679acc9a2a43cd90aa163) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Pin `isQuantityProperty` / `routesToQuantityTable` quantity-vs-property
+  classification against real third-party IFC5 fixtures (buildingSMART sample
+  scenes under `tests/models/ifc5/`), not our own writer's output.
+  
+  `exactQuantityNames` and `suffixPatterns` in `property-extractor.ts` are two
+  hand-maintained, asymmetric name lists (e.g. `Height`/`Width`/`Depth`/
+  `Thickness` are exact-match only, absent from the suffix list) with no prior
+  test coverage in the package. A corpus-wide census of every
+  `bsi::ifc::prop::*` short name across the whole downloaded fixture set found
+  no real misclassification: every name present (`Height`, `Width`, `Depth`,
+  `Volume`, `Length`, `NetArea`, `NetSideArea`, `NetVolume`,
+  `CrossSectionArea`, plus non-quantity names like `ElevationOfRefHeight`,
+  `ElevationOfTerrain`, `NumberOfStoreys`) already classifies correctly — this
+  is a coverage gap, not a bug fix.
+  
+  New tests pin the exact quantity/property split for `Hello_Wall_hello-wall.ifcx`
+  and the PCERT `Building-Architecture`/`Building-Structural` sample scenes by
+  value, so a future edit to either list can no longer silently regress the
+  split (deleting `Height` from `exactQuantityNames` previously left the
+  package's whole suite green while dropping Hello Wall's extracted quantities
+  from 10 to 5).
+
+- [#2893](https://github.com/LTplus-AG/ifc-lite/pull/2893) [`a7b8a20`](https://github.com/LTplus-AG/ifc-lite/commit/a7b8a201eaecd411a4246421893e887bf55aafd3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `validateProvenance` silently accepting an untrusted manifest that omits the required `merge` field entirely. Per `docs/architecture/layer-prs/03-provenance.md` §3.1 and the `ProvenanceManifest` type (`merge: MergeRecord | null`, not optional), every manifest carries `merge`, as `null` for non-merge layers. The check treated `undefined` the same as `null` and skipped validation, so a manifest missing the key passed with zero errors; it now matches the sibling `base` field's pattern and only exempts a literal `null`.
+- Updated dependencies [[`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/mutations@1.26.1
+  - @ifc-lite/data@3.4.0
+
+## 2.3.6
+
+### Patch Changes
+
+- Updated dependencies [[`2bd854d`](https://github.com/LTplus-AG/ifc-lite/commit/2bd854de15965b0fee684ef6fda90f2984d3e6f0)]:
+  - @ifc-lite/pointcloud@0.7.0
+
+## 2.3.5
+
+### Patch Changes
+
+- [#2564](https://github.com/LTplus-AG/ifc-lite/pull/2564) [`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718) Thanks [@louistrue](https://github.com/louistrue)! - One constant for the IFCX header version, exported as `IFCX_VERSION` from `@ifc-lite/data` and re-exported by `@ifc-lite/ifcx`.
+
+  Seven call sites hardcoded this string and they did not agree: six said `ifcx_alpha`, and `@ifc-lite/ifcx`'s own `IfcxWriter` said `IFCX-1.0`. Nothing caught it because `parseIfcx` matches case-insensitively on the substring `ifcx`, so both parse. The same forgiving read is why the Rust exporter could write the version under `header.version` for its entire life while every file it produced was rejected by our own parser ([#2556](https://github.com/LTplus-AG/ifc-lite/issues/2556)).
+
+  **Behaviour change:** `IfcxWriter` / `exportToIfcx` now stamp `ifcx_alpha` instead of `IFCX-1.0`, matching every other writer here and buildingSMART's own reference files. Readers accepting either value are unaffected, and no internal caller was relying on the old string. Layer content addresses are unaffected — the layer paths already wrote `ifcx_alpha`.
+
+- Updated dependencies [[`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718), [`6d09c4a`](https://github.com/LTplus-AG/ifc-lite/commit/6d09c4a768a9caa1600fb6db38d0e80ec8051aee)]:
+  - @ifc-lite/data@3.3.0
+  - @ifc-lite/mutations@1.26.0
+
+## 2.3.4
+
+### Patch Changes
+
+- [#2336](https://github.com/LTplus-AG/ifc-lite/pull/2336) [`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `composeIfcx` and `composeFederated` dropping a `children: { name: null }` removal opinion when the same node also has an `inherits` reference that defines a child of the same name. Attribute removals already survived flattening as a mask so they shadow an inherited value ([#1031](https://github.com/LTplus-AG/ifc-lite/issues/1031)); the identical `children` removal was deleted at flatten/merge time instead of preserved, so the inherited child silently reappeared in the composed tree. Children now use the same mask-and-resolve pattern as attributes in both composers, so an explicit `null` removes an inherited child too, and a later non-null opinion still resurrects it.
+
+- [#2165](https://github.com/LTplus-AG/ifc-lite/pull/2165) [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `getDescendants` returning only the direct children instead of the whole subtree.
+
+  `getDescendants` (published from the package index) marked each child visited in the loop _before_ recursing into it, so the recursive `traverse` call tripped its own `if (visited.has(n.path)) return` entry guard and returned without walking anything. The function was a one-level walk: for `a -> b -> c -> d` it answered `[b]` rather than `[b, c, d]`, and for a diamond `root -> {l, r} -> shared` it answered `[l, r]`, dropping the shared grandchild entirely. The child is now marked by the recursive call that opens on it, which is where the existing cycle guard already expects the marking to happen.
+
+  Found while mutation-auditing the tests added in this PR: neither test over the function could observe the truncation. One asserted only that the result is duplicate-free, which a one-level result satisfies; the other's expectation for a two-node cycle — `['b']` — is what the truncated walk produces anyway. Both now assert the reached depth directly.
+
+  No in-repo caller was affected (the function has no consumer besides the export and its tests), so this only changes behaviour for external users of `@ifc-lite/ifcx`, for whom it was previously unusable for its documented purpose.
+
+- [#2272](https://github.com/LTplus-AG/ifc-lite/pull/2272) [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `IfcxWriter` emitting dangling child references in the spatial hierarchy on every plain STEP-IFC → IFCX export.
+
+  `collectNodes()` synthesized each entity's own node path via `idToPath?.get(expressId) ?? generatePath(expressId, typeEnum)` (e.g. `ifc:IfcWall.42`), while `getChildrenForEntity()` synthesized the _reference_ to that same entity as a child independently, via `idToPath?.get(childId) || 'element:' + childId` (e.g. `element:42`). Whenever `idToPath` was not supplied — which is the normal case; it is only populated on IFCX → IFCX round-trips — the two never agreed, and every emitted `children` entry pointed at a path no node in the file actually had.
+
+  The writer now builds a single expressId → path map once while iterating entities in `collectNodes()`, seeded from `idToPath` first (so a child referenced only by id, with no entity row of its own in this file, can still resolve if the caller already knows its path) and filled in with `generatePath()` for every entity. `getChildrenForEntity()` resolves child paths from that same map instead of re-deriving them. A child id with neither an entity row nor an `idToPath` entry is now omitted from `children` rather than emitted as an unresolvable `element:${id}` reference.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`bf44de2`](https://github.com/LTplus-AG/ifc-lite/commit/bf44de2d8d023f22e2f4010a0c7832543221909e), [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/pointcloud@0.6.1
+  - @ifc-lite/mutations@1.24.2
+
+## 2.3.3
+
+### Patch Changes
+
+- Updated dependencies [[`9d9c804`](https://github.com/LTplus-AG/ifc-lite/commit/9d9c8049075c9d8692a483ef1fa75325e822c15a), [`a25dd32`](https://github.com/LTplus-AG/ifc-lite/commit/a25dd32a78626a0ed697a21ed2c4963641bb7b89), [`4c739be`](https://github.com/LTplus-AG/ifc-lite/commit/4c739be2aba74ad6868b6dca51dad441c6fa9903), [`f493930`](https://github.com/LTplus-AG/ifc-lite/commit/f4939309aed136979bd5cc1f95a25c2a0ebe779f), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47)]:
+  - @ifc-lite/pointcloud@0.6.0
+  - @ifc-lite/mutations@1.24.1
+  - @ifc-lite/data@3.2.1
+
 ## 2.3.2
 
 ### Patch Changes

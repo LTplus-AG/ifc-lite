@@ -46,6 +46,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Badge } from '@/components/ui/badge';
 import { ComboInput } from '@/components/ui/combo-input';
+import { toast } from '@/components/ui/toast';
 import { cn } from '@/lib/utils';
 import {
   resolveReassignSchema,
@@ -139,7 +140,9 @@ export function PropertyEditor({
 
   const commitSave = useCallback(() => {
     const parsedValue = parseValue(value, valueType);
-
+    if (parsedValue === PARSE_INVALID) {
+      return toast.error(`"${value}" is not a valid ${getTypeName(valueType)} value — save cancelled.`);
+    }
     // Normalize model ID for legacy models
     let normalizedModelId = modelId;
     if (modelId === 'legacy') {
@@ -394,11 +397,8 @@ interface NewPropertyDialogProps {
   schemaVersion?: string;
 }
 
-/**
- * Schema-aware dialog for adding new properties.
- * Filters available property sets based on IFC entity type.
- * Shows property suggestions with correct types from IFC4 standard.
- */
+/** Schema-aware dialog for adding new properties: filters available property
+ *  sets by IFC entity type and suggests correctly-typed IFC4 properties. */
 export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets, schemaVersion }: NewPropertyDialogProps) {
   const setProperty = useViewerStore((s) => s.setProperty);
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
@@ -460,12 +460,14 @@ export function NewPropertyDialog({ modelId, entityId, entityType, existingPsets
   const handleSubmit = useCallback(() => {
     if (!effectivePsetName || !effectivePropName) return;
 
+    const parsedValue = parseValue(value, valueType);
+    if (parsedValue === PARSE_INVALID) {
+      return toast.error(`"${value}" is not a valid ${getTypeName(valueType)} value — property not added.`);
+    }
     let normalizedModelId = modelId;
     if (modelId === 'legacy') {
       normalizedModelId = '__legacy__';
     }
-
-    const parsedValue = parseValue(value, valueType);
 
     // Check if pset exists on entity already
     const psetExists = existingPsets.includes(effectivePsetName);
@@ -712,11 +714,8 @@ interface AddClassificationDialogProps {
   entityType: string;
 }
 
-/**
- * Dialog for adding a classification reference to an entity.
- * Supports common classification systems (Uniclass, OmniClass, MasterFormat, etc.).
- * Stored as a special property set for mutation tracking.
- */
+/** Dialog for adding a classification reference (Uniclass, OmniClass,
+ *  MasterFormat, etc.), stored as a special property set for mutation tracking. */
 export function AddClassificationDialog({ modelId, entityId, entityType }: AddClassificationDialogProps) {
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -852,10 +851,7 @@ interface AddMaterialDialogProps {
   entityType: string;
 }
 
-/**
- * Dialog for assigning a material to an entity.
- * Stored as a special property set for mutation tracking.
- */
+/** Dialog for assigning a material, stored as a special property set for mutation tracking. */
 export function AddMaterialDialog({ modelId, entityId, entityType }: AddMaterialDialogProps) {
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const bumpMutationVersion = useViewerStore((s) => s.bumpMutationVersion);
@@ -986,11 +982,8 @@ interface AddQuantityDialogProps {
   existingQtos: string[];
 }
 
-/**
- * Schema-aware dialog for adding quantities.
- * Filters available quantity sets based on IFC entity type.
- * Shows quantity suggestions with correct types from IFC4 standard.
- */
+/** Schema-aware dialog for adding quantities: filters available quantity
+ *  sets by IFC entity type and suggests correctly-typed IFC4 quantities. */
 export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos }: AddQuantityDialogProps) {
   const createPropertySet = useViewerStore((s) => s.createPropertySet);
   const setProperty = useViewerStore((s) => s.setProperty);
@@ -1046,12 +1039,14 @@ export function AddQuantityDialog({ modelId, entityId, entityType, existingQtos 
   const handleSubmit = useCallback(() => {
     if (!effectiveQtoName || !effectiveQuantityName) return;
 
+    const parsedValue = parseFloat(value);
+    if (Number.isNaN(parsedValue)) {
+      return toast.error(`"${value}" is not a valid number — quantity not added.`);
+    }
     let normalizedModelId = modelId;
     if (modelId === 'legacy') {
       normalizedModelId = '__legacy__';
     }
-
-    const parsedValue = parseFloat(value) || 0;
 
     // Store quantity as a property set (mutation system uses property sets)
     const qtoExists = existingQtos.includes(effectiveQtoName);
@@ -1274,12 +1269,11 @@ interface ReassignClassDialogProps {
 }
 
 /**
- * Reassign an entity's IFC class in place ("retype"). The expressId is
- * unchanged, so geometry / placement / representation and every IfcRel*
+ * Reassign an entity's IFC class in place ("retype"): expressId is
+ * unchanged, so geometry/placement/representation and every IfcRel*
  * reference carry over; the new class materializes on STEP export. Mirrors
- * IfcOpenShell's `reassign_class`. Best for the building-element subtypes
- * (Proxy ↔ Column / Beam / Member / Plate / Wall) that share the IfcElement
- * attribute layout.
+ * IfcOpenShell's `reassign_class`. Best for building-element subtypes
+ * (Proxy ↔ Column/Beam/Member/Plate/Wall) sharing the IfcElement layout.
  */
 export function ReassignClassDialog({ modelId, entityId, entityType, schemaVersion }: ReassignClassDialogProps) {
   const setEntityType = useViewerStore((s) => s.setEntityType);
@@ -1713,12 +1707,16 @@ function getTypeName(type: PropertyValueType): string {
   }
 }
 
-function parseValue(value: string, type: PropertyValueType): PropertyValue {
+/** Sentinel: a Real/Integer {@link parseValue} input isn't a number at all — callers must refuse the save. */
+export const PARSE_INVALID = Symbol('property-editor-parse-invalid');
+
+export function parseValue(value: string, type: PropertyValueType): PropertyValue | typeof PARSE_INVALID {
   switch (type) {
+    // Empty = unset → null for both, matching Boolean/Logical below.
     case PropertyValueType.Real:
-      return parseFloat(value) || 0;
+      return value === '' ? null : (Number.isNaN(parseFloat(value)) ? PARSE_INVALID : parseFloat(value));
     case PropertyValueType.Integer:
-      return parseInt(value, 10) || 0;
+      return value === '' ? null : (Number.isNaN(parseInt(value, 10)) ? PARSE_INVALID : parseInt(value, 10));
     case PropertyValueType.Boolean:
     case PropertyValueType.Logical:
       // Empty = unset → null (encodes to the table's 255 sentinel, serialises

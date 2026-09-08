@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildErrorFeedbackContent } from './chatSlice.js';
 import { create } from 'zustand';
-import { createChatSlice, type ChatSlice } from './chatSlice.js';
+import { createChatSlice, __resetChatPersistWarningForTests, type ChatSlice } from './chatSlice.js';
 import { createPatchDiagnostic, createPreflightDiagnostic } from '../../lib/llm/script-diagnostics.js';
 import { DEFAULT_FREE_MODEL, DEFAULT_BYOK_MODEL } from '../../lib/llm/models.js';
 
@@ -174,8 +174,8 @@ test('buildErrorFeedbackContent groups multiple local diagnostics under one root
           },
         ),
         createPreflightDiagnostic(
-          'world_placement_elevation',
-          'Suspicious repeated world placement.',
+          'storey_elevation_double_applied',
+          'Storey elevation applied twice.',
           'error',
           {
             methodName: 'addIfcMember',
@@ -190,7 +190,7 @@ test('buildErrorFeedbackContent groups multiple local diagnostics under one root
   assert.equal((prompt.match(/\[root-cause:placement_context_mismatch\]/g) ?? []).length, 1);
   assert.match(prompt, /scope=block/);
   assert.match(prompt, /supporting evidence: preflight:wall_hosted_opening_pattern/);
-  assert.match(prompt, /supporting evidence: preflight:world_placement_elevation/);
+  assert.match(prompt, /supporting evidence: preflight:storey_elevation_double_applied/);
 });
 
 test('clearChatMessages resets streaming state as well as persisted messages', () => {
@@ -253,3 +253,60 @@ test('removeChatAttachment only removes the targeted attachment id', () => {
   );
 });
 
+test('a chat-history persist failure warns exactly once per session, not per message', () => {
+  // Storage that rejects ONLY the messages key: the model / panel-visible
+  // preference writes must still succeed, so this exercises the persist path
+  // rather than making the module see no storage at all.
+  const original = globalThis.localStorage;
+  const store = new Map<string, string>();
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        if (key.includes('messages')) throw new Error('QuotaExceededError');
+        store.set(key, value);
+      },
+      removeItem: (key: string) => { store.delete(key); },
+    },
+  });
+  const originalWarn = console.warn;
+  const warnings: unknown[][] = [];
+  console.warn = (...args: unknown[]) => { warnings.push(args); };
+
+  try {
+    __resetChatPersistWarningForTests();
+    const useChatStore = create<ChatSlice>()((...args) => createChatSlice(...args));
+    for (let i = 0; i < 5; i += 1) {
+      useChatStore.getState().addChatMessage({
+        id: `m-${i}`,
+        role: 'user',
+        content: `message ${i}`,
+        createdAt: Date.now(),
+      });
+    }
+
+    // Premise: the stub really is selective — non-message writes succeed and
+    // only the messages key is refused. Without this, a stub that rejected
+    // EVERY write would make the module see no storage at all and the test
+    // would pass for the wrong reason.
+    globalThis.localStorage.setItem('probe-key', 'ok');
+    assert.equal(store.get('probe-key'), 'ok', 'premise: non-message writes succeed');
+    assert.throws(() => globalThis.localStorage.setItem('x-messages-x', 'v'), /Quota/);
+    assert.equal(
+      [...store.keys()].some((k) => k.includes('messages')),
+      false,
+      'premise: the messages key was never written',
+    );
+    // In-memory conversation is unaffected — only durability is lost.
+    assert.equal(useChatStore.getState().chatMessages.length, 5);
+
+    assert.equal(warnings.length, 1, 'exactly one warning for five failed writes');
+    assert.match(String(warnings[0][0]), /Could not persist chat history/);
+    assert.ok(warnings[0][1] instanceof Error, 'the error is bound into the log');
+  } finally {
+    console.warn = originalWarn;
+    Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: original });
+    __resetChatPersistWarningForTests();
+  }
+});

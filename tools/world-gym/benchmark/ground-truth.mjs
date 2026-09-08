@@ -57,9 +57,19 @@ export function severityFromModel(model) {
 /**
  * Regenerate the full benchmark ground truth for one seed. ~1-15 ms per
  * seed (pure generation, no checks, no geometry).
+ *
+ * `opts.salt` selects the universe (B4.3): '' or omitted is the public one;
+ * a salt is the reporting split's secret and yields a DIFFERENT model, and
+ * therefore different truth, for the same seed. Truth regenerated under the
+ * wrong salt is not "slightly off", it is unrelated - which is exactly the
+ * property that makes the salt worth having, and exactly why every caller must
+ * thread the same salt the served bytes were produced with.
+ *
+ * @param {number} seed
+ * @param {{ salt?: string }} [opts]
  */
-export function groundTruthForSeed(seed) {
-  const model = generateModel(seed, FAMILY, { corruptRate: CORRUPT_RATE });
+export function groundTruthForSeed(seed, opts = {}) {
+  const model = generateModel(seed, FAMILY, { corruptRate: CORRUPT_RATE, salt: opts.salt });
   return {
     seed,
     family: model.family,

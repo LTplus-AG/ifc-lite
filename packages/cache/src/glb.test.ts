@@ -151,22 +151,47 @@ function buildGLB(materials: Array<[number, number, number, number]>): Uint8Arra
 describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip', () => {
   // Regression for #688: GLB importer hardcoded grey, silently dropping the
   // exporter's per-mesh material colours on re-import.
-  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color', () => {
-    const colors: Array<[number, number, number, number]> = [
-      [0.8, 0.2, 0.2, 1.0],
-      [0.1, 0.6, 0.3, 0.5],
-      [0.0, 0.0, 1.0, 1.0],
+  it('reads pbrMetallicRoughness.baseColorFactor into MeshData.color (linear → sRGB)', () => {
+    // glTF baseColorFactor is linear-light; the mesh colour pipeline is sRGB, so
+    // the reader encodes R/G/B back to sRGB (inverse of the exporter's
+    // srgb_to_linear) and leaves alpha untouched.
+    //
+    // Expected sRGB values are IEC 61966-2-1 constants computed independently
+    // (12.92·l for l ≤ 0.0031308, else 1.055·l^(1/2.4) − 0.055) — NOT via the
+    // linearToSrgb helper the reader itself calls, so the oracle cannot share
+    // a defect with the code under test.
+    const cases: Array<{
+      linear: [number, number, number, number];
+      srgb: [number, number, number];
+    }> = [
+      { linear: [0.8, 0.2, 0.2, 1.0], srgb: [0.906332, 0.484529, 0.484529] },
+      { linear: [0.1, 0.6, 0.3, 0.5], srgb: [0.34919, 0.797738, 0.583831] },
+      { linear: [0.0, 0.0, 1.0, 1.0], srgb: [0.0, 0.0, 1.0] },
     ];
-    const meshes = loadGLBToMeshData(buildGLB(colors));
+    const meshes = loadGLBToMeshData(buildGLB(cases.map((c) => c.linear)));
     expect(meshes).toHaveLength(3);
-    for (let i = 0; i < colors.length; i++) {
-      const expected = colors[i];
+    for (let i = 0; i < cases.length; i++) {
+      const { linear, srgb } = cases[i];
       const actual = meshes[i].color;
-      expect(actual[0]).toBeCloseTo(expected[0]);
-      expect(actual[1]).toBeCloseTo(expected[1]);
-      expect(actual[2]).toBeCloseTo(expected[2]);
-      expect(actual[3]).toBeCloseTo(expected[3]);
+      expect(actual[0]).toBeCloseTo(srgb[0], 4);
+      expect(actual[1]).toBeCloseTo(srgb[1], 4);
+      expect(actual[2]).toBeCloseTo(srgb[2], 4);
+      expect(actual[3]).toBeCloseTo(linear[3]); // alpha is not colour-managed
     }
+  });
+
+  it('decodes a known linear baseColorFactor to its sRGB value (0.2140 → ~0.5), alpha unchanged', () => {
+    // A mid-grey sRGB 0.5 decodes to linear ≈ 0.2140; the writer stores that in
+    // baseColorFactor, and the reader must return it to ~0.5. On the pre-fix
+    // reader (raw passthrough) color[0] would be 0.2140, not ~0.5 — RED before,
+    // GREEN after.
+    const meshes = loadGLBToMeshData(buildGLB([[0.2140, 0.2140, 0.2140, 0.5]]));
+    expect(meshes).toHaveLength(1);
+    const c = meshes[0].color;
+    expect(c[0]).toBeCloseTo(0.5, 3);
+    expect(c[1]).toBeCloseTo(0.5, 3);
+    expect(c[2]).toBeCloseTo(0.5, 3);
+    expect(c[3]).toBe(0.5); // alpha passes through untouched
   });
 
   it('falls back to default grey when a primitive has no material', () => {
@@ -194,9 +219,9 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
           },
         ],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -209,6 +234,134 @@ describe('parseGLBToMeshData / loadGLBToMeshData — material colour round-trip'
     );
     expect(meshes).toHaveLength(1);
     expect(meshes[0].color).toEqual([0.8, 0.8, 0.8, 1.0]);
+  });
+});
+
+describe('parseGLBToMeshData — malformed accessor bounds (issue #2230 hunt)', () => {
+  /**
+   * Pins the `readAccessorData` bounds guard. `accessor.count` comes
+   * straight from the untrusted GLB JSON chunk; a hostile or truncated
+   * `.glb` can declare a POSITION accessor far larger than the actual BIN
+   * chunk. Before the guard, `bin.slice()` silently CLAMPED to the short
+   * buffer and the typed-array constructor that followed still requested
+   * the originally-declared element count against it — a raw
+   * `RangeError: Invalid typed array length` (the exact "range consisting
+   * of offset and length are out of bounds" crash shape) instead of a
+   * diagnosable error naming the accessor and the overrun.
+   */
+  it('throws a diagnosable error when a tightly-packed accessor.count overruns the BIN chunk', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        // Declares 10,000 VEC3 float verts (120,000 bytes) backed by a
+        // bufferView/BIN chunk that only actually holds 12 bytes (1 vert).
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 10_000, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 12, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 12 }],
+    };
+    const bin = new Uint8Array(12);
+
+    expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
+  });
+
+  it('throws a diagnosable error when a strided accessor.count overruns the BIN chunk', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 10_000, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        // byteStride (16) != elementSize (12) forces the strided read path.
+        { buffer: 0, byteOffset: 0, byteLength: 16, byteStride: 16, target: 34962 },
+      ],
+      buffers: [{ byteLength: 16 }],
+    };
+    const bin = new Uint8Array(16);
+
+    expect(() => parseGLBToMeshData(doc, bin)).toThrow(/accessor 0 reads bytes/);
+  });
+
+  /**
+   * The bounds guard above is a bare arithmetic comparison (`< 0`, `>
+   * bin.byteLength`), which is provably false whenever any operand is NaN.
+   * `accessor.count` is REQUIRED by the glTF spec but nothing enforced that
+   * at runtime: a missing/non-numeric `count` in the untrusted JSON chunk
+   * makes `accessor.count * elementSize` NaN, and `NaN > bin.byteLength` is
+   * `false` — the guard added for the overrun case above does not catch
+   * this. Before the `Number.isInteger` check, this silently produced an
+   * EMPTY positions array (typed-array length ToIndex(NaN) === 0) reported
+   * as a successfully imported mesh, instead of throwing.
+   */
+  it('throws instead of silently returning an empty mesh when accessor.count is missing/non-numeric', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        // `count` omitted entirely -- required by the glTF spec, not runtime-checked.
+        { bufferView: 0, byteOffset: 0, componentType: 5126, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 36 }],
+    };
+    const bin = new Uint8Array(36).fill(1);
+
+    expect(() => parseGLBToMeshData(doc as any, bin)).toThrow(/invalid count/);
+  });
+
+  it('still decodes a valid accessor.count = 0 (bounding control: an empty-but-declared accessor is not an error)', () => {
+    const doc = {
+      asset: { version: '2.0' },
+      scenes: [{ nodes: [0] }],
+      nodes: [{ mesh: 0 }],
+      meshes: [
+        {
+          primitives: [
+            { attributes: { POSITION: 0 } },
+          ],
+        },
+      ],
+      accessors: [
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 0, type: 'VEC3' as const },
+      ],
+      bufferViews: [
+        { buffer: 0, byteOffset: 0, byteLength: 0, byteStride: 12, target: 34962 },
+      ],
+      buffers: [{ byteLength: 0 }],
+    };
+    const bin = new Uint8Array(0);
+
+    expect(() => parseGLBToMeshData(doc, bin)).not.toThrow();
   });
 });
 
@@ -229,8 +382,10 @@ describe('parseGLB — SharedArrayBuffer-backed input', () => {
     shared.set(glb);
     const meshes = loadGLBToMeshData(shared);
     expect(meshes).toHaveLength(1);
-    expect(meshes[0].color[0]).toBeCloseTo(0.2);
-    expect(meshes[0].color[2]).toBeCloseTo(0.6);
+    // Independent IEC 61966-2-1 constants (not linearToSrgb — see the
+    // colour round-trip test above): sRGB(0.2) = 0.484529, sRGB(0.6) = 0.797738.
+    expect(meshes[0].color[0]).toBeCloseTo(0.484529, 4);
+    expect(meshes[0].color[2]).toBeCloseTo(0.797738, 4);
   });
 });
 
@@ -259,9 +414,9 @@ describe('parseGLBToMeshData — node translation → origin', () => {
         ],
         meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -301,9 +456,9 @@ describe('parseGLBToMeshData — node translation → origin', () => {
         ],
         meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -346,9 +501,9 @@ describe('parseGLBToMeshData — node translation → origin', () => {
         ],
         meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
         accessors: [
-          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+          { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+          { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
         ],
         bufferViews: [
           { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },
@@ -392,9 +547,9 @@ describe('parseGLBToMeshData — node matrix (instanced occurrence)', () => {
       ],
       meshes: [{ primitives: [{ attributes: { POSITION: 0, NORMAL: 1 }, indices: 2 }] }],
       accessors: [
-        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-        { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' },
-        { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' },
+        { bufferView: 0, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+        { bufferView: 1, byteOffset: 0, componentType: 5126, count: 3, type: 'VEC3' as const },
+        { bufferView: 2, byteOffset: 0, componentType: 5125, count: 3, type: 'SCALAR' as const },
       ],
       bufferViews: [
         { buffer: 0, byteOffset: 0, byteLength: 36, byteStride: 12, target: 34962 },

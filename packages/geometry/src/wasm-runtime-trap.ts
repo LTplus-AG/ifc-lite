@@ -138,7 +138,13 @@ export function notifyWasmRuntimeUnrecoverable(err: unknown): void {
     target.dispatchEvent(
       new CustomEvent(WASM_RUNTIME_UNRECOVERABLE_EVENT, { detail: { message: messageOf(err) } }),
     );
-  } catch {
-    /* CustomEvent unavailable — best effort, nothing more to do */
+  } catch (dispatchErr) {
+    // `domDispatcher()` already established that `CustomEvent` and
+    // `dispatchEvent` exist. Best effort — but the host now has no way to learn
+    // the engine is gone, so do not stay quiet about it.
+    console.warn(
+      '[ifc-lite] could not broadcast the wasm-runtime-unrecoverable event:',
+      dispatchErr,
+    );
   }
 }

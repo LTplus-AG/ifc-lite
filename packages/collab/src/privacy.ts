@@ -21,6 +21,7 @@
 import type { IfcxFile } from '@ifc-lite/ifcx';
 import type { CollabSession } from './session.js';
 import { snapshotToIfcx, type SnapshotOptions } from './snapshot/to-ifcx.js';
+import { TOP } from './doc/schema.js';
 
 export interface ExportAndLeaveOptions {
   /** Forwarded to `snapshotToIfcx`. */
@@ -73,16 +74,19 @@ export async function exportAndLeave(
 
 /**
  * Strip user-attributable metadata from a Y.Doc: per-entity `meta` keys
- * `createdBy` / `lastEditedBy` are blanked. Useful for "anonymise this
- * project" exports. Returns the number of entities touched.
+ * `createdBy` / `lastEditedBy`, and per-annotation `authorId` / `authorName`,
+ * are blanked. Useful for "anonymise this project" exports. Returns the
+ * number of entities + annotations touched.
  *
  * Note: this does NOT touch the underlying CRDT struct authorship
  * (clientID is intrinsic to Yjs's merge semantics and removing it
  * would corrupt the doc). For a proper anonymised export, snapshot
- * to IFCX first — the IFCX serialiser drops clientIDs by design.
+ * to IFCX first — the IFCX serialiser drops clientIDs by design (and
+ * doesn't carry annotations at all — markup ≠ BIM, see doc/annotation.ts).
  */
 export function redactAuthorMeta(session: CollabSession): number {
   const ents = session.doc.getMap('entities');
+  const annotations = session.doc.getMap(TOP.ANNOTATIONS);
   let touched = 0;
   session.doc.transact(() => {
     ents.forEach((entUntyped) => {
@@ -96,6 +100,19 @@ export function redactAuthorMeta(session: CollabSession): number {
       }
       if (meta.has('lastEditedBy')) {
         meta.set('lastEditedBy', null);
+        changed = true;
+      }
+      if (changed) touched += 1;
+    });
+    annotations.forEach((annUntyped) => {
+      const ann = annUntyped as import('yjs').Map<unknown>;
+      let changed = false;
+      if (ann.has('authorId') && ann.get('authorId') !== '') {
+        ann.set('authorId', '');
+        changed = true;
+      }
+      if (ann.has('authorName') && ann.get('authorName') !== '') {
+        ann.set('authorName', '');
         changed = true;
       }
       if (changed) touched += 1;

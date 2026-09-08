@@ -13,12 +13,50 @@
 
 name: SDK canary
 
+# `paths:` below names every package `pnpm turbo build --filter=@ifc-lite/extensions
+# --filter=@ifc-lite/cli` transitively builds (turbo's `build` task depends on
+# `^build`, so it walks the full `dependencies` + `devDependencies` workspace
+# graph of both, in topological order) plus the canary fixtures and this file
+# itself. `scripts/check-sdk-canary-coverage.mjs` derives that closure from the
+# real package.json graph on every CI run and fails if this list falls behind
+# it -- so this is a snapshot of a derived fact, not a maintained one; if the
+# list and the gate disagree, trust the gate and regenerate the list from its
+# output. Note `@ifc-lite/viewer-core` lives in `packages/viewer`, not
+# `packages/viewer-core` -- the package NAME and its directory diverge.
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'packages/extensions/**'
+      - 'packages/bcf/**'
+      - 'packages/clash/**'
       - 'packages/cli/**'
+      - 'packages/codegen/**'
+      - 'packages/collab/**'
+      - 'packages/create/**'
+      - 'packages/data/**'
+      - 'packages/diff/**'
+      - 'packages/drawing-2d/**'
+      - 'packages/encoding/**'
+      - 'packages/export/**'
+      - 'packages/extensions/**'
+      - 'packages/geometry/**'
+      - 'packages/ids/**'
+      - 'packages/ifcx/**'
+      - 'packages/lens/**'
+      - 'packages/lists/**'
+      - 'packages/mcp/**'
+      - 'packages/merge/**'
+      - 'packages/mutations/**'
+      - 'packages/parser/**'
+      - 'packages/pointcloud/**'
+      - 'packages/query/**'
+      - 'packages/sandbox/**'
+      - 'packages/sdk/**'
+      - 'packages/spatial/**'
+      - 'packages/timing-ladder/**'
+      - 'packages/viewer/**'
+      - 'packages/wasm/**'
+      - 'packages/world-frame-fixtures/**'
       - 'tests/extensions/canaries/**'
       - '.github/workflows/sdk-canary.yml'
 
@@ -40,14 +78,14 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
 
       - name: Setup pnpm
         # v6 reads the pnpm version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); passing `with.version` would conflict.
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

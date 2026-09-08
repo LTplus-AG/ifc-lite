@@ -15,8 +15,9 @@
  *
  * The output carries each selected product's full forward reference closure PLUS
  * the shared context roots (IfcProject, unit assignment, geometric contexts, the
- * spatial site/building/storey skeleton) and every spatial-containment relation
- * whose members are all kept — so the result parses and renders on its own.
+ * spatial site/building/storey skeleton) and every spatial-structure relation,
+ * its related-objects SET rewritten down to the kept members (see
+ * `subset-relations.ts`) — so the result parses and renders on its own.
  *
  * `--detect --report [--json]` prints the triage report WITHOUT extracting. The
  * report separates HARD defects (non-finite or |coord|>1e4 vertices after the
@@ -29,20 +30,11 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { fatal, getFlag, getAllFlags, hasFlag } from '../output.js';
 import { logger } from '../logger.js';
-
-/** One parsed STEP instance: `#id = TYPE(<body>);`. */
-interface Instance {
-  id: number;
-  type: string;
-  /** Argument text between the outermost parentheses (references + literals). */
-  body: string;
-  /** The verbatim `#id= TYPE(...);` text, re-emitted unchanged into the subset. */
-  full: string;
-}
+import { planSpatialRelations, type StepRecord, type Subset } from './subset-relations.js';
 
 interface ParsedStep {
   header: string;
-  instances: Map<number, Instance>;
+  instances: Map<number, StepRecord>;
   /** 22-char GlobalId → expressId, for rooted entities. */
   guidToId: Map<string, number>;
 }
@@ -61,7 +53,7 @@ export function parseStep(text: string): ParsedStep {
   const header = text.slice(0, headerEnd);
   const data = text;
 
-  const instances = new Map<number, Instance>();
+  const instances = new Map<number, StepRecord>();
   const guidToId = new Map<string, number>();
 
   let i = headerEnd;
@@ -148,15 +140,16 @@ export function resolveToId(token: string, parsed: ParsedStep): number {
 
 const REF_RE = /#(\d+)/g;
 
-/** Forward reference closure: every instance transitively referenced by `seeds`. */
+/** Forward closure over `seeds`. An id NAMED but never DEFINED is not added, or
+ * a rewritten SET would emit it as a dangling `#id` (#4128). */
 export function forwardClosure(seeds: Iterable<number>, parsed: ParsedStep, into: Set<number>): void {
   const stack = [...seeds];
   while (stack.length) {
     const id = stack.pop()!;
     if (into.has(id)) continue;
-    into.add(id);
     const rec = parsed.instances.get(id);
     if (!rec) continue;
+    into.add(id);
     REF_RE.lastIndex = 0;
     let m: RegExpExecArray | null;
     while ((m = REF_RE.exec(rec.body)) !== null) {
@@ -240,11 +233,11 @@ function resolveStoreyPlacement(token: string, parsed: ParsedStep): number {
 }
 
 /**
- * Assemble the kept-id set: the closure of `seedProducts` + context roots
- * (project/units/contexts + spatial skeleton) + spatial-containment relations
- * whose every member is kept (so no dangling references).
+ * Assemble the subset: the closure of `seedProducts` + context roots
+ * (project/units/contexts + spatial skeleton) + spatial-structure relations,
+ * each rewritten down to its kept members (so no dangling references).
  */
-export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Set<number> {
+export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subset {
   const keep = new Set<number>();
   forwardClosure(seedProducts, parsed, keep);
 
@@ -299,24 +292,30 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Set<
     }
   }
 
-  // Spatial relationships that connect kept products into the tree — but only
-  // when EVERY referenced element is already kept, else we'd emit dangling refs.
-  for (const inst of parsed.instances.values()) {
-    if (
-      inst.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE' ||
-      inst.type === 'IFCRELAGGREGATES'
-    ) {
-      const refs = [...inst.body.matchAll(REF_RE)].map((m) => parseInt(m[1], 10));
-      if (refs.length > 0 && refs.every((r) => keep.has(r))) keep.add(inst.id);
-    }
+  // Spatial relationships that connect kept products into the tree, each
+  // relation's member SET filtered down to the kept ids rather than the whole
+  // relation being dropped. `subset-relations.ts` owns that rule and the
+  // no-dangling-reference invariant it preserves.
+  let spatial = planSpatialRelations(parsed.instances.values(), keep);
+  // A relation-private IfcOwnerHistory is reachable from nothing else, so the
+  // plan drops the relation and reports what blocked it. Keep those and replan
+  // (#4126). ONE replan suffices for a SCHEMA-VALID record: an IfcOwnerHistory
+  // subtree names no product, container or relation. On invalid input a second
+  // round is discarded and the relation stays dropped (pre-#4126 behaviour,
+  // never a dangling id). A `while` does NOT terminate here: a phantom blocker
+  // closes over nothing and is reported every round.
+  if (spatial.blockedOn.length > 0) {
+    forwardClosure(spatial.blockedOn, parsed, keep);
+    spatial = planSpatialRelations(parsed.instances.values(), keep);
   }
-  return keep;
+  for (const id of spatial.add) keep.add(id);
+  return { keep, rewritten: spatial.rewritten };
 }
 
-/** Serialize the kept ids back into a valid STEP file (sorted, header preserved). */
-export function serializeSubset(keep: Set<number>, parsed: ParsedStep): string {
+/** Serialize the subset back into a valid STEP file (sorted, header preserved). */
+export function serializeSubset({ keep, rewritten }: Subset, parsed: ParsedStep): string {
   const kept = [...keep].filter((id) => parsed.instances.has(id)).sort((a, b) => a - b);
-  const lines = kept.map((id) => parsed.instances.get(id)!.full);
+  const lines = kept.map((id) => rewritten.get(id) ?? parsed.instances.get(id)!.full);
   return parsed.header + lines.join('\n') + '\nENDSEC;\nEND-ISO-10303-21;\n';
 }
 
@@ -353,8 +352,13 @@ function pct(sorted: Float64Array, p: number): number {
 async function triage(bytes: Uint8Array): Promise<TriageRow[]> {
   const { GeometryProcessor } = await import('@ifc-lite/geometry');
   const gp = new GeometryProcessor();
-  await gp.init();
-  const res = await gp.process(bytes);
+  let res: Awaited<ReturnType<typeof gp.process>>;
+  try {
+    await gp.init();
+    res = await gp.process(bytes);
+  } finally {
+    gp.dispose();
+  }
   const rows: TriageRow[] = [];
   for (const m of res.meshes) {
     const p = m.positions;
@@ -490,11 +494,11 @@ export async function extractEntitiesCommand(args: string[]): Promise<void> {
     return;
   }
 
-  const keep = buildSubset(seeds, parsed);
-  const out = serializeSubset(keep, parsed);
+  const subset = buildSubset(seeds, parsed);
+  const out = serializeSubset(subset, parsed);
   await writeFile(outPath, out, 'latin1');
   process.stdout.write(
-    `Extracted ${seeds.size} product(s) → ${keep.size} instances → ${outPath}\n`,
+    `Extracted ${seeds.size} product(s) → ${subset.keep.size} instances → ${outPath}\n`,
   );
 
   if (hasFlag(args, '--view')) {

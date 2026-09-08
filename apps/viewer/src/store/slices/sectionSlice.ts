@@ -42,10 +42,9 @@ export function customPlaneCenter(plane: CustomSectionPlane): [number, number, n
 // ─── Persistence ─────────────────────────────────────────────────────────
 // Cap appearance (hatch pattern, colours, spacing, angle, whether the cap is
 // shown at all) persists across reloads via localStorage, so the user's
-// preferred cut surface survives closing and re-opening the app. Axis and
-// position are session-scoped because they only make sense relative to a
-// loaded model. See chatSlice.ts for the same direct-localStorage pattern
-// used elsewhere in the store.
+// preferred cut surface survives closing and re-opening the app — it is
+// pure display style, not tied to any model's geometry. See chatSlice.ts
+// for the same direct-localStorage pattern used elsewhere in the store.
 const CAP_STYLE_STORAGE_KEY     = 'ifc-lite:section-cap-style';
 const CAP_SHOW_STORAGE_KEY      = 'ifc-lite:section-cap-show';
 const OUTLINES_SHOW_STORAGE_KEY = 'ifc-lite:section-outlines-show';
@@ -60,6 +59,19 @@ const OUTLINES_SHOW_STORAGE_KEY = 'ifc-lite:section-outlines-show';
 // loaded model's world coordinates and would land somewhere meaningless
 // on a different model. Re-arming pick mode lets the user re-cut the
 // equivalent face on the new model with one click.
+//
+// 'cardinal' IS geometry — its `position` is only meaningful relative to
+// the bounding box of whatever model is loaded — but it round-trips
+// through localStorage (survives closing the browser), not just the
+// in-memory store (which `resetViewerState` already clears on every file
+// load). Without an explicit clear, a browser-session reload that opens a
+// DIFFERENT model would read yesterday's cardinal position from
+// localStorage and immediately apply it to today's model — the tool
+// looked like it "pre-chose" a cut instead of arming pick mode (#2939).
+// `resetViewerState()` (store/index.ts) calls `clearLastSectionMode()`
+// below on every primary file load for exactly this reason: it is the
+// same reset that already zeroes the in-memory axis/position/flipped
+// fields, so both copies of this state are dropped together.
 const SECTION_MODE_STORAGE_KEY  = 'ifc-lite:section-last-mode';
 
 export type LastSectionMode =
@@ -109,7 +121,7 @@ function saveLastSectionMode(mode: LastSectionMode): void {
   }
 }
 
-function clearLastSectionMode(): void {
+export function clearLastSectionMode(): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.removeItem(SECTION_MODE_STORAGE_KEY);
@@ -279,7 +291,25 @@ export interface SectionSlice {
 
 const getDefaultCapStyle = (): SectionCapStyle => loadCapStyle();
 
-const getDefaultSectionPlane = (): SectionPlane => ({
+/**
+ * Shared "is this face pick usable" predicate for both the commit
+ * (`setSectionPlaneFromFace`) and hover (`setSectionPickPreview`) paths.
+ * `MIN_PICK_NORMAL_LEN` is the magnitude floor for a degenerate triangle
+ * normal; `Number.isFinite` is a separate question and both have to be asked
+ * (#2495) — a floor alone answers "false" for `Infinity` and for `NaN` alike.
+ */
+const MIN_PICK_NORMAL_LEN = 1e-6;
+
+function isDrawablePick(
+  normal: readonly [number, number, number],
+  point: readonly [number, number, number],
+): boolean {
+  const len = Math.hypot(normal[0], normal[1], normal[2]);
+  if (!Number.isFinite(len) || len < MIN_PICK_NORMAL_LEN) return false;
+  return point.every(Number.isFinite);
+}
+
+export const getDefaultSectionPlane = (): SectionPlane => ({
   axis: SECTION_PLANE_DEFAULTS.AXIS,
   position: SECTION_PLANE_DEFAULTS.POSITION,
   enabled: SECTION_PLANE_DEFAULTS.ENABLED,
@@ -435,11 +465,14 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
   setSectionPlaneFromFace: (normal, point, bounds) => set((state) => {
     const nx = normal[0]; const ny = normal[1]; const nz = normal[2];
     const len = Math.hypot(nx, ny, nz);
-    if (!Number.isFinite(len) || len < 1e-6) {
+    if (!isDrawablePick(normal, point)) {
       // Degenerate normal — disarm pick mode but don't poison the
       // renderer with NaNs. Also clear any in-flight hover preview so
       // the violet quad doesn't linger after a bogus pick attempt.
-      console.warn('[section] face-pick received a degenerate normal; ignoring');
+      // `point` is screened too: it only reached `distance` and
+      // `pickedAt`, so a non-finite hit point produced a NaN plane
+      // offset that the normal check never saw (#2495).
+      console.warn('[section] face-pick received a degenerate normal or point; ignoring');
       return { sectionPickMode: false, sectionPickPreview: null };
     }
     const unit: [number, number, number] = [nx / len, ny / len, nz / len];
@@ -525,6 +558,16 @@ export const createSectionSlice: StateCreator<SectionSlice, [], [], SectionSlice
     // overlay.
     if (preview !== null && !state.sectionPickMode) {
       return state;
+    }
+    // Screen the geometry the same way the COMMIT path
+    // (`setSectionPlaneFromFace` above) already screens it. The hover
+    // path had no such gate, so it was the one route by which a raw
+    // picked normal reached a basis derivation (#2495). `len < 1e-6`
+    // alone would not do: `Infinity < 1e-6` is false and `NaN < 1e-6`
+    // is false, so both sail through a magnitude floor and only
+    // `Number.isFinite` rejects them.
+    if (preview !== null && !isDrawablePick(preview.normal, preview.point)) {
+      return state.sectionPickPreview === null ? state : { sectionPickPreview: null };
     }
     return { sectionPickPreview: preview };
   }),

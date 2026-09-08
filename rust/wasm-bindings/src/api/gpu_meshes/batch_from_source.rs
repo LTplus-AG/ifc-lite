@@ -33,7 +33,7 @@ impl IfcAPI {
     /// the JS worker (it gates `*FromSource` on a successful `setSourceBytes`),
     /// but is handled defensively: the decoder validates every byte span, so an
     /// empty source simply yields zero meshes instead of panicking.
-    fn source_bytes_arc(&self) -> std::sync::Arc<Vec<u8>> {
+    pub(super) fn source_bytes_arc(&self) -> std::sync::Arc<Vec<u8>> {
         self.cached_source_bytes
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

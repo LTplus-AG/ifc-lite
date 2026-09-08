@@ -35,6 +35,7 @@ import {
 export type ConflictKind =
   | 'attribute'
   | 'pset-property'
+  | 'quantity'
   | 'hierarchy'
   | 'geometry-blob'
   | 'geometry-param'
@@ -239,6 +240,10 @@ function classify(
           // the pset name as the field — useful when two peers seed the
           // same Pset concurrently.
           return key ? { kind: 'pset-property', path: entityPath, field: key } : null;
+        case ENTITY_KEY.QUANTITIES:
+          // Mirrors PSETS above: a new (or replaced) Qset Y.Map at the
+          // entity level, keyed by qset name.
+          return key ? { kind: 'quantity', path: entityPath, field: key } : null;
         default:
           return null;
       }
@@ -247,6 +252,12 @@ function classify(
       const psetName = path[2];
       return key
         ? { kind: 'pset-property', path: entityPath, field: `${psetName}.${key}` }
+        : null;
+    }
+    if (path.length === 3 && subMap === ENTITY_KEY.QUANTITIES) {
+      const qsetName = path[2];
+      return key
+        ? { kind: 'quantity', path: entityPath, field: `${qsetName}.${key}` }
         : null;
     }
     return null;

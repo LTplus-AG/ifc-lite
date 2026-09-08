@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * "Create BCF issue" affordance shown under the focused change (issue #1199).
+ * "Create BCF topic" affordance shown under the focused change (issue #1199).
  * Extracted from ComparePanel; the actual topic creation lives in the panel so
  * it can coordinate the BCF store + viewpoint capture.
  */
@@ -54,7 +54,7 @@ export function BcfFromChange({
     return (
       <div className="border-t border-border shrink-0 px-3 py-2.5 flex items-center gap-2 text-xs">
         <CheckCircle2 className="h-4 w-4 text-[#9ece6a] shrink-0" />
-        <span className="min-w-0 truncate">BCF issue created: “{createdTitle}”</span>
+        <span className="min-w-0 truncate">BCF topic created: “{createdTitle}”</span>
         <Button variant="outline" size="sm" className="ml-auto h-7 px-2 text-xs shrink-0" onClick={onOpenBcfPanel}>
           Open BCF
         </Button>
@@ -63,7 +63,7 @@ export function BcfFromChange({
   }
 
   if (open) {
-    // Composing a BCF issue: the diff chrome is collapsed (ComparePanel), so the
+    // Composing a BCF topic: the diff chrome is collapsed (ComparePanel), so the
     // form owns the remaining height and scrolls internally — its actions stay
     // reachable instead of being clipped off the bottom of the panel.
     return (
@@ -86,7 +86,7 @@ export function BcfFromChange({
     <div className="border-t border-border shrink-0 px-3 py-2.5">
       <Button variant="outline" size="sm" className="w-full gap-1.5 text-xs" onClick={onStart}>
         <MessageSquarePlus className="h-3.5 w-3.5" />
-        Create BCF issue
+        Create BCF topic
       </Button>
     </div>
   );

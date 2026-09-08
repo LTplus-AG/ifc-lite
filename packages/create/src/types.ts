@@ -305,9 +305,9 @@ export interface WallWindowParams extends ElementAttributes {
   PartitioningType?: 'SINGLE_PANEL' | 'DOUBLE_PANEL_HORIZONTAL' | 'DOUBLE_PANEL_VERTICAL' | 'TRIPLE_PANEL_HORIZONTAL' | 'NOTDEFINED';
 }
 
-/** Door: standalone world-aligned element */
+/** Door: standalone axis-aligned element (not hosted in a wall opening) */
 export interface DoorParams extends ElementAttributes {
-  /** Door position in world coordinates */
+  /** Door position, relative to the storey it is added to */
   Position: Point3D;
   /** Door width */
   Width: number;
@@ -321,9 +321,9 @@ export interface DoorParams extends ElementAttributes {
   OperationType?: 'SINGLE_SWING_LEFT' | 'SINGLE_SWING_RIGHT' | 'DOUBLE_DOOR_SINGLE_SWING' | 'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_LEFT' | 'DOUBLE_DOOR_SINGLE_SWING_OPPOSITE_RIGHT' | 'DOUBLE_SWING_LEFT' | 'DOUBLE_SWING_RIGHT' | 'DOUBLE_DOOR_DOUBLE_SWING' | 'SLIDING_TO_LEFT' | 'SLIDING_TO_RIGHT' | 'DOUBLE_DOOR_SLIDING' | 'FOLDING_TO_LEFT' | 'FOLDING_TO_RIGHT' | 'DOUBLE_DOOR_FOLDING' | 'REVOLVING' | 'ROLLINGUP' | 'SWING_FIXED_LEFT' | 'SWING_FIXED_RIGHT' | 'USERDEFINED' | 'NOTDEFINED';
 }
 
-/** Window: standalone world-aligned element */
+/** Window: standalone axis-aligned element (not hosted in a wall opening) */
 export interface WindowParams extends ElementAttributes {
-  /** Window position in world coordinates */
+  /** Window position, relative to the storey it is added to */
   Position: Point3D;
   /** Window width */
   Width: number;
@@ -774,8 +774,13 @@ export interface GenericElementParams extends ElementAttributes {
   Depth: number;
 
   /**
-   * Extrusion direction in local coordinates. Default: [0, 0, 1] (upward / along local Z).
-   * Use [1, 0, 0] for along X, [0, 1, 0] for along Y, etc.
+   * Extrusion direction in the PROFILE's coordinate system, where the profile
+   * lies in the XY plane. Default: [0, 0, 1] (perpendicular to the profile).
+   * It must have a non-zero Z component (IFC4 IfcExtrudedAreaSolid.WR31): a
+   * direction like [1, 0, 0] lies IN the profile plane and sweeps the profile
+   * into a zero-volume sheet. To orient the element in the model (e.g. a
+   * horizontal pipe), keep the default and set `Placement.Axis` to the world
+   * direction the element should run along instead.
    */
   ExtrusionDirection?: Point3D;
 

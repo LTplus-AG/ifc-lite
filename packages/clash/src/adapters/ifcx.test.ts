@@ -212,6 +212,64 @@ describe('elementsFromIfcx', () => {
     expect(withExclusions.clashes.length).toBe(1);
   });
 
+  it('offsets each submesh\'s indices by the running vertex count when merging WallC\'s Body+Axis', async () => {
+    // Pins the vertex-index offset applied inside the adapter's internal
+    // `mergeMeshes` (not exported; reached here through the public
+    // `elementsFromIfcx` result, whose `ClashElement.indices` is exactly
+    // `mergeMeshes`'s output). WallC owns two disjoint 8-vertex/36-index cube
+    // submeshes — Body at world x in [10,11] and Axis at world x in [12,13]
+    // (see `buildIfcxFile()` above) — so the merged buffer's second submesh
+    // block must have its indices shifted by the first submesh's vertex
+    // count (8) to address the right half of the concatenated position
+    // array. `bounds` and `isDegenerate` (used by the other tests in this
+    // file) are blind to this: they derive purely from `positions`, which is
+    // never mis-offset, only `indices` is. Coverage gap and mutation
+    // verification are documented in the PR for this test.
+    const { elements } = await elementsFromIfcx({
+      buffer: ifcxBuffer(),
+      modelId: 'ifcx-model',
+    });
+    const wallC = elements.find((e) => e.key === 'Project/WallC');
+    expect(wallC).toBeDefined();
+
+    // Two 8-vertex / 36-index cubes concatenated.
+    expect(wallC!.positions.length).toBe(8 * 3 * 2);
+    expect(wallC!.indices.length).toBe(36 * 2);
+
+    const FACE = cubeMesh(0, 0, 0, 1).faceVertexIndices; // same triangulation pattern for both cubes
+
+    const firstBlock = Array.from(wallC!.indices.slice(0, 36));
+    const secondBlock = Array.from(wallC!.indices.slice(36));
+
+    // The first submesh's vertexBase is always 0, so its indices are the
+    // untouched 0..7 pattern.
+    expect(firstBlock).toEqual(FACE);
+    // The second submesh must be shifted into the 8..15 range — the offset
+    // under test. Dropping `+ vertexBase` in `mergeMeshes` would leave this
+    // identical to `firstBlock`, aliasing the second submesh's triangles
+    // back onto the first submesh's vertices.
+    expect(secondBlock).toEqual(FACE.map((i) => i + 8));
+
+    // Tie the offset to real geometry, not just index numbers: resolve every
+    // index through `positions` and confirm it lands in the right cube's
+    // x-range. World x is preserved by the IFCX Z-up -> Y-up conversion (only
+    // y/z are remapped), so Body's vertices are x in [10,11] and Axis's are
+    // x in [12,13], independent of which submesh the extractor visits first.
+    const xRangeOf = (idx: number) => wallC!.positions[idx * 3];
+    const firstBlockXs = firstBlock.map(xRangeOf);
+    const secondBlockXs = secondBlock.map(xRangeOf);
+    const inBodyRange = (x: number) => x >= 10 && x <= 11;
+    const inAxisRange = (x: number) => x >= 12 && x <= 13;
+    const firstIsBody = firstBlockXs.every(inBodyRange);
+    const firstIsAxis = firstBlockXs.every(inAxisRange);
+    expect(firstIsBody || firstIsAxis).toBe(true);
+    if (firstIsBody) {
+      expect(secondBlockXs.every(inAxisRange)).toBe(true);
+    } else {
+      expect(secondBlockXs.every(inBodyRange)).toBe(true);
+    }
+  });
+
   it('excludes composition parent/child pairs but keeps the set otherwise', async () => {
     const { elements, exclusions } = await elementsFromIfcx({
       buffer: ifcxBuffer(),
@@ -222,5 +280,101 @@ describe('elementsFromIfcx', () => {
     // elements. The sibling walls are correctly NOT excluded.
     expect(exclusions.size).toBe(0);
     expect(elements.every((e) => e.tag === 'IfcWall')).toBe(true);
+  });
+});
+
+/**
+ * A project containing a physical wall PLUS the same non-physical / container
+ * classes `adapters/step.ts` drops (#1464): an opening, a space, and a
+ * storey that (as IFC4.3 infra exports routinely do) carries its own
+ * tessellated geometry. Every non-wall node here carries mesh geometry, so a
+ * missing filter lets all of them through as ordinary `ClashElement`s.
+ */
+function buildNonClashableIfcxFile() {
+  const ifcClass = (code: string) => ({
+    code,
+    uri: `https://identifier.buildingsmart.org/uri/buildingsmart/ifc/5/class/${code}`,
+  });
+
+  return {
+    header: {
+      id: 'clash-ifcx-nonclashable-fixture',
+      ifcxVersion: 'ifcx_alpha',
+      dataVersion: '1.0.0',
+      author: 'ifc-lite clash adapter test',
+      timestamp: '2025-01-01T00:00:00Z',
+    },
+    imports: [],
+    schemas: {
+      'bsi::ifc::class': { value: SCHEMA_VALUE },
+      'usd::usdgeom::mesh': { value: SCHEMA_VALUE },
+    },
+    data: [
+      {
+        path: 'Project',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcProject') },
+        children: {
+          Storey: 'Project/Storey',
+          Opening: 'Project/Opening',
+          Space: 'Project/Space',
+        },
+      },
+      {
+        // Spatial container carrying its own geometry (follow-up to #1464).
+        path: 'Project/Storey',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcBuildingStorey') },
+        children: { Body: 'Project/Storey/Body', Wall: 'Project/Storey/Wall' },
+      },
+      {
+        path: 'Project/Storey/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(0, 0, 0, 10) },
+      },
+      {
+        // The one physical element in the fixture.
+        path: 'Project/Storey/Wall',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcWall') },
+        children: { Body: 'Project/Storey/Wall/Body' },
+      },
+      {
+        path: 'Project/Storey/Wall/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(1, 1, 1, 1) },
+      },
+      {
+        path: 'Project/Opening',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcOpeningElement') },
+        children: { Body: 'Project/Opening/Body' },
+      },
+      {
+        path: 'Project/Opening/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(2, 2, 2, 1) },
+      },
+      {
+        path: 'Project/Space',
+        attributes: { 'bsi::ifc::class': ifcClass('IfcSpace') },
+        children: { Body: 'Project/Space/Body' },
+      },
+      {
+        path: 'Project/Space/Body',
+        attributes: { 'usd::usdgeom::mesh': cubeMesh(3, 3, 3, 1) },
+      },
+    ],
+  };
+}
+
+function nonClashableIfcxBuffer(): ArrayBuffer {
+  const json = JSON.stringify(buildNonClashableIfcxFile());
+  return new TextEncoder().encode(json).buffer as ArrayBuffer;
+}
+
+describe('elementsFromIfcx - drops non-physical / container classes (parity with step.ts, #1464)', () => {
+  it('drops IfcOpeningElement, IfcSpace and the spatial-container IfcBuildingStorey, keeping only IfcWall', async () => {
+    const { elements } = await elementsFromIfcx({
+      buffer: nonClashableIfcxBuffer(),
+      modelId: 'ifcx-model',
+    });
+
+    const keys = elements.map((e) => e.key).sort();
+    expect(keys).toEqual(['Project/Storey/Wall']);
+    expect(elements[0].tag).toBe('IfcWall');
   });
 });

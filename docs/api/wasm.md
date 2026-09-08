@@ -122,6 +122,30 @@ processGeometryBatchFromSource(jobsFlat, unitScale, /* same trailing args */): M
 processGeometryBatchPartitionedFromSource(jobsFlat, unitScale, /* ... */): PartitionedBatch;
 ```
 
+The sharded pre-pass can reuse the same installed source before geometry batches:
+
+```typescript
+scanEntityIndexShardFromSource(start: number, end: number): any;
+resolveStyledItemsShardFromSource(spans: Uint32Array): any;
+finalizePrepassStylesFromSource(
+  orphanIds: Uint32Array, orphanColors: Float32Array,
+  geomIds: Uint32Array, geomColors: Float32Array,
+  colourMapSpans: Uint32Array, materialDefSpans: Uint32Array,
+  relMaterialSpans: Uint32Array, voidSpans: Uint32Array,
+  fillsSpans: Uint32Array, aggregateSpans: Uint32Array,
+  planeAngleToRadians: number,
+): any;
+```
+
+Call `setSourceBytes` before these methods and `setEntityIndex` before resolving
+or finalizing styles. They use the same scanner and style processing as the
+byte-taking methods, with identical arguments after omitting the source bytes.
+`clearPrePassCache()` releases the installed source and index; use it on completion,
+cancellation, or failure. Install the new source and index before reusing an API
+instance for another model. JavaScript input arrays remain usable after
+`setEntityIndex`; its binding adopts its own WASM allocations, while the Rust
+`set_entity_index` method continues to accept borrowed slices.
+
 #### Export
 
 Each exporter takes the raw IFC bytes (or already-produced meshes) and returns a `Uint8Array`.
@@ -147,6 +171,8 @@ const hbjson = api.exportHbjson(ifcContent, 'my_model');
 ```
 
 `exportGlb` fails closed: when the visible mesh set is empty it throws an `Error` whose message starts with `NO_RENDER_GEOMETRY` rather than returning an empty GLB.
+
+`exportStep` also fails closed on `mutationsJson`: an empty string means "no mutations" and exports cleanly, but a non-empty string that fails to parse throws (message prefixed `exportStep:`) instead of silently exporting the model with none of the caller's edits applied.
 
 #### Other Parsing
 
@@ -268,8 +294,90 @@ class MeshCollection {
   readonly geometryHashIds: Uint32Array;
   readonly geometryHashValues: BigUint64Array;
   readonly geometryHashCount: number;
+  readonly geometryAabbValues: Float64Array;  // 6 per id, see below
+  readonly geometryVolumeValues: Float64Array; // 1 per id, NaN = not provable
+  readonly geometryClosureFlags: Uint8Array;   // 1 per id, packed verdict
 }
 ```
+
+#### geometryAabbValues
+
+Per-entity world bounding boxes from the same pass as the hashes, gated by the
+same `setComputeGeometryHashes()` switch — empty when geometry hashing is off.
+
+Six `f64` per entry, `[minX, minY, minZ, maxX, maxY, maxZ]`, in
+`geometryHashIds` order: entry `i` occupies `[6*i, 6*i+6)`, so
+`geometryAabbValues.length === 6 * geometryHashCount` always. An entity that
+produced a hash but no box reserves its six slots as `NaN` rather than
+shortening the array, which would mis-attribute every later entry.
+
+The box is in the **WebGL Y-up frame**, like `positions`, `origin` and
+`localBounds` — not the IFC Z-up frame the hasher accumulates in. It holds
+absolute world coordinates while `positions` are RTC-relative, so fold the
+collection's RTC offset in (itself Y-up-swapped) before comparing the two:
+
+```js
+const world = [
+  origin[0] + positions[3 * v + 0] + collection.rtcOffsetX,
+  origin[1] + positions[3 * v + 1] + collection.rtcOffsetZ,
+  origin[2] + positions[3 * v + 2] - collection.rtcOffsetY,
+];
+```
+
+Why it exists: a changed geometry hash conflates *moved*, *reshaped* and
+*re-tessellated* into one bit. The box separates them — same extent at a new
+centre is a move, a different extent is a reshape, an identical box with a
+different hash is retriangulation.
+
+`@ifc-lite/geometry` reads this for you: the box lands on `MeshData.geometryAabb`
+(and, for entities whose whole geometry went to the GPU-instanced shard, on
+`GeometryResult.instancedGeometryAabbs`). The `NaN` sentinel is resolved to
+`undefined` at that boundary, so a `geometryAabb` you hold is always a real box.
+
+#### geometryVolumeValues and geometryClosureFlags
+
+Two companions from the same pass, gated by the same
+`setComputeGeometryHashes()` switch and following the same index-parallel rule:
+one value per entry in `geometryHashIds` order.
+
+`geometryVolumeValues` is the enclosed volume in **cubic metres**, and `NaN`
+means no trustworthy volume — the same absent convention as the box. It is
+`NaN` for roughly a third of entities BY DESIGN. A divergence-theorem volume
+needs a closed, consistently wound surface, so a value is emitted only when the
+entity produced exactly one segment and that segment was exactly one closed,
+orientable component. An open `SurfaceModel`, a material-layered wall (whose
+slices are open bands by construction) and any element assembled from more than
+one representation item all report nothing rather than a plausible wrong number
+— summing overlapping items produced a volume larger than the element's own
+bounding box on 987 measured elements.
+
+`geometryClosureFlags` says WHICH clause failed, so a refusal is actionable:
+bit 0 (`1`) all segments closed, bit 1 (`2`) all orientable, bit 2 (`4`) all a
+single connected component, bit 3 (`8`) exactly one segment. `0x0F` is exactly
+the set that carries a volume. "This wall is an open shell" (bit 0 clear) and
+"this door is a multi-item assembly" (bit 3 clear) are different findings with
+different fixes.
+
+A clear bit means **not proved**, not proved-false. Almost always the two
+coincide, but bits 0-2 are also *retracted* when the mesh was edited after the
+verdict was taken: the f32-collapse degenerate-triangle backstop runs at the end
+of mesh production, and a dropped triangle turns each of its three edges' other
+side into a boundary edge, so an element that dropped anything can no longer be
+certified closed and ships no volume.
+
+Closedness is a property of the surface, not evidence it is the RIGHT surface:
+when the CSG budget trips, the uncut host is still a flawless closed solid that
+merely still contains its openings, so a consumer that cares must also read
+`diagnostics.totalCsgFailures`.
+
+`@ifc-lite/geometry` reads the volume for you, exactly as it reads the box: it
+lands on `MeshData.geometryVolume` (and, for a fully GPU-instanced entity, on
+`GeometryResult.instancedGeometryVolumes`), with the `NaN` resolved to
+`undefined` at that boundary. Nothing downstream ever holds a NaN-bearing
+number, and a `geometryVolume` you hold is one the mesher proved. The closure
+flags are **not** plumbed to JS: their audience is a model checker asking why a
+volume is missing, and re-deriving the answer from a byte on every batch would
+cost every load for a diagnosis nothing on that side consumes.
 
 ### MeshDataJs
 
@@ -388,18 +496,24 @@ The built artifacts land in `packages/wasm/pkg/` (`ifc-lite_bg.wasm` binary plus
 
 ## Building from Source
 
+Use `scripts/build-wasm.sh` — it's the build CI and Vercel run, and the one
+this repo wants people running. It sets `CARGO_UNSTABLE_BUILD_STD` (needed for
+the single-thread and threaded bundles) and the wasm-target `rustflags`
+before invoking `wasm-pack`; running `wasm-pack build` directly, without that
+env var, silently produces a different (larger, `build-std`-less) bundle than
+the one CI ships.
+
 ```bash
 # Install wasm-pack
 cargo install wasm-pack
 
 # Build WASM module
-cd rust/wasm-bindings
-wasm-pack build --target web --out-name ifc-lite --release
+bash scripts/build-wasm.sh
 
 # Output files
-# pkg/ifc-lite.js
-# pkg/ifc-lite_bg.wasm
-# pkg/ifc-lite.d.ts
+# packages/wasm/pkg/ifc-lite.js
+# packages/wasm/pkg/ifc-lite_bg.wasm
+# packages/wasm/pkg/ifc-lite.d.ts
 ```
 
 ### Build Targets
@@ -410,3 +524,16 @@ wasm-pack build --target web --out-name ifc-lite --release
 | `bundler` | CommonJS | Webpack/Rollup |
 | `nodejs` | Node.js | Server-side |
 | `no-modules` | Global | Script tag |
+
+
+### Streaming prepass source fingerprints
+
+`IfcAPI.buildPrePassStreamingWithSourceFingerprint` and
+`IfcAPI.buildPrePassStreamingShardedWithSourceFingerprint` accept the same arguments
+as `buildPrePassStreaming` and `buildPrePassStreamingSharded`, respectively. They
+run the same prepass and add `sourceContentKey` to the final `complete` event. The
+key is the existing full-byte FNV-1a source identity, including comments and any
+unparsed tail. Existing methods and their Rust signatures remain unchanged and do
+not compute this extra key. Feature-detect the new methods when supporting older
+WASM builds. The viewer uses these methods only when a matching parser has a fresh
+fingerprint cell; no additional file-sized buffer is created.

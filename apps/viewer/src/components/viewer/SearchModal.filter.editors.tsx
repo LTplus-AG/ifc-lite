@@ -25,52 +25,28 @@ import {
   type FilterRule,
   type SetOp,
   type StringOp,
-  type ValueOp,
   type NumericOp,
-  type ClassificationOp,
 } from '@/lib/search/filter-rules';
 import { ComboInput } from '@/components/ui/combo-input';
 import { propValueKey, type FilterValueSchema } from '@/lib/search/filter-schema';
+import { RULE_KIND_LABEL } from './filter-rule-labels';
+import { GlobalIdEditor, AttributeEditor } from './SearchModal.filter.editors.identity';
+import {
+  SET_OPS,
+  STRING_OPS,
+  VALUE_OPS,
+  NUMERIC_OPS,
+  CLASSIFICATION_OPS,
+  OpDropdown,
+} from './SearchModal.filter.editors.shared';
 
 const NO_OPTIONS: readonly string[] = [];
-
-// ── Op constants ──────────────────────────────────────────────────────
-
-const SET_OPS: SetOp[] = ['in', 'notIn'];
-const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith'];
-const VALUE_OPS: ValueOp[] = [
-  'eq', 'ne', 'contains', 'notContains', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
-];
-const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
-const CLASSIFICATION_OPS: ClassificationOp[] = [
-  'contains', 'eq', 'ne', 'notContains', 'isSet', 'isNotSet',
-];
-
-const OP_LABEL: Record<string, string> = {
-  in: 'is one of',  notIn: 'is not one of',
-  eq: '=', ne: '≠',
-  contains: 'contains', notContains: 'does not contain',
-  startsWith: 'starts with',
-  gt: '>', gte: '≥', lt: '<', lte: '≤',
-  isSet: 'is set', isNotSet: 'is not set',
-};
-
-export const RULE_KIND_LABEL: Record<FilterRule['kind'], string> = {
-  storey:          'Storey',
-  ifcType:         'IFC Type',
-  predefinedType:  'Predefined Type',
-  name:            'Name',
-  property:        'Property',
-  quantity:        'Quantity',
-  material:        'Material',
-  classification:  'Classification',
-  elevation:       'Elevation',
-};
 
 // ── Rule row dispatcher ───────────────────────────────────────────────
 
 export interface RuleRowProps {
   rule: FilterRule;
+  modelOptions: Array<{ label: string; value: string }>;
   ifcTypeOptions: string[];
   storeyOptions: ReadonlyArray<readonly [string, number | null]>;
   psetQto: { psets: ReadonlyArray<readonly [string, ReadonlyArray<string>]>; qtos: ReadonlyArray<readonly [string, ReadonlyArray<readonly [string, string]>]> } | null;
@@ -80,12 +56,21 @@ export interface RuleRowProps {
   onRemove: () => void;
 }
 
-export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
+export function RuleRow({ rule, modelOptions, ifcTypeOptions, storeyOptions, psetQto, valueSchema, onChange, onRemove }: RuleRowProps) {
   return (
     <div className="flex flex-wrap items-center gap-1.5 rounded border border-zinc-200 bg-white px-2 py-1.5 dark:border-zinc-800 dark:bg-zinc-950">
       <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
         {RULE_KIND_LABEL[rule.kind]}
       </span>
+
+      {rule.kind === 'model' && (
+        <SetRuleEditor
+          values={rule.values}
+          op={rule.op}
+          options={modelOptions}
+          onChange={(values, op) => onChange(Rule.model(values, op))}
+        />
+      )}
 
       {rule.kind === 'storey' && (
         <SetRuleEditor
@@ -123,6 +108,18 @@ export function RuleRow({ rule, ifcTypeOptions, storeyOptions, psetQto, valueSch
           value={rule.value}
           onChange={(op, value) => onChange(Rule.name(op, value))}
         />
+      )}
+
+      {rule.kind === 'globalId' && (
+        <GlobalIdEditor
+          values={rule.values}
+          op={rule.op}
+          onChange={(values, op) => onChange(Rule.globalId(values, op))}
+        />
+      )}
+
+      {rule.kind === 'attribute' && (
+        <AttributeEditor rule={rule} onChange={onChange} />
       )}
 
       {rule.kind === 'property' && (
@@ -347,7 +344,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
         value={rule.setName}
         options={psetNames}
         className="h-7 w-52 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, setName: next, propertyName: '' })}
+        onChange={(next) => onChange({ ...rule, setName: next, setNameKind: undefined, propertyName: '', propertyNameKind: undefined })}
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
@@ -355,7 +352,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
         value={rule.propertyName}
         options={propNames}
         className="h-7 w-44 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, propertyName: next })}
+        onChange={(next) => onChange({ ...rule, propertyName: next, propertyNameKind: undefined })}
       />
       <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       {!valueless && (
@@ -364,7 +361,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
           value={rule.value}
           options={valueOptions}
           className="h-7 w-44 text-xs font-mono"
-          onChange={(value) => onChange({ ...rule, value })}
+          onChange={(value) => onChange({ ...rule, value, valueKind: undefined })}
         />
       )}
     </>
@@ -392,7 +389,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
         value={rule.setName}
         options={qsetNames}
         className="h-7 w-56 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, setName: next, quantityName: '' })}
+        onChange={(next) => onChange({ ...rule, setName: next, setNameKind: undefined, quantityName: '', quantityNameKind: undefined })}
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
@@ -400,7 +397,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
         value={rule.quantityName}
         options={qtyNames}
         className="h-7 w-44 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, quantityName: next })}
+        onChange={(next) => onChange({ ...rule, quantityName: next, quantityNameKind: undefined })}
       />
       <OpDropdown ops={NUMERIC_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       <Input
@@ -499,36 +496,6 @@ function ElevationEditor({
       />
       <span className="text-[10px] text-muted-foreground">m (storey elevation)</span>
     </>
-  );
-}
-
-// ── Building-block widgets ───────────────────────────────────────────
-
-function OpDropdown<T extends string>({
-  ops,
-  value,
-  onChange,
-}: {
-  ops: ReadonlyArray<T>;
-  value: T;
-  onChange: (next: T) => void;
-}) {
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="sm" className="h-7 min-w-[3.5rem] gap-1 text-xs font-mono">
-          {OP_LABEL[value] ?? value}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent>
-        {ops.map((op) => (
-          <DropdownMenuItem key={op} onSelect={() => onChange(op)} className="font-mono">
-            {OP_LABEL[op] ?? op}
-            <span className="ml-2 text-[10px] text-muted-foreground">{op}</span>
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 }
 

@@ -1,0 +1,146 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Issue queue
+
+# NO `paths:` FILTER, AND NO `branches:` FILTER. DELIBERATELY, AND THE
+# REASONING IS LIFTED FROM .github/workflows/pr-review-signal.yml RATHER THAN
+# RE-DERIVED, BECAUSE IT IS THE SAME REASONING AND IT WAS ALREADY PAID FOR.
+#
+# That file states it in two parts, and both apply here harder than they do
+# there:
+#
+# 1. "This gate's question is 'did the other lanes run at all'. A path filter
+#    would make it skip on exactly the changes whose lanes are missing." This
+#    gate's question is "did the maintainer ask for this", which is a fact about
+#    the PR and not about which files it touches. There is no set of paths for
+#    which the question stops applying, so any filter would be a filter on the
+#    wrong axis.
+#
+# 2. "#3305's gate could not fire on the file it guarded because that file was
+#    in no path filter, so the gate existed, was correct, and was unreachable on
+#    its own input." That is the load-bearing half here. This job reads
+#    scripts/issue-queue.config.json, which names `labelAuthorities` -- WHO IS
+#    ALLOWED TO STEER. A contributor with write access can edit that file. With
+#    a path filter, the PR adding themselves to it is precisely the PR on which
+#    this job would not run. With no filter, no edit to the gate, the config, or
+#    this workflow can dodge the job that runs them ON THE PATH THAT MERGES IT.
+#    Asserted in scripts/check-issue-queue.test.mjs, not merely intended here.
+#
+# THE `branches:` HALF IS #3429's CORRECTION, applied in advance. test.yml
+# carries `branches: [main]`, and pr-review-signal.yml used to copy it on the
+# reasoning that a stacked PR would fail "for a reason that is not a defect".
+# #3429 reversed that: "legitimately absent" is exactly the fact a reviewer
+# needs surfaced, not a reason to suppress the gate that surfaces it. A PR
+# stacked on a feature branch is still unqueued work if nobody asked for it, and
+# a base branch is not a queue. So this fires on every base. It does not thereby
+# BLOCK a stacked PR: main's required-status-checks ruleset only applies when a
+# PR's base IS the ref it protects, so on a feature-based PR this is a visible
+# red row rather than an enforced gate, and it becomes enforced the moment the
+# PR is retargeted to main.
+#
+# THE TYPES LIST IS THE POINT, AND `edited` IS WHY. GitHub's DEFAULT
+# `pull_request` activity types are opened/synchronize/reopened and carry none
+# of the three that matter here. pr-review-signal.yml documents the mechanism:
+# "Retargeting a PR's base branch fires `edited` and nothing else", which is the
+# reproducible cause behind #3294 merging with 8 checks. The same event carries
+# a second thing for this gate: editing the PR BODY to add `Closes #N` also
+# fires only `edited`, and that edit changes `closingIssuesReferences` and
+# therefore this gate's answer. Without `edited` a contributor would fix the
+# exact thing the failure asked for and watch a stale red sit there.
+#
+# `labeled` and `unlabeled` are the other half, and they have no analogue in
+# pr-review-signal.yml because nothing there turns on a label. They cover
+# labelling THIS PR `unqueued`, one of the two ways out of a failure, which
+# pushes no commit. `unlabeled` matters in the other direction: withdrawing
+# `unqueued` must be able to make a green PR red again, or the escape is one-way.
+#
+# STATED HOLE, because an earlier draft of this comment claimed the opposite:
+# `pull_request: [labeled]` fires ONLY for labels applied to the PULL REQUEST.
+# The other way out -- a maintainer labelling the linked ISSUE `ready` -- fires
+# the `issues` event, which this workflow does not subscribe to, so THAT remedy
+# does not re-run this gate. The row stays stale until the PR is pushed to,
+# edited, relabelled or manually re-run, and a fork contributor cannot re-run it.
+# The gate's printed remedy says so rather than implying a re-run that will not
+# happen.
+#
+# The deeper fix, not taken here: subscribe to `issues: [labeled, unlabeled]`,
+# resolve issue -> linked PRs and re-dispatch. That is a second query, a second
+# permission, and a fan-out on an event firing for every label on every issue.
+# NOW LIVE, and not fixed here. The gate went enforcing on 2026-09-02, so a
+# stale row is no longer harmless: labelling the linked ISSUE `ready` does not
+# re-fire this workflow (it subscribes to pull_request events only), and a fork
+# contributor cannot re-run it. The red persists until someone pushes to, edits
+# or relabels the PR. Subscribing to `issues: [labeled]` is the fix and is its
+# own change.
+#
+# `ready_for_review` covers the draft->ready transition, same as
+# pr-review-signal.yml.
+on:
+  pull_request:
+    types:
+      [opened, synchronize, reopened, edited, labeled, unlabeled, ready_for_review]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  # `pull-requests: read` is BELIEVED to cover the whole GraphQL query -- the PR,
+  # its labels, its LabeledEvent timeline, and `closingIssuesReferences` with each
+  # linked issue's labels and timeline -- so `issues: read` is not requested, on
+  # the principle that a permission a job does not need is a permission a
+  # compromised action gets.
+  #
+  # NOT MEASURED under the workflow token. It was exercised against a maintainer
+  # PAT, which carries `repo` and would succeed either way, so that run proves
+  # nothing about this scope. If the first CI run reports GRAPHQL_ERRORS
+  # mentioning permissions, add `issues: read` -- the gate fails closed, so the
+  # failure mode is a visible refusal rather than a silent empty issue list.
+  pull-requests: read
+
+env:
+  ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node24
+
+jobs:
+  issue-queue:
+    name: Issue queue
+    # Free runner: one GraphQL round trip and a pure evaluation, not
+    # compute-bound. No poll, so no budget to measure -- unlike
+    # pr-review-signal.yml this gate asks a question that is already answered
+    # when the PR event fires, rather than waiting for other jobs to appear.
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # THE GATE'S OWN UNIT TESTS, RUN BEFORE THE GATE, and in the same job for
+      # the same reason pr-review-signal.yml gives: "A gate whose fail-closed
+      # refusals, severity knobs and policy scopings are asserted only on a
+      # developer's machine is a gate nobody is checking, which is the shape
+      # this whole workflow exists to reject."
+      #
+      # It matters more here than there. The Node tests job in test.yml is
+      # path-filtered; this job is not. Relying on that job to run this harness
+      # would put the gate's own tests back behind a filter the gate deliberately
+      # does not have, which is defect #3305 reintroduced one level up.
+      #
+      # No `pnpm install`: the harness and the gate import node builtins only,
+      # and the gate shells out to `gh`, preinstalled on GitHub runners. A gate
+      # that decides whether work was requested should not be able to fail
+      # because a registry was slow.
+      - name: Unit-test the gate itself
+        run: node --test scripts/check-issue-queue.test.mjs
+
+      - name: Check this PR closes a queued issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          node scripts/check-issue-queue.mjs \
+            --pr "${{ github.event.pull_request.number }}"

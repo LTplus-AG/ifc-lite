@@ -129,7 +129,11 @@ export function applyBuildDefects(creator, storeyId, footprint, plan) {
       const names = [];
       for (let k = 0; k < defect.count; k++) {
         const name = `GymDegenerate-${k}`;
-        creator.addIfcColumn(storeyId, {
+        // Height: 0 is deliberately spec-invalid (IfcExtrudedAreaSolid.Depth
+        // is an IfcPositiveLengthMeasure) -- that is the defect under test,
+        // so this must go through the unvalidated builder rather than the
+        // guarded public addIfcColumn, which now rejects it by design.
+        creator.addIfcColumnUnvalidated(storeyId, {
           Name: name,
           Position: [round3(baseX + 4 * k), -16, 0],
           Width: 0.3,

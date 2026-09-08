@@ -188,6 +188,54 @@ describe('canonicalContentHash', () => {
     two.set('b.txt', { path: 'b.txt', bytes: enc.encode('y') });
     expect(await canonicalContentHash(one)).not.toBe(await canonicalContentHash(two));
   });
+
+  // The test above proves the *old* 0x1f/0x1e separator scheme is gone,
+  // but it does not prove the replacement length prefixes carry a
+  // length: zeroing every prefix byte keeps those two inputs distinct
+  // (they have different segment counts) and left the whole suite green.
+  //
+  // This pair is the case that needs the actual length. Both maps hold
+  // one file and the same trailing bytes; they differ only in *where*
+  // the path ends and the content begins:
+  //
+  //   one: path "a"          content PAD + "b"
+  //   two: path "a" + PAD    content "b"
+  //
+  // With a real prefix the two serialisations start `len=1` vs `len=9`
+  // and diverge immediately. With a constant prefix they are the same
+  // byte string, so the hash collides and two different bundles would
+  // share a signature.
+  it('is injective when the path/content boundary shifts (length prefix carries the length)', async () => {
+    const enc = new TextEncoder();
+    // Eight bytes matching what a *constant* prefix would emit. The
+    // serialisation is `prefix(len(path)) || path || prefix(len(bytes)) || bytes`,
+    // so these two maps produce the identical byte string the moment the
+    // prefix stops depending on the length:
+    //
+    //   one: path "a"          bytes NUL*8 + "b"   ->  C a C C b
+    //   two: path "a" + NUL*8  bytes "b"           ->  C a C C b
+    //
+    // With a real prefix the first length is 1 vs 9 and they diverge at
+    // byte 7. Without it two different bundles share a content hash, and
+    // therefore a signature. `changes when path changes` above does not
+    // reach this: those inputs differ in segment *count*, so even a
+    // constant prefix keeps them apart.
+    const NUL8 = String.fromCharCode(0).repeat(8);
+
+    const one = new Map<string, { path: string; bytes: Uint8Array }>();
+    one.set('a', { path: 'a', bytes: enc.encode(`${NUL8}b`) });
+
+    const two = new Map<string, { path: string; bytes: Uint8Array }>();
+    two.set(`a${NUL8}`, { path: `a${NUL8}`, bytes: enc.encode('b') });
+
+    expect(await canonicalContentHash(one)).not.toBe(await canonicalContentHash(two));
+  });
+
+  it('changes when a file is added, even with identical existing entries', async () => {
+    const a = makeBundle({ 'manifest.json': '{}' });
+    const b = makeBundle({ 'manifest.json': '{}', 'empty.txt': '' });
+    expect(await canonicalContentHash(a.files)).not.toBe(await canonicalContentHash(b.files));
+  });
 });
 
 describe('sign + verify — happy path', () => {

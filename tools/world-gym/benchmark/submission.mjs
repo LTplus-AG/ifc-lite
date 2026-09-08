@@ -8,7 +8,7 @@
  * A submission is one JSONL file:
  *
  *   line 1 (header):
- *     {"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.0.0",
+ *     {"type":"header","benchmark":"ifc-lite-world-gym","specVersion":"1.1.0",
  *      "split":"dev","name":"my-method","tasks":["defect-detection", ...]}
  *   every following line (one per seed in the split, any order):
  *     {"seed":8,

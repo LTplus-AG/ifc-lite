@@ -51,7 +51,7 @@ const MAX_THICK = 2.5;
 const BAND_MARGIN = 0.2;
 
 /** Convex hull (Andrew's monotone chain), CCW, of a plan point cloud. */
-function convexHull(pts: Pt[]): Pt[] {
+export function convexHull(pts: Pt[]): Pt[] {
   const uniq = [...new Map(pts.map((p) => [`${p[0].toFixed(5)},${p[1].toFixed(5)}`, p])).values()]
     .sort((a, b) => a[0] - b[0] || a[1] - b[1]);
   if (uniq.length < 3) return uniq;

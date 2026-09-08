@@ -5,16 +5,17 @@
 //! IfcLinearPlacement resolution (#859): sample the basis curve at the authored distance.
 
 use super::super::GeometryRouter;
+use super::walk::PlacementWalk;
 use crate::profiles::ProfileProcessor;
 use crate::{Point3, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Matrix4;
 
 impl GeometryRouter {
-    /// Resolve `IfcLinearPlacement` into a 4×4 transform by sampling the
-    /// referenced basis curve at the authored `DistanceAlong`. Falls back
-    /// gracefully when the curve cannot be sampled or the attribute layout
-    /// is malformed; never panics.
+    /// Resolve `IfcLinearPlacement` into a 4×4 transform: the authored
+    /// `CartesianPosition` when the exporter baked one, otherwise by
+    /// sampling the referenced basis curve at the authored `DistanceAlong`.
+    /// Falls back gracefully when neither resolves; never panics.
     ///
     /// Output transform: the origin is the curve sample plus
     /// `lateral*right + vertical*up + longitudinal*tangent`. Basis is
@@ -26,32 +27,35 @@ impl GeometryRouter {
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: usize,
-    ) -> Result<Matrix4<f64>> {
-        // PlacementRelTo (attr 0) composes the same way IfcLocalPlacement does.
-        let parent_transform = if let Some(parent_attr) = placement.get(0) {
-            if !parent_attr.is_null() {
-                if let Some(parent) = decoder.resolve_ref(parent_attr)? {
-                    self.get_placement_transform_with_depth(&parent, decoder, depth + 1)?
-                } else {
-                    Matrix4::identity()
+    ) -> Result<PlacementWalk> {
+        // PlacementRelTo (attr 0) composes the same way IfcLocalPlacement does,
+        // truncation included: a parent walk cut short by the depth guard makes
+        // this result depth-dependent too, so it must not be memoised. #3012
+        let parent = match placement.get(0) {
+            Some(parent_attr) if !parent_attr.is_null() => {
+                match decoder.resolve_ref(parent_attr)? {
+                    Some(p) => self.get_placement_transform_with_depth(&p, decoder, depth + 1)?,
+                    None => PlacementWalk::complete(Matrix4::identity()),
                 }
-            } else {
-                Matrix4::identity()
             }
-        } else {
-            Matrix4::identity()
+            _ => PlacementWalk::complete(Matrix4::identity()),
         };
 
-        // RelativePlacement (attr 1) → IfcAxis2PlacementLinear with the curve
-        // sampling info. If we can't reach a valid sample, prefer the
-        // pre-baked CartesianPosition (attr 2) over identity so the element
-        // at least lands somewhere sensible.
-        let local = match self.try_resolve_axis2_placement_linear(placement, decoder) {
+        // Prefer the authored CartesianPosition (attr 2) when the exporter
+        // supplied one: it is the exact pre-computed placement. Our sampler
+        // reads an `IfcGradientCurve` through its BASE curve only — no
+        // vertical profile — so a computed frame can sit metres below the
+        // authored station (measured on a public IFC4x3 rail model: signal
+        // origins 2.5 m where the authored positions say 4.5 m and 7.4 m).
+        // Sample the curve only when no authored position exists.
+        let local = match self.try_resolve_cartesian_position(placement, decoder) {
             Some(m) => m,
-            None => self.try_resolve_cartesian_fallback(placement, decoder),
+            None => self
+                .try_resolve_axis2_placement_linear(placement, decoder)
+                .unwrap_or_else(Matrix4::identity),
         };
 
-        Ok(parent_transform * local)
+        Ok(PlacementWalk { transform: parent.transform * local, truncated: parent.truncated })
     }
 
     /// Decode `IfcLinearPlacement.RelativePlacement` → sample the basis
@@ -147,28 +151,23 @@ impl GeometryRouter {
     }
 
     /// `IfcLinearPlacement.CartesianPosition` (attr 2) is an optional
-    /// pre-baked `IfcAxis2Placement3D` that authors are encouraged to
-    /// supply for tools that cannot resolve the linear sampling. Use it
-    /// when our sampler can't reach a result; identity otherwise.
-    fn try_resolve_cartesian_fallback(
+    /// pre-baked `IfcAxis2Placement3D` carrying the exporter's own answer
+    /// to the linear sampling. `None` when absent, null, or unparseable —
+    /// the caller then samples the curve itself.
+    fn try_resolve_cartesian_position(
         &self,
         placement: &DecodedEntity,
         decoder: &mut EntityDecoder,
-    ) -> Matrix4<f64> {
-        let Some(cart_attr) = placement.get(2) else {
-            return Matrix4::identity();
-        };
+    ) -> Option<Matrix4<f64>> {
+        let cart_attr = placement.get(2)?;
         if cart_attr.is_null() {
-            return Matrix4::identity();
+            return None;
         }
-        let Ok(Some(cart)) = decoder.resolve_ref(cart_attr) else {
-            return Matrix4::identity();
-        };
+        let cart = decoder.resolve_ref(cart_attr).ok().flatten()?;
         if cart.ifc_type != IfcType::IfcAxis2Placement3D {
-            return Matrix4::identity();
+            return None;
         }
-        self.parse_axis2_placement_3d(&cart, decoder)
-            .unwrap_or_else(|_| Matrix4::identity())
+        self.parse_axis2_placement_3d(&cart, decoder).ok()
     }
 }
 
@@ -226,6 +225,75 @@ fn sample_polyline_at_distance(
         .try_normalize(1e-12)
         .unwrap_or_else(|| Vector3::new(1.0, 0.0, 0.0));
     Some((last, tangent))
+}
+
+#[cfg(test)]
+mod cartesian_position_tests {
+    use super::*;
+    use ifc_lite_core::EntityDecoder;
+
+    /// An `IfcLinearPlacement` whose curve IS sampleable (a straight
+    /// polyline; sampling would put the origin at (5, 0, 0)) but that also
+    /// carries an authored `CartesianPosition` at (10, 20, 30). The authored
+    /// position wins: the sampler still reads gradient curves through their
+    /// base curve only (no vertical profile), so the exporter's pre-baked
+    /// answer is the more trustworthy of the two whenever it exists.
+    const AUTHORED_IFC: &str = "ISO-10303-21;\nHEADER;\n\
+FILE_DESCRIPTION((''),'2;1');\n\
+FILE_NAME('t.ifc','2024-01-01T00:00:00',(''),(''),'','','');\n\
+FILE_SCHEMA(('IFC4X3'));\nENDSEC;\nDATA;\n\
+#1=IFCCARTESIANPOINT((0.,0.,0.));\n\
+#2=IFCCARTESIANPOINT((100.,0.,0.));\n\
+#3=IFCPOLYLINE((#1,#2));\n\
+#4=IFCPOINTBYDISTANCEEXPRESSION(IFCLENGTHMEASURE(5.),$,$,$,#3);\n\
+#5=IFCAXIS2PLACEMENTLINEAR(#4,$,$);\n\
+#6=IFCCARTESIANPOINT((10.,20.,30.));\n\
+#7=IFCAXIS2PLACEMENT3D(#6,$,$);\n\
+#8=IFCLINEARPLACEMENT($,#5,#7);\n\
+ENDSEC;\nEND-ISO-10303-21;\n";
+
+    #[test]
+    fn authored_cartesian_position_wins_over_curve_sampling() {
+        let mut decoder = EntityDecoder::new(AUTHORED_IFC);
+        let placement = decoder.decode_by_id(8).expect("decode #8");
+        let router = GeometryRouter::new();
+        let m = router
+            .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
+            .expect("resolve linear placement")
+            .transform;
+        assert!(
+            (m[(0, 3)] - 10.0).abs() < 1e-9
+                && (m[(1, 3)] - 20.0).abs() < 1e-9
+                && (m[(2, 3)] - 30.0).abs() < 1e-9,
+            "authored CartesianPosition (10, 20, 30) must win; got \
+             ({}, {}, {}) — (5, 0, 0) means the sampler took priority",
+            m[(0, 3)],
+            m[(1, 3)],
+            m[(2, 3)],
+        );
+    }
+
+    /// With no authored position (`$`), the sampler still resolves the
+    /// station: 5 m along the +X polyline.
+    #[test]
+    fn sampler_still_used_when_no_authored_position() {
+        let content = AUTHORED_IFC.replace("#8=IFCLINEARPLACEMENT($,#5,#7);", "#8=IFCLINEARPLACEMENT($,#5,$);");
+        let mut decoder = EntityDecoder::new(&content);
+        let placement = decoder.decode_by_id(8).expect("decode #8");
+        let router = GeometryRouter::new();
+        let m = router
+            .resolve_linear_placement_with_depth(&placement, &mut decoder, 0)
+            .expect("resolve linear placement")
+            .transform;
+        assert!(
+            (m[(0, 3)] - 5.0).abs() < 1e-9 && m[(1, 3)].abs() < 1e-9 && m[(2, 3)].abs() < 1e-9,
+            "sampling a straight +X polyline at 5 m must give (5, 0, 0); got \
+             ({}, {}, {})",
+            m[(0, 3)],
+            m[(1, 3)],
+            m[(2, 3)],
+        );
+    }
 }
 
 #[cfg(test)]

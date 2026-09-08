@@ -45,6 +45,7 @@ export {
 } from './sdk-version.js';
 export {
   revalidateAgainstSdk,
+  needsSdkRepair,
   type RevalidationItem,
   type RevalidationSummary,
   type RevalidateOptions,

@@ -20,21 +20,45 @@ use super::extrusion::ExtrudedAreaSolidProcessor;
 use super::helpers::parse_axis2_placement_3d;
 use super::swept::{RevolvedAreaSolidProcessor, SweptDiskSolidProcessor};
 use super::tessellated::TriangulatedFaceSetProcessor;
-use crate::router::GeometryProcessor;
 
 mod cut_heuristics;
+mod failures;
+mod operand;
 mod halfspace_cap;
 mod polygonal_prism;
+mod single_cutter_gate;
+use single_cutter_gate::SingleCutterSubtract;
+mod polygonal_union;
+mod polygonal_removal;
 use cut_heuristics::{
     cutter_below_skip_ratio, plane_is_coincident_with_host_face, quality_skips_small_cuts,
 };
 use halfspace_cap::cap_half_space_clip;
+#[cfg(test)]
+use halfspace_cap::force_cdt_fail_on_ring_for_test;
 
 /// Maximum recursion depth for nested boolean operations.
 /// Prevents stack overflow from deeply nested IfcBooleanResult chains.
 /// In WASM, the stack is limited (~1-8MB), and each recursion level uses
 /// significant stack space for CSG operations.
 const MAX_BOOLEAN_DEPTH: u32 = 10;
+
+/// Longest chain of nested boolean/CSG operand nodes on one path. Bounds the
+/// stack where `MAX_BOOLEAN_DEPTH` cannot: see `process_with_depth`.
+///
+/// Both boolean AND CSG nodes go into the set, so `len()` is an honest count of
+/// recursion frames on the current path and this number means what it says. An
+/// earlier revision counted booleans only and leaned on `IfcCsgSolid ->
+/// IfcCsgSolid` being rejected elsewhere to keep the ratio bounded; see
+/// `CsgSolidProcessor::process_with_boolean_cycle_guard` for why that was the
+/// wrong trade.
+const MAX_OPERAND_PATH_NODES: usize = 64;
+
+/// Entity ids on the CURRENT operand path — inserted on the way in, removed on
+/// the way out, so `len()` is live recursion depth. The two accumulate-only
+/// sets in this file (`collect_polygonal_chain`'s, and the spine walk's
+/// `spine_seen`) are NOT frame counts and must not be compared to the bound.
+pub(crate) type OperandPath = rustc_hash::FxHashSet<u32>;
 
 /// BooleanResult processor
 /// Handles IfcBooleanResult and IfcBooleanClippingResult - CSG operations
@@ -85,23 +109,6 @@ impl BooleanClippingProcessor {
         }
     }
 
-    /// Drain the boolean-failure log accumulated since this processor was
-    /// created (or the last `take_failures` call).
-    pub fn take_failures(&self) -> Vec<BoolFailure> {
-        std::mem::take(&mut *self.failures.borrow_mut())
-    }
-
-    fn record_failure(&self, op: BoolOp, reason: BoolFailureReason) {
-        self.failures.borrow_mut().push(BoolFailure::new(op, reason));
-    }
-
-    /// Move every failure from `clipper` into this processor's log. Used
-    /// after a transient `ClippingProcessor` instance is about to drop.
-    fn drain_clipper_failures(&self, clipper: &ClippingProcessor) {
-        let mut log = self.failures.borrow_mut();
-        log.extend(clipper.take_failures());
-    }
-
     /// If a DIFFERENCE clip emptied a non-empty host **and** the cutter's
     /// plane is coincident with one of the host's bounding-box faces,
     /// revert to the host and record the loss. The coincidence test is
@@ -129,48 +136,6 @@ impl BooleanClippingProcessor {
         }
         self.record_failure(BoolOp::Difference, BoolFailureReason::DifferenceEmptiedHost);
         host
-    }
-
-    /// Process a solid operand with depth tracking
-    fn process_operand_with_depth(
-        &self,
-        operand: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: u32,
-        quality: TessellationQuality,
-    ) -> Result<Mesh> {
-        match operand.ifc_type {
-            IfcType::IfcExtrudedAreaSolid => {
-                let processor = ExtrudedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcFacetedBrep => {
-                let processor = FacetedBrepProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcTriangulatedFaceSet => {
-                let processor = TriangulatedFaceSetProcessor::new();
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcSweptDiskSolid => {
-                let processor = SweptDiskSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcRevolvedAreaSolid => {
-                let processor = RevolvedAreaSolidProcessor::new(self.schema.clone());
-                processor.process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcBlock => {
-                BlockProcessor::new().process(operand, decoder, &self.schema, quality)
-            }
-            IfcType::IfcCsgSolid => CsgSolidProcessor::with_skip_small_cuts(self.skip_small_cuts)
-                .process(operand, decoder, &self.schema, quality),
-            IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                // Recursive case with depth tracking
-                self.process_with_depth(operand, decoder, &self.schema, depth + 1, quality)
-            }
-            _ => Ok(Mesh::new()),
-        }
     }
 
     /// Parse IfcHalfSpaceSolid to get clipping plane
@@ -221,7 +186,10 @@ impl BooleanClippingProcessor {
 
         // Parse IfcAxis2Placement3D to get transformation matrix
         // The Position defines the plane's coordinate system:
-        // - Location = plane point (in world coordinates)
+        // - Location = plane point (in the representation item's local,
+        //   pre-placement, pre-scale coordinates — this function does not
+        //   compose the element's ObjectPlacement, which is folded in later
+        //   by apply_placement at the element level)
         // - Z-axis (Axis) = plane normal (in local coordinates, needs transformation)
         let position_transform = parse_axis2_placement_3d(&position, decoder)?;
 
@@ -273,7 +241,16 @@ impl BooleanClippingProcessor {
         // OPEN (the BSP kernel's polygon cap was deleted with the BSP port in
         // #1024). Re-close it: a watertight host clipped by a plane leaves an
         // open boundary lying on that plane, forming the section to cap.
-        cap_half_space_clip(&mut clipped, plane_point, clip_normal);
+        //
+        // `cap_half_space_clip` reports (measured, not assumed) whether it
+        // actually closed the cut. Nothing downstream of this call consumes
+        // that yet — the mesh is returned either way, same as before this
+        // function reported anything, since an uncapped-but-otherwise-valid
+        // mesh is still the least-bad output (see the fn's own doc). A
+        // per-solid "was this fully watertight" signal is exactly what a
+        // future geometric zone split needs to report per-piece integrity —
+        // that consumer doesn't exist yet, so the bool is bound, not routed.
+        let _capped = cap_half_space_clip(&mut clipped, plane_point, clip_normal);
         Ok(clipped)
     }
 
@@ -354,29 +331,41 @@ impl BooleanClippingProcessor {
     /// cutter that needs the per-cutter unbounded-plane fallback, or a CSG
     /// union that silently under-removes).
     ///
-    /// Relies on a *watertight* CSG union of the cutter prisms (built by
-    /// [`Self::build_cutter_union`]). No longer manifold-gated — the chain walk
-    /// and cutter build are kernel-agnostic and must compile into the pure-Rust
-    /// wasm — but it still DEFERS (returns `Ok(None)`) when no available kernel
-    /// can produce that watertight union, so a non-manifold mesh-merge is never
-    /// fed into the subtract.
+    /// Relies on [`Self::build_cutter_union`] for the cutter-prism union.
+    /// **Measured contract (issue #3980):** `build_cutter_union` does NOT
+    /// verify that its union is watertight or even manifold — see its doc
+    /// comment for the measured numbers on the real #960 fixture. It only
+    /// requires a nonempty result and defers (`Ok(None)`) when the primary is
+    /// empty and the fallback is empty or errors. What actually
+    /// keeps a non-closed union from producing a wrong subtraction is
+    /// downstream, in this function: the per-cutter trial-subtract probes,
+    /// the intersected-bounds check on the batched subtract, the `#3919`
+    /// accept-gate on the actual cut, and the `#3925` removal-bound check on
+    /// the repair candidate. Those checks were sufficient on all five walls
+    /// in the audited #960 fixture, but that is fixture evidence, not a
+    /// closure proof.
     fn try_union_polygonal_chain(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Option<Mesh>> {
         let (base_entity, cutters) = self.collect_polygonal_chain(entity.clone(), decoder)?;
         if cutters.len() < 2 {
             return Ok(None);
         }
 
+        // Provisional from here: every deferral below goes through
+        // `defer_after`, which discards what this attempt recorded.
+        let mark = self.failure_mark();
         // Process the base solid (the innermost first-operand). The chain is
         // walked iteratively above, so a 12-cutter chain reaches here at the
         // SAME `depth` as a 2-cutter one — the recursion-depth limit can't drop
         // it.
-        let base_mesh = self.process_operand_with_depth(&base_entity, decoder, depth, quality)?;
+        let base_mesh =
+            self.process_operand_with_depth(&base_entity, decoder, depth, quality, visited)?;
         if base_mesh.is_empty() {
             return Ok(Some(base_mesh));
         }
@@ -398,7 +387,7 @@ impl BooleanClippingProcessor {
                 // A cutter we can't build a prism for would be silently dropped
                 // here; defer to the sequential path, which records the loss as
                 // `PolygonalBoundedHalfSpaceFallback`.
-                _ => return Ok(None),
+                _ => return self.defer_after(mark),
             }
         }
 
@@ -417,19 +406,21 @@ impl BooleanClippingProcessor {
         //     coincident/duplicate cutters) and must not be trusted.
         let mut tight_min = Point3::new(f32::NEG_INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY);
         let mut tight_max = Point3::new(f32::INFINITY, f32::INFINITY, f32::INFINITY);
+        let mut removal_bound = polygonal_removal::RemovalBound::new(&base_mesh);
         for prism in &prisms {
-            let trial = match clipper.subtract_mesh(&base_mesh, prism) {
-                Ok(m) if !m.is_empty() => m,
-                // Empty or errored single cut — the sequential path's per-cutter
-                // fallback handles it better than a batched union would.
-                _ => {
-                    let _ = clipper.take_failures();
-                    return Ok(None);
-                }
-            };
-            if ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &trial) {
+            // `subtract_checked` folds in the #3919 accept-gate check: a
+            // rejection hands back the base UN-CUT, which would wrongly widen
+            // tight_min/tight_max, so it is treated like empty/errored/degenerate.
+            let Some(trial) = Self::subtract_checked(&clipper, &base_mesh, prism) else {
                 let _ = clipper.take_failures();
-                return Ok(None);
+                return self.defer_after(mark);
+            };
+            if !clipper.take_failures().is_empty() {
+                // A diagnostic-only tear is not a default accept gate. It
+                // cannot certify a moved cutter's removal bound, either.
+                removal_bound.invalidate();
+            } else {
+                removal_bound.observe(&trial);
             }
             let (tmn, tmx) = trial.bounds();
             tight_min = Point3::new(
@@ -445,16 +436,18 @@ impl BooleanClippingProcessor {
         }
         let _ = clipper.take_failures();
 
-        // Every cutter is a clean partial cut: union them into ONE watertight
-        // solid (a true CSG union, so abutting roof segments share no internal
-        // seam) and subtract once. This eliminates both the zero-thickness seam
-        // fins that sequential subtraction leaves behind AND the deep-chain
-        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when no
-        // available kernel can union the prisms into a watertight solid; we
-        // defer (like every other guard here) rather than feed a broken,
-        // non-manifold union into the subtract — which the CSG kernel can't
-        // classify, silently returning the host UNCHANGED (issue #960 wall
-        // #2152: the gable-end wall rendered at full 7000 mm extrusion height).
+        // Every cutter is a clean partial cut: union them into ONE solid (a
+        // true CSG union, so abutting roof segments share no internal seam)
+        // and subtract once. This is what eliminates the zero-thickness seam
+        // fins that sequential subtraction leaves behind and the deep-chain
+        // MAX_BOOLEAN_DEPTH drops. `build_cutter_union` returns `None` when
+        // the primary result is empty and the fallback is empty or errors —
+        // it does not check the union for closure (issue #3980; see its doc
+        // comment for the measured contract) — so we still defer whenever no
+        // kernel produces even a nonempty result, which is the case that used
+        // to feed a broken union into the subtract and have the CSG kernel
+        // silently return the host UNCHANGED (issue #960 wall #2152: the gable-end
+        // wall rendered at full 7000 mm extrusion height).
         let combined = match self.build_cutter_union(&clipper, &prisms) {
             Some(m) if !m.is_empty() => m,
             _ => {
@@ -463,23 +456,41 @@ impl BooleanClippingProcessor {
                 // attempt is unique to this path — preserve its kernel
                 // failures and record the deferral, since the sequential
                 // fallback can leave seam fins the batched subtract avoids.
-                self.drain_clipper_failures(&clipper);
+                self.rewind_to(mark);
+                self.absorb_failures(clipper.take_failures());
                 self.record_failure(BoolOp::Union, BoolFailureReason::CutterUnionUnavailable);
                 return Ok(None);
             }
         };
-        let result = clipper.subtract_mesh(&base_mesh, &combined);
-        self.drain_clipper_failures(&clipper);
-        let clipped = match result {
-            Ok(m)
-                if !m.is_empty()
-                    && !ClippingProcessor::difference_result_looks_degenerate(&base_mesh, &m) =>
-            {
-                m
+        // `subtract_checked` folds in the #3919 accept-gate check: a rejected
+        // gate hands back the base UN-CUT — the same shape as "nothing to
+        // cut", which `difference_result_looks_degenerate` can't catch — so
+        // it is treated like a kernel error and defers to the sequential
+        // per-cutter path (whose own accept-gate + #635 fallback handle it).
+        // Uncaught, the full-height base used to be accepted here and the
+        // issue-#960 seam sliver silently regrew.
+        let mut checked = Self::subtract_checked(&clipper, &base_mesh, &combined);
+        let mut cut_failures = clipper.take_failures();
+        if (checked.is_none() || !cut_failures.is_empty()) && removal_bound.is_valid() {
+            // #3925: a rejected or diagnostically torn cut permits one moved
+            // candidate. Publish it only if its actual subtraction is clean;
+            // otherwise retain the original result and its failure records.
+            let refs: Vec<&Mesh> = prisms.iter().collect();
+            let repaired = ClippingProcessor::consolidate_coplanar(
+                crate::kernel::mesh_bridge::union_many(&refs));
+            if !repaired.is_empty() {
+                let candidate = Self::subtract_checked(&clipper, &base_mesh, &repaired);
+                let candidate_failures = clipper.take_failures();
+                if candidate.as_ref().is_some_and(|m| removal_bound.allows(m))
+                    && candidate_failures.is_empty() {
+                    checked = candidate;
+                    cut_failures = candidate_failures;
+                }
             }
-            // Kernel error or a degenerate union result — fall back to the
-            // sequential per-cutter path.
-            _ => return Ok(None),
+        }
+        self.absorb_failures(cut_failures);
+        let Some(clipped) = checked else {
+            return self.defer_after(mark);
         };
 
         // Reject a silently under-removing union: the result must fit inside the
@@ -499,65 +510,86 @@ impl BooleanClippingProcessor {
             || rmn.y < tight_min.y - tol
             || rmn.z < tight_min.z - tol;
         if under_removed {
-            return Ok(None);
+            return self.defer_after(mark);
         }
         Ok(Some(clipped))
     }
 
-    /// Union the chained-clip cutter prisms into ONE watertight solid.
-    ///
-    /// The segmented-roof cutters are prisms that ABUT along shared, exactly-
-    /// coplanar faces (adjacent roof facets meeting at a hip/ridge/valley).
-    /// Unioning them into a single watertight cutter is what lets the chain be
-    /// subtracted ONCE (no seam fins, no deep-chain depth drops — issue #960).
-    ///
-    /// Returns `None` when no available kernel can produce a watertight union;
-    /// the caller then defers to the sequential per-cutter path. We never feed a
-    /// non-manifold mesh-merge into the subtract: the CSG kernel cannot classify
-    /// a non-watertight cutter and silently returns the host UNCHANGED, leaving
-    /// the gable-end wall at full extrusion height.
-    fn build_cutter_union(&self, clipper: &ClippingProcessor, prisms: &[Mesh]) -> Option<Mesh> {
-        if prisms.is_empty() {
-            return None;
-        }
-        if prisms.len() == 1 {
-            return Some(prisms[0].clone());
-        }
-
-        // Primary path: the pure-Rust kernel's N-ary union — ONE conforming
-        // arrangement of all cutter prisms over a shared interner, so coplanar
-        // seams shared by 3+ roof segments (and exactly-duplicated cutter prisms)
-        // dissolve without the tearing that left-deep pairwise accumulation
-        // produces. This makes the segmented-roof clip (#960) watertight on EVERY
-        // build. Exact + platform-deterministic.
-        {
-            let refs: Vec<&Mesh> = prisms.iter().collect();
-            let u = ClippingProcessor::consolidate_coplanar(
-                crate::kernel::mesh_bridge::union_many(&refs),
-            );
-            if !u.is_empty() {
-                return Some(u);
-            }
-        }
-
-        // Fallback: the kernel's sequential multi-mesh union. Returns
-        // `None` on empty/error so the caller defers to the per-cutter path.
-        match clipper.union_meshes(prisms) {
-            Ok(m) if !m.is_empty() => Some(m),
-            _ => None,
-        }
+    /// The node's operator enum as authored (the parser may strip the dots).
+    fn boolean_operator(entity: &DecodedEntity) -> &str {
+        entity
+            .get(0)
+            .and_then(|v| match v {
+                ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
+                _ => None,
+            })
+            .unwrap_or(".DIFFERENCE.")
     }
 
-    /// Internal processing with depth tracking to prevent stack overflow
-    fn process_with_depth(
+    /// Internal processing with depth tracking to prevent stack overflow.
+    ///
+    /// The LEFT spine — FirstOperand chains — is walked iteratively, so chain
+    /// *length* never counts against `MAX_BOOLEAN_DEPTH`; the cap only guards
+    /// genuine operand nesting (a boolean reached through a SecondOperand).
+    /// Revit exports building-element-part chains up to 42 DIFFERENCE nodes
+    /// deep; the recursive walk hit the cap at 10, errored, and the router
+    /// dropped the whole element's geometry.
+    pub(crate) fn process_with_depth(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut OperandPath,
+    ) -> Result<Mesh> {
+        // PATH-scoped, not global: a boolean tree is a DAG and geometry
+        // ACCUMULATES, so one operand legitimately referenced down two
+        // different branches must be processed both times. Removing the id on
+        // the way out breaks cycles without dropping real geometry — the same
+        // choice `router/processing.rs` makes, and the opposite of the colour
+        // resolvers, where the result is a pure function of the id so a global
+        // set is both safe and stronger (#2864).
+        // The set is path-scoped, so its LENGTH is the current operand-nesting
+        // depth -- a chain bound for free, and one that covers the CSG hop.
+        // It is needed because that hop passes `depth` UNCHANGED (a CsgSolid
+        // is not itself a boolean nesting level), so a long ACYCLIC
+        // `Boolean -> Csg -> Boolean` chain never advances MAX_BOOLEAN_DEPTH,
+        // every `visited.insert` succeeds, and the recursion aborts on stack
+        // depth alone. Measured: 4,000 links, SIGABRT (Codex, #2871/#2872
+        // review; the same gap in this file).
+        //
+        // 64 sits well clear of MAX_BOOLEAN_DEPTH (10) so it cannot make that
+        // cap's job harder, and clear of the 42-node Revit chains from #960,
+        // which are FirstOperand SPINE nodes walked iteratively and never
+        // reach here.
+        if visited.len() >= MAX_OPERAND_PATH_NODES {
+            return Err(Error::geometry(format!(
+                "Boolean/CSG operand chain exceeds {MAX_OPERAND_PATH_NODES} nested nodes at #{}",
+                entity.id
+            )));
+        }
+        if !visited.insert(entity.id) {
+            return Err(Error::geometry(format!(
+                "Cyclic boolean/CSG operand reference at #{}",
+                entity.id
+            )));
+        }
+        let out = self.process_with_depth_inner(entity, decoder, schema, depth, quality, visited);
+        visited.remove(&entity.id);
+        out
+    }
+
+    fn process_with_depth_inner(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         _schema: &IfcSchema,
         depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
-        // Depth limit to prevent stack overflow from deeply nested boolean chains
+        // Depth limit to prevent stack overflow from nested boolean operands
         if depth > MAX_BOOLEAN_DEPTH {
             return Err(Error::geometry(format!(
                 "Boolean nesting depth {} exceeds limit {}",
@@ -570,53 +602,138 @@ impl BooleanClippingProcessor {
         // 1: FirstOperand (base geometry)
         // 2: SecondOperand (clipping geometry)
 
-        // Get operator
-        let operator = entity
-            .get(0)
-            .and_then(|v| match v {
-                ifc_lite_core::AttributeValue::Enum(e) => Some(e.as_str()),
-                _ => None,
-            })
-            .unwrap_or(".DIFFERENCE.");
-
-        // A left-deep chain of `IfcBooleanClippingResult(.DIFFERENCE., x,
-        // IfcPolygonalBoundedHalfSpace)` clips — the canonical "gable wall
-        // trimmed by a segmented roof" pattern — is resolved by unioning all
-        // cutter prisms into one solid and subtracting it once, rather than
-        // applying each cutter sequentially. Two reasons (issue #960,
-        // House.ifc):
-        //
-        //  1. **No seam slivers.** Sequentially subtracting two prisms that
-        //     abut along a shared edge (adjacent roof segments meeting at a
-        //     hip/valley) leaves the host material exactly on the seam as a
-        //     zero-thickness, full-height fin — rendered double-sided, it is a
-        //     visible wall sliver poking through the roof. A real CSG *union*
-        //     dissolves the shared face, so the single subtract leaves nothing
-        //     behind. (This is NOT the old mesh-*merge* batching that produced
-        //     non-manifold cutters — `union_meshes` runs a true CSG union,
-        //     which handles overlapping/duplicate cutters correctly.)
-        //  2. **No depth-limit drops.** The chain is walked iteratively, so a
-        //     wall clipped by 12+ roof planes no longer blows MAX_BOOLEAN_DEPTH
-        //     and vanishes (House.ifc walls #4148/#2797/#5904).
-        //
-        // `try_union_polygonal_chain` returns `None` (fall through to the
-        // sequential path below) whenever batching isn't provably safe, so the
-        // per-cutter bounded→unbounded fallback still rescues full-cross-section
-        // clips (duplex.ifc "Party Wall"). Verified mm-identical to IfcOpenShell
-        // on all five reported House.ifc walls.
-        //
-        // The *correctness* of the single subtract hinges on a WATERTIGHT union
-        // of the cutter prisms, which `build_cutter_union` computes with the
-        // exact kernel's N-ary `union_many`. When it can't produce a watertight
-        // union, `try_union_polygonal_chain` returns `None` and we fall through
-        // to the sequential path — so this is never worse than pre-#960 (the
-        // seam-sliver / deep-chain drop only fully resolves once that union is
-        // watertight; 841_house_stack_overflow.ifc).
-        if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
-            if let Some(result) = self.try_union_polygonal_chain(entity, decoder, depth, quality)? {
-                return Ok(result);
+        // Walk down the left spine, collecting nodes whose second operands
+        // are applied innermost-first once the base mesh exists.
+        let mut spine: Vec<DecodedEntity> = Vec::new();
+        let mut spine_seen: std::collections::HashSet<u32> = std::collections::HashSet::new();
+        let mut current = entity.clone();
+        // Whether `mesh` (below) already carries a successfully BATCHED set of
+        // PBHS cutters (`try_union_polygonal_chain`), as opposed to being the
+        // untouched base solid. A leftover `spine` of length 1 is only the
+        // true #3923 single-cutter shape (no sibling cutter anywhere) when
+        // this is false; if a nested batch succeeded first, that node's own
+        // cutter has siblings already folded into `mesh`, even though it is
+        // the only node left in `spine` — see the `solo_step` comment below.
+        let mut based_on_batch = false;
+        let mut mesh = loop {
+            if !spine_seen.insert(current.id) {
+                // Cyclic FirstOperand chain (malformed input). The recursive
+                // walk bottomed out on the depth cap; fail the same way with
+                // a reason that names the actual problem.
+                return Err(Error::geometry(format!(
+                    "cyclic boolean FirstOperand chain at #{}",
+                    current.id
+                )));
             }
+            if !matches!(
+                current.ifc_type,
+                IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult
+            ) {
+                // Bottom of the spine: the base solid.
+                break self.process_operand_with_depth(&current, decoder, depth, quality, visited)?;
+            }
+            let operator = Self::boolean_operator(&current);
+            if operator == ".DIFFERENCE." || operator == "DIFFERENCE" {
+                if let Some(result) =
+                    self.try_union_polygonal_chain(&current, decoder, depth, quality, visited)?
+                {
+                    // Batched PBHS resolution handled this node and everything
+                    // below it (see the comment on the sequential step).
+                    based_on_batch = true;
+                    break result;
+                }
+            }
+            let first_attr = current.get(1).ok_or_else(|| {
+                Error::geometry("BooleanResult missing FirstOperand".to_string())
+            })?;
+            let first = decoder
+                .resolve_ref(first_attr)?
+                .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?;
+            spine.push(current);
+            current = first;
+        };
+
+        // Apply each spine node's operator + SecondOperand, innermost-first.
+        // `spine.len() == 1 && !based_on_batch` is the true #3923
+        // single-cutter shape (no other node shares the job, and the mesh it
+        // is cutting is the untouched base). `> 1` means a longer chain's
+        // batching failed at every level, so each node here is a
+        // one-cutter-at-a-time fallback. `spine.len() == 1 && based_on_batch`
+        // is the same "one cutter at a time" shape: a nested batch already
+        // succeeded on the levels below, so this lone leftover node's cutter
+        // has siblings (the batched ones) even though `spine` holds only it —
+        // see `single_cutter_gate.rs` for why that distinction matters to the
+        // gate-rejection fallback.
+        let solo_step = spine.len() == 1 && !based_on_batch;
+        for node in spine.iter().rev() {
+            if mesh.is_empty() {
+                // An emptied intermediate ends the chain, matching the old
+                // per-level early-out (for every operator, UNION included).
+                return Ok(mesh);
+            }
+            mesh = self.apply_boolean_step(node, mesh, decoder, depth, quality, visited, solo_step)?;
         }
+        Ok(mesh)
+    }
+
+    /// Apply one boolean node's operator and SecondOperand to an already-built
+    /// first-operand mesh. Split out of [`Self::process_with_depth`] so the
+    /// left spine can be applied iteratively.
+    ///
+    /// The spine walk in the caller resolves a left-deep chain of
+    /// `IfcBooleanClippingResult(.DIFFERENCE., x, IfcPolygonalBoundedHalfSpace)`
+    /// clips — the canonical "gable wall trimmed by a segmented roof" pattern
+    /// — by unioning all cutter prisms into one solid and subtracting it once
+    /// (`try_union_polygonal_chain`), rather than applying each cutter
+    /// sequentially. Two reasons (issue #960, House.ifc):
+    ///
+    ///  1. **No seam slivers.** Sequentially subtracting two prisms that
+    ///     abut along a shared edge (adjacent roof segments meeting at a
+    ///     hip/valley) leaves the host material exactly on the seam as a
+    ///     zero-thickness, full-height fin — rendered double-sided, it is a
+    ///     visible wall sliver poking through the roof. A real CSG *union*
+    ///     dissolves the shared face, so the single subtract leaves nothing
+    ///     behind. (This is NOT the old mesh-*merge* batching that produced
+    ///     non-manifold cutters — `union_meshes` runs a true CSG union,
+    ///     which handles overlapping/duplicate cutters correctly.)
+    ///  2. **No seam-order sensitivity for deep chains** — the batched cut
+    ///     resolves 12+ abutting roof planes in one subtract (House.ifc
+    ///     walls #4148/#2797/#5904).
+    ///
+    /// `try_union_polygonal_chain` returns `None` (fall through to this
+    /// sequential step) whenever batching isn't provably safe, so the
+    /// per-cutter bounded→unbounded fallback still rescues full-cross-section
+    /// clips (duplex.ifc "Party Wall"). Verified Z-bound agreement with
+    /// IfcOpenShell within 25 mm on all five reported House.ifc walls.
+    /// `build_cutter_union` (the exact
+    /// kernel's N-ary `union_many`, falling back to `union_meshes`) only
+    /// requires a NONEMPTY union — it does not verify closure (issue #3980;
+    /// see its doc comment for the measured contract on the real #960
+    /// fixture). What actually guards the single subtract is downstream, in
+    /// `try_union_polygonal_chain`: the intersected-bounds check and the
+    /// `#3919` accept-gate on the actual cut. When `build_cutter_union`
+    /// returns `None` (primary empty and fallback empty or errored) or those
+    /// downstream checks reject the result, the chain falls through to this
+    /// sequential path.
+    ///
+    /// `solo_step`: true when this is the ONLY node the caller's spine walk
+    /// deferred to (a genuine single-PBHS-cutter DIFFERENCE, #3923's target
+    /// shape); false when it's one of several nodes from a longer authored
+    /// chain that couldn't be batched at any level and is now being applied
+    /// one cutter at a time. See the `IfcPolygonalBoundedHalfSpace` branch
+    /// below for why that distinction gates the accept-gate-rejection
+    /// fallback.
+    fn apply_boolean_step(
+        &self,
+        entity: &DecodedEntity,
+        mesh: Mesh,
+        decoder: &mut EntityDecoder,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut OperandPath,
+        solo_step: bool,
+    ) -> Result<Mesh> {
+        let operator = Self::boolean_operator(entity);
 
         // NOTE: a previous version had a "fast path for chained polygonal-
         // bounded half-space clips" here that mesh-merged every cutter in
@@ -636,10 +753,10 @@ impl BooleanClippingProcessor {
         //                   back to sequential past that.
         //
         // We can't do OCCT-style topological CSG in our mesh-CSG
-        // kernel, so we follow web-ifc: SEQUENTIAL through the
-        // standard recursive path below. The per-step cutter is always a
-        // single closed manifold prism, so the non-manifold-cutter root
-        // cause is structurally eliminated.
+        // kernel, so we follow web-ifc: SEQUENTIAL, one step per spine
+        // node. The per-step cutter is always a single closed manifold
+        // prism, so the non-manifold-cutter root cause is structurally
+        // eliminated.
         //
         // Performance: N CSG ops instead of 1 for chains of length N, but
         // each op runs on a SMALL single-cutter mesh (one polygon prism =
@@ -647,24 +764,8 @@ impl BooleanClippingProcessor {
         // clock cost is comparable. CSG cost scales with operand polygon
         // count, not operation count.
         //
-        // See docs/research/csg-clipping-fidelity.md for the full
-        // side-by-side comparison with the reference implementations.
-
-        // Get first operand (base geometry)
-        let first_operand_attr = entity
-            .get(1)
-            .ok_or_else(|| Error::geometry("BooleanResult missing FirstOperand".to_string()))?;
-
-        let first_operand = decoder
-            .resolve_ref(first_operand_attr)?
-            .ok_or_else(|| Error::geometry("Failed to resolve FirstOperand".to_string()))?;
-
-        // Process first operand to get base mesh
-        let mesh = self.process_operand_with_depth(&first_operand, decoder, depth, quality)?;
-
-        if mesh.is_empty() {
-            return Ok(mesh);
-        }
+        // This keeps each operation bounded to one small cutter and preserves
+        // IFC operand order.
 
         // Get second operand
         let second_operand_attr = entity
@@ -704,23 +805,11 @@ impl BooleanClippingProcessor {
                     plane_normal,
                     agreement,
                 ) {
-                    let clipper = ClippingProcessor::new();
-                    let subtract_result = clipper.subtract_mesh(&mesh, &bound_mesh);
-                    self.drain_clipper_failures(&clipper);
-                    if let Ok(clipped) = subtract_result {
-                        // The bounded-prism subtract is fragile on coincident
-                        // faces: when the clip polygon spans the full host
-                        // cross-section, the prism's in-plane side walls land
-                        // exactly on the host's side faces and the CSG kernel
-                        // can collapse the host to a near-empty sliver
-                        // (duplex.ifc "Party Wall" segments #4287/#4399 —
-                        // 12-tri box → 2-tri quad on the deleted legacy BSP
-                        // kernel). When the result looks degenerate
-                        // we fall through to the robust unbounded plane clip
-                        // below: a strict superset of the bounded cut that is
-                        // exactly correct whenever the polygon already covers
-                        // the host's projected cross-section.
-                        if !ClippingProcessor::difference_result_looks_degenerate(&mesh, &clipped) {
+                    // See `single_cutter_gate.rs` for the #3919/#3923
+                    // accept-gate check and why a rejection's fallback
+                    // depends on `solo_step`.
+                    match self.resolve_single_cutter_subtract(&mesh, &bound_mesh, solo_step) {
+                        SingleCutterSubtract::Clipped(clipped) => {
                             return Ok(self.guard_against_full_host_removal(
                                 mesh,
                                 clipped,
@@ -728,6 +817,8 @@ impl BooleanClippingProcessor {
                                 plane_normal,
                             ));
                         }
+                        SingleCutterSubtract::KeepUncut => return Ok(mesh),
+                        SingleCutterSubtract::FallThrough => {}
                     }
                 }
 
@@ -754,10 +845,10 @@ impl BooleanClippingProcessor {
             // short-circuit here meant every CSG primitive cut (issue #780
             // bath, any `IfcCsgSolid` with a solid cutter) silently rendered
             // as the uncut host even when the operands were trivially small.
-            let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Difference, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Difference, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Difference, unsupported);
                 return Ok(mesh);
             }
             // Small-cut skip: a cutter far smaller than its host (a steel
@@ -779,36 +870,37 @@ impl BooleanClippingProcessor {
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.subtract_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
         // Handle UNION operation — a real CSG union (overlap removed) on the
         // pure-Rust exact kernel.
         if operator == ".UNION." || operator == "UNION" {
-            let second_mesh = self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Union, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Union, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Union, unsupported);
                 return Ok(mesh);
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.union_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
         // Handle INTERSECTION operation — a real intersection volume on the
         // pure-Rust exact kernel.
         if operator == ".INTERSECTION." || operator == "INTERSECTION" {
-            let second_mesh =
-                self.process_operand_with_depth(&second_operand, decoder, depth, quality)?;
+            let (second_mesh, unsupported) = self
+                .process_operand_checked(BoolOp::Intersection, &second_operand, decoder, depth, quality, visited)?;
             if second_mesh.is_empty() {
-                self.record_failure(BoolOp::Intersection, BoolFailureReason::EmptyOperand);
+                self.record_empty_second_operand(BoolOp::Intersection, unsupported);
                 return Ok(Mesh::new());
             }
             let clipper = ClippingProcessor::new();
             let result = clipper.intersection_mesh(&mesh, &second_mesh);
-            self.drain_clipper_failures(&clipper);
+            self.absorb_failures(clipper.take_failures());
             return result;
         }
 
@@ -817,22 +909,6 @@ impl BooleanClippingProcessor {
             BoolFailureReason::UnknownBooleanOperator(operator.to_string()),
         );
         Ok(mesh)
-    }
-}
-
-impl GeometryProcessor for BooleanClippingProcessor {
-    fn process(
-        &self,
-        entity: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        schema: &IfcSchema,
-        quality: TessellationQuality,
-    ) -> Result<Mesh> {
-        self.process_with_depth(entity, decoder, schema, 0, quality)
-    }
-
-    fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcBooleanResult, IfcType::IfcBooleanClippingResult]
     }
 }
 

@@ -17,8 +17,8 @@ import type {
   QueryBackendMethods,
 } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
-import { EntityNode } from '@ifc-lite/query';
-import { RelationshipType, IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
+import { EntityNode, findAllPropertiesInSets, compareFilterValue } from '@ifc-lite/query';
+import { IfcTypeEnum, IfcTypeEnumFromString } from '@ifc-lite/data';
 import { getModelForRef, getAllModelEntries } from './model-compat.js';
 import {
   extractAllEntityAttributes,
@@ -27,56 +27,11 @@ import {
   extractTypePropertiesOnDemand,
   extractDocumentsOnDemand,
   extractRelationshipsOnDemand,
+  expandTypes,
+  QUERY_REL_TYPE_MAP,
 } from '@ifc-lite/parser';
 import { applyAttributeMutationsToEntityData, mergeAttributeMutations } from './mutation-view.js';
 import { evaluateFilterRules } from '../../lib/search/filter-evaluate.js';
-
-/** Map IFC relationship entity names to internal RelationshipType enum.
- * Keys use proper IFC schema names (e.g. IfcRelAggregates, not "Aggregates"). */
-const REL_TYPE_MAP: Record<string, RelationshipType> = {
-  IfcRelContainedInSpatialStructure: RelationshipType.ContainsElements,
-  IfcRelAggregates: RelationshipType.Aggregates,
-  IfcRelDefinesByType: RelationshipType.DefinesByType,
-  IfcRelVoidsElement: RelationshipType.VoidsElement,
-  IfcRelFillsElement: RelationshipType.FillsElement,
-};
-
-/**
- * IFC4 subtype map — maps parent types to their StandardCase/ElementedCase subtypes.
- * In IFC4, many element types have *StandardCase subtypes that the parser stores
- * as the full type name. This map lets byType('IfcWall') also find IfcWallStandardCase.
- *
- * Keys and values are UPPERCASE because entityIndex.byType uses UPPERCASE keys
- * (raw STEP type names, e.g. IFCWALLSTANDARDCASE).
- */
-const IFC_SUBTYPES: Record<string, string[]> = {
-  IFCWALL: ['IFCWALLSTANDARDCASE', 'IFCWALLELEMENTEDCASE'],
-  IFCBEAM: ['IFCBEAMSTANDARDCASE'],
-  IFCCOLUMN: ['IFCCOLUMNSTANDARDCASE'],
-  IFCDOOR: ['IFCDOORSTANDARDCASE'],
-  IFCWINDOW: ['IFCWINDOWSTANDARDCASE'],
-  IFCSLAB: ['IFCSLABSTANDARDCASE', 'IFCSLABELEMENTEDCASE'],
-  IFCMEMBER: ['IFCMEMBERSTANDARDCASE'],
-  IFCPLATE: ['IFCPLATESTANDARDCASE'],
-  IFCOPENINGELEMENT: ['IFCOPENINGSTANDARDCASE'],
-};
-
-/**
- * Expand a type list to include known IFC subtypes.
- * Converts PascalCase input (e.g. 'IfcWall') to UPPERCASE for entityIndex lookup.
- */
-function expandTypes(types: string[]): string[] {
-  const result: string[] = [];
-  for (const type of types) {
-    const upper = type.toUpperCase();
-    result.push(upper);
-    const subtypes = IFC_SUBTYPES[upper];
-    if (subtypes) {
-      for (const sub of subtypes) result.push(sub);
-    }
-  }
-  return result;
-}
 
 /**
  * Check if a type name represents a product/spatial entity.
@@ -240,9 +195,15 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
 
       let entityIds: number[];
       if (descriptor.types && descriptor.types.length > 0) {
-        // Expand types to include IFC4 subtypes (e.g., IfcWall → IfcWallStandardCase)
+        // Expand types to every schema-declared descendant (IfcWall →
+        // IfcWallStandardCase, IfcBuildingElement → its concrete leaves).
+        // Resolved against this model's own schema, plus the leaf spellings
+        // that schema does not declare at all, so neither the FILE_SCHEMA
+        // header alone nor a plain union across the bundled tables decides
+        // what its records answer. The version argument is load-bearing:
+        // buildingSMART re-parented entities between versions.
         entityIds = [];
-        for (const type of expandTypes(descriptor.types)) {
+        for (const type of expandTypes(descriptor.types, model.ifcDataStore.schemaVersion)) {
           const typeIds = model.ifcDataStore.entityIndex.byType.get(type) ?? [];
           for (const id of typeIds) entityIds.push(id);
         }
@@ -287,29 +248,40 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       for (const filter of descriptor.filters) {
         filtered = filtered.filter(entity => {
           const props = getCachedProps(entity.ref);
-          const pset = props.find(p => p.name === filter.psetName);
-          if (!pset) return false;
-          const prop = pset.properties.find(p => p.name === filter.propName);
-          if (!prop) return false;
+          // Any-match, not first-match (#3490): an entity can carry two
+          // distinct same-named property sets (type + occurrence), so a
+          // filter predicate passes when ANY of them satisfies the
+          // condition, not just the first one found. compareFilterValue is
+          // the shared comparison logic (unified across all QueryBackendMethods
+          // implementations) so 'contains'/boolean normalization can't drift
+          // between hosts; its `exists` branch is unconditional (a property
+          // that parses to null still exists).
+          const matchingProps = findAllPropertiesInSets(props, filter.psetName, filter.propName);
+          if (matchingProps.length === 0) return false;
           if (filter.operator === 'exists') return true;
-
-          const val = prop.value;
-          switch (filter.operator) {
-            case '=': return String(val) === String(filter.value);
-            case '!=': return String(val) !== String(filter.value);
-            case '>': return Number(val) > Number(filter.value);
-            case '<': return Number(val) < Number(filter.value);
-            case '>=': return Number(val) >= Number(filter.value);
-            case '<=': return Number(val) <= Number(filter.value);
-            case 'contains': return String(val).includes(String(filter.value));
-            default: return false;
-          }
+          return matchingProps.some(prop => compareFilterValue(prop.value, filter.operator, filter.value));
         });
       }
     }
 
-    if (descriptor.offset != null && descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
-    if (descriptor.limit != null && descriptor.limit > 0) filtered = filtered.slice(0, descriptor.limit);
+    // `!= null` alone lets a NaN offset/limit through (neither null nor
+    // undefined); a bare `> 0` then silently drops it instead of rejecting
+    // it, and by the same reasoning silently ignored a deliberate `limit: 0`.
+    // Matches `packages/cli/src/headless-backend.ts` and
+    // `packages/mcp/src/backend-query.ts` — the three `QueryBackendMethods`
+    // implementations of this same `QueryDescriptor` contract must agree.
+    if (descriptor.offset != null) {
+      if (!Number.isFinite(descriptor.offset) || descriptor.offset < 0) {
+        throw new TypeError(`Invalid offset: ${descriptor.offset} (must be a non-negative finite number)`);
+      }
+      if (descriptor.offset > 0) filtered = filtered.slice(descriptor.offset);
+    }
+    if (descriptor.limit != null) {
+      if (!Number.isFinite(descriptor.limit) || descriptor.limit < 0) {
+        throw new TypeError(`Invalid limit: ${descriptor.limit} (must be a non-negative finite number)`);
+      }
+      filtered = filtered.slice(0, descriptor.limit);
+    }
 
     return filtered;
   }
@@ -373,7 +345,7 @@ export function createQueryAdapter(store: StoreApi): QueryBackendMethods {
       const state = store.getState();
       const model = getModelForRef(state, ref.modelId);
       if (!model?.ifcDataStore) return [];
-      const relEnum = REL_TYPE_MAP[relType];
+      const relEnum = QUERY_REL_TYPE_MAP[relType];
       if (relEnum === undefined) return [];
       const targets = model.ifcDataStore.relationships.getRelated(ref.expressId, relEnum, direction);
       return targets.map((expressId: number) => ({ modelId: ref.modelId, expressId }));

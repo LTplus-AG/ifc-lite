@@ -24,7 +24,13 @@ import { ExtensionHostService } from '@/services/extensions/host.js';
 import { isSafeMode } from '@/lib/safe-mode';
 import { toast } from '@/components/ui/toast';
 
-const ExtensionHostContext = createContext<ExtensionHostService | null>(null);
+/**
+ * Exported as a rendering-test seam (#1907): tests provide a stub host
+ * through this context instead of `mock.module`, which is flag-gated
+ * (`--experimental-test-module-mocks`) on Node 22. `apps/viewer` is a
+ * private, unpublished app, so exporting this widens no public API.
+ */
+export const ExtensionHostContext = createContext<ExtensionHostService | null>(null);
 
 interface ExtensionHostProviderProps {
   children: ReactNode;

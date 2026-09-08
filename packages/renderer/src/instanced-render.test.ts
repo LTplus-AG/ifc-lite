@@ -13,6 +13,7 @@ import {
   INSTANCE_FLAGS_OFFSET,
   INSTANCE_FLAG_SELECTED,
 } from './instanced-render.js';
+import { OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
 
 // --- frame helpers (independent re-derivation of the expected world coord) ---
 
@@ -178,6 +179,7 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
         { templateIndex: 1, entityId: 22, color: [0, 1, 0, 1] as [number, number, number, number], transform: rowMajorTranslation(7, 0, 0) },
         { templateIndex: 0, entityId: 33, color: [0, 0, 1, 1] as [number, number, number, number], transform: rowMajorTranslation(0, 5, 0) },
       ],
+      carriesItemIds: false,
     };
 
     const out = prepareInstancedRender(shard);
@@ -201,6 +203,65 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     assertClose(applyColMajor(mat, p), swap([origin0[0] + p[0], origin0[1] + p[1], origin0[2] + p[2]]), 'template0 inst0');
   });
 
+  // #2985. The item id is CPU-side only: the GPU per-instance record stays 88
+  // bytes, because that layout is shading data packed identically by the
+  // pipeline, shadow pass and picker, and the item id answers a host query
+  // ("which entity produced this piece"), not a shading one. So it must appear
+  // in `itemIds` and NOT in `instanceBuffer` — and the buffer's byte length is
+  // the check that says so, since a widened record would still "work".
+  //
+  // `carriesItemIds` comes off the shard's declared stride, and the encoder
+  // derives that from the data — so a shard that says false has no ids to lose
+  // and gets NO id column at all (the case below).
+  it('carries per-occurrence item ids beside the GPU buffer, not inside it', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const opaque = [1, 0, 0, 1] as [number, number, number, number];
+    const shard = {
+      templates: [
+        { positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]), indices: new Uint32Array([0]), origin },
+      ],
+      instances: [
+        { templateIndex: 0, entityId: 40, color: opaque, transform: rowMajorIdentity(), itemId: 11 },
+        // Transparent occurrences are dropped; the itemIds array must stay
+        // aligned with the KEPT occurrences, not with the shard's instance list.
+        { templateIndex: 0, entityId: 41, color: [0, 1, 0, 0.3] as [number, number, number, number], transform: rowMajorIdentity(), itemId: 99 },
+        { templateIndex: 0, entityId: 47, color: opaque, transform: rowMajorIdentity(), itemId: 15 },
+        // No itemId at all (a v1 shard, or a producer with none) → 0.
+        { templateIndex: 0, entityId: 54, color: opaque, transform: rowMajorIdentity() },
+      ],
+      carriesItemIds: true,
+    };
+
+    const [t0] = prepareInstancedRender(shard);
+    assert.deepStrictEqual(Array.from(t0.entityIds), [40, 47, 54]);
+    assert.deepStrictEqual(Array.from(t0.itemIds!), [11, 15, 0], 'itemIds track the kept occurrences');
+    assert.strictEqual(
+      t0.instanceBuffer.byteLength,
+      3 * INSTANCE_STRIDE_BYTES,
+      'the GPU record must not have grown — the item id is host-query data, not shading data',
+    );
+  });
+
+  // The other side of the same contract: a shard whose stride declares no item
+  // ids gets no id column. A zero-filled Uint32Array per template, retained for
+  // the model's lifetime, is memory spent to say nothing — and a caller reading
+  // `itemIds[i]` off it would get 0, which is the same answer `undefined` gives.
+  it('allocates no item-id column for a shard that declares none', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const out = prepareInstancedRender({
+      templates: [
+        { positions: new Float32Array([0, 0, 0]), normals: new Float32Array([0, 1, 0]), indices: new Uint32Array([0]), origin },
+      ],
+      instances: [
+        { templateIndex: 0, entityId: 40, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+      ],
+      carriesItemIds: false,
+    });
+
+    assert.strictEqual(out[0].itemIds, undefined, 'no ids declared → no array');
+    assert.deepStrictEqual(Array.from(out[0].entityIds), [40], 'the entity ids are unaffected');
+  });
+
   it('excludes transparent instances (alpha < 0.99) so glass renders via the flat path', () => {
     const origin: [number, number, number] = [0, 0, 0];
     const shard = {
@@ -214,6 +275,7 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
         { templateIndex: 0, entityId: 2, color: [0.6, 0.8, 0.9, 0.3] as [number, number, number, number], transform: rowMajorIdentity() }, // glass → dropped
         { templateIndex: 1, entityId: 3, color: [0.6, 0.8, 0.9, 0.5] as [number, number, number, number], transform: rowMajorIdentity() }, // glass → dropped
       ],
+      carriesItemIds: false,
     };
 
     const out = prepareInstancedRender(shard);
@@ -223,6 +285,81 @@ describe('prepareInstancedRender — grouping + buffer assembly', () => {
     assert.strictEqual(t0.instanceCount, 1, 'the transparent occurrence of template 0 is excluded');
     const dv = new DataView(t0.instanceBuffer);
     assert.strictEqual(dv.getUint32(64, true), 1, 'the kept instance is the opaque one (entityId 1)');
+  });
+
+  // The cutoff boundary itself. Alpha EXACTLY at OPAQUE_ALPHA_CUTOFF must be
+  // treated as opaque, because that is what the flat split does too
+  // (`alpha < OPAQUE_ALPHA_CUTOFF` in overlay-routing.ts and scene.ts). If the
+  // instanced path used `<=` instead, an occurrence at alpha 0.99 would be
+  // dropped from the instanced pass while the flat pass also considers it
+  // opaque — the geometry renders nowhere and the user sees repeated elements
+  // silently missing. Existing fixtures only use 0.3/0.5/1.0, so the boundary
+  // was free in both directions.
+  it('treats alpha EXACTLY at the opaque cutoff as opaque, one epsilon below as transparent', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const tmpl = () => ({
+      positions: new Float32Array([0, 0, 0]),
+      normals: new Float32Array([0, 1, 0]),
+      indices: new Uint32Array([0]),
+      origin,
+    });
+    const inst = (entityId: number, alpha: number) => ({
+      templateIndex: 0,
+      entityId,
+      color: [1, 1, 1, alpha] as [number, number, number, number],
+      transform: rowMajorIdentity(),
+    });
+
+    // Exactly at the cutoff → opaque → kept by the instanced path.
+    const atCutoff = prepareInstancedRender({
+      templates: [tmpl()],
+      instances: [inst(1, OPAQUE_ALPHA_CUTOFF)],
+      carriesItemIds: false,
+    });
+    assert.strictEqual(atCutoff.length, 1, 'alpha === cutoff must stay in the instanced path');
+    assert.strictEqual(atCutoff[0].instanceCount, 1);
+    assert.deepStrictEqual(Array.from(atCutoff[0].entityIds), [1]);
+
+    // One representable step below → transparent → excluded.
+    const belowCutoff = prepareInstancedRender({
+      templates: [tmpl()],
+      instances: [inst(2, OPAQUE_ALPHA_CUTOFF - Number.EPSILON)],
+      carriesItemIds: false,
+    });
+    assert.strictEqual(belowCutoff.length, 0, 'just below the cutoff must route to the flat path');
+  });
+
+  // Documented defensive branch ("a corrupt templateIndex would otherwise
+  // throw; drop it loudly-safe") that no fixture ever reached. Without the
+  // guard an out-of-range or negative templateIndex in a decoded IFNS shard
+  // throws mid-upload, so the whole model fails to appear instead of losing
+  // one bad occurrence.
+  it('drops occurrences with an out-of-range templateIndex instead of throwing', () => {
+    const origin: [number, number, number] = [0, 0, 0];
+    const shard = {
+      templates: [
+        {
+          positions: new Float32Array([0, 0, 0]),
+          normals: new Float32Array([0, 1, 0]),
+          indices: new Uint32Array([0]),
+          origin,
+        },
+      ],
+      instances: [
+        { templateIndex: 0, entityId: 1, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+        { templateIndex: 5, entityId: 2, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+        { templateIndex: -1, entityId: 3, color: [1, 0, 0, 1] as [number, number, number, number], transform: rowMajorIdentity() },
+      ],
+      carriesItemIds: false,
+    };
+
+    let out!: ReturnType<typeof prepareInstancedRender>;
+    assert.doesNotThrow(() => {
+      out = prepareInstancedRender(shard);
+    }, 'a corrupt templateIndex must not abort the whole shard');
+    assert.strictEqual(out.length, 1, 'the one valid template still uploads');
+    assert.strictEqual(out[0].instanceCount, 1, 'only the valid occurrence is kept');
+    assert.deepStrictEqual(Array.from(out[0].entityIds), [1]);
   });
 });
 
@@ -239,6 +376,36 @@ describe('foldOccurrenceWorldBox — template cull metadata', () => {
 
     foldOccurrenceWorldBox(meta, box(-5, 1, 1, -4, 2, 2));
     assert.deepStrictEqual(meta.bounds, { min: [-5, 0, 0], max: [2, 2, 2] });
+  });
+
+  it('grows the union bounds independently on each of the six min/max faces', () => {
+    // The prior "grows the union after" test only ever moves the min-X face
+    // (the second box's minY/minZ/maxY/maxZ all equal the seed box's), so a
+    // copy-paste bug in any of the OTHER five branches — e.g. `maxY` writing
+    // into `tb.max[0]` instead of `tb.max[1]` — is invisible to it. Exercise
+    // each of the six comparisons with a box that extends the union on
+    // exactly one face and leaves the other five untouched, so a
+    // wrong-axis write is caught on the specific face it corrupts.
+    const meta = freshMeta();
+    foldOccurrenceWorldBox(meta, box(0, 0, 0, 10, 10, 10)); // seed union
+
+    foldOccurrenceWorldBox(meta, box(-1, 4, 4, 5, 5, 5)); // extends min-X only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, 0, 0], max: [10, 10, 10] }, 'min-X');
+
+    foldOccurrenceWorldBox(meta, box(4, -2, 4, 5, 5, 5)); // extends min-Y only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, 0], max: [10, 10, 10] }, 'min-Y');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, -3, 5, 5, 5)); // extends min-Z only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [10, 10, 10] }, 'min-Z');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, 4, 11, 5, 5)); // extends max-X only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [11, 10, 10] }, 'max-X');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, 4, 5, 12, 5)); // extends max-Y only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [11, 12, 10] }, 'max-Y');
+
+    foldOccurrenceWorldBox(meta, box(4, 4, 4, 5, 5, 13)); // extends max-Z only
+    assert.deepStrictEqual(meta.bounds, { min: [-1, -2, -3], max: [11, 12, 13] }, 'max-Z');
   });
 
   it('maxOccRadius tracks the LARGEST single occurrence, not the union diagonal', () => {

@@ -5,7 +5,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 
-import { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.ts';
+import { selectEvictions, MIN_EVICTION_AGE_FRAMES } from './residency.js';
 
 const MB = 1024 * 1024;
 const FRAME = 1000; // current frame, comfortably past the min age
@@ -49,6 +49,30 @@ describe('selectEvictions (#1682 phase 3a)', () => {
     const shells = [shell('a', MB, FRAME - 5)];
     assert.deepStrictEqual(selectEvictions(shells, MB, 0, FRAME, 10), []);
     assert.deepStrictEqual(selectEvictions(shells, MB, 0, FRAME, 5), ['a']);
+  });
+
+  // Exact-fit boundary. The existing cases all overshoot the budget (excess
+  // goes negative on the last eviction), so the loop's stop condition is only
+  // ever tested in its `< 0` form. When the evicted bytes land EXACTLY on the
+  // budget the loop must stop there: evicting one more batch destroys GPU
+  // buffers that were within budget, and the user sees that batch pop back in
+  // a frame or two after a needless re-upload.
+  it('stops the moment the excess is exactly met, not one batch later', () => {
+    const shells = [
+      shell('oldest', 10 * MB, 1),
+      shell('next', 10 * MB, 2),
+      shell('newest', 10 * MB, 3),
+    ];
+    // 30MB resident, 20MB budget → excess exactly 10MB = one batch.
+    assert.deepStrictEqual(selectEvictions(shells, 30 * MB, 20 * MB, FRAME), ['oldest']);
+    // Two batches' worth of excess, again landing exactly on zero.
+    assert.deepStrictEqual(selectEvictions(shells, 30 * MB, 10 * MB, FRAME), ['oldest', 'next']);
+    // Opposite direction: one byte more excess than an exact fit needs the
+    // next batch too.
+    assert.deepStrictEqual(selectEvictions(shells, 30 * MB + 1, 20 * MB, FRAME), [
+      'oldest',
+      'next',
+    ]);
   });
 
   it('returns everything eligible when even full eviction cannot meet the budget', () => {

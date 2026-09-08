@@ -8,6 +8,7 @@
 
 import { WebGPUDevice } from './device.js';
 import type { Mesh, PickResult, PickClipState } from './types.js';
+import { resolvePickSample, resolvePickedExpressId } from './pick-resolve.js';
 import type { InstancedTemplateGPU } from './scene.js';
 import { PointPicker, decodePickSample, type PointPickNode } from './point-picker.js';
 import { packPickUniforms } from './pick-uniforms.js';
@@ -486,37 +487,9 @@ export class Picker {
     // gives the world hit position directly.
     const worldXYZ = unprojectPickSample(viewProj, sampleX, sampleY, width, height, depth);
 
-    if (decoded.kind === 'point') {
-      // Look up the asset for modelIndex. expressId is already the
-      // federated globalId (vertex shader writes it from the per-point
-      // attribute, no lookup table needed).
-      const node = pointNodes?.find((n) => (n.expressId >>> 0) === decoded.pointExpressId);
-      return {
-        expressId: decoded.pointExpressId,
-        modelIndex: node?.modelIndex,
-        worldXYZ: worldXYZ ?? undefined,
-      };
-    }
-
-    if (decoded.kind === 'instanced') {
-      // Instanced occurrence — the shader wrote the express id directly into the
-      // pick value (no mesh-index lookup). modelIndex is not tracked per
-      // occurrence yet (single-model instancing).
-      return {
-        expressId: decoded.instanceExpressId,
-        modelIndex: undefined,
-        worldXYZ: worldXYZ ?? undefined,
-      };
-    }
-
-    // Mesh hit — meshIndex is (actual index + 1), already validated > 0.
-    const mesh = meshes[decoded.meshIndexPlusOne - 1];
-    if (!mesh) return null;
-    return {
-      expressId: mesh.expressId,
-      modelIndex: mesh.modelIndex,
-      worldXYZ: worldXYZ ?? undefined,
-    };
+    // Which entity (and which representation item) the sample landed on is a
+    // pure lookup — see resolvePickSample.
+    return resolvePickSample(decoded, meshes, pointNodes, worldXYZ);
   }
 
   updateUniforms(viewProj: Float32Array, clip?: PickClipState | null): void {
@@ -606,18 +579,21 @@ export class Picker {
       for (let x = 0; x < rectW; x++) {
         const sample = view[row + x];
         if (sample === 0) continue;
-        const decoded = decodePickSample(sample);
-        if (decoded.kind === 'none') continue;
-        if (decoded.kind === 'point') {
-          ids.add(decoded.pointExpressId);
-        } else if (decoded.kind === 'instanced') {
-          // Instanced samples carry the express id directly (meshIndexPlusOne === 0),
-          // so rect/shift-drag select must read it here too — not just single-click.
-          ids.add(decoded.instanceExpressId);
-        } else {
-          const mesh = meshes[decoded.meshIndexPlusOne - 1];
-          if (mesh) ids.add(mesh.expressId);
-        }
+        // Same three-way decode single-click uses — including the instanced
+        // case (the shader writes the express id straight into the sample) and
+        // the mesh case's (index + 1) offset. Both live in pick-resolve.ts and
+        // must not be re-implemented here.
+        //
+        // The bare id, not a PickResult: this returns a Set<expressId>, which
+        // has no room for a per-item result — a marquee that hits three panes
+        // of one curtain wall is one entry — and allocating a result per
+        // non-zero texel just to read `.expressId` off it dominated the rect.
+        // Single-click pick is the per-item surface.
+        //
+        // modelIndex is dropped for the same reason, which is why a point
+        // sample's owning asset (a linear scan, once per texel) is not resolved.
+        const expressId = resolvePickedExpressId(decodePickSample(sample), meshes);
+        if (expressId !== null) ids.add(expressId);
       }
     }
     readBuffer.unmap();

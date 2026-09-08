@@ -22,12 +22,48 @@ export function intersects(a: AABB, b: AABB): boolean {
   );
 }
 
-/** Smallest AABB containing both inputs. */
+/**
+ * Smallest AABB containing both inputs.
+ *
+ * Per-axis, NaN-safe (`<`/`>`) rather than `Math.min`/`Math.max`: a `Math.min`
+ * with either operand NaN returns NaN, and `Bvh.build` (`bvh.ts`) folds this
+ * over every ancestor on the way up, so ONE degenerate/NaN triangle (a corrupt
+ * mesh vertex) would NaN the aggregate bounds of every node containing it —
+ * including the tree root, since the very first fold starts from `EMPTY_AABB`.
+ * `Bvh.queryAABB`/`crossNode` (`mesh-bvh.ts`) then treat a NaN bound as "no
+ * overlap" and prune the node, silently dropping every OTHER, perfectly valid
+ * triangle in that subtree from contact clustering and min-distance queries —
+ * up to and including the whole mesh, when the poisoned node is the root. A
+ * `<`/`>` comparison instead leaves the non-NaN operand untouched, so a NaN
+ * triangle is simply excluded from the aggregate rather than poisoning it
+ * (matches `aabbFromPositions` in this same file, and `compute_bounds` in
+ * `rust/clash/src/bvh.rs`).
+ */
 export function unionAabb(a: AABB, b: AABB): AABB {
   return {
-    min: [Math.min(a.min[0], b.min[0]), Math.min(a.min[1], b.min[1]), Math.min(a.min[2], b.min[2])],
-    max: [Math.max(a.max[0], b.max[0]), Math.max(a.max[1], b.max[1]), Math.max(a.max[2], b.max[2])],
+    min: [
+      nanSafeMin(a.min[0], b.min[0]),
+      nanSafeMin(a.min[1], b.min[1]),
+      nanSafeMin(a.min[2], b.min[2]),
+    ],
+    max: [
+      nanSafeMax(a.max[0], b.max[0]),
+      nanSafeMax(a.max[1], b.max[1]),
+      nanSafeMax(a.max[2], b.max[2]),
+    ],
   };
+}
+
+function nanSafeMin(a: number, b: number): number {
+  if (Number.isNaN(a)) return b;
+  if (Number.isNaN(b)) return a;
+  return a < b ? a : b;
+}
+
+function nanSafeMax(a: number, b: number): number {
+  if (Number.isNaN(a)) return b;
+  if (Number.isNaN(b)) return a;
+  return a > b ? a : b;
 }
 
 /** Geometric centre of an AABB. */

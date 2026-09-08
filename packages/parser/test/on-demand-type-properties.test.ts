@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { extractTypePropertiesOnDemand } from '../src/columnar-parser.js';
+import { extractTypePropertiesOnDemand, extractTypeEntityOwnProperties } from '../src/columnar-parser.js';
 import type { IfcDataStore } from '../src/columnar-parser.js';
 import type { EntityRef } from '../src/types.js';
 import { RelationshipType } from '@ifc-lite/data';
@@ -256,5 +256,92 @@ describe('extractTypePropertiesOnDemand', () => {
 
     const result = extractTypePropertiesOnDemand(store, 100);
     expect(result).toBeNull();
+  });
+
+  // #3530 made an unnamed IfcPropertySet report `name: ''` instead of a
+  // `PropertySet #<id>` placeholder. Both of a type's sources fold into one
+  // list, and that fold used to key on the name — which silently dropped every
+  // unnamed set from the second source once the first had contributed one.
+  it('keeps two DIFFERENT unnamed type property sets, one per source', () => {
+    const lines = [
+      `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,
+      // Source 1 (HasPropertySets): an UNNAMED set.
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type U',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCPROPERTYSET('guid3',$,$,$,(#310));`,
+      `#310=IFCPROPERTYSINGLEVALUE('FromHasPropertySets',$,'A',$);`,
+      // Source 2 (onDemandPropertyMap): a DIFFERENT, also unnamed set.
+      `#400=IFCPROPERTYSET('guid4',$,$,$,(#410));`,
+      `#410=IFCPROPERTYSINGLEVALUE('FromRelDefines',$,'B',$);`,
+    ];
+
+    const store = buildStoreFromStep(lines, {
+      propertyMap: new Map<number, number[]>([[200, [400]]]),
+      relationships: [
+        { entityId: 100, relType: RelationshipType.DefinesByType, direction: 'inverse', targetIds: [200] },
+      ],
+    });
+
+    const result = extractTypePropertiesOnDemand(store, 100);
+    expect(result).not.toBeNull();
+    expect(result!.properties).toHaveLength(2);
+    expect(result!.properties.map((p) => p.name)).toEqual(['', '']);
+    expect(result!.properties.flatMap((p) => p.properties.map((q) => q.name)))
+      .toEqual(['FromHasPropertySets', 'FromRelDefines']);
+  });
+
+  it('lists ONE entry for a single unnamed set reachable through both sources', () => {
+    const lines = [
+      `#100=IFCWALL('guid1',$,'My Wall',$,$,$,$,$);`,
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type V',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCPROPERTYSET('guid3',$,$,$,(#310));`,
+      `#310=IFCPROPERTYSINGLEVALUE('Once',$,'A',$);`,
+    ];
+
+    const store = buildStoreFromStep(lines, {
+      // The SAME set #300, reached again via IfcRelDefinesByProperties.
+      propertyMap: new Map<number, number[]>([[200, [300]]]),
+      relationships: [
+        { entityId: 100, relType: RelationshipType.DefinesByType, direction: 'inverse', targetIds: [200] },
+      ],
+    });
+
+    const result = extractTypePropertiesOnDemand(store, 100);
+    expect(result).not.toBeNull();
+    expect(result!.properties).toHaveLength(1);
+  });
+});
+
+describe('extractTypeEntityOwnProperties', () => {
+  it('keeps two DIFFERENT unnamed property sets, one per source', () => {
+    const lines = [
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type W',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCPROPERTYSET('guid3',$,$,$,(#310));`,
+      `#310=IFCPROPERTYSINGLEVALUE('FromHasPropertySets',$,'A',$);`,
+      `#400=IFCPROPERTYSET('guid4',$,$,$,(#410));`,
+      `#410=IFCPROPERTYSINGLEVALUE('FromRelDefines',$,'B',$);`,
+    ];
+
+    const store = buildStoreFromStep(lines, {
+      propertyMap: new Map<number, number[]>([[200, [400]]]),
+    });
+
+    const psets = extractTypeEntityOwnProperties(store, 200);
+    expect(psets).toHaveLength(2);
+    expect(psets.flatMap((p) => p.properties.map((q) => q.name)))
+      .toEqual(['FromHasPropertySets', 'FromRelDefines']);
+  });
+
+  it('lists ONE entry for a single unnamed set reachable through both sources', () => {
+    const lines = [
+      `#200=IFCWALLTYPE('guid2',$,'Wall Type X',$,$,(#300),$,'tag',$,.STANDARD.);`,
+      `#300=IFCPROPERTYSET('guid3',$,$,$,(#310));`,
+      `#310=IFCPROPERTYSINGLEVALUE('Once',$,'A',$);`,
+    ];
+
+    const store = buildStoreFromStep(lines, {
+      propertyMap: new Map<number, number[]>([[200, [300]]]),
+    });
+
+    expect(extractTypeEntityOwnProperties(store, 200)).toHaveLength(1);
   });
 });

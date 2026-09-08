@@ -23,6 +23,7 @@
 
 import {
   isWasmAssetUnavailableError,
+  isWorkerScriptSkewMessage,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from '@ifc-lite/geometry';
 
@@ -42,7 +43,13 @@ function recentlyReloaded(now: number): boolean {
     const raw = sessionStorage.getItem(RELOAD_TS_KEY);
     if (raw == null) return false;
     const ts = Number(raw);
-    return Number.isFinite(ts) && now - ts < RELOAD_DEBOUNCE_MS;
+    // A stored timestamp in the FUTURE (an NTP correction, a VM resume, a user
+    // changing the clock) makes the difference negative, which satisfies the
+    // `<` on its own and would pin this tab at "recently reloaded" until wall
+    // time caught up, disabling wasm skew recovery for hours. Treat a future
+    // stamp as stale. Same guard as ./chunk-version-skew.ts.
+    const elapsed = now - ts;
+    return Number.isFinite(ts) && elapsed >= 0 && elapsed < RELOAD_DEBOUNCE_MS;
   } catch {
     return false;
   }
@@ -227,7 +234,20 @@ export function shouldSuppressWasmSkewNoise(
   deps: SkewNoiseDeps = defaultNoiseDeps,
 ): boolean {
   const message = exceptionMessageOf(event);
-  if (message === undefined || !isWasmAssetUnavailableError(message)) return false;
+  if (message === undefined) return false;
+  // Two independent signatures, because the underlying recovery is
+  // classified two different ways (#3533). `isWasmAssetUnavailableError`
+  // matches the wasm-binary MIME/404 text (#1363). The worker-script variant
+  // (`geometry-parallel.ts`'s pre-pass/process-worker `onerror` synthesizing
+  // "…worker script failed to load (possibly a stale deployment)") carries
+  // none of those tokens — it was classified by KIND on the
+  // `WASM_ASSET_UNAVAILABLE_EVENT` the geometry library dispatched (trusted,
+  // not re-matched, by `recoverFromWorkerScriptSkew` — see its own doc
+  // comment). By the time the exception lands here only the message text
+  // survives, so we need `isWorkerScriptSkewMessage` to recognize that same
+  // recovered condition — without this, a worker-script skew reloads
+  // correctly but still gets captured as if it were unhandled.
+  if (!isWasmAssetUnavailableError(message) && !isWorkerScriptSkewMessage(message)) return false;
 
   const now = deps.now();
 

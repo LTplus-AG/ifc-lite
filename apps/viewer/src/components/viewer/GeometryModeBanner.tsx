@@ -3,11 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Reload-to-apply banner for the "Fast / Exact geometry" load-time mode,
- * mirroring {@link MergeLayersBanner}. The user flips the mode in the Visibility
- * dropdown; when a model is already loaded the store sets
+ * Reload-to-apply banner for the load-time geometry inputs, mirroring
+ * {@link MergeLayersBanner}. The user changes one in the Visibility dropdown
+ * (the Fast/Exact mode switch, or clearing a pinned `?geomTier=` detail
+ * override); when a model is already loaded the store sets
  * `geometryModePendingReload` and we surface this non-modal banner above the
- * canvas asking the user to reload (re-tessellating with the new mode).
+ * canvas asking the user to reload (re-tessellating with the new input).
+ * `geometryReloadReason` picks the headline so the prompt names the change the
+ * user actually made — one banner, two inputs.
  *
  * Anchored slightly below the merge-layers banner so the two don't overlap if
  * both are pending at once.
@@ -29,6 +32,7 @@ export interface GeometryModeBannerProps {
 export function GeometryModeBanner({ onReload }: GeometryModeBannerProps) {
   const pending = useViewerStore((s) => s.geometryModePendingReload);
   const mode = useViewerStore((s) => s.geometryMode);
+  const reason = useViewerStore((s) => s.geometryReloadReason);
   const dismiss = useViewerStore((s) => s.clearGeometryModePendingReload);
 
   const handleReload = useCallback(() => {
@@ -62,7 +66,11 @@ export function GeometryModeBanner({ onReload }: GeometryModeBannerProps) {
         </div>
         <div className="flex flex-col leading-tight min-w-0">
           <span className="text-xs font-semibold text-foreground">
-            {mode === 'fast' ? 'Fast geometry enabled' : 'Exact geometry enabled'}
+            {reason === 'tier'
+              ? 'Detail pin removed'
+              : mode === 'fast'
+                ? 'Fast geometry enabled'
+                : 'Exact geometry enabled'}
           </span>
           <span className="text-[11px] text-muted-foreground truncate">
             Reload model to apply the new setting.

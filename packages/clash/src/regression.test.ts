@@ -56,9 +56,37 @@ function boxElement(key: string, tag: string, cx: number): ClashElement {
   ]);
   const positions = new Float32Array(v);
   return {
-    key, ref: 1, model: 'm', tag, positions, indices,
+    key, ref: refFromKey(key), model: 'm', tag, positions, indices,
     bounds: { min: [cx - h, -h, -h], max: [cx + h, h, h] },
   };
+}
+
+/**
+ * A stable, deterministic expressId-like `ref` derived from `key`, so that
+ * two `boxElement`s built with the same key (the split-entity case) get the
+ * same `ref` — matching real data, where `key` and `ref` both identify one
+ * entity — while distinct keys get distinct refs. Fixes a fixture bug: this
+ * helper used to hardcode `ref: 1` for every box, which happened to work
+ * only because the broad-phase self-clash guard checked `key` alone; once it
+ * also checks `ref` (see `broad.ts`'s `isSameEntity`), two DIFFERENT
+ * entities sharing that hardcoded `ref` were wrongly treated as one.
+ *
+ * Uses a counter/registry rather than a hash: a 32-bit hash can collide
+ * (e.g. "Aa" and "BB" both hash to 2112 under a 31-multiplier hash), and a
+ * collision here would make two distinct fixture entities share a `ref`,
+ * which `isSameEntity` would then wrongly treat as one entity — silently
+ * suppressing a valid clash pair and letting a regression test pass for the
+ * wrong reason. A registry is collision-free by construction.
+ */
+const refRegistry = new Map<string, number>();
+let nextRef = 1;
+function refFromKey(key: string): number {
+  const existing = refRegistry.get(key);
+  if (existing !== undefined) return existing;
+  const assigned = nextRef;
+  nextRef += 1;
+  refRegistry.set(key, assigned);
+  return assigned;
 }
 
 describe('regression: element-mode group ids do not collide', () => {

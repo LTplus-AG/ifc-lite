@@ -173,4 +173,50 @@ describe('mountPresenceInViewer', () => {
     expect(container.children.length).toBe(0);
     session.dispose();
   });
+
+  it('raycastToWorld: publishes cursor3d on hit, keeps last value on miss, clears on mouseleave', async () => {
+    const session = await createCollabSession({
+      roomId: 'r-ray',
+      user: { id: 'u', name: 'U' },
+      provider: 'memory',
+      presence: { updateRateHz: 1000 },
+    });
+
+    const container = (
+      globalThis as unknown as { document: { createElement: (t: string) => unknown } }
+    ).document.createElement('div') as {
+      appendChild: (c: unknown) => void;
+      dispatchEvent: (e: unknown) => boolean;
+      querySelector: (s: string) => unknown;
+      children: unknown[];
+    };
+
+    let nextHit: { x: number; y: number; z: number } | null = { x: 1, y: 2, z: 3 };
+    const teardown = mountPresenceInViewer({
+      session,
+      container: container as unknown as HTMLElement,
+      viewport: 'plan',
+      raycastToWorld: () => nextHit,
+    });
+
+    const M = (globalThis as unknown as { MouseEvent: new (t: string, i?: object) => unknown }).MouseEvent;
+    container.dispatchEvent(new M('mousemove', { clientX: 10, clientY: 20 }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(session.presence.getSelf()?.cursor3d).toEqual({ x: 1, y: 2, z: 3 });
+    // cursor2d must NOT be published in raycast mode.
+    expect(session.presence.getSelf()?.cursor2d).toBeUndefined();
+
+    // A ray miss must leave the previously-published cursor3d in place.
+    nextHit = null;
+    container.dispatchEvent(new M('mousemove', { clientX: 11, clientY: 21 }));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(session.presence.getSelf()?.cursor3d).toEqual({ x: 1, y: 2, z: 3 });
+
+    container.dispatchEvent(new M('mouseleave'));
+    await new Promise((r) => setTimeout(r, 30));
+    expect(session.presence.getSelf()?.cursor3d).toBeUndefined();
+
+    teardown();
+    session.dispose();
+  });
 });

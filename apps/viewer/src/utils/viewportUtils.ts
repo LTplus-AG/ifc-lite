@@ -7,7 +7,13 @@
  * Pure functions extracted from Viewport.tsx for reusability and testability
  */
 
+import { NORMAL_COORD_THRESHOLD_M } from '@ifc-lite/geometry';
 import type { MeshData } from '@ifc-lite/geometry';
+import {
+  REPROJECTED_MEASUREMENT_FIELDS,
+  REPROJECTED_MEASUREMENT_FIELD_NAMES,
+  type ReprojectedMeasurementField,
+} from '../store/measurementReprojectionFields.js';
 
 // ============================================================================
 // Types
@@ -70,11 +76,12 @@ export interface ViewportStateRefs {
 // ============================================================================
 
 /**
- * Maximum coordinate threshold for valid geometry
- * Matches CoordinateHandler's NORMAL_COORD_THRESHOLD (10km)
- * Coordinates beyond this are likely corrupted or unshifted original coordinates
+ * Maximum coordinate threshold for valid geometry (10km).
+ * Coordinates beyond this are likely corrupted or unshifted original coordinates.
+ * Shared with `CoordinateHandler` and `localParsingUtils` — see
+ * `NORMAL_COORD_THRESHOLD_M`.
  */
-const MAX_VALID_COORD = 10000;
+const MAX_VALID_COORD = NORMAL_COORD_THRESHOLD_M;
 
 /**
  * Check if a vertex coordinate is valid (finite and within reasonable bounds)
@@ -109,6 +116,16 @@ export function getEntityBounds(
     return null;
   }
 
+  return boundsFromMeshes(matchingMeshes);
+}
+
+/**
+ * Aggregate a bounding box across an entity's already-collected submeshes.
+ * Shared by `getEntityBounds` (single id, one `.filter()` pass) and
+ * `unionEntityBounds`'s indexed path (many ids, one shared index) — the
+ * vertex-aggregation loop used to live only in `getEntityBounds`.
+ */
+function boundsFromMeshes(meshes: MeshData[]): BoundingBox3D | null {
   let minX = Infinity,
     minY = Infinity,
     minZ = Infinity;
@@ -118,7 +135,7 @@ export function getEntityBounds(
 
   // Aggregate bounds across all submeshes
   // Filter out corrupted/unshifted vertices (> 10km from origin)
-  for (const mesh of matchingMeshes) {
+  for (const mesh of meshes) {
     // world = origin + position (per-element local frame; absent → absolute).
     const ox = mesh.origin ? mesh.origin[0] : 0;
     const oy = mesh.origin ? mesh.origin[1] : 0;
@@ -148,6 +165,83 @@ export function getEntityBounds(
   return {
     min: { x: minX, y: minY, z: minZ },
     max: { x: maxX, y: maxY, z: maxZ },
+  };
+}
+
+/**
+ * Bucket a flat mesh list by `expressId`, keeping only the meshes
+ * `getEntityBounds` would have kept (`positions.length >= 3`).
+ *
+ * One pass over the array, so a caller that needs bounds for many ids pays
+ * O(meshes + N) instead of the O(N x meshes) of one `getEntityBounds` filter
+ * per id.
+ */
+export function indexMeshesByEntity(geometry: MeshData[]): Map<number, MeshData[]> {
+  const index = new Map<number, MeshData[]>();
+  for (const mesh of geometry) {
+    if (mesh.positions.length < 3) continue;
+    const list = index.get(mesh.expressId);
+    if (list) list.push(mesh);
+    else index.set(mesh.expressId, [mesh]);
+  }
+  return index;
+}
+
+/**
+ * The indexed equivalent of `getEntityBounds` — identical result, no scan.
+ */
+export function boundsFromIndex(
+  index: Map<number, MeshData[]>,
+  entityId: number,
+): BoundingBox3D | null {
+  const meshes = index.get(entityId);
+  return meshes ? boundsFromMeshes(meshes) : null;
+}
+
+/**
+ * Number of unindexed lookups a `createEntityBoundsLookup` reader gets before
+ * it switches to the shared index. A handful of ids (a row click, a clash
+ * pair) is cheaper to answer with one `.filter()` pass each than by building a
+ * Map over the whole mesh array; past that the unindexed cost dominates.
+ */
+const INDEX_AFTER_LOOKUPS = 4;
+
+/**
+ * A bounds reader over a flat mesh list that indexes itself once the caller
+ * asks about more than a handful of ids.
+ *
+ * Every reader returns exactly what `getEntityBounds(geometry, id)` returns —
+ * the index is a lookup strategy, not a different answer. Use this instead of
+ * calling `getEntityBounds` in a loop: an unindexed loop over N ids is
+ * O(N x meshes), which on a large isolate/frame set (the Filter tab's
+ * "Isolate in 3D" #2532, or an assembly whose parts are resolved one by one)
+ * stalls the main thread for seconds.
+ *
+ * Does NOT memoise per id — that stays the caller's job, since callers that
+ * also need the renderer's instanced-occurrence fallback must cache the
+ * combined answer, not this one.
+ *
+ * @param geometry flat mesh list, or null once streaming released it
+ * @param expectedLookups how many ids the caller already knows it will ask
+ *   about, when it knows up front (`unionEntityBounds` has the id array).
+ *   Above the threshold the index is built on the FIRST lookup rather than
+ *   after a few unindexed ones. Callers that discover ids as they go (the
+ *   viewport's aggregation expansion, where one assembly id can turn into
+ *   hundreds of parts) omit it and let the reader index itself.
+ */
+export function createEntityBoundsLookup(
+  geometry: MeshData[] | null,
+  expectedLookups?: number,
+): (entityId: number) => BoundingBox3D | null {
+  const indexUpFront = (expectedLookups ?? 0) > INDEX_AFTER_LOOKUPS;
+  let index: Map<number, MeshData[]> | null = null;
+  let lookups = 0;
+  return (entityId: number) => {
+    if (!geometry) return null;
+    if (!index && (indexUpFront || ++lookups > INDEX_AFTER_LOOKUPS)) {
+      index = indexMeshesByEntity(geometry);
+    }
+    return index ? boundsFromIndex(index, entityId) : getEntityBounds(geometry, entityId);
   };
 }
 
@@ -235,6 +329,41 @@ export function calculateGeometryBounds(meshes: MeshData[]): BoundingBox3D {
     min: { x: minX, y: minY, z: minZ },
     max: { x: maxX, y: maxY, z: maxZ },
   };
+}
+
+/**
+ * Accumulate a world-space AABB over the meshes whose `ifcType` is NOT in
+ * `excludeTypes` (case-sensitive IfcPascalCase). Returns `null` when no valid
+ * vertex contributes, so the caller can merge with other sources (e.g.
+ * instanced-occurrence bounds) and decide a fallback. Used to frame the
+ * building shell while skipping the IfcSite/terrain extent and IfcSpace.
+ */
+export function accumulateBoundsExcludingTypes(
+  meshes: MeshData[],
+  excludeTypes: ReadonlySet<string>,
+): BoundingBox3D | null {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let any = false;
+
+  for (const mesh of meshes) {
+    if (mesh.ifcType && excludeTypes.has(mesh.ifcType)) continue;
+    const ox = mesh.origin ? mesh.origin[0] : 0;
+    const oy = mesh.origin ? mesh.origin[1] : 0;
+    const oz = mesh.origin ? mesh.origin[2] : 0;
+    for (let i = 0; i < mesh.positions.length; i += 3) {
+      const x = mesh.positions[i] + ox;
+      const y = mesh.positions[i + 1] + oy;
+      const z = mesh.positions[i + 2] + oz;
+      if (!isValidCoord(x, y, z)) continue;
+      minX = Math.min(minX, x); minY = Math.min(minY, y); minZ = Math.min(minZ, z);
+      maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); maxZ = Math.max(maxZ, z);
+      any = true;
+    }
+  }
+
+  if (!any || !Number.isFinite(minX)) return null;
+  return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
 }
 
 // ============================================================================
@@ -344,4 +473,101 @@ export function calculateScaleBarSize(
   scaleBarPixels: number = 96
 ): number {
   return (scaleBarPixels / viewportHeight) * (cameraDistance * Math.tan(fov / 2) * 2);
+}
+
+/**
+ * Union the world AABBs of `ids`, taking each entity's bounds from the flat mesh
+ * list first and falling back to the renderer's per-occurrence AABB.
+ *
+ * The fallback exists because GPU-instanced occurrences are not in
+ * `geometryResult.meshes` at all — and, critically, because `geometry` can be
+ * `null` on its own: once streaming releases the mesh arrays, the renderer's
+ * scene is the ONLY source of bounds left. Callers must therefore not short-circuit
+ * on a null `geometry`; `getEntityBounds(null, id)` already returns null and lets
+ * each id fall through to `instancedBounds`.
+ *
+ * @param geometry flat mesh list, or null once released
+ * @param ids federated GLOBAL ids (single model: global === express)
+ * @param instancedBounds per-occurrence AABB from the renderer scene
+ * @returns the union, or null when no id resolved to bounds
+ */
+export function unionEntityBounds(
+  geometry: MeshData[] | null,
+  ids: number[],
+  instancedBounds: (id: number) => BoundingBox3D | null | undefined,
+): { min: Point3D; max: Point3D } | null {
+  let min: Point3D | null = null;
+  let max: Point3D | null = null;
+
+  // Self-indexing reader: past a handful of ids it buckets the mesh array by
+  // expressId ONCE rather than re-filtering the whole array per id, so this
+  // loop is O(meshes + N) instead of O(N × meshes). Shared with every other
+  // many-id bounds path (see `createEntityBoundsLookup`).
+  const meshBounds = createEntityBoundsLookup(geometry, ids.length);
+
+  for (const id of ids) {
+    const b = meshBounds(id) ?? instancedBounds(id) ?? null;
+    if (!b) continue;
+    if (!min || !max) {
+      min = { x: b.min.x, y: b.min.y, z: b.min.z };
+      max = { x: b.max.x, y: b.max.y, z: b.max.z };
+    } else {
+      min.x = Math.min(min.x, b.min.x);
+      min.y = Math.min(min.y, b.min.y);
+      min.z = Math.min(min.z, b.min.z);
+      max.x = Math.max(max.x, b.max.x);
+      max.y = Math.max(max.y, b.max.y);
+      max.z = Math.max(max.z, b.max.z);
+    }
+  }
+  return min && max ? { min, max } : null;
+}
+
+/**
+ * The subset of measurement-slice state that decides whether the animation
+ * loop's per-frame reprojection pass (`updateMeasurementScreenCoords`) needs
+ * to run at all.
+ *
+ * DERIVED from `REPROJECTED_MEASUREMENT_FIELDS` rather than listed here: that
+ * registry is the one place the reprojected field set is written down, and
+ * the reprojection pass is typed against it too. Structural, not imported
+ * from the store, so this stays a pure function callable from a test with a
+ * minimal fixture — while the live `useViewerStore.getState()` at
+ * Viewport.tsx's call site still has to satisfy it, which is what catches a
+ * field registered under the wrong kind.
+ */
+export type PendingMeasurementState = {
+  [K in ReprojectedMeasurementField]: (typeof REPROJECTED_MEASUREMENT_FIELDS)[K] extends 'list'
+    ? { length: number }
+    : unknown;
+};
+
+/**
+ * True when there is any measurement state whose screen coordinates could
+ * be stale after a camera move — drag-mode measurements/gesture,
+ * polyline-mode sequences/finished polylines (#2641 review defect: this used
+ * to check only `measurements`/`activeMeasurement`, so with polyline-only
+ * state the reprojection pass never ran and placed points, segments and
+ * labels froze at their click-time screen position while orbiting), or angle
+ * sequences/measurements (#2735, the same defect a third time).
+ *
+ * This gate and `updateMeasurementScreenCoords` are a PAIR: reprojection
+ * logic added there without an arm here is dead code, and the symptom is
+ * identical to having written no reprojection at all. Neither side spells
+ * the pair out by hand any more — both read `REPROJECTED_MEASUREMENT_FIELDS`,
+ * so a new measurement kind reaches this gate as soon as it is registered,
+ * and cannot be reprojected without being registered.
+ */
+export function hasPendingMeasurementState(state: PendingMeasurementState): boolean {
+  for (const field of REPROJECTED_MEASUREMENT_FIELD_NAMES) {
+    // The mapped type above ties each field's shape to its registered kind,
+    // so these two reads are the only ones the registry can produce.
+    const value: unknown = state[field];
+    if (REPROJECTED_MEASUREMENT_FIELDS[field] === 'list') {
+      if ((value as { length: number }).length > 0) return true;
+    } else if (value !== null) {
+      return true;
+    }
+  }
+  return false;
 }

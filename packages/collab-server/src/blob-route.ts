@@ -83,6 +83,7 @@ const HASH_REGEX = /^[a-f0-9]{32}$/;
 export class FsBlobStorage implements ServerBlobStorage {
   private readonly dir: string;
   private readonly ready: Promise<void>;
+  private readonly locks = new Map<string, Promise<void>>();
 
   constructor(dataDir: string) {
     this.dir = path.join(dataDir, 'blobs');
@@ -93,20 +94,66 @@ export class FsBlobStorage implements ServerBlobStorage {
     return path.join(this.dir, hash);
   }
 
+  /**
+   * Serialize operations on one hash. Without this, a GC sweep can stat a blob
+   * as old, and unlink it after a concurrent `put` has already renamed fresh
+   * bytes into place - deleting a blob a client believes it just uploaded.
+   * Keyed per hash, so unrelated blobs never contend.
+   */
+  private withLock<T>(hash: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.locks.get(hash) ?? Promise.resolve();
+    const run = prev.then(fn, fn);
+    // Keep the chain alive but never let a rejection poison the next waiter.
+    const settled = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.locks.set(hash, settled);
+    void settled.then(() => {
+      if (this.locks.get(hash) === settled) this.locks.delete(hash);
+    });
+    return run;
+  }
+
   async put(hash: string, bytes: Uint8Array, contentType?: string): Promise<ServerBlobMeta> {
     await this.ready;
-    const file = this.file(hash);
-    // Atomic write (temp + rename) so a concurrent/interrupted PUT of the same
-    // content-addressed blob can't leave a torn file.
-    const tmp = `${file}.tmp-${crypto.randomUUID()}`;
-    await fs.promises.writeFile(tmp, bytes);
-    await fs.promises.rename(tmp, file);
-    return {
-      hash,
-      byteLength: bytes.byteLength,
-      contentType,
-      uploadedAt: new Date().toISOString(),
-    };
+    return this.withLock(hash, async () => {
+      const file = this.file(hash);
+      // Atomic write (temp + rename) so a concurrent/interrupted PUT of the same
+      // content-addressed blob can't leave a torn file.
+      const tmp = `${file}.tmp-${crypto.randomUUID()}`;
+      await fs.promises.writeFile(tmp, bytes);
+      await fs.promises.rename(tmp, file);
+      return {
+        hash,
+        byteLength: bytes.byteLength,
+        contentType,
+        uploadedAt: new Date().toISOString(),
+      };
+    });
+  }
+
+  /**
+   * Delete a blob only if it is still older than `cutoffEpochMs`.
+   *
+   * The mtime is re-checked HERE, under the same lock `put` takes, so a blob
+   * re-uploaded between a GC plan and its application survives: `put` refreshes
+   * mtime via a fresh temp file and rename. Returns whether it deleted.
+   */
+  async deleteIfOlderThan(hash: string, cutoffEpochMs: number): Promise<boolean> {
+    await this.ready;
+    return this.withLock(hash, async () => {
+      const file = this.file(hash);
+      try {
+        const stat = await fs.promises.stat(file);
+        if (stat.mtimeMs >= cutoffEpochMs) return false;
+        await fs.promises.unlink(file);
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') return false;
+        throw err;
+      }
+    });
   }
 
   async get(hash: string): Promise<{ bytes: Uint8Array; meta: ServerBlobMeta } | null> {

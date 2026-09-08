@@ -7,7 +7,6 @@ import {
   computeNodeHash,
   createCertificate,
   verifyCertificate,
-  type Certificate,
   type GeometryMeshPayload,
   type NodeResolver,
   type PropertySetPayload,
@@ -250,7 +249,6 @@ describe('verifyCertificate: hash-equality claim', () => {
 
   it('tamper: fails when one side was rewritten after the certificate was minted', async () => {
     const doorA = wallMesh(1);
-    const doorB = wallMesh(1);
     const hash = await computeNodeHash('geometry-mesh', doorA);
     const cert = createCertificate({
       kernelVersion: KERNEL_VERSION,
@@ -503,6 +501,39 @@ describe('createCertificate structural validation', () => {
     // v0 verification ignores signatures entirely: a garbage sig neither
     // helps nor hurts. Real signing lands with M4.
     expect(await verifyCertificate(cert, resolver)).toEqual({ ok: true });
+  });
+
+  it('refuses to mint a certificate with a malformed reserved signature array', () => {
+    const base = {
+      kernelVersion: KERNEL_VERSION,
+      trustRoot: TRUST_ROOT,
+      reads: [],
+      writes: [],
+      claims: [],
+    };
+    const withSignatures = (signatures: unknown) =>
+      createCertificate({ ...base, signatures: signatures as never });
+
+    // Regression for finding F11 of the pre-freeze adversarial attack on
+    // node-hash-v0; both the attack and this fix landed in PR #1886, the freeze
+    // PR (see the `harden(provenance): close the NFC sort/encode split ...
+    // (F4/F5/F11)` commit). The exact payload that review minted and got a
+    // clean `ok: true` for: a wrong algorithm, an empty object, and a null,
+    // all waved through.
+    expect(() => withSignatures([{ alg: 'not-ed25519' }, {}, null])).toThrow(/must be "ed25519"/);
+    expect(() => withSignatures([{}])).toThrow(/must be "ed25519"/);
+    expect(() => withSignatures([null])).toThrow(/must be an object/);
+    expect(() => withSignatures([{ alg: 'ed25519', key: '', sig: 'x' }])).toThrow(
+      /key must be a non-empty string/,
+    );
+    expect(() => withSignatures([{ alg: 'ed25519', key: 'k' }])).toThrow(
+      /sig must be a non-empty string/,
+    );
+    expect(() => withSignatures('not-an-array')).toThrow(/must be an array/);
+
+    // Absent and well-formed both stay legal; v0 still ignores the field.
+    expect(createCertificate(base).signatures).toBeUndefined();
+    expect(withSignatures([{ alg: 'ed25519', key: 'k', sig: 's' }]).signatures).toHaveLength(1);
   });
 });
 

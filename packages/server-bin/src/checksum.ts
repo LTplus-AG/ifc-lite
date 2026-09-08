@@ -5,14 +5,20 @@
 /**
  * Integrity verification for downloaded release archives.
  *
- * Implements a non-breaking SHA-256 check: the per-asset checksum sidecar is
- * fetched from the SAME release as the archive and compared before the archive
- * is extracted / chmod'd / executed. A mismatch fails closed (the artifact is
- * unlinked and an error thrown); a missing checksum asset fails open (warn and
- * proceed) for backward compatibility with older releases.
+ * Fail-closed SHA-256 check: the per-asset checksum sidecar ("<asset>.sha256",
+ * with a release-wide "SHA256SUMS" accepted as a fallback shape) is fetched
+ * from the SAME release as the archive and compared before the archive is
+ * extracted / chmod'd / executed. Both a MISMATCH and a MISSING/unfetchable
+ * checksum fail closed: the artifact is unlinked and an error thrown.
  *
- * NOTE: The release pipeline SHOULD publish "<asset>.sha256" alongside every
- * archive so this verification becomes fail-closed everywhere.
+ * Failing closed on a missing sidecar cannot break a supported install:
+ * binary.ts derives the release tag from this package's own version, so a
+ * given published version only ever downloads its own release, and every
+ * release cut at or after the version that ships this code publishes one
+ * sidecar per archive (.github/workflows/server-binaries.yml, "Create
+ * Checksum Sidecar" - enforced by scripts/check-server-bin-targets.mjs).
+ * Releases without sidecars are only downloaded by older published package
+ * versions, which carry their own fail-open copy of this check.
  */
 
 import { existsSync, unlinkSync, createReadStream } from 'fs';
@@ -58,8 +64,8 @@ function parseExpectedSha256(body: string, archiveName: string): string | null {
 /**
  * Fetch the expected SHA-256 for the resolved asset from the SAME release.
  * Tries the per-asset sidecar ("<assetUrl>.sha256") first, then a release-wide
- * "SHA256SUMS" asset. Returns null if no checksum asset is published (older
- * releases) so callers can fail open for backward compatibility.
+ * "SHA256SUMS" asset. Returns null when no checksum could be retrieved; the
+ * caller fails closed on that.
  */
 async function fetchExpectedSha256(
   assetUrl: string,
@@ -94,9 +100,10 @@ async function fetchExpectedSha256(
 /**
  * Verify the downloaded archive against its published SHA-256 checksum.
  *
- * Fail-closed when a checksum is found and MISMATCHES (the artifact is unlinked
- * and an error thrown). Fail-open when NO checksum asset exists (older releases
- * predating the checksum pipeline) by logging a warning and proceeding.
+ * Fail-closed in both failure modes: a MISMATCH and a checksum that could not
+ * be retrieved at all each unlink the artifact and throw, so an unverified
+ * archive is never extracted or executed. See the module header for why a
+ * missing sidecar cannot be a legitimate state for this package version.
  */
 export async function verifyArchiveChecksum(
   archivePath: string,
@@ -106,12 +113,20 @@ export async function verifyArchiveChecksum(
   const expected = await fetchExpectedSha256(assetUrl, archiveName);
 
   if (!expected) {
-    console.warn(
-      `Warning: no SHA-256 checksum published for ${archiveName}; ` +
-      `skipping integrity verification. The release pipeline should publish ` +
-      `"${archiveName}.sha256" so this becomes a hard requirement.`
+    if (existsSync(archivePath)) {
+      unlinkSync(archivePath);
+    }
+    throw new Error(
+      `No SHA-256 checksum is available for ${archiveName}; refusing to use the unverified download.\n` +
+      `Expected "${archiveName}.sha256" (or a SHA256SUMS entry) alongside the archive in the same release.\n` +
+      `Likely causes:\n` +
+      `  1. The release assets are still uploading - retry in a few minutes\n` +
+      `  2. A network problem blocked the checksum fetch\n` +
+      `  3. The release is incomplete - report at https://github.com/LTplus-AG/ifc-lite/issues\n` +
+      `Alternatives:\n` +
+      `  - Use Docker: npx create-ifc-lite my-app --template server\n` +
+      `  - Build from source: cargo build --release -p ifc-lite-server`
     );
-    return;
   }
 
   const actual = await computeFileSha256(archivePath);

@@ -662,3 +662,380 @@ fn hairline_true_collinear_cover_still_accepted() {
         "a near-collinear fully-covered hairline must remain accepted"
     );
 }
+
+/// The census's undirected ±1 edge balance (#3435), reimplemented here on
+/// purpose rather than imported: the real one, `edge_stats` in
+/// `rust/geometry/tests/triangulation_invariance.rs`, lives in the
+/// integration-test binary of this crate, which a `src` unit-test module
+/// cannot depend on (it is a separate compilation target, built after the
+/// library). This mirrors only the `open` field of that struct — count an
+/// undirected edge (grid-quantized like `closed_or_hairline`'s own key, so
+/// the two predicates read the identical triangle soup) as open when its
+/// forward and reverse use counts differ — and is intentionally a second copy
+/// of the same one-line rule `edge_stats` already states; that duplication is
+/// exactly the shape #3435 is about, not an accident of this test.
+fn undirected_open_edge_count(mesh: &Mesh) -> usize {
+    type K = (i64, i64, i64);
+    let key = |i: u32| -> K {
+        let b = i as usize * 3;
+        let q = |v: f32| (v as f64 / 1.0e-4).round() as i64;
+        (
+            q(mesh.positions[b]),
+            q(mesh.positions[b + 1]),
+            q(mesh.positions[b + 2]),
+        )
+    };
+    let mut uses: std::collections::HashMap<(K, K), (u32, u32)> = std::collections::HashMap::new();
+    for tri in mesh.indices.chunks_exact(3) {
+        let (a, b, c) = (key(tri[0]), key(tri[1]), key(tri[2]));
+        if a == b || b == c || c == a {
+            continue;
+        }
+        for (x, y) in [(a, b), (b, c), (c, a)] {
+            let e = uses.entry((x.min(y), x.max(y))).or_insert((0, 0));
+            if x < y {
+                e.0 += 1;
+            } else {
+                e.1 += 1;
+            }
+        }
+    }
+    uses.values().filter(|&&(f, r)| f != r).count()
+}
+
+/// #3435: `closed_or_hairline` and the census's undirected ±1 balance are two
+/// different definitions of "closed", and this mesh is the minimal witness
+/// that they DISAGREE.
+///
+/// Three triangles, sharing points `A=(0,0,0)`, `B=(10,0,0)`, `M=(5,0,0)`
+/// (collinear) and an off-line apex `C`:
+///   - `(A, B, C)` — one face using the FULL boundary edge `A→B`.
+///   - `(M, A, C)` and `(B, M, C)` — an adjacent face using the SAME boundary,
+///     but split at `M` and wound the other way, i.e. `M→A` then `B→M`.
+///
+/// Every edge touching `C` cancels exactly (each is walked once each
+/// direction across the three triangles), so the only uncancelled directed
+/// edges are `A→B`, `M→A`, `B→M` — a T-junction: one face's full-length edge,
+/// covered by the adjacent face's two sub-edges split at an interior point.
+/// This is the exact signature #3435 measured on host `#628727` in
+/// `ISSUE_068_ARK_NUS_skolebygg.ifc` (a 336 mm pier with two openings): a
+/// full-height edge collinearly covered by two sub-edges split off-centre,
+/// read `open=3` by the census while `try_prism_cut`'s own gate passed it.
+///
+/// `closed_or_hairline` ACCEPTS this by design (own module doc: uncancelled
+/// directed edges that net to zero everywhere along their shared line). The
+/// undirected ±1 balance calls all three of `{A,B}`, `{M,A}`, `{B,M}` open,
+/// because each pair is used only once total and has no reverse partner to
+/// balance against — it has no collinear-coverage step, so it cannot see that
+/// the "reverse" is split across two edges rather than missing.
+///
+/// This test does not say which reading is right — #3435 tracks that
+/// decision — it pins that they currently disagree, so a change to either
+/// definition has to touch this assertion on purpose.
+#[test]
+fn t_junction_hairline_accepted_but_undirected_balance_reports_open() {
+    let a = [0.0, 0.0, 0.0];
+    let b = [10.0, 0.0, 0.0];
+    let m = [5.0, 0.0, 0.0];
+    let c = [0.0, 1.0, 1.0];
+    let mesh = mesh_from_tris(&[[a, b, c], [m, a, c], [b, m, c]]);
+
+    assert!(
+        closed_or_hairline(&mesh),
+        "closed_or_hairline must accept the T-junction (its own hairline contract)"
+    );
+    assert_ne!(
+        undirected_open_edge_count(&mesh),
+        0,
+        "the undirected ±1 balance must call the same mesh open (no collinear-coverage step)"
+    );
+}
+
+/// Minimal single-slab unit-square `PrismFrame`, for exercising
+/// `try_merge_prisms` directly without routing through a full mesh.
+fn square_frame(d: V3, u: V3, v: V3, d0: f64, d1: f64) -> PrismFrame {
+    let profile = vec![[-0.5, -0.5], [0.5, -0.5], [0.5, 0.5], [-0.5, 0.5]];
+    PrismFrame {
+        u,
+        v,
+        d,
+        planes: vec![d0, d1],
+        profiles: vec![profile],
+        slab_area: vec![1.0],
+        slab_interior: vec![[0.0, 0.0]],
+        bb: ([-0.5, -0.5], [0.5, 0.5]),
+    }
+}
+
+/// `try_merge_prisms`'s depth-concatenation gate welds at `8 * SNAP_GRID`
+/// (~122 µm plane jitter, NOT the geometric `tol`), per the doc comment on
+/// `weld`. Pin both sides of the `<=`: a gap exactly at the weld must still
+/// merge, and a hair beyond it must not.
+#[test]
+fn try_merge_prisms_weld_boundary_is_inclusive() {
+    const WELD: f64 = 8.0 * crate::kernel::mesh_bridge::SNAP_GRID;
+    let a = square_frame([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0.0, 1.0);
+
+    // Exactly at the weld: must merge (Some).
+    let b_at = square_frame(
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0 + WELD,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_at, 1.0e-9).is_some(),
+        "a gap exactly at the weld threshold must still merge"
+    );
+
+    // A hair beyond the weld: must NOT merge (None).
+    let b_over = square_frame(
+        [0.0, 0.0, 1.0],
+        [1.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0 + WELD + 1.0e-9,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_over, 1.0e-9).is_none(),
+        "a gap a hair beyond the weld threshold must not merge"
+    );
+}
+
+/// `try_merge_prisms` requires `dot(a.*, b.*) >= BASIS_TOL` (`1 - 1e-8`) on
+/// all three basis vectors before stitching two prisms together. Pin the
+/// boundary directly on the dot-product VALUE (no trig round-trip, so the
+/// "at threshold" case is bit-exact): a `u`-axis misalignment landing
+/// exactly on BASIS_TOL must still merge; a hair past it must not.
+#[test]
+fn try_merge_prisms_basis_boundary_is_inclusive() {
+    const BASIS_TOL: f64 = 1.0 - 1.0e-8;
+    let a = square_frame([0.0, 0.0, 1.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], 0.0, 1.0);
+
+    // dot(a.u, b.u) == BASIS_TOL exactly (a.u == [1,0,0] selects b.u[0]
+    // verbatim, so this is bit-exact, not an approximation).
+    let b_at = square_frame(
+        [0.0, 0.0, 1.0],
+        [BASIS_TOL, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_at, 1.0e-9).is_some(),
+        "a u-axis misalignment landing exactly on BASIS_TOL must still merge"
+    );
+
+    // A hair past it: dot(a.u, b.u) == BASIS_TOL - 1e-9, must reject.
+    let b_over = square_frame(
+        [0.0, 0.0, 1.0],
+        [BASIS_TOL - 1.0e-9, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+        1.0,
+        2.0,
+    );
+    assert!(
+        try_merge_prisms(&a, &b_over, 1.0e-9).is_none(),
+        "a u-axis misalignment a hair past BASIS_TOL must not merge"
+    );
+}
+
+/// `PrismFrame::contains` is documented as a "Strict interior test (open
+/// solid)": points exactly on the depth boundaries `d0`/`d1` must be
+/// classified as OUTSIDE, not inside. Every call site in this file only ever
+/// probes triangle/piece centroids, which are essentially never bit-exact on
+/// a slab plane, so this boundary is otherwise never exercised. Pin it
+/// directly against a hand-built axis-aligned frame.
+#[test]
+fn prism_frame_contains_excludes_depth_boundary_points() {
+    let pf = PrismFrame {
+        u: [1.0, 0.0, 0.0],
+        v: [0.0, 1.0, 0.0],
+        d: [0.0, 0.0, 1.0],
+        planes: vec![0.0, 10.0],
+        profiles: vec![vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]],
+        slab_area: vec![100.0],
+        slab_interior: vec![[5.0, 5.0]],
+        bb: ([0.0, 0.0], [10.0, 10.0]),
+    };
+
+    // Strictly interior in all three axes: inside.
+    assert!(pf.contains([5.0, 5.0, 5.0]));
+
+    // Exactly on the d0 plane: must be OUTSIDE (open solid), not inside.
+    assert!(
+        !pf.contains([5.0, 5.0, 0.0]),
+        "a point exactly on the d0 boundary must be excluded by the strict interior test"
+    );
+    // Exactly on the d1 plane: must be OUTSIDE (open solid), not inside.
+    assert!(
+        !pf.contains([5.0, 5.0, 10.0]),
+        "a point exactly on the d1 boundary must be excluded by the strict interior test"
+    );
+
+    // Just outside on either side: outside.
+    assert!(!pf.contains([5.0, 5.0, -0.001]));
+    assert!(!pf.contains([5.0, 5.0, 10.001]));
+}
+
+/// `rings_equal` is documented as "Cyclic CCW-ring equality WITHIN `tol`" —
+/// an inclusive bound. A per-coordinate difference of exactly `tol` must
+/// still count as equal; only strictly-greater differences must reject the
+/// match. `try_merge_prisms`'s only caller of this function (the wall-leaf
+/// half-void merge) never happens to land a fixture exactly on this
+/// boundary, so pin the `>` vs `>=` distinction directly.
+#[test]
+fn rings_equal_treats_exact_tolerance_as_equal() {
+    let tol = 0.25;
+    let a = vec![[0.0, 0.0], [4.0, 0.0], [4.0, 4.0], [0.0, 4.0]];
+    let mut b = a.clone();
+    // First vertex shifted by exactly `tol` in x: still within tolerance.
+    b[0] = [0.25, 0.0];
+    assert!(
+        rings_equal(&a, &b, tol),
+        "a difference exactly at tol must count as equal (inclusive boundary)"
+    );
+
+    // Shifted by one ULP past tol: must now be unequal.
+    b[0] = [0.25 + 1.0e-9, 0.0];
+    assert!(
+        !rings_equal(&a, &b, tol),
+        "a difference just past tol must be rejected"
+    );
+}
+
+/// `basis_from_depth` is documented to use "the same seed convention as
+/// `OpeningFrame::from_depth`" — both pick seed `+Z` when `|d.z| < 0.9`, else
+/// `+Y`. `prepare_prism` builds its frame via `OpeningFrame`/the void-context
+/// path while `detect_prism` (mesh-driven) calls `basis_from_depth` directly;
+/// if the two thresholds ever drift apart, a depth vector with `|d.z|` in the
+/// gap gets a DIFFERENT (u, v) basis from each path, silently corrupting any
+/// coordinate exchanged between them (e.g. `try_merge_prisms`'s BASIS_TOL
+/// check, which assumes a shared convention). Every existing fixture's depth
+/// vectors are axis-aligned or steeply diagonal, so `|d.z|` never actually
+/// lands in the band between the two candidate thresholds — pin the
+/// cross-function agreement directly for a depth vector that does.
+#[test]
+fn basis_from_depth_matches_opening_frame_seed_convention() {
+    // |z| ~= 0.640, inside (0.09, 0.9): distinguishes a drifted threshold
+    // without landing exactly on either candidate boundary.
+    let d3 = crate::Vector3::new(0.6, 0.0, 0.5).normalize();
+    let d: V3 = [d3.x, d3.y, d3.z];
+
+    let want = super::super::OpeningFrame::from_depth(d3).expect("normalizable depth");
+    let (u, v) = basis_from_depth(d).expect("normalizable depth");
+
+    let close = |a: V3, b: [f64; 3]| (0..3).all(|k| (a[k] - b[k]).abs() < 1.0e-12);
+    assert!(
+        close([want.cross_a.x, want.cross_a.y, want.cross_a.z], u),
+        "basis_from_depth's u must match OpeningFrame::from_depth's cross_a for the same seed convention"
+    );
+    assert!(
+        close([want.cross_b.x, want.cross_b.y, want.cross_b.z], v),
+        "basis_from_depth's v must match OpeningFrame::from_depth's cross_b for the same seed convention"
+    );
+}
+
+// --- `dedup_cut_vertices` tolerance boundary (vertex_dedup.rs) ---
+//
+// These call `dedup_cut_vertices` directly, bypassing the full analytic-prism
+// pipeline, so they pin the ULP-scale tolerance itself rather than whatever
+// incidental scatter a corpus fixture happens to produce.
+
+/// Bare mesh with only `positions` populated — `dedup_cut_vertices` never
+/// reads `indices`/`normals`, so a topologically-meaningless point soup is a
+/// faithful, minimal input.
+fn points_mesh(points: &[[f32; 3]]) -> Mesh {
+    let mut m = Mesh::new();
+    for p in points {
+        m.positions.extend_from_slice(p);
+    }
+    m
+}
+
+/// `dental_clinic #217` reconstructed directly: the analytic cut emitted the
+/// same mid-height seam point through two arithmetic paths, landing at
+/// `x = -20.289999008` and `x = -20.290000916` — exactly 2^-19 apart, per the
+/// function's own doc comment. `dedup_cut_vertices` must weld them to one
+/// vertex so the two half-faces share their seam instead of leaving an
+/// unmatched half-edge pair (the hairline-crack defect #217 was filed for).
+#[test]
+fn dental_clinic_217_seam_vertices_2_pow_neg19_apart_merge() {
+    let host = points_mesh(&[[-20.29, 5.0, 0.0]]); // sets the coordinate-magnitude scale only
+    let cut = points_mesh(&[[-20.289_999_008, 0.0, 0.0], [-20.290_000_916, 0.0, 0.0]]);
+    let sep = (cut.positions[0] - cut.positions[3]).abs() as f64;
+    assert!(
+        (sep - 2f64.powi(-19)).abs() < 1e-12,
+        "fixture drifted off the documented 2^-19 separation: {sep}"
+    );
+
+    let out = dedup_cut_vertices(&cut, &host);
+    assert_eq!(
+        out.positions[0], out.positions[3],
+        "seam vertices 2^-19 apart at x~=20.29 must weld to one point"
+    );
+}
+
+/// The tolerance's other edge, which protects real geometry: two vertices
+/// separated by just OVER the 4-f32-ulp tolerance at the same coordinate
+/// magnitude must stay distinct. The function's own doc warns that a coarser
+/// general weld (1e-4 m) "collapsed real geometry and took corpus defects
+/// from 76 to 90" — this is the boundary that regression guards against.
+#[test]
+fn vertices_just_past_4ulp_tolerance_do_not_merge() {
+    let mag = 20.29_f32;
+    let host = points_mesh(&[[mag, 5.0, 0.0]]); // sets the same magnitude scale, far enough not to pin
+    let tol = (mag as f64) * (4.0 / 8_388_608.0); // mirrors dedup_cut_vertices' own formula
+    let sep = tol * 1.2; // comfortably past the boundary, not just past float noise
+    let cut = points_mesh(&[[mag, 0.0, 0.0], [(mag as f64 + sep) as f32, 0.0, 0.0]]);
+    let actual_sep = (cut.positions[3] - cut.positions[0]).abs() as f64;
+    assert!(
+        actual_sep > tol,
+        "fixture must land past tol={tol}, got sep={actual_sep}"
+    );
+
+    let out = dedup_cut_vertices(&cut, &host);
+    assert_ne!(
+        out.positions[0], out.positions[3],
+        "vertices separated past the 4-ulp tolerance must NOT merge (this is the \
+         76->90 corpus-defect regression the tight tolerance guards against)"
+    );
+}
+
+// --- `directed_closed` (closure_checks.rs) ---
+//
+// Unlike `dedup_cut_vertices`, this predicate has no hand-tuned numeric
+// boundary of its own — it is a fixed 0.1mm-grid edge-cancellation audit with
+// no corpus-derived constant to pin. A minimal closed/open mesh exercises the
+// real implementation directly and cheaply, so it is covered here rather than
+// skipped; it does not need the full cut pipeline to be meaningful.
+
+/// Minimal closed manifold: a tetrahedron, consistently outward-wound. Every
+/// directed edge is cancelled by its reverse on the opposite face, so the
+/// audit must accept it.
+fn tetrahedron_mesh() -> Mesh {
+    let tris: [[[f64; 3]; 3]; 4] = [
+        [[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]],
+        [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        [[1.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]],
+    ];
+    mesh_from_tris(&tris)
+}
+
+#[test]
+fn closed_tetrahedron_passes_directed_closed() {
+    assert!(directed_closed(&tetrahedron_mesh()));
+}
+
+/// Drop one face from the same tetrahedron: three of its edges lose their
+/// cancelling reverse, leaving a boundary loop. `directed_closed` must reject
+/// this — the exact failure mode (unmatched half-edges) the whole
+/// `dedup_cut_vertices` module exists to prevent upstream of.
+#[test]
+fn tetrahedron_missing_face_fails_directed_closed() {
+    let mut m = tetrahedron_mesh();
+    m.indices.truncate(m.indices.len() - 3); // drop the last triangle
+    assert!(!directed_closed(&m));
+}

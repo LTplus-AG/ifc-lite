@@ -252,6 +252,15 @@ pub fn should_use_fast_path(type_name: &str) -> bool {
 /// Extract entity type name from raw bytes
 ///
 /// From `#77=IFCTRIANGULATEDFACESET(...)` extracts `IFCTRIANGULATEDFACESET`
+///
+/// TRIMMED, because STEP permits whitespace around `=` and real exporters use
+/// it: buildingSMART's own `column-straight-rectangle-tessellation.ifc` writes
+/// `#71= IFCCOLUMN(` on all 26 of its entity lines. Until #3179 this returned
+/// `" IFCCOLUMN"` with the leading space for those files, which no lookup
+/// keyed on a type name can match — the function's own doc comment above
+/// promised otherwise. It had no production caller at the time, so nothing
+/// noticed; `legacy_aware_ifc_type_from_record` is the first, and it silently
+/// resolved every entity in such a file to `Unknown` until this was fixed.
 #[inline]
 pub fn extract_entity_type_name(bytes: &[u8]) -> Option<&str> {
     // Find '=' position
@@ -261,11 +270,12 @@ pub fn extract_entity_type_name(bytes: &[u8]) -> Option<&str> {
     let type_start = eq_pos + 1;
     let type_end = eq_pos + paren_pos;
 
-    if type_end <= type_start {
-        return None;
-    }
-
-    std::str::from_utf8(&bytes[type_start..type_end]).ok()
+    // No `type_end <= type_start` guard: `bytes[eq_pos]` is `=`, never `(`, so
+    // `paren_pos >= 1` and `type_end >= type_start` always. The one reachable
+    // equality is `#1=(`, which yields an empty slice that the `is_empty` below
+    // rejects. `an_unreadable_record_changes_nothing` covers that input.
+    let name = std::str::from_utf8(&bytes[type_start..type_end]).ok()?.trim();
+    (!name.is_empty()).then_some(name)
 }
 
 /// Extract the first entity reference from an entity's first attribute
@@ -281,16 +291,17 @@ pub fn extract_first_entity_ref(bytes: &[u8]) -> Option<u32> {
     let hash_pos = content.iter().position(|&b| b == b'#')?;
     let id_start = hash_pos + 1;
 
-    // Parse the ID number
-    let mut id: u32 = 0;
+    // Find the end of the digit run, then parse it through the single
+    // checked accumulator shared with every other reference reader and the
+    // definition scanner (issue #3421) — an id above `u32::MAX` is refused
+    // (`None`) rather than wrapped onto a real low-numbered entity.
     let mut i = id_start;
     while i < content.len() && content[i].is_ascii_digit() {
-        id = id.wrapping_mul(10).wrapping_add((content[i] - b'0') as u32);
         i += 1;
     }
 
     if i > id_start {
-        Some(id)
+        crate::express_id::parse_express_id(&content[id_start..i])
     } else {
         None
     }
@@ -356,14 +367,19 @@ pub fn extract_entity_refs_from_list(bytes: &[u8]) -> Vec<u32> {
         }
         i += 1; // Skip '#'
 
-        // Parse ID
-        let mut id: u32 = 0;
+        // Parse ID through the shared checked accumulator (issue #3421): an
+        // id above `u32::MAX` is refused (`None`, dropped from `ids`) rather
+        // than wrapped onto a real low-numbered entity.
+        let id_start = i;
         while i < len && bytes[i].is_ascii_digit() {
-            id = id.wrapping_mul(10).wrapping_add((bytes[i] - b'0') as u32);
             i += 1;
         }
-        if id > 0 {
-            ids.push(id);
+        if i > id_start {
+            if let Some(id) = crate::express_id::parse_express_id(&bytes[id_start..i]) {
+                if id > 0 {
+                    ids.push(id);
+                }
+            }
         }
     }
 

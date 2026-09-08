@@ -3,7 +3,6 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { IFCLITE_ATTR, computeLayerId, getProvenance } from '@ifc-lite/ifcx';
 import { planThreeWayMerge } from './three-way.js';
 import { applyResolutions, buildMergeLayer } from './merge-layer.js';

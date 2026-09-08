@@ -22,6 +22,13 @@ export function uuidToIfcGuid(uuid: string): string {
   if (hex.length !== 32) {
     throw new Error(`Invalid UUID: expected 32 hex characters, got ${hex.length}`);
   }
+  if (!/^[0-9A-F]{32}$/.test(hex)) {
+    // The length check alone lets a non-hex character (e.g. 'g', 'z', '_')
+    // through: parseInt(..., 16) below would silently return NaN for that
+    // byte, and Uint8Array coerces NaN to 0 - turning garbage input into a
+    // wrong-but-valid-looking GUID instead of rejecting it.
+    throw new Error(`Invalid UUID: contains non-hexadecimal characters`);
+  }
 
   const bytes = new Uint8Array(16);
   for (let i = 0; i < 16; i++) {

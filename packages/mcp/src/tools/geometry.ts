@@ -16,7 +16,7 @@
 import { EntityNode } from '@ifc-lite/query';
 import { extractProjectUnits, type IfcDataStore } from '@ifc-lite/parser';
 import type { Tool } from './types.js';
-import { okResult, resolveModel } from './util.js';
+import { okResult, resolveModel, resolveGlobalIds } from './util.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
 /**
@@ -47,22 +47,22 @@ function resolveExpressIds(m: ReturnType<typeof resolveModel>, input: Record<str
   const ids: number[] = [];
   if (Array.isArray(input.express_ids)) ids.push(...(input.express_ids as number[]));
   if (typeof input.express_id === 'number') ids.push(input.express_id);
-  if (typeof input.global_id === 'string') {
-    const gid = input.global_id;
-    for (const [, list] of m.store.entityIndex.byType) {
-      for (const id of list) {
-        const node = new EntityNode(m.store, id);
-        if (node.globalId === gid) ids.push(id);
-      }
-    }
-  }
-  if (Array.isArray(input.global_ids)) {
-    const set = new Set(input.global_ids as string[]);
-    for (const [, list] of m.store.entityIndex.byType) {
-      for (const id of list) {
-        const node = new EntityNode(m.store, id);
-        if (set.has(node.globalId)) ids.push(id);
-      }
+  // GlobalId resolution goes through the overlay-aware helper so an
+  // entity this session created (`entity_create`) or removed
+  // (`entity_delete`) resolves identically here to `get_entity` /
+  // `query_entities` / `bsdd_match` — the one-resolution-rule invariant
+  // documented at resolveGlobalIds (#2014/#2015). A raw store scan
+  // (the previous behaviour) neither saw queued creates nor excluded
+  // queued deletes, so a session-created wall's GlobalId came back
+  // "no entity matched" here while every other tool already saw it.
+  const globalIds: string[] = [];
+  if (typeof input.global_id === 'string') globalIds.push(input.global_id);
+  if (Array.isArray(input.global_ids)) globalIds.push(...(input.global_ids as string[]));
+  if (globalIds.length > 0) {
+    const carriers = resolveGlobalIds(m, globalIds);
+    for (const gid of globalIds) {
+      const found = carriers.get(gid);
+      if (found) ids.push(...found);
     }
   }
   return ids;

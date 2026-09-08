@@ -5,8 +5,16 @@
 import { describe, it, expect } from 'vitest';
 import {
   cameraToPerspective,
+  cameraToOrthogonal,
   perspectiveToCamera,
+  orthogonalToCamera,
+  sectionPlaneToClippingPlane,
+  clippingPlaneToSectionPlane,
+  createViewpoint,
+  extractViewpointState,
   type ViewerCameraState,
+  type ViewerBounds,
+  type ViewerSectionPlane,
 } from './viewpoint.js';
 
 /**
@@ -147,6 +155,136 @@ describe('BCF Viewpoint Coordinate Conversion', () => {
 
       // FOV should match
       expect(roundtripped.fov).toBeCloseTo(originalViewer.fov, 3);
+    });
+  });
+
+  describe('orthogonal camera (Z-up <-> Y-up)', () => {
+    // Only the perspective pair had fixtures; the orthogonal pair — including the
+    // view-to-world scale a receiving viewer uses to size the ortho frustum —
+    // was entirely unpinned.
+    it('carries viewToWorldScale through the round-trip unchanged', () => {
+      const viewer: ViewerCameraState = {
+        position: { x: 0, y: 100, z: 0 },
+        target: { x: 0, y: 0, z: 0 },
+        up: { x: 0, y: 0, z: -1 },
+        fov: Math.PI / 4,
+        isOrthographic: true,
+        orthoScale: 42.5,
+      };
+
+      const bcf = cameraToOrthogonal(viewer, viewer.orthoScale!);
+      expect(bcf.viewToWorldScale).toBe(42.5);
+      // Viewer {0,100,0} -> BCF {0,0,100}; looking straight down is BCF -Z.
+      expect(bcf.cameraViewPoint).toEqual({ x: 0, y: -0, z: 100 });
+      expect(bcf.cameraDirection.z).toBeCloseTo(-1, 6);
+
+      const back = orthogonalToCamera(bcf, 100);
+      expect(back.isOrthographic).toBe(true);
+      expect(back.orthoScale).toBe(42.5);
+      expect(back.position.x).toBeCloseTo(0, 6);
+      expect(back.position.y).toBeCloseTo(100, 6);
+      expect(back.target.y).toBeCloseTo(0, 6);
+    });
+  });
+
+  describe('section plane <-> clipping plane', () => {
+    const bounds: ViewerBounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 20, z: 30 } };
+
+    // The `enabled` guard is the only thing standing between a disabled section
+    // plane and a clipping plane written into the BCF: inverting it silently
+    // exports a cut model as un-cut and vice versa.
+    it('returns a plane when enabled and null when disabled', () => {
+      const enabled: ViewerSectionPlane = { axis: 'down', position: 50, enabled: true, flipped: false };
+      const plane = sectionPlaneToClippingPlane(enabled, bounds);
+      expect(plane).not.toBeNull();
+      // Viewer location {5,10,15} -> BCF {5,-15,10}; viewer dir {0,-1,0} -> BCF z=-1.
+      expect(plane!.location.x).toBeCloseTo(5, 6);
+      expect(plane!.location.y).toBeCloseTo(-15, 6);
+      expect(plane!.location.z).toBeCloseTo(10, 6);
+      expect(plane!.direction.z).toBeCloseTo(-1, 6);
+
+      expect(sectionPlaneToClippingPlane({ ...enabled, enabled: false }, bounds)).toBeNull();
+    });
+
+    // `flipped` is a two-valued signal; a fixture that only ever exercised the
+    // un-flipped case would leave the comparison free to point either way.
+    it('recovers axis, position and BOTH flip directions', () => {
+      for (const axis of ['down', 'front', 'side'] as const) {
+        for (const flipped of [false, true]) {
+          const source: ViewerSectionPlane = { axis, position: 25, enabled: true, flipped };
+          const plane = sectionPlaneToClippingPlane(source, bounds)!;
+          const back = clippingPlaneToSectionPlane(plane, bounds);
+
+          expect(back.axis).toBe(axis);
+          expect(back.position).toBeCloseTo(25, 6);
+          expect(back.flipped).toBe(flipped);
+          expect(back.enabled).toBe(true);
+        }
+      }
+    });
+
+    it('falls back to the midpoint when the axis has zero extent', () => {
+      const flat: ViewerBounds = { min: { x: 0, y: 5, z: 0 }, max: { x: 10, y: 5, z: 30 } };
+      const plane = sectionPlaneToClippingPlane(
+        { axis: 'down', position: 80, enabled: true, flipped: false },
+        flat,
+      )!;
+      expect(clippingPlaneToSectionPlane(plane, flat).position).toBe(50);
+    });
+  });
+
+  describe('createViewpoint / extractViewpointState', () => {
+    const camera: ViewerCameraState = {
+      position: { x: 0, y: 10, z: 10 },
+      target: { x: 0, y: 0, z: 0 },
+      up: { x: 0, y: 1, z: 0 },
+      fov: Math.PI / 3,
+    };
+
+    // visibleGuids means "isolate these" (defaultVisibility=false) and hiddenGuids
+    // means "hide these" (defaultVisibility=true). Getting the flag wrong inverts
+    // what the receiving viewer shows, with no error anywhere.
+    it('encodes isolation as defaultVisibility=false and hiding as true', () => {
+      const isolate = createViewpoint({ camera, visibleGuids: ['KEEPVISIBLE00000000001'] });
+      expect(isolate.components?.visibility?.defaultVisibility).toBe(false);
+      expect(isolate.components?.visibility?.exceptions).toEqual([{ ifcGuid: 'KEEPVISIBLE00000000001' }]);
+
+      const hide = createViewpoint({ camera, hiddenGuids: ['HIDEME0000000000000001'] });
+      expect(hide.components?.visibility?.defaultVisibility).toBe(true);
+      expect(hide.components?.visibility?.exceptions).toEqual([{ ifcGuid: 'HIDEME0000000000000001' }]);
+    });
+
+    it('round-trips isolation and hiding back into the right bucket', () => {
+      const isolate = extractViewpointState(createViewpoint({ camera, visibleGuids: ['A000000000000000000001'] }));
+      expect(isolate.visibleGuids).toEqual(['A000000000000000000001']);
+      expect(isolate.hiddenGuids).toEqual([]);
+
+      const hide = extractViewpointState(createViewpoint({ camera, hiddenGuids: ['B000000000000000000001'] }));
+      expect(hide.hiddenGuids).toEqual(['B000000000000000000001']);
+      expect(hide.visibleGuids).toEqual([]);
+    });
+
+    it('omits components entirely when nothing is selected, hidden or coloured', () => {
+      const bare = createViewpoint({ camera });
+      expect(bare.components).toBeUndefined();
+      expect(bare.perspectiveCamera).toBeDefined();
+      expect(bare.orthogonalCamera).toBeUndefined();
+
+      const state = extractViewpointState(bare);
+      expect(state.selectedGuids).toEqual([]);
+      expect(state.coloredGuids).toEqual([]);
+      expect(state.sectionPlane).toBeUndefined();
+    });
+
+    it('uses the orthogonal camera only when the state is orthographic AND scaled', () => {
+      const ortho = createViewpoint({ camera: { ...camera, isOrthographic: true, orthoScale: 7 } });
+      expect(ortho.orthogonalCamera?.viewToWorldScale).toBe(7);
+      expect(ortho.perspectiveCamera).toBeUndefined();
+
+      // isOrthographic with no scale has no usable frustum size -> perspective.
+      const noScale = createViewpoint({ camera: { ...camera, isOrthographic: true } });
+      expect(noScale.perspectiveCamera).toBeDefined();
+      expect(noScale.orthogonalCamera).toBeUndefined();
     });
   });
 

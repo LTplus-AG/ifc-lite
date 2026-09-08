@@ -1,13 +1,13 @@
 # BCF Collaboration
 
-IFClite supports **BCF (BIM Collaboration Format)**, the buildingSMART standard for issue tracking in BIM projects. The `@ifc-lite/bcf` package implements BCF 2.1 and 3.0 specifications.
+IFClite supports **BCF (BIM Collaboration Format)**, the buildingSMART standard for topic tracking in BIM projects. The `@ifc-lite/bcf` package implements BCF 2.1 and 3.0 specifications.
 
 ## What is BCF?
 
-BCF allows teams to create, share, and manage issues (called **topics**) linked to specific locations and components in a BIM model. Each topic can include:
+BCF allows teams to create, share, and manage **topics** linked to specific locations and components in a BIM model. Each topic can optionally be typed (Issue, Request, Comment, and more) and can include:
 
 - **Viewpoints** - Camera positions and component visibility snapshots
-- **Comments** - Discussion threads on the issue
+- **Comments** - Discussion threads on the topic
 - **Component references** - Links to specific IFC entities via GlobalId
 
 ## Quick Start
@@ -72,7 +72,7 @@ const bcfBlob = await writeBCF(project);
 
 ## Viewpoints
 
-Viewpoints capture the camera state and component visibility at the time an issue is created. IFClite provides utilities to convert between viewer camera state and BCF viewpoint format.
+Viewpoints capture the camera state and component visibility at the time a topic is created. IFClite provides utilities to convert between viewer camera state and BCF viewpoint format.
 
 ### Creating Viewpoints
 
@@ -81,7 +81,7 @@ import { createViewpoint } from '@ifc-lite/bcf';
 
 // Create a viewpoint from current viewer state
 const viewpoint = createViewpoint({
-  camera: currentCameraState,   // { position, target, up, fov, isOrthographic?, orthoScale? }
+  camera: currentCameraState,   // { position, target, up, fov, aspectRatio?, isOrthographic?, orthoScale? }
   selectedGuids: selectedGuids, // IFC GlobalIds of selected entities
   hiddenGuids: hiddenGuids,     // IFC GlobalIds of hidden entities
   visibleGuids: visibleGuids,   // IFC GlobalIds for isolation mode (optional)
@@ -89,6 +89,17 @@ const viewpoint = createViewpoint({
   snapshot: base64Image,        // Screenshot as base64 (optional)
 });
 ```
+
+`aspectRatio` is the viewport's width divided by its height, and it is
+**required for BCF 3.0**. `v3_0/visinfo.xsd` makes `<AspectRatio>` a mandatory
+child of both camera types, and `@ifc-lite/bcf` will not invent one, so
+`writeBCF` throws for the whole archive on the first camera that lacks it. It
+must be finite and greater than zero. BCF 2.1 has no such element, so leave it
+unset when writing 2.1 rather than assert a viewport nobody had.
+
+Note that a project's version is not always chosen in your own code:
+`readBCF` sets `project.version` from the imported `bcf.version`, so importing
+another tool's 3.0 archive and adding a viewpoint lands on the 3.0 rule.
 
 ### Restoring Viewpoints
 
@@ -135,6 +146,10 @@ const blob = await writeBCF(project);
 
 The viewer's IDS panel uses this to export validation failures as BCF, with optional camera viewpoints and snapshots. See [IDS Validation](ids.md).
 
+Exporting `version: '3.0'` also needs `entityBounds`. BCF 3.0 requires exactly one camera per viewpoint, and `createBCFFromIDSReport` computes that camera only from the bounds you pass, keyed `"modelId:expressId"`. Bounds that are absent, or that cover only some of the entities a viewpoint frames, make the call throw and name the topic it could not frame, rather than write a partial view that leaves the rest off screen. With no bounds to hand, export `version: '2.1'`, or set an explicit camera on every viewpoint before writing 3.0.
+
+A computed camera gets an `AspectRatio` of 16/9, the convention for a viewpoint that never had a viewport behind it. Pass `aspectRatio` to use your own viewport's width / height instead; it must be a finite number greater than 0, since `visinfo.xsd` types `AspectRatio` as `PositiveDouble`, and the option is rejected where you set it rather than later inside `writeBCF`.
+
 ## Clash Results as BCF
 
 The clash package (`@ifc-lite/clash/bcf`) exports clash detection results as a BCF 2.1 project, one topic per clash group:
@@ -163,23 +178,62 @@ For rendering BCF topics as markers in a 3D view, the package provides viewer-ag
 import { computeMarkerPositions, BCFOverlayRenderer } from '@ifc-lite/bcf';
 ```
 
+## BCF Servers (BCF API)
+
+Beyond `.bcfzip` files, the `@ifc-lite/bcf-api` package connects to [buildingSMART BCF API](https://github.com/buildingSMART/BCF-API) (OpenCDE) servers and pulls their topics into the same `BCFProject` model:
+
+```typescript
+import {
+  BcfApiClient,
+  discoverBcfService,
+  requestPasswordToken,
+  fetchProjectAsBCF,
+} from '@ifc-lite/bcf-api';
+
+// Normalizes the address and fetches the server's `/auth` document. Vendors
+// tell users to enter the bare space or instance URL (BIMcollab:
+// https://myspace.bimcollab.com) while serving the API under a path, so a
+// pathless address is also tried at `/bcf`; `baseUrl` is whichever answered.
+const { baseUrl, authInfo } = await discoverBcfService({
+  baseUrl: 'https://example.com/bcf',
+});
+
+// Then sign in with the OAuth2 password grant against the discovered endpoint
+const token = await requestPasswordToken({
+  tokenUrl: authInfo.oauth2_token_url!,
+  username: 'you@example.com',
+  password: 'secret',
+});
+
+const client = new BcfApiClient({ baseUrl, getAccessToken: () => token.access_token });
+const projects = await client.getProjects();
+
+// Topics, comments, viewpoints (cameras, selection, coloring, visibility)
+// and snapshots, assembled into an @ifc-lite/bcf BCFProject
+const { project, warnings } = await fetchProjectAsBCF(client, projects[0].project_id);
+console.log(`Pulled ${project.topics.size} topics (${warnings.length} warnings)`);
+```
+
+The client implements the BCF API 2.1 routes (projects, extensions, topics with OData paging, comments, viewpoints, component subresources, snapshots). Non-authentication per-item failures — a missing snapshot, an unreadable components resource — degrade to `warnings` entries; authentication failures (401) and an unreachable topics collection reject the whole pull.
+
 ## Viewer Integration
 
 In the IFClite viewer, BCF is integrated through the BCF panel:
 
 1. **Load BCF** - Drag and drop a `.bcf` or `.bcfzip` file or use the BCF panel to import
-2. **Browse Topics** - View all issues with status, priority, and labels
-3. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
-4. **Add Comments** - Discuss issues directly in the viewer
-5. **Create Topics** - Select entities, position camera, and create new issues
-6. **Export BCF** - Save the project as a `.bcfzip` file for sharing
+2. **Connect to a BCF server** - The cloud button in the panel header connects to a BCF API server — pick a known server (Aconex regions, BIMcollab, BIMData.io, BIM Track/Newforma Konekt, Catenda Hub, Dalux Field, OpenProject, StreamBIM) or enter a custom URL, sign in via the browser OAuth popup (authorization code + PKCE, with dynamic client registration where the server offers it), email & password, a pasted access token, or OAuth client credentials — then list its projects and load topics, viewpoints, and snapshots straight into the panel
+3. **Browse Topics** - View all issues with status, priority, and labels
+4. **Navigate Viewpoints** - Click a viewpoint to restore camera and visibility
+5. **Add Comments** - Discuss issues directly in the viewer
+6. **Create Topics** - Select entities, position camera, and create new issues
+7. **Export BCF** - Save the project as a `.bcfzip` file for sharing
 
 ## Key Types
 
 | Type | Description |
 |------|-------------|
 | `BCFProject` | Top-level container with topics map and version |
-| `BCFTopic` | An issue with title, status, comments, and viewpoints |
+| `BCFTopic` | A topic with title, status, comments, and viewpoints |
 | `BCFComment` | A comment on a topic with author and timestamp |
 | `BCFViewpoint` | Camera state, component visibility, and clipping planes |
 | `BCFComponents` | Selected, visible, and colored component references |

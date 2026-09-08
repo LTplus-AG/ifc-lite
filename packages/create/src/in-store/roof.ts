@@ -14,6 +14,7 @@
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, toNativePoint2, toNativePoint3, type SpatialAnchor } from './anchor.js';
 import {
+  assertPositiveFinite,
   emitBodyRepresentation,
   emitExtrudedSolid,
   emitLocalPlacement,
@@ -67,11 +68,12 @@ export function addRoofToStore(
   anchor: SpatialAnchor,
   params: RoofInStoreParams,
 ): RoofBuildResult {
-  if (params.Thickness <= 0) {
-    throw new Error('addRoofToStore: Thickness must be positive');
-  }
-  if (!isPolygonParams(params) && (params.Width <= 0 || params.Depth <= 0)) {
-    throw new Error('addRoofToStore: Width and Depth must be positive');
+  assertPositiveFinite([params.Thickness], 'addRoofToStore: Thickness must be positive');
+  if (!isPolygonParams(params)) {
+    assertPositiveFinite(
+      [params.Width, params.Depth],
+      'addRoofToStore: Width and Depth must be positive',
+    );
   }
   // Params are metres; convert dimensioned fields to the file's native
   // length unit before emit (see SpatialAnchor.lengthUnitScale). A new

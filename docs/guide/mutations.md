@@ -38,6 +38,32 @@ const value = view.getPropertyValue(entityId, 'Pset_WallCommon', 'FireRating');
 // Returns 'REI 120'
 ```
 
+### Changing a property's declared IFC type
+
+The fifth argument is the property's `PropertyValueType`. Most of its members
+are *shapes* (`String`, `Real`, `Integer`, …) — what the parser collapses a
+source token into — but `Label`, `Identifier` and `Text` each *name* one
+`IfcValue` member, so passing one of those sets the type the exported file
+declares:
+
+```typescript
+import { PropertyValueType } from '@ifc-lite/data';
+
+// A value that outgrew IfcLabel's 255 characters: export it as IfcText.
+view.setProperty(entityId, 'Pset_WallCommon', 'Reference', 'a long description…', PropertyValueType.Text);
+```
+
+The exported line becomes `IFCTEXT('…')` where the source declared
+`IFCLABEL('…')` — which is what an IDS `property` facet with
+`dataType="IFCTEXT"` checks.
+
+Passing a *shape* instead leaves the declared type alone: a value-only edit
+(`String`, the default) keeps whatever token the source line carried, so
+re-serializing a property set never rewrites the declared types of the
+neighbours you did not touch. For the same reason a numeric type cannot be
+changed this way — `Real` names neither `IfcLengthMeasure` nor `IfcReal`, so
+the source token wins.
+
 ### Mutation History
 
 ```typescript
@@ -166,11 +192,42 @@ In the IFClite viewer:
 | Tab | Edits | Backed by |
 |---|---|---|
 | **Properties** | IfcRoot named attributes (Name, Description, …), property sets, classifications, materials, documents | `setProperty` / `setAttribute` |
-| **Quantities** | Quantity sets and individual quantities | `setQuantity` |
+| **Quantities** | Quantity sets and individual quantities | `setQuantity` / `createQuantitySet` / `deleteQuantitySet` |
 | **bSDD** | Add buildingSMART Data Dictionary properties | `setProperty` |
 | **Raw STEP** | Positional STEP arguments on the selected entity (one row per arg, inline pen-icon editor). Mutated rows show a purple dot. | `setPositionalAttribute` |
 
 The Raw STEP tab is the right place for non-IfcRoot edits — `IfcRectangleProfileDef.XDim`, `IfcCartesianPoint.Coordinates`, anything without a symbolic attribute name.
+
+### Zone shapes
+
+A zone is an oriented box by default. A zone whose JSON carries a `footprint` (an array of `[x, z]` points in world metres) is a vertical **prism** over that polygon instead, spanning the same `center[1] +/- size[1]/2`:
+
+```json
+{ "id": "z-1", "name": "Takt A", "center": [0, 1.5, 0], "size": [0, 3, 0], "rotationY": 0,
+  "footprint": [[0, 0], [12, 0], [12, 5], [4, 9]] }
+```
+
+- The polygon must be **convex**; a concave one is rejected on import, because the sweep, the point test and the overlap test are each silently wrong for it rather than visibly broken.
+- `center` / `size` in X/Z and `rotationY` are **derived** from the footprint on import, so every bounds consumer keeps working. The vertical extent stays yours to edit; the 3D handles stay off, since dragging a derived bounding box would change nothing.
+- Classification, apportionment and geometry splitting all follow the polygon. Apportionment costs a few times a box zone (one trapezoidal strip per footprint vertex pair), not a different order.
+
+### Zone assignment write-back
+
+The Zones panel writes a zone set's assignment onto the elements, so it survives an export instead of staying viewer state (issue #2508). Per element in the set:
+
+| Set | Name | Carries |
+|---|---|---|
+| Property set | `IfcLite_Zones [<set name>]` | `ZoneSet`, `Zone` (the home zone, empty when the centroid is in no zone), `Zones` (every touched zone, joined with `", "`), `Straddles`, and the basis labels |
+| Quantity set | `IfcLite_ZoneVolumes [<set name>] (<basis>)` | one `IfcQuantityVolume` per zone the element reaches, plus `Outside zones` when part of it is in none |
+
+Neither name uses the `Pset_` / `Qto_` prefix, which buildingSMART reserves for its own published definitions.
+
+Four things are deliberate:
+
+- **The basis is chosen, and it is in the name.** `mesh` is the as-built geometry; `net` / `gross` / `unqualified` apportion the file's own declared quantity by the measured fractions, so a `net` breakdown sums to the declared `NetVolume` by construction. Elements that declare nothing on the chosen basis are refused rather than quietly falling back to the mesh.
+- **Values are written in the model's declared volume unit**, converted per model, so a federated file in cubic millimetres and one in cubic metres both come out right.
+- **A refusal is written down.** An element whose mesh is not a proven closed solid gets its zone names plus a `VolumeUnavailable` sentence, and no quantities. A missing row would read as zero.
+- **The run does not enter the undo stack** - it writes to the overlay directly, because driving the per-mutation actions once per element is quadratic in the undo stack. Its inverse is the panel's own remove button, which clears the property set and the quantity set on every basis.
 
 ### Selection context menu
 
@@ -319,7 +376,7 @@ In the viewer's QuickJS sandbox and the TypeScript SDK, the same surface is expo
 
 ```typescript
 // SDK (TypeScript app)
-const profile = bim.store.addEntity('arch', {
+const profile = bim.store.addEntity('default', {
   type: 'IfcRectangleProfileDef',
   attributes: ['.AREA.', null, '#34', 0.6, 0.4],
 });
@@ -328,12 +385,14 @@ bim.store.removeEntity(unwantedRef);
 
 // High-level builder
 const storey = bim.query().byType('IfcBuildingStorey').refs()[0].expressId;
-const col = bim.store.addColumn('arch', storey, {
+const col = bim.store.addColumn('default', storey, {
   Position: [1, 1, 0],
   Width: 0.3, Depth: 0.4, Height: 3,
   Name: 'Column 1',
 });
 ```
+
+**Which `modelId`?** The headless backend behind `ifc-lite run` and `ifc-lite eval` holds exactly one model and answers for two spellings of it: `'default'` and the file's basename (`'tower.ifc'`). Any other id throws at the create call, rather than handing back a ref that the next `bim.mutate.*` write would refuse. Use the id you were given: the refs from `bim.query()` already carry it, and in the viewer it is the real model id from the model registry.
 
 The sandbox gates `bim.store.*` behind a `store: true` permission (default `false`, mirrors the existing `mutate` permission). The viewer opts in.
 

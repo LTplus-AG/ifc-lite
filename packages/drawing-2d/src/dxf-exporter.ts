@@ -167,9 +167,23 @@ export class DXFExporter {
   ): void {
     const { underlay, placement = DEFAULT_DXF_PLACEMENT, layerVisibility = {} } = options;
     // Underlay points are already in world plan coordinates (metres, +Y
-    // north) — the same convention DXF itself uses, so (unlike SVG, which
-    // is +Y down) no sign flip is needed before the placement transform.
-    const mapPoint = (p: Point2D): Point2D => map(applyDxfPlacement(p, placement));
+    // north) — the same convention DXF itself uses, so unlike SVG (+Y
+    // down), the FINAL output needs no sign flip relative to world space.
+    // But `applyDxfPlacement` itself is defined in DRAWING space (+Y down —
+    // see `DxfPlacement`'s docs: "Offset in metres (drawing space)",
+    // "counter-clockwise as seen on a plan view"): every other consumer
+    // (`svg-exporter.ts`'s underlay mapping, `dxfUnderlayMath.ts`'s
+    // `worldToDrawing`) negates Y, applies the placement, and — for
+    // consumers that stay in world space — negates Y back. Calling
+    // `applyDxfPlacement` directly on a world-space (+Y up) point skips
+    // that round trip, so a non-zero `offsetY` lands with the opposite
+    // sign and a non-zero `rotationDeg` spins the opposite direction from
+    // what the same `placement` produces everywhere else (2D canvas, 3D
+    // overlay, SVG export) — a silently mirrored underlay in the DXF.
+    const mapPoint = (p: Point2D): Point2D => {
+      const drawingSpace = applyDxfPlacement({ x: p.x, y: -p.y }, placement);
+      return map({ x: drawingSpace.x, y: -drawingSpace.y });
+    };
     const underlayPrefix = `DXF_${underlay.name}`;
 
     for (const dxfLayer of underlay.layers) {

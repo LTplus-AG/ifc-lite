@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    <title>Dropbox sign-in</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        font-size: 14px;
+        line-height: 1.5;
+        color: #1a1a1a;
+        background: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        body {
+          color: #e8e8e8;
+          background: #131313;
+        }
+      }
+      p {
+        margin: 0;
+        padding: 24px;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <!--
+      OAuth redirect target for @ifc-lite/source-dropbox (REDIRECT_PATH in that
+      package's src/auth.ts). Served from `public/`, so it is a plain static
+      file: no bundler entry, no module script, nothing that pulls in the app.
+
+      That is the entire point of the file. This URL is opened in a 500x700
+      popup, and the app's SPA fallback (Vite in dev, vercel.json's catch-all
+      rewrite in prod) used to answer it with index.html, which booted a second
+      full copy of the viewer, WASM and all, inside the popup just to read a
+      query string. The dev-server route that maps the extension-less
+      REDIRECT_PATH here lives in apps/viewer/vite-plugins/oauth-callback.ts;
+      production does it with a vercel.json rewrite.
+
+      The handoff is a BroadcastChannel rather than the popup's opener, because
+      the app serves Cross-Origin-Opener-Policy: same-origin and the
+      cross-origin authorization hop severs the opener relationship in both
+      directions. packages/oauth-pkce/src/callback-channel.ts documents the
+      probe and the consequences.
+    -->
+    <p id="status">Completing sign-in. You can close this window.</p>
+    <script>
+      (function () {
+        'use strict';
+        // Keep byte-identical to OAUTH_CALLBACK_CHANNEL in
+        // packages/oauth-pkce/src/callback-channel.ts. This file is not
+        // bundled, so it cannot import the constant.
+        var CHANNEL = 'ifc-lite:oauth-callback';
+
+        var params = new URLSearchParams(window.location.search);
+        try {
+          var channel = new BroadcastChannel(CHANNEL);
+          channel.postMessage({
+            type: CHANNEL,
+            // Routes the message to the sign-in attempt that started it; the
+            // opener ignores anything carrying a different state, and
+            // re-validates it before trusting the code.
+            state: params.get('state') || '',
+            url: window.location.href,
+          });
+          channel.close();
+        } catch (err) {
+          document.getElementById('status').textContent =
+            'Could not hand the sign-in result back to the app: ' +
+            (err && err.message ? err.message : String(err));
+          return;
+        }
+
+        // The opener has the result now; this window has no further job.
+        //
+        // Verified live in Chrome against the running viewer (COOP
+        // same-origin, crossOriginIsolated): a popup severed from its opener
+        // by the cross-origin authorization hop CAN still close itself here.
+        // The window went away within ~10 ms of landing on this page, twice
+        // over. What COOP takes away is the OPENER's handle on the popup
+        // (popup.close() from the other side is inert), not a script-opened
+        // document's ability to close itself.
+        //
+        // If a browser ever refuses, nothing breaks: the opener already has
+        // its result, and this page is left showing the message above.
+        window.close();
+      })();
+    </script>
+  </body>
+</html>

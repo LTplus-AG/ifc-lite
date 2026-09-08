@@ -305,6 +305,87 @@ mod tests {
         assert_eq!(out.contours.len(), 2, "two disjoint footprints expected");
     }
 
+    /// The other five tests in this module all pass `ProjectionAxis::Y`, and
+    /// the only other in-crate caller (`contour_bool2d_tests`) passes `Z`. So
+    /// the `X` arm of `project`/`axis_coord` — the plan/section axis used for
+    /// elevations looking along world X — had no test at all: swapping it to
+    /// `(p[1], p[2])` left the whole `ifc-lite-geometry` lib suite green.
+    /// `ProjectionAxis::from_u8`, the WASM-boundary decode
+    /// (`wasm-bindings/src/api/mesh_outline.rs`), was likewise untested, so
+    /// exchanging its `0` and `2` arms was invisible too.
+    ///
+    /// One box with three DISTINCT extents pins all three axes against each
+    /// other: any axis permutation moves at least one of the ranges below.
+    #[test]
+    fn each_projection_axis_picks_its_own_two_drawing_coordinates() {
+        // x ∈ [1,4], y ∈ [0,2], z ∈ [-1,2]. Three properties, and the third is
+        // the one a symmetric range silently destroys: no two extents are
+        // equal; no extent equals ANOTHER's negation; and no extent equals ITS
+        // OWN negation. z was [-1,1], which satisfies the first two and fails
+        // the third, so the mirror assertion below held at 0 == 0 with
+        // flipping deleted entirely.
+        let (pos, idx) = box_mesh(1.0, 4.0, 0.0, 2.0, -1.0, 2.0, false);
+
+        // axis = X → (u = z, v = y); the cut axis is x.
+        let x = mesh_outline_2d(&pos, &idx, ProjectionAxis::X, false).expect("x outline");
+        let (minu, minv, maxu, maxv) = bbox_2d(&x.contours);
+        assert!(
+            (minu + 1.0).abs() < 1e-4 && (maxu - 2.0).abs() < 1e-4,
+            "axis=X u must be the z extent, got {minu}..{maxu}"
+        );
+        assert!(
+            (minv - 0.0).abs() < 1e-4 && (maxv - 2.0).abs() < 1e-4,
+            "axis=X v must be the y extent, got {minv}..{maxv}"
+        );
+        assert!(
+            (x.axis_min - 1.0).abs() < 1e-4 && (x.axis_max - 4.0).abs() < 1e-4,
+            "axis=X band must be the x extent, got {}..{}",
+            x.axis_min,
+            x.axis_max
+        );
+
+        // axis = Z → (u = x, v = y); the cut axis is z.
+        let z = mesh_outline_2d(&pos, &idx, ProjectionAxis::Z, false).expect("z outline");
+        let (minu, minv, maxu, maxv) = bbox_2d(&z.contours);
+        assert!(
+            (minu - 1.0).abs() < 1e-4 && (maxu - 4.0).abs() < 1e-4,
+            "axis=Z u must be the x extent, got {minu}..{maxu}"
+        );
+        assert!(
+            (minv - 0.0).abs() < 1e-4 && (maxv - 2.0).abs() < 1e-4,
+            "axis=Z v must be the y extent, got {minv}..{maxv}"
+        );
+        assert!(
+            (z.axis_min + 1.0).abs() < 1e-4 && (z.axis_max - 2.0).abs() < 1e-4,
+            "axis=Z band must be the z extent, got {}..{}",
+            z.axis_min,
+            z.axis_max
+        );
+
+        // Flipping mirrors U and leaves V alone — `flipped_axis_mirrors_u`
+        // above never checks that V survives.
+        let xf = mesh_outline_2d(&pos, &idx, ProjectionAxis::X, true).expect("x flipped");
+        let (fminu, fminv, fmaxu, fmaxv) = bbox_2d(&xf.contours);
+        let (uminu, _, umaxu, _) = bbox_2d(&x.contours);
+        assert!(
+            (fminu + umaxu).abs() < 1e-4 && (fmaxu + uminu).abs() < 1e-4,
+            "flip must mirror u: {fminu}..{fmaxu} vs {uminu}..{umaxu}"
+        );
+        assert!(
+            (fminv - 0.0).abs() < 1e-4 && (fmaxv - 2.0).abs() < 1e-4,
+            "flip must leave v alone, got {fminv}..{fmaxv}"
+        );
+    }
+
+    /// The 0/1/2 = x/y/z decode crossing the WASM boundary.
+    #[test]
+    fn from_u8_decodes_the_wasm_axis_convention() {
+        assert_eq!(ProjectionAxis::from_u8(0), Some(ProjectionAxis::X));
+        assert_eq!(ProjectionAxis::from_u8(1), Some(ProjectionAxis::Y));
+        assert_eq!(ProjectionAxis::from_u8(2), Some(ProjectionAxis::Z));
+        assert_eq!(ProjectionAxis::from_u8(3), None);
+    }
+
     #[test]
     fn empty_or_degenerate_returns_none() {
         assert!(mesh_outline_2d(&[], &[], ProjectionAxis::Y, false).is_none());

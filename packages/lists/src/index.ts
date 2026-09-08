@@ -25,6 +25,7 @@ export { ENTITY_ATTRIBUTES } from './types.js';
 // Engine
 export {
   executeList, listResultToCSV, summariseListRows, groupingColumnIds, groupPathKey, toScheduleRows,
+  ZONE_MODE_VOLUME, ZONE_MODE_BREAKDOWN, isZoneVolumeMode,
 } from './engine.js';
 
 // Name pattern matching (Bonsai-style `/regex/` set/property names)

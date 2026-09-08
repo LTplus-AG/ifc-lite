@@ -16,24 +16,18 @@
  * where no handle exists and Refresh is simply not offered.
  */
 
-/** Accept filter mirroring the `<input type="file">` accept list. */
+import { PICKER_FILE_EXTENSIONS } from './supported-model-files.js';
+
+/**
+ * Accept filter for the picker. Derived from the same list the
+ * `<input type="file">` accept strings and the ingest guard use, so the
+ * dialog can never hide a format the viewer would happily load.
+ */
 const IFC_ACCEPT_TYPES: FilePickerAcceptType[] = [
   {
     description: 'BIM models & point clouds',
     accept: {
-      'application/octet-stream': [
-        '.ifc',
-        '.ifcx',
-        '.glb',
-        '.las',
-        '.laz',
-        '.ply',
-        '.pcd',
-        '.e57',
-        '.pts',
-        '.xyz',
-        '.dxf',
-      ],
+      'application/octet-stream': [...PICKER_FILE_EXTENSIONS],
     },
   },
 ];

@@ -11,6 +11,39 @@ import {
 } from '@ifc-lite/parser';
 
 /**
+ * Resolve an entity's BASE (pre-overlay) value for one of the IfcRoot /
+ * IfcElement attributes editable via `setAttribute` — GlobalId, Name,
+ * Description, ObjectType, Tag. Backs `MutablePropertyView.getEffectiveChanges()`'s
+ * `previousValue` for attribute edits (issue #1915), reading the columnar
+ * entity table directly rather than the overlay's own `oldValue`, which
+ * undo can leave stale (see `MutablePropertyView.getEffectiveChanges()` doc).
+ * Returns `null` for an attribute the table doesn't expose a base reader for
+ * (e.g. `Tag` on a store without `getTag`), or an empty base value.
+ */
+export function resolveBaseAttributeValue(
+  dataStore: IfcDataStore,
+  entityId: number,
+  attrName: string,
+): string | null {
+  const entities = dataStore.entities;
+  if (!entities) return null;
+  switch (attrName) {
+    case 'GlobalId':
+      return entities.getGlobalId(entityId) || null;
+    case 'Name':
+      return entities.getName(entityId) || null;
+    case 'Description':
+      return entities.getDescription(entityId) || null;
+    case 'ObjectType':
+      return entities.getObjectType(entityId) || null;
+    case 'Tag':
+      return entities.getTag ? entities.getTag(entityId) || null : null;
+    default:
+      return null;
+  }
+}
+
+/**
  * Configure a mutation view so its base reads match the viewer's property panel.
  * Type entities need a dedicated extraction path because their own HasPropertySets
  * are not exposed through the regular occurrence property extractor.
@@ -34,4 +67,7 @@ export function configureMutationView(
       return extractQuantitiesOnDemand(dataStore, entityId);
     });
   }
+
+  mutationView.setAttributeExtractor((entityId: number, attrName: string) =>
+    resolveBaseAttributeValue(dataStore, entityId, attrName));
 }

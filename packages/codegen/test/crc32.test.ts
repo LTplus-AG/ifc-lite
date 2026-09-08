@@ -7,44 +7,143 @@
  *
  * This hash is a compatibility contract: it must match the pre-computed
  * IDs baked into the generated schema (packages/parser/src/generated/type-ids.ts)
- * and the web-ifc algorithm it mirrors. We pin known values from that
- * generated file (single source of truth for the codegen CLI's output)
- * rather than duplicating web-ifc's table here.
+ * and the web-ifc algorithm it mirrors.
+ *
+ * Two layers of assertion, doing different jobs:
+ *  - `crc32 specification vectors` pins crc32() to CRC-32/ISO-HDLC using
+ *    values that come from outside this repository. Nothing else in this file
+ *    can catch an algorithmic error, because everything else compares crc32()
+ *    against output crc32() produced.
+ *  - the remaining suites pin the *generator* to those hashes via the real
+ *    generated file (packages/parser/src/generated/type-ids.ts), the single
+ *    source of truth for the codegen CLI's output.
  */
 
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
 import { describe, it, expect } from 'vitest';
-import { crc32, generateTypeIds, findCollisions } from '../src/crc32.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+import { crc32, generateTypeIds, findCollisions, formatCRC32TableLiteral } from '../src/crc32.js';
+import { TYPE_IDS } from '../../parser/src/generated/type-ids.js';
 
 /**
- * Parse the real, generated TYPE_IDS map (name -> pre-computed CRC32) out of
- * packages/parser/src/generated/type-ids.ts. This is the actual output the
- * codegen CLI produces and that @ifc-lite/parser ships at runtime, so it's
+ * The real, generated TYPE_IDS map (name -> pre-computed CRC32) that
+ * @ifc-lite/parser ships at runtime — the actual output of the codegen CLI, so
  * the real entity set / real known-value fixture for this contract.
+ *
+ * IMPORTED rather than regexed out of the file's text (#2434). The previous
+ * form matched `export const TYPE_IDS = {…} as const;` and then `(\w+):\s*(\d+),`
+ * per entry, which meant the fixture silently shrank whenever the emitted shape
+ * shifted: drop the `as const`, wrap the object, or emit hex ids and the outer
+ * regex stops matching (loud) — but a per-entry change quietly yields FEWER
+ * pairs, and every "agrees across the full entity set" loop below then agrees
+ * across a subset it never noticed it was handed. The import is the same data,
+ * from the module system, and cannot half-parse.
  */
 function loadGeneratedTypeIds(): Map<string, number> {
-  const generatedPath = path.resolve(
-    __dirname,
-    '../../parser/src/generated/type-ids.ts',
-  );
-  const source = readFileSync(generatedPath, 'utf-8');
-  const match = source.match(/export const TYPE_IDS = \{([\s\S]*?)\} as const;/);
-  if (!match) {
-    throw new Error('Could not locate TYPE_IDS block in generated type-ids.ts');
-  }
-  const body = match[1];
-  const entryRegex = /(\w+):\s*(\d+),/g;
-  const ids = new Map<string, number>();
-  let entry: RegExpExecArray | null;
-  while ((entry = entryRegex.exec(body)) !== null) {
-    ids.set(entry[1], Number(entry[2]));
-  }
-  return ids;
+  return new Map(Object.entries(TYPE_IDS));
 }
+
+/**
+ * Independent, bit-at-a-time reference implementation of CRC-32/ISO-HDLC,
+ * written straight from the algorithm's parameters rather than from
+ * src/crc32.ts:
+ *
+ *   width=32  poly=0x04C11DB7  init=0xFFFFFFFF
+ *   refin=true  refout=true  xorout=0xFFFFFFFF  check=0xCBF43926
+ *
+ * This shares no code and no constants with the implementation under test:
+ * src/crc32.ts is table-driven and uses the *reflected* polynomial
+ * 0xEDB88320 with right shifts; this one is table-free and uses the
+ * *unreflected* polynomial 0x04C11DB7 with left shifts, reflecting each
+ * input byte on the way in and the register on the way out. Two independent
+ * routes to the same specification, so agreement between them is evidence
+ * about the specification and not a tautology.
+ */
+function reflect(value: number, width: number): number {
+  let out = 0;
+  for (let i = 0; i < width; i++) {
+    if ((value >>> i) & 1) out |= 1 << (width - 1 - i);
+  }
+  return out >>> 0;
+}
+
+function crc32Reference(input: string): number {
+  let reg = 0xffffffff;
+  for (let i = 0; i < input.length; i++) {
+    const byte = input.charCodeAt(i);
+    if (byte > 0xff) {
+      throw new Error(`crc32Reference: non-byte input at ${i}: ${byte}`);
+    }
+    reg = (reg ^ (reflect(byte, 8) << 24)) >>> 0;
+    for (let bit = 0; bit < 8; bit++) {
+      reg =
+        (reg & 0x80000000) !== 0
+          ? ((reg << 1) ^ 0x04c11db7) >>> 0
+          : (reg << 1) >>> 0;
+    }
+  }
+  return (reflect(reg, 32) ^ 0xffffffff) >>> 0;
+}
+
+describe('crc32 specification vectors', () => {
+  // Without these, every other assertion in this file compares crc32() with
+  // itself (directly, or via generated/type-ids.ts which crc32() produced).
+  // A wrong-but-self-consistent hash would pass all of them. These are the
+  // only assertions here whose expected values come from outside our code.
+  //
+  // These IDs cross a language boundary: rust/core/src/generated/schema.rs
+  // hashes unknown type names with its own CRC32 and the TS table is shipped
+  // by @ifc-lite/parser. Two internally coherent tables that disagree with
+  // each other is exactly the failure a self-check cannot see, so the same
+  // vectors are pinned on the Rust side in
+  // rust/core/tests/crc32_spec_vectors.rs.
+
+  it('matches the standard CRC-32/ISO-HDLC check value', () => {
+    // "check" is defined by the algorithm's specification as the CRC of the
+    // nine ASCII bytes "123456789". crc32() uppercases its input first, but
+    // digits are unaffected by case, so the vector applies unchanged.
+    expect(crc32('123456789')).toBe(0xcbf43926);
+  });
+
+  it('hashes the empty string to the specified xorout identity', () => {
+    // With no input the register never leaves init=0xFFFFFFFF, so the result
+    // is init ^ xorout = 0xFFFFFFFF ^ 0xFFFFFFFF = 0.
+    expect(crc32('')).toBe(0x00000000);
+  });
+
+  it('agrees with an independent bit-at-a-time reference implementation', () => {
+    // Anchor the reference itself to the published check value before
+    // trusting it as an oracle.
+    expect(crc32Reference('123456789')).toBe(0xcbf43926);
+    expect(crc32Reference('')).toBe(0x00000000);
+
+    // crc32() uppercases; feed the reference the already-uppercased form so
+    // the comparison is about the hash, not about the case folding (which
+    // has its own test below).
+    const names = [
+      'IFCWALL',
+      'IFCWINDOW',
+      'IFCDOOR',
+      'IFCPROJECT',
+      'IFCBUILDINGSTOREY',
+      'IFCEXTRUDEDAREASOLID',
+      'IFCTRIANGULATEDFACESET',
+      'IFCNOTATYPE',
+      'A',
+      'AB',
+      'ABC',
+    ];
+    for (const name of names) {
+      expect(crc32(name)).toBe(crc32Reference(name));
+    }
+  });
+
+  it('agrees with the reference across the full generated IFC entity set', () => {
+    const generated = loadGeneratedTypeIds();
+    expect(generated.size).toBeGreaterThan(500);
+    for (const name of generated.keys()) {
+      expect(crc32(name)).toBe(crc32Reference(name.toUpperCase()));
+    }
+  });
+});
 
 describe('crc32', () => {
   it('matches the pre-computed IfcWall hash from generated/type-ids.ts', () => {
@@ -113,5 +212,34 @@ describe('findCollisions', () => {
     const [[hash, colliding]] = [...collisions.entries()];
     expect(hash).toBe(crc32('IfcWall'));
     expect(colliding.sort()).toEqual(['IFCWALL', 'IfcWall'].sort());
+  });
+});
+
+describe('formatCRC32TableLiteral perLine validation', () => {
+  // Review finding on PR #2359: perLine <= 0 makes the `i += perLine` loop
+  // non-terminating, and a non-integer perLine is a silent formatting
+  // footgun. The exported helper should reject these rather than hang or
+  // emit something no caller asked for.
+  it('rejects perLine = 0 instead of looping forever', () => {
+    expect(() => formatCRC32TableLiteral('  ', 0)).toThrow(/perLine/);
+  }, 10_000);
+
+  it('rejects a negative perLine instead of looping forever', () => {
+    expect(() => formatCRC32TableLiteral('  ', -1)).toThrow(/perLine/);
+  }, 10_000);
+
+  it('rejects a fractional perLine', () => {
+    expect(() => formatCRC32TableLiteral('  ', 2.5)).toThrow(/perLine/);
+  });
+
+  it('still accepts the default perLine (6) and produces the historical layout', () => {
+    const literal = formatCRC32TableLiteral('  ');
+    const lines = literal.split('\n');
+    expect(lines).toHaveLength(Math.ceil(256 / 6));
+    expect(lines[0]).toBe(
+      '  0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f,'
+    );
+    // Last line has the 256 % 6 = 4 remaining entries.
+    expect(lines[lines.length - 1].match(/0x[0-9a-f]{8}/g)).toHaveLength(4);
   });
 });

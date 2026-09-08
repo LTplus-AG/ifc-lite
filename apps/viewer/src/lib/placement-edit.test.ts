@@ -434,6 +434,159 @@ describe('placement-edit', () => {
     assert.strictEqual(projectOntoWallAxis(chain, [-3, 0, 0]), 0);
   });
 
+  it('resizeRectangleWall rejects a sloped resize (dz != 0)', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resizeRectangleWall>[2];
+    const view = new StubView() as unknown as Parameters<typeof resizeRectangleWall>[1];
+    // dz = 1 is far larger than the tolerance (max(1e-6*length, 1e-9)),
+    // so this must be refused rather than silently sloping the wall.
+    const result = resizeRectangleWall(dataStoreStub, view, editor, fx.ids.wall, [0, 0, 0], [3, 4, 1]);
+    assert.strictEqual(result.ok, false);
+    if (!result.ok) {
+      assert.strictEqual(result.reason, 'Start and end must lie on the same storey plane');
+    }
+  });
+
+  it('resizeRectangleWall refuses when the wall-edit chain does not resolve', () => {
+    // makeFixture() is a plain column with no representation chain
+    // (Representation attr is null) — resolveWallEditChain must
+    // return null, and resizeRectangleWall must surface the
+    // dedicated "no simple representation" refusal rather than
+    // crashing or reusing an unrelated message.
+    const { point, axis, local, column } = makeFixture();
+    const editor = new StubStoreEditor([point, axis, local, column]) as unknown as Parameters<typeof resizeRectangleWall>[2];
+    const view = new StubView() as unknown as Parameters<typeof resizeRectangleWall>[1];
+    const result = resizeRectangleWall(dataStoreStub, view, editor, 100, [0, 0, 0], [1, 0, 0]);
+    assert.strictEqual(result.ok, false);
+    if (!result.ok) {
+      assert.strictEqual(
+        result.reason,
+        'Wall does not have a simple IfcRectangleProfileDef → IfcExtrudedAreaSolid representation',
+      );
+    }
+  });
+
+  it('computeWallSplitGeometry rejects a non-finite split distance', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    const result = computeWallSplitGeometry(chain, NaN, 3);
+    assert.strictEqual(result.ok, false);
+    if (!result.ok) {
+      assert.strictEqual(result.reason, 'Split distance must be a finite number');
+    }
+  });
+
+  it('computeWallSplitGeometry rejects an unreadable extrusion height', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    // NaN height (e.g. non-numeric Depth slot on the extrusion).
+    const nanResult = computeWallSplitGeometry(chain, 2, NaN);
+    assert.strictEqual(nanResult.ok, false);
+    if (!nanResult.ok) {
+      assert.strictEqual(nanResult.reason, 'Wall has no readable extrusion height');
+    }
+    // Zero/negative height must also be refused (sourceHeight <= 0).
+    const zeroResult = computeWallSplitGeometry(chain, 2, 0);
+    assert.strictEqual(zeroResult.ok, false);
+    if (!zeroResult.ok) {
+      assert.strictEqual(zeroResult.reason, 'Wall has no readable extrusion height');
+    }
+  });
+
+  it('computeWallSplitGeometry pins the MIN_WALL_SEGMENT_LENGTH boundary exactly', () => {
+    const fx = makeWallFixture();
+    const editor = new StubStoreEditor(fx.entities) as unknown as Parameters<typeof resolveWallEditChain>[2];
+    const view = new StubView() as unknown as Parameters<typeof resolveWallEditChain>[1];
+    const chain = resolveWallEditChain(dataStoreStub, view, editor, fx.ids.wall);
+    assert.ok(chain);
+    const len = chain.wallLength; // 5
+    const eps = 1e-6;
+
+    // Start side: distance === MIN exactly must be rejected (the
+    // guard is `<=`). One epsilon past it must be accepted — this
+    // is what discriminates `<=` from `<`.
+    const atStart = computeWallSplitGeometry(chain, MIN_WALL_SEGMENT_LENGTH, 3);
+    assert.strictEqual(atStart.ok, false);
+    const justInsideStart = computeWallSplitGeometry(chain, MIN_WALL_SEGMENT_LENGTH + eps, 3);
+    assert.strictEqual(justInsideStart.ok, true);
+
+    // End side: distance === len - MIN exactly must be rejected (the
+    // guard is `>=`). One epsilon short of it must be accepted —
+    // this is what discriminates `>=` from `>`.
+    const atEnd = computeWallSplitGeometry(chain, len - MIN_WALL_SEGMENT_LENGTH, 3);
+    assert.strictEqual(atEnd.ok, false);
+    const justInsideEnd = computeWallSplitGeometry(chain, len - MIN_WALL_SEGMENT_LENGTH - eps, 3);
+    assert.strictEqual(justInsideEnd.ok, true);
+  });
+
+  it('rotateProductYaw reports the chain-resolution reason when the placement does not resolve', () => {
+    const { point, axis, local } = makeFixture();
+    const broken: OverlayEntity = {
+      expressId: 200,
+      type: 'IFCCOLUMN',
+      attributes: ['guid', null, 'Broken', null, null, null, null, null], // no placement
+    };
+    const editor = new StubStoreEditor([point, axis, local, broken]) as unknown as Parameters<typeof rotateProductYaw>[2];
+    const view = new StubView() as unknown as Parameters<typeof rotateProductYaw>[1];
+    const result = rotateProductYaw(dataStoreStub, view, editor, 200, Math.PI / 4);
+    assert.strictEqual(result.ok, false);
+    if (!result.ok) {
+      assert.strictEqual(
+        result.reason,
+        'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D chain',
+      );
+    }
+  });
+
+  it('rotateProductYaw reports the implicit-RefDirection reason distinctly from the chain-resolution reason', () => {
+    const { point, axis, local, column } = makeFixture();
+    const editor = new StubStoreEditor([point, axis, local, column]) as unknown as Parameters<typeof rotateProductYaw>[2];
+    const view = new StubView() as unknown as Parameters<typeof rotateProductYaw>[1];
+    const result = rotateProductYaw(dataStoreStub, view, editor, 100, Math.PI / 4);
+    assert.strictEqual(result.ok, false);
+    if (!result.ok) {
+      assert.strictEqual(
+        result.reason,
+        'Entity has an implicit reference direction; rotation requires an explicit IfcDirection on its axis placement.',
+      );
+    }
+  });
+
+  it('translateProduct and setProductPosition report the chain-resolution reason', () => {
+    const { point, axis, local } = makeFixture();
+    const broken: OverlayEntity = {
+      expressId: 200,
+      type: 'IFCCOLUMN',
+      attributes: ['guid', null, 'Broken', null, null, null, null, null], // no placement
+    };
+    const editor = new StubStoreEditor([point, axis, local, broken]) as unknown as Parameters<typeof translateProduct>[2];
+    const view = new StubView() as unknown as Parameters<typeof translateProduct>[1];
+
+    const translateResult = translateProduct(dataStoreStub, view, editor, 200, [1, 0, 0]);
+    assert.strictEqual(translateResult.ok, false);
+    if (!translateResult.ok) {
+      assert.strictEqual(
+        translateResult.reason,
+        'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
+      );
+    }
+
+    const setResult = setProductPosition(dataStoreStub, view, editor, 200, [1, 0, 0]);
+    assert.strictEqual(setResult.ok, false);
+    if (!setResult.ok) {
+      assert.strictEqual(
+        setResult.reason,
+        'Entity placement is not a simple IfcLocalPlacement → IfcAxis2Placement3D → IfcCartesianPoint chain',
+      );
+    }
+  });
+
   it('treats 2D coordinates as having Z=0', () => {
     const point: OverlayEntity = {
       expressId: 50,

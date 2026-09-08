@@ -141,14 +141,18 @@ function createDefaultSheet(options?: SheetCreationOptions): DrawingSheet {
   };
 }
 
+/** Active-sheet fields a clear or a session teardown destroys. `savedSheetTemplates`
+ *  is deliberately absent: the user's template library outlives both, and
+ *  `set(getDefaultState())` here once wiped it (issue #2802, confirmed bug #1). */
+export const getClearedSheetState = (): Omit<SheetState, 'savedSheetTemplates'> => ({
+  activeSheet: null,
+  sheetEnabled: false,
+  sheetPanelVisible: false,
+  titleBlockEditorVisible: false,
+});
+
 function getDefaultState(): SheetState {
-  return {
-    activeSheet: null,
-    sheetEnabled: false,
-    sheetPanelVisible: false,
-    titleBlockEditorVisible: false,
-    savedSheetTemplates: [],
-  };
+  return { ...getClearedSheetState(), savedSheetTemplates: [] };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -177,7 +181,9 @@ export const createSheetSlice: StateCreator<SheetSlice, [], [], SheetSlice> = (
     set({ activeSheet: { ...current, ...updates } });
   },
 
-  clearSheet: () => set(getDefaultState()),
+  // Resets the *active* sheet/panel state, not the user's saved template
+  // library — same explicit field list `sheetSlice.teardown.ts` uses.
+  clearSheet: () => set(getClearedSheetState()),
 
   setSheetEnabled: (enabled) => {
     if (enabled && !get().activeSheet) {

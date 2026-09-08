@@ -271,4 +271,93 @@ describe('schema-converter', () => {
       }
     });
   });
+
+  // ─── IFCPROXY GlobalId determinism (#2733) ──────────────────────────────
+
+  describe('IFCPROXY placeholders get a deterministic GlobalId', () => {
+    // IFC4X3-only alignment classes have no IFC4 representation, so they are
+    // replaced wholesale by a placeholder. Each one used to be minted a FRESH
+    // GlobalId on every export, so exporting an unchanged model twice never
+    // produced the same bytes.
+    const seg = "#42=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
+
+    it('is byte-identical across repeated conversions of the same input', () => {
+      const a = convertStepLine(seg, 'IFC4X3', 'IFC4');
+      const b = convertStepLine(seg, 'IFC4X3', 'IFC4');
+      expect(a).toBe(b);
+      expect(a).toContain('IFCPROXY');
+      expect(a).toContain("'IFCALIGNMENTSEGMENT'");
+    });
+
+    it('mints a well-formed IFC GlobalId', () => {
+      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1] ?? '';
+      expect(isValidIfcGuid(guid), `malformed GlobalId: ${guid}`).toBe(true);
+    });
+
+    it('gives DIFFERENT ids to two federated occurrences of the same entity', () => {
+      // The reason the obvious fix (copy the source GlobalId onto the proxy) is
+      // wrong: two models can legitimately carry the same alignment GlobalId,
+      // and a shared proxy id would unify them into one. The merged exporter
+      // offsets each model's express ids, so the lines differ by prefix.
+      const m1 = "#42=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
+      const m2 = "#99=IFCALIGNMENTSEGMENT('2K5H1$Zs9CQuKQFQKQFQKQ',#1,'A',$,$,#7,#9,$);";
+      const g1 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(m1, 'IFC4X3', 'IFC4'))?.[1];
+      const g2 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(m2, 'IFC4X3', 'IFC4'))?.[1];
+      expect(g1).toBeTruthy();
+      expect(g2, 'two federated occurrences collapsed onto one GlobalId').not.toBe(g1);
+    });
+
+    it('distinguishes entities that differ only in their attributes', () => {
+      const other = "#42=IFCALIGNMENTSEGMENT('3xJ2mQ8vT1AuVwXyZ0BcDe',#1,'B',$,$,#7,#9,$);";
+      const g1 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1];
+      const g2 = /IFCPROXY\('([^']*)'/.exec(convertStepLine(other, 'IFC4X3', 'IFC4'))?.[1];
+      expect(g2).not.toBe(g1);
+    });
+
+    it('still honours a caller-supplied seeded RandomSource', () => {
+      // An export that already pins its randomness keeps its behaviour, so this
+      // change cannot alter output for callers that opted into determinism.
+      const seeded = () => {
+        let n = 0;
+        return () => ((n = (n * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+      };
+      const a = convertStepLine(seg, 'IFC4X3', 'IFC4', seeded());
+      const b = convertStepLine(seg, 'IFC4X3', 'IFC4', seeded());
+      expect(a).toBe(b);
+      const bare = convertStepLine(seg, 'IFC4X3', 'IFC4');
+      expect(a, 'seeded source was ignored').not.toBe(bare);
+    });
+
+    it('placeholder_guid_diverges_from_the_rust_mint_pinned_not_fixed', () => {
+      // PINS the schema-downgrade proxy-GlobalId divergence between the two
+      // exporters (#3015) AS divergence -- it does not fix it. Which side
+      // wins is a maintainer decision, not something a test should resolve
+      // unilaterally.
+      //
+      // This side derives the id from `deterministicGlobalId` of the WHOLE
+      // source line (`ifcproxy:{prefix}{entityType}({attrs})`). The Rust
+      // twin (`rust/export/src/schema_convert.rs::placeholder_guid`) derives
+      // it purely from the express id -- a different algorithm entirely, not
+      // just a different seed to the same one. Verified by actually running
+      // both on the byte-identical input line below;
+      // `schema_convert::tests::placeholder_guid_diverges_from_the_typescript_mint_pinned_not_fixed`
+      // pins the Rust side of the same pair.
+      //
+      // If this test ever starts failing because the values converged, that
+      // is good news -- update the doc here (and the Rust twin) to say so,
+      // don't just delete the assertion.
+      const guid = /IFCPROXY\('([^']*)'/.exec(convertStepLine(seg, 'IFC4X3', 'IFC4'))?.[1];
+      expect(
+        guid,
+        "TS's minted value for this input line changed -- update this pin (and check whether \
+it now agrees with the Rust twin, in which case update both docs to say so)",
+      ).toBe('3m5OyAyREn46dEymqijDwc');
+      expect(
+        guid,
+        'this is the Rust side\'s minted value for express id 42 on the byte-identical input \
+line -- if TS now matches it, the divergence has been resolved; update both tests\' docs \
+instead of silently dropping this assertion',
+      ).not.toBe('00000000000000000G000g');
+    });
+  });
 });

@@ -4,16 +4,15 @@
 
 //! Optimized Parquet serialization using ara3d BimOpenSchema format.
 //!
-//! Key optimizations over basic Parquet:
-//! 1. Integer quantized vertices (10,000x multiplier = 0.1mm precision)
-//! 2. Mesh deduplication via content hashing (instancing)
-//! 3. Byte colors (0-255) instead of float (0-1)
-//! 4. Optional normals (can compute on client)
-//! 5. Material deduplication
+//! Key optimizations over basic Parquet: integer quantized vertices (10,000x
+//! multiplier = 0.1mm precision), mesh dedup via content hashing PLUS
+//! rotation-aware representation-identity dedup (#3575), byte colors
+//! (0-255 instead of float 0-1), optional normals, material dedup.
 //!
 //! Typical additional compression: 3-5x over basic Parquet format.
 
 use crate::services::axis::{zup_to_yup, zup_to_yup_f64};
+use crate::services::parquet_schema::{instance_schema, ABSENT_SOURCE_ID};
 use crate::types::MeshData;
 use arrow::array::{Float32Array, Float64Array, Int32Array, StringArray, UInt32Array, UInt8Array};
 use arrow::datatypes::{DataType, Field, Schema};
@@ -28,10 +27,15 @@ use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 use std::sync::Arc;
 
+use super::parquet::check_u32_len;
 use super::ParquetError;
 
-/// Vertex multiplier for integer quantization.
-/// 10,000 = 0.1mm precision, which is sufficient for BIM.
+use crate::services::parquet_instancing::{
+    collate_rotation_aware_placements, optimized_wire_version, rotation_zup_to_yup,
+    IDENTITY_ROTATION,
+};
+
+/// Vertex multiplier for integer quantization. 10,000 = 0.1mm precision.
 pub const VERTEX_MULTIPLIER: f32 = 10_000.0;
 
 /// Hash key for mesh geometry (for deduplication).
@@ -103,24 +107,36 @@ impl MaterialKey {
     }
 }
 
-/// Serialize mesh data to optimized Parquet format (ara3d BOS-compatible).
+/// Serialize mesh data to optimized Parquet format (ara3d BOS-compatible):
+/// instances table (entity → mesh/material index, origin, rotation), meshes
+/// table (unique geometries), materials table, vertices table (quantized
+/// integers), indices table. Dedup covers both bit-identical placements
+/// (content hash) and, as of issue #3575, one shape at DIFFERENT rotations
+/// (`IfcMappedItem` / shared `IfcRepresentationMap` reuse — furniture, pipe
+/// runs, repeated structural members).
 ///
-/// Format:
-/// 1. Instances table (entity → mesh, material indices)
-/// 2. Meshes table (unique geometries)
-/// 3. Materials table (unique colors)
-/// 4. Vertices table (quantized integers)
-/// 5. Indices table
-///
-/// This enables significant deduplication for IFC files where many elements
-/// share the same geometry (windows, doors, standard components).
-pub fn serialize_to_parquet_optimized(
+/// Not `pub`: [`serialize_to_parquet_optimized_with_stats`] below is the only
+/// caller, wrapping this to report the unique mesh/material counts THIS same
+/// dedup pass produces. A separate content-hash-only stats pass used to live
+/// here and would have kept `mesh_reuse_ratio` pinned at ~1.0 even after this
+/// fix started deduplicating rotated instances — exactly the blind spot
+/// #3575 closes.
+fn serialize_to_parquet_optimized(
     meshes: &[MeshData],
     include_normals: bool,
-) -> Result<Bytes, ParquetError> {
+) -> Result<(Bytes, usize, usize), ParquetError> {
+    // Rotation-aware dedup (#3575): occurrences of one representation at
+    // DIFFERENT orientations. Content-hashing baked vertices (below) can
+    // never merge these — rotation is baked into the vertex values.
+    let rotated_placements = collate_rotation_aware_placements(meshes);
+
     // Phase 1: Deduplicate meshes and materials
     let mut unique_meshes: Vec<&MeshData> = Vec::new();
     let mut mesh_lookup: FxHashMap<MeshGeometryKey, u32> = FxHashMap::default();
+    // Rotation-aware groups key by the TEMPLATE's index in `meshes`, not by
+    // content hash: the template geometry is what every occurrence in the
+    // group was verified against.
+    let mut template_lookup: FxHashMap<usize, u32> = FxHashMap::default();
     let mut unique_materials: Vec<MaterialKey> = Vec::new();
     let mut material_lookup: FxHashMap<MaterialKey, u32> = FxHashMap::default();
 
@@ -140,22 +156,42 @@ pub fn serialize_to_parquet_optimized(
     let mut instance_origin_y: Vec<f64> = Vec::with_capacity(meshes.len());
     let mut instance_origin_z: Vec<f64> = Vec::with_capacity(meshes.len());
     let mut instance_geometry_class: Vec<u8> = Vec::with_capacity(meshes.len());
+    // PER INSTANCE, not per template (#3215): the dedup key is vertex data, so
+    // two instances sharing a template can come from different source items.
+    let mut instance_geometry_item_ids: Vec<u32> = Vec::with_capacity(meshes.len());
+    let mut instance_material_ids: Vec<u32> = Vec::with_capacity(meshes.len());
+    // Per-instance rotation (#3575), row-major 3x3, Y-up: world = origin +
+    // R * template_position. Identity where no verified placement applies.
+    let mut instance_rotation: [Vec<f32>; 9] = Default::default();
+    // Gates both the wire version and the rotation columns' presence -- see `optimized_wire_version`.
+    let mut emitted_non_identity_rotation = false;
 
-    for mesh in meshes {
-        // Compute geometry hash for deduplication
-        let positions_hash = hash_f32_slice(&mesh.positions);
-        let indices_hash = hash_u32_slice(&mesh.indices);
-        let geo_key = MeshGeometryKey {
-            positions_hash,
-            indices_hash,
+    for (mesh_index, mesh) in meshes.iter().enumerate() {
+        let (mesh_idx, origin_yup, rotation_yup) = match rotated_placements.get(&mesh_index) {
+            Some(placement) => {
+                let template = &meshes[placement.template_mesh_index];
+                let idx = *template_lookup
+                    .entry(placement.template_mesh_index)
+                    .or_insert_with(|| {
+                        let idx = unique_meshes.len() as u32;
+                        unique_meshes.push(template);
+                        idx
+                    });
+                (idx, zup_to_yup_f64(placement.origin_zup), rotation_zup_to_yup(&placement.rotation_zup))
+            }
+            None => {
+                let geo_key = MeshGeometryKey {
+                    positions_hash: hash_f32_slice(&mesh.positions),
+                    indices_hash: hash_u32_slice(&mesh.indices),
+                };
+                let idx = *mesh_lookup.entry(geo_key).or_insert_with(|| {
+                    let idx = unique_meshes.len() as u32;
+                    unique_meshes.push(mesh);
+                    idx
+                });
+                (idx, zup_to_yup_f64(mesh.origin), IDENTITY_ROTATION)
+            }
         };
-
-        // Get or create mesh index
-        let mesh_idx = *mesh_lookup.entry(geo_key).or_insert_with(|| {
-            let idx = unique_meshes.len() as u32;
-            unique_meshes.push(mesh);
-            idx
-        });
 
         // Get or create material index
         let mat_key = MaterialKey::from_color(&mesh.color);
@@ -167,16 +203,21 @@ pub fn serialize_to_parquet_optimized(
 
         // Record instance. Origin is emitted in the same Z-up→Y-up frame as the
         // vertices (X stays, new Y = old Z, new Z = -old Y) so the client
-        // reconstructs world = origin + template_position in Y-up.
+        // reconstructs world = origin + R * template_position in Y-up.
         instance_entity_ids.push(mesh.express_id);
         instance_ifc_types.push(&mesh.ifc_type);
         instance_mesh_indices.push(mesh_idx);
         instance_material_indices.push(material_idx);
-        let origin_yup = zup_to_yup_f64(mesh.origin);
         instance_origin_x.push(origin_yup[0]);
         instance_origin_y.push(origin_yup[1]);
         instance_origin_z.push(origin_yup[2]);
         instance_geometry_class.push(mesh.geometry_class);
+        instance_geometry_item_ids.push(mesh.geometry_item_id.unwrap_or(ABSENT_SOURCE_ID));
+        instance_material_ids.push(mesh.material_id.unwrap_or(ABSENT_SOURCE_ID));
+        emitted_non_identity_rotation |= rotation_yup != IDENTITY_ROTATION;
+        for (col, value) in instance_rotation.iter_mut().zip(rotation_yup.iter()) {
+            col.push(*value);
+        }
     }
 
     // Phase 2: Build vertex and index buffers from unique meshes
@@ -189,21 +230,10 @@ pub fn serialize_to_parquet_optimized(
     let mut vertex_z: Vec<i32> = Vec::with_capacity(total_vertices);
 
     // Optional normals (as floats, since normals don't benefit from quantization)
-    let mut normal_x: Vec<f32> = if include_normals {
-        Vec::with_capacity(total_vertices)
-    } else {
-        Vec::new()
-    };
-    let mut normal_y: Vec<f32> = if include_normals {
-        Vec::with_capacity(total_vertices)
-    } else {
-        Vec::new()
-    };
-    let mut normal_z: Vec<f32> = if include_normals {
-        Vec::with_capacity(total_vertices)
-    } else {
-        Vec::new()
-    };
+    let normals_capacity = if include_normals { total_vertices } else { 0 };
+    let mut normal_x: Vec<f32> = Vec::with_capacity(normals_capacity);
+    let mut normal_y: Vec<f32> = Vec::with_capacity(normals_capacity);
+    let mut normal_z: Vec<f32> = Vec::with_capacity(normals_capacity);
 
     // Index buffer
     let mut indices: Vec<u32> = Vec::with_capacity(total_indices);
@@ -277,31 +307,27 @@ pub fn serialize_to_parquet_optimized(
 
     // Phase 3: Create Parquet tables
 
-    // Instance table schema
-    let instance_schema = Arc::new(Schema::new(vec![
-        Field::new("entity_id", DataType::UInt32, false),
-        Field::new("ifc_type", DataType::Utf8, false),
-        Field::new("mesh_index", DataType::UInt32, false),
-        Field::new("material_index", DataType::UInt32, false),
-        Field::new("origin_x", DataType::Float64, false),
-        Field::new("origin_y", DataType::Float64, false),
-        Field::new("origin_z", DataType::Float64, false),
-        Field::new("geometry_class", DataType::UInt8, false),
-    ]));
+    // A v2-shaped payload carries no rotation columns (`optimized_wire_version`).
+    let rotation_column_count = if emitted_non_identity_rotation { 9 } else { 0 };
+    let instance_schema = instance_schema(emitted_non_identity_rotation);
 
-    let instance_batch = RecordBatch::try_new(
-        instance_schema,
-        vec![
-            Arc::new(UInt32Array::from(instance_entity_ids)),
-            Arc::new(StringArray::from(instance_ifc_types)),
-            Arc::new(UInt32Array::from(instance_mesh_indices)),
-            Arc::new(UInt32Array::from(instance_material_indices)),
-            Arc::new(Float64Array::from(instance_origin_x)),
-            Arc::new(Float64Array::from(instance_origin_y)),
-            Arc::new(Float64Array::from(instance_origin_z)),
-            Arc::new(UInt8Array::from(instance_geometry_class)),
-        ],
-    )?;
+    let instance_columns: Vec<Arc<dyn arrow::array::Array>> = vec![
+        Arc::new(UInt32Array::from(instance_entity_ids)) as Arc<dyn arrow::array::Array>,
+        Arc::new(StringArray::from(instance_ifc_types)),
+        Arc::new(UInt32Array::from(instance_mesh_indices)),
+        Arc::new(UInt32Array::from(instance_material_indices)),
+        Arc::new(Float64Array::from(instance_origin_x)),
+        Arc::new(Float64Array::from(instance_origin_y)),
+        Arc::new(Float64Array::from(instance_origin_z)),
+        Arc::new(UInt8Array::from(instance_geometry_class)),
+        Arc::new(UInt32Array::from(instance_geometry_item_ids)),
+        Arc::new(UInt32Array::from(instance_material_ids)),
+    ]
+    .into_iter()
+    .chain(instance_rotation.into_iter().take(rotation_column_count).map(|col| Arc::new(Float32Array::from(col)) as Arc<dyn arrow::array::Array>))
+    .collect();
+
+    let instance_batch = RecordBatch::try_new(instance_schema, instance_columns)?;
 
     // Mesh table schema
     let mesh_schema = Arc::new(Schema::new(vec![
@@ -332,18 +358,10 @@ pub fn serialize_to_parquet_optimized(
     let material_batch = RecordBatch::try_new(
         material_schema,
         vec![
-            Arc::new(UInt8Array::from(
-                unique_materials.iter().map(|m| m.r).collect::<Vec<_>>(),
-            )),
-            Arc::new(UInt8Array::from(
-                unique_materials.iter().map(|m| m.g).collect::<Vec<_>>(),
-            )),
-            Arc::new(UInt8Array::from(
-                unique_materials.iter().map(|m| m.b).collect::<Vec<_>>(),
-            )),
-            Arc::new(UInt8Array::from(
-                unique_materials.iter().map(|m| m.a).collect::<Vec<_>>(),
-            )),
+            Arc::new(UInt8Array::from(unique_materials.iter().map(|m| m.r).collect::<Vec<_>>())),
+            Arc::new(UInt8Array::from(unique_materials.iter().map(|m| m.g).collect::<Vec<_>>())),
+            Arc::new(UInt8Array::from(unique_materials.iter().map(|m| m.b).collect::<Vec<_>>())),
+            Arc::new(UInt8Array::from(unique_materials.iter().map(|m| m.a).collect::<Vec<_>>())),
         ],
     )?;
 
@@ -395,37 +413,85 @@ pub fn serialize_to_parquet_optimized(
         RecordBatch::try_new(index_schema, vec![Arc::new(UInt32Array::from(indices))])?;
 
     // Phase 4: Write to binary format
-    // Header: [version:u8][flags:u8][instance_len:u32][mesh_len:u32][material_len:u32][vertex_len:u32][index_len:u32]
-    // Then: [instance_parquet][mesh_parquet][material_parquet][vertex_parquet][index_parquet]
-    let mut output = Vec::new();
+    let instance_parquet = write_parquet_buffer(&instance_batch)?;
+    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
+    let material_parquet = write_parquet_buffer(&material_batch)?;
+    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
+    let index_parquet = write_parquet_buffer(&index_batch)?;
 
-    // Version 2 = optimized format
-    output.push(2u8);
+    let data = assemble_optimized_output(
+        optimized_wire_version(emitted_non_identity_rotation),
+        include_normals,
+        &instance_parquet,
+        &mesh_parquet,
+        &material_parquet,
+        &vertex_parquet,
+        &index_parquet,
+    )?;
+    Ok((data, unique_meshes.len(), unique_materials.len()))
+}
+
+/// Validate the five optimized-writer section lengths against the u32 wire
+/// limit. Takes plain lengths, not byte slices, so a >4 GiB test case is just
+/// the number `u32::MAX as usize + 1` — no multi-gigabyte buffer needed.
+fn check_optimized_section_lengths(
+    instance_len: usize, mesh_len: usize, material_len: usize, vertex_len: usize, index_len: usize,
+) -> Result<(), ParquetError> {
+    let sections = [
+        ("instance", instance_len), ("mesh", mesh_len), ("material", material_len),
+        ("vertex", vertex_len), ("index", index_len),
+    ];
+    for (name, len) in sections {
+        check_u32_len(name, len)?;
+    }
+    Ok(())
+}
+
+/// Header: `[version:u8][flags:u8][instance_len:u32][mesh_len:u32][material_len:u32][vertex_len:u32][index_len:u32]`
+/// Then: `[instance_parquet][mesh_parquet][material_parquet][vertex_parquet][index_parquet]`
+///
+/// Each section length is a wire-format u32: fail loud via
+/// `check_optimized_section_lengths` instead of silently truncating a >4 GiB
+/// section into a corrupt length prefix that disagrees with the bytes
+/// appended below. Mirrors the guard `parquet::frame_sections`/
+/// `frame_combined_sections` apply to the non-optimized writer's sections.
+fn assemble_optimized_output(
+    version: u8,
+    include_normals: bool,
+    instance_parquet: &[u8],
+    mesh_parquet: &[u8],
+    material_parquet: &[u8],
+    vertex_parquet: &[u8],
+    index_parquet: &[u8],
+) -> Result<Bytes, ParquetError> {
+    check_optimized_section_lengths(
+        instance_parquet.len(),
+        mesh_parquet.len(),
+        material_parquet.len(),
+        vertex_parquet.len(),
+        index_parquet.len(),
+    )?;
+
+    let mut output = Vec::with_capacity(
+        2 + 20 + instance_parquet.len() + mesh_parquet.len() + material_parquet.len()
+            + vertex_parquet.len() + index_parquet.len(),
+    );
+
+    output.push(version);
     // Flags: bit 0 = has_normals
     output.push(if include_normals { 1u8 } else { 0u8 });
 
-    // Write tables
-    let instance_parquet = write_parquet_buffer(&instance_batch)?;
     output.extend_from_slice(&(instance_parquet.len() as u32).to_le_bytes());
-
-    let mesh_parquet = write_parquet_buffer(&mesh_batch)?;
     output.extend_from_slice(&(mesh_parquet.len() as u32).to_le_bytes());
-
-    let material_parquet = write_parquet_buffer(&material_batch)?;
     output.extend_from_slice(&(material_parquet.len() as u32).to_le_bytes());
-
-    let vertex_parquet = write_parquet_buffer(&vertex_batch)?;
     output.extend_from_slice(&(vertex_parquet.len() as u32).to_le_bytes());
-
-    let index_parquet = write_parquet_buffer(&index_batch)?;
     output.extend_from_slice(&(index_parquet.len() as u32).to_le_bytes());
 
-    // Append all parquet data
-    output.extend_from_slice(&instance_parquet);
-    output.extend_from_slice(&mesh_parquet);
-    output.extend_from_slice(&material_parquet);
-    output.extend_from_slice(&vertex_parquet);
-    output.extend_from_slice(&index_parquet);
+    output.extend_from_slice(instance_parquet);
+    output.extend_from_slice(mesh_parquet);
+    output.extend_from_slice(material_parquet);
+    output.extend_from_slice(vertex_parquet);
+    output.extend_from_slice(index_parquet);
 
     Ok(Bytes::from(output))
 }
@@ -492,23 +558,8 @@ pub fn serialize_to_parquet_optimized_with_stats(
     meshes: &[MeshData],
     include_normals: bool,
 ) -> Result<(Bytes, OptimizedStats), ParquetError> {
-    // First pass: count unique meshes/materials
-    let mut mesh_hashes: FxHashMap<(u64, u64), u32> = FxHashMap::default();
-    let mut material_keys: FxHashMap<MaterialKey, u32> = FxHashMap::default();
-
-    for mesh in meshes {
-        let pos_hash = hash_f32_slice(&mesh.positions);
-        let idx_hash = hash_u32_slice(&mesh.indices);
-        mesh_hashes.entry((pos_hash, idx_hash)).or_insert(0);
-
-        let mat_key = MaterialKey::from_color(&mesh.color);
-        material_keys.entry(mat_key).or_insert(0);
-    }
-
-    let unique_mesh_count = mesh_hashes.len();
-    let unique_material_count = material_keys.len();
-
-    let data = serialize_to_parquet_optimized(meshes, include_normals)?;
+    let (data, unique_mesh_count, unique_material_count) =
+        serialize_to_parquet_optimized(meshes, include_normals)?;
 
     let stats = OptimizedStats {
         input_meshes: meshes.len(),

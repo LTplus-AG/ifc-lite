@@ -6,8 +6,47 @@
 
 mod grid;
 mod linear;
+pub(crate) mod mapped;
 mod mesh_world;
+pub(crate) mod operator;
+
+/// `IfcCartesianPoint` at `attr_index` of `parent`, as a 3D point (Z defaults to
+/// 0 for the 2D form). The router-free form of
+/// `GeometryRouter::parse_cartesian_point`, shared with the 2D drawing extractor.
+pub(crate) fn cartesian_point_at(
+    parent: &DecodedEntity,
+    decoder: &mut EntityDecoder,
+    attr_index: usize,
+) -> crate::Result<crate::Point3<f64>> {
+    let attr = parent
+        .get(attr_index)
+        .ok_or_else(|| crate::Error::geometry("Missing cartesian point".to_string()))?;
+    let entity = decoder
+        .resolve_ref(attr)?
+        .ok_or_else(|| crate::Error::geometry("Failed to resolve cartesian point".to_string()))?;
+    if entity.ifc_type != IfcType::IfcCartesianPoint {
+        return Err(crate::Error::geometry(format!(
+            "Expected IfcCartesianPoint, got {}",
+            entity.ifc_type
+        )));
+    }
+    let coords = entity
+        .get(0)
+        .and_then(|a| a.as_list())
+        .ok_or_else(|| crate::Error::geometry("Expected coordinate list".to_string()))?;
+    Ok(crate::Point3::new(
+        coords.first().and_then(|v| v.as_float()).unwrap_or(0.0),
+        coords.get(1).and_then(|v| v.as_float()).unwrap_or(0.0),
+        coords.get(2).and_then(|v| v.as_float()).unwrap_or(0.0),
+    ))
+}
+
 mod parsers;
+mod walk;
+
+#[cfg(test)]
+#[path = "placement_depth_tests.rs"]
+mod placement_depth_tests;
 
 use super::GeometryRouter;
 use crate::{Mesh, Result, SubMeshCollection};
@@ -105,12 +144,19 @@ pub(crate) fn mat4_to_row_major(m: &Matrix4<f64>) -> [f64; 16] {
 
 impl GeometryRouter {
     /// Apply local placement transformation to mesh
+    ///
+    /// Welds the source vertices FIRST (#4103). This is the last point at which
+    /// the vertices are still in the object frame, and the weld keys on raw f32
+    /// bits, so welding after the bake makes the merge depend on where the
+    /// element sits and leaves two occurrences of one representation with
+    /// different buffers. See `crate::mesh_weld`'s module doc.
     pub(super) fn apply_placement(
         &self,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
         mesh: &mut Mesh,
     ) -> Result<()> {
+        crate::mesh_weld::weld_mesh(mesh);
         let placement_attr = match element.get(5) {
             Some(attr) if !attr.is_null() => attr,
             _ => {
@@ -152,12 +198,20 @@ impl GeometryRouter {
     /// instances of one shared geometry land at their own positions.
     /// (Moved here from `processing.rs` — placement logic lives with the other
     /// placement appliers, and `processing.rs` sits at its ratchet budget.)
+    ///
+    /// Welds each sub-mesh's source vertices first, for the reason
+    /// [`Self::apply_placement`] gives. Every per-style channel (plain, layered,
+    /// textured) converges here, so one loop covers them all, and the sub-mesh
+    /// weld carries `SubMesh::uvs` through the same remap.
     pub(super) fn apply_submesh_placement(
         &self,
         sub_meshes: &mut SubMeshCollection,
         element: &DecodedEntity,
         decoder: &mut EntityDecoder,
     ) -> Result<()> {
+        for sub in &mut sub_meshes.sub_meshes {
+            crate::mesh_weld::weld_sub_mesh(sub);
+        }
         // ObjectPlacement translation is in file units (e.g. mm) but geometry is
         // scaled to metres, so the transform MUST be scaled to match.
         if let Some(placement_attr) = element.get(5) {
@@ -220,115 +274,4 @@ impl GeometryRouter {
         self.get_placement_transform(&placement, decoder)
     }
 
-    /// Recursively resolve placement hierarchy
-    ///
-    /// Uses a depth limit (100) to prevent stack overflow on malformed files
-    /// with circular placement references or extremely deep hierarchies.
-    pub(super) fn get_placement_transform(
-        &self,
-        placement: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-    ) -> Result<Matrix4<f64>> {
-        self.get_placement_transform_with_depth(placement, decoder, 0)
-    }
-
-    /// Internal helper with depth tracking to prevent stack overflow.
-    /// Keep low for WASM — each frame uses ~2KB+ of stack with Matrix4<f64> locals.
-    const MAX_PLACEMENT_DEPTH: usize = 32;
-
-    pub(super) fn get_placement_transform_with_depth(
-        &self,
-        placement: &DecodedEntity,
-        decoder: &mut EntityDecoder,
-        depth: usize,
-    ) -> Result<Matrix4<f64>> {
-        // Depth limit to prevent stack overflow on circular references or deep hierarchies
-        if depth > Self::MAX_PLACEMENT_DEPTH {
-            return Ok(Matrix4::identity());
-        }
-
-        // Per-worker placement-transform memo. For a well-formed acyclic IFC
-        // placement DAG the composed world transform is a pure function of
-        // `placement.id`, so returning a cached result is byte-identical — and
-        // it collapses the repeated work: storey/building placements shared by
-        // thousands of elements compose once per worker, not once per element.
-        // Only the REAL computed transforms below (local/linear/grid) are
-        // cached, never the depth-guard/identity fallbacks, so a cache hit is
-        // depth-independent (the depth guard only bites on chains deeper than
-        // MAX_PLACEMENT_DEPTH or cycles, which never reach a cache write).
-        if let Some(m) = decoder.get_placement_transform_cached(placement.id) {
-            return Ok(Matrix4::from_column_slice(&m));
-        }
-
-        // IfcLinearPlacement is the IFC4x3 placement used by infrastructure
-        // models to put products at a station along an alignment / gradient
-        // curve. Without dedicated handling, every linearly-placed element
-        // (signals, referents, signs on a railway alignment) falls back to
-        // identity here and piles up at world origin — the exact symptom
-        // reported in issue #859 on the `linear-placement-of-signal` fixture.
-        //
-        // Attribute layout (IFC4x3):
-        //   0 PlacementRelTo (IfcObjectPlacement, optional) — same as IfcLocalPlacement
-        //   1 RelativePlacement (IfcAxis2PlacementLinear) — required, samples the curve
-        //   2 CartesianPosition (IfcAxis2Placement3D, optional) — pre-baked world fallback
-        if placement.ifc_type == IfcType::IfcLinearPlacement {
-            let result = self.resolve_linear_placement_with_depth(placement, decoder, depth)?;
-            decoder.cache_placement_transform(placement.id, mat4_to_col_array(&result));
-            return Ok(result);
-        }
-
-        // IfcGridPlacement positions a product on a grid-axis intersection
-        // instead of a local coordinate system. Without dedicated handling
-        // every grid-placed element (columns laid out on a structural grid)
-        // falls back to identity here and stacks at the world origin — the
-        // exact symptom reported in issue #883 on the `ifcgrid` fixture.
-        if placement.ifc_type == IfcType::IfcGridPlacement {
-            let result = self.resolve_grid_placement_with_depth(placement, decoder, depth)?;
-            decoder.cache_placement_transform(placement.id, mat4_to_col_array(&result));
-            return Ok(result);
-        }
-
-        if placement.ifc_type != IfcType::IfcLocalPlacement {
-            return Ok(Matrix4::identity());
-        }
-
-        // Get parent transform first (attribute 0: PlacementRelTo)
-        let parent_transform = if let Some(parent_attr) = placement.get(0) {
-            if !parent_attr.is_null() {
-                if let Some(parent) = decoder.resolve_ref(parent_attr)? {
-                    self.get_placement_transform_with_depth(&parent, decoder, depth + 1)?
-                } else {
-                    Matrix4::identity()
-                }
-            } else {
-                Matrix4::identity()
-            }
-        } else {
-            Matrix4::identity()
-        };
-
-        // Get local transform (attribute 1: RelativePlacement)
-        let local_transform = if let Some(rel_attr) = placement.get(1) {
-            if !rel_attr.is_null() {
-                if let Some(rel) = decoder.resolve_ref(rel_attr)? {
-                    if rel.ifc_type == IfcType::IfcAxis2Placement3D {
-                        self.parse_axis2_placement_3d(&rel, decoder)?
-                    } else {
-                        Matrix4::identity()
-                    }
-                } else {
-                    Matrix4::identity()
-                }
-            } else {
-                Matrix4::identity()
-            }
-        } else {
-            Matrix4::identity()
-        };
-
-        // Compose: parent * local
-        let result = parent_transform * local_transform;
-        decoder.cache_placement_transform(placement.id, mat4_to_col_array(&result));
-        Ok(result)
-    }
 }

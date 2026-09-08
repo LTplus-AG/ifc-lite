@@ -32,6 +32,29 @@ const result = await engine.run(elements, [
 console.log(result.summary.total, 'clashes');
 ```
 
+If your host has already shifted `mesh.expressId` into a federated global id
+space (as the viewer's loader does for every model past the first) while the
+`IfcDataStore` keeps local ids, pass that shift as `meshIdOffset` so the adapter
+can address the store correctly:
+
+```ts
+import { elementsFromStep, type FederationLike } from '@ifc-lite/clash/step';
+
+declare const federation: FederationLike; // e.g. the renderer's FederationRegistry
+declare const model: { idOffset: number };
+
+elementsFromStep({ store, meshes, modelId, federation, meshIdOffset: model.idOffset });
+```
+
+`ClashElement.key` is the element's IFC GlobalId. An element that has none — a
+malformed root, or every element of a GLB-sourced model, whose store carries no
+IFC entities — falls back to `expressid:<encoded modelId>:<expressId>`. Express
+ids are only unique within a model, so the model id is part of that key:
+`clashReviewKey` and the viewer's element-pair exclusions key on the element key
+alone, and an unqualified fallback would let a review or an exclusion set on one
+model apply to another model's element. That fallback is stable only for as long
+as the host's `modelId` is (in the viewer it is a per-load uuid).
+
 Includes the TypeScript reference engine, a Rust→WASM kernel kept in lockstep by a
 differential test (opt-in via `@ifc-lite/clash/wasm`; `backend: 'auto'` currently
 resolves to the TS engine), STEP and IFC5/USD source adapters, spatial grouping,
@@ -45,7 +68,7 @@ and the SDK `clash` namespace.
 
 See the [ifc-lite docs](https://ifclite.dev/docs/) and the design
 rationale in
-[clash-detection-plan.md](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/clash-detection-plan.md).
+[Clash-detection architecture](https://github.com/LTplus-AG/ifc-lite/blob/main/docs/architecture/clash-detection.md).
 
 ## License
 

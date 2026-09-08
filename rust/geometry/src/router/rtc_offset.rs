@@ -401,8 +401,17 @@ impl GeometryRouter {
             }
             // Use the canonical has_geometry_by_name check from the schema
             // instead of a hardcoded list — any entity class with geometry
-            // is a valid candidate for RTC offset sampling.
-            if !has_geometry_by_name(type_name) {
+            // is a valid candidate for RTC offset sampling. #1910: also let
+            // through a spatial container `has_geometry_by_name` blocks by
+            // name (`IfcBuilding` et al.) when THIS instance exceptionally
+            // carries a non-null Representation — mirrors the identical
+            // exception in the entity-job scans
+            // (`rust/processing/src/processor/mod.rs`,
+            // `rust/wasm-bindings/src/api/gpu_meshes/prepass.rs`) so RTC
+            // detection and meshing agree on what counts as geometry.
+            let is_exceptional_spatial_container = ifc_lite_core::is_representationless_spatial_container_by_name(type_name)
+                && ifc_lite_core::nth_attribute_is_present(&content[start..end], 6);
+            if !has_geometry_by_name(type_name) && !is_exceptional_spatial_container {
                 continue;
             }
             if let Ok(entity) = decoder.decode_at(start, end) {

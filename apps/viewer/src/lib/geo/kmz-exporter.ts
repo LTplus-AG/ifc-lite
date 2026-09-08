@@ -20,6 +20,7 @@
  */
 
 import { GeometryProcessor, type MeshData, type KmzAltitudeMode } from '@ifc-lite/geometry';
+import { GEOM_CLASS_INSTANCED_TYPE, geometryClassOf } from '@ifc-lite/geometry/geometry-class';
 import type { LatLon } from './reproject';
 
 export type { KmzAltitudeMode };
@@ -57,11 +58,11 @@ export async function buildKmz(
   opts: KmzOptions,
   createProcessor: () => KmzProcessor = () => new GeometryProcessor(),
 ): Promise<Uint8Array> {
-  // Drop instanced-type templates (geometryClass 2): they are the type-library
-  // copy of a shape an occurrence already places, never rendered in Model view
-  // (see type-view-visibility.ts), so exporting them would duplicate every
+  // Drop instanced-type templates: they are the type-library copy of a shape
+  // an occurrence already places, never rendered in Model view (see
+  // type-view-visibility.ts), so exporting them would duplicate every
   // instanced element at the type's location in Google Earth.
-  const meshes = opts.meshes.filter((m) => (m.geometryClass ?? 0) !== 2);
+  const meshes = opts.meshes.filter((m) => geometryClassOf(m) !== GEOM_CLASS_INSTANCED_TYPE);
   const gp = createProcessor();
   try {
     await gp.init();

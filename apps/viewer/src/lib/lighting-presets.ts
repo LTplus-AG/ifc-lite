@@ -28,6 +28,16 @@ export interface LightingPreset {
   label: string;
   hint: string;
   environment: LightingEnvironment;
+  /**
+   * Sun angular diameter in degrees driving CAST-shadow softness (the depth
+   * pass's PCF penumbra width). It is a property of the sky being simulated —
+   * a clear sun is a small, crisp source (~0.53°); an overcast sky is a huge,
+   * near-shadowless one — so switching preset seeds `envSunAngle`, making cast
+   * shadows change with the sky the same way `environment.sunSoftness` changes
+   * the diffuse terminator. Distinct from `sunSoftness`: this softens the
+   * shadow MAP, that softens the light/shadow BOUNDARY (#2670 review).
+   */
+  shadowSunAngleDeg: number;
 }
 
 export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
@@ -35,12 +45,15 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     id: 'default',
     label: 'Default',
     hint: 'The classic ifc-lite studio look',
+    shadowSunAngleDeg: 0.53,
     environment: {},
   },
   daylight: {
     id: 'daylight',
     label: 'Day',
     hint: 'Bright neutral daylight, high sun',
+    // A small clear-sky sun casts crisp cast shadows.
+    shadowSunAngleDeg: 0.53,
     environment: {
       skyEnabled: true,
       sunDirection: [0.45, 0.83, 0.33],
@@ -49,6 +62,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       skyColor: [0.42, 0.52, 0.65],
       groundColor: [0.22, 0.19, 0.15],
       ambientIntensity: 0.3,
+      // A small clear-sky sun casts a crisp terminator.
+      sunSoftness: 0.12,
       exposure: 0.9,
     },
   },
@@ -56,6 +71,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     id: 'overcast',
     label: 'Overcast',
     hint: 'Soft shadowless grey-sky light',
+    // A cloud-covered sky is a huge effective source — wide, soft penumbra.
+    shadowSunAngleDeg: 4.0,
     environment: {
       skyEnabled: true,
       sunDirection: [0.2, 0.95, 0.24],
@@ -66,6 +83,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       ambientIntensity: 0.45,
       fillIntensity: 0.1,
       rimIntensity: 0.08,
+      // A cloud-covered sky is a huge effective source — near-shadowless.
+      sunSoftness: 0.85,
       exposure: 0.85,
       sky: {
         zenith: [0.5, 0.54, 0.58],
@@ -78,6 +97,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     id: 'golden',
     label: 'Evening',
     hint: 'Low warm sun, golden-hour mood',
+    // Low sun, still a small source — crisp, long shadows.
+    shadowSunAngleDeg: 0.8,
     environment: {
       skyEnabled: true,
       sunDirection: [0.85, 0.18, 0.49],
@@ -86,6 +107,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       skyColor: [0.3, 0.26, 0.32],
       groundColor: [0.16, 0.11, 0.08],
       ambientIntensity: 0.22,
+      // Low sun, still a small source — crisp, long shadows.
+      sunSoftness: 0.18,
       exposure: 0.82,
     },
   },
@@ -93,6 +116,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
     id: 'night',
     label: 'Night',
     hint: 'Cool moonlit ambience',
+    // Moonlight reads a touch softer than a clear-day sun.
+    shadowSunAngleDeg: 1.2,
     environment: {
       skyEnabled: true,
       sunDirection: [-0.3, 0.7, -0.65],
@@ -103,6 +128,8 @@ export const LIGHTING_PRESETS: Record<LightingPresetId, LightingPreset> = {
       ambientIntensity: 0.3,
       fillIntensity: 0.08,
       rimIntensity: 0.2,
+      // Moonlight reads a touch softer than a clear-day sun.
+      sunSoftness: 0.4,
       exposure: 0.75,
       // Explicit night sky — the altitude-derived palette would read the
       // high moon direction as a midday sun and paint a blue daytime sky.

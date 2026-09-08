@@ -62,24 +62,80 @@ function readExistingEntries(): { entries: EpsgEntry[]; version: string } {
   };
 }
 
+/** How a proj4 lookup failed to produce a usable definition. */
+type Proj4Failure = 'http' | 'threw' | 'unusable-body';
+
+const failureTally = new Map<string, number>();
+const FAILURE_SAMPLES_TO_PRINT = 5;
+let failureSamplesPrinted = 0;
+
+function noteFailure(code: string, kind: Proj4Failure, detail: string): void {
+  const key = `${kind}: ${detail}`;
+  failureTally.set(key, (failureTally.get(key) ?? 0) + 1);
+  // Flood guard: this runs once per unresolved code across ~thousands of
+  // entries, so print a handful of concrete examples and let the end-of-run
+  // tally carry the rest.
+  if (failureSamplesPrinted < FAILURE_SAMPLES_TO_PRINT) {
+    failureSamplesPrinted++;
+    console.warn(`  EPSG:${code} — ${key}`);
+  }
+}
+
+function reportFailures(): void {
+  if (failureTally.size === 0) return;
+  console.warn('\nUnresolved proj4 lookups, by cause:');
+  for (const [key, count] of [...failureTally].sort((a, b) => b[1] - a[1])) {
+    console.warn(`  ${count.toString().padStart(6)}  ${key}`);
+  }
+}
+
+/**
+ * Why every non-answer is counted and reported:
+ *
+ * a `null` from here is indistinguishable at the call site from "epsg.io has
+ * no proj4 string for this code" — but it is also what a transport error, an
+ * HTTP 429/5xx, or a captive-portal HTML body produces. This function used to
+ * swallow the throw outright, so a run made during an epsg.io outage or behind
+ * a rate limit finished with `N missing`, rewrote the generated module, and
+ * printed nothing at all about the network. The `noteFailure` tallies are what make
+ * "the registry genuinely has none" separable from "we never got an answer".
+ *
+ * NOTE for a maintainer: an `!resp.ok` response still returns immediately with
+ * no retry, so a single 429/503 permanently records a code as having no proj4
+ * for this run. `scripts/fixtures/fetch-fixtures.mjs` treats 5xx/408/429 as
+ * retryable and only 4xx as permanent; adopting that policy here would be a
+ * behaviour change to a hand-run generator and is left as a deliberate
+ * decision rather than folded into a logging fix.
+ */
 async function fetchProj4(code: string, attempts = 3): Promise<string | null> {
+  let lastError: unknown;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const resp = await fetch(`https://epsg.io/${code}.proj4`, {
         headers: { 'User-Agent': 'ifc-lite-epsg-generator/1.0' },
       });
-      if (!resp.ok) return null;
+      if (!resp.ok) {
+        noteFailure(code, 'http', `HTTP ${resp.status} ${resp.statusText}`);
+        return null;
+      }
       const text = (await resp.text()).trim();
       if (!text || text.startsWith('<') || text.startsWith('{') || !text.includes('+')) {
+        noteFailure(code, 'unusable-body', text ? `${text.slice(0, 40)}…` : '(empty)');
         return null;
       }
       return text;
-    } catch {
+    } catch (error) {
+      lastError = error;
       if (attempt < attempts) {
         await new Promise(r => setTimeout(r, 200 * attempt));
       }
     }
   }
+  noteFailure(
+    code,
+    'threw',
+    lastError instanceof Error ? lastError.message : String(lastError),
+  );
   return null;
 }
 
@@ -147,6 +203,20 @@ async function main(): Promise<void> {
 
   console.log(`Done in ${elapsed}ms: ${resolved} resolved, ${failed} missing`);
   console.log(`Total entries with proj4: ${entries.filter(e => e.proj4).length}/${entries.length}`);
+  reportFailures();
+
+  // A run that resolved nothing is almost never "the registry has none" — it is
+  // the network. Rewriting the generated module anyway is harmless (it round-trips
+  // the same entries) but reporting only "Written to …" reads as success, so name
+  // the condition before the write.
+  if (needsProj4.length > 0 && resolved === 0) {
+    console.warn(
+      `\n⚠️  Resolved 0 of ${needsProj4.length} proj4 lookups — every request failed or ` +
+        'returned nothing usable. This is almost certainly a network/upstream problem, ' +
+        'not the EPSG registry. The generated file is rewritten with the entries it ' +
+        'already had; re-run once epsg.io is reachable.',
+    );
+  }
 
   const moduleSource = renderModule(entries, version);
   fs.writeFileSync(GENERATED_PATH, `${moduleSource}\n`, 'utf8');

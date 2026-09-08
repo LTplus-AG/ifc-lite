@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { EntityRef, MutateBackendMethods } from '@ifc-lite/sdk';
+import { propertyValueTypeOf, type EntityRef, type MutateBackendMethods } from '@ifc-lite/sdk';
 import type { StoreApi } from './types.js';
 import { getOrCreateMutationView, normalizeMutationModelId } from './mutation-view.js';
 
@@ -12,7 +12,12 @@ export function createMutateAdapter(store: StoreApi): MutateBackendMethods {
       const state = store.getState();
       const normalizedModelId = normalizeMutationModelId(state, ref.modelId);
       if (!getOrCreateMutationView(store, ref.modelId)) return undefined;
-      state.setProperty?.(normalizedModelId, ref.expressId, psetName, propName, value);
+      // Classify before storing: mutationSlice.setProperty defaults valueType to
+      // String, so a bare forward wrote IFCLABEL('true') for a boolean — the
+      // same defect the headless adapter documents.
+      state.setProperty?.(
+        normalizedModelId, ref.expressId, psetName, propName, value, propertyValueTypeOf(value),
+      );
       return undefined;
     },
     setAttribute(ref: EntityRef, attrName: string, value: string) {

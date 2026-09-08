@@ -12,7 +12,7 @@ import {
   QUANT_STEP,
   MAX_QUANT_EXTENT,
   QUANT_BYTES_PER_VERTEX,
-} from './quantize.ts';
+} from './quantize.js';
 
 const STRIDE = 7;
 
@@ -100,6 +100,22 @@ describe('quantizeInterleaved (#1682 phase 6)', () => {
   it('returns null when the extent exceeds the u16 lattice range', () => {
     const src = interleave([{ p: [0, 0, 0] }, { p: [MAX_QUANT_EXTENT + 1, 0, 0] }]);
     assert.strictEqual(quantizeInterleaved(src, STRIDE), null);
+  });
+
+  // The threshold itself: `+1` above overshoots by a whole metre, so a
+  // regression that rejects one lattice step early (`>` mutated to `>=`)
+  // would still pass every other case in this file. Pin both edges of the
+  // exact boundary, on the axis that isn't x so a swapped axis check would
+  // also be caught.
+  it('accepts an extent exactly AT the u16 lattice range, and rejects one step beyond', () => {
+    const atBoundary = interleave([{ p: [0, 0, 0] }, { p: [0, MAX_QUANT_EXTENT, 0] }]);
+    const r = quantizeInterleaved(atBoundary, STRIDE)!;
+    assert.notStrictEqual(r, null, 'exact boundary extent must still quantize');
+    const q = view(r);
+    assert.strictEqual(q.u16[1 * 6 + 1], 65535, 'boundary vertex must land on the top lattice node');
+
+    const oneStepBeyond = interleave([{ p: [0, 0, 0] }, { p: [0, MAX_QUANT_EXTENT + QUANT_STEP, 0] }]);
+    assert.strictEqual(quantizeInterleaved(oneStepBeyond, STRIDE), null);
   });
 
   it('handles the empty buffer', () => {

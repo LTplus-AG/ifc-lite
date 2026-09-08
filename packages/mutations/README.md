@@ -69,6 +69,10 @@ is unambiguously REAL-backed, a whole-number value is serialized with the
 decimal point automatically, so the natural call just works:
 
 ```typescript
+const profile = editor.addEntity('IfcRectangleProfileDef', [
+  '.AREA.', null, '#34', 0.6, 0.4,
+]);
+
 editor.setPositionalAttribute(profile.expressId, 3, 1);  // XDim → 1.  (dotted)
 ```
 
@@ -77,6 +81,8 @@ For the rare slot that a bare value genuinely can't disambiguate — a
 the number in the write-only `{ real }` marker to force a REAL literal:
 
 ```typescript
+const unitRef = '#34';  // STEP reference to an IfcNamedUnit
+
 editor.addEntity('IfcQuantityLength', ['L', null, unitRef, { real: 3 }]); // → IFCLENGTHMEASURE-safe 3.
 ```
 
@@ -88,6 +94,12 @@ type-QUALIFIED — `IFCBOOLEAN(.T.)`, not a bare `.T.`, in an
 the member is unambiguous, so the natural call just works:
 
 ```typescript
+// IfcBoundaryNodeCondition: Name, TranslationalStiffnessX/Y/Z,
+//                           RotationalStiffnessX/Y/Z
+const condition = editor.addEntity('IfcBoundaryNodeCondition', [
+  'Pinned', null, null, null, null, null, null,
+]);
+
 // TranslationalStiffnessX : SELECT(IfcBoolean, IfcLinearStiffnessMeasure)
 editor.setPositionalAttribute(condition.expressId, 1, true);  // → IFCBOOLEAN(.T.)
 editor.setPositionalAttribute(condition.expressId, 1, 1000);  // → IFCLINEARSTIFFNESSMEASURE(1000.)
@@ -122,6 +134,41 @@ Reset back to the source data:
 view.clear();
 ```
 
+### Serializing history: `exportMutations` / `importMutations`
+
+```typescript
+const json = view.exportMutations();
+// → ship to a teammate, persist, or replay onto another MutablePropertyView
+
+mutationView.importMutations(json);
+```
+
+**`importMutations` is not a full inverse of `exportMutations` for created
+entities.** A `CREATE_ENTITY` record (from `view.createEntity(...)`) carries
+only the expressId in the history — not the entity's type and attributes —
+so `importMutations` cannot rebuild the entity from the record alone. It
+logs a `console.warn` and skips the record, and also drops every other
+mutation recorded against that same entity id in the same batch (so the
+round trip is lossy — the entity and its edits are both dropped — rather
+than leaving an orphaned property/attribute/quantity keyed to an id that
+was never created on the receiving view).
+
+To carry a created entity across, call `restoreNewEntity()` with its
+`NewEntity` payload (read via `getNewEntity`/`getNewEntities` on the source
+view) **before** calling `importMutations`:
+
+```typescript
+const json = view.exportMutations();
+
+const created = view.getNewEntity(expressId)!;
+mutationView.restoreNewEntity(created);
+mutationView.importMutations(json); // dependent property/attribute/quantity mutations now replay
+```
+
+Mutations recorded against a pre-existing (source-buffer) entity always
+round-trip — this caveat is scoped to entities created via `createEntity` /
+`StoreEditor.addEntity`.
+
 ## Bulk updates
 
 ```typescript
@@ -155,7 +202,32 @@ console.log(`Updated ${result.affectedEntityCount} walls`);
 Preview without applying:
 
 ```typescript
-const preview = engine.preview(query);
+import { BulkQueryEngine, type BulkQuery } from '@ifc-lite/mutations';
+import { PropertyValueType } from '@ifc-lite/data';
+
+const engine = new BulkQueryEngine(store.entities, view);
+
+// The same query the execute example above runs.
+const bulkQuery: BulkQuery = {
+  select: {
+    entityTypes: [/* IfcWall enum value */],
+    propertyFilters: [{
+      psetName: 'Pset_WallCommon',
+      propName: 'IsExternal',
+      operator: '=',
+      value: true,
+    }],
+  },
+  action: {
+    type: 'SET_PROPERTY',
+    psetName: 'Pset_WallCommon',
+    propName: 'ThermalTransmittance',
+    value: 0.18,
+    valueType: PropertyValueType.Real,
+  },
+};
+
+const preview = engine.preview(bulkQuery);
 console.log(`Would update ${preview.matchedCount} entities`);
 ```
 
@@ -168,6 +240,8 @@ import { CsvConnector } from '@ifc-lite/mutations';
 import { PropertyValueType } from '@ifc-lite/data';
 
 const connector = new CsvConnector(store.entities, view);
+
+const csvText = await file.text();  // or any string of CSV
 
 const stats = connector.import(csvText, {
   matchStrategy: { type: 'globalId', column: 'GlobalId' },

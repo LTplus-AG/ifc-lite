@@ -7,17 +7,27 @@
  */
 
 export { WebGPUDevice } from './device.js';
+export type { AdapterInfoSnapshot } from './device.js';
 export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
-export type { ProjectionMode } from './camera-controls.js';
+// The MEASURED surface `getScene()` publishes — see its docs.
+export type { SceneContents } from './scene-contents.js';
+export type { ProjectionMode } from './camera-state.js';
+export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
 export type { FitPolicy, FitPolicyKind, Bounds3, PickFitPolicyOptions } from './camera-fit-policy.js';
-export { Scene } from './scene.js';
+// `Scene` is NOT exported: an exported class republishes every method `SceneContents` above just froze.
 export { Picker } from './picker.js';
 export { MathUtils } from './math.js';
+// The orthonormal camera basis `MathUtils.lookAt` renders through, exposed so
+// that a consumer which has to reconstruct the on-screen frame outside the
+// renderer derives it from the same substitution the picture used, instead of
+// recomputing `cross(forward, up)` and inventing its own answer for a
+// degenerate `up` (#2467 made this call inside the package; the Cesium overlay
+// is the same situation from outside it).
+export { viewBasis } from './math.js';
 export { SectionPlaneRenderer } from './section-plane.js';
-export { Section2DOverlayRenderer } from './section-2d-overlay.js';
-import { aabbEdgeLineList } from './aabb-edges.js';
+// `Section2DOverlayRenderer` is NOT exported: `Renderer.setLineOverlay` and the section cap drive it from inside. Its types below stay published.
 
 // IfcAnnotation overlay pipelines (3D world-space). Self-contained — caller
 // passes a GPUDevice + presentation format and invokes `.render(pass, viewProj)`
@@ -37,7 +47,8 @@ export { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
 export type { SectionCapStyle, HatchPatternId } from './section-cap-style.js';
 export { planeBasis, nearestCardinalAxis } from './section-plane-basis.js';
 export type { PlaneBasis, Vec3Tuple } from './section-plane-basis.js';
-export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D } from './section-2d-overlay.js';
+export type { Section2DOverlayOptions, Section2DOverlayCapStyle, CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
+export { LINE_OVERLAY_CHANNELS } from './section-2d-overlay.js';
 export { Raycaster } from './raycaster.js';
 export { SnapDetector, SnapType } from './snap-detector.js';
 export { BVH } from './bvh.js';
@@ -54,8 +65,8 @@ export type { LightingEnvironment, ResolvedEnvironment, SkyGradient, Vec3Color }
 export type { Ray, Vec3, Intersection } from './raycaster.js';
 export type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 
-// Extracted manager classes
-export { PickingManager } from './picking-manager.js';
+// Extracted manager classes. `PickingManager` is NOT exported: its constructor
+// takes the now-internal `Scene`, so nobody outside could build one anyway.
 export type { PointPickProvider } from './picking-manager.js';
 export { resolveContributionThresholdPx, projectedAabbRadiusPx } from './contribution-cull.js';
 export type { ContributionCullOptions, CullCameraState } from './contribution-cull.js';
@@ -67,8 +78,30 @@ export { simplifyIndicesByClustering, lodCellSizeForBounds, LOD_MIN_TRIANGLES, L
 export { quantizeInterleaved, octEncode, octDecode, QUANT_STEP, MAX_QUANT_EXTENT, QUANT_BYTES_PER_VERTEX } from './quantize.js';
 export type { QuantizedVertexData } from './quantize.js';
 export { sumResidentGpuBytes } from './render-stats.js';
+
+// The hide/isolate rule and its change detection, shared with consumers that
+// render the model outside this package's pipeline (the Cesium world view,
+// #2578) and so must reach the same verdict the viewport does.
+export { isEntityVisible } from './entity-visibility.js';
+// Alpha constants the Cesium world view must match, since it renders the model
+// through its own glTF pipeline rather than this one (#2591).
+export { DEFAULT_GHOST_ALPHA, OPAQUE_ALPHA_CUTOFF } from './overlay-routing.js';
+export { VisibilityEpochTracker } from './visibility-epoch.js';
 export type { FrameStats, ResidentGpuBytes } from './render-stats.js';
+// Frame/pass GPU timing (issue #2670 perf-verdict gate). Opt-in and NOT wired
+// into `Renderer` by default — a caller constructs `GpuFrameTimingRecorder`
+// itself and attaches its `timestampWrites` to the passes it wants measured;
+// see `frame-timing-gpu.ts`'s module doc for the usage pattern, and
+// `decideTimingMode` for choosing GPU queries vs. the CPU fallback vs. off.
+export { decideTimingMode, passDurationsMs, frameTotalMs, aggregateFrameTimings } from './frame-timing.js';
+export type { TimingMode, TimingModeRequest, PassTimingSample, FrameTimingReport } from './frame-timing.js';
+export { computeDurationStats, nsToMs, isNegativeDelta } from './frame-timing-stats.js';
+export type { DurationStats } from './frame-timing-stats.js';
+export { GpuFrameTimingRecorder, hasTimestampQueryFeature } from './frame-timing-gpu.js';
+export { createCpuFrameTicker } from './frame-timing-cpu.js';
+export type { CpuFrameTicker } from './frame-timing-cpu.js';
 export { RaycastEngine } from './raycast-engine.js';
+export type { RenderDegradationInfo } from './render-degradation.js';
 export { PointPicker, decodePickSample } from './point-picker.js';
 export type { PointPickNode, DecodedPickSample } from './point-picker.js';
 export type { PointPickSizing } from './picker.js';
@@ -89,12 +122,15 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 
-import { WebGPUDevice } from './device.js';
+import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
 import { Scene, type InstancedTemplateGPU } from './scene.js';
+import type { SceneContents } from './scene-contents.js';
 import { Picker } from './picker.js';
-import { MathUtils } from './math.js';
+import { reportableItemId } from './pick-resolve.js';
+import { MathUtils, viewBasis } from './math.js';
+import type { Vec3 as Vec3Type } from './types.js';
 import { FrustumUtils } from '@ifc-lite/spatial';
 import type { MeshData } from '@ifc-lite/geometry';
 import type {
@@ -105,80 +141,108 @@ import type {
     ClipBox,
     Mesh,
     BatchedMesh,
-    VisualEnhancementOptions,
-    ContactShadingQuality,
-    SeparationLinesQuality,
 } from './types.js';
-import { SectionPlaneRenderer } from './section-plane.js';
+import { VisualEnhancementResolver } from './visual-enhancement.js';
 import { packClipBox } from './clip-box.js';
-import { Section2DOverlayRenderer, type CutPolygon2D, type DrawingLine2D } from './section-2d-overlay.js';
-import {
-  SymbolicFillPipeline,
-  SymbolicTextPipeline,
-  type SymbolicFillInput,
-  type SymbolicTextInput,
+import type { CutPolygon2D, DrawingLine2D, LineOverlayChannel } from './section-2d-overlay.js';
+import type {
+  SymbolicFillInput,
+  SymbolicTextInput,
 } from './symbolic-overlay-pipelines.js';
-import { DEFAULT_CAP_STYLE, HATCH_PATTERN_IDS } from './section-cap-style.js';
-import { Raycaster, type Intersection } from './raycaster.js';
-import { SnapDetector, type SnapTarget, type SnapOptions, type EdgeLockInput, type MagneticSnapResult } from './snap-detector.js';
+import { RendererOverlays } from './renderer-overlays.js';
+import { resolveSectionPlaneFrame } from './render-section-plane.js';
+import type { Intersection } from './raycaster.js';
+import type { SnapTarget, SnapOptions, EdgeLockInput, MagneticSnapResult } from './snap-detector.js';
 import { PickingManager } from './picking-manager.js';
 import { RaycastEngine } from './raycast-engine.js';
+import { RenderDegradationMonitor, type RenderDegradationInfo } from './render-degradation.js';
 import { PostProcessor } from './post-processor.js';
 import { InteractionEffectsGovernor } from './interaction-effects-governor.js';
 import { VisibilityEpochTracker } from './visibility-epoch.js';
+import { isEntityVisible } from './entity-visibility.js';
+import { ModelBoundsTracker, type ModelBoundsBox } from './model-bounds-tracker.js';
 import { resolveContributionThresholdPx, projectedAabbRadiusPx, projectedInstancedRadiusPx, type CullCameraState } from './contribution-cull.js';
 import type { FrameStats } from './render-stats.js';
 import { EdlPass } from './edl-pass.js';
 import { SkyPass } from './sky-pass.js';
 import { skyShaderSource } from './shaders/sky.wgsl.js';
 import { resolveEnvironment } from './environment.js';
-import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion } from './overlay-routing.js';
+import { ShadowPass, resolveShadowMapResolution } from './shadow-pass.js';
+import { fitSunLightMatrix, cameraFrustumFocusCorners } from './shadow-light-matrix.js';
+import { collectShadowOccluders, classifyBatchVisibility, DEFAULT_MIN_CAST_ALPHA } from './shadow-occluders.js';
+import { shouldRouteMeshTransparent, shouldRouteBatchTransparent, splitVisibleIdsByPromotion, DEFAULT_GHOST_ALPHA } from './overlay-routing.js';
 import { colorSaltByte, packEntityLane } from './scene-geometry.js';
 import { PointCloudRenderer } from './pointcloud/point-cloud-renderer.js';
 import type { PointCloudAsset } from '@ifc-lite/geometry';
-import { DeviationPipeline } from './deviation/deviation-pipeline.js';
-import { buildTriangleBVH } from './deviation/triangle-bvh.js';
+import { DeviationComputer, type DeviationComputeOptions, type DeviationComputeResult } from './deviation/deviation-computer.js';
 
 const MAX_ENCODED_ENTITY_ID = 0xFFFFFF;
 let warnedEntityIdRange = false;
 
-type ResolvedVisualEnhancement = {
-    enabled: boolean;
-    edgeContrast: {
-        enabled: boolean;
-        intensity: number;
-    };
-    contactShading: {
-        quality: ContactShadingQuality;
-        intensity: number;
-        radius: number;
-    };
-    separationLines: {
-        enabled: boolean;
-        quality: SeparationLinesQuality;
-        intensity: number;
-        radius: number;
-    };
-};
+/**
+ * Is this throw the GPU device telling us it is gone?
+ *
+ * The discriminator is the exception TYPE, not its message, because WebGPU
+ * draws exactly that line:
+ *  - a call on a dead / invalid-state device throws a `DOMException`
+ *    (`InvalidStateError` in Safari 26.5 — the whole of issue #2229);
+ *  - a buffer allocation the host cannot back throws a plain `RangeError`
+ *    ("createBuffer failed, size (…) is too large … when mappedAtCreation ==
+ *    true"), which `gpu-upload-guard` documents happening on a HEALTHY device
+ *    under memory pressure.
+ *
+ * Treating the second as a device loss is a false positive that costs the whole
+ * session, so only the first latches; everything else degrades one frame.
+ *
+ * There is deliberately NO consecutive-failure threshold as a middle ground.
+ * Not because failures necessarily arrive back-to-back — between two BCF / IDS
+ * capture frames the awaited `camera.frameBounds` normally does let an ordinary
+ * rAF frame through, which would reset a counter — but because those ordinary
+ * frames are not guaranteed to SUCCEED: they allocate too (`ensureMeshResources`
+ * creates a buffer per unresourced mesh, and the queued-mesh flush allocates),
+ * so under sustained host memory pressure any finite budget is still reachable.
+ * A latch whose safety depends on incidental animation timing is the wrong
+ * shape of guarantee for "never kill the viewport by mistake".
+ *
+ * Real losses on browsers that do not throw are still caught by the async
+ * `device.lost` promise — which the WebGPU spec makes the sole loss channel
+ * anyway (on a conformant engine, calls against a lost device are no-ops, not
+ * throws; Safari 26.5's synchronous throw is the deviation being handled here).
+ *
+ * `typeof` guarded because non-DOM hosts (Node before 17, some workers) have no
+ * `DOMException` global; there, no throw can be a WebGPU device signal anyway.
+ */
+function isDeviceLossThrow(error: unknown): boolean {
+    return typeof DOMException !== 'undefined' && error instanceof DOMException;
+}
 
 /**
- * Build a deterministic fingerprint of the BVH input mesh set so
- * `Renderer.computeDeviations` can skip the rebuild when the source
- * geometry hasn't changed. Folds in expressId / modelIndex / position
- * + index lengths per mesh so two distinct mesh sets that happen to
- * share the same aggregate position-length total can't collide on the
- * same fingerprint and reuse a stale BVH.
+ * The reason `whenReady()` rejects when the renderer is destroyed.
+ *
+ * A plain `Error` carrying a stable `name` rather than an exported subclass:
+ * consumers can discriminate it with `err.name === 'RendererDestroyedError'`
+ * without this package growing a new export (and without `instanceof` breaking
+ * across duplicated copies of the package).
  */
-function computeBvhFingerprint(meshes: ReadonlyArray<import('@ifc-lite/geometry').MeshData>): string {
-    const parts: string[] = [String(meshes.length)];
-    for (const m of meshes) {
-        const id = m.expressId ?? -1;
-        const mi = m.modelIndex ?? -1;
-        const posLen = m.positions?.length ?? 0;
-        const idxLen = m.indices?.length ?? 0;
-        parts.push(`${id}:${mi}:${posLen}:${idxLen}`);
-    }
-    return parts.join('|');
+function rendererDestroyedError(): Error {
+    const error = new Error('Renderer was destroyed before it became ready');
+    error.name = 'RendererDestroyedError';
+    return error;
+}
+
+/**
+ * The reason `whenReady()` rejects once the GPU device has been lost.
+ *
+ * Deliberately NOT `RendererDestroyedError`: a destroyed renderer is finished,
+ * while a lost one is dead only until the host re-initialises it (`init()`
+ * clears the latch and readiness is published again). A caller that wants to
+ * retry needs to tell those apart, so the loss carries its own `name` — same
+ * plain-`Error` shape, for the same reasons.
+ */
+function rendererDeviceLostError(): Error {
+    const error = new Error('GPU device was lost before the renderer became ready');
+    error.name = 'RendererDeviceLostError';
+    return error;
 }
 
 /**
@@ -191,21 +255,35 @@ export class Renderer {
     private scene: Scene;
     private picker: Picker | null = null;
     private canvas: HTMLCanvasElement;
-    private sectionPlaneRenderer: SectionPlaneRenderer | null = null;
-    private section2DOverlayRenderer: Section2DOverlayRenderer | null = null;
-    // Overlay/section-cut line colour, kept on the Renderer so it survives a
-    // pre-init call and a section2DOverlayRenderer re-creation (re-applied below).
-    private overlayLineColor: readonly [number, number, number, number] = [0, 0, 0, 1];
-    // IfcAnnotation overlay pipelines (issue #653). Created on `init()` once
-    // the device exists; nulled until then.
-    private symbolicFillPipeline: SymbolicFillPipeline | null = null;
-    private symbolicTextPipeline: SymbolicTextPipeline | null = null;
+    /**
+     * Section-plane gizmo, 2D section drawing/cap, and the standalone 3D line
+     * + symbolic annotation overlays (issue #2425). Created here rather than in
+     * `init()` so a pre-init `setOverlayLineColor` still lands — the GPU
+     * objects inside stay null until `init()` calls `overlays.init()`.
+     */
+    private readonly overlays = new RendererOverlays({
+        getModelBounds: () => this.getModelBounds(),
+        expandModelBoundsWithFlatVertices: (positions, stride) =>
+            this.modelBoundsTracker.expandWithFlatVertices(positions, stride),
+        syncCameraSceneBounds: () => {
+            if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
+        },
+        requestRender: () => this.requestRender(),
+    });
     private postProcessor: PostProcessor | null = null;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
     // Procedural sky background — created lazily on the first frame that
     // enables it (most sessions never do).
     private skyPass: SkyPass | null = null;
+    // Sun shadow-map depth pre-pass (#2670, Phase 2) — created lazily on the
+    // first frame that enables `RenderOptions.sunShadows`. Off by default.
+    private shadowPass: ShadowPass | null = null;
+    // Whether the shadow map was wired into the environment bind group last
+    // frame — lets a toggle-off write `enabled = 0` and drop the depth view
+    // exactly once instead of every frame.
+    private shadowsWired = false;
+    private shadowScratch = new Float32Array(24); // lightViewProj(16) + params(4) + params2(4)
     private edlOptions: { enabled: boolean; strength: number; radiusPx: number; highQuality: boolean } = {
         enabled: false,
         strength: 1,
@@ -213,37 +291,121 @@ export class Renderer {
         highQuality: true,
     };
     private pointCloudRenderer: PointCloudRenderer | null = null;
-    /** Set true at the end of `init()`; gates `whenReady()`. */
+    /**
+     * Set true at the end of the LATEST `init()`; gates `whenReady()` and
+     * `isReady()`. Revoked synchronously by `init()` and by `destroy()`, and
+     * overridden (not cleared) by a device loss — see `deviceLost`, which the
+     * two readiness methods consult alongside this flag because the loss can
+     * land in the middle of the init that is about to set it.
+     */
     private ready = false;
-    private readyWaiters: Array<() => void> = [];
+    private readyWaiters: Array<{ resolve: () => void; reject: (reason: Error) => void }> = [];
+
+    /**
+     * Set by the public `destroy()`, cleared synchronously by `init()`. It is
+     * the difference between "not ready YET" and "never going to be ready":
+     * `whenReady()` parks for the first and rejects for the second.
+     *
+     * Without it a caller parked across the teardown waits forever, because
+     * nothing after `destroy()` will ever reach `markReady()` — the host's
+     * remount builds a NEW Renderer rather than re-initialising this one. The
+     * private `teardown()` deliberately does NOT set it: the teardown
+     * `initOnce()` runs on the previous init's objects is part of an init that
+     * IS going to publish readiness, and its waiters must survive to be flushed.
+     */
+    private destroyed = false;
+
+    /**
+     * The tail of the `init()` queue. `init()` chains onto this rather than
+     * running immediately, so two overlapping calls cannot both walk past the
+     * "a previous init completed" guard while the first is still awaiting its
+     * device and both allocate a full set of GPU objects (#2448). Always
+     * settled fulfilled — a rejected init is swallowed HERE (never for the
+     * caller) so one failure does not deadlock every later call.
+     */
+    private initChain: Promise<void> = Promise.resolve();
+
+    /**
+     * Incremented synchronously by every `init()` call AND by every public
+     * `destroy()`. It stamps "the lifecycle event an in-flight init belongs to":
+     * an init that no longer carries the current stamp has been superseded and
+     * must neither allocate nor publish readiness.
+     *
+     * Both bumps are load-bearing, for the same reason. Because the queue above
+     * defers the body, an init can finish while a later one is still waiting its
+     * turn; that later call is about to tear down everything the earlier one
+     * built, so the earlier one must not publish readiness. And a host that calls
+     * `destroy()` while an init is parked on `await device.init(...)` gets the
+     * same hazard from the other direction: without the bump that init resumes,
+     * allocates a full replacement GPU stack nothing references, and re-publishes
+     * `ready` against a renderer that has already been torn down (#2465).
+     *
+     * The teardown `initOnce()` runs as part of its OWN re-init deliberately does
+     * NOT bump it — see `destroy()` vs `teardown()`. Bumping there would make
+     * every re-init invalidate itself, and nothing would ever become ready again.
+     */
+    private initGeneration = 0;
 
     /**
      * Set once the GPU device is lost for a non-intentional reason (driver
      * reset / VRAM exhaustion — see `WebGPUDevice`). Every GPU resource is then
      * dead, so `render()` becomes a no-op (it would only spew validation errors)
-     * until the host re-initialises the renderer. Consumers learn of this via
-     * `onDeviceLost` and typically respond by reloading the model.
+     * and the renderer stops reporting itself ready (`isReady()` goes false,
+     * `whenReady()` rejects) until the host re-initialises it. Consumers learn
+     * of this via `onDeviceLost` and typically respond by reloading the model.
+     *
+     * Two signals set it: the async `device.lost` promise (Chromium), and a
+     * frame throwing a `DOMException` out of `render()` (Safari 26.5, which
+     * reports the loss synchronously — issue #2229). Whichever arrives first
+     * latches. A frame throwing anything else does NOT latch (see
+     * `isDeviceLossThrow`) — that class is host memory pressure on a live
+     * device, and it must cost one frame, not the session.
      */
     private deviceLost = false;
-    private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
-    private deviationPipeline: DeviationPipeline | null = null;
     /**
-     * Cache of which mesh-set the BVH was built from. We rebuild on
-     * `computeDeviations` only when the cached "fingerprint" misses,
-     * so re-running deviation against the same model is a fast
-     * dispatch — the BVH is multi-second on big BIMs and we don't
-     * want to pay that on every slider drag.
+     * The lifecycle generation the latched loss belongs to (see
+     * `initGeneration`); null until the first loss, and never cleared
+     * afterwards. It is only ever read next to `deviceLost`, which is what
+     * makes a stale stamp harmless — and that pairing is required, not
+     * cosmetic: a loss that latched between `init()` bumping the generation and
+     * its queued body running is stamped with the CURRENT generation, and only
+     * the flag that body clears says the renderer has moved on.
+     *
+     * `whenReady()` rejects only while this still equals the CURRENT generation,
+     * which is what re-arms the wait the instant a host calls `init()` — before
+     * the queued body has had a chance to clear `deviceLost` itself. Without
+     * that, `renderer.init(); await renderer.whenReady();` — the recovery shape
+     * `init()` already revokes readiness synchronously for — would reject inside
+     * the microtask window on a renderer that is being brought back up.
+     *
+     * Scoping it here rather than clearing `deviceLost` in `init()` keeps the
+     * flag meaning exactly one thing everywhere else: `render()`, the pick path
+     * and `getGPUDevice()` must stay shut for the OLD device across that same
+     * window, and clearing early would let frames run against dead GPU objects
+     * (and, on Safari, re-latch and re-notify the loss they already reported).
      */
-    private deviationBvhFingerprint: string | null = null;
-    private visualEnhancementState: ResolvedVisualEnhancement = {
-        enabled: true,
-        edgeContrast: { enabled: true, intensity: 1.0 },
-        contactShading: { quality: 'off', intensity: 0.3, radius: 1.0 },
-        separationLines: { enabled: true, quality: 'low', intensity: 0.5, radius: 1.0 },
-    };
+    private deviceLostGeneration: number | null = null;
+    /** Retained so a listener registered AFTER the loss still learns of it. */
+    private deviceLostInfo: { message: string; reason: string } | null = null;
+    private deviceLostListeners = new Set<(info: { message: string; reason: string }) => void>();
+    /** BIM ↔ scan deviation: owns the compute pipeline + its BVH cache. */
+    private readonly deviationComputer = new DeviationComputer();
+    private readonly visualEnhancementResolver = new VisualEnhancementResolver();
 
-    // Model bounds for fitToView, section planes, camera
-    private modelBounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null = null;
+    // Model bounds for fitToView, section planes, camera. The value itself
+    // lives in ModelBoundsTracker (issue #2425) so the four writers — point
+    // cloud upload, mesh load, overlay upload, and the public setModelBounds —
+    // share one owner instead of a private field. Camera notification stays at
+    // the call sites: they do not all push under the same policy.
+    private readonly modelBoundsTracker = new ModelBoundsTracker({
+        meshBounds: () => this.computeMeshBounds(),
+        pointCloudBounds: () => this.pointCloudRenderer?.getBounds() ?? null,
+    });
+
+    /** Read-only view of the tracked scene AABB (live reference, not a copy). */
+    private get modelBounds(): ModelBoundsBox | null {
+        return this.modelBoundsTracker.get();
+    }
 
     // Composition: delegate to extracted managers
     private pickingManager: PickingManager;
@@ -255,6 +417,48 @@ export class Renderer {
     // exactly the evidence worth keeping.
     private lastRenderErrorTime: number = -Infinity;
     private readonly RENDER_ERROR_THROTTLE_MS = 1000;
+    /**
+     * Consecutive frames that threw a non-device error and were degraded.
+     * Reset by any frame that completes. Gates the self-retry in `render()`'s
+     * catch — see there for why it is a retry budget and not a latch — and,
+     * since #2417, the persistent-degradation report as well. Both readings
+     * depend on the reset: this is the length of the CURRENT unbroken run of
+     * failures, never a session total (`_renderErrorCount` is that, and using
+     * it for either purpose would count failures the viewport recovered from).
+     */
+    private consecutiveDegradedFrames = 0;
+    /**
+     * How many consecutive degraded frames may re-request themselves. Three is
+     * a blink at 60 Hz — enough for a transient host-memory spike to clear
+     * without the user touching anything, far too few to matter as wasted work
+     * if it does not. Beyond it the viewport goes quiet rather than spinning,
+     * and the next interaction/stream/animation drives it as normal.
+     */
+    private readonly MAX_DEGRADED_SELF_RETRIES = 3;
+    /**
+     * Decides when degrading has stopped being transient (issue #2417). The
+     * non-latching branch is correct per occurrence and blind in aggregate: a
+     * failure that never clears leaves a wedged viewport that looks, from
+     * outside, exactly like one that recovered. Fires once per session.
+     */
+    private readonly renderDegradation = new RenderDegradationMonitor();
+    private persistentDegradationListeners = new Set<(info: RenderDegradationInfo) => void>();
+    /**
+     * Set by `containFrameThrow` for the frame currently in flight, cleared by
+     * `render()` before each one.
+     *
+     * Needed because the encode region's catch is INSIDE `renderFrame()`, and
+     * it swallows its throw: a frame that failed there returns to `render()`
+     * perfectly normally, so "did not throw" is not the same question as "did
+     * not fail". Without this flag `render()` reads it as a completed frame and
+     * resets `consecutiveDegradedFrames` on the very next line — which makes
+     * `++count <= MAX_DEGRADED_SELF_RETRIES` true on EVERY encode failure, so
+     * the retry budget never exhausts and a persistently failing encode path
+     * re-requests one throwing frame per rAF forever. It also caps the run
+     * length at 1, so no persistent-degradation report could ever fire for the
+     * region this PR exists to cover.
+     */
+    private frameContainedThrow = false;
 
     // Diagnostic counters for mobile debugging
     private _renderCallCount: number = 0;
@@ -332,17 +536,84 @@ export class Renderer {
     }
 
     /**
-     * Initialize renderer
+     * Initialize renderer.
+     *
+     * Safe to call on an already-initialised instance: the previous GPU objects
+     * are released first. The comment below advertises a `destroy()` + `init()`
+     * re-init flow, and the obvious device-loss auto-recovery is to call
+     * `init()` on the live instance — which, without this, silently orphaned
+     * two render pipelines, the picker, the post-processor, the point-cloud and
+     * deviation pipelines, the EDL pass and the overlay layer's glyph atlas, per
+     * recovery (#2448). Making the method self-safe is cheaper than trusting
+     * every future caller to remember.
+     *
+     * Concurrent calls are SERIALISED, not coalesced: the second waits for the
+     * first to settle and then runs in full. Without that, `pipeline` — which
+     * only ever marks a COMPLETED init — is still null while the first call is
+     * awaiting `device.init()`, so both calls sail past the guard above and both
+     * allocate a full set of GPU objects, orphaning the first. Queueing turns
+     * the concurrent case into the sequential one the guard already handles,
+     * rather than adding a second, differently-shaped rule.
      */
     async init(): Promise<void> {
+        // Revoke readiness SYNCHRONOUSLY, before the body is queued. Everything
+        // below runs in a later microtask (or, for a queued call, only after the
+        // one ahead of it settles), so leaving `ready` set would let
+        // `renderer.init(); await renderer.whenReady();` resolve immediately
+        // against the GPU objects this init is about to destroy — the very
+        // hazard the re-arm inside `initOnce()` exists to prevent. On a first
+        // init there is nothing to invalidate and this is a no-op.
+        const generation = ++this.initGeneration;
+        this.ready = false;
+        // Re-arm `whenReady()`: this instance is being brought back up, so a
+        // wait requested from here on is "not ready yet" again, not "destroyed".
+        this.destroyed = false;
+        // A previous init that REJECTED must not block the next one, so the
+        // stored link swallows the outcome. The caller still receives `run`, so
+        // rejections continue to surface exactly as before.
+        const run = this.initChain.then(() => this.initOnce(generation), () => this.initOnce(generation));
+        this.initChain = run.then(() => undefined, () => undefined);
+        return run;
+    }
+
+    private async initOnce(generation: number): Promise<void> {
+        // `pipeline` is the marker for "a previous init() completed": it is
+        // assigned unconditionally there and nulled by destroy().
+        if (this.pipeline !== null) {
+            // Release the device the previous init() resolved on, and re-arm
+            // `whenReady()` so it cannot resolve against GPU objects that no
+            // longer exist. `teardown()`, not the public `destroy()`: this
+            // teardown is part of THIS init, so it must not invalidate this
+            // init's own generation.
+            this.teardown();
+        }
         // Clear the lost flag so a re-init (destroy()+init() on the same instance)
         // resumes rendering instead of staying a permanent no-op from an earlier loss.
+        // This also releases `whenReady()`'s rejection for the one case the
+        // generation stamp cannot: a loss that latched between `init()` bumping
+        // the generation and this body running is stamped with the generation
+        // that is clearing it. `deviceLostGeneration` deliberately keeps its
+        // stale value — it is only ever read alongside this flag.
         this.deviceLost = false;
         // Subscribe before the device exists so a loss during the first frames
         // is never missed — the handler is only invoked when `device.lost`
         // actually resolves (a real fault), long after init in practice.
         this.device.onDeviceLost((info) => this.handleDeviceLost(info));
         await this.device.init(this.canvas);
+
+        // A `destroy()` (or a newer `init()`) landed while we were parked on the
+        // device. Everything below allocates a full GPU stack — two pipelines,
+        // the picker, the post-processor, the point-cloud and deviation
+        // pipelines, the EDL pass, the overlay glyph atlas — and this aborted
+        // path runs no second teardown, so all of it would be orphaned outright
+        // (#2465). `markReady()`'s generation check is not enough on its own: it
+        // withholds the readiness PUBLICATION, not the allocation. Release the
+        // device we just brought up and stop here; a queued init will bring up
+        // its own.
+        if (generation !== this.initGeneration) {
+            this.device.destroy();
+            return;
+        }
 
         // Get canvas dimensions (use pixel dimensions if set, otherwise use CSS dimensions)
         // and clamp to the GPU's max 2D texture dimension so the initial pipeline allocations
@@ -362,28 +633,7 @@ export class Renderer {
 
         this.pipeline = new RenderPipeline(this.device, width, height);
         this.picker = new Picker(this.device, width, height);
-        this.sectionPlaneRenderer = new SectionPlaneRenderer(
-            this.device.getDevice(),
-            this.device.getFormat(),
-            this.pipeline.getSampleCount()
-        );
-        this.section2DOverlayRenderer = new Section2DOverlayRenderer(
-            this.device.getDevice(),
-            this.device.getFormat(),
-            this.pipeline.getSampleCount()
-        );
-        // Re-apply any colour set before this (re)creation so it isn't lost.
-        this.section2DOverlayRenderer.setOverlayLineColor(this.overlayLineColor);
-        // IfcAnnotation overlay pipelines (issue #653). Share the device +
-        // presentation format AND the MSAA sample count + objectId attachment
-        // shape with the rest of the renderer so they composite into the same
-        // RGBA pass without WebGPU pass-compatibility validation errors.
-        this.symbolicFillPipeline = new SymbolicFillPipeline(
-            this.device.getDevice(),
-            this.device.getFormat(),
-            this.pipeline.getSampleCount(),
-        );
-        this.symbolicTextPipeline = new SymbolicTextPipeline(
+        this.overlays.init(
             this.device.getDevice(),
             this.device.getFormat(),
             this.pipeline.getSampleCount(),
@@ -409,7 +659,7 @@ export class Renderer {
         // Compute pipeline for the BIM↔scan deviation heatmap. Lazily
         // owns the per-triangle BVH GPU buffers; idle until the first
         // `computeDeviations` call.
-        this.deviationPipeline = new DeviationPipeline(this.device.getDevice());
+        this.deviationComputer.init(this.device.getDevice());
         this.edlPass = new EdlPass(this.device, this.pipeline.getSampleCount());
         this.camera.setAspect(width / height);
 
@@ -439,7 +689,7 @@ export class Renderer {
         // synchronous CPU code while pick() is an async GPU readback.
         this.raycastEngine.setPointCloudProvider(() => this.pointCloudRenderer?.getRayQuerySources() ?? []);
 
-        this.markReady();
+        this.markReady(generation);
     }
 
     /**
@@ -449,25 +699,78 @@ export class Renderer {
      * the async WebGPU init resolves — should `await renderer.whenReady()`
      * before `beginPointCloudStream`, which otherwise throws
      * "Renderer not initialized".
+     *
+     * REJECTS (with an `Error` whose `name` is `RendererDestroyedError`) if
+     * `destroy()` runs while the caller is waiting, or if it already ran and no
+     * `init()` has been started since. It never resolves against a destroyed
+     * renderer — that is what this method exists to prevent — so the only
+     * alternative would be a promise that never settles, which suspends the
+     * caller's async frame permanently and takes everything the frame captured
+     * with it. The viewer reaches that state on an ordinary path: `Viewport`
+     * builds a NEW `Renderer` per mount and destroys the old one in its effect
+     * cleanup, so a `destroy()` there is FINAL for the instance a consumer
+     * captured — a point-cloud drop that straddles a layout swap or a
+     * StrictMode remount would otherwise hang mid-load, with no error, forever.
+     * Callers should handle the rejection as "the target went away", not as a
+     * load failure.
+     *
+     * It also REJECTS (`RendererDeviceLostError`) while the GPU device is lost.
+     * The device is what this method promises, and a lost one cannot serve the
+     * call the caller is waiting to make — `getGPUDevice()` returns null, so
+     * `beginPointCloudStream` throws "Renderer not initialized" the moment the
+     * wait resolves. The third outcome is the one `destroy()` already ruled out:
+     * parking a waiter that only a host-initiated `init()` could ever settle,
+     * and that the viewer's usual response to a loss (drop this renderer, build
+     * a new one) guarantees will never come. Unlike the destroyed case this is
+     * NOT final — a later `init()` on the same instance re-arms the wait
+     * synchronously, so "retry after re-init" is a contract callers can act on,
+     * which is why the two rejections carry different names.
      */
     whenReady(): Promise<void> {
+        // Checked before `ready`, which an init that completed after the loss
+        // latched may well have published (`init()` subscribes to the device's
+        // loss signal before awaiting it, so a loss DURING init leaves both
+        // flags set). Readiness is about the device, and the device is gone.
+        if (this.deviceLost && this.deviceLostGeneration === this.initGeneration) {
+            return Promise.reject(rendererDeviceLostError());
+        }
         if (this.ready) return Promise.resolve();
-        return new Promise<void>((resolve) => { this.readyWaiters.push(resolve); });
+        if (this.destroyed) return Promise.reject(rendererDestroyedError());
+        return new Promise<void>((resolve, reject) => { this.readyWaiters.push({ resolve, reject }); });
     }
 
-    private markReady(): void {
+    private markReady(generation: number): void {
+        // A newer init() is already queued: it will tear all of this down before
+        // building its own, so publishing readiness here would hand callers a
+        // device with a demolition order on it.
+        if (generation !== this.initGeneration) return;
         this.ready = true;
         const waiters = this.readyWaiters;
         this.readyWaiters = [];
-        for (const w of waiters) w();
+        for (const w of waiters) w.resolve();
+    }
+
+    /**
+     * Fail every parked `whenReady()` waiter with `error`. Called by `destroy()`
+     * and by `handleDeviceLost()` — the two events after which nothing this
+     * instance does on its own can make the wait true. NOT by `teardown()`,
+     * whose waiters belong to the re-init running it and must survive to be
+     * flushed by it.
+     */
+    private rejectReadyWaiters(error: Error): void {
+        const waiters = this.readyWaiters;
+        this.readyWaiters = [];
+        for (const w of waiters) w.reject(error);
     }
 
     /**
      * Subscribe to non-intentional GPU device loss (driver reset / VRAM
      * exhaustion — NOT an intentional `destroy()`). Fired at most once per
-     * device. After it fires, `render()` is a no-op until the renderer is
-     * re-initialised, so the typical response is to dispose this renderer and
-     * reload the model. Returns an unsubscribe function.
+     * device. After it fires, `render()` is a no-op and the renderer reports
+     * itself un-ready (`isReady()` false, `whenReady()` rejecting with
+     * `RendererDeviceLostError`) until it is re-initialised, so the typical
+     * response is to dispose this renderer and reload the model. Returns an
+     * unsubscribe function.
      *
      * Camera and model state live on the CPU (JS) and survive device loss, so a
      * reload restores the model at its current orientation — the loss is a GPU
@@ -475,7 +778,43 @@ export class Renderer {
      */
     onDeviceLost(listener: (info: { message: string; reason: string }) => void): () => void {
         this.deviceLostListeners.add(listener);
+        // Replay a loss that already happened. `init()` subscribes to the
+        // device's own loss signal BEFORE awaiting `device.init()`, so a loss
+        // during initialisation latches while `deviceLostListeners` is still
+        // empty — and the viewer's subscriber cannot register any earlier,
+        // because it needs init() to have resolved. Without this replay that
+        // loss reaches nobody: the renderer correctly goes quiet and the user
+        // sees a viewer that simply stopped, with no toast and no capture.
+        if (this.deviceLost && this.deviceLostInfo !== null) {
+            try {
+                listener(this.deviceLostInfo);
+            } catch (e) {
+                console.error('[Renderer] onDeviceLost listener threw:', e);
+            }
+        }
         return () => this.deviceLostListeners.delete(listener);
+    }
+
+    /**
+     * Subscribe to the renderer having degraded frame after frame without
+     * recovering (issue #2417). Distinct from `onDeviceLost`: the device is
+     * still alive by every signal available, which is exactly why `render()`
+     * refuses to latch on these throws — but the user is looking at a viewport
+     * that has stopped updating, and until this callback existed nothing said
+     * so. Fired at most once per renderer, once `PERSISTENT_DEGRADATION_FRAMES`
+     * frames have degraded CONSECUTIVELY — any frame that completes resets the
+     * run, so a session that failed occasionally and recovered every time never
+     * reports. Returns an unsubscribe function.
+     *
+     * No replay for a late subscriber, unlike `onDeviceLost` — a loss can latch
+     * during `init()`, before any subscriber can exist, but a degraded frame
+     * cannot: `renderFrame()` returns early while `pipeline` is null, so the
+     * count only moves once the host is driving frames, which is strictly after
+     * `init()` resolved and the host subscribed.
+     */
+    onPersistentRenderDegradation(listener: (info: RenderDegradationInfo) => void): () => void {
+        this.persistentDegradationListeners.add(listener);
+        return () => this.persistentDegradationListeners.delete(listener);
     }
 
     /** True once the GPU device has been lost for a non-intentional reason. */
@@ -486,12 +825,135 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.deviceLostGeneration = this.initGeneration;
+        this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
+        // Readiness describes the GPU objects, and every one of them just died:
+        // `isReady()` reports it from here on, and anyone parked in
+        // `whenReady()` is failed rather than left to be resolved by the init
+        // this loss may have landed in the middle of. Done BEFORE the listeners
+        // run, so a listener that recovers by calling `init()` synchronously
+        // finds the waiters already settled and re-arms the wait for the next
+        // caller rather than racing the flush.
+        this.rejectReadyWaiters(rendererDeviceLostError());
         for (const listener of this.deviceLostListeners) {
             try {
                 listener(info);
             } catch (e) {
                 console.error('[Renderer] onDeviceLost listener threw:', e);
+            }
+        }
+    }
+
+    /**
+     * Contain a throw that escaped part of a frame, and decide what it meant.
+     *
+     * ONE body for both of `render()`'s catches (issue #2417). They used to
+     * differ in the only way that matters: the outer one discriminated on
+     * `isDeviceLossThrow`, the encode-region one did not, so a device that died
+     * after `getCurrentTexture()` succeeded degraded quietly forever — no latch,
+     * no toast, no `onDeviceLost`. Sharing the body is what stops the two
+     * halves of one policy drifting apart again.
+     *
+     * Callers keep only what is genuinely theirs: the outer catch counts the
+     * frame as a skip, the encode catch balances the validation error scope
+     * first. `origin` distinguishes them in logs and in the degradation report.
+     */
+    private containFrameThrow(error: unknown, origin: 'frame' | 'encode'): void {
+        // Recorded for BOTH branches, before either is chosen: the caller in
+        // the encode region is about to return normally either way, and
+        // `render()` must not mistake that for a frame that succeeded.
+        this.frameContainedThrow = true;
+        this._renderErrorCount++;
+        const message = error instanceof Error ? error.message : String(error);
+        this._lastRenderError = message;
+
+        if (isDeviceLossThrow(error)) {
+            // Reached at most once per device: the `deviceLost` early return in
+            // render() short-circuits every later frame. Logged with the
+            // original error to keep the stack.
+            console.error(
+                `[Renderer] Frame threw a DOMException (${origin}) — treating as device loss:`,
+                error,
+            );
+            this.handleDeviceLost({
+                message,
+                reason: origin === 'encode' ? 'render-encode-exception' : 'render-exception',
+            });
+            return;
+        }
+
+        // Not a device signal — cost this FRAME, never the session. Both
+        // regions really do have such a source on a HEALTHY device: the outer
+        // one runs `scene.restoreAllEvicted()` for capture frames, the encode
+        // one builds visibility sub-batches through
+        // `scene.getOrCreatePartialBatch()`, and both allocate via
+        // `createBuffer({ mappedAtCreation: true })`, which throws a plain
+        // `RangeError` under host memory pressure — the failure
+        // `gpu-upload-guard` documents verbatim. Latching there would kill the
+        // viewport for a failure whose blast radius should be one frame, and
+        // would raise a false "graphics device was lost" toast plus false
+        // `device_lost` telemetry on top.
+        //
+        // Invalidate the swap-chain configuration so the next frame
+        // reconfigures.
+        this.device.invalidateContext();
+        // ...and ask for that next frame. The host loop CONSUMES the dirty flag
+        // before calling render(), so a frame that fails has already spent its
+        // request: on an idle viewer (no animation, no streaming, no
+        // interaction) nothing would re-dirty it and the failed frame would be
+        // the last one drawn until the user happened to touch something.
+        // "Degrade and continue" has to mean the next frame actually comes, or
+        // it is only "degrade and hope".
+        //
+        // Bounded, and reset by any successful frame, so a persistently failing
+        // path cannot self-perpetuate one throwing frame per rAF forever. NOTE
+        // this is a RETRY budget, not a latch threshold: exhausting it stops us
+        // re-requesting, leaving the app's own dirty signals (interaction,
+        // streaming, animation) to drive — it never disables the renderer.
+        // Worst case is a stale viewport that any interaction revives, not a
+        // dead session.
+        if (++this.consecutiveDegradedFrames <= this.MAX_DEGRADED_SELF_RETRIES) {
+            this.requestRender();
+        }
+        // Per-frame degradation is the right call and an aggregate blind spot:
+        // report the session once it is clear the failure is not clearing.
+        this.notePersistentDegradation(message, origin);
+
+        const now = performance.now();
+        if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
+            this.lastRenderErrorTime = now;
+            console.warn(
+                `[Renderer] Frame threw in ${origin} (device assumed alive; context will be reconfigured):`,
+                error,
+            );
+        }
+    }
+
+    /**
+     * Fan out the once-per-session "this viewport is not recovering" report.
+     * The renderer files no telemetry itself (it is host-agnostic and must stay
+     * PostHog-free); the host subscribes and routes it through whatever it
+     * already uses for device loss.
+     */
+    private notePersistentDegradation(detail: string, origin: 'frame' | 'encode'): void {
+        // `consecutiveDegradedFrames`, NOT `_renderErrorCount`. The latter is a
+        // renderer-LIFETIME total that no successful frame ever resets, so it
+        // would turn the threshold into "the 16th failure ever" — reached by a
+        // long healthy session that hit four isolated spikes an hour apart and
+        // recovered from every one of them. The signal is meant to mean "this
+        // viewport has stopped", and only an unbroken run means that. The
+        // reset lives in `render()`, on the path where a frame completes.
+        const info = this.renderDegradation.note(this.consecutiveDegradedFrames, detail, origin);
+        if (!info) return;
+        console.warn(
+            `[Renderer] ${info.consecutiveDegradedFrames} consecutive frames degraded without one completing — the viewport is not updating.`,
+        );
+        for (const listener of this.persistentDegradationListeners) {
+            try {
+                listener(info);
+            } catch (e) {
+                console.error('[Renderer] onPersistentRenderDegradation listener threw:', e);
             }
         }
     }
@@ -509,10 +971,10 @@ export class Renderer {
         }
         this.pointCloudRenderer.setAssets(assets);
         // Replace, not append — bounds may have shrunk (e.g. an IFCx
-        // reload with a smaller scan). `expandModelBoundsForPointClouds`
+        // reload with a smaller scan). `expandForPointClouds`
         // alone only grows; recompute from scratch to keep
         // fit-to-view + section-plane sliders accurate.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -525,7 +987,7 @@ export class Renderer {
         for (const asset of assets) {
             this.pointCloudRenderer.addAsset(asset);
         }
-        this.expandModelBoundsForPointClouds();
+        this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -543,7 +1005,7 @@ export class Renderer {
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -566,7 +1028,7 @@ export class Renderer {
     ): void {
         if (!this.pointCloudRenderer) return;
         this.pointCloudRenderer.appendChunk(handle, chunk);
-        this.expandModelBoundsForPointClouds();
+        this.modelBoundsTracker.expandForPointClouds();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -580,7 +1042,7 @@ export class Renderer {
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -598,36 +1060,6 @@ export class Renderer {
     ): void {
         this.pointCloudRenderer?.relabelAsset(handle, newExpressId);
         this.requestRender();
-    }
-
-    /**
-     * Compute model bounds from triangle meshes + remaining point clouds.
-     * Called from removeAsset / clear paths so bounds shrink correctly.
-     * Triangle meshes still drive the bounds when present (existing
-     * Scene-driven path), so this only re-folds in the point cloud
-     * extents over whatever the mesh path left.
-     */
-    private recomputeModelBounds(): void {
-        // Always recompute from scratch: take mesh bounds as the
-        // baseline, then fold in the CURRENT point-cloud bounds on
-        // top. Folding only-up via expandModelBoundsForPointClouds()
-        // is correct when pc bounds grow but never shrinks them when
-        // an asset is removed, leaving stale oversized extents until
-        // every point cloud is gone.
-        const meshBounds = this.computeMeshBounds();
-        const pcBounds = this.pointCloudRenderer?.getBounds() ?? null;
-
-        if (!meshBounds && !pcBounds) {
-            this.modelBounds = null;
-            return;
-        }
-        this.modelBounds = meshBounds ?? {
-            min: { x: pcBounds!.min[0], y: pcBounds!.min[1], z: pcBounds!.min[2] },
-            max: { x: pcBounds!.max[0], y: pcBounds!.max[1], z: pcBounds!.max[2] },
-        };
-        if (meshBounds && pcBounds) {
-            this.expandModelBoundsForPointClouds();
-        }
     }
 
     /** Aggregate bounds across all batched + individual meshes. Returns
@@ -672,7 +1104,7 @@ export class Renderer {
         // them to the camera (matching every other bounds-mutating
         // point-cloud method) so framing / zoom-to-fit targets where the
         // points actually render.
-        this.recomputeModelBounds();
+        this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
     }
@@ -680,129 +1112,17 @@ export class Renderer {
     /**
      * Compute BIM ↔ scan deviation for every loaded point cloud asset.
      *
-     * Walks every triangle in the scene (individual + batched meshes,
-     * regardless of which IFC ingest path produced them — STEP, IFCx,
-     * GLB, or federated combinations), builds a per-triangle BVH on
-     * the GPU, then runs a closest-point compute pass per chunk that
-     * writes signed distance into each chunk's deviation buffer.
-     *
-     * Returns metadata so the UI can populate a histogram + auto-range:
-     * the per-asset point count, the suggested ±range from the 95th
-     * percentile, and the bbox the BVH was built from.
-     *
-     * Idempotent: re-running with the same mesh set reuses the GPU
-     * BVH (the BVH build dominates wall time on big BIMs). Pass
-     * `forceRebuild: true` to invalidate.
+     * Delegates to the `DeviationComputer` collaborator, which owns the
+     * compute pipeline and the BVH-reuse fingerprint; see
+     * `deviation/deviation-computer.ts` for the full contract.
      */
-    async computeDeviations(opts: {
-        /** Clip range applied during compute. 0 → no clip. Default 1m. */
-        maxRange?: number;
-        forceRebuild?: boolean;
-    } = {}): Promise<{
-        bvhTriangles: number;
-        bvhNodes: number;
-        chunksProcessed: number;
-        pointsProcessed: number;
-        bounds: { min: [number, number, number]; max: [number, number, number] } | null;
-        suggestedHalfRange: number;
-    }> {
-        if (!this.deviationPipeline || !this.pointCloudRenderer) {
-            throw new Error('Renderer not initialised — call init() first.');
-        }
-        const meshes = this.collectAllSceneMeshes();
-        // Fingerprint folds in per-mesh expressId / modelIndex /
-        // positions length / triangle count, so two distinct meshes
-        // that happen to share an aggregate position-length total
-        // can't alias each other. A federation reload that swaps one
-        // model for another with the same total triangle count would
-        // otherwise reuse the previous BVH and report wrong distances.
-        const fingerprint = computeBvhFingerprint(meshes);
-        if (opts.forceRebuild || fingerprint !== this.deviationBvhFingerprint) {
-            const bvh = buildTriangleBVH(meshes);
-            this.deviationPipeline.uploadBvh(bvh);
-            this.deviationBvhFingerprint = fingerprint;
-        }
-        const stats = this.deviationPipeline.getBvhStats();
-        const maxRange = opts.maxRange ?? 1.0;
-
-        // Encode every chunk into a single command submit so the GPU
-        // can pipeline the dispatches without a CPU round-trip per
-        // chunk. Histogram readback is a follow-up — for v1 we emit
-        // the deviation buffers and let the splat shader visualise.
-        const encoder = this.device.getDevice().createCommandEncoder({ label: 'pointcloud-deviation' });
-        let chunksProcessed = 0;
-        let pointsProcessed = 0;
-        const nodes = this.pointCloudRenderer.getInternalNodes();
-        for (const node of nodes) {
-            for (const chunk of node.chunks) {
-                const ok = this.deviationPipeline.dispatch(encoder, {
-                    positionsBuffer: chunk.vertexBuffer,
-                    deviationsBuffer: chunk.deviationBuffer,
-                    pointCount: chunk.pointCount,
-                    maxRange,
-                    // #1804: chunk positions are stored in the asset's
-                    // decode-shifted local frame when IfcMapConversion
-                    // alignment is active; the BVH triangles are world
-                    // space, so the compute pass must apply the same
-                    // per-asset matrix the splat shader renders with.
-                    model: node.model,
-                });
-                if (ok) {
-                    chunksProcessed++;
-                    pointsProcessed += chunk.pointCount;
-                }
-            }
-        }
-        this.device.getDevice().queue.submit([encoder.finish()]);
-        // Wait until the GPU finishes the dispatches before resolving.
-        // Otherwise the caller's "compute done" callback fires before
-        // the deviation buffers are actually populated.
-        await this.device.getDevice().queue.onSubmittedWorkDone();
-        // The GPU is done reading each chunk's params uniform — free them.
-        this.deviationPipeline.releaseTransientParams();
-        this.requestRender();
-
-        // Suggest a default half-range = max(0.01m, max-extent / 1000).
-        // Tighter than the maxRange clip; gives the user a reasonable
-        // starting slider position without a histogram readback.
-        const bb = stats.bounds;
-        const suggestedHalfRange = bb
-            ? Math.max(0.01, Math.max(
-                bb.max[0] - bb.min[0],
-                bb.max[1] - bb.min[1],
-                bb.max[2] - bb.min[2],
-              ) / 1000)
-            : 0.05;
-
-        return {
-            bvhTriangles: stats.triangleCount,
-            bvhNodes: stats.nodeCount,
-            chunksProcessed,
-            pointsProcessed,
-            bounds: stats.bounds,
-            suggestedHalfRange,
-        };
-    }
-
-    /**
-     * Aggregate every triangle source the scene exposes — individual
-     * meshes (created on demand by picking / highlights) AND batched
-     * meshes (the streaming geometry path's compact GPU buffers).
-     * Both formats arrive as `MeshData`; the BVH builder doesn't care
-     * which source they came from.
-     */
-    private collectAllSceneMeshes(): import('@ifc-lite/geometry').MeshData[] {
-        // The Scene keeps every CPU-side MeshData regardless of which
-        // ingest path produced it (STEP / IFCx / GLB). One iteration
-        // covers individual + batched + multi-piece + multi-model.
-        // `forEachMeshData` deduplicates by identity so a colour-merged
-        // batch is only added once even if it's indexed under multiple
-        // contributor expressIds.
-        const out: import('@ifc-lite/geometry').MeshData[] = [];
-        this.scene.forEachMeshData((md) => {
-            if (md.positions && md.positions.length > 0) out.push(md);
+    async computeDeviations(opts: DeviationComputeOptions = {}): Promise<DeviationComputeResult> {
+        return this.deviationComputer.compute(opts, {
+            device: this.device,
+            scene: this.scene,
+            pointCloudRenderer: this.pointCloudRenderer,
+            requestRender: () => this.requestRender(),
         });
-        return out;
     }
 
     /**
@@ -819,25 +1139,6 @@ export class Renderer {
         if (opts.radiusPx !== undefined) this.edlOptions.radiusPx = Math.max(1, Math.min(4, opts.radiusPx));
         if (opts.highQuality !== undefined) this.edlOptions.highQuality = opts.highQuality;
         this.requestRender();
-    }
-
-    private expandModelBoundsForPointClouds(): void {
-        const pcBounds = this.pointCloudRenderer?.getBounds();
-        if (!pcBounds) return;
-        if (!this.modelBounds) {
-            this.modelBounds = {
-                min: { x: pcBounds.min[0], y: pcBounds.min[1], z: pcBounds.min[2] },
-                max: { x: pcBounds.max[0], y: pcBounds.max[1], z: pcBounds.max[2] },
-            };
-            return;
-        }
-        const m = this.modelBounds;
-        m.min.x = Math.min(m.min.x, pcBounds.min[0]);
-        m.min.y = Math.min(m.min.y, pcBounds.min[1]);
-        m.min.z = Math.min(m.min.z, pcBounds.min[2]);
-        m.max.x = Math.max(m.max.x, pcBounds.max[0]);
-        m.max.y = Math.max(m.max.y, pcBounds.max[1]);
-        m.max.z = Math.max(m.max.z, pcBounds.max[2]);
     }
 
     /**
@@ -863,7 +1164,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, false);
 
         // Calculate and store model bounds for fitToView
-        this.updateModelBounds(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes);
 
         console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
@@ -888,7 +1189,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
 
         // Update model bounds incrementally
-        this.updateModelBounds(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes);
 
         // Update camera scene bounds for tight orthographic near/far planes
         this.camera.setSceneBounds(this.modelBounds);
@@ -994,40 +1295,89 @@ export class Renderer {
      * Set model bounds (used when computing bounds from batches)
      */
     setModelBounds(bounds: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): void {
-        this.modelBounds = bounds;
+        this.modelBoundsTracker.set(bounds);
     }
 
     /**
-     * Update model bounds from mesh data
+     * The batched occluders the sun shadow pass should cast, filtered to the same
+     * visibility the colour pass draws (#2670, Phase 2b). Without filtering every
+     * batch casts. With hide/isolate active a fully-hidden batch is dropped and a
+     * partially-hidden OPAQUE batch casts only its visible subset via the SAME
+     * cached partial sub-batch the colour pass renders (shared cache key
+     * `${colorKey}:${id}` + `_partialBatchEpoch`), so no extra clone memory and no
+     * phantom shadow from an individually-hidden element in a shared batch.
+     *
+     * Transparent (glass-like) partially-hidden parents are left to the collector's
+     * material-alpha filter — they don't cast at all, so building a visible subset
+     * for them would waste a clone (and diverge from the colour pass's promotion
+     * split keys). Fully-visible transparent batches pass through unchanged and the
+     * collector drops them.
      */
-    private updateModelBounds(meshes: import('@ifc-lite/geometry').MeshData[]): void {
-        if (!this.modelBounds) {
-            this.modelBounds = {
-                min: { x: Infinity, y: Infinity, z: Infinity },
-                max: { x: -Infinity, y: -Infinity, z: -Infinity }
-            };
+    private shadowOccluderBatches(
+        options: RenderOptions,
+        device: GPUDevice,
+        hasVisibilityFiltering: boolean,
+    ): BatchedMesh[] {
+        const all = this.scene.getBatchedMeshes();
+        if (!hasVisibilityFiltering) {
+            for (const batch of all) this.noteShadowOccluderResidency(batch);
+            return all;
         }
+        const pipeline = this.pipeline;
 
-        for (const mesh of meshes) {
-            const positions = mesh.positions;
-            // Positions are in the element's local frame (world = origin + position).
-            // Model bounds are world-space, so fold the per-mesh origin. No-op when
-            // origin is absent/[0,0,0]. Mirrors coordinate-handler.ts.
-            const o = mesh.origin;
-            const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
-            for (let i = 0; i < positions.length; i += 3) {
-                const x = positions[i] + ox;
-                const y = positions[i + 1] + oy;
-                const z = positions[i + 2] + oz;
-                if (Number.isFinite(x) && Number.isFinite(y) && Number.isFinite(z)) {
-                    this.modelBounds.min.x = Math.min(this.modelBounds.min.x, x);
-                    this.modelBounds.min.y = Math.min(this.modelBounds.min.y, y);
-                    this.modelBounds.min.z = Math.min(this.modelBounds.min.z, z);
-                    this.modelBounds.max.x = Math.max(this.modelBounds.max.x, x);
-                    this.modelBounds.max.y = Math.max(this.modelBounds.max.y, y);
-                    this.modelBounds.max.z = Math.max(this.modelBounds.max.z, z);
-                }
+        const out: BatchedMesh[] = [];
+        for (const batch of all) {
+            const vis = classifyBatchVisibility(batch.expressIds, options.hiddenIds, options.isolatedIds);
+            if (vis.kind === 'none') continue; // fully hidden → does not cast
+            if (vis.kind === 'all') {
+                this.noteShadowOccluderResidency(batch);
+                out.push(batch); // fully visible → its own buffers
+                continue;
             }
+            // Partially hidden. Transparent parents don't cast (collector's alpha
+            // filter) — skip rather than build a wasted, divergent-key clone.
+            if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) continue;
+            // The partial sub-batch is built from the PARENT's CPU meshData, so a
+            // cold parent yields nothing until it is restored. Queue that restore
+            // here too: the colour pass only queues it for parents inside its own
+            // frustum, but an up-sun occluder behind the camera still has to cast.
+            this.noteShadowOccluderResidency(batch);
+            // Opaque partial: reuse the colour pass's cached sub-batch. The key is
+            // visibility-content-independent; `_partialBatchEpoch` invalidates it on
+            // any hide/isolate or override change, so the clone is always current.
+            // Without a pipeline the renderer isn't drawing, so skip (the shadow
+            // pass won't run either); casting the whole parent would be wrong.
+            if (!pipeline) continue;
+            const sub = this.scene.getOrCreatePartialBatch(
+                `${batch.colorKey}:${batch.id}`,
+                batch.colorKey,
+                vis.visibleIds,
+                device,
+                pipeline,
+                this._partialBatchEpoch,
+            );
+            // A cold parent yields an empty partial (its residency restore is queued
+            // above); skip this frame — the collector drops zero-index draws anyway,
+            // and the subset casts once resident.
+            if (sub && sub.indexCount > 0) out.push(sub);
+        }
+        return out;
+    }
+
+    /**
+     * Keep a shadow occluder batch resident so it does not thin out silently on
+     * large models under the GPU residency budget (#2670 review). The depth pass
+     * reads these batches' buffers, but that read did not count as usage, so an
+     * up-sun occluder outside the colour frustum aged into an eviction candidate.
+     * Transparent batches never cast (the collector's alpha filter), so their
+     * residency is irrelevant here.
+     */
+    private noteShadowOccluderResidency(batch: BatchedMesh): void {
+        if (batch.color[3] < DEFAULT_MIN_CAST_ALPHA) return;
+        if (batch.gpuResident === false) {
+            this.scene.requestBatchResidency(batch);
+        } else {
+            this.scene.recordBatchDrawn(batch);
         }
     }
 
@@ -1115,6 +1465,11 @@ export class Renderer {
         this.scene.addMesh({
             expressId: meshData.expressId,
             modelIndex: meshData.modelIndex,  // Preserve modelIndex for multi-model selection
+            // Source item, so a pick can report it (#2985) — via the shared rule,
+            // so this and the CPU raycaster cannot answer one click two ways.
+            // In-tree callers pre-split merged pieces (Scene.getMeshDataPieces
+            // drops the field incidentally); this is public, so it owns the rule.
+            geometryItemId: reportableItemId(meshData, meshData.expressId),
             vertexBuffer,
             indexBuffer,
             indexCount: meshData.indices.length,
@@ -1188,32 +1543,6 @@ export class Renderer {
         });
     }
 
-    private resolveVisualEnhancement(options?: VisualEnhancementOptions): ResolvedVisualEnhancement {
-        if (!options) {
-            return this.visualEnhancementState;
-        }
-        const merged: ResolvedVisualEnhancement = {
-            enabled: options.enabled ?? this.visualEnhancementState.enabled,
-            edgeContrast: {
-                enabled: options.edgeContrast?.enabled ?? this.visualEnhancementState.edgeContrast.enabled,
-                intensity: options.edgeContrast?.intensity ?? this.visualEnhancementState.edgeContrast.intensity,
-            },
-            contactShading: {
-                quality: options.contactShading?.quality ?? this.visualEnhancementState.contactShading.quality,
-                intensity: options.contactShading?.intensity ?? this.visualEnhancementState.contactShading.intensity,
-                radius: options.contactShading?.radius ?? this.visualEnhancementState.contactShading.radius,
-            },
-            separationLines: {
-                enabled: options.separationLines?.enabled ?? this.visualEnhancementState.separationLines.enabled,
-                quality: options.separationLines?.quality ?? this.visualEnhancementState.separationLines.quality,
-                intensity: options.separationLines?.intensity ?? this.visualEnhancementState.separationLines.intensity,
-                radius: options.separationLines?.radius ?? this.visualEnhancementState.separationLines.radius,
-            },
-        };
-        this.visualEnhancementState = merged;
-        return merged;
-    }
-
     /**
      * Render frame
      */
@@ -1254,6 +1583,16 @@ export class Renderer {
     }
 
     /**
+     * Vendor/architecture identity of the GPU adapter, snapshotted during
+     * `init()` (issue #2624 device-loss telemetry), or null when the runtime
+     * does not expose `GPUAdapter.info`. Safe to call after a device loss:
+     * the snapshot is plain strings copied at init, not a live GPU object.
+     */
+    getAdapterInfo(): AdapterInfoSnapshot | null {
+        return this.device.getAdapterInfo();
+    }
+
+    /**
      * Probe the quantized pipeline variants and, when all exist, enable
      * 12-byte quantized batch vertices (issue #1682 phase 6). Returns
      * whether quantization is active — on failure (e.g. a fragile backend
@@ -1266,6 +1605,34 @@ export class Renderer {
         return ok;
     }
 
+    /**
+     * Draw one frame.
+     *
+     * Never throws, so callers never need to guard this call to keep their
+     * animation loop alive.
+     *
+     * What a throw MEANS depends on its type (`isDeviceLossThrow`), and since
+     * issue #2417 that holds for the WHOLE frame — both this catch and the
+     * encode region's own, which share `containFrameThrow`:
+     *  - a `DOMException` is the device reporting its own death synchronously
+     *    (Safari 26.5, issue #2229). It latches the same `deviceLost` state the
+     *    async `device.lost` promise would: later frames become quiet skips and
+     *    `onDeviceLost` listeners fire exactly once.
+     *  - anything else (a `RangeError` from a buffer the host cannot allocate,
+     *    say) costs only this frame: the swap-chain config is invalidated so
+     *    the next frame reconfigures, a frame is re-requested within a bounded
+     *    budget, the failure is counted in `getDiagnostics()`, and rendering
+     *    carries on. Once enough such frames have degraded without recovering,
+     *    `onPersistentRenderDegradation` fires once.
+     *
+     * SCOPE: `renderFrame()` has two try/catch regions — this outer one (canvas
+     * resize, context setup, evicted-batch restore) and an inner one opened
+     * after the swap-chain texture is acquired, covering encoder work through
+     * `submit`. Until #2417 only the outer one discriminated, so a device that
+     * died after `getCurrentTexture()` succeeded degraded quietly forever with
+     * no latch and no toast. Both now run the same policy; the encode catch
+     * additionally balances the frame's validation error scope before doing so.
+     */
     render(options: RenderOptions = {}): void {
         this._renderCallCount++;
         // A lost device leaves every pipeline/buffer dead; rendering would only
@@ -1274,6 +1641,36 @@ export class Renderer {
             this._renderSkipCount++;
             return;
         }
+        try {
+            this.frameContainedThrow = false;
+            this.renderFrame(options);
+            // Only a frame that actually got through resets the run. A frame
+            // the ENCODE catch contained returns here normally (that catch is
+            // inside renderFrame), so "did not throw" is not the same question
+            // as "did not fail" — see `frameContainedThrow`.
+            if (!this.frameContainedThrow) this.consecutiveDegradedFrames = 0;
+        } catch (error) {
+            // Safari (26.5) reports device loss SYNCHRONOUSLY: a call against a
+            // dead device throws `InvalidStateError` instead of — or long
+            // before — resolving `device.lost` (issue #2229). Without this
+            // catch the throw escapes render(), the caller's rAF loop never
+            // re-arms, and the viewer freezes for good with nothing on screen
+            // and nothing subscribed to onDeviceLost ever told.
+            //
+            // Deliberately NOT rethrown either way: the frame is already lost,
+            // and the established contract is "degrade" (see `pickPathAlive()`
+            // and the rAF loop's own upload/residency guards), not "take the
+            // host down with us".
+            this._renderSkipCount++;
+            this.containFrameThrow(error, 'frame');
+        }
+    }
+
+    /**
+     * The frame body. Throws on a synchronously-dead GPU device; `render()`
+     * owns the containment. Private for that reason — call `render()`.
+     */
+    private renderFrame(options: RenderOptions): void {
         if (!this.device.isInitialized() || !this.pipeline) {
             this._renderSkipCount++;
             return;
@@ -1336,7 +1733,7 @@ export class Renderer {
         if (options.restoreEvictedForCapture && this.pipeline) {
             this.scene.restoreAllEvicted(device, this.pipeline);
         }
-        const visualEnhancement = this.resolveVisualEnhancement(options.visualEnhancement);
+        const visualEnhancement = this.visualEnhancementResolver.resolve(options.visualEnhancement);
         // Post effects during interaction (orbit/pan/zoom) are governed
         // adaptively: they stay on while the interactive frame cadence holds
         // (the pass costs well under a ms on discrete/Apple GPUs at CSS
@@ -1449,7 +1846,12 @@ export class Renderer {
         // through the transparent pipeline with no extra call sites — and avoids
         // building a Map over every element just to fade "the rest".
         const ghostExceptIds = options.ghostExceptIds ?? null;
-        const ghostAlpha = options.ghostAlpha ?? 0.12;
+        const ghostAlpha = options.ghostAlpha ?? DEFAULT_GHOST_ALPHA;
+        // X-Ray reaches the instanced pass too (#2606). Without this, ghosting
+        // stopped at the flat geometry: on a model whose facade is instanced,
+        // the user asked to fade the building and got a solid facade standing
+        // in front of a ghosted interior.
+        this.scene.setInstancedGhosting(ghostExceptIds, selectedExpressIds, ghostAlpha);
         const hasGhost = ghostExceptIds != null;
         const hasTxOverrides = hasTxMap || hasGhost;
         const alphaForMesh = (expressId: number, fallback: number): number => {
@@ -1526,12 +1928,11 @@ export class Renderer {
             }
         }
 
-        // Visibility filtering
-        if (options.hiddenIds && options.hiddenIds.size > 0) {
-            meshes = meshes.filter(mesh => !options.hiddenIds!.has(mesh.expressId));
-        }
-        if (options.isolatedIds !== null && options.isolatedIds !== undefined) {
-            meshes = meshes.filter(mesh => options.isolatedIds!.has(mesh.expressId));
+        // Visibility filtering. Shares `isEntityVisible` with the instanced pass
+        // and with the Cesium world view, which renders through its own glTF
+        // pipeline and so cannot inherit this filter for free (#2578).
+        if ((options.hiddenIds && options.hiddenIds.size > 0) || options.isolatedIds != null) {
+            meshes = meshes.filter(mesh => isEntityVisible(mesh.expressId, options.hiddenIds, options.isolatedIds));
         }
 
         // Resize depth texture if needed
@@ -1606,214 +2007,27 @@ export class Renderer {
             // This ensures each mesh has its own color data
             const allMeshes = [...opaqueMeshes, ...transparentMeshes];
 
-            // Calculate section plane parameters and model bounds
-            // Always calculate bounds when sectionPlane is provided (for preview and active mode)
-            let sectionPlaneData: { normal: [number, number, number]; distance: number; enabled: boolean } | undefined;
-
-            // Terrain clip: when Cesium overlay is active, clip model below terrain.
-            // Normal (0,-1,0) + distance (-clipY) clips where worldPos.y < clipY.
-            if (options.terrainClipY !== undefined && !options.sectionPlane?.enabled) {
-                sectionPlaneData = {
-                    normal: [0, -1, 0],
-                    distance: -options.terrainClipY,
-                    enabled: true,
-                };
-            }
-
-            if (options.sectionPlane) {
-                // Get model bounds from batched meshes. We deliberately EXCLUDE
-                // individual meshes (`this.scene.getMeshes()`) here: those are
-                // created lazily for selection highlighting and can live at
-                // unexpected world positions (e.g. legacy transforms, overlay
-                // helpers), which would inflate the bounds range and make
-                // "1% of the slider" span the entire real model — producing
-                // the reported symptom where the model pops from fully visible
-                // to fully invisible across a tiny slider range.
-                const boundsMin = { x: Infinity, y: Infinity, z: Infinity };
-                const boundsMax = { x: -Infinity, y: -Infinity, z: -Infinity };
-
-                const batchedMeshes = this.scene.getBatchedMeshes();
-                for (const batch of batchedMeshes) {
-                    if (batch.bounds) {
-                        boundsMin.x = Math.min(boundsMin.x, batch.bounds.min[0]);
-                        boundsMin.y = Math.min(boundsMin.y, batch.bounds.min[1]);
-                        boundsMin.z = Math.min(boundsMin.z, batch.bounds.min[2]);
-                        boundsMax.x = Math.max(boundsMax.x, batch.bounds.max[0]);
-                        boundsMax.y = Math.max(boundsMax.y, batch.bounds.max[1]);
-                        boundsMax.z = Math.max(boundsMax.z, batch.bounds.max[2]);
-                    }
-                }
-                // Fold in point-cloud bounds too — without this, a
-                // pure point-cloud scene falls through to the default
-                // [-100,100], and a mixed scene clips against a
-                // smaller mesh-only range while the point pipeline
-                // (which honours the same sectionPlaneData) keeps
-                // drawing points outside the slider's reach.
-                const pcBoundsForSection = this.pointCloudRenderer?.getBounds();
-                if (pcBoundsForSection) {
-                    boundsMin.x = Math.min(boundsMin.x, pcBoundsForSection.min[0]);
-                    boundsMin.y = Math.min(boundsMin.y, pcBoundsForSection.min[1]);
-                    boundsMin.z = Math.min(boundsMin.z, pcBoundsForSection.min[2]);
-                    boundsMax.x = Math.max(boundsMax.x, pcBoundsForSection.max[0]);
-                    boundsMax.y = Math.max(boundsMax.y, pcBoundsForSection.max[1]);
-                    boundsMax.z = Math.max(boundsMax.z, pcBoundsForSection.max[2]);
-                }
-
-                // If no batched meshes have bounds yet (streaming, degenerate
-                // models), fall back to individual meshes so at least the
-                // slider has a workable range.
-                if (!Number.isFinite(boundsMin.x)) {
-                    for (const mesh of meshes) {
-                        if (mesh.bounds) {
-                            boundsMin.x = Math.min(boundsMin.x, mesh.bounds.min[0]);
-                            boundsMin.y = Math.min(boundsMin.y, mesh.bounds.min[1]);
-                            boundsMin.z = Math.min(boundsMin.z, mesh.bounds.min[2]);
-                            boundsMax.x = Math.max(boundsMax.x, mesh.bounds.max[0]);
-                            boundsMax.y = Math.max(boundsMax.y, mesh.bounds.max[1]);
-                            boundsMax.z = Math.max(boundsMax.z, mesh.bounds.max[2]);
-                        }
-                    }
-                }
-
-                // Fallback if no bounds found
-                if (!Number.isFinite(boundsMin.x)) {
-                    boundsMin.x = boundsMin.y = boundsMin.z = -100;
-                    boundsMax.x = boundsMax.y = boundsMax.z = 100;
-                }
-
-                // Store bounds for section plane visual and camera near/far
+            // This frame's clip plane and the bounds the section slider is
+            // expressed in — resolved in render-section-plane.ts, which owns
+            // the bounds aggregation, the terrain-clip and explicit-plane
+            // branches, and the one-shot diagnostic log (issue #2425).
+            const sectionFrame = resolveSectionPlaneFrame({
+                options,
+                batchedMeshes: this.scene.getBatchedMeshes(),
+                meshes,
+                pointCloudBounds: this.pointCloudRenderer?.getBounds() ?? null,
+                logSectionBounds: !this._loggedSectionBounds,
+                spendLogLatch: () => { this._loggedSectionBounds = true; },
+            });
+            const sectionPlaneData = sectionFrame.sectionPlaneData;
+            if (sectionFrame.bounds) {
+                // Store bounds for section plane visual and camera near/far.
+                // Two wrappers over the same min/max, exactly as before the
+                // extraction — the renderer's copy is replaced wholesale by the
+                // bounds helpers, the camera's is not.
+                const { min: boundsMin, max: boundsMax } = sectionFrame.bounds;
                 this.setModelBounds({ min: boundsMin, max: boundsMax });
                 this.camera.setSceneBounds({ min: boundsMin, max: boundsMax });
-
-                // Only calculate clipping data if section is enabled
-                // Terrain clip: when no section plane is active, use terrainClipY
-                // to clip fragments below terrain height. Normal (0,-1,0) with
-                // distance = -clipY clips worldPos.y < clipY.
-                if (!options.sectionPlane?.enabled && options.terrainClipY !== undefined) {
-                    sectionPlaneData = {
-                        normal: [0, -1, 0],
-                        distance: -options.terrainClipY,
-                        enabled: true,
-                    };
-                }
-
-                if (options.sectionPlane.enabled) {
-                    // Explicit normal + distance override (face-pick / arbitrary
-                    // plane, issue #243). Used verbatim: no axis mapping, no
-                    // position slider, no building rotation — the caller already
-                    // has the plane in world space.
-                    const explicitNormal   = options.sectionPlane.normal;
-                    const explicitDistance = options.sectionPlane.distance;
-                    const hasExplicitPlane =
-                        explicitNormal !== undefined &&
-                        explicitDistance !== undefined &&
-                        Number.isFinite(explicitDistance);
-
-                    let normal: [number, number, number];
-                    let distance: number;
-
-                    if (hasExplicitPlane) {
-                        // Defensive renormalisation in case the caller passed a
-                        // non-unit vector (e.g. mesh face normals quantised by
-                        // the geometry pipeline).
-                        const nx = explicitNormal![0];
-                        const ny = explicitNormal![1];
-                        const nz = explicitNormal![2];
-                        const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-                        if (len > 1e-6) {
-                            normal = [nx / len, ny / len, nz / len];
-                            distance = explicitDistance! / len;
-                        } else {
-                            normal = [0, 1, 0];
-                            distance = explicitDistance!;
-                        }
-                    } else {
-                        // Cardinal-axis preset path (unchanged behaviour).
-                        // down = Y axis (horizontal cut), front = Z axis, side = X axis
-                        normal = [0, 0, 0];
-                        if (options.sectionPlane.axis === 'side') normal[0] = 1;        // X axis
-                        else if (options.sectionPlane.axis === 'down') normal[1] = 1;   // Y axis (horizontal)
-                        else normal[2] = 1;                                              // Z axis (front)
-
-                        // Apply building rotation if present (rotate normal around Y axis)
-                        // Building rotation is in X-Y plane (Z is up in IFC, Y is up in WebGL)
-                        if (options.buildingRotation !== undefined && options.buildingRotation !== 0) {
-                            const cosR = Math.cos(options.buildingRotation);
-                            const sinR = Math.sin(options.buildingRotation);
-                            // Rotate normal vector around Y axis (vertical)
-                            // For X-Z plane rotation: x' = x*cos - z*sin, z' = x*sin + z*cos, y' = y
-                            const x = normal[0];
-                            const z = normal[2];
-                            normal[0] = x * cosR - z * sinR;
-                            normal[2] = x * sinR + z * cosR;
-                            // Normalize to maintain unit length
-                            const rlen = Math.sqrt(normal[0] * normal[0] + normal[1] * normal[1] + normal[2] * normal[2]);
-                            if (rlen > 0.0001) {
-                                normal[0] /= rlen;
-                                normal[1] /= rlen;
-                                normal[2] /= rlen;
-                            }
-                        }
-
-                        // Get axis-specific range. The renderer's own `boundsMin/Max`
-                        // are computed from the GPU vertex buffers this frame, so
-                        // they are guaranteed to be in the same Y-up world space as
-                        // `input.worldPos` in the shader. `options.sectionPlane.min/max`
-                        // comes from the UI via `coordinateInfo.shiftedBounds` and can
-                        // be stale during streaming or outright wrong during model
-                        // load (initialised to {0,0,0} before the first bounds update)
-                        // — using those directly was the cause of the "slider moves
-                        // 1% and the whole model disappears" bug.
-                        //
-                        // Policy: always use the renderer's own bounds for the Y-up
-                        // range. Only honour the UI override when it is a valid,
-                        // non-degenerate range that lies INSIDE the actual mesh
-                        // bounds (e.g. storey filtering from the level picker).
-                        const axisIdx = options.sectionPlane.axis === 'side' ? 'x' : options.sectionPlane.axis === 'down' ? 'y' : 'z';
-                        let minVal = boundsMin[axisIdx];
-                        let maxVal = boundsMax[axisIdx];
-                        const uiMin = options.sectionPlane.min;
-                        const uiMax = options.sectionPlane.max;
-                        if (
-                            Number.isFinite(uiMin) &&
-                            Number.isFinite(uiMax) &&
-                            (uiMax as number) - (uiMin as number) > 1e-6 &&
-                            (uiMin as number) >= minVal - 1e-3 &&
-                            (uiMax as number) <= maxVal + 1e-3
-                        ) {
-                            minVal = uiMin as number;
-                            maxVal = uiMax as number;
-                        }
-
-                        // Calculate plane distance from position percentage
-                        const range = maxVal - minVal;
-                        distance = minVal + (options.sectionPlane.position / 100) * range;
-                    }
-
-                    sectionPlaneData = { normal, distance, enabled: true };
-
-                    // One-shot diagnostic: when section first becomes active,
-                    // log the exact bounds + plane the shader will use. This
-                    // is the fastest way to confirm "bounds mismatch" / "plane
-                    // off-screen" bugs without asking the user to run a
-                    // debugger. The custom-plane branch logs `mode: 'explicit'`
-                    // so reports against tilted planes are easy to spot.
-                    if (!this._loggedSectionBounds) {
-                        this._loggedSectionBounds = true;
-                        console.info('[Section] Y-up bounds used for clip:', {
-                            mode: hasExplicitPlane ? 'explicit' : 'axis-aligned',
-                            axis: options.sectionPlane.axis,
-                            bounds: {
-                                min: { x: boundsMin.x, y: boundsMin.y, z: boundsMin.z },
-                                max: { x: boundsMax.x, y: boundsMax.y, z: boundsMax.z },
-                            },
-                            normal,
-                            distance,
-                            position: options.sectionPlane.position,
-                            batchedMeshCount: this.scene.getBatchedMeshes().length,
-                        });
-                    }
-                }
             }
 
             // Stash what we actually clipped this frame so the GPU picker mirrors
@@ -1891,6 +2105,142 @@ export class Renderer {
             // Now record draw commands
             const encoder = device.createCommandEncoder();
 
+            // Sun shadow-map pass (#2670, Phase 2). Off unless the caller opts
+            // in; when off the hot path pays only this check and (once) an
+            // enabled=0 reset on toggle-off. Runs BEFORE the colour pass (its
+            // own complete depth-only sub-pass on the same encoder); the colour
+            // pass then samples the map via the environment bind group. Every
+            // geometry path both casts (collectShadowOccluders) and receives
+            // (the shared main-family shader), so no part of the model silently
+            // stops shadowing.
+            const shadowOpts = options.sunShadows;
+            let shadowsThisFrame = false;
+            if (shadowOpts?.enabled) {
+                const bounds = this.getModelBounds();
+                if (bounds) {
+                    // `resolution === 0` (or unset) means Auto: pick from the
+                    // device's texture limit. A manual value is clamped to that
+                    // limit so a 4096 request can't fail createTexture on a
+                    // 2048-max device (#2670 review).
+                    const resolution = resolveShadowMapResolution(
+                        shadowOpts.resolution,
+                        device.limits.maxTextureDimension2D,
+                    );
+                    if (!this.shadowPass) {
+                        this.shadowPass = new ShadowPass(device, resolution);
+                    } else {
+                        this.shadowPass.setResolution(resolution);
+                    }
+                    const boundsMin: [number, number, number] = [bounds.min.x, bounds.min.y, bounds.min.z];
+                    const boundsMax: [number, number, number] = [bounds.max.x, bounds.max.y, bounds.max.z];
+                    // Lateral shadow fit. AT REST: fit to the camera frustum
+                    // clipped to the model (maintainer #1) so a small building on
+                    // a large site keeps sharp shadows instead of spending the
+                    // map on distant terrain. DURING INTERACTION: fall back to a
+                    // whole-bounds fit — it is camera-INDEPENDENT, so orbiting or
+                    // scroll-zooming can't make the focus box breathe and drop
+                    // receivers off the map edge (which read as chunks of shadow
+                    // vanishing, #2670 follow-up). Depth always spans the whole
+                    // model so up-sun occluders keep casting.
+                    let focusCorners: readonly Vec3Type[] | undefined;
+                    if (!interacting) {
+                        const camEye = this.camera.getPosition();
+                        const camBasisFit = viewBasis(camEye, this.camera.getTarget(), this.camera.getUp());
+                        focusCorners = cameraFrustumFocusCorners({
+                            eye: camEye,
+                            forward: camBasisFit.forward,
+                            right: camBasisFit.right,
+                            up: camBasisFit.up,
+                            fovY: this.camera.getFOV(),
+                            aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
+                            ortho: this.camera.getProjectionMode() === 'orthographic',
+                            orthoHalfHeight: this.camera.getOrthoSize(),
+                            boundsMin,
+                            boundsMax,
+                        }) ?? undefined;
+                    }
+                    const sun = resolveEnvironment(options.environment).sunDirection;
+                    const fit = fitSunLightMatrix({ sunDirection: sun, boundsMin, boundsMax, focusCorners });
+                    const occluders = collectShadowOccluders(
+                        {
+                            // Cast from the same visibility the colour pass draws: a
+                            // fully-hidden batch is dropped and a partially-hidden one
+                            // casts only its visible subset (the same cached partial
+                            // sub-batch the colour pass renders), so an
+                            // individually-hidden element in a shared batch stops
+                            // casting instead of throwing a phantom shadow.
+                            batches: this.shadowOccluderBatches(options, device, hasVisibilityFiltering),
+                            instanced: this.scene.getInstancedTemplates(),
+                            textured: this.scene.getTexturedMeshes(),
+                            // Individual meshes cast too (Renderer.addMesh() /
+                            // no-batch fallback); the collector skips hydrated
+                            // selection copies so batched scenes don't double-cast.
+                            meshes: this.scene.getMeshes(),
+                        },
+                        { hiddenIds: options.hiddenIds, isolatedIds: options.isolatedIds ?? undefined },
+                    );
+                    // Cast the same cut the colour pass draws: geometry a
+                    // section plane / crop box removed from view must stop
+                    // casting too, or the sliced-off roof keeps shadowing the
+                    // floor it no longer covers. `sectionPlaneData` already
+                    // folds in the terrain clip, so that is covered as well.
+                    this.shadowPass.render(encoder, fit.lightViewProj, occluders, {
+                        section: sectionPlaneData?.enabled
+                            ? {
+                                normal: sectionPlaneData.normal,
+                                distance: sectionPlaneData.distance,
+                                flipped: options.sectionPlane?.flipped === true,
+                            }
+                            : null,
+                        box: options.clipBox?.enabled
+                            ? { min: options.clipBox.min, max: options.clipBox.max }
+                            : null,
+                    });
+
+                    // Shadow uniform: light matrix + sampling params. The kernel
+                    // width follows the sun's angular size (physical, ~0.53°
+                    // like Blender's Sun lamp). Bias scales with the kernel: a
+                    // wider penumbra samples farther, so the normal offset must
+                    // grow with it or the kernel edge self-shadows (the hardware
+                    // slope bias in ShadowPass handles the grazing-angle case).
+                    const texelWorld = (2 * fit.orthoHalfWidth) / resolution;
+                    const sunAngleDeg = shadowOpts.sunAngleDeg ?? 0.53;
+                    const pcfRadius = Math.min(Math.max(sunAngleDeg * 3.0, 0.75), 8.0);
+                    const normalBias = texelWorld * (2.0 + pcfRadius);
+                    const s = this.shadowScratch;
+                    s.set(fit.lightViewProj.m, 0);
+                    s[16] = 1 / resolution;  // texelSize
+                    s[17] = 1;               // enabled
+                    s[18] = normalBias;
+                    s[19] = pcfRadius;
+                    s[20] = 0.0006;          // depthBias (reverse-Z clip units)
+                    s[21] = 0; s[22] = 0; s[23] = 0;
+                    this.pipeline.updateShadowUniform(s);
+                    this.pipeline.setShadowDepthView(this.shadowPass.getDepthTextureView());
+                    this.shadowsWired = true;
+                    shadowsThisFrame = true;
+                }
+            }
+            if (!shadowsThisFrame && (this.shadowsWired || this.shadowPass)) {
+                // Toggle-off: disable sampling, release the depth view, and free
+                // the shadow pass itself so its depth texture (16.8 MB at 2048,
+                // 67 MB at 4096) is returned to the driver for the rest of the
+                // session instead of lingering unused. Re-enabling reconstructs
+                // it lazily on the next shadowed frame (see the `!this.shadowPass`
+                // guard above). The `|| this.shadowPass` arm also covers a pass
+                // that was allocated but never wired — an occluder-prep throw
+                // between `new ShadowPass` and `shadowsWired = true` would
+                // otherwise leak its texture until Renderer.destroy() (Greptile
+                // #3053). The uniform-unwire below is a no-op when never wired.
+                // #2670 review.
+                this.shadowScratch[17] = 0;
+                this.pipeline.updateShadowUniform(this.shadowScratch);
+                this.pipeline.setShadowDepthView(null);
+                this.shadowsWired = false;
+                this.shadowPass?.destroy();
+                this.shadowPass = null;
+            }
+
             // Set up MSAA rendering if enabled
             const msaaView = this.pipeline.getMultisampleTextureView();
             const useMSAA = msaaView !== null && this.pipeline.getSampleCount() > 1;
@@ -1929,13 +2279,14 @@ export class Renderer {
                 },
             });
 
-            // Global lighting environment: write the uniform once per frame
-            // and bind at group(1) — every pipeline derived from the main
-            // shader shares this layout, and bind groups persist across
-            // setPipeline calls within the pass.
+            // Global lighting environment: write the uniform once per frame.
+            // The group(1) bind is deferred until AFTER the sky pass below —
+            // the sky pipeline has an incompatible layout (its own group(0),
+            // no group(1)), so drawing the sky invalidates a group(1) binding
+            // on conformant WebGPU implementations (see the rebind after the
+            // sky block).
             const environment = resolveEnvironment(options.environment);
             this.pipeline.updateEnvironment(options.environment);
-            pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
             // Procedural sky background — replaces the flat clear colour.
             // Drawn before any geometry at the reverse-Z far plane with depth
@@ -1951,33 +2302,44 @@ export class Renderer {
                         sampleCount: this.pipeline.getSampleCount(),
                     }, skyShaderSource);
                 }
-                const camPos = this.camera.getPosition();
-                const camTgt = this.camera.getTarget();
-                const camUp = this.camera.getUp();
-                let fx = camTgt.x - camPos.x;
-                let fy = camTgt.y - camPos.y;
-                let fz = camTgt.z - camPos.z;
-                const flen = Math.hypot(fx, fy, fz) || 1;
-                fx /= flen; fy /= flen; fz /= flen;
-                // Right = normalize(cross(forward, up)); true up = cross(right, forward).
-                let rx = fy * camUp.z - fz * camUp.y;
-                let ry = fz * camUp.x - fx * camUp.z;
-                let rz = fx * camUp.y - fy * camUp.x;
-                const rlen = Math.hypot(rx, ry, rz) || 1;
-                rx /= rlen; ry /= rlen; rz /= rlen;
-                const ux = ry * fz - rz * fy;
-                const uy = rz * fx - rx * fz;
-                const uz = rx * fy - ry * fx;
+                // The sky shader rebuilds a per-pixel view ray from this
+                // basis, so it must be the basis the frame's view matrix was
+                // built from — `viewBasis`, not a local re-derivation
+                // (#2489). The copy that used to live here guarded its two
+                // divisors with `|| 1` and neither numerator, so a non-finite
+                // camera coordinate made every axis NaN and the sky drew as a
+                // flat undefined colour over the whole viewport; and for a
+                // plan pose (`up` parallel to the view direction) it returned
+                // zero-length axes, which is the same picture. Reading the
+                // shared basis also keeps the horizon in the sky aligned with
+                // the horizon in the geometry for free.
+                const camBasis = viewBasis(
+                    this.camera.getPosition(),
+                    this.camera.getTarget(),
+                    this.camera.getUp(),
+                );
                 this.skyPass.draw(pass, {
-                    forward: [fx, fy, fz],
-                    right: [rx, ry, rz],
-                    up: [ux, uy, uz],
+                    forward: [camBasis.forward.x, camBasis.forward.y, camBasis.forward.z],
+                    right: [camBasis.right.x, camBasis.right.y, camBasis.right.z],
+                    up: [camBasis.up.x, camBasis.up.y, camBasis.up.z],
                     fovY: this.camera.getFOV(),
                     aspect: this.canvas.height > 0 ? this.canvas.width / this.canvas.height : 1,
                 }, environment);
             }
 
             pass.setPipeline(this.pipeline.getPipeline());
+
+            // Bind the global lighting environment at group(1) AFTER any sky
+            // draw. The sky pipeline's layout (its own group(0), no group(1))
+            // is incompatible with the main layout, so drawing the sky
+            // invalidates the group(1) binding on strict WebGPU
+            // implementations. The flat batch loops below re-set only group(0)
+            // per batch (the instanced passes re-bind group(1) themselves), so
+            // without this rebind every non-'default' lighting preset — the
+            // only presets that enable the sky — blanked the model on those
+            // drivers. Binding while the main pipeline is current keeps it
+            // valid for every main-family draw that follows.
+            pass.setBindGroup(1, this.pipeline.getEnvironmentBindGroup());
 
             // Check if we have batched meshes (preferred for performance)
             const allBatchedMeshes = this.scene.getBatchedMeshes();
@@ -2407,10 +2769,6 @@ export class Renderer {
                 const texturedMeshes = this.scene.getTexturedMeshes();
                 if (texturedMeshes.length > 0) {
                     pass.setPipeline(this.pipeline.getTexturedPipeline());
-                    // Textured meshes carry absolute (origin-0) positions, so the
-                    // model translation must be identity here — reset the column
-                    // that renderBatch left set to the last opaque batch's origin.
-                    tpl[28] = 0; tpl[29] = 0; tpl[30] = 0;
                     for (const tm of texturedMeshes) {
                         // Honour hide/isolate — textured meshes bypass the batch
                         // visibility filtering above, so apply it per-mesh here or
@@ -2435,6 +2793,16 @@ export class Renderer {
                         // batch overlay paint pass doesn't iterate textured meshes,
                         // so applying the override here is what recolours them.
                         const txOverride = colorOverrides?.get(tm.expressId);
+                        // `world = origin + position`: the vertex buffer stores
+                        // positions in this mesh's per-element local frame, so the
+                        // model translation carries the world magnitude (#1973).
+                        // Per mesh, which also overwrites the column renderBatch
+                        // left set to the last opaque batch's origin. This used to
+                        // be hoisted out of the loop and hard-zeroed — right only
+                        // for the orphan type-geometry path (origin == 0), and it
+                        // drew every textured occurrence collapsed toward the
+                        // world origin.
+                        tpl[28] = tm.origin[0]; tpl[29] = tm.origin[1]; tpl[30] = tm.origin[2];
                         tpl[32] = txOverride ? txOverride[0] : tm.color[0];
                         tpl[33] = txOverride ? txOverride[1] : tm.color[1];
                         tpl[34] = txOverride ? txOverride[2] : tm.color[2];
@@ -2753,134 +3121,17 @@ export class Renderer {
                 });
             }
 
-            // Draw section plane visual BEFORE pass.end() (within same MSAA render pass)
-            // Always show plane when sectionPlane options are provided (as preview or active)
-            const modelBounds = this.getModelBounds();
-            if (options.sectionPlane && this.sectionPlaneRenderer && modelBounds) {
-                this.sectionPlaneRenderer.draw(
-                    pass,
-                    {
-                        axis: options.sectionPlane.axis,
-                        position: options.sectionPlane.position,
-                        bounds: modelBounds,
-                        viewProj,
-                        isPreview: !options.sectionPlane.enabled, // Preview mode when not enabled
-                        min: options.sectionPlane.min,
-                        max: options.sectionPlane.max,
-                        // Custom-plane gizmo override (issue #243). When both
-                        // are set the gizmo bypasses the cardinal path; see
-                        // SectionPlaneRenderer.calculatePlaneVerticesFromNormal.
-                        normal: options.sectionPlane.normal,
-                        distance: options.sectionPlane.distance,
-                    }
-                );
-
-                // Draw 2D section overlay on the section plane (when section is
-                // active, not preview). The overlay is also the 3D SECTION CAP:
-                // its polygon fills come from `SectionCutter` (exact triangle-
-                // plane intersection), and the new fill shader applies the
-                // user's screen-space hatch + colour directly on those
-                // polygons. This replaces the old stencil-parity cap, which
-                // bled hatch into empty sky on non-manifold IFC geometry —
-                // the polygons here are mathematically correct, so the cap
-                // silhouette matches the 2D drawing exactly.
-                if (options.sectionPlane.enabled && this.section2DOverlayRenderer?.hasGeometry()) {
-                    const o = options.sectionPlane;
-                    const showFills    = o.showCap !== false;
-                    const showOutlines = o.showOutlines !== false;
-                    const style = { ...DEFAULT_CAP_STYLE, ...(o.capStyle ?? {}) };
-                    this.section2DOverlayRenderer.draw(
-                        pass,
-                        {
-                            axis: o.axis,
-                            position: o.position,
-                            bounds: modelBounds,
-                            viewProj,
-                            min: o.min,
-                            max: o.max,
-                            showFills,
-                            showOutlines,
-                            capStyle: showFills ? {
-                                fillColor:   style.fillColor,
-                                strokeColor: style.strokeColor,
-                                patternId:   HATCH_PATTERN_IDS[style.pattern],
-                                spacingPx:   style.spacingPx,
-                                angleRad:    style.angleRad,
-                                widthPx:     style.widthPx,
-                                secondaryAngleRad: style.secondaryAngleRad,
-                            } : undefined,
-                        }
-                    );
-                }
-
-            }
-
-            // Standalone IFC annotation overlay (issue #653). The line
-            // vertices were pre-lifted to world space at upload time, so
-            // this draw happens regardless of whether a section plane is
-            // active — annotations are a free-floating "drawing layer"
-            // that sits at each annotation's storey elevation.
-            //
-            // This block was previously nested inside the `if (options.sectionPlane && ...)`
-            // guard above, contradicting its own comment. Loading an
-            // annotation-only model with no section plane meant the entire
-            // overlay was skipped at draw time even though 9000+ vertices
-            // had been uploaded successfully. Pulled out to its own block.
-            //
-            // Order: fills (background) → lines (outlines on top) →
-            // texts (labels above everything).
-            if (this.symbolicFillPipeline?.hasGeometry()) {
-                this.symbolicFillPipeline.render(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasAnnotationLines3D()) {
-                this.section2DOverlayRenderer.drawAnnotationLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasAlignmentLines3D()) {
-                this.section2DOverlayRenderer.drawAlignmentLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasGridLines3D()) {
-                this.section2DOverlayRenderer.drawGridLines3D(pass, viewProj);
-            }
-            if (this.section2DOverlayRenderer?.hasClashBoxLines3D()) {
-                this.section2DOverlayRenderer.drawClashBoxLines3D(pass, viewProj);
-            }
-            if (this.symbolicTextPipeline?.hasGeometry()) {
-                // Pass viewport pixel dimensions so the shader can scale glyphs
-                // to a constant on-screen size (BIMvision-style annotations)
-                // regardless of camera distance or authored text height.
-                //
-                // Also pass the screen-aligned camera basis (right, up) so
-                // billboarded glyphs (grid bubble tags) can face the camera
-                // in any orientation — top-down, eye-level, oblique alike.
-                const camPos = this.camera.getPosition();
-                const camTgt = this.camera.getTarget();
-                const camUpVec = this.camera.getUp();
-                // Forward = normalize(target - position).
-                let fx = camTgt.x - camPos.x;
-                let fy = camTgt.y - camPos.y;
-                let fz = camTgt.z - camPos.z;
-                let flen = Math.hypot(fx, fy, fz) || 1;
-                fx /= flen; fy /= flen; fz /= flen;
-                // Right = normalize(cross(forward, world-up)).
-                let rx = fy * camUpVec.z - fz * camUpVec.y;
-                let ry = fz * camUpVec.x - fx * camUpVec.z;
-                let rz = fx * camUpVec.y - fy * camUpVec.x;
-                let rlen = Math.hypot(rx, ry, rz) || 1;
-                rx /= rlen; ry /= rlen; rz /= rlen;
-                // True up = normalize(cross(right, forward)) — guaranteed
-                // perpendicular to both, defines screen-space vertical.
-                const ux = ry * fz - rz * fy;
-                const uy = rz * fx - rx * fz;
-                const uz = rx * fy - ry * fx;
-                this.symbolicTextPipeline.render(
-                    pass,
-                    viewProj,
-                    this.canvas.width,
-                    this.canvas.height,
-                    [rx, ry, rz],
-                    [ux, uy, uz],
-                );
-            }
+            // Section-plane gizmo, 2D section cap and every standalone 3D
+            // overlay (annotation / alignment / grid / DXF / clash / symbolic
+            // text). One draw call into the pass — see RendererOverlays.draw().
+            this.overlays.draw(pass, {
+                options,
+                viewProj,
+                modelBounds: this.getModelBounds(),
+                camera: this.camera,
+                canvasWidth: this.canvas.width,
+                canvasHeight: this.canvas.height,
+            });
 
             pass.end();
 
@@ -2964,17 +3215,30 @@ export class Renderer {
                 errorScopePushed = false;
                 this.drainErrorScope(device);
             }
-            this._renderErrorCount++;
-            this._lastRenderError = error instanceof Error ? error.message : String(error);
-            // Handle WebGPU errors (e.g., device lost, invalid state)
-            // Mark context as invalid so it gets reconfigured next frame
-            this.device.invalidateContext();
-            // Rate-limit error logging to avoid spam (max once per second)
-            const now = performance.now();
-            if (now - this.lastRenderErrorTime > this.RENDER_ERROR_THROTTLE_MS) {
-                this.lastRenderErrorTime = now;
-                console.warn('Render error (context will be reconfigured):', error);
-            }
+            // Same policy as the outer catch since issue #2417 — a `DOMException`
+            // from here is a device that died mid-frame, after
+            // `getCurrentTexture()` had already succeeded, and it must latch
+            // rather than degrade forever in silence.
+            //
+            // Safe to discriminate here because the encode region has no
+            // healthy-device `DOMException` source (swept for #2417): its
+            // `queue.writeBuffer` calls all use the 3-argument form over whole
+            // typed-array views — plus one 5-argument call in
+            // `point-cloud-uniforms.ts` whose offset and size are compile-time
+            // constants matching its scratch array — so the spec's
+            // `OperationError` preconditions are unreachable; the one
+            // `copyExternalImageToTexture` copies the glyph atlas's own
+            // never-externally-drawn canvas at its full fixed size, so neither
+            // `SecurityError` nor a zero-size `OperationError` can arise; and
+            // every other WebGPU call in the region (`createView`,
+            // `createCommandEncoder`, `beginRenderPass`, the pass setters and
+            // draws, `finish`, `submit`, `createBindGroup`) reports failure as
+            // an asynchronous `GPUValidationError` through the error scope, not
+            // as a throw. The region's real healthy-device failure is
+            // `getOrCreatePartialBatch`'s `createBuffer({ mappedAtCreation:
+            // true })`, and that throws a `RangeError` — which is exactly why
+            // the discriminator keys on the TYPE and not on "a frame threw".
+            this.containFrameThrow(error, 'encode');
         }
     }
 
@@ -3084,20 +3348,6 @@ export class Renderer {
     }
 
     /**
-     * Get the raycaster instance (for advanced usage)
-     */
-    getRaycaster(): Raycaster {
-        return this.raycastEngine.getRaycaster();
-    }
-
-    /**
-     * Get the snap detector instance (for advanced usage)
-     */
-    getSnapDetector(): SnapDetector {
-        return this.raycastEngine.getSnapDetector();
-    }
-
-    /**
      * Clear all caches (call when geometry changes)
      */
     clearCaches(): void {
@@ -3142,6 +3392,16 @@ export class Renderer {
      * Resize canvas
      */
     resize(width: number, height: number): void {
+        // `canvas.width` is an IDL `unsigned long`, so it silently coerces a
+        // non-finite or negative argument to **0** — a zero drawing buffer
+        // that every pick guard in this package misses, because they all
+        // check the bounding rect rather than the buffer. `unprojectToRay`
+        // then divides by it. This is documented public API of a published
+        // package (`docs/api/typescript.md`), so an external caller wiring a
+        // ResizeObserver to it is the reachable route; both in-repo callers
+        // already floor their own values. Keep the last usable size, the same
+        // policy `setAspect` uses for the ratio it derives (#2473).
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
         this.canvas.width = width;
         this.canvas.height = height;
         this.camera.setAspect(width / height);
@@ -3151,9 +3411,15 @@ export class Renderer {
         return this.camera;
     }
 
-    getScene(): Scene {
+    /** MEASURED external surface, not the 4400-line `Scene`: widening `SceneContents` is a published-API decision, not a detail — see `scene-contents.ts`. */
+    getScene(): SceneContents {
         return this.scene;
     }
+
+    // ─── Overlay facade ──────────────────────────────────────────────────
+    // The section-plane gizmo, the 2D section drawing/cap and the symbolic
+    // annotation overlays live in `RendererOverlays` (issue #2425). These
+    // methods are the published surface; the bodies moved with the state.
 
     /**
      * Upload 2D section drawing data for 3D overlay rendering.
@@ -3183,45 +3449,14 @@ export class Renderer {
             bitangent: [number, number, number];
         },
     ): void {
-        if (!this.section2DOverlayRenderer) return;
-
-        if (customPlane) {
-            // Custom-plane path: planePosition / axis are unused — the
-            // basis the cap shader needs travels in `customPlane`. We pass
-            // 0 for `planePosition` and the existing `axis` so the cardinal
-            // shader code path that callers depend on (e.g. legacy SVG
-            // export) keeps working when customPlane is omitted.
-            this.section2DOverlayRenderer.uploadDrawing(
-                polygons, lines, axis, 0, flipped, customPlane,
-            );
-            return;
-        }
-
-        // Use EXACTLY same calculation as section plane in render() method:
-        // minVal = options.sectionPlane.min ?? boundsMin[axisIdx]
-        // maxVal = options.sectionPlane.max ?? boundsMax[axisIdx]
-        const axisIdx = axis === 'side' ? 'x' : axis === 'down' ? 'y' : 'z';
-
-        const modelBounds = this.getModelBounds();
-
-        // Allow upload if either sectionRange has both values, or modelBounds exists as fallback
-        const hasFullRange = sectionRange?.min !== undefined && sectionRange?.max !== undefined;
-        if (!hasFullRange && !modelBounds) return;
-
-        const minVal = sectionRange?.min ?? modelBounds!.min[axisIdx];
-        const maxVal = sectionRange?.max ?? modelBounds!.max[axisIdx];
-        const planePosition = minVal + (position / 100) * (maxVal - minVal);
-
-        this.section2DOverlayRenderer.uploadDrawing(polygons, lines, axis, planePosition, flipped);
+        this.overlays.uploadSection2DOverlay(polygons, lines, axis, position, sectionRange, flipped, customPlane);
     }
 
     /**
      * Clear the 2D section overlay
      */
     clearSection2DOverlay(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearGeometry();
-        }
+        this.overlays.clearSection2DOverlay();
     }
 
     /**
@@ -3231,136 +3466,36 @@ export class Renderer {
      * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
      */
     setOverlayLineColor(color: readonly [number, number, number, number]): void {
-        // Persist on the Renderer so a pre-init call (and any later overlay
-        // re-creation) keeps the colour — init() re-applies this.overlayLineColor.
-        this.overlayLineColor = color;
-        this.section2DOverlayRenderer?.setOverlayLineColor(color);
-        this.requestRender();
+        this.overlays.setOverlayLineColor(color);
     }
 
     /**
-     * Upload pre-lifted 3D line-list vertices for the standalone annotation
-     * overlay. Each segment is `[x1, y1, z1, x2, y2, z2]` in world space.
-     * The overlay is drawn regardless of whether a section plane is active.
-     * Pass an empty Float32Array to clear.
-     */
-    uploadAnnotationLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadAnnotationLines3D(vertices);
-        // Contribute annotation extents to modelBounds + camera sceneBounds
-        // so an annotation-only model (no IfcProduct meshes — common for
-        // separate "annotation sheets") gets framed by Home / fit-to-view
-        // AND has correct near/far clipping. Without sceneBounds the camera
-        // frustum doesn't include the annotation cluster and they're clipped
-        // away even when the camera is pointed at them. Mirror the
-        // point-cloud upload path (`addPointClouds`, `setPointClouds`) which
-        // does the same thing.
-        this.expandModelBoundsWithFlatVertices(vertices, 3);
-        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
-    }
-
-    /** Walks a flat `[x,y,z,x,y,z,...]` vertex buffer and either initialises
-     *  or expands the cached `modelBounds` AABB. Used by the annotation
-     *  overlay upload paths so symbolic-only models can still be framed.
+     * Set one standalone 3D line overlay, or clear it by passing `null`.
      *
-     *  The geometry pipeline pre-seeds a placeholder `[-100, 100]` cube on
-     *  every render when there are 0 meshes (so the section-plane slider
-     *  always has a workable range). For an annotation-only model that
-     *  fallback drowns out the much-smaller annotation cluster and a plain
-     *  "expand" would no-op. We detect the placeholder by its exact symmetric
-     *  signature and replace it with the actual annotation AABB instead. */
-    private expandModelBoundsWithFlatVertices(positions: Float32Array, stride: number): void {
-        if (positions.length === 0) return;
-        const isPlaceholderCube = (b: { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } }): boolean =>
-            b.min.x === -100 && b.min.y === -100 && b.min.z === -100
-                && b.max.x === 100 && b.max.y === 100 && b.max.z === 100;
-        if (!this.modelBounds || isPlaceholderCube(this.modelBounds)) {
-            this.modelBounds = {
-                min: { x: Infinity, y: Infinity, z: Infinity },
-                max: { x: -Infinity, y: -Infinity, z: -Infinity },
-            };
-        }
-        let expanded = false;
-        for (let i = 0; i + 2 < positions.length; i += stride) {
-            const x = positions[i];
-            const y = positions[i + 1];
-            const z = positions[i + 2];
-            if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-            if (x < this.modelBounds.min.x) this.modelBounds.min.x = x;
-            if (y < this.modelBounds.min.y) this.modelBounds.min.y = y;
-            if (z < this.modelBounds.min.z) this.modelBounds.min.z = z;
-            if (x > this.modelBounds.max.x) this.modelBounds.max.x = x;
-            if (y > this.modelBounds.max.y) this.modelBounds.max.y = y;
-            if (z > this.modelBounds.max.z) this.modelBounds.max.z = z;
-            expanded = true;
-        }
-        if (!expanded) return;
-        // Guarantee non-degenerate extent on every axis so camera frustums
-        // don't collapse. 0.5 m margin matches what the section-plane fallback
-        // uses elsewhere in this file.
-        for (const axis of ['x', 'y', 'z'] as const) {
-            if (this.modelBounds.max[axis] - this.modelBounds.min[axis] < 1e-3) {
-                this.modelBounds.max[axis] += 0.5;
-                this.modelBounds.min[axis] -= 0.5;
-            }
-        }
-    }
-
-    /**
-     * Clear the standalone annotation line overlay.
-     */
-    clearAnnotationLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearAnnotationLines3D();
-            this.requestRender();
-        }
-    }
-
-    /**
-     * Upload IfcAlignment centerline segments as a flat [x,y,z,x,y,z,...]
-     * line-list in world space. Rendered as thin lines (not a ribbon mesh)
-     * to match IfcGrid / IfcAnnotation. Pass an empty Float32Array to clear.
-     */
-    uploadAlignmentLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadAlignmentLines3D(vertices);
-        // Frame alignment-only files the same way annotation overlays are
-        // framed (see uploadAnnotationLines3D).
-        this.expandModelBoundsWithFlatVertices(vertices, 3);
-        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
-    }
-
-    /** Clear the alignment centerline overlay. */
-    clearAlignmentLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearAlignmentLines3D();
-            this.requestRender();
-        }
-    }
-
-    /**
-     * Upload structural-grid (IfcGridAxis) segments as a flat [x,y,z,x,y,z,...]
-     * line-list in world space (issue #967). Rendered as thin lines, mirroring
-     * the alignment overlay. Pass an empty Float32Array to clear.
+     * `vertices` is a flat world-space line-list — `[x1,y1,z1, x2,y2,z2, …]`,
+     * one segment per six floats. The vertices are already lifted to world
+     * space, so these overlays draw whether or not a section plane is active.
+     * A trailing partial segment is dropped rather than rejecting the array.
+     * An empty array clears too, but `null` skips building the pipelines.
      *
-     * Unlike alignment, grids do NOT expand model bounds: they're behind a
-     * visibility toggle, so toggling them on must not reframe the camera (and
-     * grid axes routinely extend past the model envelope).
+     * Every channel is an independent buffer with its own visibility, so
+     * setting one leaves the other three untouched. All four share the colour
+     * set by {@link setOverlayLineColor}; label colour is per-text via
+     * `SymbolicTextInput.color` on `uploadAnnotationTexts3D`.
+     *
+     * The channels differ in exactly one way — whether they grow the scene
+     * bounds. `annotation` (#653) and `alignment` DO: a file holding only them
+     * has no IfcProduct meshes to frame, so Home / fit-to-view would have
+     * nothing to aim at and the near/far range would clip the lines away.
+     * `grid` (IfcGridAxis, #967) and `dxf` (the DXF reference layer, #2043) do
+     * NOT: they are reference layers that routinely extend past the model
+     * envelope, so growing the bounds would reframe the camera whenever one
+     * was ticked on. The rule is "does this content DEFINE the model's
+     * extent", NOT "is it behind a visibility toggle" — annotations sit behind
+     * `ifcAnnotationsVisible` too.
      */
-    uploadGridLines3D(vertices: Float32Array): void {
-        if (!this.section2DOverlayRenderer) return;
-        this.section2DOverlayRenderer.uploadGridLines3D(vertices);
-        this.requestRender();
-    }
-
-    /** Clear the structural-grid overlay. */
-    clearGridLines3D(): void {
-        if (this.section2DOverlayRenderer) {
-            this.section2DOverlayRenderer.clearGridLines3D();
-            this.requestRender();
-        }
+    setLineOverlay(channel: LineOverlayChannel, vertices: Float32Array | null): void {
+        this.overlays.setLineOverlay(channel, vertices);
     }
 
     /**
@@ -3372,15 +3507,7 @@ export class Renderer {
     setClashOverlapBox(
         box: { min: [number, number, number]; max: [number, number, number]; color: [number, number, number, number] } | null,
     ): void {
-        if (!this.section2DOverlayRenderer) return;
-        if (!box) {
-            this.section2DOverlayRenderer.clearClashBoxLines3D();
-            this.requestRender();
-            return;
-        }
-        this.section2DOverlayRenderer.setClashBoxLineColor(box.color);
-        this.section2DOverlayRenderer.uploadClashBoxLines3D(aabbEdgeLineList(box.min, box.max));
-        this.requestRender();
+        this.overlays.setClashOverlapBox(box);
     }
 
     /**
@@ -3393,15 +3520,22 @@ export class Renderer {
     setClashContactLines(
         lines: { vertices: Float32Array; color: [number, number, number, number] } | null,
     ): void {
-        if (!this.section2DOverlayRenderer) return;
-        if (!lines || lines.vertices.length === 0) {
-            this.section2DOverlayRenderer.clearClashBoxLines3D();
-            this.requestRender();
-            return;
-        }
-        this.section2DOverlayRenderer.setClashBoxLineColor(lines.color);
-        this.section2DOverlayRenderer.uploadClashBoxLines3D(lines.vertices);
-        this.requestRender();
+        this.overlays.setClashContactLines(lines);
+    }
+
+    /**
+     * Draw the focused clash's TRUE INTERSECTION VOLUME — the actual overlap
+     * mesh from `clashIntersectionSolid` — as an opaque solid, so the clash
+     * reads as a shape rather than a wireframe box or contact line (the
+     * BIMcollab Zoom / Solibri presentation). Pass `null` to clear. Independent
+     * of `setClashOverlapBox` / `setClashContactLines`: the caller decides
+     * which one is current for a given clash (solid when the kernel resolved
+     * one, box/lines as the fallback when it didn't).
+     */
+    setClashIntersectionSolid(
+        solid: { positions: Float32Array | Float64Array; indices: Uint32Array; color: [number, number, number, number] } | null,
+    ): void {
+        this.overlays.setClashIntersectionSolid(solid);
     }
 
     /**
@@ -3409,24 +3543,7 @@ export class Renderer {
      * (issue #653). Pass an empty array to clear.
      */
     uploadAnnotationFills3D(fills: readonly SymbolicFillInput[]): void {
-        if (!this.symbolicFillPipeline) return;
-        this.symbolicFillPipeline.upload(fills);
-        // Contribute fill extents to modelBounds — see uploadAnnotationLines3D.
-        for (const fill of fills) {
-            const pts = fill.points;
-            if (pts.length === 0) continue;
-            // points are flat [x,z,x,z,...]; lift to (x, fill.worldY, z) per
-            // vertex so we expand bounds in the same world space the renderer draws in.
-            const lifted = new Float32Array((pts.length / 2) * 3);
-            for (let i = 0, j = 0; i < pts.length; i += 2, j += 3) {
-                lifted[j] = pts[i];
-                lifted[j + 1] = fill.worldY;
-                lifted[j + 2] = pts[i + 1];
-            }
-            this.expandModelBoundsWithFlatVertices(lifted, 3);
-        }
-        if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.overlays.uploadAnnotationFills3D(fills);
     }
 
     /**
@@ -3434,43 +3551,48 @@ export class Renderer {
      * (issue #653). Pass an empty array to clear.
      */
     uploadAnnotationTexts3D(texts: readonly SymbolicTextInput[]): void {
-        if (!this.symbolicTextPipeline) return;
-        this.symbolicTextPipeline.upload(texts);
-        // Text origins are single points; pack them into a flat buffer and
-        // expand bounds. Glyph extents are small enough that origin-only
-        // suffices for framing.
-        if (texts.length > 0) {
-            const buf = new Float32Array(texts.length * 3);
-            for (let i = 0; i < texts.length; i++) {
-                buf[i * 3 + 0] = texts[i].worldPos[0];
-                buf[i * 3 + 1] = texts[i].worldPos[1];
-                buf[i * 3 + 2] = texts[i].worldPos[2];
-            }
-            this.expandModelBoundsWithFlatVertices(buf, 3);
-            if (this.modelBounds) this.camera.setSceneBounds(this.modelBounds);
-        }
-        this.requestRender();
+        this.overlays.uploadAnnotationTexts3D(texts);
     }
 
     /**
      * Check if 2D section overlay has geometry to render
      */
     hasSection2DOverlay(): boolean {
-        return this.section2DOverlayRenderer?.hasGeometry() ?? false;
+        return this.overlays.hasSection2DOverlay();
     }
 
     /**
-     * Get render pipeline (for batching)
+     * Get render pipeline (for batching). DELIBERATELY NOT NARROWED, unlike
+     * `getScene()`: the measurement found ZERO external
+     * `RenderPipeline` members — all 12 call sites pass the handle straight
+     * back into a `SceneContents` upload method typed for the real class.
      */
     getPipeline(): RenderPipeline | null {
         return this.pipeline;
     }
 
     /**
-     * Check if renderer is fully initialized and ready to use
+     * Check if renderer is fully initialized and ready to use.
+     *
+     * `ready` is part of the test, not decoration: between `init()` being called
+     * and its queued body running, the device and pipeline still belong to the
+     * PREVIOUS init and are about to be destroyed, so the other two conditions
+     * alone would report a renderer that is on its way out as usable.
+     *
+     * So is the device-loss check. A lost device is never torn down —
+     * `WebGPUDevice.destroy()` is the only thing that nulls the handle and an
+     * involuntary loss (driver reset / VRAM exhaustion / GPU-process crash)
+     * never calls it — so `isInitialized()` stays true, the pipeline stays
+     * non-null, and `ready` stays set from the init that completed before the
+     * loss. All three conditions therefore still hold while `render()` is a
+     * no-op and `getGPUDevice()` returns null: the renderer would report itself
+     * usable through this third door alone. Unlike the two revocations above
+     * this one needs no generation scoping — an `init()` clears `ready`
+     * synchronously, so a latch left standing until the queued body clears it
+     * cannot make this method spuriously false in the meantime.
      */
     isReady(): boolean {
-        return this.device.isInitialized() && this.pipeline !== null;
+        return this.ready && !this.deviceLost && this.device.isInitialized() && this.pipeline !== null;
     }
 
     /**
@@ -3487,7 +3609,11 @@ export class Renderer {
      *
      * Returning null instead routes into the `if (!device) return` check that
      * every call site already has, so a lost device degrades to "stop
-     * uploading" rather than an uncaught throw. See `isDeviceLost()` /
+     * uploading" rather than an uncaught throw.
+     *
+     * DELIBERATELY NOT NARROWED, unlike `getScene()`: the one external
+     * `GPUDevice` member measured is `queue`; every other call site
+     * hands the device back to a `SceneContents` method. See `isDeviceLost()` /
      * `onDeviceLost()` for the recovery contract.
      */
     getGPUDevice(): GPUDevice | null {
@@ -3530,8 +3656,48 @@ export class Renderer {
      * post-processing buffers, section-plane renderers, and snap caches.
      * After calling this method the renderer is no longer usable.
      * Safe to call multiple times (idempotent).
+     *
+     * An `init()` still in flight is invalidated too. It is parked on
+     * `await device.init(...)`, and without the generation bump below it resumes
+     * after this returns, allocates a complete replacement GPU stack that nothing
+     * references, and re-publishes `ready` — resolving `whenReady()` waiters
+     * against a renderer the host has already torn down (#2465). The bump is what
+     * `initOnce()` re-checks after its await, and what makes `markReady()` refuse
+     * the stale completion.
+     *
+     * This is why the teardown itself lives in `teardown()`: `initOnce()` runs it
+     * on the PREVIOUS init's objects as part of its own re-init, and routing that
+     * through here would have every init invalidate its own generation, leaving
+     * `whenReady()` pending forever.
+     *
+     * Anyone parked in `whenReady()` is FAILED rather than left pending. Nothing
+     * after this call can make the wait true — the invalidation above is exactly
+     * what stops the in-flight init from publishing readiness, and a host that
+     * remounts builds a new `Renderer` rather than re-initialising this one — so
+     * leaving the promise unsettled suspends the caller's async frame for the
+     * lifetime of the page. `apps/viewer`'s point-cloud drop is one of those
+     * frames: it captured this instance before the teardown, and would stop
+     * mid-load with the spinner still up and no error to report. See
+     * `whenReady()` for the rejection contract.
      */
     destroy(): void {
+        this.initGeneration++;
+        this.destroyed = true;
+        this.teardown();
+        this.rejectReadyWaiters(rendererDestroyedError());
+    }
+
+    /**
+     * Release every GPU object this renderer owns, WITHOUT invalidating an
+     * in-flight init. Callers: the public `destroy()` (which invalidates first)
+     * and `initOnce()`, tearing down the previous init before building its own.
+     */
+    private teardown(): void {
+        // Nothing below survives this call, so `whenReady()` / `isReady()` must
+        // go back to waiting. Set first: every release below is synchronous, but
+        // the flag is what a caller holding a live reference actually reads.
+        this.ready = false;
+
         // Scene mesh GPU buffers
         this.scene.clear();
         // Re-arm the section-bounds diagnostic log for the next model.
@@ -3556,20 +3722,12 @@ export class Renderer {
         this.edlPass = null;
         this.skyPass?.destroy();
         this.skyPass = null;
+        this.shadowPass?.destroy();
+        this.shadowPass = null;
 
-        // Section-plane renderers
-        this.sectionPlaneRenderer?.destroy();
-        this.sectionPlaneRenderer = null;
-        this.section2DOverlayRenderer?.dispose();
-        this.section2DOverlayRenderer = null;
-
-        // Symbolic annotation overlay pipelines own their own GPU buffers,
-        // sampler, and atlas texture — recreating the viewer without
-        // releasing them leaks resources on every reload.
-        this.symbolicFillPipeline?.destroy();
-        this.symbolicFillPipeline = null;
-        this.symbolicTextPipeline?.destroy();
-        this.symbolicTextPipeline = null;
+        // Section-plane gizmo, 2D section overlay and the symbolic annotation
+        // pipelines — see RendererOverlays.destroy().
+        this.overlays.destroy();
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();
@@ -3578,9 +3736,7 @@ export class Renderer {
         // BIM ↔ scan deviation pipeline + cached BVH GPU buffers.
         // Done before queue.destroy() so the GPU calls inside
         // `destroy()` still have a valid device.
-        this.deviationPipeline?.destroy();
-        this.deviationPipeline = null;
-        this.deviationBvhFingerprint = null;
+        this.deviationComputer.destroy();
 
         // Snap detector geometry cache
         this.raycastEngine.clearCaches();

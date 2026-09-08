@@ -1,0 +1,391 @@
+#!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+/**
+ * Score a rubric against defects that were REALLY missed.
+ *
+ * WHY THIS EXISTS. The lane's rubric buys precision with recall on purpose, and
+ * measured on live traffic it returned `clean` on six pull requests carrying
+ * ELEVEN real findings -- including a Major defect that reopened a hole, and one
+ * where the lane's own author had mis-described his design. Changing the rubric
+ * to recover that recall is obviously tempting and completely unmeasurable by
+ * argument: a prose edit either finds more real defects or invents more noise,
+ * and reading the prose cannot tell you which.
+ *
+ * So this replays diffs whose answer is already known -- CodeRabbit found these,
+ * the lane did not -- and reports two numbers a rubric change has to move in the
+ * right direction together:
+ *
+ *   RECALL    of the known findings, how many did this rubric surface?
+ *   EXTRA     findings it produced that are NOT in the ground truth.
+ *
+ * EXTRA IS NOT "FALSE POSITIVES", and calling it that would be the mistake this
+ * file has to avoid. CodeRabbit's findings are a floor, not a census: a finding
+ * the lane makes that CodeRabbit missed may be perfectly real. So EXTRA is
+ * reported as a number to LOOK AT, never as a score to minimise, and the harness
+ * prints each one so a human decides. A harness that auto-penalised extras would
+ * train the rubric toward silence, which is the failure it exists to fix.
+ *
+ * IT COSTS SUBSCRIPTION QUOTA. Each case is one model call, so this is
+ * `workflow_dispatch` and local, never per-PR. Run it before and after a rubric
+ * change, on the same cases, and compare.
+ *
+ * STATED HOLE: two cases and three known findings is a small sample, and a
+ * rubric that improves on these may not improve in general. It is enough to
+ * catch a change that makes recall WORSE, which is the direction that matters
+ * when the current recall is zero.
+ */
+import { readFileSync, writeFileSync, readdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+import { buildPack, retrievalFailed, retrievalFailedMessage } from './build-context-pack.mjs';
+import { validateWithOneRetry, validatorReason, REVIEWER_FAULT } from './eval-validation.mjs';
+import { ensureEvalCommit } from './eval-commit.mjs';
+import { MAX_POSTED_FINDINGS } from './post-review.mjs';
+import { stripFence } from './validate-findings.mjs';
+import { notApplicableClasses } from './lib/defect-classes.mjs';
+// SCORING LIVES IN ./lib/eval-score.mjs and is RE-EXPORTED here, not moved out
+// of reach: `matches` and `score` are this harness's published surface and its
+// test drives them by name. The split is the module-size budget, not a change
+// of interface.
+import { matches, score } from './lib/eval-score.mjs';
+export { matches, score } from './lib/eval-score.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const CASE_DIR = join(HERE, 'eval-cases');
+
+/**
+ * Which side a non-zero validator exit blames.
+ *
+ * The REVIEWER's fault: it answered with malformed JSON, said nothing, ran out
+ * of tokens, contradicted itself, skipped the proof of work, or quoted lines
+ * that are not in the diff so every finding was dropped. The lane POSTS nothing
+ * in each of those cases, so the honest score is zero findings for that PR.
+ * Aborting instead throws away every other case and reports a broken
+ * instrument -- the exact confusion between absence and failure that this
+ * pipeline exists to keep apart, and the first version of this split made it
+ * for four of the seven, including the two most likely on a real corpus.
+ *
+ * The INSTRUMENT's fault: the harness fed the validator something wrong, or
+ * could not write its output. RAW_UNREADABLE and RAW_EMPTY sit here even though
+ * their remedies talk about the model, and for the same reason:
+ * `run-reviewer.mjs` throws EMPTY_RESPONSE and exits non-zero before it writes,
+ * so the case is already refused as "did not run" upstream. If the validator
+ * ever does see a missing or blank raw file, the plumbing broke rather than the
+ * model, and aborting is the conservative direction anyway. Putting RAW_EMPTY
+ * on the reviewer side contradicted that reasoning while sitting four lines
+ * from it. Nothing about the rubric can be read off such a
+ * run, so it stops.
+ *
+ * A reason in NEITHER set stops the run too. Both sets are written out here --
+ * the classification is this harness's policy, not the validator's -- and they
+ * are held to `REASONS`, which validate-findings.mjs exports, by a test that
+ * requires every reason to be classified exactly once. So a reason added there
+ * cannot be silently scored as "the reviewer found nothing".
+ */
+export { validatorReason, REVIEWER_FAULT, INSTRUMENT_FAULT } from './eval-validation.mjs';
+
+
+/**
+ * Judge output the eval echoes. `JUDGE[: ]` and not `JUDGE (DROPPED|...)`,
+ * because a judge that ran and removed nothing prints only `JUDGE: n in, n out`
+ * -- under the narrower pattern a clean judging produced no output at all and the
+ * log could not answer whether judging happened. Exported so its test cannot
+ * quietly hold a second copy: the first version of that test inlined the regex,
+ * so reverting this line failed nothing.
+ */
+export const JUDGE_LOG_RE = /JUDGE[: ]|CAPPED/;
+
+/**
+ * The classes THIS review declared inapplicable, read back off the raw model
+ * output (#3831).
+ *
+ * Read from the raw file rather than from `findings.json`, because
+ * `validate-findings.mjs` deliberately does not carry `class_pass` through to
+ * the poster -- it is proof of work for the lane, not something a human reads on
+ * a PR -- so the eval takes it from the same text the validator did. Fenced
+ * exactly the way the model fences everything else, hence `stripFence`.
+ *
+ * FAILS SOFT TO `[]`, and that direction is deliberate: this feeds a diagnostic
+ * line, never the recall number, so a raw file that cannot be re-read must not
+ * take down a scored run. `[]` attributes nothing, which reads as an ordinary
+ * miss -- the answer the harness gave before this existed.
+ */
+function declaredNotApplicable(rawPath, validatedVerdict) {
+  // GATED ON THE VALIDATED VERDICT, not on the raw response's own. `class_pass`
+  // is checked only on a clean verdict, so on any other outcome it is a field
+  // nothing verified -- and reading a skip off it would attribute one to a
+  // document the lane never accepted.
+  if (validatedVerdict !== 'clean') return [];
+  try {
+    return notApplicableClasses(JSON.parse(stripFence(readFileSync(rawPath, 'utf8'))));
+  } catch {
+    return [];
+  }
+}
+
+function main() {
+  const arg = (name, fallback) => {
+    const i = process.argv.indexOf(name);
+    return i === -1 ? fallback : process.argv[i + 1];
+  };
+  const rubric = arg('--rubric', join(HERE, 'rubric.md'));
+  const model = process.env.EVAL_MODEL || 'sonnet';
+  const noJudge = process.argv.includes('--no-judge');
+  const tmp = mkdtempSync(join(tmpdir(), 'rubric-eval-'));
+  // Removed on SUCCESS only. It holds each case's raw reviewer output and
+  // validated findings, which is exactly what you need when a case fails --
+  // deleting it on the failure path would throw away the evidence the harness
+  // exists to produce. On success it is megabytes of noise per run.
+  let ok = false;
+  try {
+
+    // `--cases` and `--reviewer` exist so the ORCHESTRATION can be exercised for
+    // real: point the harness at a fixture case and at a deterministic stub in
+    // place of the model, and every other stage -- validate-findings included --
+    // still runs as a genuine child process. Nothing is mocked, so a test can ask
+    // what the harness DOES rather than what its source says.
+    const caseDir = arg('--cases', CASE_DIR);
+  // EXPLICIT ONLY. This defaulted to HEAD, which silently turned the documented
+  // diff-only baseline into a context-enabled run -- the comment below said
+  // "without it the eval measures the old behaviour" while the code three lines
+  // up guaranteed it never could. A baseline you cannot reproduce is not a
+  // baseline. Pass `--base HEAD` to retrieve siblings from the current checkout.
+  const baseRef = arg('--base', null);
+    const reviewer = arg('--reviewer', join(HERE, 'run-reviewer.mjs'));
+
+    const files = readdirSync(caseDir).filter((f) => f.endsWith('.json')).sort();
+    if (files.length === 0) throw new Error('No eval cases found; the harness would report a vacuous 0/0.');
+
+    const results = [];
+    const validatedResults = [];
+    for (const f of files) {
+      const c = JSON.parse(readFileSync(join(caseDir, f), 'utf8'));
+      // THE CONTEXT PACK, built per case so the eval measures the pipeline the
+    // lane actually runs rather than a diff-only ghost of it. `--base` names
+    // the tree siblings are retrieved from; without it the eval measures the
+    // old behaviour, which is exactly what the baseline run did.
+    if (baseRef) {
+      ensureEvalCommit(c.input.headSha);
+      try {
+        // `body` MATTERS, and its absence was not merely an untested prompt
+        // section. pr-3389's expected defect IS "the PR body describes a null
+        // sentinel meaning cannot answer yet, but the helper treats null and
+        // empty array identically" -- detectable only by comparing the
+        // description against the diff. With no body that case was unscoreable:
+        // a permanent miss no rubric change could ever convert, quietly
+        // depressing recall and inviting a rubric "fix" for a harness defect.
+        const patchBytes = c.input.files.reduce((n, ff) => n + Buffer.byteLength(ff.patch, 'utf8'), 0);
+        c.input.contextPack = buildPack(c.input, { baseRef, body: c.body ?? null, patchBytes });
+        // The eval scores a pack the same way the lane builds one, so it has to be
+        // able to say when no pack was built. Its own workflow comment describes this
+        // exact symptom -- a shallow checkout leaves every case's file evidence empty
+        // -- and without this the harness prints a recall number for a pack that was
+        // never assembled, which is how the 7% -> 20% figure came to be wrong twice.
+        if (retrievalFailed(c.input.contextPack, c.input.files.length)) {
+          console.log(
+            `  ${f}: ${retrievalFailedMessage(c.input.headSha, c.input.files.length)} Expected here: ` +
+              'every eval case names a squash-merged PR head, which no clone depth reaches. Siblings ' +
+              'and the description are still scored; whole-file evidence is not.',
+          );
+        }
+      } catch (err) {
+        console.log(`  ${f}: context pack unavailable (${err?.message ?? 'unknown'})`);
+      }
+    }
+    const inputPath = join(tmp, `${f}.input.json`);
+      const outPath = join(tmp, `${f}.out.txt`);
+      writeFileSync(inputPath, JSON.stringify(c.input));
+      const r = spawnSync(
+        process.execPath,
+        [reviewer, '--rubric', rubric, '--input', inputPath, '--out', outPath, '--model', model],
+        { encoding: 'utf8' },
+      );
+      if (r.status !== 0) {
+        // A case that could not run is NOT a case that found nothing. Scoring it as
+        // a miss would blame the rubric for a drained pool.
+        console.error(`${r.stdout || ''}${r.stderr || ''}`.trim());
+        throw new Error(`Case ${f} did not run. The reviewer's own verdict is above; the score is not computable.`);
+      }
+      // THROUGH `validate-findings`, EXACTLY AS THE LANE DOES -- and the canary
+      // had to learn this the same way an hour earlier. `run-reviewer.mjs --out`
+      // writes RAW model text, and the model FENCES it: this step failed on its
+      // first live run with
+      //
+      //   SyntaxError: Unexpected token '`', "```json ...
+      //
+      // even though rubric.md says "no prose, no markdown fence". That is worth
+      // knowing on its own -- the fence-stripping in `validate-findings` is
+      // load-bearing rather than defensive -- and it means any harness that parses
+      // the raw output is measuring a pipeline the lane does not have.
+      //
+      // Running the real chain also makes the score honest in a second way: the
+      // lane POSTS validated findings, so recall over unvalidated ones would credit
+      // the reviewer for findings that would have been dropped for quoting a line
+      // that is not in the diff.
+      const findingsPath = join(tmp, `${f}.findings.json`);
+      const validation = validateWithOneRetry({
+        reviewer,
+        rubric,
+        inputPath,
+        outPath,
+        findingsPath,
+        model,
+        validatePath: join(HERE, 'validate-findings.mjs'),
+        retryLogPath: join(tmp, `${f}.validate.log`),
+      });
+      const v = validation.processResult;
+      // A non-zero exit is not one thing: see REVIEWER_FAULT above for which
+      // refusals are the model answering badly (scored zero, the eval carries on)
+      // and which mean the harness broke (stop).
+      const said = validation.said;
+      if (validation.attempts === 2) {
+        console.log(`  ${f}: ${validatorReason(validation.said) ?? 'validation failure'} on the first attempt; corrective retry ran once.`);
+      }
+      if (validation.reviewerFailure) {
+        const failed = validation.reviewerFailure;
+        console.error(`${failed.stdout || ''}${failed.stderr || ''}`.trim());
+        throw new Error(`Case ${f} corrective retry did not run; the score is not computable.`);
+      }
+      if (v.status !== 0) {
+        // FROM STDERR ONLY. `said` concatenates stdout, and stdout carries the
+        // per-finding DROPPED warnings, which interpolate the model's own `path`
+        // unescaped. A path of "x.ts\n\u274c NO_RAW: injected" puts a forged reason
+        // line ahead of the real one, and `.exec` takes the first match -- turning
+        // a reviewer fault into a fabricated instrument fault that aborts the run.
+        // validate-findings prints exactly one reason line, always on stderr.
+        const reason = validation.reason;
+        if (!REVIEWER_FAULT.has(reason)) {
+          console.error(said);
+          throw new Error(
+            `Case ${f}: the validator refused the harness's own input (${reason ?? 'unknown'}). ` +
+              'That is a lane regression, not a rubric score; the verdict is above.',
+          );
+        }
+        console.log(`  ${f}: scored ZERO -- the reviewer's answer did not survive validation (${reason}).`);
+        console.log(said.split('\n').map((l) => `    ${l}`).join('\n'));
+        // NOT `verdict: 'findings'`. On RAW_EMPTY the model said nothing at all,
+        // and printing a verdict it never gave is the same fabrication
+        // validate-findings refuses to make. `null` is what actually happened.
+        //
+        // `body` IS WHAT THE REVIEWER SAW, not the fixture's. The pack truncates
+        // the description, and a diff-only run carries none at all -- scoring
+        // against text the reviewer never received excludes vocabulary it could
+        // not have copied, and that reads as a false miss.
+        // `notApplicable: []` and not the raw file's contents: a review the
+        // validator refused declared nothing this harness may rely on, and
+        // CLASS_PASS_INCOMPLETE is precisely the refusal whose `class_pass` is
+        // the thing that failed. Reading it back would attribute a class skip to
+        // a document already judged unusable.
+        const failed = { pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: null, findings: [], notApplicable: [] };
+        validatedResults.push(failed);
+        results.push(failed);
+        continue;
+      }
+      // PARTIAL losses exit 0. DROPPED is one finding refused; CAPPED is the
+      // MAX_FINDINGS ceiling, and a 7-finding review silently loses 2. Either way
+      // recall falls, and without this nothing on screen separates "the reviewer
+      // missed it" from "the pipeline discarded it".
+      const lost = said.split('\n').filter((l) => /DROPPED|CAPPED/.test(l));
+      if (lost.length) console.log(lost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
+      // THE JUDGE RUNS HERE FOR THE SAME REASON THE VALIDATOR DOES: the lane posts
+      // judged findings, so scoring unjudged ones measures a pipeline that does not
+      // exist. It matters more than the validator did, because the judge is the half
+      // of the inversion that can LOWER recall -- if it is eating real findings, this
+      // is the only place that shows up before a human's PR does. `--no-judge` scores
+      // the generator alone, which is how you tell "the reviewer missed it" from "the
+      // judge threw it away".
+      let parsed = JSON.parse(readFileSync(findingsPath, 'utf8'));
+      // Record what survived mechanical validation before the optional judge
+      // mutates it. Without this, a final miss cannot be attributed to the
+      // generator/validator or to suppression; live #3609 required manually
+      // reconstructing that distinction from log fragments.
+      const notApplicable = declaredNotApplicable(outPath, parsed.verdict);
+      validatedResults.push({
+        pr: c.pr,
+        body: c.input.contextPack?.body ?? null,
+        expected: c.expected,
+        verdict: parsed.verdict,
+        findings: parsed.findings ?? [],
+        notApplicable,
+      });
+      // Nothing to judge costs no process. `judge()` short-circuits on an empty
+      // list anyway, so this only saves a node start -- but four of the fixtures
+      // expect zero findings and more come back clean in practice.
+      if (!noJudge && parsed.findings?.length > 0) {
+        const judgedPath = join(tmp, `${f}.judged.json`);
+        const j = spawnSync(
+          process.execPath,
+          [join(HERE, 'run-judge.mjs'), '--findings', findingsPath,
+           '--judge-rubric', join(HERE, 'judge.md'), '--out', judgedPath, '--model', 'haiku'],
+          { encoding: 'utf8' },
+        );
+        const jsaid = `${j.stdout || ''}${j.stderr || ''}`.trim();
+        // `JUDGE:` IS IN THE FILTER, and leaving it out made the instrument
+        // unreadable. A judge that ran and dropped nothing prints only
+        // `JUDGE: n in, n out`, which the old pattern did not match -- so a clean
+        // judging produced NO output at all, and a whole CI eval could not answer
+        // "did the judge run". I read one such log as evidence the judge had eaten
+        // a finding, when it had run and removed nothing. The instrument has to
+        // say what it did, including when it did nothing.
+        const jlost = jsaid.split('\n').filter((l) => JUDGE_LOG_RE.test(l));
+        if (jlost.length) console.log(jlost.map((l) => `    ${f}: ${l.trim()}`).join('\n'));
+        // READ THE RECORD, DO NOT INFER FROM THE EXIT CODE. Every likely judge
+        // failure -- no credential, quota drained, CLI missing -- is caught inside
+        // run-judge.mjs and exits 0, so a status check could never fire for any of
+        // them: the loud warning was structurally unreachable while the quiet
+        // stdout line said the opposite. `judged` is written by the thing that
+        // knows.
+        if (j.status === 0) parsed = JSON.parse(readFileSync(judgedPath, 'utf8'));
+        if (j.status !== 0 || parsed.judged !== true) {
+          console.log(`  ${f}: THE JUDGE DID NOT RUN. Scoring unjudged findings; this is not a Stage 3 number.`);
+        }
+      }
+      // CAPPED LIKE THE POSTER, for the same reason the judge runs here at all: the
+      // lane posts five, and scoring twelve credits the reviewer for findings no
+      // author ever sees. `validate-findings` states outright that the order is the
+      // model's, not a severity ranking, so a defect matched at position nine counts
+      // as recall of something production drops.
+      const all = parsed.findings ?? [];
+      const posted = all.slice(0, MAX_POSTED_FINDINGS);
+      if (all.length > posted.length) {
+        console.log(`  ${f}: ${all.length - posted.length} finding(s) beyond the posting cap are not scored.`);
+      }
+      // Same rule as the failure record above: the exclusion is keyed to what
+      // the reviewer RECEIVED, `c.input.contextPack?.body`, never the fixture.
+      results.push({ pr: c.pr, body: c.input.contextPack?.body ?? null, expected: c.expected, verdict: parsed.verdict, findings: posted, notApplicable });
+    }
+
+    const validatedScore = score(validatedResults);
+    const s = score(results);
+    console.log(`\nRubric: ${rubric}   model: ${model}`);
+    for (const l of s.lines) console.log(l);
+    // A case whose review never validated contributes zero to recall, and a recall
+    // number is not readable without knowing how many of those there were.
+    const noReview = results.filter((r) => r.verdict === null).length;
+    console.log(`\n  VALIDATED recall before judge/cap: ${validatedScore.recall}`);
+    console.log(`  VALIDATED extra findings: ${validatedScore.extra}`);
+    console.log(`  POSTED recall after judge/cap: ${s.recall}`);
+    if (noReview) {
+      console.log(`  ...over ${results.length} cases, of which ${noReview} PRODUCED NO USABLE REVIEW and scored zero.`);
+    }
+    console.log(`  POSTED extra findings (look at these, do not minimise them): ${s.extra}`);
+    // WHICH KIND OF MISS. A defect the reviewer looked for and did not see, and a
+    // defect whose whole class the reviewer waved off as inapplicable, are the
+    // same number in `recall` and need opposite fixes (#3831). Printed
+    // unconditionally, including as `0`: a line that appears only when it is
+    // non-zero cannot tell "none of these" from "this build does not measure it".
+    console.log(`  MISSES whose defect class the review declared NOT-APPLICABLE: ${s.skippedClass} of ${s.total - s.hits}`);
+    console.log('\n  Compare against the same command on the other rubric. A change that lowers');
+    console.log('  recall is a regression whatever it does to EXTRA.\n');
+    ok = true;
+  } finally {
+    if (ok) rmSync(tmp, { recursive: true, force: true });
+    else console.error(`\n  Left the working directory in place for diagnosis: ${tmp}`);
+  }
+}
+
+if (process.argv[1] && process.argv[1].endsWith('rubric-eval.mjs')) main();

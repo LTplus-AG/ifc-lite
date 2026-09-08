@@ -52,6 +52,34 @@ describe('sdk-version', () => {
     expect(evaluateCompatibility('x', '>=2.0.0 <3.0.0', '3.0.0').status).toBe('outdated');
   });
 
+  // VERSION_PARSE_RE only tolerates a suffix that starts with "." or "-";
+  // junk glued straight onto a number is a typo and must fall through to
+  // `permissive` so the user is asked to confirm, rather than having a
+  // bogus range silently evaluated as if it parsed. Nothing pinned that:
+  // relaxing the suffix group from `(?:[.-].*)?` to `(?:.*)?` left the
+  // whole suite green while making "2abc" parse as 2.0.0.
+  it('does not parse a version with junk glued onto a numeric segment', () => {
+    expect(evaluateCompatibility('x', '>=2abc', '2.5.0').status).toBe('permissive');
+    expect(evaluateCompatibility('x', '>=2.0.0', '2abc').status).toBe('permissive');
+  });
+
+  it('still accepts the shorthand and prerelease forms the parser documents', () => {
+    expect(evaluateCompatibility('x', '>=2', '2.5.0').status).toBe('compatible');
+    expect(evaluateCompatibility('x', '>=2.1', '2.5.0').status).toBe('compatible');
+    expect(evaluateCompatibility('x', '>=2.1.0-rc.1', '2.5.0').status).toBe('compatible');
+  });
+
+  it('a bare version pin (no comparator prefix) defaults to exact match', () => {
+    // Regression: `parseRange` defaults a missing comparator symbol to
+    // '=' (see COMPARATOR_RE / the `m[1] ?? '='` fallback), but nothing
+    // exercised a pin without an explicit operator — every other test
+    // uses '>=', '^', or '~'. Mutating the default to '>=' left the
+    // full suite green.
+    expect(evaluateCompatibility('x', '2.0.0', '2.0.0').status).toBe('compatible');
+    expect(evaluateCompatibility('x', '2.0.0', '2.5.0').status).toBe('outdated');
+    expect(evaluateCompatibility('x', '2.0.0', '1.9.0').status).toBe('outdated');
+  });
+
   it('findAffected returns one result per installed entry', () => {
     const results = findAffected(
       [

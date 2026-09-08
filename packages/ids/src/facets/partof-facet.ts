@@ -14,8 +14,10 @@ import type {
 } from '../types.js';
 import type { FacetCheckResult } from './index.js';
 import { matchConstraint, formatConstraint, type MatchOptions } from '../constraints/index.js';
+import { matchPredefinedType } from './predefined-type-match.js';
 
-/** IFC entity/predefined type comparisons are case-insensitive per IDS spec */
+/** IFC entity NAME comparisons are case-insensitive per IDS spec. Predefined
+ *  types are NOT — see `predefined-type-match.ts`. */
 const IFC_CASE_INSENSITIVE: MatchOptions = { caseInsensitive: true };
 
 /** Human-readable relation names */
@@ -127,9 +129,20 @@ function checkAncestorAgainstFacet(
     };
   }
 
-  // Check parent predefined type if specified
+  // Check parent predefined type if specified. The IDS XSD gives this
+  // nested `<entity>` the same complex type an entity facet uses, so the
+  // matching rule is the shared one in `predefined-type-match.ts` — the
+  // raw enum token first, the parent's user-defined name only as the
+  // USERDEFINED fallback, both compared case-sensitively. Only the
+  // PARTOF_-prefixed failure wording below is specific to this facet.
   if (facet.entity.predefinedType) {
-    if (!parent.predefinedType) {
+    const outcome = matchPredefinedType(
+      facet.entity.predefinedType,
+      parent.predefinedType,
+      parent.objectType
+    );
+
+    if (outcome.kind === 'absent') {
       return {
         passed: false,
         actualValue: `${parent.entityType} (no predefinedType)`,
@@ -146,15 +159,15 @@ function checkAncestorAgainstFacet(
       };
     }
 
-    if (!matchConstraint(facet.entity.predefinedType, parent.predefinedType, IFC_CASE_INSENSITIVE)) {
+    if (outcome.kind === 'mismatch') {
       return {
         passed: false,
-        actualValue: `${parent.entityType}[${parent.predefinedType}]`,
+        actualValue: `${parent.entityType}[${outcome.actual}]`,
         expectedValue: `${formatConstraint(facet.entity.name)}[${formatConstraint(facet.entity.predefinedType)}]`,
         failure: {
           type: 'PARTOF_PREDEFINED_TYPE_MISMATCH',
           field: 'predefinedType',
-          actual: parent.predefinedType,
+          actual: outcome.actual,
           expected: formatConstraint(facet.entity.predefinedType),
           context: {
             relation: facet.relation,

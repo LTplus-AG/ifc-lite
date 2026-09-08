@@ -423,7 +423,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -849,7 +849,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -949,7 +949,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -1139,7 +1139,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -1329,7 +1329,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -3491,7 +3491,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -4323,7 +4323,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -4513,7 +4513,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -4852,7 +4852,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -6106,7 +6106,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -6296,7 +6296,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -6642,7 +6642,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -6906,7 +6906,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -7210,7 +7210,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -7400,7 +7400,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -7590,7 +7590,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -7780,7 +7780,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -7970,7 +7970,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -8654,7 +8654,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -8844,7 +8844,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -9152,7 +9152,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -9593,7 +9593,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -9903,7 +9903,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -10093,7 +10093,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -10616,7 +10616,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -10806,7 +10806,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -12556,7 +12556,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -12862,7 +12862,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -13052,7 +13052,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -13242,7 +13242,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -13903,7 +13903,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -14093,7 +14093,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -14664,7 +14664,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -15326,7 +15326,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -15492,7 +15492,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -16145,7 +16145,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -16335,7 +16335,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -16525,7 +16525,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -16757,7 +16757,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -16915,7 +16915,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -17073,7 +17073,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -18337,7 +18337,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -18587,7 +18587,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -18777,7 +18777,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -18967,7 +18967,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -19539,7 +19539,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -19729,7 +19729,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -19919,7 +19919,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -20109,7 +20109,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -20299,7 +20299,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -20489,7 +20489,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -20679,7 +20679,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -20967,7 +20967,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -21133,7 +21133,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -21301,7 +21301,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -21601,7 +21601,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -21783,7 +21783,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -21973,7 +21973,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -22163,7 +22163,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -23909,7 +23909,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -24099,7 +24099,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -24715,7 +24715,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -24905,7 +24905,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -25137,7 +25137,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -25295,7 +25295,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -25477,7 +25477,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -25667,7 +25667,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -25833,7 +25833,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -25991,7 +25991,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -26149,7 +26149,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -26307,7 +26307,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -26465,7 +26465,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -26647,7 +26647,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -26813,7 +26813,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -27003,7 +27003,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -27283,7 +27283,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -28038,7 +28038,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'UAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: false,
           isArray: false,
           isList: true,
@@ -28047,7 +28047,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'VAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: false,
           isArray: false,
           isList: true,
@@ -28056,7 +28056,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'WAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: true,
           isArray: false,
           isList: true,
@@ -28131,7 +28131,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'UAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: false,
           isArray: false,
           isList: true,
@@ -28140,7 +28140,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'VAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: false,
           isArray: false,
           isList: true,
@@ -28149,7 +28149,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'WAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: true,
           isArray: false,
           isList: true,
@@ -28522,7 +28522,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -28712,7 +28712,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -29115,7 +29115,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -29320,7 +29320,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'InnerCoordIndices',
-          type: 'UNIQUE IfcPositiveInteger[]',
+          type: 'IfcPositiveInteger[]',
           optional: false,
           isArray: false,
           isList: true,
@@ -29340,7 +29340,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'InnerCoordIndices',
-          type: 'UNIQUE IfcPositiveInteger[]',
+          type: 'IfcPositiveInteger[]',
           optional: false,
           isArray: false,
           isList: true,
@@ -29663,7 +29663,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -30171,7 +30171,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -30361,7 +30361,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -30970,7 +30970,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -31409,7 +31409,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -32446,7 +32446,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -34513,7 +34513,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -34719,7 +34719,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -34909,7 +34909,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -35279,7 +35279,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -35494,7 +35494,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -35684,7 +35684,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -35915,7 +35915,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -37089,7 +37089,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -37309,7 +37309,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'EdgeList',
-          type: 'UNIQUE IfcOrientedEdge',
+          type: 'IfcOrientedEdge',
           optional: false,
           isArray: false,
           isList: true,
@@ -37320,7 +37320,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       allAttributes: [
         {
           name: 'EdgeList',
-          type: 'UNIQUE IfcOrientedEdge',
+          type: 'IfcOrientedEdge',
           optional: false,
           isArray: false,
           isList: true,
@@ -37486,7 +37486,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -38433,7 +38433,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -38623,7 +38623,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -38813,7 +38813,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -39248,7 +39248,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -39489,7 +39489,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'Polygon',
-          type: 'UNIQUE IfcCartesianPoint',
+          type: 'IfcCartesianPoint',
           optional: false,
           isArray: false,
           isList: true,
@@ -39500,7 +39500,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       allAttributes: [
         {
           name: 'Polygon',
-          type: 'UNIQUE IfcCartesianPoint',
+          type: 'IfcCartesianPoint',
           optional: false,
           isArray: false,
           isList: true,
@@ -39583,7 +39583,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'Faces',
-          type: 'UNIQUE IfcIndexedPolygonalFace',
+          type: 'IfcIndexedPolygonalFace',
           optional: false,
           isArray: false,
           isList: true,
@@ -39619,7 +39619,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'Faces',
-          type: 'UNIQUE IfcIndexedPolygonalFace',
+          type: 'IfcIndexedPolygonalFace',
           optional: false,
           isArray: false,
           isList: true,
@@ -41699,7 +41699,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'EnumerationValues',
-          type: 'UNIQUE IfcValue',
+          type: 'IfcValue',
           optional: false,
           isArray: false,
           isList: true,
@@ -41726,7 +41726,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'EnumerationValues',
-          type: 'UNIQUE IfcValue',
+          type: 'IfcValue',
           optional: false,
           isArray: false,
           isList: true,
@@ -42121,7 +42121,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'DefiningValues',
-          type: 'UNIQUE IfcValue',
+          type: 'IfcValue',
           optional: true,
           isArray: false,
           isList: true,
@@ -42189,7 +42189,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'DefiningValues',
-          type: 'UNIQUE IfcValue',
+          type: 'IfcValue',
           optional: true,
           isArray: false,
           isList: true,
@@ -42570,7 +42570,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -42670,7 +42670,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -42860,7 +42860,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -43554,7 +43554,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -43744,7 +43744,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -44228,7 +44228,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -44328,7 +44328,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -45913,7 +45913,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -46144,7 +46144,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -46543,7 +46543,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -52149,7 +52149,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -52536,7 +52536,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -53348,7 +53348,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -53684,7 +53684,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -54079,7 +54079,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -54269,7 +54269,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -54883,7 +54883,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -55139,7 +55139,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -55453,7 +55453,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -55561,7 +55561,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -55751,7 +55751,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -55925,7 +55925,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -56115,7 +56115,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -56407,7 +56407,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -56751,7 +56751,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -56851,7 +56851,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -58133,7 +58133,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'Locations',
-          type: 'UNIQUE LIST [1:2] OF IfcLengthMeasure',
+          type: 'IfcLengthMeasure[]',
           optional: true,
           isArray: false,
           isList: true,
@@ -58161,7 +58161,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'Locations',
-          type: 'UNIQUE LIST [1:2] OF IfcLengthMeasure',
+          type: 'IfcLengthMeasure[]',
           optional: true,
           isArray: false,
           isList: true,
@@ -61734,7 +61734,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -61974,7 +61974,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -62535,7 +62535,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -63850,7 +63850,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -64048,7 +64048,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -64172,7 +64172,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -64867,7 +64867,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'InnerTexCoordIndices',
-          type: 'UNIQUE IfcPositiveInteger[]',
+          type: 'IfcPositiveInteger[]',
           optional: false,
           isArray: false,
           isList: true,
@@ -64895,7 +64895,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'InnerTexCoordIndices',
-          type: 'UNIQUE IfcPositiveInteger[]',
+          type: 'IfcPositiveInteger[]',
           optional: false,
           isArray: false,
           isList: true,
@@ -65560,7 +65560,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -65750,7 +65750,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -65940,7 +65940,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -66106,7 +66106,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -66639,7 +66639,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -66863,7 +66863,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -66931,7 +66931,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -67385,7 +67385,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -67575,7 +67575,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -67765,7 +67765,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -67997,7 +67997,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -68249,7 +68249,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -68439,7 +68439,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -68569,7 +68569,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       attributes: [
         {
           name: 'IntersectingAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: false,
           isArray: false,
           isList: true,
@@ -68589,7 +68589,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
       allAttributes: [
         {
           name: 'IntersectingAxes',
-          type: 'UNIQUE IfcGridAxis',
+          type: 'IfcGridAxis',
           optional: false,
           isArray: false,
           isList: true,
@@ -68936,7 +68936,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -69126,7 +69126,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -69801,7 +69801,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
         },
         {
           name: 'RepresentationMaps',
-          type: 'UNIQUE IfcRepresentationMap',
+          type: 'IfcRepresentationMap',
           optional: true,
           isArray: false,
           isList: true,
@@ -71439,6 +71439,7 @@ export const SCHEMA_REGISTRY: SchemaRegistry = {
 export function getEntityMetadata(typeName: string): EntityMetadata | undefined {
   // Normalize to IfcXxx format
   const normalized = normalizeTypeName(typeName);
+  if (!Object.prototype.hasOwnProperty.call(SCHEMA_REGISTRY.entities, normalized)) return undefined;
   return SCHEMA_REGISTRY.entities[normalized];
 }
 
@@ -71462,8 +71463,7 @@ export function getInheritanceChainForEntity(typeName: string): string[] {
  * Check if a type is a known entity
  */
 export function isKnownEntity(typeName: string): boolean {
-  const normalized = normalizeTypeName(typeName);
-  return normalized in SCHEMA_REGISTRY.entities;
+  return getEntityMetadata(typeName) !== undefined;
 }
 
 /**

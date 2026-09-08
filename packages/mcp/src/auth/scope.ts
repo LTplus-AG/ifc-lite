@@ -40,10 +40,14 @@ export function modelAllowed(scope: AuthScope, modelId: string): boolean {
   return scope.modelIds.includes(modelId);
 }
 
+/* The `scopes` array is copied too, not just the wrapper object: a spread
+ * alone hands every caller the SAME array instance as the exported constant,
+ * so `readOnlyScope().scopes.push('mutate')` widens `READ_ONLY` itself and
+ * every token minted afterwards in the process gets the extra scope. */
 export function readOnlyScope(): AuthScope {
-  return { ...READ_ONLY };
+  return { ...READ_ONLY, scopes: [...READ_ONLY.scopes] };
 }
 
 export function fullScope(): AuthScope {
-  return { ...FULL_ACCESS };
+  return { ...FULL_ACCESS, scopes: [...FULL_ACCESS.scopes] };
 }

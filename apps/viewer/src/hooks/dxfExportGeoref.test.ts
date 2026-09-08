@@ -16,7 +16,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import { exportToDXF, parseDxf, DEFAULT_SECTION_CONFIG, type Drawing2D } from '@ifc-lite/drawing-2d';
 import { IfcParser } from '@ifc-lite/parser';
-import { buildDxfExportTransform, resolveDxfExportGeoreference } from './dxfExportGeoref.js';
+import { buildDxfExportTransform, buildDxfMapToWorldTransform, resolveDxfExportGeoreference } from './dxfExportGeoref.js';
 import { dxfWorldShift, dxfUnderlayToDrawing } from './dxfUnderlayMath.js';
 import type { DxfUnderlayState } from '@/store/slices/drawing2DSlice';
 import type { GeorefMutationDataLike } from '@/lib/geo/effective-georef';
@@ -237,6 +237,7 @@ describe('buildDxfExportTransform', () => {
       id: 'u1',
       name: 'roundtrip.dxf',
       visible: true,
+      visible3D: true,
       opacity: 1,
       layerVisibility: {},
       placement: { offsetX: 0, offsetY: 0, rotationDeg: 0, scale: 1 },
@@ -476,6 +477,29 @@ describe('resolveDxfExportGeoreference (PR #1871 review: edited georeferencing m
     close(out.y, 1_199_994);
   });
 
+  it('threads the legacy single-model coordinateInfo into the georeference (#2526 map-absolute guard input)', async () => {
+    const store = await parseStore(GEOREF_FIXTURE);
+    const legacyCoordinateInfo = {
+      originShift: { x: 0, y: 0, z: 0 },
+      originalBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      shiftedBounds: { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } },
+      hasLargeCoordinates: false,
+    };
+    const georef = resolveDxfExportGeoreference({
+      models: new Map(),
+      legacyDataStore: store,
+      legacyCoordinateInfo,
+      georefMutations: new Map(),
+    });
+    assert.ok(georef);
+    // The SAME object, not a copy — the map-absolute guard in
+    // resolveGeorefLinearParams reads it to decide whether the anchor model's
+    // geometry already sits at the declared anchor. A caller that omits it
+    // (as useDxfMapToWorldTransform once did) silently splits the forward
+    // and inverse transforms onto different conversions for such files.
+    assert.strictEqual(georef.coordinateInfo, legacyCoordinateInfo);
+  });
+
   it('an applied placement edit (georefMutations) changes the exported DXF coordinates', async () => {
     const store = await parseStore(GEOREF_FIXTURE);
     const mutations = new Map<string, GeorefMutationDataLike>([
@@ -557,5 +581,356 @@ describe('resolveDxfExportGeoreference (PR #1871 review: edited georeferencing m
     const out = exportPoint(georef);
     close(out.x, 2_600_504);
     close(out.y, 1_200_494);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// buildDxfMapToWorldTransform (issue #1929): the INVERSE of the georeferenced
+// branch of buildDxfExportTransform, for the DXF-underlay IMPORT path. A
+// surveyor's DXF is typically authored in map/CRS coordinates; this maps it
+// back to IFC world coordinates so it lands where the model actually is.
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('buildDxfMapToWorldTransform', () => {
+  it('is the identity when no georeference is available', () => {
+    const transform = buildDxfMapToWorldTransform(null);
+    const p = { x: 2_600_123, y: 1_200_456 };
+    assert.deepStrictEqual(transform(p), p);
+    assert.deepStrictEqual(buildDxfMapToWorldTransform(undefined)(p), p);
+  });
+
+  it('inverts a known rotated+offset georeference to the exact world coordinate', () => {
+    // Same georeference and expected numbers as buildDxfExportTransform's
+    // "applies IfcMapConversion" test above: world (1007, 2001) forward-maps
+    // to (500000 - 2001, 6000000 + 1007) under a 90deg rotation. The inverse
+    // must recover the original world point from that exact map point.
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: 0, xAxisOrdinate: 1, // 90-degree rotation
+        scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+    const transform = buildDxfMapToWorldTransform(georeference);
+    const world = transform({ x: 500_000 - 2001, y: 6_000_000 + 1007 });
+    close(world.x, 1007);
+    close(world.y, 2001);
+  });
+
+  it('round-trips through buildDxfExportTransform: forward(inverse(p)) === p and inverse(forward(p)) === p', () => {
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 2_600_000, northings: 1_200_000, orthogonalHeight: 400,
+        xAxisAbscissa: 8, xAxisOrdinate: 6, // non-axis-aligned rotation, non-unit-length input (normalizes to 0.8, 0.6)
+        scale: 1.0000002,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:2056', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+    const toWorld = buildDxfMapToWorldTransform(georeference);
+    // buildDxfExportTransform's georeferenced branch needs a section/coordinateInfo
+    // context; drive it with no render-frame shift, but its `toWorld` step
+    // ALSO y-flips its drawing-space input (`y: shift.y - p.y`, matching a
+    // plan section's drawing convention — see the module docstring). With
+    // shift = (0, 0) that reduces to `world = (p.x, -p.y)`, so a drawing
+    // input of `(worldX, -worldY)` reproduces a given world point exactly —
+    // undo that same flip on both sides to compare pure world<->map values.
+    const toMap = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    const worldPoint = { x: 1234.5, y: -678.25 };
+    const mapPoint = toMap({ x: worldPoint.x, y: -worldPoint.y });
+    const backToWorld = toWorld(mapPoint);
+    close(backToWorld.x, worldPoint.x, 1e-6);
+    close(backToWorld.y, worldPoint.y, 1e-6);
+
+    const mapPoint2 = { x: 2_600_500.75, y: 1_199_800.25 };
+    const worldFromMap = toWorld(mapPoint2);
+    const backToMap = toMap({ x: worldFromMap.x, y: -worldFromMap.y });
+    close(backToMap.x, mapPoint2.x, 1e-6);
+    close(backToMap.y, mapPoint2.y, 1e-6);
+  });
+
+  it('guards a pathological IfcMapConversion.Scale of 0 the same way the forward transform does', () => {
+    const buildTransform = (scale: number) => buildDxfMapToWorldTransform({
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: 1, xAxisOrdinate: 0, scale,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    });
+    const zeroed = buildTransform(0);
+    const unit = buildTransform(1);
+    const a = zeroed({ x: 500_004, y: 6_000_006 });
+    const b = zeroed({ x: 500_040, y: 6_000_060 });
+    // Distinct map points must stay distinct (no division-by-zero collapse)…
+    assert.ok(Math.abs(a.x - b.x) > 1, 'points collapsed under Scale=0');
+    // …and behave exactly like Scale=1 (the same fallback the forward transform uses).
+    const u = unit({ x: 500_004, y: 6_000_006 });
+    close(a.x, u.x);
+    close(a.y, u.y);
+  });
+
+  it('falls back to the no-rotation default (1, 0) for a near-zero axis vector', () => {
+    const transform = buildDxfMapToWorldTransform({
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 0, northings: 0, orthogonalHeight: 0,
+        xAxisAbscissa: 0, xAxisOrdinate: 0, scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    });
+    // With the (1, 0) fallback: worldX = mapX, worldY = mapY.
+    const out = transform({ x: 1007, y: 2001 });
+    close(out.x, 1007);
+    close(out.y, 2001);
+  });
+
+  it('bridges a non-metre CRS map unit the same way the forward transform does (PR #1871 review parity)', () => {
+    const FT_US = 0.3048006096;
+    const transform = buildDxfMapToWorldTransform({
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0, // authored in ftUS
+        xAxisAbscissa: 1, xAxisOrdinate: 0,
+        scale: 1 / FT_US, // spec unit bridge: metre project -> ftUS map
+      },
+      projectedCRS: { id: 1, name: 'EPSG:2230', mapUnit: 'USSURVEYFOOT', mapUnitScale: FT_US },
+      lengthUnitScale: 1,
+    });
+    // effective scale = (1/FT_US) * FT_US / 1 = 1; map point = eastings*FT_US + world.
+    const out = transform({ x: 500_000 * FT_US + 1007, y: 6_000_000 * FT_US + 2001 });
+    close(out.x, 1007);
+    close(out.y, 2001);
+  });
+
+  // PR #1965 review, "NaN can permanently corrupt placement state": a
+  // malformed IfcMapConversion.Eastings (or Northings) must not make every
+  // transformed point NaN. `resolveGeorefLinearParams`'s finite guard is
+  // the last line of defence even though `mergeMapConversion`
+  // (effective-georef.ts) already stops most NaNs earlier in the chain —
+  // this exercises the transform functions directly with a raw
+  // `DxfExportGeoreference` that skipped that earlier guard (e.g. a caller
+  // constructing one without going through `getEffectiveGeoreference`).
+  it('guards a non-finite Eastings/Northings instead of propagating NaN through every point (PR #1965 review)', () => {
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: NaN, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: 1, xAxisOrdinate: 0, scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+    const inverse = buildDxfMapToWorldTransform(georeference);
+    const world = inverse({ x: 1007, y: 6_000_000 + 2001 });
+    // NaN eastings falls back to 0 (same convention as `mergeMapConversion`'s
+    // `?? 0`), NOT NaN -- so the result must be finite, not NaN.
+    assert.ok(Number.isFinite(world.x), `expected finite x, got ${world.x}`);
+    assert.ok(Number.isFinite(world.y), `expected finite y, got ${world.y}`);
+    close(world.x, 1007);
+    close(world.y, 2001);
+
+    const forward = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    const mapPoint = forward({ x: 1007, y: -2001 });
+    assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
+    assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
+  });
+
+  // PR #1965 second review round: `axisLen < 1e-9` only catches the
+  // near-zero MAGNITUDE case -- `NaN < 1e-9` and `Infinity < 1e-9` are both
+  // `false`, so a non-finite XAxisAbscissa/XAxisOrdinate used to take the
+  // *divide* branch and manufacture a NaN axis instead of falling back to
+  // the no-rotation default (1, 0), unlike the near-zero case just above
+  // and the Eastings/Northings guard just below. Covers both NaN and
+  // Infinity, and both the forward and inverse transforms, since both read
+  // `resolveGeorefLinearParams`.
+  for (const [label, bad] of [['NaN', NaN], ['Infinity', Infinity]] as const) {
+    it(`guards a non-finite (${label}) axis component instead of propagating NaN through every point`, () => {
+      const georeference = {
+        mapConversion: {
+          id: 1, sourceCRS: 1, targetCRS: 1,
+          eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+          xAxisAbscissa: bad, xAxisOrdinate: 0, scale: 1,
+        },
+        projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+        lengthUnitScale: 1,
+      };
+
+      const inverse = buildDxfMapToWorldTransform(georeference);
+      const world = inverse({ x: 500_000 + 1007, y: 6_000_000 + 2001 });
+      assert.ok(Number.isFinite(world.x), `expected finite x, got ${world.x}`);
+      assert.ok(Number.isFinite(world.y), `expected finite y, got ${world.y}`);
+      // A non-finite abscissa with ordinate 0 falls back to the (1, 0)
+      // no-rotation default, same as the near-zero-vector case, so the
+      // inverse is exact, not just finite.
+      close(world.x, 1007);
+      close(world.y, 2001);
+
+      const forward = buildDxfExportTransform({
+        coordinateInfo: undefined,
+        sectionAxis: 'down',
+        isCustomPlane: false,
+        flipped: false,
+        georeference,
+      });
+      const mapPoint = forward({ x: 1007, y: -2001 });
+      assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
+      assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
+      close(mapPoint.x, 500_000 + 1007);
+      close(mapPoint.y, 6_000_000 + 2001);
+    });
+  }
+
+  // PR #1965 review, round 2: the loop above only exercises a bad component
+  // paired with a ZERO good component (xAxisOrdinate: 0), which doesn't
+  // distinguish "falls back to (1, 0)" from "keeps the good component and
+  // discards only the bad one" -- both produce (1, 0) when the good
+  // component is already 0. A MIXED pair with a genuinely non-zero good
+  // component (e.g. XAxisAbscissa: NaN, XAxisOrdinate: 0.6) tells them
+  // apart: the previous implementation substituted only the bad component to
+  // its identity default (1) and then normalized THAT against the real 0.6,
+  // manufacturing a bogus ~31-degree rotation the file never authored,
+  // instead of discarding the whole pair for the (1, 0) no-rotation
+  // fallback like the near-zero-magnitude case does.
+  it('falls back the WHOLE axis pair to (1, 0) when only one component is non-finite, not a half-fabricated rotation', () => {
+    const georeference = {
+      mapConversion: {
+        id: 1, sourceCRS: 1, targetCRS: 1,
+        eastings: 500_000, northings: 6_000_000, orthogonalHeight: 0,
+        xAxisAbscissa: NaN, xAxisOrdinate: 0.6, scale: 1,
+      },
+      projectedCRS: { id: 1, name: 'EPSG:32632', mapUnit: 'METRE', mapUnitScale: 1 },
+      lengthUnitScale: 1,
+    };
+
+    const inverse = buildDxfMapToWorldTransform(georeference);
+    const world = inverse({ x: 500_000 + 1007, y: 6_000_000 + 2001 });
+    assert.ok(Number.isFinite(world.x), `expected finite x, got ${world.x}`);
+    assert.ok(Number.isFinite(world.y), `expected finite y, got ${world.y}`);
+    // With the correct (1, 0) fallback the inverse is exact, not just finite
+    // -- a bogus partial rotation would land world.x/y off by the rotation
+    // it fabricated instead of matching these values.
+    close(world.x, 1007);
+    close(world.y, 2001);
+
+    const forward = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    const mapPoint = forward({ x: 1007, y: -2001 });
+    assert.ok(Number.isFinite(mapPoint.x), `expected finite x, got ${mapPoint.x}`);
+    assert.ok(Number.isFinite(mapPoint.y), `expected finite y, got ${mapPoint.y}`);
+    close(mapPoint.x, 500_000 + 1007);
+    close(mapPoint.y, 6_000_000 + 2001);
+  });
+});
+
+describe('DXF georeference with map-absolute geometry (#2526)', () => {
+  // Vectorworks-style file: geometry authored at the ABSOLUTE projected
+  // coordinates (rebased into wasmRtcOffset), IfcMapConversion repeating the
+  // same anchor with a 90-degree rotation. The exported DXF must carry the
+  // geometry's absolute coordinates unchanged — applying the authored
+  // conversion on top would double-transform, exactly like the pin did.
+  const mapAbsInfo: NonNullable<GeometryResult['coordinateInfo']> = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  };
+  const mapAbsGeoreference = (coordinateInfo?: GeometryResult['coordinateInfo']) => ({
+    mapConversion: {
+      id: 1,
+      sourceCRS: 0,
+      targetCRS: 0,
+      eastings: 312000,
+      northings: 5996150,
+      orthogonalHeight: 0,
+      xAxisAbscissa: 0,
+      xAxisOrdinate: 1,
+      scale: 1,
+    },
+    projectedCRS: { id: 2, name: 'EPSG:25833', mapUnitScale: 1 },
+    lengthUnitScale: 1,
+    coordinateInfo,
+  });
+
+  it('exports the absolute world coordinate unchanged instead of double-applying the anchor + rotation', () => {
+    const transform = buildDxfExportTransform({
+      coordinateInfo: mapAbsInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference: mapAbsGeoreference(mapAbsInfo),
+    });
+    // dxfWorldShift = (rtc.x, rtc.y) = (312000, 5996150); drawing (10, 10)
+    // is the absolute world/map point (312010, 5996140).
+    const out = transform({ x: 10, y: 10 });
+    close(out.x, 312010);
+    close(out.y, 5996140);
+  });
+
+  it('imports a georeferenced DXF underlay at the absolute world coordinate (inverse agrees)', () => {
+    const mapToWorld = buildDxfMapToWorldTransform(mapAbsGeoreference(mapAbsInfo));
+    const out = mapToWorld({ x: 312010, y: 5996140 });
+    close(out.x, 312010);
+    close(out.y, 5996140);
+  });
+
+  it('control: a compliant file (no RTC rebase) keeps the authored conversion in both directions', () => {
+    const compliantInfo: GeometryResult['coordinateInfo'] = {
+      ...mapAbsInfo,
+      wasmRtcOffset: undefined,
+    };
+    const georeference = mapAbsGeoreference(compliantInfo);
+    const transform = buildDxfExportTransform({
+      coordinateInfo: compliantInfo,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference,
+    });
+    // world (3, -4) under the authored 90-degree rotation:
+    // x = 312000 + (0*3 - 1*(-4)) = 312004; y = 5996150 + (1*3 + 0) = 5996153.
+    const out = transform({ x: 3, y: 4 });
+    close(out.x, 312004);
+    close(out.y, 5996153);
+    const roundTrip = buildDxfMapToWorldTransform(georeference)(out);
+    close(roundTrip.x, 3);
+    close(roundTrip.y, -4);
+  });
+
+  it('control: a georeference without coordinateInfo keeps the authored conversion', () => {
+    const transform = buildDxfExportTransform({
+      coordinateInfo: undefined,
+      sectionAxis: 'down',
+      isCustomPlane: false,
+      flipped: false,
+      georeference: mapAbsGeoreference(undefined),
+    });
+    const out = transform({ x: 3, y: 4 });
+    close(out.x, 312004);
+    close(out.y, 5996153);
   });
 });

@@ -5,16 +5,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
+  combineRuleResults,
+  isFilterRule,
+  parseFilterRules,
+  Rule,
+  addHierarchyStoreyToRule,
+} from './filter-rules.js';
+import {
   setOpMatches,
   stringOpMatches,
   matchStringAnyNone,
   numericOpMatches,
   valueOpMatches,
-  combineRuleResults,
-  isFilterRule,
-  parseFilterRules,
-  Rule,
-} from './filter-rules.js';
+} from './filter-ops.js';
 
 describe('op helpers tolerate an undefined candidate (#1195)', () => {
   // getTypeName / property accessors are typed `string` but return undefined
@@ -135,6 +138,55 @@ describe('combineRuleResults', () => {
   });
 });
 
+describe('addHierarchyStoreyToRule', () => {
+  it('starts a hierarchy selection in exact-ref mode', () => {
+    const result = addHierarchyStoreyToRule(
+      undefined,
+      'Level 1',
+      [{ modelId: 'model-a', expressId: 100 }],
+    );
+
+    assert.deepStrictEqual(result, Rule.storey(
+      ['Level 1'],
+      'in',
+      [{ modelId: 'model-a', expressId: 100 }],
+    ));
+  });
+
+  it('keeps manual name selections in name mode when Ctrl/Cmd-click adds a storey (#3545)', () => {
+    const manual = Rule.storey(['Level 1']);
+    const result = addHierarchyStoreyToRule(
+      manual,
+      'Level 2',
+      [{ modelId: 'model-a', expressId: 200 }],
+    );
+
+    assert.deepStrictEqual(result, Rule.storey(['Level 1', 'Level 2']));
+  });
+
+  it('merges exact refs for a rule already created by the hierarchy', () => {
+    const hierarchyRule = Rule.storey(
+      ['Level 1'],
+      'in',
+      [{ modelId: 'model-a', expressId: 100 }],
+    );
+    const result = addHierarchyStoreyToRule(
+      hierarchyRule,
+      'Level 2',
+      [{ modelId: 'model-a', expressId: 200 }],
+    );
+
+    assert.deepStrictEqual(result, Rule.storey(
+      ['Level 1', 'Level 2'],
+      'in',
+      [
+        { modelId: 'model-a', expressId: 100 },
+        { modelId: 'model-a', expressId: 200 },
+      ],
+    ));
+  });
+});
+
 describe('isFilterRule / parseFilterRules', () => {
   it('accepts every known kind', () => {
     assert.strictEqual(isFilterRule(Rule.storey(['L1'])), true);
@@ -146,6 +198,8 @@ describe('isFilterRule / parseFilterRules', () => {
     assert.strictEqual(isFilterRule(Rule.material('contains', 'Concrete')), true);
     assert.strictEqual(isFilterRule(Rule.classification('Uniclass', 'contains', 'Pr_')), true);
     assert.strictEqual(isFilterRule(Rule.elevation('gt', 3)), true);
+    assert.strictEqual(isFilterRule(Rule.globalId(['325Q7Fhnf67OZC$$r43uzK'])), true);
+    assert.strictEqual(isFilterRule(Rule.attribute('Description', 'eq', 'Foo')), true);
   });
   it('rejects unknown kinds and non-objects', () => {
     assert.strictEqual(isFilterRule({ kind: 'bogus' }), false);
@@ -160,5 +214,99 @@ describe('isFilterRule / parseFilterRules', () => {
     ]);
     assert.strictEqual(parsed.length, 1);
     assert.strictEqual(parsed[0].kind, 'ifcType');
+  });
+});
+
+/**
+ * `matches` / `notMatches` — the regex ops the selector syntax's `/…/` form
+ * lands on (#4091). Everything else in this file compares case-insensitively;
+ * these two do not, because the grammar's `/…/` is a Python regular
+ * expression and those are case-sensitive by default.
+ */
+describe('stringOpMatches — matches / notMatches', () => {
+  it('matches on the regex source, anchored nowhere', () => {
+    assert.strictEqual(stringOpMatches('matches', 'D01', 'D[0-9]{2}'), true);
+    assert.strictEqual(stringOpMatches('matches', 'Door-D01-A', 'D[0-9]{2}'), true);
+    assert.strictEqual(stringOpMatches('matches', 'DA1', 'D[0-9]{2}'), false);
+  });
+
+  it('notMatches is its complement', () => {
+    assert.strictEqual(stringOpMatches('notMatches', 'D01', 'D[0-9]{2}'), false);
+    assert.strictEqual(stringOpMatches('notMatches', 'DA1', 'D[0-9]{2}'), true);
+  });
+
+  it('a value already written as a /…/ literal is honoured as one, flags included', () => {
+    assert.strictEqual(stringOpMatches('matches', 'D01', '/D[0-9]{2}/'), true);
+    assert.strictEqual(stringOpMatches('matches', 'wand', '/WAND/i'), true);
+  });
+
+  it('a DECLARED regex source is compiled whole, slashes and all', () => {
+    // #4091: the selector `Name=/\/tmp\//` is the source `/tmp/`. Re-read for
+    // delimiters it compiles to `tmp` and matches far too much.
+    assert.strictEqual(stringOpMatches('matches', 'C:/tmp/x', '/tmp/', 'regex'), true);
+    assert.strictEqual(stringOpMatches('matches', 'tmp', '/tmp/', 'regex'), false);
+    // Without a declared kind the same string is free text, where the slashes
+    // are the chip editor's only way to say "pattern".
+    assert.strictEqual(stringOpMatches('matches', 'tmp', '/tmp/'), true);
+  });
+
+  it('is case-sensitive without an explicit flag, unlike every other op here', () => {
+    assert.strictEqual(stringOpMatches('matches', 'wand', 'WAND'), false);
+    assert.strictEqual(stringOpMatches('eq', 'wand', 'WAND'), true);
+  });
+
+  it('an invalid pattern never matches, and never throws', () => {
+    assert.doesNotThrow(() => stringOpMatches('matches', 'D01', 'D[0-9'));
+    assert.strictEqual(stringOpMatches('matches', 'D01', 'D[0-9'), false);
+    // notMatches on a broken pattern rejects nothing rather than everything.
+    assert.strictEqual(stringOpMatches('notMatches', 'D01', 'D[0-9'), true);
+  });
+
+  it('an empty pattern never matches (it would otherwise match everything)', () => {
+    assert.strictEqual(stringOpMatches('matches', 'D01', ''), false);
+  });
+
+  it('a global flag does not alternate between calls', () => {
+    for (let i = 0; i < 4; i++) {
+      assert.strictEqual(stringOpMatches('matches', 'D01', '/D[0-9]{2}/g'), true, `call ${i}`);
+    }
+  });
+
+  it('does not throw on an undefined candidate (#1195)', () => {
+    const undef = undefined as unknown as string;
+    assert.doesNotThrow(() => stringOpMatches('matches', undef, 'D[0-9]{2}'));
+    assert.strictEqual(stringOpMatches('matches', undef, 'D[0-9]{2}'), false);
+  });
+});
+
+describe('valueOpMatches / matchStringAnyNone — matches / notMatches', () => {
+  it('matches a property value by regex', () => {
+    assert.strictEqual(valueOpMatches('matches', 'REI 60', 'REI.*'), true);
+    assert.strictEqual(valueOpMatches('matches', 'EI 60', 'REI.*'), false);
+    assert.strictEqual(valueOpMatches('notMatches', 'EI 60', 'REI.*'), true);
+  });
+
+  it('multi-valued matches when ANY candidate matches', () => {
+    assert.strictEqual(matchStringAnyNone('matches', ['Beton', 'Stahl'], 'Bet.*'), true);
+    assert.strictEqual(matchStringAnyNone('matches', ['Holz', 'Stahl'], 'Bet.*'), false);
+  });
+
+  it('multi-valued notMatches holds only when NO candidate matches', () => {
+    assert.strictEqual(matchStringAnyNone('notMatches', ['Holz', 'Stahl'], 'Bet.*'), true);
+    assert.strictEqual(matchStringAnyNone('notMatches', ['Beton', 'Stahl'], 'Bet.*'), false);
+  });
+
+  it('an empty candidate set never matches, negative ops included', () => {
+    assert.strictEqual(matchStringAnyNone('matches', [], 'Bet.*'), false);
+    assert.strictEqual(matchStringAnyNone('notMatches', [], 'Bet.*'), false);
+  });
+});
+
+describe('a rule carrying a regex op survives the saved-filter JSON guard', () => {
+  it('isFilterRule accepts it and parseFilterRules keeps it', () => {
+    const rule = Rule.name('matches', 'D[0-9]{2}');
+    const roundTripped = JSON.parse(JSON.stringify([rule])) as unknown;
+    assert.strictEqual(isFilterRule(rule), true);
+    assert.deepStrictEqual(parseFilterRules(roundTripped), [rule]);
   });
 });

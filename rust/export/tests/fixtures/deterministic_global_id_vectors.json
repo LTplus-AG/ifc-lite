@@ -1,0 +1,117 @@
+{
+  "_comment": "Shared deterministic-GlobalId minting vectors for #3015. `expected` is produced by RUNNING packages/parser/src/deterministic-global-id.ts's deterministicGlobalId (not hand-derived); rust/export/src/merged.rs::deterministic_global_id is a claimed byte-for-byte Rust port of the same algorithm but nothing previously asserted the two agree. Includes the three pre-existing JS golden anchors (task-0, '', IfcBuildingStorey/Level 3), unicode/surrogate-pair seeds, and seeds shaped like the real mint_unique_guid call site (original-guid#model-index[#n]).",
+  "cases": [
+    {
+      "seed": "task-0",
+      "expected": "2i3WPHzRz3kT_LFizulWG$"
+    },
+    {
+      "seed": "",
+      "expected": "1IjrY9muLCZQE2I7v1L6Fe"
+    },
+    {
+      "seed": "IfcBuildingStorey/Level 3",
+      "expected": "2QDAlbpFkPRGtzHiOREUww"
+    },
+    {
+      "seed": "work-schedule-1",
+      "expected": "2BunG1xIPraJBSBX4_zQD7"
+    },
+    {
+      "seed": "sequence-42",
+      "expected": "3J22nNMl5u2SiCuQqiSi7G"
+    },
+    {
+      "seed": "314.5",
+      "expected": "0hlc2W4SkGXyY7rFA7VCqf"
+    },
+    {
+      "seed": "x",
+      "expected": "2kD__Vnw91a$8UCuhXqi4k"
+    },
+    {
+      "seed": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": "1oC8kVubdnw9bT0Fk6XfKp"
+    },
+    {
+      "seed": "1x2y3z4A5b6C7d8E9f0GhI#0",
+      "expected": "3QKk9j975tGIQSpGe4HPKB"
+    },
+    {
+      "seed": "1x2y3z4A5b6C7d8E9f0GhI#1",
+      "expected": "1NY3YAY94o8TpSdA$nRYxP"
+    },
+    {
+      "seed": "1x2y3z4A5b6C7d8E9f0GhI#1#0",
+      "expected": "2Fet_BSlf_ztzz7md1gPq_"
+    },
+    {
+      "seed": "1x2y3z4A5b6C7d8E9f0GhI#1#1",
+      "expected": "3Hl7m06PGDzQ1wvz0UOGq2"
+    },
+    {
+      "seed": "22222222222222222222R2#0",
+      "expected": "3B9WvUjjKYQg1j23uEvk9G"
+    },
+    {
+      "seed": "W\u00e4nde-\u00d8-caf\u00e9",
+      "expected": "0AwDrFir3vCz6NBJ7CZ1Q4"
+    },
+    {
+      "seed": "\u65e5\u672c\u8a9e\u306e\u30b7\u30fc\u30c9",
+      "expected": "3em_VqoGN175DPSCJMzgzP"
+    },
+    {
+      "seed": "\ud83d\ude42\ud83d\ude43",
+      "expected": "2HrcLVpuqZIioOl2T31QAn"
+    },
+    {
+      "seed": " leading-space",
+      "expected": "1GMwkDAh1_cisSRPG6zcqQ"
+    },
+    {
+      "seed": "trailing-space ",
+      "expected": "18G6rnVnH6i2akIBJoat2y"
+    },
+    {
+      "seed": "quote'and\"stuff",
+      "expected": "3DeVBf3OhiUpJM74EDaZRz"
+    },
+    {
+      "seed": "storey-\u0000",
+      "expected": "1Qhb3phxT8WwrNd_Q0RQ8$"
+    },
+    {
+      "seed": "storey-\u0001",
+      "expected": "0UeJGsecgU373l0hpIalKF"
+    },
+    {
+      "seed": "storey-\t",
+      "expected": "0yiwtZVLt5DWd$eRxVSxV5"
+    },
+    {
+      "seed": "storey- ",
+      "expected": "3SrCH$R5HOgWU9_f9H05$y"
+    },
+    {
+      "seed": "storey-A",
+      "expected": "2U5wmvptyKgRbDX2Q77CKD"
+    },
+    {
+      "seed": "storey-a",
+      "expected": "3EZ0wmBq$HWxiYAeEZ2ddV"
+    },
+    {
+      "seed": "storey-~",
+      "expected": "32BmhLkuJAafkzboN5bMCF"
+    },
+    {
+      "seed": "storey-\u00c8",
+      "expected": "2eDUfKgBJnVwweL_Eut0d9"
+    },
+    {
+      "seed": "storey-\u00ff",
+      "expected": "23s4WLOm_uZVy9Hl6ki8cn"
+    }
+  ]
+}

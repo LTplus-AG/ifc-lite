@@ -79,6 +79,83 @@ describe('IfcQuery', () => {
 
   // ── Hierarchy (no spatial hierarchy set up) ───────────────────
 
+  describe('hierarchy / project / storeys with a real spatial hierarchy', () => {
+    // Storeys inserted out of elevation order (id 1 highest, id 2 lowest,
+    // id 3 middle) so an ascending-elevation sort is actually observable —
+    // a comparator that is a no-op, or reversed, would leave [1, 2, 3].
+    function storeyStore() {
+      return createMockStore({
+        entities: [
+          { expressId: 100, type: 'IFCPROJECT', globalId: 'proj-1', name: 'My Project' },
+          { expressId: 1, type: 'IFCBUILDINGSTOREY', globalId: 's1', name: 'Level 2' },
+          { expressId: 2, type: 'IFCBUILDINGSTOREY', globalId: 's2', name: 'Level 0' },
+          { expressId: 3, type: 'IFCBUILDINGSTOREY', globalId: 's3', name: 'Level 1' },
+        ],
+        spatialHierarchy: {
+          projectId: 100,
+          byStorey: [
+            [1, [201, 202]],
+            [2, [203]],
+            [3, [204, 205, 206]],
+          ],
+          storeyElevations: [
+            [1, 6.0],
+            [2, 0.0],
+            [3, 3.0],
+          ],
+        },
+      });
+    }
+
+    it('hierarchy getter returns the real SpatialHierarchy when available', () => {
+      const store = storeyStore();
+      const query = new IfcQuery(store as any);
+      expect(query.hierarchy).not.toBeNull();
+      expect(query.hierarchy!.project.expressId).toBe(100);
+    });
+
+    it('project getter resolves the project entity from spatialHierarchy', () => {
+      const store = storeyStore();
+      const query = new IfcQuery(store as any);
+      expect(query.project).not.toBeNull();
+      expect(query.project!.expressId).toBe(100);
+    });
+
+    it('storeys getter returns storeys sorted ascending by elevation', () => {
+      const store = storeyStore();
+      const query = new IfcQuery(store as any);
+      const ids = query.storeys.map(s => s.expressId);
+      // Elevation order is 2 (0.0) < 3 (3.0) < 1 (6.0) — distinct from the
+      // [1, 2, 3] insertion order used to build byStorey above.
+      expect(ids).toEqual([2, 3, 1]);
+    });
+
+    it('onStorey() returns exactly that storey\'s element ids, in order', () => {
+      const store = storeyStore();
+      const query = new IfcQuery(store as any);
+      expect(query.onStorey(3).execute().map(r => r.expressId)).toEqual([204, 205, 206]);
+      expect(query.onStorey(1).execute().map(r => r.expressId)).toEqual([201, 202]);
+    });
+
+    it('onStorey() distinguishes a wrong key from the requested one', () => {
+      // byStorey keyed so that storeyId + 999999 collides with a *different*,
+      // non-empty entry — a lookup-key bug produces a different populated
+      // result here, not an empty one, which is stronger evidence than a miss.
+      const store = createMockStore({
+        entities: [{ expressId: 100, type: 'IFCPROJECT', globalId: 'proj-1', name: 'Project' }],
+        spatialHierarchy: {
+          projectId: 100,
+          byStorey: [
+            [5, [301, 302]],
+            [1000004, [401]], // 5 + 999999
+          ],
+          storeyElevations: [],
+        },
+      });
+      const query = new IfcQuery(store as any);
+      expect(query.onStorey(5).execute().map(r => r.expressId)).toEqual([301, 302]);
+    });
+  });
 
   // ── Spatial queries (require spatial index) ───────────────────
 
@@ -103,6 +180,33 @@ describe('IfcQuery', () => {
       const store = makeStore();
       const query = new IfcQuery(store as any);
       expect(() => query.onStorey(4)).toThrow(/Spatial hierarchy not available/);
+    });
+  });
+
+  describe('spatial queries with a real spatial index', () => {
+    it('inBounds() returns exactly the ids the index reports', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCWALL', globalId: 'w1', name: 'Wall 1' },
+          { expressId: 2, type: 'IFCWALL', globalId: 'w2', name: 'Wall 2' },
+        ],
+        spatialIndex: { queryAABBResult: [1, 2] },
+      });
+      const query = new IfcQuery(store as any);
+      const ids = query.inBounds({ min: [0, 0, 0], max: [1, 1, 1] } as any).execute().map(r => r.expressId);
+      expect(ids).toEqual([1, 2]);
+    });
+
+    it('raycast() returns exactly the ids the index reports, in order', () => {
+      const store = createMockStore({
+        entities: [
+          { expressId: 1, type: 'IFCWALL', globalId: 'w1', name: 'Wall 1' },
+          { expressId: 2, type: 'IFCWALL', globalId: 'w2', name: 'Wall 2' },
+        ],
+        spatialIndex: { raycastResult: [2, 1] },
+      });
+      const query = new IfcQuery(store as any);
+      expect(query.raycast([0, 0, 0], [1, 0, 0])).toEqual([2, 1]);
     });
   });
 

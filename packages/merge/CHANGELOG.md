@@ -1,5 +1,127 @@
 # @ifc-lite/merge
 
+## 0.4.5
+
+### Patch Changes
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`b0a6265`](https://github.com/LTplus-AG/ifc-lite/commit/b0a6265a804099b9cea7e55f26fc50825c1df07a), [`eb142e0`](https://github.com/LTplus-AG/ifc-lite/commit/eb142e00bc8ad1d6c699ea42fdbc35a9281d8133), [`cebcb21`](https://github.com/LTplus-AG/ifc-lite/commit/cebcb2133ef672e9199ee2f158578499d449d9e0), [`e986c81`](https://github.com/LTplus-AG/ifc-lite/commit/e986c81bf6d28fec57f1953fa53bf315dbd80a3a), [`8c181c9`](https://github.com/LTplus-AG/ifc-lite/commit/8c181c99f91964402ad352aead36d9619af5b427), [`6e48c4c`](https://github.com/LTplus-AG/ifc-lite/commit/6e48c4c5f441e8a42e4cc55440cf747ad8679f0a), [`8f08715`](https://github.com/LTplus-AG/ifc-lite/commit/8f087158a662a02c01a21dd2546fb863bb24e665), [`9b709c5`](https://github.com/LTplus-AG/ifc-lite/commit/9b709c51480fbabb68167aa4892f7e4c87b0e4e6), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`32b31bc`](https://github.com/LTplus-AG/ifc-lite/commit/32b31bc8501f04e110733289bde0389b9899bc76), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e)]:
+  - @ifc-lite/diff@0.8.0
+  - @ifc-lite/ifcx@4.0.0
+
+## 0.4.4
+
+### Patch Changes
+
+- [#3127](https://github.com/LTplus-AG/ifc-lite/pull/3127) [`b25b2e7`](https://github.com/LTplus-AG/ifc-lite/commit/b25b2e7387bd365fda02d48095266f16b4f05cd7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Close a live divergence between `applyNode` and `applyNodeCow` in component-state extraction: `applyNodeCow` silently omitted the `ifclite::deleted` tombstone branch that `applyNode` has, so a `DELETED` opinion reaching it fell through into an ordinary component write instead of setting the entity's `deleted`/`explicitDeleted` flags.
+  
+  This was safe today only because `projectStackStates` bails to the `extractStackState` fallback (never reaching `applyNodeCow`) whenever any layer in the stack carries a `DELETED` opinion — a behavioural delta held safe by a caller's guard rather than by anything structural, and invisible through the public API.
+  
+  Both functions now delegate to one shared `applyNodeToEntity` core, parameterised only by whether a touched component is copied before mutation (the one real difference: `applyNodeCow`'s clone-on-write entities may still alias untouched ancestor state). No other branch can drift between the two. No public API change.
+- Updated dependencies [[`e6caf11`](https://github.com/LTplus-AG/ifc-lite/commit/e6caf11a8f8d9d8634a6811b6705ab3367cd02e0), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e)]:
+  - @ifc-lite/ifcx@3.0.0
+
+## 0.4.3
+
+### Patch Changes
+
+- [#2911](https://github.com/LTplus-AG/ifc-lite/pull/2911) [`f31822b`](https://github.com/LTplus-AG/ifc-lite/commit/f31822b0833e1bcd76c43736daf1d76cb3e59914) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the three-way merge, layer diff, and revert-op paths trusting a `stableHash` component match with no fallback content check.
+  
+  `snapshotOf` (`component-state.ts`) hashes each component's canonical JSON with `stableHash`, and every consumer — the three-way merge's fold/keep-ours decisions, the layer diff's changed-component detection, and revert-op generation — decided "same content" from hash equality alone. `stableHash` is a 64-bit FNV-1a hash: strong, but not cryptographic, and unlike `packages/diff`'s content-match pass (which requires an independent component sub-hash or geometry-hash agreement before trusting a `dataHash` match) nothing here had a fallback. A collision would have silently folded two genuinely different concurrent edits into one — the losing edit vanishes with no conflict raised — or silently skipped reverting a component that had actually changed.
+  
+  `attributesContentEqual` now verifies with an exact canonical-JSON comparison whenever two hashes already agree, at negligible cost since it only runs on the (common) case of an actual match. No behavior changes for any non-colliding pair.
+
+- [#2783](https://github.com/LTplus-AG/ifc-lite/pull/2783) [`4d1c611`](https://github.com/LTplus-AG/ifc-lite/commit/4d1c611b822e80a6123b040887a31cdb43c460da) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add test coverage pinning the multi-layer suffix fold in the merge fast path.
+  
+  `projectSide` (`packages/merge/src/component-state.ts`) folds a side's
+  suffix layers weakest-first, per attribute — same contract documented on
+  `extractStackState`. That ordering was structurally unpinned: every
+  `ours`/`theirs` fixture in the suite was a suffix of length exactly 1, so
+  "earlier" never existed and the fold could not be observed. Reversing the
+  loop left all 94 existing tests green.
+  
+  Adds:
+  - A hand-written fixture (`component-state.test.ts`) with a two-layer
+    `ours` suffix that writes the same attribute in both layers (different
+    values) plus an attribute written only in the earlier layer, proving
+    shadowing is per-attribute rather than wholesale replacement, and
+    carrying the fold-order-dependent value into an actual
+    `planThreeWayMerge` conflict.
+  - A `layersPerSide` parameter on `fast-path-differential.test.ts`'s
+    `scenario()` builder so the differential fuzz's fast-path-equals-
+    reference proof also covers multi-layer suffixes, not only
+    single-layer ones.
+  
+  No production code changed; `projectSide`'s existing loop order is
+  correct (it already applies weakest-first) — only its test coverage was
+  missing. Confirmed by reversing the loop locally: the new tests fail
+  (RED) and the loop-order mutation at `component-state.ts:179`
+  (`extractStackState`'s equivalent fold) still fails the expected 40
+  tests across 8 files, confirming both mutation sites are exercised.
+  
+  Also recorded, not fixed (out of scope for this patch):
+  - `merge-layer.ts:41-43` — `applyResolutions`'s `byKey` map uses
+    last-insertion-wins with no test submitting two `ResolutionInput`s for
+    the same `(path, componentKey)`; may be an undefined contract rather
+    than a bug.
+  - `ref-flow.ts:109` — `checkRefPolicy`'s `requiredChecks` loop is only
+    ever exercised with a single-entry array; which failing check is
+    reported first with multiple failures is unpinned (message selection
+    only).
+- Updated dependencies [[`a29b040`](https://github.com/LTplus-AG/ifc-lite/commit/a29b04069fec3c6b726f49fc58054e535c255034), [`cc19a8d`](https://github.com/LTplus-AG/ifc-lite/commit/cc19a8d4a79a5e8563a90ab663b28e1b93ef9c18), [`36e4eca`](https://github.com/LTplus-AG/ifc-lite/commit/36e4eca3b19a2fe02f1679acc9a2a43cd90aa163), [`a7b8a20`](https://github.com/LTplus-AG/ifc-lite/commit/a7b8a201eaecd411a4246421893e887bf55aafd3)]:
+  - @ifc-lite/ifcx@2.3.7
+
+## 0.4.2
+
+### Patch Changes
+
+- Updated dependencies [[`5086c57`](https://github.com/LTplus-AG/ifc-lite/commit/5086c5729b6ae8ad967aafa91d96dfdb37327599)]:
+  - @ifc-lite/diff@0.7.0
+  - @ifc-lite/ifcx@2.3.6
+
+## 0.4.1
+
+### Patch Changes
+
+- [#2278](https://github.com/LTplus-AG/ifc-lite/pull/2278) [`6635ddf`](https://github.com/LTplus-AG/ifc-lite/commit/6635ddfa91911b0fbc489452c02cf19e232201c3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `componentKeyForAttribute` silently misclassifying a custom-named (not `Pset_`/`Qto_`-prefixed) property or quantity set, breaking whole-set tombstone lookups for it, and fix a member deletion on such a set being routed to a different component than the value it targets — so the member survived the delete.
+
+  `componentKeyForAttribute` bucketed a `bsi::ifc::v5a::<Set>::<Member>` attribute as `pset:<Set>`/`qset:<Set>` only when `<Set>` matched a literal `Pset_`/`Qto_` prefix, falling back to a one-off-per-attribute `attr:<key>` bucket for any other name. `packages/mutations/src/change-set-to-ops.ts` builds `pset:<name>`/`qset:<name>` component keys unconditionally from the mutation type, for any author-chosen name, and `@ifc-lite/collab`'s structured-attribute inflation already disambiguates a custom set name by value shape (typed record -> pset, plain finite number -> quantity) — its own doc comment describes that as a convention "the merge engine's `pset:`/`qset:` component keys... already share", which this package didn't actually hold up.
+
+  The observable break: `apps/viewer/src/lib/layers/publish.ts`'s `buildDeltaNodes` resolves a whole-component tombstone (`DELETE_PROPERTY_SET`/`DELETE_QUANTITY_SET`) by looking up the base state's members under `pset:<name>`/`qset:<name>`. For a custom-named set, that lookup found nothing (the members lived under `attr:<key>` instead), so zero attributes were nulled — deleting a custom-named property set silently did nothing at all, no error, no diagnostic.
+
+  `componentKeyForAttribute` now takes the attribute's value and disambiguates a custom set name by the same shape rule `@ifc-lite/collab` uses. A `null` value (an in-flight single-member deletion, as opposed to a whole-component tombstone) still carries no shape to go on, so that path is unchanged.
+
+- Updated dependencies [[`a220406`](https://github.com/LTplus-AG/ifc-lite/commit/a2204062ba1fc555e4529896cbc82efccc7a5146), [`c866bee`](https://github.com/LTplus-AG/ifc-lite/commit/c866bee62a7d6e40b15a7de63948354cbbe049a7), [`262b9df`](https://github.com/LTplus-AG/ifc-lite/commit/262b9df485e4bfd3760f73c30d93bb518e599b72)]:
+  - @ifc-lite/ifcx@2.3.4
+
+## 0.4.0
+
+### Minor Changes
+
+- [#1987](https://github.com/LTplus-AG/ifc-lite/pull/1987) [`ed63063`](https://github.com/LTplus-AG/ifc-lite/commit/ed63063c952bd1804ce83922da80635f03c77193) Thanks [@louistrue](https://github.com/louistrue)! - **diff**: widen `stableHash` from 32-bit to 64-bit FNV-1a (offset basis `0xcbf29ce484222325`, prime `0x100000001b3`, the same offset basis and prime as `rust/processing/src/determinism.rs`, though not byte-compatible with it: this walks UTF-16 code units and the Rust side hashes bytes, so only ASCII input agrees). Output is now 16 zero-padded lowercase hex chars instead of up to 8.
+
+  `matchUnpairedByContent` treats `dataHash` equality as identity — its 1:1 branch retires a real `added` and a real `deleted` — and 32 bits was too narrow for that: collisions between plausible IFC content were findable by enumeration, and exposure grows with the square of the number of fingerprints compared.
+
+  **diff**: `buildDataFingerprint` and `buildComponentFingerprints` no longer hash the assigned type's `GlobalId`; an assigned type is now identified by its `name` and its IFC class. `IfcTypeObject` is an `IfcRoot`, so a from-scratch re-export regenerates the _type's_ GlobalId along with every product's — which changed the content hash of every _typed_ element (walls, doors, windows: most of a real model) on exactly the re-export where nothing substantive changed, and made those elements unable to content-match. `TypeAssignmentInput.globalId` is kept as a field and still accepted, it just no longer participates in any hash. The trade is a real loss of discrimination: two _different_ type entities that share a name and an IFC class now look identical, so re-pointing an element between them does not move its `dataHash`. That needs duplicate type names within one class, and only shows on elements otherwise identical in every attribute, property and quantity.
+
+  **Every fingerprint value changes.** `stableHash`, `buildDataFingerprint`, and `buildComponentFingerprints` all return different strings for the same input than they did before. Nothing in this repo persists these values — base and head are always fingerprinted by the same build, so a normal diff or merge is unaffected — but any caller that has stored fingerprints across sessions and compares old values to new ones must recompute them. Comparing a pre-upgrade hash with a post-upgrade one reports everything as changed.
+
+  **merge**: `snapshotOf` is built on `@ifc-lite/diff`'s `stableHash`, so the `hash` on every `ComponentSnapshot` it returns — and on the `ComponentSnapshot`s carried by `MergeConflict` — changes value with this release. Nothing about the API's shape or its equality semantics changes: two snapshots of the same attributes still hash equal, and a merge or conflict detection run entirely on this version behaves exactly as before. **Stored snapshots do not compare equal across the upgrade**: a hash persisted by an older version will not match the one this version computes for the same attributes, and any comparison that spans the two reports a spurious difference. Recompute rather than migrate. This is an explicit `minor` rather than the automatic dependency `patch` changesets would otherwise apply, because the observable output of a public export changed.
+
+  The collision guards in `diffModels` (bucket by `ifcType`, require `components` agreement) are unchanged, as is the documented residual: a collision confined to `attr:core` still cannot be detected, because FNV-1a's per-character update is a bijection on its state at any width. `buildComponentFingerprints` deliberately drops the type's `GlobalId` too, rather than keeping it as extra collision evidence: the guard's soundness rests on components hashing slices of exactly what `dataHash` hashes whole, and a `type-assignment` sub-hash that saw the GlobalId would veto the genuine re-export matches this release enables.
+
+### Patch Changes
+
+- Updated dependencies [[`d42fbf1`](https://github.com/LTplus-AG/ifc-lite/commit/d42fbf1c7a4abed637b7e80e28cbed69088bc943), [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f), [`0adb741`](https://github.com/LTplus-AG/ifc-lite/commit/0adb7413b869c9d50bdcdae5c00a730d17c2823f), [`dc000cf`](https://github.com/LTplus-AG/ifc-lite/commit/dc000cff25a647d2a224f34a063f84b3d2d84ca8), [`2716893`](https://github.com/LTplus-AG/ifc-lite/commit/2716893ac9d825fc529f3fd8164d9a6f766e87f8), [`620f4d2`](https://github.com/LTplus-AG/ifc-lite/commit/620f4d2100b397d33d2e61440950b7a31660dbb8), [`7261f1a`](https://github.com/LTplus-AG/ifc-lite/commit/7261f1a6a8595350d3ec400212e293a8924d57bf), [`ed63063`](https://github.com/LTplus-AG/ifc-lite/commit/ed63063c952bd1804ce83922da80635f03c77193)]:
+  - @ifc-lite/diff@0.6.0
+
+## 0.3.2
+
+### Patch Changes
+
+- Updated dependencies [[`15f5335`](https://github.com/LTplus-AG/ifc-lite/commit/15f53357f30a38d6aef7c9e4394c14400f5222e5)]:
+  - @ifc-lite/diff@0.5.0
+
 ## 0.3.1
 
 ### Patch Changes

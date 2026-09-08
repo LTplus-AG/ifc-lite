@@ -88,7 +88,14 @@ export class SnapshotWorker {
         const ifcx = snapshotToIfcx(room.doc);
         const content = serializeIfcx(ifcx, false);
         const stamp = new Date(this.now()).toISOString().replace(/[:.]/g, '-');
-        const safe = t.roomId.replace(/[^a-zA-Z0-9._-]/g, '_');
+        // Reversible and collision-free, matching `FilePersistence.logPath`
+        // and `S3Persistence.safeRoom`. A lossy `[^a-zA-Z0-9._-] -> _` replace
+        // maps distinct rooms (e.g. `a/b` and `a:b`) onto one snapshot path,
+        // so two rooms snapshotted in the same millisecond silently overwrite
+        // each other while `runOnce` reports both writes as successful. Safe
+        // ids (UUIDs, room codes) are unchanged, so existing files keep their
+        // names.
+        const safe = encodeURIComponent(t.roomId);
         const filePath = path.join(this.options.outputDir, `${safe}.${stamp}.ifcx`);
         await fs.promises.writeFile(filePath, content);
         results.push({

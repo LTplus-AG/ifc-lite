@@ -4,7 +4,7 @@
 
 /**
  * `@ifc-lite/provenance` — prototype certificate library for node-hash-v0
- * (docs/vision/spec/node-hash-v0.md, M1 "Proof-carrying buildings").
+ * (packages/provenance/SPEC.md, M1 "Proof-carrying buildings").
  *
  * Pure and store-agnostic, like `@ifc-lite/diff`: this package never touches
  * a parser, WASM, or a renderer. Callers supply node payloads (extracted
@@ -13,6 +13,7 @@
  */
 
 export {
+  AmbiguousSetKeyError,
   computeNodeHash,
   hashResolvedNode,
   type NodeKind,
@@ -68,6 +69,7 @@ export {
   type Footprint,
   type ConflictResult,
   type ConflictOptions,
+  type SpatialRuleMode,
 } from './footprint.js';
 
 export {
@@ -77,12 +79,19 @@ export {
   canonicalStateBytes,
   cloneState,
   computeMergeOpFootprint,
+  DEFAULT_MERGE_SEMANTICS,
   hashModelState,
+  HOST_CONTAINMENT_TOLERANCE_M,
   MERGE_MODEL_ROOT_NODE_ID,
   OpApplicationError,
+  SpatialRejectionError,
+  stripVoidMarkers,
+  type ContainmentSemantics,
+  type CutSemantics,
   type EntityInit,
   type EntityState,
   type MergeOp,
+  type MergeSemantics,
   type ModelState,
 } from './merge-model.js';
 
@@ -106,8 +115,16 @@ export {
   buildBaseModel,
   generateClientOps,
   mulberry32,
+  runDerivedCutSensitivity,
   runMergeBattery,
+  runSpatialAblation,
+  wilsonInterval,
+  Z_95,
+  type DerivedCutSensitivityReport,
   type MergeBatteryOptions,
   type MergeBatteryReport,
   type Rng,
+  type SensitivityVariant,
+  type SpatialAblationReport,
+  type WilsonInterval,
 } from './merge-battery.js';

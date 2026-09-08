@@ -146,9 +146,10 @@ fn plane_interval(tri: &[[f64; 3]; 3], plane: &[[f64; 3]; 3]) -> PlaneInterval {
     }
 }
 
-/// Near-coplanar band formula, canonical in `mesh_bridge` (sized to the
-/// snap-scatter envelope `mesh_bridge::mesh_to_tris` produces).
-use super::mesh_bridge::near_band_from_extent;
+/// Near-coplanar band, canonical in `near_band` (sized to the snap-scatter
+/// envelope `mesh_bridge::mesh_to_tris` produces, then projected onto the
+/// plane being tested).
+use super::near_band::NearBand;
 
 #[inline]
 fn ti_sub(a: [f64; 3], b: [f64; 3]) -> [f64; 3] {
@@ -203,7 +204,11 @@ fn ti_normal(t: &[[f64; 3]; 3]) -> [f64; 3] {
 ///
 /// `band` is an absolute power-of-two multiple of `SNAP_GRID` (≈ the 2-operand
 /// scatter envelope, ~0.12 mm) widened only for far-from-origin operands where
-/// f32 import is coarser — always THREE orders below the smallest real feature
+/// f32 import is coarser — and only by the part of that offset the tested
+/// plane can actually see, since [`NearBand`] projects the per-axis extents
+/// onto that plane's normal. A model 10 km out in X therefore leaves a
+/// Z-normal slab at the floor rather than opening it to ~2.4 mm and welding
+/// genuinely separate faces. The band stays THREE orders below the smallest real feature
 /// edge (~0.2 m). A poke-through cap fails the slab test (its far vertices sit
 /// midway through the host, far from the surface) so it can never qualify; a
 /// sub-band-sized transversal micro-sliver CAN now qualify, but its entire
@@ -215,19 +220,18 @@ fn near_coplanar(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> bool {
     if nn1 <= 0.0 || nn2 <= 0.0 || !nn1.is_finite() || !nn2.is_finite() {
         return false; // a degenerate triangle is never a flush coplanar partner
     }
-    let mut extent = 1.0f64;
+    let mut band = NearBand::default();
     for p in t1.iter().chain(t2.iter()) {
-        for &c in p {
-            extent = extent.max(c.abs());
-        }
+        band.observe_point(p);
     }
-    let band = near_band_from_extent(extent); // 2^-22
-    let band2 = band * band;
-    // All three vertices of `t` within `band` of `plane`'s supporting plane?
+    // All three vertices of `t` within the band of `plane`'s supporting plane?
+    // The band is resolved against THAT plane's own normal, so an operand far
+    // from the origin along an axis the plane does not face does not widen it.
     let in_slab = |t: &[[f64; 3]; 3], plane: &[[f64; 3]; 3], n: [f64; 3], nn: f64| {
+        let band2 = band.scaled_band2(n, nn); // scaled by |n|², like `d` below
         t.iter().all(|&v| {
             let d = ti_dot(ti_sub(v, plane[0]), n); // perp_dist · |n|
-            (d * d) / nn <= band2
+            d * d <= band2
         })
     };
     in_slab(t2, t1, n1, nn1) || in_slab(t1, t2, n2, nn2)
@@ -281,94 +285,5 @@ pub fn tri_tri_intersection(t1: &[[f64; 3]; 3], t2: &[[f64; 3]; 3]) -> TriTri {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const ZPLANE: [[f64; 3]; 3] = [[0., 0., 0.], [2., 0., 0.], [0., 2., 0.]]; // z = 0
-
-    #[test]
-    fn edge_crossing_lpi_lies_exactly_on_the_plane() {
-        // The defining property: orient3d(LPI, plane[0], plane[1], plane[2]) == 0
-        // (the edge∩plane point is coplanar with the plane). This ties the LPI
-        // construction to the exact LPI-orient3d predicate.
-        let lpi = edge_plane_lpi([0.5, 0.5, -1.], [0.5, 0.5, 3.], &ZPLANE);
-        assert_eq!(
-            orient3d(&ImplicitPoint::Lpi(lpi), &e(ZPLANE[0]), &e(ZPLANE[1]), &e(ZPLANE[2])),
-            Sign::Zero,
-            "edge∩plane LPI is not exactly on the plane"
-        );
-        // tilted plane + tilted edge
-        let tilted = [[0., 0., 1.], [3., 0., 2.], [0., 3., 2.]];
-        let lpi2 = edge_plane_lpi([1., 1., 0.], [1.5, 0.5, 5.], &tilted);
-        assert_eq!(
-            orient3d(&ImplicitPoint::Lpi(lpi2), &e(tilted[0]), &e(tilted[1]), &e(tilted[2])),
-            Sign::Zero,
-            "tilted edge∩plane LPI is not exactly on the plane"
-        );
-    }
-
-    #[test]
-    fn proper_crossing_yields_segment_on_both_planes() {
-        let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // plane y=0
-        let t2 = [[1., -2., 1.], [1., 2., 1.], [1., 0.5, -3.]]; // plane x=1
-        match tri_tri_intersection(&t1, &t2) {
-            TriTri::Segment([a, b]) => {
-                // The two endpoints are distinct (a non-degenerate segment).
-                assert_ne!(
-                    super::cmp_along(&a, &b, super::line_direction(&t1, &t2)),
-                    Sign::Zero,
-                    "segment collapsed to a point"
-                );
-                // Every segment endpoint lies on BOTH triangles' planes (on L).
-                for ep in [&a, &b] {
-                    assert_eq!(
-                        orient3d(ep, &e(t1[0]), &e(t1[1]), &e(t1[2])),
-                        Sign::Zero,
-                        "segment endpoint off t1's plane"
-                    );
-                    assert_eq!(
-                        orient3d(ep, &e(t2[0]), &e(t2[1]), &e(t2[2])),
-                        Sign::Zero,
-                        "segment endpoint off t2's plane"
-                    );
-                }
-            }
-            other => panic!("expected a segment, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn touches_vertex_on_plane_yields_segment_with_explicit_endpoint() {
-        // t2 crosses t1's plane (y=0) but with ONE vertex EXACTLY on it.
-        let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // plane y=0
-        let t2 = [[0., 0., 0.5], [0.5, -1., 0.5], [0.5, 1., 0.5]]; // v0 at y=0, in plane z=0.5
-        match tri_tri_intersection(&t1, &t2) {
-            TriTri::Segment([a, b]) => {
-                // exactly one endpoint is the Explicit on-plane vertex (0,0,0.5)
-                let explicits = [&a, &b]
-                    .iter()
-                    .filter(|p| matches!(p, ImplicitPoint::Explicit(_)))
-                    .count();
-                assert_eq!(explicits, 1, "expected one Explicit (on-plane vertex) endpoint");
-                // both endpoints lie on BOTH planes (on L)
-                for ep in [&a, &b] {
-                    assert_eq!(orient3d(ep, &e(t1[0]), &e(t1[1]), &e(t1[2])), Sign::Zero);
-                    assert_eq!(orient3d(ep, &e(t2[0]), &e(t2[1]), &e(t2[2])), Sign::Zero);
-                }
-            }
-            other => panic!("Touches case should yield a Segment, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn planes_cross_but_intervals_disjoint_is_none() {
-        let t1 = [[-2., 0., -1.], [2., 0., -1.], [0., 0., 2.]]; // y=0, crosses x=1 at z∈[-1,0.5]
-        let t2 = [[1., -2., 5.], [1., 2., 5.], [1., 0.5, 9.]]; // x=1, crosses y=0 at z∈[5,8.2]
-        // both planes DO cross (checked via tri_tri_intersection's own plane_interval
-        // path below); the disjoint-intervals-along-L outcome is the real assertion.
-        assert!(
-            matches!(tri_tri_intersection(&t1, &t2), TriTri::None),
-            "disjoint intervals along L should give no intersection"
-        );
-    }
-}
+#[path = "tritri_tests.rs"]
+mod tests;

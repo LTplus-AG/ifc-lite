@@ -8,7 +8,7 @@
  */
 
 import type { ComposedNode } from './types.js';
-import { ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
+import { ATTR, IFCLITE_ATTR, isTypedPropertyValue, parseV5aKey } from './types.js';
 import {
   StringTable,
   PropertyTableBuilder,
@@ -16,7 +16,11 @@ import {
 } from '@ifc-lite/data';
 import type { PropertyTable } from '@ifc-lite/data';
 
-// Attributes to skip (not properties)
+// Attributes to skip (not properties). `ATTR.MATERIAL` is deliberately NOT
+// here: `bsi::ifc::material` ({code, uri}) is the only channel IFCX carries
+// an element's material on (buildingSMART's PCERT sample scenes author it on
+// most physical elements), and it gets unpacked into its own "Material" pset
+// below rather than treated as graph structure like CLASS/MESH/TRANSFORM.
 const SKIP_ATTRIBUTES: Set<string> = new Set([
   ATTR.CLASS,
   ATTR.MESH,
@@ -24,7 +28,6 @@ const SKIP_ATTRIBUTES: Set<string> = new Set([
   ATTR.VISIBILITY,
   ATTR.DIFFUSE_COLOR,
   ATTR.OPACITY,
-  ATTR.MATERIAL,
 ]);
 
 /**
@@ -84,10 +87,99 @@ function groupAttributesByNamespace(
       continue;
     }
 
-    // `ifclite::*` keys are internal carriers (deletion/derived markers,
-    // collab classifications/materials/geometryRef) — never user
+    // `ifclite::classifications` is the one `ifclite::*` carrier with no
+    // spec-defined IFCX home to unpack from instead — unlike material,
+    // there is no `bsi::ifc::classification` in the v5a schema (#3608).
+    // Reading it back as real, queryable properties (instead of silently
+    // dropping it the way the blanket `ifclite::` skip below would) is
+    // what makes STEP -> IFCX -> re-import actually round-trip a
+    // classification, not just STEP -> IFCX -> the collab snapshot layer.
+    // One "Classification" pset per system, mirroring the Material unpack
+    // below; a ref with no `code` carries nothing to show and is skipped.
+    //
+    // Ordinary Uniclass practice puts two refs under one system on the
+    // same element (a Systems code and a Products code) — `set()`-ing a
+    // single 'Code'/'Uri' pair per system would collapse them, dropping
+    // one code and pairing the survivor with the wrong URI. So refs are
+    // grouped by system first; a system with exactly one ref keeps the
+    // plain `Classification - <system>` name (the common case looks
+    // unchanged), while a system with more than one ref disambiguates
+    // each into its own `Classification - <system> - <code>` pset so
+    // every ref keeps its own Code/Uri pairing.
+    if (key === IFCLITE_ATTR.CLASSIFICATIONS && Array.isArray(value)) {
+      const bySystem = new Map<
+        string,
+        Array<{ code: string; uri?: string; description?: string }>
+      >();
+      for (const item of value) {
+        if (!item || typeof item !== 'object') continue;
+        const ref = item as { system?: unknown; code?: unknown; uri?: unknown; description?: unknown };
+        if (typeof ref.code !== 'string' || !ref.code) continue;
+        const system = typeof ref.system === 'string' && ref.system ? ref.system : '';
+        if (!bySystem.has(system)) bySystem.set(system, []);
+        bySystem.get(system)!.push({
+          code: ref.code,
+          uri: typeof ref.uri === 'string' ? ref.uri : undefined,
+          description: typeof ref.description === 'string' ? ref.description : undefined,
+        });
+      }
+
+      for (const [system, refs] of bySystem) {
+        const multiple = refs.length > 1;
+        for (const ref of refs) {
+          const baseName = system
+            ? multiple
+              ? `Classification - ${system} - ${ref.code}`
+              : `Classification - ${system}`
+            : multiple
+              ? `Classification - ${ref.code}`
+              : 'Classification';
+          // The constructed name space can collide: a system literally named
+          // "Acme - A" clashes with system "Acme" + code "A", and two refs
+          // sharing both system and code map to the same name. Reusing the
+          // existing map would overwrite its Code and pair it with the other
+          // ref's Uri, so a colliding name takes a deterministic " (n)"
+          // discriminator (insertion order fixes n) and keeps its own pairing.
+          let psetName = baseName;
+          for (let n = 2; grouped.has(psetName); n++) {
+            psetName = `${baseName} (${n})`;
+          }
+          grouped.set(psetName, new Map());
+          const classificationProps = grouped.get(psetName)!;
+          classificationProps.set('Code', ref.code);
+          if (ref.uri !== undefined) classificationProps.set('Uri', ref.uri);
+          if (ref.description !== undefined) classificationProps.set('Description', ref.description);
+        }
+      }
+      continue;
+    }
+
+    // Remaining `ifclite::*` keys are internal carriers (deletion/derived
+    // markers, collab materials/geometryRef/provenance) — never user
     // properties (#1031).
     if (key.startsWith('ifclite::')) {
+      continue;
+    }
+
+    // `bsi::ifc::material` is a leaf attribute in its own right (an
+    // {code, uri} reference), not a `namespace::name` pair — the generic
+    // split below would slice it into namespace `bsi::ifc` / name
+    // `material` and bury it in the catch-all "IFC" pset as a JSON blob.
+    // Unpack it into its own "Material" pset instead, mirroring how a
+    // STEP-sourced model surfaces IfcMaterial.Name via IfcRelAssociatesMaterial.
+    if (key === ATTR.MATERIAL && value && typeof value === 'object' && !Array.isArray(value)) {
+      const material = value as { code?: unknown; uri?: unknown };
+      const psetName = formatNamespace(key);
+      if (!grouped.has(psetName)) {
+        grouped.set(psetName, new Map());
+      }
+      const materialProps = grouped.get(psetName)!;
+      if (typeof material.code === 'string') {
+        materialProps.set('Material', material.code);
+      }
+      if (typeof material.uri === 'string') {
+        materialProps.set('Uri', material.uri);
+      }
       continue;
     }
 

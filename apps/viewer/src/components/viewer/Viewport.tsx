@@ -13,7 +13,9 @@ import { useViewerStore, resolveEntityRef, type CameraViewpoint, type MeasurePoi
 import { LIGHTING_PRESETS } from '@/lib/lighting-presets';
 import { presetViewRotation } from '@/lib/preset-view-orientation';
 import { isGeometryLoadStreaming } from '@/lib/pick-gating';
-import { sunLightingForAltitude } from '@/lib/geo/solar-direction';
+import { effectiveIsolatedIds } from '@/lib/effective-isolation';
+import { composeLightingEnvironment } from '@/lib/compose-environment';
+import { sunDirectionForTimeOfDay } from '@/lib/sun-time-of-day';
 import {
   useSelectionState,
   useVisibilityState,
@@ -35,18 +37,25 @@ import { getGpuResidencyBudgetBytes, getHostResidencyBudgetBytes } from '../../u
 import { getLodScreenPx } from '../../utils/lodConfig.js';
 import { isQuantizedEnabled } from '../../utils/quantizedConfig.js';
 import {
-  getEntityBounds,
+  createEntityBoundsLookup,
+  unionEntityBounds,
   getThemeClearColor,
+  accumulateBoundsExcludingTypes,
+  hasPendingMeasurementState,
+  type BoundingBox3D,
   type ViewportStateRefs,
 } from '../../utils/viewportUtils.js';
 import { setGlobalCanvasRef, setGlobalRendererRef, clearGlobalRefs } from '../../hooks/useBCF.js';
+import { expandToGeometryBearingIds } from '../../utils/aggregation.js';
+import { hasNoRenderableTarget } from '@/lib/presentation/resolvePresentationIds';
+import { toGlobalIdFromModels } from '@/store/globalId';
 
 import { useMouseControls, type MouseState } from './useMouseControls.js';
 import { RectSelectionOverlay, type RectSelectionRect } from './RectSelectionOverlay.js';
 import { useTouchControls, type TouchState } from './useTouchControls.js';
 import { useKeyboardControls } from './useKeyboardControls.js';
 import { useSpaceMouseControls } from './useSpaceMouseControls.js';
-import { useAnimationLoop } from './useAnimationLoop.js';
+import { useAnimationLoop, type SunShadowSettings } from './useAnimationLoop.js';
 import { useGeometryStreaming } from './useGeometryStreaming.js';
 import { usePointCloudSync } from './usePointCloudSync.js';
 import { usePointCloudLifecycle } from './usePointCloudLifecycle.js';
@@ -57,7 +66,9 @@ import {
   type SectionClipForGrid,
 } from '../../hooks/useSymbolicAnnotations.js';
 import { useAlignmentLines3D } from '../../hooks/useAlignmentLines3D.js';
-import { useGridLines3D } from '../../hooks/useGridLines3D.js';
+import { useDxfUnderlays3DLines } from '../../hooks/useDxfUnderlay.js';
+import { uploadDxfLines3DGuarded } from './dxf-lines-3d-upload.js';
+import { subscribeViewportHealth } from './device-loss-report.js';
 
 interface ViewportProps {
   geometry: MeshData[] | null;
@@ -140,6 +151,39 @@ export function Viewport({
   const selectedModelIndex = models.size > 1 && selectedEntity && modelIdToIndex
     ? modelIdToIndex.get(selectedEntity.modelId) ?? undefined
     : undefined;
+
+  // modelId → express-id offset, for re-homing a federated model's instanced
+  // shard occurrences onto the ids `finalizeModel` assigned its flat meshes
+  // (#1912). Derived from the same `models` map ViewportContainer's
+  // `modelIdToIndex` comes from, so the two agree on every model in scope.
+  const modelIdToOffset = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [modelId, model] of models) {
+      map.set(modelId, model.idOffset ?? 0);
+    }
+    return map;
+  }, [models]);
+
+  // Model indices whose GPU-instanced templates should survive a reshape
+  // (#2073) — every federated model that is still loaded AND visible.
+  // `undefined` (no federation info yet) falls back to useGeometryStreaming's
+  // own "modelIndex 0 only" default, the non-federated case.
+  const presentInstancedModelIndices = useMemo(() => {
+    if (!modelIdToIndex || modelIdToIndex.size === 0) return undefined;
+    // Index 0 is unconditionally present: the shard drain resolves ownership
+    // as `modelIdToIndex.get(modelId) ?? 0`, so a shard whose modelId is not
+    // in the map lands on 0. Deriving this set from the map alone would then
+    // tear down templates the drain had just uploaded there — the two must
+    // agree on the FALLBACK, not only on the mapped entries. That mismatch
+    // between a producer and a consumer of the same key is exactly the shape
+    // behind #2272 and #2278.
+    const present = new Set<number>([0]);
+    for (const [modelId, index] of modelIdToIndex) {
+      const model = models.get(modelId);
+      if (!model || model.visible) present.add(index);
+    }
+    return present;
+  }, [modelIdToIndex, models]);
 
   // Helper to handle pick result and set selection properly
   // IMPORTANT: pickResult.expressId is now a globalId (transformed at load time)
@@ -226,7 +270,7 @@ export function Viewport({
   // Visibility state - use computedIsolatedIds from parent (includes storey selection)
   // Fall back to store isolation if computedIsolatedIds is not provided
   const { hiddenEntities, isolatedEntities: storeIsolatedEntities, ghostExceptEntities } = useVisibilityState();
-  const isolatedEntities = computedIsolatedIds ?? storeIsolatedEntities ?? null;
+  const isolatedEntities = effectiveIsolatedIds(computedIsolatedIds, storeIsolatedEntities);
 
   // Tool state — `sectionPickMode` arms a face-pick on the next click for
   // the section tool (issue #243); the action setters are forwarded into
@@ -377,41 +421,65 @@ export function Viewport({
   // clear, and Cesium draws its own atmosphere.
   const envPreset = useViewerStore((s) => s.envPreset);
   const envExposure = useViewerStore((s) => s.envExposure);
+  const envHardness = useViewerStore((s) => s.envHardness);
+  const envSoftness = useViewerStore((s) => s.envSoftness);
   const solarEnabledForEnv = useViewerStore((s) => s.solarEnabled);
   const solarSunDirection = useViewerStore((s) => s.solarSunDirection);
   const solarSunAltitude = useViewerStore((s) => s.solarSunInfo?.altitude);
+  const sunTimeEnabled = useViewerStore((s) => s.envSunTimeEnabled);
+  const sunTime = useViewerStore((s) => s.envSunTime);
 
   const environment = useMemo<LightingEnvironment>(() => {
     const preset = LIGHTING_PRESETS[envPreset].environment;
-    const env: LightingEnvironment = {
-      ...preset,
-      skyEnabled: (preset.skyEnabled ?? false) && !cesiumActive,
-      exposure: (preset.exposure ?? 0.85) * envExposure,
-    };
+    // Sun override precedence: a real georeferenced solar study wins; else the
+    // manual "time of day" arc (#2670) for models without a site; else the
+    // preset's own fixed sun.
+    let solar: { sunDirection: [number, number, number]; altitudeDeg: number } | null = null;
     if (solarEnabledForEnv && solarSunDirection) {
-      const altitude = solarSunAltitude
-        ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI);
-      const sun = sunLightingForAltitude(altitude);
-      env.sunDirection = solarSunDirection;
-      env.sunColor = sun.color;
-      env.sunIntensity = (preset.sunIntensity ?? 0.55) * sun.intensityFactor;
-      env.ambientIntensity = (preset.ambientIntensity ?? 0.25) * sun.ambientFactor;
-      // Let the sky derive its palette from the real sun altitude.
-      delete env.sky;
+      solar = {
+        sunDirection: solarSunDirection,
+        altitudeDeg: solarSunAltitude
+          ?? Math.asin(Math.max(-1, Math.min(1, solarSunDirection[1]))) * (180 / Math.PI),
+      };
+    } else if (sunTimeEnabled) {
+      solar = sunDirectionForTimeOfDay(sunTime);
     }
-    return env;
+    return composeLightingEnvironment(
+      preset,
+      { exposure: envExposure, hardness: envHardness, softness: envSoftness },
+      { cesiumActive: !!cesiumActive, solar },
+    );
   }, [
     envPreset,
     envExposure,
+    envHardness,
+    envSoftness,
     cesiumActive,
     solarEnabledForEnv,
     solarSunDirection,
     solarSunAltitude,
+    sunTimeEnabled,
+    sunTime,
   ]);
   const environmentRef = useLatestRef(environment);
   useEffect(() => {
     rendererRef.current?.requestRender();
   }, [environment]);
+
+  // Sun cast shadows (#2670) — driven by the Sun & Sky panel. Standalone
+  // WebGPU only: in world-context Cesium casts its own shadows, so pass null
+  // (the renderer then skips the depth pre-pass entirely).
+  const shadowsEnabled = useViewerStore((s) => s.envShadowsEnabled);
+  const shadowSunAngle = useViewerStore((s) => s.envSunAngle);
+  const shadowResolution = useViewerStore((s) => s.envShadowResolution);
+  const sunShadows = useMemo<SunShadowSettings | null>(() => {
+    if (cesiumActive || !shadowsEnabled) return null;
+    return { enabled: true, resolution: shadowResolution, sunAngleDeg: shadowSunAngle };
+  }, [cesiumActive, shadowsEnabled, shadowResolution, shadowSunAngle]);
+  const sunShadowsRef = useLatestRef(sunShadows);
+  useEffect(() => {
+    rendererRef.current?.requestRender();
+  }, [sunShadows]);
 
   // GPU-instancing is class-0 occurrence geometry (the Model view). Hide the
   // instanced pass in the Types view mode, where the flat path renders the
@@ -492,6 +560,36 @@ export function Viewport({
   const ghostExceptEntitiesRef = useLatestRef(ghostExceptEntities);
   const selectedEntityIdRef = useLatestRef(selectedEntityId);
   const selectedEntityIdsRef = useLatestRef(selectedEntityIds);
+  const ifcDataStoreRef = useLatestRef(ifcDataStore);
+  // Express-ids of the Space Sketch draft ghost meshes currently in the scene
+  // (added directly via appendToBatches, outside geometryResult) so they can be
+  // swapped/cleared without touching the streaming geometry pipeline.
+  const spaceOverlayIdsRef = useRef<Set<number>>(new Set());
+
+  /**
+   * Overlay ids that are still safe to remove from the scene.
+   *
+   * `removeMeshesForEntities` deletes EVERY mesh registered under an id, and the
+   * Space Sketch ghost band is not reserved: `GHOST_ID_BASE` is 0x70000000
+   * (~1.879e9) while `FederationRegistry.MAX_SAFE_OFFSET` is 2e9, and unloading a
+   * model burns its offset space permanently. A long federated session can
+   * therefore hand a real model a global id inside the band that a live ghost
+   * already occupies, and clearing the overlay would delete that model's geometry.
+   *
+   * `fromGlobalId` returns null for anything outside every registered range (it
+   * bounds-checks against `maxExpressId`, not just the offset), so an id that now
+   * resolves to a real model is dropped from the removal set. The residual failure
+   * is a leaked ghost mesh, not deleted building geometry.
+   */
+  const removableOverlayIds = useCallback((ids: Set<number>): Set<number> => {
+    const resolve = useViewerStore.getState().fromGlobalId;
+    const safe = new Set<number>();
+    for (const id of ids) {
+      if (!resolve(id)) safe.add(id);
+    }
+    return safe;
+  }, []);
+
   const selectedModelIndexRef = useLatestRef(selectedModelIndex);
   // Per-element clash A/B highlight tints (#1277/#1339) — kept in a ref so the
   // animation loop reads the latest without re-subscribing.
@@ -521,6 +619,39 @@ export function Viewport({
     // isInitialized: if a clash is focused before the renderer mounts, this effect
     // bails early; depend on it so the indicator is (re)sent once it is ready.
   }, [clashOverlapBox, clashContactLines, showClashRegionBox, isInitialized]);
+  // The focused clash's TRUE intersection volume (BIMcollab Zoom / Solibri
+  // style opaque solid), when the kernel resolved one. Independent of the
+  // box/lines buffer above — the solid draws through its own pipeline so it
+  // can be a real depth-tested 3D volume rather than a line list.
+  const clashSolidMesh = useViewerStore((s) => s.clashSolidMesh);
+  const clashSolidStatus = useViewerStore((s) => s.clashSolidStatus);
+  const clashSelectedId = useViewerStore((s) => s.clashSelectedId);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer) return;
+    // Defence in depth, not the primary fix (#2574 review): `clashSelectedId`
+    // and `clashSolidStatus`/`clashSolidMesh` are reset together by every
+    // current teardown path via `setClashSelectedId` / `clearClashSolid` /
+    // `clearClash` (clashSlice.ts, all three bump `clashSolidRequestSeq`), so
+    // `clashSolidStatus` should never read `'solid'` while nothing is
+    // selected. The `!== null` is the real predicate, not truthiness: a clash
+    // id is `${ruleId} ${lo} ${hi}` and is never `''`, so the two agree today,
+    // but `null` is the value teardown writes and the one worth naming.
+    // Gating the actual
+    // draw on `clashSelectedId` too means that even a future path that resets
+    // one without the other — or a resolved compute that lands after some
+    // teardown nobody's added the invalidation to yet — still can't leave an
+    // orphaned opaque solid on screen with no clash focused.
+    if (clashSelectedId !== null && clashSolidStatus === 'solid' && clashSolidMesh) {
+      renderer.setClashIntersectionSolid({
+        positions: clashSolidMesh.positions,
+        indices: clashSolidMesh.indices,
+        color: CLASH_COLOR_OVERLAP,
+      });
+    } else {
+      renderer.setClashIntersectionSolid(null);
+    }
+  }, [clashSelectedId, clashSolidMesh, clashSolidStatus, isInitialized]);
   const activeToolRef = useRef<string>(activeTool);
   const pendingMeasurePointRef = useLatestRef(pendingMeasurePoint);
   const activeMeasurementRef = useLatestRef(activeMeasurement);
@@ -574,7 +705,14 @@ export function Viewport({
     canvasHeight: number;
   } | null>(null);
 
-  // activeTool has a side effect (first-person mode), so keep as useEffect
+  // activeTool has a side effect (first-person mode), so keep as useEffect.
+  //
+  // isInitialized is a dependency, not decoration: the camera now *refuses* to
+  // walk while first-person mode is off, so this is the only thing that turns
+  // walking on. Without the dep, selecting the walk tool before the renderer
+  // mounts would leave the flag unset with no later effect run to correct it,
+  // and walk mode would be silently dead for the session. Same reasoning as
+  // the clash-focus effect above.
   useEffect(() => {
     activeToolRef.current = activeTool;
     const renderer = rendererRef.current;
@@ -583,7 +721,7 @@ export function Viewport({
       firstPersonModeRef.current = isWalk;
       renderer.getCamera().enableFirstPersonMode(isWalk);
     }
-  }, [activeTool]);
+  }, [activeTool, isInitialized]);
   useEffect(() => {
     if (!hoverTooltipsEnabled) {
       clearHover();
@@ -673,10 +811,7 @@ export function Viewport({
   };
 
   // Helper: check if there are pending measurements
-  const hasPendingMeasurements = () => {
-    const state = useViewerStore.getState();
-    return state.measurements.length > 0 || state.activeMeasurement !== null;
-  };
+  const hasPendingMeasurements = () => hasPendingMeasurementState(useViewerStore.getState());
 
   // ===== Renderer initialization =====
   useEffect(() => {
@@ -688,6 +823,7 @@ export function Viewport({
 
     let aborted = false;
     let resizeObserver: ResizeObserver | null = null;
+    let unsubscribeViewportHealth: (() => void) | null = null;
 
     // Helper to align canvas dimensions to WebGPU requirements
     // WebGPU texture row pitch must be aligned to 256 bytes
@@ -829,6 +965,78 @@ export function Viewport({
         );
       };
 
+      // Federation-safe relationship-graph lookup for aggregation resolution
+      // (frameSelection, resolveHighlightIds): a federated model's
+      // `ifcDataStore` is `IfcDataStore | null` (server-backed, mid-load), and
+      // silently falling back to `state.ifcDataStore` in that case walks a
+      // DIFFERENT model's aggregation graph and maps the result back through
+      // the requested model's id offset — cross-wiring the two. The fallback
+      // is only correct in true legacy single-model mode, where there is no
+      // federation map to be wrong about.
+      const relationshipsForModel = (modelId: string) => {
+        const state = useViewerStore.getState();
+        if (state.models.size === 0) return state.ifcDataStore?.relationships;
+        return state.models.get(modelId)?.ifcDataStore?.relationships;
+      };
+
+      // World AABB of an id, from the flat mesh list first and the renderer's
+      // per-occurrence AABB second — GPU-instanced occurrences are not in
+      // `geometryResult.meshes` at all, so dropping that fallback would make
+      // every instanced entity read as geometry-less.
+      //
+      // The mesh reader indexes itself by expressId once it is asked about
+      // more than a handful of ids (`createEntityBoundsLookup`), so resolving
+      // a large id set — or one assembly with hundreds of aggregated parts —
+      // is O(meshes + N) rather than one full mesh-array scan per id. The Map
+      // on top memoises the COMBINED answer, so a repeated id costs nothing
+      // and the instanced fallback is queried at most once per id.
+      const createRenderableBoundsLookup = () => {
+        const meshBounds = createEntityBoundsLookup(geometryRef.current ?? null);
+        const scene = rendererRef.current?.getScene();
+        const cache = new Map<number, BoundingBox3D | null>();
+        return (id: number): BoundingBox3D | null => {
+          const hit = cache.get(id);
+          if (hit !== undefined) return hit;
+          const b = meshBounds(id) ?? scene?.getInstancedEntityBounds(id) ?? null;
+          cache.set(id, b);
+          return b;
+        };
+      };
+
+      // Shared by frameSelection and resolveHighlightIds: replace ids with no
+      // renderable geometry by their nearest aggregated parts that DO render,
+      // so a geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+      // container, …) can still be framed and highlighted. One bounds lookup
+      // per call unless the caller passes its own — callers don't share
+      // cadence with each other, and the common case (ids that already render)
+      // never touches aggregation.
+      const resolveRenderableIds = (
+        ids: readonly number[],
+        // Named so the warning below points at the entry point the user
+        // pressed: Frame and a highlight isolate share this one resolution.
+        caller: 'resolveHighlightIds' | 'frameSelection',
+        boundsOf: (id: number) => BoundingBox3D | null = createRenderableBoundsLookup(),
+      ): number[] => {
+        const geom = geometryRef.current;
+        if (!geom) return [];
+        const hasGeometry = (id: number) => boundsOf(id) !== null;
+        const resolved = expandToGeometryBearingIds(ids, hasGeometry, {
+          resolve: resolveEntityRef,
+          relationshipsFor: relationshipsForModel,
+          toGlobalId: (modelId, expressId) =>
+            toGlobalIdFromModels(useViewerStore.getState().models, modelId, expressId),
+        });
+        // Nothing in the RESOLVED set renders + streaming finished = a blank
+        // isolate. Counting `resolved` misses it: the #3426 fallback carries
+        // every aggregated part forward, so the set is non-empty and mesh-less.
+        // The streaming gate keeps the ordinary "hasn't arrived yet" silent.
+        const streaming = isGeometryLoadStreaming(useViewerStore.getState());
+        if (hasNoRenderableTarget(ids, resolved, hasGeometry) && !streaming) {
+          console.warn(`[Viewport] ${caller}: nothing renderable for`, ids);
+        }
+        return resolved;
+      };
+
       // Register camera callbacks for ViewCube and other controls
       setCameraCallbacks({
         setPresetView: (view) => {
@@ -879,6 +1087,18 @@ export function Viewport({
           renderCurrent();
           calculateScale();
         },
+        setInteractionMode: (mode) => {
+          camera.setInteractionMode(mode);
+        },
+        setCameraRotation: ({ azimuth, elevation }) => {
+          // Absolute counterpart to rotateLeft/rotateRight below (which step by
+          // 90° from wherever the camera already is). Snaps rather than
+          // animates: the caller is a host command that may arrive at slider
+          // rate, and a tween per message would queue up behind itself.
+          camera.setRotation(azimuth, elevation);
+          renderCurrent();
+          calculateScale();
+        },
         rotateLeft: () => {
           animateHorizontalRotation(-Math.PI / 2);
         },
@@ -908,11 +1128,24 @@ export function Viewport({
           }
           let min: { x: number; y: number; z: number } | null = null;
           let max: { x: number; y: number; z: number } | null = null;
-          const scene = rendererRef.current?.getScene();
-          for (const id of ids) {
-            // GPU-instanced occurrences aren't in geometryResult.meshes; fall back to
-            // the renderer's per-occurrence world AABB so framing them still works.
-            const b = getEntityBounds(geom, id) ?? scene?.getInstancedEntityBounds(id) ?? null;
+          // One indexed, memoised lookup shared with the resolution pass below:
+          // every id is asked twice — once to decide whether it needs expanding,
+          // once to union its box — and the mesh reader behind it indexes the
+          // mesh array instead of rescanning it per id.
+          const boundsOf = createRenderableBoundsLookup();
+          // An IfcElementAssembly carries no representation of its own — its
+          // meshes hang off its IfcRelAggregates parts — so asking it for bounds
+          // yields null and Frame used to do nothing at all (#1133). Resolve
+          // those ids to the parts that DO have geometry before giving up.
+          // Shared with `resolveHighlightIds` below so the SAME resolution
+          // drives both what the camera frames and what the renderer
+          // highlights — a search/select entry point that only called
+          // frameSelection moved the camera to an assembly that stayed
+          // unhighlighted, because the renderer highlights `selectedEntityIds`
+          // directly and that set still held the geometry-less assembly id.
+          const framedIds = resolveRenderableIds(ids, 'frameSelection', boundsOf);
+          for (const id of framedIds) {
+            const b = boundsOf(id);
             if (!b) continue;
             if (!min || !max) {
               min = { x: b.min.x, y: b.min.y, z: b.min.z };
@@ -932,6 +1165,125 @@ export function Viewport({
           } else {
             console.warn('[Viewport] frameSelection: Could not get bounds for selected element');
           }
+        },
+        // Resolve ids to what the renderer can actually highlight (the SAME
+        // aggregation resolution frameSelection uses to decide what to frame),
+        // for selection entry points that assign `selectedEntityId`/
+        // `selectedEntityIds` directly instead of a 3D pick — a 3D pick can
+        // never land on a geometry-less assembly (it has no mesh to click),
+        // but the search modal does: it sets the assembly's own id and calls
+        // frameSelection, and the renderer highlights `selectedEntityIds`
+        // directly (it doesn't itself expand assemblies), so the camera moved
+        // to the right place while nothing lit up. Returns `[]`, not the
+        // input, for an id with neither geometry nor renderable parts, so a
+        // caller can fall back to its own default.
+        resolveHighlightIds: (ids) => resolveRenderableIds(ids, 'resolveHighlightIds'),
+        frameEntities: (ids: number[]) => {
+          // Frame an explicit id set. Ids are federated GLOBAL ids — the same
+          // id space the scene meshes carry (single model: global === express).
+          // Same aggregation as frameSelection: flat-mesh AABB with an
+          // instanced-occurrence fallback.
+          //
+          // Deliberately NOT gated on `geometryRef.current`: once streaming has
+          // released the mesh arrays, the renderer scene is the only source of
+          // bounds left, and returning early here would have made the instanced
+          // fallback below unreachable in exactly that case.
+          if (ids.length === 0) return;
+          const geom = geometryRef.current;
+          const scene = rendererRef.current?.getScene();
+          const bounds = unionEntityBounds(geom, ids, (id) => scene?.getInstancedEntityBounds(id));
+          const min = bounds?.min ?? null;
+          const max = bounds?.max ?? null;
+          if (min && max) {
+            // Guard against a degenerate / corrupted bound flinging the camera
+            // off-model: every component must be finite and the span sane.
+            const finite = [min.x, min.y, min.z, max.x, max.y, max.z].every(Number.isFinite);
+            const span = Math.max(max.x - min.x, max.y - min.y, max.z - min.z);
+            if (finite && span >= 0 && span < 1e5) {
+              camera.frameBounds(min, max, 300);
+              calculateScale();
+            }
+          }
+        },
+        frameBuildingExtent: () => {
+          // Frame the building shell: bounds of all rendered geometry EXCEPT
+          // IfcSite/terrain and IfcSpace, so a georeferenced model frames the
+          // building rather than the much larger site extent. Combines flat
+          // meshes with instanced occurrences; falls back to the full extent
+          // when nothing else is available.
+          const geom = geometryRef.current;
+          const scene = rendererRef.current?.getScene();
+          const EXCLUDE = new Set(['IfcSite', 'IfcSpace']);
+          let bounds = geom ? accumulateBoundsExcludingTypes(geom, EXCLUDE) : null;
+          // Merge in instanced occurrences (not present in flat meshes), skipping
+          // excluded types via each id's OWN model store — instanced ids are
+          // federated global ids, so resolve them through the registry instead
+          // of assuming the active model (fromGlobalId is null pre-federation,
+          // where global === express and the active store is the right one).
+          if (scene) {
+            const state = useViewerStore.getState();
+            for (const id of scene.getInstancedEntityIds()) {
+              const loc = state.fromGlobalId(id);
+              const store = loc
+                ? state.models.get(loc.modelId)?.ifcDataStore
+                : ifcDataStoreRef.current;
+              const type = store?.entities?.getTypeName(loc ? loc.expressId : id);
+              if (type && EXCLUDE.has(type)) continue;
+              const b = scene.getInstancedEntityBounds(id);
+              if (!b) continue;
+              if (!bounds) {
+                bounds = { min: { x: b.min.x, y: b.min.y, z: b.min.z }, max: { x: b.max.x, y: b.max.y, z: b.max.z } };
+              } else {
+                bounds.min.x = Math.min(bounds.min.x, b.min.x); bounds.min.y = Math.min(bounds.min.y, b.min.y); bounds.min.z = Math.min(bounds.min.z, b.min.z);
+                bounds.max.x = Math.max(bounds.max.x, b.max.x); bounds.max.y = Math.max(bounds.max.y, b.max.y); bounds.max.z = Math.max(bounds.max.z, b.max.z);
+              }
+            }
+          }
+          const target = bounds ?? geometryBoundsRef.current;
+          // Same sanity gate `frameEntities` applies: a degenerate or corrupted
+          // bound here would fling the camera off-model with no way back. The
+          // instanced-occurrence merge above unions bounds from the scene, so a
+          // single bad entry can poison the whole extent.
+          const finite = [target.min.x, target.min.y, target.min.z, target.max.x, target.max.y, target.max.z]
+            .every(Number.isFinite);
+          const span = Math.max(target.max.x - target.min.x, target.max.y - target.min.y, target.max.z - target.min.z);
+          if (finite && span >= 0 && span < 1e5) {
+            camera.frameBounds(target.min, target.max, 300);
+            calculateScale();
+          }
+        },
+        setSpaceOverlayMeshes: (meshes) => {
+          // Space Sketch draft ghosts go straight to the scene (NOT through
+          // geometryResult), so per-edit churn never trips the streaming
+          // reclassifier (which would reset the camera / un-pick new spaces).
+          const renderer = rendererRef.current;
+          const scene = renderer?.getScene();
+          const device = renderer?.getGPUDevice();
+          const pipeline = renderer?.getPipeline();
+          if (!renderer || !scene || !device || !pipeline) return;
+          if (spaceOverlayIdsRef.current.size > 0) {
+            scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
+            spaceOverlayIdsRef.current = new Set();
+          }
+          if (meshes.length > 0) {
+            scene.appendToBatches(meshes, device, pipeline, false);
+            spaceOverlayIdsRef.current = new Set(meshes.map((m) => m.expressId));
+          }
+          if (scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+          renderer.clearCaches();
+          renderer.requestRender();
+        },
+        clearSpaceOverlayMeshes: () => {
+          const renderer = rendererRef.current;
+          const scene = renderer?.getScene();
+          if (!renderer || !scene || spaceOverlayIdsRef.current.size === 0) return;
+          scene.removeMeshesForEntities(removableOverlayIds(spaceOverlayIdsRef.current));
+          spaceOverlayIdsRef.current = new Set();
+          const device = renderer.getGPUDevice();
+          const pipeline = renderer.getPipeline();
+          if (device && pipeline && scene.hasPendingBatches()) scene.rebuildPendingBatches(device, pipeline);
+          renderer.clearCaches();
+          renderer.requestRender();
         },
         frameClashRegion: (min, max) => {
           // Frame the clash's (already context-padded) contact box from the
@@ -973,8 +1325,15 @@ export function Viewport({
           const rect = c.getBoundingClientRect();
           const cssX = clientX - rect.left;
           const cssY = clientY - rect.top;
-          const x = (cssX / rect.width) * c.width;
-          const y = (cssY / rect.height) * c.height;
+          // `rect.width > 0` before dividing, matching the five sibling
+          // scalers (selectionHandlers, picking-manager, raycast-engine,
+          // CesiumPlacementEditor, projectScreen). This was the one that did
+          // not: a collapsed viewport gives `cssX / 0` = ±Infinity, or NaN
+          // when the cursor sits exactly on the left edge, and a pointer drag
+          // under `setPointerCapture` keeps delivering events after the
+          // layout collapses (#2473).
+          const x = rect.width > 0 ? (cssX / rect.width) * c.width : cssX;
+          const y = rect.height > 0 ? (cssY / rect.height) * c.height : cssY;
           const ray = camera.unprojectToRay(x, y, c.width, c.height);
           if (!ray) return null;
           const dy = ray.direction.y;
@@ -1009,6 +1368,13 @@ export function Viewport({
         applyViewpoint,
       });
 
+      // Device loss (#2229) and persistent render degradation (#2417). The
+      // renderer contains both on its own — every later frame and pick becomes
+      // a quiet no-op — so without a subscriber they reach the user as a viewer
+      // that silently stopped, and reach us not at all. This is the subscriber:
+      // one toast, one tagged capture, per failure.
+      unsubscribeViewportHealth = subscribeViewportHealth(renderer);
+
       // ResizeObserver — let renderer handle its own dimension alignment
       resizeObserver = new ResizeObserver(() => {
         if (aborted) return;
@@ -1037,6 +1403,7 @@ export function Viewport({
       if (resizeObserver) {
         resizeObserver.disconnect();
       }
+      unsubscribeViewportHealth?.();
       setIsInitialized(false);
       rendererRef.current = null;
       // Free all WebGPU resources held by this renderer instance.
@@ -1101,7 +1468,7 @@ export function Viewport({
     };
   }, [sectionPlane.enabled, sectionPlane.axis, sectionPlane.position, sectionRange]);
 
-  const annotationVertices3D = useSymbolicAnnotations({
+  const symbolicLineChannels = useSymbolicAnnotations({ // two buffers, not one (issue #3359)
     enabled: ifcAnnotationsVisible,
     gridEnabled: ifcGridVisible,
     gridSectionClip,
@@ -1116,12 +1483,9 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (annotationVertices3D.length === 0) {
-      renderer.clearAnnotationLines3D();
-    } else {
-      renderer.uploadAnnotationLines3D(annotationVertices3D);
-    }
-  }, [annotationVertices3D, isInitialized]);
+    const v = symbolicLineChannels.annotation;
+    renderer.setLineOverlay('annotation', v.length === 0 ? null : v);
+  }, [symbolicLineChannels.annotation, isInitialized]);
 
   // IfcAlignment centerlines render as thin lines (not a ribbon mesh), always
   // on — see useAlignmentLines3D. Upload/clear mirrors the annotation overlay;
@@ -1130,26 +1494,47 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (alignmentVertices3D.length === 0) {
-      renderer.clearAlignmentLines3D();
-    } else {
-      renderer.uploadAlignmentLines3D(alignmentVertices3D);
-    }
+    renderer.setLineOverlay(
+      'alignment',
+      alignmentVertices3D.length === 0 ? null : alignmentVertices3D,
+    );
   }, [alignmentVertices3D, isInitialized]);
 
-  // Structural-grid (IfcGridAxis) lines, gated by the `ifcGrid` type-visibility
-  // toggle (issue #967). Parsed once per source + cached; only the upload/clear
-  // is toggled so flipping visibility doesn't re-parse.
-  const gridVertices3D = useGridLines3D();
+  // Structural-grid (IfcGridAxis) lines draw ONLY from `useSymbolicAnnotations`
+  // (issue #3368: a second independent extractor, `useGridLines3D`, used to
+  // double-draw every axis, leave #862's section-clipping inert since it was
+  // unclipped, and go stale in elevation under a nonzero `originShift` since
+  // it skipped the TS-side rebase — see `useSymbolicAnnotations.ts`'s
+  // `effectiveGridEnabled` branch, which already clips and rebases). They
+  // upload to their OWN 'grid' channel rather than the 'annotation' buffer
+  // (issue #3359): `CHANNEL_EXPANDS_MODEL_BOUNDS.annotation` is `true` but
+  // `.grid` is `false` (grid axes extend past the model envelope, issue #967).
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    if (!ifcGridVisible || gridVertices3D.length === 0) {
-      renderer.clearGridLines3D();
-    } else {
-      renderer.uploadGridLines3D(gridVertices3D);
-    }
-  }, [gridVertices3D, ifcGridVisible, isInitialized]);
+    const v = symbolicLineChannels.grid;
+    renderer.setLineOverlay('grid', !ifcGridVisible || v.length === 0 ? null : v);
+  }, [symbolicLineChannels.grid, ifcGridVisible, isInitialized]);
+
+  // DXF reference-layer line paths in the 3D viewport (issue #2043,
+  // follow-up to #1782/#1929's 2D-only DXF underlay). Gated by each
+  // underlay's own `visible3D` toggle (visibility-layers-panel control, not
+  // a load-time choice — see DxfUnderlayPanel.tsx), independent of the 2D
+  // drawing panel's underlay. Only line paths are lifted to 3D; fills/text
+  // are not (see dxfUnderlayToWorldLines3D's doc).
+  const dxfLines3D = useDxfUnderlays3DLines(coordinateInfo);
+  useEffect(() => {
+    const renderer = rendererRef.current;
+    if (!renderer || !isInitialized) return;
+    // PR #2114 review: createBuffer/writeBuffer can throw on device loss or
+    // GPU memory pressure. This effect re-runs on every dxfLines3D change
+    // (a DXF underlay toggle, opacity edit, or reload), so an unguarded
+    // throw here is not a one-off. `uploadDxfLines3DGuarded` contains it via
+    // `runGpuUpload` (same guard as the geometry-streaming upload sites,
+    // warns once per call site, not once per re-run) and drops the
+    // underlay on failure instead of drawing from a half-uploaded buffer.
+    uploadDxfLines3DGuarded(renderer, dxfLines3D);
+  }, [dxfLines3D, isInitialized]);
 
   // Upload IfcAnnotation text + fill data for the WebGPU symbolic overlay
   // pipelines. Map the hook's per-annotation records into the SymbolicFillInput
@@ -1157,32 +1542,18 @@ export function Viewport({
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.uploadAnnotationFills3D(
-      annotationFills3D.map((f) => ({
-        points: f.points,
-        holesOffsets: f.holesOffsets,
-        worldY: f.worldY,
-        color: f.color,
-      })),
-    );
+    // Passed straight through: AnnotationFill3D is structurally assignable to
+    // SymbolicFillInput, and the renderer copies field by field, so a mapper
+    // here would only be a hand-written field list to forget `definesExtent`
+    // from. Required on the record, so the compiler catches an omission at the
+    // push site instead.
+    renderer.uploadAnnotationFills3D(annotationFills3D);
   }, [annotationFills3D, isInitialized]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer || !isInitialized) return;
-    renderer.uploadAnnotationTexts3D(
-      annotationTexts3D.map((t) => ({
-        worldPos: t.worldPos,
-        dirX: t.dirX,
-        dirZ: t.dirZ,
-        height: t.height,
-        content: t.content,
-        alignment: t.alignment,
-        billboard: t.billboard,
-        color: t.color,
-        targetPx: t.targetPx,
-      })),
-    );
+    renderer.uploadAnnotationTexts3D(annotationTexts3D);
   }, [annotationTexts3D, isInitialized]);
 
   // ===== Streaming progress =====
@@ -1338,6 +1709,7 @@ export function Viewport({
     modelBoundsRef,
     visualEnhancementRef,
     environmentRef,
+    sunShadowsRef,
     selectedEntityIdsRef,
     clashHighlightColorsRef,
     coordinateInfoRef,
@@ -1365,6 +1737,9 @@ export function Viewport({
     pendingMeshTranslations,
     pendingMeshRotations,
     pendingInstancedShards,
+    modelIdToIndex,
+    modelIdToOffset,
+    presentInstancedModelIndices,
     clearPendingColorUpdates,
     clearPendingMeshColorUpdates,
     clearPendingMeshRemovals,

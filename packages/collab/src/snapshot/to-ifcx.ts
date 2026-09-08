@@ -19,6 +19,7 @@ import * as Y from 'yjs';
 import { entityToJSON, iterEntities } from '../doc/entity.js';
 import { metaMap } from '../doc/schema.js';
 import { flattenStructuredBranches, geometryRecordLookup } from './structured-attrs.js';
+import { IFCX_VERSION } from '@ifc-lite/ifcx';
 
 export interface SnapshotOptions {
   author?: string;
@@ -43,7 +44,7 @@ export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxF
 
   const header: IfcxHeader = {
     id: options.id ?? seededHeader?.id ?? 'ifc-lite/collab/snapshot',
-    ifcxVersion: options.ifcxVersion ?? seededHeader?.ifcxVersion ?? 'ifcx_alpha',
+    ifcxVersion: options.ifcxVersion ?? seededHeader?.ifcxVersion ?? IFCX_VERSION,
     dataVersion: options.dataVersion ?? seededHeader?.dataVersion ?? '1.0.0',
     author: options.author ?? seededHeader?.author ?? 'ifc-lite/collab',
     timestamp: options.timestamp ?? new Date().toISOString(),
@@ -71,7 +72,19 @@ export function snapshotToIfcx(doc: Y.Doc, options: SnapshotOptions = {}): IfcxF
       for (const k of inheritsKeys) node.inherits[k] = json.inherits[k];
     }
 
-    const attributes = flattenStructuredBranches(json, { geometryRecordFor });
+    // `seedFromIfcx` treats a literal `null` attribute value as an IFCX
+    // removal opinion and never stores it (see from-ifcx.ts) — so a
+    // doc attribute holding `null` (e.g. a root attribute the user
+    // cleared, mirrored via mutation-bridge.ts's `toScalar`) must not
+    // be emitted as-is: the very next seed would silently drop it,
+    // disagreeing with what this writer just produced. Match the
+    // reader's contract on the way out instead of losing the key on
+    // the next round-trip.
+    const flattened = flattenStructuredBranches(json, { geometryRecordFor });
+    const attributes: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(flattened)) {
+      if (value !== null) attributes[key] = value;
+    }
     if (Object.keys(attributes).length > 0) {
       node.attributes = attributes;
     }

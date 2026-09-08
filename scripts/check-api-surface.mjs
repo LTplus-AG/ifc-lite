@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 /**
  * Guard: the exported API surface of every published (non-private)
  * package in packages/* is snapshotted in scripts/api-surface.json.

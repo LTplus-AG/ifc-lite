@@ -9,6 +9,7 @@
 import type { StateCreator } from 'zustand';
 import type { SnapTarget } from '@ifc-lite/renderer';
 import type {
+  Vec3,
   MeasurePoint,
   Measurement,
   ActiveMeasurement,
@@ -16,8 +17,25 @@ import type {
   SnapVisualization,
   MeasurementConstraintEdge,
   OrthogonalAxis,
+  MeasureMode,
+  ActivePolyline,
+  PolylineMeasurement,
+  ActiveAngle,
+  AngleKind,
+  AngleMeasurement,
+  AnglePick,
+  ActiveRadius,
+  RadiusMeasurement,
 } from '../types.js';
+import { ANGLE_REQUIRED_PICKS } from '../types.js';
+import type {
+  REPROJECTED_MEASUREMENT_FIELDS,
+  ReprojectedMeasurementField,
+} from '../measurementReprojectionFields.js';
 import { EDGE_LOCK_DEFAULTS } from '../constants.js';
+import { polylineLength } from '@/components/viewer/tools/measure-modes/polyline.js';
+import { isDuplicateClickPoint } from '@/components/viewer/measureHandlers.js';
+import { MIN_RADIUS_POINTS } from '@/components/viewer/tools/measure-modes/radius.js';
 
 // Monotonic counter to prevent ID collisions under rapid measurement creation
 let measurementCounter = 0;
@@ -40,6 +58,53 @@ export interface MeasurementSlice {
   edgeLockState: EdgeLockState;
   /** Edge constraint for perpendicular measurements (when shift is held) */
   measurementConstraintEdge: MeasurementConstraintEdge | null;
+  /**
+   * Temporary reference point for relative coordinate readouts (#2199 §5),
+   * in RENDERER space (Y-up metres) — the same frame picked points arrive in,
+   * so the offset is a plain subtraction with no frame conversion in between.
+   *
+   * Deliberately NOT cleared by {@link clearMeasurements}: the reference is a
+   * setting-out datum the user established on purpose, and wiping it while
+   * tidying up a list of distances would silently change what every later
+   * coordinate readout is relative to.
+   */
+  measureReferencePoint: Vec3 | null;
+
+  /**
+   * Which Measure gesture is active (#2199): the original mousedown→mouseup
+   * drag, or the multi-click polyline mode. The two are mutually exclusive
+   * within a Measure session — {@link setMeasureMode} clears whichever
+   * in-progress state belongs to the mode being left, so a sequence started
+   * in one can never leak into the other while the tool stays active.
+   *
+   * Leaving the Measure tool entirely is a *different* boundary, enforced by
+   * {@link resetMeasureGesture}: `setActiveTool` (uiSlice.ts) calls it
+   * whenever the tool changes away from `'measure'`, which is the only way
+   * `MeasureOverlay` ever unmounts (it is gated purely on
+   * `activeTool === 'measure'` — see `ToolOverlays.tsx`), so this one call
+   * site covers every route out of the tool: toolbar click, keyboard
+   * shortcut, or the panel's own Close button (which itself calls
+   * `setActiveTool('select')`).
+   */
+  measureMode: MeasureMode;
+  /** A polyline sequence in progress (points accumulated via clicks, not yet finished). */
+  activePolyline: ActivePolyline | null;
+  /** Which angle the tool measures when `measureMode === 'angle'` (#2735). */
+  angleKind: AngleKind;
+  /** A fixed-length angle sequence in progress, or null. */
+  activeAngle: ActiveAngle | null;
+  /** Finished angle measurements. Picks only - degrees are derived on render. */
+  angleMeasurements: AngleMeasurement[];
+  /** Finished polyline measurements — kept separate from `measurements`
+   *  (distance-only) rather than folded in, since they carry an extra basis
+   *  (open length vs. closed perimeter) that a drag measurement never has. */
+  polylineMeasurements: PolylineMeasurement[];
+  /** A radius/diameter click sequence in progress when `measureMode ===
+   *  'radius'` (#2737 item 2), or null. */
+  activeRadius: ActiveRadius | null;
+  /** Finished radius measurements. Picks only — the fit (or refusal) is
+   *  derived on render by `fitRadius`. */
+  radiusMeasurements: RadiusMeasurement[];
 
   // Legacy measurement actions
   addMeasurePoint: (point: MeasurePoint) => void;
@@ -64,6 +129,9 @@ export interface MeasurementSlice {
   // Geo readout actions
   toggleGeoReadout: () => void;
 
+  /** Set or clear the temporary reference point for relative coordinates. */
+  setMeasureReferencePoint: (point: Vec3 | null) => void;
+
   // Edge lock actions
   setEdgeLock: (edge: EdgeLockState['edge'], meshExpressId: number | null, edgeT?: number) => void;
   updateEdgeLockPosition: (edgeT: number, isCorner: boolean, cornerValence: number) => void;
@@ -74,6 +142,114 @@ export interface MeasurementSlice {
   setMeasurementConstraintEdge: (edge: MeasurementConstraintEdge | null) => void;
   updateConstraintActiveAxis: (axis: OrthogonalAxis | null) => void;
   clearMeasurementConstraintEdge: () => void;
+
+  // Polyline (multi-click) measurement actions (#2199)
+  /** Switch gesture. Leaving 'drag' cancels any in-progress drag measurement;
+   *  leaving 'polyline' discards any in-progress click sequence. A no-op if
+   *  already in the requested mode (does not disturb in-progress state). */
+  setMeasureMode: (mode: MeasureMode) => void;
+  /** Switch which angle is measured. Discards any in-progress sequence. */
+  setAngleKind: (kind: AngleKind) => void;
+  /**
+   * Append a pick. When the sequence reaches `ANGLE_REQUIRED_PICKS[kind]` it
+   * finishes ITSELF into `angleMeasurements` - there is no finish gesture, so
+   * unlike `finishPolyline` there is no double-click duplicate to defend
+   * against.
+   */
+  addAnglePick: (pick: AnglePick) => void;
+  cancelAngle: () => void;
+  deleteAngleMeasurement: (id: string) => void;
+  /** Begin a polyline sequence at `point`. No-op if one is already active —
+   *  use {@link addPolylinePoint} to extend it. */
+  startPolyline: (point: MeasurePoint) => void;
+  /** Append a point to the in-progress polyline. No-op if none is active. */
+  addPolylinePoint: (point: MeasurePoint) => void;
+  /**
+   * Finish the in-progress polyline and push it to `polylineMeasurements`.
+   * `closed` is the caller's explicit basis (the click handler decides this
+   * from screen-space proximity to the first point; Enter/double-click
+   * always finish open) — never inferred here. No-op if fewer than 2 points
+   * are accumulated (or fewer than 3 for `closed`, since a 2-point loop has
+   * no interior).
+   *
+   * `fromDoubleClick` opts into dropping the trailing near-duplicate point a
+   * physical double-click leaves behind. It is OFF by default and belongs to
+   * exactly one call site (useMouseControls.ts's `dblclick` handler) — see
+   * the implementation for why every other finish path must not dedup.
+   *
+   * Returns whether a measurement was actually recorded, so a caller (the
+   * Enter shortcut) can tell "finished" apart from "did nothing register"
+   * and give feedback instead of leaving the no-op silent.
+   */
+  finishPolyline: (closed: boolean, options?: { fromDoubleClick?: boolean }) => boolean;
+  /** Discard the in-progress polyline without recording a measurement. */
+  cancelPolyline: () => void;
+  deletePolylineMeasurement: (id: string) => void;
+
+  // Radius/diameter (multi-click, unbounded) measurement actions (#2737 item 2)
+  /** Begin a radius sequence at `point`. No-op if one is already active —
+   *  use {@link addRadiusPoint} to extend it. Mirrors `startPolyline`. */
+  startRadius: (point: MeasurePoint) => void;
+  /** Append a point to the in-progress radius sequence. No-op if none is
+   *  active. */
+  addRadiusPoint: (point: MeasurePoint) => void;
+  /**
+   * Finish the in-progress radius sequence and push it to
+   * `radiusMeasurements`. No-op below {@link MIN_RADIUS_POINTS} — `fitRadius`
+   * needs at least three picks to attempt anything, so recording fewer would
+   * only ever produce a stored "insufficient-points" readout, which is not a
+   * measurement.
+   *
+   * `fromDoubleClick` mirrors `finishPolyline`'s option of the same name: it
+   * opts into dropping the trailing near-duplicate point a physical
+   * double-click leaves behind (browsers dispatch click, click, dblclick),
+   * and belongs to exactly one call site the same way.
+   *
+   * Returns whether a measurement was actually recorded, so the Enter
+   * shortcut can tell "finished" apart from "did nothing register".
+   */
+  finishRadius: (options?: { fromDoubleClick?: boolean }) => boolean;
+  /** Discard the in-progress radius sequence without recording a measurement. */
+  cancelRadius: () => void;
+  deleteRadiusMeasurement: (id: string) => void;
+
+  /**
+   * Discard whatever measurement gesture is in progress — a drag mid-flight
+   * or a polyline click sequence — without touching finished measurements,
+   * snap/geo toggles, or the user's last-picked {@link measureMode}.
+   *
+   * This is the single call `setActiveTool` (uiSlice.ts) makes whenever the
+   * tool changes away from `'measure'`. See the {@link measureMode} doc
+   * comment for why that one call site is enough to cover every way the
+   * Measure tool can be left.
+   */
+  resetMeasureGesture: () => void;
+
+  /**
+   * Reset EVERY piece of state this slice owns to its just-loaded default —
+   * finished measurements of both kinds, any in-progress gesture, the
+   * relative-coordinate datum, and the gesture mode itself. This is the one
+   * place a new model's `resetViewerState` (`store/index.ts`) reaches into
+   * the measurement slice: a model switch is a new scene, and every field
+   * here is either keyed to the outgoing model's geometry (world-space
+   * points) or a session choice that should not silently outlive it.
+   *
+   * Deliberately broader than {@link clearMeasurements} (the user-facing
+   * "Clear all" button), which intentionally PRESERVES `measureReferencePoint`
+   * and `measureMode` — tidying up a distance list must not move the user's
+   * setting-out origin or flip their tool mode underneath them. A model
+   * switch has no such continuity to protect.
+   *
+   * #2641 review: `resetViewerState` used to list a hand-picked subset of
+   * these fields inline (`measurements`, `activeMeasurement`, `snapTarget`,
+   * `measureReferencePoint`) and silently missed `activePolyline`,
+   * `polylineMeasurements` and `measureMode` — the previous model's
+   * world-space polylines kept rendering against the new one. Owning the
+   * full field list here, beside the state declarations, means a future
+   * field added to this slice is far more likely to be added to this one
+   * function than to be remembered at every call site that resets state.
+   */
+  resetAllMeasurementState: () => void;
 }
 
 const getDefaultEdgeLockState = (): EdgeLockState => ({
@@ -84,6 +260,38 @@ const getDefaultEdgeLockState = (): EdgeLockState => ({
   isCorner: false,
   cornerValence: 0,
 });
+
+/**
+ * The registered KIND of each reprojected field must match that field's real
+ * shape on the slice.
+ *
+ * The exhaustive `set()` payload below pins the field NAMES, and
+ * `PendingMeasurementState` turns a `nullable` field registered as `list`
+ * into a compile error (a `T | null` has no `length`). The opposite mistake
+ * is silent without this check: registering a LIST field as `nullable` maps
+ * it to `unknown`, which any array satisfies, so nothing fails to compile —
+ * and `hasPendingMeasurementState` then tests it with `!== null`, which an
+ * array never is. The gate would report "pending" forever and the
+ * per-frame reprojection pass would never stop running.
+ *
+ * VERIFIED BY RUNNING `tsc` before this was added: flipping
+ * `angleMeasurements` to `'nullable'` produced zero errors anywhere.
+ *
+ * Each entry resolves to `true` when the kind matches, and to a descriptive
+ * tuple when it does not — which fails the `Record<..., true>` constraint and
+ * names the offending field in the error.
+ */
+type RegisteredKindMatchesSliceShape = {
+  [K in ReprojectedMeasurementField]: (typeof REPROJECTED_MEASUREMENT_FIELDS)[K] extends 'list'
+    ? MeasurementSlice[K] extends readonly unknown[]
+      ? true
+      : ['registered as `list` but is not an array', K]
+    : null extends MeasurementSlice[K]
+      ? true
+      : ['registered as `nullable` but cannot be null', K];
+};
+type AssertAllTrue<T extends Record<ReprojectedMeasurementField, true>> = T;
+export type _ReprojectedKindsMatch = AssertAllTrue<RegisteredKindMatchesSliceShape>;
 
 export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], MeasurementSlice> = (set, get) => ({
   // Initial state
@@ -96,6 +304,15 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
   snapVisualization: null,
   edgeLockState: getDefaultEdgeLockState(),
   measurementConstraintEdge: null,
+  measureReferencePoint: null,
+  measureMode: 'drag',
+  activePolyline: null,
+  polylineMeasurements: [],
+  angleKind: 'points',
+  activeAngle: null,
+  angleMeasurements: [],
+  activeRadius: null,
+  radiusMeasurements: [],
 
   // Legacy measurement actions
   addMeasurePoint: (point) => set({ pendingMeasurePoint: point }),
@@ -181,6 +398,15 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     pendingMeasurePoint: null,
     activeMeasurement: null,
     snapTarget: null,
+    // "Clear all" clears every kind of measurement the panel lists,
+    // including any polyline sequence still in progress — a partial
+    // click-sequence left behind by "clear" would be a stale trap.
+    activePolyline: null,
+    polylineMeasurements: [],
+    activeAngle: null,
+    angleMeasurements: [],
+    activeRadius: null,
+    radiusMeasurements: [],
   }),
 
   updateMeasurementScreenCoords: (projectToScreen) => {
@@ -240,15 +466,90 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
       };
     }
 
+    // Reproject a single point, returning it unchanged if the projector
+    // can't place it (e.g. behind the camera) — same fallback the
+    // measurements/activeMeasurement paths above use.
+    const reprojectPoint = (point: MeasurePoint): MeasurePoint => {
+      const screen = projectToScreen(point);
+      const newX = screen?.x ?? point.screenX;
+      const newY = screen?.y ?? point.screenY;
+      if (newX !== point.screenX || newY !== point.screenY) {
+        hasChanges = true;
+      }
+      return { ...point, screenX: newX, screenY: newY };
+    };
+
+    // Polyline points keep their click-time screenX/screenY forever unless
+    // reprojected here too (#2641 review) — both the in-progress sequence
+    // (segments/vertices/close-loop hit-testing all read live screen coords)
+    // and every FINISHED polyline (its placed vertices are still rendered
+    // and can still be re-selected after the camera moves).
+    let updatedActivePolyline = state.activePolyline;
+    if (state.activePolyline) {
+      updatedActivePolyline = { points: state.activePolyline.points.map(reprojectPoint) };
+    }
+
+    const updatedPolylineMeasurements = state.polylineMeasurements.map((m) => ({
+      ...m,
+      points: m.points.map(reprojectPoint),
+    }));
+
+    // Angle picks (#2735) need the same treatment, and for the same reason the
+    // polyline comment above gives: the overlay draws its rays and label from
+    // `screenX/screenY`, so without reprojection every finished angle would
+    // stay frozen at its click-time pixel while the model orbits underneath.
+    // `reprojectPoint` sets `hasChanges` itself, so an angle moving is enough
+    // to defeat the early exit below even when nothing else changed.
+    let updatedActiveAngle = state.activeAngle;
+    if (state.activeAngle) {
+      updatedActiveAngle = {
+        ...state.activeAngle,
+        picks: state.activeAngle.picks.map((pick) => ({ ...pick, point: reprojectPoint(pick.point) })),
+      };
+    }
+
+    const updatedAngleMeasurements = state.angleMeasurements.map((m) => ({
+      ...m,
+      picks: m.picks.map((pick) => ({ ...pick, point: reprojectPoint(pick.point) })),
+    }));
+
+    // Radius picks (#2737 item 2) need the same treatment, for the same
+    // reason the angle comment above gives — the list panel re-derives the
+    // fit from these points on every render, and while the fit itself is
+    // frame-independent (world-space x/y/z, untouched here), the stored
+    // screenX/screenY would otherwise stay frozen at click time.
+    let updatedActiveRadius = state.activeRadius;
+    if (state.activeRadius) {
+      updatedActiveRadius = { points: state.activeRadius.points.map(reprojectPoint) };
+    }
+
+    const updatedRadiusMeasurements = state.radiusMeasurements.map((m) => ({
+      ...m,
+      points: m.points.map(reprojectPoint),
+    }));
+
     // Early exit if nothing changed
     if (!hasChanges) {
       return;
     }
 
-    set({
+    // Typed as an EXHAUSTIVE map over the shared field registry, which is the
+    // same registry `hasPendingMeasurementState` (utils/viewportUtils.ts)
+    // derives the gate deciding whether this pass runs at all. A registered
+    // field with no arm above is a missing-property error here; an arm for a
+    // field nobody registered is an excess-property error. Either way the
+    // divergence #2641 and #2735 each shipped stops being expressible.
+    const reprojected: { [K in ReprojectedMeasurementField]: MeasurementSlice[K] } = {
       measurements: updatedMeasurements,
       activeMeasurement: updatedActiveMeasurement,
-    });
+      activePolyline: updatedActivePolyline,
+      polylineMeasurements: updatedPolylineMeasurements,
+      activeAngle: updatedActiveAngle,
+      angleMeasurements: updatedAngleMeasurements,
+      activeRadius: updatedActiveRadius,
+      radiusMeasurements: updatedRadiusMeasurements,
+    };
+    set(reprojected);
   },
 
   // Snap actions
@@ -258,6 +559,8 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
 
   // Geo readout actions
   toggleGeoReadout: () => set((state) => ({ geoReadoutEnabled: !state.geoReadoutEnabled })),
+
+  setMeasureReferencePoint: (measureReferencePoint) => set({ measureReferencePoint }),
 
   // Edge lock actions
   setEdgeLock: (edge, meshExpressId, edgeT = EDGE_LOCK_DEFAULTS.INITIAL_T) => set({
@@ -304,4 +607,214 @@ export const createMeasurementSlice: StateCreator<MeasurementSlice, [], [], Meas
     };
   }),
   clearMeasurementConstraintEdge: () => set({ measurementConstraintEdge: null }),
+
+  // Polyline (multi-click) measurement actions (#2199)
+  setMeasureMode: (mode) => set((state) => {
+    if (mode === state.measureMode) return {};
+    // Symmetric: discard the state of the mode being LEFT, and cancel any
+    // in-progress drag when entering a click-driven mode. Written as spread
+    // arms over one object rather than per-mode early returns so adding a
+    // fourth mode cannot leave an arm behind - the regression this slice
+    // documents at `resetAllMeasurementState` was exactly a hand-maintained
+    // list that missed a newly added field.
+    const leaving = state.measureMode;
+    return {
+      measureMode: mode,
+      ...(leaving === 'polyline' ? { activePolyline: null } : {}),
+      ...(leaving === 'angle' ? { activeAngle: null } : {}),
+      ...(leaving === 'radius' ? { activeRadius: null } : {}),
+      ...(mode !== 'drag'
+        ? { activeMeasurement: null, snapTarget: null, measurementConstraintEdge: null }
+        : {}),
+    };
+  }),
+
+  setAngleKind: (kind) => set((state) => {
+    if (kind === state.angleKind) return {};
+    // Switching kind mid-sequence discards it: picks already taken mean
+    // something different under the new kind.
+    return { angleKind: kind, activeAngle: null };
+  }),
+
+  addAnglePick: (pick) => set((state) => {
+    const kind = state.angleKind;
+    // Defence in depth: the handler filters by kind, but a mismatched pick
+    // reaching the store would produce an angle measured from the wrong sort
+    // of input, silently.
+    if (pick.kind !== kind) return {};
+    const prior = state.activeAngle?.kind === kind ? state.activeAngle.picks : [];
+    const picks = [...prior, pick];
+    if (picks.length < ANGLE_REQUIRED_PICKS[kind]) {
+      return { activeAngle: { kind, picks } };
+    }
+    measurementCounter++;
+    return {
+      activeAngle: null,
+      angleMeasurements: [
+        ...state.angleMeasurements,
+        { id: `ang-${Date.now()}-${measurementCounter}`, kind, picks },
+      ],
+    };
+  }),
+
+  cancelAngle: () => set({ activeAngle: null }),
+
+  deleteAngleMeasurement: (id) => set((state) => ({
+    angleMeasurements: state.angleMeasurements.filter((m) => m.id !== id),
+  })),
+
+  startPolyline: (point) => set((state) => {
+    if (state.activePolyline) return {}; // already accumulating — use addPolylinePoint
+    return { activePolyline: { points: [point] } };
+  }),
+
+  addPolylinePoint: (point) => set((state) => {
+    if (!state.activePolyline) return {};
+    return { activePolyline: { points: [...state.activePolyline.points, point] } };
+  }),
+
+  finishPolyline: (closed, options) => {
+    // Reports whether a measurement was actually recorded (as opposed to a
+    // no-op — no active sequence, or too few points to satisfy `minPoints`
+    // even after dropping a double-click's duplicate). The Enter shortcut
+    // (useKeyboardShortcuts.ts) uses this to tell "finished" apart from
+    // "did nothing register" and surface a toast for the latter — Enter on
+    // a 1-point sequence used to be silently indistinguishable from a
+    // successful finish.
+    let recorded = false;
+    set((state) => {
+      const active = state.activePolyline;
+      if (!active) return {};
+      // Browsers dispatch click, click, dblclick for one physical double-click
+      // (never just dblclick) — handlePolylineClick runs on both leading
+      // clicks before this fires from the dblclick handler, so a double-click
+      // meant to "place the last point and finish" has already appended a
+      // near-duplicate a few px from the one the user intended. Drop trailing
+      // duplicate point(s) before validating/recording, mirroring
+      // SpaceSketchOverlay's `commitDraw` (same double-click-to-close gesture,
+      // same fix).
+      //
+      // SCOPED to that one gesture on purpose (#2641 review). The screen
+      // coordinates this compares are not the click-time ones: the animation
+      // loop's `updateMeasurementScreenCoords` reprojects every placed point
+      // on every camera move, so after orbiting towards a top-down view two
+      // genuinely distinct vertices separated along the view ray collapse to
+      // within DUPLICATE_POINT_SCREEN_RADIUS_PX of each other. Running this
+      // on the Enter path (useKeyboardShortcuts.ts) or the close-loop click
+      // path (selectionHandlers.ts) would then delete real vertices and
+      // report a short length with nothing on screen to say so. Neither of
+      // those gestures synthesises an extra click — Enter appends nothing,
+      // and a close-loop click returns before `addPolylinePoint` — so
+      // neither can produce the duplicate this exists to remove.
+      //
+      // At most ONE point is dropped: the browser generates exactly one extra
+      // `click` per double-click, so removing more could only ever be eating
+      // a vertex the user placed on purpose.
+      let points = active.points;
+      if (
+        options?.fromDoubleClick &&
+        points.length >= 2 &&
+        isDuplicateClickPoint(points[points.length - 1], points[points.length - 2])
+      ) {
+        points = points.slice(0, -1);
+      }
+      const minPoints = closed ? 3 : 2;
+      if (points.length < minPoints) return {};
+      measurementCounter++;
+      const measurement: PolylineMeasurement = {
+        id: `pl-${Date.now()}-${measurementCounter}`,
+        points,
+        closed,
+        length: polylineLength(points, closed),
+      };
+      recorded = true;
+      return {
+        polylineMeasurements: [...state.polylineMeasurements, measurement],
+        activePolyline: null,
+      };
+    });
+    return recorded;
+  },
+
+  cancelPolyline: () => set({ activePolyline: null }),
+
+  deletePolylineMeasurement: (id) => set((state) => ({
+    polylineMeasurements: state.polylineMeasurements.filter((m) => m.id !== id),
+  })),
+
+  startRadius: (point) => set((state) => {
+    if (state.activeRadius) return {}; // already accumulating — use addRadiusPoint
+    return { activeRadius: { points: [point] } };
+  }),
+
+  addRadiusPoint: (point) => set((state) => {
+    if (!state.activeRadius) return {};
+    return { activeRadius: { points: [...state.activeRadius.points, point] } };
+  }),
+
+  finishRadius: (options) => {
+    // Mirrors `finishPolyline`'s recorded/no-op contract — see its comment
+    // for why the double-click duplicate drop is scoped to that one gesture.
+    let recorded = false;
+    set((state) => {
+      const active = state.activeRadius;
+      if (!active) return {};
+      let points = active.points;
+      if (
+        options?.fromDoubleClick &&
+        points.length >= 2 &&
+        isDuplicateClickPoint(points[points.length - 1], points[points.length - 2])
+      ) {
+        points = points.slice(0, -1);
+      }
+      if (points.length < MIN_RADIUS_POINTS) return {};
+      measurementCounter++;
+      const measurement: RadiusMeasurement = {
+        id: `rad-${Date.now()}-${measurementCounter}`,
+        points,
+      };
+      recorded = true;
+      return {
+        radiusMeasurements: [...state.radiusMeasurements, measurement],
+        activeRadius: null,
+      };
+    });
+    return recorded;
+  },
+
+  cancelRadius: () => set({ activeRadius: null }),
+
+  deleteRadiusMeasurement: (id) => set((state) => ({
+    radiusMeasurements: state.radiusMeasurements.filter((m) => m.id !== id),
+  })),
+
+  resetMeasureGesture: () => set({
+    activeMeasurement: null,
+    activePolyline: null,
+    activeAngle: null,
+    activeRadius: null,
+    snapTarget: null,
+    measurementConstraintEdge: null,
+  }),
+
+  resetAllMeasurementState: () => set({
+    measurements: [],
+    pendingMeasurePoint: null,
+    activeMeasurement: null,
+    snapTarget: null,
+    snapVisualization: null,
+    edgeLockState: getDefaultEdgeLockState(),
+    measurementConstraintEdge: null,
+    // #2199 §5: RENDERER-space datum belongs to the scene it was picked in —
+    // a new file is a new scene, so (unlike clearMeasurements) this must go.
+    measureReferencePoint: null,
+    measureMode: 'drag',
+    activePolyline: null,
+    polylineMeasurements: [],
+    angleKind: 'points',
+    activeAngle: null,
+    angleMeasurements: [],
+    activeRadius: null,
+    radiusMeasurements: [],
+  }),
 });

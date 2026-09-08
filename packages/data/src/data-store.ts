@@ -35,7 +35,23 @@ interface RelationshipGraph {
   getRelated(entityId: number, relType: RelationshipType, direction: 'forward' | 'inverse'): number[];
 }
 
+/**
+ * The structural minimum a store's property table must satisfy — deliberately
+ * narrower than the columnar `PropertyTable` in `property-table.ts` so that
+ * duck-typed stores (server-converted, cache-restored, synthetic) can satisfy
+ * `IfcStoreBase` without owning TypedArray columns.
+ *
+ * `count` is the number of materialised rows, and it is optional because a
+ * duck-typed table need not track one. Consumers may therefore only read an
+ * **explicit `count === 0`** as "this table has no rows and so cannot answer
+ * `findByProperty`" — a STEP parse leaves the table empty on purpose and reads
+ * through `IfcStoreBase.getProperties` instead (issue #577). An absent `count`
+ * says nothing and must be treated as "ask `findByProperty`", because every
+ * store written before `count` existed on this interface implements
+ * `findByProperty` for real.
+ */
 interface PropertyTable {
+  readonly count?: number;
   getForEntity(expressId: number): PropertySet[];
   getPropertyValue(expressId: number, psetName: string, propName: string): PropertyValue | null;
   findByProperty(
@@ -46,8 +62,22 @@ interface PropertyTable {
   ): number[];
 }
 
+/** Structural minimum for a store's quantity table; see {@link PropertyTable}. */
 interface QuantityTable {
+  readonly count?: number;
   getForEntity(expressId: number): QuantitySet[];
+  /**
+   * Indexed quantity filter, mirroring `PropertyTable.findByProperty`. Optional:
+   * a table that omits it is resolved per candidate through
+   * `IfcStoreBase.getQuantities` instead — the same answer, more work. See the
+   * columnar implementation in `quantity-table.ts`.
+   */
+  findByQuantity?(
+    quantityName: string,
+    operator: string,
+    value: PropertyValue,
+    qsetName?: string,
+  ): number[];
 }
 
 /**

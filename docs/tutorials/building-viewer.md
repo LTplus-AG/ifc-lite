@@ -243,7 +243,9 @@ export class IfcViewer {
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
-      // pick() resolves to a PickResult ({ expressId, ... }) or null
+      // pick() resolves to a PickResult or null. Besides `expressId` (the
+      // product), a hit may carry `geometryItemId`, the representation item
+      // the clicked surface was built from. See the rendering guide.
       const hit = await this.renderer.pick(x, y);
       if (hit) {
         this.onSelect?.(hit.expressId);

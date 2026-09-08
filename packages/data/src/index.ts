@@ -6,12 +6,17 @@
  * @ifc-lite/data - Columnar data structures
  */
 
+export { IFCX_VERSION } from './ifcx-version.js';
 export { StringTable } from './string-table.js';
 export { EntityTableBuilder, entityTableFromColumns, entityTableToColumns } from './entity-table.js';
+export { exactTypeName, exactNameOfRow } from './exact-type-name.js';
+export type { ExactTypeNameSource } from './exact-type-name.js';
 export type { EntityTable, EntityTableColumns } from './entity-table.js';
-export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns } from './property-table.js';
+export { PropertyTableBuilder, propertyTableFromColumns, propertyTableToColumns, comparePropertyValues } from './property-table.js';
+export { groupPropertySetsByInstance } from './group-property-sets.js';
 export type { PropertyTable, PropertyTableColumns, PropertySet, Property, PropertyValue } from './property-table.js';
 export { QuantityTableBuilder, quantityTableFromColumns, quantityTableToColumns } from './quantity-table.js';
+export { groupQuantitySetsByInstance } from './group-quantity-sets.js';
 export type { QuantityTable, QuantityTableColumns, QuantitySet, Quantity } from './quantity-table.js';
 export {
   RelationshipGraphBuilder,
@@ -29,6 +34,8 @@ export type {
   Edge,
   RelationshipInfo,
 } from './relationship-graph.js';
+export { edgeSurvives, flattenRelationshipEdges, binarySearchU32 } from './relationship-graph-helpers.js';
+export type { FlattenedRelationshipEdge } from './relationship-graph-helpers.js';
 export * from './types.js';
 // Explicitly export const enums for runtime use
 export { IfcTypeEnum, PropertyValueType, QuantityType, RelationshipType, EntityFlags } from './types.js';
@@ -40,6 +47,9 @@ export {
   findStoreyByElevation,
 } from './storey-elevation.js';
 export type { IfcStoreBase, IfcSourceHeader } from './data-store.js';
+export { getAggregatedChildren, collectAggregatedDescendants } from './decomposition.js';
+export type { DecompositionRelationships } from './decomposition.js';
+export { linearToSrgb } from './color.js';
 // Schema-agnostic STEP serialization primitives — the single source of truth
 // re-exported by the per-schema serializer bundles (parser runtime + codegen).
 export {
@@ -53,6 +63,7 @@ export {
   generateHeader,
   generateStepFileWithRegistry,
   parseStepValue,
+  escapeStepString,
 } from './step-serializers.js';
 export type {
   StepValue,
@@ -91,6 +102,7 @@ export {
   isEntitySubtypeOf,
   RESERVED_PSET_PREFIXES,
 } from './ifc-schema/index.js';
+export { expandTypeNamesToDescendants } from './ifc-schema/descendants.js';
 
 // Raw bundled entity tables — exposed so synchronous consumers (parser
 // categorizer, geometry routers) can walk the inheritance chain across
@@ -99,6 +111,14 @@ export {
 export { ENTITIES_IFC2X3 } from './ifc-schema/generated/entities-ifc2x3.js';
 export { ENTITIES_IFC4 } from './ifc-schema/generated/entities-ifc4.js';
 export { ENTITIES_IFC4X3 } from './ifc-schema/generated/entities-ifc4x3.js';
+// The upstream SchemaInfo tables the `ENTITIES_*` lists come from also carry
+// EXPRESS *defined types* (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`,
+// …) as rows, because IDS needs their names. They are not instantiable
+// entities, so a synchronous consumer deciding "is this a class I may create?"
+// has to subtract them, and this is the authoritative list to subtract.
+// Raw and read-only for the same reason as the entity tables above; the async
+// `findDataType` cannot answer inside a synchronous guard.
+export { IFC_DATA_TYPES } from './ifc-schema/generated/data-types.js';
 export type {
   IfcAttributeInfo,
   IfcDataTypeInfo,

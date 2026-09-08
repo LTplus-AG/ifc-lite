@@ -13,7 +13,37 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
-import { polylineToSegments, circleToSegments, liftTo3DLineList } from './useSymbolicAnnotations.js';
+import {
+  polylineToSegments,
+  circleToSegments,
+  liftTo3DLineList,
+  symbolicAnnotationsOverlayEnabled,
+} from './useSymbolicAnnotations.js';
+
+describe('symbolicAnnotationsOverlayEnabled (issue #2121)', () => {
+  // `Section2DPanel`'s class-level Visibility toggles claim to gate the
+  // section "like the 3D viewport does" (#2060). The mesh cut and the
+  // construction-projection profiles both honour `typeVisibility` via
+  // `isTypeVisible`; the symbolic IfcAnnotation overlay used to be the one
+  // route that ignored it — this predicate is the fix, and these cases pin
+  // its truth table.
+
+  it('is OFF when the IfcAnnotation class-visibility toggle is off, even with the overlay and status both on', () => {
+    assert.equal(symbolicAnnotationsOverlayEnabled(true, 'ready', false), false);
+  });
+
+  it('is ON when the overlay is on, the drawing is ready, and the class is visible', () => {
+    assert.equal(symbolicAnnotationsOverlayEnabled(true, 'ready', true), true);
+  });
+
+  it('is OFF when the per-drawing overlay toggle is off, independent of the class toggle', () => {
+    assert.equal(symbolicAnnotationsOverlayEnabled(false, 'ready', true), false);
+  });
+
+  it('is OFF when the drawing is not ready, independent of the class toggle', () => {
+    assert.equal(symbolicAnnotationsOverlayEnabled(true, 'generating', true), false);
+  });
+});
 
 describe('polylineToSegments', () => {
   it('emits N-1 segments for an open polyline', () => {

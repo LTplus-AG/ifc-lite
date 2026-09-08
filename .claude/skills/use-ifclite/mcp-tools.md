@@ -44,6 +44,16 @@ The read-only discovery tools are always on — call them before anything else:
 **Models** — `model_info`, `model_list`, `model_load`, `model_unload`,
 `model_save`, `model_audit`, `model_diff`.
 
+`model_diff` compares by GlobalId, so two revisions of the same building read as
+"everything deleted and re-added" whenever the second was re-exported from
+scratch. Pass `by_content: true` to match entities by content instead. It
+answers at data scope only (no geometry pipeline in the server) and reports
+`duplicated` / `deduplicated` / `ambiguous` matches as groups of candidates —
+those need a human, so do not collapse them to a single pairing. Long groups are
+cut to `max_group_members` (default 20) per side, with `baseCount` / `headCount`
+reporting the whole size. Any mutation you have queued but not saved is part of
+the answer, and `contentDiff.pendingMutations` says how many.
+
 **Discovery & metadata** — `schema_describe`, `units`, `georeferencing`,
 `classifications_list`, `materials_list`, `spatial_hierarchy`,
 `containment_chain`, `relationships`.

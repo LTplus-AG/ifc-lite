@@ -447,6 +447,79 @@ describe('checkAttributeFacet — XSD strict-cast gate', () => {
 });
 
 // ============================================================================
+// Property Facet — strict XSD-cast gate against the EXPRESS base
+// ============================================================================
+
+describe('checkPropertyFacet — XSD strict-cast gate follows the EXPRESS base', () => {
+  const accessor = createMockAccessor([
+    {
+      expressId: 1,
+      type: 'IfcWall',
+      properties: [
+        {
+          psetName: 'Pset_Custom',
+          propName: 'Roughness',
+          value: 'Rough',
+          dataType: 'IFCDESCRIPTIVEMEASURE',
+        },
+        {
+          psetName: 'Pset_Custom',
+          propName: 'Rate',
+          value: 3,
+          dataType: 'IFCINTEGERCOUNTRATEMEASURE',
+        },
+        {
+          psetName: 'Pset_Custom',
+          propName: 'Ratio',
+          value: 0.5,
+          dataType: 'IFCPARAMETERVALUE',
+        },
+      ],
+    },
+  ]);
+
+  const check = (propName: string, literal: string) =>
+    checkPropertyFacet(
+      {
+        type: 'property',
+        propertySet: sv('Pset_Custom'),
+        baseName: sv(propName),
+        value: sv(literal),
+      },
+      1,
+      accessor
+    );
+
+  it('accepts a text literal for IfcDescriptiveMeasure — EXPRESS says STRING', () => {
+    // `IfcDescriptiveMeasure` ends in `MEASURE` but is `TYPE
+    // IfcDescriptiveMeasure = STRING;`. Gating it as `xs:double` made a
+    // matching text value report as a failure — a false FAIL.
+    expect(check('Roughness', 'Rough').passed).toBe(true);
+  });
+
+  it('still fails IfcDescriptiveMeasure when the text genuinely differs', () => {
+    // Negative control: the fix must not turn the gate into a blanket pass.
+    const result = check('Roughness', 'Smooth');
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PROPERTY_VALUE_MISMATCH');
+  });
+
+  it('rejects a decimal literal for IfcIntegerCountRateMeasure — EXPRESS says INTEGER', () => {
+    expect(check('Rate', '3.0').passed).toBe(false);
+  });
+
+  it('accepts an integer literal for IfcIntegerCountRateMeasure', () => {
+    expect(check('Rate', '3').passed).toBe(true);
+  });
+
+  it('gates IfcParameterValue, which the MEASURE/RATIO suffix rule never reached', () => {
+    expect(check('Ratio', '0.5').passed).toBe(true);
+    expect(check('Ratio', 'half').passed).toBe(false);
+  });
+});
+
+
+// ============================================================================
 // Property Facet
 // ============================================================================
 
@@ -1013,5 +1086,303 @@ describe('checkPartOfFacet', () => {
     const result = checkPartOfFacet(facet, 5, accessor);
     expect(result.passed).toBe(true);
   });
+
+  it('prefers a specific failure over a generic entity mismatch across multiple ancestors', () => {
+    // Two ancestors, neither passing, so the loop never returns early —
+    // it must run the full tie-break. The nearer ancestor (100) is the
+    // wrong entity type entirely (generic PARTOF_ENTITY_MISMATCH); the
+    // further one (200) is the right entity type but the wrong
+    // predefinedType (more specific PARTOF_PREDEFINED_TYPE_MISMATCH).
+    // The reported failure must be the specific one, not whichever
+    // ancestor happened to be checked first.
+    const multiAncestorAccessor = {
+      ...accessor,
+      getAncestors(
+        expressId: number,
+        relationType: string
+      ) {
+        if (expressId !== 6 || relationType !== 'IfcRelContainedInSpatialStructure') {
+          return [];
+        }
+        return [
+          { expressId: 100, entityType: 'IfcSpace' }, // generic entity mismatch
+          {
+            expressId: 200,
+            entityType: 'IfcBuildingStorey',
+            predefinedType: 'GROUND_FLOOR',
+          }, // right entity, wrong predefinedType
+        ];
+      },
+    } as typeof accessor;
+
+    const facet: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelContainedInSpatialStructure',
+      entity: {
+        type: 'entity',
+        name: sv('IfcBuildingStorey'),
+        predefinedType: sv('BASEMENT'),
+      },
+    };
+    const result = checkPartOfFacet(facet, 6, multiAncestorAccessor);
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PARTOF_PREDEFINED_TYPE_MISMATCH');
+  });
 });
 
+
+// ============================================================================
+// Entity ↔ partOf predefined-type agreement
+// ============================================================================
+
+/**
+ * `checkEntityFacet` and `checkPartOfFacet` evaluate the SAME nested
+ * `<entity><predefinedType>` construct — the IDS XSD gives partOf's
+ * `entity` element the identical complex type an entity facet uses — so
+ * a given (rawType, objectType, literal) triple must produce the same
+ * verdict on both paths.
+ *
+ * The buildingSMART corpus pins case sensitivity on the entity path
+ * (`entity/fail-user_defined_types_are_checked_case_sensitively.ids`:
+ * an `IfcWall` whose `ObjectType` is `waldo` must FAIL a facet asking
+ * for `WALDO`). It carries no partOf analogue, which is exactly how the
+ * partOf copy drifted to a case-INSENSITIVE comparison.
+ *
+ * Fixture note: the cases below vary the literal's casing against the
+ * model value in BOTH directions (lower literal vs upper model value,
+ * and upper literal vs lower model value) and keep matching-case
+ * controls that must still pass, so "ignores case" and "never matches"
+ * are each observable. The raw-enum branch and the user-defined-name
+ * branch are exercised separately — they are distinct branches of the
+ * match, and a fixture touching only one cannot see the other drift.
+ */
+describe('predefinedType matching agrees between entity and partOf facets', () => {
+  const cases = [
+    {
+      label: 'user-defined name, lowercase model value vs uppercase literal',
+      objectType: 'bunny',
+      literal: 'BUNNY',
+      shouldPass: false,
+    },
+    {
+      label: 'user-defined name, uppercase model value vs lowercase literal',
+      objectType: 'BUNNY',
+      literal: 'bunny',
+      shouldPass: false,
+    },
+    {
+      label: 'user-defined name, exact uppercase casing (control)',
+      objectType: 'BUNNY',
+      literal: 'BUNNY',
+      shouldPass: true,
+    },
+    {
+      label: 'user-defined name, exact mixed casing (control)',
+      objectType: 'BunnyHutch',
+      literal: 'BunnyHutch',
+      shouldPass: true,
+    },
+  ];
+
+  for (const c of cases) {
+    it(`entity facet: ${c.label} → ${c.shouldPass ? 'pass' : 'fail'}`, () => {
+      const accessor = createMockAccessor([
+        { expressId: 11, type: 'IfcInventory', objectType: c.objectType },
+      ]);
+      const facet: IDSEntityFacet = {
+        type: 'entity',
+        name: sv('IFCINVENTORY'),
+        predefinedType: sv(c.literal),
+      };
+      expect(checkEntityFacet(facet, 11, accessor).passed).toBe(c.shouldPass);
+    });
+
+    it(`partOf facet: ${c.label} → ${c.shouldPass ? 'pass' : 'fail'}`, () => {
+      const accessor = createMockAccessor([
+        {
+          expressId: 21,
+          type: 'IfcElementAssembly',
+          parent: {
+            expressId: 22,
+            type: 'IfcInventory',
+            relation: 'IfcRelAssignsToGroup',
+            objectType: c.objectType,
+          },
+        },
+      ]);
+      const facet: IDSPartOfFacet = {
+        type: 'partOf',
+        relation: 'IfcRelAssignsToGroup',
+        entity: {
+          type: 'entity',
+          name: sv('IFCINVENTORY'),
+          predefinedType: sv(c.literal),
+        },
+      };
+      expect(checkPartOfFacet(facet, 21, accessor).passed).toBe(c.shouldPass);
+    });
+  }
+
+  it('partOf facet: a raw enum token is compared case-sensitively', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 31,
+        type: 'IfcWindow',
+        parent: {
+          expressId: 32,
+          type: 'IfcWall',
+          relation: 'IfcRelFillsElement',
+          predefinedType: 'STANDARD',
+        },
+      },
+    ]);
+    const lower: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelFillsElement',
+      entity: {
+        type: 'entity',
+        name: sv('IFCWALL'),
+        predefinedType: sv('standard'),
+      },
+    };
+    const result = checkPartOfFacet(lower, 31, accessor);
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PARTOF_PREDEFINED_TYPE_MISMATCH');
+    expect(result.failure?.actual).toBe('STANDARD');
+
+    const exact: IDSPartOfFacet = {
+      ...lower,
+      entity: {
+        type: 'entity',
+        name: sv('IFCWALL'),
+        predefinedType: sv('STANDARD'),
+      },
+    };
+    expect(checkPartOfFacet(exact, 31, accessor).passed).toBe(true);
+  });
+
+  it('partOf facet: the literal USERDEFINED still matches the raw token, not the custom name (#2316)', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 41,
+        type: 'IfcWindow',
+        parent: {
+          expressId: 42,
+          type: 'IfcWall',
+          relation: 'IfcRelFillsElement',
+          predefinedType: 'USERDEFINED',
+          objectType: 'CustomWallType',
+        },
+      },
+    ]);
+    const asToken: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelFillsElement',
+      entity: {
+        type: 'entity',
+        name: sv('IFCWALL'),
+        predefinedType: sv('USERDEFINED'),
+      },
+    };
+    expect(checkPartOfFacet(asToken, 41, accessor).passed).toBe(true);
+
+    const asName: IDSPartOfFacet = {
+      ...asToken,
+      entity: {
+        type: 'entity',
+        name: sv('IFCWALL'),
+        predefinedType: sv('CustomWallType'),
+      },
+    };
+    expect(checkPartOfFacet(asName, 41, accessor).passed).toBe(true);
+
+    const asWrongCaseName: IDSPartOfFacet = {
+      ...asToken,
+      entity: {
+        type: 'entity',
+        name: sv('IFCWALL'),
+        predefinedType: sv('customwalltype'),
+      },
+    };
+    expect(checkPartOfFacet(asWrongCaseName, 41, accessor).passed).toBe(false);
+  });
+
+
+  /**
+   * Branch ORDER and its guard, not just values: the user-defined name is
+   * consulted ONLY when the raw enum token is literally `USERDEFINED`. An
+   * entity carrying a concrete enum token (`FLOOR`) plus an `ObjectType`
+   * must NOT match a facet naming that `ObjectType` — otherwise every
+   * element with a stray `ObjectType` silently satisfies a predefined-type
+   * requirement it does not meet. Dropping the guard makes the fallback
+   * branch reachable for any raw token, which is invisible to a fixture
+   * whose raw token happens to be `USERDEFINED`.
+   */
+  it('partOf facet: a concrete enum token does not fall back to the objectType', () => {
+    const accessor = createMockAccessor([
+      {
+        expressId: 51,
+        type: 'IfcWindow',
+        parent: {
+          expressId: 52,
+          type: 'IfcSlab',
+          relation: 'IfcRelAggregates',
+          predefinedType: 'FLOOR',
+          objectType: 'SpecialSlab',
+        },
+      },
+    ]);
+    const byObjectType: IDSPartOfFacet = {
+      type: 'partOf',
+      relation: 'IfcRelAggregates',
+      entity: {
+        type: 'entity',
+        name: sv('IFCSLAB'),
+        predefinedType: sv('SpecialSlab'),
+      },
+    };
+    const result = checkPartOfFacet(byObjectType, 51, accessor);
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PARTOF_PREDEFINED_TYPE_MISMATCH');
+    // The display form prefers the user-defined name over the raw token.
+    expect(result.failure?.actual).toBe('SpecialSlab');
+
+    const byRawToken: IDSPartOfFacet = {
+      ...byObjectType,
+      entity: {
+        type: 'entity',
+        name: sv('IFCSLAB'),
+        predefinedType: sv('FLOOR'),
+      },
+    };
+    expect(checkPartOfFacet(byRawToken, 51, accessor).passed).toBe(true);
+  });
+
+  it('entity facet: a concrete enum token does not fall back to the objectType', () => {
+    const base = createMockAccessor([
+      { expressId: 61, type: 'IfcSlab', objectType: 'SpecialSlab' },
+    ]);
+    const accessor = {
+      ...base,
+      getPredefinedTypeRaw: (expressId: number) =>
+        expressId === 61 ? 'FLOOR' : undefined,
+    };
+
+    const byObjectType: IDSEntityFacet = {
+      type: 'entity',
+      name: sv('IFCSLAB'),
+      predefinedType: sv('SpecialSlab'),
+    };
+    const result = checkEntityFacet(byObjectType, 61, accessor);
+    expect(result.passed).toBe(false);
+    expect(result.failure?.type).toBe('PREDEFINED_TYPE_MISMATCH');
+    expect(result.failure?.actual).toBe('SpecialSlab');
+
+    const byRawToken: IDSEntityFacet = {
+      type: 'entity',
+      name: sv('IFCSLAB'),
+      predefinedType: sv('FLOOR'),
+    };
+    expect(checkEntityFacet(byRawToken, 61, accessor).passed).toBe(true);
+  });
+});

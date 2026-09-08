@@ -116,6 +116,24 @@ The manifest is the contract between your bundle and the host. Every field is ha
 | `idsValidators` | Custom IDS rule validators. |
 | `statusBar` | Items in `statusBar.left` / `statusBar.right`. |
 
+#### Writing an exporter that produces CSV
+
+Build it with `ctx.bim.export.csv(...)` rather than joining strings yourself.
+That path escapes leading `=`, `+`, `-`, `@`, tab and carriage return, which
+Excel, Sheets and LibreOffice otherwise treat as a live formula (CWE-1236). A
+model can carry those characters in any text property, so a hand-built CSV
+exports them straight into a spreadsheet as executable content.
+
+A cell that is wholly a number (`-0.35`, `+1`) is deliberately left unescaped,
+so exported measures still sum. It cannot carry a formula: the only characters
+it may contain are `+ - . e E` and the digits, which spell no function name and
+no cell reference. `-0.35=cmd` is not wholly a number and is still escaped.
+
+The host cannot add that guard for you. What an exporter returns is an opaque
+blob, and escaping it would mean parsing arbitrary third-party CSV and would
+corrupt any exporter producing something other than a table. The escaping has
+to happen where the cells are still cells.
+
 Each contribution can carry a `when` clause that gates visibility:
 
 ```json

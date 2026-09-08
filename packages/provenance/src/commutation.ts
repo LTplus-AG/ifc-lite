@@ -3,10 +3,8 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * Commutation certificates for the M4 merge soundness contract (Bet B2.1,
- * docs/vision/moonshots-execution-plan.md Phase 2; docs/vision/
- * moonshots-tech.md M4: "an auto-merge is emitted only with a certificate
- * that the ops commute").
+ * Commutation certificates for the merge-soundness contract: an auto-merge
+ * is emitted only with a certificate that the operations commute.
  *
  * Given a base state and two concurrent op sets A and B (one per client),
  * {@link createCommutationCertificate}:
@@ -32,6 +30,7 @@
  * reserved slot, actual signing lands with the M4 encrypted final).
  */
 
+import { checkEpsilonPin } from './commutation-epsilon-pin.js';
 import {
   conflictPredicate,
   unionAabb,
@@ -39,15 +38,18 @@ import {
   type Aabb,
   type ConflictResult,
   type Footprint,
+  type SpatialRuleMode,
 } from './footprint.js';
 import {
   applyOps,
   buildStateDag,
   canonicalStateBytes,
   computeMergeOpFootprint,
+  DEFAULT_MERGE_SEMANTICS,
   hashModelState,
   OpApplicationError,
   type MergeOp,
+  type MergeSemantics,
   type ModelState,
 } from './merge-model.js';
 
@@ -103,6 +105,26 @@ export interface CommutationInput {
   epsilonMm?: number;
   clientA?: string;
   clientB?: string;
+  /**
+   * Default `'enabled'`. `'disabled'` runs the cross-pair scan with the
+   * SPATIAL half of the predicate switched off — the spatial-rule ablation. A
+   * certificate issued under `'disabled'` is an experimental artifact and
+   * says nothing about the shipping predicate: the certificate carries no
+   * field recording the mode, deliberately, because the mode is not a wire
+   * concept and a certificate must never be interpretable as "issued under a
+   * weaker rule". Callers that ablate own that context.
+   */
+  spatialRule?: SpatialRuleMode;
+  /**
+   * Op-model semantics to replay under. Defaults to
+   * {@link DEFAULT_MERGE_SEMANTICS} -- the B4.2 semantics every published
+   * number was measured under. Non-default values are the G4 item 7
+   * sensitivity variants (derived cuts, containment off); like `spatialRule`
+   * the certificate does NOT record the mode, for the same reason, so a
+   * certificate issued under a variant is an experimental artifact whose
+   * context the caller owns.
+   */
+  semantics?: MergeSemantics;
 }
 
 interface CrossAnalysis {
@@ -120,6 +142,7 @@ function analyzeCrossPairs(
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
   epsilonMm: number,
+  spatialRule: SpatialRuleMode,
 ): CrossAnalysis {
   const dag = buildStateDag(base);
   const fpsA = opsA.map((op) => computeMergeOpFootprint(dag, base, op));
@@ -127,21 +150,24 @@ function analyzeCrossPairs(
   const conflicts: OpConflict[] = [];
   for (const fpA of fpsA) {
     for (const fpB of fpsB) {
-      const result = conflictPredicate(fpA, fpB, { epsilonMm });
+      const result = conflictPredicate(fpA, fpB, { epsilonMm, spatialRule });
       if (result.conflict) conflicts.push({ aOpId: fpA.opId, bOpId: fpB.opId, result });
     }
   }
   return { fpsA, fpsB, conflicts };
 }
 
-/** Cross-pair conflict scan (see {@link analyzeCrossPairs}), conflicts only. */
+/** Cross-pair conflict scan (see {@link analyzeCrossPairs}), conflicts only.
+ *  `spatialRule` defaults to `'enabled'`; `'disabled'` is the spatial-rule ablation
+ *  (structural overlap only). */
 export function findCrossConflicts(
   base: ModelState,
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
   epsilonMm: number = DEFAULT_EPSILON_MM,
+  spatialRule: SpatialRuleMode = 'enabled',
 ): OpConflict[] {
-  return analyzeCrossPairs(base, opsA, opsB, epsilonMm).conflicts;
+  return analyzeCrossPairs(base, opsA, opsB, epsilonMm, spatialRule).conflicts;
 }
 
 export type ReplayOutcome =
@@ -150,22 +176,26 @@ export type ReplayOutcome =
   | { status: 'apply-failed'; order: 'ab' | 'ba'; message: string };
 
 /** Replay base+A+B and base+B+A; report convergence. This is the computable
- *  ground truth the battery scores false conflicts against. */
+ *  ground truth the battery scores false conflicts against. `semantics`
+ *  selects the op model (default {@link DEFAULT_MERGE_SEMANTICS}); the G4
+ *  item 7 sensitivity variants replay the SAME schedules under a different
+ *  one. */
 export function attemptBothOrders(
   base: ModelState,
   opsA: readonly MergeOp[],
   opsB: readonly MergeOp[],
+  semantics: MergeSemantics = DEFAULT_MERGE_SEMANTICS,
 ): ReplayOutcome {
   let ab: ModelState;
   try {
-    ab = applyOps(applyOps(base, opsA), opsB);
+    ab = applyOps(applyOps(base, opsA, semantics), opsB, semantics);
   } catch (err) {
     if (err instanceof OpApplicationError) return { status: 'apply-failed', order: 'ab', message: err.message };
     throw err;
   }
   let ba: ModelState;
   try {
-    ba = applyOps(applyOps(base, opsB), opsA);
+    ba = applyOps(applyOps(base, opsB, semantics), opsA, semantics);
   } catch (err) {
     if (err instanceof OpApplicationError) return { status: 'apply-failed', order: 'ba', message: err.message };
     throw err;
@@ -198,10 +228,16 @@ function summarize(client: string, ops: readonly MergeOp[], fps: readonly Footpr
  */
 export async function createCommutationCertificate(input: CommutationInput): Promise<CommutationOutcome> {
   const epsilonMm = input.epsilonMm ?? DEFAULT_EPSILON_MM;
-  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(input.base, input.opsA, input.opsB, epsilonMm);
+  const spatialRule = input.spatialRule ?? 'enabled';
+  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(input.base, input.opsA, input.opsB, epsilonMm, spatialRule);
   if (conflicts.length > 0) return { ok: false, reason: 'conflict', conflicts };
 
-  const replay = attemptBothOrders(input.base, input.opsA, input.opsB);
+  const replay = attemptBothOrders(
+    input.base,
+    input.opsA,
+    input.opsB,
+    input.semantics ?? DEFAULT_MERGE_SEMANTICS,
+  );
   if (replay.status === 'apply-failed') {
     return { ok: false, reason: 'apply-failed', details: { order: replay.order, message: replay.message } };
   }
@@ -246,14 +282,28 @@ export type CommutationVerificationResult = CommutationVerificationOk | Commutat
 
 export interface CommutationVerifyOptions {
   /** Caller-owned identity for op set A. When supplied, `certificate.a.client`
-   *  must match exactly. The client labels are attribution METADATA: nothing
-   *  in the artifact cryptographically binds them (signing is out of scope
-   *  for v0, spec decision Q5), so the only sound check is against an
-   *  identity the VERIFIER already knows — deriving the expectation from the
-   *  certificate's own field would let a tampered label verify. */
+   *  must match exactly. The labels are attribution METADATA -- nothing binds
+   *  them (signing is out of scope for v0, decision Q5) -- so the only sound
+   *  check is against an identity the VERIFIER already knows. */
   expectedClientA?: string;
   /** Same for op set B / `certificate.b.client`. */
   expectedClientB?: string;
+  /**
+   * Predicate configuration to re-check under. Default `'enabled'`, the only
+   * sound choice for a real certificate -- verifier-supplied for the same
+   * reason the client labels are: the certificate does not record it (see
+   * {@link CommutationInput.spatialRule}), so deriving it from the artifact
+   * would let the artifact choose its own weaker rule. Only the spatial-rule ablation
+   * harness passes `'disabled'`, to re-check certificates it knowingly issued
+   * under the ablated predicate.
+   */
+  spatialRule?: SpatialRuleMode;
+  /**
+   * Op-model semantics to re-replay under, same reasoning as `spatialRule`
+   * (not recorded on the certificate). Default {@link DEFAULT_MERGE_SEMANTICS}.
+   */
+  semantics?: MergeSemantics;
+  // `expectedEpsilonMm` is declared via module augmentation in ./commutation-epsilon-pin.ts.
 }
 
 function fail(reason: string, details?: unknown): CommutationVerificationFailure {
@@ -324,8 +374,16 @@ export async function verifyCommutationCertificate(
   if (certificate.model !== 'merge-model-v0') {
     return fail('model-mismatch', { actual: certificate.model });
   }
+  const epsilonPinFailure = checkEpsilonPin(options.expectedEpsilonMm, certificate);
+  if (epsilonPinFailure) return fail(epsilonPinFailure.reason, epsilonPinFailure.details);
 
-  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(base, opsA, opsB, certificate.epsilonMm);
+  const { fpsA, fpsB, conflicts } = analyzeCrossPairs(
+    base,
+    opsA,
+    opsB,
+    certificate.epsilonMm,
+    options.spatialRule ?? 'enabled',
+  );
   if (conflicts.length > 0) return fail('conflicting-op-sets', { conflicts });
 
   const summaryFailure =
@@ -338,7 +396,7 @@ export async function verifyCommutationCertificate(
     return fail('base-root-mismatch', { expected: certificate.baseRootHash, actual: baseRootHash });
   }
 
-  const replay = attemptBothOrders(base, opsA, opsB);
+  const replay = attemptBothOrders(base, opsA, opsB, options.semantics ?? DEFAULT_MERGE_SEMANTICS);
   if (replay.status === 'apply-failed') {
     return fail('replay-apply-failed', { order: replay.order, message: replay.message });
   }

@@ -17,7 +17,8 @@
  */
 
 import { createHeadlessContext } from '../loader.js';
-import { printJson, fatal, hasFlag } from '../output.js';
+import { printJson, fatal, hasFlag, firstNonBlank } from '../output.js';
+import { filterBuildingElements } from './stats-aggregation.js';
 
 interface Recipe {
   name: string;
@@ -26,7 +27,7 @@ interface Recipe {
   execute: (bim: any, store: any, match?: RegExpMatchArray) => any;
 }
 
-const RECIPES: Recipe[] = [
+export const RECIPES: Recipe[] = [
   // --- Counting recipes ---
   {
     name: 'count-walls',
@@ -169,7 +170,7 @@ const RECIPES: Recipe[] = [
     description: 'Sum volumes across all elements',
     execute: (bim) => {
       let total = 0;
-      for (const e of bim.query().toArray()) {
+      for (const e of filterBuildingElements<any>(bim.query().toArray())) {
         total += getQuantity(bim, e.ref, ['GrossVolume', 'NetVolume']);
       }
       return { answer: `${round(total)} m3 total volume`, value: round(total), unit: 'm3' };
@@ -239,7 +240,7 @@ const RECIPES: Recipe[] = [
     description: 'Get the building name',
     execute: (bim) => {
       const buildings = bim.query().byType('IfcBuilding').toArray();
-      const name = buildings[0]?.name ?? '(unnamed)';
+      const name = firstNonBlank(buildings[0]?.name) ?? '(unnamed)';
       return { answer: `Building: ${name}`, name };
     },
   },
@@ -266,7 +267,7 @@ const RECIPES: Recipe[] = [
         const contained = bim.contains(s.ref);
         if (contained.length > maxCount) {
           maxCount = contained.length;
-          maxName = s.name ?? '(unnamed)';
+          maxName = firstNonBlank(s.name) ?? '(unnamed)';
         }
       }
       return { answer: `Largest storey: ${maxName} with ${maxCount} elements`, storey: maxName, elementCount: maxCount };
@@ -338,7 +339,7 @@ const RECIPES: Recipe[] = [
         ? ['GrossSideArea', 'NetSideArea']
         : ['GrossArea', 'NetArea', 'Area', 'GrossSideArea'];
 
-      const entities = bim.query().byType(ifcType).toArray();
+      const entities = filterBuildingElements<any>(bim.query().byType(ifcType).toArray());
       let maxEntity: any = null;
       let maxValue = 0;
       for (const e of entities) {
@@ -352,7 +353,7 @@ const RECIPES: Recipe[] = [
         return { answer: `No ${ifcType} entities found`, count: 0 };
       }
       return {
-        answer: `Largest ${ifcType}: "${maxEntity.name ?? '(unnamed)'}" with ${round(maxValue)} (m2 or m3)`,
+        answer: `Largest ${ifcType}: "${firstNonBlank(maxEntity.name) ?? '(unnamed)'}" with ${round(maxValue)} (m2 or m3)`,
         name: maxEntity.name,
         globalId: maxEntity.globalId,
         value: round(maxValue),
@@ -375,7 +376,7 @@ const RECIPES: Recipe[] = [
         ? ['GrossSideArea', 'NetSideArea']
         : ['GrossArea', 'NetArea', 'Area', 'GrossSideArea'];
 
-      const entities = bim.query().byType(ifcType).toArray();
+      const entities = filterBuildingElements<any>(bim.query().byType(ifcType).toArray());
       let minEntity: any = null;
       let minValue = Infinity;
       for (const e of entities) {
@@ -389,7 +390,7 @@ const RECIPES: Recipe[] = [
         return { answer: `No ${ifcType} entities with quantities found`, count: 0 };
       }
       return {
-        answer: `Smallest ${ifcType}: "${minEntity.name ?? '(unnamed)'}" with ${round(minValue)} (m2 or m3)`,
+        answer: `Smallest ${ifcType}: "${firstNonBlank(minEntity.name) ?? '(unnamed)'}" with ${round(minValue)} (m2 or m3)`,
         name: minEntity.name,
         globalId: minEntity.globalId,
         value: round(minValue),
@@ -477,6 +478,10 @@ export async function askCommand(args: string[]): Promise<void> {
   } catch (err: any) {
     if (jsonOutput) {
       printJson({ error: err.message, recipe: recipe.name, question });
+      // Match the non-JSON path's verdict: a build pipeline reading only the
+      // exit code must not see success on a question that could not be
+      // answered (same shape as the `ids --json` always-exit-0 defect).
+      process.exitCode = 1;
     } else {
       fatal(`Recipe "${recipe.name}" failed: ${err.message}`);
     }

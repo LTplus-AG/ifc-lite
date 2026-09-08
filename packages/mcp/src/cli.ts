@@ -15,75 +15,13 @@
  */
 
 import { resolve } from 'node:path';
+import { parseArgs } from './cli-args.js';
 import { StdioTransport } from './transport/stdio.js';
 import { HttpTransport, BearerTokenAuth, AllowAllAuth, type HttpAuthenticator, type SessionFactory } from './transport/http.js';
 import { createMCPServer, VERSION } from './index.js';
 import { loadIfcModel } from './loader.js';
 import { fullScope, readOnlyScope, type AuthScope } from './auth/scope.js';
 import { InMemoryModelRegistry } from './context.js';
-
-interface CliOptions {
-  files: string[];
-  readOnly: boolean;
-  federate: boolean;
-  transport: 'stdio' | 'http';
-  port: number;
-  /** undefined → caller didn't pass --host; CLI picks loopback by default */
-  host?: string;
-  token?: string;
-  bsdd?: string;
-  allowedPaths?: string[];
-  /** Browser Origins allowed to read HTTP responses cross-origin. Empty = none. */
-  allowedOrigins?: string[];
-  autoViewer: boolean;
-  viewerPort: number;
-  openBrowser: boolean;
-  insecure: boolean;
-}
-
-function parseArgs(argv: string[]): CliOptions {
-  const opts: CliOptions = {
-    files: [],
-    readOnly: false,
-    federate: false,
-    transport: 'stdio',
-    port: 8765,
-    autoViewer: false,
-    viewerPort: 0,
-    openBrowser: false,
-    insecure: false,
-  };
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === '--read-only') opts.readOnly = true;
-    else if (arg === '--federate') opts.federate = true;
-    else if (arg === '--insecure') opts.insecure = true;
-    else if (arg === '--transport') opts.transport = (argv[++i] as 'stdio' | 'http') ?? 'stdio';
-    else if (arg === '--port') opts.port = Number(argv[++i] ?? 8765);
-    else if (arg === '--host') opts.host = argv[++i];
-    else if (arg === '--token') opts.token = argv[++i];
-    else if (arg === '--bsdd') opts.bsdd = argv[++i];
-    else if (arg === '--viewer') opts.autoViewer = true;
-    else if (arg === '--viewer-port') opts.viewerPort = Number(argv[++i] ?? 0);
-    else if (arg === '--open') { opts.autoViewer = true; opts.openBrowser = true; }
-    else if (arg === '--allow') {
-      const path = argv[++i];
-      if (path) (opts.allowedPaths ??= []).push(resolve(path));
-    } else if (arg === '--allow-origin') {
-      const origin = argv[++i];
-      if (origin) (opts.allowedOrigins ??= []).push(origin);
-    } else if (arg === '--help' || arg === '-h') {
-      printHelp();
-      process.exit(0);
-    } else if (arg === '--version' || arg === '-v') {
-      process.stdout.write(`ifc-lite-mcp ${VERSION}\n`);
-      process.exit(0);
-    } else if (!arg.startsWith('-')) {
-      opts.files.push(arg);
-    }
-  }
-  return opts;
-}
 
 function printHelp(): void {
   process.stdout.write(`
@@ -136,6 +74,26 @@ function printHelp(): void {
 
 async function main(): Promise<void> {
   const opts = parseArgs(process.argv.slice(2));
+  // `parseArgs` is a pure parser so it can be exercised by tests (and shared
+  // with `ifc-lite mcp`); acting on --help/--version stays here, where exiting
+  // the process is the caller's business.
+  // `process.exitCode` + return, NOT `process.exit(0)`. Writes to a pipe are
+  // asynchronous in Node, and `process.exit` does not wait for them, so a large
+  // enough piped write can be truncated. This help text is ~2KB and fits the
+  // pipe buffer, so it was NOT being truncated today -- measured, not assumed.
+  // The change is for the shape rather than an observed failure, and it makes
+  // this binary match its sibling `packages/cli/src/index.ts`, which already
+  // returns rather than exits.
+  if (opts.help) {
+    printHelp();
+    process.exitCode = 0;
+    return;
+  }
+  if (opts.version) {
+    process.stdout.write(`ifc-lite-mcp ${VERSION}\n`);
+    process.exitCode = 0;
+    return;
+  }
   const scope: AuthScope = opts.readOnly ? readOnlyScope() : fullScope();
 
   const registry = new InMemoryModelRegistry();
@@ -171,11 +129,12 @@ async function main(): Promise<void> {
     process.stderr.write(`[ifc-lite-mcp] ready on stdio (read-only=${opts.readOnly})\n`);
 
     if (opts.autoViewer && registry.count() > 0) {
-      const first = registry.list()[0];
       try {
-        const state = await server.viewer.open(first, opts.viewerPort);
-        const adapters = server.viewer.adapters();
-        if (adapters) first.backend.attachStreamingAdapters(adapters.viewer, adapters.visibility);
+        // Explicit CLI flags (--viewer / --viewer-port) always win, so pass
+        // them as the override rather than relying on `server.config` — see
+        // `MCPServer.maybeAutoOpenViewer`'s precedence rule.
+        const state = await server.maybeAutoOpenViewer({ autoOpen: opts.autoViewer, port: opts.viewerPort });
+        if (!state) throw new Error('viewer did not open');
         process.stderr.write(`[ifc-lite-mcp] viewer ready at ${state.url}\n`);
         if (opts.openBrowser) {
           const cmd = process.platform === 'darwin' ? 'open'

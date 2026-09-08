@@ -34,7 +34,7 @@ parsePropertyValue(['IFCBOOLEAN', '.T.']); // { displayValue: 'True', ifcType: .
 - `generateIfcGuid`, `generateUuid`: new identifiers
 - `uuidToIfcGuid`, `ifcGuidToUuid`: convert between UUIDs and 22-char IFC GUIDs
 - `isValidIfcGuid`, `isValidUuid`: validation
-- `parsePropertyValue`: turn raw STEP property values (typed arrays, `.T.`/`.F.`, enums) into a display string plus optional IFC type name
+- `parsePropertyValue`: turn a parsed STEP property value (typed arrays, `.T.`/`.F.`, enums) into a display string plus optional IFC type name. It does **not** decode `\X2\`-style escapes: every ifc-lite parse path already decodes exactly once, at the parse boundary, and decoding a second time would collapse an authored `\\` a second time. Pass a still-encoded literal through `decodeIfcString` first.
 
 ## Links
 

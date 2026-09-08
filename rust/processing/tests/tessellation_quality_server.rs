@@ -68,6 +68,24 @@ fn quality_threads_into_server_geometry() {
     );
 }
 
+/// The `Medium` output on `PIPE_IFC`, pinned as literals.
+///
+/// The equality assertion below cannot carry this test on its own:
+/// `process_geometry_filtered` IS
+/// `..._with_quality(content, filter, TessellationQuality::default())`
+/// (`processor/mod.rs`), and `TessellationQuality::default()` IS `Medium`
+/// (`geometry/src/tessellation.rs`) — so both sides run the identical code
+/// path and the equality only observes `default() == Medium`. Any change to
+/// what `Medium` actually produces moves both sides together and stays green.
+/// These literals are what make such a change visible; the doc comment on this
+/// module claims the default "stays byte-identical to the historical output"
+/// and cache keys for `medium` depend on it (`apps/server/src/routes/parse.rs`).
+///
+/// If a deliberate change to `Medium`'s densification lands, update these two
+/// numbers in the same commit — do not delete the assertion.
+const MEDIUM_VERTICES: usize = 50;
+const MEDIUM_TRIANGLES: usize = 96;
+
 #[test]
 fn default_quality_is_byte_identical_to_legacy_entrypoint() {
     let legacy = process_geometry_filtered(PIPE_IFC, OpeningFilterMode::Default);
@@ -78,6 +96,17 @@ fn default_quality_is_byte_identical_to_legacy_entrypoint() {
     );
     assert_eq!(legacy.stats.total_vertices, medium.stats.total_vertices);
     assert_eq!(legacy.stats.total_triangles, medium.stats.total_triangles);
+
+    assert_eq!(
+        (legacy.stats.total_vertices, legacy.stats.total_triangles),
+        (MEDIUM_VERTICES, MEDIUM_TRIANGLES),
+        "the legacy/default entrypoint's output on the pipe fixture changed"
+    );
+    assert_eq!(
+        (medium.stats.total_vertices, medium.stats.total_triangles),
+        (MEDIUM_VERTICES, MEDIUM_TRIANGLES),
+        "the explicit `Medium` level's output on the pipe fixture changed"
+    );
 }
 
 #[test]

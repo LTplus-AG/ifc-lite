@@ -11,10 +11,12 @@ import { Plus, Minus, PencilLine, MousePointerClick } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
-import { COMPARE_COLORS, type RGBA } from '@/lib/compare/overlay';
+import { COMPARE_COLORS, rgbaCss, type RGBA } from '@/lib/compare/overlay';
+import { groupHeaderCount, type ProductTypeSplit } from '@/lib/compare/productTypeCounts';
 import type { DiffState } from '@ifc-lite/diff';
 import type { CompareResult } from '@/store/slices/compareSlice';
-import type { CompareRow } from './changeRow';
+import { hasReportableChanges, type CompareMatchRow, type CompareRow } from './changeRow';
+import { CompareMatchGroups } from './CompareMatchGroups';
 
 export interface CompareBucket {
   rows: CompareRow[];
@@ -28,17 +30,33 @@ export const LISTED_STATES: { state: Exclude<DiffState, 'unchanged'>; label: str
   { state: 'deleted', label: 'Deleted', color: COMPARE_COLORS.deleted, Icon: Minus },
 ];
 
-export function rgbaCss([r, g, b, a]: RGBA): string {
-  return `rgba(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)}, ${a})`;
-}
-
-export function CountBadge({ label, value, color }: { label: string; value: number; color: RGBA }) {
+/**
+ * `hint`, when given, is a secondary line under the label — e.g. "+4 type
+ * objects" — for the count's non-product remainder (issue: the headline
+ * counts grid totals products AND type objects together, and a certification
+ * exercise's expected answer is products-only; see `productTypeCounts.ts`).
+ * Omit it (don't pass `''`) rather than pass an empty string when there is
+ * nothing to add — a badge with no type-object changes must render exactly as
+ * it did before this distinction existed.
+ */
+export function CountBadge({
+  label,
+  value,
+  color,
+  hint,
+}: {
+  label: string;
+  value: number;
+  color: RGBA;
+  hint?: string;
+}) {
   return (
     <div className="flex flex-col items-center gap-0.5">
       <span className="text-sm font-semibold tabular-nums" style={{ color: rgbaCss([color[0], color[1], color[2], 1]) }}>
         {value.toLocaleString()}
       </span>
       <span className="text-[10px] text-muted-foreground">{label}</span>
+      {hint && <span className="text-[9px] text-muted-foreground/70">{hint}</span>}
     </div>
   );
 }
@@ -47,13 +65,32 @@ interface CompareResultsListProps {
   result: CompareResult | null;
   groups: Map<DiffState, CompareBucket>;
   counts: CompareResult['diff']['counts'] | undefined;
+  /** Products / type-objects split of the FULL entry list. The section
+   *  headers render from this rather than from `rows + truncated`, so they
+   *  can never disagree with the products-only count badges above them. */
+  split: ProductTypeSplit | null;
+  /** Content-match rows (#1891) - these live OUTSIDE `diff.entries`. */
+  matchRows: CompareMatchRow[];
   selectedKey: string | null;
   onFocus: (row: CompareRow) => void;
   /** Select every element in a state bucket at once (section-header click). */
   onFocusGroup: (state: DiffState) => void;
+  onFocusMatch: (row: CompareMatchRow) => void;
+  onFocusMatchGroup: (rows: CompareMatchRow[]) => void;
 }
 
-export function CompareResultsList({ result, groups, counts, selectedKey, onFocus, onFocusGroup }: CompareResultsListProps) {
+export function CompareResultsList({
+  result,
+  groups,
+  counts,
+  split,
+  matchRows,
+  selectedKey,
+  onFocus,
+  onFocusGroup,
+  onFocusMatch,
+  onFocusMatchGroup,
+}: CompareResultsListProps) {
   return (
     <ScrollArea className="flex-1 min-h-0" {...tourAnchor(TOUR_ANCHORS.compareResults)}>
       {!result ? (
@@ -75,7 +112,13 @@ export function CompareResultsList({ result, groups, counts, selectedKey, onFocu
                 >
                   <Icon className="h-3.5 w-3.5" style={{ color: rgbaCss(color) }} />
                   <span>{label}</span>
-                  <span className="text-muted-foreground">({bucket.rows.length + bucket.truncated})</span>
+                  {/* Products-first, matching the count badges above: the raw
+                      `rows + truncated` total conflates products and type
+                      objects, and two totals for one quantity in one panel is
+                      the confusion the split exists to remove. */}
+                  <span className="text-muted-foreground">
+                    ({split ? groupHeaderCount(split, state) : bucket.rows.length + bucket.truncated})
+                  </span>
                   <MousePointerClick className="h-3 w-3 ml-auto opacity-0 group-hover:opacity-60 transition-opacity" />
                 </button>
                 <div className="space-y-0.5">
@@ -106,7 +149,16 @@ export function CompareResultsList({ result, groups, counts, selectedKey, onFocu
               </div>
             );
           })}
-          {counts && counts.added + counts.modified + counts.deleted === 0 && (
+          <CompareMatchGroups
+            rows={matchRows}
+            selectedKey={selectedKey}
+            onFocus={onFocusMatch}
+            onFocusGroup={onFocusMatchGroup}
+          />
+          {/* Exact negation of the panel's "Download report" bar, through the
+              same predicate - offering a report over "the models match" (or the
+              reverse) is precisely what two independent derivations produced. */}
+          {counts && !hasReportableChanges(counts, matchRows) && (
             <div className="p-3 text-sm text-muted-foreground">
               No differences in scope “{result.scope}”. The models match.
             </div>

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   fnv128,
   HttpBlobStore,
@@ -43,6 +43,37 @@ describe('blob store', () => {
     const b = await store.put(new Uint8Array([1, 2, 3]));
     expect(a.hash).toBe(b.hash);
     expect((await store.list()).length).toBe(1);
+  });
+
+  it('MemoryBlobStore refreshes uploadedAt on a re-put of already-known content', async () => {
+    // Order matters: put() the SAME bytes on the SAME store instance twice,
+    // months apart. blob-gc's grace-window check (planBlobSweep in gc.ts)
+    // reads stat().uploadedAt to decide whether an unreferenced-right-now
+    // blob is too young to sweep — a re-PUT is exactly how a client
+    // refreshes that clock when it re-references a blob (see the
+    // blob-gc-worker.ts race-protection comment). A store that keeps the
+    // FIRST put's timestamp forever would let the sweep condemn a blob the
+    // instant after it was legitimately re-uploaded.
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2020-01-01T00:00:00.000Z'));
+      const store = new MemoryBlobStore();
+      const bytes = new Uint8Array([1, 2, 3]);
+      const first = await store.put(bytes);
+      expect(first.uploadedAt).toBe('2020-01-01T00:00:00.000Z');
+
+      vi.setSystemTime(new Date('2020-06-01T00:00:00.000Z'));
+      const second = await store.put(bytes); // same content, re-uploaded months later
+      expect(second.hash).toBe(first.hash);
+      expect(second.uploadedAt).toBe('2020-06-01T00:00:00.000Z');
+
+      // What blob-gc actually reads on its next sweep must agree with what
+      // put() just told the caller — not the original upload time.
+      const stat = await store.stat(first.hash);
+      expect(stat?.uploadedAt).toBe('2020-06-01T00:00:00.000Z');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('LayeredBlobStore reads from local first, falls through to remote, caches on hit', async () => {
@@ -92,7 +123,10 @@ describe('blob store', () => {
         case 'GET': {
           const v = await inner.get(hash);
           if (!v) return new Response(null, { status: 404 });
-          return new Response(v, { status: 200 });
+          // `BodyInit` demands an `ArrayBufferView<ArrayBuffer>`; a plain
+          // `Uint8Array` is `Uint8Array<ArrayBufferLike>`. Re-wrapping the
+          // bytes narrows the buffer type without changing the payload.
+          return new Response(new Uint8Array(v), { status: 200 });
         }
         case 'HEAD': {
           const exists = await inner.has(hash);
@@ -118,5 +152,64 @@ describe('blob store', () => {
     expect(await http.list()).toContain(meta.hash);
     expect(await http.delete(meta.hash)).toBe(true);
     expect(await http.get(meta.hash)).toBeNull();
+  });
+});
+
+// ─── put() abort support (#2798) ───────────────────────────────────────────
+// A HUNG upload is worse than a failed one. A rejection is counted, retried,
+// and can trip a caller's failure ceiling; a request that never settles
+// produces no failure at all, so nothing retries, no ceiling trips, and a
+// geometry seed simply never resolves while the UI reports work in progress.
+
+describe('HttpBlobStore.put honours an AbortSignal', () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+
+  it('passes the signal through to fetch', async () => {
+    let seen: AbortSignal | undefined;
+    const store = new HttpBlobStore({
+      baseUrl: 'https://example.test',
+      fetch: (async (_u: string, init?: RequestInit) => {
+        seen = init?.signal ?? undefined;
+        return new Response(null, { status: 201 });
+      }) as unknown as typeof fetch,
+    });
+
+    const ac = new AbortController();
+    await store.put(bytes, 'application/octet-stream', { signal: ac.signal });
+    expect(seen, 'signal never reached fetch').toBe(ac.signal);
+  });
+
+  it('a put that never settles rejects once aborted', async () => {
+    // The whole point: without this the promise below is still pending after
+    // the timeout and the caller has nothing to count.
+    const store = new HttpBlobStore({
+      baseUrl: 'https://example.test',
+      fetch: ((_u: string, init?: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init?.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        })) as unknown as typeof fetch,
+    });
+
+    const ac = new AbortController();
+    const pending = store.put(bytes, undefined, { signal: ac.signal });
+    ac.abort();
+    await expect(pending).rejects.toThrow(/abort/i);
+  });
+
+  it('omits the signal entirely when none is given', async () => {
+    // Passing `signal: undefined` is not the same as omitting it for every
+    // fetch implementation, so the option must not appear at all.
+    let had = true;
+    const store = new HttpBlobStore({
+      baseUrl: 'https://example.test',
+      fetch: (async (_u: string, init?: RequestInit) => {
+        had = init !== undefined && 'signal' in init;
+        return new Response(null, { status: 201 });
+      }) as unknown as typeof fetch,
+    });
+    await store.put(bytes);
+    expect(had).toBe(false);
   });
 });

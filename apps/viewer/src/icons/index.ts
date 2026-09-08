@@ -3,6 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 export { default as AddFile } from '~icons/viewer/add-file';
+export { default as CloudSources } from '~icons/viewer/cloud-sources';
 export { default as Loading } from '~icons/viewer/loading';
 export { default as OpenFile } from '~icons/viewer/open-file';
 export { default as Refresh } from '~icons/viewer/refresh';
@@ -13,6 +14,8 @@ export { default as FileJson } from '~icons/viewer/file-json';
 export { default as FileGlb } from '~icons/viewer/file-glb';
 export { default as FileKmz } from '~icons/viewer/file-kmz';
 export { default as FileHbjson } from '~icons/viewer/file-hbjson';
+export { default as FileUsd } from '~icons/viewer/file-usd';
+export { default as FilePdf } from '~icons/viewer/file-pdf';
 export { default as Annotate } from '~icons/viewer/annotate';
 export { default as Measure } from '~icons/viewer/measure';
 export { default as Section } from '~icons/viewer/section';

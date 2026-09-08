@@ -13,8 +13,14 @@ import type { DynamicBatchConfig } from '@ifc-lite/geometry';
 // Server Configuration
 // ============================================================================
 
+// `import.meta.env` is undefined under the Node `tsx --test` runner (no Vite
+// define plugin), and this module is loaded transitively by `useIfc` ->
+// `useIfcLoader`/`useIfcServer`, which many viewer components (e.g.
+// `GeoreferencingPanel`, `ModelMetadataPanel`) pull in. The optional chaining
+// keeps the module-top-level read safe there (same contract as
+// `lib/analytics.ts` and `store/slices/cesiumSlice.ts`). Do NOT drop it.
 /** IFC server URL - set via environment variable for server-side IFC processing */
-export const SERVER_URL = import.meta.env.VITE_IFC_SERVER_URL || import.meta.env.VITE_SERVER_URL || '';
+export const SERVER_URL = import.meta.env?.VITE_IFC_SERVER_URL || import.meta.env?.VITE_SERVER_URL || '';
 
 /**
  * Enable server-side IFC parsing (disabled by default — uses client-side WASM).
@@ -30,7 +36,7 @@ export const SERVER_URL = import.meta.env.VITE_IFC_SERVER_URL || import.meta.env
  *   VITE_IFC_SERVER_URL=https://ifc-server.example.com
  *   VITE_USE_SERVER=true
  */
-export const USE_SERVER = SERVER_URL !== '' && import.meta.env.VITE_USE_SERVER === 'true';
+export const USE_SERVER = SERVER_URL !== '' && import.meta.env?.VITE_USE_SERVER === 'true';
 
 // ============================================================================
 // File Size Thresholds (in bytes unless noted)
@@ -108,26 +114,19 @@ export const THRESHOLDS = {
 // ============================================================================
 
 /**
- * Calculate dynamic batch config based on file size
- * Larger files get larger batches for better throughput
+ * Batch config for a load of the given size.
+ *
+ * The measured size is the whole config: `getStreamingBatchSize` picks the
+ * batch off its own size ladder in `@ifc-lite/geometry`, so passing the size
+ * on is all a caller can influence. (This wrapper used to also return
+ * `initialBatchSize` / `maxBatchSize` ramp-up hints — no consumer ever read
+ * them, and both fields have been removed from `DynamicBatchConfig`.)
  *
  * @param fileSizeMB - File size in megabytes
  * @returns Batch configuration for geometry processing
  */
 export function getDynamicBatchConfig(fileSizeMB: number): DynamicBatchConfig {
-  if (fileSizeMB < 10) {
-    // Small files: smaller batches for responsiveness
-    return { initialBatchSize: 50, maxBatchSize: 200, fileSizeMB };
-  } else if (fileSizeMB < 50) {
-    // Medium files: balanced batching
-    return { initialBatchSize: 100, maxBatchSize: 500, fileSizeMB };
-  } else if (fileSizeMB < 100) {
-    // Large files: larger batches for throughput
-    return { initialBatchSize: 100, maxBatchSize: 1000, fileSizeMB };
-  } else {
-    // Huge files (100MB+): aggressive batching for maximum throughput
-    return { initialBatchSize: 100, maxBatchSize: 3000, fileSizeMB };
-  }
+  return { fileSizeMB };
 }
 
 /**

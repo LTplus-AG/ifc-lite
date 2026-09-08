@@ -9,6 +9,7 @@
 
 use crate::generated::IfcType;
 use crate::parser::Token;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 /// Geometry representation categories (internal use only)
@@ -58,11 +59,31 @@ impl AttributeValue {
         match token {
             Token::EntityRef(id) => AttributeValue::EntityRef(*id),
             Token::String(s) => {
-                // Decode STEP escapes (\X2\, \X4\, \X\, \S\, \P\) so every
-                // consumer of a string attribute sees native UTF-8, matching
-                // the TS decodeIfcString. No-escape strings stay zero-cost.
+                // Un-double the `''` quote escape, THEN decode the backslash
+                // escapes (\X2\, \X4\, \X\, \S\, \P\) — the same order the TS
+                // parser uses (columnar-parser-attributes.ts). The tokenizer
+                // hands over the raw inner bytes with `''` intact, and
+                // `decode_ifc_string` deliberately never touches quotes, so
+                // without this step every consumer of a string attribute saw
+                // `O''Brien` (#2323).
+                //
+                // The order is load-bearing, not cosmetic: decoding first would
+                // let two SEPARATE escaped apostrophes (`\X\27\X\27`) decode to
+                // `''` and then collapse into one, losing a character.
+                //
+                // This is the single funnel every Rust consumer of
+                // `AttributeValue::String` goes through. `quick_metadata.rs`
+                // un-doubles on its own raw-byte path, which never builds a
+                // Token, so nothing double-collapses.
                 let raw = String::from_utf8_lossy(s);
-                AttributeValue::String(crate::step_encoding::decode_ifc_string(&raw).into_owned())
+                let undoubled = if raw.contains("''") {
+                    Cow::Owned(raw.replace("''", "'"))
+                } else {
+                    raw
+                };
+                AttributeValue::String(
+                    crate::step_encoding::decode_ifc_string(&undoubled).into_owned(),
+                )
             }
             Token::Integer(i) => AttributeValue::Integer(*i),
             Token::Float(f) => AttributeValue::Float(*f),

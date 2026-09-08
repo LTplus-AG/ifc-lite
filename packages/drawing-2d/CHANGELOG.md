@@ -1,5 +1,433 @@
 # @ifc-lite/drawing-2d
 
+## 4.0.0
+
+### Major Changes
+
+- [#3520](https://github.com/LTplus-AG/ifc-lite/pull/3520) [`b7db4d2`](https://github.com/LTplus-AG/ifc-lite/commit/b7db4d2e51aaf551d3681f07a28921536362bdd7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Removed the `material` and `layer` graphic-override criteria. **Breaking:** `CriteriaType` no longer includes `'material'`/`'layer'`, `OverrideCriterion` no longer has `materialNames`/`layerNames`, and `ElementData` no longer has `materials`/`layers`. Code that constructed one of those shapes no longer compiles, and a rule that matched because the caller populated `ElementData.materials` or `.layers` no longer matches. Inside this repository the two criteria were dead: no construction site of `ElementData` in the viewer (`Drawing2DCanvas.tsx`, `useDrawingExport.ts`) ever populated either field — only `expressId` and `ifcType` are ever set — so a rule keyed on material or layer silently never matched anything there, with no error and no unmatched-criterion warning. No built-in preset and no viewer UI ever exposed these two criteria types, so nothing changes in the viewer. A rule persisted from before this change with `type: 'material'` or `'layer'` still loads without throwing; it now matches nothing.
+
+### Minor Changes
+
+- [#3570](https://github.com/LTplus-AG/ifc-lite/pull/3570) [`49f607e`](https://github.com/LTplus-AG/ifc-lite/commit/49f607e8e27c42e0aacc0fb7a82c8915fe17e23c) Thanks [@BIMvoice](https://github.com/BIMvoice)! - The DXF R12 writer's TEXT/layer content mojibaked on any real DXF reader when it contained non-ASCII characters. `DxfWriter.toString()` produces plain ASCII-DXF text declaring `$ACADVER AC1009`, a version with no UTF-8 support (that starts at R2007/AC1021) — but the viewer's DXF download wrote that string out with a UTF-8 encoder (`Blob`'s default string encoding), while a real reader with no declared codepage falls back to `ANSI_1252` (confirmed against `ezdxf`, which mirrors AutoCAD's own default). "Wände" round-tripped as "WÃ¤nde".
+  
+  The writer now declares `$DWGCODEPAGE ANSI_1252` in its HEADER section, and a new `encodeDxfCp1252` export encodes the document string to the matching windows-1252 bytes (a character outside that codepage, e.g. CJK, becomes `?`, the only representation R12's single-byte TEXT format has). The viewer's section-DXF export now writes those bytes instead of the raw string, and surfaces a toast when a character had to fall back to `?`.
+  
+  Verified against `ezdxf` (kept out of the repo, per the export-format validation convention `@ifc-lite/export`'s glTF/DXF tests already use): before the fix, a TEXT entity containing "Büro Nr. 3 – Wände östlich" read back as "BÃ¼ro Nr. 3 â€“ WÃ¤nde Ã¶stlich"; after, it reads back byte-correct with zero `ezdxf` audit errors.
+
+- [#3466](https://github.com/LTplus-AG/ifc-lite/pull/3466) [`c6b3e1c`](https://github.com/LTplus-AG/ifc-lite/commit/c6b3e1c1e699108f7ece83315b16b780fc4d8a33) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix hatch fill escaping a polygon's boundary when a vertex or a whole edge lies exactly on a hatch line.
+  
+  `clipLineToRing` collected the hatch line's intersections with each ring edge and then discarded any that shared a parameter with the previous one. That dedupe is right for a vertex the boundary passes straight through — two edges meet the line there and it is one crossing — but wrong for a vertex the boundary only touches, where the ring stays on one side and the correct count is zero net crossings. Collapsing a tangent touch to a single crossing inverted the inside/outside parity for every hatch segment after it, so fill ran outside the shape: for a 10x10 square with a notch touching `y=5`, the segment at that height extended to `x = -21.2` instead of stopping at the boundary. The sweep steps from the polygon's bounding-box minimum, so at an axis-aligned hatch angle its first line lands exactly on the shape's extreme boundary — this was not a rare configuration.
+  
+  An edge is now counted as a crossing only when its two endpoints fall on opposite sides of the hatch line, and the crossing point is interpolated from those same two side values. A tangent touch contributes an even number of crossings and so leaves parity alone; a pass-through contributes one. Deriving the crossing from the side values rather than from a separate segment-intersection solve is what makes an edge lying flush along the hatch line work: its endpoints are a few ULPs either side of the line, which a cross-product test reports as parallel and drops, losing a crossing the side test had counted and inverting parity for the rest of the row.
+  
+  Whether the line starts inside or outside a ring is now read off that same side test, by counting the crossings that fall behind the line's start rather than by ray-casting that start point separately. The two rules resolved a point sitting exactly on a ring in opposite directions, and the segments handed to the hole clip are the pieces the outer ring cut out, so their endpoints sit on a boundary. Where a hatch row ran flush with a hole's edge the two disagreed and the row was discarded whole, interior included. It also removes the case where a hatch line was painted straight across a hole because the segment handed to the hole clip began on that hole's boundary.
+  
+  The tie-break for a point exactly on the line is an infinitesimal displacement of the line backwards along the sweep direction, applied identically to the outer ring and to every hole, so a row lying on an edge resolves to whichever side of that ring the sweep has not reached yet: the first line of a sweep across an axis-aligned shape lies on that shape's minimum-side boundary edge and is dropped, a line flush with a hole's minimum-side edge is kept, and a line flush with a hole's far edge is subtracted. Each of the three concerns a line lying exactly on a ring edge rather than one crossing an interior, but each changes the emitted line set, which is why this is a minor rather than a patch.
+
+### Patch Changes
+
+- [#3646](https://github.com/LTplus-AG/ifc-lite/pull/3646) [`fb72ba8`](https://github.com/LTplus-AG/ifc-lite/commit/fb72ba8cfdb2622e2354015151937ea5f7766dcd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `DXFExporter`'s `underlays` option applying a `DxfPlacement`'s offset/rotation with the opposite sign from every other consumer of the same type.
+  
+  `DxfPlacement` is documented as drawing space (+Y down): "Offset in metres (drawing space)", "counter-clockwise as seen on a plan view". `svg-exporter.ts`'s underlay mapping and the viewer's `dxfUnderlayMath.ts` (`worldToDrawing`, driving the 2D canvas and the 3D reference overlay) both negate Y before calling `applyDxfPlacement`, then negate back for a world-space output — so the same placement value produces the same visual result everywhere. `dxf-exporter.ts`'s `writeUnderlay` called `applyDxfPlacement` directly on world-space (+Y up) points, skipping that round trip: a placed underlay with a non-zero `offsetY` shifted north instead of south, and a non-zero `rotationDeg` spun clockwise instead of counter-clockwise — a silently mirrored underlay in the exported DXF, diverging from what the SVG export and the viewer itself show for the identical placement.
+  
+  Not reachable through the current viewer UI — its DXF export explicitly does not embed underlays yet (see `useDrawingExport.ts`'s `handleExportDXF`) — but `DXFExporter.export`'s `underlays` option is documented and exercised by the package's own README example and test suite, and is public API for any direct consumer of `@ifc-lite/drawing-2d`.
+
+- [#3480](https://github.com/LTplus-AG/ifc-lite/pull/3480) [`0b9cf1f`](https://github.com/LTplus-AG/ifc-lite/commit/0b9cf1fd12a9cc046c442fb45bae0a94a3378dc5) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Recognise IFC2X3's edge-feature family in `isFeatureElementType` (`packages/drawing-2d/src/feature-elements.ts`): `IfcEdgeFeature` and its concrete leaves `IfcChamferEdgeFeature` / `IfcRoundedEdgeFeature`. All three descend from `IfcFeatureElementSubtraction`, so they are boolean subtraction operands like `IfcOpeningElement`, and the hand-maintained type set this predicate checks (complete for IFC4 and IFC4X3) never listed them.
+  
+  No in-repo caller reached that gap, so this fixes no rendering symptom. `isFeatureElementType` is applied to `MeshData.ifcType`, and every mesh producer here labels a mesh with `IfcType::name()` (`rust/processing/src/element.rs:539`). The Rust schema enum has no edge-feature variant, so `legacy_aware_ifc_type` remaps both concrete leaves to `IfcFeatureElementSubtraction`, which the set already held, and the abstract `IfcEdgeFeature` is never instantiated in a file. What changes is the exported predicate itself, which callers outside this repo can hand any IFC type name.
+  
+  Also adds `feature-elements.schema-parity.test.ts`, mirroring the existing `ifc-type-hierarchy.test.ts` pattern: it re-derives every `IfcFeatureElement` descendant from `@ifc-lite/data`'s generated IFC2X3/IFC4/IFC4X3 entity tables (already a devDependency, used only at test time) and asserts `isFeatureElementType` agrees in both directions, so a future schema bump or hand-edit cannot reopen this gap silently.
+  
+  Follow-up not done here: making `FEATURE_ELEMENT_TYPES` itself schema-derived at runtime would require promoting `@ifc-lite/data` from a devDependency to a runtime dependency of `drawing-2d`, which it does not otherwise need.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
+- [#3516](https://github.com/LTplus-AG/ifc-lite/pull/3516) [`ececb25`](https://github.com/LTplus-AG/ifc-lite/commit/ececb25f4e70e1086a274c7651512ccc60b23205) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `SVGExporter.export()` silently rendering (and labelling) a drawing at 1:50 instead of the scale it was actually configured at, whenever `drawing.config.scale` was a custom factor not among the ten `COMMON_SCALES` presets (e.g. 1:75, which `createSectionConfig(axis, position, { scale: 75 })` accepts — `SectionConfig.scale` is a plain `number`, not one of the presets). The default `scale` option looked the factor up with `COMMON_SCALES.find(...) || COMMON_SCALES[5]`, so a `.find()` miss on a legitimate custom scale was indistinguishable from "no scale option was passed" and both fell to the same hardcoded default — no error, no warning, and a title-block "Scale:" label that claimed the wrong scale had been honoured. A custom factor now gets a synthetic `DrawingScale` built from that factor; the 1:50 default remains only for a genuinely invalid (non-finite or non-positive) `config.scale`.
+
+- [#3518](https://github.com/LTplus-AG/ifc-lite/pull/3518) [`1b54404`](https://github.com/LTplus-AG/ifc-lite/commit/1b54404039bf2973732795cb219dcfd6a631b9e6) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `OpeningInfo.windowPartitioning` never being populated for window openings, so 2D drawing generation silently rendered every window with a single-panel symbol.
+  
+  `OpeningRelationshipBuilder.build()` extracted `doorOperation` from the filling element's properties when `type === 'door'`, but had no equivalent extraction for `windowPartitioning` when `type === 'window'` — the field existed on `OpeningInfo` and was read by `window-symbol.ts` (`opening.windowPartitioning ?? 'SINGLE_PANEL'`), but the producer never set it, so the `?? 'SINGLE_PANEL'` fallback fired unconditionally. A window with `PartitioningType: DOUBLE_PANEL_HORIZONTAL` (or any other `IfcWindowTypePartitioningEnum` value) drew identically to a plain single-panel window in generated 2D plans/elevations — a silent, plausible-looking wrong symbol rather than a crash or an obviously-missing one.
+  
+  `OpeningRelationshipBuilder` now extracts `PartitioningType` from the filling element's properties (checking the direct attribute first, then `Pset_WindowCommon`, mirroring `extractDoorOperation`'s lookup for doors) and assigns it to `windowPartitioning` for window-type openings.
+- Updated dependencies [[`3efe762`](https://github.com/LTplus-AG/ifc-lite/commit/3efe762a993897fc3ddc029a8de1e5914e27df3f), [`5297514`](https://github.com/LTplus-AG/ifc-lite/commit/52975142846390bb1eb12b723d53c0e275289a90), [`499ccf2`](https://github.com/LTplus-AG/ifc-lite/commit/499ccf2f97fe1e24728eb4eb99f895044c36f7b2), [`62bb58f`](https://github.com/LTplus-AG/ifc-lite/commit/62bb58fc8364c27bcf8452ab8edbde26727f527c), [`ea81645`](https://github.com/LTplus-AG/ifc-lite/commit/ea81645f7cd47d9e62718a6687f9e780794c2aa2), [`c6ffda4`](https://github.com/LTplus-AG/ifc-lite/commit/c6ffda4789099a45fafdb5fe237c33c6edd9884c), [`3b266b9`](https://github.com/LTplus-AG/ifc-lite/commit/3b266b99dac5e384c48a410df7074803b01ef20f), [`d2fb0e4`](https://github.com/LTplus-AG/ifc-lite/commit/d2fb0e4121ccd19f326837ea574b189ee2a5f6c8), [`4475e58`](https://github.com/LTplus-AG/ifc-lite/commit/4475e583ea35def444fb6d7ba92410629bd89096), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e), [`f1a006a`](https://github.com/LTplus-AG/ifc-lite/commit/f1a006af952dd670c6486cdb4ef0e8e1e0e280d7), [`fdac473`](https://github.com/LTplus-AG/ifc-lite/commit/fdac4734ce04758d2cd12b365f8b6de624713de6), [`902768e`](https://github.com/LTplus-AG/ifc-lite/commit/902768e138b595b26a47389bcea536f3f9e25b6d), [`cb9dad2`](https://github.com/LTplus-AG/ifc-lite/commit/cb9dad2df38f1796ab8cb6eefe881ad795876cc9), [`2edd144`](https://github.com/LTplus-AG/ifc-lite/commit/2edd14432999ceeed4c0bb0baf6b2000c1c5b041), [`3ccb417`](https://github.com/LTplus-AG/ifc-lite/commit/3ccb4176f3a61a227bcfc302c3e0b1fb43a6f0ec), [`7eaed2a`](https://github.com/LTplus-AG/ifc-lite/commit/7eaed2a98a8cd60bd402c0a9d79940739eabb331), [`a99ecd9`](https://github.com/LTplus-AG/ifc-lite/commit/a99ecd9998dada941dc66e8bcc85ce3864b44065)]:
+  - @ifc-lite/geometry@4.2.0
+
+## 3.1.1
+
+### Patch Changes
+
+- [#3329](https://github.com/LTplus-AG/ifc-lite/pull/3329) [`4a606d6`](https://github.com/LTplus-AG/ifc-lite/commit/4a606d6a81906c5a5b05594bb121b0cf1c7a0e7b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop writing `NaN` / `Infinity` / `-Infinity` into exported GLB, COLLADA, KMZ and SVG files.
+  
+  Neither format can carry a non-finite number, and every one of these paths wrote one anyway.
+  
+  **GLB / COLLADA / KMZ** (`export_glb_from_meshes`, `export_collada_from_meshes`, `export_kmz_collada_from_meshes` — the viewer's "export" buttons, via `GeometryProcessor.exportGlbFromMeshes` / `exportKmzFromMeshes`). Nothing between a mesh buffer and the bytes established that a coordinate was finite, and the three values did not fail alike:
+  
+  - An infinite position made `serde_json` write `null` where glTF requires a number — `"min":[null,-0.5,0.0]`, `"translation":[null,0.5,0.0]` — which is schema-invalid, so the whole GLB is rejected rather than merely wrong.
+  - A `NaN` position reached the BIN chunk while `min`/`max` stayed finite, because `NaN < min` and `NaN > max` are both false. The accessor's bounding box described a buffer it did not contain.
+  - COLLADA re-centres on the mesh AABB, so **one** non-finite vertex turned **every other vertex in the document** into `inf`/`NaN`. Observed: a triangle whose first X was `-Infinity` came out as `NaN 0 0 inf 0 0 inf 0 1` — one bad vertex, no surviving geometry. `<float_array>` is `xs:float`, whose non-finite lexical forms are `INF`/`-INF`/`NaN`; Rust's `Display` writes `inf`/`-inf`, which are not even those.
+  - A non-finite colour component became `"baseColorFactor":[null,0.5,0.5,null]`.
+  
+  All four float arrays (positions, normals, colours, per-mesh origins) now pass through one gate, `mesh_input::scrub_nonfinite`, before either exporter's per-mesh loop reads any of them — rather than at each of the several points where a value becomes bytes, where a guard reaches three call sites out of four. A non-finite component is replaced with `0.0`, matching what the USD writer already did; alpha is the exception and becomes `1.0`, since scrubbing it to `0` would turn a colour defect into an invisible mesh. An all-finite input — the only case a well-formed model produces — is passed through borrowed, with no copy and byte-identical output.
+  
+  **SVG** (`exportToSVG`). SVG's `<number>` grammar admits a sign, digits, a point and an exponent and nothing else, so `x1="NaN"` is an error a conforming renderer must not draw. Thirteen coordinate, size and rotation interpolations went through a bare `.toFixed(3)`, which stringifies all three values verbatim; the DXF writer beside it in the same package has guarded exactly these at its single `fmt()` since it was written, so the two writers of the same drawing disagreed about the same input. Every SVG number now goes through one `svgNum()`. Separately, `computeTransform` derived the paper offsets from `boundsCenter`/`boundsSize`, which are plain min/max arithmetic: one non-finite corner of the bounding box moved every finite line in the drawing (a line that belonged at `x1="190.000"` was written as `x1="NaN"`). The bounds are sanitised before anything is derived from them, so a degenerate corner no longer relocates the rest of the drawing.
+
+## 3.1.0
+
+### Minor Changes
+
+- [#3262](https://github.com/LTplus-AG/ifc-lite/pull/3262) [`2cf529e`](https://github.com/LTplus-AG/ifc-lite/commit/2cf529e918406e728049f2c0ce0143665eb4b497) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Resolve graphic-override subtypes from the IFC schema instead of a drifted hand-written table.
+  
+  `ifcTypeCriterion` defaults `includeSubtypes` to `true`, so a rule naming a supertype is meant to style everything beneath it. That expansion ran off `IFC_TYPE_HIERARCHY`, a hand-written table in `rule-engine.ts` that had fallen far behind the schema. A rule on `IfcBuildingElement` reached 21 of the 31 entities IFC4 puts under it, never touching `IfcCurtainWall`, `IfcPlate`, `IfcMember`, `IfcFooting`, `IfcPile`, `IfcBuildingElementProxy`, `IfcChimney`, `IfcShadingDevice` or the two `StandardCase` leaves. A rule on `IfcDistributionElement` reached 2 of 76 — it resolved `IfcDistributionFlowElement` and `IfcDistributionControlElement` and stopped, because neither was itself a key, so no duct, pipe, cable, terminal, valve or sensor was ever styled. The elements still drew; they drew without the override the rule asked for, with no warning.
+  
+  The table now lives in `ifc-type-hierarchy.ts` and is the direct-children map of every entity under `IfcElement` and `IfcSpatialElement`, derived from IFC4 ADD2 TC1. Rules matching more elements than before is the point of the fix, but it is a visible change to any drawing that used a supertype rule.
+  
+  `IfcFlowElement` was a table key and is not an IFC entity — not in IFC2X3, IFC4 or IFC4X3, so it was never a legacy alias for anything. Rather than delete a name users may already have written into a rule, it is kept in an explicit `AUTHORING_ALIASES` map pointing at `IfcDistributionFlowElement`, the real supertype of the four names it used to list; it now reaches that whole subtree. `IfcStair` -> `IfcStairFlight` and `IfcRamp` -> `IfcRampFlight` move to the same map: IFC4 makes both flights siblings rather than subtypes, and silently narrowing those rules would be its own regression.
+  
+  `getIfcSubtypes` now de-duplicates its result and tracks visited nodes, so an alias pointing back into the table cannot spin.
+  
+  The module had no tests. It now has two suites: one driving rules through `applyOverrides` against named required entities, and one that re-derives the hierarchy from `@ifc-lite/data`'s `ENTITIES_IFC4` — an authority independent of the parser registry the table was generated from — and fails if the table omits a subtype, invents an entity, or claims an edge the schema does not have. `@ifc-lite/data` is a devDependency only; nothing is added to the published bundle.
+
+### Patch Changes
+
+- Updated dependencies [[`5e236e2`](https://github.com/LTplus-AG/ifc-lite/commit/5e236e26a33bfc5e41d82ccd742351e743131293), [`50895fb`](https://github.com/LTplus-AG/ifc-lite/commit/50895fb5b3d57c95e00daccc1e560f5b619c535d)]:
+  - @ifc-lite/geometry@4.1.0
+
+## 3.0.0
+
+### Major Changes
+
+- [#3055](https://github.com/LTplus-AG/ifc-lite/pull/3055) [`65d19dd`](https://github.com/LTplus-AG/ifc-lite/commit/65d19ddd305b00dd6cdd8a815e3e9749dee5949b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Removed the standalone `renderScaleBar` / `renderNorthArrow` sheet renderers
+  and shrank `ScaleBarConfig` / `NorthArrowConfig` to the fields that are
+  actually read.
+  
+  `sheet/scale-bar-renderer.ts` exported a second, richer pair of scale-bar and
+  north-arrow renderers that no code in this repository called — only the barrel
+  re-exports and two documentation snippets referred to them. Sheets are drawn by
+  the private pair inside `title-block-renderer.ts` (`renderScaleBarInTitleBlock`,
+  `renderNorthArrowInTitleBlock`), reached through `renderTitleBlock`'s `extras`
+  argument, and mirrored on screen by the viewer's `Drawing2DCanvas`. Those two
+  live renderers draw one alternating-segment metric bar with `0`/end labels and
+  a fixed-position north glyph; they ignore most of the configuration the deleted
+  file honoured.
+  
+  Verified by running: a sample sheet export — 1458 sheets covering three paper
+  sizes, three frame styles, three title-block layouts and all three title-block
+  positions, each rendered with `renderFrame` + `renderTitleBlock(..., extras)`
+  exactly as the viewer's SVG sheet export composes it, and with the removed
+  config fields deliberately varied — is byte-identical before and after this
+  change (13,656,906 bytes, sha256
+  `a2a2ce27b6d17474b6a8f4d7e16184c52a16385698dd5cf343151903743034c5`). Every one
+  of those sheets contains a `title-block-scale-bar` and a
+  `title-block-north-arrow` group, so the sample does exercise the live path.
+  
+  Removed exports:
+  
+  - `renderScaleBar`, `renderNorthArrow` — the dead renderers.
+  - `PositionMm` — a parameter type used only by those two functions.
+  - `ScaleBarStyle`, `ScaleBarPosition`, `ScaleBarUnits` — enum aliases whose only
+    purpose was typing `ScaleBarConfig` fields that are also removed here. Judged
+    part of the same cut rather than left as orphans; they had no other referent.
+  - `ScaleBarConfig.style`, `.position`, `.customOffset`, `.units`,
+    `.subdivisions`, `.labelFontSize`, `.showUnitLabel` — the live renderer draws
+    alternating metric segments at a fixed title-block position with a hard-coded
+    1.8mm label size and no unit label, so none of these were consulted.
+  - `NorthArrowConfig.positionMm` — the arrow is placed at a fixed offset in the
+    title block.
+  
+  `NorthArrowStyle` and `NorthArrowConfig.style` are kept: the live path reads
+  `style` to decide whether to draw the arrow at all (`'none'` suppresses it), and
+  the viewer's north-arrow toggle writes it.
+  
+  Major rather than patch because published exports and interface fields are
+  removed: a consumer that imported `renderScaleBar` or set one of the dropped
+  config fields now gets a compile error. Consumers spreading `DEFAULT_SCALE_BAR`
+  or `DEFAULT_NORTH_ARROW` are unaffected.
+  
+  No test coverage is lost — neither renderer had any test. Note that this leaves
+  the surviving title-block scale bar and north arrow untested, as they already
+  were.
+
+- [#3072](https://github.com/LTplus-AG/ifc-lite/pull/3072) [`945c4d7`](https://github.com/LTplus-AG/ifc-lite/commit/945c4d7a773614dd664feb9490e13372782a543b) Thanks [@louistrue](https://github.com/louistrue)! - Fix `getRecommendedScale`, which returned a wrong scale on every call.
+  
+  Two independent defects, producing opposite wrong answers:
+  
+  - The bounds are metres and the paper is millimetres, and nothing converted
+    between them. Every model smaller than 378 m fitted at 1:1.
+  - The SDK wrapper passed one argument to a function taking two, so the height
+    arrived `undefined`. Every `<=` against NaN is false, so the loop fell
+    through the whole table and returned the coarsest entry: 1:1000 for every
+    drawing, whatever its size.
+  
+  `bim.drawing.getRecommendedScale` now accepts the height and an optional paper
+  size, all optional, so existing single-argument calls keep working. Passing
+  only a width squares the extent and costs one to two steps of coarseness on an
+  elongated plan, so pass the height when you have it. Paper size was previously
+  unreachable through the SDK, which meant A1 and A4 could not be asked for.
+  
+  A non-finite or non-positive input now throws instead of silently returning
+  the coarsest scale. That narrows the accepted input domain of a published
+  API, which is why this is major: a caller passing 0 from a degenerate
+  bounding box used to get 1:1000 back and now gets an exception, and the SDK
+  wrapper forwards the throw with no catch. Adding the optional height and
+  paper-size arguments is additive on its own, but the narrowed domain is the
+  biggest change here and sets the level.
+  
+  Not changed, and worth knowing: the scale table stops at 1:1000, so a model
+  larger than roughly 378 x 267 m still gets 1:1000 even though it does not fit.
+
+### Minor Changes
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a 2D-Section drawing sheet's print/export showing the drawing at a different, wrongly-centered position than the on-screen preview.
+  
+  `calculateDrawingTransform` always derives `translateY` assuming the caller flips Y when mapping model coordinates onto the paper (matching cardinal axes other than plan/'down'). The sheet preview (`Drawing2DCanvas.tsx` in `@ifc-lite/viewer`) already corrected `translateY` for plan sections, which don't flip Y, but the print/export path (`generateSheetSVG` in the same app) reused the raw, always-flipped transform — for a plan section whose bounds weren't symmetric about Y=0, the printed sheet centered the drawing at a different point than the preview, or pushed it outside the viewport's clip entirely.
+  
+  Added `calculateDrawingTransformForAxis(drawingBounds, viewportBounds, scale, flipY)`, which wraps `calculateDrawingTransform` and applies the flip correction for a caller-supplied `flipY`. Both the preview and the print/export path now call this one function, so neither derives the correction on its own.
+
+### Patch Changes
+
+- [#2975](https://github.com/LTplus-AG/ifc-lite/pull/2975) [`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Seven public option fields that nothing reads are now marked `@deprecated`,
+  with JSDoc that says what actually happens instead of what the old comment
+  promised. No behaviour changes and no export is removed or renamed — the
+  values were already ignored at runtime; only the type-level documentation
+  changes, so editors now warn at the point a caller sets one.
+  
+  - `SVGExportOptions.units` (`drawing-2d`) — `export()` never destructures it;
+    the exporter emits no dimension annotations and always sizes the sheet in
+    millimetres.
+  - `OpeningFilterOptions.keepBoundarySegments` (`drawing-2d`) — merged into the
+    filter's options object but never consulted; `tolerance` is the only field
+    that governs how segments near an opening edge are treated.
+  - `DoorSymbolConfig.showThreshold` (`drawing-2d`) — no threshold-rendering code
+    exists, so `true` and `false` produce identical geometry.
+  - `SnapOptions.snapRadius` (`renderer`) — documented as a world-units snap
+    distance, but every proximity check reads `screenSnapRadius` (pixels).
+    Snapping is screen-space and zoom-dependent; set `screenSnapRadius` instead.
+  - `SectionPlaneRenderOptions.flipped` (`renderer`) — the gizmo renderer never
+    reads it. The GPU clip plane flips correctly through separate state, so
+    cutting behaviour is unaffected; only the gizmo option is inert.
+  - `RenderOptions.enableDepthTest` (`renderer`) — dead on both ends: nothing
+    sets it and nothing reads it. Depth comparison is fixed per pipeline at
+    construction time and is not configurable through `RenderOptions`.
+  - `StreamingOptions.onMetadataBootstrap` (`geometry`) — an unfinished stub. Its
+    siblings `onBatch`, `onColorUpdate`, `onComplete` and `onError` are all
+    dispatched by the bridge; this one never is, so a callback passed here is
+    never called.
+  
+  Deprecating rather than deleting is deliberate: removing an optional field an
+  embedder already passes converts a silent no-op into a TypeScript compile
+  error, which is a worse first contact with the problem than a deprecation
+  warning that explains it. Removal is left as a separate, explicitly versioned
+  decision. See issue [#2731](https://github.com/LTplus-AG/ifc-lite/issues/2731) for the full audit; the findings that carry a
+  behaviour decision (the streaming batch ramp-up, `GeometryQuality`, and the
+  scale-bar / north-arrow renderer divergence) are deliberately untouched here.
+
+- [#2984](https://github.com/LTplus-AG/ifc-lite/pull/2984) [`b1d7a4d`](https://github.com/LTplus-AG/ifc-lite/commit/b1d7a4d832557e6961aef82102f423b07742c385) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix DXF import treating $INSUNITS codes 17-24 (gigametres, astronomical units, light years, parsecs, and US Survey feet/inch/yard/mile) as unknown and falling back to metres.
+  
+  The most consequential of these is 21 (US Survey Feet): a civil/survey DXF authored in that unit previously came in at roughly 3.28x its true size — a large, visible error — even though the fallback correctly warned about the unknown code. US Survey Feet is now converted using its exact legal definition, 1200/3937 m (≈0.3048006096012192 m), not the international foot (0.3048 m exactly); the ~2 parts-per-million difference between the two is the entire reason US Survey Feet is a distinct $INSUNITS code, so Survey inch/yard/mile are derived from the survey foot rather than from international units.
+
+- [#3056](https://github.com/LTplus-AG/ifc-lite/pull/3056) [`6095fe0`](https://github.com/LTplus-AG/ifc-lite/commit/6095fe0c19072e9a97edefb2be95dde66f514f6b) Thanks [@louistrue](https://github.com/louistrue)! - The title block's scale bar was labelled wrong on every export, at every scale.
+  
+  `effectiveScaleFactor` is millimetres per metre and `scale.factor` is the N of 1:N. They are reciprocal, the renderer divided by whichever it was handed, and `useDrawingExport` hands it the former on every export. A 5 m bar read 0.5 m at 1:100, and 0.1 m at 1:500 where 25 m is right.
+  
+  A bar too big for its title block now shrinks to a round distance it can honestly span, rather than being clamped to the cell and having its label rounded afterwards — a 120mm preset capped a 5m bar at 3.6m and printed "4m".
+  
+  One behaviour worth knowing about: on a sheet whose drawing is shrunk to fit by roughly 1000x or more (a ~500 m model at 1:1), no round distance both fits the title-block cell and draws segments wide enough to survive rounding, so the scale bar is omitted. Previously that case drew a cell-filling bar labelled with a nonsense distance, so omitting it is the better outcome — but it is a bar disappearing where one used to be.
+  
+  Also: a degenerate division count no longer overflows the bar or emits an 11MB group; a NaN or negative `heightMm` no longer reaches the emitted `height=` attribute; and a non-positive, NaN or infinite length or scale draws nothing instead of `<rect width="-10.00">`.
+
+- [#2960](https://github.com/LTplus-AG/ifc-lite/pull/2960) [`be74930`](https://github.com/LTplus-AG/ifc-lite/commit/be74930b383a189ac61c5f8ef5bc8b5f4579dda3) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a 'side' section's drawing sheet — preview, print and export alike — landing off-center on the sheet along X.
+  
+  `calculateDrawingTransformForAxis` (added to fix the analogous Y-axis issue) only corrected `translateY` for the caller's Y-flip; `translateX` was passed through unmodified regardless of the caller's X-flip. 'side' sections flip X (`adjustedX = -x`, to view from the conventional direction) but `calculateDrawingTransform`'s `translateX` bakes in the assumption of no X-flip, so a 'side' section whose bounds weren't symmetric about X=0 was centered at a point shifted by `(minX + maxX) * scaleFactor` — up to the full width of the viewport for a section far from X=0.
+  
+  `calculateDrawingTransformForAxis` now takes an optional `flipX` parameter (default `false`, preserving prior behavior for callers that don't pass it) and applies the mirror-image correction to `translateX` when it is true. Both the preview (`Drawing2DCanvas.tsx`) and the print/export path (`useDrawingExport.ts`'s `generateSheetSVG`) reach it through one shared resolver that derives the flips from the section axis, so a 'side' section centers correctly and neither path derives the flips separately.
+
+- [#3091](https://github.com/LTplus-AG/ifc-lite/pull/3091) [`af48854`](https://github.com/LTplus-AG/ifc-lite/commit/af488542a19a8559065cfd450d0eaad5ba2f7489) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Check the glTF, COLLADA and DXF exporters against the formats, not against our
+  own readers.
+  
+  Test-only; no exporter behaviour changed. Three export formats had no external
+  validator and no third-party fixture anywhere in the repo: the only reader of a
+  GLB we write was our own `parseGLB`, the only reader of a DXF we write was our
+  own `parser.ts`, and COLLADA had no reader at all — every assertion was a
+  substring of the output. A writer and a reader that agree with each other prove
+  they share a convention, not that the convention is the format.
+  
+  - **glTF** — `scripts/test-wasm-contract.mjs` now runs the Khronos
+    glTF-Validator (`gltf-validator`, the reference implementation, pinned exact)
+    over the GLBs the real wasm exporter produces on both entry points, failing on
+    errors *and* warnings, plus a guard that the validator saw actual geometry so
+    a silently-empty export cannot pass vacuously. It reports 0 errors and 0
+    warnings on today's output. `rust/export/src/gltf_conformance_tests.rs` adds
+    the spec rules that lane cannot reach (`quantize`, the bounded/streaming
+    assembler and the multi-buffer path have no wasm binding): accessor TOTAL
+    byteOffset alignment, declared `min`/`max` recomputed from the bytes actually
+    written, index values against the primitive's own vertex count,
+    `mode`/`componentType` legality, and the GLB chunk framing and padding bytes.
+  - **COLLADA** — `rust/export/src/collada_conformance_tests.rs` checks the
+    document's internal agreement: `count=` attributes against the data they
+    introduce, every `#reference` resolving to a declared `id`, `<p>` indices
+    inside the accessor they index, and `<input offset>` against the `<p>` stride.
+    An out-of-range `<p>` index leaves all eleven pre-existing COLLADA tests green.
+  - **DXF** — `packages/drawing-2d/src/dxf/writer-interop.test.ts` reads the
+    writer's output back with `dxf-parser` (npm, MIT), an unrelated third-party
+    reader, and separately pins the raw group codes against the R12 rules a
+    lenient reader never needs: POLYLINE's `66` vertices-follow flag, the TEXT
+    alignment point `11/21/31` that must accompany a non-zero `72`/`73`, section
+    balance, and the absence of any post-R12 group code. Dropping the alignment
+    point leaves all 74 other DXF tests green.
+  
+  Every check was mutation-proved: the writer was broken, the check was confirmed
+  to fail, and the writer was restored.
+- Updated dependencies [[`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1)]:
+  - @ifc-lite/geometry@4.0.0
+
+## 2.1.1
+
+### Patch Changes
+
+- [#2772](https://github.com/LTplus-AG/ifc-lite/pull/2772) [`3329521`](https://github.com/LTplus-AG/ifc-lite/commit/33295218a3a2ecd35671483bc92bbf018807ae1e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix door swing arc opening into the opposite room from the drawn leaf.
+  
+  `DoorSymbolGenerator`'s swing arc was derived purely from `wallDir` plus a
+  hardcoded `direction > 0 ? Math.PI : 0` sign, ignoring the `swingDir`
+  parameter entirely. The door leaf line, meanwhile, correctly used `swingDir`
+  for its open-position tip. Since the arc traces the path of that same tip as
+  it swings from closed to open, the two are required to end at the same
+  point — instead the arc swept to the wall side opposite the leaf, so a
+  door's swing arc and its leaf pointed into different rooms in every
+  generated drawing.
+  
+  `generateArc` and `generateArcSVGPath` now derive both the arc's start and
+  end angle from `swingDir` (sweeping back by the swing angle in the
+  hinge-side's rotational sense), so the arc always terminates exactly at the
+  leaf's open tip, for all four swing types (`SINGLE_SWING_LEFT/RIGHT`,
+  `DOUBLE_SWING_LEFT/RIGHT`).
+- Updated dependencies [[`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca), [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d), [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa)]:
+  - @ifc-lite/geometry@3.8.4
+
+## 2.1.0
+
+### Minor Changes
+
+- [#2657](https://github.com/LTplus-AG/ifc-lite/pull/2657) [`d1fb40d`](https://github.com/LTplus-AG/ifc-lite/commit/d1fb40d1f72bb0b8345644e83e410cc8c240cf38) Thanks [@louistrue](https://github.com/louistrue)! - Add the camera-view drawing primitives behind the to-scale 3D-view PDF export (issue [#2042](https://github.com/LTplus-AG/ifc-lite/issues/2042)): `buildCameraSectionPlane`, `worldBoundsOfMeshes`, `clipMeshToHalfSpace`, `projectWorldLineSeeds`, and a `GeneratorOptions.extraLines` seam.
+  
+  Exporting "what the user currently sees in the 3D viewport" at an exact 1:N needs three things this package did not have. All three are pure and camera-agnostic; the viewer supplies the camera and assembles the PDF with the existing `pdf-scale.ts` arithmetic, which is unchanged.
+  
+  `buildCameraSectionPlane({position, target, up}, worldBounds)` turns a camera into a `SectionPlaneConfig` whose `customPlane` carries a strictly **orthonormal** basis — `normal = −viewDir`, `tangent` = screen right, `bitangent` = the re-orthogonalised up — plus the `viewDepth` of the kept window. The orthonormalisation is the load-bearing part: `projectTo2DBasis` is a bare pair of dot products, so it is an isometry only when the basis is unit-length and mutually orthogonal. An orbiting camera's raw `up` is generally *not* perpendicular to its view direction, and using it verbatim skews the page — a print that is dimensionally plausible and wrong, which an engineer only discovers with a ruler. The plane is placed strictly in front of all eight world-bounds corners along the view direction, so every point of the model has a view depth inside `[0, viewDepth]` (the window the depth raster and the projection bands both key off) rather than half the model falling behind the plane. Degenerate inputs are handled explicitly: an `up` parallel to the view direction (the straight-down plan camera) falls back to a non-parallel reference axis instead of producing a NaN basis and a blank page, and a camera whose eye and target coincide throws. `worldBoundsOfMeshes` folds `MeshData.origin` (`world = origin + positions`) rather than reading `positions` raw, which would report a box around the model origin instead of around the model.
+  
+  `clipMeshToHalfSpace(mesh, normal, offset)` applies the section cut to the triangles themselves — the on-screen section is a fragment-shader clip, and an exported drawing has no fragment stage, so without this the PDF shows the whole model while the screen shows half of it. It is a per-triangle Sutherland–Hodgman clip run in the mesh's **local** frame (`localOffset = offset − dot(origin, normal)`), so emitted positions stay local and `origin` is carried through untouched: a mesh with an `origin` and a baked-positions twin of the same element clip to the same world result, with neither the "test local positions against a world offset" nor the "bake world coordinates in and leave `origin` set" double-fold. It returns the clipped mesh (the input by reference when nothing was cut, `null` when nothing survived) plus the **rim segments** the cut created, in world space. Fields that describe the *whole, uncut* element (`localBounds`, `geometryAabb`, `geometryVolume`, `geometryHash`) and per-vertex data the re-tessellated buffer no longer matches (`uvs`, textures) are dropped explicitly rather than passed on stale. `clipMeshesToHalfSpace` is the batch form.
+  
+  `projectWorldLineSeeds(seeds, plane)` turns those world-space rim segments into `DrawingLine`s using the existing single-source `projectPointForPlane` / `signedDepth` helpers — never a hand-rolled projection — so the rim shares a frame and a depth sign with the hidden-line depth raster it will be sampled against. They are tagged `category: 'cut'` (heavy line weight).
+  
+  `GeneratorOptions.extraLines` merges such pre-projected lines into `Drawing2DGenerator.generate` **before** the hidden-line pass. The generator's hidden-line stage previously split lines by category, passing every `'cut'` line straight through — correct for the section cutter's own output, which lies in the plane at view depth 0 and can never be occluded, but wrong for a rim line on an oblique 3D view, which can sit behind other geometry and must print dashed. The split is now by source (caller-supplied + projection lines are classified; the cutter's own cut lines still pass through), so a rim behind an occluder comes out `visibility: 'hidden'`. Behaviour is unchanged for every existing caller: with no `extraLines`, the classified set is exactly the projection lines it was before.
+  
+  Scale exactness is pinned numerically, not structurally: with an oblique camera (azimuth 30°, elevation 20°, including a non-unit, non-perpendicular `up`), two world points 1 m apart along an in-plane direction derived *independently of the basis under test* project to exactly 10 mm apart at 1:100 and 20 mm at 1:50; a point right of / above the camera target lands right of / above the page centre (the mirrored-output class); and a unit cube cut at x = 0.25 yields a rim that is one closed loop of total length exactly 4.0 m.
+
+- [#2657](https://github.com/LTplus-AG/ifc-lite/pull/2657) [`d1fb40d`](https://github.com/LTplus-AG/ifc-lite/commit/d1fb40d1f72bb0b8345644e83e410cc8c240cf38) Thanks [@louistrue](https://github.com/louistrue)! - Add `addScaleStamp`, the printed scale record a to-scale PDF sheet needs: a drawn scale bar plus the "1:N" text, laid out in a band below the drawing.
+  
+  A sheet exported at an exact scale whose only record of that scale is its filename carries none at all once it is printed. The promise of a to-scale export is that measurements taken off the print are correct, and paper that does not say what it was drawn at invites being measured at an assumed scale, or being measured after a photocopier has quietly rescaled it. The printed ratio answers the first; the bar answers both, because a copy that shrinks the page shrinks the bar with it while the text keeps claiming a scale the paper no longer has.
+  
+  - `addScaleStamp(layout, { marginMm })` takes an existing `computePdfScaleLayout` result and returns the grown `page`, the `stamp` geometry in absolute page millimetres, and the layout's own `transform` **unchanged**. The band is added by growing the page down (and right, only when the stamp is wider than the drawing), never by re-fitting: `sheet-types.ts`'s `calculateDrawingTransform` shrinks a drawing to fit a viewport (`min(scaleX, scaleY, 1)`), and routing furniture through anything like it turns an exact sheet into a plausible-looking wrong one. Adding a scale bar cannot move a millimetre of the drawing, by construction rather than by care.
+  - The bar is drawn to scale, which is the only thing that makes it worth printing: a division labelled `1 m` measures exactly `1000 / scaleFactor` mm. Division lengths come from the 1-2-5 sequence so the labels stay round, sized to land near 60 mm of paper, never under a 20 mm readability floor (a drawing narrower than that grows the page rather than printing a to-scale sliver nobody can read).
+  - The ratio goes through the existing `formatScaleFactorLabel`, and the scale itself is derived from `transform.worldToMm` rather than passed in a second time, so a sheet cannot be drawn at one scale and labelled with another: a 1:99.5 sheet prints "1:99.5", never "1:100" ([#2119](https://github.com/LTplus-AG/ifc-lite/issues/2119)).
+  - `formatSheetScaleLabel(factor)` is the ratio as a sheet may print it: `"1:100"` when the two-decimal label IS the factor, `"about 1:87.35"` when `formatScaleFactorLabel` had to round it. "As displayed" hands over whatever factor the viewport sits at, and printing a bare "1:87.35" would state a scale the drawing was not drawn at, which is an unlabelled sheet's defect wearing a different hat. The number stays at two decimals so the sheet and the export filename can never quote different ratios.
+  - The output is plain rectangles and text runs in page millimetres (`ScaleStamp`, `ScaleStampRect`, `ScaleStampText`, `ScaleStampBar`, `StampedSheetLayout`) rather than the SVG strings the sibling `sheet/` renderers emit, because the consumer is a PDF writer. `buildScaleStamp` stays package-private.
+
+- [#2657](https://github.com/LTplus-AG/ifc-lite/pull/2657) [`d1fb40d`](https://github.com/LTplus-AG/ifc-lite/commit/d1fb40d1f72bb0b8345644e83e410cc8c240cf38) Thanks [@louistrue](https://github.com/louistrue)! - Add a flat-shaded colour rasteriser so a to-scale PDF view can show solid coloured surfaces, not just line work.
+  
+  The to-scale 3D-view PDF export (`computePdfScaleLayout` / `worldPointToPdfMm`) produced monochrome vector line work only, which does not resemble the 3D viewport it is exported from. Filling it with vector paths is not viable: one filled path per triangle is 40-80 bytes of page stream for the 10^5-10^6 triangles a real model has after clipping, and painter's-algorithm ordering is undefined wherever faces interpenetrate, which IFC geometry does constantly (`MeshData.indices` documents that winding is unreliable and meshes are double-sided by design). Resolving those cycles means splitting triangles, i.e. a second CSG kernel.
+  
+  `buildColorRaster` instead produces an RGBA8 image of the same view, which the caller places at an exact millimetre rectangle underneath the unchanged vector strokes. Dimensional accuracy is unaffected: the rectangle is derived from the raster's own world bounds through the same `PdfScaleTransform` every stroke uses, so pixels bound sharpness and never measured distance, and everything an engineer measures against is still a stroke.
+  
+  - `buildColorRaster(meshes, plane, occluderDepth, options)` returns `pixels` (RGBA8 straight alpha, row 0 = the top of the drawing), `width`, `height` and `bounds` — the projected extent with NO margin, spanned edge to edge by the pixel grid, so the placement rectangle covers it exactly and registration error is at most half a pixel. Projection and depth come from `projectPointForPlane` / `signedDepth`, the same single-source helpers the line producers use, so the image and the strokes share a frame by construction. Returns `null` when nothing projects into the kept half or the extent is degenerate, so a shaded export can degrade to line work rather than fail.
+  - Shading is flat per-face Lambert, `0.4 + 0.6 * abs(dot(faceNormal, viewDir))`, with the normal recomputed from each triangle's own positions. Both details are forced by the data: `MeshData.normals` may be absent or stale, and a signed dot product would paint half the surfaces of an ordinary IFC model black. Colour comes from `MeshData.color` (the apparent rendering colour, what viewers display), not `shadingColor`.
+  - Translucent meshes (`color[3] < 0.999`) are composited in a second pass that tests against the opaque depth buffer without writing it, so glass in front of a wall blends over it and glass behind it is dropped. Translucent over translucent composites in mesh iteration order rather than back to front; that approximation is documented at the module and is closer to the viewport than either treating glass as opaque or dropping it.
+  - `fitRasterPixels(widthMm, heightMm, dpi, maxPixels, maxDimensionPx)` sizes the grid, with `DEFAULT_SHADING_DPI` (150), `MAX_SHADING_PIXELS` (2^24) and `MAX_SHADING_DIMENSION_PX` (16384). Over-cap requests scale both sides by the same factor and report the `effectiveDpi` actually achieved, so a large sheet gets blurrier and never mis-scaled.
+  
+  The vertex fetch, projected-extent walk and barycentric test are now shared with the existing hidden-line depth raster through an internal `raster-core` module rather than duplicated. The hidden-line raster keeps its own per-pixel loop and its `width - 1` (centre-to-centre) mapping, which is correct for sampling a depth buffer and wrong for an image rectangle; its existing tests pass unchanged.
+
+### Patch Changes
+
+- [#2695](https://github.com/LTplus-AG/ifc-lite/pull/2695) [`b8fb71e`](https://github.com/LTplus-AG/ifc-lite/commit/b8fb71e5c19ddf405563664f29e8a6ec22f36b63) Thanks [@louistrue](https://github.com/louistrue)! - Orient mesh normals by signed volume before silhouette extraction, so an inward-wound solid no longer loses its projected line work ([#2682](https://github.com/LTplus-AG/ifc-lite/issues/2682)). The silhouette test is winding-sensitive: on an inward-wound mesh it picked the far side of the solid, which the projection band then dropped, producing a blank drawing with no error. A mesh and its reversed twin now yield identical line work.
+
+## 2.0.0
+
+### Major Changes
+
+- [#2644](https://github.com/LTplus-AG/ifc-lite/pull/2644) [`7cb7394`](https://github.com/LTplus-AG/ifc-lite/commit/7cb73940e0c23cd6b93c4483bfddb7b45cbb363a) Thanks [@louistrue](https://github.com/louistrue)! - Hidden-line removal now actually occludes (issue [#2639](https://github.com/LTplus-AG/ifc-lite/issues/2639)). The occluder depth buffer previously rasterized the cut-away half-space, and projection lines carried depth 0 or a negative flip-adjusted depth, so classification degenerated to "everything visible" - or, when no occluder vertex fell in the window and no bounds were passed, to "everything hidden" via NaN buffer indexing. The classifier now rasterizes the kept half of the section, and both the buffer and line depths carry the VIEW DEPTH convention: the negated flip-adjusted signed depth, 0 at the cut plane, increasing into the kept half, smaller means nearer the viewer.
+
+  Breaking changes:
+
+  - `HiddenLineClassifier.buildDepthBuffer(meshes, axis, position, maxDepth, flipped, bounds?)` is now `buildDepthBuffer(meshes, plane, occluderDepth, bounds?)`, taking the full `SectionPlaneConfig`. It honours `plane.customPlane`, so custom (face-picked) planes classify in their own basis instead of silently falling back to the stale cardinal fields.
+  - `GeneratorOptions.outlineProvider` is bypassed when `plane.customPlane` is set: the provider contract is cardinal-only (it receives just axis/flipped and returns contours and axis extents in cardinal projection space), so its output cannot be classified against the custom-basis depth raster. On custom planes the generator now uses the plane-aware silhouette path for those meshes instead; on cardinal planes the provider is used exactly as before.
+  - `DrawingLine.depth` semantics change to view depth at the line's start point. A new optional `DrawingLine.depthEnd` carries the view depth at the end point; the classifier interpolates between the two along the line.
+  - Drawings will show more dashed/hidden projection lines than before, because the previous output never hid correctly occluded geometry.
+  - Line samples falling outside the depth raster's 2D bounds now classify VISIBLE instead of clamping onto the nearest border pixel. Outside the raster there is no occluder information, so visible is the only safe default; the old clamping could wrongly hide a line far from any occluder when `buildDepthBuffer` was called without a `bounds` argument and the self-computed bounds (in-window vertices only) collapsed to a sliver of a straddling occluder.
+  - `mergeDrawingLines` now derives each merged line's `depth`/`depthEnd` from the source segment endpoints that became the merged endpoints (swapping them when a source segment runs against the merge direction), instead of copying the first source line's pair onto the whole merged run - a copy that was only lossless while every projection line carried depth 0.
+  - `applyVisibility` re-derives `depth`/`depthEnd` for every partial-visibility split segment by lerping the parent line's pair at the split points, so each emitted segment's endpoint depths describe its OWN endpoints. Previously a split carried the parent's original pair unchanged, and merging such a split with a neighbour could report a depth describing a point the segment no longer touches.
+  - `VisibilitySegment` gains required `tStart`/`tEnd` fields: the affine parameters (0..1) of the segment's endpoints along the parent line, the same parameterisation the classifier sampled visibility with.
+  - The classifier samples a line's final point exactly (a t = 1 lerp can overshoot the endpoint by one ulp on sign-straddling coordinates and fall outside the raster) and opens a visibility transition at the final sample, so `overallVisibility` and the emitted segments always agree; a genuine visibility flip within the last inter-sample gap now yields a final half-sample split segment instead of being silently dropped.
+
+### Patch Changes
+
+- [#2622](https://github.com/LTplus-AG/ifc-lite/pull/2622) [`a351839`](https://github.com/LTplus-AG/ifc-lite/commit/a35183910da35bd44dd38c5ed50d49d5f73b9f4a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Scale two fixed-epsilon section-cut tolerances to the element's own coordinate magnitude, so large single elements (long alignments, bridge decks, big roofs) stop producing wrong cut geometry.
+
+  **Plane-side classification (`section-cutter.ts`).** `EPSILON = 1e-7` (in `math.ts`) classified a triangle vertex's signed distance to the cut plane as "on the plane" only within `±1e-7`. For an arbitrary (non-axis-aligned) cut plane, that distance is a dot product summing three float32-quantized coordinates, so even a vertex whose true distance is exactly 0 carries rounding noise proportional to its own coordinate magnitude — around `1e-6` already at ordinary building scale (a 1m element), an order of magnitude above `1e-7`. When that pushed a genuinely coplanar face's vertices out of the epsilon band, the "on-plane, skip" branch was bypassed and the general edge/plane lerp ran on two noise-sized values instead: `t = d0/(d0-d1)` divided one near-zero noise term by another, producing a wildly extrapolated point — metres away, not a tiny nudge — instead of correctly emitting nothing for a face lying on the cut plane. Reproduced with a flat quad placed exactly on a tilted custom plane: segments with endpoints thousands of units from the actual geometry, already at a 1m element, worse at scale. Fixed by computing a per-triangle epsilon, `max(EPSILON, maxVertexCoordinate · 2⁻²²)`, and threading it through the plane classification and edge/plane intersection instead of the fixed constant.
+
+  **Vertex-weld tolerance (`polygon-builder.ts`).** The default 0.0001 (0.1mm) tolerance for welding ring-closing vertices doesn't scale with the cut segments' coordinate magnitude. Two independently-tessellated triangles or material-layer sub-meshes that happen to author the "same" physical boundary point twice — a common source of near-duplicate vertices in mesh output — differ by up to one float32 ULP, which exceeds 0.1mm once a single element's own extent passes roughly 840m (RTC per-element origins mean this is the element's own size, not distance from the model origin). Below that, the weld tolerance already covers the noise. Reproduced: a square entity with its one corner authored twice, offset by a single float32 ULP, welds correctly at 400m but leaves a spurious 5th vertex (an extra near-duplicate corner) at 500km with the fixed tolerance; scaling the tolerance with the entity's own segment-coordinate magnitude (`max(0.0001, extent · 2⁻²²)`, applied per entity so one large element can't loosen welding for smaller ones sharing the same drawing) restores the correct 4-vertex square.
+
+  Near-origin output is unaffected in both cases — the new terms only exceed the existing constants once an element's own coordinate magnitude passes roughly 400–800m, so ordinary elements are bit-identical to before.
+
+  **Measured on the element's own local frame, not its position in the model.** Both terms above are sized from a per-mesh vertex coordinate magnitude, and that magnitude must come from the `Float32Array` values as authored (the mesh's own local frame), _before_ the per-mesh RTC `origin` translation is applied — that translation happens in double precision and never reintroduces quantization noise, so it must not feed the tolerance. The first version of this fix got that backwards: `section-cutter.ts` computed its epsilon from the world-lifted vertex (`local + origin`), and `polygon-builder.ts`'s `withScaleAwareTolerance` sized itself off `p0_2d`/`p1_2d`, which are also world-frame (the cutter never subtracts the origin back out before projecting to 2D). Either one scales the tolerance to an element's _distance from the model origin_ instead of its own extent — the opposite failure from the one this changeset otherwise fixes, and far coarser: a small (2m) element sitting at an RTC origin of ~500,000 got a plane-classification epsilon around 0.119 instead of ~5e-4, misclassifying genuine close plane crossings as coplanar, and a weld tolerance wide enough to fuse genuinely distinct nearby vertices. Fixed by deriving both from the local (pre-origin) coordinate magnitude: `section-cutter.ts` computes it directly from `positions` before `origin` is added, and attaches it to each emitted `CutSegment` as `localMaxCoord` so `polygon-builder.ts` can use it too (falling back to the segment's own 2D magnitude only for segments not produced by `SectionCutter`, e.g. hand-built fixtures with no origin to begin with).
+
+  Found while investigating two tolerance-sizing candidates flagged by an f32-precision audit but left undemonstrated in [#2621](https://github.com/LTplus-AG/ifc-lite/issues/2621) (which fixed an unrelated missing-origin-lift bug in `edge-extractor.ts`); both are demonstrated here with reproductions that disappear only when the corresponding tolerance is widened, and persist with a naive fixed-epsilon workaround once the element is large enough — confirming the tolerance itself, not something else, was responsible.
+
+  No breaking API surface change (constructors and public method signatures are unchanged; `CutSegment` gained one optional `localMaxCoord` field, and private helper signatures gained parameters).
+
+- Updated dependencies [[`307693c`](https://github.com/LTplus-AG/ifc-lite/commit/307693c678d525ab007773f74e13a308bfe63b34), [`649aa0c`](https://github.com/LTplus-AG/ifc-lite/commit/649aa0ccbc4e67c233b9175a6a2f9c8e1ff310ec)]:
+  - @ifc-lite/geometry@3.8.3
+
+## 1.21.2
+
+### Patch Changes
+
+- [#2621](https://github.com/LTplus-AG/ifc-lite/pull/2621) [`118188b`](https://github.com/LTplus-AG/ifc-lite/commit/118188b22c0685f07c3537f0500b0bcb2aa4b33f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `EdgeExtractor` reading mesh positions as if they were already world space. Positions are stored in the element's local frame (`world = origin + local`) on the wasm client path; `section-cutter.ts`, `storey-bands.ts`, and `gpu-section-cutter.ts` already lift by `mesh.origin`, but `edge-extractor.ts` did not, so crease/boundary/silhouette edges from an origin-shifted mesh were extracted in the wrong place and compared against the world-space section plane and bands incorrectly — landing in the wrong depth band or projecting far from the correctly-placed cut polygons. `getVertex` now lifts by `mesh.origin` when present, matching `section-cutter.ts`. Meshes with no origin (or `[0,0,0]`) are unaffected.
+
+  Also fix `HiddenLineClassifier` (`hidden-line.ts`), which the `EdgeExtractor` change above left inconsistent: it still rasterized its occlusion depth buffer from raw local-frame positions while `drawing-generator.ts` now feeds it world-space lines from the fixed `EdgeExtractor`. With projection and "show hidden lines" both enabled and a non-zero `mesh.origin`, this silently turned hidden-line removal into a no-op. `hidden-line.ts`'s `getVertex` now lifts by `mesh.origin` too, at both the bounds-computation and rasterization call sites.
+
+## 1.21.1
+
+### Patch Changes
+
+- [#2381](https://github.com/LTplus-AG/ifc-lite/pull/2381) [`3029cb2`](https://github.com/LTplus-AG/ifc-lite/commit/3029cb2813940438dd43de3cca9e6b25546dad80) Thanks [@louistrue](https://github.com/louistrue)! - Fix an infinite loop in `PolygonBuilder.classifyLoops` that hung the viewer at ~95% load (issue [#2364](https://github.com/LTplus-AG/ifc-lite/issues/2364)). The nearest-ancestor search introduced by [#2331](https://github.com/LTplus-AG/ifc-lite/issues/2331) tested containment with a single point, so two partially-overlapping loops could each "contain" the other's start vertex, making the parent pointers cyclic and the nesting-depth walk spin forever. Parents are now restricted to earlier (larger-or-equal-area) loops in the area-descending sort, which keeps the ancestor relation acyclic by construction.
+
+- [#2331](https://github.com/LTplus-AG/ifc-lite/pull/2331) [`70c431d`](https://github.com/LTplus-AG/ifc-lite/commit/70c431d3d9a12a5217ac0c1912da18bce7548e4e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `PolygonBuilder.classifyLoops` misclassifying an island (e.g. a mullion cross-section, or a column stub) nested inside a hole as a second hole of the outer boundary, instead of a solid polygon in its own right. Previously every ring's containment was tested only against the top-level outer boundary, so anything geometrically inside it — at any nesting depth — became a hole, silently turning the island into void in the rendered section drawing. Loops are now classified by nesting depth relative to their nearest containing ancestor: even depth is a solid outer boundary, odd depth is a hole of its immediate parent.
+
+- Updated dependencies [[`d89960a`](https://github.com/LTplus-AG/ifc-lite/commit/d89960aaab08387fbd2307c0f238bd112c684933)]:
+  - @ifc-lite/geometry@3.7.1
+
+## 1.21.0
+
+### Minor Changes
+
+- [#2119](https://github.com/LTplus-AG/ifc-lite/pull/2119) [`f566a3a`](https://github.com/LTplus-AG/ifc-lite/commit/f566a3af5d92728d682a150282e37de3ece3a613) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a showstopper found in review of the scaled PDF export ([#2042](https://github.com/LTplus-AG/ifc-lite/issues/2042), reported on PR [#2119](https://github.com/LTplus-AG/ifc-lite/issues/2119)): `front` and `side` section PDF exports rendered off-page for any model at ordinary (asymmetric-about-zero) world coordinates. The page layout was derived from the drawing's un-flipped bounds while points were drawn flipped, which only produced a correctly-positioned page when the bounds happened to be symmetric about zero — the uncommon case. `computePdfScaleLayout`'s offsets must now be derived from the bounds as they are actually drawn; the new `flipBounds2D` helper (and `@ifc-lite/viewer`'s `computePdfSectionLayout`/`makeSectionMapPoint`) keep the two in sync. Also: the PDF export filename no longer rounds the scale factor with `Math.round` (v1 has no title block, so the filename is the sole record of a sheet's scale — a 1:99.5 export used to be filed as `…-1-100`); it now reuses the same rounding rule as the SVG title block's scale label (`formatScaleFactorLabel`, extracted from PR [#2131](https://github.com/LTplus-AG/ifc-lite/issues/2131)). `computePdfScaleLayout` now also validates its derived OUTPUTS (page size, offsets), not just its inputs, since finite inputs can still multiply/divide out to a non-finite page size that would otherwise reach jsPDF. The async PDF-construction/download path now shows an alert on failure (e.g. a failed `jspdf` chunk load) instead of surfacing only as an unhandled promise rejection. The PDF export's cut-line skip is now scoped to entities actually covered by a cut-polygon outline — cut-category `drawing.lines` are still drawn when the polygon reconstruction failed to close a loop for that entity, instead of being silently dropped.
+
+- [#2119](https://github.com/LTplus-AG/ifc-lite/pull/2119) [`f566a3a`](https://github.com/LTplus-AG/ifc-lite/commit/f566a3af5d92728d682a150282e37de3ece3a613) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add `computePdfScaleLayout`, `worldPointToPdfMm`, and `worldLengthToPdfMm`: pure scale/extent arithmetic for exporting a section drawing to a dimensionally accurate ("to scale") PDF page ([#2042](https://github.com/LTplus-AG/ifc-lite/issues/2042)). The page is sized to the drawing extent at the exact chosen scale plus a margin, rather than fit into a fixed named paper size, so a selected scale (e.g. 1:100) is never silently re-scaled to make the drawing fit — unlike the existing sheet-fit transform in `sheet/sheet-types.ts`, which is correct for an on-screen preview but not for a document someone measures from.
+
+### Patch Changes
+
+- [#2131](https://github.com/LTplus-AG/ifc-lite/pull/2131) [`ae2debf`](https://github.com/LTplus-AG/ifc-lite/commit/ae2debf665fdbe25afd9e16411bd2347dcd4f39d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make `SVGExportOptions.padding` (documented as "Padding around drawing in mm") actually affect `SVGExporter.export()` / `.exportPolygons()` output. Since the exporter's original commit, `computeTransform` derived `availableWidth`/`availableHeight` from `padding` and never used them anywhere — the option was a silent no-op regardless of value.
+
+  **Behaviour change:** `padding` is now a minimum-margin guarantee. `computeTransform` keeps the caller's exact requested `scale` when the drawing already leaves at least `padding` mm of margin on the chosen paper (the common case, and unchanged from before). When it would leave less than that — or the drawing overflows the paper outright — the effective scale is shrunk (never enlarged) just enough to respect the margin; centring is otherwise unaffected, since padding is applied uniformly on all sides.
+
+  `padding` defaults to `20` (mm) in both `export()` and `exportPolygons()`, so **this can change output for callers who never pass `padding` explicitly** — not just callers who pass a non-zero value — whenever their drawing, at its requested scale, is closer than 20mm to the paper edge. `padding: 0` is unaffected except in the pre-existing edge case where a drawing already overflows the paper at the requested scale with no padding at all (previously silently overflowed the page; now clamped to fit).
+
+  **Review follow-ups (both are cases where "padding is a minimum-margin guarantee" was not actually a contract):**
+
+  - **The title block's "Scale:" label could lie.** `computeTransform` clamps the effective scale to honour the margin, but `createTitleBlock` printed the caller's _requested_ `scale.name` unconditionally — a sheet clamped from 1:100 to, say, ~1:973 still read "Scale: 1:100". That is a confidently wrong document: scaling a dimension off the printout is the entire reason a scale label exists, and it would be silently wrong by the clamp ratio. The label is now derived from the _effective_ scale whenever the drawing was clamped (rounded to 2 decimal places, trailing zeros stripped, e.g. `1:127.3`), and continues to print the exact requested name unchanged — no floating-point re-derivation — on the common, unclamped path.
+  - **An impossible `padding` (`padding * 2 >= paperSize.width` or `.height`) used to disable the clamp entirely** on the affected axis, silently falling back to rendering at the full requested scale with no margin honoured at all — the same "no padding at all" failure this changeset otherwise removes, just reached from the opposite direction. `padding` is now clamped to the largest value the paper's shorter dimension can still hold (leaving a minimum 1mm sliver of drawable area) and a `console.warn` is emitted; the export keeps working rather than throwing, since this is a published package and a large-`padding` caller should not have their existing integration start throwing on upgrade.
+
+- Updated dependencies [[`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e), [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733), [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9)]:
+  - @ifc-lite/geometry@3.7.0
+
 ## 1.20.0
 
 ### Minor Changes

@@ -27,6 +27,7 @@ import { useIfc } from '@/hooks/useIfc';
 import { cn } from '@/lib/utils';
 import { TOUR_ANCHORS, tourAnchor } from '@/lib/tours/anchors';
 import { ThemeSwitch } from '../ThemeSwitch';
+import { SearchInline } from '../SearchInline';
 import { ExportChangesButton } from '../ExportChangesButton';
 import { ExtensionToolbarSlot } from '@/components/extensions/ExtensionToolbarSlot';
 import { useFileCommands } from '../toolbar/useFileCommands';
@@ -120,11 +121,12 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
           })}
         </div>
 
-        <div className="flex-1" />
-
-        {/* Loading progress — lives in the strip so it survives collapse. */}
+        {/* Loading progress — lives in the strip so it survives collapse.
+            Left of the spacer, next to the tabs: anything to the RIGHT of
+            it would slide sideways every time a load starts or ends, and
+            the search field is over there. */}
         {loading && activeProgress && (
-          <div className="mr-2 flex items-center gap-2">
+          <div className="ml-3 flex min-w-0 items-center gap-2">
             <span className="max-w-56 truncate text-xs text-muted-foreground">
               {activeProgress.phase}
               {geometryProgress && metadataProgress ? ` | ${metadataProgress.phase}` : ''}
@@ -144,8 +146,27 @@ export function RibbonToolbar({ onShowShortcuts }: RibbonToolbarProps = {} as Ri
 
         {/* Error Display */}
         {error && (
-          <span className="mr-2 max-w-72 truncate text-xs text-destructive">{error}</span>
+          <span className="ml-3 max-w-72 truncate text-xs text-destructive">{error}</span>
         )}
+
+        <div className="flex-1" />
+
+        {/* Inline search — the very component the classic strip hosts, not
+            a ribbon copy of it, so `/` and ⌘F focus a field here too, the
+            n/N result cycle is reachable, and the recent-search popover
+            plus the "N filter rules active" badge (with its one-click
+            clear) exist in both styles. It sits in the tab strip rather
+            than inside a tab so it survives collapse and tab switches,
+            matching the classic strip's always-visible field.
+
+            Right-oriented: the tab strip's left edge is tab geography, so
+            a field parked there competes with the tabs for the same
+            reading position and slides sideways whenever the tab set
+            changes. Docked to the right it lands where a search field is
+            looked for, beside the rest of the always-on chrome. */}
+        <div className="mr-2">
+          <SearchInline />
+        </div>
 
         {/* Extension toolbar contributions (right-aligned, same slot as
             the classic toolbar). */}

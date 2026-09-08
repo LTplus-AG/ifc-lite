@@ -108,6 +108,21 @@ describe('formatQuantityUnit', () => {
   it('returns the SI default for an unrecognized quantity type', () => {
     assert.strictEqual(formatQuantityUnit(999, ProjectUnits.empty()), null);
   });
+
+  // Mutation-sweep finding: only Length and Count were exercised here.
+  // Swapping QUANTITY_TYPE_UNIT[Weight]'s unitType from MASSUNIT to
+  // VOLUMEUNIT (a Weight quantity silently resolving/converting against the
+  // file's declared VOLUME unit instead of its MASS unit) survived the full
+  // suite before this test existed.
+  it('resolves a Weight quantity against MASSUNIT ("kg"), not any other unit-type', () => {
+    assert.strictEqual(formatQuantityUnit(QuantityType.Weight, ProjectUnits.empty()), 'kg');
+    assert.strictEqual(QUANTITY_TYPE_UNIT[QuantityType.Weight]?.unitType, 'MASSUNIT');
+  });
+
+  it('resolves a Time quantity against TIMEUNIT ("s")', () => {
+    assert.strictEqual(formatQuantityUnit(QuantityType.Time, ProjectUnits.empty()), 's');
+    assert.strictEqual(QUANTITY_TYPE_UNIT[QuantityType.Time]?.unitType, 'TIMEUNIT');
+  });
 });
 
 describe('resolveMeasureDisplay', () => {
@@ -167,6 +182,14 @@ describe('resolveQuantityDisplay', () => {
     const disp = resolveQuantityDisplay(3000, QuantityType.Length, units, { LENGTHUNIT: 'm' });
     assert.strictEqual(disp.unit, 'm');
     assert.ok(disp.converted !== null && Math.abs(disp.converted - 3) < 1e-9);
+  });
+
+  it('converts a Weight quantity into an overridden unit (kg -> g), exercising MASSUNIT end to end', () => {
+    // Complements the QUANTITY_TYPE_UNIT table pin above: this drives the
+    // actual conversion pipeline for Weight, which nothing did before.
+    const disp = resolveQuantityDisplay(2.5, QuantityType.Weight, ProjectUnits.empty(), { MASSUNIT: 'g' });
+    assert.strictEqual(disp.unit, 'g');
+    assert.ok(disp.converted !== null && Math.abs(disp.converted - 2500) < 1e-9);
   });
 
   it('returns no unit/conversion for Count', () => {

@@ -68,3 +68,32 @@ describe('workspacePanelForShortcutCode (Alt+digit routing #1200/#1208)', () => 
     }
   });
 });
+
+// The BCF panel's title once read "BCF issues" — Topic is the BCF-XML
+// element and Issue is only one TopicType value among several (Request,
+// Comment, Error, Warning, Info), so "issues" narrowed and contradicted the
+// spec (#4096). Pin the corrected label so it can't regress silently.
+describe('BCF panel title', () => {
+  it('says "BCF topics", not "BCF issues" (#4096)', () => {
+    const bcf = WORKSPACE_PANELS.find((p) => p.id === 'bcf');
+    assert.ok(bcf, 'expected a bcf panel entry in the registry');
+    assert.strictEqual(bcf.title, 'BCF topics');
+  });
+});
+
+// `isBottomPanel` gates `usePanelControls`' toggle routing (script / gantt /
+// lists go through `toggleBottomPanel`, everything else through the sidebar
+// dock). The test above only exercises 'script' (Digit8) and 'lists'
+// (Digit0) via the shortcut map — 'gantt' (Digit9) was never checked here,
+// so dropping it from `isBottomPanel`'s own condition went unnoticed.
+describe('isBottomPanel', () => {
+  it('is true for exactly script, gantt and lists — the bottom-strip trio', () => {
+    for (const id of WORKSPACE_PANELS.map((p) => p.id)) {
+      assert.strictEqual(
+        isBottomPanel(id),
+        id === 'script' || id === 'gantt' || id === 'lists',
+        `isBottomPanel('${id}')`,
+      );
+    }
+  });
+});

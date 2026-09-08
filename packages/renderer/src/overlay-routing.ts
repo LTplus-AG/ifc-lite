@@ -28,6 +28,18 @@ export type RGBAOverrideMap = ReadonlyMap<number, readonly [number, number, numb
 export const OPAQUE_ALPHA_CUTOFF = 0.99;
 
 /**
+ * Alpha applied to everything outside an X-Ray context set (`ghostExceptIds`).
+ *
+ * Exported because the Cesium world view has to reach the SAME verdict this
+ * renderer does: it draws the model through its own glTF pipeline, so it bakes
+ * the ghost alpha into the exported material rather than inheriting this
+ * pass (#2591). A second literal in the viewer would be a second definition of
+ * "how ghosted looks", and the two would drift the way the hide/isolate rule
+ * did (#2578).
+ */
+export const DEFAULT_GHOST_ALPHA = 0.12;
+
+/**
  * Minimum override alpha that triggers opaque-pipeline promotion.
  *
  * Lens "ghost" colours used to fade unmatched entities sit at alpha 0.15

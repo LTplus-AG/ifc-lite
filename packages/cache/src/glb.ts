@@ -11,6 +11,7 @@
 
 import type { MeshData } from '@ifc-lite/geometry';
 import { safeUtf8Decode } from '@ifc-lite/data';
+import { linearToSrgb } from './glb-color.js';
 
 // glTF 2.0 constants
 const GLB_MAGIC = 0x46546c67; // 'glTF'
@@ -284,6 +285,40 @@ function readAccessorData(
 
   const bufferOffset = (bufferView.byteOffset ?? 0) + (accessor.byteOffset ?? 0);
 
+  // `accessor.count` comes straight from the (untrusted) GLB JSON chunk and
+  // is REQUIRED by the glTF spec, but nothing here enforced that at runtime:
+  // a missing/non-numeric `count` makes it `undefined`/NaN, and `NaN * x` is
+  // NaN. Every arithmetic bounds comparison below (`< 0`, `> bin.byteLength`)
+  // is false against NaN, so the bounds check was silently bypassed rather
+  // than rejecting the malformed accessor. Control then fell through to a
+  // typed-array constructor built from that same NaN count, which coerces to
+  // an element count of 0 (ToIndex(NaN) === 0) — producing a silently EMPTY
+  // mesh reported as a successful import instead of throwing.
+  if (!Number.isInteger(accessor.count) || accessor.count < 0) {
+    throw new Error(`GLB: accessor ${accessorIdx} has an invalid count: ${accessor.count}`);
+  }
+
+  // Bounds-check the full byte range this accessor claims against the actual
+  // BIN chunk BEFORE slicing/constructing anything. `accessor.count` /
+  // `byteOffset` come straight from the (untrusted) GLB JSON chunk; without
+  // this, `bin.slice()` below silently CLAMPS on a truncated/malformed BIN
+  // (fewer bytes than asked), and the typed-array constructor that follows
+  // still requests the ORIGINALLY declared element count against that
+  // shorter buffer — a raw `RangeError: Invalid typed array length` (or
+  // "range consisting of offset and length are out of bounds", depending on
+  // engine) escapes instead of a diagnosable domain error.
+  const neededBytes = byteStride === elementSize
+    ? accessor.count * elementSize
+    : accessor.count > 0
+      ? (accessor.count - 1) * byteStride + elementSize
+      : 0;
+  if (bufferOffset < 0 || neededBytes < 0 || bufferOffset + neededBytes > bin.byteLength) {
+    throw new Error(
+      `GLB: accessor ${accessorIdx} reads bytes [${bufferOffset}, ${bufferOffset + neededBytes}) ` +
+      `but the BIN chunk is only ${bin.byteLength} bytes`,
+    );
+  }
+
   // If data is tightly packed, we can use a view directly
   if (byteStride === elementSize) {
     const byteLength = accessor.count * elementSize;
@@ -434,8 +469,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     const material = gltf.materials?.[materialIdx];
     const factor = material?.pbrMetallicRoughness?.baseColorFactor;
     if (!Array.isArray(factor) || factor.length < 3) return [...DEFAULT_COLOR];
-    const r = factor[0], g = factor[1], b = factor[2];
-    const a = factor.length >= 4 ? factor[3] : 1.0;
+    const r = factor[0], g = factor[1], b = factor[2], a = factor.length >= 4 ? factor[3] : 1.0;
     if (
       typeof r !== 'number' || !Number.isFinite(r) ||
       typeof g !== 'number' || !Number.isFinite(g) ||
@@ -444,7 +478,7 @@ export function parseGLBToMeshData(gltf: GLTFDocument, bin: Uint8Array): MeshDat
     ) {
       return [...DEFAULT_COLOR];
     }
-    return [r, g, b, a];
+    return [linearToSrgb(r), linearToSrgb(g), linearToSrgb(b), a];
   };
 
   for (let nodeIdx = 0; nodeIdx < gltf.nodes.length; nodeIdx++) {

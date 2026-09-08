@@ -46,6 +46,8 @@ export const QUANTITY_TYPE_UNIT: Record<number, { unitType: string; defaultSymbo
   [QuantityType.Count]: null,
   [QuantityType.Weight]: { unitType: 'MASSUNIT', defaultSymbol: 'kg' },
   [QuantityType.Time]: { unitType: 'TIMEUNIT', defaultSymbol: 's' },
+  // IfcQuantityNumber is an IfcNumericMeasure: dimensionless, like Count.
+  [QuantityType.Number]: null,
 };
 
 /**

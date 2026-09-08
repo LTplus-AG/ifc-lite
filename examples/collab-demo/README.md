@@ -17,4 +17,4 @@ Then open `http://localhost:5174` in **two browser tabs** to see:
   IFCX timeline.
 - Undo / redo scoped per-tab via `Y.UndoManager` + local origin.
 
-For the wider testing guide see `docs/guide/collab-testing.md`.
+For the wider testing guide see `docs/contributing/collaboration-testing.md`.

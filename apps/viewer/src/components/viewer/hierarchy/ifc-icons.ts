@@ -37,6 +37,7 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   // consistency. (Issue #860 \u2014 user reported no icon on IfcFacility.)
   IfcFacility: '\ue7ee', // "domain"
   IfcFacilityPart: '\ue8fe', // "layers" \u2014 mirrors IfcBuildingStorey
+  IfcFacilityPartCommon: '\ue8fe',
   IfcBridge: '\uebbf', // "directions_railway" \u2014 civil bridge icon
   IfcBridgePart: '\ue8fe',
   IfcRoad: '\uebbe', // "route"
@@ -44,7 +45,7 @@ export const IFC_ICON_CODEPOINTS: Record<string, string> = {
   IfcRailway: '\ue570', // "train"
   IfcRailwayPart: '\ue8fe',
   IfcMarineFacility: '\ue532', // "directions_boat"
-  IfcMarineFacilityPart: '\ue8fe',
+  IfcMarinePart: '\ue8fe',
 
   // Structural
   IfcBeam: '\uf108',

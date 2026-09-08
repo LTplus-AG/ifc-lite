@@ -14,6 +14,20 @@ import type { MeshData } from '@ifc-lite/geometry';
  * (that would make picking/snapping miss real geometry). These tests pin that
  * "no false negatives" invariant against a brute-force reference, plus the
  * degenerate cases (small scene, unbuilt, empty mesh).
+ *
+ * Scope note (#2830): `rayHitsAabb` below is a hand-typed COPY of `BVH`'s
+ * private `rayIntersectsAABB` slab test, not an import, so it genuinely does
+ * catch bugs in the tree itself — construction, node-bounds unions, pruning
+ * (mutation-confirmed: dropping the `t0 > t1` swap in `bvh.ts` fails 4 of the
+ * 8 subtests here). What it cannot catch is a bug in the slab test's own
+ * policy choices, because both copies were written to the same design and
+ * encode them identically — e.g. the `tmax >= 0` front-of-ray tie-break at
+ * `bvh.ts`'s `rayIntersectsAABB` return, duplicated verbatim in `rayHitsAabb`
+ * above. Weakening that one line to `tmax > 0` in `bvh.ts` alone (test file
+ * untouched) leaves all 8 subtests green — mutation-confirmed. Any future
+ * ground truth meant to audit that tie-break needs to derive it independently
+ * (e.g. from an explicit corner/plane check) rather than mirror the slab
+ * algorithm.
  */
 
 interface AABBLike {
@@ -209,5 +223,51 @@ describe('BVH', () => {
     // Every node has an Infinity/-Infinity AABB, so all rays prune to nothing.
     const ray: Ray = { origin: { x: 0, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
     assert.strictEqual(bvh.getMeshesForRay(ray, meshes).length, 0);
+  });
+
+  // `MeshData.positions` are in the element's LOCAL frame; `MeshData.origin`
+  // (present on chunked/large-coordinate models, e.g. federated or RTC'd
+  // scenes) is a per-mesh world-space translation the BVH must fold in when
+  // computing AABBs — `raycast-engine.ts` builds the BVH from these same
+  // MeshData objects and relies on world-space bounds for culling. None of
+  // the fixtures above ever set `.origin`, so this fold was previously
+  // exercised by zero tests (mutation-confirmed: hard-coding the offset to 0
+  // left all prior tests green).
+  describe('per-mesh world-space origin', () => {
+    it('folds a non-zero origin into the AABB used for ray culling', () => {
+      // 8 decoys spread along +x (local coords, no origin). More than
+      // maxMeshesPerLeaf (8) once "far" is added, so the tree actually
+      // splits — the split sorts nodes by their CACHED centroid, which is
+      // exactly what makes this test sensitive to whether `origin` got
+      // folded into that cache (a leaf-level test with too few meshes can't
+      // tell: a single conservative leaf would swallow every mesh).
+      const decoys = Array.from({ length: 8 }, (_, i) => boxMesh(100 + i, i, 0, 0));
+      // "far": LOCAL vertices centred at (0,0,0) — the SAME raw local
+      // coordinates as decoys[0] — but placed at WORLD (1000,0,0) via
+      // `origin`. Correctly folding origin gives it a cached centroid of
+      // ~1000, sorting it away from the local cluster into its own branch.
+      const far = boxMesh(1, 0, 0, 0);
+      far.origin = [1000, 0, 0];
+      const meshes = [far, ...decoys];
+
+      const bvh = new BVH();
+      bvh.build(meshes);
+
+      // Ray straight down through world (1000,0,z) — far's TRUE world spot.
+      const rayAtFarWorld: Ray = { origin: { x: 1000, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
+      const hitsFarWorld = new Set(bvh.getMeshesForRay(rayAtFarWorld, meshes));
+      assert.ok(hitsFarWorld.has(0), 'ray through the WORLD position (origin + local) must hit "far"');
+
+      // Ray straight down through local/world (0,0,z) — decoys[0]'s
+      // position, and ALSO far's raw LOCAL vertex position if origin were
+      // ignored. Correct origin-folding keeps far's leaf entirely out of
+      // this region (its cached centroid is ~1000, not ~0).
+      const rayAtLocalZero: Ray = { origin: { x: 0, y: 0, z: 10 }, direction: { x: 0, y: 0, z: -1 } };
+      const hitsLocalZero = new Set(bvh.getMeshesForRay(rayAtLocalZero, meshes));
+      assert.ok(
+        !hitsLocalZero.has(0),
+        '"far" must NOT be reachable from a ray at its raw LOCAL coordinates — that is not its world position',
+      );
+    });
   });
 });

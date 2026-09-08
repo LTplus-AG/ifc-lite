@@ -30,8 +30,12 @@
  * points rather than an approximation. The grid itself adds roughly
  * 8 bytes/point (one array slot per point, across however many cells)
  * plus a small constant per occupied cell — a few MB per million
- * points at typical scan density. See `DEFAULT_MAX_INDEXED_POINTS` for
- * the safety valve on extreme (tens-of-millions-of-points) clouds.
+ * points at typical scan density. The safety valve on extreme
+ * (tens-of-millions-of-points) clouds has two independent limbs:
+ * `DEFAULT_MAX_INDEXED_POINTS` bounds retained position memory (it
+ * binds on dense scans), and `DEFAULT_MAX_INDEXED_CELLS` bounds the
+ * `cells` Map itself below V8's 2^24-entry ceiling (it binds on sparse
+ * clouds, where occupied cells track the point count nearly 1:1).
  *
  * Query: `queryRay` walks cells in ray-marching (Amanatides & Woo DDA)
  * order, so cost is O(cells touched along the ray), not O(points) —
@@ -57,8 +61,48 @@ export const DEFAULT_POINTCLOUD_INDEX_CELL_SIZE = 0.5;
  * so this only bites on genuinely extreme clouds — at ~20 bytes/point
  * of CPU overhead (12 bytes retained positions + ~8 bytes grid), 30M
  * points is already ~600 MB of additional retained memory.
+ *
+ * This limb bounds RETAINED POSITION MEMORY. It does NOT bound the size
+ * of the `cells` Map — see `DEFAULT_MAX_INDEXED_CELLS`, which binds
+ * first on sparse clouds.
  */
 export const DEFAULT_MAX_INDEXED_POINTS = 30_000_000;
+
+/**
+ * V8's hard ceiling on `Map`/`Set` entry count: exactly 2^24 entries,
+ * after which `set()` throws `RangeError: Map maximum size exceeded`.
+ * This is an engine limit, not a memory limit — it fires with gigabytes
+ * of heap still free, and it is not catchable anywhere useful (it would
+ * abort a streaming chunk insert mid-cloud).
+ */
+export const V8_MAP_MAX_ENTRIES = 2 ** 24; // 16,777,216
+
+/**
+ * Hard cap on how many OCCUPIED CELLS the grid will create — the second
+ * limb of the memory safety valve, and the one that actually protects
+ * the `cells` Map.
+ *
+ * `DEFAULT_MAX_INDEXED_POINTS` alone does not bound the Map, because
+ * `insertRange` creates at most one new cell per indexed point and, on a
+ * SPARSE cloud, very nearly one per point: airborne LiDAR at 1-20
+ * points/m^2, or a coarse site scan, puts on the order of one point in
+ * each 0.5 m cell (`DEFAULT_POINTCLOUD_INDEX_CELL_SIZE`), so occupied
+ * cells track the point count almost 1:1. The worst case is therefore
+ * `cells === points`, and a 30M-point cap sits ABOVE `V8_MAP_MAX_ENTRIES`
+ * — the Map throws at 16,777,216 cells, i.e. the valve could never bind
+ * on exactly the clouds it was written for. Dense terrestrial scans put
+ * thousands of points in a cell and never come close, which is why the
+ * gap survived.
+ *
+ * The two limbs bound different resources and neither implies the other:
+ * a sparse cloud exhausts cells long before points; a dense one exhausts
+ * points with a tiny grid. Both are enforced.
+ *
+ * Chosen 1M cells below the engine limit: high enough that it binds only
+ * where V8 would otherwise have thrown (no cloud that indexes fully today
+ * loses coverage), with headroom so the grid never races the ceiling.
+ */
+export const DEFAULT_MAX_INDEXED_CELLS = V8_MAP_MAX_ENTRIES - (1 << 20); // 15,728,640
 
 /**
  * Cap on the per-visited-cell neighborhood dilation radius, in cells
@@ -199,9 +243,12 @@ function rayBoxEntryExit(
 export class PointCloudSpatialIndex {
   private readonly cellSize: number;
   private readonly maxIndexedPoints: number;
+  private readonly maxIndexedCells: number;
   private readonly cells = new Map<number, number[]>();
   private chunks: IndexedChunk[] = [];
   private total = 0;
+  /** Set once a point needed a cell the grid had no room left to create. */
+  private cellsExhausted = false;
 
   private minX = Infinity;
   private minY = Infinity;
@@ -234,12 +281,20 @@ export class PointCloudSpatialIndex {
   constructor(
     cellSize: number = DEFAULT_POINTCLOUD_INDEX_CELL_SIZE,
     maxIndexedPoints: number = DEFAULT_MAX_INDEXED_POINTS,
+    maxIndexedCells: number = DEFAULT_MAX_INDEXED_CELLS,
   ) {
     this.cellSize = cellSize > 0 && Number.isFinite(cellSize) ? cellSize : DEFAULT_POINTCLOUD_INDEX_CELL_SIZE;
     this.maxIndexedPoints =
       maxIndexedPoints > 0 && Number.isFinite(maxIndexedPoints)
         ? Math.floor(maxIndexedPoints)
         : DEFAULT_MAX_INDEXED_POINTS;
+    // Clamped BELOW the engine ceiling unconditionally: a caller that asks
+    // for more cells than V8 can hold gets a bounded index, never a throw.
+    const requestedCells =
+      maxIndexedCells > 0 && Number.isFinite(maxIndexedCells)
+        ? Math.floor(maxIndexedCells)
+        : DEFAULT_MAX_INDEXED_CELLS;
+    this.maxIndexedCells = Math.min(requestedCells, V8_MAP_MAX_ENTRIES - 1);
   }
 
   /** Total number of points currently indexed (may be less than the
@@ -248,43 +303,81 @@ export class PointCloudSpatialIndex {
     return this.total;
   }
 
-  /** True once further inserts are silently dropped (memory safety valve). */
+  /** Number of occupied grid cells — the `cells` Map's entry count. */
+  get cellCount(): number {
+    return this.cells.size;
+  }
+
+  /**
+   * The effective occupied-cell budget after clamping — always strictly
+   * below `V8_MAP_MAX_ENTRIES`, whatever the caller asked for.
+   */
+  get cellCapacity(): number {
+    return this.maxIndexedCells;
+  }
+
+  /**
+   * Which limb of the safety valve closed the index, or `null` while it
+   * is still accepting points. `'cells'` means the grid ran out of room
+   * for new occupied cells (sparse cloud); `'points'` means the retained
+   * position budget ran out (dense cloud). Callers can surface this to
+   * explain why the measure tool stops snapping past a certain point.
+   */
+  get capReason(): 'points' | 'cells' | null {
+    if (this.cellsExhausted) return 'cells';
+    return this.total >= this.maxIndexedPoints ? 'points' : null;
+  }
+
+  /** True once further inserts are dropped (memory safety valve). */
   get isCapped(): boolean {
-    return this.total >= this.maxIndexedPoints;
+    return this.capReason !== null;
+  }
+
+  /**
+   * Report the valve binding. Called at the tail of `insertRange`, which
+   * returns early once `isCapped`, so this fires exactly once per index
+   * (not once per streamed chunk). Truncating the index silently
+   * would make degraded picking indistinguishable from "the measure tool
+   * is broken", so the outcome is always announced with the numbers and
+   * the reason.
+   */
+  private reportCapIfBound(): void {
+    const reason = this.capReason;
+    if (!reason) return;
+    console.warn(
+      `[PointCloudSpatialIndex] measure-snap index closed at its ${reason} limit ` +
+        `(${this.total} points in ${this.cells.size} cells, cell size ${this.cellSize} m). ` +
+        `Later points still render, but the measure tool cannot snap to them.`,
+    );
   }
 
   /**
    * Insert the first `count` xyz triples of `positions` (renderer/world
    * space — the same frame `queryRay` expects). Keeps `positions` (and
    * `classifications`, when given) BY REFERENCE; the caller must not
-   * mutate them afterwards. A no-op past `maxIndexedPoints` (see class
+   * mutate them afterwards. A no-op once either cap has bound (see class
    * docs) — points beyond the cap render normally but are not indexed
-   * for picking. When a chunk CROSSES the cap, only the accepted prefix
-   * is retained (copied) so the cap genuinely bounds retained memory —
-   * keeping the whole source array by reference would retain e.g. a
-   * 100M-point one-shot chunk's full 1.2 GB for a 30M-point cap.
+   * for picking. When a chunk CROSSES either cap, only the accepted
+   * prefix is retained (copied) so the cap genuinely bounds retained
+   * memory — keeping the whole source array by reference would retain
+   * e.g. a 100M-point one-shot chunk's full 1.2 GB for a 30M-point cap.
+   *
+   * Two caps apply (see `DEFAULT_MAX_INDEXED_POINTS` and
+   * `DEFAULT_MAX_INDEXED_CELLS`): whichever binds first closes the index.
    */
   insertRange(positions: Float32Array, count: number, classifications?: Uint8Array | null): void {
-    if (count <= 0 || this.total >= this.maxIndexedPoints) return;
-    const usable = Math.min(count, this.maxIndexedPoints - this.total);
+    if (count <= 0 || this.isCapped) return;
+    const room = Math.min(count, this.maxIndexedPoints - this.total);
     const startId = this.total;
-    const retainedPositions = usable < count ? positions.slice(0, usable * 3) : positions;
-    const retainedClasses = classifications
-      ? (usable < count ? classifications.slice(0, usable) : classifications)
-      : null;
-    this.chunks.push({ positions: retainedPositions, classifications: retainedClasses, count: usable, startId });
-    for (let i = 0; i < usable; i++) {
+    // Index first, then record the chunk: the cell cap can stop us part
+    // way through, and only the prefix we actually indexed may be retained.
+    let accepted = room;
+    for (let i = 0; i < room; i++) {
       const o = i * 3;
       const x = positions[o];
       const y = positions[o + 1];
       const z = positions[o + 2];
       if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) continue;
-      if (x < this.minX) this.minX = x;
-      if (x > this.maxX) this.maxX = x;
-      if (y < this.minY) this.minY = y;
-      if (y > this.maxY) this.maxY = y;
-      if (z < this.minZ) this.minZ = z;
-      if (z > this.maxZ) this.maxZ = z;
       const cx = Math.floor(x / this.cellSize);
       const cy = Math.floor(y / this.cellSize);
       const cz = Math.floor(z / this.cellSize);
@@ -297,12 +390,41 @@ export class PointCloudSpatialIndex {
       const key = this.packKey(cx, cy, cz);
       let bucket = this.cells.get(key);
       if (!bucket) {
+        // A point landing in an ALREADY occupied cell costs no Map entry,
+        // so the cap is only consulted where a new entry would be created.
+        if (this.cells.size >= this.maxIndexedCells) {
+          this.cellsExhausted = true;
+          accepted = i;
+          break;
+        }
         bucket = [];
         this.cells.set(key, bucket);
       }
+      // Bounds fold in only points that are actually indexed, so `getBounds`
+      // never advertises a region `queryRay` cannot reach.
+      if (x < this.minX) this.minX = x;
+      if (x > this.maxX) this.maxX = x;
+      if (y < this.minY) this.minY = y;
+      if (y > this.maxY) this.maxY = y;
+      if (z < this.minZ) this.minZ = z;
+      if (z > this.maxZ) this.maxZ = z;
       bucket.push(startId + i);
     }
-    this.total += usable;
+    if (accepted <= 0) {
+      this.reportCapIfBound();
+      return;
+    }
+    const truncated = accepted < count;
+    this.chunks.push({
+      positions: truncated ? positions.slice(0, accepted * 3) : positions,
+      classifications: classifications
+        ? (truncated ? classifications.slice(0, accepted) : classifications)
+        : null,
+      count: accepted,
+      startId,
+    });
+    this.total += accepted;
+    this.reportCapIfBound();
   }
 
   /** World-space bounds of every indexed point, or null when empty. */
@@ -627,6 +749,7 @@ export class PointCloudSpatialIndex {
     this.cells.clear();
     this.chunks = [];
     this.total = 0;
+    this.cellsExhausted = false;
     this.minX = this.minY = this.minZ = Infinity;
     this.maxX = this.maxY = this.maxZ = -Infinity;
     this.cellOriginX = this.cellOriginY = this.cellOriginZ = 0;

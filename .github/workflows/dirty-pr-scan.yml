@@ -1,0 +1,202 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Silent PR CI visibility
+
+# DELIBERATELY NOT `pull_request` (issue #3443).
+#
+# Measured, not speculated: a PR whose `mergeable` reads `CONFLICTING` runs no
+# `pull_request` CI at all -- no red check, no message, the lanes are simply
+# absent. Pushing a new commit does not clear it; only resolving the conflict
+# does (an empty commit polled for five minutes on live PR #3389 left the
+# check count unchanged). If GitHub will not fire `pull_request` for such a
+# PR, nothing triggered BY `pull_request` can ever report on it -- that
+# includes pr-review-signal.yml, which exists for the adjacent absence defect
+# in #3312 and is blind to this one for the identical reason. The only trigger
+# that can see this is one independent of any single PR's ability to fire
+# anything: a cron that asks the API which open PRs are conflicted.
+#
+# This does not fix CI not running -- nothing in-repo can, short of GitHub
+# changing how `pull_request` is gated. It makes the silence VISIBLE: a red
+# scheduled run in the Actions tab, on a fixed cadence, independent of any one
+# PR's state.
+#
+# It reports the OTHER cause of the same silence too, separately: `test.yml`
+# fires `pull_request` only for `branches: [main]`, so a PR stacked on a
+# feature branch has no lanes either, and a merge cannot give it any (#3429).
+# The two causes take opposite remedies -- retarget vs resolve -- so the scan
+# names which one fired rather than issuing one instruction for both. A PR can
+# carry both at once, and then neither remedy works alone, so the scan says so
+# on that PR's own lines instead of leaving half of it for a later run.
+on:
+  schedule:
+    # Every 30 minutes. Cheap (two `gh` reads, no checkout of anything to
+    # build, no `pnpm install` -- see scripts/scan-dirty-prs.mjs), and the
+    # interval IS the detection latency: a PR that goes conflicted and is
+    # fixed between two runs is never reported, by design.
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+  # PIGGYBACK, because `schedule` alone is not a cadence you can rely on
+  # (#3776): one run fired in four hours on this `*/30` cron, so the scan's only
+  # output on `main` was a four-hour-old failure naming PRs that had since been
+  # remediated. GitHub's scheduled triggers are best-effort and are dropped
+  # under load; nothing in-repo changes that. What it can do is add a trigger
+  # that fires on real activity, and a merge to `main` is the event most likely
+  # to have INVALIDATED the last scan -- it is what lands a stacked PR's base
+  # and what makes another PR conflicted. Deliberately not `pull_request`: see
+  # the block above, a PR that cannot fire `pull_request` is the whole point.
+  push:
+    branches: [main]
+
+# A push during a cron tick would otherwise scan the same PR list twice and
+# publish two verdicts seconds apart. Newest wins; an in-flight scan of an
+# older PR list has nothing to say that the newer one does not.
+concurrency:
+  group: dirty-pr-scan
+  cancel-in-progress: true
+
+permissions:
+  # `gh run list`, for the cadence report below. Without it that step 403s.
+  actions: read
+  contents: read
+  # WRITE, not read: the scan now puts its verdict ON the offending PRs as a
+  # label instead of reddening main. Labelling a PR is the `pull-requests`
+  # scope, never `issues` -- they look interchangeable on the REST surface and
+  # are not.
+  pull-requests: write
+  # ONLY for `gh label create`: a label is an issues-scope resource even though
+  # it is applied to a PR. Applying it is `pull-requests`. The two are not
+  # interchangeable -- label-authority.yml carries the measured evidence.
+  issues: write
+  # Declaring ANY `permissions:` block sets every scope not listed to `none`,
+  # and this scan's whole verdict rests on `statusCheckRollup` -- check-run and
+  # commit-status data, neither of which `pull-requests: read` covers. Without
+  # these two the job either dies with GH_ERROR or reads an empty rollup, and an
+  # empty rollup makes every conflicted PR look like it never ran a lane, which
+  # is the one false positive this gate is built to avoid (#3417/#3447 ran all
+  # 15 before going dirty). Same pair, for the same `gh --json
+  # statusCheckRollup` read, as pr-review-signal.yml.
+  checks: read
+  statuses: read
+
+env:
+  ACTIONS_RUNNER_FORCE_ACTIONS_NODE_VERSION: node24
+
+jobs:
+  scan:
+    name: Scan open PRs for CI-silent heads
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # No `pnpm install`: node builtins plus `gh`, which is preinstalled on
+      # GitHub runners, and reused presence logic from
+      # scripts/lib/pr-review-signal.mjs (already dependency-free, already
+      # tested). Kept light on purpose -- this job's only edge over
+      # pr-review-signal.yml is a trigger that a dirty PR cannot suppress, and
+      # adding a real dependency here would not remove that edge, just risk it.
+      - name: Unit-test the scan itself
+        run: node --test scripts/lib/dirty-pr-scan.test.mjs scripts/scan-dirty-prs.test.mjs
+
+      # The scan also reports its OWN cadence -- how long since the last
+      # completed run, and an annotation past two missed ticks (#3776). It is
+      # in the script rather than a shell step here so the arithmetic is a
+      # tested pure function (`cadenceReport`) instead of untested YAML, and so
+      # it reaches the same summary file as the findings.
+      # A RED MAIN IS THE WRONG PLACE FOR THIS VERDICT, and this is the same
+      # argument review-lane-canary.yml already makes: "a failed scheduled
+      # workflow is a row in a tab nobody opens". It is worse here, because the
+      # condition is about OPEN PRs -- nobody can clear it by changing `main`,
+      # and the PR authors who CAN clear it never see the red at all.
+      #
+      # Measured before this change: the scan failed 10 of 39 pushes to main,
+      # and 8 of the last 9, on one unchanged set of PRs. A main that is red by
+      # default is a main nobody reads -- which is how a flaky parser test
+      # produced 12 of the 15 `Test` failures in that same window unnoticed.
+      #
+      # DETECTION IS UNCHANGED. Only the delivery moves: onto the PRs the scan
+      # names, plus the job summary the scanner already writes.
+      - name: Scan open PRs
+        id: scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -uo pipefail
+          # GitHub starts Bash with -e: capture expected findings before
+          # errexit can abort the step (#4062). Keep log-write failures fatal.
+          statuses=(0 0)
+          node scripts/scan-dirty-prs.mjs --repo "${{ github.repository }}" \
+            2>&1 | tee "$RUNNER_TEMP/scan.log" || statuses=("${PIPESTATUS[@]}")
+          rc=${statuses[0]}
+          if [ "${statuses[1]}" -ne 0 ]; then
+            exit "${statuses[1]}"
+          fi
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+          # 2 IS "COULD NOT LOOK" AND STILL FAILS THE JOB. Only the FINDING (1)
+          # stops reddening main; an API error must not be quietly absorbed,
+          # and it must not reach the label step, where an empty silent set
+          # would read as "nothing is silent any more" and strip the label off
+          # PRs that are still broken.
+          if [ "$rc" -ge 2 ]; then
+            echo "::error::The scan could not complete; not touching any label."
+            exit "$rc"
+          fi
+          exit 0
+
+      # THE VERDICT LANDS ON THE PRs IT NAMES. A label is visible to the author,
+      # survives new pushes, and is removed in the same run that finds the PR
+      # fixed -- so a stale label cannot outlive the condition the way an old
+      # red run does.
+      #
+      # Reads the scanner's own `silent-prs=` line rather than scraping the
+      # human report: those lines also carry the `unknownAdvisory` block, which
+      # the scanner deliberately keeps OUT of `silent` because those PRs
+      # re-check themselves, so scraping labelled and unlabelled every freshly
+      # opened PR twice an hour.
+      - name: Mark the PRs the scan named
+        if: steps.scan.outputs.rc == '0' || steps.scan.outputs.rc == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          LABEL=ci-silent
+          gh label create "$LABEL" --repo "$REPO" --color d93f0b \
+            --description "No pull_request CI can run on this PR's current head (stacked base, or conflicted)." 2>/dev/null || true
+
+          named="$(grep -oE '^silent-prs=.*' "$RUNNER_TEMP/scan.log" | tail -1 | cut -d= -f2 | tr ',' ' ')"
+          echo "silent set: ${named:-<none>}"
+
+          # `--limit 100` to match the scanner's own page size: the default 30
+          # would leave a 31st labelled PR with nothing able to clear it.
+          # Hoisted out of the `for` list because `set -e` does NOT fire on a
+          # failed command substitution there -- a failed read would silently
+          # iterate zero times and look like "nothing to clear".
+          labelled="$(gh pr list --repo "$REPO" --state open --label "$LABEL" --limit 100 --json number --jq '.[].number')"
+
+          failures=0
+          for pr in $labelled; do
+            case " $named " in
+              *" $pr "*) ;;
+              *) echo "  clearing $LABEL from #$pr"
+                 gh pr edit "$pr" --repo "$REPO" --remove-label "$LABEL" || failures=$((failures + 1)) ;;
+            esac
+          done
+          for pr in $named; do
+            echo "  labelling #$pr"
+            gh pr edit "$pr" --repo "$REPO" --add-label "$LABEL" || failures=$((failures + 1))
+          done
+
+          # READ BACK. Silencing these and printing "labelling #N" regardless
+          # would let the whole mechanism die -- a revoked scope, an org policy
+          # -- with the log still claiming it worked.
+          if [ "$failures" -gt 0 ]; then
+            echo "::error::$failures label write(s) failed; the verdict did not reach those PRs."
+            exit 1
+          fi

@@ -30,27 +30,32 @@ export {
 // event and the native ProcessingStats).
 export type { GeometryDiagnostics } from './diagnostics.js';
 export { mergeGeometryDiagnostics } from './diagnostics.js';
+export type { HbjsonStats } from './hbjson-stats.js'; // consumed by the CLI + viewer energy-export UI
 
 // Typed export-failure contract (fail-closed empty exports, mirrors Rust ExportError).
 export { NO_RENDER_GEOMETRY, isNoRenderGeometryError } from './export-errors.js';
 
+// The index-parallel layouts the geometry-hash pass emits — six values per id
+// for the world box (#1891), one for the proved volume (#1993) — shared with
+// consumers that read the instanced-only side-channel off the streaming `batch`
+// event rather than off a `MeshData`. Both resolve the absent `NaN` sentinel to
+// `undefined`, which is the only place that conversion is allowed to happen.
+export { geometryAabbAt, geometryVolumeAt } from './geometry-fingerprints.js';
+
 // Support components
 export { BufferBuilder } from './buffer-builder.js';
-export { CoordinateHandler } from './coordinate-handler.js';
-export { GeometryQuality } from './progressive-loader.js';
+export { CoordinateHandler, NORMAL_COORD_THRESHOLD_M } from './coordinate-handler.js';
 export { computeWorkerCount, pickWorkerCount, type WorkerCountInputs, type WorkerCountResult } from './worker-count.js';
 export { getGeometryStreamWatchdogMs, type WatchdogInputs } from './watchdog.js';
 // Cold-start prewarm: start the shared wasm fetch+compile before a file is
-// opened so the download overlaps the user's think time instead of blocking
-// first geometry. The host app decides when (idle / intent) and whether the
-// connection can afford it.
+// opened so the download overlaps think time instead of blocking first
+// geometry. The host app decides when (idle / intent) and affordability.
 export { prewarmSharedWasmModule } from './wasm-shared-module.js';
 // Stale-deployment WASM-asset detection (#1363). The host app subscribes to
-// WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to reload
-// onto the current deployment. `notifyIfWasmAssetUnavailable` stays internal —
-// it is the engine-side dispatcher, imported directly where it fires.
+// WASM_ASSET_UNAVAILABLE_EVENT and uses `isWasmAssetUnavailableError` to
+// reload onto the deployment; `notifyIfWasmAssetUnavailable` stays internal.
 export {
-  isWasmAssetUnavailableError,
+  isWasmAssetUnavailableError, isWorkerScriptSkewMessage,
   WASM_ASSET_UNAVAILABLE_EVENT,
 } from './wasm-asset-error.js';
 // WebAssembly runtime-trap contract (#1898). A trap taken by an operation
@@ -66,9 +71,9 @@ export {
   WASM_RUNTIME_UNRECOVERABLE_EVENT,
 } from './wasm-runtime-trap.js';
 export {
-  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION`
-  // are intentionally NOT re-exported — they have no consumer outside the
-  // decoder module + its test, so they stay internal. (#1238 review)
+  // `isInstancedShard` / `INSTANCED_SHARD_MAGIC` / `INSTANCED_SHARD_VERSION` and the wire
+  // layout constants are intentionally NOT re-exported — no consumer outside the decoder
+  // + its test; `DecodedInstancedShard.carriesItemIds` is the stride answer. (#1238, #2985)
   decodeInstancedShard,
   type DecodedInstancedShard,
   type DecodedInstancedTemplate,
@@ -81,13 +86,14 @@ import { IfcLiteBridge } from './ifc-lite-bridge.js';
 import { notifyIfWasmAssetUnavailable } from './wasm-asset-error.js';
 import { BufferBuilder } from './buffer-builder.js';
 import { CoordinateHandler } from './coordinate-handler.js';
-import { GeometryQuality } from './progressive-loader.js';
+import { GEOM_CLASS_OCCURRENCE, geometryClassOf } from './geometry-class.js';
 import { createPlatformBridge, isTauri, type GeometryStats as PlatformGeometryStats, type IPlatformBridge } from './platform-bridge.js';
 import type { GeometryResult, MeshData, CoordinateInfo, GridAxis, TessellationQuality, KmzAltitudeMode, SimplifyMeshesResult } from './types.js';
+import type { HbjsonStats } from './hbjson-stats.js';
 
 // Extracted sub-modules
 import { getStreamingBatchSize, convertMeshCollectionToBatch, withBuildingRotation } from './geometry-coordinate.js';
-import { streamNativeGeometry, type QueuedNativeStreamingEvent } from './geometry-native.js';
+import { streamNativeGeometry } from './geometry-native.js';
 import { processParallel } from './geometry-parallel.js';
 
 /**
@@ -97,28 +103,9 @@ import { processParallel } from './geometry-parallel.js';
  */
 export const DEFAULT_GEOM_HASH_TOLERANCE = 1.0e-3;
 
-interface ByteStreamingPrePassResult {
-  jobs: Uint32Array;
-  totalJobs: number;
-  unitScale: number;
-  rtcOffset?: Float64Array;
-  needsShift: boolean;
-  buildingRotation?: number | null;
-  voidKeys: Uint32Array;
-  voidCounts: Uint32Array;
-  voidValues: Uint32Array;
-  styleIds: Uint32Array;
-  styleColors: Uint8Array;
-  /** Prepass-resolved plane-angle→radians scale (additive wire field). */
-  planeAngleToRadians?: number;
-  /** #407/#913 §2.3 per-element material colour lists (flat encoding). */
-  materialElementIds?: Uint32Array;
-  materialColorCounts?: Uint32Array;
-  materialColors?: Uint8Array;
-}
+import type { ByteStreamingPrePassResult } from './byte-streaming-prepass-result.js';
 
 export interface GeometryProcessorOptions {
-  quality?: GeometryQuality; // Default: Balanced
   preferNative?: boolean; // Default: true in Tauri
   /**
    * When true, the underlying IFC-Lite WASM API merges Revit-style
@@ -173,15 +160,15 @@ function acquireWasmStreamingOperation(operation: string): () => void {
 }
 
 /**
- * Dynamic batch configuration for ramp-up streaming
- * Starts with small batches for fast first frame, ramps up for throughput
+ * Dynamic batch configuration for streaming.
+ *
+ * The batch size is a function of the model's size alone: `getStreamingBatchSize`
+ * reads `fileSizeMB` (falling back to the buffer's own length when it is absent
+ * or zero) and picks a fixed value from a size ladder. There is no ramp-up, and
+ * no other field on this object is consulted.
  */
 export interface DynamicBatchConfig {
-  /** Initial batch size for first 3 batches (default: 50) */
-  initialBatchSize?: number;
-  /** Maximum batch size for batches 11+ (default: 500) */
-  maxBatchSize?: number;
-  /** File size in MB for adaptive sizing (optional) */
+  /** File size in MB for adaptive sizing; omitted ⇒ measured from the buffer. */
   fileSizeMB?: number;
 }
 
@@ -204,6 +191,16 @@ export type StreamingGeometryEvent =
        *  repeated opaque elements. Present only when geometry hashing is on. */
       instancedGeometryHashIds?: Uint32Array;
       instancedGeometryHashValues?: BigUint64Array;
+      /** World boxes (#1891) for those same instanced-only entities: SIX values
+       *  per `instancedGeometryHashIds` entry, `minXYZ` then `maxXYZ`, absolute
+       *  world in the renderer's Y-up frame. A NaN span means that entity
+       *  produced no box; the whole array is omitted when none did. */
+      instancedGeometryAabbValues?: Float64Array;
+      /** Proved enclosed volumes in m³ (#1993) for those same instanced-only
+       *  entities: ONE value per `instancedGeometryHashIds` entry, `NaN` where
+       *  the kernel could not prove one. The whole array is omitted when no
+       *  entity in the batch had a volume. */
+      instancedGeometryVolumeValues?: Float64Array;
     }
   | { type: 'colorUpdate'; updates: Map<number, [number, number, number, number]> }
   | { type: 'rtcOffset'; rtcOffset: { x: number; y: number; z: number }; hasRtc: boolean }
@@ -263,15 +260,12 @@ export class GeometryProcessor {
     this.enableInstancing = options.enableInstancing !== false;
     this.tessellationQuality = options.tessellationQuality ?? null;
     this.skipSmallCuts = options.skipSmallCuts === true;
-    // Note: options accepted for API compatibility
-    void options.quality;
 
     if (!this.isNative) {
       this.bridge = new IfcLiteBridge();
-      // Cache the merge-layers flag on the bridge eagerly — if init()
-      // hasn't run yet the bridge stores the value and replays it on
-      // the freshly-built IfcAPI. Existing call sites can opt in
-      // simply by passing { mergeLayers: true } into the constructor.
+      // Cache the merge-layers flag on the bridge eagerly — if init() hasn't
+      // run yet the bridge stores the value and replays it on the freshly-
+      // built IfcAPI. Call sites opt in via { mergeLayers: true }.
       this.bridge.setMergeLayers(this.mergeLayers);
       // Same eager cache-and-replay for the tessellation level (#976).
       this.bridge.setTessellationQuality(this.tessellationQuality);
@@ -408,28 +402,36 @@ export class GeometryProcessor {
    * no `TextDecoder` materialization of the whole file.
    */
   /**
-   * Surface the world→render metadata (unit scale + the applied RTC offset)
-   * from a pre-pass result onto the coordinate handler, so it appears on the
-   * emitted `CoordinateInfo` (issue #945). Shared by the sync and streaming
-   * WASM paths to keep the RTC transform in one place.
+   * Surface the world→render metadata (unit scale + applied RTC offset) from
+   * a pre-pass result onto the coordinate handler (issue #945). Used by the
+   * sync WASM mesh path; `sharedRtcOffset` overrides the model's own detected
+   * offset for federation alignment (mirrors `useSharedRtc` in
+   * geometry-parallel.ts and `processStreamingBytes`).
    */
-  private applyPrePassMetadata(prePass: ByteStreamingPrePassResult): void {
-    this.coordinateHandler.setWasmMetadata(
-      prePass.unitScale,
-      prePass.needsShift
-        ? { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 }
-        : null,
-    );
+  private applyPrePassMetadata(
+    prePass: ByteStreamingPrePassResult,
+    sharedRtcOffset?: { x: number; y: number; z: number },
+  ): { x: number; y: number; z: number; needsShift: boolean } {
+    const useShared = sharedRtcOffset != null;
+    const x = useShared ? sharedRtcOffset.x : (prePass.rtcOffset?.[0] ?? 0);
+    const y = useShared ? sharedRtcOffset.y : (prePass.rtcOffset?.[1] ?? 0);
+    const z = useShared ? sharedRtcOffset.z : (prePass.rtcOffset?.[2] ?? 0);
+    const needsShift = useShared ? true : Boolean(prePass.needsShift);
+    this.coordinateHandler.setWasmMetadata(prePass.unitScale, needsShift ? { x, y, z } : null);
+    return { x, y, z, needsShift };
   }
 
-  private collectMeshesViaPrePass(buffer: Uint8Array): { meshes: MeshData[]; buildingRotation?: number } {
+  private collectMeshesViaPrePass(
+    buffer: Uint8Array,
+    sharedRtcOffset?: { x: number; y: number; z: number },
+  ): { meshes: MeshData[]; buildingRotation?: number } {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
     }
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    this.applyPrePassMetadata(prePass);
+    const rtc = this.applyPrePassMetadata(prePass, sharedRtcOffset);
     try {
       const meshes: MeshData[] = [];
       const totalJobs = prePass.totalJobs ?? 0;
@@ -440,10 +442,10 @@ export class GeometryProcessor {
           buffer,
           prePass.jobs,
           prePass.unitScale,
-          prePass.rtcOffset?.[0] ?? 0,
-          prePass.rtcOffset?.[1] ?? 0,
-          prePass.rtcOffset?.[2] ?? 0,
-          prePass.needsShift,
+          rtc.x,
+          rtc.y,
+          rtc.z,
+          rtc.needsShift,
           prePass.voidKeys,
           prePass.voidCounts,
           prePass.voidValues,
@@ -456,8 +458,7 @@ export class GeometryProcessor {
         );
         // Loop, not `push(...batch)`: spreading passes one ARGUMENT per mesh,
         // and past V8's ~65k argument ceiling that throws RangeError "Maximum
-        // call stack size exceeded" — real models (Holter: ~110k meshes) hit
-        // it, killing the whole sync process() call.
+        // call stack size exceeded" — Holter Tower (~110k meshes) hits it.
         const batch = convertMeshCollectionToBatch(collection);
         for (let i = 0; i < batch.length; i++) meshes.push(batch[i]);
       }
@@ -482,7 +483,10 @@ export class GeometryProcessor {
 
   private async *processStreamingBytes(
     buffer: Uint8Array,
-    batchConfig: number | DynamicBatchConfig
+    batchConfig: number | DynamicBatchConfig,
+    // Federation RTC origin, overriding the pre-pass's per-model detection so
+    // every model shares one coordinate space — mirrors `geometry-parallel.ts`.
+    sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     if (!this.bridge) {
       throw new Error('WASM bridge not initialized');
@@ -490,23 +494,23 @@ export class GeometryProcessor {
 
     const api = this.bridge.getApi();
     const prePass = api.buildPrePassOnce(buffer) as ByteStreamingPrePassResult;
-    this.applyPrePassMetadata(prePass);
+    const useSharedRtc = sharedRtcOffset != null;
+    const rtc = useSharedRtc
+      ? sharedRtcOffset
+      : { x: prePass.rtcOffset?.[0] ?? 0, y: prePass.rtcOffset?.[1] ?? 0, z: prePass.rtcOffset?.[2] ?? 0 };
+    const effectiveNeedsShift = useSharedRtc || Boolean(prePass.needsShift);
+    this.coordinateHandler.setWasmMetadata(prePass.unitScale, effectiveNeedsShift ? { ...rtc } : null);
 
-    // try/finally so the pre-pass cache is released on every exit: the
-    // totalJobs===0 early return, a processGeometryBatch throw, or the
-    // consumer abandoning the generator (which triggers `.return()`).
+    // try/finally releases the pre-pass cache on every exit: the totalJobs===0
+    // early return, a throw, or the consumer abandoning the generator.
     try {
       yield { type: 'model-open', modelID: 0 };
 
-      if (prePass.rtcOffset) {
+      if (prePass.rtcOffset || useSharedRtc) {
         yield {
           type: 'rtcOffset',
-          rtcOffset: {
-            x: prePass.rtcOffset[0] ?? 0,
-            y: prePass.rtcOffset[1] ?? 0,
-            z: prePass.rtcOffset[2] ?? 0,
-          },
-          hasRtc: Boolean(prePass.needsShift),
+          rtcOffset: { x: rtc.x, y: rtc.y, z: rtc.z },
+          hasRtc: effectiveNeedsShift,
         };
       }
 
@@ -533,10 +537,10 @@ export class GeometryProcessor {
           buffer,
           jobSlice,
           prePass.unitScale,
-          prePass.rtcOffset?.[0] ?? 0,
-          prePass.rtcOffset?.[1] ?? 0,
-          prePass.rtcOffset?.[2] ?? 0,
-          prePass.needsShift,
+          rtc.x,
+          rtc.y,
+          rtc.z,
+          effectiveNeedsShift,
           prePass.voidKeys,
           prePass.voidCounts,
           prePass.voidValues,
@@ -592,9 +596,6 @@ export class GeometryProcessor {
     buffer: Uint8Array,
     _entityIndex?: Map<number, any>,
     batchConfig: number | DynamicBatchConfig = 25,
-    // TODO: sharedRtcOffset is accepted but not yet threaded through to the
-    // WASM streaming collector. The WASM layer detects its own RTC offset
-    // per-model; federation-level override requires collector API changes.
     sharedRtcOffset?: { x: number; y: number; z: number },
   ): AsyncGenerator<StreamingGeometryEvent> {
     const releaseWasmOperation = this.isNative
@@ -626,99 +627,40 @@ export class GeometryProcessor {
     // Reset coordinate handler for new file
     this.coordinateHandler.reset();
 
-    // Yield start event FIRST so UI can update before heavy processing
-    yield { type: 'start', totalEstimate: buffer.length / 1000 };
-
-    // Yield to main thread before heavy processing begins
-    await new Promise(resolve => setTimeout(resolve, 0));
-
     if (this.isNative && this.platformBridge) {
-      yield { type: 'model-open', modelID: 0 };
-
-      // NATIVE PATH - Use Tauri streaming (simpler queue without coalescing)
+      // NATIVE PATH — Tauri streaming. This used to carry its own near-identical
+      // copy of the drain loop, which meant the stream-failure handling in
+      // `streamNativeGeometry` (hang on a bare rejection, `complete` for a
+      // stream that reported `onError`, a post-completion teardown rejection
+      // retro-failing a finished load) had to be fixed and tested twice — and
+      // only the copy in `geometry-native.ts` had tests. The two differed on
+      // exactly two axes, both now explicit options; the loop itself is shared,
+      // so one test covers every native route.
       console.time('[GeometryProcessor] native-streaming');
-      const queuedEvents: QueuedNativeStreamingEvent[] = [];
-      let resolvePending: (() => void) | null = null;
-      let completed = false;
-      let streamError: Error | null = null;
-      let completedTotalMeshes: number | undefined;
-      let totalMeshes = 0;
-
-      const wake = () => {
-        if (resolvePending) {
-          resolvePending();
-          resolvePending = null;
-        }
-      };
-
-      const streamingPromise = this.platformBridge.processGeometryStreaming(buffer, {
-        onBatch: (batch) => {
-          queuedEvents.push({ type: 'batch', meshes: batch.meshes, nativeTelemetry: batch.nativeTelemetry });
-          wake();
-        },
-        onColorUpdate: (updates) => {
-          queuedEvents.push({ type: 'colorUpdate', updates: new Map(updates) });
-          wake();
-        },
-        onComplete: (stats) => {
-          this.lastNativeStats = stats;
-          completedTotalMeshes = stats.totalMeshes;
-          completed = true;
-          wake();
-        },
-        onError: (error) => {
-          streamError = error;
-          completed = true;
-          wake();
-        },
-      });
-
       try {
-        while (!completed || queuedEvents.length > 0) {
-          while (queuedEvents.length > 0) {
-            const event = queuedEvents.shift()!;
-            if (event.type === 'colorUpdate') {
-              yield { type: 'colorUpdate', updates: event.updates };
-              continue;
-            }
-            this.coordinateHandler.processMeshesIncremental(event.meshes);
-            totalMeshes += event.meshes.length;
-            const coordinateInfo = this.coordinateHandler.getCurrentCoordinateInfo();
-            yield {
-              type: 'batch',
-              meshes: event.meshes,
-              totalSoFar: totalMeshes,
-              coordinateInfo: coordinateInfo || undefined,
-              nativeTelemetry: event.nativeTelemetry,
-            };
-          }
-
-          if (streamError) {
-            throw streamError;
-          }
-
-          if (!completed) {
-            await new Promise<void>((resolve) => {
-              resolvePending = resolve;
-            });
-          }
-        }
+        yield* streamNativeGeometry(
+          (options) => this.platformBridge!.processGeometryStreaming(buffer, options),
+          buffer.length / 1000,
+          this.coordinateHandler,
+          (stats) => { this.lastNativeStats = stats; },
+          {
+            coalesce: false,
+            processMeshes: (meshes) => this.coordinateHandler.processMeshesIncremental(meshes),
+          },
+        );
       } finally {
-        // Ensure the native stream and its Tauri listeners are torn down
-        // deterministically even when this generator is abandoned (.return())
-        // while suspended at a `yield` or the pending-wake promise.
-        try {
-          await streamingPromise;
-        } catch {
-          /* cleanup — safe to ignore */
-        }
+        // In a `finally` because the loop can now throw: leaving the timer open
+        // makes the next load's `console.time` warn about a duplicate label.
+        console.timeEnd('[GeometryProcessor] native-streaming');
       }
-
-      const coordinateInfo = this.coordinateHandler.getFinalCoordinateInfo();
-      yield { type: 'complete', totalMeshes: completedTotalMeshes ?? totalMeshes, coordinateInfo };
-
-      console.timeEnd('[GeometryProcessor] native-streaming');
     } else {
+      // Yield start event FIRST so UI can update before heavy processing
+      // (the native branch above emits its own `start` / `model-open` pair).
+      yield { type: 'start', totalEstimate: buffer.length / 1000 };
+
+      // Yield to main thread before heavy processing begins
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       // WASM PATH — single-threaded fallback (no SAB / Worker). Route ALL
       // sizes through the Family-A pre-pass + job-batch streamer; the old
       // 256 MB gate (above which we already used `processStreamingBytes`)
@@ -728,7 +670,7 @@ export class GeometryProcessor {
         throw new Error('WASM bridge not initialized');
       }
 
-      yield* this.processStreamingBytes(buffer, batchConfig);
+      yield* this.processStreamingBytes(buffer, batchConfig, sharedRtcOffset);
     }
   }
 
@@ -797,7 +739,8 @@ export class GeometryProcessor {
     onEntityIndex?: (
       ids: Uint32Array,
       starts: Uint32Array,
-      lengths: Uint32Array,
+      lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
+      malformedRecordCount?: number, // #3790 scan stopped: 0 or 1
     ) => void,
     /**
      * Explicit wasm asset URL forwarded to the worker pool. See
@@ -815,6 +758,7 @@ export class GeometryProcessor {
      * process disjoint, deterministic element slices). Undefined ⇒ heuristic.
      */
     workerCountOverride?: number,
+    sourceFingerprint?: SharedArrayBuffer,
   ): AsyncGenerator<StreamingGeometryEvent> {
     // Initialize if needed
     if (!this.bridge?.isInitialized()) {
@@ -823,6 +767,7 @@ export class GeometryProcessor {
 
     yield* processParallel(buffer, this.coordinateHandler, sharedRtcOffset, existingSab, {
       onEntityIndex,
+      sourceFingerprint,
       // Issue #540: forward the merge-layers preference snapshotted
       // at construction time. processParallel posts `set-merge-layers`
       // to every spawned worker right after `init`.
@@ -868,6 +813,8 @@ export class GeometryProcessor {
       sharedRtcOffset?: { x: number; y: number; z: number };
       /** Reuse a SAB already populated by the caller (parser worker, etc.). */
       existingSab?: SharedArrayBuffer;
+      /** Fresh per-load prepass fingerprint cell; optional optimization only. */
+      sourceFingerprint?: SharedArrayBuffer;
       /**
        * Callback fired when the streaming pre-pass exports its entity
        * index. Enables a peer worker (e.g. parser) to skip its own scan.
@@ -876,12 +823,11 @@ export class GeometryProcessor {
       onEntityIndex?: (
         ids: Uint32Array,
         starts: Uint32Array,
-        lengths: Uint32Array,
+        lengths: Uint32Array, oversizedIdCount?: number, // #3395 refused records
+        malformedRecordCount?: number, // #3790 scan stopped: 0 or 1
       ) => void;
-      /**
-       * Explicit wasm asset URL forwarded to the worker pool.
-       * See `processParallel(...).wasmUrls` for rationale.
-       */
+      /** Explicit wasm asset URL forwarded to the worker pool.
+       * See `processParallel(...).wasmUrls` for rationale. */
       wasmUrls?: { wasm?: string };
       /**
        * Explicit geometry-worker count for A/B tuning (viewer `?geomWorkers=N`).
@@ -923,14 +869,10 @@ export class GeometryProcessor {
         console.timeEnd('[GeometryProcessor] native-adaptive-sync');
       } else {
         // WASM PATH — Family-A pre-pass + job batches (SAB-safe, bytes in).
-        const collected = this.collectMeshesViaPrePass(buffer);
+        const collected = this.collectMeshesViaPrePass(buffer, options.sharedRtcOffset);
         allMeshes = collected.meshes;
         buildingRotation = collected.buildingRotation;
       }
-
-      // NOTE: The sync path (<2MB) does not support sharedRtcOffset override.
-      // Infrastructure models with large coordinates are always >2MB and use
-      // the parallel/streaming paths where shared RTC is properly threaded.
 
       // Process coordinate shifts
       this.coordinateHandler.processMeshesIncremental(allMeshes);
@@ -963,6 +905,7 @@ export class GeometryProcessor {
           options.onEntityIndex,
           options.wasmUrls,
           options.workerCountOverride,
+          options.sourceFingerprint,
         );
       } else {
         yield* this.processStreaming(buffer, options.entityIndex, batchConfig, options.sharedRtcOffset);
@@ -976,6 +919,14 @@ export class GeometryProcessor {
    * `MeshCollection.geometryHashValues`, which `convertMeshCollectionToBatch`
    * attaches to each `MeshData.geometryHash`. RTC-invariant + tolerance-
    * quantized; default tolerance is {@link DEFAULT_GEOM_HASH_TOLERANCE} (1 mm).
+   *
+   * The same switch also populates `MeshCollection.geometryAabbValues`, which
+   * lands on `MeshData.geometryAabb` (#1891) — the absolute world box that lets
+   * a consumer tell a move from a reshape instead of reading one changed-hash
+   * bit — and `MeshCollection.geometryVolumeValues`, which lands on
+   * `MeshData.geometryVolume` (#1993), the proved enclosed volume the diff
+   * engine's split/merge detector weighs one element against several. Nothing
+   * is computed while this is off.
    *
    * Safe to call before `init()` — the bridge caches the value and replays
    * it on the freshly-built IfcAPI. No-op on the native/desktop path (the
@@ -1043,7 +994,7 @@ export class GeometryProcessor {
    * Parse IfcAlignment directrix curves into a flat Float32Array of 3D
    * line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in renderer Y-up world space
    * (RTC-subtracted, metres). Rendered as thin lines (not a ribbon mesh) to
-   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.uploadAlignmentLines3D`.
+   * match IfcGrid / IfcAnnotation. Feed straight to `renderer.setLineOverlay('alignment', …)`.
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */
@@ -1061,8 +1012,8 @@ export class GeometryProcessor {
    * Parse `IfcGrid` / `IfcGridAxis` into a flat Float32Array of 3D line-list
    * vertices `[x0,y0,z0, x1,y1,z1, …]` (one segment per axis) in renderer Y-up
    * world space (RTC-subtracted, metres) — the same frame the streamed meshes
-   * render in, so grids overlay the model by construction (issue #945). Feed
-   * straight to a line pipeline (e.g. `renderer.uploadAnnotationLines3D`).
+   * render in, so grids overlay the model by construction (issue #945). Feed to
+   * `setLineOverlay('grid', …)`, NOT `'annotation'` (it expands bounds, #967).
    * @param buffer IFC file buffer
    * @returns Flat line-list vertices, or null if not initialized
    */
@@ -1228,6 +1179,12 @@ export class GeometryProcessor {
     return this.bridge.exportIfcx(buffer, onlyKnownProperties, pretty);
   }
 
+  /** Export OpenUSD (`.usda` ASCII) — a real Z-up USD stage (geometry-backed). */
+  exportUsd(buffer: Uint8Array): Uint8Array | null {
+    if (!this.bridge?.isInitialized()) return null;
+    return this.bridge.exportUsd(buffer);
+  }
+
   /** Merge several IFC models (raw byte buffers) into one STEP/IFC UTF-8 byte buffer. */
   exportMerged(buffers: Uint8Array[], schema = ''): Uint8Array | null {
     if (!this.bridge?.isInitialized()) return null;
@@ -1295,11 +1252,10 @@ export class GeometryProcessor {
    * Demesher: simplify already-produced element meshes at per-element levels
    * (1-4 = cavity removal + clustering at 0.5/0.25/0.10/0.03 triangle ratio,
    * 5 = bounding box). Pass ALL of the target elements' MeshData records
-   * (per-material submeshes included); records with `geometryClass !== 0`
-   * (type-library shapes) are ignored. Returns render-ready replacement
-   * meshes (swap into the scene via `removeMeshesForEntities` + `addMeshes`)
-   * plus each element's geometry in its IFC object-placement frame in file
-   * units, for the tessellated IFC re-export (`applySimplifiedGeometry`).
+   * (per-material submeshes included); non-occurrence records (type-library
+   * shapes) are ignored. Returns replacement meshes (swap into the scene via
+   * `removeMeshesForEntities` + `addMeshes`) plus each element's geometry in
+   * its IFC object-placement frame in file units, for `applySimplifiedGeometry`.
    *
    * `originShift` is `coordinateInfo.originShift` (IFC Z-up metres);
    * `unitScale` is metres per project length unit (defaults to 1 = metres).
@@ -1312,7 +1268,7 @@ export class GeometryProcessor {
   ): SimplifyMeshesResult | null {
     if (!this.bridge?.isInitialized()) return null;
     const records = meshes.filter(
-      (m) => (m.geometryClass ?? 0) === 0 && levels.has(m.expressId) && m.indices.length >= 3,
+      (m) => geometryClassOf(m) === GEOM_CLASS_OCCURRENCE && levels.has(m.expressId) && m.indices.length >= 3,
     );
     const requested = new Set([...levels.keys()]);
     const covered = new Set(records.map((m) => m.expressId));
@@ -1514,17 +1470,39 @@ export class GeometryProcessor {
     );
   }
 
+  /** Export the `IfcSpace` volumes in `buffer` as Honeybee HBJSON. Null if not initialized. */
+  exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
+    return this.bridge?.isInitialized() ? this.bridge.exportHbjson(buffer, name) : null;
+  }
+
+  /** Like {@link exportHbjson}; also returns `HbjsonStats`. Null if not initialized. */
+  exportHbjsonWithStats(buffer: Uint8Array, name: string): { content: Uint8Array; stats: HbjsonStats } | null {
+    return this.bridge?.isInitialized() ? this.bridge.exportHbjsonWithStats(buffer, name) : null;
+  }
+
   /**
-   * Export the `IfcSpace` volumes in `buffer` as a Honeybee HBJSON string
-   * (Ladybug Tools energy/daylight model). Returns null if not initialized.
+   * Export the `IfcSpace` volumes in `buffer` as a Dragonfly DFJSON string
+   * (Ladybug Tools energy model — extruded `Room2D` plates). Returns null if
+   * not initialized.
+   *
+   * WASM path only, deliberately: like {@link exportHbjson} and the other
+   * analytic readers here (`extractProfiles`, `parseGridLines`,
+   * `parseSymbolicRepresentations`, …) this reads `this.bridge` and so returns
+   * null under `isNative`. That is not an oversight specific to DFJSON —
+   * `IPlatformBridge` declares no energy export at all, and the native path
+   * needs a Tauri host (`isTauri()` requires `window.__TAURI_INTERNALS__`),
+   * which no longer ships: the desktop app is decommissioned and the repo
+   * carries no `src-tauri`. Giving DFJSON a native route alone would single out
+   * one of eight methods for a constraint the whole family shares.
+   *
    * @param buffer IFC file buffer
    * @param name Model identifier / display name
    */
-  exportHbjson(buffer: Uint8Array, name: string): Uint8Array | null {
+  exportDfjson(buffer: Uint8Array, name: string): string | null {
     if (!this.bridge || !this.bridge.isInitialized()) {
       return null;
     }
-    return this.bridge.exportHbjson(buffer, name);
+    return this.bridge.exportDfjson(buffer, name);
   }
 
   /**

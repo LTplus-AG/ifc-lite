@@ -1,0 +1,125 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/** Resolving what a user typed into the base URL of a BCF API service. */
+
+import { BcfApiClient, normalizeBcfBaseUrl } from './client.js';
+import { BcfApiError } from './errors.js';
+import type { BcfAuthInfo, FetchLike } from './types.js';
+
+/** The one path worth guessing: what vendors mount the BCF API at. */
+const CONVENTIONAL_BCF_PATH = '/bcf';
+
+/**
+ * Base URLs to try for a user-entered BCF server address, in order.
+ *
+ * Vendors serve the API under a path but tell users to enter the bare space
+ * or instance address — Solibri's and the BCF managers' BIMcollab setup is
+ * literally "https://myspace.bimcollab.com", while the API answers under
+ * `/bcf`. A host with no path of its own is therefore ambiguous, so it
+ * yields a second candidate with `/bcf` appended; anything that already
+ * names a path is taken at its word.
+ *
+ * Only `/bcf` is guessed. Vendors that mount elsewhere (OpenProject's
+ * `/api/bcf`) still need the full URL, which is what their preset asks for.
+ */
+export function bcfBaseUrlCandidates(input: string): string[] {
+  const base = normalizeBcfBaseUrl(input);
+  let url: URL;
+  try {
+    url = new URL(base);
+  } catch {
+    // Not parseable: hand it back unchanged so the caller's request fails
+    // with the address the user actually entered.
+    return [base];
+  }
+  // Safe to append: normalizeBcfBaseUrl has already dropped any query or
+  // fragment, which would otherwise swallow the suffix ('https://host?x=1'
+  // plus '/bcf' parses as the query 'x=1/bcf' on path '/').
+  if (url.pathname !== '/') return [base];
+  return [base, `${base}${CONVENTIONAL_BCF_PATH}`];
+}
+
+export interface DiscoverBcfServiceOptions {
+  /** Server URL as the user entered it; normalized here. */
+  baseUrl: string;
+  /** BCF API version segment; defaults to '2.1'. */
+  version?: string;
+  fetchFn?: FetchLike;
+}
+
+export interface BcfServiceDiscovery {
+  /** Resolved base URL, to construct every later client with. */
+  baseUrl: string;
+  /** The service's `/auth` document. */
+  authInfo: BcfAuthInfo;
+}
+
+/**
+ * Run `probe` against each candidate base URL until one succeeds, and hand
+ * back what it returned. Any failure means "no BCF service here": a wrong
+ * base answers with a 404, or with an SPA's HTML index that fails to parse.
+ *
+ * A probe may therefore run against a base URL that turns out to be wrong,
+ * so it must not commit anything (persist a session, register a client)
+ * before the request that proves the address is right has succeeded.
+ *
+ * When every candidate fails, the error thrown is the most actionable one
+ * available, in this order: a rejected-credentials error (the user's
+ * likelier mistake, and it proves the address was right), then any error
+ * naming a status and URL, then the first candidate's — so the message
+ * describes what the user entered rather than a guess they never made. The
+ * middle rung matters because a cross-origin probe that CORS blocks rejects
+ * with a bare TypeError carrying neither status nor URL.
+ */
+export async function resolveBcfBaseUrl<T>(
+  input: string,
+  probe: (baseUrl: string) => Promise<T>,
+): Promise<T> {
+  const errors: unknown[] = [];
+  for (const baseUrl of bcfBaseUrlCandidates(input)) {
+    try {
+      return await probe(baseUrl);
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  const isApiError = (error: unknown): error is BcfApiError => error instanceof BcfApiError;
+  throw (
+    errors.find((error) => isApiError(error) && error.isAuthError) ??
+    errors.find(isApiError) ??
+    errors[0]
+  );
+}
+
+/**
+ * Find the BCF service behind a user-entered address by fetching the `/auth`
+ * discovery document from each candidate base URL.
+ */
+export function discoverBcfService(
+  options: DiscoverBcfServiceOptions,
+): Promise<BcfServiceDiscovery> {
+  return resolveBcfBaseUrl(options.baseUrl, async (baseUrl) => {
+    const client = new BcfApiClient({
+      baseUrl,
+      version: options.version,
+      fetchFn: options.fetchFn,
+    });
+    return { baseUrl, authInfo: await client.getAuthInfo() };
+  });
+}
+
+/**
+ * Resolve a user-entered address to its BCF service base URL WITHOUT
+ * sending credentials, for callers holding a token or password: probing
+ * with the secret itself would send it to a candidate not yet known to be a
+ * BCF service. An unambiguous address resolves with no request at all.
+ */
+export async function resolveBcfServiceBaseUrl(
+  options: DiscoverBcfServiceOptions,
+): Promise<string> {
+  const candidates = bcfBaseUrlCandidates(options.baseUrl);
+  if (candidates.length === 1) return candidates[0];
+  return (await discoverBcfService(options)).baseUrl;
+}

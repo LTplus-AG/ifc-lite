@@ -120,7 +120,13 @@ export interface AddElementAutoSpaceParams {
   PredefinedType: string;
 }
 
-/** Live preview from the most recent dry-run detection (cleared on commit). */
+/**
+ * Live preview from the most recent dry-run detection. Cleared on commit,
+ * and on any storey/model switch (`setAddElementStoreyId` /
+ * `setAddElementModelId`) — the outlines and counts are keyed to the storey
+ * they were detected against and do not update themselves when the target
+ * changes.
+ */
 export interface AddElementAutoSpacePreview {
   storeyExpressId: number;
   /** CCW outlines in IFC storey-local 2D (X/Y, m). */
@@ -239,8 +245,18 @@ export const createAddElementSlice: StateCreator<AddElementSlice, [], [], AddEle
     // doesn't make sense as a slab's first corner. Hover is cleared
     // alongside so a stale preview doesn't flash with the new shape.
     set({ addElementType, addElementPendingPoints: [], addElementHoverPoint: null }),
-  setAddElementStoreyId: (addElementStoreyId) => set({ addElementStoreyId }),
-  setAddElementModelId: (addElementModelId) => set({ addElementModelId }),
+  // Auto Spaces' preview is a dry-run detection keyed to the storey it ran
+  // against (`AddElementAutoSpacePreview.storeyExpressId`) — nothing re-runs
+  // detection when the target storey or model changes, so switching either
+  // left the stale outlines drawn in AddElementOverlay and the stale
+  // region/wall counts shown in the panel, describing a storey the user had
+  // since navigated away from. Clear it here, at the single setter both the
+  // panel's Select and its "no longer valid" auto-reset go through, rather
+  // than at each call site.
+  setAddElementStoreyId: (addElementStoreyId) =>
+    set({ addElementStoreyId, addElementAutoSpacePreview: null }),
+  setAddElementModelId: (addElementModelId) =>
+    set({ addElementModelId, addElementAutoSpacePreview: null }),
   setAddElementWallParams: (p) =>
     set((s) => ({ addElementWallParams: { ...s.addElementWallParams, ...p } })),
   setAddElementSlabParams: (p) =>

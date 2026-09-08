@@ -494,25 +494,38 @@ fn serialize_relationships_table(
     let count = relationships.len();
 
     // Build arrays in parallel
-    let results: Vec<(String, u32, u32)> = relationships
+    let results: Vec<(String, u32, u32, u32)> = relationships
         .par_iter()
-        .map(|rel| (rel.rel_type.clone(), rel.relating_id, rel.related_id))
+        .map(|rel| {
+            (
+                rel.rel_type.clone(),
+                rel.relating_id,
+                rel.related_id,
+                rel.rel_id,
+            )
+        })
         .collect();
 
     let mut rel_types = Vec::with_capacity(count);
     let mut relating_ids = Vec::with_capacity(count);
     let mut related_ids = Vec::with_capacity(count);
+    let mut rel_ids = Vec::with_capacity(count);
 
-    for (rel_type, relating_id, related_id) in results {
+    for (rel_type, relating_id, related_id, rel_id) in results {
         rel_types.push(rel_type);
         relating_ids.push(relating_id);
         related_ids.push(related_id);
+        rel_ids.push(rel_id);
     }
 
+    // `rel_id` is appended last (data-model v6 payload, issue #3860): an older
+    // client reads the three columns it knows by name and ignores this one,
+    // and a newer client treats it as absent when an older server omits it.
     let schema = Schema::new(vec![
         Field::new("rel_type", DataType::Utf8, false),
         Field::new("relating_id", DataType::UInt32, false),
         Field::new("related_id", DataType::UInt32, false),
+        Field::new("rel_id", DataType::UInt32, false),
     ]);
 
     let batch = RecordBatch::try_new(
@@ -521,6 +534,7 @@ fn serialize_relationships_table(
             Arc::new(StringArray::from(rel_types)),
             Arc::new(UInt32Array::from(relating_ids)),
             Arc::new(UInt32Array::from(related_ids)),
+            Arc::new(UInt32Array::from(rel_ids)),
         ],
     )?;
 

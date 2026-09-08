@@ -11,6 +11,7 @@ import {
   type MapGeoreference,
 } from './pick-to-geo.js';
 import type { EffectiveGeoreference } from './effective-georef.js';
+import type { CoordinateInfo } from '@ifc-lite/geometry';
 
 /**
  * Ground truth from the bundled `apps/viewer/public/samples/building-architecture.ifc`:
@@ -177,5 +178,73 @@ describe('hasUsableMapGeoref', () => {
       mapConversion: undefined,
     };
     assert.strictEqual(hasUsableMapGeoref(noConversion), false);
+  });
+});
+
+describe('viewerPointToProjected with map-absolute geometry (#2526)', () => {
+  // Vectorworks-style file: geometry authored at the ABSOLUTE projected
+  // coordinates (rebased into wasmRtcOffset by the wasm RTC pre-pass) while
+  // the IfcMapConversion repeats the same anchor with a 90-degree rotation.
+  // The measure readout must report the point's absolute E/N, not the anchor
+  // plus a rotated delta (which double-applies the georeference).
+  const mapAbsInfo: CoordinateInfo = {
+    originShift: { x: 0, y: 0, z: 0 },
+    originalBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    shiftedBounds: { min: { x: -1, y: -1, z: -1 }, max: { x: 1, y: 1, z: 1 } },
+    hasLargeCoordinates: false,
+    wasmRtcOffset: { x: 312000, y: 5996150, z: 10 },
+  };
+
+  function mapAbsGeoref(coordinateInfo?: CoordinateInfo): MapGeoreference {
+    return {
+      hasGeoreference: true,
+      source: 'mapConversion',
+      projectedCRS: { id: 1, name: 'EPSG:25833', mapUnit: 'METRE', mapUnitScale: 1 },
+      mapConversion: {
+        id: 2,
+        sourceCRS: 10,
+        targetCRS: 1,
+        eastings: 312000,
+        northings: 5996150,
+        orthogonalHeight: 0,
+        xAxisAbscissa: 0,
+        xAxisOrdinate: 1,
+        scale: 1,
+      },
+      lengthUnitScale: 1,
+      coordinateInfo,
+    };
+  }
+
+  const near = (a: number, b: number, label: string) =>
+    assert.ok(Math.abs(a - b) < 1e-6, `${label}: expected ${b}, got ${a}`);
+
+  it('reads the picked point\'s ABSOLUTE map coordinates instead of double-applying the anchor + rotation', () => {
+    const eff = mapAbsGeoref(mapAbsInfo);
+    // -totalYupOffset for the fixture: rtcYup = (312000, 10, -5996150).
+    const originViewer = { x: -312000, y: -10, z: 5996150 };
+    // Viewer position of the absolute map point (E 312010, N 5996140, H 12).
+    const point = { x: 10, y: 2, z: 10 };
+    const out = viewerPointToProjected(point, eff, originViewer);
+    near(out.eastings, 312010, 'eastings');
+    near(out.northings, 5996140, 'northings');
+    near(out.height, 12, 'height');
+  });
+
+  it('control: a compliant file (geometry near the local origin) keeps the authored conversion exactly', () => {
+    const eff = mapAbsGeoref({ ...mapAbsInfo, wasmRtcOffset: undefined });
+    const out = viewerPointToProjected({ x: 3, y: 2, z: -4 }, eff, { x: 0, y: 0, z: 0 });
+    // Authored 90-degree rotation applied to the delta, anchor added:
+    // east = anchor + (a*dx + o*dz) = 312000 - 4; north = anchor + (o*dx - a*dz).
+    near(out.eastings, 311996, 'eastings');
+    near(out.northings, 5996153, 'northings');
+    near(out.height, 2, 'height');
+  });
+
+  it('control: no coordinateInfo on the georef keeps the authored conversion', () => {
+    const eff = mapAbsGeoref(undefined);
+    const out = viewerPointToProjected({ x: 3, y: 2, z: -4 }, eff, { x: 0, y: 0, z: 0 });
+    near(out.eastings, 311996, 'eastings');
+    near(out.northings, 5996153, 'northings');
   });
 });

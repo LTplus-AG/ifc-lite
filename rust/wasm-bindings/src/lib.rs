@@ -48,8 +48,15 @@
 
 use wasm_bindgen::prelude::*;
 
-#[cfg(feature = "console_error_panic_hook")]
-pub use console_error_panic_hook::set_once as set_panic_hook;
+// The crate's panic hook (console report + analytics location stash — see
+// utils.rs). Kept as the ONLY way a hook is installed here: installing
+// `console_error_panic_hook::set_once` directly would silently drop the
+// location stash the viewer's error tracking relies on (#1196, #2527).
+pub use utils::set_panic_hook;
+// Observability seam for the wasm32 test leg only (tests/panic_stash.rs).
+#[cfg(all(feature = "console_error_panic_hook", target_arch = "wasm32"))]
+#[doc(hidden)]
+pub use utils::stash_location_parts;
 
 // Threaded build (off by default): exposes `initThreadPool(n)` to JS and makes
 // the geometry crate's `par_iter` element loops parallel in WASM. Built as a
@@ -75,11 +82,19 @@ pub use zero_copy::{
 /// Initialize the WASM module.
 ///
 /// This function is called automatically when the WASM module is loaded.
-/// It sets up panic hooks for better error messages in the browser console.
+/// It sets up panic hooks for better error messages in the browser console,
+/// and points core's scan diagnostics at that console too.
 #[wasm_bindgen(start)]
 pub fn init() {
-    #[cfg(feature = "console_error_panic_hook")]
-    console_error_panic_hook::set_once();
+    utils::set_panic_hook();
+    // `ifc_lite_core::report_oversized_ids` (#3395) writes to stderr by
+    // default, and wasm32 has none — leaving every core and processing scan
+    // this module drives silently unable to say it refused a record, which is
+    // the absence-reads-as-success shape the issue is about. Set-once, and
+    // this runs before any `IfcAPI` is constructed.
+    ifc_lite_core::set_report_sink(|message| {
+        web_sys::console::warn_1(&JsValue::from_str(message));
+    });
 }
 
 /// Get the version of IFC-Lite.

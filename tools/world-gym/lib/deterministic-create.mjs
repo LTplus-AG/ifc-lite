@@ -20,6 +20,16 @@
  * seed. Do NOT "fix" the GUID stream to proper v4 UUIDs (e.g. via
  * `generateIfcGuid(random)`, which draws 16 bytes and forces the
  * version/variant bits): that changes every GlobalId in the corpus.
+ *
+ * THE GUID STREAM TAKES THE SALT TOO (B4.3), and it is not an afterthought.
+ * GlobalIds are the one stream whose output is printed verbatim into the file,
+ * so an unsalted `guid:${seed}` stream would remain a public, exact readout of
+ * a salted model: the attacker computes the whole GUID sequence for the seed,
+ * compares it to the served bytes, and every rooted entity the corruption layer
+ * DELETED shows up as a hole in an otherwise contiguous sequence - a free
+ * `missing-site` detector that needs no twin and no salt. Salting it closes
+ * that. `deterministicCreateParams(seed)` with no salt is unchanged, so the
+ * public corpus keeps its exact GlobalIds.
  */
 
 import { Rng } from './rng.mjs';
@@ -44,8 +54,8 @@ export const FIXED_EPOCH_MS = Date.UTC(2024, 0, 1, 0, 0, 0);
  * `guid:${seed}` nibble stream (32 draws per GUID, in element-creation
  * order) and encodes with the same canonical `uuidToIfcGuid`.
  */
-export function seededGuidSource(seed) {
-  const rng = new Rng(`guid:${seed}`);
+export function seededGuidSource(seed, salt = '') {
+  const rng = new Rng(`guid:${seed}`, salt);
   return () => {
     let hex = '';
     for (let i = 0; i < 32; i++) {
@@ -59,9 +69,9 @@ export function seededGuidSource(seed) {
  * The `ProjectParams` fields that pin one IfcCreator build to `seed`:
  * spread into the constructor params.
  */
-export function deterministicCreateParams(seed) {
+export function deterministicCreateParams(seed, salt = '') {
   return {
     Timestamp: FIXED_EPOCH_MS,
-    GuidSource: seededGuidSource(seed),
+    GuidSource: seededGuidSource(seed, salt),
   };
 }

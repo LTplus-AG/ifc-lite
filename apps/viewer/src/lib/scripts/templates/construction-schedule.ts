@@ -103,15 +103,15 @@ if (csvFile) {
       if (upper.startsWith('IFC')) {
         // IFC type — match all loaded entities of that class
         for (const e of allProducts) {
-          if (e.type.toUpperCase() === upper) ids.add(e.ref.expressId)
+          if (e.Type.toUpperCase() === upper) ids.add(e.ref.expressId)
         }
       } else {
         // Exact globalId match, OR prefix match when the token is long enough
         // to uniquely identify an element (≥ 4 chars).
         for (const e of allProducts) {
-          if (e.globalId === part) {
+          if (e.GlobalId === part) {
             ids.add(e.ref.expressId)
-          } else if (part.length >= MIN_GID_PREFIX_LEN && e.globalId.startsWith(part)) {
+          } else if (part.length >= MIN_GID_PREFIX_LEN && e.GlobalId.startsWith(part)) {
             ids.add(e.ref.expressId)
           }
         }

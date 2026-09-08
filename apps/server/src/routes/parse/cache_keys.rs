@@ -6,13 +6,13 @@
 
 use super::ParseQuery;
 use crate::services::cache::DiskCache;
-use crate::services::OpeningFilterMode;
+use crate::services::{OpeningFilterMode, ParquetLayout};
 use ifc_lite_processing::{SymbolicData, TessellationQuality};
 
 /// Cache-key segment for a tessellation level. Empty for the default level so
 /// every pre-existing cache entry (all written at implicit `medium`) stays
 /// valid; non-default levels get distinct entries.
-fn quality_cache_suffix(quality: TessellationQuality) -> String {
+pub(super) fn quality_cache_suffix(quality: TessellationQuality) -> String {
     if quality == TessellationQuality::default() {
         String::new()
     } else {
@@ -20,13 +20,47 @@ fn quality_cache_suffix(quality: TessellationQuality) -> String {
     }
 }
 
-/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
-pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
+/// The seed every derived key is built on: file hash + opening-filter suffix +
+/// quality suffix. Endpoints that receive a bare hash (the cache-check and
+/// cached-geometry routes) rebuild it from the query rather than from bytes
+/// they do not have.
+pub(crate) fn cache_key_from_parts(
+    hash: &str,
+    opening_filter: OpeningFilterMode,
+    quality: TessellationQuality,
+) -> String {
     format!(
         "{}-{}{}",
-        DiskCache::generate_key(data),
-        query.opening_filter.cache_key_suffix(),
+        hash,
+        opening_filter.cache_key_suffix(),
         quality_cache_suffix(quality)
+    )
+}
+
+/// Whether `hash` has the shape [`DiskCache::generate_key`] produces: 64
+/// lowercase hex characters.
+///
+/// Lives beside [`cache_key_from_parts`] because that is what it protects. The
+/// hash a client supplies is concatenated into `{hash}-{filter}{quality}` and
+/// the namespace suffix (`-parquet-v5`, `-datamodel-v6`, ...) is appended after
+/// it, so a caller-shaped string is a caller-shaped cache key. Checking the
+/// shape keeps the value to the one job it has, naming a file.
+///
+/// Applied by the hash-only stream probe (#3901). The two older hash-taking
+/// endpoints, `check_cache` and `get_cached_geometry`, do NOT call it yet: a
+/// malformed hash there names a key nobody wrote and gets a 404, which is a
+/// correct answer by a different route. Tightening them is a behaviour change
+/// to a published surface and is deliberately not part of #3901.
+pub(crate) fn is_file_digest(hash: &str) -> bool {
+    hash.len() == 64 && hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+/// Request-level cache key: file hash + opening-filter suffix + quality suffix.
+pub(crate) fn request_cache_key(data: &[u8], query: &ParseQuery, quality: TessellationQuality) -> String {
+    cache_key_from_parts(
+        &DiskCache::generate_key(data),
+        query.opening_filter,
+        quality,
     )
 }
 
@@ -45,28 +79,55 @@ pub(crate) fn json_response_cache_key(cache_key: &str) -> String {
     format!("{cache_key}-json-v2")
 }
 
-/// Build the parquet geometry cache key for a given file hash and opening filter.
+/// The flat Parquet geometry entry for a request cache key, under the LAYOUT
+/// the client asked for.
 ///
-/// Must stay in sync with the writer in `parse_parquet` / `parse_parquet_stream`,
-/// which derives the same suffix from `OpeningFilterMode::cache_key_suffix()`.
+/// THE definition of that suffix. It used to be a `format!` literal repeated in
+/// `parse_parquet` (twice), `parse_parquet_stream`, `try_cached_replay` and
+/// here, kept equal by a comment saying they bump together -- four writers and
+/// readers of one cache slot held together by prose, where a missed bump gives
+/// a reader looking up a key nobody writes, or worse a writer storing under a
+/// version an old reader still serves.
 ///
-/// Version bumped `v2` → `v3` with issue #900 (symbolic sidecar), and `v3` → `v4`
-/// with the alignment audit: the server default path switched to per-item
-/// sub-meshes, streamed geometry now comes from the canonical pipeline
-/// (material chain + indexed colours + aggregate void propagation), and
-/// native builds compute normals — entries cached by the old pipelines
-/// would serve visibly different meshes.
+/// The two layouts get SEPARATE namespaces (`-parquet-v5` / `-parquet-v6`,
+/// from `ParquetLayout::cache_suffix`) rather than one versioned slot, and the
+/// reason is that a version bump cannot do the job here. A cache key
+/// namespaces server-side entries; it has no bearing on which client is
+/// asking. Bumping one shared key would have retired the v5 entries and then
+/// handed every client -- including one pinned to a `@ifc-lite/server-client`
+/// that predates #3888 -- a freshly generated v6 blob it decodes without error
+/// and draws wrong. Two namespaces plus an opt-in signal means a client that
+/// did not ask for the shared layout can never be served it, from cache or
+/// from a live parse, and the two entries coexist instead of evicting each
+/// other on every request.
+///
+/// `-parquet-v5` is unchanged from before #3888 on purpose: a default request
+/// must still hit the entries already on disk. `v5`, not `v4`, was #3215
+/// adding the two source-id columns, where absence read exactly like success.
+pub(crate) fn parquet_geometry_key(cache_key: &str, layout: ParquetLayout) -> String {
+    format!("{cache_key}-{}", layout.cache_suffix())
+}
+
+/// The flat Parquet metadata entry (the `X-IFC-Metadata` header) for a request
+/// cache key. THE definition of that suffix, for the same reason as above.
+///
+/// NOT keyed by layout, and not versioned alongside the geometry: it holds the
+/// metadata header, whose shape #3888 did not touch and which is identical for
+/// both layouts of the same file. A hit needs the geometry entry too, so the
+/// layouts still cannot cross-serve.
+pub(crate) fn parquet_metadata_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-metadata-v4")
+}
+
+/// Build the parquet geometry cache key from a file hash and opening filter,
+/// for the endpoints that receive a bare hash rather than the bytes.
 pub(crate) fn parquet_cache_key(
     hash: &str,
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
+    layout: ParquetLayout,
 ) -> String {
-    format!(
-        "{}-{}{}-parquet-v4",
-        hash,
-        opening_filter.cache_key_suffix(),
-        quality_cache_suffix(quality)
-    )
+    parquet_geometry_key(&cache_key_from_parts(hash, opening_filter, quality), layout)
 }
 
 /// Build the parquet metadata cache key for a given file hash and opening filter.
@@ -75,12 +136,101 @@ pub(crate) fn parquet_metadata_cache_key(
     opening_filter: OpeningFilterMode,
     quality: TessellationQuality,
 ) -> String {
-    format!(
-        "{}-{}{}-parquet-metadata-v4",
-        hash,
-        opening_filter.cache_key_suffix(),
-        quality_cache_suffix(quality)
-    )
+    parquet_metadata_key(&cache_key_from_parts(hash, opening_filter, quality))
+}
+
+/// Build the optimized-Parquet body cache key for a given file cache key.
+///
+/// `POST /api/v1/parse/parquet/optimized` was added without a key of its own,
+/// so its response had nowhere to be stored and every request re-parsed the
+/// file while the flat route beside it replayed from disk (issue #3889). This
+/// is that key.
+///
+/// Deliberately a DIFFERENT namespace from `-parquet-v6`: the two routes emit
+/// different payloads (quantized vertices, deduplicated shapes, byte colours),
+/// so a hit on one must never satisfy the other.
+///
+/// `v1` is the ara3d BOS payload as it stands after #3595 (rotation-aware
+/// instancing). Bump on EVERY change to the optimized payload's columns, to
+/// what one of them means, OR to the geometry pipeline behind them -- this key
+/// covers `process_geometry_filtered_with_quality` output just as
+/// [`parquet_cache_key`] does, and that key's own `v3` -> `v4` bump was a
+/// pipeline change with no column change at all. In practice: a bump of
+/// `-parquet-v6` almost always needs a bump here too. Otherwise a warm cache
+/// replays a pre-change blob that the decoder reads cleanly, and the change is
+/// silently absent.
+pub(crate) fn parquet_optimized_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-optimized-v1")
+}
+
+/// Build the optimized-Parquet metadata cache key for a given file cache key.
+///
+/// Holds the serialized `X-IFC-Metadata` header, `optimization_stats` included,
+/// so a replay carries the same stats the live parse reported. Versioned in
+/// lockstep with [`parquet_optimized_cache_key`], and distinct from the flat
+/// route's `-parquet-metadata-v4` for the same reason the bodies are.
+pub(crate) fn parquet_optimized_metadata_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-parquet-optimized-metadata-v1")
+}
+
+/// Build the data-model cache key for a given file cache key.
+///
+/// One definition for the writers (`parse_parquet`, `parse_parquet_stream`) and
+/// the reader (`get_data_model`): three separate literals could disagree, and a
+/// reader looking up a key nobody writes answers `202` forever.
+///
+/// The suffix bumps on EVERY change to the data-model payload's columns. `v6`
+/// with issue #3860: the relationships table gained `rel_id`. Without the bump
+/// a warm `CACHE_DIR` replays the pre-bump blob verbatim, the column is absent,
+/// the decoder correctly omits it, and the viewer's server path is back to
+/// `RelId = 0` on every exported relationship row with nothing saying so.
+pub(crate) fn data_model_cache_key(cache_key: &str) -> String {
+    format!("{cache_key}-datamodel-v6")
+}
+
+/// Whether a data model at the CURRENT payload version is cached for
+/// `cache_key`.
+///
+/// Geometry and the data model are versioned separately, so a geometry entry
+/// outlives a data-model bump. Every geometry short-circuit must ask this
+/// before returning early: without it a deployment holding pre-bump entries
+/// reports a geometry hit, the client skips the upload (or the replay path
+/// skips the parse), nothing ever writes the current data-model key, and
+/// `fetchDataModel` polls a key nobody writes until it times out — geometry on
+/// screen with no properties and no error (issue #3869). Answering `false`
+/// costs one re-parse and rewrites both entries.
+///
+/// A cache read error answers `false`: re-parsing is the safe direction.
+pub(crate) async fn has_current_data_model(cache: &DiskCache, cache_key: &str) -> bool {
+    has_entry(cache, &data_model_cache_key(cache_key)).await
+}
+
+/// Whether the Parquet metadata header is cached for `cache_key`.
+///
+/// The cheap half of "is this replayable": the header is a few hundred bytes,
+/// where the geometry blob is the whole model. The hash-only stream probe
+/// (#3901) asks this, plus [`has_current_data_model`], BEFORE it takes an
+/// admission slot, so the common miss (a file the server has never seen) is
+/// answered by two small reads rather than by charging a parse slot for a disk
+/// lookup. It is a pre-filter, never the decision: [`try_cached_replay`] still
+/// makes that, and a metadata entry present here with no geometry beside it
+/// falls through to the same 404.
+///
+/// [`try_cached_replay`]: super::cached_replay::try_cached_replay
+pub(crate) async fn has_parquet_metadata(cache: &DiskCache, cache_key: &str) -> bool {
+    has_entry(cache, &parquet_metadata_key(cache_key)).await
+}
+
+/// Whether `key` has a readable entry.
+///
+/// Reads the value rather than asking `DiskCache::has`, which is an index
+/// lookup only: an index row whose content is gone would answer `true` here
+/// while every real reader still gets nothing, and a gate that reports present
+/// for an entry nobody can read is worse than no gate.
+///
+/// A read error answers `false`: re-parsing is the safe direction.
+async fn has_entry(cache: &DiskCache, key: &str) -> bool {
+    matches!(cache.get_bytes(key).await, Ok(Some(_)))
 }
 
 /// Build the symbolic-data cache key for a given file cache key.
@@ -115,6 +265,21 @@ pub(crate) async fn cache_symbolic_data(cache: &DiskCache, cache_key: &str, symb
     }
 }
 
+/// Whether symbolic data is cached for `cache_key`.
+///
+/// The optimized-Parquet route's parse is what writes the symbolic sidecar, so
+/// a replay that skips the parse must first check the sidecar is there. Without
+/// this, a body entry that outlived its symbolic entry replays forever and
+/// `GET /api/v1/parse/symbolic/{cache_key}` answers `202` to a key nobody
+/// writes -- the same shape as the geometry/data-model trap in #3869.
+///
+/// [`load_cached_symbolic`] cannot stand in: it answers `SymbolicData::default()`
+/// for an absent entry and for a model with no 2D symbols alike, so absence
+/// there is indistinguishable from success.
+pub(crate) async fn has_cached_symbolic(cache: &DiskCache, cache_key: &str) -> bool {
+    has_entry(cache, &symbolic_cache_key(cache_key)).await
+}
+
 /// Load cached symbolic data for `cache_key`, defaulting to empty when the
 /// entry is absent or unreadable.
 pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> SymbolicData {
@@ -129,111 +294,5 @@ pub(crate) async fn load_cached_symbolic(cache: &DiskCache, cache_key: &str) -> 
             tracing::error!(error = %e, cache_key = %cache_key, "Failed to read cached symbolic data");
             SymbolicData::default()
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::services::streaming::detect_schema_version;
-
-    /// Regression test for #587: the reader (`check_cache`) used to look up
-    /// `{hash}-parquet-v4`, while the writer (`parse_parquet`) stored
-    /// `{hash}-{opening_filter}-parquet-v4`, so the check always returned 404.
-    /// The shared helper must produce the same key the writer stores under.
-    #[test]
-    fn parquet_cache_key_matches_writer_format() {
-        let hash = "0ab20f4e4014";
-
-        // The writer composes `cache_key = format!("{hash}-{suffix}")` and then
-        // `format!("{cache_key}-parquet-v4")`. The helper must produce the same string.
-        for mode in [
-            OpeningFilterMode::Default,
-            OpeningFilterMode::IgnoreAll,
-            OpeningFilterMode::IgnoreOpaque,
-        ] {
-            for quality in [
-                TessellationQuality::Medium,
-                TessellationQuality::Low,
-                TessellationQuality::Highest,
-            ] {
-                let writer_cache_key = format!(
-                    "{}-{}{}",
-                    hash,
-                    mode.cache_key_suffix(),
-                    quality_cache_suffix(quality)
-                );
-                let writer_parquet_key = format!("{}-parquet-v4", writer_cache_key);
-                let writer_metadata_key = format!("{}-parquet-metadata-v4", writer_cache_key);
-
-                assert_eq!(parquet_cache_key(hash, mode, quality), writer_parquet_key);
-                assert_eq!(
-                    parquet_metadata_cache_key(hash, mode, quality),
-                    writer_metadata_key
-                );
-            }
-        }
-    }
-
-    /// The default (medium) level maps to the LEGACY key shape — pre-existing
-    /// cache entries written before the quality knob stay valid.
-    #[test]
-    fn parquet_cache_key_default_filter_uses_default_suffix() {
-        let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::Medium);
-        assert_eq!(key, "abc-default-parquet-v4");
-        let key = parquet_cache_key("abc", OpeningFilterMode::Default, TessellationQuality::High);
-        assert_eq!(key, "abc-default-qhigh-parquet-v4");
-    }
-
-    /// The JSON `ParseResponse` cache must NOT be keyed by the bare request key
-    /// (issue #1841): entries written before the Y-up switch hold raw IFC Z-up
-    /// meshes, and serving one to a client that expects the uniform wire frame
-    /// silently renders the model rotated. The version suffix retires them, and
-    /// must stay distinct from the client-facing key and the symbolic sidecar.
-    #[test]
-    fn json_response_cache_key_is_versioned_and_distinct() {
-        let request_key = "0ab20f4e4014-default";
-        let json_key = json_response_cache_key(request_key);
-        assert_eq!(json_key, format!("{request_key}-json-v2"));
-        assert_ne!(json_key, request_key, "must retire the unversioned entries");
-        assert_ne!(json_key, symbolic_cache_key(request_key));
-    }
-
-    /// The symbolic cache key (issue #900) is derived from the full
-    /// `{hash}-{opening_filter}` cache key the writers store under, and the
-    /// `get_symbolic` reader composes the same string from the path param.
-    #[test]
-    fn symbolic_cache_key_matches_writer_format() {
-        let hash = "0ab20f4e4014";
-        for mode in [
-            OpeningFilterMode::Default,
-            OpeningFilterMode::IgnoreAll,
-            OpeningFilterMode::IgnoreOpaque,
-        ] {
-            let writer_cache_key = format!("{}-{}", hash, mode.cache_key_suffix());
-            assert_eq!(
-                symbolic_cache_key(&writer_cache_key),
-                format!("{}-symbolic-v1", writer_cache_key)
-            );
-        }
-    }
-
-    #[test]
-    fn symbolic_cache_key_default_filter() {
-        let key = symbolic_cache_key("abc-default");
-        assert_eq!(key, "abc-default-symbolic-v1");
-    }
-
-    #[test]
-    fn schema_detection_uses_file_schema_declaration_only() {
-        let content = b"ISO-10303-21;
-HEADER;
-FILE_SCHEMA(('IFC2X3'));
-ENDSEC;
-DATA;
-#1=IFCDOCUMENTINFORMATION('IFC4X3',$,$,$,$,$,$,$,$,$,$,$,$,$,$,$,$);
-ENDSEC;";
-
-        assert_eq!(detect_schema_version(content), "IFC2X3");
     }
 }

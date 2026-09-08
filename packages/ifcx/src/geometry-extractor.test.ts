@@ -295,4 +295,78 @@ describe('extractGeometry', () => {
     assert.strictEqual(meshes[0].expressId, 20);
     assert.strictEqual(meshes[0].ifcType, 'IfcRepresentation');
   });
+
+  it('transforms an explicit usd::usdgeom::mesh normal so it stays perpendicular to a sheared, non-uniformly-scaled triangle', () => {
+    // USD (and the ifcx spec) transform a normal by the inverse-transpose of
+    // the local-to-world linear map, not by the map itself: for a row-vector
+    // convention (v' = v * M, as used elsewhere in this file for positions),
+    // the correct normal transform is n' = n * inverse(M)^T. Transforming
+    // the normal by M directly (what the code did) only coincides with the
+    // correct answer when M is orthogonal (pure rotation/translation); a
+    // real PCERT fixture (tests/models/ifc5/Tunnel_Excavation_07_Invert.ifcx)
+    // carries a non-uniform-scale usd::xformop, so this is not a
+    // hypothetical shape.
+    const wall = createNode('wall');
+    wall.attributes.set(ATTR.CLASS, ifcClass('IfcWall'));
+    wall.attributes.set(ATTR.TRANSFORM, {
+      transform: [
+        [1.0, 0.0, 0.5, 0],
+        [0.0, 2.0, 0.0, 0],
+        [0.3, 0.0, 1.0, 0],
+        [0, 0, 0, 1],
+      ],
+    });
+
+    const p0: [number, number, number] = [0, 0, 0];
+    const p1: [number, number, number] = [1, 0, 0];
+    const p2: [number, number, number] = [0, 1, 1];
+    const mesh: UsdMesh = {
+      points: [p0, p1, p2],
+      faceVertexIndices: [0, 1, 2],
+      // The un-normalized geometric normal of the p0/p1/p2 triangle:
+      // cross(p1-p0, p2-p0) = (0, -1, 1), normalized below.
+      normals: [
+        [0, -Math.SQRT1_2, Math.SQRT1_2],
+        [0, -Math.SQRT1_2, Math.SQRT1_2],
+        [0, -Math.SQRT1_2, Math.SQRT1_2],
+      ],
+    };
+    wall.attributes.set(ATTR.MESH, mesh);
+
+    const composed = new Map<string, ComposedNode>([[wall.path, wall]]);
+    const pathToId = new Map([[wall.path, 1]]);
+
+    const meshes = extractGeometry(composed, pathToId);
+    assert.strictEqual(meshes.length, 1);
+
+    const { positions, normals } = meshes[0];
+    // Vertex 0 is the shared corner; check its normal against both
+    // transformed edges emanating from it (viewer output is Y-up, so
+    // reconstruct edges/normal from the already-converted positions).
+    const v = (i: number): [number, number, number] => [
+      positions[i * 3],
+      positions[i * 3 + 1],
+      positions[i * 3 + 2],
+    ];
+    const sub = (a: [number, number, number], b: [number, number, number]): [number, number, number] => [
+      a[0] - b[0],
+      a[1] - b[1],
+      a[2] - b[2],
+    ];
+    const dot = (a: [number, number, number], b: [number, number, number]) =>
+      a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+
+    const e1 = sub(v(1), v(0));
+    const e2 = sub(v(2), v(0));
+    const n0: [number, number, number] = [normals[0], normals[1], normals[2]];
+
+    assert.ok(
+      Math.abs(dot(n0, e1)) < 1e-5,
+      `transformed normal must stay perpendicular to a transformed in-plane edge (got dot=${dot(n0, e1)})`
+    );
+    assert.ok(
+      Math.abs(dot(n0, e2)) < 1e-5,
+      `transformed normal must stay perpendicular to a transformed in-plane edge (got dot=${dot(n0, e2)})`
+    );
+  });
 });

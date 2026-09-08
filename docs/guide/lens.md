@@ -62,9 +62,11 @@ The `provider` is a `LensDataProvider`, an adapter interface over your parsed mo
 | `model` | `modelId` | Source model in a federation |
 | `group` | `groupName` | IfcZone/IfcGroup membership |
 
-Operators for value comparison: `equals` (exact; booleans compared case-insensitively), `contains` (case-insensitive substring), and `exists` (the property is present at all).
+Operators for value comparison (the `property`, `attribute`, and `quantity` criteria types; the other types ignore `operator`): `equals` (exact; booleans compared case-insensitively), `contains` (case-insensitive substring), `exists` (the property is present at all), `ne` (not equal - a case-insensitive string comparison, not a numeric one), and the numeric comparisons `gt`, `gte`, `lt`, `lte` (both sides parsed with `Number.parseFloat`; a non-numeric or non-finite value fails closed rather than matching). The full list is exported as `LENS_OPERATORS`.
 
-Each rule holds exactly one criterion; there is no compound AND. A property rule matches any entity carrying that property, regardless of class. To test a single entity programmatically, use `matchesCriteria(criteria, globalId, provider)`.
+A criterion is either a **leaf** (one of the eight types in the table above) or a **compound**: `type: 'and'` or `type: 'or'` with a `conditions` array of member criteria, each a leaf or another nested compound - e.g. `{ type: 'and', conditions: [{ type: 'ifcType', ifcType: 'IfcWall' }, { type: 'property', propertySet: 'Pset_WallCommon', propertyName: 'FireRating', operator: 'gte', propertyValue: '60' }] }` matches walls with FireRating >= 60. `and` requires every member to match, `or` requires at least one; an empty or missing `conditions` array matches nothing (not everything); nesting is capped at `MAX_COMPOUND_DEPTH` (16), beyond which a compound matches nothing rather than recursing further. This is engine-level support only - the viewer's Lens panel does not yet offer an authoring UI for compound rules, though it displays an imported one read-only.
+
+A property rule matches any entity carrying that property, regardless of class. To test a single entity programmatically, use `matchesCriteria(criteria, globalId, provider)`.
 
 ## Worked Example: Color by Fire Rating
 
@@ -134,14 +136,14 @@ const sources = discoverDataSources(provider, { properties: true, materials: tru
 
 ## Applying Results to the Renderer
 
-`result.colorMap` is a `Map<number, [r, g, b, a]>` with components in the 0-1 range, which is exactly what `Scene.setColorOverrides` in `@ifc-lite/renderer` accepts:
+`result.colorMap` is a `Map<number, [r, g, b, a]>` with components in the 0-1 range, which is exactly what `SceneContents.setColorOverrides` in `@ifc-lite/renderer` accepts:
 
 ```typescript
 import { evaluateLens, BUILTIN_LENSES } from '@ifc-lite/lens';
 
 const lensResult = evaluateLens(BUILTIN_LENSES[0], provider);
 
-// scene is a Scene from @ifc-lite/renderer
+// scene is a SceneContents, from renderer.getScene()
 scene.setColorOverrides(lensResult.colorMap, device, pipeline);
 
 // remove the lens
@@ -162,5 +164,8 @@ This is exactly how the viewer wires it: the Lens panel evaluates the active len
 | `discoverClasses(provider)` / `discoverDataSources(provider, categories)` | Populate editor UIs |
 | `BUILTIN_LENSES` | The seven built-in presets |
 | `hexToRgba` / `rgbaToHex` / `uniqueColor` / `isGhostColor` / `GHOST_COLOR` | Color helpers |
+| `LENS_OPERATORS` | The eight value operators, for rule-editor dropdowns |
+| `LENS_COMPOUND_TYPES` | `['and', 'or']`, the two compound criteria types |
+| `MAX_COMPOUND_DEPTH` | Nesting cap (16) beyond which a compound matches nothing |
 
-Key types: `Lens`, `LensRule`, `LensCriteria`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.
+Key types: `Lens`, `LensRule`, `LensCriteria`, `LensOperator`, `AutoColorSpec`, `LensEvaluationResult`, `LensDataProvider`, `RGBAColor`.

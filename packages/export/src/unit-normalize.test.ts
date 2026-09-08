@@ -81,6 +81,62 @@ describe('scaleTypedMeasures', () => {
     expect(scaleTypedMeasures('(IFCLENGTHMEASURE(1000.),IFCLENGTHMEASURE(2000.))', 0.001, 1, 1))
       .toBe('(IFCLENGTHMEASURE(1.),IFCLENGTHMEASURE(2.))');
   });
+
+  // #3789: the keyword and its '(' may be separated by a STEP writer's line
+  // wrap, the TS sibling of the Rust tokenizer's #3205 fix.
+  it('scales a measure wrapped across whitespace before its "("', () => {
+    expect(scaleTypedMeasures('IFCLENGTHMEASURE\r\n(100.)', 0.001, 1, 1))
+      .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('two-way rule: does not treat a keyword followed by non-whitespace junk as a measure', () => {
+    // 'X' between the keyword and '(' is neither whitespace nor part of the
+    // keyword itself, so this must be left completely untouched.
+    const input = 'IFCLENGTHMEASUREX(100.)';
+    expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);
+  });
+
+  // TS/Rust parity (#3789 follow-up): ISO 10303-21 permits a comment anywhere
+  // whitespace is legal, including between the keyword and its '('. Rust's
+  // tokenizer already skips it there; this rewriter did not, so a comment in
+  // that position left the measure unscaled while every sibling measure on
+  // the same line was rescaled -- an inconsistent, mixed-unit normalized file.
+  it('scales a measure separated from its "(" by a block comment', () => {
+    // Mirrors the whitespace case above: the rewriter drops whatever sat
+    // between the keyword and '(' (whitespace or a comment) rather than
+    // preserving it -- it is rebuilding the token, not patching a slice.
+    expect(scaleTypedMeasures('IFCLENGTHMEASURE/* mm */(100.)', 0.001, 1, 1))
+      .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('a comment containing "(" or ";" does not derail the parse (control)', () => {
+    expect(scaleTypedMeasures('IFCLENGTHMEASURE/* has ( and ; inside */(100.)', 0.001, 1, 1))
+      .toBe('IFCLENGTHMEASURE(0.1)');
+  });
+
+  it('two-way rule: an unterminated comment before "(" is not treated as trivia', () => {
+    const input = 'IFCLENGTHMEASURE/* never closes (100.)';
+    expect(scaleTypedMeasures(input, 0.001, 1, 1)).toBe(input);
+  });
+
+  it('two-way rule: a WRAPPED keyword inside a quoted string is still left alone', () => {
+    // The quoted-string alternative runs first precisely so a keyword that is
+    // only text inside an IFCLABEL is never rewritten. Widening the keyword
+    // branch across whitespace and comments must not reach into a string
+    // literal, which spans newlines too — the case the adjacent-keyword test
+    // above could not have caught.
+    const wrapped = "#1=IFCPROPERTYSINGLEVALUE('IFCLENGTHMEASURE\r\n(1000.)',$);";
+    expect(scaleTypedMeasures(wrapped, 0.001, 1, 1)).toBe(wrapped);
+    const commented = "#1=IFCPROPERTYSINGLEVALUE('IFCLENGTHMEASURE/* mm */(1000.)',$);";
+    expect(scaleTypedMeasures(commented, 0.001, 1, 1)).toBe(commented);
+  });
+
+  it('scales a real wrapped measure that sits after a quoted string on the same line', () => {
+    // The string branch must consume only the string, not shadow the real
+    // measure that follows it.
+    expect(scaleTypedMeasures("#1=IFCX('a',IFCLENGTHMEASURE (1000.));", 0.001, 1, 1))
+      .toBe("#1=IFCX('a',IFCLENGTHMEASURE(1.));");
+  });
 });
 
 describe('getEntityLengthPlan (schema-derived)', () => {
@@ -121,6 +177,27 @@ describe('getEntityLengthPlan (schema-derived)', () => {
 });
 
 describe('rescaleEntityLengths (full entity lines)', () => {
+  it('leaves a line whose argument list it cannot delimit exactly as it found it', () => {
+    // `findOuterArgs` is where a malformed record stops: it tracks quotes and
+    // depth to find the `)` that closes the record's own `(`, so a line that
+    // never closes either has no argument span at all and is returned as-is.
+    // That is also why `splitTopLevelStepArguments` returning null is
+    // unreachable from here — the span it is handed is balanced by
+    // construction — so nothing below pretends to exercise that guard.
+    const unterminated = "#8=IFCBUILDINGSTOREY('g',$,'L1,$,$,$,$,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(unterminated, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unterminated);
+
+    const unbalanced = "#8=IFCBUILDINGSTOREY('g',$,'L1',$,$,$,$,(#1,$,.ELEMENT.,3000.);";
+    expect(rescaleEntityLengths(unbalanced, 'IFCBUILDINGSTOREY', 0.001, 1, 1)).toBe(unbalanced);
+
+    // An EMPTY slot is not in that class — one empty argument is one part, so
+    // the span is delimited, `Elevation` is still the tenth argument, and it is
+    // still rescaled. Rejecting empty slots in the splitter would have silently
+    // stopped rescaling these lines too (#2470).
+    expect(rescaleEntityLengths("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3000.);", 'IFCBUILDINGSTOREY', 0.001, 1, 1))
+      .toBe("#8=IFCBUILDINGSTOREY('g',,'L1',$,$,$,$,$,.ELEMENT.,3.);");
+  });
+
   it('scales cartesian point coordinates', () => {
     expect(rescaleEntityLengths('#6=IFCCARTESIANPOINT((100.,200.,300.));', 'IFCCARTESIANPOINT', 0.001, 1, 1))
       .toBe('#6=IFCCARTESIANPOINT((0.1,0.2,0.3));');

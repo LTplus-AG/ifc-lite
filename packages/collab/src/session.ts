@@ -141,27 +141,47 @@ export async function createCollabSession(opts: CollabSessionOptions): Promise<C
 
   const synced: Promise<void>[] = [];
 
-  if (providerKind === 'indexeddb' || providerKind === 'indexeddb+websocket') {
-    idb = await createIndexedDbProvider(doc, opts.roomId, { dbName: opts.dbName });
-    synced.push(idb.whenSynced);
-  } else if (providerKind === 'memory') {
-    idb = createMemoryProvider(doc, opts.roomId);
-    synced.push(idb.whenSynced);
-  }
-
-  if (providerKind === 'websocket' || providerKind === 'indexeddb+websocket') {
-    if (!opts.serverUrl) {
-      throw new Error('@ifc-lite/collab: serverUrl is required for websocket providers');
+  // `presence` (and its live awareness-eviction timers, started the moment
+  // `createPresence` ran above) is constructed before either provider. If a
+  // provider fails to come up — e.g. `createIndexedDbProvider` throwing in a
+  // non-browser test harness where `indexedDB` is undefined — this function
+  // rejects and its caller never receives a `session` to call `.dispose()`
+  // on. Nothing else references `presence`, so its two `setInterval`s (the
+  // eviction sweep in presence.ts and y-protocols' own outdated-clients
+  // timer inside `new Awareness`) keep running forever, which is exactly
+  // the leak that kept a Node test process alive indefinitely (never
+  // observed in the browser, where a page unload reclaims everything).
+  // Dispose what we've built so far before propagating the failure.
+  try {
+    if (providerKind === 'indexeddb' || providerKind === 'indexeddb+websocket') {
+      idb = await createIndexedDbProvider(doc, opts.roomId, { dbName: opts.dbName });
+      synced.push(idb.whenSynced);
+    } else if (providerKind === 'memory') {
+      idb = createMemoryProvider(doc, opts.roomId);
+      synced.push(idb.whenSynced);
     }
-    ws = await createWebSocketProvider(doc, opts.roomId, opts.serverUrl, {
-      WebSocketPolyfill: opts.WebSocketPolyfill,
-      token: opts.token,
-      awareness: presence.awareness,
-      connect: opts.connect ?? true,
-      disableBc: opts.disableBc,
-    });
-    ws.onStatus(setStatus);
-    synced.push(ws.whenSynced);
+
+    if (providerKind === 'websocket' || providerKind === 'indexeddb+websocket') {
+      if (!opts.serverUrl) {
+        throw new Error('@ifc-lite/collab: serverUrl is required for websocket providers');
+      }
+      ws = await createWebSocketProvider(doc, opts.roomId, opts.serverUrl, {
+        WebSocketPolyfill: opts.WebSocketPolyfill,
+        token: opts.token,
+        awareness: presence.awareness,
+        connect: opts.connect ?? true,
+        disableBc: opts.disableBc,
+      });
+      ws.onStatus(setStatus);
+      synced.push(ws.whenSynced);
+    }
+  } catch (err) {
+    if (ownsPresence) presence.dispose();
+    undoController.destroy();
+    conflicts.destroy();
+    if (idb) idb.destroy();
+    if (ws) ws.destroy();
+    throw err;
   }
 
   const session: CollabSession = {

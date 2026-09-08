@@ -54,9 +54,9 @@
  *   length/area/volume measure, so they are excluded automatically.
  */
 
-import { getAllAttributesForEntity } from '@ifc-lite/parser';
+import { getAllAttributesForEntity, STEP_TRIVIA } from '@ifc-lite/parser';
 import { formatStepReal } from '@ifc-lite/data';
-import { splitTopLevelStepArguments } from './step-serialization.js';
+import { splitTopLevelStepArguments } from './step-argument-parser.js';
 
 /** IFC defined types whose values are lengths (STEP writes them as bare reals). */
 const LENGTH_MEASURE_TYPES = new Set([
@@ -226,9 +226,19 @@ export function scaleNumberLiterals(text: string, factor: number): string {
  * captured before the keyword and restored, so a keyword can never be matched as
  * the suffix of a longer identifier — without a lookbehind, which some engines
  * (older Safari) reject at construction time and would break importing this module.
+ *
+ * Trivia (whitespace and/or a `/* ... *​/` comment) between the keyword and
+ * `(` mirrors the entity/typed-value adjacency fix (packages/parser's
+ * entity-extractor, #3205's Rust counterpart, #3789 for the comment case): a
+ * STEP writer's line wrap or an inline comment can land there, and without
+ * tolerating it the wrapped literal was skipped by this rewriter, leaving
+ * the normalized file's other measures scaled but this one still in the
+ * source unit.
  */
-const TYPED_MEASURE_RE =
-  /('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)\(([^)]*)\)/gi;
+const TYPED_MEASURE_RE = new RegExp(
+  `('(?:[^']|'')*')|(^|[^A-Za-z0-9_])(IFC(?:POSITIVE|NONNEGATIVE)?LENGTHMEASURE|IFCAREAMEASURE|IFCVOLUMEMEASURE)${STEP_TRIVIA}\\(([^)]*)\\)`,
+  'gi',
+);
 
 export function scaleTypedMeasures(
   text: string,
@@ -331,6 +341,17 @@ export function rescaleEntityLengths(
   let skipValues = false;
   if (hasStructural || plan.unitGuardIdx.length > 0) {
     const args = splitTopLevelStepArguments(inner);
+    // An INVARIANT here, not a reachable branch, and deliberately kept as code
+    // rather than an assertion: `findOuterArgs` returns the span between a `(`
+    // and the `)` that closes it, tracking quotes and depth to get there — so
+    // by construction `inner` has balanced parens, never dips below depth zero,
+    // and cannot end inside a string. Those are exactly the three ways
+    // `splitTopLevelStepArguments` refuses, so a malformed line never reaches
+    // this call: it has already returned at `if (!bounds) return line` above.
+    // The guard is what makes that reasoning explicit (and what the
+    // `string[] | null` type requires); leaving the line untouched is the right
+    // answer if it ever stops holding.
+    if (args === null) return line;
 
     // A live unit-override reference means the value is already in its own unit.
     skipValues = plan.unitGuardIdx.some((idx) => {

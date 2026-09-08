@@ -1,0 +1,19 @@
+# Rust test files grandfathered past scripts/check-rust-source-text-assertions.mjs
+# (issue #3195). One repo-relative path per line, `#` starts a comment.
+#
+# EMPTY, and expected to stay empty: `rust/` has zero source-text assertions
+# today, so a row here is a deliberate statement that a Rust test certifies a
+# string exists rather than that the code works. Adding one also requires
+# raising ALLOWLIST_CEILING in scripts/check-rust-source-text-assertions.mjs in
+# the SAME commit — a ceiling derived from this file would be circular and
+# always pass — which keeps "this PR loosened a gate" a reviewable line.
+#
+# Prefer the per-site marker to a whole-file row:
+#
+#   // @source-text-assertion-ok mutation anchor guard, not a subject assertion
+#
+# Marked sites stay NAMED in the gate's output; an allowlisted file goes quiet.
+#
+# A row whose file no longer contains a source-text assertion is reported stale
+# and fails, so entries cannot rot: the way one is removed is that the test gets
+# written behaviourally, and the next run tells you to delete the line.

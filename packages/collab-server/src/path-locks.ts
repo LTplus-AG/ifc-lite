@@ -88,8 +88,16 @@ export function createPathLockRegistry(): PathLockRegistry {
 /**
  * Apply `update` to a throwaway Y.Doc and harvest the touched paths
  * as a list of `<top>/<key>` strings (`entities/wall`, `geometry/g1`,
- * etc.). Each top-level shared type the runtime knows about is
- * inspected.
+ * etc.).
+ *
+ * EVERY top-level shared type is harvested, not just the four pre-created
+ * below: `Y.applyUpdate` registers any top-level type the update names, and
+ * `topLevelKeyOf` scans `doc.share`, so `annotations` — the fifth member of
+ * `TOP` in @ifc-lite/collab, deliberately absent here — is found all the same.
+ * The `getMap` calls only force the common types into existence early; they
+ * are NOT the list of what can be locked, and reading them as one would
+ * suggest a lock prefix that cannot be enforced. `path-locks.test.ts` pins
+ * both halves of that.
  */
 export function harvestUpdatePaths(update: Uint8Array): string[] {
   const tmp = new Y.Doc();

@@ -53,6 +53,20 @@ function setupFixtures() {
   return { entityTable, propertyTable };
 }
 
+/**
+ * Same as `setupFixtures`, but the door (id 3) also carries the SAME
+ * pset/property/value as wall 2 (`Pset_WallCommon.IsExternal: false`). Used
+ * only by the conjunction tests below: a filter chain that ANDs on type but
+ * ORs (or drops) the property check would let this door leak into a
+ * `.ofType('IFCWALL')` result, since the property half alone can't tell it
+ * apart from wall 2.
+ */
+function setupOverlapFixture() {
+  const fixtures = setupFixtures();
+  fixtures.propertyTable.associatePropertySet(3, 101);
+  return fixtures;
+}
+
 describe('QueryBuilder', () => {
   it('should return all entities when no filter is applied', () => {
     const { entityTable, propertyTable } = setupFixtures();
@@ -108,6 +122,47 @@ describe('QueryBuilder', () => {
       .execute();
     expect(results).toHaveLength(1);
     expect(results[0].expressId).toBe(2);
+  });
+
+  it('withProperty(value) ANDs with the prior filter instead of replacing it', () => {
+    // Door 3 shares wall 2's exact pset/property/value (see fixture comment).
+    // Without the prior filter also required, `withProperty(..., false)` alone
+    // matches {2, 3} and `.ofType('IFCWALL')` would wrongly include the door.
+    const { entityTable, propertyTable } = setupOverlapFixture();
+    const results = new QueryBuilder(entityTable, propertyTable)
+      .ofType('IFCWALL')
+      .withProperty('Pset_WallCommon', 'IsExternal', false)
+      .execute();
+    expect(results.map(e => e.expressId)).toEqual([2]);
+    // Property side alone (no type filter) legitimately reaches the door too,
+    // confirming the fixture actually creates the overlap this test relies on.
+    const propertyOnly = new QueryBuilder(entityTable, propertyTable)
+      .withProperty('Pset_WallCommon', 'IsExternal', false)
+      .execute();
+    expect(propertyOnly.map(e => e.expressId).sort()).toEqual([2, 3]);
+  });
+
+  it('withProperty(existence) ANDs with the prior filter instead of replacing it', () => {
+    // Same overlap, but the value-less "does this property exist" branch.
+    const { entityTable, propertyTable } = setupOverlapFixture();
+    const results = new QueryBuilder(entityTable, propertyTable)
+      .ofType('IFCWALL')
+      .withProperty('Pset_WallCommon', 'IsExternal')
+      .execute();
+    // Both walls carry Pset_WallCommon.IsExternal; the door must not appear.
+    expect(results.map(e => e.expressId).sort()).toEqual([1, 2]);
+  });
+
+  it('ofType() ANDs with a prior ofType(), so two disagreeing types match nothing', () => {
+    // Every entity has exactly one type, so IFCWALL and IFCDOOR never agree.
+    // A filter that overwrote rather than ANDed with the previous one would
+    // answer this with whichever `ofType()` call ran last (the doors).
+    const { entityTable, propertyTable } = setupOverlapFixture();
+    const results = new QueryBuilder(entityTable, propertyTable)
+      .ofType('IFCWALL')
+      .ofType('IFCDOOR')
+      .execute();
+    expect(results).toEqual([]);
   });
 
 });

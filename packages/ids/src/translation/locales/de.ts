@@ -52,6 +52,7 @@ export const de = {
   constraints: {
     simpleValue: '"{value}"',
     pattern: 'entsprechend Muster "{pattern}"',
+    conjunction: '{first} und {second}',
     enumeration: {
       single: '"{value}"',
       multiple: 'eines von [{values}]',
@@ -183,6 +184,8 @@ export const de = {
     classificationValueMismatch: 'Klassifizierungscode "{actual}" entspricht nicht dem erwarteten {expected}',
     classificationValueMissingAvailable: 'Klassifizierungscode {expected} nicht gefunden. Verfügbar: {available}',
     classificationProhibited: 'Verbotene Klassifizierung "{actual}" existiert im System "{system}"',
+    classificationUnresolved: 'Entität ist klassifiziert, aber die Klassifizierungsdetails können aus dieser Datenquelle nicht gelesen werden',
+    classificationPresenceUnresolved: 'Ob diese Entität klassifiziert ist, kann aus dieser Datenquelle nicht bestimmt werden',
 
     // Material failures
     materialMissing: 'Kein Material zugewiesen',

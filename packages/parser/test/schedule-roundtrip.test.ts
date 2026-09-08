@@ -266,4 +266,58 @@ describe('schedule roundtrip — serializer ↔ parser', () => {
     expect(taskA.productExpressIds).toContain(11);
     expect(taskB.productExpressIds).toContain(12);
   });
+
+  it('round-trips a lead time (negative lag) through a signed IfcLagTime, seconds preserved exactly', async () => {
+    // Maintainer ruling on PR #1963 (reversing an earlier drop-and-warn
+    // implementation): a 2-day lead — the successor may start 2 days
+    // before its predecessor finishes — is real scheduling information,
+    // and dropping it is silently lossy in our own ifc-lite -> IFC ->
+    // ifc-lite round trip. `timeLagDuration` is deliberately omitted here,
+    // matching what build.ts produces when only `timeLagSeconds` is known
+    // (e.g. IFC2X3 round-trips). The serializer's signed-duration codec
+    // (packages/parser/src/iso8601-duration.ts) reconstructs `-P2D` from
+    // -172800 seconds, and `parseIso8601Duration` reads the sign back on
+    // import — -172800 all the way through.
+    const extraction = makeExtraction();
+    extraction.sequences[0].timeLagSeconds = -172_800; // -2 days
+    extraction.sequences[0].timeLagDuration = undefined;
+
+    const result = serializeScheduleToStep(extraction, {
+      nextId: 100,
+      ownerHistoryId: 10,
+    });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('-P2D')");
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.sequences).toHaveLength(1);
+    expect(parsed.sequences[0].timeLagDuration).toBe('-P2D');
+    expect(parsed.sequences[0].timeLagSeconds).toBe(-172_800);
+  });
+
+  it('still round-trips a genuine positive lag (regression guard for the sign change)', async () => {
+    const extraction = makeExtraction();
+    extraction.sequences[0].timeLagSeconds = 172_800; // 2 days
+    extraction.sequences[0].timeLagDuration = undefined;
+
+    const result = serializeScheduleToStep(extraction, {
+      nextId: 100,
+      ownerHistoryId: 10,
+    });
+    const lag = result.lines.find(l => l.includes('=IFCLAGTIME('));
+    expect(lag).toBeDefined();
+    expect(lag).toContain("IFCDURATION('P2D')");
+
+    const final = splice(buildBaseStep(), result.lines);
+    const store = await parseStep(final);
+    const parsed = extractScheduleOnDemand(store);
+
+    expect(parsed.sequences).toHaveLength(1);
+    expect(parsed.sequences[0].timeLagDuration).toBe('P2D');
+    expect(parsed.sequences[0].timeLagSeconds).toBe(172_800);
+  });
 });

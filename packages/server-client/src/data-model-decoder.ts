@@ -7,6 +7,7 @@
  */
 
 import { ensureParquetInit } from './parquet-decoder.js';
+import { nullableFloat64Column } from './parquet-nullable.js';
 
 export interface EntityMetadata {
   entity_id: number;
@@ -239,6 +240,10 @@ export interface Relationship {
   rel_type: string;
   relating_id: number;
   related_id: number;
+  /** Express id of the `IfcRel*` entity this row came from. v6 payload (issue
+   *  #3860); `undefined` for older servers. `0` on the synthetic
+   *  `TYPEHASPROPERTYSETS` rows, which no IFC entity declares. */
+  rel_id?: number;
 }
 
 export interface SpatialNode {
@@ -316,14 +321,80 @@ export interface DataModel {
 }
 
 /**
- * Decode data model from Parquet buffer.
- *
- * OPTIMIZED: Uses toArray() for bulk string extraction instead of per-element .get() calls.
- * Arrow's .get(i) is slow for strings (offset lookup + UTF-8 decode per call).
- * toArray() decodes all strings in one pass which is 10-20x faster for large datasets.
+ * Decode data model from Parquet buffer. Bulk string columns use toArray()
+ * instead of per-element .get() (10-20x faster, no per-row UTF-8 decode); a
+ * NULLABLE numeric column is the exception — see `nullableFloat64Column` in
+ * `parquet-nullable.ts` for why toArray() alone silently turns a null into 0.
  *
  * Format: [entities_len][entities_data][properties_len][properties_data][quantities_len][quantities_data][relationships_len][relationships_data][spatial_len][spatial_data]
  */
+/**
+ * Read one length-prefixed section: a little-endian u32 byte length followed
+ * by that many bytes of data. Shared by every length-prefixed read in this
+ * module (top-level entities/properties/quantities/relationships/spatial,
+ * the nested spatial sub-sections, and the optional appended tables) so the
+ * bounds check can't drift between call sites the way it did before (issue:
+ * only the optional-section reader validated its length prefix — a
+ * truncated *required* section instead surfaced as a raw `RangeError` from
+ * `DataView.getUint32`/the `Uint8Array` constructor, deep inside
+ * `decodeDataModel`, rather than this module's own clear error).
+ *
+ * `required: false` additionally tolerates the length prefix itself being
+ * entirely absent (fewer than 4 bytes remaining) — that means an older
+ * server/cache that predates this section, so it returns `null` rather than
+ * throwing. `required: true` treats that same "prefix absent" condition as
+ * truncation, since a required section must always be present.
+ *
+ * Once a length prefix IS present (either mode), `len === 0` is always
+ * treated as malformed: a Parquet-encoded table carries file magic + schema
+ * + footer bytes even with zero rows, so a genuine payload's length is never
+ * zero (verified: an empty 6-column Arrow table written via
+ * `parquet-wasm`'s `writeParquet` serializes to >900 bytes) — a zero-length
+ * prefix only happens when the buffer was truncated exactly at the prefix.
+ */
+function readLengthPrefixedSection(
+  view: DataView,
+  srcBuffer: ArrayBufferLike,
+  srcByteOffset: number,
+  totalLength: number,
+  offset: number,
+  label: string,
+  required: boolean
+): { data: Uint8Array | null; offset: number } {
+  if (offset + 4 > totalLength) {
+    // An optional section is "absent" only when the buffer ends exactly here —
+    // that is the older-payload shape. One to three trailing bytes is not an
+    // absent section, it is a truncated length prefix, and reporting it as
+    // absent would silently drop every optional section that follows.
+    if (!required && offset === totalLength) return { data: null, offset };
+    throw new Error(
+      `Malformed data model: truncated ${label} section length prefix (remaining=${totalLength - offset})`
+    );
+  }
+  const len = view.getUint32(offset, true);
+  const next = offset + 4;
+  if (len === 0 || next + len > totalLength) {
+    throw new Error(
+      `Malformed data model: truncated ${label} section (len=${len}, remaining=${totalLength - next})`
+    );
+  }
+  return { data: new Uint8Array(srcBuffer, srcByteOffset + next, len), offset: next + len };
+}
+
+/** Required-section wrapper: `data` is guaranteed non-null (the shared
+ *  helper throws rather than returning null when `required` is true). */
+function readRequiredSection(
+  view: DataView,
+  srcBuffer: ArrayBufferLike,
+  srcByteOffset: number,
+  totalLength: number,
+  offset: number,
+  label: string
+): { data: Uint8Array; offset: number } {
+  const r = readLengthPrefixedSection(view, srcBuffer, srcByteOffset, totalLength, offset, label, true);
+  return { data: r.data as Uint8Array, offset: r.offset };
+}
+
 export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   // Initialize WASM module (only runs once)
   const parquet = await ensureParquetInit();
@@ -336,34 +407,29 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   let offset = 0;
 
   // Read entities Parquet section
-  const entitiesLen = view.getUint32(offset, true);
-  offset += 4;
-  const entitiesData = new Uint8Array(data, offset, entitiesLen);
-  offset += entitiesLen;
+  let section = readRequiredSection(view, data, 0, data.byteLength, offset, 'entities');
+  const entitiesData = section.data;
+  offset = section.offset;
 
   // Read properties Parquet section
-  const propertiesLen = view.getUint32(offset, true);
-  offset += 4;
-  const propertiesData = new Uint8Array(data, offset, propertiesLen);
-  offset += propertiesLen;
+  section = readRequiredSection(view, data, 0, data.byteLength, offset, 'properties');
+  const propertiesData = section.data;
+  offset = section.offset;
 
   // Read quantities Parquet section
-  const quantitiesLen = view.getUint32(offset, true);
-  offset += 4;
-  const quantitiesData = new Uint8Array(data, offset, quantitiesLen);
-  offset += quantitiesLen;
+  section = readRequiredSection(view, data, 0, data.byteLength, offset, 'quantities');
+  const quantitiesData = section.data;
+  offset = section.offset;
 
   // Read relationships Parquet section
-  const relationshipsLen = view.getUint32(offset, true);
-  offset += 4;
-  const relationshipsData = new Uint8Array(data, offset, relationshipsLen);
-  offset += relationshipsLen;
+  section = readRequiredSection(view, data, 0, data.byteLength, offset, 'relationships');
+  const relationshipsData = section.data;
+  offset = section.offset;
 
   // Read spatial Parquet section
-  const spatialLen = view.getUint32(offset, true);
-  offset += 4;
-  const spatialData = new Uint8Array(data, offset, spatialLen);
-  offset += spatialLen;
+  section = readRequiredSection(view, data, 0, data.byteLength, offset, 'spatial');
+  const spatialData = section.data;
+  offset = section.offset;
 
   // Read an optional appended length-prefixed section. Returns null only when
   // no length prefix remains — i.e. an older server/cache that omits the
@@ -371,22 +437,14 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   // parquet_data_model.rs). Once a prefix is present, a zero length or a length
   // that overruns the buffer means the payload is malformed, so we throw rather
   // than silently dropping data as if it were an old payload.
-  const readOptionalSection = (): Uint8Array | null => {
-    if (offset + 4 > data.byteLength) return null; // section absent (old payload)
-    const len = view.getUint32(offset, true);
-    offset += 4;
-    if (len === 0 || offset + len > data.byteLength) {
-      throw new Error(
-        `Malformed data model: truncated appended section (len=${len}, remaining=${data.byteLength - offset})`
-      );
-    }
-    const section = new Uint8Array(data, offset, len);
-    offset += len;
-    return section;
+  const readOptionalSection = (label: string): Uint8Array | null => {
+    const r = readLengthPrefixedSection(view, data, 0, data.byteLength, offset, label, false);
+    offset = r.offset;
+    return r.data;
   };
-  const classificationsData = readOptionalSection();
-  const materialsData = readOptionalSection();
-  const documentsData = readOptionalSection();
+  const classificationsData = readOptionalSection('classifications');
+  const materialsData = readOptionalSection('materials');
+  const documentsData = readOptionalSection('documents');
 
   // Parse Parquet tables
   const entitiesTable = parquet.readParquet(entitiesData);
@@ -494,6 +552,10 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const relTypesArr = relationshipsArrow.getChild('rel_type')?.toArray() as string[];
   const relatingIds = relationshipsArrow.getChild('relating_id')?.toArray() as Uint32Array;
   const relatedIds = relationshipsArrow.getChild('related_id')?.toArray() as Uint32Array;
+  // rel_id arrives with the v6 payload (issue #3860). An older server sends no
+  // such column: leave the field absent rather than defaulting to 0, so a
+  // caller can tell "no id on the wire" from the genuine 0 on synthetic rows.
+  const relIds = relationshipsArrow.getChild('rel_id')?.toArray() as Uint32Array | undefined;
 
   // Pre-allocate array for better performance
   const relationships: Relationship[] = new Array(relatingIds.length);
@@ -503,6 +565,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       relating_id: relatingIds[i],
       related_id: relatedIds[i],
     };
+    if (relIds !== undefined) relationships[i].rel_id = relIds[i];
   }
 
   // Parse spatial hierarchy - format: [nodes_len][nodes_data][element_to_storey_len][element_to_storey_data]...
@@ -510,31 +573,36 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   let spatialOffset = 0;
 
   // Read nodes table
-  const nodesLen = spatialView.getUint32(spatialOffset, true);
-  spatialOffset += 4;
-  const nodesData = new Uint8Array(spatialData.buffer, spatialData.byteOffset + spatialOffset, nodesLen);
-  spatialOffset += nodesLen;
+  let spatialSection = readRequiredSection(
+    spatialView, spatialData.buffer, spatialData.byteOffset, spatialData.byteLength, spatialOffset, 'spatial nodes'
+  );
+  const nodesData = spatialSection.data;
+  spatialOffset = spatialSection.offset;
 
   // Read lookup tables
-  const elementToStoreyLen = spatialView.getUint32(spatialOffset, true);
-  spatialOffset += 4;
-  const elementToStoreyData = new Uint8Array(spatialData.buffer, spatialData.byteOffset + spatialOffset, elementToStoreyLen);
-  spatialOffset += elementToStoreyLen;
+  spatialSection = readRequiredSection(
+    spatialView, spatialData.buffer, spatialData.byteOffset, spatialData.byteLength, spatialOffset, 'element-to-storey lookup'
+  );
+  const elementToStoreyData = spatialSection.data;
+  spatialOffset = spatialSection.offset;
 
-  const elementToBuildingLen = spatialView.getUint32(spatialOffset, true);
-  spatialOffset += 4;
-  const elementToBuildingData = new Uint8Array(spatialData.buffer, spatialData.byteOffset + spatialOffset, elementToBuildingLen);
-  spatialOffset += elementToBuildingLen;
+  spatialSection = readRequiredSection(
+    spatialView, spatialData.buffer, spatialData.byteOffset, spatialData.byteLength, spatialOffset, 'element-to-building lookup'
+  );
+  const elementToBuildingData = spatialSection.data;
+  spatialOffset = spatialSection.offset;
 
-  const elementToSiteLen = spatialView.getUint32(spatialOffset, true);
-  spatialOffset += 4;
-  const elementToSiteData = new Uint8Array(spatialData.buffer, spatialData.byteOffset + spatialOffset, elementToSiteLen);
-  spatialOffset += elementToSiteLen;
+  spatialSection = readRequiredSection(
+    spatialView, spatialData.buffer, spatialData.byteOffset, spatialData.byteLength, spatialOffset, 'element-to-site lookup'
+  );
+  const elementToSiteData = spatialSection.data;
+  spatialOffset = spatialSection.offset;
 
-  const elementToSpaceLen = spatialView.getUint32(spatialOffset, true);
-  spatialOffset += 4;
-  const elementToSpaceData = new Uint8Array(spatialData.buffer, spatialData.byteOffset + spatialOffset, elementToSpaceLen);
-  spatialOffset += elementToSpaceLen;
+  spatialSection = readRequiredSection(
+    spatialView, spatialData.buffer, spatialData.byteOffset, spatialData.byteLength, spatialOffset, 'element-to-space lookup'
+  );
+  const elementToSpaceData = spatialSection.data;
+  spatialOffset = spatialSection.offset;
 
   // Read project_id (final u32)
   const projectId = spatialView.getUint32(spatialOffset, true);
@@ -550,7 +618,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
   const pathsArr = nodesArrow.getChild('path')?.toArray() as string[];
   const spatialTypeNamesArr = nodesArrow.getChild('type_name')?.toArray() as string[];
   const spatialNamesArr = nodesArrow.getChild('name')?.toArray() as (string | null)[];
-  const elevationsArr = nodesArrow.getChild('elevation')?.toArray() as (number | null)[];
+  const elevationsArr = nullableFloat64Column(nodesArrow, 'elevation');
   const childrenIdsList = nodesArrow.getChild('children_ids');
   const elementIdsList = nodesArrow.getChild('element_ids');
 
@@ -585,7 +653,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
       path: pathsArr[i] ?? '',
       type_name: spatialTypeNamesArr[i] ?? '',
       name: spatialNamesArr[i] || undefined,
-      elevation: elevationsArr[i] ?? undefined,
+      elevation: elevationsArr?.[i] ?? undefined,
       children_ids: childrenIds,
       element_ids: elementIds,
     };
@@ -641,7 +709,7 @@ export async function decodeDataModel(data: ArrayBuffer): Promise<DataModel> {
     const setNames = t.getChild('set_name')?.toArray() as (string | null)[];
     const layerIndices = t.getChild('layer_index')?.toArray() as Uint32Array;
     const materialNames = t.getChild('material_name')?.toArray() as (string | null)[];
-    const thicknesses = t.getChild('thickness')?.toArray() as (number | null)[];
+    const thicknesses = nullableFloat64Column(t, 'thickness');
     const ventChild = t.getChild('is_ventilated');
     const categories = t.getChild('category')?.toArray() as (string | null)[];
     for (let i = 0; i < elementIds.length; i++) {

@@ -47,7 +47,22 @@ timings the pipeline already publishes (`ProcessingStats`) plus an isolated
 
 Flags: `--suite` (all catalogued heavy fixtures on disk), `--iters N`,
 `--census` (CSG op distribution), `--json` (stdout; table stays on stderr),
+`--fingerprint` (ordered mesh fingerprint, computed outside the timed interval),
 `OBS=1` env (build with `observability` to fill `faceted_brep_time_ms`).
+
+JSON `allWallMs` measures each complete `process_geometry` call, including final
+metadata assembly after the pipeline's `totalMs` timer stops. Use its median
+for full-load comparisons; `allTotalsMs` retains the narrower pipeline timer.
+For a cold application load, pass `--cold --iters 1` with exactly one fixture
+per process. This skips the isolated index scans and reports `fileReadMs` plus
+`fullLoadWallMs` (file reading and the complete processing call);
+`indexBuildMs` is `null`. Launch a new process for each sample. This does not
+purge the operating system's file cache, so report that limitation explicitly.
+With `--fingerprint`, `meshFingerprintsFnv1a64` records exact float bits and
+ordered mesh identifiers, geometry, color, transforms and bounds. It does not
+cover text metadata, material definitions, UV textures or instancing records;
+validate those surfaces separately. Alternate base and branch runs in fresh
+processes on an idle machine, with the same measurement harness on both sides.
 
 Why `--profile profiling`: release-grade opt but keeps symbols and
 `panic=unwind`, so `samply` gets a symbolized flamegraph and per-element
@@ -99,19 +114,211 @@ WASM-specific structural cost (not in the native probe, by design):
 - **No wasm threads in the live path**: `init_thread_pool` exists only in the
   `threads` bundle (off by default); cross-worker parallelism is the JS pool.
 
+## Large-model browser cold-load A/B (#3978)
+
+`browser-cold-ab.sh` (wrapper) / `browser-cold-ab.mts` (harness) / `browser-ab-report.mjs`
+(reporter). Preserves the mechanism behind #3921's private large-model
+qualification (11 real IFC models, interleaved fresh-Chrome-process base/branch
+pairs) as a repeatable, in-repo tool, instead of that mechanism living only as
+one-off private scripts and a set of hardware-specific numbers pasted into a
+PR description.
+
+**DELIBERATELY MANUAL — NOT WIRED INTO CI.** `node scripts/check-test-wiring.mjs`
+does not require a `package.json`/workflow entry for anything under
+`scripts/perf/` (the same carve-out `ab.sh`/`probe.sh` already use); nothing
+here runs on a PR. It launches a real, dedicated Chromium process per sample
+and is meant to be pointed at private multi-hundred-MB models — neither
+belongs on a shared runner. `.github/workflows/benchmark.yml` is the separate,
+CI-wired, advisory-only sibling and is unaffected.
+
+```bash
+# public-fixture A/B, working tree only (repeatability check / no --base):
+scripts/perf/browser-cold-ab.sh --skip-branch-build --iters 5
+
+# real base-vs-branch (builds BASE in a throwaway git worktree):
+scripts/perf/browser-cold-ab.sh --base origin/main --iters 5
+
+# add private/large local models (never fetched or committed by this tool):
+cp scripts/perf/browser-corpus.example.json scripts/perf/browser-corpus.local.json
+# edit browser-corpus.local.json with real absolute paths, then:
+scripts/perf/browser-cold-ab.sh --corpus scripts/perf/browser-corpus.local.json
+```
+
+**What "cold" means, precisely:** each sample gets a brand-new
+`chromium.launch()` (no persistent profile) closed completely before the next
+one starts — fresh WASM instantiation, fresh geometry-worker pool startup, and
+an empty Cache API/localStorage/IndexedDB every time. It does **not** control
+the OS file cache (same caveat #3921's own qualification recorded). Observed metadata/render readiness (`metadataRenderReadyMs`) and "first geometry" (`firstBatchWaitMs`/
+`firstVisibleGeometryMs`) are reported as separate rows, never collapsed.
+
+**Repeatability:** samples are interleaved (A, B, A, B, …), and the reporter
+only calls a delta "real" once it clears the base side's own round-to-round
+spread — the same noise-floor discipline as `ab-report.mjs` for the native
+probe. Historical runs in the original PR used the app summary as TOTAL;
+that metric could precede metadata completion and does not qualify the new
+observed boundary. The existing CI `totalWallClockMs` remains unchanged and is
+reported separately; no CI baseline is silently regenerated. Old records without
+the new readiness field are refused by this manual reporter.
+
+The observed boundary requires metadata, geometry, renderer-summary and canvas
+signals, with finite timeout/error failures. It does not qualify search readiness,
+cache-tail memory, properties, spatial paths, GPU picking or Firefox. Those issue
+#3978 requirements remain follow-ups in this same harness, not implied coverage.
+The retained mesh count alone is not geometry-buffer identity.
+
+**Drift detection:** there is no committed golden here to drift silently —
+every invocation prints its own base-vs-branch delta from that run's fresh
+samples, so a stale number is never read as current. A `totalMeshes` change
+between sides invalidates the timing comparison outright (printed as
+`OUTPUT CHANGED`, matching `ab-report.mjs`'s fingerprint rule) rather than
+being silently absorbed into "faster".
+
+**Verified detection (harness self-test):** `--fault-inject-ms`/
+`--fault-inject-side`/`--fault-inject-pattern` route-delay matching requests
+(default `\.wasm(\?|$)`) on one interleaved side, to prove the harness
+actually notices a regression rather than always reporting "within noise".
+Historical request-delay runs verified the old metric's response to startup
+delay; they do not validate the new readiness metric. Deterministic delayed-
+metadata tests now exercise premature renderer summaries, delayed paint,
+metadata failure and timeout refusal without launching a benchmark. A browser
+functional smoke remains required before a new performance claim.
+
+**Failures are archived, never silently retried:** a sample that does not
+reach `streamCompleteMs` with `totalMeshes > 0` is recorded as failed (not
+retried), with a screenshot + console log + error message written to
+`scripts/perf/.browser-cold-ab-results/FAILED-*` (gitignored) — the equivalent
+of #3921/#3975's preserved failure evidence for renderer SIGILLs.
+
+**Raw cold IFC load only** — this drives the same `.ifc` parse/geometry path
+the viewer's real cold load takes, never a prepared-format reload (Fragments/
+XKT/XGF); that stays out of scope per the issue.
+
 ## Specialized harnesses (when the probe is too coarse)
 
 | Tool | Question it answers |
 |------|--------------------|
 | `rust/processing/examples/csg_scaling_bench.rs` (`--features csg-capture`) | Does native CSG scale with cores? (captures + replays the void-cut corpus under 1/2/4/8 threads) |
 | `rust/export/examples/glb_export_profile.rs` | GLB export phase split (index / mesh / assemble+serialize) + per-type triangle mass |
+| `rust/export/examples/index_vs_scan.rs` | For a whole-file helper: how much is the entity index and how much is the scan? |
 | `rust/csg-thread-bench/` (detached crate, `build.sh` + `web/serve.mjs`) | Threaded-WASM CSG: atomics tax + SharedArrayBuffer scaling in the browser |
 
 ## Lever ledger (read before spiking)
 
-Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
+### Retained processor registry ownership (#3987)
+
+Built-in processor registrations share immutable setup while each router keeps its own failure state and custom replacement behavior. Own-layer native subset comparisons did not establish a meaningful full-load improvement; the cumulative result must not be attributed to this layer. Constructor profiles identify avoided setup work, not a throughput verdict. Keep custom processors and mutable diagnostics independent. Browser performance is a separate verdict; invalid Firefox cohorts and unrun follow-ups provide no supporting result.
+
+### N-ary repair validation (#3925)
+
+Rebase before measuring geometry. The old direct-router census converted survey
+coordinates to f32 before subtracting an origin; its apparent covering regressions
+were measurements of already-collapsed inputs. Disabling shared-corner protection
+to satisfy that census regressed valid large-model cuts. A raw-first union also
+improved a synthetic sweep while damaging those cuts. Both were discarded.
+
+Preserve an accepted production union. For an unusable 3D opening union, try one
+coordinate-preserving candidate before sequential subtraction. Roof chains need
+their own actual-cut checks and a removed-volume upper bound from clean individual
+trials; a bounding box alone cannot detect over-removal. Making every diagnostic
+trial reject the original path also lost existing cuts and was discarded.
+
+The census coordinate migration uses a reference generated on pre-regression
+code, with one independently checked torn-to-closed row recorded separately.
+Neither arbitrary golden updates nor local closure scores establish correctness.
+Keep real loader output and independent solid measurements in the comparison.
+See [the implementation and reference provenance](../../docs/architecture/nary-union-repair.md).
+Correctness-only native and worker-pool full-load comparisons across eleven
+models were broadly neutral in time and peak memory; the large target's browser
+load improved. Five interleaved fresh-process pairs were used per model and
+runtime, with OS file cache uncontrolled. Native geometry was byte-identical
+except for the intended CSG129 repair. Browser geometry was identical except for
+two already-open walls whose reference comparison is recorded in the linked
+note. The performance-only stack is evaluated separately against this corrected
+baseline. **Lesson:** qualify the browser's actual detail settings too; native
+full-detail identity alone does not establish browser identity.
+
+### Retained transient decoder ownership (#4000)
+
+Reusable output buffers and a validated string projection avoid building discarded attribute trees; one-read metadata avoids filling a cache. Expired native decoder/item caches are disposed in a joined scope while trailing georeferencing runs. Own-layer native and actual Chrome worker-pool subset comparisons did not establish a meaningful full-load improvement. Keep the cumulative result separate, include the disposal join and trailing metadata in timing, and do not treat summed worker allocations as simultaneous memory. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded.
+
+### Cold-load validation notes
+
+A geometry-complete event does not imply an interactive viewer: metadata,
+renderer finalization and the store's loading state can finish later. Compare
+fresh browser processes with the target file loaded first, and stop the load
+timer only after all of these finish. Exercise GPU picking, visible property
+sets and spatial hierarchy afterwards; exercise section generation on demand
+and federation separately. Keep integrity extraction outside the timed interval.
+
+Worker memory summaries can finish before renderer finalization. They are not
+whole-load peak-memory measurements. Sample through full readiness and name the
+metric precisely: summing Chrome process RSS can double-count shared pages.
+Readiness polling quantizes short loads; capture the store's readiness event.
+Coarse RSS sampling can miss short-lived peaks, so also inspect OS process
+high-water marks and state whether they include browser startup.
+Preserve failed loads alongside successful samples. Listen for renderer crashes
+as well as JavaScript errors, and stop memory sampling on every exit path.
 
 ### Shipped wins
+- **Firefox spatial-publication stall (#3983):** Chrome-only cold-load timing
+  missed an engine-dependent entity-cache eviction cost. Georeference discovery
+  runs through the property-set index during React rendering. Restarting a Map
+  iterator for each eviction repeatedly traversed its deleted prefix in Firefox;
+  a live eviction cursor preserves LRU ordering without restarting that walk.
+  Prepare the source fingerprint and georeferencing in the parser worker and
+  carry them with both store publications, so the first render does not rescan
+  the source. Deferred-property parses must wait for their complete index before
+  preparing georeferencing. **Lesson:** qualify Firefox as well as Chrome, record
+  event-loop gaps and visible hierarchy readiness, and keep profiling runs apart
+  from uninstrumented timing. A worker-complete event alone cannot establish that
+  publishing its result leaves the UI responsive.
+- **Native cold-load working set (#3967):** immutable schema classification replaces
+  contended global caches; completed BREP signatures are shared within one
+  immutable source; the geometry scan supplies ordered georeferencing candidates
+  and discovery reads unrelated property sets without retaining them. Large
+  sources with `u32` offsets build compact rows in fixed pages, then select a
+  direct-address index only when its allocation fits within compact columns.
+  Intermediate rows have a source-based budget; unusually dense record streams
+  switch to hash coalescing so duplicate records cannot keep growing staging.
+  Sparse IDs keep sorted columns; wider sources and supplied hash indexes retain
+  their existing representation. Duplicate IDs still resolve to their last
+  authored span. Interleaved fresh-process comparisons covered large MEP,
+  architecture, sanitary, CSG, structural and bridge models from multiple
+  exporters and schemas, including the small guard fixtures: all full-load
+  medians improved and every ordered geometry fingerprint matched. Large-model
+  peak RSS fell; small-model RSS ranges overlapped. **Lesson:** measure the
+  whole call including final metadata and teardown, and measure the index's
+  working set, not just time attributed to the scanner. Bounded parallel typed
+  scan windows passed scanner parity but added too little end-to-end benefit
+  to retain; the compact-index change produced the material gain.
+- **CSG topology diagnostic (#3442): no measurable pipeline regression.** The
+  record-not-gate closure audit adds a strict directed-edge hash sweep and only
+  runs the hairline sweep when strict closure fails. On `140a6d854` versus the
+  branch, five-iteration `perf_probe` runs were flat: FZK-Haus best total 9 ->
+  9 ms (geometry 5 -> 4 ms), CSG-heavy ISSUE_129 605 -> 604 ms (geometry 586
+  -> 586 ms). Mesh, vertex and triangle counts were identical; the only
+  intentional observable delta was ISSUE_129's new CSG diagnostic count, 1 ->
+  9. **Lesson:** keep this as an audit of the final result only — auditing
+  batch intermediates turns diagnostic volume into workload-dependent noise.
+- **Entity indexes built and never read** (`index_vs_scan.rs`): `relationships()`
+  built a full parallel index and handed it to the decoder, but every decode in it
+  is `decode_at_with_id` over the scanner's own spans and only `decode_by_id`
+  consults an index. Dead work, deleted. `extract_georeferencing` does need one, so
+  it gained a `_with_index` variant and `process_geometry` now passes the index it
+  already holds instead of paying a second scan.
+  Measured best-of-3 on the release fixtures, ms: O-S1-BWK 327 MB, parallel index
+  58.3, bare type scan 180.8, `relationships()` 234.6, `extract_georeferencing()`
+  337.6; schependomlaan 47 MB, 8.5 / 27.3 / 38.1 / 48.5. **Honest size: about 1% of
+  a large conversion.** It is worth having because it is free and hits every model,
+  not because it is big.
+  **Lesson, and the reason this entry exists:** check which decode family a helper
+  uses before handing it an index. The scan is the larger half of both of these, so
+  "share the index" was never going to be the lever it looked like from a sampled
+  profile that folded index build, scan and decode into one bucket.
+  **Harness gap, third of its kind:** `probe.sh` cannot see this change at all.
+  `ProcessingStats` closes its timers before the metadata block that calls
+  georeferencing runs, so the probe table is flat on this diff by construction.
+  A flat table here is a control, not a measurement.
 - **CDT: kill the three O(T)-per-item scans**: ISSUE_129 geometry 1568 -> 646 ms
   (main, pre-seam-conform, is 979), **byte-identical output** on 8 fixtures incl.
   advanced_model (FNV over every mesh). The quality CDT — not the seam conform —
@@ -150,6 +357,58 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
   *single* consumer builds it (streaming glTF export, binary-search columns). This
   shipped and is a real win; it is NOT the viewer huge-file case below (see dead ends).
 - **Vertex weld at faceted-brep source** (#1562): closes the volume-metric gap.
+- **Incremental affinity publication** (#4051, PR #4052): publish each existing bulk job
+  chunk as soon as that chunk's routing keys are ready, keeping the shared decoder/signature
+  memo, first wave, chunk boundaries and exact job order, so routing overlaps geometry instead
+  of preceding it. Chrome, five interleaved fresh-process pairs per model: equal-model geomean
+  readiness **-2.03%** over five models; large MEP **-9.8%** readiness and **-13.3%** geometry
+  for **+3.4%** sampled physical bytes; the other four models moved at most 1.4% either way.
+  No native or Firefox gain is established, and the memory cost is real, so this is a targeted
+  readiness tradeoff. **Lesson, and the reason this entry exists:** the intended "combined"
+  map-cache build never recompiled. Timestamp-preserving source restoration let Cargo reuse
+  the affinity-only artifact, and forced Turbo execution plus matching bundled hashes did NOT
+  catch it; the build log reported no crate compilation. After restoring a variant, force
+  mtimes forward or build into a fresh output directory, and read the log for crate
+  compilation. Full per-model table:
+  `git show 4fbbe8dd5:scripts/perf/evidence/affinity-publication-2026-09-06/results.json`.
+- **Retained cold-load stack** (#3985, #3987, #3993, #4000, #4001, #4003, PR #4008): the
+  combined native full-load result is a geomean ratio of **0.845** wall and **0.987** max RSS
+  over the fixed 11-model corpus, 5 interleaved fresh-process pairs each. **Read the cohort
+  size before the ratio here.** The isolated layers ran on 2 or 3 models, not 11 (A, B and C
+  on small-Haus + CSG129; D adds CSG177; E is small-Haus + CSG177), so layer E being SLOWER
+  at a 1.036 wall geomean is a two-model statement, not a corpus one; the standalone
+  ownership subset was slower too. Chrome, also 11 models x 5 pairs: **0.713** full-readiness
+  geomean and lower sampled memory (0.904 RSS), but geometry completion slower on several
+  models (1.015 geomean) and small-Haus readiness regressed in every pair (1.138). The
+  original Firefox cohort is invalid under its own memory-sampling rule. **Lesson:** a good
+  combined number licenses no per-layer percentage and does not erase a standalone cost;
+  aggregate by median paired ratio then equal-model geomean, and never multiply separate
+  layer ratios together.
+  Full bundle: `git show 4fbbe8dd5:scripts/perf/evidence/retained-cold-load-2026-09-06/summaries.jsonl`.
+- **Server JSON `float_roundtrip`** (#4064, PR #4065): correctness, not perf. The server's
+  cached JSON deserialization moved a finite Haus northing and its transform entry by one
+  float step; enabling serde_json's `float_roundtrip` preserves both with no tolerance or
+  geometry change. The bounded fresh-process HTTP screen kept exact cold geometry and
+  data-model bytes and corrected replay parity. **It claims neither a gain nor neutrality**:
+  one pair per fixture is not performance qualification, and a processing-probe gain never
+  extrapolates to the shipping HTTP artifact. Screen:
+  `git show 4fbbe8dd5:scripts/perf/evidence/server-json-roundtrip-4064/screen.json`.
+- **Y-up winding correction** (#4056, PR #4058): correctness, no throughput claim. **The
+  IFC-to-viewer map `(x, y, z) -> (x, z, -y)` preserves orientation**, so the flat binding's
+  extra triangle reversal was wrong; removing it aligns flat winding with transformed normals
+  and the native/IFNS route, and a viewer geometry-output revision stops stale cached winding
+  from surviving the fix. Simplification and native Y-up export conversion must use that same
+  orientation-preserving convention. Canonical native geometry and its determinism manifests
+  are unchanged; converted flat indices intentionally differ. A real WASM boundary contract
+  pins it: it fails on the old runtime and passes on the correction. **Lesson:** a canonical
+  geometry fingerprint cannot certify downstream coordinate conversion, and adaptive batch
+  boundaries can expose a route-specific defect by moving otherwise identical entities between
+  flat and instanced transport. Browser qualification:
+  `git show 4fbbe8dd5:scripts/perf/evidence/yup-orientation-2026-09-07/browser-qualification.json`.
+
+### Retained mesh bookkeeping and no-op copies (#3988)
+
+Orientation reuses deterministic edge adjacency, triangle filters compact their existing index buffer, and welding/content hashing avoid duplicate map probes. Geometry policy, tolerances and traversal/output order remain unchanged. Own-layer native subset comparisons did not establish a meaningful full-load improvement; sampled leaf CPU and the cumulative result cannot establish a layer-specific gain. Preserve exact output and diagnostic oracles, including invalid/degenerate triangles and reused-buffer capacity. No isolated browser gain is established here; invalid Firefox cohorts and unrun follow-ups remain excluded. Owned-weld, sliver-incidence and alternate meshing experiments are not included.
 
 ### Dead ends (do NOT re-spike without a new mechanism)
 - **More geometry workers** -> zero CSG speedup: memory-bandwidth bound, not CPU.
@@ -183,11 +442,145 @@ Encoded so a spike does not re-walk a dead end. History lives in the PRs cited.
   Track raw AND brotli, and gate on brotli (what the user downloads).
 - **`bnum` fixed-width bigint** (bnum#74): OBSOLETE post-FixedInt; the -8.9% it once
   bought is now ~0%. Another regime-rot casualty.
+- **Component parity BVH filtering** (#4054, PR #4060): conservative per-component BVH
+  filtering of the exact parity candidate scan, query endpoint and predicates unchanged.
+  A one-pair fresh-process Chrome screen over 27 fixtures established NO corpus cold-load
+  gain: one candidate run timed out after 240 s waiting for renderer finalization while its
+  baseline passed, both sides of the largest fixture timed out closing Chrome, and two
+  completed pairs failed the raw geometry-channel gate. **Lesson:** a classification hotspot
+  does not extrapolate to an end-to-end win, and no small-component threshold is justified by
+  these observations. Rejected source, the only public copy (the spike commits are not on any
+  remote): `git show 4fbbe8dd5:scripts/perf/evidence/component-parity-bvh-rejected-2026-09-07/measured-candidate.patch`,
+  applied to public base `96ea5f08e` with `git apply --unidiff-zero`. The test-only extension
+  `bdc38d30c` chain-applies after it and is likewise public only here:
+  `git show 4fbbe8dd5:scripts/perf/evidence/component-parity-bvh-rejected-2026-09-07/later-tests.patch`.
+- **CDT constraint-inventory vertex reuse** (#4055, PR #4061): reusing the constraint
+  inventory during refinement. Native full processing call over 27 fixtures x 5 interleaved
+  fresh-process pairs: **-1.17%** by ratio of model medians, **-1.27%** by median paired ratio.
+  Two estimators, not one result. The corrected-orientation browser screen was **+0.63%
+  SLOWER** in complete readiness on the historical 11-model subset, and 3 of 27 pairs were
+  rejected on TWO different gates, which the evidence deliberately kept apart: the 511 MB and
+  263 MB pairs failed the raw mesh-count, canonical-hash, AABB/volume and spatial-multiset
+  gates, while the 1.259 GB pair passed every one of those and failed the browser-close
+  watchdog on BOTH arms (nonzero exit plus teardown failure). The close hang is unexplained
+  and is not evidence about the candidate's geometry. **Lesson:** exact instrumented producer
+  output on one fixture does not waive downstream browser mismatches; do not re-spike this on
+  a microbenchmark, a normalized mesh comparison or selected-fixture timing. Rejected source,
+  the only public copy:
+  `git show 4fbbe8dd5:scripts/perf/evidence/rejected-vertex-reuse-2026-09-07/measured-candidate.patch`,
+  applied to public base `e40992485` with `git apply --unidiff-zero`. The test follow-up
+  `c0ef3e802` chain-applies after it and is likewise public only here:
+  `git show 4fbbe8dd5:scripts/perf/evidence/rejected-vertex-reuse-2026-09-07/test-followup.patch`.
+- **Owned server mesh-batch transfer** (#4066, PR #4072): an owned sink in the canonical
+  processing loop removed the server bridge's deep mesh-buffer copy, preserving the borrowed
+  API, retained output, batching, progress, styling and cancellation. Exact output and
+  hash-only cache replay passed; the prespecified actual-HTTP readiness continuation gate did
+  not. The small and MEP models were slower in their single pairs, and the largest model's
+  modest time improvement came with higher sampled RSS. **Lesson:** removing a real
+  source-level copy is not by itself an end-to-end gain; unbounded downstream ownership and
+  the rest of the pipeline remain the cost. Rejected source, the only public copy:
+  `git show 4fbbe8dd5:scripts/perf/evidence/rejected-owned-batches-2026-09-07/measured-candidate.patch`,
+  applied to public base `1b95c6652` with `git apply --unidiff-zero`.
+- **Server PGO, both variants** (#4059, PRs #4068/#4069/#4070/#4071): the native `perf_probe`
+  full-value profile DID qualify: **-9.81%** aggregate processing-call time over 27 models
+  (-9.97% on the 22 held out), with exact ordered geometry fingerprints and counts in all 135
+  pairs. But the largest model carried a **+5.27%** median-time penalty and aggregate
+  whole-process physical footprint rose **1.39%**. Neither actual-server screen inherited it:
+  the counter-only HTTP screen and the full-value HTTP screen both missed their predeclared
+  continuation threshold, and both kept a CSG diagnostic mismatch on the 263 MB model that
+  exact geometry bytes did not waive: Complete-path CSG failures 195 -> 196 on the
+  counter-only screen and 194 -> 196 on the full-value one, mechanism tracked at #4067. The
+  census varies WITHIN each arm too (native probe baseline 194, 195, 197, 198; candidate 194,
+  195, 196, 197), which is why the mismatch is a limitation to explain rather than a
+  difference to average away. **Lesson:** a probe win does not transfer to the shipping
+  server, which differs in allocator, features, build-std configuration and target. Never
+  reuse a profile between the two artifacts. The flags that decide the result, inline because a
+  re-spike gets exactly these wrong:
+  - control `RUSTFLAGS` is **empty** on both sides;
+  - generation adds `-Cprofile-generate=<fresh raw dir>`, plus (Darwin, **counter-only
+    continuous training only**) `-Clink-arg=-Wl,-sectalign,__DATA,__llvm_prf_cnts,0x4000` and
+    the same for `__llvm_prf_data` / `__llvm_prf_bits`; full-value training adds neither those
+    nor `%c` to `LLVM_PROFILE_FILE`;
+  - use adds `-Cprofile-use=<merged.profdata> -Cllvm-args=-pgo-warn-missing-function`, and
+    the full-value server build adds `-Cllvm-args=-no-pgo-warn-mismatch-comdat-weak=false` on
+    top so weak/comdat mismatches are reported rather than hidden;
+  - the server artifact is built `CARGO_UNSTABLE_BUILD_STD=std,panic_abort cargo build
+    --release -p ifc-lite-server --target aarch64-apple-darwin`, while the probe is
+    `cargo build --profile server-release -p ifc-lite-processing --example perf_probe`, which
+    is why their profiles are not interchangeable.
+
+  Driver and full recipe: `git show 4fbbe8dd5:scripts/perf/evidence/server-pgo-darwin-2026-09-07/README.md` and
+  `git show 4fbbe8dd5:scripts/perf/evidence/server-pgo-darwin-2026-09-07/reproduce`. The three
+  screens:
+  `git show 4fbbe8dd5:scripts/perf/evidence/native-pgo-current-2026-09-07/README.md`,
+  `git show 4fbbe8dd5:scripts/perf/evidence/server-pgo-counter-http-4059/README.md`,
+  `git show 4fbbe8dd5:scripts/perf/evidence/server-pgo-full-value-http-4059/README.md`.
+- **Canonical type-ordinal handoff across the worker index** (#4031): rejected, no PR opened.
+  A fixed 11-model Chrome cohort ran all 110 predeclared fresh-process runs; 109 succeeded and
+  one crashed before readiness (CDP errorCode 4), so the independent audit rejected the
+  cohort. Across the ten models with five complete pairs, median paired full-readiness changes
+  were small and mixed, spanning **-3.07%** (architecture-343) to **+2.46%** (CSG177), with
+  CSG177 and Tekla slower in four of five pairs; CSG177's physical footprint was higher in
+  EVERY pair. **Lesson:** metadata improved more than full readiness did, so the removed
+  reconstruction work never controlled the end-to-end boundary. Evidence is private and the
+  verdict lived only in the issue's closing comment until now; the harness fixes it paid for
+  landed separately as PRs #4035 and #4037.
 
 ### Cold-start / CSG levers — mixed status (read each label)
+- **Viewer drawing demand, property-set discovery and parser scheduling (RETAINED, measured):** a saved
+  section-overlay preference does not imply an active drawing consumer. Match
+  the renderer's section-tool demand, preserve explicit export generation, and
+  refresh inputs when a consumer becomes active again. On large cold loads the
+  previous hidden section cut blocked metadata delivery and renderer readiness.
+  Sorted parser indexes also need no permutation; association-target discovery
+  was dead work once all references were indexed. A conservative resident-byte
+  ePSet filter skips only proven negatives, retaining the canonical decoder for
+  escaped names and possible matches. Disabling only the DXF caller did not
+  help: another required georeference consumer paid the same work later.
+  Parser reference arrays can overlap the geometry workers' peak allocation.
+  Giving geometry a bounded head start reduces that overlap: hand off the
+  already-built shared index when a worker finishes, at stream completion, or
+  at a source-size-scaled deadline. Always release it on iterator shutdown too.
+  Waiting only for worker completion regressed an architecture model; the
+  deadline bounds that tradeoff and avoids the parser's fallback scan timeout.
+  Keep smaller sources immediate: deferring a structural fixture increased its
+  renderer peak despite faster loading; immediate handoff removed that increase.
+  Final fresh-process comparisons across MEP, architecture, sanitary, CSG,
+  structural and bridge models improved every full-readiness median, with
+  matching geometry digests and real GPU picks, properties and spatial paths.
+  The large target reduced whole-browser RSS and renderer peak footprint;
+  smaller-model total RSS remained variable, so this is not a universal memory
+  reduction claim. Actual section-tool activation produced identical cut
+  geometry on small and large models. Single-to-federated loading preserved
+  selection, properties and spatial hierarchy; metadata-only input still settled.
+  Active drawing requests share one queue: geometry, plane and visibility
+  changes keep only the newest pending inputs, and superseded cuts cannot
+  publish. Parser-worker-unavailable loads do not retain a deferred handoff.
+  An interleaved ablation across MEP, CSG, structural, bridge and small models
+  found no material full-load or RSS benefit from retaining WASM batch decoder
+  memos, including completed BREP signatures. That extra WASM cache machinery
+  was removed; the native shared signature cache remains independently useful.
+  Clearing local reference variables and delaying only until the first mesh
+  batch did not reliably reduce whole-load memory either.
+  Rare Chrome ARM64 renderer SIGILLs occurred during the style pre-pass on
+  both the performance candidate and the unoptimized corrected baseline.
+  Preserve failed runs alongside successful timing samples; successful replays
+  do not establish a fix or equal failure rates. Follow-up #3975 carries the
+  crash dumps, reproduction conditions and bounded engine/application diagnosis.
+  This change does not claim to fix that shared reliability defect.
+  Geometry-only events and truncated worker-memory summaries cannot settle it.
 Entries below are tagged individually: CANDIDATE (measured once, not validated end-to-end),
 SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the section as
 "all unshipped".
+- **GLB export computes georeferencing nobody on that path reads** (CANDIDATE — the cost is
+  measured, the fix is not designed): `process_geometry`'s metadata block always runs the
+  georeferencing extraction, and `rust/export` has no reference to
+  `metadata.georeferencing` anywhere. The streaming GLB paths run the pipeline twice, so a
+  large export pays it twice. After the index sharing above, what remains is the scan and
+  decode: roughly 280 ms per pass on a 327 MB fixture, so about 560 ms on a streaming
+  export. The field cannot simply go — the server serves it — so this needs an opt-out on
+  the options struct, defaulting to on, plus a per-exporter audit. That is its own review
+  unit and its own measurement, which is why it is not in the PR that shipped the sharing.
 - **Brotli -q11 on the served bundle** (CANDIDATE — unvalidated): a single local estimate
   suggested Vercel serves ~1266 KB where brotli -q11 reaches ~947 KB (~25% smaller cold
   download). NOT confirmed against the real served response — Vercel controls its own
@@ -242,8 +635,278 @@ SHIPPED (landed with a PR), or RE-REFUTED / NOT SHIPPABLE. Do not read the secti
   engine every week and turns red when this changes. See
   `docs/architecture/wasm-wide-arithmetic.md` (delivery status verified 2026-07-31).
 
+- **Content-dedup signature walk on large single BREPs** (~2.00x traversal, SHIPPED #1909):
+  `item_dedup_key` walked every face/bound/loop/point of an `IfcFacetedBrep` to build a
+  dedup key — a second full traversal mirroring the mesher's own. On a model that is one
+  large BREP with no repeats, that key can never pay off. Gated on
+  `FACETED_BREP_DEDUP_FACE_LIMIT` (20,000 faces), measured with a **deterministic counter**
+  (`EntityDecoder::point_cache_stats()`), not wall-clock: 5,880,000 accesses with dedup on
+  vs 2,940,000 with it off on a synthetic 980k-face BREP — exactly 2.00x — and 1.00x after.
+  Post-mesh `get_or_cache_by_hash` and `direct_rep_identity` still run, so genuinely repeated
+  large geometry still dedups and still instances (asserted by test).
+  **Lesson, and the reason this entry exists:** an end-to-end suite verdict **cannot be
+  produced for this lever on the current corpus.** The largest BREP across all 163 fixtures
+  is 8,848 faces, so nothing in the suite crosses a 20,000-face gate; a base-vs-branch A/B
+  swung -10%/+9%/-7% with the sign tracking run order, i.e. pure noise. Do not spend another
+  afternoon on `probe.sh --suite` for a threshold this corpus cannot reach — either add a
+  fixture above the gate, or measure with a deterministic counter as above. The 20,000 figure
+  is a judgement call (an order of magnitude clear of realistic repeated parts, which run to
+  low hundreds of faces), not a measured optimum.
+
+### Retained canonical lexical and schema work (#4001)
+
+Reuse checked ID-prefix accumulation and the scanner's existing ASCII proof; obtain native geometry flags from one immutable classification lookup. Generated type parsing checks canonical names before normalization, and schema detection retains the original match priority. Own-layer native subset comparisons showed a modest full-load improvement, not a corpus-wide or browser result. Keep the cumulative verdict separate and exclude invalid Firefox cohorts and unrun follow-ups. Scalar tokenizer dispatch, scanner dictionaries and ordinal transport are separate experiments, not part of this change.
+
+### Measured feature costs (not levers — recorded so nobody re-measures)
+- **Local-frame void-cut origin preservation** (#3446, measured 2026-08-31,
+  base = `2edd144329`, arm64 native). This correctness fix keeps a rotated
+  local-frame cut's centre and nested origin out of absolute-world `f32`.
+  `probe.sh --iters 5 --json` found no performance signal: AC20-FZK-Haus best
+  total/geometry was 10/5 -> 9/5 ms (base totals 14,10,10,10,10; branch
+  11,10,9,9,9); ISSUE_129 was 623/604 -> 627/608 ms, inside the base's
+  623..633 ms spread. Mesh/vertex/triangle counts match on both fixtures
+  (AC20 285/35940/19456; ISSUE_129 1402/218346/132673). The branch intentionally
+  changes the far-field void corpus, so the pinned native/wasm manifests and
+  arm64 determinism harness are the stronger output evidence. Holter was not
+  measured: its fixture endpoint repeatedly served a SHA-256 mismatch.
+
+- **Legacy-site georeference negative-zero recovery (#3546 residual): no
+  measurable geometry-pipeline regression.** The localized raw-record scan runs
+  only while extracting `IfcSite.RefLatitude`/`RefLongitude`; it deliberately
+  leaves the shared integer tokenizer untouched. Interleaved five-round native
+  `perf_probe` A/B (`3d9ab0e30` -> `e81f41d66`, Apple Silicon) was below the
+  harness's noise threshold: FZK-Haus total 10 -> 10 ms (mesh/vertex/triangle
+  counts 285/35,940/19,456 on both); CSG-heavy ISSUE_129 total 608 -> 609 ms
+  (+0.16%, base spread 2.96%) and geometry 591 -> 592 ms (+0.17%, base spread
+  3.38%), with identical 1,402/218,346/132,673 output counts. **Lesson:** this
+  compatibility recovery is metadata-only and too rare/small for this coarse
+  end-to-end probe to distinguish from run noise; retain the behavioral fixtures
+  rather than treating the apparent one-millisecond movement as a regression.
+- **Geometry fingerprint pass: world AABB + volume + closure verdict**
+  (#1891/#1988, PR #1993, measured 2026-08-02, base = merge-base `8f139a8e`).
+  The pass gained a per-triangle tetra determinant and a six-way bounds update.
+  Verdict: **hashing OFF is unaffected, hashing ON costs a fraction of a
+  percent.** Output byte-identical throughout — mesh/vertex/triangle counts
+  unchanged on every fixture, and an FNV-1a over every `geometryHashValues`
+  entry is equal base-vs-branch on all three (so the new arrays did not perturb
+  the fingerprint they ride with).
+  - Native `probe.sh --iters 5`, interleaved rounds, hashing off (the only mode
+    the native pipeline has — see the harness gap below): AC20-FZK-Haus
+    10 -> 10 ms total; ISSUE_129 median-of-6-rounds +1.4% inside a ±10%
+    round-to-round band (per-round minima 683..984 ms on base alone);
+    Holter/ISSUE_053 977 -> 967 ms (-1.0%). No signal either way.
+  - WASM boundary (`buildPrePassOnce` + `processGeometryBatch` in node, 3
+    interleaved rounds), min ms base -> branch: AC20 off 49.0 -> 49.1 (+0.2%),
+    on 50.1 -> 50.5 (+0.8%); ISSUE_129 off 1983.9 -> 1987.9 (+0.2%), on
+    1989.0 -> 1999.4 (+0.5%); Holter off 3555.7 -> 3600.1 (+1.2%), on
+    3790.6 -> 3849.8 (+1.6%).
+  - Turning the SWITCH on is the real cost, and it is the same on both sides:
+    off -> on is +2.9%/+0.6%/+6.9% on branch versus +2.2%/+0.3%/+6.6% on base,
+    i.e. this PR adds ~0.3-0.7 pp to a surcharge that only the diff feature pays.
+  - Honest outlier: hashing-off on Holter reads +1.2% at the wasm boundary while
+    the native probe on the same fixture reads -1.0%. Nothing in the
+    hashing-off path changed — the hasher is `None`, so every new accumulator is
+    dead code — and the delta sits inside the base's own 3528..3584 ms spread,
+    so read it as the 3.7 KB binary-size / code-layout shift, not added work.
+  - **Harness gap, worth fixing before the next hashing change:** `perf_probe`
+    CANNOT reach the hashing path. `process_geometry` -> `processor/jobs.rs`
+    hardcodes `MeshProductionOptions::default()`, so `geometry_hash` is always
+    `None` natively and the fingerprint pass only exists behind
+    `IfcAPI::setComputeGeometryHashes`. The hashing-on numbers above therefore
+    come from driving the real wasm entry point, not from `probe.sh`.
+
+- **Second harness gap, same shape: `probe.sh` cannot reach the SYMBOLIC path
+  either** (found on #2358, 2026-08-11). `perf_probe` drives `process_geometry`,
+  which never populates `symbolic_data`; annotation/placement work hangs off a
+  separate entry point, `extract_symbolic_data`, called by the wasm binding and
+  the server. So a symbolic-only change produces a **flat, identical probe table
+  on both sides** — which reads exactly like "no regression" but is a control,
+  not a measurement. If the diff is under `rust/processing/src/symbolic/`, say so
+  and drive `extract_symbolic_data` directly, rather than pasting a zero.
+  - **And pick the fixture by whether it exercises the branch, not by the default.**
+    #2358 only does extra work when a symbolic rep's `ContextOfItems` is a full
+    `IfcGeometricRepresentationContext`. The default fixture AC20-FZK-Haus has
+    **zero** such reps (all 34 are SubContext) and C20-Institute zero of 316;
+    `dental_clinic.ifc` has **1080**. Scan the corpus for the shape your diff
+    touches before measuring, or the "canonical" fixture will confirm nothing.
+  - Related trap when reading byte-identity on this path: **every WCS in the
+    corpus is the identity**, which is precisely why the #2358 bug survived —
+    resolving it correctly and never resolving it agree on every shipped fixture.
+    Identical output there is evidence about the corpus, not about the change.
+
+### Retained prepass source fingerprint sharing (#3985)
+
+The existing prepass can publish the exact full-byte source key through a fresh per-load shared cell, including malformed tails. The parser uses it only when already ready; prior entry points and unavailable-cell fallback remain compatible without another source copy or worker. Retained cumulative qualification is not an isolated percentage claim. Record actual parser/prepass key origin when diagnosing overlap; an unavailable key can still pay the original parser hash.
+
+### Reading the FIELD telemetry (PostHog) — verdicts and traps
+
+- **A per-model PostHog regression alert is device-mix noise until you control for
+  device — and at this traffic level it CANNOT be made to control for device**
+  (2026-08-08, alert "Per-model load regression — any model >2x baseline").
+  It fired at `x_change = 2.29` on one fingerprint (76.7 MB / 6668 meshes,
+  14406 -> 32994 ms median). It is **NOT a regression.**
+  - The decisive estimator is the **within-person same-model paired ratio**:
+    for every (person, model) cell with loads in both windows, `median(recent) /
+    median(baseline)`. Fleet-wide that is **0.927** (IQR 0.852-1.127) over 24
+    cells / 16 persons / 97 loads — i.e. slightly *faster*. This holds the device
+    constant by construction, which is the only property that matters here.
+  - The fingerprint that fired has **zero** paired persons: 11 loads in 90 days by
+    10 different people, no person in both windows. Its paired ratio is not
+    small, it is **undefined** — there was never a regression estimate, only a
+    comparison of one set of laptops against another.
+  - **A per-model alert is not salvageable at current volume.** Across the whole
+    17-day window, **no** model fingerprint has more than **one** paired person
+    (24 fingerprints have exactly 1, 1825 have 0). Any per-model gate strong
+    enough to be sound can never fire. Alert **fleet-wide** on the pooled paired
+    ratio and keep per-model as a drill-down insight.
+  - **Two tempting controls that are circular — do not lean on them.** (1)
+    Normalising each load by that person's own median ms/MB *over the full
+    window* looks great (it collapses 2.29x to 1.00x) but the divisor is computed
+    from inside the suspect window, so a real uniform 2x regression normalises to
+    ~1.4x and a person whose only loads are recent cancels out by construction.
+    If you normalise, build the divisor from the **baseline window only**.
+    (2) "The one person who loaded it on both recent builds got faster" compares
+    two *recent* builds to each other and never bridges the windows.
+  **Lesson:** the alert's anti-false-positive gates (>=5 loads, >=3 persons per
+  window, recent p25 >= baseline median) are all satisfiable by five loads from
+  five *different* laptops. Person count is not person *overlap*. This is the
+  second retracted field perf claim on this project (see the #2183 "compression
+  is worse" retraction) — both died to contaminated measurement, not to bad code.
+- **A `total_triangles` change for one file can split WITHIN a single build.**
+  On the fingerprint above, build `1aa498e26339` emitted **both** 4423296 (two
+  persons) and 4432196 (a third) — same file, same `mesh_count` (6668), same
+  `file_size_mb` to 2dp. Because the split is inside one build, every
+  commit-range / "which merge changed the mesher" argument is moot, and so is
+  fingerprint collision (it would need two files matching to +-5 KB and +-0
+  meshes while differing 0.2% in triangles). An identical mesh roster with more
+  triangles distributed *within* it means **environment-conditional
+  triangulation on a deterministic code path** — most plausibly a CSG void cut
+  that failed and fell back under memory pressure on one run. Note the CI
+  determinism manifests would **not** catch this (pinned fixtures, controlled
+  memory), so if CSG fallback is the mechanism it is known-by-design variance,
+  not a latent determinism defect. `total_csg_failures` now rides
+  `ifc_model_loaded` so this is answerable from telemetry. Do **not** spend a
+  probe on `?geomWorkers=N`: `useIfcLoader.ts` documents that worker count cannot
+  affect output (disjoint deterministic element slices), so that probe is
+  predicted clean by the codebase itself.
+- **`total_elapsed_ms` is not pure compute — it contained an unbounded hidden-tab
+  stall** (#2385, fixed). `useIfcLoader` awaited a bare `requestAnimationFrame`
+  at stream-complete; rAF is never serviced while the document is hidden, so a
+  tabbed-away load parked there indefinitely. Field evidence: 30 days of loads
+  contain a 25-hour and a 3.4-hour `total_elapsed_ms`, and 20 loads over 60 s of
+  post-stream time on models under 5000 meshes — durations no amount of finalize
+  work can produce. 5.5% of all loads (420 / 7605) spent over 10 s after
+  `stream_complete_ms`. **When mining this event, treat `total_elapsed_ms` minus
+  `stream_complete_ms` above ~30 s as a visibility artifact, not compute, on any
+  data captured before this fix.** That duration cut is a stopgap and has a real
+  cost — it also hides a genuine slow-finalize regression. `ifc_model_loaded` now
+  carries **`was_hidden`**; once it has 17 days of history, filter on
+  `was_hidden != true` instead, which excludes the artifact without blinding the
+  metric.
+- **`BVH.build` is a synchronous main-thread block that grows as O(N log^2 N)**
+  (`packages/spatial/src/bvh.ts`, measured 2026-08-08, M-series, warmed, best of
+  3): 21 ms @ 6.7k meshes, 296 ms @ 60k, 826 ms @ 120k, **1715 ms @ 200k**
+  (3-5x that on a mid-range laptop). `buildSpatialIndexAsync` time-slices only
+  phase 1 (the linear bounds pass) and calls phase 2 "fast enough
+  synchronously"; phase 2 re-`sort()`s the index slice at *every* node, so the
+  comparator runs 68 -> 132 times per mesh as N goes 6.7k -> 200k. NOT SHIPPED and
+  not the cause of any open issue — recorded so the number does not get
+  re-measured. The fix, if wanted, is a presorted-per-axis build (O(N log N))
+  plus slicing phase 2; BVH query results are exact AABB tests at the leaves, so
+  a different tree shape is output-equivalent and can be asserted as such.
+
+### Source and buffer ownership during WASM prepass (#3989)
+
+Source-session reuse, binding-owned index adoption and direct transfer of already-owned mesh getter arrays preserve byte-taking compatibility and source-replacement resets. The standalone own-layer native subset was slower in full-load timing, while Holter's measured peak memory fell; the cause remains unestablished and favorable memory does not waive the timing concern. The intended integrated merge parent differs from that standalone comparison, and its proposed comparison remains unrun; results with different parents must not be pooled. Combined native/browser results do not isolate a gain for this layer, and invalid Firefox cohorts provide no throughput evidence. Real WASM contracts verify returned buffers survive handle free, memory growth and transfer, including textures. Establish ownership at the binding: a JavaScript view does not remove the WASM input copy, and borrowed WASM-memory views must not be transferred as owned output.
+
 ### Standing constraints
 - Geometry is **client-side only** (no server meshing).
 - One mesh home: `produce_element_meshes` - a fix in one pipeline diverges the other.
 - Parity gates: `mesh_determinism` manifests (x86_64 + arm64 + wasm32),
   `styling_parity`, `exact_predicate_determinism`. A real output change re-pins them.
+
+### Manual browser readiness boundary (#3978)
+
+The manual server matches deployed COOP/COEP (`same-origin` / `credentialless`)
+and records `crossOriginIsolated` plus SharedArrayBuffer availability, refusing
+samples without them. `--port` selects both server and shared benchmark-page
+origin; the default remains 3000 for CI compatibility.
+
+`metadataRenderReadyMs` is the first successful observation from a 100ms polling
+loop after file selection: metadata, geometry, renderer-completion logs and a
+canvas check. WebGPU falls back to nonzero canvas dimensions, so this is not a
+pixel-readback or exact paint timestamp. Screenshots are separate post-boundary
+artifacts. Polling and automation latency are included; differences on that
+scale cannot establish small-model causal gains. The manual path skips the
+legacy fixed one-second pre-observation sleep; CI keeps its original default.
+
+Manual runs default to five interleaved pairs. Fewer pairs remain available for
+functional smoke checks, but the reporter withholds noise estimates and performance
+verdicts. Any failed sample makes the report exit nonzero, including when other
+rounds completed. Renderer readiness requires the successful streaming-finalization
+log; the app summary and an allocated canvas do not establish GPU readiness.
+
+For local real-GPU Chrome qualification, pass `--headed --browser-executable
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to either manual
+entrypoint. The record includes the selected executable, browser version, headed
+mode and GPU arguments. The default remains bundled Chromium headless, which may
+not provide WebGPU on a particular host; renderer failure invalidates that sample.
+Never compare different launch modes or browser artifacts as a code A/B.
+
+Headless bundled Chromium has no GPU adapter, so a renderer-readiness smoke needs headed
+installed Chrome with cross-origin isolation and SharedArrayBuffer; the first three #3978
+attempts are retained as invalid for exactly that reason (PR #4035). Capture and
+fixture/runtime hashes: `git show 4fbbe8dd5:scripts/perf/evidence/harness-readiness-3978-2026-09-06/capture.json`.
+
+### Retained column-native metadata preparation (#3985)
+
+Keep pre-scanned numeric entity columns through categorization and reuse equivalent borrowed columns during cache index serialization. The shared validated row walk retains stable duplicates, deferred atoms and complete reference access; generic iterable indexes remain supported. This removes transient reference-object reconstruction without adding another loader or dropping metadata. Retained cumulative qualification does not establish an isolated per-layer percentage.
+
+### Retained cold-load work: search index ownership (#3993)
+
+The viewer shell owns search indexing for the lifetime of each loaded model.
+Search interfaces consume the same records, so opening or closing search does
+not create another owner or abandon its index. Cleanup releases in-flight
+claims, and stale promises cannot replace a newer build. Lifecycle tests cover
+StrictMode, unmount and partial/final metadata publications. This removes
+redundant work and preserves search availability; no separate cold-load speedup
+is attributed to this layer. Final frozen-artifact functional runs exercise actual search, model-ID resolution,
+properties and GPU picking with one and multiple models, including cache-hit
+reopening. Coverage limits ride the retained cold-load stack bullet under Shipped wins.
+
+### Retained parser publication and receiver ownership (#3985)
+
+Pack immutable type-index publication once and reuse partial columns on complete, retaining legacy transport and shared source access. Terminate the completed parser worker before receiver hydration and use the compact maximum ID during ingestion. Retained as cumulative cold-load work, with no isolated percentage attributed. Qualification must include full property/reference access, federation and memory through cache completion; worker completion alone is not readiness.
+
+### Retained cold-load work: exact LOD keys (#3991)
+
+Bounded LOD cell neighborhoods use exact integer keys containing all three cell
+coordinates and the full entity ID. Inputs outside the proved range keep the
+existing string representation. The independent tuple oracle checks identical
+representatives and triangle order, including range boundaries, subviews,
+nonfinite coordinates and full-width entity IDs. This removes per-vertex key
+allocation; no isolated end-to-end speedup is attributed to this layer. The
+retained cold-load stack must carry its cumulative browser qualification,
+including picking and peak-memory observations, before landing.
+
+### Retained cold-load work: bounded cache compression (#4003)
+
+Geometry cache compression can run in one lazy module worker, using the same
+codec and bounded chunk window as the workerless writer. The viewer opts in;
+SDK callers retain the workerless default. Only fresh serialized chunks transfer,
+and worker failures reject the cache write with deterministic disposal. This
+moves compression off the interaction thread without removing its CPU or memory
+cost. Cumulative qualification must include cache completion, full-lifetime
+memory and actual cache reopening; raw IFC timing must not be replaced by a
+prepared reload. No isolated throughput gain is attributed to this layer.
+
+Explicit corpus entries are mandatory: missing files, duplicate fixture labels
+and colliding filename keys fail before launching a browser. Default outputs use
+a fresh per-run directory; existing JSONL/report/screenshot evidence is refused
+rather than overwritten. Ref comparisons require a source WASM build and verify
+the bundled viewer engine has the same hash after Turbo. They do not fetch a
+published engine as a substitute. Without wasm-pack, supply independently frozen
+distributions directly to the TypeScript entrypoint and retain their provenance.
+`--skip-branch-build` labels its input as supplied distribution, not a verified
+current-commit build. The wrapper retains the temporary base through child exit
+and then removes it while preserving the child failure status.

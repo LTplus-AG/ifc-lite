@@ -52,10 +52,49 @@ describe('peerVisuals', () => {
     expect(visuals[0].opacity).toBeLessThan(1);
   });
 
+  it('treats idleMs exactly at staleAfterMs as stale (`>=`, not `>`)', () => {
+    // `peerStale` above sits at idleMs=30_000 vs a 10_000 threshold — miles
+    // past the boundary either way, so it can't distinguish `idleMs >=
+    // staleAfterMs` from `idleMs > staleAfterMs`. Pin the exact-equality
+    // case: `now - lastUpdate` land exactly on staleAfterMs.
+    const atThreshold = {
+      user: { id: 'exact', name: 'Exact' },
+      selection: [],
+      status: 'active',
+      lastUpdate: FRESH - 10_000,
+    } as const;
+    const peers: PresenceMap = { 8: atThreshold } as unknown as PresenceMap;
+    const visuals = peerVisuals(peers, { staleAfterMs: 10_000, now: () => FRESH });
+    expect(visuals[0].isStale).toBe(true);
+  });
+
   it('excludes the local peer when excludeClientId is set', () => {
     const peers: PresenceMap = { 1: peerA, 2: peerB } as unknown as PresenceMap;
     const visuals = peerVisuals(peers, { excludeClientId: 1, now: () => FRESH });
     expect(visuals.map((v) => v.clientId)).toEqual([2]);
+  });
+
+  it('returns visuals sorted ascending by clientId (`.sort()` at the end of peerVisuals)', () => {
+    // JS engines always iterate a plain object's integer-like keys in
+    // ascending numeric order (ECMA-262 OrdinaryOwnPropertyKeys), REGARDLESS
+    // of the order they were assigned in the object literal below — so
+    // `Object.entries(peers)` inside peerVisuals is already ascending before
+    // its own `.sort()` runs. That made a prior version of this test file
+    // vacuous: every existing case here either used `.find()` (order-blind)
+    // or had 0-1 elements in the result, so a reversed comparator
+    // (`b.clientId - a.clientId`) inside peerVisuals passed every assertion.
+    // `.sort()` fully re-sorts from scratch though — it doesn't defer to
+    // whatever order its input arrived in — so asserting the OUTPUT order
+    // here still discriminates a broken comparator even though we can't
+    // control the pre-sort order of the loop that builds `out`.
+    const peers: PresenceMap = {
+      30: peerB,
+      10: peerA,
+      20: peerStale,
+    } as unknown as PresenceMap;
+    const visuals = peerVisuals(peers, { staleAfterMs: 10_000, now: () => FRESH });
+    expect(visuals).toHaveLength(3); // more than one element, so ordering is meaningful
+    expect(visuals.map((v) => v.clientId)).toEqual([10, 20, 30]);
   });
 });
 

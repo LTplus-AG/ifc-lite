@@ -78,6 +78,8 @@ export function OptionsPopover(props: OptionsPopoverProps) {
 }
 
 const HELP_ROWS: [string, string][] = [
+  ['Rectangle tool', 'click two opposite corners (Shift = square)'],
+  ['Footprint', 'one room over the whole storey outline'],
   ['Drag a node', 'move it (snaps; Shift = straight)'],
   ['Click a wall, then another', 'split the room between them'],
   ['Click empty space', 'draw a room (Enter / dbl-click closes)'],

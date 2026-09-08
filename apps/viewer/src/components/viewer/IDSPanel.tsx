@@ -36,10 +36,7 @@ import {
   Building2,
   RefreshCw,
   Trash2,
-  FileJson,
-  FileCode,
-  FileBox,
-  Download,
+  Wrench,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -59,26 +56,26 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { useIDS } from '@/hooks/useIDS';
+import type { IDSFocusMode } from '@/store/slices/idsSlice';
 import { openGenericFileDialog } from '@/services/file-dialog';
 import type {
   IDSSpecificationResult,
   IDSEntityResult,
   IDSRequirementResult,
 } from '@ifc-lite/ids';
+import {
+  groupRequirementResults,
+  computeCheckStats,
+  type RequirementGroup,
+} from '@/hooks/ids/idsRequirementGrouping';
 import { cn } from '@/lib/utils';
 import { tourAnchor, TOUR_ANCHORS } from '@/lib/tours/anchors';
 import { useViewerStore } from '@/store';
+import { endIdsRowFocusPresentation } from '@/lib/ids/visibility-ownership';
 import { IDSAuditSummary } from './IDSAuditSummary';
-import { IDSExportDialog } from './IDSExportDialog';
-import type { IDSBCFExportSettings, IDSExportProgress } from './IDSExportDialog';
+import { IDSCorrectionDialog, getCorrectableRequirements } from './IDSCorrectionDialog';
+import { ReportExportButton } from './IDSReportExportButton';
 
 // ============================================================================
 // Types
@@ -150,6 +147,7 @@ interface SpecificationCardProps {
   onSelect: () => void;
   onEntityClick: (modelId: string, expressId: number) => void;
   filterMode: 'all' | 'failed' | 'passed';
+  onCorrect: () => void;
 }
 
 function SpecificationCard({
@@ -158,6 +156,7 @@ function SpecificationCard({
   onSelect,
   onEntityClick,
   filterMode,
+  onCorrect,
 }: SpecificationCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -169,6 +168,35 @@ function SpecificationCard({
     );
   }, [result.entityResults, filterMode]);
 
+  // Regroup this specification's entity results by requirement ("check")
+  // rather than by entity. A specification can carry several requirements
+  // (fire rating, certificate ref, width, ...) — grouping first (before any
+  // status filtering) keeps the per-requirement counts aligned across
+  // entities; see idsRequirementGrouping.ts for why that ordering matters.
+  const requirementGroups = useMemo(
+    () => groupRequirementResults(result.entityResults),
+    [result.entityResults]
+  );
+  const checkStats = useMemo(
+    () => computeCheckStats(result.entityResults),
+    [result.entityResults]
+  );
+  const filteredRequirementGroups = useMemo(() => {
+    if (filterMode === 'all') return requirementGroups;
+    return requirementGroups.filter((g) =>
+      filterMode === 'failed' ? g.failedCount > 0 : g.passedCount > 0
+    );
+  }, [requirementGroups, filterMode]);
+  const applicableChecks = checkStats.passedChecks + checkStats.failedChecks;
+
+  // Only a scalar property requirement with an exact pset/property name is
+  // correctable (#3929) — computed lazily so a spec with no failures (or no
+  // correctable shape) never renders the action.
+  const hasCorrectable = useMemo(
+    () => result.failedCount > 0 && getCorrectableRequirements(result).length > 0,
+    [result]
+  );
+
   return (
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
@@ -177,13 +205,13 @@ function SpecificationCard({
           isActive ? 'border-primary bg-primary/5' : 'border-border hover:border-primary/50'
         )}
       >
-        {/* Specification Header */}
-        <CollapsibleTrigger asChild>
-          <button
-            className="w-full p-3 text-left"
-            onClick={onSelect}
-          >
-            <div className="flex items-start gap-2">
+        {/* Specification Header. The "Correct" action is a real interactive
+            control, so it lives OUTSIDE the collapse-toggle <button> as a
+            sibling rather than nested inside it (a <button> inside a
+            <button> is invalid HTML and breaks click targeting). */}
+        <div className="flex items-start gap-2 p-3">
+          <CollapsibleTrigger asChild>
+            <button className="flex-1 min-w-0 flex items-start gap-2 text-left" onClick={onSelect}>
               {isExpanded ? (
                 <ChevronDown className="h-4 w-4 mt-0.5 shrink-0" />
               ) : (
@@ -212,14 +240,54 @@ function SpecificationCard({
                 <div className="mt-2">
                   <PassRateBar passRate={result.passRate} />
                 </div>
+                {/* Check-level rate: an entity is failed by its FIRST failing
+                    requirement while its other requirements still count as
+                    passes here, so this normally reads HIGHER than the
+                    entity-level rate above — both matter and are shown
+                    separately rather than picking one. See computeCheckStats
+                    for the denominator caveat. */}
+                {applicableChecks > 0 && (
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {checkStats.passedChecks}/{applicableChecks} checks passed ({checkStats.checkPassRate}%)
+                    {requirementGroups.length > 1 && ` across ${requirementGroups.length} requirements`}
+                  </div>
+                )}
               </div>
-            </div>
-          </button>
-        </CollapsibleTrigger>
+            </button>
+          </CollapsibleTrigger>
+          {hasCorrectable && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 px-2 shrink-0"
+              onClick={onCorrect}
+            >
+              <Wrench className="h-3.5 w-3.5 mr-1" />
+              Correct
+            </Button>
+          )}
+        </div>
+
+        {/* Requirement Breakdown */}
+        <CollapsibleContent>
+          <Separator />
+          <div className="p-2 space-y-1">
+            {filteredRequirementGroups.length === 0 ? (
+              <div className="p-3 text-sm text-muted-foreground text-center">
+                No {filterMode === 'failed' ? 'failed' : filterMode === 'passed' ? 'passed' : ''} requirements
+              </div>
+            ) : (
+              filteredRequirementGroups.map((group) => (
+                <RequirementGroupRow key={group.key} group={group} onEntityClick={onEntityClick} />
+              ))
+            )}
+          </div>
+        </CollapsibleContent>
 
         {/* Entity Results */}
         <CollapsibleContent>
           <Separator />
+          <div className="p-2 pt-1 text-xs font-medium text-muted-foreground">By entity</div>
           <div className="max-h-64 overflow-auto">
             {filteredEntities.length === 0 ? (
               <div className="p-3 text-sm text-muted-foreground text-center">
@@ -341,109 +409,73 @@ function RequirementResultRow({ result }: RequirementResultRowProps) {
 }
 
 // ============================================================================
-// Report Export Split Button
+// Requirement Group Row Component
 // ============================================================================
 
-type ExportFormat = 'html' | 'json' | 'bcf';
-
-const FORMAT_LABELS: Record<ExportFormat, string> = {
-  html: 'HTML',
-  json: 'JSON',
-  bcf: 'BCF',
-};
-
-interface ReportExportButtonProps {
-  onExportJSON: () => void;
-  onExportHTML: () => void;
-  onExportBCF: (settings: IDSBCFExportSettings) => Promise<void>;
-  bcfExportProgress: IDSExportProgress | null;
-  report: ReturnType<typeof useIDS>['report'];
+interface RequirementGroupRowProps {
+  group: RequirementGroup;
+  onEntityClick: (modelId: string, expressId: number) => void;
 }
 
-function ReportExportButton({
-  onExportJSON,
-  onExportHTML,
-  onExportBCF,
-  bcfExportProgress,
-  report,
-}: ReportExportButtonProps) {
-  const [lastFormat, setLastFormat] = useState<ExportFormat>('html');
-  const [bcfDialogOpen, setBcfDialogOpen] = useState(false);
-
-  const handleDirectExport = useCallback(() => {
-    if (lastFormat === 'html') onExportHTML();
-    else if (lastFormat === 'json') onExportJSON();
-    else setBcfDialogOpen(true);
-  }, [lastFormat, onExportHTML, onExportJSON]);
-
-  const handleSelectFormat = useCallback((format: ExportFormat) => {
-    setLastFormat(format);
-    if (format === 'html') onExportHTML();
-    else if (format === 'json') onExportJSON();
-    else setBcfDialogOpen(true);
-  }, [onExportHTML, onExportJSON]);
-
-  const label = FORMAT_LABELS[lastFormat];
+function RequirementGroupRow({ group, onEntityClick }: RequirementGroupRowProps) {
+  const [showFailures, setShowFailures] = useState(false);
+  const hasFailures = group.failingEntities.length > 0;
+  const status: 'pass' | 'fail' | 'not_applicable' =
+    group.failedCount > 0 ? 'fail' : group.passedCount > 0 ? 'pass' : 'not_applicable';
 
   return (
-    <>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <div className="flex items-center">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 px-2 rounded-r-none border-r-0 gap-1.5"
-              onClick={handleDirectExport}
-            >
-              <Download className="h-3.5 w-3.5" />
-              <span className="text-xs">{label}</span>
-            </Button>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-8 w-6 p-0 rounded-l-none"
-                  aria-label="Choose report format"
-                >
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => handleSelectFormat('html')}>
-                  <FileCode className="h-4 w-4 text-orange-500 mr-2" />
-                  HTML Report
-                  {lastFormat === 'html' && <span className="ml-auto text-xs text-muted-foreground">default</span>}
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleSelectFormat('json')}>
-                  <FileJson className="h-4 w-4 text-blue-500 mr-2" />
-                  JSON Report
-                  {lastFormat === 'json' && <span className="ml-auto text-xs text-muted-foreground">default</span>}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => handleSelectFormat('bcf')}>
-                  <FileBox className="h-4 w-4 text-green-500 mr-2" />
-                  BCF Report...
-                  {lastFormat === 'bcf' && <span className="ml-auto text-xs text-muted-foreground">default</span>}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+    <div className="rounded-md border border-border/60">
+      <button
+        type="button"
+        className="w-full p-2 text-left flex items-start gap-2 hover:bg-muted/50 rounded-md disabled:hover:bg-transparent"
+        onClick={() => hasFailures && setShowFailures((v) => !v)}
+        disabled={!hasFailures}
+        aria-expanded={hasFailures ? showFailures : undefined}
+      >
+        <StatusIcon status={status} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Badge variant="outline" className="text-[10px] uppercase">{group.facetType}</Badge>
+            <span className="text-xs truncate">{group.checkedDescription}</span>
           </div>
-        </TooltipTrigger>
-        <TooltipContent>Export Report ({label})</TooltipContent>
-      </Tooltip>
-
-      {/* BCF Export Dialog (controlled open) */}
-      <IDSExportDialog
-        hasReport={!!report}
-        failedCount={report?.specificationResults.reduce((sum, s) => sum + s.failedCount, 0) ?? 0}
-        onExport={onExportBCF}
-        progress={bcfExportProgress}
-        open={bcfDialogOpen}
-        onOpenChange={setBcfDialogOpen}
-      />
-    </>
+          <div className="text-xs text-muted-foreground mt-0.5">
+            <span className="text-green-600">{group.passedCount} passed</span>
+            {' · '}
+            <span className="text-red-600">{group.failedCount} failed</span>
+            {group.notApplicableCount > 0 && (
+              <>
+                {' · '}
+                <span>{group.notApplicableCount} n/a</span>
+              </>
+            )}
+          </div>
+        </div>
+        {hasFailures && (
+          showFailures ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />
+        )}
+      </button>
+      {showFailures && hasFailures && (
+        <div className="pl-6 pr-2 pb-2 space-y-1">
+          {group.failingEntities.map((entity) => (
+            <button
+              key={`${entity.modelId}:${entity.expressId}`}
+              type="button"
+              className="w-full text-left text-xs p-1.5 rounded hover:bg-muted/50 flex flex-col gap-0.5"
+              onClick={() => onEntityClick(entity.modelId, entity.expressId)}
+            >
+              <span className="truncate">
+                {entity.entityType}
+                {entity.entityName ? ` · ${entity.entityName}` : ''}
+                {entity.globalId ? ` · ${entity.globalId}` : ''}
+              </span>
+              {entity.failureReason && (
+                <span className="text-red-600">{entity.failureReason}</span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -468,6 +500,8 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     isolationScope,
     isolateMode,
     isolationActive,
+    visibilityFilterActive,
+    focusMode,
 
     // Actions
     loadIDSFile,
@@ -475,9 +509,10 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     runValidation,
     clearValidation,
     setActiveSpecification,
-    selectEntity,
+    focusEntity,
     setFilterMode,
     setIsolationScope,
+    setFocusMode,
     applyColors,
     isolateFailed,
     isolatePassed,
@@ -508,12 +543,28 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
   // updates once a run completes. Hold the user's in-flight choice locally so
   // the dropdown keeps showing the model being validated instead of snapping
   // back to the previous one while `loading` (#1702 C3).
+  // Leaving the panel ends the ROW focus presentation (#2867): an isolate- or
+  // ghost-mode focus would otherwise leave the model isolated on, or faded
+  // around, an element whose panel is gone — the same reason `ClashPanel` has
+  // an unmount cleanup. Ownership-scoped, so a presentation belonging to
+  // clash, the spaces X-ray or IDS's own set-level isolate buttons is left
+  // exactly as the user left it.
+  useEffect(() => () => {
+    endIdsRowFocusPresentation(useViewerStore.getState());
+  }, []);
+
   const [pendingModelId, setPendingModelId] = useState<string | null>(null);
   useEffect(() => {
     // Once a run settles (report landed or errored), fall back to the report's
     // own model id so the picker reflects reality again.
     if (!loading) setPendingModelId(null);
   }, [loading]);
+
+  // Which specification's "Correct Property" dialog is open, if any (#3929).
+  const [correctionSpecId, setCorrectionSpecId] = useState<string | null>(null);
+  const correctionSpecResult = report?.specificationResults.find(
+    (s) => s.specification.id === correctionSpecId
+  );
 
   // Handle file selection
   const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -548,10 +599,13 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
     fileInputRef.current?.click();
   }, [loadIdsFromDialog]);
 
-  // Handle entity click
+  // Handle entity click. The row's focus MODE (highlight / isolate / ghost) is
+  // the user's persistent choice, applied by `focusEntity` — activating a row
+  // used to select, colour nothing extra and frame, which in a dense model
+  // left the element indistinguishable from the failures around it (#2867).
   const handleEntityClick = useCallback((modelId: string, expressId: number) => {
-    selectEntity(modelId, expressId);
-  }, [selectEntity]);
+    focusEntity(modelId, expressId);
+  }, [focusEntity]);
 
   // Active state for the isolate toggle buttons. A button is "active" only
   // when ITS mode is applied AND isolation is still live, so an externally
@@ -889,7 +943,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 className="h-8 w-8 p-0"
                 aria-label="Clear isolation (show all)"
                 onClick={clearIsolation}
-                disabled={!isolationActive}
+                disabled={!visibilityFilterActive}
               >
                 <Focus className="h-4 w-4" />
               </Button>
@@ -917,6 +971,34 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
           />
         </div>
 
+        {/* On-select focus mode (#2867) — the same control, the same wording
+            and the same three modes as the clash panel's, because it is the
+            same action: how the rest of the model is shown when you activate
+            one result row. */}
+        <div className="flex items-center gap-1 px-2 py-1 border-b text-[11px] text-muted-foreground">
+          <span>On select:</span>
+          <div className="inline-flex rounded-md border border-border overflow-hidden">
+            {([
+              ['highlight', 'Highlight', 'Keep the whole model visible'],
+              ['isolate', 'Isolate', 'Hide everything except the selected element'],
+              ['ghost', 'Ghost', 'Fade the rest to translucent context (X-Ray)'],
+            ] as [IDSFocusMode, string, string][]).map(([m, label, tip]) => (
+              <button
+                key={m}
+                title={tip}
+                aria-pressed={focusMode === m}
+                onClick={() => setFocusMode(m)}
+                className={cn(
+                  'px-1.5 py-0.5 transition-colors',
+                  focusMode === m ? 'bg-primary text-primary-foreground' : 'hover:bg-muted',
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Specifications List */}
         <ScrollArea className="flex-1" {...tourAnchor(TOUR_ANCHORS.idsResults)}>
           <div className="p-2 space-y-2">
@@ -927,6 +1009,7 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
                 isActive={activeSpecificationId === specResult.specification.id}
                 onSelect={() => setActiveSpecification(specResult.specification.id)}
                 onEntityClick={handleEntityClick}
+                onCorrect={() => setCorrectionSpecId(specResult.specification.id)}
                 filterMode={filterMode}
               />
             ))}
@@ -1021,6 +1104,16 @@ export function IDSPanel({ onClose }: IDSPanelProps) {
         {renderDocumentLoaded()}
         {renderResults()}
       </div>
+
+      {report && correctionSpecResult && (
+        <IDSCorrectionDialog
+          open={correctionSpecId != null}
+          onOpenChange={(open) => { if (!open) setCorrectionSpecId(null); }}
+          specResult={correctionSpecResult}
+          modelId={report.modelInfo.modelId}
+          onRevalidate={runValidation}
+        />
+      )}
     </div>
   );
 }

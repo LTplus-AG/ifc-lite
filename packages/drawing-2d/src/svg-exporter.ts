@@ -31,7 +31,12 @@ import {
   type DrawingScale,
   type HatchPattern,
 } from './styles.js';
-import { boundsSize, boundsCenter } from './math.js';
+import {
+  computeTransform,
+  scaleLabel,
+  transformPoint,
+  type Transform2D,
+} from './svg-transform.js';
 import { applyDxfPlacement } from './dxf/convert.js';
 import { DEFAULT_DXF_PLACEMENT, type DxfPlacement, type DxfUnderlay } from './dxf/types.js';
 
@@ -58,7 +63,15 @@ export interface SVGExportOptions {
   projectName?: string;
   /** Background color (default: white) */
   backgroundColor?: string;
-  /** Units for dimension display */
+  /**
+   * Declared but never read. `export()` does not destructure `units` and no
+   * other code path consults it, so setting it has no effect on the emitted
+   * SVG. The exporter emits no dimension annotations at all, and the sheet
+   * itself is always sized in millimetres (`width="…mm"`), so there is no
+   * substitute option to reach for. Slated for removal; see issue #2731.
+   *
+   * @deprecated Ignored by the exporter — see above.
+   */
   units?: 'mm' | 'm';
   /** DXF reference underlays rendered beneath the drawing (issue #1782) */
   underlays?: SVGUnderlayOptions[];
@@ -75,16 +88,32 @@ export interface SVGUnderlayOptions {
   opacity?: number;
 }
 
-interface Transform2D {
-  scale: number;
-  offsetX: number;
-  offsetY: number;
-  flipY: boolean;
-}
-
 // ═══════════════════════════════════════════════════════════════════════════
 // SVG EXPORTER CLASS
 // ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * The one place a number becomes SVG text. `NaN`/`Infinity` stringify
+ * verbatim through `toFixed`, which a conforming renderer must reject, so
+ * every coordinate/size/rotation routes through here (mirrors the DXF
+ * writer's single `fmt()`). Non-finite becomes `0`: the document stays
+ * parseable and the degenerate geometry collapses at the visible origin.
+ */
+function svgNum(n: number, digits = 3): string {
+  if (!Number.isFinite(n)) return '0';
+  return n.toFixed(digits);
+}
+
+/** `drawing.config.scale` is any positive number, not just the ten
+ *  {@link COMMON_SCALES} presets; a `.find()` miss (a custom scale) must
+ *  build a synthetic `DrawingScale`, not fall to the same 1:50 as "absent". */
+function resolveDrawingScale(configScale: number): DrawingScale {
+  const common = COMMON_SCALES.find((s) => s.factor === configScale);
+  if (common) return common;
+  return Number.isFinite(configScale) && configScale > 0
+    ? { name: `1:${configScale}`, factor: configScale, useCase: 'Custom scale' }
+    : COMMON_SCALES[5];
+}
 
 export class SVGExporter {
   private hatchGenerator = new HatchGenerator();
@@ -95,7 +124,7 @@ export class SVGExporter {
   export(drawing: Drawing2D, options: SVGExportOptions = {}): string {
     const {
       paperSize = PAPER_SIZES.A3_LANDSCAPE,
-      scale = COMMON_SCALES.find((s) => s.factor === drawing.config.scale) || COMMON_SCALES[5],
+      scale = resolveDrawingScale(drawing.config.scale),
       padding = 20,
       showHiddenLines = true,
       showHatching = true,
@@ -107,7 +136,7 @@ export class SVGExporter {
     } = options;
 
     // Calculate transform from drawing coordinates to SVG coordinates
-    const transform = this.computeTransform(drawing.bounds, paperSize, scale, padding);
+    const transform = computeTransform(drawing.bounds, paperSize, scale, padding);
 
     // Build SVG
     let svg = this.createHeader(paperSize, backgroundColor);
@@ -157,7 +186,7 @@ export class SVGExporter {
 
     // Title block
     if (showTitleBlock) {
-      svg += this.createTitleBlock(paperSize, title, projectName, scale);
+      svg += this.createTitleBlock(paperSize, title, projectName, scaleLabel(scale, transform));
     }
 
     svg += '</svg>';
@@ -176,7 +205,7 @@ export class SVGExporter {
       backgroundColor = '#FFFFFF',
     } = options;
 
-    const transform = this.computeTransform(bounds, paperSize, scale, padding);
+    const transform = computeTransform(bounds, paperSize, scale, padding);
 
     let svg = this.createHeader(paperSize, backgroundColor);
     svg += this.createPolygonDefs(scale.factor);
@@ -189,43 +218,6 @@ export class SVGExporter {
   // ═══════════════════════════════════════════════════════════════════════════
   // PRIVATE METHODS
   // ═══════════════════════════════════════════════════════════════════════════
-
-  private computeTransform(
-    bounds: Bounds2D,
-    paperSize: PaperSize,
-    scale: DrawingScale,
-    padding: number
-  ): Transform2D {
-    const size = boundsSize(bounds);
-    const center = boundsCenter(bounds);
-
-    // Available drawing area
-    const availableWidth = paperSize.width - padding * 2;
-    const availableHeight = paperSize.height - padding * 2;
-
-    // Scale: world units to mm on paper
-    const worldToMm = 1000 / scale.factor; // mm per world unit (assuming world is in meters)
-
-    // Center the drawing
-    const offsetX = paperSize.width / 2 - center.x * worldToMm;
-    const offsetY = paperSize.height / 2 + center.y * worldToMm; // Flip Y
-
-    return {
-      scale: worldToMm,
-      offsetX,
-      offsetY,
-      flipY: true,
-    };
-  }
-
-  private transformPoint(point: Point2D, transform: Transform2D): Point2D {
-    return {
-      x: point.x * transform.scale + transform.offsetX,
-      y: transform.flipY
-        ? -point.y * transform.scale + transform.offsetY
-        : point.y * transform.scale + transform.offsetY,
-    };
-  }
 
   private createHeader(paperSize: PaperSize, backgroundColor: string): string {
     return `<?xml version="1.0" encoding="UTF-8"?>
@@ -310,13 +302,13 @@ export class SVGExporter {
 
   private renderLine(line: DrawingLine, transform: Transform2D): string {
     const style = getLineStyle(line.category, line.ifcType);
-    const p0 = this.transformPoint(line.line.start, transform);
-    const p1 = this.transformPoint(line.line.end, transform);
+    const p0 = transformPoint(line.line.start, transform);
+    const p1 = transformPoint(line.line.end, transform);
 
     const dashArray =
       style.dashPattern.length > 0 ? ` stroke-dasharray="${style.dashPattern.join(' ')}"` : '';
 
-    return `    <line x1="${p0.x.toFixed(3)}" y1="${p0.y.toFixed(3)}" x2="${p1.x.toFixed(3)}" y2="${p1.y.toFixed(3)}"
+    return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
           stroke="${style.color}" stroke-width="${style.weight}"
           stroke-linecap="${style.lineCap}"${dashArray}
           data-entity-id="${line.entityId}" data-ifc-type="${this.escapeXml(line.ifcType)}"/>\n`;
@@ -379,11 +371,11 @@ export class SVGExporter {
 
     // Outer boundary
     if (polygon.outer.length > 0) {
-      const first = this.transformPoint(polygon.outer[0], transform);
-      path += `M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+      const first = transformPoint(polygon.outer[0], transform);
+      path += `M ${svgNum(first.x)} ${svgNum(first.y)}`;
       for (let i = 1; i < polygon.outer.length; i++) {
-        const p = this.transformPoint(polygon.outer[i], transform);
-        path += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+        const p = transformPoint(polygon.outer[i], transform);
+        path += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
       }
       path += ' Z';
     }
@@ -391,11 +383,11 @@ export class SVGExporter {
     // Holes
     for (const hole of polygon.holes) {
       if (hole.length > 0) {
-        const first = this.transformPoint(hole[0], transform);
-        path += ` M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+        const first = transformPoint(hole[0], transform);
+        path += ` M ${svgNum(first.x)} ${svgNum(first.y)}`;
         for (let i = 1; i < hole.length; i++) {
-          const p = this.transformPoint(hole[i], transform);
-          path += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+          const p = transformPoint(hole[i], transform);
+          path += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
         }
         path += ' Z';
       }
@@ -409,10 +401,10 @@ export class SVGExporter {
     transform: Transform2D,
     pattern: HatchPattern
   ): string {
-    const p0 = this.transformPoint(hatchLine.line.start, transform);
-    const p1 = this.transformPoint(hatchLine.line.end, transform);
+    const p0 = transformPoint(hatchLine.line.start, transform);
+    const p1 = transformPoint(hatchLine.line.end, transform);
 
-    return `    <line x1="${p0.x.toFixed(3)}" y1="${p0.y.toFixed(3)}" x2="${p1.x.toFixed(3)}" y2="${p1.y.toFixed(3)}"
+    return `    <line x1="${svgNum(p0.x)}" y1="${svgNum(p0.y)}" x2="${svgNum(p1.x)}" y2="${svgNum(p1.y)}"
           stroke="${pattern.strokeColor}" stroke-width="${pattern.lineWeight}" stroke-linecap="butt"/>\n`;
   }
 
@@ -420,7 +412,9 @@ export class SVGExporter {
     paperSize: PaperSize,
     title: string,
     projectName: string,
-    scale: DrawingScale
+    // Not `scaleLabel`: that name now belongs to the imported function from
+    // ./svg-transform.js, and shadowing it here would read as a call site.
+    scaleText: string
   ): string {
     const blockWidth = 180;
     const blockHeight = 50;
@@ -435,7 +429,7 @@ export class SVGExporter {
     <line x1="${x + 100}" y1="${y + 20}" x2="${x + 100}" y2="${y + blockHeight}" stroke="black" stroke-width="0.3"/>
     <text x="${x + 5}" y="${y + 14}" font-family="Arial" font-size="10" font-weight="bold">${this.escapeXml(title)}</text>
     <text x="${x + 5}" y="${y + 30}" font-family="Arial" font-size="8">${this.escapeXml(projectName)}</text>
-    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${scale.name}</text>
+    <text x="${x + 5}" y="${y + 45}" font-family="Arial" font-size="8">Scale: ${this.escapeXml(scaleText)}</text>
     <text x="${x + 105}" y="${y + 30}" font-family="Arial" font-size="7">Date:</text>
     <text x="${x + 105}" y="${y + 45}" font-family="Arial" font-size="7">${new Date().toLocaleDateString()}</text>
   </g>\n`;
@@ -453,7 +447,7 @@ export class SVGExporter {
   private createUnderlayLayer(options: SVGUnderlayOptions, transform: Transform2D): string {
     const { underlay, placement = DEFAULT_DXF_PLACEMENT, layerVisibility = {}, opacity = 1 } = options;
     const mapPoint = (p: Point2D): Point2D =>
-      this.transformPoint(applyDxfPlacement({ x: p.x, y: -p.y }, placement), transform);
+      transformPoint(applyDxfPlacement({ x: p.x, y: -p.y }, placement), transform);
     const groupId = `dxf-${underlay.name.replace(/[^A-Za-z0-9_-]/g, '_')}`;
 
     let layer = `  <g id="${this.escapeXml(groupId)}" inkscape:label="${this.escapeXml(underlay.name)}" inkscape:groupmode="layer" opacity="${opacity}">\n`;
@@ -469,10 +463,10 @@ export class SVGExporter {
         for (const ring of rings) {
           if (ring.length === 0) continue;
           const first = mapPoint(ring[0]);
-          d += `${d ? ' ' : ''}M ${first.x.toFixed(3)} ${first.y.toFixed(3)}`;
+          d += `${d ? ' ' : ''}M ${svgNum(first.x)} ${svgNum(first.y)}`;
           for (let i = 1; i < ring.length; i++) {
             const p = mapPoint(ring[i]);
-            d += ` L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`;
+            d += ` L ${svgNum(p.x)} ${svgNum(p.y)}`;
           }
           d += ' Z';
         }
@@ -484,11 +478,11 @@ export class SVGExporter {
       for (const path of dxfLayer.paths) {
         if (path.points.length < 2) continue;
         const pts = path.points.map(mapPoint);
-        const pointsAttr = pts.map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`).join(' ');
+        const pointsAttr = pts.map((p) => `${svgNum(p.x)},${svgNum(p.y)}`).join(' ');
         const tag = path.closed ? 'polygon' : 'polyline';
         const strokeWidth = path.widthMm ?? 0.18;
-        const dash = path.dashed ? ` stroke-dasharray="${(strokeWidth * 6).toFixed(3)} ${(strokeWidth * 4).toFixed(3)}"` : '';
-        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${strokeWidth}" stroke-linecap="round"${dash}/>\n`;
+        const dash = path.dashed ? ` stroke-dasharray="${svgNum(strokeWidth * 6)} ${svgNum(strokeWidth * 4)}"` : '';
+        layer += `      <${tag} points="${pointsAttr}" fill="none" stroke="${path.color ?? dxfLayer.color}" stroke-width="${svgNum(strokeWidth)}" stroke-linecap="round"${dash}/>\n`;
       }
 
       for (const text of dxfLayer.texts) {
@@ -508,9 +502,9 @@ export class SVGExporter {
         // Multiline MTEXT stacks with tspans, matching the canvas layout.
         const lines = text.text.split('\n');
         const content = lines
-          .map((line, i) => `<tspan x="${anchor.x.toFixed(3)}" dy="${i === 0 ? 0 : (heightMm * 1.3).toFixed(3)}">${this.escapeXml(line)}</tspan>`)
+          .map((line, i) => `<tspan x="${svgNum(anchor.x)}" dy="${i === 0 ? 0 : svgNum(heightMm * 1.3)}">${this.escapeXml(line)}</tspan>`)
           .join('');
-        layer += `      <text x="${anchor.x.toFixed(3)}" y="${anchor.y.toFixed(3)}" font-family="Arial, sans-serif" font-size="${heightMm.toFixed(3)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${angle.toFixed(2)} ${anchor.x.toFixed(3)} ${anchor.y.toFixed(3)})">${content}</text>\n`;
+        layer += `      <text x="${svgNum(anchor.x)}" y="${svgNum(anchor.y)}" font-family="Arial, sans-serif" font-size="${svgNum(heightMm)}" fill="${text.color ?? dxfLayer.color}" text-anchor="${anchorAttr}" dominant-baseline="${baseline}" transform="rotate(${svgNum(angle, 2)} ${svgNum(anchor.x)} ${svgNum(anchor.y)})">${content}</text>\n`;
       }
 
       layer += '    </g>\n';

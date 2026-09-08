@@ -21,6 +21,15 @@ const VERSION = '0.0.0-test';
 
 const ALICE: AuthScope = { scopes: ['read', 'mutate'], user: 'alice' };
 const MALLORY: AuthScope = { scopes: ['read', 'mutate'], user: 'mallory' };
+// Same principal, same permissions — narrowed to *different* models. The only
+// thing telling these two sessions apart is `modelIds`, which is what makes
+// them the fixture for that arm of the identity check.
+const ALICE_ALPHA: AuthScope = { scopes: ['read', 'mutate'], user: 'alice', modelIds: ['alpha'] };
+const ALICE_BETA: AuthScope = { scopes: ['read', 'mutate'], user: 'alice', modelIds: ['beta'] };
+// Same principal, same narrowing, but a wider permission set.
+const ALICE_ADMIN: AuthScope = { scopes: ['read', 'mutate', 'admin'], user: 'alice' };
+// Same permissions in a different order — must still compare equal.
+const ALICE_REORDERED: AuthScope = { scopes: ['mutate', 'read'], user: 'alice' };
 
 function makeTransport(factory?: SessionFactory): HttpTransport {
   return new HttpTransport({
@@ -29,6 +38,10 @@ function makeTransport(factory?: SessionFactory): HttpTransport {
     authenticator: new BearerTokenAuth(new Map([
       ['alice-token', ALICE],
       ['mallory-token', MALLORY],
+      ['alice-alpha-token', ALICE_ALPHA],
+      ['alice-beta-token', ALICE_BETA],
+      ['alice-admin-token', ALICE_ADMIN],
+      ['alice-reordered-token', ALICE_REORDERED],
     ])),
     sessionFactory: factory ?? {
       build: (scope, sessionId) => createMCPServer({ version: VERSION, scope, sessionId }),
@@ -50,7 +63,10 @@ const INITIALIZE = JSON.stringify({
 async function request(
   port: number,
   token: string,
-  init: RequestInit & { sessionId?: string; headers?: Record<string, string> } = {},
+  // `headers` is replaced rather than intersected: intersecting with
+  // `HeadersInit` would leave `Headers`/`string[][]` in the union and those
+  // do not spread into a `Record<string, string>`.
+  init: Omit<RequestInit, 'headers'> & { sessionId?: string; headers?: Record<string, string> } = {},
 ): Promise<Response> {
   // Caller headers merge over the defaults so tests can add e.g. Accept.
   const headers: Record<string, string> = {
@@ -121,6 +137,64 @@ describe('HttpTransport session identity', () => {
       body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }),
     });
     expect(denied.status).toBe(403);
+  });
+
+  // The three tests above all differ by `user`, which `sameScope` rejects on
+  // its very first comparison — so every later arm of the check (the scope-set
+  // comparison, the `modelIds` comparison) was unreachable and could be
+  // deleted. A token narrowed to one model could then take over a session
+  // opened by a token narrowed to another, and inherit its drafts.
+  it('a token narrowed to a different model cannot reuse the session', async () => {
+    const sid = await initSession(port, 'alice-alpha-token');
+    const denied = await request(port, 'alice-beta-token', {
+      method: 'POST',
+      sessionId: sid,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }),
+    });
+    expect(denied.status).toBe(403);
+
+    // Counter-example: the identical token does reuse it, so the rejection is
+    // about the narrowing and not about session reuse being broken outright.
+    const ok = await request(port, 'alice-alpha-token', {
+      method: 'POST',
+      sessionId: sid,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'ping' }),
+    });
+    expect(ok.status).toBe(200);
+  });
+
+  it('an unnarrowed token cannot reuse a narrowed session, or the reverse', async () => {
+    const narrowed = await initSession(port, 'alice-alpha-token');
+    expect((await request(port, 'alice-token', {
+      method: 'POST', sessionId: narrowed,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }),
+    })).status).toBe(403);
+
+    const wide = await initSession(port, 'alice-token');
+    expect((await request(port, 'alice-alpha-token', {
+      method: 'POST', sessionId: wide,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'ping' }),
+    })).status).toBe(403);
+  });
+
+  it('a wider permission set cannot reuse a narrower session', async () => {
+    const sid = await initSession(port, 'alice-token');
+    const denied = await request(port, 'alice-admin-token', {
+      method: 'POST', sessionId: sid,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }),
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  it('the same permission set in a different order still reuses the session', async () => {
+    // The sort in `sameScope` exists for this; without it a client that emitted
+    // its scopes in another order would be locked out of its own session.
+    const sid = await initSession(port, 'alice-token');
+    const ok = await request(port, 'alice-reordered-token', {
+      method: 'POST', sessionId: sid,
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'ping' }),
+    });
+    expect(ok.status).toBe(200);
   });
 });
 

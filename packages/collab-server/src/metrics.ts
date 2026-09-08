@@ -99,6 +99,18 @@ export class MetricsRegistry {
         m.values.set(key, (m.values.get(key) ?? 0) - n);
       },
       get: (labels: LabelValues = {}) => m.values.get(labelKey(labels)) ?? 0,
+      /**
+       * Drop every label series. For a gauge whose label set is derived
+       * from a peer-chosen identifier (e.g. a room id) and refreshed by
+       * re-`set`ting each live member on every scrape, a series for a
+       * member that has since disappeared (a room that unloaded) is
+       * never overwritten and would otherwise report its last known
+       * value forever. Call this before the refresh loop so the render
+       * reflects only currently-live members.
+       */
+      reset: () => {
+        m.values.clear();
+      },
     };
   }
 

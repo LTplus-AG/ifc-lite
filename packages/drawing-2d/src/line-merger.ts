@@ -9,17 +9,14 @@
  * segments that lie on the same line and are connected or overlapping.
  */
 
-import type { Point2D, Line2D, DrawingLine, EntityKey } from './types.js';
-import { makeEntityKey } from './types.js';
+import type { Point2D, Line2D, DrawingLine } from './types.js';
 import {
   EPSILON,
   point2DDistance,
   point2DSub,
   point2DDot,
   point2DCross,
-  point2DNormalize,
   lineDirection,
-  projectPointOnLine,
 } from './math.js';
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -80,16 +77,35 @@ function mergeLineGroup(lines: DrawingLine[], opts: LineMergerOptions): DrawingL
 
   // Extract just the Line2D parts for merging
   const line2Ds = lines.map((l) => l.line);
-  const mergedLine2Ds = mergeCollinearLines(line2Ds, opts);
+  const mergedSegments = mergeCollinearSegments(line2Ds, opts);
 
-  // Map merged lines back to DrawingLines
-  // Use properties from first line in group (they're all the same)
+  // Map merged lines back to DrawingLines. The non-depth properties are
+  // uniform across the group (the grouping key covers model, entity,
+  // category and visibility, and ifcType follows the entity), so any line
+  // can donate them. `depth`/`depthEnd` are NOT uniform: since #2639 they
+  // carry per-endpoint view depth, so each merged endpoint takes the depth
+  // of the exact source endpoint it came from (mergeSegmentsOnLine tracks
+  // that provenance) — including a swap when the contributing segment runs
+  // against the merged line's direction.
   const template = lines[0];
 
-  return mergedLine2Ds.map((line) => ({
-    ...template,
-    line,
-  }));
+  return mergedSegments.map((m) => {
+    const depth = endpointDepth(lines[m.startSource.index], m.startSource.endpoint);
+    const depthEnd = endpointDepth(lines[m.endSource.index], m.endSource.endpoint);
+    const merged: DrawingLine = { ...template, line: m.line, depth };
+    if (depthEnd !== depth) {
+      merged.depthEnd = depthEnd;
+    } else {
+      // "Omitted means constant depth" — don't leak the template's depthEnd.
+      delete merged.depthEnd;
+    }
+    return merged;
+  });
+}
+
+/** View depth at one endpoint of a DrawingLine (absent depthEnd = constant). */
+function endpointDepth(line: DrawingLine, endpoint: 'start' | 'end'): number {
+  return endpoint === 'start' ? line.depth : line.depthEnd ?? line.depth;
 }
 
 /**
@@ -100,23 +116,43 @@ export function mergeCollinearLines(
   options: Partial<LineMergerOptions> = {}
 ): Line2D[] {
   const opts = { ...DEFAULT_OPTIONS, ...options };
-
   if (lines.length <= 1) return lines;
+  return mergeCollinearSegments(lines, opts).map((m) => m.line);
+}
 
+/** Which endpoint of which input segment produced a merged endpoint. */
+interface EndpointRef {
+  /** Index into the input `lines` array */
+  index: number;
+  /** Which endpoint of that segment */
+  endpoint: 'start' | 'end';
+}
+
+/** A merged segment plus the provenance of its two endpoints. */
+interface MergedSegment {
+  line: Line2D;
+  startSource: EndpointRef;
+  endSource: EndpointRef;
+}
+
+/**
+ * Merge collinear segments, tracking which source endpoint became each
+ * merged endpoint so callers can carry endpoint metadata (view depth) over.
+ */
+function mergeCollinearSegments(lines: Line2D[], opts: LineMergerOptions): MergedSegment[] {
   // Group lines by direction (using angle buckets)
   const buckets = groupByDirection(lines, opts.angleTolerance);
 
-  const result: Line2D[] = [];
+  const result: MergedSegment[] = [];
 
   // Process each direction bucket
   for (const bucket of buckets.values()) {
     // Further group by actual line (same direction, same line equation)
-    const lineGroups = groupByLine(bucket, opts.distanceTolerance);
+    const lineGroups = groupByLine(lines, bucket, opts.distanceTolerance);
 
     for (const group of lineGroups) {
       // Merge segments on the same line
-      const merged = mergeSegmentsOnLine(group, opts.gapTolerance);
-      result.push(...merged);
+      result.push(...mergeSegmentsOnLine(lines, group, opts.gapTolerance));
     }
   }
 
@@ -124,17 +160,17 @@ export function mergeCollinearLines(
 }
 
 /**
- * Group lines by their direction (angle bucket)
+ * Group line indices by their direction (angle bucket)
  */
 function groupByDirection(
   lines: Line2D[],
   angleTolerance: number
-): Map<number, Line2D[]> {
-  const buckets = new Map<number, Line2D[]>();
+): Map<number, number[]> {
+  const buckets = new Map<number, number[]>();
   const bucketSize = angleTolerance * 2;
 
-  for (const line of lines) {
-    const dir = lineDirection(line);
+  for (let i = 0; i < lines.length; i++) {
+    const dir = lineDirection(lines[i]);
     // Normalize angle to [0, π) since direction is symmetric
     let angle = Math.atan2(dir.y, dir.x);
     if (angle < 0) angle += Math.PI;
@@ -146,31 +182,35 @@ function groupByDirection(
     if (!buckets.has(bucketIdx)) {
       buckets.set(bucketIdx, []);
     }
-    buckets.get(bucketIdx)!.push(line);
+    buckets.get(bucketIdx)!.push(i);
   }
 
   return buckets;
 }
 
 /**
- * Group lines that lie on the same infinite line
+ * Group line indices whose lines lie on the same infinite line
  */
-function groupByLine(lines: Line2D[], distanceTolerance: number): Line2D[][] {
-  const groups: Line2D[][] = [];
+function groupByLine(
+  lines: Line2D[],
+  indices: number[],
+  distanceTolerance: number
+): number[][] {
+  const groups: number[][] = [];
   const assigned = new Set<number>();
 
-  for (let i = 0; i < lines.length; i++) {
+  for (let i = 0; i < indices.length; i++) {
     if (assigned.has(i)) continue;
 
-    const group: Line2D[] = [lines[i]];
+    const group: number[] = [indices[i]];
     assigned.add(i);
 
     // Find all other lines on the same line
-    for (let j = i + 1; j < lines.length; j++) {
+    for (let j = i + 1; j < indices.length; j++) {
       if (assigned.has(j)) continue;
 
-      if (linesOnSameLine(lines[i], lines[j], distanceTolerance)) {
-        group.push(lines[j]);
+      if (linesOnSameLine(lines[indices[i]], lines[indices[j]], distanceTolerance)) {
+        group.push(indices[j]);
         assigned.add(j);
       }
     }
@@ -201,27 +241,49 @@ function linesOnSameLine(a: Line2D, b: Line2D, tolerance: number): boolean {
 }
 
 /**
- * Merge segments that lie on the same line
- * Uses 1D projection along the line
+ * Merge segments (given by index into `lines`) that lie on the same line.
+ * Uses 1D projection along the line. Each merged endpoint is, by
+ * construction, the projection of some SOURCE endpoint (intervals are the
+ * min/max of endpoint parameters and merging keeps the extremes), so the
+ * returned provenance is exact — no interpolation is involved.
  */
-function mergeSegmentsOnLine(lines: Line2D[], gapTolerance: number): Line2D[] {
-  if (lines.length <= 1) return lines;
-
+function mergeSegmentsOnLine(
+  lines: Line2D[],
+  indices: number[],
+  gapTolerance: number
+): MergedSegment[] {
   // Project all segments to 1D parameter space along the line
-  const baseLine = lines[0];
+  const baseLine = lines[indices[0]];
   const dir = lineDirection(baseLine);
   const origin = baseLine.start;
 
-  // Represent each segment as [t0, t1] interval
+  // Represent each segment as [t0, t1] interval, remembering which source
+  // endpoint sits at each side (a segment running against `dir` swaps them).
   interface Interval {
     t0: number;
     t1: number;
+    s0: EndpointRef;
+    s1: EndpointRef;
   }
 
-  const intervals: Interval[] = lines.map((line) => {
-    const t0 = projectPoint1D(line.start, origin, dir);
-    const t1 = projectPoint1D(line.end, origin, dir);
-    return { t0: Math.min(t0, t1), t1: Math.max(t0, t1) };
+  const intervals: Interval[] = indices.map((index) => {
+    const line = lines[index];
+    const tStart = projectPoint1D(line.start, origin, dir);
+    const tEnd = projectPoint1D(line.end, origin, dir);
+    if (tStart <= tEnd) {
+      return {
+        t0: tStart,
+        t1: tEnd,
+        s0: { index, endpoint: 'start' as const },
+        s1: { index, endpoint: 'end' as const },
+      };
+    }
+    return {
+      t0: tEnd,
+      t1: tStart,
+      s0: { index, endpoint: 'end' as const },
+      s1: { index, endpoint: 'start' as const },
+    };
   });
 
   // Sort by start parameter
@@ -236,11 +298,11 @@ function mergeSegmentsOnLine(lines: Line2D[], gapTolerance: number): Line2D[] {
 
     // Check if intervals overlap or are adjacent (within gap tolerance)
     if (next.t0 <= current.t1 + gapTolerance) {
-      // Merge
-      current = {
-        t0: current.t0,
-        t1: Math.max(current.t1, next.t1),
-      };
+      // Merge; the far endpoint (and its provenance) moves only when the
+      // next interval actually extends past the current one.
+      if (next.t1 > current.t1) {
+        current = { t0: current.t0, s0: current.s0, t1: next.t1, s1: next.s1 };
+      }
     } else {
       // Gap too large, start new interval
       merged.push(current);
@@ -249,16 +311,20 @@ function mergeSegmentsOnLine(lines: Line2D[], gapTolerance: number): Line2D[] {
   }
   merged.push(current);
 
-  // Convert back to Line2D
+  // Convert back to Line2D, keeping endpoint provenance
   return merged.map((interval) => ({
-    start: {
-      x: origin.x + dir.x * interval.t0,
-      y: origin.y + dir.y * interval.t0,
+    line: {
+      start: {
+        x: origin.x + dir.x * interval.t0,
+        y: origin.y + dir.y * interval.t0,
+      },
+      end: {
+        x: origin.x + dir.x * interval.t1,
+        y: origin.y + dir.y * interval.t1,
+      },
     },
-    end: {
-      x: origin.x + dir.x * interval.t1,
-      y: origin.y + dir.y * interval.t1,
-    },
+    startSource: interval.s0,
+    endSource: interval.s1,
   }));
 }
 

@@ -29,6 +29,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { resolveChatViewportScreenshot } from './chatViewportCapture.js';
 import { useSandbox } from '@/hooks/useSandbox';
 import { useViewerStore } from '@/store';
 import type { CodeBlock, CodeExecResult } from '@/lib/llm/types';
@@ -117,13 +118,14 @@ export const ExecutableCodeBlock = memo(function ExecutableCodeBlock({
         if (block.code.includes('loadIfc') || block.code.includes('bim.create') || block.code.includes('colorize')) {
           // Small delay to let the renderer finish presenting the frame
           setTimeout(() => {
-            try {
-              const canvas = document.querySelector('canvas');
-              if (canvas) {
-                const dataUrl = captureCompressedCanvasImage(canvas as HTMLCanvasElement);
-                useViewerStore.getState().setChatViewportScreenshot(dataUrl);
-              }
-            } catch { /* screenshot capture failed — non-critical */ }
+            // Always WRITE the slot, including on failure: it is only cleared
+            // when the user sends, so skipping the write would leave the
+            // previous run's screenshot attached to a message about this one.
+            // See resolveChatViewportScreenshot.
+            const canvas = document.querySelector('canvas') as HTMLCanvasElement | null;
+            useViewerStore.getState().setChatViewportScreenshot(
+              resolveChatViewportScreenshot(canvas, captureCompressedCanvasImage),
+            );
           }, 500);
         }
       } else {

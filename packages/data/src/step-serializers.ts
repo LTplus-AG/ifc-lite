@@ -14,6 +14,8 @@
  * re-exports.
  */
 
+import { decodeStepStringLiteral } from '@ifc-lite/encoding';
+
 /**
  * STEP value types
  */
@@ -174,17 +176,42 @@ export function serializeValue(value: StepValue): string {
  * Escape a string for STEP format.
  *
  * Backslash and single-quote are doubled per ISO-10303-21. Control characters
- * (CR/LF and other C0 codes plus DEL) are collapsed to a single space so a
- * value can never inject a physical line break into the line-oriented STEP
- * output (matching the export package's escaper) — a raw newline in a header
- * or attribute value would otherwise split one record across two lines.
+ * (CR/LF and other C0 codes plus DEL) become ONE space EACH, not one per run,
+ * so a value cannot inject a line break and split one record across two.
+ * Collapsing a run (`/[...]+/`, which this did until #3284) loses length that
+ * `ifc_lite_export::step_text::escape` preserves, so the two halves wrote the
+ * same value differently. ISO 10303-21 6.3.3.4 mandates neither; per-character
+ * is the more faithful, and the parity claim below must be true of one.
+ *
+ * ISO 10303-21 6.3.3.4 restricts a literal's plain-text bytes to the "basic
+ * graphic" range 32-126; anything else is a control directive (`\X\HH`,
+ * `\X2\HHHH\X0\`, `\X4\HHHHHHHH\X0\`), never a raw byte, and buildingSMART
+ * says the same for IFC2X3/IFC4/IFC4X3. A reader decoding as ISO-8859-1 (what
+ * the base standard and most consumers assume) turns raw UTF-8 into mojibake or
+ * a broken parse: IfcOpenShell#699/#1016, files rejected by Solibri. The one TS
+ * implementation (#3300); export re-exports it, a vector test pins Rust parity.
  */
-function escapeStepString(str: string): string {
-  return str
+export function escapeStepString(str: string): string {
+  const escaped = str
     .replace(/\\/g, '\\\\')  // Backslash
     .replace(/'/g, "''")     // Single quote
     // eslint-disable-next-line no-control-regex
-    .replace(/[\x00-\x1F\x7F]+/g, ' '); // Collapse control chars
+    .replace(/[\x00-\x1F\x7F]/g, ' '); // One space per control char (#3284)
+  // Non-ASCII directive encoding, one character at a time. Must run AFTER
+  // backslash-doubling above: the directive's own backslashes are literal
+  // syntax the reader expects undoubled.
+  let out = '';
+  for (const ch of escaped) {
+    const cp = ch.codePointAt(0)!;
+    if (cp >= 32 && cp <= 126) {
+      out += ch;
+    } else if (cp <= 0xFFFF) {
+      out += `\\X2\\${cp.toString(16).toUpperCase().padStart(4, '0')}\\X0\\`;
+    } else {
+      out += `\\X4\\${cp.toString(16).toUpperCase().padStart(8, '0')}\\X0\\`;
+    }
+  }
+  return out;
 }
 
 /**
@@ -234,7 +261,7 @@ export function generateHeader(options: {
   const quoteList = (items: string[]): string =>
     '(' + items.map(s => "'" + escapeStepString(s) + "'").join(',') + ')';
 
-  const now = options.timeStamp ?? new Date().toISOString().replace(/[-:]/g, '').split('.')[0];
+  const now = options.timeStamp ?? new Date().toISOString().replace(/\.\d{3}Z$/, ''); // ISO 8601 time_stamp: keep '-'/':', drop only ms+'Z'
   const description = toList(options.description, ['ViewDefinition [CoordinationView]']);
   const implementationLevel = options.implementationLevel || '2;1';
   const authors = toList(options.author, ['']);
@@ -335,7 +362,22 @@ export function parseStepValue(str: string): StepValue {
 }
 
 /**
- * Parse a STEP list
+ * Parse a STEP list.
+ *
+ * Splits at top-level commas, tracking both paren/bracket nesting AND
+ * single-quoted string state (with `''` escapes). Without quote-tracking, a
+ * string member containing a literal comma — e.g. `('a,b','c')`, which any
+ * IfcLabel/IfcText value is free to contain — split mid-string: `'a,b'`
+ * became the two malformed tokens `'a` and `b'` instead of the one string
+ * `a,b`. Parens/brackets *inside* a quoted string (also legal STEP content)
+ * must likewise not perturb `depth`, hence checking `inString` first.
+ *
+ * Mirrors `splitTopLevel` in `@ifc-lite/parser`'s `source-header.ts`, which
+ * already had to solve this same problem for header fields and documented
+ * why: "FILE_DESCRIPTION items ... routinely contain commas ... inside
+ * quoted strings ... which a splitter that ignores quote state would
+ * mis-split." That reasoning applies equally to any STEP list, not just
+ * header fields — this generic parser had the same gap.
  */
 function parseStepList(str: string): StepValue[] {
   // Remove outer parentheses
@@ -346,12 +388,29 @@ function parseStepList(str: string): StepValue[] {
 
   const values: StepValue[] = [];
   let depth = 0;
+  let inString = false;
   let current = '';
 
   for (let i = 0; i < inner.length; i++) {
     const char = inner[i];
 
-    if (char === '(' || char === '[') {
+    if (inString) {
+      current += char;
+      if (char === "'") {
+        if (inner[i + 1] === "'") {
+          current += "'";
+          i++;
+        } else {
+          inString = false;
+        }
+      }
+      continue;
+    }
+
+    if (char === "'") {
+      inString = true;
+      current += char;
+    } else if (char === '(' || char === '[') {
       depth++;
       current += char;
     } else if (char === ')' || char === ']') {
@@ -373,10 +432,28 @@ function parseStepList(str: string): StepValue[] {
 }
 
 /**
- * Unescape a STEP string
+ * Unescape a STEP string literal's inner text.
+ *
+ * Delegates to the shared {@link decodeStepStringLiteral}, which resolves the
+ * `''` / `\\` doublings AND the backslash directives (`\X2\HHHH\X0\`, `\X\HH`,
+ * `\S\x`, `\Px\`) in one left-to-right scan.
+ *
+ * The hand-rolled pair of regexes this replaced stopped after the doublings, so
+ * a literal taken from a real IFC file came back with its directives intact —
+ * `\X2\00FC\X0\` as nine characters rather than `ü` (#2490). That was invisible
+ * from inside this module, because it is the exact inverse of
+ * {@link escapeStepString}, which never emits a directive: for anything this
+ * module wrote, the round trip was already exact. It is only wrong for a
+ * literal that came from somewhere else — and `parseStepValue` is a public
+ * export, so that is a supported way to reach it.
+ *
+ * {@link escapeStepString} does NOT move with it. Emitting non-ASCII raw
+ * (UTF-8) stays valid against the new reader — there are no backslashes to
+ * double and nothing to decode — and the directive-precedence rule in the
+ * shared scan is what keeps a value that merely LOOKS like a directive
+ * (`\X2\00FC\X0\` as literal text, written out as `\\X2\\00FC\\X0\\`) reading
+ * back as those characters rather than decoding to `ü`.
  */
 function unescapeStepString(str: string): string {
-  return str
-    .replace(/''/g, "'")
-    .replace(/\\\\/g, '\\');
+  return decodeStepStringLiteral(str);
 }

@@ -28,8 +28,26 @@ export interface BlobMeta {
   uploadedAt?: string;
 }
 
+/** Per-call options for {@link BlobStore.put}. */
+export interface BlobPutOptions {
+  /**
+   * Abort the upload.
+   *
+   * A HUNG upload is worse than a failed one (#2798). A rejection is counted,
+   * retried and can trip a caller's failure ceiling; a request that never
+   * settles produces no failure at all, so nothing retries, no ceiling trips,
+   * and a seed simply never resolves while the UI reports work in progress.
+   * That is absence being indistinguishable from success, which is what let
+   * the #2790 outage run for weeks.
+   *
+   * Implementations that cannot honour it must ignore it rather than throw:
+   * an in-memory store completes synchronously and has nothing to abort.
+   */
+  readonly signal?: AbortSignal;
+}
+
 export interface BlobStore {
-  put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta>;
+  put(bytes: Uint8Array, contentType?: string, options?: BlobPutOptions): Promise<BlobMeta>;
   get(hash: BlobHash): Promise<Uint8Array | null>;
   has(hash: BlobHash): Promise<boolean>;
   delete(hash: BlobHash): Promise<boolean>;
@@ -83,10 +101,16 @@ export class MemoryBlobStore implements BlobStore {
       contentType,
       uploadedAt: new Date().toISOString(),
     };
-    if (!this.blobs.has(hash)) {
-      // Defensive copy so callers can mutate `bytes` after put().
-      this.blobs.set(hash, { bytes: new Uint8Array(bytes), meta });
-    }
+    const existing = this.blobs.get(hash);
+    // Always store the fresh meta, even on a re-put of already-known content:
+    // blob-gc's race protection (see blob-gc-worker.ts) relies on a re-PUT
+    // refreshing the upload timestamp, and both other backends (IndexedDB
+    // `put()`, and the HTTP server's own PUT semantics) already do this —
+    // only this in-memory store used to keep the FIRST put's timestamp
+    // forever, so a blob re-referenced long after its original upload read
+    // back as old enough to sweep. The bytes are identical (same hash), so
+    // reuse the already-stored copy instead of paying for another one.
+    this.blobs.set(hash, { bytes: existing ? existing.bytes : new Uint8Array(bytes), meta });
     return meta;
   }
   async get(hash: BlobHash): Promise<Uint8Array | null> {
@@ -228,7 +252,11 @@ export class HttpBlobStore implements BlobStore {
     return h;
   }
 
-  async put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta> {
+  async put(
+    bytes: Uint8Array,
+    contentType?: string,
+    options?: BlobPutOptions,
+  ): Promise<BlobMeta> {
     const hash = this.hasher(bytes);
     const res = await this.fetchImpl(this.url(hash), {
       method: 'PUT',
@@ -236,6 +264,9 @@ export class HttpBlobStore implements BlobStore {
       // TS 5.7's tightened `Uint8Array<ArrayBufferLike>` typing doesn't
       // satisfy `BodyInit` directly; the runtime accepts Uint8Array fine.
       body: bytes as unknown as BodyInit,
+      // Spread so the key is ABSENT when there is no signal: `signal:
+      // undefined` is not equivalent to omitting it for every fetch impl.
+      ...(options?.signal && { signal: options.signal }),
     });
     if (!res.ok) {
       throw new Error(`@ifc-lite/collab: blob PUT failed: ${res.status} ${res.statusText}`);
@@ -302,10 +333,17 @@ export class HttpBlobStore implements BlobStore {
 export class LayeredBlobStore implements BlobStore {
   constructor(private readonly local: BlobStore, private readonly remote: BlobStore) {}
 
-  async put(bytes: Uint8Array, contentType?: string): Promise<BlobMeta> {
+  async put(
+    bytes: Uint8Array,
+    contentType?: string,
+    options?: BlobPutOptions,
+  ): Promise<BlobMeta> {
+    // The signal must reach the REMOTE half in particular: `Promise.all` does
+    // not settle until both do, so a remote upload that hangs hangs this call
+    // as well, and the `.catch` below never runs because nothing rejects.
     const [meta] = await Promise.all([
-      this.local.put(bytes, contentType),
-      this.remote.put(bytes, contentType).catch(() => null),
+      this.local.put(bytes, contentType, options),
+      this.remote.put(bytes, contentType, options).catch(() => null),
     ]);
     return meta;
   }

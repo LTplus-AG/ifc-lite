@@ -7,6 +7,20 @@
  */
 
 /**
+ * An entity's world-space axis-aligned bounding box, in the renderer frame
+ * (WebGL Y-up, metres) and in ABSOLUTE world coordinates — the RTC offset and
+ * the per-element {@link MeshData.origin} are already folded in.
+ *
+ * Distinct from {@link MeshData.localBounds}, which is the pre-placement
+ * object-space box of one submesh, and from `origin`, which is a translation
+ * carried purely for f32 precision. Do not conflate the three.
+ */
+export interface EntityWorldAabb {
+  min: [number, number, number];
+  max: [number, number, number];
+}
+
+/**
  * Mesh data for a single geometric representation of an IFC element.
  *
  * An element may produce MULTIPLE MeshData entries (one per material, CSG part,
@@ -40,6 +54,20 @@ export interface MeshData {
    *  for every vertex, so picking/selection resolves to the correct individual
    *  entity even though many entities share a single GPU batch. */
   entityIds?: Uint32Array;
+  /** The `IfcRepresentationItem` this mesh came from, so a host can drill from
+   *  a rendered piece to its entity (#2985). ALWAYS a representation item;
+   *  `materialId` carries the other case and the two are NEVER both set.
+   *  Absent where identity is merged away (single-mesh fallback, cached
+   *  `IfcMappedItem`, GPU instancing) (#3199). */
+  geometryItemId?: number;
+  /** The `IfcMaterial` layer this mesh slices. DISJOINT from `geometryItemId`,
+   *  which used to carry it — so following that field for a layered wall landed
+   *  on the wrong entity. `geometryClass === 3` cannot substitute (#3199).
+   *  Same id space as `expressId`: a federated viewer session re-homes it
+   *  alongside `expressId` and `geometryItemId` (`applyFederationOffsetToMesh`
+   *  in `apps/viewer/src/hooks/useIfcLoader.ts`), so a value read off this
+   *  field is always safe to resolve the same way as `expressId` (#3525). */
+  materialId?: number;
   /** Per-vertex texture coordinates (u, v pairs, 1:1 with positions), present
    *  only for textured meshes (issue #961). */
   uvs?: Float32Array;
@@ -65,6 +93,41 @@ export interface MeshData {
    *  share the same value (it is the whole-entity hash). Consumed by the
    *  model-diff / compare feature (issue #924); renderers ignore it. */
   geometryHash?: bigint;
+  /** Whole-entity world bounding box from the SAME hashing pass as
+   *  {@link MeshData.geometryHash} (`MeshCollection.geometryAabbValues`),
+   *  populated only when geometry hashing is enabled
+   *  (`GeometryProcessor.enableGeometryHashes()`). Like the hash, all submeshes
+   *  of one entity carry the same box — it spans the entity, not this submesh.
+   *
+   *  ABSOLUTE world, unlike `positions`: the RTC offset and the per-element
+   *  {@link MeshData.origin} are already folded in, so two revisions that chose
+   *  different RTC offsets report the same box. Do NOT add `origin` to it.
+   *
+   *  Absent when the pass produced no box for the entity (the wasm side writes
+   *  six `NaN`s there; the extractor drops them rather than passing a
+   *  NaN-bearing object on), when hashing is off, or on a wasm build predating
+   *  the getter. Consumed by the model-diff / compare feature to tell a move
+   *  from a reshape (#1891); renderers ignore it. */
+  geometryAabb?: EntityWorldAabb;
+  /** Whole-entity enclosed volume in CUBIC METRES, from the SAME hashing pass
+   *  as {@link MeshData.geometryHash} (`MeshCollection.geometryVolumeValues`,
+   *  #1993). Like the hash and the box, all submeshes of one entity carry the
+   *  identical value — it is the volume of the entity, not of this submesh, so
+   *  summing it across submeshes would multiply it.
+   *
+   *  Present only when the meshed geometry was PROVABLY a single closed,
+   *  orientable, single-component solid (measured coverage on a real corpus:
+   *  71.4%, 24,073 of 33,701 elements). Absent means the kernel could not prove
+   *  a volume — an open shell, a material-layered wall, a multi-item assembly —
+   *  and NEVER that the volume is zero or that it differs. The wasm side writes
+   *  `NaN` there; the extractor drops it rather than passing a NaN-bearing
+   *  number on.
+   *
+   *  It is the volume of what was actually meshed, AFTER opening cuts, so it is
+   *  not an IFC `BaseQuantities` `GrossVolume` and must not be compared with
+   *  one. Consumed by the model-diff split/merge detector (#1891); renderers
+   *  ignore it. */
+  geometryVolume?: number;
   /** Geometry provenance for rendering and the viewer's Model/Types view switch:
    *  - 0 = occurrence (placed IfcProduct). RENDER THIS in normal/Model views.
    *  - 1 = orphan type geometry (an IfcTypeProduct RepresentationMap with no
@@ -291,6 +354,25 @@ export interface GeometryResult {
    * geometry hashing is off or no entity was fully instanced.
    */
   instancedGeometryHashes?: Map<number, bigint>;
+  /**
+   * World bounding boxes for the SAME instanced-only entities as
+   * {@link GeometryResult.instancedGeometryHashes}, keyed the same way. A
+   * separate map rather than a field on the hash entry because an entity can
+   * have a hash and no box (the wasm side writes six `NaN`s there); a key
+   * missing here means exactly that. Absent when geometry hashing is off,
+   * nothing was fully instanced, or the wasm build predates the getter.
+   */
+  instancedGeometryAabbs?: Map<number, EntityWorldAabb>;
+  /**
+   * Enclosed volumes (m³) for the SAME instanced-only entities, keyed the same
+   * way (#1993). A third map for the same reason the boxes are a second one: an
+   * entity can be hashed and boxed with no PROVED volume, so a key missing here
+   * means exactly "not proved", and folding it into the hash entry would make
+   * absence indistinguishable from an entity that has no fingerprint at all.
+   * Absent when geometry hashing is off, nothing was fully instanced, or the
+   * wasm build predates the getter.
+   */
+  instancedGeometryVolumes?: Map<number, number>;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -298,84 +380,6 @@ export interface GeometryResult {
 // For Plan, Annotation, FootPrint representations (2D curves for drawings)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/**
- * Representation identifier types for symbolic representations
- */
-export type SymbolicRepIdentifier = 'Plan' | 'Annotation' | 'FootPrint' | 'Axis';
-
-/**
- * A 2D polyline from symbolic representations
- * Used for door swings, window cuts, equipment symbols, etc.
- */
-export interface SymbolicPolyline {
-  /** Express ID of the parent IFC element */
-  expressId: number;
-  /** IFC type name (e.g., "IfcDoor", "IfcWindow") */
-  ifcType: string;
-  /** 2D points as Float32Array [x1, y1, x2, y2, ...] */
-  points: Float32Array;
-  /** Number of points in the polyline */
-  pointCount: number;
-  /** Whether this is a closed loop */
-  isClosed: boolean;
-  /** Representation identifier ("Plan", "Annotation", etc.) */
-  repIdentifier: string;
-}
-
-/**
- * A 2D circle or arc from symbolic representations
- */
-export interface SymbolicCircle {
-  /** Express ID of the parent IFC element */
-  expressId: number;
-  /** IFC type name */
-  ifcType: string;
-  /** Center X coordinate */
-  centerX: number;
-  /** Center Y coordinate */
-  centerY: number;
-  /** Radius */
-  radius: number;
-  /** Start angle in radians (0 for full circle) */
-  startAngle: number;
-  /** End angle in radians (2π for full circle) */
-  endAngle: number;
-  /** Whether this is a full circle */
-  isFullCircle: boolean;
-  /** Representation identifier */
-  repIdentifier: string;
-}
-
-/**
- * Collection of symbolic representations from an IFC model
- * These are pre-authored 2D representations for architectural drawings
- */
-export interface SymbolicRepresentationCollection {
-  /** Number of polylines */
-  polylineCount: number;
-  /** Number of circles/arcs */
-  circleCount: number;
-  /** Total count of all symbolic items */
-  totalCount: number;
-  /** Check if collection is empty */
-  isEmpty: boolean;
-  /** Get polyline at index */
-  getPolyline(index: number): SymbolicPolyline | undefined;
-  /** Get circle at index */
-  getCircle(index: number): SymbolicCircle | undefined;
-  /** Get all express IDs that have symbolic representations */
-  getExpressIds(): Uint32Array;
-}
-
-/**
- * Converted symbolic data for use in drawing generation
- * Organized by express ID for easy lookup
- */
-export interface SymbolicDataByEntity {
-  /** Map from expressId to polylines for that entity */
-  polylines: Map<number, SymbolicPolyline[]>;
-  /** Map from expressId to circles for that entity */
-  circles: Map<number, SymbolicCircle[]>;
-  /** Set of express IDs that have symbolic representations */
-  expressIds: Set<number>;
-}
+// The symbolic-representation family lives in its own module (#3199); re-exported
+// here so every existing `from './types.js'` import keeps working unchanged.
+export * from './symbolic-types.js';

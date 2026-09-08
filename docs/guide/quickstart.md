@@ -3,7 +3,7 @@
 Get up and running with IFClite in under 5 minutes. Choose your path based on your use case.
 
 !!! tip "Beyond Single-Model Viewing"
-    IFClite also supports **multi-model federation** (loading and coordinating multiple IFC files), **BCF** (BIM Collaboration Format) for issue tracking, and **IDS** (Information Delivery Specification) for model validation. See the [Next Steps](#next-steps) section for links to these guides.
+    IFClite also supports **multi-model federation** (loading and coordinating multiple IFC files), **BCF** (BIM Collaboration Format) for topic tracking, and **IDS** (Information Delivery Specification) for model validation. See the [Next Steps](#next-steps) section for links to these guides.
 
 ## Choose Your Approach
 
@@ -441,6 +441,8 @@ canvas.addEventListener('click', async (e) => {
 
   const hit = await renderer.pick(x, y);
   if (hit) {
+    // `hit.geometryItemId` narrows this to the representation item the clicked
+    // surface came from, when the renderer has one. See the rendering guide.
     const expressId = hit.expressId;
     console.log(`Selected entity #${expressId}`);
     selectedIds = new Set([expressId]);
@@ -580,7 +582,7 @@ try {
 - [Rendering Guide](rendering.md) - WebGPU rendering features
 - [Query Guide](querying.md) - Query entities and properties
 - [Federation Guide](federation.md) - Multi-model loading and coordination
-- [BCF Guide](bcf.md) - BIM Collaboration Format for issue tracking
+- [BCF Guide](bcf.md) - BIM Collaboration Format for topic tracking
 - [IDS Guide](ids.md) - Information Delivery Specification for validation
 - [2D Drawing Guide](drawing-2d.md) - Generate 2D drawings from models
 - [Mutations Guide](mutations.md) - Programmatic model modifications

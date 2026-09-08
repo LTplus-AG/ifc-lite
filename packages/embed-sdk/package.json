@@ -1,6 +1,6 @@
 {
   "name": "@ifc-lite/embed-sdk",
-  "version": "1.14.9",
+  "version": "1.15.0",
   "description": "SDK for embedding the IFC-Lite 3D viewer in any web page via iframe",
   "type": "module",
   "main": "./dist/index.js",
@@ -14,13 +14,17 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
-    "dev": "pnpm exec tsc --watch"
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
+    "dev": "pnpm exec tsc --watch",
+    "test": "vitest run"
   },
   "dependencies": {
     "@ifc-lite/embed-protocol": "workspace:^"
   },
   "devDependencies": {
-    "typescript": "^6.0.3"
+    "happy-dom": "^20.14.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "repository": {

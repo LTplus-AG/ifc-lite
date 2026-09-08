@@ -288,7 +288,7 @@ declare global {
   // --- MCP (docs/guide/mcp.md) ---------------------------------------
   const server: _MCPServer;
 
-  // --- Collab (docs/guide/collab.md) ----------------------------------
+  // --- Collab (docs/guide/collaboration-api.md) ----------------------------------
   const ifcxContent: string;
 
   // --- Server buffers (docs/guide/server.md) ---------------------------

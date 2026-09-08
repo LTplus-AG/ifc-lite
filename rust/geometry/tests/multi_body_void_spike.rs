@@ -304,9 +304,25 @@ fn process(content: &str, use_voids: bool) -> Mesh {
     }
 }
 
-fn aabb(m: &Mesh) -> ([f32; 3], [f32; 3]) {
+/// WORLD bounds. `Mesh` positions are relative to `Mesh::origin`, and the
+/// local-frame cut returns its centre there rather than baked into f32, so a
+/// raw `bounds()` would compare the cut in its own frame against a
+/// world-absolute host.
+fn aabb(m: &Mesh) -> ([f64; 3], [f64; 3]) {
     let (lo, hi) = m.bounds();
-    ([lo.x, lo.y, lo.z], [hi.x, hi.y, hi.z])
+    let o = m.origin;
+    (
+        [
+            lo.x as f64 + o[0],
+            lo.y as f64 + o[1],
+            lo.z as f64 + o[2],
+        ],
+        [
+            hi.x as f64 + o[0],
+            hi.y as f64 + o[1],
+            hi.z as f64 + o[2],
+        ],
+    )
 }
 
 #[test]
@@ -321,7 +337,7 @@ fn multi_body_void_cut_does_not_spike_out_of_the_wall() {
 
     // The cut must stay within the host bounds (a generous 0.1 m tolerance for
     // kernel snap / f64->f32 jitter; the reported spike protruded ~2 m).
-    const TOL: f32 = 0.1;
+    const TOL: f64 = 0.1;
     for k in 0..3 {
         let under = blo[k] - vlo[k];
         let over = vhi[k] - bhi[k];

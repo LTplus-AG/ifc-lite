@@ -1,0 +1,97 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+name: Base freshness
+
+# ISSUE #3726: a PR's checks certify a tree that stops existing the moment the
+# base moves, and nothing re-checks. `main` sat red on the module-size ratchet
+# for ~4 hours because three individually-green merges composed.
+#
+# A MERGE LANDING is the only moment an open PR's green verdict can go stale,
+# which is why this runs on `push: main` and not in the PR lane. Run inside the
+# PR lane it would compare the base against itself and always say OK.
+#
+# It costs no build minutes: no install, no build, no test suite -- a checkout
+# for the snapshot files plus a handful of API reads per open PR. That is the
+# whole reason it is a display and not the ruleset's
+# `strict_required_status_checks_policy`, which is off deliberately: measured
+# over all 55 open PRs, every single one was behind main, so enforcing on
+# "behind" would rebase and re-run the entire queue after every merge.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  # The signal is delivered as a label on the PR, so whoever runs `gh pr merge`
+  # sees it without knowing this workflow exists.
+  #
+  # BOTH scopes, and the reason is measured rather than guessed. Applying a
+  # label to a PR is `pull-requests`. CREATING the repository label is a
+  # different endpoint (`POST /repos/:o/:r/labels`) that GitHub files under
+  # Issues, and `base-stale` does not exist in this repo yet (`gh label list`,
+  # checked). Granting one and needing the other is a 403 that the bootstrap
+  # step below would swallow.
+  #
+  # Measured, and it is why this is belt-and-braces rather than load-bearing:
+  # `POST /repos/:o/:r/issues/:n/labels` AUTO-CREATES a missing label. So the
+  # sweep would limp along without the bootstrap step, but the label would
+  # arrive with no colour and no description, which is a worse artifact than
+  # the one step costs.
+  issues: write
+  pull-requests: write
+
+concurrency:
+  # Only the newest main matters here: a superseded run would label against a
+  # base that has already moved again.
+  group: base-freshness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sweep:
+    name: Base freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          # The moved-file set is read from local git, not from GitHub's
+          # `compare` endpoint, which caps `files` at 300 (measured: PR #3610's
+          # base returned exactly 300) and omits it entirely past 250 commits.
+          # An open PR's tested base is an ancestor of main, so full history is
+          # what makes it diffable; a shallow clone would report every PR as
+          # `unfetched`.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      - name: Unit-test the signal itself
+        run: node --test scripts/check-base-freshness.test.mjs
+
+      - name: Ensure the label exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # `|| true` because a re-run finds the label already there, which is
+          # success, not failure. It does mean a genuine permissions failure is
+          # swallowed here -- that is tolerable ONLY because the label add in
+          # the sweep auto-creates the label and reports its own failure, so a
+          # missing permission surfaces there rather than vanishing.
+          if ! gh label create base-stale --repo "${{ github.repository }}" --color d4c5f9 \
+              --description "Tested against a base that has since moved in a way a whole-tree snapshot cares about (#3726)." 2>/tmp/label-err; then
+            echo "note: could not create the label (it may already exist):"
+            sed 's/^/      /' /tmp/label-err
+          fi
+
+      - name: Sweep the open PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/check-base-freshness.mjs --all --label

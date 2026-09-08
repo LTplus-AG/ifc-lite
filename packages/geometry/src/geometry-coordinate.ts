@@ -12,6 +12,10 @@
 
 import type { MeshData, CoordinateInfo } from './types.js';
 import type { DynamicBatchConfig } from './index.js';
+import {
+  extractGeometryFingerprints,
+  type GeometryFingerprintSource,
+} from './geometry-fingerprints.js';
 
 // ── Batch-size heuristics ──
 
@@ -51,11 +55,14 @@ export function convertMeshCollectionToBatch(
   const batch: MeshData[] = [];
 
   try {
-    // Per-entity geometry hashes — only populated when hashing was enabled via
-    // `IfcAPI.setComputeGeometryHashes` (issue #924); otherwise the parallel
-    // arrays are empty and this Map stays empty (zero overhead). Read inside the
-    // try so `collection.free()` in the finally still runs if extraction throws.
-    const geometryHashes = extractGeometryHashes(collection);
+    // Per-entity geometry hashes + world boxes — only populated when hashing
+    // was enabled via `IfcAPI.setComputeGeometryHashes` (issues #924 / #1891);
+    // otherwise the parallel arrays are empty and this Map stays empty (zero
+    // overhead). Read inside the try so `collection.free()` in the finally
+    // still runs if extraction throws.
+    const geometryFingerprints = extractGeometryFingerprints(
+      collection as unknown as GeometryFingerprintSource,
+    );
 
     for (let i = 0; i < collection.length; i++) {
       const mesh = collection.get(i);
@@ -74,7 +81,7 @@ export function convertMeshCollectionToBatch(
         // Read each WASM copy-to-JS getter once; indexing the getter
         // directly would copy a fresh Float32Array out of WASM per access.
         const color = mesh.color;
-        const geometryHash = geometryHashes.get(mesh.expressId);
+        const fingerprint = geometryFingerprints.get(mesh.expressId);
         // Per-element local-frame origin (world = origin + position); [0,0,0] or
         // absent getter (older bundle) → absolute positions.
         const originArr = (mesh as { origin?: ArrayLike<number> }).origin;
@@ -82,6 +89,10 @@ export function convertMeshCollectionToBatch(
           originArr && originArr.length === 3 && (originArr[0] || originArr[1] || originArr[2])
             ? [originArr[0], originArr[1], originArr[2]]
             : undefined;
+        // #3199: the two DISJOINT source ids. Read ONCE each, like `origin`
+        // above -- every access crosses the wasm boundary and copies.
+        const sourceGeometryItemId = (mesh as { geometryItemId?: number }).geometryItemId;
+        const sourceMaterialId = (mesh as { materialId?: number }).materialId;
         // Local (pre-placement) AABB + placement transform (issue #1474);
         // absent on older bundles (no getter) or when not captured (e.g. an
         // instancing template).
@@ -110,6 +121,13 @@ export function convertMeshCollectionToBatch(
           // #957 follow-up: carry the Model/Types geometry class so the viewer's
           // view-mode filter can show/hide type-library geometry.
           geometryClass: (mesh as { geometryClass?: number }).geometryClass ?? 0,
+          // #3199: the representation item this piece came from, or the
+          // material layer it slices. DISJOINT -- the wasm getters return
+          // `undefined` for whichever does not apply, and spreading only the
+          // defined one keeps them from both landing on the object. Older wasm
+          // bundles lack both getters, so both spread to nothing.
+          ...(sourceGeometryItemId !== undefined ? { geometryItemId: sourceGeometryItemId } : {}),
+          ...(sourceMaterialId !== undefined ? { materialId: sourceMaterialId } : {}),
         };
 
         // #961: copy the Rust-decoded surface texture + per-vertex UVs (the
@@ -137,9 +155,15 @@ export function convertMeshCollectionToBatch(
           };
         }
 
-        // #924: attach the per-entity geometry fingerprint (empty Map → no-op
-        // unless geometry hashing was enabled).
-        if (geometryHash !== undefined) meshData.geometryHash = geometryHash;
+        // #924 / #1891: attach the per-entity geometry fingerprint — hash and,
+        // when the pass produced them, the absolute world box and the proved
+        // enclosed volume (empty Map → no-op unless geometry hashing was
+        // enabled).
+        if (fingerprint) {
+          meshData.geometryHash = fingerprint.hash;
+          if (fingerprint.aabb) meshData.geometryAabb = fingerprint.aabb;
+          if (fingerprint.volume !== undefined) meshData.geometryVolume = fingerprint.volume;
+        }
 
         batch.push(meshData);
       } finally {
@@ -151,37 +175,6 @@ export function convertMeshCollectionToBatch(
   }
 
   return batch;
-}
-
-/**
- * Read the per-entity geometry fingerprints off a WASM MeshCollection into a
- * `Map<expressId, bigint>`. The collection exposes two parallel arrays
- * (`geometryHashIds` ↔ `geometryHashValues`); both are empty unless hashing
- * was enabled via `IfcAPI.setComputeGeometryHashes`. Must be called before
- * `collection.free()`. Tolerates an older WASM build lacking the getters
- * (returns an empty Map) so the geometry path never breaks.
- */
-function extractGeometryHashes(
-  collection: import('@ifc-lite/wasm').MeshCollection
-): Map<number, bigint> {
-  const map = new Map<number, bigint>();
-  const c = collection as unknown as {
-    geometryHashCount?: number;
-    geometryHashIds?: Uint32Array;
-    geometryHashValues?: BigUint64Array;
-  };
-  const count = c.geometryHashCount ?? 0;
-  if (count === 0) return map;
-
-  const ids = c.geometryHashIds;
-  const values = c.geometryHashValues;
-  if (!ids || !values) return map;
-
-  const n = Math.min(ids.length, values.length);
-  for (let i = 0; i < n; i++) {
-    map.set(ids[i], values[i]);
-  }
-  return map;
 }
 
 // ── Coordinate-info helpers ──

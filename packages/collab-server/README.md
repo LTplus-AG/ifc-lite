@@ -38,6 +38,10 @@ Environment variables:
 ```ts
 import { startCollabServer } from '@ifc-lite/collab-server';
 
+// Your own credential check — a JWT verify, a session lookup, whatever you
+// already run. (`createRoomTokenAuthenticator` ships one if you want ours.)
+declare function verify(token: string | undefined): boolean;
+
 const server = await startCollabServer({
   port: 4444,
   authenticate: async (token, room) => {

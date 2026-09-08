@@ -5,19 +5,14 @@
 /**
  * Self-contained WebGL 2 viewer HTML template for the CLI `view` command.
  *
- * Features:
- *   - Progressive geometry streaming via @ifc-lite/wasm
- *   - Edge-enhanced rendering (dFdx/dFdy normal discontinuity detection)
- *   - Ground grid with distance fade
- *   - Section plane clipping
- *   - Orbit camera with smooth inertia
- *   - Entity picking (GPU color-ID pass)
- *   - Live geometry addition (addGeometry command)
- *   - Full command API: colorize, isolate, xray, highlight, section, etc.
+ * Features: progressive geometry streaming via @ifc-lite/wasm, edge-enhanced
+ * rendering (dFdx/dFdy normal discontinuity detection), a distance-faded
+ * ground grid, section plane clipping, an orbit camera with smooth inertia,
+ * GPU color-ID entity picking, live geometry addition (addGeometry), and the
+ * full command API (colorize, isolate, xray, highlight, section, etc).
  *
- * Communication:
- *   CLI → Browser:  Server-Sent Events on /events
- *   Browser → CLI:  POST /api/command
+ * Communication: CLI to browser over Server-Sent Events (/events); browser
+ * to CLI via POST /api/command.
  */
 
 export function getViewerHtml(modelName: string): string {
@@ -846,11 +841,20 @@ function showPickInfo(eid) {
   if (!info) return;
   const el = document.getElementById('pick-info');
   el.style.display = 'block';
-  el.innerHTML =
-    '<div class="label">Entity #' + eid + '</div>' +
-    '<div class="value">' + info.ifcType + '</div>' +
-    '<div class="label">Triangles</div>' +
-    '<div class="value">' + Math.floor(info.indexCount / 3).toLocaleString() + '</div>';
+  // Build with textContent, not innerHTML. info.ifcType is safe today (a
+  // closed "Ifc..." literal set from the WASM parser), but this removes the
+  // file's last interpolation site that would depend on that staying true.
+  el.textContent = '';
+  const row = (cls, text) => {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = text;
+    return d;
+  };
+  el.appendChild(row('label', 'Entity #' + eid));
+  el.appendChild(row('value', info.ifcType));
+  el.appendChild(row('label', 'Triangles'));
+  el.appendChild(row('value', Math.floor(info.indexCount / 3).toLocaleString()));
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -1117,7 +1121,7 @@ function handleCommand(cmd) {
           const batch = meshes.map(m => ({
             expressId: m.expressId + idOffset,
             ifcType: m.ifcType || 'Created',
-            positions: m.positions,
+            positions: foldOrigin(m.positions, m.origin),
             normals: m.normals,
             indices: m.indices,
             color: [m.color[0], m.color[1], m.color[2], m.color[3] ?? 1],
@@ -1164,6 +1168,17 @@ function handleCommand(cmd) {
         camPhi = camPhiTarget = preset.phi;
         camVelTheta = camVelPhi = 0;
       }
+      break;
+    }
+
+    case 'camera': { // bim.viewer.setCamera/SDK; state: Partial<CameraState> {mode?,position?,target?,up?} — mode/up unused (perspective-only)
+      const s = (cmd && cmd.state) || {};
+      if (Array.isArray(s.target)) camTarget = [s.target[0], s.target[1], s.target[2]];
+      if (Array.isArray(s.position)) {
+        const dx = s.position[0] - camTarget[0], dy = s.position[1] - camTarget[1], dz = s.position[2] - camTarget[2], dist = Math.hypot(dx, dy, dz);
+        if (dist > 1e-9) { camDist = dist; camPhi = camPhiTarget = Math.acos(Math.max(-1, Math.min(1, dy / dist))); camTheta = camThetaTarget = Math.atan2(dz, dx); }
+      }
+      camAnimating = false; camVelTheta = camVelPhi = camVelPanX = camVelPanY = camVelPanZ = 0;
       break;
     }
 
@@ -1299,6 +1314,28 @@ function connectSSE() {
 // Same callback contract: onBatch(meshes, { percent }) and onComplete().
 // meshes are MeshDataJs objects (.expressId/.ifcType/.positions/.normals/
 // .indices/.color), identical to what the old async API yielded.
+
+// wasm stores each mesh's positions relative to its own per-element local
+// frame, not absolute world coordinates -- world position = origin + position
+// (see MeshDataJs.origin; local-frame storage defaults ON for wasm so f32
+// vertices stay precise at building/georef scale). origin is [0,0,0] when
+// positions are already absolute, so this is a no-op in that case (#2261:
+// this fold was missing entirely, collapsing every element toward its own
+// AABB centre near the shared (0,0,0) origin).
+function foldOrigin(positions, origin) {
+  if (!origin || (origin[0] === 0 && origin[1] === 0 && origin[2] === 0)) {
+    return positions;
+  }
+  const ox = origin[0], oy = origin[1], oz = origin[2];
+  const out = new Float32Array(positions.length);
+  for (let i = 0; i < positions.length; i += 3) {
+    out[i] = positions[i] + ox;
+    out[i + 1] = positions[i + 1] + oy;
+    out[i + 2] = positions[i + 2] + oz;
+  }
+  return out;
+}
+
 async function parseMeshesViaPrePass(api, content, opts) {
   opts = opts || {};
   const batchSize = opts.batchSize || 50;
@@ -1324,10 +1361,9 @@ async function parseMeshesViaPrePass(api, content, opts) {
           pre.voidKeys, pre.voidCounts, pre.voidValues, pre.styleIds, pre.styleColors,
           pre.planeAngleToRadians, pre.materialElementIds, pre.materialColorCounts, pre.materialColors,
         );
-        // The MeshDataJs getters copy into JS-owned typed arrays, so onBatch
-        // consumers keep working after we free the WASM handles. Free every
-        // mesh + the collection per batch, or the standalone viewer leaks
-        // WASM memory batch-by-batch and can OOM before a large load finishes.
+        // MeshDataJs getters copy into JS-owned typed arrays, so freeing the
+        // WASM handles below is safe. Free every mesh + the collection per
+        // batch, or the viewer leaks WASM memory and can OOM on a large load.
         try {
           const meshes = [];
           for (let i = 0; i < collection.length; i++) {
@@ -1388,7 +1424,8 @@ async function loadModel() {
           const batch = meshes.map(m => ({
             expressId: m.expressId,
             ifcType: m.ifcType || 'Unknown',
-            positions: m.positions,
+            // Fold the per-mesh local frame into world positions -- see foldOrigin's own docstring (#2261).
+            positions: foldOrigin(m.positions, m.origin),
             normals: m.normals,
             indices: m.indices,
             color: [m.color[0], m.color[1], m.color[2], m.color[3] ?? 1],

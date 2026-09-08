@@ -6,7 +6,11 @@
     "Cargo.toml",
     "Cargo.lock",
     "rust-toolchain.toml",
-    "scripts/build-wasm.sh"
+    "scripts/build-wasm.sh",
+    "tsconfig.json",
+    "tsconfig.packages.json",
+    "tsconfig.tests.base.json",
+    "scripts/typecheck-tests.mjs"
   ],
   "globalPassThroughEnv": [
     "RUSTUP_HOME",

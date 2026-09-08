@@ -178,8 +178,12 @@ export function RoomPanel({ onClose }: RoomPanelProps) {
       useViewerStore.getState().setCollabLastShareToken(token);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
-    } catch {
-      // clipboard / mint can fail silently; the dialog Share flow is the fallback
+    } catch (err) {
+      // The button simply never turns into "Copied!" — the only feedback the
+      // user gets. Mint failures (expired admin bearer, room revoked) look
+      // exactly like a blocked clipboard from the outside, so name the cause
+      // here; the dialog Share flow remains the fallback. One per click.
+      console.warn('[collab] could not copy the room link', err);
     }
   }, [collabRoomId, isAdmin, selfRole]);
 

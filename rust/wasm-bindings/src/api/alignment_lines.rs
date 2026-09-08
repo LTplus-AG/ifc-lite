@@ -10,7 +10,7 @@
 //! strip and not the thin LINE users expect (matching IfcGrid axes and
 //! IfcAnnotation curves) — we sample the alignment directrix into a flat
 //! line-list vertex buffer and feed it through the renderer's existing
-//! `uploadAnnotationLines3D` line pipeline.
+//! `setLineOverlay('alignment', …)` line pipeline.
 //!
 //! The output is `[x0,y0,z0, x1,y1,z1, …]` line-list pairs in the renderer's
 //! **Y-up, RTC-subtracted, metres** world space — the exact frame the mesh
@@ -38,7 +38,7 @@ impl IfcAPI {
     /// `Float32Array` of 3D line-list vertices `[x0,y0,z0, x1,y1,z1, …]` in
     /// the renderer's Y-up world space (RTC-subtracted, metres). Consecutive
     /// samples form line segments. Feed straight to
-    /// `renderer.uploadAnnotationLines3D(...)`.
+    /// `renderer.setLineOverlay('alignment', ...)`.
     ///
     /// Returns an empty array when the file has no alignments (or none with a
     /// resolvable Axis curve), so the caller can clear the overlay cheaply.
@@ -70,6 +70,7 @@ pub(crate) fn extract_alignment_line_vertices(content: &str) -> Vec<f32> {
     // RTC offset (metres) — `detect_rtc_offset_from_first_element` returns
     // (0,0,0) for models within 10 km of the origin, so this is a no-op for
     // local files and a true shift for georeferenced infrastructure.
+    // Not drained: meshes nothing. Pinned by rust/geometry/tests/issue_3821_auxiliary_routers_mesh_nothing.rs.
     let router = GeometryRouter::with_scale(unit_scale);
     let rtc = router.detect_rtc_offset_from_first_element(content, &mut decoder);
 
@@ -204,6 +205,146 @@ END-ISO-10303-21;
         }
         assert!((max_x - 10.0).abs() < 0.5, "max renderer-x ≈10, got {max_x}");
         assert!((max_abs_z - 10.0).abs() < 0.5, "max |renderer-z| ≈10, got {max_abs_z}");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Render-frame conversion
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // `CONTENT` above is a metre file (unit_scale exactly 1) with no
+    // IfcProject at all, sits at the origin (RTC exactly 0), and its
+    // assertions take `.abs()` of the renderer Z. Between them, three
+    // independent halves of `append_alignment_segments` are unobservable:
+    // dropping the `unit_scale` multiply, adding the RTC offset instead of
+    // subtracting it, and dropping the negation on the renderer Z all pass
+    // that test unchanged. These two pin each one on its own.
+
+    /// Millimetre file (`IfcSIUnit` with the `.MILLI.` prefix): every file
+    /// coordinate is 1000x its metre value, so a dropped `unit_scale` puts the
+    /// centerline kilometres away. The directrix runs to `(10000, 4000)` mm =
+    /// `(10, 4)` m, whose renderer Z is `-4` — SIGNED, so the negation cannot
+    /// hide behind an absolute value either.
+    const MILLIMETRE_ALIGNMENT: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+#6=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#7=IFCUNITASSIGNMENT((#6));
+#8=IFCPROJECT('0PrOjEcTpRoJeCtPrOjEc',$,'P',$,$,$,$,$,#7);
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((10000.,4000.,0.));
+#4=IFCPOLYLINE((#1,#2));
+#10=IFCALIGNMENT('0aBcDeFgHiJkLmNoPqRsT0',$,'Test Alignment',$,$,$,$,#4,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+
+    #[test]
+    fn millimetre_alignment_is_unit_scaled_and_yup_swapped() {
+        let verts = extract_alignment_line_vertices(MILLIMETRE_ALIGNMENT);
+        assert!(!verts.is_empty(), "alignment must emit centerline vertices");
+        assert_eq!(verts.len() % 3, 0, "vertices must be xyz triples");
+
+        let mut max_x = f32::MIN;
+        let mut min_z = f32::MAX;
+        let mut max_z = f32::MIN;
+        for v in verts.chunks_exact(3) {
+            assert!(v[1].abs() < 1e-2, "planar alignment elevation must be ~0, got {}", v[1]);
+            max_x = max_x.max(v[0]);
+            min_z = min_z.min(v[2]);
+            max_z = max_z.max(v[2]);
+        }
+        // 10 000 mm -> 10 m. Unscaled it would read 10 000.
+        assert!((max_x - 10.0).abs() < 0.05, "max renderer-x = 10 m, got {max_x}");
+        // 4 000 mm -> 4 m, NEGATED on the way into the renderer frame: the
+        // whole path lies at z <= 0, so a dropped negation flips the interval.
+        assert!((min_z + 4.0).abs() < 0.05, "min renderer-z = -4 m, got {min_z}");
+        assert!(max_z <= 1e-2, "renderer-z must never go positive, got {max_z}");
+    }
+
+    /// A georeferenced metre file: a wall out at survey coordinates trips RTC
+    /// detection, and the alignment shares that frame. The offset is
+    /// SUBTRACTED, so the centerline lands near the origin; adding it instead
+    /// (or subtracting the wrong component) puts it ~2x the offset out, i.e.
+    /// megametres away, which no near-origin bound can miss.
+    #[test]
+    fn georeferenced_alignment_is_rebased_near_the_origin() {
+        let content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+#2=IFCDIRECTION((0.,0.,1.));
+#3=IFCDIRECTION((1.,0.,0.));
+/* a wall far out at survey coords so RTC detection trips (>10 km) */
+#6=IFCCARTESIANPOINT((10400000.,2000000.,0.));
+#7=IFCAXIS2PLACEMENT3D(#6,#2,#3);
+#8=IFCLOCALPLACEMENT($,#7);
+#9=IFCPRODUCTDEFINITIONSHAPE($,$,(#41));
+#40=IFCCARTESIANPOINT((10400000.,2000000.,0.));
+#41=IFCSHAPEREPRESENTATION($,'Body','Curve2D',(#42));
+#42=IFCPOLYLINE((#40,#40));
+#43=IFCWALL('1WaLLWaLLWaLLWaLLWaLL00',$,'W',$,$,#8,#9,$,$);
+/* the alignment directrix in the same survey frame */
+#50=IFCCARTESIANPOINT((10400000.,2000000.,0.));
+#51=IFCCARTESIANPOINT((10400010.,2000004.,0.));
+#52=IFCPOLYLINE((#50,#51));
+#10=IFCALIGNMENT('0aBcDeFgHiJkLmNoPqRsT0',$,'A',$,$,$,$,#52,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let verts = extract_alignment_line_vertices(content);
+        assert!(!verts.is_empty(), "alignment must emit centerline vertices");
+        for v in verts.chunks_exact(3) {
+            for c in v {
+                assert!(
+                    c.abs() < 1000.0,
+                    "render-frame coord must be near origin after RTC, got {c}"
+                );
+            }
+        }
+    }
+
+    /// `locate_axis_curve` tries attributes 7, 8, then 6 — `Axis` first, with
+    /// `Representation` (6) only as a last-resort fallback for publishers that
+    /// reuse it. Every other fixture here leaves 6 null, so the ORDER of that
+    /// list is unobservable: searching 6 first passes them all. Here both
+    /// resolve to a polyline and only `Axis` gives the right geometry.
+    #[test]
+    fn axis_attribute_wins_over_the_representation_fallback() {
+        let content = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4X1'));
+ENDSEC;
+DATA;
+/* Axis (attr 7): runs 10 m along +X. */
+#1=IFCCARTESIANPOINT((0.,0.,0.));
+#2=IFCCARTESIANPOINT((10.,0.,0.));
+#4=IFCPOLYLINE((#1,#2));
+/* Representation (attr 6): a decoy running 500 m along +X. */
+#5=IFCCARTESIANPOINT((500.,0.,0.));
+#6=IFCPOLYLINE((#1,#5));
+#10=IFCALIGNMENT('0aBcDeFgHiJkLmNoPqRsT0',$,'A',$,$,$,#6,#4,$);
+ENDSEC;
+END-ISO-10303-21;
+"#;
+        let verts = extract_alignment_line_vertices(content);
+        assert!(!verts.is_empty(), "alignment must emit centerline vertices");
+        let max_x = verts
+            .chunks_exact(3)
+            .map(|v| v[0])
+            .fold(f32::MIN, f32::max);
+        assert!(
+            (max_x - 10.0).abs() < 0.5,
+            "the Axis curve (10 m) must win over the Representation decoy (500 m), got {max_x}"
+        );
     }
 
     #[test]

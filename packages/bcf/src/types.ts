@@ -53,10 +53,22 @@ export interface BCFTopic {
   priority?: string;
   /** Index for ordering topics */
   index?: number;
-  /** Creation date (ISO 8601) */
-  creationDate: string;
-  /** Author email */
-  creationAuthor: string;
+  /**
+   * Creation date (ISO 8601). `markup.xsd` declares this required with no
+   * default, but it comes through undefined when the source markup.bcf
+   * omits it — the reader never fabricates a read-time wall-clock
+   * timestamp in its place (that value would be indistinguishable from a
+   * genuinely-declared one, and isn't even stable across repeated reads of
+   * the same untouched file).
+   */
+  creationDate?: string;
+  /**
+   * Author email. `markup.xsd` declares `CreationAuthor` required with no
+   * default, but it comes through undefined when the source markup.bcf
+   * omits it — see {@link creationDate} for why the reader never fabricates
+   * a placeholder value ("Unknown") in its place.
+   */
+  creationAuthor?: string;
   /** Modification date (ISO 8601) */
   modifiedDate?: string;
   /** Modifier email */
@@ -97,8 +109,18 @@ export interface BCFBimSnippet {
 
 export interface BCFDocumentReference {
   guid?: string;
-  isExternal: boolean;
-  referencedDocument: string;
+  /**
+   * BCF 2.1 only: whether `referencedDocument` is an external URL. Dropped
+   * entirely from the BCF 3.0 schema, which distinguishes `documentGuid`
+   * (internal, into project.bcfp's Documents) from `url` (external) instead.
+   */
+  isExternal?: boolean;
+  /** BCF 2.1 `<ReferencedDocument>`. */
+  referencedDocument?: string;
+  /** BCF 3.0 `<DocumentGuid>`: reference into project.bcfp's Documents. */
+  documentGuid?: string;
+  /** BCF 3.0 `<Url>`: external document link. */
+  url?: string;
   description?: string;
 }
 
@@ -109,10 +131,20 @@ export interface BCFDocumentReference {
 export interface BCFComment {
   /** Unique identifier */
   guid: string;
-  /** Comment creation date (ISO 8601) */
-  date: string;
-  /** Author email */
-  author: string;
+  /**
+   * Comment creation date (ISO 8601). `markup.xsd` declares this required
+   * with no default, but it comes through undefined when the source
+   * markup.bcf omits it — see `BCFTopic.creationDate` for why the reader
+   * never fabricates a read-time wall-clock timestamp in its place.
+   */
+  date?: string;
+  /**
+   * Author email. `markup.xsd` declares `Author` required with no default,
+   * but it comes through undefined when the source markup.bcf omits it —
+   * see `BCFTopic.creationAuthor` for why the reader never fabricates a
+   * placeholder value ("Unknown") in its place.
+   */
+  author?: string;
   /** Comment text */
   comment: string;
   /** Reference to a viewpoint GUID */

@@ -15,6 +15,7 @@
  */
 
 import type { BCFTopic, BCFViewpoint, BCFPoint } from './types.js';
+import { usableTargetDistance } from './numeric.js';
 
 // ============================================================================
 // Core overlay types (viewer-agnostic)
@@ -280,7 +281,13 @@ export function computeMarkerPositions(
   boundsLookup: EntityBoundsLookup,
   options?: ComputeMarkersOptions,
 ): BCFMarker3D[] {
-  const { targetDistance = 50, statusFilter } = options ?? {};
+  // The third sink for the viewer's raw `camera.getDistance()` (#2466), and a
+  // pose writer like the other two: a marker position derived from a NaN
+  // distance goes to `Camera.framePoint`, which animates it into position and
+  // target. A destructuring default only fires for `undefined`, so it does
+  // nothing for the `NaN` that a broken pose actually supplies.
+  const { targetDistance: rawTargetDistance, statusFilter } = options ?? {};
+  const targetDistance = usableTargetDistance(rawTargetDistance, 50);
   const markers: BCFMarker3D[] = [];
 
   for (let i = 0; i < topics.length; i++) {

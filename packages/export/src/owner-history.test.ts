@@ -102,3 +102,76 @@ describe('StepExporter — generated psets inherit the host element owner histor
     expect(danglingRefs(out)).toEqual([]);
   });
 });
+
+// Same two owner histories, but the wall carries NEITHER (`$`), so a generated
+// pset has to go through the FALLBACK path — the first owner history that
+// survives this export — rather than inheriting one from its host.
+const IFC_FALLBACK_OH = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('t.ifc','',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0proj00000000000000000',$,'P',$,$,$,$,$,$);
+#2=IFCORGANIZATION($,'Org',$,$,$);
+#3=IFCPERSONANDORGANIZATION($,#2,$);
+#4=IFCAPPLICATION(#2,'1','app','app');
+#5=IFCOWNERHISTORY(#3,#4,$,.ADDED.,$,$,$,0);
+#6=IFCOWNERHISTORY(#3,#4,$,.MODIFIED.,$,$,$,1);
+#10=IFCWALL('0wall10000000000000000',$,'W',$,$,$,$,$,$);
+#20=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.F.),$);
+ENDSEC;
+END-ISO-10303-21;`;
+
+describe('StepExporter — the owner-history caches are per export, not per exporter', () => {
+  /**
+   * `export()` clears `ownerHistory.fallbackRef` and `ownerHistory.byEntity` on
+   * entry, because both depend on `willBeEmitted` and therefore on THIS call's
+   * options and on whatever the shared `MutablePropertyView` has since deleted.
+   *
+   * That guard is ALREADY pinned, by `overlay-effective-model.test.ts`'s "does
+   * not answer a second export from the first one's owner-history cache" — a
+   * mutation neutralising the two reset statements kills that test too, not
+   * only this one. This is a second angle on it rather than a new pin, and the
+   * distinction is worth stating so nobody reads this file as the safety net.
+   *
+   * What this adds is the OTHER route to the cache and a stronger assertion.
+   * The existing test reaches the stale cache through overlay deletion and
+   * checks a count; here the host element carries `$` for its own owner
+   * history, so the generated pset must go through the fallback SCAN — "first
+   * owner history that survives this export" — and the check is structural:
+   * `danglingRefs` must stay empty. A stale fallback stamps an id whose line
+   * the second export no longer contains, which is invalid STEP rather than
+   * merely a wrong count.
+   *
+   * Note what does NOT reach this: `visibleOnly`, which the reset's own comment
+   * offers as its example. `IFCOWNERHISTORY` is in `reference-collector.ts`'s
+   * `INFRASTRUCTURE_TYPES` (:54), so hiding entities does not change whether an
+   * owner history is emitted. Deletion through the mutation view is the lever
+   * both tests actually use.
+   */
+  it('re-derives the fallback owner history after the first choice is deleted', async () => {
+    const store = await new IfcParser().parseColumnar(new TextEncoder().encode(IFC_FALLBACK_OH).buffer, { disableWorkerScan: true });
+    const view = new MutablePropertyView(null, 'm');
+    view.setOnDemandExtractor((id: number) => extractPropertiesOnDemand(store, id));
+    view.setProperty(10, 'Pset_WallCommon', 'IsExternal', true, PropertyValueType.Boolean);
+
+    const exporter = new StepExporter(store, view);
+
+    const out1 = decode(exporter.export({ schema: 'IFC4', applyMutations: true }).content);
+    // #5 is the first surviving owner history, so the fallback picks it.
+    expect(out1).toMatch(/=IFCPROPERTYSET\('.{22}',#5,'Pset_WallCommon'/);
+    expect(danglingRefs(out1)).toEqual([]);
+
+    // The caller keeps editing the same view between exports.
+    view.deleteEntity(5);
+
+    const out2 = decode(exporter.export({ schema: 'IFC4', applyMutations: true }).content);
+    // Must re-scan and land on #6. Without the reset this still says #5, whose
+    // line the second export no longer contains.
+    expect(out2).toMatch(/=IFCPROPERTYSET\('.{22}',#6,'Pset_WallCommon'/);
+    expect(out2).not.toMatch(/=IFCPROPERTYSET\('.{22}',#5,/);
+    expect(danglingRefs(out2)).toEqual([]);
+  });
+});

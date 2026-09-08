@@ -263,18 +263,46 @@ pub(super) fn assign_space_zone_properties(
 ///      cannot mint phantom properties — and only the property atoms those sets
 ///      list, resolving each by id through the completed entity index.
 ///
-/// **Parity.** For STEP-valid input — every entity has a unique express id, which
-/// the standard requires — this is byte-identical to the eager path: the maps
-/// handed to [`assign_space_zone_properties`] are the exact subset it consumed,
-/// verified across the full fixture corpus. It is NOT bug-compatible on malformed
-/// files that reuse an express id: the eager path returned the *first* occurrence
-/// (an artifact of the decoder's id-keyed cache short-circuiting the second
+/// **Parity — against what.** For STEP-valid input — every entity has a unique
+/// express id, which the standard requires — this is byte-identical to this
+/// crate's OWN earlier EAGER decode path (the one this function replaced), not
+/// to the TypeScript property extractor (`packages/parser/src/columnar-parser.ts`
+/// `extractPropertiesOnDemand` + `property-value-parser.ts`) it is a twin of for
+/// `IfcSpace`/`IfcZone`. The maps handed to [`assign_space_zone_properties`] are
+/// the exact subset the eager path consumed, verified across the full fixture
+/// corpus. It is NOT bug-compatible with the eager path on malformed files that
+/// reuse an express id: the eager path returned the *first* occurrence (an
+/// artifact of the decoder's id-keyed cache short-circuiting the second
 /// `decode_at`), whereas `decode_by_id` here resolves through the canonical
 /// entity index (last-wins), the same span every other reference in the pipeline
 /// — geometry, styles, voids — already resolves to. On a duplicate-id file the
 /// old path was internally inconsistent (properties from one span, geometry from
 /// another); this makes property resolution consistent with the rest of the
 /// pipeline instead.
+///
+/// **Parity — with the TS extractor.** This module's output
+/// (`FxHashMap<u32, BTreeMap<String, String>>`, landing on
+/// `MeshData::properties`) is a compact display map, not a typed property
+/// store, and covers less ground than the TS extractor: only `IfcSpace` /
+/// `IfcSpaceType` / `IfcZone` / `IfcSpatialZone` / `IfcSpatialZoneType`
+/// entities, only properties reached through a genuine `IfcPropertySet` (not
+/// `IfcElementQuantity` — quantities are a separate extractor), and only
+/// `IfcPropertySingleValue` / `IfcPropertyEnumeratedValue` / `IfcPropertyListValue`
+/// / `IfcPropertyBoundedValue` / `IfcPropertyReferenceValue` (no
+/// `IfcPropertyTableValue`, no `IfcComplexProperty`). `rust/processing/tests/
+/// space_zone_property_type_vectors.rs` and `packages/parser/src/
+/// space-zone-property.parity.test.ts` now run ONE shared fixture
+/// (`rust/processing/tests/fixtures/space_zone_property_type_vectors.json`)
+/// through both sides and agree on every value kind they both support. Two
+/// differences are pinned there rather than silently possible: every value
+/// stringifies here (a boolean/logical loses its declared TYPE, unlike the TS
+/// panel's `PropertyValueType`), and a `$`-absent value is a dropped key here
+/// vs. a `null`-valued entry on the TS side. As of this writing
+/// `MeshData::properties` has no downstream reader — the wasm bridge
+/// (`rust/wasm-bindings/src/zero_copy/mesh.rs`) explicitly drops it and tells
+/// the viewer to get properties from the TS parser worker instead — so neither
+/// difference is currently user-visible; both are worth re-checking before this
+/// field grows a real consumer.
 pub(super) fn resolve_space_zone_properties_lazy(
     entity_jobs: &mut [EntityJob],
     decoder: &mut EntityDecoder,

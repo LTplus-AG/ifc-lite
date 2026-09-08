@@ -32,7 +32,13 @@
  * ```
  */
 
-export { Sandbox, ScriptError, createSandbox } from './sandbox.js';
+export {
+  Sandbox,
+  ScriptError,
+  SandboxAbortError,
+  createSandbox,
+  isSandboxRuntimeAborted,
+} from './sandbox.js';
 export { buildBridge } from './bridge.js';
 export { NAMESPACE_SCHEMAS, marshalValue } from './bridge-schema.js';
 export type {
@@ -50,9 +56,11 @@ export type {
   SandboxLimits,
   ScriptResult,
   LogEntry,
+  SandboxConsoleLevel,
 } from './types.js';
 
 export {
   DEFAULT_PERMISSIONS,
   DEFAULT_LIMITS,
+  SANDBOX_CONSOLE_LEVELS,
 } from './types.js';

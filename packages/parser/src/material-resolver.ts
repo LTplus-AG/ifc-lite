@@ -12,6 +12,7 @@ import { EntityExtractor } from './entity-extractor.js';
 import { RelationshipType } from '@ifc-lite/data';
 import type { IfcDataStore } from './columnar-parser.js';
 import { isIfcTypeLikeEntity } from './columnar-parser-indexes.js';
+import { resolveEntityLengthUnitScale } from './unit-extractor.js';
 
 export interface MaterialInfo {
     type: 'Material' | 'MaterialLayerSet' | 'MaterialProfileSet' | 'MaterialConstituentSet' | 'MaterialList';
@@ -136,7 +137,7 @@ export function extractAllMaterialsOnDemand(
     const extractor = new EntityExtractor(store.source);
     const out: MaterialInfo[] = [];
     for (const defId of defIds) {
-        const info = resolveMaterial(store, extractor, defId, new Set());
+        const info = resolveMaterial(store, extractor, defId, new Set(), entityId);
         if (info) out.push(info);
     }
     return out;
@@ -160,18 +161,19 @@ export function extractMaterialsOnDemand(
     if (!store.source?.length) return null;
 
     const extractor = new EntityExtractor(store.source);
-    return resolveMaterial(store, extractor, materialId, new Set());
+    return resolveMaterial(store, extractor, materialId, new Set(), entityId);
 }
 
 /**
- * Resolve a material entity by ID, handling all IFC material types.
- * Uses visited set to prevent infinite recursion on cyclic *Usage references.
+ * Resolve a material entity by ID, handling all IFC material types. `visited`
+ * guards cyclic *Usage references; `originEntityId` (the calling element/type)
+ * lets a layer's thickness resolve its own project's unit scale below.
  */
 function resolveMaterial(
     store: IfcDataStore,
     extractor: EntityExtractor,
     materialId: number,
-    visited: Set<number> = new Set()
+    visited: Set<number> = new Set(), originEntityId?: number
 ): MaterialInfo | null {
     if (visited.has(materialId)) return null;
     visited.add(materialId);
@@ -223,14 +225,12 @@ function resolveMaterial(
                     }
                 }
 
-                // Convert raw IFC value to metres so downstream UI doesn't
-                // have to guess. Files with LENGTHUNIT=MILLI (e.g. Dutch
-                // Revit / ArchiCAD exports — schependomlaan.ifc) store
-                // 60 for a 60 mm prefab slab; without this scale the
-                // properties panel rendered "60.0 m" because
-                // `formatThickness` assumes its input is metres.
+                // Convert raw IFC value to metres (a 60 mm slab must not read
+                // "60.0 m"). `store.lengthUnitScale` answers for the file's
+                // FIRST IfcProject only, wrong for a MergedExporter federated
+                // layer in a LATER project — resolve per `originEntityId`.
                 const rawThickness = typeof la[1] === 'number' ? la[1] : undefined;
-                const scale = store.lengthUnitScale ?? 1;
+                const scale = originEntityId !== undefined ? resolveEntityLengthUnitScale(store.source, store.entityIndex, store.relationships, originEntityId) : (store.lengthUnitScale ?? 1);
                 const thickness = rawThickness !== undefined ? rawThickness * scale : undefined;
                 layers.push({
                     materialName,
@@ -367,7 +367,7 @@ function resolveMaterial(
             // IfcMaterialLayerSetUsage: [ForLayerSet, LayerSetDirection, DirectionSense, OffsetFromReferenceLine, ...]
             const layerSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
             if (layerSetId) {
-                return resolveMaterial(store, extractor, layerSetId, visited);
+                return resolveMaterial(store, extractor, layerSetId, visited, originEntityId);
             }
             return null;
         }
@@ -376,7 +376,7 @@ function resolveMaterial(
             // IfcMaterialProfileSetUsage: [ForProfileSet, ...]
             const profileSetId = typeof attrs[0] === 'number' ? attrs[0] : undefined;
             if (profileSetId) {
-                return resolveMaterial(store, extractor, profileSetId, visited);
+                return resolveMaterial(store, extractor, profileSetId, visited, originEntityId);
             }
             return null;
         }

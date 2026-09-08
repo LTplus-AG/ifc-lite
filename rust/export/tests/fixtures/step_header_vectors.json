@@ -1,0 +1,117 @@
+{
+  "about": [
+    "Shared cross-language vectors for the ISO 10303-21 HEADER a STEP export writes.",
+    "Read by rust/export/tests/step_header_parity.rs (write_header, via export_step) and",
+    "by packages/export/src/step-header.parity.test.ts (buildStepHeader, via generateHeader).",
+    "",
+    "`expectedHeader` is written from ISO 10303-21 and from each case's own source file,",
+    "NOT copied from either implementation's output. Part 21 clause 8 gives FILE_NAME as",
+    "(name, time_stamp, author, organization, preprocessor_version, originating_system,",
+    "authorization) and FILE_DESCRIPTION as (description, implementation_level); a value the",
+    "source stated is that file's, and an exporter that replaces it states something else.",
+    "Anchoring on the schema rather than on the sibling is deliberate: a test that compared",
+    "the two halves only to each other would go green the moment they were wrong the same way.",
+    "",
+    "Precedence, identical on both sides: an explicit option wins, else the source header's",
+    "value, else the documented default (description 'Exported from ifc-lite',",
+    "implementation_level '2;1', name 'export.ifc', preprocessor_version 'ifc-lite',",
+    "originating_system = preprocessor_version, authorization '').",
+    "",
+    "Every case states `options.timeStamp`. With none, the TypeScript half stamps the current",
+    "time and the Rust half carries the source's stamp forward (SystemTime::now is unavailable",
+    "on wasm32-unknown-unknown, the target that exporter ships to). That default is the one",
+    "documented difference between the halves and cannot be pinned by a fixture; stating a",
+    "stamp removes it, and every other field is compared.",
+    "",
+    "Not pinned here, because the two halves genuinely disagree and the TypeScript half lives",
+    "in a package this fixture's author does not own: a header whose FILE_DESCRIPTION text",
+    "contains the literal 'ENDSEC' or the literal 'FILE_NAME'. The Rust reader skips quoted",
+    "text when it looks for those (as step_text::detect_schema already does); the TypeScript",
+    "reader's indexOf does not, and truncates or mis-locates the record. Rust is right there",
+    "and the difference is reported separately, not encoded as agreement."
+  ],
+  "cases": [
+    {
+      "name": "authored header round-trips field for field",
+      "why": "The source stated an MVD, an author, an organization, an authoring system and an authorization. Each is that file's own fact; an exporter that drops it, or writes a different MVD over it, is making a false statement about the model.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');\nFILE_NAME('office.ifc','2024-03-01T09:15:00',('Jane Author'),('Acme Design'),'Revit-24.0','Autodesk Revit 2024','Chief Engineer');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "schema": "IFC4",
+      "options": { "timeStamp": "20240301T091500" },
+      "expectedHeader": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');",
+        "FILE_NAME('export.ifc','20240301T091500',('Jane Author'),('Acme Design'),'ifc-lite','Autodesk Revit 2024','Chief Engineer');",
+        "FILE_SCHEMA(('IFC4'));",
+        "ENDSEC;"
+      ]
+    },
+    {
+      "name": "no header records fall back to the documented defaults",
+      "why": "Negative control for the case above: with nothing to preserve, both halves must write the SAME defaults, and the default FILE_DESCRIPTION item must not assert a model view definition the file never claimed.",
+      "ifc": "ISO-10303-21;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "schema": "IFC4",
+      "options": { "timeStamp": "20240301T091500" },
+      "expectedHeader": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('Exported from ifc-lite'),'2;1');",
+        "FILE_NAME('export.ifc','20240301T091500',(''),(''),'ifc-lite','ifc-lite','');",
+        "FILE_SCHEMA(('IFC4'));",
+        "ENDSEC;"
+      ]
+    },
+    {
+      "name": "explicit options override the source header",
+      "why": "Negative control for echoing: a half that simply copied the source through would fail every overridden field here. Note authorization and originating_system have no option and stay the source's.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [CoordinationView_V2.0]'),'2;1');\nFILE_NAME('office.ifc','2024-03-01T09:15:00',('Jane Author'),('Acme Design'),'Revit-24.0','Autodesk Revit 2024','Chief Engineer');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "schema": "IFC4",
+      "options": {
+        "timeStamp": "19990101T000000",
+        "description": "Custom description",
+        "author": "Opt Author",
+        "organization": "Opt Org",
+        "application": "my-tool",
+        "filename": "out.ifc"
+      },
+      "expectedHeader": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('Custom description'),'2;1');",
+        "FILE_NAME('out.ifc','19990101T000000',('Opt Author'),('Opt Org'),'my-tool','Autodesk Revit 2024','Chief Engineer');",
+        "FILE_SCHEMA(('IFC4'));",
+        "ENDSEC;"
+      ]
+    },
+    {
+      "name": "commas, parentheses and doubled apostrophes inside quoted values",
+      "why": "Part 21 6.3.2.4 writes a literal apostrophe doubled, so a splitter blind to quote state cuts 'CoordinateReference [Origin (0,0,0), Site]' into three items and loses O'Brien. The empty organization list is load-bearing too: a list the source stated as empty is not the same as one it never stated, and only the latter is back-filled with ('').",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('CoordinateReference [Origin (0,0,0), Site]','O''Brien''s view'),'3;1');\nFILE_NAME('a.ifc','ts',('O''Brien'),(),'pp','Tekla Structures','');\nFILE_SCHEMA(('IFC2X3'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "schema": "IFC2X3",
+      "options": { "timeStamp": "20240301T091500" },
+      "expectedHeader": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('CoordinateReference [Origin (0,0,0), Site]','O''Brien''s view'),'3;1');",
+        "FILE_NAME('export.ifc','20240301T091500',('O''Brien'),(),'ifc-lite','Tekla Structures','');",
+        "FILE_SCHEMA(('IFC2X3'));",
+        "ENDSEC;"
+      ]
+    },
+    {
+      "name": "non-ASCII is decoded on read and re-encoded on write",
+      "why": "Part 21 6.3.3.4 limits a literal's plain-text bytes to 32-126, so 'Muller' with an umlaut must leave as \\X2\\00FC\\X0\\ whether it arrived raw or already encoded. Both halves must therefore DECODE the source value and re-encode it, not copy the bytes: a half that copied would emit raw UTF-8 for the first author, and a half that re-escaped without decoding would double the backslashes of the second.",
+      "ifc": "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('Ansicht f\\X2\\00FC\\X0\\r B\\X2\\00FC\\X0\\ro'),'2;1');\nFILE_NAME('b.ifc','ts',('Müller','J\\X2\\00F6\\X0\\rgen'),('Büro'),'pp','ARCHICAD 27','');\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCPROJECT('0YvctVUKr0kugbFTf53O9L',$,'Proj',$,$,$,$,$,$);\nENDSEC;\nEND-ISO-10303-21;\n",
+      "schema": "IFC4",
+      "options": { "timeStamp": "20240301T091500" },
+      "expectedHeader": [
+        "ISO-10303-21;",
+        "HEADER;",
+        "FILE_DESCRIPTION(('Ansicht f\\X2\\00FC\\X0\\r B\\X2\\00FC\\X0\\ro'),'2;1');",
+        "FILE_NAME('export.ifc','20240301T091500',('M\\X2\\00FC\\X0\\ller','J\\X2\\00F6\\X0\\rgen'),('B\\X2\\00FC\\X0\\ro'),'ifc-lite','ARCHICAD 27','');",
+        "FILE_SCHEMA(('IFC4'));",
+        "ENDSEC;"
+      ]
+    }
+  ]
+}

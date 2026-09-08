@@ -123,7 +123,7 @@ test('system prompt includes method-specific create contract guidance', () => {
   assert.match(prompt, /If CURRENT MODEL STATE marks a selection as `kind=type`, treat it as a type object and avoid describing it as one physical placed occurrence/);
   assert.match(prompt, /inspect `bim\.query\.typeProperties\(entity\)` before editing inherited values; mutate the type entity when the intent is to change all occurrences that share that type/);
   assert.match(prompt, /IFC export preserves edits to type-owned property sets when you export after applying mutations/);
-  assert.match(prompt, /addIfcDoor` and `addIfcWindow`: these create standalone world-aligned elements/);
+  assert.match(prompt, /addIfcDoor` and `addIfcWindow`: these create standalone axis-aligned elements/);
   assert.match(prompt, /If doors or windows appear rotated 90° relative to a wall/);
   assert.match(prompt, /If repeated elements appear only at one level/);
   assert.match(prompt, /house, pitched-roof, or gable-roof requests, prefer `addIfcGableRoof`/);
@@ -131,14 +131,14 @@ test('system prompt includes method-specific create contract guidance', () => {
   assert.match(prompt, /convert it to radians first .*addIfcRoof.*addIfcGableRoof/s);
   assert.match(prompt, /addElement.*Use `IfcType`, `Placement:/s);
   assert.match(prompt, /Use `IfcType` not `Type`; use `Placement` not `Position`/);
-  assert.match(prompt, /Many advanced methods are world-placement based/);
+  assert.match(prompt, /EVERY coordinate passed to `bim\.create\.addIfc\*\(h, storey, \.\.\.\)` is relative to that storey/);
   assert.match(prompt, /addIfcPlate.*`Position`, `Width`, `Depth`, `Thickness`/);
-  assert.match(prompt, /Mixed multi-level scripts often combine both/);
-  assert.match(prompt, /those calls should usually use `elevation`.*`Start`.*`End`.*`Position`/s);
+  assert.match(prompt, /do NOT add the storey elevation to an element Z inside a storey loop/);
+  assert.match(prompt, /`Z = 0` means floor level of the storey you passed/);
   assert.match(prompt, /const elevation = i \* storeyHeight;/);
   assert.match(prompt, /When a fix targets an existing script, preserve the project handle, storey handles, loop variables/);
   assert.match(prompt, /If a previous repair was rejected for losing context, keep the full script intact/);
-  assert.match(prompt, /If repeated world-placement elements stack at the base level/);
+  assert.match(prompt, /If repeated elements sit at twice their expected height/);
 });
 
 test('system prompt adapts task focus for repair turns', () => {

@@ -21,37 +21,83 @@ export type TriTriResult =
   | { readonly kind: "coplanar" };
 
 /**
+ * Direction-aware plane-distance tolerance: per-axis absolute rounding-noise
+ * amplitudes (world units), resolved into a scalar tolerance per plane by
+ * projecting them onto that plane's own unit normal:
+ *
+ *   eps(n) = max(floor, |n_x| * axisNoise_x + |n_y| * axisNoise_y + |n_z| * axisNoise_z)
+ *
+ * A signed plane distance is `dot(n, v) + d` for a unit normal `n`, so each
+ * coordinate's rounding noise enters it weighted by that axis's normal
+ * component; an axis orthogonal to the normal contributes nothing. A single
+ * scalar built from the max coordinate over ALL axes (the pre-fix
+ * `scaledPlaneEps`) is compared against a quantity it was not derived from:
+ * it lets one large-magnitude axis inflate the tolerance for planes whose
+ * normal has no component on that axis at all, fabricating coplanar verdicts
+ * across genuine clearances (see `scaledPlaneEps` in `./narrow-phase.js`).
+ */
+export interface ProjectedPlaneEps {
+  /** Per-axis absolute rounding-noise amplitude (world units). */
+  readonly axisNoise: Vec3;
+  /** Minimum tolerance, applied after projection. */
+  readonly floor: number;
+}
+
+export type PlaneEps = number | ProjectedPlaneEps;
+
+/** Resolve a {@link PlaneEps} into a scalar tolerance for the plane with
+ * (unnormalised) normal `n` of length `ln`. */
+function epsForPlane(planeEps: PlaneEps, n: Vec3, ln: number): number {
+  if (typeof planeEps === "number") return planeEps;
+  const { axisNoise, floor } = planeEps;
+  const projected =
+    (Math.abs(n[0]) * axisNoise[0] +
+      Math.abs(n[1]) * axisNoise[1] +
+      Math.abs(n[2]) * axisNoise[2]) /
+    ln;
+  return Math.max(floor, projected);
+}
+
+/**
  * Full Möller test.
  *
- * `planeEps` is the absolute tolerance on signed plane distance — distances
- * with |d| / |N| ≤ planeEps are treated as zero (on-plane). Defaults to 1e-6
- * in model-native units.
+ * `planeEps` is the tolerance on signed plane distance: distances with
+ * |d| / |N| <= eps are treated as zero (on-plane). A scalar is used as-is; a
+ * {@link ProjectedPlaneEps} is resolved per plane against that plane's own
+ * normal, so each of the two plane tests gets its own direction-correct
+ * tolerance. Defaults to 1e-6 in model-native units, which is only valid
+ * near the origin (see `scaledPlaneEps` in `./narrow-phase.js`); the
+ * production call path (`narrowPhase`) always supplies an explicit,
+ * coordinate-scaled value, so this default only applies to
+ * direct/standalone callers.
  */
-export function triTriIntersect(a: Triangle, b: Triangle, planeEps = 1e-6): TriTriResult {
+export function triTriIntersect(a: Triangle, b: Triangle, planeEps: PlaneEps = 1e-6): TriTriResult {
   if (isDegenerate(a) || isDegenerate(b)) return { kind: "none" };
 
   // Plane of B
   const N2 = triangleNormalRaw(b);
   const ln2 = length3(N2);
   const d2 = -dot3(N2, b.v0);
+  const epsB = epsForPlane(planeEps, N2, ln2);
   const dA0 = (dot3(N2, a.v0) + d2) / ln2;
   const dA1 = (dot3(N2, a.v1) + d2) / ln2;
   const dA2 = (dot3(N2, a.v2) + d2) / ln2;
-  const sA0 = signOf(dA0, planeEps);
-  const sA1 = signOf(dA1, planeEps);
-  const sA2 = signOf(dA2, planeEps);
+  const sA0 = signOf(dA0, epsB);
+  const sA1 = signOf(dA1, epsB);
+  const sA2 = signOf(dA2, epsB);
   if (sA0 === sA1 && sA1 === sA2 && sA0 !== 0) return { kind: "none" };
 
   // Plane of A
   const N1 = triangleNormalRaw(a);
   const ln1 = length3(N1);
   const d1 = -dot3(N1, a.v0);
+  const epsA = epsForPlane(planeEps, N1, ln1);
   const dB0 = (dot3(N1, b.v0) + d1) / ln1;
   const dB1 = (dot3(N1, b.v1) + d1) / ln1;
   const dB2 = (dot3(N1, b.v2) + d1) / ln1;
-  const sB0 = signOf(dB0, planeEps);
-  const sB1 = signOf(dB1, planeEps);
-  const sB2 = signOf(dB2, planeEps);
+  const sB0 = signOf(dB0, epsA);
+  const sB1 = signOf(dB1, epsA);
+  const sB2 = signOf(dB2, epsA);
   if (sB0 === sB1 && sB1 === sB2 && sB0 !== 0) return { kind: "none" };
 
   // All-zero on either side → coplanar
@@ -63,9 +109,16 @@ export function triTriIntersect(a: Triangle, b: Triangle, planeEps = 1e-6): TriT
   const chordB = triChord(b, dB0, dB1, dB2);
   if (!chordA || !chordB) return { kind: "none" };
 
-  // Overlap along the common intersection line.
+  // Overlap along the common intersection line. The slop here compares
+  // coordinates along one world axis (`dAxis`), so a ProjectedPlaneEps
+  // resolves to that axis's own noise amplitude (the projection of
+  // `axisNoise` onto the axis unit vector), floored the same way.
   const D = cross3(N1, N2);
   const dAxis = dominantAxis(D);
+  const lineEps =
+    typeof planeEps === "number"
+      ? planeEps
+      : Math.max(planeEps.floor, planeEps.axisNoise[dAxis] as number);
   const ta0 = chordA[0][dAxis] as number;
   const ta1 = chordA[1][dAxis] as number;
   const tb0 = chordB[0][dAxis] as number;
@@ -76,7 +129,7 @@ export function triTriIntersect(a: Triangle, b: Triangle, planeEps = 1e-6): TriT
   const bMax = Math.max(tb0, tb1);
   const oMin = Math.max(aMin, bMin);
   const oMax = Math.min(aMax, bMax);
-  if (oMax < oMin - planeEps) return { kind: "none" };
+  if (oMax < oMin - lineEps) return { kind: "none" };
 
   // Reconstruct 3D endpoints of the overlap on the intersection line by
   // picking the chord whose parameter interval matches the overlap.

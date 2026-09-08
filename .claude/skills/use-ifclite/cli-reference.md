@@ -77,7 +77,7 @@ ifc-lite lod model.ifc --level 1 --out model.glb --meta model.lod1.json
 ```
 
 Flags: `--level 0|1` · `--out <file>` (required for LOD1) · `--meta <file>` ·
-`--quality low|medium|high` · `--json`. LOD0 = bbox/transform/centroid/identity
+`--json`. LOD0 = bbox/transform/centroid/identity
 JSON; LOD1 = GLB + metadata (falls back to box geometry if meshing fails).
 
 ## ids
@@ -91,9 +91,9 @@ Flags: `--json` · `--locale en|de|fr`. Exit 0 (pass) / 1 (fail).
 ## bcf
 
 ```bash
-ifc-lite bcf create --title "Missing fire door" --description "Level 2" --out issue.bcf
-ifc-lite bcf list issues.bcf
-ifc-lite bcf add-comment --file issues.bcf --text "Fixed in rev 3" --out updated.bcf
+ifc-lite bcf create --title "Missing fire door" --description "Level 2" --out topic.bcf
+ifc-lite bcf list topics.bcf
+ifc-lite bcf add-comment --file topics.bcf --text "Fixed in rev 3" --out updated.bcf
 ```
 
 ## create

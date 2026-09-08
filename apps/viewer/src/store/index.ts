@@ -17,19 +17,20 @@ import { createSelectionSlice, type SelectionSlice } from './slices/selectionSli
 import { createVisibilitySlice, type VisibilitySlice } from './slices/visibilitySlice.js';
 import { createUISlice, type UISlice } from './slices/uiSlice.js';
 import { createHoverSlice, type HoverSlice } from './slices/hoverSlice.js';
-import { createCameraSlice, type CameraSlice } from './slices/cameraSlice.js';
-import { createSectionSlice, type SectionSlice } from './slices/sectionSlice.js';
+import { createCameraSlice, DEFAULT_CONTROLS_MODE, type CameraSlice } from './slices/cameraSlice.js';
+import { createSectionSlice, type SectionSlice, clearLastSectionMode } from './slices/sectionSlice.js';
 export { customPlaneCenter, loadLastSectionMode } from './slices/sectionSlice.js';
 export type { LastSectionMode } from './slices/sectionSlice.js';
 import { createMeasurementSlice, type MeasurementSlice } from './slices/measurementSlice.js';
 import { createDataSlice, type DataSlice } from './slices/dataSlice.js';
 import { createModelSlice, type ModelSlice } from './slices/modelSlice.js';
 import { createMutationSlice, type MutationSlice } from './slices/mutationSlice.js';
-import { createDrawing2DSlice, getDefaultDisplayOptions, type Drawing2DSlice } from './slices/drawing2DSlice.js';
+import { createDrawing2DSlice, type Drawing2DSlice } from './slices/drawing2DSlice.js';
 import { createSheetSlice, type SheetSlice } from './slices/sheetSlice.js';
 import { createBcfSlice, type BCFSlice } from './slices/bcfSlice.js';
 import { createIdsSlice, type IDSSlice } from './slices/idsSlice.js';
 import { createExtensionsSlice, type ExtensionsSlice } from './slices/extensionsSlice.js';
+import { createSourcesSlice, type SourcesSlice } from './slices/sourcesSlice.js';
 import { createListSlice, type ListSlice } from './slices/listSlice.js';
 import { createPinboardSlice, type PinboardSlice } from './slices/pinboardSlice.js';
 import { createLensSlice, type LensSlice } from './slices/lensSlice.js';
@@ -52,15 +53,22 @@ import { createCollabSlice, type CollabSlice } from './slices/collabSlice.js';
 import { createAddElementSlice, type AddElementSlice } from './slices/addElementSlice.js';
 import { createSplitToolSlice, type SplitToolSlice } from './slices/splitToolSlice.js';
 import { createLevelDisplaySlice, type LevelDisplaySlice } from './slices/levelDisplaySlice.js';
-import { createPointCloudSlice, type PointCloudSlice, POINT_CLOUD_DEFAULTS } from './slices/pointCloudSlice.js';
+import { createPointCloudSlice, type PointCloudSlice } from './slices/pointCloudSlice.js';
 import { createUnitDisplaySlice, type UnitDisplaySlice } from './slices/unitDisplaySlice.js';
 import { createSpaceMouseSlice, type SpaceMouseSlice } from './slices/spaceMouseSlice.js';
 import { createLayerStackSlice, type LayerStackSlice } from './slices/layerStackSlice.js';
 import { createZonesSlice, type ZonesSlice } from './slices/zonesSlice.js';
 import { invalidateVisibleBasketCache } from './basketVisibleSet.js';
+import { withVisibilityOwnershipInvalidation } from './visibility-invalidation.js';
+// The composed teardown `resetViewerState` dispatches. Its own module rather
+// than this file: `slices/modelSlice.ts` is another entry point and this file
+// imports that slice, so a registry declared here would be a runtime cycle.
+import { viewerTeardown } from './teardown-registry.js';
+import {
+  endClashScenePresentation,
+  type ClashSceneTeardown,
+} from '@/lib/clash/visibility-ownership';
 
-// Import constants for reset function
-import { CAMERA_DEFAULTS, SECTION_PLANE_DEFAULTS, UI_DEFAULTS, getPersistedTypeVisibility, getPersistedTypeViewMode } from './constants.js';
 
 // Re-export types for consumers
 export type * from './types.js';
@@ -91,7 +99,7 @@ export type { CollabSlice, CollabRole, CollabStatus, StartCollabOptions } from '
 export type { BCFSlice, BCFSliceState } from './slices/bcfSlice.js';
 
 // Re-export IDS types
-export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode } from './slices/idsSlice.js';
+export type { IDSSlice, IDSSliceState, IDSDisplayOptions, IDSFilterMode, IDSFocusMode } from './slices/idsSlice.js';
 
 // Re-export List types
 export type { ListSlice } from './slices/listSlice.js';
@@ -173,7 +181,8 @@ export type ViewerState = LoadingSlice &
   UnitDisplaySlice &
   SpaceMouseSlice &
   ZonesSlice &
-  ExtensionsSlice & {
+  ExtensionsSlice &
+  SourcesSlice & {
     resetViewerState: () => void;
     /**
      * Open one right-side analysis panel and close the others, so the chosen
@@ -216,9 +225,16 @@ export type ViewerState = LoadingSlice &
   };
 
 /**
- * Main viewer store combining all slices
+ * Main viewer store combining all slices.
+ *
+ * `withVisibilityOwnershipInvalidation` wraps the store's `set` (and its
+ * `setState`) so that no slice — present or future — can replace
+ * `isolatedEntities` / `ghostExceptEntities` without dropping the
+ * visibility-ownership records that write makes stale. See
+ * `store/visibility-invalidation.ts` for why that is a middleware rather than a
+ * helper each writing action remembers to call.
  */
-const createViewerStore = () => create<ViewerState>()((...args) => ({
+const createViewerStore = () => create<ViewerState>()(withVisibilityOwnershipInvalidation((...args) => ({
   // Spread all slices
   ...createLoadingSlice(...args),
   ...createSelectionSlice(...args),
@@ -262,300 +278,74 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
   ...createSpaceMouseSlice(...args),
   ...createZonesSlice(...args),
   ...createExtensionsSlice(...args),
+  ...createSourcesSlice(...args),
 
   // Reset all viewer state when loading new file
   // Note: Does NOT clear models - use clearAllModels() for that
   resetViewerState: () => {
     invalidateVisibleBasketCache();
     const [set, get] = args;
-    set({
-      // Selection (legacy)
-      selectedEntityId: null,
-      selectedEntityIds: new Set(),
-      selectedStoreys: new Set(),
-      // Drop the shared active storey — it references the outgoing model, so a
-      // new file must not inherit a stale storey for Solo / Space Sketch.
-      activeStorey: null,
+    // Drop the persisted "last section mode" (localStorage, survives closing
+    // the browser) together with the in-memory sectionPlane reset the section
+    // slice contributes below (`slices/sectionSlice.teardown.ts`) — its
+    // 'cardinal' axis/position is geometry, meaningful only relative to the
+    // model that was loaded when it was saved. Leaving it in localStorage past
+    // this reset let a NEW model inherit the OLD model's cut position the next
+    // time the section tool was opened (#2939). It stays HERE, not in that
+    // contribution: writing localStorage is a side effect, and a teardown is
+    // pure.
+    clearLastSectionMode();
+    // Measurements (#2641 review): the slice owns the full list of its own
+    // fields to clear on a model switch — see resetAllMeasurementState's doc
+    // comment (measurementSlice.ts) for why this must not be a field list
+    // duplicated here.
+    get().resetAllMeasurementState();
+    // The payload is composed by the slices that own the fields
+    // (`store/teardown-registry.ts`). It used to be spelled out here instead,
+    // key by key, in a file that cannot see any slice — so every reset value
+    // was a second statement of a value the owning slice already declares, and
+    // the two could drift with nothing to notice. Now each value is stated
+    // once, beside the initial value it has to agree with.
+    //
+    // Through the store's own `set`, which `withVisibilityOwnershipInvalidation`
+    // wraps. It keys on PRESENCE (`'isolatedEntities' in patch`), and both
+    // channels sit in `NEVER_DROPPED` so the filter cannot remove them, so it
+    // fires on EVERY reset as the hand-written payload did. Keep that exemption.
+    set(viewerTeardown({ kind: 'session-reset' }, get()));
 
-      // Selection (multi-model)
-      selectedEntity: null,
-      selectedEntitiesSet: new Set(),
-      selectedEntities: [],
-      selectedModelId: null,
+    // Camera interaction (#2934 review): the patch resets the STATE, but a
+    // teardown is pure, so the renderer still holds whatever `?controls=`
+    // restricted it to -- the param is read once and `Viewport` outlives the
+    // swap. Side effect, so it lives here like `clearLastSectionMode`.
+    get().cameraCallbacks.setInteractionMode?.(DEFAULT_CONTROLS_MODE);
 
-      // Visibility (legacy)
-      hiddenEntities: new Set(),
-      isolatedEntities: null,
-      ghostExceptEntities: null,
-      classFilter: null,
-      // Re-read persisted toggles on every file load so a new model never
-      // reverts the user's visibility choices (e.g. "Show Annotations").
-      typeVisibility: getPersistedTypeVisibility(),
-      typeViewMode: getPersistedTypeViewMode(),
-
-      // Visibility (multi-model)
-      hiddenEntitiesByModel: new Map(),
-      isolatedEntitiesByModel: new Map(),
-
-      // Data
-      loading: false,
-      geometryStreamingActive: false,
-      geometryUpdateTick: 0,
-      progress: null,
-      geometryProgress: null,
-      metadataProgress: null,
-      error: null,
-      pendingColorUpdates: null,
-      pendingMeshColorUpdates: null,
-      // Drop any undrained GPU-instancing shards from the previous model so they
-      // can't be uploaded into the new scene under a rapid model switch.
-      pendingInstancedShards: null,
-
-      // Compare (#924): drop any stale diff result — it references models by
-      // id and the loaded set is changing. Keep panel visibility + A/B/scope
-      // choices (UI prefs); the user re-runs against the new set.
-      compareResult: null,
-      compareSelectedKey: null,
-      compareRunning: false,
-      compareError: null,
-
-      // Zones (#1810): keep the user-authored zone SETS (they persist across
-      // model loads, like clash presets), but drop the computed assignments —
-      // they're keyed by the OUTGOING model's global ids, and the single-model
-      // fallback (globalId === expressId) means the incoming model's ids can
-      // collide and read the old model's zone membership until the debounced
-      // recompute fires. Same stale-model-reference class as compareResult
-      // above; `useZoneAssignmentSync` recomputes against the new scene.
-      zoneAssignments: new Map(),
-      zoneAssignmentTiming: null,
-      // ... and drop any in-flight zone-edit session: leaving `editingZone`
-      // set would hand the incoming model live gizmo handles + picking for
-      // a zone the user was editing against the outgoing model.
-      editingZone: null,
-
-      // Hover/Context
-      hoverState: { entityId: null, screenX: 0, screenY: 0 },
-      contextMenu: { isOpen: false, entityId: null, screenX: 0, screenY: 0 },
-
-      // Measurements
-      measurements: [],
-      pendingMeasurePoint: null,
-      activeMeasurement: null,
-      snapTarget: null,
-      edgeLockState: {
-        edge: null,
-        meshExpressId: null,
-        edgeT: 0,
-        lockStrength: 0,
-        isCorner: false,
-        cornerValence: 0,
-      },
-
-      // Section plane: reset axis/position/enabled/flipped (those are
-      // model-relative and meaningless when switching files), but PRESERVE
-      // the user's cap appearance preferences (showCap, showOutlines,
-      // capStyle). Those round-trip to localStorage via the slice's
-      // persistence helpers; clobbering them here was the cause of "my
-      // hatch / colour resets to defaults every time I open a file".
-      sectionPlane: {
-        ...get().sectionPlane,
-        axis:     SECTION_PLANE_DEFAULTS.AXIS,
-        position: SECTION_PLANE_DEFAULTS.POSITION,
-        enabled:  SECTION_PLANE_DEFAULTS.ENABLED,
-        flipped:  SECTION_PLANE_DEFAULTS.FLIPPED,
-      },
-
-      // Camera
-      cameraRotation: {
-        azimuth: CAMERA_DEFAULTS.AZIMUTH,
-        elevation: CAMERA_DEFAULTS.ELEVATION,
-      },
-      projectionMode: 'perspective' as const,
-
-      // UI
-      activeTool: UI_DEFAULTS.ACTIVE_TOOL,
-      editEnabled: false,
-      // Drop any one-shot bSDD "jump to property" focus armed before the load —
-      // a new file reuses ids ('legacy' + reassigned expressIds) so a stale
-      // focus could otherwise match an unrelated entity (issue #1107).
-      pendingPropertyFocus: null,
-      visualEnhancementsEnabled: UI_DEFAULTS.VISUAL_ENHANCEMENTS_ENABLED,
-      edgeContrastEnabled: UI_DEFAULTS.EDGE_CONTRAST_ENABLED,
-      edgeContrastIntensity: UI_DEFAULTS.EDGE_CONTRAST_INTENSITY,
-      contactShadingQuality: UI_DEFAULTS.CONTACT_SHADING_QUALITY,
-      contactShadingIntensity: UI_DEFAULTS.CONTACT_SHADING_INTENSITY,
-      contactShadingRadius: UI_DEFAULTS.CONTACT_SHADING_RADIUS,
-      separationLinesEnabled: UI_DEFAULTS.SEPARATION_LINES_ENABLED,
-      separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
-      separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
-      separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
-
-      // Cesium
-      cesiumAvailable: false,
-      cesiumEnabled: false,
-      cesiumTerrainHeight: null,
-      // The snap target is model-specific terrain state; drop it with the
-      // sampled height so a new file can't reuse the old target (#1456).
-      cesiumTerrainSaveHeight: null,
-      cesiumSourceModelId: null,
-      // A new file is orthometric by default — re-arm the geoid correction
-      // so a previous file's "heights are ellipsoidal" opt-out doesn't carry
-      // over (#1355).
-      cesiumHeightsAreEllipsoidal: false,
-      cesiumTerrainClipY: null,
-      cesiumGlbLoaded: false,
-      cesiumPlacementEditMode: false,
-      cesiumPlacementDraftModelId: null,
-      cesiumPlacementDraft: null,
-
-      // Drawing 2D
-      drawing2D: null,
-      drawing2DStatus: 'idle' as const,
-      drawing2DProgress: 0,
-      drawing2DPhase: '',
-      drawing2DError: null,
-      drawing2DPanelVisible: false,
-      suppressNextSection2DPanelAutoOpen: false,
-      drawing2DSvgContent: null,
-      drawing2DDisplayOptions: getDefaultDisplayOptions(),
-      // Graphic overrides (keep presets, reset active and custom)
-      activePresetId: 'preset-3d-colors',
-      customOverrideRules: [],
-      overridesEnabled: true,
-      overridesPanelVisible: false,
-      // 2D Measure
-      measure2DMode: false,
-      measure2DStart: null,
-      measure2DCurrent: null,
-      measure2DShiftLocked: false,
-      measure2DLockedAxis: null,
-      measure2DResults: [],
-      measure2DSnapPoint: null,
-      // Annotation tools
-      annotation2DActiveTool: 'none' as const,
-      annotation2DCursorPos: null,
-      polygonArea2DPoints: [],
-      polygonArea2DResults: [],
-      textAnnotations2D: [],
-      textAnnotation2DEditing: null,
-      cloudAnnotation2DPoints: [],
-      cloudAnnotations2D: [],
-      selectedAnnotation2D: null,
-      // Drawing Sheet
-      activeSheet: null,
-      sheetEnabled: false,
-      sheetPanelVisible: false,
-      titleBlockEditorVisible: false,
-      // Keep savedSheetTemplates - don't reset user's templates
-
-      // BCF - reset panel but keep project and author
-      bcfPanelVisible: false,
-      bcfLoading: false,
-      bcfError: null,
-      activeTopicId: null,
-      activeViewpointId: null,
-      // Keep bcfProject and bcfAuthor - user's work
-
-      // IDS - reset panel but keep document and results
-      idsPanelVisible: false,
-      idsLoading: false,
-      idsProgress: null,
-      idsError: null,
-      idsActiveSpecificationId: null,
-      idsActiveEntityId: null,
-      // Keep idsDocument, idsValidationReport, idsLocale - user's work
-
-      // Lists - reset result but keep definitions (user's saved lists)
-      listPanelVisible: false,
-      activeListId: null,
-      listResult: null,
-      listExecuting: false,
-
-      // Pinboard - clear pinned entities on new file
-      pinboardEntities: new Set<string>(),
-      basketViews: [],
-      activeBasketViewId: null,
-      basketPresentationVisible: false,
-      hierarchyBasketSelection: new Set<string>(),
-
-      // Script - reset execution state but keep saved scripts, editor content, and panel visibility
-      // (scripts that create-and-load a model should not close the panel)
-      scriptExecutionState: 'idle' as const,
-      scriptLastResult: null,
-      scriptLastError: null,
-      scriptLastDiagnostics: [],
-      scriptAssistantTurnSnapshot: null,
-      scriptDeleteConfirmId: null,
-
-      // Lens - deactivate but keep saved lenses
-      activeLensId: null,
-      lensPanelVisible: false,
-      lensColorMap: new Map<number, string>(),
-      lensHiddenIds: new Set<number>(),
-      // Ownership bookkeeping for the shared hidden/isolation channels — those
-      // channels are wiped above, so stale claims must not survive the reset.
-      lensAppliedHiddenIds: [] as number[],
-      lensRuleIsolation: null,
-      lensRuleCounts: new Map<string, number>(),
-      lensRuleEntityIds: new Map<string, number[]>(),
-
-      // Chat - keep messages and panel visible, reset streaming state
-      chatStatus: 'idle' as const,
-      chatStreamingContent: '',
-      chatError: null,
-      chatAbortController: null,
-
-      // Schedule (4D) - drop panel + data; definitions are re-extracted on
-      // next load. `playbackSpeed`, `playbackLoop`, and `ganttTimeScale` are
-      // intentionally preserved as user preferences that survive file loads.
-      ganttPanelVisible: false,
-      generateScheduleDialogOpen: false,
-      scheduleData: null,
-      scheduleRange: null,
-      activeWorkScheduleId: '',
-      expandedTaskGlobalIds: new Set<string>(),
-      hoveredTaskGlobalId: null,
-      selectedTaskGlobalIds: new Set<string>(),
-      animationEnabled: false,
-      playbackIsPlaying: false,
-      playbackTime: 0,
-
-      // Mutations - clear all mutation state so stale changes don't carry over
-      mutationViews: new Map(),
-      changeSets: new Map(),
-      activeChangeSetId: null,
-      undoStacks: new Map(),
-      redoStacks: new Map(),
-      dirtyModels: new Set(),
-      mutationVersion: get().mutationVersion + 1,
-
-      // Search - results reference the previous model's expressIds, drop them.
-      searchQuery: '',
-      searchOpen: false,
-      searchHighlightIndex: 0,
-      searchIndexes: new Map(),
-      searchVimCycle: null,
-      searchModalOpen: false,
-      searchFieldFilter: 'all',
-      searchModelFilter: null,
-      searchFilterResult: null,
-      searchFilterRunning: false,
-      searchFilterError: null,
-      searchFilter: { rules: [], combinator: 'AND', limit: 500 },
-      searchFilterSchema: new Map(),
-
-      // Annotations — drop draft + selection so a new file doesn't
-      // inherit the previous file's pin authoring state. Persisted
-      // pins themselves stay in localStorage (cross-file workspace).
-      draft: null,
-      selectedAnnotationId: null,
-
-      // Point cloud — clear runtime fields so a new file doesn't
-      // inherit the previous file's color mode / size / EDL state.
-      // Single-source-of-truth defaults shared with createPointCloudSlice.
-      ...POINT_CLOUD_DEFAULTS,
-      pointCloudFixedColor: [...POINT_CLOUD_DEFAULTS.pointCloudFixedColor] as [number, number, number, number],
-    });
+    // Clash (#2654 review) — same stale-model-reference class as the
+    // `compareResult` and `zoneAssignments` the composed patch above clears
+    // (`slices/compareSlice.ts`, `slices/zonesSlice.ts`): a clash result is keyed by
+    // `model:expressId` pairs from the OUTGOING model, and an IFCX
+    // recomposition reassigns expressIds outright, so a surviving result can
+    // silently describe different entities. Worse, the on-demand intersection
+    // SOLID is a mesh drawn into the live scene: `clashSelectedId` and
+    // `clashSolidStatus: 'solid'` surviving here means `Viewport`'s draw gate
+    // passes and the previous model's solid gets re-pushed when the renderer
+    // re-initialises for the new scene.
+    //
+    // Routed through `endClashScenePresentation`, the shared model-lifecycle
+    // teardown, rather than calling `clearClash()` directly: this was the third
+    // spelling of a teardown #2574 exists to unify, and it was incomplete. The
+    // `set` above puts `pendingColorUpdates: null` (`dataSlice.teardown.ts`,
+    // which says the same thing from the other side), and `null` is a NO-OP in
+    // the effect that owns that channel (`useGeometryStreaming.ts`, "if
+    // (pendingColorUpdates === null) return") — only a non-null EMPTY map
+    // reaches `scene.clearColorOverrides()`. So the outgoing file's clash pair
+    // tint (or lens colouring) stayed pushed at the renderer across a model
+    // switch. The helper releases it with an empty `Map`.
+    //
+    // `'federation-cleared'` is the right mode: every model is gone, so both
+    // visibility channels are cleared outright and the clash RESULT goes with
+    // them — which is what `clearClash()` did here before, unchanged. Presets +
+    // settings survive (workspace prefs), as everywhere else.
+    endClashScenePresentation(() => get() as unknown as ClashSceneTeardown, 'federation-cleared');
   },
 
   openWorkspacePanel: (panel) => {
@@ -575,10 +365,26 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       clashPanelVisible: panel === 'clash',
       comparePanelVisible: panel === 'compare',
       extensionsPanelVisible: panel === 'extensions',
+      sourcesPanelVisible: panel === 'sources',
       collabPanelVisible: panel === 'collab',
       layersPanelVisible: panel === 'layers',
       rightPanelCollapsed: false,
     });
+    // A side panel with NO visibility flag of its own (Location zones, #1869)
+    // cannot be adopted by `registerSidebarExclusivity` below, which promotes
+    // the panel whose flag just went off->on. Nothing went on, so the docked
+    // slot stayed where it was and the panel could not be opened from ANY entry
+    // point -- the activity bar included. Set it here, where the intent to open
+    // is unambiguous; a flagged panel still goes through the subscription so
+    // there remains one writer per mechanism.
+    // ...but only for a SIDE panel. `showWorkspacePanel` returns early for the
+    // bottom strip (Script / Schedule / Lists); this entry point has no such
+    // early return, so without the `isBottomPanel` clause a re-dock of a
+    // popped-out Lists window would promote it into the single-tenant side slot
+    // it does not belong to.
+    if (!isBottomPanel(panel) && !SIDEBAR_PANEL_FLAGS.some(([, id]) => id === panel)) {
+      get().setSidebarActivePanel(panel);
+    }
     if (get().sidebarMode !== 'expanded') get().setSidebarMode('expanded');
   },
 
@@ -610,6 +416,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
         clashPanelVisible: false,
         comparePanelVisible: false,
         extensionsPanelVisible: false,
+        sourcesPanelVisible: false,
         collabPanelVisible: false,
         layersPanelVisible: false,
         rightPanelCollapsed: false,
@@ -669,7 +476,7 @@ const createViewerStore = () => create<ViewerState>()((...args) => ({
       get().showWorkspacePanel(panel);
     }
   },
-}));
+})));
 
 const STORE_SINGLETON_KEY = '__ifc_lite_viewer_store__';
 const globalStoreRegistry = globalThis as typeof globalThis & {
@@ -677,7 +484,7 @@ const globalStoreRegistry = globalThis as typeof globalThis & {
 };
 
 /**
- * The six per-panel visibility flags that drive the single-tenant sidebar,
+ * The per-panel visibility flags that drive the single-tenant sidebar,
  * paired with their registry id. `properties` has no flag — it is the
  * fallback shown when none of these are on. (Script / Schedule / Lists are
  * NOT here: they live in the bottom panel and stay independent.)
@@ -689,6 +496,7 @@ const SIDEBAR_PANEL_FLAGS: ReadonlyArray<readonly [keyof ViewerState, WorkspaceP
   ['clashPanelVisible', 'clash'],
   ['comparePanelVisible', 'compare'],
   ['extensionsPanelVisible', 'extensions'],
+  ['sourcesPanelVisible', 'sources'],
   ['collabPanelVisible', 'collab'],
   ['layersPanelVisible', 'layers'],
 ];

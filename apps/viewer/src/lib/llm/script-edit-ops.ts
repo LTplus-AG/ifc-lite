@@ -450,7 +450,21 @@ export function applyScriptEditOperations(params: {
   const appliedOpIds: string[] = [];
   const changes: ScriptEditorTextChange[] = [];
   const baseMutations = buildBaseMutations(params.priorAcceptedOps ?? [], baseContent.length);
-  let selectionMutationSeen = (params.priorAcceptedOps ?? []).some((op) => op.type === 'replaceSelection');
+  // Both `replaceSelection` and `replaceAll` invalidate every positional
+  // offset taken from the base snapshot, and `buildBaseMutations` returns []
+  // for BOTH (they hit its `default` arm) -- so a later positional op rebases
+  // through an empty mutation list and lands at a stale offset.
+  //
+  // `replaceSelection` was already carried across calls here; `replaceAll` was
+  // not. The intra-batch invariant is enforced separately below
+  // (`operations.length > 1 && ... 'replaceAll'`), but the batch is the
+  // STREAMING DELTA, not the whole response: ChatPanel re-parses per chunk and
+  // `filterUnappliedScriptOps` strips already-applied ops, so a `replaceAll`
+  // in one fence and an `insert` in the next arrive as two batches of ONE
+  // each -- and that guard never fires.
+  let contentReplacedSeen = (params.priorAcceptedOps ?? []).some(
+    (op) => op.type === 'replaceSelection' || op.type === 'replaceAll',
+  );
 
   if (operations.length === 0) {
     return { ok: true, content, selection, revision, appliedOpIds, changes, status: 'ok' };
@@ -613,15 +627,15 @@ export function applyScriptEditOperations(params: {
       changes.push({ from: selection.from, to: selection.to, insert: op.text });
       selection = { from: cursor, to: cursor };
       appliedOpIds.push(op.opId);
-      selectionMutationSeen = true;
+      contentReplacedSeen = true;
       continue;
     }
 
     if (op.type === 'insert') {
-      if (selectionMutationSeen) {
+      if (contentReplacedSeen) {
         const diagnostic = createPatchDiagnostic(
           'patch_semantic_error',
-          `insert op "${op.opId}" cannot follow a selection-based edit in the same patch set.`,
+          `insert op "${op.opId}" cannot follow a whole-content edit (replaceSelection or replaceAll) in the same patch set.`,
           'error',
           {
             opId: op.opId,
@@ -699,10 +713,10 @@ export function applyScriptEditOperations(params: {
       continue;
     }
 
-    if (selectionMutationSeen) {
+    if (contentReplacedSeen) {
       const diagnostic = createPatchDiagnostic(
         'patch_semantic_error',
-        `replaceRange op "${op.opId}" cannot follow a selection-based edit in the same patch set.`,
+        `replaceRange op "${op.opId}" cannot follow a whole-content edit (replaceSelection or replaceAll) in the same patch set.`,
         'error',
         {
           opId: op.opId,

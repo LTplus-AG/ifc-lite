@@ -21,10 +21,20 @@ export function checkClassificationFacet(
   // Get classifications for the entity
   const classifications = accessor.getClassifications(expressId);
   const hasAnyClassifications = classifications.length > 0;
+  // A `presenceUnknown` entry (#3954) does NOT prove the entity is
+  // classified — it only means an IfcExternalReferenceRelationship-based
+  // classification couldn't be ruled out. Only a "proven" entry (a real
+  // classification, or #3948's proven-but-unreadable `unresolved`) may be
+  // treated as evidence of presence.
+  const hasProvenClassifications = classifications.some((c) => !c.presenceUnknown);
 
   // If no value or system constraint, just check if any classification exists
   if (!facet.system && !facet.value) {
-    if (!hasAnyClassifications) {
+    if (!hasProvenClassifications) {
+      if (hasAnyClassifications) {
+        // Every entry is `presenceUnknown` — cannot fabricate a pass.
+        return unresolvedResult(facet, 'presence');
+      }
       return {
         passed: false,
         actualValue: '(none)',
@@ -65,16 +75,45 @@ export function checkClassificationFacet(
     };
   }
 
+  // Every entry is `presenceUnknown` (#3954) — before treating this as "no
+  // classifications matched", note that we cannot even say the entity IS
+  // classified, let alone whether a resolved value would have matched. This
+  // must be checked before the resolved/unresolved split below, or a
+  // presence-unknown entry would fall through `hasUnresolved` and get the
+  // "confirmed classified" `unresolvedResult('system'|'value')` wording,
+  // which asserts presence this pathway never proved.
+  if (!hasProvenClassifications) {
+    return unresolvedResult(facet, 'presence');
+  }
+
+  // Only entries whose attributes were actually readable can be matched
+  // against a system/value constraint. An `unresolved` entry (confirmed
+  // classified, but this store has no source bytes to read system/value/name
+  // from — issue #3948) carries `system: ''`/`value: ''`, which is NOT a
+  // genuine empty classification: matching it would either silently PASS a
+  // required facet that should have failed, or silently FAIL/mismatch one
+  // that would have matched had the data been readable. Match against the
+  // resolved subset only, and report CLASSIFICATION_UNRESOLVED — distinct
+  // from MISSING (genuinely unclassified) and from a MISMATCH (we read a
+  // value and it didn't match) — whenever an unresolved entry could have
+  // been the reason no resolved entry matched.
+  const resolvedClassifications = classifications.filter((c) => !c.unresolved);
+  const hasUnresolved = resolvedClassifications.length < classifications.length;
+
   // Filter by system if specified
-  let matchingClassifications = classifications;
+  let matchingClassifications = resolvedClassifications;
   if (facet.system) {
-    matchingClassifications = classifications.filter((c) =>
+    matchingClassifications = resolvedClassifications.filter((c) =>
       matchConstraint(facet.system!, c.system)
     );
 
     if (matchingClassifications.length === 0) {
+      if (hasUnresolved) {
+        return unresolvedResult(facet, 'system');
+      }
+
       const availableSystems = [
-        ...new Set(classifications.map((c) => c.system)),
+        ...new Set(resolvedClassifications.map((c) => c.system)),
       ].join(', ');
 
       return {
@@ -101,6 +140,10 @@ export function checkClassificationFacet(
     );
 
     if (matchingValues.length === 0) {
+      if (hasUnresolved) {
+        return unresolvedResult(facet, 'value');
+      }
+
       const availableValues = matchingClassifications
         .map((c) => c.value)
         .join(', ');
@@ -140,5 +183,44 @@ export function checkClassificationFacet(
       .map((c) => `${c.system}:${c.value}`)
       .join(', '),
     expectedValue: formatConstraint(facet.system!),
+  };
+}
+
+/**
+ * Result for a system/value-constrained facet when the entity is confirmed
+ * classified but no *readable* classification matched, and at least one
+ * *unreadable* one exists that might have. `passed: false` is the closest
+ * this engine's boolean result can get to "could not determine" — the
+ * distinguishing signal is `failure.type` (`CLASSIFICATION_UNRESOLVED`,
+ * never `_MISSING`/`_MISMATCH`), so a report can tell "cannot verify" apart
+ * from a genuine violation instead of treating both as the same failure.
+ */
+function unresolvedResult(
+  facet: IDSClassificationFacet,
+  field: 'presence' | 'system' | 'value'
+): FacetCheckResult {
+  const expected = field === 'presence'
+    ? 'any classification'
+    : facet.system && facet.value
+      ? `${formatConstraint(facet.system)}:${formatConstraint(facet.value)}`
+      : facet.system
+        ? formatConstraint(facet.system)
+        : formatConstraint(facet.value!);
+
+  return {
+    passed: false,
+    actualValue: '(unresolved)',
+    expectedValue: expected,
+    failure: {
+      type: 'CLASSIFICATION_UNRESOLVED',
+      field,
+      expected,
+      context: {
+        reason:
+          field === 'presence'
+            ? 'Whether this entity is classified cannot be determined on this data source: a classification reachable only via IfcExternalReferenceRelationship (IfcMaterial, IfcProfileDef) cannot be resolved without source bytes.'
+            : 'Entity is classified, but the classification attributes are unavailable on this data source (server-parsed model without source bytes).',
+      },
+    },
   };
 }

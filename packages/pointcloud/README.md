@@ -19,6 +19,9 @@ npm install @ifc-lite/pointcloud
 ```ts
 import { decodeIfcxPointAttribute } from '@ifc-lite/pointcloud';
 
+// One IFCX node's attribute map, e.g. from a parsed .ifcx document
+declare const node: { attributes: ReadonlyMap<string, unknown> };
+
 const chunk = decodeIfcxPointAttribute(node.attributes);
 if (chunk) {
   console.log(`${chunk.pointCount} points`, chunk.bbox);

@@ -9,6 +9,7 @@
 import type { StateCreator } from 'zustand';
 import type { ListDefinition, ListResult } from '@ifc-lite/lists';
 import { loadListDefinitions, saveListDefinitions } from '../../lib/lists/persistence.js';
+import { defineSliceTeardown, notApplicable } from '../teardown.js';
 
 export interface ListSlice {
   // State
@@ -78,3 +79,32 @@ export const createListSlice: StateCreator<ListSlice, [], [], ListSlice> = (set,
   setListExecuting: (listExecuting) => set({ listExecuting }),
   setPendingListDraft: (pendingListDraft) => set({ pendingListDraft }),
 });
+
+/**
+ * What a session reset clears on the list slice.
+ *
+ * Carried verbatim from `resetViewerState` (`store/index.ts`):
+ *   "Lists - reset result but keep definitions (user's saved lists)"
+ *
+ * `listDefinitions` is the user's authored work and round-trips to
+ * localStorage, so it is absent from `owns` — this slice is not willing to
+ * destroy it. `pendingListDraft` is absent for the same reason no teardown
+ * path touches it today: it is a hand-off in flight from another panel, and
+ * clearing it here would drop a list the user just asked to build.
+ */
+export const listTeardown = defineSliceTeardown(
+  'listSlice',
+  ['listPanelVisible', 'activeListId', 'listResult', 'listExecuting'],
+  {
+    'session-reset': () => ({
+      listPanelVisible: false,
+      activeListId: null,
+      // The rows reference the OUTGOING model's entities; the user re-runs
+      // the definition against the new one.
+      listResult: null,
+      listExecuting: false,
+    }),
+    'model-removed': notApplicable,
+    'all-models-cleared': notApplicable,
+  },
+);

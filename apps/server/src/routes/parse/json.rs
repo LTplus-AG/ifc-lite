@@ -202,6 +202,18 @@ pub async fn parse_metadata(
             }
         }
 
+        // The walk above ends on `None`, which does not only mean "the file
+        // ended": the scanner skips a record whose instance name does not fit
+        // `u32` (#3395) and stops the whole scan at a record with no
+        // terminator (#3695). Either way `entity_count` is computed over less
+        // than the file declares, and a 200 carrying it reads exactly like a
+        // complete answer. Report to the server's sink like every other
+        // whole-file walk, AND carry both onto the response — a client cannot
+        // read the server log (#3791).
+        let oversized_id_count = scanner.skipped_oversized_ids();
+        let malformed_record_found = scanner.malformed_record_start().is_some();
+        ifc_lite_core::report_scan_diagnostics(oversized_id_count, malformed_record_found);
+
         let schema_version = detect_schema_version(&content);
 
         (
@@ -210,6 +222,8 @@ pub async fn parse_metadata(
                 geometry_count,
                 schema_version: schema_version.to_string(),
                 file_size,
+                oversized_id_count,
+                malformed_record_found,
             },
             admission_guard,
         )

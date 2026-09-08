@@ -52,6 +52,20 @@ fn check_submesh_ids_preserved_and_triangles_removed(
         "[{name}] sub-mesh geometry_ids must match extrusion IDs"
     );
 
+    // #3199: those ids are representation items, so the flag that says what
+    // `geometry_id` MEANS must stay false — through the voids rebuild as well
+    // as before it, which is the one place a collection is reconstructed
+    // element-by-element and could lose the flag. This wall is "multi-layer" by
+    // modelling (three stacked extrusions), NOT by `IfcMaterialLayerSetUsage`;
+    // the layer slicer never runs on it. Flip this to true and every one of its
+    // meshes would report an IfcMaterial id it does not have.
+    for (label, collection) in [("uncut", uncut), ("cut", cut)] {
+        assert!(
+            !collection.ids_are_materials,
+            "[{name}] {label} sub-meshes are IfcExtrudedAreaSolids, not material layers"
+        );
+    }
+
     for sub in &cut.sub_meshes {
         assert!(
             !sub.mesh.is_empty(),

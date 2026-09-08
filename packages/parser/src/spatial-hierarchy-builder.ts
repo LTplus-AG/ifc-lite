@@ -30,6 +30,7 @@ import {
 } from '@ifc-lite/data';
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import type { IfcSourceBytes } from './source-bytes.js';
 import { getAttributeNamesAcrossSchemas } from './ifc-schema.js';
 
 const log = createLogger('SpatialHierarchy');
@@ -38,7 +39,7 @@ const log = createLogger('SpatialHierarchy');
  *  (storey elevation, LongName). Present on the fresh-parse / cache-with-source
  *  path, absent on the source-less `buildFromCache` fallback. */
 interface AttributeSource {
-  source: Uint8Array;
+  source: Uint8Array | IfcSourceBytes;
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined } };
   lengthUnitScale: number;
 }
@@ -75,7 +76,7 @@ export class SpatialHierarchyBuilder {
     entities: EntityTable,
     relationships: RelationshipGraph,
     _strings: StringTable,
-    source: Uint8Array,
+    source: Uint8Array | IfcSourceBytes,
     entityIndex: { byId: { get(expressId: number): EntityRef | undefined } },
     lengthUnitScale: number = 1.0
   ): SpatialHierarchy {
@@ -204,9 +205,9 @@ export class SpatialHierarchyBuilder {
     // source bytes; the source-less buildFromCache fallback leaves it undefined,
     // exactly like storey elevation.
     const rawLongName = this.extractLongName(expressId, ctx);
-    // Fall back to LongName when Name is empty (common for IfcSpace), then to a
-    // stable placeholder, so every node still renders a label.
-    const name = rawName || rawLongName || `Entity #${expressId}`;
+    // Fall back to LongName when Name is empty (common for IfcSpace). Left
+    // empty, not a fabricated `Entity #<id>` — it flows into the export layer.
+    const name = rawName || rawLongName || '';
     // Only keep LongName as a distinct descriptor when it adds something beyond
     // the primary label (never duplicate it into the secondary slot).
     const longName = rawLongName && rawLongName !== name ? rawLongName : undefined;
@@ -390,7 +391,7 @@ export class SpatialHierarchyBuilder {
    */
   private extractElevation(
     expressId: number,
-    source: Uint8Array,
+    source: Uint8Array | IfcSourceBytes,
     entityIndex: { byId: { get(expressId: number): EntityRef | undefined } }
   ): number | undefined {
     const ref = entityIndex.byId.get(expressId);
@@ -444,7 +445,7 @@ export class SpatialHierarchyBuilder {
    */
   private extractPlacementElevation(
     expressId: number,
-    source: Uint8Array,
+    source: Uint8Array | IfcSourceBytes,
     entityIndex: { byId: { get(expressId: number): EntityRef | undefined } }
   ): number | undefined {
     try {

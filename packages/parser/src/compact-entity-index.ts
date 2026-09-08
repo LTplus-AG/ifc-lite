@@ -2,18 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * CompactEntityIndex - Memory-efficient entity index using typed arrays
- *
- * Replaces Map<number, EntityRef> with sorted typed arrays for O(log n) lookup.
- * For 8.4M entities, this saves ~400MB of Map overhead:
- *   - Map: ~56 bytes/entry overhead (key + value + hash table) = ~470MB
- *   - Typed arrays: ~16 bytes/entry (4 Uint32Arrays) = ~134MB
- *
- * Provides the same Map-like interface via get()/has() for drop-in compatibility.
- */
+/** Sorted entity columns avoid the per-entry overhead of Map<number, EntityRef>.
+ * Lookups use binary search with a bounded LRU for recently read references. */
 
+import { checkedExpressId } from './express-id.js';
 import type { EntityRef } from './types.js';
+import { internType, type CompactEntityIndexColumns } from './compact-entity-index-columns.js';
 import { yieldToEventLoop } from './yield-to-event-loop.js';
 
 /**
@@ -38,6 +32,7 @@ export class CompactEntityIndex {
 
   /** LRU cache for recently accessed EntityRefs */
   private lruCache: Map<number, EntityRef>;
+  private lruKeys: MapIterator<number> | undefined;
   private readonly lruMaxSize: number;
 
   constructor(
@@ -62,6 +57,13 @@ export class CompactEntityIndex {
     for (let i = 0; i < typeStrings.length; i++) {
       this.typeStringMap.set(typeStrings[i], i);
     }
+  }
+
+  /** Borrow numeric backing, valid until its owner detaches it; do not mutate.
+   * Cache consumers must not detach. Transport may transfer a retired index. */
+  getColumns(): CompactEntityIndexColumns {
+    const { expressIds, byteOffsets, byteLengths, typeIndices, typeStrings } = this;
+    return { expressIds, byteOffsets, byteLengths, typeIndices, typeStrings: typeStrings.slice() };
   }
 
   /**
@@ -112,8 +114,10 @@ export class CompactEntityIndex {
     // Add to LRU cache
     this.lruCache.set(expressId, ref);
     if (this.lruCache.size > this.lruMaxSize) {
-      // Delete oldest entry (first key in insertion order)
-      const firstKey = this.lruCache.keys().next().value;
+      // #3983: keep a live cursor. Restarting at the Map's deleted prefix for
+      // every eviction makes a large sequential scan quadratic in Firefox.
+      this.lruKeys ??= this.lruCache.keys();
+      const firstKey = this.lruKeys.next().value;
       if (firstKey !== undefined) {
         this.lruCache.delete(firstKey);
       }
@@ -216,11 +220,17 @@ export class CompactEntityIndex {
     }
   }
 
+  /** Highest indexed ID in constant time; zero for an empty index. */
+  get maxExpressId(): number {
+    return this.expressIds[this.size - 1] ?? 0;
+  }
+
   /**
    * Clear the LRU cache (e.g., on model unload).
    */
   clearCache(): void {
     this.lruCache.clear();
+    this.lruKeys = undefined;
   }
 
   /**
@@ -269,22 +279,19 @@ export class CompactEntityIndexBuilder {
   }
 
   add(expressId: number, type: string, byteOffset: number, byteLength: number): void {
+    // Checked before the slot is claimed, so a caught throw cannot leave a
+    // zero-filled phantom entry behind for build() to emit.
+    const id = checkedExpressId(expressId);
     if (this.count >= this.capacity) {
       this.grow();
     }
     const i = this.count++;
 
-    this.expressIds[i] = expressId;
+    this.expressIds[i] = id;
     this.byteOffsets[i] = byteOffset;
     this.byteLengths[i] = byteLength;
 
-    let typeIdx = this.typeStringMap.get(type);
-    if (typeIdx === undefined) {
-      typeIdx = this.typeStrings.length;
-      this.typeStrings.push(type);
-      this.typeStringMap.set(type, typeIdx);
-    }
-    this.typeIndices[i] = typeIdx;
+    this.typeIndices[i] = internType(this.typeStrings, this.typeStringMap, type);
   }
 
   private grow(): void {
@@ -386,17 +393,11 @@ export function buildCompactEntityIndex(
 
   for (let i = 0; i < count; i++) {
     const ref = sorted[i];
-    expressIds[i] = ref.expressId;
+    expressIds[i] = checkedExpressId(ref.expressId);
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;
 
-    let typeIdx = typeStringMap.get(ref.type);
-    if (typeIdx === undefined) {
-      typeIdx = typeStrings.length;
-      typeStrings.push(ref.type);
-      typeStringMap.set(ref.type, typeIdx);
-    }
-    typeIndices[i] = typeIdx;
+    typeIndices[i] = internType(typeStrings, typeStringMap, ref.type);
   }
 
   return new CompactEntityIndex(
@@ -413,15 +414,7 @@ export async function buildCompactEntityIndexAsync(
   entityRefs: EntityRef[],
   lruMaxSize?: number,
   chunkSize: number = 8192,
-  // Phase 3c: 8ms was the previous default but caused the parser tail
-  // to balloon under stream-time contention. Each yield under load
-  // costs 10-50ms wall-clock (event-loop backlogged with geometry
-  // batches), and 1700 yields × 4ms avg = 6.5s of pure overhead
-  // (measured: compact entity index 196ms uncontended → 6700ms
-  // contended). 50ms budget cuts yields to ~270 → ~1s overhead, saving
-  // ~5s on the parser path. Trade-off: parser worker briefly
-  // unresponsive between yields, but it's a worker thread so this only
-  // affects message processing back to main, which is buffered anyway.
+  // A worker-local time budget bounds event-loop handoffs under stream contention.
   budgetMs: number = 50,
 ): Promise<CompactEntityIndex> {
   const count = entityRefs.length;
@@ -456,17 +449,11 @@ export async function buildCompactEntityIndexAsync(
       chunkStart = performance.now();
     }
     const ref = sorted[i];
-    expressIds[i] = ref.expressId;
+    expressIds[i] = checkedExpressId(ref.expressId);
     byteOffsets[i] = ref.byteOffset;
     byteLengths[i] = ref.byteLength;
 
-    let typeIdx = typeStringMap.get(ref.type);
-    if (typeIdx === undefined) {
-      typeIdx = typeStrings.length;
-      typeStrings.push(ref.type);
-      typeStringMap.set(ref.type, typeIdx);
-    }
-    typeIndices[i] = typeIdx;
+    typeIndices[i] = internType(typeStrings, typeStringMap, ref.type);
   }
 
   return new CompactEntityIndex(

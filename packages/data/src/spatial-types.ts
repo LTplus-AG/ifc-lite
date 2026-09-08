@@ -25,6 +25,8 @@ export const SPATIAL_STRUCTURE_TYPE_ENUMS = [
   IfcTypeEnum.IfcRailway,
   IfcTypeEnum.IfcRailwayPart,
   IfcTypeEnum.IfcMarineFacility,
+  IfcTypeEnum.IfcMarinePart,
+  IfcTypeEnum.IfcFacilityPartCommon,
 ] as const;
 
 export const BUILDING_LIKE_SPATIAL_TYPE_ENUMS = [

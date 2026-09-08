@@ -301,15 +301,36 @@ function buildBoxFromIfcCorners(
   ifcCorners: Vec3[],
   storeyElevation: number,
 ): MeshData {
+  // Centre of the box in the IFC frame. Every corner belongs to exactly 3 of
+  // the 6 faces, so the mean of the 8 corners is the centre for any of the
+  // box shapes this function is handed.
+  const centre: Vec3 = [0, 0, 0];
+  for (const c of ifcCorners) {
+    centre[0] += c[0] / ifcCorners.length;
+    centre[1] += c[1] / ifcCorners.length;
+    centre[2] += c[2] / ifcCorners.length;
+  }
   // Each face has 4 unique vertices (normal welded per face) → 24 verts.
   // Faces: bottom, top, +U, +V, -U, -V (where U/V are the two sides).
   const faces: Array<{ corners: number[]; normal: Vec3 }> = [
     { corners: [0, 1, 2, 3], normal: [0, 0, -1] }, // bottom (IFC -Z)
     { corners: [4, 7, 6, 5], normal: [0, 0, 1] },  // top (IFC +Z)
-    { corners: [0, 4, 5, 1], normal: faceNormal(ifcCorners, 0, 4, 1) },
-    { corners: [1, 5, 6, 2], normal: faceNormal(ifcCorners, 1, 5, 2) },
-    { corners: [2, 6, 7, 3], normal: faceNormal(ifcCorners, 2, 6, 3) },
-    { corners: [3, 7, 4, 0], normal: faceNormal(ifcCorners, 3, 7, 0) },
+    // Side faces. The cross product of two edges gives the face's *axis*;
+    // which of the two opposite directions along it is outward depends on
+    // the winding of the corner ring the caller supplied — and the two
+    // callers wind their bottom rings in OPPOSITE directions:
+    // buildAxisBox's is counter-clockwise seen from IFC +Z, buildLinearBox's
+    // is clockwise. So no fixed argument order to faceNormal() can be
+    // outward for both; picking one order points the other caller's side
+    // faces inward, which is exactly the bug this used to have (inward for
+    // columns) and the one that swapping the argument order produced
+    // instead (inward for walls). outwardSideNormal() resolves the sign
+    // against the box centre, which is winding-independent — it holds for
+    // either caller, and for any future caller whatever ring order it uses.
+    { corners: [0, 4, 5, 1], normal: outwardSideNormal(ifcCorners, centre, 0, 4, 1) },
+    { corners: [1, 5, 6, 2], normal: outwardSideNormal(ifcCorners, centre, 1, 5, 2) },
+    { corners: [2, 6, 7, 3], normal: outwardSideNormal(ifcCorners, centre, 2, 6, 3) },
+    { corners: [3, 7, 4, 0], normal: outwardSideNormal(ifcCorners, centre, 3, 7, 0) },
   ];
   const positions = new Float32Array(24 * 3);
   const normals = new Float32Array(24 * 3);
@@ -348,6 +369,24 @@ function buildBoxFromIfcCorners(
     color: COLORS[type],
     entityIds,
   };
+}
+
+/**
+ * Unit normal of the planar side face through corners `a`, `b`, `c`, signed
+ * so it points away from `centre`.
+ *
+ * `faceNormal` alone only fixes the face's axis; its sign follows the corner
+ * ring's winding, which differs between callers. The box is convex, so for
+ * any point `p` on a face plane the sign of `dot(n, p - centre)` is the same
+ * across the whole face and positive exactly when `n` is the outward one.
+ */
+function outwardSideNormal(corners: Vec3[], centre: Vec3, a: number, b: number, c: number): Vec3 {
+  const n = faceNormal(corners, a, b, c);
+  const dot =
+    n[0] * (corners[a][0] - centre[0]) +
+    n[1] * (corners[a][1] - centre[1]) +
+    n[2] * (corners[a][2] - centre[2]);
+  return dot < 0 ? [-n[0], -n[1], -n[2]] : n;
 }
 
 function faceNormal(corners: Vec3[], a: number, b: number, c: number): Vec3 {

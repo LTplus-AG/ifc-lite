@@ -3,14 +3,14 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 /**
- * footprint.ts (Bet B1.4): the crux ancestor-exclusion rule (structural
+ * footprint.ts (footprint validation): the crux ancestor-exclusion rule (structural
  * conflicts), the spatial epsilon rule, and the soundness invariant
  * (writtenNodes intersection must ALWAYS report a conflict, regardless of
  * region state — see footprint.ts's module docstring for the full rationale).
  */
 
 import { describe, expect, it } from 'vitest';
-import { ProvenanceDag, type NodeSpec } from './dag-engine.js';
+import { ProvenanceDag, type AnyNodeSpec } from './dag-engine.js';
 import type { ElementPayload, GeometryMeshPayload, LayerPayload, PropertySetPayload, RelationshipPayload } from './node-hash.js';
 import {
   aabbFromMesh,
@@ -46,7 +46,7 @@ function mesh(expressId: number, origin: readonly [number, number, number] = [0,
 
 function buildFixedDag(): ProvenanceDag {
   const dag = new ProvenanceDag();
-  const specs: NodeSpec[] = [
+  const specs: AnyNodeSpec[] = [
     { id: 'meshA', kind: 'geometry-mesh', payload: mesh(100) },
     { id: 'meshB', kind: 'geometry-mesh', payload: mesh(200) },
     { id: 'meshC', kind: 'geometry-mesh', payload: mesh(300) },
@@ -194,6 +194,71 @@ describe('conflictPredicate: structural conflicts', () => {
     expect(conflictPredicate(fpA, fpB).structural).toBe(false);
   });
 
+  it('STOPS at a container ancestor — a non-container ABOVE one is not reached', async () => {
+    // The crux rule has two halves, and the fixed DAG above can only exercise
+    // one of them: its containers (storeyRel, root) have nothing but more
+    // container above them, so "excluded from writtenNodes" and "not walked
+    // past" are indistinguishable there.
+    //
+    // This DAG separates them. `ElementPayload`'s documented component
+    // vocabulary includes `relationship:<RelType>`, so an element sitting
+    // ABOVE a relationship is a legal node-hash-v0 shape — the
+    // `IfcRelVoidsElement` one, a host element whose components include the
+    // voids relationship over its opening. Walking PAST the relationship
+    // would pull the host into the opening's writtenNodes, and every edit
+    // anywhere below the voids relationship would then structurally conflict
+    // with every edit on the host: exactly the false-conflict blowup the crux
+    // rule exists to prevent (the soundness criterion).
+    const dag = new ProvenanceDag();
+    const specs: AnyNodeSpec[] = [
+      { id: 'openMesh', kind: 'geometry-mesh', payload: mesh(400) },
+      { id: 'hostMesh', kind: 'geometry-mesh', payload: mesh(500) },
+      {
+        id: 'opening',
+        kind: 'element',
+        children: ['openMesh'],
+        buildPayload: (h): ElementPayload => ({
+          key: 'opening-1',
+          ifcType: 'IfcOpeningElement',
+          components: [{ componentKey: 'geometry-mesh', hash: h.get('openMesh')! }],
+        }),
+      },
+      {
+        id: 'voidsRel',
+        kind: 'relationship',
+        children: ['opening'],
+        buildPayload: (h): RelationshipPayload => ({
+          relType: 'IfcRelVoidsElement',
+          roles: [{ roleName: 'RelatedOpeningElement', refs: [h.get('opening')!] }],
+        }),
+      },
+      {
+        id: 'host',
+        kind: 'element',
+        children: ['hostMesh', 'voidsRel'],
+        buildPayload: (h): ElementPayload => ({
+          key: 'host-1',
+          ifcType: 'IfcWall',
+          components: [
+            { componentKey: 'geometry-mesh', hash: h.get('hostMesh')! },
+            { componentKey: 'relationship:IfcRelVoidsElement', hash: h.get('voidsRel')! },
+          ],
+        }),
+      },
+    ];
+    for (const spec of specs) dag.addNode(spec);
+    await dag.build();
+
+    const opening = computeFootprint(dag, propertyEdit('opOpening', ['openMesh']));
+    // Not just "voidsRel is absent" — `host`, which lives above it, is absent too.
+    expect(opening.writtenNodes).toEqual(new Set(['openMesh', 'opening']));
+
+    // ...and the consequence the rule is actually for.
+    const hostEdit = computeFootprint(dag, propertyEdit('opHost', ['hostMesh']));
+    expect(hostEdit.writtenNodes).toEqual(new Set(['hostMesh', 'host']));
+    expect(conflictPredicate(opening, hostEdit).structural).toBe(false);
+  });
+
   it('computeFootprint throws on an unknown target node id', async () => {
     const dag = buildFixedDag();
     await dag.build();
@@ -249,6 +314,23 @@ describe('conflictPredicate: spatial conflicts', () => {
     expect(withZeroEpsilon.conflict).toBe(false);
   });
 
+  // Every other spatial fixture sits on one side of the boundary (a real gap,
+  // or an overlap of a whole metre) — never exactly on it. That left each
+  // axis's `<=`/`>=` free to narrow to `<`/`>` without failing a single test:
+  // confirmed live by mutating `a.min[0] <= b.max[0]` to `a.min[0] <
+  // b.max[0]` in footprint.ts and re-running this file — all 30 tests still
+  // passed. Two boxes that share a face exactly (B's min face == A's max
+  // face, epsilon 0) must still count as touching/intersecting.
+  it('boxes that share a face exactly (epsilon 0) conflict spatially', async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    const fpA = computeFootprint(dag, geometryEdit('opA', ['meshA'], { min: [0, 0, 0], max: [1, 1, 1] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshC'], { min: [1, 0, 0], max: [2, 1, 1] }));
+    const result = conflictPredicate(fpA, fpB, { epsilonMm: 0 });
+    expect(result.spatial).toBe(true);
+    expect(result.conflict).toBe(true);
+  });
+
   it('DEFAULT_EPSILON_MM is 50 (the M1 clearance-to-structure tolerance)', () => {
     expect(DEFAULT_EPSILON_MM).toBe(50);
   });
@@ -261,6 +343,51 @@ describe('conflictPredicate: spatial conflicts', () => {
     expect(fpA.region).toBeNull();
     expect(fpB.region).toBeNull();
     expect(conflictPredicate(fpA, fpB).spatial).toBe(false);
+  });
+});
+
+/* ------------------------------------------------------------------ */
+/* The spatial-rule ablation                                         */
+/* ------------------------------------------------------------------ */
+
+describe("conflictPredicate: spatialRule: 'disabled' (the spatial-rule ablation)", () => {
+  it('drops the spatial half: overlapping regions on structurally disjoint ops no longer conflict', async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    const fpA = computeFootprint(dag, geometryEdit('opA', ['meshA'], { min: [0, 0, 0], max: [2, 2, 2] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshC'], { min: [1, 1, 1], max: [3, 3, 3] }));
+
+    const enabled = conflictPredicate(fpA, fpB, { epsilonMm: 0 });
+    expect(enabled.spatial).toBe(true);
+    expect(enabled.conflict).toBe(true);
+
+    const ablated = conflictPredicate(fpA, fpB, { epsilonMm: 0, spatialRule: 'disabled' });
+    expect(ablated.spatial).toBe(false);
+    expect(ablated.structural).toBe(false);
+    expect(ablated.conflict).toBe(false);
+  });
+
+  it('leaves the STRUCTURAL half untouched: only one variable changes', async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    // Two leaves of the same element: structurally conflicting, boxes far apart.
+    const fpA = computeFootprint(dag, propertyEdit('opA', ['psetX'], { min: [0, 0, 0], max: [1, 1, 1] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshA'], { min: [500, 500, 500], max: [501, 501, 501] }));
+    for (const spatialRule of ['enabled', 'disabled'] as const) {
+      const result = conflictPredicate(fpA, fpB, { spatialRule });
+      expect(result.structural).toBe(true);
+      expect(result.conflict).toBe(true);
+    }
+  });
+
+  it("defaults to 'enabled' -- the ablation is never what a caller gets by accident", async () => {
+    const dag = buildFixedDag();
+    await dag.build();
+    const fpA = computeFootprint(dag, geometryEdit('opA', ['meshA'], { min: [0, 0, 0], max: [2, 2, 2] }));
+    const fpB = computeFootprint(dag, geometryEdit('opB', ['meshC'], { min: [1, 1, 1], max: [3, 3, 3] }));
+    expect(conflictPredicate(fpA, fpB).spatial).toBe(true);
+    expect(conflictPredicate(fpA, fpB, {}).spatial).toBe(true);
+    expect(conflictPredicate(fpA, fpB, { epsilonMm: 0, spatialRule: undefined }).spatial).toBe(true);
   });
 });
 

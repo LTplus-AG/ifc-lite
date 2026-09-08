@@ -24,6 +24,7 @@ import { GeometryProcessor, type MeshData } from '@ifc-lite/geometry';
 import {
   createClashEngine,
   disciplineMatrixRules,
+  sortClashes,
   type Clash,
   type ClashMode,
   type ClashResult,
@@ -55,30 +56,42 @@ async function meshModel(m: LoadedModel, ctx: ToolContext): Promise<MeshData[]> 
   const cached = meshCache.get(m);
   if (cached) return cached;
 
-  const bytes = await resolveIfcBytes(m);
-  ctx.progress.report(0.1, 'Tessellating model geometry', 1);
-  const gp = new GeometryProcessor();
-  await gp.init();
-  if (ctx.signal.aborted) {
-    throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
-  }
-  const result = await gp.process(bytes);
-  const meshes = result.meshes;
-  if (meshes.length === 0) {
-    throw new ToolExecutionError({
-      code: ToolErrorCode.UNSUPPORTED_OPERATION,
-      message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
-      hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
-    });
-  }
-  meshCache.set(m, meshes);
-  return meshes;
+  return withIfcBytes(m, async (bytes) => {
+    ctx.progress.report(0.1, 'Tessellating model geometry', 1);
+    const gp = new GeometryProcessor();
+    try {
+      await gp.init();
+      if (ctx.signal.aborted) {
+        throw new ToolExecutionError({ code: ToolErrorCode.INTERNAL_ERROR, message: 'Clash run cancelled before meshing.' });
+      }
+      const result = await gp.process(bytes);
+      const meshes = result.meshes;
+      if (meshes.length === 0) {
+        throw new ToolExecutionError({
+          code: ToolErrorCode.UNSUPPORTED_OPERATION,
+          message: 'No mesh geometry could be produced for this model; clash detection needs tessellated solids.',
+          hint: 'Confirm the model carries explicit geometry (not quantity-only data).',
+        });
+      }
+      meshCache.set(m, meshes);
+      return meshes;
+    } finally {
+      gp.dispose();
+    }
+  });
 }
 
-/** Raw IFC bytes for meshing: prefer the in-memory source, fall back to disk. */
-async function resolveIfcBytes(m: LoadedModel): Promise<Uint8Array> {
-  if (m.store.source && m.store.source.byteLength > 0) return m.store.source;
-  if (m.filePath) return readFile(m.filePath);
+/**
+ * Run `fn` over the model's raw IFC bytes: prefer the in-memory source, fall
+ * back to disk.
+ *
+ * Scoped rather than returning the buffer (#2183): the wasm mesher is a genuine
+ * whole-file consumer, so the source really is materialised — but only for the
+ * duration of the call, so nothing but the meshes survives it.
+ */
+async function withIfcBytes<T>(m: LoadedModel, fn: (bytes: Uint8Array) => Promise<T>): Promise<T> {
+  if (m.store.source.byteLength > 0) return m.store.source.withMaterializedAsync(fn);
+  if (m.filePath) return fn(await readFile(m.filePath));
   throw new ToolExecutionError({
     code: ToolErrorCode.UNSUPPORTED_OPERATION,
     message: 'Model has no in-memory source bytes and no file path to re-read for meshing.',
@@ -101,13 +114,19 @@ async function runRules(m: LoadedModel, rules: ClashRule[], ctx: ToolContext): P
 }
 
 /** Project a `Clash` down to a compact, JSON-friendly display row. */
-function displayClash(c: Clash): Record<string, unknown> {
+/** Exported for direct unit testing (see clash.test.ts distanceKind coverage). */
+export function displayClash(c: Clash): Record<string, unknown> {
   return {
     id: c.id,
     rule: c.rule,
     status: c.status,
     severity: c.severity,
     distance: c.distance,
+    // Provenance of `distance` (see Clash.distanceKind): a hard-clash distance
+    // labelled 'estimate' is a box dimension read off the AABBs, not a mesh
+    // measurement — an agent consuming this must not report it as a precise
+    // interpenetration depth.
+    distanceKind: c.distanceKind,
     point: c.point,
     a: { key: c.a.key, ref: c.a.ref, tag: c.a.tag, name: c.a.name },
     b: { key: c.b.key, ref: c.b.ref, tag: c.b.tag, name: c.b.name },
@@ -119,18 +138,22 @@ function displayClash(c: Clash): Record<string, unknown> {
  * capped for display. Returns the rows plus an explicit `truncated` note when
  * capped.
  *
- * Sort by RAW distance ascending, not |distance|: hard clashes carry a negative
- * penetration depth, so most-negative-first surfaces the DEEPEST penetrations
- * (the worst, most actionable rows) instead of burying them past the cap;
- * clearance/touch gaps are positive, so the same order surfaces the tightest
- * gaps first. (An |distance| sort inverted the hard-mode order — issue caught in
- * review.)
+ * The ordering itself lives in `@ifc-lite/clash`'s `sortClashes(..., 'distance')`
+ * — the same helper the viewer's clash panel and the CLI summary use, so a
+ * "top N" list means the same N rows through every surface. It sorts by RAW
+ * distance ascending, not |distance|: hard clashes carry a negative penetration
+ * depth, so most-negative-first surfaces the DEEPEST penetrations (the worst,
+ * most actionable rows) instead of burying them past the cap; clearance/touch
+ * gaps are positive, so the same order surfaces the tightest gaps first. (An
+ * |distance| sort inverted the hard-mode order — issue caught in review.) It
+ * also breaks ties on the stable clash id, which this local copy did not, so
+ * equal-distance rows no longer reshuffle between runs.
  */
 function topClashes(clashes: Clash[], cap: number): {
   rows: Record<string, unknown>[];
   truncated: { shown: number; dropped: number; total: number } | null;
 } {
-  const sorted = [...clashes].sort((x, y) => x.distance - y.distance);
+  const sorted = sortClashes(clashes, 'distance');
   const shown = sorted.slice(0, cap);
   const rows = shown.map(displayClash);
   if (sorted.length > cap) {
@@ -145,7 +168,7 @@ const clashCheck: Tool = {
     'Clash detection on a single model. Omit BOTH a and b to detect ALL clashes inside the model '
     + '(every element vs every other — no discipline matrix needed). Give only a TYPE selector for a to '
     + 'self-clash within a group (a="IfcDuct*"), or both a and b for a pairwise check (a="IfcDuct*", b="IfcWall*"). '
-    + 'Meshes the model headlessly and returns a summary plus the top clashes by |distance|.',
+    + 'Meshes the model headlessly and returns a summary plus the top clashes by distance ascending, so deepest penetration first in hard mode and tightest gap first in clearance mode.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -185,7 +208,7 @@ const clashCheck: Tool = {
 
     const settings = { a, b: b ?? null, mode, tolerance: tolerance ?? null, clearance: clearance ?? null };
     const capNote = truncated
-      ? ` Showing top ${truncated.shown} by |distance|; ${truncated.dropped} more not shown.`
+      ? ` Showing top ${truncated.shown} by distance; ${truncated.dropped} more not shown.`
       : '';
     return okResult(
       `Found ${result.summary.total} clash(es) for ${label} (mode=${mode}).${capNote}`,
@@ -205,7 +228,8 @@ const clashMatrix: Tool = {
   name: 'clash_matrix',
   description:
     'Run the standard discipline clash matrix (MEP x STR, HVAC x ARCH, ...) over the whole model. '
-    + 'Returns per-rule and per-severity breakdowns plus a sample of the worst clashes.',
+    + 'Returns per-rule and per-severity breakdowns over EVERY clash, plus a sample of clashes '
+    + 'selected and capped by distance ascending -- so the breakdowns are complete and the sample is not.',
   scope: 'read',
   inputSchema: {
     type: 'object',
@@ -226,7 +250,7 @@ const clashMatrix: Tool = {
     const { rows, truncated } = topClashes(result.clashes, CLASH_DISPLAY_CAP);
 
     const capNote = truncated
-      ? ` Sampling top ${truncated.shown} by |distance|; ${truncated.dropped} more not shown.`
+      ? ` Sampling top ${truncated.shown} by distance; ${truncated.dropped} more not shown.`
       : '';
     return okResult(
       `Discipline matrix (mode=${mode}, ${rules.length} rules): ${result.summary.total} clash(es).${capNote}`,

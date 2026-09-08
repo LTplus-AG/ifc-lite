@@ -13,6 +13,7 @@
  */
 
 import type { TitleBlockConfig, RevisionEntry, TitleBlockPosition } from './title-block-types.js';
+import { NICE_BAR_LENGTHS_M, barLabelIsExact, formatBarLabel, MIN_BAR_SEGMENT_MM } from './scale-bar-types.js';
 import type { ScaleBarConfig, NorthArrowConfig } from './scale-bar-types.js';
 import type { DrawingScale } from '../styles.js';
 
@@ -387,20 +388,129 @@ function renderScaleBarInTitleBlock(
 ): string {
   let svg = '    <g id="title-block-scale-bar">\n';
 
-  // Use effective scale factor if provided (for dynamic scaling), otherwise use configured scale
-  const scaleFactor = effectiveScaleFactor ?? scale.factor;
+  // These two arguments are in RECIPROCAL units, and this function used to
+  // substitute one for the other in a single formula:
+  //
+  //   effectiveScaleFactor  millimetres per metre  (10 at 1:100)
+  //   scale.factor          the N of 1:N           (100 at 1:100)
+  //
+  // `calculateDrawingTransform` returns the former — `sheet-types.ts` uses it
+  // as `drawingWidth * scaleFactor` to get millimetres — its own doc says "mm
+  // per meter", and `useDrawingExport` passes it on EVERY export. So the branch
+  // the exporter always takes was the wrong one, and every exported bar was
+  // labelled wrong at every scale: a 5 m bar read 0.5 m at 1:100, and 0.1 m at
+  // 1:500 where 25 m is right. Normalise to one unit so there is one formula.
+  const mmPerMetre = effectiveScaleFactor ?? 1000 / scale.factor;
 
   // Position: bottom left with small margin
   const barX = x + 3;
   const barY = y + h - 8; // 8mm from bottom (leaves room for label)
   const maxBarWidth = Math.min(w * 0.3, 50);
-  const barLengthMm = (scaleBar.totalLengthM * 1000) / scaleFactor;
-  const actualBarLength = Math.min(barLengthMm, maxBarWidth);
-  const barHeight = Math.min(scaleBar.heightMm, 3);
-  const actualTotalLength = (actualBarLength * scaleFactor) / 1000;
+  const barLengthMm = scaleBar.totalLengthM * mmPerMetre;
 
-  // Draw alternating bar segments
-  const divisions = scaleBar.primaryDivisions;
+  // Checked BEFORE the clamp, and the ordering is load-bearing: testing the
+  // clamped result loses the infinite case, because `Math.min(Infinity, 50)`
+  // is a perfectly finite 50.
+  //
+  // `mmPerMetre > 0` is checked SEPARATELY and is not redundant with
+  // `barLengthMm > 0`. An earlier version claimed one check on the product
+  // covered "any combination" of the two operands. It does not: two negatives
+  // cancel, so `totalLengthM: -5` with `effectiveScaleFactor: -10` gives
+  // `barLengthMm` 50 and passes every clause, after which the labels print
+  // NEGATIVE distances on a bar that draws normally. That is worse than the
+  // malformed rect this guard was written to stop, because nothing about the
+  // output looks wrong. Credit to CodeRabbit for the case and to
+  // @bimvoice-01 for relaying it.
+  //
+  // Deliberately not recording which of the sign checks in this file is
+  // load-bearing. Three versions of this paragraph did — "the snap masks
+  // this", then "this is load-bearing", then "three things reject it" — and
+  // each was a correct measurement made false by the next commit, twice by my
+  // own hand within one session and once by a revert. A mutation result is a
+  // fact about the whole program, so anything anywhere invalidates it, while
+  // it reads like a durable property. The commit message is where such a
+  // measurement belongs, pinned to a tree.
+  //
+  // Without this the bar emitted `<rect width="-10.00">`, invalid SVG dressed
+  // as a drawing. Drawing nothing is the honest degradation: a missing scale
+  // bar is visibly missing.
+  if (
+    !(mmPerMetre > 0) ||
+    !(barLengthMm > 0) ||
+    !Number.isFinite(barLengthMm) ||
+    !(maxBarWidth > 0)
+  ) {
+    return '';
+  }
+
+  // Snap to a ROUND distance that fits, rather than clamping to the cell width
+  // and rounding the label afterwards. Folding the clamp into the label is not
+  // enough on its own: the label prints to 0 dp, so a 120 mm title block (a
+  // shipped preset) caps a 5 m bar at 36 mm = 3.6 m and prints "4m" — 11% off
+  // on a printed sheet, and up to ~33% for a bar landing near 1.5 m.
+  //
+  // Choosing the distance first makes the label exact by construction.
+  //
+  // It does NOT yet make the export agree with the on-screen preview, and an
+  // earlier version of this comment claimed it did. Measured over nine common
+  // (block width x scale) pairs with the default 5 m bar, six disagree:
+  // `Drawing2DCanvas` halves/doubles from the configured length, clamps to the
+  // cell, and rounds the label from the clamped value — the same clamp-then-
+  // round shape this function just stopped doing, so at a 120 mm block and
+  // 1:100 the preview still prints "3m" over a 2.5 m bar while the export
+  // prints an exact "2m". Unifying them means moving the preview onto
+  // `NICE_BAR_LENGTHS_M` too, which is a viewer change and not this diff.
+
+  // `divisions`, bounded at BOTH ends. The low end stops 0 dividing and 2.5 drawing three
+  // segments of width L/2.5 (the loop runs while `i < 2.5`), overflowing the
+  // bar by 20%. The high end matters too: 100000 divisions emits an 11.5 MB
+  // group of 0.0005 mm rects, and 1e7 is about a gigabyte — it hangs the export
+  // rather than drawing a bad bar. Nothing legible needs more than 20.
+  const divisions = Number.isFinite(scaleBar.primaryDivisions)
+    ? Math.min(20, Math.max(1, Math.floor(scaleBar.primaryDivisions)))
+    : 1;
+
+  const requestedM = scaleBar.totalLengthM;
+  // Fits the cell AND draws segments that survive `toFixed(2)`. Without the
+  // lower bound a bar can be chosen whose segments all print `width="0.00"`
+  // under a confident label — a label with no bar, which is the dishonesty
+  // this function refuses everywhere else. Reachable at 1:1 on a large model,
+  // where the transform gives well under 1 mm per metre.
+  const fits = (m: number) =>
+    m * mmPerMetre <= maxBarWidth + 1e-9 &&
+    (m * mmPerMetre) / divisions >= MIN_BAR_SEGMENT_MM - 1e-12;
+
+  // Keep the requested length when it already fits AND already labels exactly.
+  // Snapping unconditionally shrank bars that were fine: a 4 m bar at 1:100 is
+  // 40 mm in a 50 mm cell and prints "4m" exactly, and snapping it to the
+  // nearest ladder value below halved it to 2 m for no reason.
+  let actualTotalLength: number | undefined = fits(requestedM) && barLabelIsExact(requestedM)
+    ? requestedM
+    : undefined;
+
+  if (actualTotalLength === undefined) {
+    // Otherwise take the largest round distance that fits and does not claim
+    // more than was asked for.
+    const candidates = NICE_BAR_LENGTHS_M.filter((m) => m <= requestedM + 1e-9 && fits(m));
+    actualTotalLength = candidates[candidates.length - 1];
+  }
+
+  if (actualTotalLength === undefined) {
+    // Not even the smallest round distance fits the cell. A missing bar is
+    // visibly missing; a bar labelled with a distance it does not span is not.
+    return '';
+  }
+  const actualBarLength = actualTotalLength * mmPerMetre;
+
+  // `heightMm` reaches the emitted `height=` attribute, so it needs the same
+  // treatment as the length: NaN printed `height="NaN"` on every rect and
+  // `y="NaN"` on both labels, and a negative printed `height="-5.00"`. Guarding
+  // one of two attributes that reach the SVG is not guarding.
+  const barHeight = Number.isFinite(scaleBar.heightMm)
+    ? Math.min(Math.max(scaleBar.heightMm, 0.1), 3)
+    : 3;
+
+  // Draw alternating bar segments; `divisions` was normalised above.
   const divWidth = actualBarLength / divisions;
 
   for (let i = 0; i < divisions; i++) {
@@ -419,9 +529,10 @@ function renderScaleBarInTitleBlock(
   svg += `font-family="Arial, sans-serif" font-size="${fontSize}" `;
   svg += `text-anchor="start" fill="#000000">0</text>\n`;
 
-  const endLabel = actualTotalLength < 1
-    ? `${(actualTotalLength * 100).toFixed(0)}cm`
-    : `${actualTotalLength.toFixed(0)}m`;
+  // Shared with `barLabelIsExact`, which decides whether a length CAN be
+  // printed without lying. Those two have to agree, and an inline copy here is
+  // exactly how they would stop agreeing.
+  const endLabel = formatBarLabel(actualTotalLength);
   svg += `      <text x="${(barX + actualBarLength).toFixed(2)}" y="${labelY.toFixed(2)}" `;
   svg += `font-family="Arial, sans-serif" font-size="${fontSize}" `;
   svg += `text-anchor="end" fill="#000000">${endLabel}</text>\n`;

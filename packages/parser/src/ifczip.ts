@@ -46,6 +46,31 @@ function isZipView(view: Uint8Array): boolean {
 const MODEL_ENTRY_RE = /\.(ifc|ifcxml)$/i;
 
 /**
+ * Archive entries that look like models but are metadata, not content.
+ *
+ * Compressing a file in macOS Finder adds an AppleDouble sidecar for each
+ * entry: `__MACOSX/._<name>`, carrying resource forks and extended attributes.
+ * It keeps the original extension, so `__MACOSX/._model.ifc` matched
+ * {@link MODEL_ENTRY_RE} and every Mac-made .ifczip was rejected as containing
+ * two models — the error this fixes, reported from production.
+ *
+ * The test is the BASENAME, not the directory. `._` is what makes a file a
+ * sidecar; `__MACOSX/` is merely where macOS happens to put them, and matching
+ * on it is both redundant (every entry inside is already `._`-prefixed) and
+ * WRONG for a user whose archive genuinely contains a folder of that name — it
+ * would drop a real model.
+ *
+ * The basename form also covers the sidecar left beside its original by an
+ * unzip/rezip round trip that flattens the `__MACOSX/` directory away.
+ */
+const APPLE_DOUBLE_RE = /(^|\/)\._[^/]*$/;
+
+/** Whether an archive entry is a real model rather than a macOS sidecar. */
+function isModelEntry(name: string): boolean {
+  return MODEL_ENTRY_RE.test(name) && !APPLE_DOUBLE_RE.test(name);
+}
+
+/**
  * Ceiling on the DECOMPRESSED size of the extracted model entry (4 GiB).
  * Generous enough for any real IFC file this project handles (the desktop
  * native fast path already targets 500 MB+ source files), but bounds a
@@ -177,7 +202,7 @@ async function openZipModelEntry(
   // over it reads identically to one over a plain ArrayBuffer.
   const zip = await JSZip.loadAsync(new Uint8Array(buffer));
   const candidates = Object.values(zip.files).filter(
-    (entry) => !entry.dir && MODEL_ENTRY_RE.test(entry.name),
+    (entry) => !entry.dir && isModelEntry(entry.name),
   );
 
   if (candidates.length === 0) {

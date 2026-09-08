@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AutomergeHistorySidecar } from '../src/branch/history-automerge.js';
 
 const ifcx = (id: string, data: Array<{ path: string }> = []) => ({
@@ -74,5 +74,42 @@ describe('AutomergeHistorySidecar', () => {
     expect(merge.label).toContain('merge experiment → main');
     const branches = (await sidecar.branches()).map((b) => b.name).sort();
     expect(branches).toEqual(['experiment', 'main']);
+  });
+
+  describe('entries() ordering', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('sorts unfiltered entries() by `at`, not by record()/insertion order', async () => {
+      // `records and lists entries` above always calls record() in
+      // chronological order, so `at` order and insertion/call order are
+      // identical there — deleting the `.sort(...)` in `entries()` still
+      // passes it. That is a commuting fixture: it can't distinguish "sorted
+      // by at" from "returned in whatever order Object.values() happens to
+      // walk the entries map".
+      //
+      // Here we force the two orders to DIVERGE: record the
+      // chronologically-LATER entry first (so it is inserted into the
+      // underlying Automerge map first), then wind the clock backwards and
+      // record the chronologically-EARLIER entry second. Insertion order is
+      // [later, earlier]; `at` order must be [earlier, later]. Only a real
+      // sort recovers the latter.
+      const sidecar = new AutomergeHistorySidecar();
+      vi.setSystemTime(new Date('2024-01-02T00:00:00.000Z'));
+      const later = await sidecar.record({ snapshot: ifcx('later') });
+      vi.setSystemTime(new Date('2024-01-01T00:00:00.000Z'));
+      const earlier = await sidecar.record({ snapshot: ifcx('earlier') });
+
+      // Sanity-check the fixture itself is NOT already `at`-sorted, i.e. it
+      // actually exercises the sort rather than commuting around it.
+      expect(later.at > earlier.at).toBe(true);
+
+      const list = await sidecar.entries();
+      expect(list.map((e) => e.entryId)).toEqual([earlier.entryId, later.entryId]);
+    });
   });
 });

@@ -40,6 +40,7 @@
  */
 
 import * as acorn from 'acorn';
+import { MAX_AST_DEPTH, walkBounded } from '../ast/bounded-walk.js';
 import type { ValidationError, ValidationResult } from '../types.js';
 
 export interface SourceWrapOptions {
@@ -139,43 +140,97 @@ if (typeof ${entryFn} === 'function') {
 })()`;
 }
 
-interface MaybeNode {
-  type: string;
-  body?: MaybeNode[];
-  source?: { value: unknown };
-}
-
 /**
- * Walk the top-level program body looking for constructs we do not
- * support in v1. Returns one ValidationError per offending node.
+ * Walk the *entire* AST — including nested function bodies, arrow
+ * bodies, class methods, and blocks — looking for constructs we do
+ * not support in v1. Returns one ValidationError per offending node.
+ *
+ * Static `import`/`export` declarations are only legal at the top
+ * level of a module per the ECMAScript grammar, so acorn can never
+ * produce them elsewhere; they're included here via the same walk
+ * for a single code path rather than because nesting is possible.
+ * Dynamic `import(...)`, in contrast, is an expression and CAN appear
+ * anywhere an expression can — nested inside a function body, an
+ * arrow, a class method, etc. — which is exactly the gap this walk
+ * closes: the previous top-level-only scan missed it entirely.
+ *
+ * The traversal is `walkBounded` — the package's one AST walker. It
+ * keeps its own stack on the heap instead of recursing the way
+ * `acorn-walk` does: `wrapEntrySource` is declared to return a
+ * ValidationResult, and a recursive walk over a deeply nested script
+ * escapes that contract by throwing a RangeError out of the middle of
+ * it. Deeply nested input has to come back as a *reported* error, the
+ * same way acorn's own depth failure already does. Sharing the walker
+ * is what keeps this scan and `validateCode` from drifting apart on
+ * where "too deep" starts.
+ *
+ * The visitor switches on the type key `walkBounded` supplies, not on
+ * `node.type`: `acorn-walk` re-dispatches statements and expressions
+ * under synthetic keys, so a node reached that way is reported twice,
+ * once under each key, and switching on `node.type` would report every
+ * banned construct twice.
  */
 function checkBannedConstructs(ast: acorn.Node): ValidationError[] {
   const errors: ValidationError[] = [];
-  const body = (ast as MaybeNode).body ?? [];
-  for (const node of body) {
-    if (!node || typeof node !== 'object') continue;
-    switch (node.type) {
+
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (_node, type) => {
+    switch (type) {
       case 'ImportDeclaration':
         errors.push({
           path: '',
           code: 'invalid_value',
-          message: 'Top-level `import` statements are not supported in extension entry scripts.',
+          message: '`import` statements are not supported in extension entry scripts.',
           hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
         });
         break;
       case 'ExportNamedDeclaration':
       case 'ExportDefaultDeclaration':
       case 'ExportAllDeclaration':
+        errors.push(exportError());
+        break;
+      case 'ImportExpression':
         errors.push({
           path: '',
           code: 'invalid_value',
-          message: 'Top-level `export` statements are not supported in extension entry scripts.',
-          hint: 'Define the entry function as a top-level declaration (e.g. `async function activate(ctx) {…}`) without `export`.',
+          message: 'Dynamic `import(...)` is not supported in extension entry scripts.',
+          hint: 'Inline any helpers, or move them into a separate file referenced via entry.commands / entry.triggers.',
         });
         break;
     }
+  });
+
+  if (depthExceeded) {
+    errors.push({
+      path: '',
+      code: 'invalid_value',
+      message: `Entry script is nested more than ${MAX_AST_DEPTH} AST levels deep.`,
+      hint: 'Flatten the script — extract deeply nested blocks into separate helper functions.',
+    });
+    return errors;
   }
+
+  // A subtree the walker could not descend was never scanned, so a
+  // clean result would mean "found no `import`" when it means "did not
+  // look". Refuse the script instead of wrapping it.
+  if (unwalkableTypes.length > 0) {
+    errors.push({
+      path: '',
+      code: 'invalid_value',
+      message: `Entry script contains AST node types the validator cannot traverse (${unwalkableTypes.join(', ')}); it was not fully checked.`,
+      hint: 'This usually means the parser is newer than the walker it is paired with — report it rather than working around it.',
+    });
+  }
+
   return errors;
+}
+
+function exportError(): ValidationError {
+  return {
+    path: '',
+    code: 'invalid_value',
+    message: '`export` statements are not supported in extension entry scripts.',
+    hint: 'Define the entry function as a top-level declaration (e.g. `async function activate(ctx) {…}`) without `export`.',
+  };
 }
 
 function fail(

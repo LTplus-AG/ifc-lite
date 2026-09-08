@@ -5,6 +5,19 @@
 import { describe, it, expect } from 'vitest';
 import { createBCFFromIDSReport } from './ids-reporter.js';
 import type { IDSReportInput, EntityBoundsInput } from './ids-reporter.js';
+import { FRAMING_PADDING } from './ids-camera.js';
+
+type Vec3 = { x: number; y: number; z: number };
+const dot = (a: Vec3, b: Vec3) => a.x * b.x + a.y * b.y + a.z * b.z;
+const cross = (a: Vec3, b: Vec3): Vec3 => ({
+  x: a.y * b.z - a.z * b.y,
+  y: a.z * b.x - a.x * b.z,
+  z: a.x * b.y - a.y * b.x,
+});
+const normalize = (v: Vec3): Vec3 => {
+  const len = Math.sqrt(dot(v, v));
+  return { x: v.x / len, y: v.y / len, z: v.z / len };
+};
 
 // ============================================================================
 // Test fixtures
@@ -136,9 +149,17 @@ describe('IDS BCF Reporter', () => {
 
     it('should allow custom project name and version', () => {
       const report = createMockReport();
+      // 3.0 needs bounds: a viewpoint with no camera is refused outright
+      // (see "BCF 3.0 camera policy" below), so a bounds-less 3.0 export is
+      // no longer a way to check that the version option is honoured.
+      const bounds = new Map<string, EntityBoundsInput>([
+        ['model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }],
+        ['model-1:200', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }],
+      ]);
       const project = createBCFFromIDSReport(report, {
         projectName: 'Custom Project',
         version: '3.0',
+        entityBounds: bounds,
       });
 
       expect(project.version).toBe('3.0');
@@ -480,7 +501,78 @@ describe('IDS BCF Reporter', () => {
       const report = createMockReport();
       const project = createBCFFromIDSReport(report, { maxTopics: 1 });
 
-      expect(project.topics.size).toBe(1);
+      // 1 real topic (the cap) + 1 synthetic "...and N more" notice topic,
+      // the same way MAX_COMMENTS_PER_TOPIC's truncation adds an extra
+      // comment rather than dropping the overflow with no trace.
+      const topics = [...project.topics.values()];
+      expect(topics.length).toBe(2);
+      expect(topics.filter((t) => t.topicType !== 'Info').length).toBe(1);
+    });
+
+    it('signals maxTopics truncation instead of silently dropping entities (per-entity grouping)', () => {
+      // createMockReport() has 2 failing entities (express IDs 100, 200) in
+      // its one spec. Capping at 1 topic must not just stop — the comment
+      // cap (MAX_COMMENTS_PER_TOPIC) already adds an "...and N more" note
+      // when it truncates; the topic cap must do the same, or a real export
+      // over 1000+ failures silently drops entities with no trace in the
+      // BCF file.
+      const report = createMockReport();
+      const project = createBCFFromIDSReport(report, { maxTopics: 1 });
+
+      const topics = [...project.topics.values()];
+      const notice = topics.find((t) => /more/i.test(t.title) || /more/i.test(t.description ?? ''));
+      expect(notice, 'expected a truncation-notice topic when maxTopics cuts off remaining entities').toBeDefined();
+      expect(notice!.title + (notice!.description ?? '')).toContain('1');
+    });
+
+    it('does not silently drop a cardinality-only failure (zero applicable entities) in per-entity grouping', () => {
+      // "At least one IfcWindow must exist": a required (minOccurs=1) spec
+      // that matched ZERO entities. The validator correctly marks the
+      // specification 'fail', but there is no entity to attach a topic to
+      // — entityResults is empty. Per-entity grouping (the default) used
+      // to iterate only entityResults, so this failure produced no topic
+      // at all: a real defect (a required element type entirely missing
+      // from the model) was invisible in the exported BCF file while the
+      // CLI/JSON summary correctly counted it as a failed specification.
+      const report: IDSReportInput = {
+        title: 'Cardinality-only failure',
+        specificationResults: [
+          {
+            specification: { name: 'At least one window must exist' },
+            status: 'fail',
+            applicableCount: 0,
+            passedCount: 0,
+            failedCount: 0,
+            entityResults: [],
+            cardinalityResult: {
+              passed: false,
+              actualCount: 0,
+              minExpected: 1,
+              message: 'Expected at least 1, found 0',
+            },
+          },
+        ],
+      };
+
+      const perEntity = createBCFFromIDSReport(report, { topicGrouping: 'per-entity' });
+      expect(perEntity.topics.size, 'per-entity grouping dropped the cardinality-only failure').toBeGreaterThan(0);
+      const perEntityTopic = [...perEntity.topics.values()][0];
+      expect(perEntityTopic.title).toContain('At least one window must exist');
+
+      const perRequirement = createBCFFromIDSReport(report, { topicGrouping: 'per-requirement' });
+      expect(
+        perRequirement.topics.size,
+        'per-requirement grouping dropped the cardinality-only failure',
+      ).toBeGreaterThan(0);
+    });
+
+    it('signals maxTopics truncation for per-requirement grouping too', () => {
+      const report = createMockReport();
+      const project = createBCFFromIDSReport(report, { maxTopics: 1, topicGrouping: 'per-requirement' });
+
+      const topics = [...project.topics.values()];
+      const notice = topics.find((t) => /more/i.test(t.title) || /more/i.test(t.description ?? ''));
+      expect(notice, 'expected a truncation-notice topic when maxTopics cuts off remaining requirement failures').toBeDefined();
     });
 
     it('should handle empty report', () => {
@@ -589,6 +681,11 @@ describe('IDS BCF Reporter', () => {
     });
 
     it('should point camera toward entity center', () => {
+      // A unit-length check alone can't tell "toward" from "away" — both are
+      // unit vectors. Assert the direction actually equals the normalized
+      // vector from the (converted) camera position to the (converted)
+      // entity center; a sign-flipped direction would point the camera at
+      // empty space with every prior assertion here still green.
       const report = createMockReport();
       const bounds = new Map<string, EntityBoundsInput>();
       bounds.set('model-1:100', {
@@ -598,14 +695,21 @@ describe('IDS BCF Reporter', () => {
       const project = createBCFFromIDSReport(report, { entityBounds: bounds });
 
       const cam = [...project.topics.values()][0].viewpoints[0].perspectiveCamera!;
-      // Camera direction vector should have non-zero components
-      const dirLen = Math.sqrt(
-        cam.cameraDirection.x ** 2 +
-        cam.cameraDirection.y ** 2 +
-        cam.cameraDirection.z ** 2,
-      );
-      // Should be unit vector (approximately 1)
-      expect(dirLen).toBeCloseTo(1, 3);
+
+      // Entity center in viewer coords is (1,1,1); converted to BCF Z-up
+      // (x, -z, y) per computeCameraFromBounds' documented convention.
+      const bcfCenter = { x: 1, y: -1, z: 1 };
+      const toCenter = {
+        x: bcfCenter.x - cam.cameraViewPoint.x,
+        y: bcfCenter.y - cam.cameraViewPoint.y,
+        z: bcfCenter.z - cam.cameraViewPoint.z,
+      };
+      const toCenterLen = Math.sqrt(toCenter.x ** 2 + toCenter.y ** 2 + toCenter.z ** 2);
+      expect(toCenterLen).toBeGreaterThan(0);
+
+      expect(cam.cameraDirection.x).toBeCloseTo(toCenter.x / toCenterLen, 5);
+      expect(cam.cameraDirection.y).toBeCloseTo(toCenter.y / toCenterLen, 5);
+      expect(cam.cameraDirection.z).toBeCloseTo(toCenter.z / toCenterLen, 5);
     });
 
     it('should position camera away from entity center', () => {
@@ -686,6 +790,345 @@ describe('IDS BCF Reporter', () => {
       const vp = [...project.topics.values()][0].viewpoints[0];
       expect(vp.perspectiveCamera).toBeDefined();
       expect(vp.snapshot).toBe('data:image/png;base64,BBBB');
+    });
+  });
+
+  // ==========================================================================
+  // BCF 3.0 writability (#3849)
+  // ==========================================================================
+
+  describe('BCF 3.0 camera policy', () => {
+    function boundsFor(...keys: string[]): Map<string, EntityBoundsInput> {
+      const map = new Map<string, EntityBoundsInput>();
+      for (const key of keys) {
+        map.set(key, { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 3, z: 1 } });
+      }
+      return map;
+    }
+
+    it('gives every computed camera the default 16/9 aspect ratio', () => {
+      const project = createBCFFromIDSReport(createMockReport(), {
+        version: '3.0',
+        entityBounds: boundsFor('model-1:100', 'model-1:200'),
+      });
+
+      const cameras = [...project.topics.values()]
+        .flatMap(t => t.viewpoints)
+        .map(vp => vp.perspectiveCamera);
+      expect(cameras.length).toBeGreaterThan(0);
+      for (const cam of cameras) {
+        expect(cam?.aspectRatio).toBeCloseTo(16 / 9, 12);
+      }
+    });
+
+    it('honours an explicit aspectRatio option', () => {
+      const project = createBCFFromIDSReport(createMockReport(), {
+        version: '3.0',
+        aspectRatio: 4 / 3,
+        entityBounds: boundsFor('model-1:100', 'model-1:200'),
+      });
+
+      const cam = [...project.topics.values()][0].viewpoints[0].perspectiveCamera!;
+      expect(cam.aspectRatio).toBeCloseTo(4 / 3, 12);
+    });
+
+    it('sets the aspect ratio on 2.1 cameras too (the writer just omits it)', () => {
+      const project = createBCFFromIDSReport(createMockReport(), {
+        entityBounds: boundsFor('model-1:100'),
+      });
+
+      const cam = [...project.topics.values()][0].viewpoints[0].perspectiveCamera!;
+      expect(cam.aspectRatio).toBeCloseTo(16 / 9, 12);
+    });
+
+    it('refuses a 3.0 report with no entityBounds, naming the topic', () => {
+      let thrown: Error | undefined;
+      try {
+        createBCFFromIDSReport(createMockReport(), { version: '3.0' });
+      } catch (e) {
+        thrown = e as Error;
+      }
+      expect(thrown).toBeDefined();
+      // The topic the caller has to act on, not just "a viewpoint".
+      expect(thrown!.message).toContain('IfcWall: Basic Wall:Generic - 200mm');
+      expect(thrown!.message).toContain('entityBounds');
+      expect(thrown!.message).toContain('BCF 3.0');
+    });
+
+    it('refuses when bounds cover only some of the failing entities', () => {
+      expect(() =>
+        createBCFFromIDSReport(createMockReport(), {
+          version: '3.0',
+          entityBounds: boundsFor('model-1:100'),
+        }),
+      ).toThrow(/IfcWall: Curtain Wall:Standard/);
+    });
+
+    it('leaves 2.1 reports without bounds alone', () => {
+      const project = createBCFFromIDSReport(createMockReport());
+      expect(project.topics.size).toBeGreaterThan(0);
+    });
+
+    it('frames the union of the failing entities in per-specification grouping', () => {
+      const bounds = new Map<string, EntityBoundsInput>();
+      bounds.set('model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } });
+      bounds.set('model-1:200', { min: { x: 10, y: 0, z: 0 }, max: { x: 11, y: 1, z: 1 } });
+
+      const project = createBCFFromIDSReport(createMockReport(), {
+        version: '3.0',
+        topicGrouping: 'per-specification',
+        entityBounds: bounds,
+      });
+
+      const cam = [...project.topics.values()][0].viewpoints[0].perspectiveCamera!;
+      expect(cam.aspectRatio).toBeCloseTo(16 / 9, 12);
+      // Union spans x 0..11, so the camera sits far enough out to frame 11
+      // units, not the 1-unit box of either entity on its own.
+      const centerX = 5.5;
+      expect(cam.cameraViewPoint.x).toBeGreaterThan(centerX + 5);
+    });
+
+    it('refuses per-specification grouping when only some entities have bounds', () => {
+      // The viewpoint frames every failing entity at once, so a partial union
+      // is a frame that silently leaves the uncovered entity off screen.
+      const bounds = new Map<string, EntityBoundsInput>();
+      bounds.set('model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } });
+
+      expect(() =>
+        createBCFFromIDSReport(createMockReport(), {
+          version: '3.0',
+          topicGrouping: 'per-specification',
+          entityBounds: bounds,
+        }),
+      ).toThrow(/entityBounds/);
+    });
+
+    it('leaves the per-specification camera unset when bounds are partial', () => {
+      const bounds = new Map<string, EntityBoundsInput>();
+      bounds.set('model-1:100', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } });
+
+      const project = createBCFFromIDSReport(createMockReport(), {
+        topicGrouping: 'per-specification',
+        entityBounds: bounds,
+      });
+
+      const vp = [...project.topics.values()][0].viewpoints[0];
+      expect(vp.perspectiveCamera).toBeUndefined();
+    });
+
+    for (const bad of [0, Number.NaN, -2, Number.POSITIVE_INFINITY]) {
+      it(`refuses aspectRatio ${bad} at the option boundary`, () => {
+        let thrown: Error | undefined;
+        try {
+          createBCFFromIDSReport(createMockReport(), {
+            version: '3.0',
+            aspectRatio: bad,
+            entityBounds: boundsFor('model-1:100', 'model-1:200'),
+          });
+        } catch (e) {
+          thrown = e as Error;
+        }
+        expect(thrown).toBeDefined();
+        // Named at the option the caller passed, not at a generated viewpoint
+        // GUID deep inside writeBCF.
+        expect(thrown!.message).toContain('aspectRatio');
+        expect(thrown!.message).toContain(String(bad));
+      });
+    }
+
+    it('refuses a bad aspectRatio for 2.1 too, where it is never written', () => {
+      // 2.1 emits no AspectRatio, but the option is still a number the caller
+      // got wrong, and it is what a later 3.0 re-export would carry.
+      expect(() =>
+        createBCFFromIDSReport(createMockReport(), { aspectRatio: 0 }),
+      ).toThrow(/aspectRatio/);
+    });
+
+    /**
+     * Every corner of `box` sits inside the frustum `cam` describes.
+     *
+     * The check is done from the camera's OWN direction, up vector and
+     * `fieldOfView` rather than from the numbers that produced them, so a
+     * framing that agrees with itself but not with the geometry still fails.
+     */
+    function cornerFills(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+      aspectRatio: number,
+    ): { label: string; fill: number }[] {
+      // BCF FieldOfView is the VERTICAL angle; the horizontal one follows
+      // from the aspect ratio.
+      const halfV = (cam.fieldOfView * Math.PI) / 360;
+      const halfH = Math.atan(aspectRatio * Math.tan(halfV));
+
+      const d = cam.cameraDirection;
+      const right = normalize(cross(d, cam.cameraUpVector));
+      const up = cross(right, d);
+
+      const fills: { label: string; fill: number }[] = [];
+      for (const x of [box.min.x, box.max.x]) {
+        for (const y of [box.min.y, box.max.y]) {
+          for (const z of [box.min.z, box.max.z]) {
+            // Viewer (x, y, z) -> BCF (x, -z, y), the reporter's convention.
+            const v = {
+              x: x - cam.cameraViewPoint.x,
+              y: -z - cam.cameraViewPoint.y,
+              z: y - cam.cameraViewPoint.z,
+            };
+            const depth = dot(v, d);
+            if (depth <= 0) {
+              fills.push({ label: `(${x}, ${y}, ${z}) behind the camera`, fill: Infinity });
+              continue;
+            }
+            const h = Math.abs(dot(v, right)) / depth / Math.tan(halfH);
+            const vt = Math.abs(dot(v, up)) / depth / Math.tan(halfV);
+            fills.push({
+              label: `(${x}, ${y}, ${z}) h=${h.toFixed(3)} v=${vt.toFixed(3)}`,
+              fill: Math.max(h, vt),
+            });
+          }
+        }
+      }
+      return fills;
+    }
+
+    /** The corners that miss the frustum, labelled with how far they miss by. */
+    function cornersOutsideFrustum(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+      aspectRatio: number,
+    ): string[] {
+      return cornerFills(cam, box, aspectRatio)
+        .filter(corner => corner.fill > 1)
+        .map(corner => corner.label);
+    }
+
+    /** How much of the frustum the worst corner fills; 1 is exactly the edge. */
+    function worstCornerFill(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+      aspectRatio: number,
+    ): number {
+      return Math.max(...cornerFills(cam, box, aspectRatio).map(corner => corner.fill));
+    }
+
+    /**
+     * The same camera with the framing padding taken back out.
+     *
+     * `cornersOutsideFrustum` is monotone in distance -- a camera parked twice
+     * as far away passes it too -- so on its own it cannot tell a fit from an
+     * over-frame. Pulling the standoff back to the unpadded fit and finding
+     * the worst corner exactly ON the edge is what pins the fit as tight.
+     *
+     * `FRAMING_PADDING` is imported rather than copied, so changing the
+     * padding does not fail twelve tests that assert nothing about it.
+     */
+    function withoutPadding(
+      cam: NonNullable<ReturnType<typeof perspectiveCameraOf>>,
+      box: EntityBoundsInput,
+    ): NonNullable<ReturnType<typeof perspectiveCameraOf>> {
+      // Box centre in BCF coords, the point the camera stands off from.
+      const centre = {
+        x: (box.min.x + box.max.x) / 2,
+        y: -(box.min.z + box.max.z) / 2,
+        z: (box.min.y + box.max.y) / 2,
+      };
+      return {
+        ...cam,
+        cameraViewPoint: {
+          x: centre.x + (cam.cameraViewPoint.x - centre.x) / FRAMING_PADDING,
+          y: centre.y + (cam.cameraViewPoint.y - centre.y) / FRAMING_PADDING,
+          z: centre.z + (cam.cameraViewPoint.z - centre.z) / FRAMING_PADDING,
+        },
+      };
+    }
+
+    function perspectiveCameraOf(project: ReturnType<typeof createBCFFromIDSReport>) {
+      return [...project.topics.values()][0].viewpoints[0].perspectiveCamera;
+    }
+
+    function frameOneBox(box: EntityBoundsInput, aspectRatio: number) {
+      return createBCFFromIDSReport(createMockReport(), {
+        version: '3.0',
+        aspectRatio,
+        entityBounds: new Map<string, EntityBoundsInput>([
+          ['model-1:100', box],
+          ['model-1:200', box],
+        ]),
+      });
+    }
+
+    // Every corner of each box, at the three aspect ratios a report is
+    // realistically written at. Framing off the vertical half-angle alone
+    // cropped a wide box at a portrait ratio (#3864); framing off the largest
+    // SIDE cropped a cube at any ratio, because down the isometric axis a box
+    // projects wider than any of its sides (#3882).
+    const CORNER_FIT_BOXES: ReadonlyArray<readonly [string, EntityBoundsInput]> = [
+      ['a unit cube', { min: { x: 0, y: 0, z: 0 }, max: { x: 1, y: 1, z: 1 } }],
+      ['a wide box', { min: { x: -6, y: -0.25, z: -0.25 }, max: { x: 6, y: 0.25, z: 0.25 } }],
+      ['a tall box', { min: { x: -0.25, y: -6, z: -0.25 }, max: { x: 0.25, y: 6, z: 0.25 } }],
+      ['a flat wide slab', { min: { x: -3, y: -0.5, z: -3 }, max: { x: 3, y: 0.5, z: 3 } }],
+    ];
+
+    for (const [aspectName, aspectRatio] of [
+      ['16/9', 16 / 9],
+      ['1/1', 1],
+      ['9/16', 9 / 16],
+    ] as const) {
+      for (const [boxName, box] of CORNER_FIT_BOXES) {
+        it(`fits every corner of ${boxName} inside the frustum at ${aspectName}`, () => {
+          const cam = perspectiveCameraOf(frameOneBox(box, aspectRatio))!;
+          expect(cornersOutsideFrustum(cam, box, aspectRatio)).toEqual([]);
+        });
+
+        it(`frames ${boxName} tightly at ${aspectName}, not merely from far away`, () => {
+          // Take the padding back out: the fit is the SMALLEST standoff that
+          // works, so the worst corner then sits exactly on the frustum edge.
+          const cam = perspectiveCameraOf(frameOneBox(box, aspectRatio))!;
+          expect(worstCornerFill(withoutPadding(cam, box), box, aspectRatio))
+            .toBeCloseTo(1, 9);
+        });
+      }
+    }
+
+    it('stands a degenerate box off rather than sitting inside it', () => {
+      // A point fits the frustum at every distance including zero, so the
+      // corner walk returns 0 and only the floor keeps the camera out of the
+      // entity. Nothing else in this suite exercises that branch.
+      const point: EntityBoundsInput = {
+        min: { x: 3, y: 4, z: 5 },
+        max: { x: 3, y: 4, z: 5 },
+      };
+      const cam = perspectiveCameraOf(frameOneBox(point, 16 / 9))!;
+
+      // BCF centre of the point is (3, -5, 4).
+      const standoff = Math.sqrt(
+        (cam.cameraViewPoint.x - 3) ** 2 +
+        (cam.cameraViewPoint.y - -5) ** 2 +
+        (cam.cameraViewPoint.z - 4) ** 2,
+      );
+      expect(standoff).toBeCloseTo(0.1 * FRAMING_PADDING, 9);
+    });
+
+    it('does not move the camera at all for a 16/9 cube', () => {
+      // A cube's projection down the isometric axis is taller than it is
+      // wide, so the VERTICAL half-angle binds at 16/9 and at 1/1 alike, and
+      // the wider horizontal angle at 16/9 changes nothing. Pins that a
+      // landscape export of a cube frames exactly as a square one does.
+      const box: EntityBoundsInput = { min: { x: 0, y: 0, z: 0 }, max: { x: 2, y: 2, z: 2 } };
+      const wide = perspectiveCameraOf(frameOneBox(box, 16 / 9))!;
+      const square = perspectiveCameraOf(frameOneBox(box, 1))!;
+
+      expect(wide.cameraViewPoint).toEqual(square.cameraViewPoint);
+    });
+
+    it('refuses a 3.0 per-requirement report with no bounds', () => {
+      expect(() =>
+        createBCFFromIDSReport(createMockReport(), {
+          version: '3.0',
+          topicGrouping: 'per-requirement',
+        }),
+      ).toThrow(/BCF 3\.0/);
     });
   });
 });

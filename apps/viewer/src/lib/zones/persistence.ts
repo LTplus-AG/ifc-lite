@@ -10,6 +10,7 @@
  * this into the browser download/file-picker flow.
  */
 
+import { isConvexFootprint, normalizePrismBounds } from './prism.js';
 import { ZONE_SET_FILE_VERSION, type Zone, type ZoneSet, type ZoneSetFile } from './types.js';
 
 export type ParseZoneSetFileResult =
@@ -37,6 +38,11 @@ export function serializeZoneSets(zoneSets: readonly ZoneSet[]): ZoneSetFile {
         center: copyVec3(z.center),
         size: copyVec3(z.size),
         ...(z.color !== undefined ? { color: copyVec3(z.color) } : {}),
+        // Deep-copied for the same reason as the vectors above: a shallow
+        // spread would leave the polygon aliased to live Zustand state.
+        ...(z.footprint !== undefined
+          ? { footprint: z.footprint.map((p) => [p[0], p[1]] as [number, number]) }
+          : {}),
       })),
     })),
   };
@@ -50,6 +56,11 @@ function isVec3(v: unknown): v is [number, number, number] {
   return Array.isArray(v) && v.length === 3 && v.every(isFiniteNumber);
 }
 
+function isFootprint(v: unknown): v is Array<[number, number]> {
+  return Array.isArray(v)
+    && v.every((p) => Array.isArray(p) && p.length === 2 && p.every(isFiniteNumber));
+}
+
 function isValidZone(v: unknown): v is Zone {
   if (!v || typeof v !== 'object') return false;
   const z = v as Record<string, unknown>;
@@ -60,6 +71,14 @@ function isValidZone(v: unknown): v is Zone {
   if (!isFiniteNumber(z.rotationY)) return false;
   if (z.size[0] < 0 || z.size[1] < 0 || z.size[2] < 0) return false;
   if (z.color !== undefined && !isVec3(z.color)) return false;
+  if (z.footprint !== undefined) {
+    // Convexity is checked HERE, at the only door a footprint comes through,
+    // because everything downstream (the trapezoidal sweep, the point test, the
+    // separating-axis overlap) is silently wrong for a concave polygon rather
+    // than visibly broken. An import that would misreport volumes must fail
+    // loudly, which is this file's existing policy for every other field.
+    if (!isFootprint(z.footprint) || !isConvexFootprint(z.footprint)) return false;
+  }
   return true;
 }
 
@@ -114,5 +133,11 @@ export function parseZoneSetFile(json: unknown): ParseZoneSetFileResult {
       zoneIds.add(zone.id);
     }
   }
-  return { ok: true, zoneSets };
+  // A hand-written or CAD-exported footprint carries no bounding box, or a
+  // stale one. Deriving it here means the rest of the app can rely on
+  // `center`/`size` being the footprint's bounds without asking who wrote them.
+  return {
+    ok: true,
+    zoneSets: zoneSets.map((zs) => ({ ...zs, zones: zs.zones.map(normalizePrismBounds) })),
+  };
 }

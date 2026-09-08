@@ -13,6 +13,7 @@ import type {
   FillRelationship,
   EntityMetadata,
   DoorOperationType,
+  WindowPartitioningType,
   Vec3,
 } from '../types.js';
 
@@ -95,6 +96,11 @@ export class OpeningRelationshipBuilder {
           info.doorOperation = this.extractDoorOperation(fillingMeta.properties);
         }
 
+        // Add window partitioning type if available
+        if (type === 'window' && fillingMeta?.properties) {
+          info.windowPartitioning = this.extractWindowPartitioning(fillingMeta.properties);
+        }
+
         this.openingInfo.set(openingId, info);
 
         // Also map filling element to same info for easy lookup
@@ -133,6 +139,22 @@ export class OpeningRelationshipBuilder {
     }
 
     return 'SINGLE_SWING_LEFT'; // Default
+  }
+
+  private extractWindowPartitioning(properties: Record<string, unknown>): WindowPartitioningType {
+    // Look for PartitioningType in properties (IfcWindow's own attribute)
+    const partitioningType = properties['PartitioningType'] as string | undefined;
+    if (partitioningType) {
+      return partitioningType as WindowPartitioningType;
+    }
+
+    // Look in nested property sets
+    const psets = properties['Pset_WindowCommon'] as Record<string, unknown> | undefined;
+    if (psets?.['PartitioningType']) {
+      return psets['PartitioningType'] as WindowPartitioningType;
+    }
+
+    return 'SINGLE_PANEL'; // Default
   }
 }
 

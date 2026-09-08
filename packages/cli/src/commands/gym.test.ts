@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Readable, PassThrough } from 'node:stream';
+import { GeometryProcessor } from '@ifc-lite/geometry';
 import { gymCommand } from './gym.js';
 import { clashScoreFromCount } from './gym/channels.js';
 
@@ -183,7 +184,18 @@ describe('clash reward shaping', () => {
   });
 });
 
-describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', () => {
+// These cases mesh and clash-check AB22.ifc end to end, so they are the
+// slowest in the package. #1910 raised that cost legitimately: AB22 is an
+// infra model with ten IFCFACILITYPART entities that all carry a non-null
+// Representation, and generalising the container-geometry exception means
+// those ten road-surface solids are now meshed instead of silently skipped
+// (clash count 19 -> 75 for the same input). Locally that is ~0.4s, well
+// inside the 5s default, but CI runs this file roughly 5x slower and the
+// benign-property case began timing out there. The work is correct, so the
+// budget moves rather than the coverage.
+const AB22_TIMEOUT_MS = 30_000;
+
+describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', { timeout: AB22_TIMEOUT_MS }, () => {
   const tmpDirs: string[] = [];
 
   afterEach(async () => {
@@ -323,7 +335,37 @@ describe.skipIf(!MODEL_AVAILABLE)('gymCommand (fixture: AB22.ifc)', () => {
     for (let i = 0; i < rewards1.length; i++) {
       expect(JSON.stringify(rewards1[i])).toBe(JSON.stringify(rewards2[i]));
     }
-  });
+    // The only test in this file that runs the SAME episode twice, so it pays
+    // the fixture parse and three step applications twice over -- structurally
+    // the slowest case here, and the 5 s default left it about 1.5x of margin
+    // (3.3 s observed on lighter branches). vitest runs suites concurrently, so
+    // that margin is a function of what else is running: on a branch that adds
+    // a heavy provenance battery this file's tests went 8.87 s -> 14.09 s and
+    // this case timed out at 5.59 s TWICE, having never once disagreed on a
+    // byte. A determinism test that fails by running out of clock reports the
+    // opposite of what it measures, which is worth more than the 10 s.
+    //
+    // 20 s was still not enough. On 2026-08-08 this timed out on three PRs that
+    // touch nothing it depends on -- #2326 (cache bounds), #2362 (viewer-embed
+    // teardown) and #2408 (STEP header escaping). Re-running the identical
+    // commits with no code change turned #2326 and #2408 green, so the failure
+    // is clock-bound, not a real disagreement: it has still never once differed
+    // on a byte.
+    //
+    // Note the margin is NOT simply thin, and it is worth not pretending we
+    // fully explain this. Measured locally: this case 5663 ms, with the two
+    // siblings at 3414 ms and 4146 ms. Those same siblings log 6347 ms and
+    // 6521 ms on CI, i.e. CI runs 1.6-1.9x slower, which predicts roughly 10 s
+    // here -- about 2x under the old 20 s ceiling. It nonetheless blew past 20 s
+    // three times in one day, so the tail is heavier than a flat scale factor
+    // implies (runner contention is the likely cause, unconfirmed). 45 s buys
+    // ~4.5x over the predicted cost; it is a margin that absorbs the observed
+    // tail, not a diagnosis of it.
+    //
+    // Raising the ceiling rather than trimming the work, because the double run
+    // IS the assertion: both runs must be independent for byte-identity to mean
+    // anything, so there is no shared parse to hoist out.
+  }, 45_000);
 
   it('reset mid-session restores the pristine model', async () => {
     const lines = await runGym(
@@ -470,5 +512,44 @@ describe('gymCommand episode factory (--seed, B2.2)', () => {
     const resets = lines.filter(isReset);
     expect(resets).toHaveLength(1);
     expect(resets[0].episode!.seed).toBe(42);
+  });
+});
+
+describe('gymCommand GeometryProcessor disposal (#1959 P2 leak)', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('disposes the session-scoped GeometryProcessor once the "clash" channel was used', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await runGym(['--seed', '42', '--checks', 'clash'], [{ type: 'close' }]);
+
+    // getProcessor() is lazily created once per gymCommand call and reused
+    // across every step/reset message in the session — exactly one instance,
+    // disposed exactly once when the session ends.
+    expect(disposeSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not accumulate handles across repeated gymCommand calls in the same process', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await runGym(['--seed', '1', '--checks', 'clash'], [{ type: 'close' }]);
+    await runGym(['--seed', '2', '--checks', 'clash'], [{ type: 'close' }]);
+    await runGym(['--seed', '3', '--checks', 'clash'], [{ type: 'close' }]);
+
+    // A test harness (or any long-lived host) invoking gymCommand more than
+    // once per process must free each session's handle, not just the last one.
+    expect(disposeSpy).toHaveBeenCalledTimes(3);
+  });
+
+  it('never constructs a GeometryProcessor when the "clash" channel is not requested', async () => {
+    const disposeSpy = vi.spyOn(GeometryProcessor.prototype, 'dispose');
+
+    await runGym(['--seed', '42', '--checks', 'schema'], [{ type: 'close' }]);
+
+    // getProcessor() is never called, so there is nothing to dispose — this
+    // pins that the fix did not turn a lazy processor into an eager one.
+    expect(disposeSpy).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,8 @@
  * Based on buildingSMART IDS 1.0 specification
  */
 
+import type { IDSConstraint } from './constraint-types.js';
+
 // ============================================================================
 // IDS Document Structure
 // ============================================================================
@@ -211,73 +213,13 @@ export type PartOfRelation =
 // Constraint Types
 // ============================================================================
 
-/** Union of all constraint types */
-export type IDSConstraint =
-  | IDSSimpleValue
-  | IDSPatternConstraint
-  | IDSEnumerationConstraint
-  | IDSBoundsConstraint;
-
-/** Simple value - exact match */
-export interface IDSSimpleValue {
-  type: 'simpleValue';
-  /** The exact value to match */
-  value: string;
-}
-
-/** Pattern constraint - regex match */
-export interface IDSPatternConstraint {
-  type: 'pattern';
-  /** XSD regex pattern */
-  pattern: string;
-  /**
-   * The originating `xs:restriction @base` (e.g. `xs:string`, `xs:integer`).
-   * Set when the constraint came from an `<xs:restriction>` element; the
-   * auditor uses it to determine compatibility with an IFC dataType
-   * without inferring the base from the constraint shape.
-   */
-  base?: string;
-}
-
-/** Enumeration constraint - one of a list of values */
-export interface IDSEnumerationConstraint {
-  type: 'enumeration';
-  /** List of allowed values */
-  values: string[];
-  /**
-   * The originating `xs:restriction @base` (e.g. `xs:string`,
-   * `xs:integer`). Set when the constraint came from an
-   * `<xs:restriction>`; numeric/boolean enumerations carry their base
-   * here so the auditor doesn't false-positive a string-base mismatch.
-   */
-  base?: string;
-}
-
-/** Bounds constraint - numeric range or string length */
-export interface IDSBoundsConstraint {
-  type: 'bounds';
-  /** Minimum inclusive value */
-  minInclusive?: number;
-  /** Maximum inclusive value */
-  maxInclusive?: number;
-  /** Minimum exclusive value */
-  minExclusive?: number;
-  /** Maximum exclusive value */
-  maxExclusive?: number;
-  /** xs:length — exact string length */
-  length?: number;
-  /** xs:minLength — minimum string length */
-  minLength?: number;
-  /** xs:maxLength — maximum string length */
-  maxLength?: number;
-  /**
-   * The originating `xs:restriction @base` (e.g. `xs:double`,
-   * `xs:integer`). Set when the constraint came from an
-   * `<xs:restriction>` so the auditor can compare against the IFC
-   * dataType's backing type directly.
-   */
-  base?: string;
-}
+export type {
+  IDSConstraint,
+  IDSSimpleValue,
+  IDSPatternConstraint,
+  IDSEnumerationConstraint,
+  IDSBoundsConstraint,
+} from './constraint-types.js';
 
 // ============================================================================
 // Validation Result Types
@@ -431,6 +373,7 @@ export type FailureType =
   | 'CLASSIFICATION_MISSING'
   | 'CLASSIFICATION_SYSTEM_MISMATCH'
   | 'CLASSIFICATION_VALUE_MISMATCH'
+  | 'CLASSIFICATION_UNRESOLVED' // classified, but attributes unreadable here (#3948)
   // Material failures
   | 'MATERIAL_MISSING'
   | 'MATERIAL_VALUE_MISMATCH'
@@ -494,6 +437,22 @@ export interface IFCDataAccessor {
    * type is unknown so callers fall back to permissive comparison.
    */
   getAttributeXsdTypes?(expressId: number, attrName: string): readonly string[] | undefined;
+  /**
+   * The model's raw IFC schema version string (e.g. `IFC2X3`, `IFC4`),
+   * when the accessor's backing store carries one. Used only for
+   * schema-scoped facet semantics — currently the IFC2X3
+   * occurrence/type mapping table (`facets/ifc2x3-type-mapping.ts`).
+   */
+  getSchemaVersion?(): string | undefined;
+  /**
+   * The IFC entity class of the type object (`IfcXxxType`) this
+   * instance is related to via `IfcRelDefinesByType`, if any. Distinct
+   * from `getPredefinedTypeRaw`, which reads the type's
+   * `PredefinedType` *value*, not the type object's own entity class
+   * name — needed to resolve the IFC2X3 occurrence/type mapping table,
+   * where the alias is picked out by the TYPE's class, not its value.
+   */
+  getTypeEntityType?(expressId: number): string | undefined;
   /** Get all entity IDs of a specific type */
   getEntitiesByType(typeName: string): number[];
   /** Get all entity IDs */
@@ -562,12 +521,11 @@ export interface PropertySetInfo {
 
 /** Classification information */
 export interface ClassificationInfo {
-  /** Classification system name */
-  system: string;
-  /** Classification value/code */
-  value: string;
-  /** Optional classification name */
-  name?: string;
+  system: string; // Classification system name
+  value: string; // Classification value/code
+  name?: string; // Optional classification name
+  unresolved?: boolean; // classified, but system/value/name ('') unreadable (#3948)
+  presenceUnknown?: boolean; // unlike `unresolved`, does NOT prove presence (#3954); paired with `unresolved: true`
 }
 
 /** Material information */
@@ -584,8 +542,20 @@ export interface ParentInfo {
   expressId: number;
   /** Parent entity type */
   entityType: string;
-  /** Parent predefined type (if available) */
+  /**
+   * Parent's raw `PredefinedType` enum token (`BEAM`, `USERDEFINED`,
+   * `NOTDEFINED`, …), if available. Mirrors `IFCDataAccessor.getPredefinedTypeRaw`.
+   */
   predefinedType?: string;
+  /**
+   * Parent's user-defined name (`ObjectType`/`ElementType`/`ProcessType`) —
+   * only meaningful as a fallback when `predefinedType` is `USERDEFINED`.
+   * Mirrors `IFCDataAccessor.getObjectType`. Kept distinct from
+   * `predefinedType` so partOf's predefinedType match can reproduce the
+   * same two-branch (raw-token-first, user-name-fallback) semantics
+   * `entity-facet.ts` uses for a direct entity check.
+   */
+  objectType?: string;
 }
 
 // ============================================================================

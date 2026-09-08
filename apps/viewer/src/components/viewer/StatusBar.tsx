@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect } from 'react';
 import { Boxes, Triangle, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { formatNumber, formatBytes } from '@/lib/utils';
@@ -11,9 +11,10 @@ import { useIfc } from '@/hooks/useIfc';
 import { useWebGPU } from '@/hooks/useWebGPU';
 import { FlavorIndicator } from '@/components/extensions/FlavorIndicator';
 import { FlavorDialog } from '@/components/extensions/FlavorDialog';
+import { createStatusBarStatsAccumulator } from './statusBarStats.js';
 
 export function StatusBar() {
-  const { loading, geometryResult, ifcDataStore } = useIfc();
+  const { loading, geometryResult, ifcDataStore, models } = useIfc();
   const progress = useViewerStore((s) => s.progress);
   const error = useViewerStore((s) => s.error);
   const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
@@ -59,8 +60,14 @@ export function StatusBar() {
   // Memory usage (if available)
   useEffect(() => {
     const updateMemory = () => {
-      if ((performance as any).memory) {
-        setMemory((performance as any).memory.usedJSHeapSize);
+      // Avoid `as any` per repo TypeScript rules — narrow to a concrete shape.
+      // `performance.memory` is Chromium-only and absent from lib.dom.
+      type PerformanceWithMemory = Performance & {
+        memory?: { usedJSHeapSize: number };
+      };
+      const memoryInfo = (performance as PerformanceWithMemory).memory;
+      if (memoryInfo) {
+        setMemory(memoryInfo.usedJSHeapSize);
       }
     };
 
@@ -69,46 +76,48 @@ export function StatusBar() {
     return () => clearInterval(interval);
   }, []);
 
-  const stats = useMemo(() => {
-    if (!geometryResult) {
-      return { elements: 0, triangles: 0 };
-    }
-    // Count actual entities: for color-merged meshes, count unique entity IDs
-    let elements = 0;
-    const meshes = geometryResult.meshes;
-    if (meshes) {
-      for (let i = 0; i < meshes.length; i++) {
-        const m = meshes[i] as { entityIds?: Uint32Array };
-        if (m.entityIds && m.entityIds.length > 0) {
-          // Count unique entity IDs in this merged mesh
-          const seen = new Set<number>();
-          for (let j = 0; j < m.entityIds.length; j++) seen.add(m.entityIds[j]);
-          elements += seen.size;
-        } else {
-          elements += 1;
-        }
-      }
-    }
-    return {
-      elements,
-      triangles: geometryResult.totalTriangles ?? 0,
-    };
-  }, [geometryResult]);
+  // PERF: geometryResult is a NEW object on every streaming batch commit
+  // (dataSlice.ts appendGeometryBatch), so this memo's dependency never
+  // hits during a stream — it re-derives stats every commit. A full O(meshes
+  // + entityIds) rescan there made a 16.7K-mesh stream spend ~524ms total in
+  // this memo alone (30 commits, allocating a `Set` per merged mesh on EVERY
+  // commit — not just the new ones). The accumulator below tracks how many
+  // meshes it has already folded in (by array identity + length) and only
+  // scans meshes appended since the last call — `geometryResult.meshes` is
+  // the same array reference mutated in place across a stream, so this is
+  // safe; see statusBarStats.ts for the full identity contract.
+  const statsAccRef = useRef(createStatusBarStatsAccumulator());
+  const stats = useMemo(
+    () => statsAccRef.current.update(geometryResult),
+    [geometryResult],
+  );
 
+  // `selectedStoreys` holds raw model-space expressIds (see HierarchyPanel's
+  // `setStoreysSelection`), which may belong to ANY federated model, not just
+  // the active one — `ifcDataStore` only tracks the active model
+  // (`modelSlice.ts`). Resolve each id through the model whose own spatial
+  // hierarchy actually contains it as a storey, falling back to the active
+  // store for legacy single-model mode. Mirrors ViewportOverlays' storey-name
+  // lookup (#3506) for the same reason: a non-active model's storey must not
+  // be counted against the active model's hierarchy.
   const visibleElements = useMemo(() => {
-    if (selectedStoreys.size === 0 || !ifcDataStore?.spatialHierarchy) {
+    if (selectedStoreys.size === 0 || (!ifcDataStore?.spatialHierarchy && models.size === 0)) {
       return stats.elements;
     }
-    // Count elements from all selected storeys
     let count = 0;
     for (const storeyId of selectedStoreys) {
-      const storeyElements = ifcDataStore.spatialHierarchy.byStorey.get(storeyId);
+      const ownHierarchy = models.size > 0
+        ? Array.from(models.values()).find(
+            (m) => m.ifcDataStore?.spatialHierarchy?.byStorey.has(storeyId),
+          )?.ifcDataStore?.spatialHierarchy
+        : ifcDataStore?.spatialHierarchy;
+      const storeyElements = ownHierarchy?.byStorey.get(storeyId);
       if (storeyElements) {
         count += storeyElements.length;
       }
     }
     return count || stats.elements;
-  }, [selectedStoreys, ifcDataStore, stats.elements]);
+  }, [selectedStoreys, ifcDataStore, models, stats.elements]);
 
   return (
     <div className="h-7 px-3 border-t bg-muted/30 flex items-center justify-between text-xs text-muted-foreground">

@@ -551,14 +551,9 @@ fn test_shell_based_surface_model_with_polyloop() {
 fn test_catia_surface_model_file() {
     use crate::router::GeometryRouter;
 
-    let path = "../../tests/models/various/2222.ifc";
-    let content = match std::fs::read_to_string(path) {
-        Ok(c) => c,
-        Err(_) => {
-            eprintln!("Skipping test_catia_surface_model_file: {} not found", path);
-            return;
-        }
-    };
+    // The manifest ships this fixture as `issues/472_2222.ifc`; the old
+    // `various/2222.ifc` path matched nothing, so the test always skipped.
+    let Some(content) = read_fixture("issues/472_2222.ifc") else { return };
 
     let entity_index = ifc_lite_core::build_entity_index(&content);
     let mut decoder = EntityDecoder::with_index(&content, entity_index);
@@ -1277,5 +1272,53 @@ fn test_advanced_face_trimmed_bspline_respects_trim_params() {
     assert!(
         min_x > -5.0,
         "samples must stay on the trimmed subspan (t <= 0.5, x >= 0), got min x = {min_x}"
+    );
+}
+
+/// #3303: this crate and `ifc-lite-core`'s scanner each used to hand-roll
+/// "skip a `/* ... */` comment", and disagreed on what an unterminated `/*`
+/// means — this crate silently consumed to end of input, `EntityScanner`
+/// refused. Both now call `ifc_lite_core::skip_step_comment`, so they agree.
+///
+/// This was RED before the fix: `extract_coord_index_bytes`'s inline
+/// comment-skip ran an index strictly past the fixture's length on an
+/// unterminated comment (confirmed via a since-removed `skip_comment_lossy`
+/// probe), while `EntityScanner::next_entity` already refused. Now both
+/// paths refuse for the identical fixture text.
+#[test]
+fn unterminated_comment_geometry_and_core_scanner_agree() {
+    let fixture = b"/* this comment never closes";
+
+    // ifc-lite-core's shared primitive: refuses (`None`), not an index past
+    // the end of input.
+    assert_eq!(
+        ifc_lite_core::skip_step_comment(fixture, 0),
+        None,
+        "the shared comment-skip must refuse an unterminated comment"
+    );
+
+    // ifc-lite-core's scanner, for the same shape of input: one entity
+    // found, then refuses to scan through the unterminated comment for more.
+    let mut file = b"#1=IFCWALL($);\n".to_vec();
+    file.extend_from_slice(fixture);
+    let mut scanner = ifc_lite_core::EntityScanner::new(&file);
+    assert!(
+        scanner.next_entity().is_some(),
+        "the one well-formed entity before the comment must still be found"
+    );
+    assert!(
+        scanner.next_entity().is_none(),
+        "ifc-lite-core's scanner must refuse to scan past an unterminated comment, not consume it"
+    );
+
+    // This crate's own call site: a CoordIndex list containing an
+    // unterminated comment must be refused (`None`), the same answer, for
+    // the same reason -- via the same shared function.
+    let mut entity = b"#77=IFCTRIANGULATEDFACESET(#78,$,$,((1,2,3)".to_vec();
+    entity.extend_from_slice(fixture);
+    assert_eq!(
+        extract_coord_index_bytes(&entity),
+        None,
+        "ifc-lite-geometry must refuse a CoordIndex list containing an unterminated comment"
     );
 }

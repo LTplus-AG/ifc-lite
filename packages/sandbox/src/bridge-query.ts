@@ -58,9 +58,9 @@ export function buildQueryNamespace(): NamespaceSchema {
         paramNames: ['modelId', 'expressId'],
         tsReturn: 'BimEntity | null',
         call: (sdk, args) => {
-          const modelId = args[0] as string;
-          const expressId = args[1] as number;
-          const entity = sdk.entity({ modelId, expressId });
+          const ref = toRef({ modelId: args[0], expressId: args[1] });
+          if (!ref) return null;
+          const entity = sdk.entity(ref);
           return entity ? withAliases(entity) : null;
         },
         returns: 'value',

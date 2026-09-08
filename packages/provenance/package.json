@@ -1,8 +1,8 @@
 {
   "name": "@ifc-lite/provenance",
-  "version": "0.0.1",
+  "version": "0.2.0",
   "private": true,
-  "description": "Prototype: canonical node-hash spec (docs/vision/spec/node-hash-v0.md) and a certificate library for proof-carrying model changes \u2014 createCertificate / verifyCertificate over an application-supplied node resolver.",
+  "description": "Canonical node-hash specification and certificate library for proof-carrying model changes.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -15,12 +15,13 @@
   },
   "scripts": {
     "build": "pnpm exec tsc",
+    "typecheck": "node ../../scripts/typecheck-tests.mjs",
     "dev": "pnpm exec tsc --watch",
     "test": "vitest run"
   },
   "devDependencies": {
     "typescript": "^6.0.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   },
   "license": "MPL-2.0",
   "author": "Louis True",

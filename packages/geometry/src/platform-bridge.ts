@@ -113,7 +113,17 @@ export interface GeometryProcessingResult {
 export interface StreamingOptions {
   /** Callback for each batch of meshes */
   onBatch?: (batch: GeometryBatch) => void;
-  /** Callback for early metadata bootstrap when available */
+  /**
+   * Declared but never read. This is the only occurrence of the name in the
+   * repository — no bridge implementation ever invokes it, so a callback
+   * passed here is never called and no "early metadata bootstrap" is
+   * delivered. Unlike its siblings ({@link onBatch}, {@link onColorUpdate},
+   * {@link onComplete}, {@link onError}), which are all dispatched, this one
+   * is an unfinished stub. There is no substitute callback; metadata must be
+   * read from the completed result. Slated for removal; see issue #2731.
+   *
+   * @deprecated Never invoked — see above.
+   */
   onMetadataBootstrap?: (bootstrap: MetadataBootstrapPayload) => void;
   /** Callback for deferred color updates */
   onColorUpdate?: (updates: Map<number, [number, number, number, number]>) => void;

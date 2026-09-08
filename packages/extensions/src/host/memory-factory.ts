@@ -116,12 +116,8 @@ class MemorySandboxHandle implements RuntimeSandboxHandle {
       },
     });
 
-    let value: unknown;
-    try {
-      value = fn(...envValues, syntheticGlobal);
-    } catch (err) {
-      throw err;
-    }
+    // No try/catch: it rethrew unchanged, which is what the plain call does.
+    const value: unknown = fn(...envValues, syntheticGlobal);
     const durationMs = this.now() - start;
     return { value, logs, durationMs };
   }

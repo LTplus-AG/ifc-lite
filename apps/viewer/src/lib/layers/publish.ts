@@ -22,6 +22,7 @@ import {
   setProvenance,
   ATTR,
   IFCLITE_ATTR,
+  IFCX_VERSION,
 } from '@ifc-lite/ifcx';
 import type { IfcxFile, IfcxNode } from '@ifc-lite/ifcx';
 import { extractStackState } from '@ifc-lite/merge';
@@ -82,7 +83,22 @@ function wireEntry(
  * is per-attribute LWW, so anything not explicitly nulled shines
  * through.
  */
-export function buildDeltaNodes(ops: readonly ChangeSetOp[], baseFiles: readonly IfcxFile[]): IfcxNode[] {
+export function buildDeltaNodes(
+  ops: readonly ChangeSetOp[],
+  baseFiles: readonly IfcxFile[],
+  /**
+   * Optional sink for `set-component` ops that resolved to zero wire
+   * attributes (e.g. `values: {}` from an empty-pset creation) — the
+   * IFCX dialect has no way to represent "component exists, no
+   * members", so these ops leave no trace on `data`. Without this,
+   * `changeSetToOps`'s own #2277 fix (materializing an empty pset as
+   * `values: {}` rather than dropping the mutation) gets silently
+   * undone one layer downstream: the op survives the producer, then
+   * vanishes here with no diagnostic and no error, while the caller's
+   * `opCount` still counts it as published.
+   */
+  unrepresentedOps?: ChangeSetOp[],
+): IfcxNode[] {
   const baseState = ops.some((op) => op.op === 'tombstone-component')
     ? extractStackState(baseFiles)
     : null;
@@ -100,10 +116,15 @@ export function buildDeltaNodes(ops: readonly ChangeSetOp[], baseFiles: readonly
     const node = nodeFor(op.entity);
     switch (op.op) {
       case 'set-component': {
+        let wrote = false;
         for (const [member, value] of Object.entries(op.values)) {
           const entry = wireEntry(op.componentKey, member, value);
-          if (entry) node.attributes = { ...node.attributes, [entry.key]: entry.value };
+          if (entry) {
+            node.attributes = { ...node.attributes, [entry.key]: entry.value };
+            wrote = true;
+          }
         }
+        if (!wrote) unrepresentedOps?.push(op);
         break;
       }
       case 'tombstone-component': {
@@ -170,7 +191,8 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
   const { ops, identityMap, unresolved, skipped } = changeSetToOps(changeSet, {
     globalIdOf: (expressId) => init.pathOf(expressId),
   });
-  const data = buildDeltaNodes(ops, init.stackFiles);
+  const unrepresentedOps: ChangeSetOp[] = [];
+  const data = buildDeltaNodes(ops, init.stackFiles, unrepresentedOps);
   if (data.length === 0) {
     throw new Error('No publishable changes: every pending edit failed identity resolution or was empty.');
   }
@@ -186,7 +208,7 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
   const bare: IfcxFile = {
     header: {
       id: '',
-      ifcxVersion: 'ifcx_alpha',
+      ifcxVersion: IFCX_VERSION,
       dataVersion: '1.0.0',
       author: init.authorPrincipal,
       timestamp: manifest.created,
@@ -203,7 +225,12 @@ export function publishViewerDraft(init: PublishDraftInit): PublishDraftResult {
   const existing = init.store.getRef(init.refName);
   init.store.setRef(init.refName, { layers: [...(existing?.layers ?? []), layerId] });
 
-  return { layerId, file, opCount: ops.length, unresolved, skippedCount: skipped.length };
+  // `unrepresentedOps` carries ops the wire dialect cannot express (e.g. an
+  // empty-pset creation, `values: {}`) — same "no layer representation"
+  // outcome as a `skipped` mutation, just discovered one layer later, so
+  // it folds into the same count rather than passing silently as part of
+  // `opCount`.
+  return { layerId, file, opCount: ops.length, unresolved, skippedCount: skipped.length + unrepresentedOps.length };
 }
 
 export interface CollabPublishInit {

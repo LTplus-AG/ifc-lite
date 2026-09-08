@@ -16,4 +16,4 @@ mod type_ids;
 pub use type_ids::*;
 
 // Re-export the generated IfcType directly (this is now the canonical schema)
-pub use schema::IfcType;
+pub use schema::{IfcType, ALL as IFC_TYPES};

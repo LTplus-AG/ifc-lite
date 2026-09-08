@@ -54,9 +54,27 @@ export interface ScriptResult {
   durationMs: number;
 }
 
+/**
+ * The console methods the sandbox installs on its `console` global.
+ *
+ * Single source for three things that have to agree: the functions
+ * `buildConsole` actually installs, the `level` a captured `LogEntry` can
+ * carry, and the ambient `console` declaration that
+ * `scripts/generate-bim-globals.mjs` emits into `bim-globals.d.ts`.
+ *
+ * The sandbox global scope has exactly two members — `bim` and this `console`
+ * — so the ambient declaration must be derived from this list rather than
+ * borrowed from TypeScript's `DOM` lib: that would compile a template calling
+ * `console.table`, `document` or `fetch`, none of which exist in QuickJS.
+ */
+export const SANDBOX_CONSOLE_LEVELS = ['log', 'warn', 'error', 'info'] as const;
+
+/** A method name on the sandbox `console`. */
+export type SandboxConsoleLevel = (typeof SANDBOX_CONSOLE_LEVELS)[number];
+
 /** A captured console log entry */
 export interface LogEntry {
-  level: 'log' | 'warn' | 'error' | 'info';
+  level: SandboxConsoleLevel;
   args: unknown[];
   timestamp: number;
 }

@@ -34,6 +34,40 @@ observability = ["dep:tracing"]
 # `tests/triangulation_invariance.rs` can feed the pipeline two equally valid
 # triangulations of the same polygons. Never enabled in a shipping build.
 triangulation-alt = ["dep:earcut"]
+# Test-only: exposes `test_support` (the receive-and-diagnose watchdog used by
+# the termination suites) to OTHER crates' integration tests, which cannot see
+# this crate's `cfg(test)` tree. `ifc-lite-processing` enables it as a
+# dev-dependency. Never enabled in a shipping build.
+test-support = []
+# #3440 step 2: turns `csg/mod.rs`'s four boolean-op accept paths' informational
+# open-topology check (step 1, always on) into a REJECT — a torn kernel result
+# falls back exactly like an existing `KernelOutputInvalid`. Off by default and
+# enabled by NOTHING downstream (no other crate in this workspace turns it on,
+# unlike `observability`, which the native server does enable) — deliberately
+# so this stays a `cargo test/build --features csg_topology_gate` opt-in for
+# CI/census measurement, not a change to what any shipping build accepts. The
+# repo's own watertightness census reports a nonzero count of currently-torn
+# hosts on the un-gated default (see issue #3440's measurements), so enabling
+# this by default today would reject geometry that currently renders.
+csg_topology_gate = []
+# #3440 step 3, and NOT on by default either. Turns the edge-multiplicity check
+# (`edge_multiplicity_defects`: an undirected edge used by more than two
+# triangles, or twice the same way round) into a REJECT at the same four accept
+# paths. Separate from `csg_topology_gate` on purpose: the two read different
+# defect classes, and a census run needs to attribute a flip to one of them, not
+# to whichever gate happened to fire first.
+#
+# It was TRIED as a default. It reads a defect class benign tessellation cannot
+# produce, and over the fixture corpus (115 models, 2071 void hosts) it rejects
+# 110 hosts, all of which a downstream fallback still cuts — which looked like
+# enough to ship. It is not: on this repo's own pinned quality fixtures the
+# fallback is WORSE than the torn result it replaces. `issue_098_reveal_wall`
+# goes from ~42 to 380 unpaired edges, `issue_098_v5c` from ~108 to 416, and
+# `issue_960_segmented_roof_clip` grows back the full-height seam sliver that
+# test exists to catch. Rejecting a tear is only an improvement if what replaces
+# it is better, and here it is not — so this stays an opt-in until the fallback
+# path is the one that gets fixed.
+csg_manifold_gate = []
 
 [dependencies]
 
@@ -44,7 +78,7 @@ earcutr = "0.5"
 earcut = { version = "0.4", optional = true }
 
 # 2D polygon boolean operations for profile-level void subtraction
-i_overlay = "7.0"
+i_overlay = "8.0"
 
 # Core IFC parsing
 ifc-lite-core.workspace = true
@@ -99,6 +133,13 @@ bnum = { version = "0.14.4", features = ["numtraits"] }
 
 [dev-dependencies]
 approx = "0.5"
+# The real clash engine, used ONLY by tests/clash_intersection_real_model.rs to
+# produce the same candidate pairs the product reports, so the intersection-solid
+# measurements are taken on genuine clash pairs rather than a test-local
+# broad-phase approximation. `ifc-lite-clash` has zero dependencies and does not
+# depend on this crate, so this is not circular and adds nothing to a shipping
+# build.
+ifc-lite-clash.workspace = true
 # JSON serialization for the GeometryDiagnostics camelCase-contract test (asserts
 # the serde rename_all keys match the @ifc-lite/geometry TS interface).
 serde_json = "1.0"

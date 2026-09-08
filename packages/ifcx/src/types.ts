@@ -7,6 +7,15 @@
  * Based on buildingSMART IFC5-development schema
  */
 
+import {
+  ENTITIES_IFC2X3,
+  ENTITIES_IFC4,
+  ENTITIES_IFC4X3,
+  IfcTypeEnumToString,
+  SPATIAL_STRUCTURE_TYPE_ENUMS,
+} from '@ifc-lite/data';
+import type { IfcEntityInfo } from '@ifc-lite/data';
+
 // ============================================================================
 // Core IFCX File Structure
 // ============================================================================
@@ -158,6 +167,25 @@ export const IFCLITE_ATTR = {
   CLASSIFICATIONS: 'ifclite::classifications',
   MATERIALS: 'ifclite::materials',
   GEOMETRY_REF: 'ifclite::geometryRef',
+  /**
+   * Per-entity provenance carrier (`createdBy` / `createdAt` /
+   * `lastEditedBy` / `lastEditedAt` / `previousPath`). IFCX nodes have
+   * no provenance slot of their own, so without this key a snapshot
+   * round trip loses whoever authored an entity — and the reader then
+   * back-fills the FILE header's author and the read clock, which is
+   * fabricated attribution wearing the shape of the real thing.
+   *
+   * Every field carried here is written once, when the entity is
+   * created, and never re-stamped — `lastEditedBy` / `lastEditedAt`
+   * included (only `promoteEntityType` writes them, on the new entity).
+   * That is load-bearing, not incidental: a field re-stamped on each
+   * edit would make this attribute change whenever anything else on the
+   * entity does, putting it in every minimal layer and handing the merge
+   * engine a component that conflicts on every concurrent edit. If a
+   * per-edit stamp is ever wanted, give it its own key rather than
+   * adding it here.
+   */
+  META: 'ifclite::meta',
 } as const;
 
 /** Header key carrying the provenance manifest (see provenance.ts). */
@@ -249,28 +277,76 @@ export interface IfcClass {
 // Spatial Types
 // ============================================================================
 
-export const SPATIAL_TYPES = new Set([
-  'IfcProject',
-  'IfcSite',
-  'IfcBuilding',
-  'IfcBuildingStorey',
-  'IfcSpace',
-]);
+/**
+ * The IFC classes that are LEVELS of the spatial tree rather than contents of
+ * one. `hierarchy-builder.ts` recurses into a child in this set and stops
+ * collecting elements at one, so a class missing here is not merely absent
+ * from the tree — it and everything beneath it are flattened into the
+ * parent's element list.
+ *
+ * Derived from `@ifc-lite/data`'s `SPATIAL_STRUCTURE_TYPE_ENUMS`, this repo's
+ * single answer to "is this entity part of the spatial tree", rather than
+ * listed again here. The hand-written list this replaced named the five
+ * building-storey levels and none of IFC4.3's twelve: `IfcSpatialZone` and
+ * the facility classes (`IfcRoad`, `IfcBridge`, `IfcRailway`,
+ * `IfcMarineFacility`, `IfcFacility` and their `*Part` counterparts), so an
+ * infrastructure model's whole hierarchy collapsed onto its site.
+ */
+export const SPATIAL_TYPES: Set<string> = new Set(
+  SPATIAL_STRUCTURE_TYPE_ENUMS.map((typeEnum) => IfcTypeEnumToString(typeEnum)),
+);
 
-export const BUILDING_ELEMENT_TYPES = new Set([
-  'IfcWall',
-  'IfcWallStandardCase',
-  'IfcDoor',
-  'IfcWindow',
-  'IfcSlab',
-  'IfcColumn',
-  'IfcBeam',
-  'IfcStair',
-  'IfcRamp',
-  'IfcRoof',
-  'IfcCovering',
-  'IfcCurtainWall',
-  'IfcRailing',
-  'IfcOpeningElement',
-  'IfcBuildingElementProxy',
+/** `root` itself plus every descendant of it in one schema's entity table. */
+function elementUniverse(entities: readonly IfcEntityInfo[], root: string): Set<string> {
+  const children = new Map<string, string[]>();
+  for (const entity of entities) {
+    if (!entity.parent) continue;
+    const siblings = children.get(entity.parent) ?? [];
+    siblings.push(entity.name);
+    children.set(entity.parent, siblings);
+  }
+  const out = new Set<string>([root]);
+  const walk = (node: string): void => {
+    for (const child of children.get(node) ?? []) {
+      if (out.has(child)) continue;
+      out.add(child);
+      walk(child);
+    }
+  };
+  walk(root);
+  return out;
+}
+
+/**
+ * The IFC classes recognized as physical building elements.
+ *
+ * Derived from `@ifc-lite/data`'s generated entity tables rather than
+ * hand-listed: the 15-name hand list this replaced missed `IfcFooting`,
+ * `IfcPile`, `IfcMember`, `IfcPlate`, `IfcShadingDevice`, `IfcChimney`,
+ * `IfcStairFlight`, `IfcRampFlight` and the `*StandardCase` door/window
+ * variants even for IFC4 alone, and wrongly included `IfcOpeningElement`
+ * (a subtraction feature under `IfcFeatureElement`, not a building
+ * element). It also could not have covered IFC4X3 correctly by adding more
+ * names: IFC4X3 replaced the family root `IfcBuildingElement` with
+ * `IfcBuiltElement`, adding a family of civil/infrastructure elements
+ * (`IfcBearing`, `IfcCaissonFoundation`, `IfcCourse`, `IfcDeepFoundation`,
+ * `IfcEarthworksFill`, `IfcKerb`, `IfcMooringDevice`,
+ * `IfcNavigationElement`, `IfcPavement`, `IfcRail`, `IfcReinforcedSoil`,
+ * `IfcTrackElement`) under the new name, so this walks both root names
+ * across all three generated schemas (see `SPATIAL_TYPES` above for the
+ * same fix applied to the neighboring hand-list gap).
+ *
+ * Each root is a member of its own family, not just the walk's starting
+ * point. That matters for IFC4X3: `IfcBuildingElement` is abstract in
+ * IFC2X3/IFC4, but its replacement `IfcBuiltElement` is concrete
+ * (`abstract: false` in the generated IFC4X3 table), so a file may carry
+ * an `IFCBUILTELEMENT` instance and dropping the root would classify it
+ * as not a building element. The set carries abstract classes anyway
+ * (`IfcBuildingElementComponent`, `IfcReinforcingElement`), so keeping the
+ * roots is also what makes it a consistent family-membership test.
+ */
+export const BUILDING_ELEMENT_TYPES: Set<string> = new Set([
+  ...elementUniverse(ENTITIES_IFC2X3, 'IfcBuildingElement'),
+  ...elementUniverse(ENTITIES_IFC4, 'IfcBuildingElement'),
+  ...elementUniverse(ENTITIES_IFC4X3, 'IfcBuiltElement'),
 ]);

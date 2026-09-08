@@ -37,8 +37,14 @@ export type RecentFileInput = {
 // ── localStorage (metadata) ─────────────────────────────────────────────
 
 export function getRecentFiles(): RecentFileEntry[] {
-  try { return JSON.parse(localStorage.getItem(KEY) ?? '[]'); }
-  catch { return []; }
+  try {
+    // The catch only covers a PARSE failure. A payload that parses to a
+    // non-array (`{}`, `"5"`, `null`) sails past it and reaches the callers,
+    // which `.map` / `.slice` it during render (CommandPalette, ViewportContainer)
+    // — a corrupt key would take the whole viewport down. Shape-check here.
+    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
+    return Array.isArray(parsed) ? parsed as RecentFileEntry[] : [];
+  } catch { return []; }
 }
 
 // Browser uploads don't expose filesystem paths, so the file name is the
@@ -91,11 +97,32 @@ function openDB(): Promise<IDBDatabase> {
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
+    // `blocked` fires when another connection still holds the database at an
+    // older version. It is not an outcome: it fires IN ADDITION TO success or
+    // error, and earlier — the request stays pending until the blocking
+    // connection goes away, and only then does it run upgradeneeded/success.
+    // Left unhandled, the promise sits unsettled for as long as the other tab
+    // lives, and every awaiting caller parks with it (a click on a recent file
+    // would simply do nothing, with no error). Reject so the callers reach
+    // their catch and degrade to "no cache" now instead of waiting.
+    req.onblocked = () => {
+      reject(
+        new Error(`[recent-files] IndexedDB upgrade to v${DB_VERSION} blocked by another open connection`),
+      );
+      // Having rejected, nobody is left to receive the connection this request
+      // will still deliver once the blocker closes — so close it here. An
+      // orphan holds the database at DB_VERSION and blocks the NEXT upgrade,
+      // which would trade the hang above for a hang one version later. This
+      // handler replaces the resolver only on the path that already rejected;
+      // an open that never reported `blocked` keeps resolving normally.
+      req.onsuccess = () => req.result.close();
+    };
   });
 }
 
 /** Cache file blobs in IndexedDB for instant reload from palette. */
 export async function cacheFileBlobs(files: File[]): Promise<void> {
+  let db: IDBDatabase | undefined;
   try {
     // Only stage up to the cache capacity. The store keeps at most
     // MAX_CACHED_FILES entries, so reading every blob of a large multi-file drop
@@ -121,7 +148,7 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
     }
     if (records.length === 0) return;
 
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
 
@@ -149,9 +176,14 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
-    db.close();
   } catch (err) {
     console.warn('[recent-files] failed to cache file blobs', err);
+  } finally {
+    // Every early exit from the block above used to skip this, leaving the
+    // connection open for the life of the tab. An orphaned connection at the
+    // current version also blocks the next DB_VERSION upgrade — see openDB's
+    // `onblocked`. Close on every path.
+    db?.close();
   }
 }
 
@@ -162,26 +194,31 @@ export async function cacheFileBlobs(files: File[]): Promise<void> {
  * activation a file dialog needs.
  */
 export async function getCachedFileNames(): Promise<string[]> {
+  let db: IDBDatabase | undefined;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
     const req = tx.objectStore(STORE_NAME).getAllKeys();
     const keys = await new Promise<IDBValidKey[]>((resolve, reject) => {
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    db.close();
     return keys.map(String);
-  } catch {
+  } catch (err) {
+    // Called on every palette open, but only ONCE per open — not a render loop.
+    console.warn('[recent-files] could not list the cached files', err);
     return [];
+  } finally {
+    db?.close();
   }
 }
 
 /** Retrieve a cached file blob and reconstruct a File object. */
 export async function getCachedFile(target: string | RecentFileEntry): Promise<File | null> {
   const name = typeof target === 'string' ? target : target.name;
+  let db: IDBDatabase | undefined;
   try {
-    const db = await openDB();
+    db = await openDB();
     const tx = db.transaction(STORE_NAME, 'readonly');
     const store = tx.objectStore(STORE_NAME);
     const req = store.get(name);
@@ -189,10 +226,14 @@ export async function getCachedFile(target: string | RecentFileEntry): Promise<F
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    db.close();
     if (!result) return null;
     return new File([result.blob], result.name, { type: result.type || 'application/octet-stream' });
-  } catch {
+  } catch (err) {
+    // The caller falls back to the file picker, which looks to the user like
+    // the cache simply missed — name the real cause here. One per click.
+    console.warn(`[recent-files] could not read "${name}" from the blob cache`, err);
     return null;
+  } finally {
+    db?.close();
   }
 }

@@ -10,6 +10,7 @@
 import type { StringTable } from './string-table.js';
 import { IfcTypeEnum, EntityFlags, IfcTypeEnumFromString, IfcTypeEnumToString } from './types.js';
 import { IFC_ENTITY_NAMES } from './ifc-entity-names.js';
+import { exactNameOfRow } from './exact-type-name.js';
 
 /** Convert UPPERCASE IFC type name to PascalCase using the generated schema name map */
 function normalizeIfcUpperCase(upper: string): string {
@@ -45,6 +46,12 @@ export interface EntityTable {
   getDescription(expressId: number): string;
   getObjectType(expressId: number): string;
   getTypeName(expressId: number): string;
+  /** The class the file actually declares — what an EXPORT needs, where
+   *  {@link getTypeName} answers what GROUPING needs. `exact-type-name.ts`
+   *  documents the difference and holds the one fallback for table shapes
+   *  that cannot answer (hence optional, as with {@link rawTypeName}); read
+   *  it through `exactTypeName()`, never directly. */
+  getExactTypeName?(expressId: number): string;
   /** Element Tag (IfcElement/IfcTypeProduct layouts), '' when absent. Optional:
    *  populated by server-parsed stores (issue #1765); the WASM path resolves
    *  Tag on demand from source instead. */
@@ -88,7 +95,15 @@ export class EntityTableBuilder {
   rawTypeName: Uint32Array;
 
   private typeStarts: Map<IfcTypeEnum, number> = new Map();
-  private typeCounts: Map<IfcTypeEnum, number> = new Map();
+  /**
+   * Last row index seen per type. `typeRanges` is a SPAN — [firstRow,
+   * lastRow+1] — not a count: IFC streams interleave types freely, and
+   * `start + rowCount` leaves the type's own later rows outside its range
+   * (rows 0/2/4 of one type gave [0, 3), which excludes row 4). It matches a
+   * span only when a type is contiguous, which is why the divergence from
+   * `entityTableFromColumns`'s derivation stayed invisible.
+   */
+  private typeEnds: Map<IfcTypeEnum, number> = new Map();
 
   constructor(capacity: number, strings: StringTable) {
     this.strings = strings;
@@ -136,9 +151,8 @@ export class EntityTableBuilder {
     // Track type ranges
     if (!this.typeStarts.has(typeEnum)) {
       this.typeStarts.set(typeEnum, i);
-      this.typeCounts.set(typeEnum, 0);
     }
-    this.typeCounts.set(typeEnum, this.typeCounts.get(typeEnum)! + 1);
+    this.typeEnds.set(typeEnum, i);
   }
   
   build(): EntityTable {
@@ -147,11 +161,12 @@ export class EntityTableBuilder {
       return arr.subarray(0, this.count) as T;
     };
 
-    // Build type ranges (kept for cache serialization backward compat)
+    // Build type ranges (kept for cache serialization backward compat).
+    // Same [firstRow, lastRow+1] span `entityTableFromColumns` derives when a
+    // caller omits them — see `typeEnds`.
     const typeRanges = new Map<IfcTypeEnum, { start: number; end: number }>();
     for (const [type, start] of this.typeStarts) {
-      const count = this.typeCounts.get(type)!;
-      typeRanges.set(type, { start, end: start + count });
+      typeRanges.set(type, { start, end: this.typeEnds.get(type)! + 1 });
     }
 
     return entityTableFromColumns(
@@ -317,6 +332,11 @@ export function entityTableFromColumns(
       if (enumName !== 'Unknown') return enumName;
       return strings.get(rawTypeName[idx]) || 'Unknown';
     },
+    // A retype is a deliberate restatement of the class, so it outranks the
+    // parsed one here exactly as it does in `getTypeName` above — and
+    // `setTypeOverride` already stored it PascalCase-canonicalised.
+    getExactTypeName: (id) =>
+      typeOverrides.get(id) ?? exactNameOfRow(strings, rawTypeName, typeEnum, indexOfId(id)),
     hasGeometry: (id) => {
       const idx = indexOfId(id);
       return idx >= 0 ? (flags[idx] & EntityFlags.HAS_GEOMETRY) !== 0 : false;
@@ -340,7 +360,13 @@ export function entityTableFromColumns(
 
     setTypeOverride: (id, typeName) => {
       if (typeName === null) typeOverrides.delete(id);
-      else typeOverrides.set(id, typeName);
+      // Canonicalise to PascalCase on the way in: callers (a UI "change
+      // class" action) hand this a raw UPPERCASE IFC class token, but
+      // `getTypeName` echoes the override straight back, and consumers
+      // (e.g. `isSpatialStructureTypeName`) match against the PascalCase
+      // form. Storing the raw casing made every retyped entity invisible
+      // to those case-sensitive name predicates.
+      else typeOverrides.set(id, normalizeIfcUpperCase(typeName.toUpperCase()));
     },
 
     getExpressIdByGlobalId: (gid) => globalIdToExpressId.get(gid) ?? -1,

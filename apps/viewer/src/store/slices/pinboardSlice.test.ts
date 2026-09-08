@@ -83,6 +83,47 @@ describe('PinboardSlice', () => {
       assert.strictEqual(state.pinboardEntities.size, 0);
       assert.strictEqual(state.isolatedEntities, null);
     });
+
+    it('addToBasket computes the offset-corrected global id for a non-legacy model, not the raw expressId', () => {
+      // All other basket tests use a single 'legacy' model with idOffset 0,
+      // where a global id and a local expressId are numerically identical —
+      // a bug that used the raw expressId instead of the offset-corrected
+      // global id would be invisible under that fixture. Use a federated
+      // model with a non-zero offset so the two values visibly diverge.
+      setState({
+        models: new Map([
+          ['legacy', { idOffset: 0 }],
+          ['model-2', { idOffset: 1000 }],
+        ]),
+      });
+      state.setBasket([{ modelId: 'legacy', expressId: 5 }]);
+      state.addToBasket([{ modelId: 'model-2', expressId: 7 }]);
+
+      assert.strictEqual(state.isolatedEntities!.size, 2);
+      assert.ok(state.isolatedEntities!.has(5));
+      assert.ok(state.isolatedEntities!.has(1007), 'expected offset-corrected global id 1007');
+      assert.ok(!state.isolatedEntities!.has(7), 'must not use the raw (un-offset) expressId 7');
+    });
+
+    it('removeFromBasket removes the offset-corrected global id for a non-legacy model, not the raw expressId', () => {
+      setState({
+        models: new Map([
+          ['legacy', { idOffset: 0 }],
+          ['model-2', { idOffset: 1000 }],
+        ]),
+      });
+      state.setBasket([
+        { modelId: 'legacy', expressId: 5 },
+        { modelId: 'model-2', expressId: 7 },
+      ]);
+      state.removeFromBasket([{ modelId: 'model-2', expressId: 7 }]);
+
+      assert.strictEqual(state.pinboardEntities.size, 1);
+      assert.ok(state.isolatedEntities !== null);
+      assert.strictEqual(state.isolatedEntities!.size, 1);
+      assert.ok(state.isolatedEntities!.has(5));
+      assert.ok(!state.isolatedEntities!.has(1007), 'the removed entity global id must be gone');
+    });
   });
 
   describe('saveCurrentBasketView', () => {
@@ -147,6 +188,47 @@ describe('PinboardSlice', () => {
       assert.strictEqual(state.pinboardEntities.size, 0);
       assert.strictEqual(state.isolatedEntities, null);
       assert.strictEqual(state.activeBasketViewId, 'view-empty');
+    });
+  });
+
+  describe('removeBasketView', () => {
+    it('removes the view and clears activeBasketViewId when it was the active one', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      const id = state.saveCurrentBasketView();
+      assert.strictEqual(state.activeBasketViewId, id);
+
+      state.removeBasketView(id!);
+
+      assert.strictEqual(state.basketViews.length, 0);
+      assert.strictEqual(state.activeBasketViewId, null);
+    });
+
+    it('leaves activeBasketViewId untouched when removing a DIFFERENT (non-active) view', () => {
+      // Non-default state: two saved views, and the active one is NOT the
+      // one being removed. A mutant that unconditionally nulls
+      // activeBasketViewId on every removal passes any test that only
+      // removes the active view — this pins the other direction.
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      const firstId = state.saveCurrentBasketView();
+      state.setBasket([{ modelId: 'legacy', expressId: 200 }]);
+      const secondId = state.saveCurrentBasketView();
+      assert.strictEqual(state.activeBasketViewId, secondId);
+
+      state.removeBasketView(firstId!);
+
+      assert.strictEqual(state.basketViews.length, 1);
+      assert.strictEqual(state.basketViews[0].id, secondId);
+      assert.strictEqual(state.activeBasketViewId, secondId, 'removing an inactive view must not clear the active one');
+    });
+
+    it('removing an unknown id is a no-op for activeBasketViewId', () => {
+      state.setBasket([{ modelId: 'legacy', expressId: 100 }]);
+      const id = state.saveCurrentBasketView();
+
+      state.removeBasketView('does-not-exist');
+
+      assert.strictEqual(state.basketViews.length, 1);
+      assert.strictEqual(state.activeBasketViewId, id);
     });
   });
 

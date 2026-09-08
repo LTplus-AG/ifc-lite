@@ -18,7 +18,7 @@
  */
 
 import { createHeadlessContext, createStreamingContext } from '../loader.js';
-import { printJson, fatal, hasFlag, getFlag, validateViewerPort } from '../output.js';
+import { printJson, fatal, hasFlag, getFlag, validateViewerPort, validateLimit } from '../output.js';
 
 /** Known flags that take a value argument */
 const EVAL_VALUE_FLAGS = new Set(['--type', '--limit', '--viewer']);
@@ -76,7 +76,11 @@ export async function evalCommand(args: string[]): Promise<void> {
       return 'Ifc' + trimmed;
     });
     let entities = bim.query().byType(...types).toArray();
-    if (limitStr) entities = entities.slice(0, parseInt(limitStr, 10));
+    // Validated, not parseInt'd: a non-numeric --limit yields NaN and
+    // slice(0, NaN) returns [], so a typo silently evaluated nothing and
+    // reported success. Same guard as export --limit.
+    const evalLimit = validateLimit(limitStr);
+    if (evalLimit !== undefined) entities = entities.slice(0, evalLimit);
 
     const results: any[] = [];
     const evalFn = buildEvalFunction(expression, ['bim', 'ref', 'entity']);

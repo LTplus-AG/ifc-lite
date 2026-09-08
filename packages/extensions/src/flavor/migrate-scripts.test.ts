@@ -37,6 +37,19 @@ describe('migrateSavedScripts', () => {
     expect(r.skipped).toHaveLength(1);
   });
 
+  it('skips a script too deeply nested to infer capabilities from', () => {
+    // Capability inference stops at its AST depth bound and reports the
+    // stop as a parse error. That must land in `skipped` — the
+    // alternative, an empty capability set, silently falls through to
+    // the `model.read` fallback above and migrates an uninspected
+    // script.
+    const code = `${'if(1){'.repeat(800)}bim.model.write();${'}'.repeat(800)}`;
+    const r = migrateSavedScripts([{ id: 'deep', name: 'Deep', code }]);
+    expect(r.extensions).toHaveLength(0);
+    expect(r.skipped).toHaveLength(1);
+    expect(r.skipped[0].reason).toMatch(/nested more than \d+ AST levels/);
+  });
+
   it('produces a slug-stable extension id', () => {
     const r = migrateSavedScripts([
       { id: 'Count Walls!', name: 'Count Walls!', code: 'bim.query.byType("IfcWall");' },

@@ -10,6 +10,7 @@
 import type { StringTable } from './string-table.js';
 import { PropertyValueType } from './types.js';
 import type { StringTable as StringTableType } from './string-table.js';
+import { groupPropertySetsByInstance } from './group-property-sets.js';
 
 export interface PropertySet {
   name: string;
@@ -218,22 +219,15 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:
 
     getForEntity: (id) => {
       const rowIndices = entityIndex.get(id) || [];
-      const psets = new Map<string, PropertySet>();
-      for (const idx of rowIndices) {
-        const psetNameStr = strings.get(psetName[idx]);
-        const psetGlobalIdStr = strings.get(psetGlobalId[idx]);
-        if (!psets.has(psetNameStr)) {
-          psets.set(psetNameStr, { name: psetNameStr, globalId: psetGlobalIdStr, properties: [] });
-        }
-        const pset = psets.get(psetNameStr)!;
-        const propNameStr = strings.get(propName[idx]);
-        pset.properties.push({
-          name: propNameStr,
-          type: propType[idx],
-          value: getPropertyValue(table, idx, strings),
-        });
-      }
-      return Array.from(psets.values());
+      return groupPropertySetsByInstance(
+        rowIndices,
+        psetName,
+        psetGlobalId,
+        propName,
+        propType,
+        strings,
+        (idx) => getPropertyValue(table, idx, strings),
+      );
     },
 
     getPropertyValue: (id, pset, prop) => {
@@ -261,7 +255,7 @@ export function propertyTableFromColumns(columns: PropertyTableColumns, strings:
       for (const idx of rowIndices) {
         if (psetIdx >= 0 && psetName[idx] !== psetIdx) continue;
         const propValue = getPropertyValue(table, idx, strings);
-        if (compareValues(propValue, operator, value)) {
+        if (comparePropertyValues(propValue, operator, value)) {
           results.push(entityId[idx]);
         }
       }
@@ -307,6 +301,27 @@ function addToIndex(index: Map<number, number[]>, key: number, value: number): v
   list.push(value);
 }
 
+/**
+ * List-value parse failures are per-property on a hot read path, so the
+ * warning is latched: a corrupt table would otherwise emit one line per row.
+ */
+let listParseWarningShown = false;
+
+/** @internal test seam — reset the once-per-process list-parse warning latch. */
+export function __resetListParseWarningLatch(): void {
+  listParseWarningShown = false;
+}
+
+function warnListParseFailureOnce(listStr: string, err: unknown): void {
+  if (listParseWarningShown) return;
+  listParseWarningShown = true;
+  console.warn(
+    `[data] property list value is not valid JSON; reporting an empty list ` +
+      `(further occurrences suppressed). value=${JSON.stringify(listStr.slice(0, 120))}`,
+    err,
+  );
+}
+
 function getPropertyValue(table: PropertyTable, idx: number, strings: StringTableType): PropertyValue {
   const type = table.propType[idx];
   
@@ -329,10 +344,19 @@ function getPropertyValue(table: PropertyTable, idx: number, strings: StringTabl
       return boolVal === 255 ? null : boolVal === 1;
     }
     case PropertyValueType.List: {
-      const listStr = strings.get(table.valueString[idx]);
+      // Same NULL handling as the string branch above: `valueString` is a
+      // Uint32Array, so the -1 sentinel wraps to 4294967295 and `strings.get`
+      // answers '' for it. Without this guard a NULL list property came back
+      // as `[]` — an empty list is a value, and the silent catch below made
+      // that indistinguishable from a real one.
+      const si = table.valueString[idx];
+      if (!(si >= 0 && si < strings.count)) return null;
+      const listStr = strings.get(si);
+      if (listStr === '') return null;
       try {
         return JSON.parse(listStr);
-      } catch {
+      } catch (err) {
+        warnListParseFailureOnce(listStr, err);
         return [];
       }
     }
@@ -341,7 +365,25 @@ function getPropertyValue(table: PropertyTable, idx: number, strings: StringTabl
   }
 }
 
-function compareValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
+/**
+ * Compare a stored property value against a filter value. The single
+ * definition of `whereProperty` / `findByProperty` semantics: same-type only
+ * (no coercion, so `'60' = 60` is false), `null` on either side never matches
+ * (including `!=`), `==` aliases `=`, and `contains` / `startsWith` are
+ * string-only. Every *store-level* property filter routes through here — the
+ * indexed table, the on-demand fallback in `@ifc-lite/query`, the
+ * cache-restored and server-converted tables — so the same query cannot answer
+ * differently on different stores.
+ *
+ * Deliberately NOT routed through here: `ifc-lite query --where`
+ * (`packages/cli/src/commands/query.ts`). Its values arrive from argv as
+ * strings, so it coerces (`String(a) === String(b)`, `Number(a) > Number(b)`)
+ * and normalises IFC booleans (`.T.`/`'true'`); it also adds an `exists`
+ * operator and is first-match rather than any-match. Same-type-only semantics
+ * would make every numeric CLI filter match nothing, so unifying it is a
+ * behaviour change for CLI users and out of scope here.
+ */
+export function comparePropertyValues(propValue: PropertyValue, operator: string, value: PropertyValue): boolean {
   if (propValue === null || value === null) return false;
   
   if (typeof propValue === 'number' && typeof value === 'number') {

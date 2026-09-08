@@ -51,4 +51,25 @@ describe('retention', () => {
       'a.log.2024-06-01',
     ]);
   });
+
+  it('drops SnapshotWorker\'s actual on-disk snapshot files once they age out', () => {
+    // `SnapshotWorker.runOnce` (src/snapshot-worker.ts) writes
+    // `<safeRoomId>.<isoStamp>.ifcx` on every tick -- never `.snap.<stamp>`,
+    // which is the only "snapshot" shape `defaultClassify` recognizes. A
+    // deployment running the shipped worker + this retention module together
+    // (exactly as documented) must still be able to reclaim those files.
+    touch('myroom.2024-01-01T00-00-00-000Z.ifcx', 2000); // ancient real snapshot
+    touch('myroom.2026-08-01T00-00-00-000Z.ifcx', 1); // fresh real snapshot -- control
+    touch('myroom.log', 0); // active log, never dropped
+
+    const decision = planRetention(tmpDir, { fullLogDays: 1, snapshotsDays: 30 });
+    expect(decision.drop.map((p) => path.basename(p))).toEqual([
+      'myroom.2024-01-01T00-00-00-000Z.ifcx',
+    ]);
+    // Bounding control: the fresh snapshot and the active log must survive --
+    // a classifier that just deletes every .ifcx unconditionally would also
+    // pass the assertion above without this.
+    expect(decision.drop).not.toContain(path.join(tmpDir, 'myroom.2026-08-01T00-00-00-000Z.ifcx'));
+    expect(decision.drop).not.toContain(path.join(tmpDir, 'myroom.log'));
+  });
 });

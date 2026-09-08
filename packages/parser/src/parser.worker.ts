@@ -15,22 +15,22 @@
  * because nesting workers serves no purpose and adds postMessage latency.
  */
 
+import { readPrepassFingerprint } from './prepass-source-fingerprint.js';
 import init, { IfcAPI } from '@ifc-lite/wasm';
 import { initWasmWithRetry } from './wasm-init-retry.js';
 import { IfcParser } from './index.js';
+import { extractGeoreferencingOnDemand } from './on-demand-georeferencing.js';
 import type { IfcDataStore } from './columnar-parser.js';
 import type { WasmScanApi } from './entity-scanner.js';
-import {
-  collectTransferables,
-  toTransport,
-  transportByteSize,
-  type DataStoreTransport,
-  type ParserMemorySnapshot,
-} from './data-store-transport.js';
+import type { ParserMemorySnapshot } from './data-store-transport.js';
+import { WorkerIndexPublisher, type WorkerStorePayload } from './worker-index-publication.js';
+import { takeWasmPanicStash } from './wasm-panic-forward.js';
 
 /** Input message: pass the SAB-backed source bytes and an opaque request id. */
 export interface ParserWorkerInputMessage {
   type: 'parse';
+  sourceFingerprint?: SharedArrayBuffer;
+  indexTransport?: 'packed-index-v1';
   id: string;
   source: SharedArrayBuffer;
   /** Optional yieldIntervalMs override (forwarded to parseColumnar). */
@@ -52,6 +52,20 @@ export interface ParserWorkerEntityIndexMessage {
   ids: Uint32Array;
   starts: Uint32Array;
   lengths: Uint32Array;
+  /**
+   * Records the pre-pass refused for an express id above the u32 storage
+   * bound (#3395). Absent from `ids` by construction, so the count has to be
+   * handed over with the columns or the parse reports a clean load that is
+   * quietly short. Optional: an older host sends the three columns only.
+   */
+  oversizedIdCount?: number;
+  /**
+   * Whether the pre-pass stopped early at a record whose quoted string or
+   * block comment never closed (#3790). 0 or 1. Everything after that byte is
+   * missing from the columns, so this is the only evidence the parse gets.
+   * Optional: an older host sends the three columns only.
+   */
+  malformedRecordCount?: number;
 }
 
 /** Progress update from the worker. */
@@ -72,14 +86,14 @@ export interface ParserWorkerDiagnosticMessage {
 export interface ParserWorkerPartialStoreMessage {
   type: 'partial-store';
   id: string;
-  payload: DataStoreTransport;
+  payload: WorkerStorePayload;
 }
 
 /** Full data store is ready. */
 export interface ParserWorkerCompleteMessage {
   type: 'complete';
   id: string;
-  payload: DataStoreTransport;
+  payload: WorkerStorePayload;
   memory: ParserMemorySnapshot;
 }
 
@@ -87,6 +101,12 @@ export interface ParserWorkerErrorMessage {
   type: 'error';
   id: string;
   message: string;
+  /** This worker realm's wasm panic-location stash (#2527 follow-up), forwarded
+   *  so the main thread can re-plant it on ITS global for the existing
+   *  `attachWasmPanicLocation` gate. Location only, never the panic message.
+   *  Absent when there was no stash. See `wasm-panic-forward.ts`. */
+  wasmPanicLocation?: string;
+  wasmPanicAt?: number;
 }
 
 export type ParserWorkerOutputMessage =
@@ -156,6 +176,8 @@ let pendingEntityIndex: {
   ids: Uint32Array;
   starts: Uint32Array;
   lengths: Uint32Array;
+  oversizedIdCount?: number;
+  malformedRecordCount?: number;
 } | null = null;
 let entityIndexWaiter: ((value: NonNullable<typeof pendingEntityIndex>) => void) | null = null;
 
@@ -203,6 +225,8 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       ids: data.ids,
       starts: data.starts,
       lengths: data.lengths,
+      oversizedIdCount: data.oversizedIdCount,
+      malformedRecordCount: data.malformedRecordCount,
     };
     if (entityIndexWaiter) {
       const resolve = entityIndexWaiter;
@@ -219,9 +243,8 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
   try {
     // The SAB itself is shared by reference — both this worker and the
     // main thread (and the geometry workers) hold views of the same bytes.
-    // We never transfer or clone it. Runtimes that reject TextDecoder over
-    // SAB views (e.g. Firefox's timing-attack mitigation) are filtered out
-    // by the wrapper before this worker is even spawned.
+    // We never transfer or clone it. The parser's UTF-8 reader also supports
+    // runtimes that reject TextDecoder over SAB-backed views.
     //
     // Initialise the WASM scanner. `parseColumnar` prefers the WASM scan when
     // `wasmApi` is supplied (5–10× faster on huge files — a 14 M-entity, 986 MB
@@ -268,6 +291,20 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // index were somehow empty, the scanner falls through to the JS tokeniser.
     const wasmApi = wasmApiPromise ? await wasmApiPromise : undefined;
     const parser = new IfcParser();
+    const indexPublisher = new WorkerIndexPublisher(data.indexTransport === 'packed-index-v1');
+    let publishedContentKey: string | null | undefined;
+    let fingerprintChosen = false;
+    const chooseContentKey = (store: IfcDataStore): string | null => {
+      if (!fingerprintChosen) {
+        const prepassKey = readPrepassFingerprint(data.sourceFingerprint, source.byteLength);
+        publishedContentKey = prepassKey ?? store.source.contentKey;
+        fingerprintChosen = true;
+        // Report the actual choice, not readiness observed later on the host.
+        console.log(`[parseLite] source fingerprint: origin=${prepassKey === undefined ? 'parser' : 'prepass'} bytes=${source.byteLength}`);
+      }
+      return publishedContentKey ?? null;
+    };
+    let georeferencing: ReturnType<typeof extractGeoreferencingOnDemand> | undefined;
     // `source` is the SAB-backed payload — `parseColumnar` accepts
     // `ArrayBuffer | SharedArrayBuffer` so no cast is needed.
     const dataStore: IfcDataStore = await parser.parseColumnar(source, {
@@ -285,13 +322,18 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
       },
       onSpatialReady: (partialStore) => {
         try {
-          const { payload } = toTransport(partialStore);
-          // We intentionally do NOT transfer the partial typed-array
-          // buffers. The worker keeps using them for the rest of the parse
-          // (entityIndex.byId.get(...) etc. all read from these arrays).
-          // Structured-clone copy is acceptable for the partial because
-          // the hierarchy panel is small relative to the full store.
-          postOutput({ type: 'partial-store', id, payload });
+          const { payload, transfers } = indexPublisher.serialize(partialStore, false);
+          // #3983: overlays and Cesium availability read these during React
+          // rendering. Do the full-source/hash and property-set walks here.
+          payload.sourceContentKey = chooseContentKey(partialStore);
+          if (!deferPropertyAtomIndex) {
+            georeferencing = extractGeoreferencingOnDemand(partialStore);
+            payload.georeferencing = georeferencing;
+          }
+          // The packed byType snapshot is worker-independent; primary numeric
+          // columns still clone because parsing continues to read them.
+          postOutput({ type: 'partial-store', id, payload }, transfers);
+          indexPublisher.publishedPartial(partialStore);
         } catch (err) {
           postOutput({
             type: 'error',
@@ -301,7 +343,10 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
         }
       },
     });
-    const { payload, transfers } = toTransport(dataStore);
+    const { payload, transfers, transportBytes } = indexPublisher.serialize(dataStore, true);
+    payload.sourceContentKey = chooseContentKey(dataStore);
+    payload.georeferencing = georeferencing === undefined
+      ? extractGeoreferencingOnDemand(dataStore) : georeferencing;
     // CRITICAL: every field here MUST be synchronous. Do NOT await on this path —
     // it gates the 'complete' message (the full data store) reaching the main thread.
     // This previously `await`ed performance.measureUserAgentSpecificMemory(); in a
@@ -311,16 +356,21 @@ self.onmessage = async (event: MessageEvent<ParserInbound>) => {
     // value (uaMemoryBytes) was never read by any consumer, so it is simply dropped.
     const memory: ParserMemorySnapshot = {
       jsHeapBytes: readJsHeapBytes(),
-      transportBytes: transportByteSize(payload),
+      transportBytes,
       sourceBytes: source.byteLength,
       parseTimeMs: performance.now() - startedAt,
     };
     postOutput({ type: 'complete', id, payload, memory }, transfers);
   } catch (err) {
+    // #2527 follow-up: forward this realm's panic-location stash (set by the
+    // Rust panic hook if this failure was a wasm trap) so the main thread can
+    // re-plant it on ITS global for `attachWasmPanicLocation`.
+    const panic = takeWasmPanicStash(self);
     postOutput({
       type: 'error',
       id,
       message: err instanceof Error ? err.message : String(err),
+      ...(panic ? { wasmPanicLocation: panic.location, wasmPanicAt: panic.at } : {}),
     });
   }
 };

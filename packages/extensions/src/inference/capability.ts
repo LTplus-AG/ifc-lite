@@ -16,17 +16,21 @@
  *      "extension breaks at install" over "extension silently uses an
  *      unauthorised capability."
  *   3. **Surface unknowns.** Calls into unknown namespaces produce a
- *      warning in the result so reviewers can investigate.
+ *      warning in the result so reviewers can investigate. So do calls
+ *      whose method the catalogue never classified inside a namespace
+ *      that otherwise differentiates capability by method — see
+ *      `isRecognisedMethod` in `./catalogue.ts` for exactly which calls
+ *      that covers.
  *   4. **No execution.** This is pure static analysis. We do not run the
  *      script during inference.
  *
- * Spec: docs/architecture/ai-customization/09-implementation-plan.md
+ * Spec: docs/architecture/ai-customization/04-ai-authoring.md
  * task P1.T10.
  */
 
 import * as acorn from 'acorn';
-import * as walk from 'acorn-walk';
-import { lookupNamespaceMethod, isKnownNamespace } from './catalogue.js';
+import { MAX_AST_DEPTH, walkBounded } from '../ast/bounded-walk.js';
+import { lookupNamespaceMethod, isRecognisedMethod } from './catalogue.js';
 
 export interface InferenceResult {
   /** De-duplicated capability strings, sorted. */
@@ -42,7 +46,16 @@ export interface InferenceObservation {
   call: string;
   /** Inferred capabilities for this call. */
   capabilities: string[];
-  /** True if we know nothing about this call (catalogue miss). */
+  /**
+   * True if the catalogue does not actually classify this call: either
+   * the namespace itself is unrecognised, or the namespace differentiates
+   * capability by method and this specific method has no entry. The two
+   * cases differ in what `capabilities` holds: an unclassified method in
+   * a known namespace still gets that namespace's default (an
+   * over-grant), while an unknown namespace has no default to fall back
+   * on and yields an empty list. See `isRecognisedMethod` in
+   * `./catalogue.ts`.
+   */
   unknown: boolean;
 }
 
@@ -94,28 +107,57 @@ export function inferCapabilities(source: string): InferenceResult {
   }
 
   const observations: InferenceObservation[] = [];
-  walk.simple(ast as acorn.AnyNode, {
-    MemberExpression(node) {
-      const chain = readMemberChain(node);
-      if (!chain || chain[0] !== 'bim') return;
-      // Patterns we care about:
-      //   bim.<ns>             — at least 2 parts. Untargeted; default ns.
-      //   bim.<ns>.<method>    — 3 parts; specific method.
-      //   bim.<ns>.<method>(...) — same; we record at the chain stage.
-      const namespace = chain[1] ?? undefined;
-      const method = chain[2] ?? undefined;
-      if (!namespace) return;
-      const call = `bim.${namespace}${method ? `.${method}` : ''}`;
-      const caps = method
-        ? lookupNamespaceMethod(namespace, method)
-        : INFERENCE_FALLBACK_FOR(namespace);
-      observations.push({
-        call,
-        capabilities: [...caps],
-        unknown: !isKnownNamespace(namespace),
-      });
-    },
+  const { depthExceeded, unwalkableTypes } = walkBounded(ast, (node, type) => {
+    if (type !== 'MemberExpression') return;
+    const chain = readMemberChain(node);
+    if (!chain || chain[0] !== 'bim') return;
+    // Patterns we care about:
+    //   bim.<ns>             — at least 2 parts. Untargeted; default ns.
+    //   bim.<ns>.<method>    — 3 parts; specific method.
+    //   bim.<ns>.<method>(...) — same; we record at the chain stage.
+    const namespace = chain[1] ?? undefined;
+    const method = chain[2] ?? undefined;
+    if (!namespace) return;
+    const call = `bim.${namespace}${method ? `.${method}` : ''}`;
+    const caps = method
+      ? lookupNamespaceMethod(namespace, method)
+      : INFERENCE_FALLBACK_FOR(namespace);
+    observations.push({
+      call,
+      capabilities: [...caps],
+      unknown: !isRecognisedMethod(namespace, method),
+    });
   });
+
+  // A walk that stopped at the depth bound has NOT seen the whole
+  // script, so the capability set it produced is a floor, not the
+  // answer. Returning it as-is would fail open in both directions:
+  // `migrateSavedScripts` treats an empty set as "grant model.read and
+  // migrate anyway", and the promote dialog renders "No `bim.*` calls
+  // detected". Report it through `parseErrors`, which is the channel
+  // both callers already use to refuse the script — the migration skips
+  // it, and the dialog shows the warning.
+  if (depthExceeded) {
+    parseErrors.push({
+      message: `source is nested more than ${MAX_AST_DEPTH} AST levels deep; capabilities could not be inferred`,
+      line: 0,
+      column: 0,
+    });
+    return { capabilities: [], observations: [], parseErrors };
+  }
+
+  // A subtree the walker could not descend hides `bim.*` calls just as
+  // effectively as the depth bound does, so it goes down the same
+  // channel and the inferred set is discarded rather than published as
+  // if it were complete.
+  if (unwalkableTypes.length > 0) {
+    parseErrors.push({
+      message: `source contains AST node types the walker cannot traverse (${unwalkableTypes.join(', ')}); capabilities could not be inferred`,
+      line: 0,
+      column: 0,
+    });
+    return { capabilities: [], observations: [], parseErrors };
+  }
 
   return {
     capabilities: dedupeAndSort(observations.flatMap((o) => o.capabilities)),

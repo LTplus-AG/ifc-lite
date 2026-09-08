@@ -10,6 +10,7 @@ import type {
   ClashElementRef,
   ClashGroup,
   ClashResult,
+  ClashReviewStatus,
   ClashSeverity,
   ClashStatus,
 } from './types.js';
@@ -157,6 +158,54 @@ describe('createBCFFromClashResult', () => {
     expect(minor?.labels).toEqual(['ELEC', 'Clash']);
   });
 
+  /**
+   * Kills the mutation `a.members.length - b.members.length` (comparator
+   * operands swapped) in `sortGroups`. Every other ordering test in this
+   * file mixes different severities, so the more-populous group is also
+   * always the more-severe one and the severity comparison alone decides
+   * the order — the member-count tie-break's sign is never exercised. This
+   * fixture holds severity constant ('major' for both) so `maxTopics: 1`
+   * can only keep the right group if the count tie-break sorts descending.
+   */
+  it('breaks a severity tie by member count desc when capping topics', async () => {
+    const { result } = makeFixture();
+    const small = clash(
+      'tie-small',
+      ref('GUID_S1', 'IfcWall'),
+      ref('GUID_S2', 'IfcSlab'),
+      'hard',
+      'major',
+      'tie-rule',
+    );
+    const bigA = clash(
+      'tie-big-1',
+      ref('GUID_T1', 'IfcWall'),
+      ref('GUID_T2', 'IfcSlab'),
+      'hard',
+      'major',
+      'tie-rule',
+    );
+    const bigB = clash(
+      'tie-big-2',
+      ref('GUID_T1', 'IfcWall'),
+      ref('GUID_T3', 'IfcSlab'),
+      'hard',
+      'major',
+      'tie-rule',
+    );
+    const groupSmall = makeGroup('group-tie-small', 'major', [small]);
+    const groupBig = makeGroup('group-tie-big', 'major', [bigA, bigB]);
+
+    const project = await createBCFFromClashResult(result, [groupSmall, groupBig], {
+      author: 'tester',
+      maxTopics: 1,
+    });
+
+    // Only the larger, 2-member group survives the cap.
+    expect(project.topics.has(uuidFromSeed('group-tie-big'))).toBe(true);
+    expect(project.topics.has(uuidFromSeed('group-tie-small'))).toBe(false);
+  });
+
   it('omits a missing discipline from the labels', async () => {
     const { result } = makeFixture();
     const lone = clash(
@@ -203,6 +252,44 @@ describe('createBCFFromClashResult', () => {
     expect(vp?.components?.selection?.length).toBeGreaterThan(0);
     expect(vp?.components?.coloring?.length).toBe(2);
     expect(vp?.perspectiveCamera).toBeDefined();
+
+    // Camera must actually frame this group's bounds ([0,0,0]-[4,3,2], center
+    // [2, 1.5, 1]), not some other point (e.g. the origin). Expected numbers
+    // are computed independently here from the documented formula (radius =
+    // 0.5*diagonal, standoff = radius*distanceFactor, direction =
+    // normalize([1, 0.7, 1])) and the viewer(Y-up)->BCF(Z-up) axis mapping
+    // (bcf.x=viewer.x, bcf.y=-viewer.z, bcf.z=viewer.y) documented in
+    // packages/bcf/src/viewpoint.ts, rather than by calling the production
+    // helper, so a bug in that helper can't hide from this assertion.
+    const cam = vp?.perspectiveCamera;
+    expect(cam?.cameraViewPoint.x).toBeCloseTo(6.265886914190135, 6);
+    expect(cam?.cameraViewPoint.y).toBeCloseTo(-5.265886914190135, 6);
+    expect(cam?.cameraViewPoint.z).toBeCloseTo(4.486120839933094, 6);
+    // Direction must point from the camera towards the group's center
+    // ([2, -1, 1.5] in BCF coords), not e.g. towards the origin.
+    const towardCenter = {
+      x: 2 - cam!.cameraViewPoint.x,
+      y: -1 - cam!.cameraViewPoint.y,
+      z: 1.5 - cam!.cameraViewPoint.z,
+    };
+    const towardCenterLen = Math.sqrt(
+      towardCenter.x ** 2 + towardCenter.y ** 2 + towardCenter.z ** 2,
+    );
+    expect(cam?.cameraDirection.x).toBeCloseTo(towardCenter.x / towardCenterLen, 6);
+    expect(cam?.cameraDirection.y).toBeCloseTo(towardCenter.y / towardCenterLen, 6);
+    expect(cam?.cameraDirection.z).toBeCloseTo(towardCenter.z / towardCenterLen, 6);
+
+    // Coloring must map each color to the correct side: red (FFFF3333) to the
+    // 'a' members, orange (FFFFA500) to the 'b' members. group-critical has
+    // c1 = (GUID_A1, GUID_B1) and c2 = (GUID_A1, GUID_B2), so 'a' is the
+    // single guid GUID_A1 and 'b' is {GUID_B1, GUID_B2}. A test that only
+    // checks `coloring.length === 2` cannot see the two colors' guid lists
+    // swapped.
+    const coloring = vp?.components?.coloring ?? [];
+    const red = coloring.find((c) => c.color === 'FFFF3333');
+    const orange = coloring.find((c) => c.color === 'FFFFA500');
+    expect(red?.components.map((c) => c.ifcGuid)).toEqual(['GUID_A1']);
+    expect(orange?.components.map((c) => c.ifcGuid).sort()).toEqual(['GUID_B1', 'GUID_B2']);
   });
 
   it('invokes the snapshot provider per group', async () => {

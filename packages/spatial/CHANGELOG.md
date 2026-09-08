@@ -1,5 +1,43 @@
 # @ifc-lite/spatial
 
+## 1.14.16
+
+### Patch Changes
+
+- [#3547](https://github.com/LTplus-AG/ifc-lite/pull/3547) [`05193c9`](https://github.com/LTplus-AG/ifc-lite/commit/05193c9a9fd878f70bd9d9007199166fee05872b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `BVH.queryAABB`/`raycast`/`queryFrustum` dropping a valid mesh when a sibling in the same subtree has NaN/degenerate bounds. `computeBounds` folded child bounds with `Math.min`/`Math.max`, which propagate a NaN operand through every later comparison in the same reduce, so one mesh with bad geometry (e.g. a corrupt vertex) NaN'd its entire subtree's aggregate bounds — and `AABBUtils.intersects` treats a NaN bound as no intersection, pruning that subtree, and every valid sibling under it, out of every query regardless of the query box. `computeBounds` now folds with NaN-safe comparisons (matching the Rust port in `rust/clash/src/bvh.rs`, which already used this shape), so a NaN-bounded mesh is excluded on its own without poisoning its siblings.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+- Updated dependencies [[`3efe762`](https://github.com/LTplus-AG/ifc-lite/commit/3efe762a993897fc3ddc029a8de1e5914e27df3f), [`5297514`](https://github.com/LTplus-AG/ifc-lite/commit/52975142846390bb1eb12b723d53c0e275289a90), [`499ccf2`](https://github.com/LTplus-AG/ifc-lite/commit/499ccf2f97fe1e24728eb4eb99f895044c36f7b2), [`62bb58f`](https://github.com/LTplus-AG/ifc-lite/commit/62bb58fc8364c27bcf8452ab8edbde26727f527c), [`ea81645`](https://github.com/LTplus-AG/ifc-lite/commit/ea81645f7cd47d9e62718a6687f9e780794c2aa2), [`c6ffda4`](https://github.com/LTplus-AG/ifc-lite/commit/c6ffda4789099a45fafdb5fe237c33c6edd9884c), [`3b266b9`](https://github.com/LTplus-AG/ifc-lite/commit/3b266b99dac5e384c48a410df7074803b01ef20f), [`d2fb0e4`](https://github.com/LTplus-AG/ifc-lite/commit/d2fb0e4121ccd19f326837ea574b189ee2a5f6c8), [`4475e58`](https://github.com/LTplus-AG/ifc-lite/commit/4475e583ea35def444fb6d7ba92410629bd89096), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e), [`f1a006a`](https://github.com/LTplus-AG/ifc-lite/commit/f1a006af952dd670c6486cdb4ef0e8e1e0e280d7), [`fdac473`](https://github.com/LTplus-AG/ifc-lite/commit/fdac4734ce04758d2cd12b365f8b6de624713de6), [`902768e`](https://github.com/LTplus-AG/ifc-lite/commit/902768e138b595b26a47389bcea536f3f9e25b6d), [`cb9dad2`](https://github.com/LTplus-AG/ifc-lite/commit/cb9dad2df38f1796ab8cb6eefe881ad795876cc9), [`2edd144`](https://github.com/LTplus-AG/ifc-lite/commit/2edd14432999ceeed4c0bb0baf6b2000c1c5b041), [`3ccb417`](https://github.com/LTplus-AG/ifc-lite/commit/3ccb4176f3a61a227bcfc302c3e0b1fb43a6f0ec), [`7eaed2a`](https://github.com/LTplus-AG/ifc-lite/commit/7eaed2a98a8cd60bd402c0a9d79940739eabb331), [`a99ecd9`](https://github.com/LTplus-AG/ifc-lite/commit/a99ecd9998dada941dc66e8bcc85ce3864b44065)]:
+  - @ifc-lite/geometry@4.2.0
+
+## 1.14.15
+
+### Patch Changes
+
+- Updated dependencies [[`8571d70`](https://github.com/LTplus-AG/ifc-lite/commit/8571d70270d072170fc4e204e8b0d11a424d2330), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`063a140`](https://github.com/LTplus-AG/ifc-lite/commit/063a1408e4c54ebc874618f8d68fe298ed3f3a6f), [`74a55a9`](https://github.com/LTplus-AG/ifc-lite/commit/74a55a999117b4e21aa58d0435473073f35c1e81), [`f76c805`](https://github.com/LTplus-AG/ifc-lite/commit/f76c80511dce5ffc1756365b786042c4bc64808d), [`932f043`](https://github.com/LTplus-AG/ifc-lite/commit/932f0439fc1625419aae3cf2d9f81a614fb2273c), [`754837b`](https://github.com/LTplus-AG/ifc-lite/commit/754837b066172dad8afcdf1a0104f1a021b5f6e5), [`2273a73`](https://github.com/LTplus-AG/ifc-lite/commit/2273a73127d03ec36d667544da6237479737881a), [`fdd6121`](https://github.com/LTplus-AG/ifc-lite/commit/fdd61211e41d3e563a7604ac5e0630a9daae2de1)]:
+  - @ifc-lite/geometry@4.0.0
+
+## 1.14.14
+
+### Patch Changes
+
+- [#2764](https://github.com/LTplus-AG/ifc-lite/pull/2764) [`ae5a5ca`](https://github.com/LTplus-AG/ifc-lite/commit/ae5a5caa3e20304085ba14c0708cd026c1d4bf16) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the spatial index placing an empty mesh with a non-zero origin at world `[0,0,0]` instead of its own origin.
+  
+  `computeMeshBounds` returned early for `positions.length === 0` before the origin lift ran, so an empty mesh (a mesh with geometry stripped, e.g. a fully-clipped or degenerate element) with `mesh.origin` set was indexed at world `[0,0,0]` regardless of where it actually sits. Every other mesh — including a populated one with the same origin — was correctly lifted by `mesh.origin` before being indexed. Reproduced directly: an empty mesh with `origin: [500, 500, 500]` was found by a query box at `[0,0,0]` and missed by a query box at `[500, 500, 500]`.
+  
+  The origin extraction is now hoisted above the early return so there is a single place that reads `mesh.origin`, and the empty-mesh path returns a degenerate box at `[ox, oy, oz]` instead of `[0, 0, 0]`. This only changes behaviour for empty meshes that also carry a non-zero `mesh.origin`; the common case (no origin, or a populated mesh) is unaffected.
+- Updated dependencies [[`c688a12`](https://github.com/LTplus-AG/ifc-lite/commit/c688a1272ec72d575e8ecf78072e0a0084b517ca), [`989ee2c`](https://github.com/LTplus-AG/ifc-lite/commit/989ee2c4e396575529488c17b73e1a884e4e8b9d), [`1cda2d0`](https://github.com/LTplus-AG/ifc-lite/commit/1cda2d04dc66542892dd0181768c027b3d1b4e6f), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa)]:
+  - @ifc-lite/geometry@3.8.4
+
+## 1.14.13
+
+### Patch Changes
+
+- [#2147](https://github.com/LTplus-AG/ifc-lite/pull/2147) [`a77fbd1`](https://github.com/LTplus-AG/ifc-lite/commit/a77fbd1f4c52a5d13bd51fe37a70d306315df7fa) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Wire `@ifc-lite/spatial` into the test runner. The package shipped four modules of load-bearing geometry — `AABBUtils`, the `BVH` (AABB query, raycast, frustum query), `FrustumUtils` and the spatial index builder — with no test files and no `test` script, so `turbo test` skipped it entirely and none of it ran in CI. Adds a `test` script plus 45 tests covering the touching/containment boundaries, ray-slab behaviour behind the origin and along a grazed axis, the frustum plane margin, the per-mesh world-space origin lift, and the time-sliced async builder. No behaviour change.
+
+- Updated dependencies [[`2c47277`](https://github.com/LTplus-AG/ifc-lite/commit/2c47277ee6dfbd9779eb4948d1f2e7b0ea61d00e), [`5371d7d`](https://github.com/LTplus-AG/ifc-lite/commit/5371d7def2671f6568c838879b8be058bb6247c9), [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`0ceb99a`](https://github.com/LTplus-AG/ifc-lite/commit/0ceb99a36125a2dfc8775e762d9f4f9ddb69d733), [`d44b6c1`](https://github.com/LTplus-AG/ifc-lite/commit/d44b6c1710ee86596e96e0204785d2bf7c0940a9)]:
+  - @ifc-lite/geometry@3.7.0
+
 ## 1.14.12
 
 ### Patch Changes

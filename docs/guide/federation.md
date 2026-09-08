@@ -29,6 +29,29 @@ const lookup = federationRegistry.fromGlobalId(globalId);
 // { modelId: 'arch-model', expressId: 42 }
 ```
 
+### Ids Carried on Geometry
+
+`MeshData.expressId` is not the only id a mesh carries, and every id that is
+resolved through the registry must be in the same space. When the viewer loads a
+federated model it re-homes the mesh's `geometryItemId` (the
+`IfcRepresentationItem` the mesh was tessellated from, see the
+[Geometry Guide](geometry.md)) by the same `idOffset` as `expressId`, on the flat
+path and on the instanced shards alike. So a `geometryItemId` you read off a
+loaded mesh is a **global id**: pass it to `fromGlobalId` like any other, and
+subtract the offset before comparing it to raw ids in the source file.
+
+This matters more than it looks. Resolution back to a model is **range-based**:
+`fromGlobalId` and `getModelForGlobalId` ask which model's id range contains the
+number. A raw, unshifted item id from a model loaded at offset 1,000,000 is a
+small number, so it lands inside the *primary* model's range: it does not miss
+and it does not throw, it resolves to a real entity in the wrong model. Absence
+stays absence, though: a mesh with no item id still has none after the shift.
+
+`MeshData.materialId` is **not** re-homed and stays in its model's local space
+(tracked in #3525). Do not assume the ids on a mesh are uniformly global; today
+`expressId`, `textureRef.textureId` and `geometryItemId` are, and `materialId` is
+not.
+
 ## Loading Multiple Models
 
 In the viewer, drop multiple IFC files or load them sequentially. Each model appears as a collapsible group in the hierarchy panel.
@@ -106,6 +129,7 @@ containers.
 | `--merge-sites` | `single` / `by-name` | combined heuristic | How `IfcSite` records are matched across models |
 | `--merge-buildings` | `single` / `by-name` | combined heuristic | How `IfcBuilding` records are matched |
 | `--merge-storeys` | `by-name` / `by-elevation` / `by-name-then-elevation` | combined heuristic | How `IfcBuildingStorey` records are matched |
+| `--drop-empty-containers` | flag | off | Leave out sites, buildings, storeys and spaces the merged model leaves holding nothing (the "Merge Projects" recipe step matching alone does not cover) |
 | `--json` | flag | off | Emit machine-readable stats (entity counts, warnings) to stdout |
 
 ## FederatedModel Type

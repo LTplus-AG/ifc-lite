@@ -8,9 +8,12 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import path from 'path';
 import fs from 'fs';
 import { cesiumStaticAssets } from './vite-plugins/cesium-assets';
+import { oauthCallbackRoutes } from './vite-plugins/oauth-callback';
+// Same allowlist the production relay uses, so dev and prod cannot disagree
+// about which Dalux node a request reaches (#2792).
+import { daluxRelayRoute } from './vite-plugins/dalux-relay';
 
 // --- Build-time changelog parser ---
-
 interface ReleaseHighlight {
   type: 'feature' | 'fix' | 'perf';
   text: string;
@@ -36,12 +39,10 @@ const SKIP_BOLD_LOWER = new Set([
   'renderer fixes', 'parser fixes', 'viewer integration', 'fixes', 'features',
   'breaking', 'minor changes', 'patch changes', 'dependencies',
 ]);
-
 function isInternalName(text: string): boolean {
   // Skip PascalCase single-word class names like "PolygonalFaceSetProcessor"
   return /^[A-Z][a-zA-Z]+$/.test(text) && !text.includes(' ');
 }
-
 function categorizeHighlight(text: string): 'feature' | 'fix' | 'perf' {
   const lower = text.toLowerCase();
   if (lower.startsWith('fixed ') || lower.startsWith('fix ')) return 'fix';
@@ -241,6 +242,11 @@ export default defineConfig({
     wasm(),
     topLevelAwait(),
     cesiumStaticAssets(),
+    oauthCallbackRoutes(),
+    // Dalux's API sends no CORS headers, so it must go through a same-origin
+    // relay. Dev runs the SAME handler production does (#2792), rather than a
+    // second proxy config that can drift from it.
+    daluxRelayRoute(),
   ],
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
@@ -274,11 +280,12 @@ export default defineConfig({
       '@ifc-lite/lens': path.resolve(__dirname, '../../packages/lens/src'),
       '@ifc-lite/mutations': path.resolve(__dirname, '../../packages/mutations/src'),
       '@ifc-lite/bcf': path.resolve(__dirname, '../../packages/bcf/src'),
+      '@ifc-lite/bcf-api': path.resolve(__dirname, '../../packages/bcf-api/src'),
+      '@ifc-lite/oauth-pkce': path.resolve(__dirname, '../../packages/oauth-pkce/src'),
       '@ifc-lite/drawing-2d': path.resolve(__dirname, '../../packages/drawing-2d/src'),
       '@ifc-lite/encoding': path.resolve(__dirname, '../../packages/encoding/src'),
       '@ifc-lite/ids': path.resolve(__dirname, '../../packages/ids/src'),
-      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),
-    },
+      '@ifc-lite/lists': path.resolve(__dirname, '../../packages/lists/src'),    },
   },
   server: {
     port: 3000,
@@ -328,11 +335,19 @@ export default defineConfig({
       // longer ships a desktop app; downstream desktop builders supply
       // @tauri-apps in their own host layer.
       external: ['@tauri-apps/api/event'],
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        // E2E-only, not linked from the app UI: reads the laz-perf wasm
+        // asset pipeline through the real build so
+        // tests/e2e/laz-wasm.e2e.spec.ts can assert it end to end (#2097).
+        lazProbe: path.resolve(__dirname, 'laz-probe.html'),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('/packages/sandbox/')) return 'sandbox';
           if (id.includes('/packages/export/')) return 'exporters';
           if (id.includes('/packages/server-client/')) return 'server-client';
+          if (id.includes('/packages/bcf-api/')) return 'bcf-api';
           if (id.includes('/packages/bcf/')) return 'bcf';
           if (id.includes('/packages/ids/')) return 'ids';
           if (id.includes('/packages/lens/')) return 'lens';
@@ -341,6 +356,23 @@ export default defineConfig({
           if (id.includes('/node_modules/apache-arrow/')) return 'arrow';
           if (id.includes('/node_modules/parquet-wasm/')) return 'parquet';
           if (id.includes('/node_modules/cesium/')) return 'cesium';
+          // @radix-ui/@floating-ui run synchronous, top-level module-init
+          // code (e.g. react-tooltip's `createPopperScope()` at module
+          // scope). The default chunker otherwise merges them into whatever
+          // chunk also touches @/store, and the store transitively pulls in
+          // WASM modules that use real top-level await — vite-plugin-top-level-await
+          // then wraps that WHOLE merged chunk's body in a deferred
+          // `.then()`, so the synchronous radix init runs late. A sibling
+          // chunk that imports the same merged chunk but has no async taint
+          // of its own evaluates synchronously and calls into the
+          // not-yet-populated binding — "C is not a function" at module
+          // scope (issue #2243). Keep radix/floating-ui in their own chunk,
+          // clear of the store's async taint, so their module-init always
+          // finishes before anything can import from them.
+          if (
+            id.includes('/node_modules/@radix-ui/') ||
+            id.includes('/node_modules/@floating-ui/')
+          ) return 'radix-ui';
           // three.js + addons — only the /mcp landing imports them, keep
           // the main viewer / pages off the hook.
           if (
@@ -360,6 +392,18 @@ export default defineConfig({
       'quickjs-emscripten',
       '@jitl/quickjs-wasmfile-release-asyncify',
       'esbuild-wasm',
+      // maplibre-gl v6 resolves its worker as a SIBLING FILE of its own module:
+      //
+      //   new URL(`./maplibre-gl-worker.mjs`, import.meta.url)
+      //
+      // Pre-bundling rewrites that module into node_modules/.vite/deps/, where
+      // no such sibling exists, so the worker 404s. Nothing throws: the style,
+      // the sprite and the TileJSON are all fetched on the main thread, the
+      // canvas and the marker paint, and only the vector tiles (parsed in the
+      // worker) never arrive. The minimap renders as an empty background with
+      // an attribution line, which reads as "no data here" rather than a bug.
+      // v5 inlined its worker as a blob, so this could not happen before.
+      'maplibre-gl',
     ],
   },
   worker: {

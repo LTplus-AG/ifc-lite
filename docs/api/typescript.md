@@ -2,7 +2,7 @@
 
 API documentation for the published TypeScript packages.
 
-ifc-lite ships 36 public npm packages: 35 scoped `@ifc-lite/*` packages plus the `create-ifc-lite` scaffolder. This page lists all of them, with API detail for the core packages. Exact type signatures live in each package's `src/index.ts` and shipped `.d.ts` files.
+ifc-lite ships its public npm packages under the `@ifc-lite/*` scope, plus the `create-ifc-lite` scaffolder. This page lists all of them, with API detail for the core packages. Exact type signatures live in each package's `src/index.ts` and shipped `.d.ts` files.
 
 ## Package Index
 
@@ -45,7 +45,13 @@ ifc-lite ships 36 public npm packages: 35 scoped `@ifc-lite/*` packages plus the
 | [`@ifc-lite/wasm`](#ifc-litewasm) | WebAssembly bindings for IFC-Lite |
 | [`@ifc-lite/codegen`](#ifc-litecodegen) | TypeScript code generator from IFC EXPRESS schemas |
 | [`create-ifc-lite`](#create-ifc-lite) | Create IFC-Lite projects with one command |
+| [`@ifc-lite/bcf-api`](https://www.npmjs.com/package/@ifc-lite/bcf-api) | BCF API (OpenCDE) REST client for connecting to BCF servers |
 | [`@ifc-lite/merge`](https://www.npmjs.com/package/@ifc-lite/merge) | Three-way merge engine for IFCX layers — MergePlan with auto-merged ops and explicit conflict records, merge-layer emission, rebase, and revert. |
+| [`@ifc-lite/oauth-pkce`](https://www.npmjs.com/package/@ifc-lite/oauth-pkce) | Browser OAuth 2.0 Authorization Code + PKCE flow, shared by ifc-lite's file-source providers |
+| [`@ifc-lite/plugin-api`](https://www.npmjs.com/package/@ifc-lite/plugin-api) | Dependency-free type surface for ifc-lite file-source plugins |
+| [`@ifc-lite/source-dalux`](https://www.npmjs.com/package/@ifc-lite/source-dalux) | Dalux Build (Box) file-source provider for ifc-lite |
+| [`@ifc-lite/source-dropbox`](https://www.npmjs.com/package/@ifc-lite/source-dropbox) | Dropbox file-source provider for ifc-lite |
+| [`@ifc-lite/source-msgraph`](https://www.npmjs.com/package/@ifc-lite/source-msgraph) | Microsoft Graph (OneDrive/SharePoint) file-source provider for ifc-lite |
 <!-- END GENERATED: package-index -->
 
 ---
@@ -155,6 +161,8 @@ const attrs = extractEntityAttributesOnDemand(store, expressId);
 
 Many more on-demand extractors are exported (classifications, materials, documents, relationships, group members, georeferencing, type properties, schedules); see `packages/parser/src/index.ts`.
 
+`secondsToIso8601Duration(seconds: number): string | undefined` is a new export: it renders a signed number of seconds as an ISO 8601 duration string suitable for `IfcDuration` (`86400` -> `"P1D"`, `-172800` -> `"-P2D"`), preferring the coarsest whole unit that divides cleanly and falling back to a decimal-seconds form for fractional values. It returns `undefined` for non-finite input (`NaN`, `±Infinity`) rather than fabricating `"PT0S"`. `parseIso8601Duration(value: string | undefined): number | undefined` is its decode counterpart — already public before this change — and the two form a round trip: `parseIso8601Duration(secondsToIso8601Duration(s)) === s` for every finite, representable `s`. Both also accept/emit the ISO 8601-2 signed extension (`-P2D`) to carry IFC schedule lead time; see `docs/guide/schedule-import.md`.
+
 Other exports include the STEP scanning/tokenizing building blocks (`StepTokenizer`, `EntityExtractor`, `scanIfcEntities`, `CompactEntityIndex`), unit extraction (`extractProjectUnits`, `ProjectUnits`), the STEP serializer helpers (`generateStepFile`, `toStepLine`, `serializeValue`), the generated IFC schema registry (`SCHEMA_REGISTRY`, `getAttributeNames`), and re-exported IFCX parsing from `@ifc-lite/ifcx`.
 
 ---
@@ -240,6 +248,17 @@ class RelationshipGraphBuilder { /* build(): RelationshipGraph */ }
 ```
 
 Each table type also has `fromColumns` / `toColumns` helpers for structured-clone transfer across workers (`entityTableFromColumns`, `propertyTableToColumns`, ...). Shared enums and types live here too: `IfcTypeEnum`, `PropertyValueType`, `QuantityType`, `RelationshipType`, `SpatialHierarchy`, `IfcStoreBase`, the generated entity-name lists (`ENTITIES_IFC2X3` / `IFC4` / `IFC4X3`), plus utilities like `safeUtf8Decode` and `createLogger`.
+
+`IFC_DATA_TYPES` sits alongside those entity lists: the raw, read-only table of EXPRESS **defined types** (`IfcLengthMeasure`, `IfcBoolean`, `IfcTextAlignment`, ...) across all three schemas. The upstream data the `ENTITIES_*` lists come from carries defined types as entity rows, so any synchronous consumer deciding "is this name a real class?" has to subtract this table — that is what `@ifc-lite/parser`'s `isKnownType` does. Prefer the async `findDataType(version, name)` when you only need a single lookup and are not inside a synchronous guard.
+
+`@ifc-lite/parser` exports two type predicates, and they answer different questions:
+
+| predicate | question | `IfcWall` | `IfcProduct` | `IfcLengthMeasure` |
+| --- | --- | --- | --- | --- |
+| `isKnownType` | is this a real EXPRESS entity name? | `true` | `true` | `false` |
+| `isInstantiable` | may I author an entity of this class? | `true` | `false` | `false` |
+
+`IfcProduct` is the distinction: it is a real class, so `isKnownType` accepts it, but it is an EXPRESS `ABSTRACT SUPERTYPE` and cannot legally exist as an instance. Roughly 123 classes are abstract in this way. **Use `isInstantiable` for anything that creates entities** (`bim.store.addEntity`, the MCP `entity_create` tool); `isKnownType` is for recognising a name you have read, not for authoring. Both resolve across the union of the bundled schemas, so IFC4X3-only classes such as `IfcSignal` behave the same under either.
 
 ---
 
@@ -424,7 +443,9 @@ class Renderer {
   pick(x: number, y: number, options?: PickOptions): Promise<PickResult | null>;
 
   // Scene access
-  getScene(): Scene;
+  // Narrower than the package-internal `Scene` class on purpose: `SceneContents`
+  // names the scene members callers actually use, and widening it is a major bump.
+  getScene(): SceneContents;
   getPipeline(): RenderPipeline | null;
   getGPUDevice(): GPUDevice | null;
   isReady(): boolean;
@@ -436,7 +457,11 @@ class Renderer {
 
 Visibility is passed via `render()` options (`hiddenIds`, `isolatedIds`); frustum culling via `enableFrustumCulling` plus a `spatialIndex` from `@ifc-lite/spatial`.
 
-Other exports: `Camera`, `Scene`, `Picker`, `PickingManager`, `Raycaster`, `SnapDetector`, `BVH`, `SectionPlaneRenderer`, `Section2DOverlayRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+`PickResult` carries `expressId` (the product) plus the optional `modelIndex`, `worldXYZ` and `geometryItemId`. The last is the `IfcRepresentationItem` the clicked surface was built from, and the key is absent, never `0`, where the renderer has no item identity for that hit. See [Which representation item was picked](../guide/rendering.md#which-representation-item-was-picked).
+
+Other exports: `Camera`, `Picker`, `Raycaster`, `SnapDetector`, `BVH`, `RaycastEngine`, `SectionPlaneRenderer`, `PointCloudRenderer`, `FederationRegistry` (multi-model id ranges), and the section-cap / plane-basis helpers.
+
+`Scene` and `Section2DOverlayRenderer` are package-internal from 2.0: reach the scene through `getScene(): SceneContents`, and the 3D line overlays through `Renderer.setLineOverlay`. `PickingManager` is package-internal from 2.0 as well: its constructor takes the now-internal `Scene`, so an exported class nobody could construct would have been worse than no export. Pick through `Renderer.pick` / `Renderer.pickRect`.
 
 ---
 
@@ -682,6 +707,8 @@ creator.addIfcWall(storey, {
 const { content } = creator.toIfc();
 ```
 
+**Coordinates are storey-relative.** Every `addIfc*(storeyId, …)` method chains the product's `IfcLocalPlacement` to that storey's placement, and the storey placement is where `Elevation` is applied — exactly once. An element standing on the floor of a storey at `Elevation: 3` is created with `Z = 0`, not `Z = 3`; adding the elevation yourself puts it at twice the height. (`addIfcWallDoor` and `addIfcWallWindow` are the exception: their `Position` is wall-local, and they inherit the storey datum through their host wall.)
+
 ```typescript
 class IfcCreator {
   constructor(params?: ProjectParams);
@@ -802,7 +829,7 @@ For byte-reproducible **exported files**, seed the exporter too: builders that a
 
 ## @ifc-lite/bcf
 
-BCF (BIM Collaboration Format) support for issue tracking. Implements BCF 2.1 and 3.0.
+BCF (BIM Collaboration Format) support for topic tracking. Implements BCF 2.1 and 3.0.
 
 ### readBCF / writeBCF
 
@@ -926,7 +953,7 @@ function createSectionConfig(axis: 'x' | 'y' | 'z', position: number, options?: 
 - Openings and symbols: `buildOpeningRelationships`, `generateDoorSymbol`, `generateWindowSymbol`, `generateStairArrow`
 - Graphic overrides: `GraphicOverrideEngine`, `createOverrideEngine`, presets `ARCHITECTURAL_PRESET` and `FIRE_SAFETY_PRESET`
 - SVG output: `SVGExporter`, `exportToSVG`
-- Sheets: `createFrame`, `createTitleBlock`, `renderFrame`, `renderTitleBlock`, `renderScaleBar`, `PAPER_SIZE_REGISTRY`
+- Sheets: `createFrame`, `createTitleBlock`, `renderFrame`, `renderTitleBlock`, `PAPER_SIZE_REGISTRY`
 - Constants: `LINE_STYLES`, `COMMON_SCALES`, `PAPER_SIZES`
 
 ---
@@ -974,6 +1001,8 @@ Scripting SDK: the `bim.*` API for BIM automation. `createBimContext` builds a `
 ## @ifc-lite/sandbox
 
 QuickJS-in-WASM sandboxed script execution: `createSandbox` / `Sandbox`, `buildBridge` (marshals the `bim.*` API across the sandbox boundary), and `transpileTypeScript`.
+
+`buildBridge` returns `{ logs, resetLogs, dispose }`. `resetLogs` is part of the contract, not an implementation detail: the console capture budget (byte total and entry count) is scoped to **one run**, so a caller driving `buildBridge` directly must invoke `resetLogs()` at the start of every run. Skip it and a script that exhausts the budget silences the logs of every later run on the same bridge. `Sandbox.eval` already does this for you — only direct `buildBridge` callers carry the obligation.
 
 ## @ifc-lite/extensions
 

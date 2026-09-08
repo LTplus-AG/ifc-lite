@@ -1,0 +1,10 @@
+{
+  "//": "Shared overrides for the generated per-package TEST programs (`tsconfig.tests.json`, written by `scripts/typecheck-tests.mjs`). The emit tsconfig of every package deliberately leaves test files out — the root tsconfig excludes `**/*.test.ts` so tests never reach `dist/` — but `exclude` filters `include`, so an `include` alone cannot bring them back and the tests end up in no typecheck program at all (#2457). The generated config lists the test files under `files`, which `exclude` does not filter, and layers this file on top to turn the emit settings off. Keep it emit-free: it is the only thing standing between a test program and writing `.js`/`.d.ts` next to the sources. `rootDir` is relative to THIS file, so it widens to the repo root — a test program legitimately pulls sibling package sources in through a workspace link, which the package's own `rootDir: \"./src\"` would reject with TS6059.",
+  "compilerOptions": {
+    "noEmit": true,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": "."
+  }
+}

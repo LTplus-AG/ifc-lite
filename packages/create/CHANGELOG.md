@@ -1,5 +1,302 @@
 # @ifc-lite/create
 
+## 2.2.1
+
+### Patch Changes
+
+- [#3572](https://github.com/LTplus-AG/ifc-lite/pull/3572) [`36719c2`](https://github.com/LTplus-AG/ifc-lite/commit/36719c22f2cbd6027d8afc73c660cda5c994fdf4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `IfcCreator.addIfcPropertySet` no longer downgrades a boolean property declared `Type: 'IfcLogical'` to `IFCBOOLEAN`. `serializePropertyValue`'s boolean branch ignored `PropertyDef.Type` entirely and always emitted `IFCBOOLEAN(.T./.F.)`, so a caller asking for the tri-state `IfcLogical` measure (used throughout the standard IFC property sets, e.g. `Pset_LandRegistration.IsLandmarked`) got the two-state `IfcBoolean` type in the file instead — the value round-tripped correctly, but the declared property type did not match what was requested. `Type: 'IfcLogical'` now emits `IFCLOGICAL(.T./.F.)`; omitting `Type`, or passing `Type: 'IfcBoolean'`, is unchanged.
+
+- [#3692](https://github.com/LTplus-AG/ifc-lite/pull/3692) [`b9c8fdf`](https://github.com/LTplus-AG/ifc-lite/commit/b9c8fdfbc5e224003fa2094f7b9703aa71600dbf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Several `IfcCreator` element/relationship writers wrote an attribute count that only matched the IFC4/IFC4X3 schema, not IFC2X3, for entities whose trailing attribute list genuinely differs between schema versions:
+  
+  - `addIfcElementQuantity` omitted `IfcQuantityLength`/`Area`/`Volume`/`Weight`/`Count`'s trailing `Formula` attribute entirely (added in IFC4) instead of writing it as an unset `$` — every quantity record was one attribute short of the IFC4/IFC4X3 declaration.
+  - `addIfcWall`/`addIfcColumn`/`addIfcBeam` and `addIfcRelSequence` always wrote a trailing `PredefinedType`/`UserDefinedSequenceType` value, an attribute IFC2X3 does not declare at all — so a creator targeting `Schema: 'IFC2X3'` emitted one attribute too *many* for those entities, which is exactly as invalid as writing too few.
+  
+  STEP part 21 requires an explicit slot for every attribute a schema version declares — no more, no fewer. The trailing attribute is now written only for schemas that declare it (IFC4/IFC4X3), driven off the creator's own `Schema` field, and omitted for IFC2X3.
+
+- [#3656](https://github.com/LTplus-AG/ifc-lite/pull/3656) [`e09b5c3`](https://github.com/LTplus-AG/ifc-lite/commit/e09b5c364138d56816e45452622078e951e051ee) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `generateSpacesFromWalls` (`ifc-lite generate-spaces` / `bim.spaces.generate`) no longer reports `NetFloorArea` larger than `GrossFloorArea` when `--boundary outer` (or `center`) is used. `addSpaceToStore` derives `NetFloorArea` from the emitted `OuterCurve` polygon's own area when a caller omits `netFloorArea`; the orchestrator passed only `grossFloorArea` (the centreline measure), assuming `OuterCurve` was always the inner (net) face — true only for the default `--boundary inner`. Under `outer`, `OuterCurve` is the outward-offset (larger) footprint, so the reported `NetFloorArea` came out bigger than `GrossFloorArea`, which `Qto_SpaceBaseQuantities` never allows. `generateSpacesFromWalls` now always computes the inner-face inset separately and passes its area as `netFloorArea`, independent of `boundaryMode`. The shared geometry helpers (`offsetRoomFootprint` and friends) moved unchanged to a new sibling module, `room-footprint-offset.ts`; the package's public exports are unchanged.
+
+- [#3461](https://github.com/LTplus-AG/ifc-lite/pull/3461) [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the default `FILE_NAME` `time_stamp` written by `generateHeader` (used by every STEP export that does not pass an explicit `timeStamp`) and by `IfcCreator.toIfc()`'s header. Both stamped the current instant as `new Date().toISOString().replace(/[-:]/g, '').split('.')[0]` — e.g. `20260829T140835` — instead of the ISO 8601 date-time (`2026-08-29T14:08:35`) ISO 10303-21's `time_stamp` calls for and every other stamp in this codebase already uses. The stamp stays a UTC instant written without a `Z` designator; only the separators come back.
+- Updated dependencies [[`b02da88`](https://github.com/LTplus-AG/ifc-lite/commit/b02da889d60f720f1b4a868b48be12a95027f6e6), [`142b84c`](https://github.com/LTplus-AG/ifc-lite/commit/142b84c41036b749e7b64418a882424b9c386edb), [`82343f7`](https://github.com/LTplus-AG/ifc-lite/commit/82343f75dd2e6029946cbcd0990d3f8fd38a26ad), [`793fce2`](https://github.com/LTplus-AG/ifc-lite/commit/793fce217039f11d6b74f898daed03f48c33809d), [`2b594d2`](https://github.com/LTplus-AG/ifc-lite/commit/2b594d20616f957f7ef949aa8563274e5373a95b), [`2b594d2`](https://github.com/LTplus-AG/ifc-lite/commit/2b594d20616f957f7ef949aa8563274e5373a95b), [`586fa29`](https://github.com/LTplus-AG/ifc-lite/commit/586fa292b69cdb3ba6e45764b4ff742b2fa7b9a9), [`d08e420`](https://github.com/LTplus-AG/ifc-lite/commit/d08e420c9f39e9c0427aba47966cc6acf12642cc), [`140a6d8`](https://github.com/LTplus-AG/ifc-lite/commit/140a6d8541224341835c98028dc75e6a5ccd605d), [`6aa2b76`](https://github.com/LTplus-AG/ifc-lite/commit/6aa2b76d4a988e7ee1fd6bcad7c46a41650704b3), [`96d8f41`](https://github.com/LTplus-AG/ifc-lite/commit/96d8f4126073250e079d7cdc8f77b409e70400e7), [`19f1312`](https://github.com/LTplus-AG/ifc-lite/commit/19f13120a05cd3a3b729eeaf5550cff71b7506d9), [`82c77c1`](https://github.com/LTplus-AG/ifc-lite/commit/82c77c118d5a4be8e5ee5b7f7e0648514e9fb74e), [`b7efeac`](https://github.com/LTplus-AG/ifc-lite/commit/b7efeac2195908729d1bf571839e2607f43c8ff7), [`4475e58`](https://github.com/LTplus-AG/ifc-lite/commit/4475e583ea35def444fb6d7ba92410629bd89096), [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e), [`4475e58`](https://github.com/LTplus-AG/ifc-lite/commit/4475e583ea35def444fb6d7ba92410629bd89096), [`afa717b`](https://github.com/LTplus-AG/ifc-lite/commit/afa717bcf6041ad34085626fcfac321207ce4b81), [`6bd2550`](https://github.com/LTplus-AG/ifc-lite/commit/6bd25508dadd14fee97ee1f7393212cdcc086fdc), [`cb56282`](https://github.com/LTplus-AG/ifc-lite/commit/cb56282133a3349299665859b5507b739808d32e), [`d733175`](https://github.com/LTplus-AG/ifc-lite/commit/d733175d4ac2e8a2e94fc0bf9804d7bc03627cc1), [`902768e`](https://github.com/LTplus-AG/ifc-lite/commit/902768e138b595b26a47389bcea536f3f9e25b6d), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`3cd1647`](https://github.com/LTplus-AG/ifc-lite/commit/3cd1647a2918ac27b903cb82bc797c2d2b288ac3), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`dc8198c`](https://github.com/LTplus-AG/ifc-lite/commit/dc8198ce3f9b9be4b2420dce90343822e0079465), [`b331b49`](https://github.com/LTplus-AG/ifc-lite/commit/b331b4921ff0927ee18bb78f00d2bb6e496219d8), [`c3bdc8f`](https://github.com/LTplus-AG/ifc-lite/commit/c3bdc8fe55536a9b27adaa7ed92fb214c975fe2e), [`c3bdc8f`](https://github.com/LTplus-AG/ifc-lite/commit/c3bdc8fe55536a9b27adaa7ed92fb214c975fe2e), [`3460785`](https://github.com/LTplus-AG/ifc-lite/commit/3460785652f251f3161aa8dd6f1d247750df2715), [`80a0cd9`](https://github.com/LTplus-AG/ifc-lite/commit/80a0cd9b946a5ff1aa6ca214ddb427a5d1f5303c), [`b135862`](https://github.com/LTplus-AG/ifc-lite/commit/b1358623210867daba42ff56e97ff05733bff646), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`ff292b6`](https://github.com/LTplus-AG/ifc-lite/commit/ff292b685a7c663ef3e79928a754667bb919066a)]:
+  - @ifc-lite/parser@5.0.0
+  - @ifc-lite/encoding@2.2.0
+  - @ifc-lite/mutations@2.0.0
+
+## 2.2.0
+
+### Minor Changes
+
+- [#3034](https://github.com/LTplus-AG/ifc-lite/pull/3034) [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b) Thanks [@louistrue](https://github.com/louistrue)! - Add `bim.style`, colour that ends up in the exported IFC.
+  
+  `bim.viewer.colorize` paints the current view. The colour is an overlay and is gone the moment the model is written out, so a script that wanted a coloured file had to hand-build the `IfcColourRgb → IfcSurfaceStyleShading → IfcSurfaceStyle → IfcStyledItem` chain itself and walk `IfcProductDefinitionShape → IfcShapeRepresentation → Items` to find something to attach it to. `StepExporter` already builds that chain internally for demeshed output; nothing exposed it.
+  
+  `bim.style.apply(refs, color)` and `bim.style.applyAll(batches)` take any hex form `bim.viewer.colorize` takes — they share its `hexToRgba` — or channels in 0..1. The one deliberate difference is the failure mode: `hexToRgba` degrades an unparseable string to black, which is right for a transient overlay and wrong for something written into the file, so a non-hex string throws instead of being baked in as black.
+  
+  The work lives in `applyStylesInStore` in `@ifc-lite/create`, beside the other in-store builders, and writes through the same `StoreEditor` overlay as `bim.spaces.generate`. Both headless backends implement it; a backend without direct store access, including the browser viewer's, throws.
+  
+  Four things the call site no longer has to get right:
+  
+  **Mapped geometry.** An `IfcMappedItem` is followed through to the `IfcRepresentationMap` and the mapped representation's items are styled, so one style covers every occurrence of a type. On a real MEP model, 139 air terminals share 63 geometry items; styling per occurrence would write a second `IfcStyledItem` on geometry that already had one, which IFC does not allow.
+  
+  **Geometry that already has a style, including geometry this session styled.** IFC permits at most one `IfcStyledItem` per representation item. The index of existing styles covers both the source file and the overlay: `StoreEditor.addEntity` does not insert into `store.entityIndex`, so a source-only check could not see the session's own writes and a second `apply` over the same products emitted two styled items on one solid — a schema-invalid file, from the very machinery meant to prevent it. That index is also built once per pass rather than per batch, which was 87 ms per batch on a 92k-styled-item model, about two thirds of a colour-by-class run.
+  
+  **Entities created in the same session.** Reads fall back to the overlay, so `bim.store.addWall(...)` followed by `bim.style.apply` colours the new wall instead of reporting it as geometry-less and leaving an orphan `IfcSurfaceStyle` in the file.
+  
+  **Schema differences.** `Representation` is resolved by attribute name rather than by a hardcoded index 6, because that slot is `RepresentationMaps` on `IfcTypeProduct` — a list, so a constant index turned a type object into a silent no-op. IFC2X3 gets the `IfcPresentationStyleAssignment` wrapper that IFC4 deprecated. Transparency is rounded, since `1 - 0.9` otherwise reaches the STEP text as `0.09999999999999998`.
+  
+  A style chain is only left in the file while something references it. Colour a wall red and recolour it green — in a later batch or a later call — and the red chain goes with the styled item it belonged to. What gets swept is tracked as it is authored, per editor, rather than inferred from the overlay: inference could not see `setPositionalAttribute` edits (`getNewEntities` reports attributes as created, while the exporter applies positional mutations on top), so it removed live styles and left the real garbage; it took a chain's shading and colour without checking whether anything else used them; and it collected any overlay `IfcSurfaceStyle` at all, including one a caller had authored with `bim.store.addEntity` and not yet attached. Only chains `bim.style` created are its to remove, and a chain whose styled items were repointed elsewhere is kept rather than risked. A batch that styles nothing writes nothing at all: `surfaceStyleId` is `null`. A caller colouring by IFC class hands in one batch per class, and most classes in a real model — types, ports, spatial structure — reach no geometry, so emitting the style up front left an orphan `IfcColourRgb` / `IfcSurfaceStyleShading` / `IfcSurfaceStyle` per such batch. Found by using the API for a colour-by-class pass: 16 styles in the file where 5 were referenced.
+  
+  `productsWithoutGeometry` counts a product only when its own walk reached nothing. Deciding it from the growth of the shared item set instead would report every occurrence after the first as geometry-less whenever a type's occurrences share one mapped representation — which is most of them, and was wrong in the first cut of this.
+  
+  `followMappedItems: false` styles the `IfcMappedItem` per occurrence instead. Following the representation map is right for colouring by IFC class and wrong for any other grouping — by system, storey or property value, shared geometry takes whichever colour ran last and drags unrelated occurrences with it.
+  
+  `schema` names the schema the chain is built for, defaulting to the store's. The style shape is decided when the style is authored and the export schema is chosen later, so an IFC4 model exported as IFC2X3 otherwise emits `IfcStyledItem.Styles` pointing straight at an `IfcSurfaceStyle`, which that schema does not allow. Converting existing style records during a schema change is a separate job for `StepExporter` and is not attempted here.
+  
+  An `#rrggbbaa` string's alpha pair is honoured. `hexToRgba` discards those digits and takes alpha from its own argument, which is right for the viewer; here they are the only way the string form can ask for transparency, and dropping them silently wrote an opaque style.
+  
+  Verified on the export rather than on the overlay, against a fixture carrying direct geometry, two occurrences behind one representation map, a product with no representation, and geometry that already carries a style.
+
+### Patch Changes
+
+- [#3044](https://github.com/LTplus-AG/ifc-lite/pull/3044) [`3969c52`](https://github.com/LTplus-AG/ifc-lite/commit/3969c523063d02e501f421e6b42d1a9a516dc2e4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Express a wall in the storey frame even when its placement joins the spatial chain above the storey. `extractWallSegmentsForStorey` composes each wall's `PlacementRelTo` hops and stops at the storey's own placement or any of its ancestors, which is right only when the stop is the storey's placement itself. When an authoring tool places the wall against the building's or the site's placement instead, the walk stopped on its first step and returned a frame expressed in that shared ancestor, while every caller reads the result as storey-local — `generateSpacesFromWalls` hands the segments to `addSpaceToStore`, which authors the space with the storey placement as its `PlacementRelTo`, so the storey's own offset and rotation were applied to coordinates they had never been removed from. The walk now records how many of the storey's own placements separate the stopping point from the storey, composes exactly those, and divides them out by their inverse; a stop at the storey's own placement composes nothing, as before. When any placement in that stretch has no readable frame the wall is left where it was rather than moved by a partial chain. This extractor's frame is planar (X/Y plus a ground-plane direction), so what is corrected is the storey's planar offset and rotation; elevation is not part of it. The shape is real in the corpus — all 140 walls of `ara3d/ISSUE_034_HouseZ.ifc` are placed relative to the site placement while contained in its three storeys — though that file's storeys differ from the site only in Z, so none of its segments move. New tests cover a wall on the building placement, a wall on the site placement two hops up, an unreadable storey chain, and the unchanged wall placed directly under the storey; the storey in the fixture is rotated as well as offset, so an inverse applied the wrong way round lands on different coordinates rather than on a sign flip a translation-only fixture would miss.
+
+- [#2993](https://github.com/LTplus-AG/ifc-lite/pull/2993) [`bb734da`](https://github.com/LTplus-AG/ifc-lite/commit/bb734da27afbea4b6e595714950cdb195cddeb1f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Compose intermediate `IfcLocalPlacement.PlacementRelTo` hops in wall extraction
+  
+  `extractWallSegmentsForStorey` read only a wall's own `RelativePlacement` and
+  ignored `PlacementRelTo`. That is right for a wall placed directly under its
+  storey, but the standard `IfcElementAssembly` grouping (curtain walls, precast
+  panel runs, railing systems) inserts an intermediate placement between the
+  member and the storey — and its translation and rotation were silently
+  dropped, so the member was extracted at the wrong position relative to its
+  siblings and the enclosed room was never detected.
+  
+  Composition stops at the storey's own placement rather than continuing to the
+  root, because storey-local is the frame the write side uses: the generated
+  `IfcSpace` is authored with the storey placement as its `PlacementRelTo`.
+  `existingSpaceFootprintsByStorey` shares that frame and now uses the same
+  composition.
+  
+  A storey with no `ObjectPlacement` — optional on `IfcProduct` — has no chain to stop the composition, so nothing is composed at all for it rather than composing every hop up to the world root and returning world coordinates where storey-local ones are the contract.
+- Updated dependencies [[`93b450c`](https://github.com/LTplus-AG/ifc-lite/commit/93b450c1cc0c3cee811625989edb82cf522c70c4), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f), [`412f78c`](https://github.com/LTplus-AG/ifc-lite/commit/412f78c1bf4907f8c230fc149bbb00e0711b6689), [`487866d`](https://github.com/LTplus-AG/ifc-lite/commit/487866dac131bf50a0b3008ddce5db933768dca2), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`043e06a`](https://github.com/LTplus-AG/ifc-lite/commit/043e06a05c6625fef91bb17d84e3a3447f1379e3)]:
+  - @ifc-lite/parser@4.3.0
+  - @ifc-lite/encoding@2.1.0
+  - @ifc-lite/mutations@1.27.0
+
+## 2.1.2
+
+### Patch Changes
+
+- [#2769](https://github.com/LTplus-AG/ifc-lite/pull/2769) [`9fb50eb`](https://github.com/LTplus-AG/ifc-lite/commit/9fb50ebcfaaf2926b2badd4d4d8dfc6ca55b762f) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Reject non-finite (`NaN`/`Infinity`) dimensions and `Start`/`End` coordinates in `IfcCreator`, the from-scratch STEP builder, instead of silently emitting them into the file.
+  
+  A bare `value <= 0` check is `false` for both `NaN` and `Infinity`, so those values used to pass every dimension guard and land in the emitted STEP as the literal strings `"NaN"`/`"Infinity"` — not valid STEP REAL tokens. `addIfcColumn` had no dimension guard at all, so a negative or zero `Width`/`Depth`/`Height` passed through too. Every dimension-taking method on `IfcCreator` (`addIfcWall`, `addIfcColumn`, `addIfcBeam`, `addIfcSlab`, `addIfcRoof`, `addIfcGableRoof`, `addIfcDoor`/`addIfcWindow` and their wall-hosted variants, `addIfcRamp`, `addIfcRailing`, `addIfcPlate`, `addIfcMember`, `addIfcFooting`, `addIfcPile`, `addIfcSpace`, `addIfcCurtainWall`, `addIfcFurnishingElement`, `addIfcBuildingElementProxy`, and the I/L/T/U/hollow-section shape methods) now validates through a shared `assertPositiveFinite` helper.
+  
+  Separately, `addIfcWall`, `addIfcBeam`, `addIfcMember` and the shape-section methods compute a length from `Start`/`End` and only rejected an exact zero-length vector (`Start === End`). A non-finite coordinate makes the computed length `NaN`, and `NaN <= 0` is also `false`, so that guard never fired either — the point is now validated at the source via a new `assertFinitePoint3` helper before any arithmetic runs.
+  
+  This is the same defect class as `@ifc-lite/create`'s `in-store/` builders fixed in [#2767](https://github.com/LTplus-AG/ifc-lite/issues/2767) (`assertPositiveFinite` there, and the `beamLen`/`wallLen`/`memberLen` distinct-points gap in `beam.ts`/`wall.ts`/`member.ts`), extended here to `ifc-creator.ts` — a separate, from-scratch builder class outside `in-store/` that shares no code with it — and to the equivalent `Start`/`End` distinct-points gap in those same `in-store/` builders, which [#2767](https://github.com/LTplus-AG/ifc-lite/issues/2767) left out of scope.
+  
+  `addIfcColumn`'s new `Height` guard also rejects `0`, which is spec-correct (`IfcExtrudedAreaSolid.Depth` is an `IfcPositiveLengthMeasure`) but is a value adversarial test tooling deliberately constructs to exercise how the geometry pipeline handles degenerate, spec-invalid extrusions. `IfcCreator` now also exposes `addIfcColumnUnvalidated`, a deliberately unvalidated escape hatch for that kind of fixture-building; it is not meant for application code.
+
+- [#2767](https://github.com/LTplus-AG/ifc-lite/pull/2767) [`ccc38b0`](https://github.com/LTplus-AG/ifc-lite/commit/ccc38b0de9925a3de1106893a5785117e0e7551d) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the eight in-store element builders that emitted invalid IFC when
+  given a `NaN` or `Infinity` dimension instead of throwing.
+  
+  Every in-store builder (`addWallToStore`, `addBeamToStore`,
+  `addDoorToStore`, `addWindowToStore`, `addMemberToStore`,
+  `addPlateToStore`, `addRoofToStore`, `addSpaceToStore`,
+  `addSlabToStore`) validated its `Width`/`Height`/`Depth`/`Thickness`/
+  `FrameThickness` params with a bare `value <= 0` check. That check is
+  `false` for both `NaN` and `Infinity`, so those values passed
+  validation silently and landed as the literal STEP tokens `NaN` /
+  `Infinity` in the emitted `IfcExtrudedAreaSolid` and profile
+  attributes — e.g. `addWallToStore({ ..., Height: NaN })` threw
+  nothing and wrote an `IfcExtrudedAreaSolid` whose Depth attribute was
+  the string `"NaN"`.
+  
+  `addColumnToStore` already guarded against this — the docstring at
+  `column.ts:14` records that the `Number.isFinite` check was added
+  while closing the merge-roundtrip gap from LTplus-AG/ifc-lite#592 —
+  but the fix never propagated to its eight siblings, each of which
+  carries its own copy of the same validation shape.
+  
+  Rather than copy the guard into eight more places (which is how the
+  gap opened in the first place — one copy got fixed, eight did not),
+  the check is now a single `assertPositiveFinite` helper in
+  `_emit-helpers.ts`, and every builder — including `addColumnToStore`
+  itself — calls it. A parametrised test
+  (`in-store/dimension-validation.test.ts`) runs `NaN`/`Infinity`/
+  `-Infinity`/`0`/`-1` against every dimension field of every builder,
+  so a future builder added without the guard fails visibly instead of
+  shipping silently.
+  
+  This is a behaviour change: builders that previously accepted a
+  `NaN`/`Infinity` dimension and produced invalid IFC now throw
+  `Error('add<Type>ToStore: <Fields> must be positive')` instead. No
+  caller in this repository relied on the previous permissiveness —
+  every call site passes numeric literals or values already validated
+  upstream.
+- Updated dependencies [[`05592f8`](https://github.com/LTplus-AG/ifc-lite/commit/05592f8c1ef5b34a00c2ea077542dc68107a7ae5), [`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e), [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8), [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/mutations@1.26.1
+  - @ifc-lite/parser@4.2.0
+
+## 2.1.1
+
+### Patch Changes
+
+- [#2536](https://github.com/LTplus-AG/ifc-lite/pull/2536) [`20d27aa`](https://github.com/LTplus-AG/ifc-lite/commit/20d27aaae4ce1d00bccd8a5a8a4c8410cbe1ba39) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Correct the `ExtrusionDirection` API docs on `addElement`: the direction is expressed in the profile's coordinate system and must have a non-zero Z component (IFC4 `IfcExtrudedAreaSolid.WR31`). The previous doc recommended `[1, 0, 0]` "for along X", which lies in the profile plane and sweeps the profile into a zero-volume sheet - invalid IFC that meshes to a flat ribbon. To orient an element in the model (e.g. a horizontal pipe), keep the default `[0, 0, 1]` and set `Placement.Axis` instead.
+
+## 2.1.0
+
+### Minor Changes
+
+- [#2589](https://github.com/LTplus-AG/ifc-lite/pull/2589) [`9175e35`](https://github.com/LTplus-AG/ifc-lite/commit/9175e35b29ff57b39b671e5db33f38c7807fb0fd) Thanks [@louistrue](https://github.com/louistrue)! - Add `addSpatialZonesToStore`, an anchored builder for `IfcSpatialZone`.
+
+  A location zone (a takt area, a construction section) is emitted as
+  `IfcSpatialZone` rather than `IfcZone`: that type groups spaces, so assigning
+  walls to one produces a file most readers, this one included, mis-read. Elements
+  attach through `IfcRelReferencedInSpatialStructure`, which is many-to-many and
+  additive, so emitting zones never re-parents anything and an element straddling
+  two zones can belong to both.
+
+  Boxes emit an `IfcRectangleProfileDef` with any rotation carried in the
+  placement; a convex footprint emits the polygon instead. `spatialZonesSupported`
+  reports whether the target schema has the type at all, since IFC2X3 does not.
+
+### Patch Changes
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/parser@4.0.3
+
+## 2.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568), [`b4b3e0c`](https://github.com/LTplus-AG/ifc-lite/commit/b4b3e0cfa8ffa9185e96dc266dd6fdc3fef34797), [`1de1696`](https://github.com/LTplus-AG/ifc-lite/commit/1de16969db1c56f4901e4af49da74085bae3b3fe)]:
+  - @ifc-lite/parser@4.0.2
+  - @ifc-lite/encoding@2.0.0
+
+## 2.0.2
+
+### Patch Changes
+
+- [#2333](https://github.com/LTplus-AG/ifc-lite/pull/2333) [`5dd1d18`](https://github.com/LTplus-AG/ifc-lite/commit/5dd1d181437bf0d1d357f3c5505049f802beb2cf) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `resolveSpatialAnchor` now refuses (throws) rather than silently proceeding when a store's schema is IFC2X3 and it has no `IfcOwnerHistory` entity.
+
+  `IfcRoot.OwnerHistory` is optional from IFC4 onward but mandatory in IFC2X3. `resolveSpatialAnchor` previously resolved `ownerHistoryId: null` for any store missing `IfcOwnerHistory`, regardless of schema, and every in-store builder (`addWallToStore`, `addBeamToStore`, `addSlabToStore`, ...) emits `$` for a null `ownerHistoryId` unconditionally. Editing an IFC2X3 store that itself is missing `IfcOwnerHistory` (a malformed or hand-edited file) therefore silently authored new IFC2X3 elements with `$` in place of a mandatory attribute. IFC4/IFC4X3 stores are unaffected — OwnerHistory is genuinely optional there and `$` is correct.
+
+- [#2392](https://github.com/LTplus-AG/ifc-lite/pull/2392) [`6f5566f`](https://github.com/LTplus-AG/ifc-lite/commit/6f5566fa761f25a02818a750351b0b0db785ef9b) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `resolveSpatialAnchor`'s four `store.source` guards ([#2345](https://github.com/LTplus-AG/ifc-lite/issues/2345)): `IfcDataStore.source` is a mandatory accessor object, never `null`/`undefined` — even a source-less store carries `EMPTY_SOURCE_BYTES` — so a plain `if (store.source)` / `if (!store.source)` truthiness check was always true and never actually detected the "no source bytes" case it was written for. Replaced with an explicit `byteLength` check.
+
+  No behavior change for real callers: every current call site passes a store this same process just parsed, which always has resident source bytes. Verified with a synthetic empty-source store that the function still fails closed (throws) rather than silently misresolving, in both the old and the new code.
+
+- Updated dependencies [[`273b068`](https://github.com/LTplus-AG/ifc-lite/commit/273b06827ef1469f63c396d204474a9f2400c642), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`710fd83`](https://github.com/LTplus-AG/ifc-lite/commit/710fd83638b51b2e4744a1ac364827a27dc0fc73), [`8751ba4`](https://github.com/LTplus-AG/ifc-lite/commit/8751ba41dc4d1893530b0f1db6ad0f8fa0d5d3fd), [`35e37ac`](https://github.com/LTplus-AG/ifc-lite/commit/35e37ac99ab444773bfec669cfc5cf3937443942), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da)]:
+  - @ifc-lite/encoding@1.15.1
+  - @ifc-lite/parser@4.0.0
+  - @ifc-lite/mutations@1.24.2
+
+## 2.0.1
+
+### Patch Changes
+
+- [#2100](https://github.com/LTplus-AG/ifc-lite/pull/2100) [`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop four package-level failures from being reported as ordinary results.
+
+  - `@ifc-lite/data` / `@ifc-lite/cache`: a List-typed property with no value
+    came back as `[]` — a real empty list — because the NULL string sentinel
+    resolved to `''` and the resulting `JSON.parse` throw was swallowed. NULL
+    now reads as `null`, matching the string branch beside it, and a genuinely
+    unparseable list value logs once (latched) before falling back to `[]`.
+  - `@ifc-lite/create`: `extractWallSegmentsForStorey` silently defaulted to a
+    metre length-unit scale when unit extraction threw, mis-scaling every
+    extracted wall segment on a millimetre model. It now warns with the error,
+    matching `resolveSpatialAnchor` / `resolveDuplicateSource`.
+  - `@ifc-lite/cli`: `ifc-lite schema` printed a reduced built-in schema as if
+    it were the full SDK surface when `@ifc-lite/sandbox/schema` could not be
+    loaded; it now says so on stderr and exits non-zero (stdout is still pure
+    JSON, unchanged shape), so a piping caller that discards stderr still sees
+    the failure. `--version` no longer reports a hard-coded `0.4.0` when
+    `package.json` is unreadable — it reports `0.0.0-unknown` and explains why
+    on stderr.
+  - `@ifc-lite/geometry`: the shard and finalise paths that fall back from a
+    SharedArrayBuffer view to a materialised (file-sized) copy now say so once
+    per worker, matching the streaming-prepass path that already did.
+
+- Updated dependencies [[`4c739be`](https://github.com/LTplus-AG/ifc-lite/commit/4c739be2aba74ad6868b6dca51dad441c6fa9903), [`f493930`](https://github.com/LTplus-AG/ifc-lite/commit/f4939309aed136979bd5cc1f95a25c2a0ebe779f), [`3c2ffa6`](https://github.com/LTplus-AG/ifc-lite/commit/3c2ffa6a1bd0a04d3d73e2ea7c0fb1a2233599a9)]:
+  - @ifc-lite/mutations@1.24.1
+  - @ifc-lite/parser@3.15.1
+
+## 2.0.0
+
+### Major Changes
+
+- [#1979](https://github.com/LTplus-AG/ifc-lite/pull/1979) [`8f139a8`](https://github.com/LTplus-AG/ifc-lite/commit/8f139a8ef44235b68c2f97c032419fa586111b62) Thanks [@louistrue](https://github.com/louistrue)! - **BREAKING:** every `IfcCreator` element constructor now places its product relative to the storey it is added to. Element coordinates are storey-relative across the whole API.
+
+  ## What was wrong
+
+  `IfcCreator` chained the product's `IfcLocalPlacement` to a different parent depending on which method you called. Seven methods — `addIfcWall`, `addIfcSlab`, `addIfcColumn`, `addIfcBeam`, `addIfcStair`, `addIfcRoof`, `addIfcGableRoof` — chained to the storey placement, which carries `[0, 0, Elevation]`. The other 21 — `addIfcDoor`, `addIfcWindow`, `addIfcRamp`, `addIfcRailing`, `addIfcPlate`, `addIfcMember`, `addIfcFooting`, `addIfcPile`, `addIfcSpace`, `addIfcCurtainWall`, `addIfcFurnishingElement`, `addIfcBuildingElementProxy`, `addIfcCircularColumn`, `addIfcIShapeBeam`, `addIfcLShapeMember`, `addIfcTShapeMember`, `addIfcUShapeMember`, `addIfcHollowCircularColumn`, `addIfcRectangleHollowBeam`, `addElement`, `addAxisElement` — chained to the world.
+
+  On a storey with a non-zero `Elevation`, a caller mixing the two families got two datums in one model, with no error and nothing downstream to notice. Measured on a real scan-to-IFC run: the storey and its spaces at −1.368653 m, the walls at −2.737307 m — exactly 2 × the elevation, standing 1.37 m below the spaces they bounded.
+
+  Every one of these methods already took the storey as its first argument and already emitted an `IfcRelContainedInSpatialStructure` into it. Only the placement disagreed.
+
+  ## Why storey-relative, and not world-relative
+
+  The placement hierarchy has to agree with the containment hierarchy. A product contained in a storey whose placement chains past that storey to the world is not a coherent IFC product: moving the storey leaves its own contents behind, and `IfcBuildingStorey.Elevation` and the storey's `ObjectPlacement` become decoration that no geometry honours. The world-relative alternative would have meant deleting the storey's `[0, 0, Elevation]` placement or leaving it as a transform nothing chains to — the wrong half of the schema to surrender.
+
+  It is also what the rest of this package already did: the `*ToStore` builders (`addWallToStore`, `addSpaceToStore`, `addDoorToStore`, …) have always chained from `anchor.storeyPlacementId`. Choosing world would have split `@ifc-lite/create` against itself.
+
+  ## Migrating
+
+  If your storeys all have `Elevation: 0`, nothing moves — the storey placement is the identity and the two parents were already the same point.
+
+  Otherwise, for the 21 methods listed above: **stop adding the storey elevation to element coordinates.** Pass the height above that storey's floor.
+
+  ```ts
+  const storey = creator.addIfcBuildingStorey({
+    Name: "Level 1",
+    Elevation: 3.2,
+  });
+
+  // before — absolute Z, because addIfcSpace ignored the storey
+  creator.addIfcSpace(storey, {
+    Position: [0, 0, 3.2],
+    Width: 4,
+    Depth: 4,
+    Height: 2.6,
+  });
+
+  // after — storey-relative Z, like addIfcWall always was
+  creator.addIfcSpace(storey, {
+    Position: [0, 0, 0],
+    Width: 4,
+    Depth: 4,
+    Height: 2.6,
+  });
+  ```
+
+  If you compensated for the asymmetry — passing absolute Z to the world-parented methods and storey-relative Z to the storey-parented ones, so the two families lined up — remove the compensation from the world-parented calls only. The storey-parented calls were already correct and must not change. A caller that had settled on `Z = 0` for walls and `Z = elevation` for spaces now passes `Z = 0` to both.
+
+  `addIfcWallDoor` and `addIfcWallWindow` are unaffected: they were and remain wall-local, and inherit the storey datum through their host.
+
+  Also in this release: `getStoreyPlacement` throws `Unknown storeyId #N` instead of silently falling back to the world placement. This is a strictly earlier version of the error `trackElement` already threw a few lines later, so no working call changes — it just means a bogus storey id no longer emits orphan placement entities before failing.
+
+  ## `@ifc-lite/sandbox`
+
+  The `llmSemantics.placement` metadata in `NAMESPACE_SCHEMAS` is corrected to match: the seven methods previously tagged `'world'` (`addIfcMember`, `addIfcPlate`, `addIfcCurtainWall`, `addIfcRailing`, `addIfcDoor`, `addIfcWindow`, `addAxisElement`) are now `'storey-relative'`, and the `useWhen`/`cautions` prose that described them as world-placement is rewritten. The `MethodPlacementKind` union is unchanged and no export was added or removed. Consumers that read `placement` to generate guidance will see different values for those seven methods — which is the point: the old values now describe behaviour that no longer exists.
+
+  Thirteen constructors that carried no `llmSemantics` at all — `addIfcRamp`, `addIfcFooting`, `addIfcPile`, `addIfcSpace`, `addIfcFurnishingElement`, `addIfcBuildingElementProxy`, `addIfcCircularColumn`, `addIfcHollowCircularColumn`, `addIfcIShapeBeam`, `addIfcLShapeMember`, `addIfcTShapeMember`, `addIfcUShapeMember`, `addIfcRectangleHollowBeam` — now declare `placement: 'storey-relative'` with their coordinate keys. They were invisible to every consumer that groups methods by placement frame, so nothing generated from this schema said which datum their coordinates were in. `NAMESPACE_SCHEMAS.create` now tags all 30 coordinate-taking constructors (27 storey-relative, `addElement` explicit-placement, and the two wall-local hosted inserts).
+
+  ## Downstream packages carrying the break
+
+  The behaviour change is not confined to `@ifc-lite/create`: four packages re-expose `IfcCreator` and therefore ship it to their own consumers. Each is versioned to say so, rather than letting a caller pick the change up through a range they believed was compatible.
+
+  - **`@ifc-lite/sdk` (major)** — re-exports the class directly (`packages/sdk/src/index.ts`: `export { IfcCreator } from '@ifc-lite/create'`). Without a major, a consumer on `^1.21` accepts the release and gets storey-relative placement with no signal.
+  - **`@ifc-lite/sandbox` (major, was minor)** — `buildCreateMethods()` auto-discovers `IfcCreator.prototype` and dispatches to it, so every affected constructor is reachable from sandbox scripts. A script passing absolute coordinates against a non-zero-elevation storey now emits geometry one elevation off. That is breaking for the script author even though the sandbox's own surface is unchanged.
+  - **`@ifc-lite/cli` (minor)** — `create` constructs `IfcCreator` and passes `--elevation` straight through, so the same shift reaches CLI users following the previous absolute-coordinate convention. Minor rather than major because the package is pre-1.0, where the house rule maps a breaking change to a minor bump.
+  - **`@ifc-lite/mcp` (minor)** — exposure is indirect but real: `loadIfcModel()` (`src/index.ts`) returns a `LoadedModel` carrying `bim: BimContext` (`src/loader.ts`), whose `create` namespace constructs the class (`@ifc-lite/sdk` `namespaces/create.ts`: `project()` returns `new IfcCreator(params)`, `building()` takes a `StoreyElevation`). A library consumer calling `model.bim.create.building({ StoreyElevation })` gets the new datum. Minor for the same pre-1.0 reason as the CLI.
+
+  `@ifc-lite/wasm` is unaffected — it neither constructs nor re-exports `IfcCreator`, directly or through a namespace. The viewer apps are private and unpublished.
+
+### Patch Changes
+
+- Updated dependencies [[`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`a8e58a2`](https://github.com/LTplus-AG/ifc-lite/commit/a8e58a2b5e75db8388835c77b2688240667f68ab), [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841)]:
+  - @ifc-lite/parser@3.13.0
+  - @ifc-lite/mutations@1.23.0
+
 ## 1.17.0
 
 ### Minor Changes

@@ -4,7 +4,10 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { startCollabServer, type CollabServerHandle } from '../src/server.js';
-import { createRoomTokenAuthenticator, type Role } from '../src/room-token.js';
+import { createRoomTokenAuthenticator } from '../src/room-token.js';
+// `Role` is declared in auth.ts; room-token.ts imports it but does not
+// re-export it (the package index re-exports it from auth.js too).
+import type { Role } from '../src/auth.js';
 import { MemoryPersistence } from '../src/persistence.js';
 
 const SECRET = 'test-secret-key';

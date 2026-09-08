@@ -17,7 +17,8 @@ use rustc_hash::FxHashMap;
 
 /// Three-layer wall as a single `IfcExtrudedAreaSolid` (4 m × 0.3 m × 3 m),
 /// material buildup: 50 mm finish + 200 mm core + 50 mm finish = 300 mm total.
-/// Layers stack along AXIS2 (local +Y), POSITIVE, offset = 0.
+/// Layers stack along AXIS2 (local +Y), POSITIVE, offset = −0.15 (the layer set
+/// is centred on the wall's reference line, as the profile is).
 fn three_layer_wall_single_solid_ifc() -> String {
     r#"ISO-10303-21;
 HEADER;
@@ -230,6 +231,13 @@ fn process_element_with_material_layers_splits_wall_by_material() {
         3,
         "expected one sub-mesh per layer"
     );
+    // #3199: the ids below are IfcMaterials, and the collection has to SAY so —
+    // it is the only thing that tells a caller whether `geometry_id` is a
+    // material or a representation item.
+    assert!(
+        layered.ids_are_materials,
+        "the slicer's collection must declare its ids are material layers"
+    );
     // Two outer finishes share material #200, core is #201.
     let ids: Vec<u32> = layered.sub_meshes.iter().map(|s| s.geometry_id).collect();
     assert_eq!(ids, vec![200, 201, 200]);
@@ -394,6 +402,45 @@ fn layers_compose_with_voids_every_layer_loses_triangles() {
     );
 }
 
+/// #3199: the flag has to survive the entry the mesh producer actually calls
+/// for a voided element (`process_element_with_submeshes_and_voids`), not just
+/// the slicer it wraps.
+///
+/// WHAT THIS DOES NOT COVER, stated because an earlier version of this comment
+/// claimed it did: the sub-mesh-by-sub-mesh REBUILD further down that function.
+/// A layered wall returns at the `try_layered_sub_meshes` early exit and never
+/// reaches it, so the `ids_are_materials` inheritance on the rebuilt collection
+/// is unreachable for a material-layer collection today and no fixture can make
+/// this test distinguish it — replacing that expression with a hard-coded
+/// `false` leaves both `ifc-lite-geometry` and `ifc-lite-processing` green.
+/// It is written as an inheritance anyway, deliberately: hard-coding would let
+/// a future layered producer on that path silently relabel material ids as
+/// representation items. Defensive, and honestly untested rather than
+/// dishonestly claimed.
+#[test]
+fn voided_submesh_entry_reports_layer_ids_as_material_ids() {
+    let content = three_layer_wall_with_opening_ifc();
+    let mut decoder = EntityDecoder::new(&content);
+    let mut router = GeometryRouter::with_units(&content, &mut decoder);
+    let index = MaterialLayerIndex::from_content(&content, &mut decoder);
+    router.set_material_layer_index(std::sync::Arc::new(index));
+
+    let wall = decoder.decode_by_id(100).expect("decode wall");
+    let mut void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    void_index.insert(100, vec![150]);
+
+    let cut = router
+        .process_element_with_submeshes_and_voids(&wall, &mut decoder, &void_index)
+        .expect("submesh voids path");
+
+    assert!(
+        cut.ids_are_materials,
+        "a sliced layered wall must still declare material-layer ids after void subtraction"
+    );
+    let ids: Vec<u32> = cut.sub_meshes.iter().map(|s| s.geometry_id).collect();
+    assert_eq!(ids, vec![200, 201, 200], "slabs must name their IfcMaterials");
+}
+
 #[test]
 fn process_element_with_material_layers_returns_none_for_unsliceable() {
     let content = wall_with_constituent_set_ifc();
@@ -411,5 +458,216 @@ fn process_element_with_material_layers_returns_none_for_unsliceable() {
     assert!(
         result.is_none(),
         "ConstituentSet must produce None so caller falls back"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// WHERE the cuts land. Everything above counts sub-meshes and reads material
+// ids off them; nothing pins the geometry, and every fixture above shares three
+// symmetries that make the geometry unobservable:
+//
+//   * length unit METRE, so `unit_scale == 1` and dropping the offset's unit
+//     conversion entirely changes no number;
+//   * DirectionSense POSITIVE, so `direction_sense == +1` and moving that
+//     factor onto the wrong term changes no number;
+//   * layer stack 50/200/50 with materials 200/201/200 — a PALINDROME, so
+//     reading the stack back to front changes neither a cut position nor an
+//     emitted material id.
+//
+// The fixture below breaks all three at once: millimetres, NEGATIVE sense, and
+// three distinct thicknesses carrying three distinct materials.
+// ---------------------------------------------------------------------------
+
+/// Same 4 m × 0.30 m × 3 m wall, written in MILLIMETRES, with an asymmetric
+/// 40 / 200 / 60 mm buildup of three distinct materials (#200, #201, #202).
+///
+/// `sense` / `offset_mm` are the layer set's `DirectionSense` and
+/// `OffsetFromReferenceLine`. `.POSITIVE.` with −150 and `.NEGATIVE.` with +150
+/// describe the SAME physical wall from opposite ends of the stack, so the two
+/// must produce mirror-image slabs — which is what makes the sense factor
+/// observable at all.
+fn mm_wall_asymmetric_buildup(sense: &str, offset_mm: f64) -> String {
+    mm_wall_on_axis(".AXIS2.", sense, offset_mm)
+}
+
+fn mm_wall_on_axis(layer_axis: &str, sense: &str, offset_mm: f64) -> String {
+    format!(
+        r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('test.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1234567890123456789012',#2,'Test',$,$,$,$,(#10),#7);
+#2=IFCOWNERHISTORY(#3,#4,$,.ADDED.,$,$,$,0);
+#3=IFCPERSONANDORGANIZATION(#5,#6,$);
+#4=IFCAPPLICATION(#6,'1.0','Test','Test');
+#5=IFCPERSON($,'Test',$,$,$,$,$,$);
+#6=IFCORGANIZATION($,'Test',$,$,$);
+#7=IFCUNITASSIGNMENT((#8,#9));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((0.,0.,0.));
+#13=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#23=IFCDIRECTION((0.,0.,1.));
+#24=IFCDIRECTION((1.,0.,0.));
+#30=IFCRECTANGLEPROFILEDEF(.AREA.,'Wall',#31,4000.,300.);
+#31=IFCAXIS2PLACEMENT2D(#32,#33);
+#32=IFCCARTESIANPOINT((0.,0.));
+#33=IFCDIRECTION((1.,0.));
+#40=IFCEXTRUDEDAREASOLID(#30,#41,#42,3000.);
+#41=IFCAXIS2PLACEMENT3D(#43,$,$);
+#42=IFCDIRECTION((0.,0.,1.));
+#43=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#40));
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#100=IFCWALL('0001234567890123456789',#2,'TestWall',$,$,#20,#51,'Test',$);
+#200=IFCMATERIAL('Outer',$,$);
+#201=IFCMATERIAL('Core',$,$);
+#202=IFCMATERIAL('Inner',$,$);
+#210=IFCMATERIALLAYER(#200,40.,$,'Outer',$,$,$);
+#211=IFCMATERIALLAYER(#201,200.,$,'Core',$,$,$);
+#212=IFCMATERIALLAYER(#202,60.,$,'Inner',$,$,$);
+#220=IFCMATERIALLAYERSET((#210,#211,#212),'3LayerBuildup',$);
+#221=IFCMATERIALLAYERSETUSAGE(#220,{layer_axis},{sense},{offset_mm:.1},$);
+#300=IFCRELASSOCIATESMATERIAL('0001234567890123456790',#2,$,$,(#100),#221);
+ENDSEC;
+END-ISO-10303-21;
+"#
+    )
+}
+
+/// `(material_id, min, max)` of every emitted slab along local axis `comp`
+/// (0 = X, 1 = Y, 2 = Z), in emission order.
+/// The wall's local frame is the world frame here (identity placement, no RTC,
+/// origin `[0,0,0]`), so `positions` ARE metres along the local axis the layers
+/// stack on.
+fn slab_bands(content: &str) -> Vec<(u32, f64, f64)> {
+    slab_bands_on(content, 1)
+}
+
+fn slab_bands_on(content: &str, comp: usize) -> Vec<(u32, f64, f64)> {
+    let mut decoder = EntityDecoder::new(content);
+    let router = GeometryRouter::with_units(content, &mut decoder);
+    let index = MaterialLayerIndex::from_content(content, &mut decoder);
+    let wall = decoder.decode_by_id(100).expect("decode wall");
+    let buildup = index.get(100).expect("buildup").clone();
+    let void_index: FxHashMap<u32, Vec<u32>> = FxHashMap::default();
+    let collection = router
+        .process_element_with_material_layers(&wall, &mut decoder, &buildup, &void_index)
+        .expect("layered path ok")
+        .expect("Some(SubMeshCollection)");
+    assert_eq!(
+        collection.sub_meshes[0].mesh.origin,
+        [0.0, 0.0, 0.0],
+        "this fixture must stay in the world frame, or the bands below are not metres of world Y"
+    );
+    collection
+        .sub_meshes
+        .iter()
+        .map(|s| {
+            let ys: Vec<f64> = s.mesh.positions.chunks(3).map(|p| p[comp] as f64).collect();
+            let lo = ys.iter().cloned().fold(f64::INFINITY, f64::min);
+            let hi = ys.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+            (s.geometry_id, lo, hi)
+        })
+        .collect()
+}
+
+fn assert_bands(got: &[(u32, f64, f64)], want: &[(u32, f64, f64)], what: &str) {
+    assert_eq!(got.len(), want.len(), "{what}: slab count, got {got:?}");
+    for (i, (g, w)) in got.iter().zip(want).enumerate() {
+        assert_eq!(g.0, w.0, "{what}: slab {i} material, got {got:?}");
+        assert!(
+            (g.1 - w.1).abs() < 1e-4 && (g.2 - w.2).abs() < 1e-4,
+            "{what}: slab {i} band [{:.4},{:.4}], want [{:.4},{:.4}]",
+            g.1,
+            g.2,
+            w.1,
+            w.2
+        );
+    }
+}
+
+/// Each layer's slab occupies the exact band the buildup describes: the
+/// thicknesses come out 40/200/60 mm in the file's own unit converted to
+/// metres, in stack order, each carrying its own material.
+///
+/// This is the test the unit conversion is answerable to. A millimetre file
+/// with the offset's `* unit_scale` dropped puts the first interface 150 METRES
+/// off the wall; every earlier fixture is in metres, where that factor is 1.
+#[test]
+fn slabs_land_on_the_exact_bands_the_buildup_describes() {
+    // POSITIVE from MlsBase at local Y = −0.15 m: outer 40 mm first, then the
+    // 200 mm core, then the 60 mm inner leaf, ending at +0.15 m.
+    assert_bands(
+        &slab_bands(&mm_wall_asymmetric_buildup(".POSITIVE.", -150.0)),
+        &[
+            (200, -0.15, -0.11),
+            (201, -0.11, 0.09),
+            (202, 0.09, 0.15),
+        ],
+        "AXIS2 POSITIVE, millimetres",
+    );
+}
+
+/// The mirror. NEGATIVE sense from an MlsBase at +0.15 m describes the same
+/// physical wall walked from the other face, so the same stack must come out
+/// reflected about Y = 0 — first layer at the TOP of the range, last at the
+/// bottom.
+///
+/// This is what makes `direction_sense` observable. It is `+1` in every other
+/// fixture in the repo, and a factor of one hides whatever it multiplies.
+#[test]
+fn negative_direction_sense_stacks_the_layers_the_other_way() {
+    let positive = slab_bands(&mm_wall_asymmetric_buildup(".POSITIVE.", -150.0));
+    let negative = slab_bands(&mm_wall_asymmetric_buildup(".NEGATIVE.", 150.0));
+
+    assert_bands(
+        &negative,
+        &[
+            (200, 0.11, 0.15),
+            (201, -0.09, 0.11),
+            (202, -0.15, -0.09),
+        ],
+        "AXIS2 NEGATIVE, millimetres",
+    );
+
+    // Stated as the reflection too, so the pair cannot both drift the same way.
+    for (i, (p, n)) in positive.iter().zip(&negative).enumerate() {
+        assert_eq!(p.0, n.0, "slab {i}: the same layer keeps its material");
+        assert!(
+            (p.1 + n.2).abs() < 1e-4 && (p.2 + n.1).abs() < 1e-4,
+            "slab {i}: NEGATIVE must mirror POSITIVE about Y=0, got {p:?} vs {n:?}"
+        );
+    }
+}
+
+/// `LayerSetDirection` selects which LOCAL AXIS the stack runs along, and the
+/// AXIS1/AXIS3 arms of `LayerAxis::unit_vector` are reached by no other test in
+/// the repo — every fixture is an AXIS2 wall, so both could return the +Y unit
+/// vector and nothing would notice.
+///
+/// AXIS3 on the same body stacks through the extrusion depth (local +Z), which
+/// is how slabs, roofs and coverings are described. It also pins the
+/// layer-set-shorter-than-the-body rule: this buildup is 300 mm on a 3 m
+/// extrusion, and the LAST slab keeps the whole remainder rather than the
+/// geometry above the final interface being dropped.
+#[test]
+fn axis3_stacks_the_layers_through_the_extrusion_depth() {
+    assert_bands(
+        &slab_bands_on(&mm_wall_on_axis(".AXIS3.", ".POSITIVE.", 0.0), 2),
+        &[
+            (200, 0.0, 0.04),
+            (201, 0.04, 0.24),
+            (202, 0.24, 3.0),
+        ],
+        "AXIS3 POSITIVE, millimetres",
     );
 }

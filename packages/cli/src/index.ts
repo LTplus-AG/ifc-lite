@@ -13,10 +13,12 @@
 import { logger, parseVerbosity } from './logger.js';
 import { infoCommand } from './commands/info.js';
 import { queryCommand } from './commands/query.js';
+import { scheduleCommand } from './commands/schedule.js';
 import { propsCommand } from './commands/props.js';
 import { exportCommand } from './commands/export.js';
 import { diagnoseGeometryCommand } from './commands/diagnose-geometry.js';
 import { extractEntitiesCommand } from './commands/extract-entities.js';
+import { anonymizeCommand } from './commands/anonymize.js';
 import { idsCommand } from './commands/ids.js';
 import { bcfCommand } from './commands/bcf.js';
 import { clashCommand } from './commands/clash.js';
@@ -42,25 +44,16 @@ import { extCommand } from './commands/ext.js';
 import { layerCommand } from './commands/layer.js';
 import { refCommand } from './commands/ref.js';
 import { gymCommand } from './commands/gym.js';
-import { readFileSync } from 'node:fs';
+import { deliveryCommand } from './commands/delivery.js';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { readCliVersion } from './version.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-function getVersion(): string {
-  try {
-    // Try to read from package.json (works in both src/ and dist/)
-    const pkgPath = join(__dirname, '..', 'package.json');
-    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));
-    return pkg.version ?? '0.4.0';
-  } catch {
-    return '0.4.0';
-  }
-}
-
-const VERSION = getVersion();
+// package.json sits one level above both `src/` and `dist/`.
+const VERSION = readCliVersion(join(__dirname, '..', 'package.json'));
 
 const HELP = `
   ifc-lite v${VERSION} — BIM toolkit for the terminal
@@ -71,11 +64,26 @@ const HELP = `
     info      <file.ifc>                          Model summary (schema, entities, storeys)
     query     <file.ifc> [--type T] [--json]      Query entities by type/properties/quantities
     props     <file.ifc> --id <N>                 All properties for a single entity
-    export    <file.ifc> --format csv|json|ifc|hbjson  Export data / Honeybee energy model
+    export    <file.ifc> --format csv|json|ifc|obj|gltf|glb|jsonld|step|ifcx|usd|hbjson|dfjson  Export data / geometry / energy model
+    schedule  <file.ifc> --type T --columns "H=path,..."  Tabular schedule of one class (csv/json/md/html)
+              [--preset door|window|space|wall|material-takeoff]  default type+columns (flags override)
+              [--where PsetName.Prop=Value] [--format csv|json|md|html]  path = attr | Pset.Prop | Qto.Qty
+              [--sort "Header[:asc|desc],..."]  multi-key row sort by column HEADER (numbers numeric, nulls last)
+              [--group-by "Header,..."]  contiguous groups, ordered by group key (asc, or --sort's dir)
+              [--subtotals "count|sum:H|avg:H|min:H|max:H,..."]  subtotal row per group + grand total
+                 (without --group-by: grand total only; CSV/md label the group column, JSON marks __row)
+              [--spec spec.json]  load a saved schedule definition (beats --preset; an explicit flag beats both)
+              [--save spec.json]  persist this invocation's resolved definition for --spec reuse
     diagnose-geometry <file.ifc> [--json]        CSG / opening diagnostics (failures, classification)
                       [--product ID|GUID] [--type T]  Filter worst-hosts detail to one product/type
     extract-entities <file.ifc> --out F          Isolate entities into a small, viewable standalone IFC
                       [--product ID|GUID] [--storey S] [--detect] [--view]  by GUID/type/storey or auto-triage
+    anonymize <file.ifc> --out F                 Export selected objects + context as an anonymized IFC
+                      [--id N,...] [--guid G,...] [--type T] [--storey S]
+                      [--keep-psets] [--keep-names] [--keep-other-names] [--keep-currency]
+                      [--no-rel-voids-element] [--no-rel-fills-element] [--no-rel-defines-by-type]
+                      [--no-rel-associates-material] [--no-rel-aggregates] [--no-rel-nests]
+                      [--connect-depth N] [--guid-map F] [--json]
     ids       <file.ifc> <rules.ids>              Validate against IDS rules
     bcf       <create|list|add-comment>           Work with BCF collaboration files
     clash     <file.ifc> [--matrix] [--bcf F]      Detect geometric clashes between elements
@@ -86,6 +94,7 @@ const HELP = `
     merge     <f1.ifc> <f2.ifc> --out F           Merge multiple IFC files
     convert   <file.ifc> --schema VER --out F     Convert between IFC schema versions
     diff      <f1.ifc> <f2.ifc>                   Compare two IFC files
+              [--by-content] [--identity-out F] [--identity-in F]  Match re-GUIDed elements by content; save/replay the identity map
     validate  <file.ifc>                          Structural validation checks
     bsdd      <class|search|psets|qsets> <arg>     buildingSMART Data Dictionary lookup
     stats     <file.ifc>                          Auto-calculated model KPIs and health check
@@ -101,6 +110,8 @@ const HELP = `
     layer     <publish|diff|merge|log|bake|...>    Layered change tracking over a local store (.ifc-lite/)
     ref       <list|create|move|protect>           Manage named refs in the layer store
     gym       --model <file.ifc> | --seed <n>      reset/step/reward environment loop (JSONL over stdin/stdout)
+    delivery  <recipe.json> [--json] [--out F] [--html F]  Repeatable delivery check (structural + IDS) from a saved recipe
+              recipe: {"models":["m.ifc"],"structural":true,"ids":["rules.ids"]}, paths relative to the recipe file
 
   Options:
     --help, -h           Show help
@@ -126,11 +137,20 @@ const HELP = `
     ifc-lite props model.ifc --id 42
     ifc-lite export model.ifc --format csv --type IfcWall --columns Name,Type,GlobalId
     ifc-lite export model.ifc --format json --type IfcWall,IfcDoor
+    ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Mark=Pset_DoorCommon.Reference"
+    ifc-lite schedule model.ifc --type IfcWall --columns "Name,Qto_WallBaseQuantities.NetVolume" --where Pset_WallCommon.IsExternal=true --format json
+    ifc-lite schedule model.ifc --type IfcDoor --columns "Name=Name, Fire=Pset_DoorCommon.FireRating, Area=Qto_DoorBaseQuantities.Area" --group-by Fire --sort "Area:desc" --subtotals "count, sum:Area"
+    ifc-lite schedule model.ifc --preset door
+    ifc-lite schedule model.ifc --preset material-takeoff --format json
+    ifc-lite schedule model.ifc --preset door --format md
+    ifc-lite schedule model.ifc --preset door --format html > doors.html
+    ifc-lite schedule model.ifc --preset door --save door-schedule.json
+    ifc-lite schedule model.ifc --spec door-schedule.json --format json
     ifc-lite diagnose-geometry model.ifc --json
     ifc-lite diagnose-geometry model.ifc --type IfcWall
     ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
     ifc-lite ids model.ifc requirements.ids --json
-    ifc-lite bcf create --title "Missing door" --out issue.bcf
+    ifc-lite bcf create --title "Missing door" --out topic.bcf
     ifc-lite clash model.ifc --matrix --json
     ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance --clearance 0.05
     ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip
@@ -151,6 +171,8 @@ const HELP = `
     ifc-lite convert model.ifc --schema IFC4 --out model-ifc4.ifc
     ifc-lite diff model-v1.ifc model-v2.ifc --json
     ifc-lite diff model-v1.ifc model-v2.ifc --by-entity
+    ifc-lite diff model-v1.ifc model-v2.ifc --by-content --identity-out renames.json
+    ifc-lite diff model-v1.ifc model-v2.ifc --identity-in renames.json
     ifc-lite validate model.ifc --json
     ifc-lite bsdd class IfcWall
     ifc-lite bsdd search "concrete wall"
@@ -250,11 +272,17 @@ async function main(): Promise<void> {
     case 'export':
       await exportCommand(commandArgs);
       break;
+    case 'schedule':
+      await scheduleCommand(commandArgs);
+      break;
     case 'diagnose-geometry':
       await diagnoseGeometryCommand(commandArgs);
       break;
     case 'extract-entities':
       await extractEntitiesCommand(commandArgs);
+      break;
+    case 'anonymize':
+      await anonymizeCommand(commandArgs);
       break;
     case 'ids':
       await idsCommand(commandArgs);
@@ -330,6 +358,9 @@ async function main(): Promise<void> {
       break;
     case 'gym':
       await gymCommand(commandArgs);
+      break;
+    case 'delivery':
+      await deliveryCommand(commandArgs);
       break;
     default:
       process.stderr.write(`Unknown command: ${command}\n`);

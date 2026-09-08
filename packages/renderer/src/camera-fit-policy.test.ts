@@ -160,6 +160,43 @@ describe('pickFitPolicy', () => {
       assert.ok(dir.z > 0, 'should be looking +Z');
     });
 
+    it('actually tilts a Y-dominant model (issue #2441)', () => {
+      // 300 m tall, 5 m footprint: aspect 60 and longest 300, so the linear
+      // branch fires — a mast, chimney, shaft, lift core or turbine tower.
+      // The 20° tilt used to be applied around world Y, the very axis it was
+      // tilting from, so for a Y-dominant bbox it cancelled: forward came out
+      // exactly (0,1,0), parallel to the policy's own up, and every component
+      // of the view-projection matrix went NaN.
+      const policy = pickFitPolicy(bounds(0, 0, 0, 5, 300, 5), { fovY: FOV_45 });
+      assert.strictEqual(policy.kind, 'linear');
+      assert.deepStrictEqual(policy.up, { x: 0, y: 1, z: 0 });
+
+      const dir = {
+        x: policy.target.x - policy.position.x,
+        y: policy.target.y - policy.position.y,
+        z: policy.target.z - policy.position.z,
+      };
+      const len = Math.sqrt(dir.x * dir.x + dir.y * dir.y + dir.z * dir.z);
+      assert.ok(len > 0, 'position and target must differ');
+      const forward = { x: dir.x / len, y: dir.y / len, z: dir.z / len };
+
+      // Still looking along the longest axis, but now genuinely tilted off it
+      // by the full 20°, against a perpendicular axis (world Z).
+      assertCloseTo(forward.x, 0, 6);
+      assertCloseTo(forward.y, Math.cos((20 * Math.PI) / 180), 6);
+      assertCloseTo(forward.z, -Math.sin((20 * Math.PI) / 180), 6);
+
+      // The load-bearing invariant: forward must not be parallel to up, or
+      // `MathUtils.lookAt` has no right axis to build the view matrix from.
+      const cross = {
+        x: forward.y * policy.up.z - forward.z * policy.up.y,
+        y: forward.z * policy.up.x - forward.x * policy.up.z,
+        z: forward.x * policy.up.y - forward.y * policy.up.x,
+      };
+      const crossLen = Math.sqrt(cross.x * cross.x + cross.y * cross.y + cross.z * cross.z);
+      assertCloseTo(crossLen, Math.sin((20 * Math.PI) / 180), 6);
+    });
+
     it('floors the feature size against pathological zero-thin bboxes', () => {
       // A 1000 × 0.0001 × 1 model — shortest dim is effectively zero,
       // would drive distance to ~zero if naively used. Policy must clamp.
@@ -171,6 +208,49 @@ describe('pickFitPolicy', () => {
       // distance ought to land somewhere usable — not zero, not 2000.
       assert.ok(policy.distance > 1, `distance ${policy.distance} should exceed 1`);
       assert.ok(policy.distance < 1000 * 0.31, `distance ${policy.distance} should stay under 310`);
+    });
+
+    // Every other linear fixture saturates one of the two clamps, so the
+    // expression they are clamping is unobservable: TARGET_FEATURE_PIXELS,
+    // `fovY`, `viewportShortPx` and the featureSize floor can all be changed
+    // (or the whole `distanceForFeature` term replaced by a constant) without
+    // reddening the suite. Example: bounds(0,0,0,1000,0.0001,1) at the default
+    // 640 px viewport solves to 483 and clamps DOWN to maxDistance 300; delete
+    // the term entirely and the same input clamps UP to minDistance 120.7 —
+    // both satisfy that test's `> 1 && < 310`. This fixture is the same bbox
+    // with a viewport small enough to land strictly between the two clamps.
+    it('solves the feature-pixel equation when neither clamp binds', () => {
+      const policy = pickFitPolicy(bounds(0, 0, 0, 1000, 0.0001, 1), {
+        fovY: FOV_45,
+        viewportShortPx: 200,
+      });
+      assert.strictEqual(policy.kind, 'linear');
+      // featureSize = max(0.0001, 1000 * 0.01) = 10 (the 1% floor).
+      // distance = featureSize * viewportPx / (2 * TARGET_FEATURE_PIXELS * tan(fovY/2))
+      //          = 10 * 200 / (2 * 16 * tan(22.5°)) = 150.888…
+      const expected = (10 * 200) / (2 * 16 * Math.tan(FOV_45 / 2));
+      assertCloseTo(policy.distance, expected, 6);
+      assertCloseTo(policy.distance, 150.8879, 3);
+      // Prove neither clamp is active, so the number above really is the
+      // solved distance and not a clamp in disguise.
+      const minDistance = (1000 * 0.05) / Math.max(Math.tan(FOV_45 / 2), 0.05);
+      assert.ok(policy.distance > minDistance, `expected > minDistance ${minDistance}`);
+      assert.ok(policy.distance < 1000 * 0.3, 'expected below maxDistance 300');
+
+      // And the equation's variables must each move the answer. Both extra
+      // probes stay inside the unclamped window (120.7, 300): a taller
+      // viewport scales the distance linearly, a wider FOV pulls the camera in.
+      const tallerViewport = pickFitPolicy(bounds(0, 0, 0, 1000, 0.0001, 1), {
+        fovY: FOV_45,
+        viewportShortPx: 300,
+      });
+      assertCloseTo(tallerViewport.distance, expected * 1.5, 6);
+      const wideFov = pickFitPolicy(bounds(0, 0, 0, 1000, 0.0001, 1), {
+        fovY: (90 * Math.PI) / 180,
+        viewportShortPx: 200,
+      });
+      assertCloseTo(wideFov.distance, (10 * 200) / (2 * 16 * Math.tan(Math.PI / 4)), 6);
+      assert.ok(wideFov.distance < policy.distance, 'a wider FOV must need less distance');
     });
 
     it('caps the linear distance at 30% of the longest axis', () => {

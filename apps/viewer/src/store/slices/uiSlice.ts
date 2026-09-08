@@ -8,23 +8,28 @@
 
 import type { StateCreator } from 'zustand';
 import {
-  MERGE_LAYERS_STORAGE_KEY,
-  GEOMETRY_MODE_STORAGE_KEY,
   HIERARCHY_MODE_STORAGE_KEY,
   TOOLBAR_STYLE_STORAGE_KEY,
   RIBBON_COLLAPSED_STORAGE_KEY,
   RIBBON_CONTEXTUAL_TABS_STORAGE_KEY,
   UI_DEFAULTS,
-  type GeometryMode,
   type RibbonTabId,
   type ToolbarStyle,
 } from '../constants.js';
+import {
+  createGeometryLoadSettings,
+  geometryLoadSettingsInitialState,
+  type GeometryLoadSettingsActions,
+  type GeometryLoadSettingsState,
+} from './geometryLoadSettings.js';
 import type { ContactShadingQuality, SeparationLinesQuality } from '@ifc-lite/renderer';
 import type { FederatedModel } from '../types.js';
 import type { GeometryResult } from '@ifc-lite/geometry';
 import type { CesiumPlacementDraft } from './cesiumSlice.js';
 
 export type ThemeMode = 'light' | 'dark' | 'colorful';
+export type { GeometryReloadReason } from './geometryLoadSettings.js';
+
 export type HierarchyMode = 'spatial' | 'type' | 'ifc-type' | 'material' | 'groups';
 
 function getInitialHierarchyMode(): HierarchyMode {
@@ -56,12 +61,10 @@ export interface PropertyFocusTarget {
 }
 
 /**
- * Tools that require edit mode to function. Entering one of them
- * flips `editEnabled` on; leaving edit mode forces these tools
- * back to `'select'`. Keep the list in sync — duplicating the
- * authoring-tool check between `setActiveTool` and
- * `setEditEnabled` is how the two states drift apart in the
- * "enter edit, switch tool, exit edit" flow.
+ * Tools that require edit mode to function. Entering one flips
+ * `editEnabled` on; leaving edit mode forces these back to `'select'`.
+ * Keep in sync between `setActiveTool` and `setEditEnabled` — duplicating
+ * the check is how the two states drift in "enter edit, switch tool, exit".
  */
 const AUTHORING_TOOLS: ReadonlySet<string> = new Set([
   'addElement',
@@ -89,21 +92,25 @@ export interface UICrossSliceState {
   cesiumPlacementDraft: CesiumPlacementDraft | null;
 }
 
-export interface UISlice {
+export interface UISlice extends GeometryLoadSettingsState, GeometryLoadSettingsActions {
   // State
   leftPanelCollapsed: boolean;
   rightPanelCollapsed: boolean;
   activeTool: string;
   /**
-   * Global edit mode. When `true`, all in-place editing affordances
-   * (inline property/attribute editors, future geometry manipulators,
-   * georeference placement, the add-element draw tools) are unlocked.
-   * When `false` the viewer is strictly read-only — this is the
-   * default. The toggle is surfaced as a single pill in the main
-   * toolbar so the user has one switch for "am I editing anything?"
-   * rather than per-panel toggles.
+   * Global edit mode. When `true`, all in-place editing affordances (inline
+   * property/attribute editors, future geometry manipulators, georeference
+   * placement, add-element draw tools) are unlocked; `false` (default) is
+   * strictly read-only. One pill in the main toolbar, not per-panel toggles.
    */
   editEnabled: boolean;
+  /**
+   * Space Sketch minimized to a reopen pill. Set when the user clicks into
+   * the 3D scene while the tool is open, so the panel gets out of the way
+   * without discarding the draft (overlay stays mounted, panel collapses).
+   * Reset false on any tool change so reopening always starts expanded.
+   */
+  spaceSketchMinimized: boolean;
   /** Active tab in the Properties panel. Controlled so in-app flows (e.g.
    *  adding a bSDD property) can jump back to "properties" — issue #1107. */
   propertiesActiveTab: 'properties' | 'quantities' | 'bsdd' | 'raw-step';
@@ -126,37 +133,17 @@ export interface UISlice {
   separationLinesIntensity: number;
   separationLinesRadius: number;
   /**
-   * Issue #540 — "Merge Multilayer Walls" load-time toggle. Reading
-   * this on next file load is what the WASM bridge actually uses;
-   * flipping it while a model is in scope sets
-   * `mergeLayersPendingReload` so the UI can prompt the user.
-   */
-  mergeLayers: boolean;
-  /** True after the user flipped `mergeLayers` while a model was loaded. */
-  mergeLayersPendingReload: boolean;
-  /**
-   * Load-time geometry fidelity mode (`fast` = skip tiny cuts + auto-low
-   * density; `exact` = full fidelity). Like `mergeLayers`, it is read on the
-   * next file load; flipping it while a model is in scope sets
-   * `geometryModePendingReload` so the UI can prompt a reload.
-   */
-  geometryMode: GeometryMode;
-  /** True after the user flipped `geometryMode` while a model was loaded. */
-  geometryModePendingReload: boolean;
-  /**
-   * Desktop toolbar style (issue #1686): the tabbed, IFCFlux-style
-   * `ribbon` (the default) or the original `classic` strip. Persisted
-   * preference — the mobile toolbar is orthogonal (`isMobile` wins on
-   * small screens).
+   * Desktop toolbar style (issue #1686): tabbed, IFCFlux-style `ribbon`
+   * (default) or the original `classic` strip. Persisted preference —
+   * orthogonal to the mobile toolbar (`isMobile` wins on small screens).
    */
   toolbarStyle: ToolbarStyle;
   /** Ribbon collapsed to its tab strip (Office-style double-click). */
   ribbonCollapsed: boolean;
   /**
-   * Ribbon tab showing in the band. Lives in the store rather than the
-   * component so non-React drivers (the ribbon walkthrough, the command
-   * palette) can open a tab; deliberately NOT persisted, so every session
-   * still starts on Home.
+   * Ribbon tab showing in the band. Lives in the store, not the component,
+   * so non-React drivers (walkthrough, command palette) can open a tab;
+   * deliberately NOT persisted, so every session still starts on Home.
    */
   ribbonTab: RibbonTabId;
   /**
@@ -170,6 +157,8 @@ export interface UISlice {
   setLeftPanelCollapsed: (collapsed: boolean) => void;
   setRightPanelCollapsed: (collapsed: boolean) => void;
   setActiveTool: (tool: string) => void;
+  /** Collapse the Space Sketch panel to a reopen pill (or restore it). */
+  setSpaceSketchMinimized: (minimized: boolean) => void;
   setEditEnabled: (enabled: boolean) => void;
   toggleEditEnabled: () => void;
   setPropertiesActiveTab: (tab: 'properties' | 'quantities' | 'bsdd' | 'raw-step') => void;
@@ -192,14 +181,6 @@ export interface UISlice {
   setSeparationLinesQuality: (quality: SeparationLinesQuality) => void;
   setSeparationLinesIntensity: (intensity: number) => void;
   setSeparationLinesRadius: (radius: number) => void;
-  /** Update the merge-layers toggle and persist to localStorage. */
-  setMergeLayers: (v: boolean) => void;
-  /** Acknowledge the reload banner without performing a reload. */
-  clearMergeLayersPendingReload: () => void;
-  /** Update the geometry fidelity mode and persist to localStorage. */
-  setGeometryMode: (v: GeometryMode) => void;
-  /** Acknowledge the geometry-mode reload banner without performing a reload. */
-  clearGeometryModePendingReload: () => void;
   /** Switch the desktop toolbar style and persist the choice. */
   setToolbarStyle: (style: ToolbarStyle) => void;
   /** Collapse/expand the ribbon band and persist the choice. */
@@ -208,6 +189,16 @@ export interface UISlice {
   setRibbonTab: (tab: RibbonTabId) => void;
   /** Turn contextual tab following on/off and persist the choice. */
   setRibbonContextualTabs: (enabled: boolean) => void;
+
+  /**
+   * When true, `AnonymizedExportDialog` should auto-open. Set by the entity
+   * context menu ("Export anonymized…") and the Command Palette
+   * (`export:anonymized`) — the two entry points that are not the export
+   * toolbar dropdown itself. Consumed once then cleared by the dialog
+   * (mirrors `flavorDialogRequested`, `extensionsSlice.ts`).
+   */
+  anonymizedExportRequested: boolean;
+  setAnonymizedExportRequested: (requested: boolean) => void;
 }
 
 /** Apply the correct CSS classes on <html> for the given theme */
@@ -218,10 +209,9 @@ function applyThemeClasses(theme: ThemeMode) {
 }
 
 /**
- * Returns true when any geometry is loaded — federated model map has
- * entries OR the legacy single-model `geometryResult` is non-null with
- * at least one mesh. Centralised here so the merge-layers toggle has
- * a single source of truth for "is a model loaded?".
+ * True when any geometry is loaded — federated model map has entries, or
+ * the legacy single-model `geometryResult` has a mesh. Centralised so the
+ * merge-layers toggle has one source of truth for "is a model loaded?".
  */
 function hasLoadedModel(state: UICrossSliceState): boolean {
   if (state.models.size > 0) return true;
@@ -229,11 +219,14 @@ function hasLoadedModel(state: UICrossSliceState): boolean {
 }
 
 export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UISlice> = (set, get) => ({
+  ...geometryLoadSettingsInitialState,
+  ...createGeometryLoadSettings(set, get, () => hasLoadedModel(get())),
   // Initial state
   leftPanelCollapsed: false,
   rightPanelCollapsed: false,
   activeTool: UI_DEFAULTS.ACTIVE_TOOL,
   editEnabled: false,
+  spaceSketchMinimized: false,
   propertiesActiveTab: 'properties',
   hierarchyMode: getInitialHierarchyMode(),
   pendingPropertyFocus: null,
@@ -250,34 +243,44 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   separationLinesQuality: UI_DEFAULTS.SEPARATION_LINES_QUALITY,
   separationLinesIntensity: UI_DEFAULTS.SEPARATION_LINES_INTENSITY,
   separationLinesRadius: UI_DEFAULTS.SEPARATION_LINES_RADIUS,
-  mergeLayers: UI_DEFAULTS.MERGE_LAYERS,
-  mergeLayersPendingReload: false,
-  geometryMode: UI_DEFAULTS.GEOMETRY_MODE,
-  geometryModePendingReload: false,
   toolbarStyle: UI_DEFAULTS.TOOLBAR_STYLE,
   ribbonCollapsed: UI_DEFAULTS.RIBBON_COLLAPSED,
   ribbonTab: UI_DEFAULTS.RIBBON_TAB,
   ribbonContextualTabs: UI_DEFAULTS.RIBBON_CONTEXTUAL_TABS,
+  anonymizedExportRequested: false,
 
   // Actions
   setLeftPanelCollapsed: (leftPanelCollapsed) => set({ leftPanelCollapsed }),
   setRightPanelCollapsed: (rightPanelCollapsed) => set({ rightPanelCollapsed }),
   setActiveTool: (activeTool) => {
-    // Authoring tools require edit mode. Entering one of them flips
-    // the global toggle on so the rest of the UI (Properties panel,
-    // future manipulators) stays in sync. Read-only tools leave the
-    // flag alone.
+    // Authoring tools require edit mode; entering one flips the global
+    // toggle on so the rest of the UI (Properties panel, future
+    // manipulators) stays in sync — read-only tools leave it alone. Any
+    // landed tool change also resets Space Sketch's minimize state (so a
+    // fresh open always starts expanded); a change the collab gate below
+    // rejects isn't landed, so the flag stays put.
+    //
+    // Leaving 'measure' must discard any in-progress gesture — MeasureOverlay
+    // only mounts while activeTool === 'measure' (ToolOverlays.tsx), so this
+    // is the one place a stray drag/polyline sequence could be left stranded.
+    // Routed through measurementSlice's resetMeasureGesture instead of
+    // duplicating the clear here, keeping one place that knows what
+    // "in-progress gesture" means (see measurementSlice.ts's measureMode doc).
+    const leavingMeasure = get().activeTool === 'measure' && activeTool !== 'measure';
     if (AUTHORING_TOOLS.has(activeTool)) {
       // Collab role gate: in a shared session only editor/admin may
       // unlock authoring. Viewers/commenters can still pick read-only
       // tools, so we only block the authoring branch.
       const canEdit = (get() as unknown as { canCollabEdit?: () => boolean }).canCollabEdit;
       if (canEdit && !canEdit()) return;
-      set({ activeTool, editEnabled: true });
+      if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+      set({ activeTool, editEnabled: true, spaceSketchMinimized: false });
       return;
     }
-    set({ activeTool });
+    if (leavingMeasure) (get() as unknown as { resetMeasureGesture?: () => void }).resetMeasureGesture?.();
+    set({ activeTool, spaceSketchMinimized: false });
   },
+  setSpaceSketchMinimized: (spaceSketchMinimized) => set({ spaceSketchMinimized }),
   setEditEnabled: (editEnabled) => {
     if (editEnabled) {
       // Collab role gate: only editor/admin (or single-user, role===null)
@@ -296,6 +299,7 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
       set((s) => ({
         editEnabled: false,
         activeTool: AUTHORING_TOOLS.has(s.activeTool) ? 'select' : s.activeTool,
+        spaceSketchMinimized: false,
         cesiumPlacementEditMode: false,
         cesiumPlacementDraftModelId: null,
         cesiumPlacementDraft: null,
@@ -372,47 +376,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
   setSeparationLinesIntensity: (separationLinesIntensity) => set({ separationLinesIntensity }),
   setSeparationLinesRadius: (separationLinesRadius) => set({ separationLinesRadius }),
 
-  setMergeLayers: (next) => {
-    const current = get();
-    if (current.mergeLayers === next) return;
-    // Persist eagerly so the next page-load picks the same value up
-    // through `getInitialMergeLayers` (constants.ts). Wrap in
-    // try/catch — Safari private mode / locked storage throws.
-    try {
-      localStorage.setItem(MERGE_LAYERS_STORAGE_KEY, String(next));
-    } catch {
-      /* storage unavailable — accept the in-memory toggle silently */
-    }
-    // Only ask the user to reload if a model is currently in scope.
-    // Toggling the setting on an empty viewer simply changes the
-    // future load behaviour with no visible effect.
-    const pending = hasLoadedModel(current);
-    set({ mergeLayers: next, mergeLayersPendingReload: pending });
-  },
-
-  clearMergeLayersPendingReload: () => set({ mergeLayersPendingReload: false }),
-
-  setGeometryMode: (next) => {
-    const current = get();
-    if (current.geometryMode === next) return;
-    // Persist eagerly so the next page-load picks the same value up through
-    // `getInitialGeometryMode` (constants.ts). Wrap in try/catch — Safari
-    // private mode / locked storage throws.
-    try {
-      localStorage.setItem(GEOMETRY_MODE_STORAGE_KEY, next);
-    } catch (err) {
-      // Storage unavailable — accept the in-memory toggle, but don't swallow
-      // silently (AGENTS.md: no silent catch). The choice won't persist.
-      console.warn('[geometry-mode] persist failed; in-memory only', err);
-    }
-    // Only prompt a reload if a model is currently in scope; toggling on an
-    // empty viewer simply changes the next load with no visible effect.
-    const pending = hasLoadedModel(current);
-    set({ geometryMode: next, geometryModePendingReload: pending });
-  },
-
-  clearGeometryModePendingReload: () => set({ geometryModePendingReload: false }),
-
   setToolbarStyle: (toolbarStyle) => {
     // Persist eagerly so the next page-load boots straight into the chosen
     // style (constants.ts `resolveInitialToolbarStyle`). Wrap in try/catch —
@@ -444,4 +407,6 @@ export const createUISlice: StateCreator<UISlice & UICrossSliceState, [], [], UI
     }
     set({ ribbonContextualTabs });
   },
+
+  setAnonymizedExportRequested: (anonymizedExportRequested) => set({ anonymizedExportRequested }),
 });

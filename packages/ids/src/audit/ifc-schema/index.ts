@@ -724,6 +724,11 @@ async function resolveEntityCandidates(
           .filter((e) => rx.test(e.name.toUpperCase()) || rx.test(e.name))
           .map((e) => e.name);
       } catch {
+        // Empty means "no candidates resolved", and the one caller skips the
+        // pset-applicability cross-check in that case rather than reporting a
+        // pass. Bad patterns are already reported by the coherence audit; a
+        // failure to load the schema entity list is reported by every other
+        // check in this file, all of which need it.
         return [];
       }
     }

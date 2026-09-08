@@ -2,7 +2,61 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+use super::output_cap::SymbolicTruncation;
 use serde::{Deserialize, Serialize};
+
+// ────────────────────────────────────────────────────────────────────────────
+// NaN sentinel <-> JSON `null`.
+//
+// Several scalars below use `f32::NAN` as a SENTINEL meaning "never resolved"
+// — `world_y` when the placement chain yields no elevation, and
+// `hatch_angle_secondary` when a fill carries no cross-hatch. The whole point
+// of that sentinel is that "unresolved" must not read as `0.0`, which is a
+// perfectly real elevation / angle.
+//
+// JSON has no NaN. `serde_json` already WRITES a non-finite `f32` as `null`,
+// but the derived `Deserialize` could not READ it back: `invalid type: null,
+// expected f32`. So every JSON hop destroyed the sentinel — most sharply in
+// `apps/server/src/routes/parse/cache_keys.rs`, where the symbolic cache is
+// re-read with `from_slice(..).unwrap_or_else(|_| SymbolicData::default())`,
+// meaning ONE unresolved scalar made the entire cached blob unreadable and
+// every replayed request served no symbolic data at all.
+//
+// `nan_as_null` fixes the READ side only. Its serialize half emits exactly
+// what `serde_json` already emitted (`null` for NaN, the plain number
+// otherwise), so no finite value — `0.0` included — changes shape on the
+// wire. `null` and `0` stay distinct, and an OMITTED key stays a hard
+// deserialization error rather than a third spelling of "unresolved".
+// ────────────────────────────────────────────────────────────────────────────
+
+/// `serialize_with`/`deserialize_with` pair mapping the `f32::NAN`
+/// "unresolved" sentinel to and from JSON `null`.
+///
+/// Read back, any `null` becomes `f32::NAN`. `serde_json` also writes `±inf`
+/// as `null`, so an infinity would return as NaN — no producer in this crate
+/// emits one, and NaN is the correct reading of "not a usable elevation"
+/// either way. Consumers must test `is_nan()`, not `!is_finite()`.
+pub(crate) mod nan_as_null {
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub(crate) fn serialize<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        if value.is_nan() {
+            serializer.serialize_none()
+        } else {
+            serializer.serialize_f32(*value)
+        }
+    }
+
+    pub(crate) fn deserialize<'de, D>(deserializer: D) -> Result<f32, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        Ok(Option::<f32>::deserialize(deserializer)?.unwrap_or(f32::NAN))
+    }
+}
 
 // ────────────────────────────────────────────────────────────────────────────
 // Pure-Rust serializable primitive types. The wasm-bindgen wrappers in
@@ -21,7 +75,10 @@ pub struct SymbolicPolyline {
     /// True if the curve is a closed loop.
     pub closed: bool,
     /// World-Y elevation captured from the placement chain or the
-    /// polyline's own 3D `IfcCartesianPoint` Z component.
+    /// polyline's own 3D `IfcCartesianPoint` Z component. `f32::NAN` when the
+    /// elevation could not be resolved — distinct from a genuine `0.0`, and
+    /// spelled `null` on the JSON wire (see [`nan_as_null`]).
+    #[serde(with = "nan_as_null")]
     pub world_y: f32,
     /// Representation identifier (`Plan`, `Annotation`, `FootPrint`, `Axis`).
     pub representation: String,
@@ -36,6 +93,7 @@ pub struct SymbolicCircle {
     pub center_y: f32,
     pub radius: f32,
     /// World-Y elevation (see [`SymbolicPolyline::world_y`]).
+    #[serde(with = "nan_as_null")]
     pub world_y: f32,
     /// Start angle in radians (0 for full circle).
     pub start_angle: f32,
@@ -82,13 +140,18 @@ pub struct SymbolicText {
     pub dir_y: f32,
     /// Font height in model units (already unit-scaled).
     pub height: f32,
-    /// UTF-8 text content (verbatim from the IFC literal — JS-side
-    /// decodes any `\X2\…\X0\` escape sequences).
+    /// UTF-8 text content, ALREADY DECODED. It is read through
+    /// `AttributeValue::from_token`, which un-doubles `''` and runs
+    /// `decode_ifc_string` (`\X2\…\X0\`, `\X\NN`, `\S\X`, `\\`) at the parse
+    /// boundary (#2394) — so consumers must NOT decode it again. A second
+    /// decode is not idempotent: it collapses `\\` twice, turning an authored
+    /// `\\server\share` into `\server\share`.
     pub content: String,
     /// IFC `BoxAlignment` (`top-left`, `center`, `bottom-right`, …). Empty
     /// string when absent.
     pub alignment: String,
     /// World-Y elevation (see [`SymbolicPolyline::world_y`]).
+    #[serde(with = "nan_as_null")]
     pub world_y: f32,
     /// sRGB straight-alpha colour `[r, g, b, a]`. Defaults to dark-grey
     /// when no IfcStyledItem chain resolves a colour.
@@ -119,9 +182,13 @@ pub struct SymbolicFillArea {
     pub has_hatching: bool,
     pub hatch_spacing: f32,
     pub hatch_angle: f32,
-    /// Secondary cross-hatch angle. NaN if absent.
+    /// Secondary cross-hatch angle. NaN if absent — `null` on the JSON wire
+    /// (see [`nan_as_null`]), which is NOT the same as a genuine `0.0` angle.
+    #[serde(with = "nan_as_null")]
     pub hatch_angle_secondary: f32,
     pub hatch_line_width: f32,
+    /// World-Y elevation (see [`SymbolicPolyline::world_y`]).
+    #[serde(with = "nan_as_null")]
     pub world_y: f32,
     pub representation: String,
 }
@@ -137,6 +204,8 @@ pub struct SymbolicGridAxis {
     pub tag: String,
     /// Endpoint pair `[x0, y0, x1, y1]` in metres (plan view).
     pub endpoints: [f32; 4],
+    /// World-Y elevation (see [`SymbolicPolyline::world_y`]).
+    #[serde(with = "nan_as_null")]
     pub world_y: f32,
 }
 
@@ -154,9 +223,28 @@ pub struct SymbolicData {
     pub texts: Vec<SymbolicText>,
     /// All filled regions (`IfcAnnotationFillArea`).
     pub fills: Vec<SymbolicFillArea>,
+    /// Set when extraction stopped at [`MAX_SYMBOLIC_ELEMENTS`]; `None` when the
+    /// file was emitted in full.
+    ///
+    /// `#[serde(default)]` so a `SymbolicData` cached before this field existed
+    /// still deserializes (`apps/server/src/routes/parse/cache_keys.rs` reads
+    /// cached JSON), and `skip_serializing_if` so an untruncated response is
+    /// byte-identical to what it was before.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub truncated: Option<SymbolicTruncation>,
 }
 
+
 impl SymbolicData {
+    /// Total primitives across every collection.
+    pub(super) fn len(&self) -> usize {
+        self.grid_axes.len()
+            + self.polylines.len()
+            + self.circles.len()
+            + self.texts.len()
+            + self.fills.len()
+    }
+
     /// Returns true if no symbolic primitives were extracted — the server
     /// can omit the field from its response instead of emitting an empty
     /// object.
@@ -166,5 +254,12 @@ impl SymbolicData {
             && self.circles.is_empty()
             && self.texts.is_empty()
             && self.fills.is_empty()
+            // A truncated result is never "empty", even when it carries no
+            // primitives. `apps/server/src/types/response.rs` uses this for
+            // `skip_serializing_if`, so returning true here would drop the
+            // diagnostic on exactly the response that needs it most. Not
+            // reachable from extraction under the shipped bounds, but it
+            // round-trips in from cached JSON.
+            && self.truncated.is_none()
     }
 }

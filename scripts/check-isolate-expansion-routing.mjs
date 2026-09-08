@@ -1,0 +1,560 @@
+#!/usr/bin/env node
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+/**
+ * GATE for issue #3338: "expansion is one call site every channel must
+ * remember to use."
+ *
+ * `expandToGeometryBearingIds` (`apps/viewer/src/utils/aggregation.ts`)
+ * replaces a geometry-less `IfcElementAssembly` id with its `IfcRelAggregates`
+ * parts. It is reached through exactly one production entry point,
+ * `cameraCallbacks.resolveHighlightIds` (wired by `Viewport.tsx`'s
+ * `resolveHighlightIds` callback) -- so any code path that calls the store's
+ * `isolateEntities` with ids the USER selected (a ref, a search hit, a filter
+ * row, an assembly by GUID) is only correct if it routes the ids through that
+ * resolver first. Nothing in the type system enforces this: `isolateEntities`
+ * takes a bare `number[]`, so a channel that skips the resolver still
+ * typechecks and still isolates -- it just isolates a mesh-less id, and the
+ * viewport goes blank.
+ *
+ * This happened twice nine hours apart (#2531, #2532) with no CI run
+ * containing both sides, and a fifth channel (the SDK/MCP `isolate()` call,
+ * `apps/viewer/src/sdk/adapters/visibility-adapter.ts`) carried the same gap
+ * until #3382. A sixth channel this gate's own audit found:
+ * `apps/viewer-embed/src/bridge/handler.ts`'s `ISOLATE` postMessage command
+ * (fixed alongside this gate, same PR).
+ *
+ * A SEVENTH channel surfaced after this gate shipped, from an adversarial
+ * review of the gate itself: `apps/viewer-embed/src/components/
+ * useEmbedUrlParams.ts`'s `?isolate=` handler calls `setIsolatedEntities(`,
+ * never `isolateEntities(` -- the visibility slice's other raw-id isolation
+ * actuator (ASSIGNS instead of TOGGLING; see `SET_ISOLATED_CALL_PATTERN`).
+ * A gate that only watched one of the two sibling actions let a channel
+ * dodge it for free by picking the other one, so the gate now watches both
+ * (`RAW_ISOLATION_ACTIONS`), and every OTHER direct `setIsolatedEntities`
+ * caller was audited at the same time -- see `REQUIRES_ROUTING_MARKER` and
+ * `NO_MARKER_REQUIRED` below for what each one turned out to need.
+ *
+ * Run: `node scripts/check-isolate-expansion-routing.mjs` (also
+ * `pnpm check:isolate-expansion-routing`).
+ *
+ * ## What counts as a channel
+ *
+ * Any non-test `.ts`/`.tsx` file under `apps/viewer/src` or
+ * `apps/viewer-embed/src` that calls one of `POLICED_ACTIONS` --
+ * `isolateEntities`, `setIsolatedEntities`, `hideEntities`, `showEntities`,
+ * `updateMeshColors` (directly, via `state.`, the optional-call form
+ * `?.(`, a destructured/aliased local binding of either (`const {
+ * isolateEntities: apply } = ...`, including `let`/reassignment and
+ * function-parameter destructuring -- see `ALIAS_DESTRUCTURE_PATTERN`), or a
+ * plain member-access rebinding (`const apply = state.isolateEntities;` --
+ * see `PROPERTY_ALIAS_PATTERN`) on the viewer store's `visibilitySlice`.
+ * Test files (`*.test.ts(x)`) are excluded -- the fixtures IN this gate's
+ * own test file, and the wiring tests that already pin each of these seven
+ * channels, would otherwise all read as new channels.
+ *
+ * ## Two ways to fail
+ *
+ * 1. UNKNOWN CHANNEL: a file calls one of `POLICED_ACTIONS`
+ *    and is not in either allowlist below. This is the "a channel nobody
+ *    enumerated" failure mode -- new code that isolates ids has to be
+ *    triaged into one of the two lists (with a reason), not silently pass.
+ * 2. LOST ROUTING: a file in `REQUIRES_ROUTING_MARKER` has a policed CALL
+ *    SITE whose own argument does not reach one of the resolvers in
+ *    `ROUTING_MARKERS`. This catches a channel that HAD the fix regressing --
+ *    e.g. a refactor that inlines the handler and drops the
+ *    `cameraCallbacks.resolveHighlightIds` call along the way. Asked per call
+ *    site rather than per file (#3338 review): a file that routes four
+ *    channels answered the file-level question with any one of them, so
+ *    stripping the routing from one call site went unnoticed. A single action
+ *    in such a file can opt out through `EXEMPT_ACTIONS`, with a reason.
+ *
+ * `NO_MARKER_REQUIRED` covers the other two shapes a compliant channel can
+ * take: a DIFFERENT, already-verified expansion mechanism (HierarchyPanel's
+ * class/type/group tabs isolate ids that `treeDataBuilder.ts` already
+ * resolved to geometry-bearing members at tree-build time, via
+ * `hasAggregatedGeometry`/`collectAggregatedDescendants` -- a different,
+ * non-renderer-dependent path to the same correctness property), and a
+ * TRACKED, IN-FLIGHT fix (an entry citing an open PR). Both need a `reason`;
+ * neither is silent.
+ *
+ * ## LIMITATIONS -- read before assuming coverage
+ *
+ *  - Data flow is followed, but only through LOCAL ASSIGNMENTS, and only a
+ *    bounded number of hops (`ASSIGNMENT_WALK_DEPTH`). "Lost routing" used to
+ *    ask whether a ROUTING_MARKERS token appeared ANYWHERE in the file, which
+ *    made the question vacuous for the two files that route four channels
+ *    each: deleting `visibility-adapter.ts`'s isolate() routing left the file
+ *    green because its hide() still routed. `unroutedCallSites` now checks
+ *    each call site's own argument, following `const x = resolver(...)` into
+ *    the call that uses `x`. A value that reaches the action through a helper
+ *    function, a ref, or a component prop still reads as UNROUTED -- a false
+ *    failure a reviewer clears with an allowlist entry, which is the safe
+ *    direction.
+ *  - An ALIASED call (`const { isolateEntities: apply } = ...; apply(ids)`)
+ *    has no literal call site to check, so for those files the gate falls
+ *    back to the old file-level question rather than passing them silently.
+ *  - `setPendingColorUpdates`, the OTHER colour actuator, is not policed --
+ *    31 call sites across 14 files, unaudited. See `POLICED_ACTIONS`.
+ *  - Textual match, not parsed: `ROUTING_MARKERS` and `CALL_PATTERN` are
+ *    regexes over raw source. `ALIAS_DESTRUCTURE_PATTERN` closes the specific
+ *    gap an adversarial review found in `isolateEntities` itself -- a
+ *    destructured, renamed store binding (`const { isolateEntities:
+ *    applyIsolation } = useViewerStore()`) is now flagged as a candidate even
+ *    though the literal token `isolateEntities(` never appears again. The
+ *    SAME gap still exists on the `ROUTING_MARKERS` side: a call spelled
+ *    through a renamed local alias (`const rhi = cameraCallbacks
+ *    .resolveHighlightIds; rhi(ids)`) or reached via dynamic dispatch is not
+ *    detected there, and a flagged file that routes ONLY that way would read
+ *    as unrouted. Not observed in the scanned tree.
+ *  - "Textual match, not parsed" cuts both ways: a demonstrated instance was
+ *    that a call-SHAPED fragment inside a line comment, a block comment, or a
+ *    string literal (`// cameraCallbacks.resolveHighlightIds(ids)`, or the same
+ *    text quoted as `"resolveHighlightIds(ids)"`) satisfied `ROUTING_MARKERS`
+ *    even though no such call executes -- exactly the false GREEN this gate
+ *    exists to prevent (a routing call commented out during a refactor would
+ *    read as "still routed"). `classifyFile` now runs every pattern above
+ *    against `stripCommentsAndStrings(content)` rather than raw `content` to
+ *    close that. That stripper is itself a naive, non-parsing pass -- see its
+ *    own doc comment for exactly what it does and does not handle (regex
+ *    literals, escaped-quote parity, template-literal interpolations). It
+ *    does not change the two gaps above: a real call reached only through a
+ *    renamed alias, or a real call in an unrelated part of the file, is still
+ *    invisible/insufficiently-precise the same way.
+ *  - Scope is `apps/viewer/src` and `apps/viewer-embed/src` only.
+ *    `packages/viewer` (the separate server-side streaming HTML viewer,
+ *    `viewer-html.ts`/`streaming-viewer.ts`/`server.ts`) also has an
+ *    `isolateEntities` action name, but it is a completely different
+ *    protocol against a plain `entityMap`/`colorOverrides` -- it has never
+ *    imported `apps/viewer/src/utils/aggregation.ts` and does not share the
+ *    store or `cameraCallbacks` this gate's mechanism depends on. Extending
+ *    assembly expansion there is a separate feature, not a regression of
+ *    this one, so it is out of this gate's scope rather than silently
+ *    passed.
+ */
+
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, dirname, relative, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { isMainEntry } from './lib/is-main-entry.mjs';
+import {
+  ROUTING_MARKERS,
+  actionCallPattern,
+  unroutedCallSites,
+} from './lib/presentation-channel-call-sites.mjs';
+import {
+  POLICED_ACTIONS,
+  REQUIRES_ROUTING_MARKER,
+  NO_MARKER_REQUIRED,
+  EXEMPT_ACTIONS,
+  CANDIDATE_FLOOR,
+} from './lib/presentation-channel-allowlist.mjs';
+
+// Re-exported so this gate stays the single import surface for its own test
+// file and for anything else that needs to read the allowlists.
+export { POLICED_ACTIONS, REQUIRES_ROUTING_MARKER, NO_MARKER_REQUIRED, EXEMPT_ACTIONS };
+export { ROUTING_MARKERS, unroutedCallSites };
+
+const ROOT_ARG_INDEX = process.argv.indexOf('--root');
+const ROOT =
+  ROOT_ARG_INDEX !== -1 && process.argv[ROOT_ARG_INDEX + 1]
+    ? process.argv[ROOT_ARG_INDEX + 1]
+    : join(dirname(fileURLToPath(import.meta.url)), '..');
+
+export const SEARCH_ROOTS = ['apps/viewer/src', 'apps/viewer-embed/src'];
+const SOURCE_EXT = new Set(['.ts', '.tsx']);
+const SKIP_DIR = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', 'out', '.turbo']);
+const TEST_FILE = /\.test\.[jt]sx?$/;
+
+/** A call to the visibility slice's `isolateEntities` action: `isolateEntities(`,
+ *  `state.isolateEntities(`, or the optional-call form `...isolateEntities?.(`. */
+export const CALL_PATTERN = /\bisolateEntities\s*\?{0,1}\.{0,1}\s*\(/;
+
+/**
+ * A call to `setIsolatedEntities(`, the visibility slice's OTHER raw-id
+ * isolation actuator. `isolateEntities` TOGGLES a same-set channel;
+ * `setIsolatedEntities` ASSIGNS it -- used by every channel that must not
+ * self-cancel on a re-run (an embed URL param applied once, a preview that
+ * re-syncs on every change, a BCF viewpoint, a clash/IDS focus). Both take a
+ * bare id collection with no expansion, and both blank the viewport the same
+ * way on a geometry-less assembly id (#2531/#2532's failure mode) -- a
+ * gate that only watched `isolateEntities` let a channel dodge it for free
+ * simply by picking this sibling action, which is exactly how
+ * `apps/viewer-embed/src/components/useEmbedUrlParams.ts` (#3338) went
+ * unnoticed: `grep -c "isolateEntities("` on that file is 0.
+ */
+export const SET_ISOLATED_CALL_PATTERN = /\bsetIsolatedEntities\s*\?{0,1}\.{0,1}\s*\(/;
+
+/** The store actions this gate treats as "raw isolation" -- see
+ *  `CALL_PATTERN` and `SET_ISOLATED_CALL_PATTERN`. Exported so a future
+ *  third sibling action can be found by grepping for this list's use. */
+export const RAW_ISOLATION_ACTIONS = ['isolateEntities', 'setIsolatedEntities'];
+
+/**
+ * A binding of either raw-isolation action (`RAW_ISOLATION_ACTIONS`) to a
+ * LOCAL NAME via object destructuring -- `const { isolateEntities } =
+ * useViewerStore()` or, critically, the aliased form `const {
+ * isolateEntities: applyIsolation } = useViewerStore()`. The aliased form
+ * defeats `CALL_PATTERN`/`SET_ISOLATED_CALL_PATTERN`: every call site
+ * afterwards reads `applyIsolation(ids)`, never the literal action name, so
+ * a file that only destructures-and-renames was previously invisible to
+ * this gate -- not even counted toward `candidateCount`. Any destructuring
+ * of either key, aliased or not, is treated as a candidate signal on its own
+ * (deliberately not narrowed to "and the alias is later called": tracking a
+ * dynamic alias through the rest of the file is a data-flow problem this
+ * regex-based gate cannot do reliably, and a live binding to either action
+ * is itself the thing worth a reviewer's eyes -- false positives here are
+ * safe, false negatives are the whole failure mode this exists to close).
+ *
+ * Originally anchored to `const { ... } =` only. Widened (adversarial
+ * self-review of this gate, issue #3338) after noticing the anchor missed
+ * two shapes that rename or rebind an action just as effectively:
+ *   - `let`/`var`, or no declaration keyword at all -- a destructuring
+ *     REASSIGNMENT (`({ isolateEntities } = something)`) uses no keyword,
+ *     and nothing about the bypass requires `const`.
+ *   - destructuring in FUNCTION PARAMETER position -- `function
+ *     onIsolate({ isolateEntities: apply }: VisibilitySlice) { apply(ids) }`
+ *     binds a local alias the same way a `const` destructure does, but the
+ *     brace is followed by `)` or a type annotation, never `=`.
+ * The pattern below drops the keyword requirement and accepts the brace
+ * being followed by `=`, `)`, or `:` (a nested destructure target, or a
+ * parameter's type annotation), while still requiring `[^{}]` instead of
+ * `[^}]` so it cannot cross into an unrelated outer scope (e.g. an
+ * `interface { isolateEntities: (ids: number[]) => void; ...many fields... }`
+ * declaration, which has no closing `}` anywhere near this one field).
+ */
+export const ALIAS_DESTRUCTURE_PATTERN =
+  /\{[^{}]*\b(?:isolateEntities|setIsolatedEntities)\b[^{}]*\}\s*[=):]/;
+
+/**
+ * A PLAIN (non-destructured) rebinding of either raw-isolation action to a
+ * local name via member access -- `const apply = state.isolateEntities;`
+ * or `const apply = store.getState().setIsolatedEntities;` -- followed
+ * later by `apply(ids)`. This defeats both `CALL_PATTERN`/
+ * `SET_ISOLATED_CALL_PATTERN` (no literal `isolateEntities(` remains) AND
+ * `ALIAS_DESTRUCTURE_PATTERN` (no `{ }` destructuring syntax at all), so a
+ * new channel written this way was invisible to every earlier version of
+ * this gate. Matches the property-access form immediately after `=`,
+ * regardless of what precedes the property name; a false positive (e.g.
+ * assigning the function without ever calling it) is safe for the same
+ * reason `ALIAS_DESTRUCTURE_PATTERN`'s false positives are.
+ */
+export const PROPERTY_ALIAS_PATTERN =
+  /=\s*[\w$]+(?:\([^()]*\))?(?:\??\.[\w$]+(?:\([^()]*\))?)*\.(?:isolateEntities|setIsolatedEntities)\b/;
+
+
+/**
+ * A `NO_MARKER_REQUIRED` reason below this length is treated as a stub, not
+ * a justification -- e.g. `['some/File.tsx', 'x']`. This used to be checked
+ * ONLY by this gate's own test file (`reason.length > 20`, an assertion
+ * about the two entries that happened to exist when the test was written),
+ * which is not a rule: nothing stopped a THIRD entry with a one-character
+ * reason from passing CI, because `classifyFile` itself never looked at the
+ * string. Enforcing it here, in the classifier, means a junk entry fails the
+ * gate on its own rather than depending on a reviewer -- or a future test
+ * author -- to notice.
+ */
+export const MIN_ALLOWLIST_REASON_LENGTH = 20;
+
+/** @param {unknown} reason */
+export function isSufficientAllowlistReason(reason) {
+  return typeof reason === 'string' && reason.trim().length > MIN_ALLOWLIST_REASON_LENGTH;
+}
+
+function toPosix(p) {
+  return p.split('\\').join('/');
+}
+
+/**
+ * Strip line comments (`//` to end of line), block comments (`/*` to `*​/`),
+ * and single/double/backtick string-literal bodies out of `content`, so the
+ * patterns above run against something closer to executable code than raw
+ * text. Every removed character is replaced with a space (a removed newline
+ * stays a newline) so positions and line numbers are unaffected -- nothing
+ * here currently reports a line number, but nothing should have to change if
+ * something later does.
+ *
+ * This closes a demonstrated false GREEN: `ROUTING_MARKERS` and `CALL_PATTERN`
+ * are plain regexes over raw source (see LIMITATIONS above), so a call-shaped
+ * fragment inside a comment (`// cameraCallbacks.resolveHighlightIds(ids)`)
+ * or a string literal (`"resolveHighlightIds(ids)"`) previously satisfied
+ * them exactly as well as a real call -- meaning a routing call commented
+ * out mid-refactor, or quoted in a log message, read as "still routed". This
+ * gate's whole premise is that a false negative here is the failure mode it
+ * exists to close (see the file header), so this is intentionally NOT a
+ * full lexer/parser -- it is a single left-to-right scan with three states
+ * (line comment, block comment, string), and it is honest about what that
+ * naive scan does not handle:
+ *   - A regex literal containing a quote or `//`/`/*` sequence (e.g.
+ *     `/["/]/`) is not distinguished from a string or comment start -- its
+ *     quote or slash characters can desync the scan for the rest of the
+ *     file. Not observed in the scanned tree.
+ *   - Escaped-quote handling is a single backslash lookback (`\"` inside a
+ *     string skips the quote), not a parity count -- a string ending in an
+ *     even run of backslashes before its closing quote (`"a\\\\"`, a literal
+ *     backslash followed by a real close) is handled correctly, but this was
+ *     verified by construction, not by tracking backslash-run parity, so an
+ *     unusual escape sequence could still mislead it.
+ *   - A `${...}` interpolation inside a template literal is stripped along
+ *     with the rest of the backtick span -- a call that legitimately lives
+ *     inside an interpolation (`` `${resolveHighlightIds(ids)}` ``) is
+ *     treated the same as a call inside dead text and will not be seen as a
+ *     routing call. Not observed in the scanned tree; a channel routing
+ *     ONLY this way would need a comment-visible, non-interpolated call
+ *     elsewhere, or a NO_MARKER_REQUIRED entry.
+ *
+ * @param {string} content
+ * @returns {string}
+ */
+export function stripCommentsAndStrings(content) {
+  let out = '';
+  const n = content.length;
+  let i = 0;
+  while (i < n) {
+    const ch = content[i];
+    const next = content[i + 1];
+    if (ch === '/' && next === '/') {
+      let j = i;
+      while (j < n && content[j] !== '\n') j++;
+      out += ' '.repeat(j - i);
+      i = j;
+      continue;
+    }
+    if (ch === '/' && next === '*') {
+      let j = i + 2;
+      while (j < n && !(content[j] === '*' && content[j + 1] === '/')) j++;
+      j = Math.min(j + 2, n);
+      for (let k = i; k < j; k++) out += content[k] === '\n' ? '\n' : ' ';
+      i = j;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      const quote = ch;
+      let j = i + 1;
+      while (j < n && content[j] !== quote) {
+        j += content[j] === '\\' && j + 1 < n ? 2 : 1;
+      }
+      j = Math.min(j + 1, n);
+      for (let k = i; k < j; k++) out += content[k] === '\n' ? '\n' : ' ';
+      i = j;
+      continue;
+    }
+    out += ch;
+    i += 1;
+  }
+  return out;
+}
+
+/**
+ * @param {string} dir
+ * @param {string[]} out
+ * @param {string[]} errors unreadable subtrees are pushed here, not
+ *   swallowed -- a directory this gate could not scan must fail the run
+ *   loudly, not read as "clean" the same way an empty, readable directory
+ *   would.
+ */
+export function walk(dir, out, errors) {
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (err) {
+    errors.push(`could not read directory \`${dir}\`: ${err && err.message ? err.message : err}`);
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (SKIP_DIR.has(entry.name)) continue;
+      walk(join(dir, entry.name), out, errors);
+    } else if (entry.isFile() && SOURCE_EXT.has(extname(entry.name)) && !TEST_FILE.test(entry.name)) {
+      out.push(join(dir, entry.name));
+    }
+  }
+}
+
+/**
+ * Classify one file's content against the two allowlists. Pure -- no fs, no
+ * process -- so the test file can exercise it against synthetic fixtures.
+ *
+ * @param {string} relPath repo-relative, forward-slashed path
+ * @param {string} content file source text
+ * @returns {{ isCandidate: boolean, ok: boolean, reason?: string }}
+ */
+export function classifyFile(relPath, content) {
+  const code = stripCommentsAndStrings(content);
+  const unrouted = unroutedCallSites(code);
+  const callsPolicedAction = POLICED_ACTIONS.some(({ name }) => actionCallPattern(name).test(code));
+  if (
+    !callsPolicedAction &&
+    !ALIAS_DESTRUCTURE_PATTERN.test(code) &&
+    !PROPERTY_ALIAS_PATTERN.test(code)
+  ) {
+    return { isCandidate: false, ok: true };
+  }
+  if (NO_MARKER_REQUIRED.has(relPath)) {
+    const reason = NO_MARKER_REQUIRED.get(relPath);
+    if (!isSufficientAllowlistReason(reason)) {
+      return {
+        isCandidate: true,
+        ok: false,
+        reason:
+          `NO_MARKER_REQUIRED entry for ${relPath} in ` +
+          'scripts/check-isolate-expansion-routing.mjs carries no reviewable reason ' +
+          `(got ${JSON.stringify(reason)}) -- exempting a channel from routing without a real ` +
+          'justification is exactly what this allowlist exists to prevent. Write a reason ' +
+          `longer than ${MIN_ALLOWLIST_REASON_LENGTH} characters explaining why this file does ` +
+          'not need cameraCallbacks.resolveHighlightIds / expandToGeometryBearingIds / ' +
+          'expandFilterRowsThroughAggregation.',
+      };
+    }
+    return { isCandidate: true, ok: true, reason };
+  }
+  if (REQUIRES_ROUTING_MARKER.has(relPath)) {
+    const exempt = EXEMPT_ACTIONS.get(relPath);
+    const offenders = [];
+    for (const site of unrouted) {
+      const reason = exempt?.get(site.action);
+      if (reason !== undefined) {
+        if (!isSufficientAllowlistReason(reason)) {
+          return {
+            isCandidate: true,
+            ok: false,
+            reason:
+              `EXEMPT_ACTIONS entry ${relPath} -> ${site.action} carries no reviewable reason ` +
+              `(got ${JSON.stringify(reason)}).`,
+          };
+        }
+        continue;
+      }
+      offenders.push(site);
+    }
+    // An ALIASED binding (`const { isolateEntities: apply } = ...; apply(ids)`)
+    // has no literal call site for `unroutedCallSites` to find, so per-call-site
+    // analysis is blind to it. Keep the old file-level question for exactly
+    // that case rather than letting the tighter check open a hole: a known
+    // channel that binds an action under another name must still show SOME
+    // routing call in the file.
+    const aliasBound = ALIAS_DESTRUCTURE_PATTERN.test(code) || PROPERTY_ALIAS_PATTERN.test(code);
+    if (offenders.length === 0 && aliasBound && !ROUTING_MARKERS.test(code)) {
+      return {
+        isCandidate: true,
+        ok: false,
+        reason:
+          'binds a policed action to a local alias (destructured or by member access) and ' +
+          'contains no routing call anywhere in the file. An aliased call has no literal call ' +
+          'site to check per-site, so this known channel falls back to the file-level question ' +
+          'and fails it -- it appears to have lost its assembly-expansion routing.',
+      };
+    }
+    if (offenders.length === 0) return { isCandidate: true, ok: true };
+    return {
+      isCandidate: true,
+      ok: false,
+      reason:
+        `${offenders.length} call site(s) actuate a policed channel without routing through a ` +
+        'resolver: ' +
+        offenders.map((o) => `${o.action}(${o.arg})`).join(', ') +
+        '. Routing is checked PER CALL SITE, not per file, so another routed call elsewhere in ' +
+        'this file does not cover these. Wrap the argument in resolvePresentationIds / ' +
+        'resolvePresentationColorMap (or assign it from one), or add the action to ' +
+        'EXEMPT_ACTIONS for this path with a reason a reviewer can check.',
+    };
+  }
+  return {
+    isCandidate: true,
+    ok: false,
+    reason:
+      `calls a policed presentation action (${POLICED_ACTIONS.map((a) => a.name).join(' / ')}) -- ` +
+      'or binds one via destructuring -- and is not in either allowlist ' +
+      '(REQUIRES_ROUTING_MARKER / NO_MARKER_REQUIRED) in ' +
+      'scripts/check-isolate-expansion-routing.mjs -- this looks like a NEW ' +
+      'selection/isolation/hide/colour channel (issue #3338: "expansion is one call site every ' +
+      'channel must remember to use"). Either route it through resolvePresentationIds the way ' +
+      'LensPanel/PropertiesPanel/SearchModal.filter/the embed bridge do, and add it to ' +
+      'REQUIRES_ROUTING_MARKER, or -- if it genuinely does not need expansion -- add it to ' +
+      'NO_MARKER_REQUIRED with a reason a reviewer can check.',
+  };
+}
+
+function main() {
+  const failures = [];
+  const files = [];
+  let scannedRoots = 0;
+
+  for (const root of SEARCH_ROOTS) {
+    const abs = join(ROOT, root);
+    let st;
+    try {
+      st = statSync(abs);
+    } catch {
+      failures.push(`search root \`${root}\` does not exist under ${ROOT}.`);
+      continue;
+    }
+    if (!st.isDirectory()) {
+      failures.push(`search root \`${root}\` is not a directory.`);
+      continue;
+    }
+    scannedRoots += 1;
+    walk(abs, files, failures);
+  }
+
+  if (scannedRoots === 0) {
+    console.error('\ncheck-isolate-expansion-routing: no search roots resolved -- nothing was scanned.\n');
+    process.exit(1);
+  }
+  if (files.length === 0) {
+    console.error(
+      `\ncheck-isolate-expansion-routing: 0 source files found under ${SEARCH_ROOTS.join(', ')}. ` +
+      'The scan roots exist but are empty -- treated as a hard failure rather than a silent pass.\n',
+    );
+    process.exit(1);
+  }
+
+  let candidateCount = 0;
+  const seenAllowlisted = new Set();
+
+  for (const abs of files) {
+    const rel = toPosix(relative(ROOT, abs));
+    const content = readFileSync(abs, 'utf8');
+    const verdict = classifyFile(rel, content);
+    if (!verdict.isCandidate) continue;
+    candidateCount += 1;
+    if (REQUIRES_ROUTING_MARKER.has(rel) || NO_MARKER_REQUIRED.has(rel)) {
+      seenAllowlisted.add(rel);
+    }
+    if (!verdict.ok) {
+      failures.push(`${rel}: ${verdict.reason}`);
+    }
+  }
+
+  if (candidateCount < CANDIDATE_FLOOR) {
+    failures.push(
+      `only ${candidateCount} channel file(s) calling isolateEntities( found across ${SEARCH_ROOTS.join(', ')}, ` +
+      `below the floor of ${CANDIDATE_FLOOR}. That means the detection regex stopped matching ` +
+      '(action renamed, files moved) rather than that channels were removed -- a gate that silently ' +
+      'stops finding its own candidates would report a clean tree forever. Update CANDIDATE_FLOOR only ' +
+      'after confirming channels were deliberately removed, not just that the count dropped.',
+    );
+  }
+
+  if (failures.length > 0) {
+    console.error('\ncheck-isolate-expansion-routing: FAILED\n');
+    for (const line of failures) console.error(`  - ${line}`);
+    console.error('');
+    process.exit(1);
+  }
+
+  const seenRoutedCount = [...seenAllowlisted].filter((path) => REQUIRES_ROUTING_MARKER.has(path)).length;
+  const seenExemptCount = [...seenAllowlisted].filter((path) => NO_MARKER_REQUIRED.has(path)).length;
+
+  console.log(
+    `check-isolate-expansion-routing: OK (${files.length} file(s) scanned, ${candidateCount} candidate ` +
+    `channel file(s) calling a policed presentation action -- ${seenAllowlisted.size} allowlisted: ` +
+    `${seenRoutedCount} routed, ${seenExemptCount} exempt-with-reason)`,
+  );
+}
+
+if (isMainEntry(import.meta.url)) {
+  main();
+}

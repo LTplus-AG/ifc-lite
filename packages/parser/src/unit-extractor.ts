@@ -11,11 +11,25 @@
 
 import type { EntityRef } from './types.js';
 import { EntityExtractor } from './entity-extractor.js';
+import type { IfcSourceBytes } from './source-bytes.js';
+import { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
+import { extractProjectUnits } from './project-units.js';
+
+export { resolveOwningIfcProjectId, type RelatedLookup } from './owning-project.js';
 
 /**
- * SI Prefix multipliers as defined in IFC specification
+ * SI Prefix multipliers, keyed by the members of the `IfcSIPrefix` EXPRESS
+ * enumeration — that enumeration is the authority for which prefixes a unit
+ * can carry, so a reader that knows only a subset silently reports the base
+ * unit and is wrong by the missing prefix's own factor.
+ *
+ * Exported for the same reason as {@link CONVERSION_BASED_UNIT_FACTORS}: the
+ * georeferencing extractor resolves an `IfcProjectedCRS` MapUnit through the
+ * SAME table this one uses for the project length unit. It previously carried
+ * a private four-entry copy (MILLI/CENTI/DECI/KILO), so a MapUnit in any
+ * other prefix read back as plain metres.
  */
-const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
+export const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
   'ATTO': 1e-18,
   'FEMTO': 1e-15,
   'PICO': 1e-12,
@@ -35,9 +49,14 @@ const SI_PREFIX_MULTIPLIERS: Record<string, number> = {
 };
 
 /**
- * Known conversion factors for imperial/conversion-based units to meters
+ * Known conversion factors for imperial/conversion-based units to meters.
+ *
+ * Exported so the georeferencing extractor resolves an `IfcProjectedCRS`
+ * MapUnit through the SAME table this one uses for the project length unit —
+ * two length-unit readers on the same file that disagree would put the model
+ * and its map coordinates on different scales.
  */
-const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
+export const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
   'FOOT': 0.3048,
   'FEET': 0.3048,
   "'FOOT'": 0.3048,
@@ -47,7 +66,36 @@ const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
   "'YARD'": 0.9144,
   'MILE': 1609.344,
   "'MILE'": 1609.344,
+  // The quoted spelling is a real, if rare, branch: a STEP name attribute
+  // written as `''FEET''` in the file decodes (doubled-quote escaping) to
+  // the four-character string `'FEET'`, complete with embedded quote
+  // characters, and is looked up here verbatim. FEET was missing this entry
+  // even though every other spelling in the table has one.
+  "'FEET'": 0.3048,
 };
+
+/**
+ * De-duplicates the "unknown unit, defaulting to meters" warning per
+ * `entityIndex` (i.e. per parsed model), so a caller that re-derives the
+ * scale many times for the same store — {@link extractWallSegmentsForStorey}
+ * runs once per storey, {@link resolveSpatialAnchor} once per generated
+ * space — doesn't flood the console with the same diagnosis. A different
+ * model (a different `entityIndex` object) still gets its own warning: the
+ * latch is keyed on object identity, not a module-global boolean.
+ */
+const warnedEntityIndexes = new WeakSet<object>();
+
+/**
+ * Warn once per model that the length unit could not be resolved and the
+ * caller is falling back to an unconfirmed 1.0 (meters). See issue #2104:
+ * without this, a millimetre model whose unit declaration is malformed reads
+ * as metres with no signal that the value is a guess rather than a fact.
+ */
+function warnUnknownUnit(entityIndex: object, reason: string): void {
+  if (warnedEntityIndexes.has(entityIndex)) return;
+  warnedEntityIndexes.add(entityIndex);
+  console.warn(`[UnitExtractor] ${reason}, defaulting to meters (unconfirmed — see issue #2104)`);
+}
 
 /**
  * Extract length unit scale factor from IFC file
@@ -55,30 +103,63 @@ const CONVERSION_BASED_UNIT_FACTORS: Record<string, number> = {
  * Follows the chain: IFCPROJECT → IFCUNITASSIGNMENT → IFCSIUNIT/IFCCONVERSIONBASEDUNIT
  * Returns the multiplier to convert coordinates to meters.
  *
- * @param source - Raw IFC file bytes
+ * Every `1.0` this function returns for a path OTHER than "IFCSIUNIT length
+ * unit with no prefix" is an unconfirmed default, not a confirmed metre
+ * declaration — those paths call {@link warnUnknownUnit} exactly once per
+ * `entityIndex` so the ambiguity is visible instead of silent (#2104). The
+ * no-prefix IFCSIUNIT case is a genuine, confirmed "this file declares
+ * meters" and intentionally does not warn.
+ *
+ * @param source - The IFC file bytes, either raw or behind {@link IfcSourceBytes}
  * @param entityIndex - Entity index with byId and byType maps
+ * @param projectId - Optional express id of the specific `IFCPROJECT` to read
+ *   units from. Most files declare exactly one, so the default (the file's
+ *   first `IFCPROJECT`) is correct for the overwhelmingly common case; pass
+ *   this explicitly when resolving units for an entity that may belong to a
+ *   later `IFCPROJECT` in a multi-project (federated-merge, see #1332) file
+ *   — see {@link resolveOwningIfcProjectId}.
  * @returns Scale factor to apply to length values (e.g., 0.001 for millimeters)
  */
 export function extractLengthUnitScale(
-  source: Uint8Array,
+  source: Uint8Array | IfcSourceBytes,
+  entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
+  projectId?: number
+): number {
+  // Find IFCPROJECT
+  const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
+  const resolvedProjectId = projectId ?? projectIds[0];
+  if (resolvedProjectId === undefined) {
+    warnUnknownUnit(entityIndex, 'No IFCPROJECT found');
+    return 1.0;
+  }
+
+  return extractLengthUnitScaleForProjectId(resolvedProjectId, source, entityIndex);
+}
+
+/**
+ * Same resolution as {@link extractLengthUnitScale}, but for an EXPLICIT
+ * `IFCPROJECT` id rather than always the first one found. Factored out so
+ * {@link resolveEntityLengthUnitScale} and other {@link resolveOwningIfcProjectId}
+ * callers can resolve the scale of a specific project in a multi-project
+ * file (a {@link MergedExporter} federated output — see that module)
+ * without duplicating the unit-chain walk.
+ */
+function extractLengthUnitScaleForProjectId(
+  projectId: number,
+  source: Uint8Array | IfcSourceBytes,
   entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> }
 ): number {
   const extractor = new EntityExtractor(source);
 
-  // Find IFCPROJECT
-  const projectIds = entityIndex.byType.get('IFCPROJECT') || [];
-  if (projectIds.length === 0) {
-    console.warn('[UnitExtractor] No IFCPROJECT found, defaulting to meters');
-    return 1.0;
-  }
-
-  const projectRef = entityIndex.byId.get(projectIds[0]);
+  const projectRef = entityIndex.byId.get(projectId);
   if (!projectRef) {
+    warnUnknownUnit(entityIndex, 'IFCPROJECT reference could not be resolved');
     return 1.0;
   }
 
   const projectEntity = extractor.extractEntity(projectRef);
   if (!projectEntity) {
+    warnUnknownUnit(entityIndex, 'IFCPROJECT entity could not be read');
     return 1.0;
   }
 
@@ -89,29 +170,33 @@ export function extractLengthUnitScale(
   const unitsRef = attrs[8];
 
   if (typeof unitsRef !== 'number') {
-    console.warn('[UnitExtractor] No UnitsInContext reference, defaulting to meters');
+    warnUnknownUnit(entityIndex, 'No UnitsInContext reference');
     return 1.0;
   }
 
   // Resolve IFCUNITASSIGNMENT
   const unitAssignmentRef = entityIndex.byId.get(unitsRef);
   if (!unitAssignmentRef) {
+    warnUnknownUnit(entityIndex, 'UnitsInContext reference could not be resolved');
     return 1.0;
   }
 
   const unitAssignment = extractor.extractEntity(unitAssignmentRef);
   if (!unitAssignment || unitAssignment.type.toUpperCase() !== 'IFCUNITASSIGNMENT') {
+    warnUnknownUnit(entityIndex, 'UnitsInContext did not resolve to an IFCUNITASSIGNMENT');
     return 1.0;
   }
 
   // Guard against missing attributes
   if (!unitAssignment.attributes || !Array.isArray(unitAssignment.attributes)) {
+    warnUnknownUnit(entityIndex, 'IFCUNITASSIGNMENT has no readable attributes');
     return 1.0;
   }
 
   // IFCUNITASSIGNMENT has a single attribute: Units (list of references)
   const unitsList = unitAssignment.attributes[0];
   if (!Array.isArray(unitsList)) {
+    warnUnknownUnit(entityIndex, 'IFCUNITASSIGNMENT.Units is not a list');
     return 1.0;
   }
 
@@ -157,6 +242,7 @@ export function extractLengthUnitScale(
         return multiplier;
       }
 
+      warnUnknownUnit(entityIndex, `Unrecognized SI prefix "${prefixStr}"`);
       return 1.0;
     }
 
@@ -243,5 +329,50 @@ export function extractLengthUnitScale(
   }
 
   // No length unit found, default to meters
+  warnUnknownUnit(entityIndex, 'No LENGTHUNIT found in IFCUNITASSIGNMENT');
   return 1.0;
+}
+
+/**
+ * Resolve the length unit scale that applies to ONE entity, correctly for a
+ * multi-`IfcProject` file (a {@link MergedExporter} `unitReconciliation: 'auto'`
+ * federated export: a model whose length unit differs from the first model's
+ * keeps its own `IfcProject`/`IfcUnitAssignment` rather than being rescaled —
+ * see that module's docs).
+ *
+ * {@link extractLengthUnitScale} (and the `dataStore.lengthUnitScale` it feeds)
+ * answers for the FIRST `IfcProject` only. That is exactly right for the
+ * overwhelmingly common single-project file, but silently wrong for a
+ * federated entity that belongs to a LATER project: e.g. a material layer's
+ * `LayerThickness` is a raw literal in ITS OWN project's unit, and scaling it
+ * by the first project's factor corrupts the value by whatever ratio
+ * separates the two units (a millimetre federated model read back with the
+ * metres factor turns a 300 mm layer into a fabricated "300 m" one).
+ *
+ * Resolves the entity's owning project via {@link resolveOwningIfcProjectId} and
+ * reads that project's units, falling back to the first project's scale when
+ * the walk can't place the entity, OR when the owning project's own
+ * `UnitsInContext` declares no `LENGTHUNIT` at all (`UnitsInContext` is
+ * OPTIONAL on `IfcContext`, so a federated model can legitimately arrive
+ * with none). {@link extractLengthUnitScale} answers an unconfirmed `1.0`
+ * for that case too - absence reading as success - which would silently
+ * rescale a millimetre-authored value owned by such a project by 1000x
+ * instead of taking the file-wide answer, the same safe-miss direction
+ * {@link extractLengthUnitScale} already documents for every other ambiguous
+ * case.
+ */
+export function resolveEntityLengthUnitScale(
+  source: Uint8Array | IfcSourceBytes,
+  entityIndex: { byId: { get(expressId: number): EntityRef | undefined }; byType: Map<string, number[]> },
+  relationships: RelatedLookup,
+  expressId: number,
+): number {
+  const ownerId = resolveOwningIfcProjectId(entityIndex, relationships, expressId);
+  if (ownerId === undefined) return extractLengthUnitScale(source, entityIndex);
+
+  const declaresLengthUnit = extractProjectUnits(source, entityIndex, ownerId)
+    .resolvedForUnitType('LENGTHUNIT') !== undefined;
+  return declaresLengthUnit
+    ? extractLengthUnitScale(source, entityIndex, ownerId)
+    : extractLengthUnitScale(source, entityIndex);
 }

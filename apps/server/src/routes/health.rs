@@ -105,3 +105,7 @@ pub async fn info() -> Json<ApiInfoResponse> {
         ],
     })
 }
+
+#[cfg(test)]
+#[path = "health_tests.rs"]
+mod health_tests;

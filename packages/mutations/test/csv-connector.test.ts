@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { PropertyValueType } from '@ifc-lite/data';
-import { CsvConnector, MutablePropertyView, type DataMapping } from '../src/index.js';
+import { CsvConnector, MutablePropertyView, MutationGuardError, type DataMapping } from '../src/index.js';
 
 /**
  * Builds a minimal EntityTable-shaped mock, matching the fixture style used
@@ -228,6 +228,215 @@ describe('CsvConnector.generateMutations', () => {
   });
 });
 
+/**
+ * A malformed numeric cell ("N/A", blank after trim, or any non-numeric
+ * text) fell through `parseFloat(value) || 0` / `parseInt(value, 10) || 0`.
+ * `NaN || 0` is `0`, so a dirty CSV column silently wrote a real `0`
+ * mutation — indistinguishable from a legitimately-imported zero — instead
+ * of being skipped and reported, which is exactly what the sibling
+ * ExpressId matcher above already does with an `isNaN` guard (see 'matches
+ * by ExpressId, parsing the numeric column').
+ */
+describe('CsvConnector.generateMutations: malformed numeric cells', () => {
+  it('does not write 0 for a non-numeric Real cell; skips the mutation instead', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'Transmittance',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'ThermalTransmittance',
+          valueType: PropertyValueType.Real,
+        },
+      ],
+    };
+
+    const rows = connector.parse('GlobalId,Transmittance\nguid-a,N/A');
+    const matches = connector.match(rows, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toEqual([]);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'ThermalTransmittance')).toBeNull();
+  });
+
+  it('does not write 0 for a non-numeric Integer cell; skips the mutation instead', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'FloorCount',
+          targetPset: 'Pset_BuildingCommon',
+          targetProperty: 'NumberOfStoreys',
+          valueType: PropertyValueType.Integer,
+        },
+      ],
+    };
+
+    const rows = connector.parse('GlobalId,FloorCount\nguid-a,TBD');
+    const matches = connector.match(rows, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toEqual([]);
+    expect(view.getPropertyValue(1, 'Pset_BuildingCommon', 'NumberOfStoreys')).toBeNull();
+  });
+
+  it('still writes a genuine 0 for Real and Integer cells', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'Transmittance',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'ThermalTransmittance',
+          valueType: PropertyValueType.Real,
+        },
+        {
+          sourceColumn: 'FloorCount',
+          targetPset: 'Pset_BuildingCommon',
+          targetProperty: 'NumberOfStoreys',
+          valueType: PropertyValueType.Integer,
+        },
+      ],
+    };
+
+    const rows = connector.parse('GlobalId,Transmittance,FloorCount\nguid-a,0,0');
+    const matches = connector.match(rows, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(2);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'ThermalTransmittance')).toBe(0);
+    expect(view.getPropertyValue(1, 'Pset_BuildingCommon', 'NumberOfStoreys')).toBe(0);
+  });
+
+  it('reports a warning through import() stats instead of failing silently', () => {
+    const { connector } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'Transmittance',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'ThermalTransmittance',
+          valueType: PropertyValueType.Real,
+        },
+      ],
+    };
+
+    const stats = connector['import']('GlobalId,Transmittance\nguid-a,N/A', mapping);
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.warnings.some((w) => w.includes('Transmittance'))).toBe(true);
+  });
+});
+
+/**
+ * The List branch used to pick its encoding by catching a `JSON.parse` throw,
+ * so a malformed JSON list took the semicolon path and `[1,2` was written as
+ * the one-element array `['[1,2']`: a fabricated value indistinguishable from
+ * an imported one, the same class of silent damage PARSE_INVALID was added to
+ * stop on numeric cells. The encoding is chosen on shape now, so the broken
+ * cell is skipped and reported while the semicolon form still imports.
+ */
+describe('CsvConnector.generateMutations: malformed List cells', () => {
+  const mapping: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [
+      {
+        sourceColumn: 'Tags',
+        targetPset: 'Pset_WallCommon',
+        targetProperty: 'Tags',
+        valueType: PropertyValueType.List,
+      },
+    ],
+  };
+
+  it('does not write the raw cell as a one-element array; skips and warns instead', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const stats = connector['import']('GlobalId,Tags\nguid-a,"[1,2"', mapping);
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.warnings.some((w) => w.includes('Tags'))).toBe(true);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'Tags')).toBeNull();
+  });
+
+  it('still imports the semicolon encoding of a list', () => {
+    const { connector, view } = makeConnector([
+      { expressId: 1, globalId: 'guid-a', name: 'Wall A' },
+    ]);
+
+    const stats = connector['import']('GlobalId,Tags\nguid-a,a;b', mapping);
+
+    expect(stats.mutationsCreated).toBe(1);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'Tags')).toEqual(['a', 'b']);
+  });
+});
+
+/**
+ * github.com/LTplus-AG/ifc-lite/issues/2765: replacing the Boolean/Logical
+ * parse branch with `return false` left 172 tests green. Every truthy spelling
+ * a checkbox column can carry silently became false, and the only production
+ * caller is an untested UI component, so a CSV import of a checkbox column had
+ * no assertion anywhere. The accepted spellings ARE the contract here: a
+ * `Yes`/`1` column is what a spreadsheet exports, not an exotic input.
+ */
+describe('CsvConnector.generateMutations: boolean columns', () => {
+  /** Import one cell into a Boolean/Logical property and read the value back. */
+  function importCell(raw: string, valueType: PropertyValueType): unknown {
+    const { connector } = makeConnector([{ expressId: 1, globalId: 'guid-a', name: 'Wall A' }]);
+    const mapping: DataMapping = {
+      matchStrategy: { type: 'globalId', column: 'GlobalId' },
+      propertyMappings: [
+        {
+          sourceColumn: 'LoadBearing',
+          targetPset: 'Pset_WallCommon',
+          targetProperty: 'LoadBearing',
+          valueType,
+        },
+      ],
+    };
+    const rows = connector.parse(`GlobalId,LoadBearing\nguid-a,${raw}`);
+    const matches = connector.match(rows, mapping);
+    return connector.generateMutations(matches, mapping)[0]?.newValue;
+  }
+
+  for (const raw of ['true', 'TRUE', 'True', 'yes', 'YES', '1']) {
+    it(`reads ${raw} as true`, () => {
+      expect(importCell(raw, PropertyValueType.Boolean)).toBe(true);
+    });
+  }
+
+  for (const raw of ['false', 'FALSE', 'no', '0', 'maybe']) {
+    it(`reads ${raw} as false`, () => {
+      expect(importCell(raw, PropertyValueType.Boolean)).toBe(false);
+    });
+  }
+
+  it('parses a Logical column through the same branch as a Boolean one', () => {
+    // Logical shares the Boolean case by fallthrough, so it has to be asserted
+    // separately: a change that splits them would leave Logical unpinned.
+    expect(importCell('yes', PropertyValueType.Logical)).toBe(true);
+    expect(importCell('no', PropertyValueType.Logical)).toBe(false);
+  });
+});
+
 describe('CsvConnector.import', () => {
   it('imports a batch by GlobalId, reporting matched/unmatched stats and applying mutations', () => {
     const { connector, view } = makeConnector([
@@ -312,5 +521,95 @@ describe('CsvConnector.importAsync', () => {
       expect(progressUpdates[i]).toBeGreaterThanOrEqual(progressUpdates[i - 1]);
     }
     expect(view.getPropertyValue(3, 'Pset_WallCommon', 'FireRating')).toBe('REI 30');
+  });
+});
+
+/**
+ * `CsvConnector` writes straight to `MutablePropertyView.setProperty`,
+ * bypassing the viewer store's own `setProperty` action and its
+ * `canCollabEdit()` check entirely (DataConnector.tsx constructs and drives
+ * this class directly — see mutation-guard.ts). These tests prove the
+ * engine refuses a write on its own when constructed with a `canEdit`
+ * predicate that returns false — without any caller having to remember to
+ * check the role first.
+ */
+describe('CsvConnector: local-edit guard (mutation-guard.ts)', () => {
+  const rows = [{ expressId: 1, globalId: 'guid-a', name: 'Wall A' }];
+  const mapping: DataMapping = {
+    matchStrategy: { type: 'globalId', column: 'GlobalId' },
+    propertyMappings: [
+      {
+        sourceColumn: 'Rating',
+        targetPset: 'Pset_WallCommon',
+        targetProperty: 'FireRating',
+        valueType: PropertyValueType.Real,
+      },
+    ],
+  };
+  const content = 'GlobalId,Rating\nguid-a,60';
+
+  it('generateMutations throws MutationGuardError and applies nothing when canEdit() is false', () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => false);
+
+    const parsed = connector.parse(content);
+    const matches = connector.match(parsed, mapping);
+
+    expect(() => connector.generateMutations(matches, mapping)).toThrow(MutationGuardError);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBeNull();
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('generateMutations still applies when canEdit() is true (guard is opt-in, not a new default)', () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => true);
+
+    const parsed = connector.parse(content);
+    const matches = connector.match(parsed, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(1);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBe(60);
+  });
+
+  it("['import'] (sync) surfaces the refusal as a stats error, not a silent no-op", () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => false);
+
+    const stats = connector['import'](content, mapping);
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.errors.length).toBeGreaterThan(0);
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('importAsync surfaces the refusal as a stats error, not a silent no-op', async () => {
+    const { entities, strings } = makeEntities(rows);
+    const view = new MutablePropertyView(null, 'model-1');
+    view.setOnDemandExtractor(() => []);
+    const connector = new CsvConnector(entities, view, strings, () => false);
+
+    const stats = await connector.importAsync(content, mapping, () => {});
+
+    expect(stats.mutationsCreated).toBe(0);
+    expect(stats.errors.length).toBeGreaterThan(0);
+    expect(view.hasChanges()).toBe(false);
+  });
+
+  it('a connector with no canEdit predicate behaves exactly as before (backward compatible)', () => {
+    const { connector, view } = makeConnector(rows);
+
+    const parsed = connector.parse(content);
+    const matches = connector.match(parsed, mapping);
+    const mutations = connector.generateMutations(matches, mapping);
+
+    expect(mutations).toHaveLength(1);
+    expect(view.getPropertyValue(1, 'Pset_WallCommon', 'FireRating')).toBe(60);
   });
 });

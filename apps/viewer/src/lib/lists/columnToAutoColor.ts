@@ -27,6 +27,17 @@ export function columnToAutoColor(col: ColumnDefinition): AutoColorSpec {
       return { source: 'property', psetName: col.psetName, propertyName: col.propertyName };
     case 'quantity':
       return { source: 'quantity', psetName: col.psetName, propertyName: col.propertyName };
+    case 'material':
+      return { source: 'material' };
+    case 'classification':
+      // psetName doubles as a classification-system filter on both sides of
+      // the bridge (see ColumnDefinition.psetName and AutoColorSpec.psetName).
+      return { source: 'classification', psetName: col.psetName };
+    case 'model':
+      return { source: 'model' };
+    // 'spatial' and 'zone' columns have no AutoColorSpec equivalent — fall
+    // back to ifcType rather than silently mis-coloring by a container/zone
+    // value the lens engine can't actually group by.
     default:
       return { source: 'ifcType' };
   }

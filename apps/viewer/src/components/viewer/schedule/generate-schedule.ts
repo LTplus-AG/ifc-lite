@@ -538,7 +538,7 @@ function collectZSliceContainers(
   const binOfY = (y: number) => Math.floor(y / bandMetres);
 
   // Primary bin + optional sub-key → list of mesh metas.
-  // Bin key is "<bin> <subkey>" so we can sort lexicographically
+  // Bin key is "<bin>\u0000<subkey>" so we can sort lexicographically
   // after the bin portion is zero-padded to a fixed width.
   const BIN_WIDTH = 8; // enough for 10^8 bins × 0.1 m = 10^7 m of range
   const padBin = (b: number): string => {
@@ -566,7 +566,7 @@ function collectZSliceContainers(
   for (const m of meta) {
     const bin = binOfY(m.centroidY);
     const subkey = subgroupKeyFor(m);
-    const key = `${padBin(bin)} ${subkey}`;
+    const key = `${padBin(bin)}\u0000${subkey}`;
     let bucket = groups.get(key);
     if (!bucket) {
       bucket = { bin, subkey, metas: [] };

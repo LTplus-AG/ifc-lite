@@ -40,6 +40,12 @@ describe('DxfWriter structure', () => {
     expect(dxf).toContain('metres');
   });
 
+  it('declares $DWGCODEPAGE ANSI_1252 — the encoding encodeDxfCp1252 must actually produce', () => {
+    const w = new DxfWriter();
+    const dxf = w.toString();
+    expect(dxf).toContain('$DWGCODEPAGE\n3\nANSI_1252');
+  });
+
   it('accepts a custom header comment (e.g. naming the IfcProjectedCRS)', () => {
     const w = new DxfWriter({ headerComment: 'ifc-lite export - units: metres, CRS: EPSG:32632' });
     const dxf = w.toString();

@@ -15,6 +15,7 @@ import {
   resolveEpsetMapUnitScale,
   supportsStandardGeoreferencing,
 } from './effective-georef.js';
+import { resolveMapUnitToMetreScale } from './geo-scale.js';
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 
 describe('effective georeferencing', () => {
@@ -44,6 +45,55 @@ describe('effective georeferencing', () => {
 
     assert.strictEqual(merged?.description, 'Edited CRS');
     assert.strictEqual(merged?.mapUnitScale, 2.5);
+  });
+
+  /**
+   * The MapUnit editor is a `<select>` whose first option has an empty value,
+   * and `commitEdit` deliberately permits an empty commit for selects, so `''`
+   * reaches `mergeProjectedCRS` as an edit.
+   *
+   * `''` is not `undefined`, so it took the EDITED branch and
+   * `inferMapUnitScale('', lengthUnitScale)` returned the length-unit
+   * fallback. That is exactly the reading `resolveMapUnitToMetreScale`'s doc
+   * rejects -- "when no explicit MapUnit is set, treat the offsets as metres"
+   * -- so clearing the field opted INTO the failure the heuristic exists to
+   * avoid. For a millimetre project that is a 1000x under-scale of the CRS
+   * offsets, which flings the model outside the CRS's valid range.
+   */
+  it('treats a CLEARED MapUnit as absent (metres), not as unparseable', () => {
+    const original: ProjectedCRS = {
+      id: 1,
+      name: 'EPSG:28992',
+      mapUnit: 'METRE',
+      mapUnitScale: 1,
+    };
+
+    // lengthUnitScale 0.001 = a millimetre project, the case that hurts.
+    const merged = mergeProjectedCRS(original, { mapUnit: '' }, 0.001);
+
+    assert.strictEqual(merged?.mapUnit, '');
+    // `undefined`, NOT the length-unit scale: an absent MapUnit leaves the
+    // scale unresolved here and `resolveMapUnitToMetreScale` supplies the
+    // metres default downstream. Asserting `1` here would be wrong -- that
+    // number is produced one layer later, and pinning it in the wrong place
+    // would pass for the wrong reason.
+    assert.strictEqual(
+      merged?.mapUnitScale,
+      undefined,
+      'a cleared MapUnit must be treated as absent, not as an unparseable unit',
+    );
+    // And the downstream resolution is the metres heuristic, which is the
+    // behaviour the user actually gets.
+    assert.strictEqual(resolveMapUnitToMetreScale(merged?.mapUnitScale, 0.001), 1);
+  });
+
+  it('still falls back to the length unit for a NON-EMPTY unparseable MapUnit', () => {
+    // Control: the fix must not turn every edited MapUnit into 1, only the
+    // cleared one. 'WIBBLE' matches no known unit, so the documented
+    // length-unit fallback still applies.
+    const original: ProjectedCRS = { id: 1, name: 'EPSG:28992', mapUnit: 'METRE', mapUnitScale: 1 };
+    const merged = mergeProjectedCRS(original, { mapUnit: 'WIBBLE' }, 0.001);
+    assert.strictEqual(merged?.mapUnitScale, 0.001);
   });
 
   it('treats IFC2X3 files with IfcMapConversion and IfcProjectedCRS as standard georeferencing', () => {
@@ -112,6 +162,31 @@ describe('effective georeferencing', () => {
     );
   });
 
+  it('falls back NaN eastings/northings/orthogonalHeight to 0 instead of poisoning downstream math (PR #1965 review)', () => {
+    // A malformed IfcMapConversion or a bad mutation edit must not let a
+    // NaN reach `resolveGeorefLinearParams`'s eastings/northings math, or
+    // `hasStandardGeoreferencing`'s orthogonalHeight finiteness check --
+    // `?? 0` alone passes NaN through untouched (NaN ?? 0 === NaN). The
+    // maintainer's PR #1965 review flagged that the previous version of this
+    // test asserted eastings/northings but never actually exercised
+    // orthogonalHeight, even though the title claimed it did -- exercise it
+    // for real here so a regression on that field fails this test.
+    const original: MapConversion = {
+      id: 2,
+      sourceCRS: 10,
+      targetCRS: 11,
+      eastings: NaN,
+      northings: 200,
+      orthogonalHeight: NaN,
+    };
+
+    const merged = mergeMapConversion(original, { northings: NaN });
+
+    assert.strictEqual(merged?.eastings, 0);
+    assert.strictEqual(merged?.northings, 0);
+    assert.strictEqual(merged?.orthogonalHeight, 0);
+  });
+
   it('overlays edited IfcMapConversion fields without dropping original rotation and scale', () => {
     const original: MapConversion = {
       id: 2,
@@ -159,12 +234,72 @@ describe('effective georeferencing', () => {
     it('leaves siteLocation georef untouched', () => {
       assert.strictEqual(resolveEpsetMapUnitScale('siteLocation', undefined, 0.001), undefined);
     });
+
+    /**
+     * `getEffectiveGeoreference` calls `mergeProjectedCRS` then
+     * `resolveEpsetMapUnitScale` in sequence (this file's `getEffectiveGeoreference`,
+     * around the `resolveEpsetMapUnitScale(original?.source, ...)` call). Every
+     * consumer that builds its CRS this way -- ViewportContainer, BasepointOverlay,
+     * FederationAlignmentControls, federationAlign.ts, useAnchorGeoreference.ts --
+     * gets the corrected scale.
+     *
+     * `GeoreferencingPanel.tsx` used to call `mergeProjectedCRS` ALONE (its
+     * `georef` prop comes from `ModelMetadataPanel.tsx`'s own
+     * `extractGeoreferencingOnDemand` call, not `getEffectiveGeoreference`), so
+     * for an ePSet_MapConversion IFC2x3 file with no explicit ePset MapUnit its
+     * `mergedCRS.mapUnitScale` stayed `undefined` -- which
+     * `resolveMapUnitToMetreScale` reads as "treat offsets as metres" (scale 1)
+     * instead of the project length-unit scale. For a millimetre project that
+     * fed `detectDoubleGeoreference` an easting/northing 1000x too large.
+     * Pinning the two-step composition here so a regression in either function
+     * -- or a caller that goes back to calling `mergeProjectedCRS` alone --
+     * shows up.
+     */
+    it('mergeProjectedCRS + resolveEpsetMapUnitScale composition matches getEffectiveGeoreference (GeoreferencingPanel parity)', () => {
+      const original: ProjectedCRS = {
+        id: 1,
+        name: 'RD_New',
+        mapUnit: undefined,
+        mapUnitScale: undefined,
+      };
+      const lengthUnitScale = 0.001; // millimetre project
+
+      const merged = mergeProjectedCRS(original, undefined, lengthUnitScale);
+      const scaleWithoutFix = resolveMapUnitToMetreScale(merged?.mapUnitScale, lengthUnitScale);
+      assert.strictEqual(scaleWithoutFix, 1, 'sanity: mergeProjectedCRS alone leaves the ePSet gap open');
+
+      const correctedMapUnitScale = resolveEpsetMapUnitScale('ePSetMapConversion', merged?.mapUnitScale, lengthUnitScale);
+      const scaleWithFix = resolveMapUnitToMetreScale(correctedMapUnitScale, lengthUnitScale);
+      assert.strictEqual(scaleWithFix, lengthUnitScale, 'the composed scale must match every other consumer');
+    });
   });
 
   it('infers common IFC map unit names', () => {
     assert.strictEqual(inferMapUnitScale('FOOT'), 0.3048);
     assert.strictEqual(inferMapUnitScale('METRE'), 1);
     assert.strictEqual(inferMapUnitScale('MILLIMETRE'), 0.001);
+  });
+
+  it('infers the SI prefixes between milli and kilo, and keeps them apart', () => {
+    // CENTI, DECI and KILO were the three branches no assertion reached: each
+    // could return any other branch's factor with the suite still green. They
+    // are one `includes` apart from each other and from MILLIMETRE, so a
+    // mis-ordered or mistyped prefix lands on a neighbour rather than failing.
+    assert.strictEqual(inferMapUnitScale('CENTIMETRE'), 0.01);
+    assert.strictEqual(inferMapUnitScale('DECIMETRE'), 0.1);
+    assert.strictEqual(inferMapUnitScale('KILOMETRE'), 1000);
+    // Every prefixed name also contains METRE, so the bare-METRE branch must
+    // stay LAST; if it moved up, all four of these would collapse to 1.
+    assert.notStrictEqual(inferMapUnitScale('KILOMETRE'), 1);
+  });
+
+  it('keeps the US survey foot distinct from the international foot', () => {
+    // The survey-foot branch is tested before FOOT because 'US SURVEY FOOT'
+    // matches both; reversing the two makes it 0.3048 and moves a state-plane
+    // site by ~2 ppm, which is metres over a survey grid.
+    assert.strictEqual(inferMapUnitScale('US SURVEY FOOT'), 0.3048006096);
+    assert.strictEqual(inferMapUnitScale('FTUS'), 0.3048006096);
+    assert.notStrictEqual(inferMapUnitScale('US SURVEY FOOT'), inferMapUnitScale('FOOT'));
   });
 
   describe('getEffectiveHorizontalScale (issue #595)', () => {
@@ -234,18 +369,36 @@ describe('effective georeferencing', () => {
       assert.strictEqual(detectScaleUnitMismatch(undefined, 1, 1), null);
     });
 
-    it('flags the common Scale=1 + mm-project + m-map error', () => {
+    it('flags the common Scale=1 + mm-project + m-map error as COMPENSATED', () => {
+      // The file is off-spec, but `getEffectiveHorizontalScale`'s unset/1 Scale
+      // heuristic already places the geometry at 1×. Reporting effectiveScale
+      // 1000 here claimed a mis-sizing the code prevents, and that false
+      // warning was the only thing the panel said about the #2526 file.
       const m = detectScaleUnitMismatch(1, 1, 0.001);
       assert.ok(m, 'expected a mismatch report');
       assert.strictEqual(m!.rawScale, 1);
-      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.specEffectiveScale, 1000);
+      assert.strictEqual(m!.effectiveScale, 1);
+      assert.strictEqual(m!.compensated, true);
       assert.strictEqual(m!.expectedScale, 0.001);
     });
 
-    it('flags Scale omitted when units differ', () => {
+    it('flags Scale omitted when units differ as COMPENSATED', () => {
       const m = detectScaleUnitMismatch(undefined, 1, 0.001);
       assert.ok(m);
-      assert.strictEqual(m!.effectiveScale, 1000);
+      assert.strictEqual(m!.specEffectiveScale, 1000);
+      assert.strictEqual(m!.effectiveScale, 1);
+      assert.strictEqual(m!.compensated, true);
+    });
+
+    it('does NOT mark a genuine mis-scaling as compensated', () => {
+      // Scale explicitly 1000 on a mm project: the heuristic only rescues an
+      // unset/1 Scale, so this really is applied and really does mis-size.
+      const m = detectScaleUnitMismatch(1000, 1, 0.001);
+      assert.ok(m);
+      assert.strictEqual(m!.effectiveScale, 1e6);
+      assert.strictEqual(m!.specEffectiveScale, 1e6);
+      assert.strictEqual(m!.compensated, false);
     });
 
     it('tolerates tiny floating-point noise around 1.0', () => {
@@ -258,6 +411,30 @@ describe('effective georeferencing', () => {
       const m = detectScaleUnitMismatch(2, 1, 1);
       assert.ok(m);
       assert.strictEqual(m!.effectiveScale, 2);
+      assert.strictEqual(m!.compensated, false);
+    });
+
+    it('reports a deviation just OUTSIDE the 0.5% band, not just tolerates one inside', () => {
+      // The noise test above pins 1.004 and 0.996 as null, so the band cannot be
+      // TIGHTENED without failing -- but nothing failed when it was widened, and
+      // at 5% it still passed every test in this file. A band is two-sided: pin
+      // the first value that must be reported, or only one direction is guarded.
+      assert.strictEqual(detectScaleUnitMismatch(1.004, 1, 1), null);
+      const over = detectScaleUnitMismatch(1.006, 1, 1);
+      assert.ok(over, '0.6% off unity must be reported, not swallowed by the band');
+      const under = detectScaleUnitMismatch(0.994, 1, 1);
+      assert.ok(under, '-0.6% off unity must be reported too');
+    });
+
+    it('does not call a small genuine mis-scaling compensated', () => {
+      // Every other `compensated` fixture sits at exactly 1 (heuristic fired) or
+      // far away (2, 1e6), so the 0.5% width of that band was never load-bearing:
+      // it could be widened a hundredfold unnoticed. Scale=1.2 is applied for
+      // real and is small enough to fall inside a sloppy band.
+      const m = detectScaleUnitMismatch(1.2, 1, 1);
+      assert.ok(m);
+      assert.strictEqual(m!.effectiveScale, 1.2);
+      assert.strictEqual(m!.compensated, false);
     });
   });
 
@@ -338,6 +515,65 @@ describe('effective georeferencing', () => {
     it('rejects null / undefined', () => {
       assert.strictEqual(hasStandardGeoreferencing(null), false);
       assert.strictEqual(hasStandardGeoreferencing(undefined), false);
+    });
+
+    it('rejects a mapConversion with non-finite eastings or northings (PR #1965 review, NaN guard)', () => {
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, eastings: NaN },
+        }),
+        false,
+      );
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, northings: Infinity },
+        }),
+        false,
+      );
+    });
+
+    it('rejects a mapConversion with non-finite orthogonalHeight (PR #1965 review round 2, NaN guard)', () => {
+      // The finiteness check previously stopped at eastings/northings.
+      // `hasUsableMapGeoref` (pick-to-geo.ts) delegates here for the XYZ
+      // readout, which adds `mapConversion.orthogonalHeight` straight into
+      // the returned height with no fallback -- a NaN here must be rejected
+      // at this gate exactly like a NaN eastings/northings is, or it lands
+      // directly in Z.
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, orthogonalHeight: NaN },
+        }),
+        false,
+      );
+    });
+
+    it('accepts a mapConversion with non-finite Scale or axis components (deliberate, not a gap)', () => {
+      // Unlike orthogonalHeight, Scale and the XAxisAbscissa/XAxisOrdinate
+      // axis pair are NOT part of this gate's finiteness check. The DXF
+      // export/underlay path's `resolveGeorefLinearParams`
+      // (dxfExportGeoref.ts) already substitutes finite fallbacks for
+      // exactly this case (Scale=0/NaN → 1, degenerate/non-finite axis →
+      // (1, 0)) so a malformed Scale/axis still renders the DXF underlay
+      // somewhere. `selectAnchorGeoref` gates anchor selection through this
+      // same predicate, so rejecting non-finite Scale/axis here would reject
+      // that model as an anchor before the fallback ever runs -- turning a
+      // georeference that currently renders (via the fallback) into one
+      // that's silently disabled. This test locks that the gate stays
+      // permissive for these two fields.
+      assert.strictEqual(
+        hasStandardGeoreferencing({
+          source: 'mapConversion',
+          projectedCRS: { id: 1, name: 'EPSG:28992' },
+          mapConversion: { ...mapConversion, scale: NaN, xAxisAbscissa: NaN, xAxisOrdinate: Infinity },
+        }),
+        true,
+      );
     });
   });
 });

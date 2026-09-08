@@ -24,17 +24,91 @@
  * scans first 100 K bytes → meta → first chunk → first batch).
  */
 
+import type { ProcessParallelOptions } from './geometry-parallel-options.js';
+import type { BatchSizingConfig } from './batch-sizing.js';
 import type { CoordinateHandler } from './coordinate-handler.js';
-import type { MeshData, TessellationQuality } from './types.js';
+import type { MeshData } from './types.js';
 import type { StreamingGeometryEvent } from './index.js';
 import { mergeGeometryDiagnostics, type GeometryDiagnostics } from './diagnostics.js';
 import { computeWorkerCount } from './worker-count.js';
-import type { BatchSizingConfig } from './batch-sizing.js';
 import { notifyIfWasmAssetUnavailable, notifyIfWorkerScriptUnavailable } from './wasm-asset-error.js';
+import { restashWasmPanicLocation } from './wasm-panic-forward.js';
 // The compiled-module memo lives in its own module so the main-thread
 // `IfcLiteBridge.init()` path can reuse whatever this pool already compiled
 // (and vice versa) instead of fetching the same binary a second time.
 import { compileSharedWasmModule } from './wasm-shared-module.js';
+import { stitchShards, type ShardColumns } from './shard-stitch.js';
+
+/**
+ * Prepass class-byte layout, mirroring the `PREPASS_CLASS_*` definitions in
+ * `rust/processing/src/shard_classes.rs` (the source of truth — these are
+ * pinned to it by `prepass-class-spans.test.ts`).
+ *
+ * The producer packs a named code in the LOW bits and composes FLAG bits on
+ * top (`PREPASS_CLASS_FLAG_GEOMETRY_JOB` 0x80, `..._FLAG_TYPE_CANDIDATE`
+ * 0x40), so a consumer must mask before comparing — the Rust consumer does
+ * (`gpu_meshes/prepass_discovery.rs`), and so does {@link extractPrepassSpanLists}.
+ */
+export const PREPASS_CLASS_CODE_MASK = 0x3f;
+/** `IFCSTYLEDITEM`. */
+export const PREPASS_CLASS_STYLED_ITEM = 4;
+/** `IFCINDEXEDCOLOURMAP`. */
+export const PREPASS_CLASS_INDEXED_COLOUR_MAP = 5;
+/** `IFCMATERIALDEFINITIONREPRESENTATION`. */
+export const PREPASS_CLASS_MATERIAL_DEF_REPR = 6;
+/** `IFCRELASSOCIATESMATERIAL`. */
+export const PREPASS_CLASS_REL_ASSOCIATES_MATERIAL = 7;
+/** `IFCRELVOIDSELEMENT`. */
+export const PREPASS_CLASS_REL_VOIDS = 8;
+/** `IFCRELFILLSELEMENT`. */
+export const PREPASS_CLASS_REL_FILLS = 9;
+/** `IFCRELAGGREGATES`. */
+export const PREPASS_CLASS_REL_AGGREGATES = 10;
+
+/** The classes the host builds span lists for (every other code is ignored). */
+const HOST_SPAN_CLASSES = [
+  PREPASS_CLASS_STYLED_ITEM,
+  PREPASS_CLASS_INDEXED_COLOUR_MAP,
+  PREPASS_CLASS_MATERIAL_DEF_REPR,
+  PREPASS_CLASS_REL_ASSOCIATES_MATERIAL,
+  PREPASS_CLASS_REL_VOIDS,
+  PREPASS_CLASS_REL_FILLS,
+  PREPASS_CLASS_REL_AGGREGATES,
+] as const;
+
+/**
+ * Build one `(id, start, length)` span list per host-consumed prepass class
+ * from the stitched shard columns, in FILE ORDER. Every comparison goes
+ * through {@link PREPASS_CLASS_CODE_MASK}, so a record that carries a flag bit
+ * alongside its named code still lands in its list instead of being dropped.
+ * Returns exact-size arrays (one entry per class in `HOST_SPAN_CLASSES`,
+ * empty when the file has none).
+ */
+export function extractPrepassSpanLists(
+  classes: Uint8Array,
+  ids: Uint32Array,
+  starts: Uint32Array,
+  lengths: Uint32Array,
+): Map<number, Uint32Array> {
+  // Sized by the code mask rather than by the highest class the host consumes:
+  // a masked code is always < 64, so a class added on the Rust side cannot
+  // write out of bounds here (typed arrays discard such writes silently).
+  const counts = new Uint32Array(PREPASS_CLASS_CODE_MASK + 1);
+  for (let i = 0; i < classes.length; i++) counts[classes[i] & PREPASS_CLASS_CODE_MASK]++;
+  const slots = new Map<number, { arr: Uint32Array; w: number }>();
+  for (const k of HOST_SPAN_CLASSES) slots.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
+  for (let i = 0; i < classes.length; i++) {
+    const slot = slots.get(classes[i] & PREPASS_CLASS_CODE_MASK);
+    if (!slot) continue;
+    slot.arr[slot.w] = ids[i];
+    slot.arr[slot.w + 1] = starts[i];
+    slot.arr[slot.w + 2] = lengths[i];
+    slot.w += 3;
+  }
+  const spans = new Map<number, Uint32Array>();
+  for (const [k, slot] of slots) spans.set(k, slot.arr);
+  return spans;
+}
 
 /**
  * Plan content-affinity routing for one chunk: assign each job (by index) to a
@@ -109,92 +183,24 @@ function readShardScanFlag(): boolean {
   return true;
 }
 
-/** One shard's returned columns + handoff (see `scanEntityIndexShard`). */
-interface ShardColumns {
-  ids: Uint32Array;
-  starts: Uint32Array;
-  lengths: Uint32Array;
-  /** Per-record prepass class (PREPASS_CLASS_*; 4 = IfcStyledItem). */
-  classes: Uint8Array;
-  /** Global start of the next shard's first real entity, or -1 at EOF. */
-  handoff: number;
-}
-
 /**
- * SPIKE: stitch N speculative shard scans into the full entity index —
- * byte-identical to the single-threaded scan. Port of the native
- * `parallel_scan::stitch`: shard 0 is authoritative (header-aware start); for
- * shard i>0 the previous shard's validated `handoff` is a real entity start, so
- * binary-search shard i's `starts` for it and drop the speculative prefix before
- * it. Concatenates the validated slices in shard order (= file order), so
- * last-wins on a duplicate id is preserved when the worker rebuilds its map.
+ * Terminate a pool worker on a teardown path that is already unwinding.
  *
- * Returns null on the rare "handoff not found" case (speculative overshoot / a
- * record spanning a whole shard), which needs the serial-rescan fallback the JS
- * spike doesn't implement — the caller falls back to the pre-pass's own index.
+ * `Worker.terminate()` is specified never to throw, and is a no-op on a worker
+ * that is already gone — so every one of these teardown calls is expected to
+ * succeed and a throw means something unexpected about the host, not a
+ * double-terminate. Worth one line; never worth failing a teardown that runs
+ * while a real error is on its way to the caller.
+ *
+ * Bounded by construction: each caller terminates the pool once and then
+ * throws, returns, or leaves the generator.
  */
-function stitchShards(shards: ShardColumns[]): { ids: Uint32Array; starts: Uint32Array; lengths: Uint32Array; classes: Uint8Array } | null {
-  const n = shards.length;
-
-  // Phase 1 — locate each shard's validated slice (binary-search the previous
-  // shard's handoff) WITHOUT copying, so the output size is exact before any
-  // allocation. Exactness matters: the id/start/length columns are allocated
-  // SAB-backed below and handed to every worker as full-buffer views, so a
-  // cap-sized buffer would let consumers read past the last real record.
-  const sliceFrom = new Array<number>(n).fill(0);
-  let used = 1;
-  let w = shards[0].ids.length; // shard 0 is authoritative, take every record
-  let expectedStart = shards[0].handoff; // -1 => no more real entities
-  for (let i = 1; i < n; i++) {
-    if (expectedStart < 0) break;
-    // starts is strictly increasing → binary-search for expectedStart.
-    const starts = shards[i].starts;
-    let lo = 0;
-    let hi = starts.length - 1;
-    let p = -1;
-    while (lo <= hi) {
-      const mid = (lo + hi) >>> 1;
-      const v = starts[mid];
-      if (v === expectedStart) { p = mid; break; }
-      if (v < expectedStart) lo = mid + 1;
-      else hi = mid - 1;
-    }
-    if (p < 0) {
-      // Handoff not present in this shard — fallback path (not implemented here).
-      return null;
-    }
-    sliceFrom[i] = p;
-    w += starts.length - p;
-    expectedStart = shards[i].handoff;
-    used = i + 1;
+function terminateWorkerQuietly(worker: Worker, label: string): void {
+  try {
+    worker.terminate();
+  } catch (err) {
+    console.warn(`[stream] ${label} terminate failed:`, err);
   }
-
-  // Phase 2 — single concatenation copy, straight into SharedArrayBuffer-backed
-  // columns. The stitched index used to be copied THREE times per column on the
-  // main thread (cap-array stitch → `.slice()` to contiguous → `.set()` into
-  // fresh SABs in deliverEntityIndex); writing the stitch output into SABs
-  // directly makes index delivery zero-copy (~450 MB of critical-path memcpy
-  // saved on a 19M-entity file). `classes` stays plain: its only consumer past
-  // the span-extraction loop is the pre-pass worker, which takes it by transfer.
-  const sabAvailable = typeof SharedArrayBuffer !== 'undefined';
-  const u32Column = (len: number) =>
-    new Uint32Array(sabAvailable ? new SharedArrayBuffer(len * 4) : new ArrayBuffer(len * 4));
-  const outIds = u32Column(w);
-  const outStarts = u32Column(w);
-  const outLengths = u32Column(w);
-  const outClasses = new Uint8Array(w);
-  let o = 0;
-  for (let i = 0; i < used; i++) {
-    const s = shards[i];
-    const p = sliceFrom[i];
-    outIds.set(p === 0 ? s.ids : s.ids.subarray(p), o);
-    outStarts.set(p === 0 ? s.starts : s.starts.subarray(p), o);
-    outLengths.set(p === 0 ? s.lengths : s.lengths.subarray(p), o);
-    outClasses.set(p === 0 ? s.classes : s.classes.subarray(p), o);
-    o += s.ids.length - p;
-  }
-
-  return { ids: outIds, starts: outStarts, lengths: outLengths, classes: outClasses };
 }
 
 interface PrepassMeta {
@@ -206,97 +212,9 @@ interface PrepassMeta {
   buildingRotation?: number | null;
 }
 
-export interface ProcessParallelOptions {
-  /**
-   * Fires when the streaming pre-pass finishes building the entity index
-   * (after styles), with SAB-backed Uint32Array views over the shared
-   * column buffers. The parser worker uses this to skip its own
-   * `scanEntitiesFastBytes` call (~10 s on 1 GB files under WASM
-   * contention with the geometry workers).
-   */
-  onEntityIndex?: (
-    ids: Uint32Array,
-    starts: Uint32Array,
-    lengths: Uint32Array,
-  ) => void;
-  /**
-   * Issue #540 — "Merge Multilayer Walls" load-time toggle. When
-   * `true`, the geometry workers' IfcAPI receive
-   * `setMergeLayers(true)` before the first stream-chunk lands, so
-   * Revit-style multilayer-wall part meshes are suppressed at the
-   * Rust layer. Default `false` keeps existing behaviour.
-   */
-  mergeLayers?: boolean;
-  /**
-   * GPU-instancing partition toggle (default true). Set false for FEDERATED loads:
-   * the instanced render path is primary-model only, so a federated model must keep
-   * all geometry on the flat path or its opaque repeated occurrences are dropped.
-   */
-  enableInstancing?: boolean;
-  /**
-   * Issue #924 — per-entity geometry-hash tolerance in metres. When a
-   * positive value is given, each geometry worker's IfcAPI receives
-   * `setComputeGeometryHashes(tol)` before the first stream-chunk, so the
-   * RTC-invariant `geometryHash` lands on every emitted mesh for the
-   * model-diff / compare feature. `undefined`/`null` ⇒ off (zero overhead).
-   */
-  geometryHashTolerance?: number | null;
-  /**
-   * Issue #976 — tessellation detail level for curved geometry. When set,
-   * each geometry worker's IfcAPI receives `setTessellationQuality(level)`
-   * before the first stream-chunk. `undefined`/`null` ⇒ engine default
-   * (`'medium'`, output identical to the pre-quality pipeline).
-   */
-  tessellationQuality?: TessellationQuality | null;
-  /**
-   * Issue #1286 — tier-independent small-cut skip. When true, each geometry
-   * worker's IfcAPI receives `setSkipSmallCuts(true)` before the first
-   * stream-chunk, dropping tiny `IfcBooleanResult` detail cuts while keeping the
-   * tessellation tier. `undefined`/`false` ⇒ every cut runs (default).
-   */
-  skipSmallCuts?: boolean;
-  /**
-   * Explicit URL for the wasm-bindgen `.wasm` binary. When provided,
-   * forwarded to the geometry workers' init messages so they call
-   * `init(wasmUrl)` instead of relying on wasm-bindgen's default
-   * `import.meta.url`-based resolution.
-   *
-   * Vite + webpack 5 consumers don't need to set this — the bundler
-   * rewrites the `new URL('ifc-lite_bg.wasm', import.meta.url)` literal
-   * inside the wasm-bindgen glue at build time. This option exists for
-   * consumers whose bundler doesn't transform that pattern, or who
-   * serve the wasm from a CDN at a different origin (e.g., self-hosted
-   * deployments, Tauri custom protocols, embedded usage).
-   */
-  wasmUrls?: {
-    wasm?: string;
-  };
-  /**
-   * Issue #1097 — optional override for the worker's adaptive batch sizing
-   * (the watchdog↔throughput knob). Takes precedence over the `globalThis`
-   * tuning hook; omitted ⇒ `DEFAULT_BATCH_SIZING`. Forwarded to every worker
-   * in its `stream-start` message and validated there.
-   */
-  batchSizing?: Partial<BatchSizingConfig>;
-  /**
-   * #1097 load-time visibility filter. `disabledTypes` (uppercase STEP keywords)
-   * and `skipTypeGeometry` are forwarded to the prepass so the matching geometry
-   * jobs are never produced — cutting decode + CSG + tessellation + upload for
-   * hidden types (spaces/annotations/grids/type-library). Takes precedence over
-   * the `globalThis.__IFC_LITE_VISIBILITY_FILTER` hook. Toggling a type back on
-   * requires a reload.
-   */
-  visibilityFilter?: { disabledTypes?: string[]; skipTypeGeometry?: boolean };
-  /**
-   * Explicit geometry-worker count for A/B tuning (the viewer's
-   * `?geomWorkers=N` knob). Overrides the cores-tier heuristic but stays
-   * clamped to the memory budget — see {@link computeWorkerCount}. `undefined`
-   * ⇒ use the heuristic. Lets a user measure their host's true thermal optimum
-   * (which is machine-specific). Geometry output is unaffected by the count
-   * (workers process disjoint, deterministic element slices).
-   */
-  workerCountOverride?: number;
-}
+export type { ProcessParallelOptions } from './geometry-parallel-options.js';
+
+let nextSourceSessionId = 0;
 
 export async function* processParallel(
   buffer: Uint8Array,
@@ -306,11 +224,10 @@ export async function* processParallel(
   existingSab?: SharedArrayBuffer,
   options?: ProcessParallelOptions,
 ): AsyncGenerator<StreamingGeometryEvent> {
+  const sourceSessionId = `geometry-source-${++nextSourceSessionId}`;
   coordinator.reset();
-
   yield { type: 'start', totalEstimate: buffer.length / 1000 };
   yield { type: 'model-open', modelID: 0 };
-
   // Kick off the ONE shared wasm compile immediately so it overlaps the SAB
   // setup + worker-count planning below; awaited just before the workers init
   // (see `compileSharedWasmModule`). Null ⇒ each worker self-inits (unchanged).
@@ -466,6 +383,11 @@ export async function* processParallel(
           lengths: msg.lengths as Uint32Array,
           classes: msg.classes as Uint8Array,
           handoff: msg.handoff as number,
+          // Absent on an older wasm build: "does not report", which is not the
+          // same claim as zero, but zero is all a host with no offsets can say.
+          oversizedIdStarts: (msg.oversizedIdStarts as Uint32Array | undefined) ?? new Uint32Array(0),
+          // Absent = "no stop reported". TODO(#3699): no wasm build sets it yet.
+          malformedStart: msg.malformedStart as number | undefined,
         };
         shardResultsRemaining--;
         console.log(`[stream][shard] worker[${workerIndex}] shard ${si} done @ ${elapsed()}ms (${(msg.ids as Uint32Array).length} entities, remaining=${shardResultsRemaining})`);
@@ -544,6 +466,15 @@ export async function* processParallel(
           (msg as { instancedGeometryHashIds?: Uint32Array }).instancedGeometryHashIds;
         const instancedGeometryHashValues =
           (msg as { instancedGeometryHashValues?: BigUint64Array }).instancedGeometryHashValues;
+        // #1891: the world boxes for those same ids, six values per id. Travels
+        // with the ids, never on its own — an aabb array without its id array
+        // indexes nothing.
+        const instancedGeometryAabbValues =
+          (msg as { instancedGeometryAabbValues?: Float64Array }).instancedGeometryAabbValues;
+        // #1993: and their proved volumes, one per id. Same rule as the boxes —
+        // it travels with the ids or not at all.
+        const instancedGeometryVolumeValues =
+          (msg as { instancedGeometryVolumeValues?: Float64Array }).instancedGeometryVolumeValues;
         if (
           meshes.length > 0 ||
           (instancedShards && instancedShards.length > 0) ||
@@ -568,7 +499,12 @@ export async function* processParallel(
             coordinateInfo: coordinateInfo || undefined,
             ...(instancedShards && instancedShards.length > 0 ? { instancedShards } : {}),
             ...(instancedGeometryHashIds && instancedGeometryHashIds.length > 0
-              ? { instancedGeometryHashIds, instancedGeometryHashValues }
+              ? {
+                  instancedGeometryHashIds,
+                  instancedGeometryHashValues,
+                  ...(instancedGeometryAabbValues ? { instancedGeometryAabbValues } : {}),
+                  ...(instancedGeometryVolumeValues ? { instancedGeometryVolumeValues } : {}),
+                }
               : {}),
           });
           wake();
@@ -593,6 +529,11 @@ export async function* processParallel(
         // A rotated/missing engine binary after a redeploy (#1363) surfaces
         // here as the worker's wasm-init failure — let the host reload.
         notifyIfWasmAssetUnavailable(msg.message);
+        // #2527 follow-up: re-plant the worker realm's panic-location stash
+        // (if this error was a wasm trap) on THIS realm's global, before the
+        // error below is thrown/captured, so `attachWasmPanicLocation` in
+        // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+        restashWasmPanicLocation(globalThis, msg.wasmPanicLocation, msg.wasmPanicAt, msg.message);
         workerError = new Error(`Geometry worker error: ${msg.message}`);
         workersCompleted++;
         worker.terminate();
@@ -650,64 +591,75 @@ export async function* processParallel(
   }
 
   const workers: Worker[] = [];
-  for (let i = 0; i < workerCount; i++) {
-    const worker = makeGeometryWorker();
-    workers.push(worker);
-    installWorkerHandlers(worker, i);
-    // Instantiate WASM. When the host compiled the module once (above), each
-    // worker `initSync`s it (cheap); otherwise it falls back to compiling from
-    // bytes. The worker's tail-promise serialiser guarantees this `init`
-    // completes before any subsequent `stream-start`/`stream-chunk` runs.
-    //
-    // `wasmUrl` is forwarded only when the consumer explicitly provided one AND
-    // no shared module is available — undefined leaves the worker on
-    // wasm-bindgen's default `import.meta.url`-based resolution (Vite + webpack).
-    const wasmUrlForWorker = options?.wasmUrls?.wasm;
-    worker.postMessage(
-      {
-        type: 'init',
-        ...(sharedWasmModule
-          ? { wasmModule: sharedWasmModule }
-          : wasmUrlForWorker
-            ? { wasmUrl: wasmUrlForWorker }
-            : {}),
-      },
-    );
-    // Issue #540: forward the user's "Merge Multilayer Walls" toggle
-    // BEFORE any stream-start so the worker's IfcAPI has the flag set
-    // before its first parse call. The tail-promise serialiser inside
-    // each worker preserves this order even though the messages are
-    // posted back-to-back. We always send the message so the controller
-    // path doesn't have to remember whether the host called it — the
-    // default `false` is a cheap no-op.
-    worker.postMessage({
-      type: 'set-merge-layers',
-      enabled: options?.mergeLayers === true,
-    });
-    // GPU-instancing partition toggle — default ON; the host sets false for federated
-    // loads so a federated model's geometry stays flat (instancing is primary-only).
-    worker.postMessage({
-      type: 'set-instancing-enabled',
-      enabled: options?.enableInstancing !== false,
-    });
-    // Issue #924: forward the geometry-hash tolerance the same way — always
-    // sent so the controller path stays uniform; null is a cheap no-op.
-    worker.postMessage({
-      type: 'set-compute-geometry-hashes',
-      tolerance: options?.geometryHashTolerance ?? null,
-    });
-    // Issue #976: forward the tessellation-quality level the same way —
-    // null keeps the Rust default (Medium / historical densities).
-    worker.postMessage({
-      type: 'set-tessellation-quality',
-      level: options?.tessellationQuality ?? null,
-    });
-    // Issue #1286: forward the small-cut skip the same way — always sent so a
-    // worker reused by a later export (which omits it) resets to false.
-    worker.postMessage({
-      type: 'set-skip-small-cuts',
-      enabled: options?.skipSmallCuts === true,
-    });
+  // This loop runs BEFORE the try/finally below (which owns teardown for the
+  // rest of the pipeline), so it needs its own: `postMessage` below can throw
+  // (e.g. a `wasmModule` structured-clone failure — the same class of error
+  // `dispatchJobsChunkInternal` already guards against further down), and
+  // without this try/catch any worker already pushed to `workers` before the
+  // throw would never be terminated — a spawned-worker-per-failed-load leak.
+  try {
+    for (let i = 0; i < workerCount; i++) {
+      const worker = makeGeometryWorker();
+      workers.push(worker);
+      installWorkerHandlers(worker, i);
+      // Instantiate WASM. When the host compiled the module once (above), each
+      // worker `initSync`s it (cheap); otherwise it falls back to compiling from
+      // bytes. The worker's tail-promise serialiser guarantees this `init`
+      // completes before any subsequent `stream-start`/`stream-chunk` runs.
+      //
+      // `wasmUrl` is forwarded only when the consumer explicitly provided one AND
+      // no shared module is available — undefined leaves the worker on
+      // wasm-bindgen's default `import.meta.url`-based resolution (Vite + webpack).
+      const wasmUrlForWorker = options?.wasmUrls?.wasm;
+      worker.postMessage(
+        {
+          type: 'init',
+          ...(sharedWasmModule
+            ? { wasmModule: sharedWasmModule }
+            : wasmUrlForWorker
+              ? { wasmUrl: wasmUrlForWorker }
+              : {}),
+        },
+      );
+      // Issue #540: forward the user's "Merge Multilayer Walls" toggle
+      // BEFORE any stream-start so the worker's IfcAPI has the flag set
+      // before its first parse call. The tail-promise serialiser inside
+      // each worker preserves this order even though the messages are
+      // posted back-to-back. We always send the message so the controller
+      // path doesn't have to remember whether the host called it — the
+      // default `false` is a cheap no-op.
+      worker.postMessage({
+        type: 'set-merge-layers',
+        enabled: options?.mergeLayers === true,
+      });
+      // GPU-instancing partition toggle — default ON; the host sets false for federated
+      // loads so a federated model's geometry stays flat (instancing is primary-only).
+      worker.postMessage({
+        type: 'set-instancing-enabled',
+        enabled: options?.enableInstancing !== false,
+      });
+      // Issue #924: forward the geometry-hash tolerance the same way — always
+      // sent so the controller path stays uniform; null is a cheap no-op.
+      worker.postMessage({
+        type: 'set-compute-geometry-hashes',
+        tolerance: options?.geometryHashTolerance ?? null,
+      });
+      // Issue #976: forward the tessellation-quality level the same way —
+      // null keeps the Rust default (Medium / historical densities).
+      worker.postMessage({
+        type: 'set-tessellation-quality',
+        level: options?.tessellationQuality ?? null,
+      });
+      // Issue #1286: forward the small-cut skip the same way — always sent so a
+      // worker reused by a later export (which omits it) resets to false.
+      worker.postMessage({
+        type: 'set-skip-small-cuts',
+        enabled: options?.skipSmallCuts === true,
+      });
+    }
+  } catch (err) {
+    for (const w of workers) terminateWorkerQuietly(w, 'process worker (init)');
+    throw err;
   }
 
   const sendStreamEnd = () => {
@@ -716,7 +668,25 @@ export async function* processParallel(
     for (const w of workers) {
       try {
         w.postMessage({ type: 'stream-end' });
-      } catch { /* worker terminated already — safe to ignore */ }
+      } catch (err) {
+        // A structured-clonable payload posted to a terminated worker is a
+        // no-op, not a throw — so this means the port is in a state we did
+        // not expect. That worker will never flush its tail: `complete` is
+        // posted ONLY from `emitSessionEnd` in geometry.worker.ts, which
+        // fires ONLY in response to `stream-end`. The drain loop below waits
+        // for a `complete` from every worker (`workersCompleted >=
+        // workers.length`), so leaving this as a log would make the load
+        // hang forever instead of failing loudly — the same "swallowed
+        // failure" shape as the fixes already on this branch, just a stall
+        // instead of a false success. Surface it as a load error and
+        // terminate the unreachable worker so it isn't left dangling.
+        console.warn('[stream] stream-end postMessage failed; failing the load instead of hanging on that worker:', err);
+        workerError = workerError ?? new Error(
+          `Geometry worker failed: stream-end could not be delivered (${err instanceof Error ? err.message : String(err)})`,
+        );
+        terminateWorkerQuietly(w, 'process worker');
+        wake();
+      }
     }
   };
 
@@ -750,7 +720,7 @@ export async function* processParallel(
     const batchSizing = options?.batchSizing ?? readBatchSizingOverride();
     for (const worker of workers) {
       worker.postMessage({
-        type: 'stream-start' as const,
+        type: 'stream-start' as const, sourceSessionId,
         sharedBuffer,
         unitScale: prepassMeta.unitScale,
         planeAngleToRadians: prepassMeta.planeAngleToRadians,
@@ -898,6 +868,13 @@ export async function* processParallel(
     starts: Uint32Array,
     lengths: Uint32Array,
     source: 'prepass' | 'sharded',
+    // #3395: the parser worker builds the model from these columns alone, so
+    // without the count it reports a clean load that is short by that many.
+    oversizedIdCount: number,
+    // #3790: 1, or undefined when nothing reported (never coerced to 0 -- no
+    // producer can say "I ran clean" yet). Worse than a refusal: not "one
+    // record the parser will not find" but "every record after it is missing".
+    malformedRecordCount: number | undefined,
   ) => {
     console.log(`[stream] entity-index (${source}) @ ${elapsed()}ms (${ids.length} entries)`);
     if (typeof SharedArrayBuffer !== 'undefined') {
@@ -942,6 +919,8 @@ export async function* processParallel(
             new Uint32Array(sabIds),
             new Uint32Array(sabStarts),
             new Uint32Array(sabLengths),
+            oversizedIdCount,
+            malformedRecordCount,
           );
         } catch (err) {
           console.warn('[stream] onEntityIndex callback failed:', err);
@@ -960,7 +939,9 @@ export async function* processParallel(
       }
       if (options?.onEntityIndex) {
         try {
-          options.onEntityIndex(ids.slice(), starts.slice(), lengths.slice());
+          options.onEntityIndex(
+            ids.slice(), starts.slice(), lengths.slice(), oversizedIdCount, malformedRecordCount,
+          );
         } catch (err) {
           console.warn('[stream] onEntityIndex callback failed:', err);
         }
@@ -993,40 +974,32 @@ export async function* processParallel(
     const starts = stitched.starts;
     const lengths = stitched.lengths;
     entityIndexDeliveredEarly = true;
+    // The stitch's attributed count, NOT the per-shard sum. Summing reports
+    // refusals a discarded speculative prefix invented, which on a file with
+    // nothing oversized in it is a warning about a file that is fine (#3430).
+    const oversizedIdCount = stitched.oversizedIdCount;
+    // Attributed by the stitch for the same reason (#3790): a shard that began
+    // inside a quoted value reports a stop the file does not contain.
+    const malformedRecordCount = stitched.malformedRecordCount;
     // set-entity-index reaches every worker FIRST (FIFO), so the style-shard
     // messages below always find the index installed.
-    deliverEntityIndex(ids, starts, lengths, 'sharded');
+    deliverEntityIndex(ids, starts, lengths, 'sharded', oversizedIdCount, malformedRecordCount);
 
     // Extract the styled-item span triples (class 4) in FILE ORDER from the
     // stitched columns, split into one contiguous slice per worker, and
     // resolve them in parallel while everyone waits on the pre-pass scan.
     const classes = stitched.classes;
-    // Class codes (see Rust PREPASS_CLASS_*): 4 styled, 5 colour map,
-    // 6 material def repr, 7 rel-associates-material, 8 voids, 9 fills,
-    // 10 aggregates. Extract each list in FILE ORDER.
-    const counts = new Uint32Array(11);
-    for (let i = 0; i < classes.length; i++) counts[classes[i]]++;
-    const kinds = [4, 5, 6, 7, 8, 9, 10] as const;
-    const spanLists = new Map<number, { arr: Uint32Array; w: number }>();
-    for (const k of kinds) spanLists.set(k, { arr: new Uint32Array(counts[k] * 3), w: 0 });
-    for (let i = 0; i < classes.length; i++) {
-      const slot = spanLists.get(classes[i]);
-      if (!slot) continue;
-      slot.arr[slot.w] = ids[i];
-      slot.arr[slot.w + 1] = starts[i];
-      slot.arr[slot.w + 2] = lengths[i];
-      slot.w += 3;
-    }
+    const spanLists = extractPrepassSpanLists(classes, ids, starts, lengths);
     supportSpans = {
-      colourMapSpans: spanLists.get(5)!.arr,
-      materialDefSpans: spanLists.get(6)!.arr,
-      relMaterialSpans: spanLists.get(7)!.arr,
-      voidSpans: spanLists.get(8)!.arr,
-      fillsSpans: spanLists.get(9)!.arr,
-      aggregateSpans: spanLists.get(10)!.arr,
+      colourMapSpans: spanLists.get(PREPASS_CLASS_INDEXED_COLOUR_MAP)!,
+      materialDefSpans: spanLists.get(PREPASS_CLASS_MATERIAL_DEF_REPR)!,
+      relMaterialSpans: spanLists.get(PREPASS_CLASS_REL_ASSOCIATES_MATERIAL)!,
+      voidSpans: spanLists.get(PREPASS_CLASS_REL_VOIDS)!,
+      fillsSpans: spanLists.get(PREPASS_CLASS_REL_FILLS)!,
+      aggregateSpans: spanLists.get(PREPASS_CLASS_REL_AGGREGATES)!,
     };
-    const styledCount = counts[4];
-    const styledSpans = spanLists.get(4)!.arr;
+    const styledSpans = spanLists.get(PREPASS_CLASS_STYLED_ITEM)!;
+    const styledCount = styledSpans.length / 3;
     // 2 slices per worker (round-robin): the tail is set by the SLOWEST
     // worker, and macOS occasionally schedules one onto a slow core — halving
     // the slice size halves the damage a slow core can do to the tail.
@@ -1041,7 +1014,7 @@ export async function* processParallel(
       const to = i + 1 === sliceCount ? styledCount * 3 : Math.floor(((i + 1) * styledCount) / sliceCount) * 3;
       const slice = styledSpans.slice(from, to);
       workers[i % workers.length].postMessage(
-        { type: 'resolve-styles-shard' as const, sharedBuffer, sliceIndex: i, spans: slice },
+        { type: 'resolve-styles-shard' as const, sourceSessionId, sharedBuffer, sliceIndex: i, spans: slice },
         [slice.buffer],
       );
     }
@@ -1109,7 +1082,7 @@ export async function* processParallel(
     const m = mergedStylesForFinalize;
     workers[0].postMessage(
       {
-        type: 'finalize-styles' as const,
+        type: 'finalize-styles' as const, sourceSessionId,
         sharedBuffer,
         orphanIds: m.orphanIds,
         orphanColors: m.orphanColors,
@@ -1142,7 +1115,7 @@ export async function* processParallel(
       const rangeStart = Math.floor((i * len) / n);
       const rangeEnd = i + 1 === n ? len : Math.floor(((i + 1) * len) / n);
       workers[i].postMessage({
-        type: 'scan-shard' as const,
+        type: 'scan-shard' as const, sourceSessionId,
         sharedBuffer,
         shardIndex: i,
         rangeStart,
@@ -1158,7 +1131,6 @@ export async function* processParallel(
   // is suspended at a `yield` or the `resolveWaiting` await. The viewer's
   // `watchedGeometryStream` relies on this `finally` to tear down workers
   // on break / abort / watchdog (see boundedIteratorReturn). The existing
-  // branch-local `terminate()` calls remain — `terminate()` is idempotent.
   try {
   // Forward the consumer-supplied wasm URL to the pre-pass worker so it
   // doesn't fall back to wasm-bindgen's `import.meta.url` default. The
@@ -1291,7 +1263,11 @@ export async function* processParallel(
           // entity-index event); guard against double delivery regardless.
           console.log(`[stream] pre-pass entity-index arrived @ ${elapsed()}ms (already delivered via shards; ignoring)`);
         } else {
-          deliverEntityIndex(ids, starts, lengths, 'prepass');
+          // TODO(#3699): the Rust pre-pass emits no malformed count yet, so
+          // this is undefined ("nothing reported"), carried as such.
+          deliverEntityIndex(ids, starts, lengths, 'prepass',
+            (evt.oversizedIdCount as number | undefined) ?? 0,
+            evt.malformedRecordCount as number | undefined);
         }
       } else if (evt.type === 'prepass-columns') {
         // Pre-pass computed the referenced-repmaps + instantiated-type-id sets
@@ -1376,6 +1352,15 @@ export async function* processParallel(
       // so a stale-deploy 404 of the wasm (#1363) lands here — let the host
       // reload onto the current deployment.
       notifyIfWasmAssetUnavailable(data.message);
+      // #2527 follow-up: re-plant the worker realm's panic-location stash
+      // (if this error was a wasm trap) on THIS realm's global, before the
+      // error below is thrown, so `attachWasmPanicLocation` in
+      // analytics-scrub.ts sees it exactly as it would a main-thread trap.
+      // This is the SAME `geometry.worker.ts` as the main process-worker
+      // pool below, so it forwards the same `wasmPanicLocation`/`wasmPanicAt`
+      // fields on its `{type:'error'}` message — this handler previously
+      // dropped them on the floor.
+      restashWasmPanicLocation(globalThis, data.wasmPanicLocation, data.wasmPanicAt, data.message);
       prepassError = new Error(data.message);
       prepassDone = true;
       prepassWorker.terminate();
@@ -1465,6 +1450,7 @@ export async function* processParallel(
       }
       prepassWorker.postMessage({
         type: 'prepass-streaming-sharded',
+        sourceFingerprint: options?.sourceFingerprint,
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1477,6 +1463,7 @@ export async function* processParallel(
     } else {
       prepassWorker.postMessage({
         type: 'prepass-streaming',
+        sourceFingerprint: options?.sourceFingerprint,
         sharedBuffer,
         chunkSize: 50_000,
         ...(visibilityFilter?.disabledTypes ? { disabledTypes: visibilityFilter.disabledTypes } : {}),
@@ -1506,14 +1493,14 @@ export async function* processParallel(
     }
     if (workerError) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
-      try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+      terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
       throw workerError;
     }
     if (prepassError) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
       throw prepassError;
     }
@@ -1525,7 +1512,7 @@ export async function* processParallel(
     // explicit terminate to exit.
     if (prepassDone && !streamStartSentToWorkers && prepassJobsTotal === 0) {
       for (const w of workers) {
-        try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+        terminateWorkerQuietly(w, 'process worker');
       }
       const coordinateInfo = coordinator.getFinalCoordinateInfo();
       yield { type: 'complete', totalMeshes: 0, coordinateInfo };
@@ -1554,8 +1541,8 @@ export async function* processParallel(
   if (loadDiagnostics && loadDiagnostics.totalCsgFailures > 0) {
     console.warn(
       `[ifc-lite] ${loadDiagnostics.totalCsgFailures} CSG failure(s) across ` +
-        `${loadDiagnostics.productsWithFailures} product(s) this load - some ` +
-        `openings/voids may be left uncut`,
+        `${loadDiagnostics.productsWithFailures} product(s) this load - see ` +
+        `diagnostics.failuresByReason; not every reason leaves an opening/void uncut`,
     );
   }
   yield {
@@ -1566,8 +1553,8 @@ export async function* processParallel(
   };
   } finally {
     for (const w of workers) {
-      try { w.terminate(); } catch { /* cleanup — safe to ignore */ }
+      terminateWorkerQuietly(w, 'process worker');
     }
-    try { prepassWorker.terminate(); } catch { /* cleanup — safe to ignore */ }
+    terminateWorkerQuietly(prepassWorker, 'pre-pass worker');
   }
 }

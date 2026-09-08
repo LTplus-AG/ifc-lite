@@ -4,8 +4,9 @@
 
 use super::collate::mat4_to_row_major_f32;
 use super::{
-    collate_and_encode, collate_instances, decode_instanced, encode_instanced, verify_recomposition,
-    Collated, InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
+    collate_and_encode, collate_instances, collate_refs, collate_refs_verified_in,
+    decode_instanced, encode_instanced, encode_refs, verify_recomposition, Collated,
+    InstanceMeshRef, INSTANCED_MAGIC, INSTANCED_VERSION,
 };
 use crate::mesh::{InstanceMeta, Mesh};
 use nalgebra::Matrix4;
@@ -44,6 +45,12 @@ fn mesh_from(positions: Vec<f32>, meta: InstanceMeta) -> Mesh {
 
 // A canonical unit tetra in source coords.
 const CANON: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0];
+
+/// Same vertex COUNT (4) and index COUNT as [`CANON`], but a genuinely different
+/// tetrahedron (apex moved): the shape a `rep_identity` hash collision between
+/// two same-topology-but-different elements produces, and what every #3666
+/// collision fixture below is built from.
+const CANON_COLLIDING: [f32; 12] = [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 5.0, 5.0, 5.0];
 
 #[test]
 fn collates_repeated_representation_and_recomposes_within_a_micrometre() {
@@ -173,6 +180,68 @@ fn rigid_canonical_transform_recomposes() {
 }
 
 #[test]
+fn a_colliding_exact_member_is_still_caught_when_the_group_also_has_a_rigid_member() {
+    // Rigidity is per-member: a rep_identity group can mix a rigid-tier
+    // member (canonical_transform Some) with exact-tier members that must
+    // still be bit-identical to the template. Before the fix, `is_rigid`
+    // was computed group-wide via `.any(...)`, so ONE rigid member disabled
+    // the exact-tier pairing verification for every OTHER member too — a
+    // same-shaped colliding exact member (the #3666 shape) would sail
+    // through unverified purely because a sibling happened to be rigid.
+    let c_b = Matrix4::from_euler_angles(0.3, 0.9, 0.2)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(0.4, -0.2, 0.1));
+    let m_a = Matrix4::new_translation(&nalgebra::Vector3::new(5.0, 0.0, 0.0));
+    let m_b = Matrix4::from_euler_angles(0.0, 0.0, 1.2)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-3.0, 8.0, 2.0));
+    // Third occurrence: exact tier (canonical_transform None), same vertex
+    // COUNT as the template, but genuinely different content — the same
+    // shape a real rep_identity hash collision produces. Its placement
+    // transform is otherwise unremarkable; only the baked geometry is wrong.
+    let m_c = Matrix4::new_translation(&nalgebra::Vector3::new(20.0, 0.0, 0.0));
+    let colliding_shape: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 5.0];
+    let meshes = vec![
+        mesh_from(
+            baked(&CANON, &m_a),
+            InstanceMeta {
+                transform: mat_rm(&m_a),
+                local_transform: None,
+                canonical_transform: None, // template
+                rep_identity: 99,
+                instanceable: true,
+            },
+        ),
+        mesh_from(
+            baked(&CANON, &(m_b * c_b)),
+            InstanceMeta {
+                transform: mat_rm(&m_b),
+                local_transform: None,
+                canonical_transform: Some(mat_rm(&c_b)), // rigid member
+                rep_identity: 99,
+                instanceable: true,
+            },
+        ),
+        mesh_from(
+            baked(&colliding_shape, &m_c),
+            InstanceMeta {
+                transform: mat_rm(&m_c),
+                local_transform: None,
+                canonical_transform: None, // exact tier, must be verified
+                rep_identity: 99,
+                instanceable: true,
+            },
+        ),
+    ];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "the colliding exact member must still fail verification and route the whole group flat"
+    );
+    assert_eq!(collated.flat_indices.len(), 3, "all three members fall back to flat");
+}
+
+#[test]
 fn instanced_wire_format_roundtrips_and_expands_to_flat() {
     // Two occurrences sharing rep 50 (exact tier, bit-identical local) + a
     // singleton rep 60 (flat). entity_id == input mesh index.
@@ -236,8 +305,12 @@ fn instanced_wire_format_roundtrips_and_expands_to_flat() {
 /// Dumps a deterministic instanced-shard fixture as hex for the cross-language
 /// TS conformance test (packed-instanced-decoder.test.ts). Run on demand:
 /// `cargo test -p ifc-lite-geometry --lib dump_instanced_fixture -- --ignored --nocapture`
-/// then paste the hex into the TS fixture. Pure-translation transforms keep
-/// the expected world geometry trivially checkable on both sides.
+/// then paste the hex into the TS fixture's `FIXTURE_V2_HEX`. Pure-translation
+/// transforms keep the expected world geometry trivially checkable on both sides.
+///
+/// This emits the CURRENT version only. The v1 fixture on the TS side is frozen
+/// evidence that a shard written before this encoder existed still decodes — it
+/// is not regenerable and must never be replaced by this output.
 #[test]
 #[ignore]
 fn dump_instanced_fixture() {
@@ -258,9 +331,21 @@ fn dump_instanced_fixture() {
     };
     let meshes = vec![mk(&m0, 50), mk(&m1, 50), mk(&m2, 60)];
     let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
-    let bytes = encode_instanced(&meshes, &collated, |i| (1000 + i) as u32, |i| {
-        [i as f32 * 0.1, 0.2, 0.3, 1.0]
-    });
+    // Same ids/colours as the frozen v1 fixture so the version diff is legible;
+    // the item ids are the only NEW payload. `encode_refs` rather than
+    // `encode_instanced` because the item id is a per-ref field, not a closure.
+    let refs: Vec<InstanceMeshRef> = meshes
+        .iter()
+        .enumerate()
+        .map(|(i, m)| {
+            let mut r = InstanceMeshRef::from_mesh(m);
+            r.entity_id = 1000 + i as u32;
+            r.color = [i as f32 * 0.1, 0.2, 0.3, 1.0];
+            r.item_id = Some(500 + i as u32);
+            r
+        })
+        .collect();
+    let bytes = encode_refs(&refs, &collated);
     let hex: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
     println!("INSTANCED_FIXTURE_HEX_BEGIN");
     println!("{hex}");
@@ -271,8 +356,9 @@ fn dump_instanced_fixture() {
 fn collate_count_guard_drops_mismatched_group_to_flat() {
     // A rep_identity grouping with mismatched vertex/index counts (e.g. a
     // hash collision that survived the count differing) must NOT instance —
-    // the cheap count guard falls the whole group to flat. (Same-count content
-    // collisions are prevented upstream by the 128-bit rep_identity hash.)
+    // the cheap count guard falls the whole group to flat. (A same-count
+    // content collision is caught downstream by the #3666 reconstruction
+    // check — see `same_count_rep_identity_collision_falls_back_to_flat`.)
     let p = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
     let meta = |rep| InstanceMeta {
         transform: mat_rm(&p),
@@ -295,6 +381,343 @@ fn collate_count_guard_drops_mismatched_group_to_flat() {
 }
 
 #[test]
+fn same_count_rep_identity_collision_falls_back_to_flat() {
+    // #3666: a real merged-model run measured a `rep_identity` collision
+    // between two UNRELATED occurrences from different source models — same
+    // vertex/index counts (so the cheap count guard above lets it through),
+    // genuinely different geometry. Before the #3666 fix, `collate_refs`
+    // trusted the shared identity outright and would have instanced this
+    // pair, silently reconstructing occurrence B as a copy of occurrence A's
+    // shape at B's placement — exactly the "renders, just in the wrong
+    // place" defect the issue reports (up to 2m of displacement on the real
+    // model). The fix reconstructs each occurrence from (template, rel) and
+    // verifies it against its OWN baked vertices; a mismatch drops the WHOLE
+    // group to flat rather than keeping the member that happens to agree.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = |rep| InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: rep,
+        instanceable: true,
+    };
+    // Same vertex COUNT (4) and index COUNT as CANON, but a genuinely
+    // different tetrahedron (apex moved) — the shape a hash collision
+    // between two same-topology-but-different elements would produce.
+    let meshes = vec![
+        mesh_from(baked(&CANON, &p), meta(888)),
+        mesh_from(baked(&CANON_COLLIDING, &p), meta(888)), // same rep, same counts, different shape
+    ];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a same-count content collision must NOT form a template"
+    );
+    assert_eq!(collated.flat_indices.len(), 2, "the whole colliding group falls back flat, not just one member");
+    // The refusal is reported. It is not free: a caller with no flat path of
+    // its own (the IFNS encoder) turns each refused member into a ONE-INSTANCE
+    // template, which is the orbit-FPS shape the viewer's count gate prevents.
+    assert_eq!(collated.verification_rejections, 1, "the refused group is counted");
+}
+
+#[test]
+fn same_positions_different_connectivity_falls_back_to_flat() {
+    // The position-reconstruction check above compares vertices only, so a
+    // collision whose two meshes carry the SAME vertex buffer under a
+    // different triangulation reconstructs perfectly and would still be
+    // grouped — and an `InstanceOccurrence` has no per-occurrence indices, so
+    // the target would then be drawn with the TEMPLATE's connectivity (a
+    // different solid over the same corners). Baking never rewrites an index
+    // buffer, so a genuine exact-tier group's indices are byte-identical;
+    // compare them outright rather than by length.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 999,
+        instanceable: true,
+    };
+    // Five non-coplanar vertices, two triangles each: same positions, same
+    // vertex and index COUNTS, different triangles.
+    const VERTS: [f32; 15] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0];
+    let with_indices = |indices: Vec<u32>| {
+        let mut m = mesh_from(baked(&VERTS, &p), meta.clone());
+        m.indices = indices;
+        m
+    };
+    let meshes =
+        vec![with_indices(vec![0, 1, 2, 0, 3, 4]), with_indices(vec![0, 1, 3, 2, 3, 4])];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "same positions under a different connectivity must NOT form a template"
+    );
+    assert_eq!(collated.flat_indices.len(), 2, "the whole group falls back flat");
+}
+
+#[test]
+fn verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame() {
+    // The glTF in-memory assembler Z-up→Y-up-converts every visible mesh's baked
+    // positions/origin BEFORE calling `collate_refs` in, while `InstanceMeta.transform`
+    // (hence `rel`) stays native/Z-up throughout (the per-occurrence node matrix is
+    // independently recomposed and Y-up-conjugated downstream, never read back from
+    // here). `S` below stands in for that conversion — what matters is only that it's
+    // a non-identity change of basis applied to the baked vertices but NOT to
+    // `InstanceMeta.transform`.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4242,
+        instanceable: true,
+    };
+    // Baked positions are in the CONVERTED (S-applied) frame: `S · occ · canon`.
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+
+    // Without the basis hint, the reconstruction check compares a native-frame
+    // `rel` against converted-frame vertices and (wrongly) rejects genuinely
+    // shared geometry — this is the bug `verify_basis` exists to close.
+    let unaware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None);
+    assert_eq!(
+        unaware.templates.len(),
+        0,
+        "without the basis hint, a frame mismatch reads as a rep_identity collision"
+    );
+
+    // With the basis, it correctly reconstructs and instances.
+    let aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(
+        aware.templates.len(),
+        1,
+        "with the basis hint, genuinely shared geometry still instances"
+    );
+    assert_eq!(aware.templates[0].occurrences.len(), 2);
+}
+
+#[test]
+fn verify_basis_still_catches_a_genuine_collision() {
+    // Same converted-frame setup as above, but occurrence B's baked geometry is a
+    // genuinely different shape (a #3666-style rep_identity collision) — the basis
+    // hint must correct the comparison's frame, not blanket-disable it.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4343,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(
+        aware.templates.len(),
+        0,
+        "a genuine collision still falls back to flat, basis hint or not"
+    );
+    assert_eq!(aware.flat_indices.len(), 2);
+}
+
+#[test]
+fn verify_basis_must_also_conjugate_the_rtc_offset_or_a_rotated_group_falls_flat() {
+    // The glTF exporter's `verify_basis` doubled as BOTH the Z-up->Y-up basis
+    // conversion (what the tests above cover) AND the frame `InstanceMeta.transform`
+    // is expressed in. It is NOT: `InstanceMeta.transform` (hence `rel`, built with
+    // rtc [0,0,0] so `rel` is the RAW pre-RTC ratio here too) is pre-RTC, while the
+    // baked positions this compares against are POST-RTC (rtc subtracted). The
+    // shipped node matrix (`occurrence_node_matrix_composed` in the export crate)
+    // reconciles that with a `T(-rtc)·rel·T(rtc)` conjugation BEFORE the `S·…·S⁻¹`
+    // basis conjugation — passing `verify_basis = S` alone (as the exporter used
+    // to) omits the RTC half, leaving a residual of `(R_rel − I)·rtc` between the
+    // reconstructed and actual vertices. For a translation-only `rel` (R_rel = I)
+    // the residual vanishes and the check still passes, which is why this is easy
+    // to miss; a ROTATED sibling exposes it. At a national-grid-scale rtc, the
+    // residual is metres — indistinguishable from a genuine #3666 collision, so
+    // the fix must not weaken tolerance either, it must fix the frame.
+    let rtc = [2_600_000.0, 1_200_000.0, 400.0];
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    // POST-RTC (local, baked) placements: what the geometry is actually baked at.
+    let local_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let local_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_2)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    // PRE-RTC placements recorded in `InstanceMeta.transform`: same rotation,
+    // translation shifted by +rtc (mirrors `to_post_rtc`'s subtraction, inverted).
+    let pre_rtc = |local: &Matrix4<f64>| -> Matrix4<f64> {
+        let mut m = *local;
+        m[(0, 3)] += rtc[0];
+        m[(1, 3)] += rtc[1];
+        m[(2, 3)] += rtc[2];
+        m
+    };
+    let meta = |local: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(&pre_rtc(local)),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4545,
+        instanceable: true,
+    };
+    // Baked positions are POST-RTC and basis-converted: `S · local · CANON`.
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * local_a)), meta(&local_a)),
+        mesh_from(baked(&CANON, &(s * local_b)), meta(&local_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+
+    // `verify_basis = S` alone (the pre-fix exporter behaviour): the rotated
+    // sibling's rtc residual reads as a collision and the WHOLE group — including
+    // the genuinely-shared template — falls flat.
+    let basis_only = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&s));
+    assert_eq!(
+        basis_only.templates.len(),
+        0,
+        "S alone (no RTC conjugation) must reproduce the reported false rejection"
+    );
+
+    // `verify_basis = S · T(-rtc)`: with the RTC conjugation folded in, `s.try_inverse()`
+    // (computed inside `collate_refs_verified_in`) recovers `T(rtc) · S⁻¹`, so
+    // `s · rel · s⁻¹` reproduces exactly the node matrix's `S · T(-rtc) · rel · T(rtc) · S⁻¹`
+    // -- the genuine pairing must now be recognized and instanced.
+    let t_neg_rtc = Matrix4::new(
+        1.0, 0.0, 0.0, -rtc[0], //
+        0.0, 1.0, 0.0, -rtc[1], //
+        0.0, 0.0, 1.0, -rtc[2], //
+        0.0, 0.0, 0.0, 1.0,
+    );
+    let basis_with_rtc = s * t_neg_rtc;
+    let fixed = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&basis_with_rtc));
+    assert_eq!(
+        fixed.templates.len(),
+        1,
+        "S · T(-rtc) must recognize the genuinely shared, rotated, georeferenced pairing"
+    );
+    assert_eq!(fixed.templates[0].occurrences.len(), 2);
+}
+
+#[test]
+fn a_wrong_verify_basis_never_falsely_accepts_a_collision() {
+    // Same genuine-collision fixture as `verify_basis_still_catches_a_genuine_collision`,
+    // but the caller hands `collate_refs_verified_in` a basis that does NOT
+    // match the conversion actually baked into the vertices (production code
+    // never checks that `verify_basis` corresponds to the real frame). A
+    // wrong hint must never flip a genuine collision into a false accept --
+    // at worst it should only ever make the check MORE conservative.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let wrong_basis = Matrix4::identity(); // caller claims no conversion happened; it did.
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4444,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON_COLLIDING, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let wrongly_aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    assert!(
+        wrongly_aware.templates.is_empty(),
+        "a wrong verify_basis hint falsely accepted a genuine collision as a template"
+    );
+}
+
+#[test]
+fn a_wrong_verify_basis_does_not_coincidentally_accept_a_genuine_pairing() {
+    // Companion: same GENUINE (non-colliding) pairing as
+    // `verify_basis_reconciles_a_caller_that_baked_positions_in_a_different_frame`,
+    // but with a wrong basis (a different rotation axis than the real
+    // conversion). Only documents current behaviour -- a wrong hint failing
+    // to reconcile a genuine pair (falling back to flat) is safe, just
+    // suboptimal reuse; nothing here requires a specific outcome, but the
+    // sibling test above is what must never flip the other way.
+    let s = Matrix4::from_euler_angles(std::f64::consts::FRAC_PI_2, 0.0, 0.0);
+    let wrong_basis = Matrix4::from_euler_angles(0.0, std::f64::consts::FRAC_PI_2, 0.0); // different axis
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4545,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &(s * occ_a)), meta(&occ_a)),
+        mesh_from(baked(&CANON, &(s * occ_b)), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let wrongly_aware = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&wrong_basis));
+    assert!(
+        wrongly_aware.templates.is_empty(),
+        "a wrong basis must fail to reconcile (flat), never reconcile by coincidence"
+    );
+    assert_eq!(wrongly_aware.flat_indices, vec![0, 1], "both members still draw");
+}
+
+#[test]
+fn verify_pairing_tolerance_scales_with_the_stored_position_not_the_georeferenced_origin() {
+    // Regression: `verify_pairing`'s tolerance must scale off the STORED
+    // (origin-relative) position, not `target_origin + position`. A
+    // georeferenced mesh's `origin` alone can carry a multi-million-metre
+    // offset while positions stay small local deltas; scaling tolerance off
+    // the absolute coordinate inflates it with the georeference itself. At a
+    // 5,000,000m origin the absolute-magnitude tolerance would be ~4.77m --
+    // wide enough to wave through this 2m rep_identity collision, well
+    // within the #3666 issue's own measured "up to 2.0m" range. Origin-
+    // relative tolerance stays at the ABS_FLOOR_M-scale floor regardless of
+    // origin, so the collision is still caught.
+    let big_origin = [5_000_000.0_f64, 0.0, 0.0];
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = |rep| InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: rep,
+        instanceable: true,
+    };
+    // Apex moved by 2m (Z: 1.0 -> 3.0) -- deliberately NOT the module-level
+    // `CANON_COLLIDING`, whose apex is 5m out: this test needs the residual to
+    // be exactly the 2.0m #3666 measured on the real model.
+    const CANON_APEX_MOVED_2M: [f32; 12] =
+        [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 3.0];
+    let mut m0 = mesh_from(baked(&CANON, &p), meta(9191));
+    m0.origin = big_origin;
+    let mut m1 = mesh_from(baked(&CANON_APEX_MOVED_2M, &p), meta(9191));
+    m1.origin = big_origin;
+    let meshes = vec![m0, m1];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a same-count content collision at a large georeferenced origin must still fall back to flat"
+    );
+    assert_eq!(collated.flat_indices.len(), 2);
+}
+
+#[test]
 fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     // Regression for the GLB-export collapse: a rotated occurrence at a
     // georeferenced placement. Computing `rel = m_k · m_ref⁻¹` on the raw
@@ -307,9 +730,18 @@ fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     let t_template = Matrix4::new_translation(&nalgebra::Vector3::new(rtc[0], rtc[1], rtc[2]));
     // Same placement, rotated 180° about Z — the worst case (sign flip).
     let t_occ = t_template * Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::PI);
-    let mk = |m: &Matrix4<f64>| {
+    // `InstanceMeta.transform` is always the RAW pre-RTC placement (per its
+    // own doc comment) regardless of which `rtc` collate_refs is later asked
+    // to reduce by; only the mesh's BAKED positions need to already sit in
+    // whatever frame the caller is going to reconstruct them in — `bake_rtc`
+    // lets this helper build a mesh set for either frame.
+    let mk = |m: &Matrix4<f64>, bake_rtc: [f64; 3]| {
+        let mut baked_m = *m;
+        baked_m[(0, 3)] -= bake_rtc[0];
+        baked_m[(1, 3)] -= bake_rtc[1];
+        baked_m[(2, 3)] -= bake_rtc[2];
         mesh_from(
-            baked(&CANON, m),
+            baked(&CANON, &baked_m),
             InstanceMeta {
                 transform: mat_rm(m),
                 local_transform: None,
@@ -319,7 +751,6 @@ fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
             },
         )
     };
-    let meshes = vec![mk(&t_template), mk(&t_occ)];
     // occurrence transform translation magnitude (row-major mat4 → [3],[7],[11]).
     let occ_trans = |c: &Collated| -> f64 {
         let occ = &c.templates[0].occurrences;
@@ -329,13 +760,18 @@ fn collate_reduces_georeferenced_rotated_occurrence_to_post_rtc_frame() {
     };
 
     // Without the rtc reduction (legacy behaviour) the rotated occurrence blows
-    // up to ~2× the georef offset.
-    let raw = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    // up to ~2× the georef offset. Baked at the SAME (unreduced) scale `rel`
+    // is computed in here, so #3666's verification still reconstructs them.
+    let meshes_raw = vec![mk(&t_template, [0.0, 0.0, 0.0]), mk(&t_occ, [0.0, 0.0, 0.0])];
+    let raw = collate_instances(&meshes_raw, 2, [0.0, 0.0, 0.0]);
     assert_eq!(raw.templates.len(), 1, "the two congruent meshes instance");
     assert!(occ_trans(&raw) > 1_000_000.0, "legacy: rotated occurrence reaches ~2× rtc");
 
-    // With the applied rtc the relative transform stays building-scale.
-    let fixed = collate_instances(&meshes, 2, rtc);
+    // With the applied rtc the relative transform stays building-scale — baked
+    // at the reduced scale too, matching the real pipeline's small post-RTC
+    // `Mesh.positions` invariant that `rel` relies on.
+    let meshes_fixed = vec![mk(&t_template, rtc), mk(&t_occ, rtc)];
+    let fixed = collate_instances(&meshes_fixed, 2, rtc);
     assert_eq!(fixed.templates.len(), 1, "still instances after the reduction");
     assert!(occ_trans(&fixed) < 10.0, "fixed: rel translation is building-scale, got {}", occ_trans(&fixed));
 }
@@ -444,6 +880,7 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
             instance_meta: Some(meta),
             entity_id: 1000 + (k as u32 + 1),
             color: [0.2, 0.4, 0.6, 1.0],
+            item_id: None,
         });
     }
     let db_shard = collate_and_encode(&refs_db, 2, [0.0, 0.0, 0.0]);
@@ -487,6 +924,88 @@ fn dont_bake_empty_occurrence_refs_recompose_like_materialized() {
 }
 
 #[test]
+fn a_singular_verify_basis_refuses_rather_than_panicking_or_hanging() {
+    // Companion to the wrong-basis tests above: a caller-supplied basis that is
+    // singular (non-invertible) cannot be conjugated with at all, so the whole
+    // collation is refused (see `a_singular_verify_basis_rejects_instead_of_\
+    // comparing_unconjugated`) — a `diag_warn!`, not a panic and not a hang.
+    // What this one pins is the direction that matters either way: a singular
+    // basis must never flip a genuine collision into a false accept, and every
+    // materialized mesh still draws.
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    // Rank-deficient (all zero): definitely singular.
+    let singular_basis = Matrix4::<f64>::zeros();
+    assert!(singular_basis.try_inverse().is_none(), "fixture must actually be singular");
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 4747,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &occ_a), meta(&occ_a)),
+        mesh_from(baked(&CANON_COLLIDING, &occ_b), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let without_basis = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None);
+    let with_singular_basis =
+        collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular_basis));
+    assert_eq!(without_basis.templates.len(), 0, "genuine collision, no basis");
+    assert_eq!(
+        with_singular_basis.templates.len(),
+        0,
+        "a singular basis must refuse the collation, not falsely accept the collision"
+    );
+    assert_eq!(with_singular_basis.flat_indices.len(), 2);
+}
+
+#[test]
+fn a_singular_verify_basis_counts_the_placeholders_the_whole_refusal_drops() {
+    // The whole-input refusal above returns "every drawable mesh, flat". A
+    // pose-only (#1623 don't-bake) placeholder is not drawable, so it is in
+    // neither `templates` nor `flat_indices` — the same disappearance every
+    // other refusal path reports through `dropped_placeholders`, and this one
+    // did not. An occurrence going missing must not be indistinguishable from
+    // an occurrence that was never fed in.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9494,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    let placeholder_meta = meta(&p1);
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&placeholder_meta, 1),
+    ];
+    let singular = Matrix4::<f64>::zeros();
+    assert!(singular.try_inverse().is_none(), "fixture must actually be singular");
+    let collated = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
+    assert_eq!(collated.templates.len(), 0, "the whole collation is refused");
+    assert_eq!(collated.flat_indices, vec![0], "only the materialized member can draw");
+    assert_eq!(
+        collated.dropped_placeholders, 1,
+        "the placeholder the refusal drops is reported, not silently gone"
+    );
+    // And it really is nowhere else in the result.
+    assert!(
+        !collated
+            .templates
+            .iter()
+            .any(|t| t.template_index == 1 || t.occurrences.iter().any(|o| o.mesh_index == 1)),
+        "mesh 1 must not appear as a template or an occurrence"
+    );
+    assert!(!collated.flat_indices.contains(&1), "mesh 1 must not appear flat");
+}
+
+#[test]
 fn decode_rejects_bad_magic() {
     assert!(decode_instanced(&[0u8; 32]).is_none());
     assert!(decode_instanced(&[]).is_none());
@@ -494,7 +1013,7 @@ fn decode_rejects_bad_magic() {
 
 /// Little-endian instanced-shard header (mirrors the packed-instanced-decoder.test.ts
 /// header helper): magic, version, template_count, instance_count, positions_len,
-/// normals_len, indices_len, reserved.
+/// normals_len, indices_len, instance stride (0 = the 88-byte base record).
 fn header_bytes(
     magic: u32,
     version: u32,
@@ -621,4 +1140,842 @@ fn singletons_and_non_instanceable_go_flat() {
     flat.sort_unstable();
     assert_eq!(flat, vec![0, 1], "singleton + non-instanceable both emitted flat");
     assert_eq!(collated.unique_geometry_count(), 2);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #2985: v1 → v2 wire compatibility.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A REAL v1 shard, produced by this encoder before #2985 and frozen here. It is
+/// the same bytes the TS decoder's `FIXTURE_V1_HEX` holds, so both decoders are
+/// tested against one artefact rather than against each other's idea of v1.
+///
+/// NEVER regenerate this. Its whole value is that no current code produced it:
+/// it is the shape already sitting in browser caches, which persist IFNS bytes
+/// verbatim. The cache key moves 15 -> 16 with this change, but bytes also
+/// travel by other routes, so a v1 shard must keep decoding regardless.
+/// Regenerating it would quietly turn the backward-compatibility test into
+/// another forward-compatibility test.
+const FIXTURE_V1_HEX: &str = "534e464901000000020000000300000018000000180000000800000000000000000000000c000000000000000c00000000000000040000000000000000000000000000000000000000000000000000000c0000000c0000000c0000000c000000040000000400000000000000000000000000000000000000000000000000000000000000e803000000000000cdcc4c3e9a99993e0000803f0000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f00000000e9030000cdcccc3dcdcc4c3e9a99993e0000803f0000803f0000000000000000000080bf000000000000803f000000000000004000000000000000000000803f000000000000000000000000000000000000803f01000000ea030000cdcc4c3ecdcc4c3e9a99993e0000803f0000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f000000000000000000000000000000000000803f0000803f00000000000000000000004000000000000000000000803f0000803f000000000000803f000000000000803f0000a0400000a0400000a0400000c0400000a0400000a0400000a0400000c0400000a0400000a0400000a0400000c0400000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001000000020000000300000000000000010000000200000003000000";
+
+fn from_hex(hex: &str) -> Vec<u8> {
+    (0..hex.len() / 2)
+        .map(|i| u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).expect("hex"))
+        .collect()
+}
+
+/// The no-cache-invalidation claim, measured rather than asserted in prose: the
+/// v2 decoder reads a v1 shard whole. Templates, ids, colours and transforms all
+/// come back; only `item_id` is absent, because v1 had no such field.
+#[test]
+fn a_v1_shard_decodes_through_the_v2_decoder() {
+    let bytes = from_hex(FIXTURE_V1_HEX);
+    assert_eq!(
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        1,
+        "the fixture must actually BE v1 — a v2 fixture here would test nothing"
+    );
+
+    let dec = decode_instanced(&bytes).expect("a v1 shard must still decode");
+    assert_eq!(dec.templates.len(), 2);
+    assert_eq!(dec.instances.len(), 3);
+    // Read at the v1 stride of 88: at 92 the second record would start inside the
+    // first one's transform and these ids would be garbage.
+    assert_eq!(
+        dec.instances.iter().map(|i| i.entity_id).collect::<Vec<_>>(),
+        vec![1000, 1001, 1002]
+    );
+    assert_eq!(
+        dec.instances.iter().map(|i| i.template_index).collect::<Vec<_>>(),
+        vec![0, 0, 1]
+    );
+    for inst in &dec.instances {
+        assert_eq!(
+            inst.item_id, None,
+            "a v1 shard has no item id field; reporting one would be fabricated"
+        );
+    }
+}
+
+/// The encoder declares the widened stride and the decoder reads the item ids
+/// back at it. An occurrence with no item writes the wire's `0` sentinel and
+/// comes back as `None` rather than `Some(0)`, so a host cannot follow a
+/// fabricated `#0` to nothing.
+#[test]
+fn v2_round_trips_the_item_id_and_treats_zero_as_absent() {
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 50,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&m0), mk(&m1)];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    let mut refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    refs[0].entity_id = 40;
+    refs[0].item_id = Some(11);
+    refs[1].entity_id = 47;
+    refs[1].item_id = None; // this occurrence names no item
+
+    let bytes = encode_refs(&refs, &collated);
+    assert_eq!(
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        INSTANCED_VERSION
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+        92,
+        "the encoder must declare the stride it wrote records at"
+    );
+
+    let dec = decode_instanced(&bytes).expect("decodes");
+    let by_entity: Vec<(u32, Option<u32>)> =
+        dec.instances.iter().map(|i| (i.entity_id, i.item_id)).collect();
+    assert!(by_entity.contains(&(40, Some(11))), "got {by_entity:?}");
+    assert!(by_entity.contains(&(47, None)), "got {by_entity:?}");
+}
+
+/// Two occurrences sharing one representation, with item ids, encoded by the
+/// current encoder — the base shard the stride tests below re-pack.
+fn two_occurrence_shard(item_ids: [Option<u32>; 2]) -> Vec<u8> {
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 50,
+                instanceable: true,
+            },
+        )
+    };
+    let meshes = vec![mk(&m0), mk(&m1)];
+    let collated = collate_instances(&meshes, 2, [0.0, 0.0, 0.0]);
+    let mut refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    for (r, (i, id)) in refs.iter_mut().zip(item_ids.into_iter().enumerate()) {
+        r.entity_id = 40 + i as u32;
+        r.item_id = id;
+    }
+    encode_refs(&refs, &collated)
+}
+
+/// Re-pack a shard this encoder wrote as one a FUTURE producer would have
+/// written: a higher version, a stride widened by `extra` bytes, and `extra`
+/// bytes of a trailing field this build has never heard of after each record's
+/// known fields. Nothing else moves — that is what "append-only" means.
+fn append_unknown_trailing_field(bytes: &[u8], new_version: u32, extra: usize) -> Vec<u8> {
+    let ru = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()) as usize;
+    let (template_count, instance_count, stride) = (ru(8), ru(12), ru(28));
+    let it_off = 32 + template_count * 48;
+    let data_off = it_off + instance_count * stride;
+    let mut out: Vec<u8> = Vec::with_capacity(bytes.len() + instance_count * extra);
+    out.extend_from_slice(&bytes[..it_off]);
+    out[4..8].copy_from_slice(&new_version.to_le_bytes());
+    out[28..32].copy_from_slice(&((stride + extra) as u32).to_le_bytes());
+    for i in 0..instance_count {
+        let r = it_off + i * stride;
+        out.extend_from_slice(&bytes[r..r + stride]);
+        out.resize(out.len() + extra, 0xAB);
+    }
+    out.extend_from_slice(&bytes[data_off..]);
+    out
+}
+
+/// FORWARD COMPATIBILITY, the whole point of spending word 7 on a stride rather
+/// than on flags. A v3 shard that APPENDS a field must still decode here: every
+/// field this build knows sits at its fixed offset in the base record, and the
+/// declared stride steps over the tail it does not know. Under the flags word
+/// this replaced, this shard was refused outright — an unknown flag bit changes
+/// the stride unknowably, so flags could only ever gate, never carry.
+#[test]
+fn a_future_version_with_an_appended_field_still_decodes_every_known_field() {
+    let v2 = two_occurrence_shard([Some(11), Some(12)]);
+    let known = decode_instanced(&v2).expect("the v2 baseline decodes");
+
+    // version 3, stride 96 = 88 base + itemId + 4 bytes of a field from a build
+    // that does not exist yet.
+    let v3 = append_unknown_trailing_field(&v2, 3, 4);
+    assert_eq!(u32::from_le_bytes(v3[4..8].try_into().unwrap()), 3);
+    assert_eq!(u32::from_le_bytes(v3[28..32].try_into().unwrap()), 96);
+
+    let dec = decode_instanced(&v3).expect("a v3 shard with a valid stride must decode");
+    assert_eq!(dec.templates.len(), known.templates.len());
+    assert_eq!(dec.instances.len(), known.instances.len());
+    for (got, want) in dec.instances.iter().zip(known.instances.iter()) {
+        assert_eq!(got.template_index, want.template_index);
+        assert_eq!(got.entity_id, want.entity_id);
+        assert_eq!(got.color, want.color);
+        assert_eq!(got.transform, want.transform);
+        assert_eq!(
+            got.item_id, want.item_id,
+            "the item id must be read at its fixed offset, not shifted by the unknown tail"
+        );
+    }
+    for (got, want) in dec.templates.iter().zip(known.templates.iter()) {
+        assert_eq!(got.positions, want.positions);
+        assert_eq!(got.normals, want.normals);
+        assert_eq!(got.indices, want.indices);
+        assert_eq!(got.origin, want.origin);
+    }
+}
+
+/// The stride is the ONE thing a decoder must be strict about, because a
+/// mis-strided read produces plausible garbage rather than an error.
+#[test]
+fn a_stride_below_the_base_record_or_past_the_buffer_is_refused() {
+    let mut bytes = two_occurrence_shard([Some(11), Some(12)]);
+
+    // One byte short of the base record: the base fields are not optional.
+    bytes[28..32].copy_from_slice(&87u32.to_le_bytes());
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "a stride below the 88-byte base record must be refused"
+    );
+
+    // A stride the buffer cannot hold. `instance_count * stride` also has to
+    // survive the multiply: on wasm32 usize is 32 bits, and a wrap would fold
+    // the data offset back INSIDE the buffer with every later check passing.
+    // 4-ALIGNED on purpose: an unaligned value is refused one guard earlier and
+    // would stop exercising the buffer-fit check at all.
+    bytes[28..32].copy_from_slice(&0xFFFF_FFFCu32.to_le_bytes());
+    assert!(
+        decode_instanced(&bytes).is_none(),
+        "a stride whose instance table cannot fit the buffer must be refused"
+    );
+
+    // Version 0 is not a version, at any stride.
+    bytes[28..32].copy_from_slice(&92u32.to_le_bytes());
+    bytes[4..8].copy_from_slice(&0u32.to_le_bytes());
+    assert!(decode_instanced(&bytes).is_none(), "version 0 is not a version");
+}
+
+/// #2985 follow-up: the stride is derived from the DATA. A shard whose
+/// occurrences name no representation item declares the 88-byte base record and
+/// writes nothing extra, instead of paying 4 bytes of zeros per occurrence — on
+/// a 200k-occurrence model that is ~800 KB written, cached verbatim, and re-read
+/// on every load to say nothing.
+#[test]
+fn a_shard_with_no_item_ids_declares_the_base_stride_and_pays_no_bytes_for_them() {
+    let none = two_occurrence_shard([None, None]);
+    let some = two_occurrence_shard([None, Some(12)]);
+
+    assert_eq!(
+        u32::from_le_bytes(none[28..32].try_into().unwrap()),
+        0,
+        "no occurrence names an item, so the shard must not declare the field \
+         — and it says so the way v1 said it, with word 7 at a literal 0"
+    );
+    assert_eq!(u32::from_le_bytes(some[28..32].try_into().unwrap()), 92);
+    // Two instances × 4 bytes: the difference is the field itself, nothing else.
+    assert_eq!(some.len(), none.len() + 8);
+
+    let dec = decode_instanced(&none).expect("decodes");
+    assert_eq!(dec.instances.len(), 2);
+    for inst in &dec.instances {
+        assert_eq!(inst.item_id, None);
+    }
+    // A single id anywhere in the batch is enough to declare the field; the
+    // occurrence that has none still reports None rather than a fabricated #0.
+    let dec = decode_instanced(&some).expect("decodes");
+    let ids: Vec<Option<u32>> = dec.instances.iter().map(|i| i.item_id).collect();
+    assert!(ids.contains(&Some(12)) && ids.contains(&None), "got {ids:?}");
+}
+
+/// FIX for the deploy-skew window (#2985 review). A batch where NO occurrence
+/// names an item produces a record with no trailing field — which is a v1
+/// record, so the shard is declared v1 and its header word 7 carries v1's
+/// literal `0` rather than an explicit 88. That makes it byte-identical to what
+/// a pre-#2985 encoder would have written for the same input, so a build from
+/// before this format — whose decoder is `version != 1 => refuse` — reads it.
+/// The cache key bump (`@ifc-lite/cache` FORMAT_VERSION 15 -> 16) closes the
+/// same window from the other side; this closes it for bytes that travel by any
+/// other route.
+#[test]
+fn an_all_absent_id_batch_encodes_as_version_1_at_the_base_stride() {
+    let bytes = two_occurrence_shard([None, None]);
+
+    assert_eq!(
+        u32::from_le_bytes(bytes[4..8].try_into().unwrap()),
+        1,
+        "a shard with no trailing field IS a v1 shard; declaring v2 would make a \
+         pre-#2985 decoder refuse bytes it can read perfectly well"
+    );
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+        0,
+        "v1 wrote word 7 as a literal 0; anything else is not byte-identical"
+    );
+
+    // The record stride is still 88 — the property the version claim rests on.
+    // Derived from the layout rather than from the encoder, so this cannot agree
+    // with the encoder by sharing its arithmetic: header + template table +
+    // instance table + the three pools must account for every byte.
+    let ru = |o: usize| u32::from_le_bytes(bytes[o..o + 4].try_into().unwrap()) as usize;
+    let (template_count, instance_count) = (ru(8), ru(12));
+    let pools = (ru(16) + ru(20) + ru(24)) * 4;
+    assert_eq!(
+        bytes.len(),
+        32 + template_count * 48 + instance_count * 88 + pools,
+        "records must be 88 bytes wide"
+    );
+
+    // And it still decodes here, with every occurrence reporting no item.
+    let dec = decode_instanced(&bytes).expect("decodes");
+    assert_eq!(dec.instances.len(), 2);
+    assert!(dec.instances.iter().all(|i| i.item_id.is_none()));
+}
+
+/// The two decoders have to refuse the same shards, or "permissive on version,
+/// strict on stride" is a promise only one of them keeps. An unaligned stride is
+/// the case where they disagreed: every field on this wire is 4 bytes, and the
+/// TS decoder views the data pools as `Float32Array` over the shard buffer, so a
+/// stride of 90 puts the data offset at 170 and the view constructor throws an
+/// opaque `RangeError`. This decoder reads through byte slices and used to
+/// accept the identical bytes, decoding every base field.
+#[test]
+fn an_unaligned_stride_is_refused_rather_than_read() {
+    let mut bytes = two_occurrence_shard([Some(11), Some(12)]);
+
+    for stride in [89u32, 90, 91, 94] {
+        bytes[28..32].copy_from_slice(&stride.to_le_bytes());
+        assert!(
+            decode_instanced(&bytes).is_none(),
+            "stride {stride} is not a multiple of 4 and must be refused, not read"
+        );
+    }
+
+    // The guard is about alignment, not about being unusual: 96 is a stride no
+    // producer here writes and it must still decode (that is the forward
+    // compatibility the stride buys).
+    let v3 = append_unknown_trailing_field(&two_occurrence_shard([Some(11), Some(12)]), 3, 4);
+    assert!(decode_instanced(&v3).is_some(), "an aligned wider stride still decodes");
+}
+
+/// A template's pool offsets are attacker-controlled u32s, and the contract is
+/// `None` rather than a panic for every malformed header. NOTE what this test
+/// does and does not prove: on a 64-bit host `data_off + (pos_off + k) * 4`
+/// cannot overflow a usize, so it returned `None` before the checked arithmetic
+/// too — this pins the CONTRACT. The defect the checked arithmetic fixes is
+/// wasm32-only (usize = 32 bits), where the same expression overflows: debug
+/// traps the geometry worker instead of returning `None`, release wraps back
+/// inside the buffer and returns WRONG geometry. That is the case the "Checked
+/// throughout" comment in wire.rs claimed to cover and did not.
+#[test]
+fn an_out_of_range_template_pool_offset_decodes_to_none() {
+    let base = two_occurrence_shard([Some(11), Some(12)]);
+    assert!(decode_instanced(&base).is_some(), "sanity: the shard decodes");
+
+    // Template record 0 starts at 32: posOff, posLen, nrmOff, nrmLen, idxOff, idxLen.
+    for (field, name) in [(0usize, "positions"), (8, "normals"), (16, "indices")] {
+        let mut bytes = base.clone();
+        bytes[32 + field..36 + field].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert!(
+            decode_instanced(&bytes).is_none(),
+            "a template {name} offset of 0xFFFFFFFF must decode to None, not panic"
+        );
+    }
+}
+
+/// #2985 review: the stride predicate must be read off the occurrences the
+/// encoder actually WRITES, not off the input slice. `collate_refs` drops
+/// members — an empty non-instanceable mesh hits its `_ => {}` arm — so a batch
+/// whose ONLY id-bearing entry is a dropped one used to declare the 92-byte
+/// stride and then write `0` into every record it emitted: the zero-filled
+/// widened record the data-derived stride exists to prevent, and a
+/// `carriesItemIds: true` that lies to the consumer.
+#[test]
+fn an_item_id_on_a_mesh_collate_drops_does_not_widen_the_stride() {
+    let m0 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 0.0));
+    let m1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 2.0, 0.0));
+    let mk = |m: &Matrix4<f64>| {
+        mesh_from(
+            baked(&CANON, m),
+            InstanceMeta {
+                transform: mat_rm(m),
+                local_transform: None,
+                canonical_transform: None,
+                rep_identity: 50,
+                instanceable: true,
+            },
+        )
+    };
+    // Two instanceable occurrences that name no item, plus an EMPTY,
+    // non-instanceable mesh that does. collate_refs keeps the first two and
+    // drops the third: nothing to draw, no instance meta.
+    let meshes = [mk(&m0), mk(&m1), Mesh::new()];
+    let collated = collate_refs(
+        &meshes.iter().map(InstanceMeshRef::from_mesh).collect::<Vec<_>>(),
+        2,
+        [0.0, 0.0, 0.0],
+    );
+    assert_eq!(
+        collated.instanced_occurrence_count() + collated.flat_indices.len(),
+        2,
+        "the empty non-instanceable mesh must be the DROPPED one, or this tests nothing"
+    );
+
+    let mut refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    refs[0].entity_id = 40;
+    refs[1].entity_id = 41;
+    refs[2].item_id = Some(999); // the only id in the batch, on the dropped mesh
+
+    let bytes = encode_refs(&refs, &collated);
+    assert_eq!(
+        u32::from_le_bytes(bytes[28..32].try_into().unwrap()),
+        0,
+        "no WRITTEN occurrence names an item, so the shard must not declare the field"
+    );
+    assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 1);
+
+    let dec = decode_instanced(&bytes).expect("decodes");
+    assert_eq!(dec.instances.len(), 2);
+    assert!(
+        dec.instances.iter().all(|i| i.item_id.is_none()),
+        "declaring the field here would have written 0 into every record — an id \
+         that names nothing, reported as if it were data"
+    );
+}
+
+#[test]
+fn verify_recomposition_flags_a_nan_vertex_instead_of_dropping_it() {
+    use super::collate::{InstanceOccurrence, InstanceTemplate};
+    // Without the NaN guard in verify_recomposition's max-accumulation loop,
+    // `err > max_err` is false for a NaN `err`, so a NaN vertex error is
+    // silently dropped rather than winning the max — the function returns
+    // 0.0 (not NaN), and a caller's `assert!(max_err < 1e-4)` passes as if
+    // every vertex reconstructed exactly.
+    let template: Mesh = mesh_from(CANON.to_vec(), InstanceMeta {
+        transform: mat_rm(&Matrix4::identity()),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 1,
+        instanceable: true,
+    });
+    let mut target = template.clone();
+    target.positions[0] = f32::NAN;
+
+    let meshes = vec![template, target];
+    let collated = Collated {
+        templates: vec![InstanceTemplate {
+            rep_identity: 1,
+            template_index: 0,
+            occurrences: vec![
+                InstanceOccurrence {
+                    mesh_index: 0,
+                    transform: mat4_to_row_major_f32(&Matrix4::identity()),
+                },
+                InstanceOccurrence {
+                    mesh_index: 1,
+                    transform: mat4_to_row_major_f32(&Matrix4::identity()),
+                },
+            ],
+        }],
+        flat_indices: vec![],
+        dropped_placeholders: 0,
+        verification_rejections: 0,
+    };
+
+    let err = verify_recomposition(&meshes, &collated);
+    assert!(
+        !(err < 1e-4),
+        "a NaN vertex error must not be silently dropped from the max \
+         (`err {err}` cleared the `< 1e-4` bar a real caller's assert uses)"
+    );
+    assert!(err.is_infinite(), "expected the unbounded-error sentinel, got {err}");
+}
+
+#[test]
+fn verify_recomposition_genuine_match_still_clears_the_tolerance() {
+    // The NaN guard above must not turn verify_recomposition into something
+    // that rejects everything — a real matching pair still has to pass.
+    let placement = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, -1.0, 0.5));
+    let template: Mesh = mesh_from(CANON.to_vec(), InstanceMeta {
+        transform: mat_rm(&Matrix4::identity()),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 1,
+        instanceable: true,
+    });
+    let target: Mesh = mesh_from(baked(&CANON, &placement), InstanceMeta {
+        transform: mat_rm(&placement),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 1,
+        instanceable: true,
+    });
+
+    use super::collate::{InstanceOccurrence, InstanceTemplate};
+    let meshes = vec![template, target];
+    let collated = Collated {
+        templates: vec![InstanceTemplate {
+            rep_identity: 1,
+            template_index: 0,
+            occurrences: vec![
+                InstanceOccurrence {
+                    mesh_index: 0,
+                    transform: mat4_to_row_major_f32(&Matrix4::identity()),
+                },
+                InstanceOccurrence {
+                    mesh_index: 1,
+                    transform: mat4_to_row_major_f32(&placement),
+                },
+            ],
+        }],
+        flat_indices: vec![],
+        dropped_placeholders: 0,
+        verification_rejections: 0,
+    };
+
+    let err = verify_recomposition(&meshes, &collated);
+    assert!(err < 1e-4, "genuine match recomposition error {err} exceeds the f32 storage floor");
+}
+
+#[test]
+fn a_singular_verify_basis_rejects_instead_of_comparing_unconjugated() {
+    // `verify_basis` is inverted to build the conjugation `S · rel · S⁻¹`. A
+    // singular basis has no inverse, and the code silently degraded to "no
+    // basis given" — comparing an UNCONJUGATED `rel` against baked vertices the
+    // caller just said are in another frame. That is the one comparison known
+    // to be wrong, and it reports "verified". A basis that cannot be inverted
+    // is a caller bug, so nothing is instanced: every drawable member goes flat.
+    let occ_a = Matrix4::new_translation(&nalgebra::Vector3::new(10.0, 0.0, 0.0));
+    let occ_b = Matrix4::from_euler_angles(0.0, 0.0, std::f64::consts::FRAC_PI_3)
+        * Matrix4::new_translation(&nalgebra::Vector3::new(-5.0, 7.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 6161,
+        instanceable: true,
+    };
+    // Baked in the NATIVE frame, so this pairing verifies with no basis at all —
+    // whatever the singular basis does, it is not masking a genuine collision.
+    let meshes = [
+        mesh_from(baked(&CANON, &occ_a), meta(&occ_a)),
+        mesh_from(baked(&CANON, &occ_b), meta(&occ_b)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    assert_eq!(
+        collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], None).templates.len(),
+        1,
+        "control: with no basis this pairing verifies and instances"
+    );
+
+    let singular = Matrix4::zeros();
+    let rejected = collate_refs_verified_in(&refs, 2, [0.0, 0.0, 0.0], Some(&singular));
+    assert_eq!(
+        rejected.templates.len(),
+        0,
+        "a singular verify_basis must reject, not silently compare unconjugated"
+    );
+    assert_eq!(rejected.flat_indices, vec![0, 1], "both members still drawn, flat");
+}
+
+#[test]
+fn a_failing_group_still_places_its_pose_only_placeholders() {
+    // #1623 Phase 3 don't-bake placeholders carry a placement and NO geometry:
+    // the shared template IS their geometry. When some OTHER member of their
+    // group failed the #3666 reconstruction check, the whole group went through
+    // `drawable(members)` — which filters empty meshes out — so those
+    // placeholders were neither instanced NOR drawn. The occurrence vanished
+    // from the output with nothing reporting it.
+    //
+    // A placeholder's own placement is not what failed (it has no baked vertices
+    // to disagree with, so it can never be verified either way), and the template
+    // is the only geometry it can ever be drawn with. Keep it instanced against
+    // the template; drop only the materialized members, which CAN draw flat.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let p2 = Matrix4::new_translation(&nalgebra::Vector3::new(-4.0, 0.0, 2.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 7272,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    let colliding = mesh_from(baked(&CANON_COLLIDING, &p2), meta(&p2));
+    let placeholder_meta = meta(&p1);
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        InstanceMeshRef {
+            positions: &[],
+            normals: &[],
+            indices: &[],
+            origin: [0.0; 3],
+            instance_meta: Some(&placeholder_meta),
+            entity_id: 1,
+            color: [0.0; 4],
+            item_id: None,
+        },
+        InstanceMeshRef::from_mesh(&colliding),
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+
+    // The colliding materialized member is NOT instanced — it draws flat.
+    assert_eq!(collated.flat_indices, vec![2], "only the materialized collision falls flat");
+    // ...and the placeholder is still placed against the template.
+    assert_eq!(collated.templates.len(), 1, "the template survives for its placeholders");
+    let tmpl = &collated.templates[0];
+    assert_eq!(tmpl.template_index, 0);
+    let placed: Vec<usize> = tmpl.occurrences.iter().map(|o| o.mesh_index).collect();
+    assert_eq!(placed, vec![0, 1], "template + placeholder, not the collision");
+    // Every input occurrence is represented exactly once.
+    let mut seen: Vec<usize> = collated.flat_indices.clone();
+    seen.extend(placed);
+    seen.sort_unstable();
+    assert_eq!(seen, vec![0, 1, 2], "no occurrence silently disappears");
+
+    // The placeholder's transform must be the same `rel` the success path
+    // computes: it maps the template's baked world vertices onto p1's pose.
+    let rel = Matrix4::from_row_slice(&tmpl.occurrences[1].transform.map(|v| v as f64));
+    let expected = baked(&CANON, &p1);
+    for v in 0..CANON.len() / 3 {
+        let w = rel
+            * nalgebra::Vector4::new(
+                template.positions[v * 3] as f64,
+                template.positions[v * 3 + 1] as f64,
+                template.positions[v * 3 + 2] as f64,
+                1.0,
+            );
+        for (k, got) in [w.x / w.w, w.y / w.w, w.z / w.w].into_iter().enumerate() {
+            assert!(
+                (got - expected[v * 3 + k] as f64).abs() < 1e-6,
+                "placeholder occurrence {v} axis {k} placed at {got}"
+            );
+        }
+    }
+}
+
+/// Six canonical vertices whose f32 rounding at an 80m offset is large enough
+/// to matter. Plain `CANON`'s coordinates are all exactly representable at every
+/// offset used here, so it cannot express this case at all.
+const CANON_AWKWARD: [f32; 18] = [
+    0.729_107, 2.194_468, 0.351_403, //
+    0.068_348, 1.276_856, 0.304_501, //
+    0.623_532, 1.761_377, 0.026_691, //
+    0.356_731, 1.193_861, 0.621_696, //
+    0.396_701, 0.061_649, 0.233_763, //
+    1.111, 2.222, 0.333, //
+];
+
+#[test]
+fn a_far_template_and_a_near_sibling_still_instance() {
+    // The reconstruction residual comes from the f32 rounding in BOTH baked
+    // meshes, and the bigger of the two dominates: a template stored at ~80m
+    // rounds to a ~4e-6 m grid, a sibling stored at ~2m to a ~2e-7 m one. The
+    // tolerance was scaled off the TARGET's stored magnitude alone, so the
+    // near sibling got a ~3e-6 tolerance for an error the FAR template put
+    // there — a pure translation between two genuinely shared meshes failing
+    // verification, and (worse) failing ORDER-DEPENDENTLY: the same pair
+    // verifies when the near mesh happens to be first and becomes the
+    // template. The magnitude is the larger of the two stored positions.
+    let far = Matrix4::new_translation(&nalgebra::Vector3::new(80.0, 40.0, 3.0));
+    let near = Matrix4::new_translation(&nalgebra::Vector3::new(2.0, 1.0, 3.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 8181,
+        instanceable: true,
+    };
+    // Absolute world coordinates, no RTC and no per-mesh origin — the native
+    // path the WASM viewer and the Parquet routes take.
+    let far_first = vec![
+        mesh_from(baked(&CANON_AWKWARD, &far), meta(&far)),
+        mesh_from(baked(&CANON_AWKWARD, &near), meta(&near)),
+    ];
+    let collated = collate_instances(&far_first, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        1,
+        "a pure translation between two shared meshes must verify whichever is the template"
+    );
+    assert_eq!(collated.flat_indices.len(), 0);
+
+    // ...and the verdict must not depend on which one collation picked first.
+    let near_first = vec![far_first[1].clone(), far_first[0].clone()];
+    assert_eq!(
+        collate_instances(&near_first, 2, [0.0, 0.0, 0.0]).templates.len(),
+        1,
+        "the same pair must verify whichever member collation picked as template"
+    );
+}
+
+/// A #1623 Phase 3 don't-bake placeholder: placement only, no geometry.
+fn placeholder_ref(meta: &InstanceMeta, entity_id: u32) -> InstanceMeshRef<'_> {
+    InstanceMeshRef {
+        positions: &[],
+        normals: &[],
+        indices: &[],
+        origin: [0.0; 3],
+        instance_meta: Some(meta),
+        entity_id,
+        color: [0.0; 4],
+        item_id: None,
+    }
+}
+
+#[test]
+fn a_below_min_group_group_still_places_its_placeholders() {
+    // Every refusal path has to preserve pose-only placeholders, not just the
+    // verification failure: they carry no geometry, so `drawable()` filters them
+    // out and the occurrence is gone. `min_group` is a sharing THRESHOLD (below
+    // it, sharing is not worth a template), not a licence to drop geometry, so a
+    // group whose placeholders would otherwise vanish is instanced regardless.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9191,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    let placeholder_meta = meta(&p1);
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&placeholder_meta, 1),
+    ];
+    // Two members, min_group 3: below the threshold.
+    let collated = collate_refs(&refs, 3, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.templates.len(), 1, "the placeholder still needs its template");
+    assert_eq!(
+        collated.templates[0].occurrences.iter().map(|o| o.mesh_index).collect::<Vec<_>>(),
+        vec![0, 1],
+    );
+    assert_eq!(collated.flat_indices, Vec::<usize>::new());
+    assert_eq!(collated.dropped_placeholders, 0);
+}
+
+#[test]
+fn a_singular_template_placement_counts_the_placeholders_it_cannot_place() {
+    // The one refusal that genuinely CANNOT place a placeholder: with no
+    // invertible template placement there is no `rel` to compute. The
+    // placeholders are lost either way — but they are counted, so "the
+    // occurrence is not in the output" is answerable from the result instead of
+    // being indistinguishable from "there was no such occurrence".
+    let singular = {
+        // A rank-deficient linear part: no inverse, so no `rel` for anyone.
+        let mut m = [0.0f64; 16];
+        m[15] = 1.0;
+        m
+    };
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let p2 = Matrix4::new_translation(&nalgebra::Vector3::new(1.0, 0.0, 5.0));
+    let meta = |t: [f64; 16]| InstanceMeta {
+        transform: t,
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9292,
+        instanceable: true,
+    };
+    let template = mesh_from(baked(&CANON, &Matrix4::identity()), meta(singular));
+    let sibling = mesh_from(baked(&CANON, &p2), meta(mat_rm(&p2)));
+    let placeholder_meta = meta(mat_rm(&p1));
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&placeholder_meta, 1),
+        InstanceMeshRef::from_mesh(&sibling),
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.templates.len(), 0, "no invertible template placement");
+    assert_eq!(collated.flat_indices, vec![0, 2], "both materialized members still draw");
+    assert_eq!(
+        collated.dropped_placeholders, 1,
+        "the placeholder that could not be placed is reported, not silently gone"
+    );
+}
+
+#[test]
+fn a_non_finite_template_is_never_substituted_into_its_occurrences() {
+    // The template is the geometry EVERY occurrence in the group is drawn with,
+    // and nothing verifies it: it pairs with itself trivially, so the `i ==
+    // t_idx` short-circuit skips it, and pose-only and rigid members are exempt
+    // by design. A group of one NaN template plus placeholders therefore had no
+    // member the reconstruction check ever looked at, and shipped the NaN
+    // geometry once per occurrence. Check the template's own positions once, up
+    // front, and fail the group closed.
+    let p0 = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let p1 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 6.0, 0.0));
+    let p2 = Matrix4::new_translation(&nalgebra::Vector3::new(0.0, 0.0, 9.0));
+    let meta = |m: &Matrix4<f64>| InstanceMeta {
+        transform: mat_rm(m),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 9393,
+        instanceable: true,
+    };
+    let mut template = mesh_from(baked(&CANON, &p0), meta(&p0));
+    template.positions[4] = f32::NAN;
+    let (m1, m2) = (meta(&p1), meta(&p2));
+    let refs = vec![
+        InstanceMeshRef::from_mesh(&template),
+        placeholder_ref(&m1, 1),
+        placeholder_ref(&m2, 2),
+    ];
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(
+        collated.templates.len(),
+        0,
+        "a NaN template must not be substituted into its occurrences"
+    );
+    assert_eq!(collated.flat_indices, vec![0], "the template still draws its own geometry");
+    assert_eq!(
+        collated.dropped_placeholders, 2,
+        "the placeholders it could not be trusted to supply are reported"
+    );
+}
+
+#[test]
+fn a_refused_group_encodes_as_singleton_templates() {
+    // Pins the COST of a refusal for a caller with no flat path of its own:
+    // `encode_refs` emits every `flat_indices` entry as a ONE-INSTANCE template,
+    // so a refused group of N arrives in the shard as N singleton templates —
+    // O(unique-geometry) draws per frame, the orbit-FPS shape the WASM viewer's
+    // occurrence-count gate exists to prevent. The viewer's batch partition
+    // therefore routes refused members back to its flat MeshCollection
+    // (`rejected_to_flat`) instead of handing them to the encoder; this test is
+    // what makes that necessary rather than defensive.
+    let p = Matrix4::new_translation(&nalgebra::Vector3::new(3.0, 0.0, 0.0));
+    let meta = |rep| InstanceMeta {
+        transform: mat_rm(&p),
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: rep,
+        instanceable: true,
+    };
+    let meshes = [
+        mesh_from(baked(&CANON, &p), meta(606)),
+        mesh_from(baked(&CANON_COLLIDING, &p), meta(606)),
+    ];
+    let refs: Vec<InstanceMeshRef> = meshes.iter().map(InstanceMeshRef::from_mesh).collect();
+    let collated = collate_refs(&refs, 2, [0.0, 0.0, 0.0]);
+    assert_eq!(collated.verification_rejections, 1);
+    assert_eq!(collated.flat_indices, vec![0, 1]);
+
+    let dec = decode_instanced(&encode_refs(&refs, &collated)).expect("decodes");
+    assert_eq!(dec.templates.len(), 2, "each refused member became its own template");
+    assert_eq!(dec.instances.len(), 2, "one instance each: no sharing at all");
+
+    // Clearing `flat_indices` (what the viewer does after taking them back) leaves
+    // a shard with nothing in it, which is the point: those meshes are drawn by
+    // the consolidated flat path instead.
+    let mut routed = collated;
+    routed.flat_indices.clear();
+    let dec = decode_instanced(&encode_refs(&refs, &routed)).expect("decodes");
+    assert_eq!(dec.templates.len(), 0);
 }

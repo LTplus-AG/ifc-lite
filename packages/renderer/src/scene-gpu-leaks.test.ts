@@ -318,6 +318,37 @@ describe('Scene shared image textures (#1781)', () => {
     assert.strictEqual(owned.destroyed, 1);
   });
 
+  // The #961 cleanup loop iterates `texturedMeshes` backward while splicing
+  // matches out (`for (let i = length - 1; i >= 0; i--)`), which is required
+  // when one entity owns MORE THAN ONE textured mesh piece — a forward loop
+  // that splices as it goes shifts the array under itself and skips the
+  // element that slides into the just-vacated slot. Every prior test in this
+  // file put at most one texturedMeshes entry per expressId, so that skip was
+  // unobservable: replacing the backward loop with an equivalent-looking
+  // forward one left all of them green.
+  it('destroys every piece of a multi-piece textured entity, not just the first', () => {
+    const scene = new Scene();
+    const texA1 = fakeTexture();
+    const texA2 = fakeTexture();
+    const texB = fakeTexture();
+    const pieceA1 = fakeTexturedMesh(10, texA1);
+    const pieceA2 = fakeTexturedMesh(10, texA2);
+    const pieceB = fakeTexturedMesh(20, texB);
+    scene['texturedMeshes'] = [pieceA1, pieceA2, pieceB] as never;
+    scene['meshDataMap'].set(10, [fakeMeshDataEntry(10)] as never);
+
+    scene.removeMeshesForEntity(10);
+
+    assert.strictEqual(texA1.destroyed, 1, 'first piece of entity 10 must be destroyed');
+    assert.strictEqual(texA2.destroyed, 1, 'second piece of entity 10 must also be destroyed, not skipped');
+    assert.strictEqual(texB.destroyed, 0, 'entity 20\'s piece must survive untouched');
+    assert.strictEqual(
+      scene.getTexturedMeshes().some((tm) => tm.expressId === 10), false,
+      'no piece of entity 10 should remain in texturedMeshes',
+    );
+    assert.strictEqual(scene.getTexturedMeshes().length, 1);
+  });
+
   it('clear() empties the registry and destroys every shared texture once', () => {
     const scene = new Scene();
     const shared = fakeTexture();

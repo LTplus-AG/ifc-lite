@@ -34,40 +34,13 @@ import {
   type ModelStats,
   type EntityProperties,
   type ModelInfo,
+  type TypeVisibilityFlags,
 } from '@ifc-lite/embed-protocol';
+import { embedUrlSearchParams, type EmbedOptions } from './options.js';
 
 // ============================================================================
 // Public types
 // ============================================================================
-
-export interface EmbedOptions {
-  /** CSS selector or DOM element to mount the iframe into */
-  container: string | HTMLElement;
-  /** URL of the model to load on initialization */
-  modelUrl?: string;
-  /** Color theme */
-  theme?: 'light' | 'dark';
-  /** Custom background color (hex without #) */
-  bg?: string;
-  /** Camera controls mode */
-  controls?: 'orbit' | 'pan' | 'all' | 'none';
-  /** Hide the axis helper */
-  hideAxis?: boolean;
-  /** Hide the scale bar */
-  hideScale?: boolean;
-  /** IFC types to hide by default */
-  hideTypes?: string[];
-  /** Preset camera view */
-  view?: ViewPreset;
-  /** Initial camera position */
-  camera?: { azimuth: number; elevation: number; zoom?: number };
-  /** Origin of the hosted embed viewer (defaults to production) */
-  origin?: string;
-  /** Auth token (sent via postMessage, not URL) */
-  token?: string;
-  /** Handshake timeout in ms (default: 15000) */
-  timeout?: number;
-}
 
 export interface EventMap {
   'ready': { version: string };
@@ -84,7 +57,8 @@ export interface EventMap {
 type EventCallback<T> = (data: T) => void;
 
 // Re-export types consumers might need
-export type { ViewPreset, SectionAxis, ModelStats, EntityProperties, ModelInfo };
+export type { EmbedOptions };
+export type { ViewPreset, SectionAxis, ModelStats, EntityProperties, ModelInfo, TypeVisibilityFlags };
 
 // ============================================================================
 // Default embed origin
@@ -125,20 +99,7 @@ export class IFCLiteEmbed {
     this.expectedOrigin = new URL(this.origin).origin;
 
     // Build URL with non-sensitive params
-    const params = new URLSearchParams();
-    if (opts.modelUrl) params.set('modelUrl', opts.modelUrl);
-    if (opts.theme) params.set('theme', opts.theme);
-    if (opts.bg) params.set('bg', opts.bg);
-    if (opts.controls) params.set('controls', opts.controls);
-    if (opts.hideAxis) params.set('hideAxis', 'true');
-    if (opts.hideScale) params.set('hideScale', 'true');
-    if (opts.hideTypes?.length) params.set('hideTypes', opts.hideTypes.join(','));
-    if (opts.view) params.set('view', opts.view);
-    if (opts.camera) {
-      const parts = [opts.camera.azimuth, opts.camera.elevation];
-      if (opts.camera.zoom !== undefined) parts.push(opts.camera.zoom);
-      params.set('camera', parts.join(','));
-    }
+    const params = embedUrlSearchParams(opts);
 
     // Create iframe
     this.iframe = document.createElement('iframe');
@@ -254,7 +215,11 @@ export class IFCLiteEmbed {
     return this.request('FIT_TO_VIEW', { ids }) as Promise<void>;
   }
 
-  /** Set camera orientation */
+  /**
+   * Set the camera's absolute orientation, in degrees, around whatever it is
+   * currently looking at. `zoom` is reserved and ignored by the viewer — see
+   * `InboundPayloads['SET_CAMERA']`.
+   */
   setCamera(azimuth: number, elevation: number, zoom?: number): Promise<void> {
     return this.request('SET_CAMERA', { azimuth, elevation, zoom }) as Promise<void>;
   }
@@ -274,8 +239,12 @@ export class IFCLiteEmbed {
     return this.request('SET_THEME', { theme, bg }) as Promise<void>;
   }
 
-  /** Toggle IFC type visibility */
-  setTypeVisibility(opts: { spaces?: boolean; openings?: boolean; site?: boolean }): Promise<void> {
+  /**
+   * Toggle IFC type visibility: `spaces`, `spatialZones`, `openings`,
+   * `virtualElements`, `site`, `ifcAnnotations`, `ifcGrid`. Omitted flags are
+   * left as they are. See `TypeVisibilityFlags` for the classes each one gates.
+   */
+  setTypeVisibility(opts: TypeVisibilityFlags): Promise<void> {
     return this.request('SET_TYPE_VISIBILITY', opts) as Promise<void>;
   }
 

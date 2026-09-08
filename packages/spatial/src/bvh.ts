@@ -131,17 +131,31 @@ export class BVH {
   private computeBounds(indices: number[]): AABB {
     let minX = Infinity, minY = Infinity, minZ = Infinity;
     let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-    
+
+    // Plain `<`/`>` comparisons, not Math.min/Math.max: a NaN operand makes
+    // the comparison false and is simply skipped, whereas Math.min(x, NaN) is
+    // NaN and, once mixed into an accumulator across the loop, poisons every
+    // later comparison too — so a single mesh with degenerate/NaN geometry
+    // (e.g. a corrupt vertex) permanently NaNs this node's aggregate bounds.
+    // AABBUtils.intersects treats a NaN bound as "no intersection" on every
+    // axis it touches, so that NaN'd node is pruned out of every query no
+    // matter how the query box is chosen — dropping every valid sibling under
+    // it too (invisible geometry under frustum culling, missed raycasts/
+    // picks). Skipping the NaN contribution instead leaves the node's bounds
+    // covering only its finite members, so siblings stay queryable; the NaN
+    // mesh itself is still excluded on its own (its own bounds are NaN, so
+    // AABBUtils.intersects against it is false, matching the Rust port's
+    // `compute_bounds`, which already uses this comparison shape).
     for (const idx of indices) {
       const b = this.meshes[idx].bounds;
-      minX = Math.min(minX, b.min[0]);
-      minY = Math.min(minY, b.min[1]);
-      minZ = Math.min(minZ, b.min[2]);
-      maxX = Math.max(maxX, b.max[0]);
-      maxY = Math.max(maxY, b.max[1]);
-      maxZ = Math.max(maxZ, b.max[2]);
+      if (b.min[0] < minX) minX = b.min[0];
+      if (b.min[1] < minY) minY = b.min[1];
+      if (b.min[2] < minZ) minZ = b.min[2];
+      if (b.max[0] > maxX) maxX = b.max[0];
+      if (b.max[1] > maxY) maxY = b.max[1];
+      if (b.max[2] > maxZ) maxZ = b.max[2];
     }
-    
+
     return {
       min: [minX, minY, minZ],
       max: [maxX, maxY, maxZ],

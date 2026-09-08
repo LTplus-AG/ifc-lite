@@ -31,7 +31,7 @@ let hadClashResultAtTourStart = 0;
 export const CLASH_TOUR: TourDefinition = {
   id: 'clash',
   title: 'Find clashes',
-  description: 'Detect overlapping elements, zoom to a clash, and hand it off as a BCF issue.',
+  description: 'Detect overlapping elements, zoom to a clash, and hand it off as a BCF topic.',
   minutes: 4,
   version: 1,
   panel: 'clash',
@@ -103,17 +103,22 @@ export const CLASH_TOUR: TourDefinition = {
       // the panel's own Clear button (useClash.clearHighlight). Never the
       // result. Skipped entirely when a result pre-dated the tour: that
       // user was mid-review and keeps their view untouched.
+      //
+      // `clearClashFocus()` is the clash slice's one complete spelling of that
+      // teardown (tint + marker + solid + selected id) and bumps
+      // `clashSolidRequestSeq`, which invalidates a `focusClash` solid compute
+      // that may still be in flight for the clash this tour zoomed to — without
+      // that, the solid (or a still-resolving compute for it) would keep
+      // rendering after this cleanup runs, with nothing selected (#2574
+      // review). Called rather than re-listing the fields (#2654 review).
       cleanup: (store, ctx) => {
         if (ctx.baseline.hadResultAtEntry === 1) return;
         const s = store.getState();
         s.clearEntitySelection();
         s.clearIsolation();
         s.clearGhost();
-        s.setClashHighlightColors(null);
+        s.clearClashFocus();
         s.setPendingColorUpdates(s.lensAppliedColors ?? new Map());
-        s.setClashOverlapBox(null);
-        s.setClashContactLines(null);
-        s.setClashSelectedId(null);
       },
     },
     {
@@ -141,7 +146,7 @@ export const CLASH_TOUR: TourDefinition = {
       panel: 'clash',
       placement: 'left',
       title: 'Hand it off',
-      body: 'BCF topic files the focused clash as an issue with a snapshot. Clear removes the highlights when you are done.',
+      body: 'BCF topic files the focused clash with a snapshot. Clear removes the highlights when you are done.',
     },
   ],
 };

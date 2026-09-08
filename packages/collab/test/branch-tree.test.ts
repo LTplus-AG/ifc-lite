@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 import { describe, expect, it } from 'vitest';
-import { MemoryHistorySidecar } from '../src/branch/history.js';
+import { MemoryHistorySidecar, type HistoryEntry, type HistorySidecar } from '../src/branch/history.js';
 import { buildBranchTree } from '../src/branch/branch-tree.js';
 
 const ifcx = {
@@ -66,5 +66,61 @@ describe('branch-tree', () => {
       (e) => e.kind === 'merge' && e.from === eExp.entryId && e.to === merge.entryId,
     );
     expect(mergeEdge).toBeDefined();
+  });
+
+  it('re-sorts same-branch entries by `at` even when the sidecar hands them back out of order', async () => {
+    // `MemoryHistorySidecar.record()` always appends in call order, which
+    // happens to equal chronological order too (`at: new Date().toISOString()`
+    // ticks up on every call) — so a test built by calling `record()`
+    // sequentially can never observe whether `buildBranchTree` actually
+    // sorts by `at`, only whether it preserves insertion order. That is the
+    // "commuting fixture" trap: deleting the `arr.sort(...)` call in
+    // branch-tree.ts still passes every `record()`-driven test.
+    //
+    // This fake sidecar sidesteps `record()` entirely and hands
+    // `buildBranchTree` two same-branch entries through `entries()` in
+    // REVERSE chronological order (`newer` before `older`) — the interface
+    // contract ("oldest first", see `HistorySidecar.entries` doc) says
+    // callers should never see this, but `buildBranchTree` must not rely on
+    // it: it re-sorts defensively. Only a fixture that is NOT already
+    // `at`-sorted can tell the two apart.
+    const older: HistoryEntry = {
+      entryId: 'older',
+      at: '2020-01-01T00:00:01.000Z',
+      branch: 'main',
+      snapshot: ifcx,
+    };
+    const newer: HistoryEntry = {
+      entryId: 'newer',
+      at: '2020-01-01T00:00:02.000Z',
+      branch: 'main',
+      snapshot: ifcx,
+    };
+    const fake: HistorySidecar = {
+      record: async () => {
+        throw new Error('not used by this test');
+      },
+      entries: async () => [newer, older], // deliberately NOT `at`-sorted
+      at: async () => null,
+      diff: async () => ({ from: '', to: '', added: [], removed: [], changed: [] }),
+      branches: async () => [{ name: 'main', createdAt: '2020-01-01T00:00:00.000Z' }],
+      branch: async () => {
+        throw new Error('not used by this test');
+      },
+      merge: async () => {
+        throw new Error('not used by this test');
+      },
+      clear: async () => {},
+    };
+
+    const tree = await buildBranchTree(fake);
+    const historyEdges = tree.edges.filter((e) => e.kind === 'history');
+    expect(historyEdges).toHaveLength(2);
+    // Chronological order (older first), NOT the `entries()` return order
+    // (which was newer-then-older).
+    expect(historyEdges[0].to).toBe(older.entryId);
+    expect(historyEdges[0].from).toBe('branch:main');
+    expect(historyEdges[1].to).toBe(newer.entryId);
+    expect(historyEdges[1].from).toBe(older.entryId);
   });
 });

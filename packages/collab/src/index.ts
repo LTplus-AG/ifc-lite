@@ -5,7 +5,7 @@
 /**
  * @ifc-lite/collab — Real-time collaborative BIM via CRDT on IFCX.
  *
- * See `docs/architecture/collab-plan.md` for the v0.1 → v1.0 roadmap.
+ * See `docs/architecture/collaboration.md` for the v0.1 → v1.0 roadmap.
  */
 
 // Doc model

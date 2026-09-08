@@ -1,5 +1,254 @@
 # @ifc-lite/extensions
 
+## 0.6.0
+
+### Minor Changes
+
+- [#3487](https://github.com/LTplus-AG/ifc-lite/pull/3487) [`843aefb`](https://github.com/LTplus-AG/ifc-lite/commit/843aefb9333ae1ad2af24a26fdec889b83de48ed) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix the "Promote to tool" capability inference under-granting real `bim.viewer` and `bim.store` mutations.
+  
+  `INFERENCE_CATALOGUE` in `src/inference/catalogue.ts` documents itself as kept in sync with `@ifc-lite/sandbox`'s `NAMESPACE_SCHEMAS`, and `inferCapabilities`'s own design rules say to never under-grant: if the inferred capability is wrong, an extension should fail to run rather than run with a capability it was never reviewed for. Two gaps of the same shape — a real, state-mutating bridge method missing from the catalogue and falling through to a read-only default:
+  
+  - `bim.viewer`: `colorizeAll`, `resetColors`, `resetVisibility` (`packages/sandbox/src/bridge-viewer.ts`) had no entry in the `viewer` namespace's `methods` overrides, so calling them inferred only `viewer.read` instead of `viewer.colorize`/`viewer.isolate`. A script whose only viewer call was `bim.viewer.resetColors()` would have its capability grant pre-filled as read-only on the promote review screen while actually able to mutate colors/visibility at runtime.
+  - `bim.store` (`packages/sandbox/src/bridge-store.ts`) is entirely document-level edits — `addEntity`, `removeEntity`, `setPositionalAttribute`, and ten `addWall`/`addSlab`/... element helpers — but the namespace had no `methods` overrides at all, so every one of them inferred the namespace default `model.read`. A script that only called `bim.store.addWall(...)` would be offered a read-only grant for a call that creates a new entity.
+  
+  `colorizeAll`/`resetColors` now map to `viewer.colorize` and `resetVisibility` to `viewer.isolate`. The `addEntity`/`addColumn`/`addWall`/`addSlab`/`addBeam`/`addDoor`/`addWindow`/`addSpace`/`addRoof`/`addPlate`/`addMember` methods now map to `model.create`, `removeEntity` to `model.delete`, and `setPositionalAttribute` to the wildcard `model.mutate:*` (mirroring how the `mutate` namespace already treats an unstructured attribute edit).
+  
+  Two state-changing bridge methods are still left at their namespace's read-only default and are not changed here, because the capability catalogue has no scope that fits either: `bim.model.loadIfc` (`packages/sandbox/src/bridge-model.ts`) loads a file into the viewer but infers `model.read`, and `bim.viewer.select` (`packages/sandbox/src/bridge-viewer.ts`) writes viewer selection state but infers `viewer.read`. Closing those needs a new capability, which extensions would have to declare in their manifest, so it is a change to the manifest contract rather than to this catalogue.
+
+- [#3488](https://github.com/LTplus-AG/ifc-lite/pull/3488) [`b777dbb`](https://github.com/LTplus-AG/ifc-lite/commit/b777dbb085d70f7f56c15c50b48e3c8e57c889a7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Flag `bim.<ns>.<method>` calls the capability catalogue never classified, instead of only flagging unknown namespaces.
+  
+  `inferCapabilities` (`src/inference/capability.ts`) documents a design rule of surfacing unknowns so a reviewer can investigate, but it set `observation.unknown` from the namespace alone. `INFERENCE_CATALOGUE` (`src/inference/catalogue.ts`) resolves capability per method: a namespace maps to `defaultCapabilities` plus a `methods` map where capability varies by method. A method missing from that map found its namespace known, reported `unknown: false`, and fell through to the namespace default with nothing telling the reviewer this particular call had never been looked at.
+  
+  `unknown` now comes from a new `isRecognisedMethod(namespace, method)`. A namespace with no `methods` map is flat — one capability covers all of it, so every method is recognised. A namespace with a `methods` map is differentiated, and membership in that map is what "classified" means, so an absent method is now reported as unrecognised. The capability itself is unchanged in every case: `lookupNamespaceMethod` still returns the namespace default, so nothing is under-granted and no grant moves. What changes is what the "Promote to tool" screen tells a human, which is why this is a `minor` rather than a `patch`: `unknown` is part of the exported `InferenceObservation`, and it flips for calls that previously came back clean.
+  
+  That reading of the `methods` map only holds if the map lists every real bridge method, including the ones whose answer is the namespace default — otherwise a method that exists and is granted correctly would be reported as a gap. Three namespaces were relying on the default instead, so their real methods are now written out at the capability they already resolved to: `mutate.setProperty`, `mutate.setAttribute`, `mutate.deleteProperty`, `mutate.undo` and `mutate.redo` at the namespace's deliberate `model.mutate:*` wildcard, `export.download` at `export.create:*` (it writes caller-supplied content under a caller-supplied filename, so no format target is narrower), and `viewer.select` at `viewer.read`. None of those changes an inferred capability; they record a classification that was previously implicit.
+  
+  Nothing machine-checks a differentiated namespace's map against `@ifc-lite/sandbox`'s `NAMESPACE_SCHEMAS`, so the two can still drift — but now in the safe direction: a bridge method added without a catalogue decision warns until someone makes one. Flat namespaces stay outside this mechanism entirely; giving one a `methods` map is what opts it in.
+
+- [#3491](https://github.com/LTplus-AG/ifc-lite/pull/3491) [`858b75a`](https://github.com/LTplus-AG/ifc-lite/commit/858b75a0ef5636098452a2297277767efdc956a2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `bim.model.loadIfc` inferring the read-only `model.read` capability instead of `model.create`.
+  
+  The inference catalogue mapped every `bim.model.*` call, including `loadIfc`, to the namespace's `model.read` default. `loadIfc` loads a whole new IFC document into the app (dispatches `ifc-lite:load-file`), which is a document-creating operation, not a read — the same distinction `host/permissions.ts` already draws for `model.create` ("creation modifies the document").
+  
+  Because `inferCapabilities` and the runtime's per-method capability gate (`host/check.ts`) both read this same catalogue, the under-grant was not just a review-screen display issue: an extension granted only `model.read` could call `bim.model.loadIfc` and the gate would allow it, since the required and granted capability were identical (`model.read`). `bim.model.loadIfc` now requires `model.create`; `bim.model.list`/`active`/`activeId` are unaffected and still require `model.read`.
+
+### Patch Changes
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
+## 0.5.0
+
+### Minor Changes
+
+- [#2957](https://github.com/LTplus-AG/ifc-lite/pull/2957) [`1118399`](https://github.com/LTplus-AG/ifc-lite/commit/11183991d9fb042221d20f1ca432dc0b2293c928) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Don't fail a flavor operation on an active-flavor pointer write that changes
+  nothing, and snapshot a same-version reinstall before overwriting its bundle.
+  
+  Four sites wrote in two steps, and treated a refused second write as fatal
+  without first asking whether that write would have stored what was stored
+  already:
+  
+  - **`switchFlavor`** rolled every extension toggle back and reported
+    `'<pointer>'` when `setActiveFlavor` was refused. Re-applying the flavor that
+    is already active writes the id the pointer already holds, so the refusal
+    changed nothing — and the rollback disabled every extension the target
+    declares. `FlavorSwitcherCallbacks` gains an optional `readActiveFlavor()`;
+    when it reports the id `activeFlavorPointer(target)` would have written, the
+    switch stands. Without the callback, or when the read fails, the refusal is
+    still fatal — the behaviour every host had before.
+  - **`activeFlavorPointer(target)`** is now exported: it builds the id the
+    pointer stores for a flavor, so the value compared is the value written by
+    construction rather than a second derivation that can drift.
+  - **`activeFlavorPointerAlreadyStored(read, pointer)`** is now exported and is
+    the single comparison both hosts ask through, so a change to how the pointer
+    is encoded lands once. It answers `false` for a pointer that is not a string,
+    so an absent id can never match an unset pointer and report a refused write
+    with nothing stored as a successful one.
+  - **`ExtensionHostService.switchFlavor`** (viewer) wires that callback through
+    `FlavorService.activeId()`, also new. It turned a failed switch into a thrown
+    error, which skipped the lens, clash and sidebar restores below it.
+  - **`FlavorService.resetToDefaults`** (viewer) threw when `setActiveId` was
+    refused even though the baseline flavor had landed and the pointer already
+    named it — the common case, since resetting is the way back from anything.
+    It now rethrows only when the pointer is not provably already that id.
+  
+  Separately, **`installFromBytes`** (viewer) snapshotted the previous install's
+  bundle bytes only when the incoming version differed. Bundle bytes are keyed by
+  id and version, so a reinstall of the same version overwrote them; a loader
+  rejection then deleted the record and the bundle with nothing to restore,
+  wiping a working extension. The snapshot is now taken for any previous install.
+  The teardown stays gated on a version change.
+  
+  The rollback also restores the previous record under its own guard, independent
+  of the bundle bytes. The record carries the capability grants, the enabled bit,
+  the install time and the source, none of which need bytes and none of which the
+  user can reconstruct, so a previous install whose bytes were already gone no
+  longer has its record deleted by the rollback, and a byte write that fails
+  during the restore — `putBundle` is the step with a storage-quota path — no
+  longer takes the record down with it. A record without its bytes is a state the
+  loader names (`invalid_reference`); reinstalling the same version repairs it and
+  keeps the grants, but the app offers no route to that today — the Repair queue
+  passes an extension whose engine range still matches, so it never reports the
+  missing bytes. Keeping the record is still the better outcome: unloaded *and*
+  deleted is strictly worse than unloaded.
+  
+  The rollback now also checks that the record in storage is still the one this
+  install wrote before undoing anything. `load` is an await point, so a user can
+  uninstall while a slow load is in flight; restoring the previous record after
+  that would undo an explicit uninstall. The check is on record identity, never
+  on whether bytes exist, so it does not reintroduce the gate above.
+  
+  One cost, in the safe direction: because the snapshot is no longer gated on a
+  version change, a transient failure reading the previous bundle bytes now fails
+  a same-version reinstall that previously would have proceeded. Nothing is
+  written or destroyed in that case; the install has to be retried.
+  
+  Each comparison is one-directional: `false` means "not provably a no-op", never
+  a guess, so anything unreadable costs only a refusal that was already the old
+  behaviour. No path reports success while the stored state differs from what a
+  successful operation would have left.
+
+- [#3026](https://github.com/LTplus-AG/ifc-lite/pull/3026) [`b59c520`](https://github.com/LTplus-AG/ifc-lite/commit/b59c5206a154728139d1307bf823e5c5d7c4786a) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `revalidateAgainstSdk` silently treating an unverifiable extension as fine after an SDK bump.
+  
+  An extension whose declared `engines.ifcLiteSdk` range is too loose to evaluate (e.g. a wildcard like `2.x`) gets `compatibility.status: 'permissive'` — the range comparator's own docs describe this as "worth a re-test, even if the range technically passes." When such an extension has no declared tests (or its bundle bytes aren't available), the test run comes back `outcome: 'skipped'` — nothing actually confirmed it still works. `needsRepair` only included skipped rows whose status was `'outdated'`, so a permissive, self-unverifiable extension never surfaced in the repair queue after a major SDK bump. Since `'skipped'` can only occur for `'outdated'` or `'permissive'` rows (the `'compatible'` branch always resolves to `'pass'` without touching the test runner), `needsRepair` now includes every skipped row.
+  
+  The rule now lives in one exported function, `needsSdkRepair`. The viewer's repair panel carried a second copy of the predicate to decide which rows get a Repair button, so widening only the queue side made the header ("N need fixing") count permissive, skipped extensions whose rows offered no way to fix them. Both sides call the shared function, and a rendering test pins the invariant the two copies were supposed to preserve: the header count equals the number of rows with a Repair button.
+
+### Patch Changes
+
+- [#3027](https://github.com/LTplus-AG/ifc-lite/pull/3027) [`447f02e`](https://github.com/LTplus-AG/ifc-lite/commit/447f02eefc2933c63c03aea6c7793343df20fcd7) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Bound the AST walks over extension-author source so a deeply nested script is
+  reported, not fatal.
+  
+  `validateCode` and `inferCapabilities` both fed an AST parsed from
+  author-supplied source to `acorn-walk`'s `walk.simple`, which recurses once per
+  AST level. A script nested a few hundred levels deep threw
+  `RangeError: Maximum call stack size exceeded` out of the middle of both
+  functions, escaping the result shape each one is declared to return. Measured
+  here, an 800-level script overflowed and a 700-level one did not, and which of
+  the two overflowed moved with test ordering — the failure point tracked whatever
+  stack the caller happened to have left.
+  
+  Both now traverse through a new internal `walkBounded`
+  (`src/ast/bounded-walk.ts`), which keeps its own stack on the heap and stops at
+  `MAX_AST_DEPTH = 1000` (~500 source levels of `if (1) { … }`; acorn's own parser
+  gives up somewhere above that, but where depends on the host's remaining stack —
+  measured on Node 22 between 1100 and 4000 source levels, so it is not a fixed
+  floor to sit under). It descends using `acorn-walk`'s `base` visitor
+  and reports nodes in `walk.simple`'s post-order, so which child positions count
+  as nodes — non-computed member properties and object keys stay unvisited — and
+  the order they arrive in are unchanged. Behaviour below the bound is identical.
+  
+  Catching the `RangeError` would have been the smaller change and is the wrong
+  one: it makes the accept/reject boundary depend on the remaining call stack, so
+  the same script passes on one code path and fails on another. The bound is a
+  reported result instead.
+  
+  What each site returns at the bound:
+  
+  - **`validateCode`** adds an `invalid_value` error naming the limit and returns
+    `ok: false`. A truncated walk has not proven the source clean; anything below
+    the cut-off went uninspected, so reporting `ok` would be a pass on a partial
+    inspection.
+  - **`inferCapabilities`** returns an empty capability set *and* a `parseErrors`
+    entry naming the limit. The capabilities found before the walk stopped are a
+    floor, not the answer. Returning them alone would fail open in both callers:
+    `migrateSavedScripts` treats an empty set as "grant `model.read` and migrate
+    anyway", and the promote dialog renders it as "no `bim.*` calls detected".
+    `parseErrors` is the channel both already use to refuse a script — the
+    migration now skips it and the dialog shows its warning.
+  
+  No public API change; `walkBounded` is not exported from the package entry
+  point.
+
+- [#3070](https://github.com/LTplus-AG/ifc-lite/pull/3070) [`f1ee3e8`](https://github.com/LTplus-AG/ifc-lite/commit/f1ee3e88889281af34f0e382cef7ea57ee9d47c1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Put the entry-script scan on the package's one AST walker, and fail closed on a
+  subtree the walker cannot descend.
+  
+  Three follow-ups to the bounded-walk work, all latent rather than live — no
+  input reaching this package today takes any of the paths below.
+  
+  **One walker, one bound.** `src/ast/bounded-walk.ts` opened with "this module is
+  the single traversal used by every AST consumer here… Callers vary the visitor;
+  they do not re-implement the traversal", while `host/source-wrap.ts` ran its own
+  hand-written traversal with its own private `MAX_AST_DEPTH = 1000` and its own
+  generic child enumeration. Two walkers and two constants with a comment telling
+  the next reader the second one did not exist. `checkBannedConstructs` now calls
+  `walkBounded`; the duplicate constant and the generic `childNodes` helper are
+  gone.
+  
+  The migration narrows which child positions get *reported* — `acorn-walk`'s
+  `base` skips non-computed member properties, plain object keys, labels,
+  `ExportSpecifier`s and pattern `Property` wrappers, which the generic
+  property-crawl reported as nodes. It does not narrow what the scan *catches*: a
+  differential run over 59 sources placing each banned construct in an exotic
+  position found no banned node reached by the generic crawl and missed by
+  `base`, including the pattern-default case where the `Property` wrapper is
+  skipped but the `ImportExpression` under it is still visited via `ObjectPattern`.
+  The accept/reject depths are unchanged for both shapes measured (`if`-nesting
+  and arrow chains), and a test now pins `wrapEntrySource` and `validateCode`
+  against each other across the boundary so a future divergence fails.
+  
+  **A missing `base` is now a failure, not a silent stop.** `walkBounded` reported
+  a node it had no `base` for and skipped its entire subtree. Every caller is a
+  scanner looking for things it must not find, so a skipped subtree was a scan
+  that failed open: `validateCode` returned `ok`, `inferCapabilities` published an
+  under-counted capability set, and `wrapEntrySource` wrapped the script — none of
+  them could tell "found nothing" from "never looked". `acorn-walk` throws on a
+  missing `base` for exactly this reason; we report instead of throwing because
+  these callers are declared to return a result. The result now carries
+  `unwalkableTypes`, and all three callers treat a non-empty list the way they
+  already treat `depthExceeded`. This becomes reachable the first time acorn is
+  upgraded ahead of `acorn-walk` — the skew that landed class static blocks,
+  import attributes and `await using`. Verified against acorn 8.18.0 /
+  acorn-walk 8.3.5: no node type the walk actually reaches is missing a base.
+  (`ExportSpecifier` has no `base` entry, but `base.ExportNamedDeclaration` never
+  descends into `specifiers`, so the walk never dispatches on it — it is unreached,
+  not unwalkable.) The tests reproduce the skew by removing one `base` entry rather
+  than waiting for an upgrade.
+  
+  **Two comments that named a number acorn does not have.** The walker's docstring
+  claimed acorn "gives up at roughly 1200 source levels" and `source-wrap.ts`
+  claimed "roughly twice this depth". Both understate — so they erred safe — but
+  as written they were the numbers a future reader would cite to justify raising
+  the bound. Measured on Node 22, the same script parses at 1100 source levels and
+  aborts the process at 1200 in a default-stack run (a fatal V8 abort, exit 134,
+  not a catchable error), is rejected at 1200 under this repo's vitest workers,
+  and parses at 4000 under `node --stack-size=4000`. The parser's give-up point is
+  a property of the host's remaining stack, not of acorn, and the docstring now
+  says so — which is the argument for a fixed heap-based bound, not against it.
+  
+  `MAX_AST_DEPTH` is unchanged at 1000. No public API change; `walkBounded` is
+  still not exported from the package entry point.
+
+- [#3025](https://github.com/LTplus-AG/ifc-lite/pull/3025) [`870ec9e`](https://github.com/LTplus-AG/ifc-lite/commit/870ec9ee9a35f798196c59ce82e65e210eddd429) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Make `wrapEntrySource`'s banned-construct check walk the entire entry-script AST instead of only its top-level statements.
+  
+  The check existed to flag `import`/`export` syntax at wrap time so extension authors get a clear, early error instead of a confusing runtime failure. It only ever inspected `ast.body`, so any of those constructs written inside a nested function, arrow body, or class method passed silently. In practice the QuickJS sandbox realm has no module loader registered, so a nested dynamic `import(...)` was always going to fail at runtime anyway with an opaque engine error — this change moves that failure earlier and makes it legible, and closes the gap between what the check's name and callers assume ("banned constructs are caught") and what it verified.
+  
+  The walk now also flags dynamic `import(...)` anywhere it appears, not just static top-level `import`/`export` declarations (which the ECMAScript grammar restricts to the top level regardless of where the walk looks). `eval` and `new Function` are deliberately left alone: both run confined inside the same non-module sandbox realm with no path to the host bridge, and banning them would restrict legitimate extension code for no isolation benefit.
+  
+  The walk iterates over an explicit stack rather than recursing, and stops at a fixed depth of 1000 AST levels. `wrapEntrySource` returns a `ValidationResult`, so a deeply nested entry script has to come back as a reported error; a recursive walk instead threw a `RangeError` ("Maximum call stack size exceeded") out of the middle of it, at roughly 500 nested blocks. Past the bound the script is now rejected with an `invalid_value` error naming the limit, matching how acorn's own parser already degrades on input it cannot handle. Real entry scripts nest a few tens of levels deep.
+
+## 0.4.2
+
+### Patch Changes
+
+- [#2610](https://github.com/LTplus-AG/ifc-lite/pull/2610) [`bd92912`](https://github.com/LTplus-AG/ifc-lite/commit/bd92912965b6b1ab6573a4b304b1e54d494c22b7) Thanks [@louistrue](https://github.com/louistrue)! - Internal tidy-up only, no behaviour change: the sandbox's `try { value = fn(...) } catch (err) { throw err }` is now a plain call, which is what rethrowing an unchanged error already did.
+
+  This ships because the repo's new lint gate flagged it (`no-useless-catch`), not because anything was wrong at runtime.
+
+## 0.4.1
+
+### Patch Changes
+
+- [#2083](https://github.com/LTplus-AG/ifc-lite/pull/2083) [`6cbf69a`](https://github.com/LTplus-AG/ifc-lite/commit/6cbf69acb2163ab671c41df36878f4d4e490e244) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Stop `IfcServerClient.parseStream()` reporting a truncated stream as a successful parse, and log four failures that were previously invisible.
+
+  **Behaviour change (`@ifc-lite/server-client`):** `parseStream()` now throws `Stream ended without a complete event` when the SSE stream finishes without a `complete` or `error` event. Previously, a connection that dropped mid-parse — or a final frame truncated mid-JSON, whose `JSON.parse` failure was swallowed by a bare `catch {}` — ended the async generator normally, so `for await (const event of client.parseStream(file))` simply exited and the caller saw a successful parse that had produced only part of the model. The sibling `parseStreamToParquet()` already enforced this contract (`Stream ended without complete event`); the two paths now agree. Consumers that `break` out of the loop early are unaffected: an early return does not run the check.
+
+  Two further `parseStream()` fixes: a malformed SSE frame is now reported via `console.warn` instead of being dropped silently, and `yield` has been moved out of the `try` that wraps `JSON.parse`, so an error thrown into the generator by the consumer propagates instead of being swallowed as if it were a bad frame.
+
+  New warnings elsewhere, no behaviour change:
+
+  - `@ifc-lite/extensions` — an `AuditLog` subscriber that throws now warns once per listener (latched, so a persistently broken subscriber cannot log once per audited action). Delivery to the other listeners is unchanged.
+  - `@ifc-lite/collab-server` — the layer-registry auto-merge path warns when it skips because the pushed layer cannot be read, when a ref layer cannot be read during the idempotency probe, and when a merge attempt throws. Auto-merge failures are still contained and still never fail the push that triggered them; they are just no longer invisible to the operator.
+  - `@ifc-lite/sdk` — `bsdd` warns when the paginated `classProperties` fallback fails. The partial result is still returned, but it is also cached, so one transient failure otherwise answered every later call for that URI until the entry expired.
+
 ## 0.4.0
 
 ### Minor Changes

@@ -86,7 +86,8 @@ export function PriorityBadge({ priority }: { priority?: string }) {
 // Date Formatters
 // ============================================================================
 
-export function formatDate(isoDate: string): string {
+export function formatDate(isoDate: string | undefined): string {
+  if (!isoDate) return '';
   const date = new Date(isoDate);
   if (isNaN(date.getTime())) return isoDate;
   return date.toLocaleDateString(undefined, {
@@ -96,7 +97,8 @@ export function formatDate(isoDate: string): string {
   });
 }
 
-export function formatDateTime(isoDate: string): string {
+export function formatDateTime(isoDate: string | undefined): string {
+  if (!isoDate) return '';
   const date = new Date(isoDate);
   if (isNaN(date.getTime())) return isoDate;
   return date.toLocaleString(undefined, {

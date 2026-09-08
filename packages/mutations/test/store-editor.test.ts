@@ -71,7 +71,7 @@ describe('StoreEditor', () => {
     expect([a.expressId, b.expressId, c.expressId]).toEqual([6, 7, 8]);
   });
 
-  it('removeEntity tombstones existing entities and forgets new ones', () => {
+  it('removeEntity tombstones existing AND overlay-created entities (#2012)', () => {
     const store = makeStore(3);
     const view = new MutablePropertyView(null, 'm1');
     const editor = new StoreEditor(store, view);
@@ -79,10 +79,28 @@ describe('StoreEditor', () => {
     expect(editor.removeEntity(2)).toBe(true);
     expect(view.isDeleted(2)).toBe(true);
 
+    // A created entity is dropped from the new-entity list, so it is emitted
+    // nowhere — and tombstoned, so `isDeleted` tells the truth about it. It
+    // used to be only forgotten, which made every downstream "was this
+    // deleted" guard answer false for an entity that no longer exists.
     const created = editor.addEntity('IFCDIRECTION', [[1, 0, 0]]);
     expect(editor.removeEntity(created.expressId)).toBe(true);
     expect(editor.getNewEntity(created.expressId)).toBeNull();
+    expect(view.isDeleted(created.expressId)).toBe(true);
+  });
+
+  it('restoreNewEntity lifts the tombstone as well (#2012)', () => {
+    const store = makeStore(3);
+    const view = new MutablePropertyView(null, 'm1');
+    const editor = new StoreEditor(store, view);
+
+    const created = editor.addEntity('IFCDIRECTION', [[1, 0, 0]]);
+    const stashed = view.getNewEntity(created.expressId)!;
+    editor.removeEntity(created.expressId);
+    view.restoreNewEntity(stashed);
+
     expect(view.isDeleted(created.expressId)).toBe(false);
+    expect(view.getNewEntity(created.expressId)).not.toBeNull();
   });
 
   it('removeEntity returns false for unknown ids', () => {

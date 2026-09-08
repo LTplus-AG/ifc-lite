@@ -4,56 +4,23 @@
 
 //! SSE Parquet-batch streaming parse endpoint.
 
-use super::cache_keys::{cache_symbolic_data, request_cache_key};
+use super::cache_keys::{
+    cache_symbolic_data, data_model_cache_key, parquet_geometry_key, parquet_metadata_key,
+    request_cache_key,
+};
 use super::parquet::ParquetMetadataHeader;
+use super::stream_event::ParquetStreamEvent;
+use super::stream_progress::{cache_stream_progress, StreamProgressRecorder};
 use super::{extract_file, ParseQuery};
 use crate::error::ApiError;
 use crate::services::{extract_data_model, process_streaming, serialize_data_model_to_parquet};
-use crate::types::{ModelMetadata, ProcessingStats, StreamEvent};
+use crate::types::StreamEvent;
 use crate::AppState;
 use axum::{
     extract::{Multipart, Query, State},
     response::sse::{Event, KeepAlive, Sse},
 };
-use ifc_lite_processing::SymbolicData;
-use serde::Serialize;
 use std::convert::Infallible;
-
-/// SSE event types for Parquet streaming.
-// Variant sizes differ because the payload events carry buffers; boxing them
-// would complicate the SSE serialization path for no runtime benefit here.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Serialize)]
-#[serde(tag = "type", rename_all = "lowercase")]
-pub enum ParquetStreamEvent {
-    /// Initial event with estimated totals.
-    Start {
-        total_estimate: usize,
-        cache_key: String,
-    },
-    /// Progress update.
-    Progress { processed: usize, total: usize },
-    /// Batch of geometry data as base64-encoded Parquet.
-    Batch {
-        /// Base64-encoded Parquet data containing this batch's meshes.
-        data: String,
-        /// Number of meshes in this batch.
-        mesh_count: usize,
-        /// Batch sequence number (1-indexed).
-        batch_number: usize,
-    },
-    /// Processing complete.
-    Complete {
-        stats: ProcessingStats,
-        metadata: ModelMetadata,
-        /// 2D symbol data extracted from `IfcAnnotation` and `IfcGrid`
-        /// entities — parity with `POST /api/v1/parse` (issue #900).
-        #[serde(default, skip_serializing_if = "SymbolicData::is_empty")]
-        symbolic_data: SymbolicData,
-    },
-    /// Error occurred.
-    Error { message: String },
-}
 
 /// POST /api/v1/parse/parquet-stream - Streaming parse with Parquet batches.
 ///
@@ -68,16 +35,52 @@ pub enum ParquetStreamEvent {
 /// - `error`: Error event with `message`
 ///
 /// After `complete`, client should fetch data model via `/api/v1/data-model/{cache_key}`.
+///
+/// ## Two ways to ask
+///
+/// With a multipart `file` body: the normal path. The cache key is the SHA-256
+/// of the RECEIVED bytes, so the upload always completes first, and a `sha256`
+/// query parameter sent alongside a body is IGNORED - the bytes on the wire
+/// decide which entry is read and written, never the client's claim about them.
+///
+/// With `?sha256={hex}` and no body: a probe (issue #3901). It replays the
+/// cached stream if, and only if, every entry the replay needs already exists
+/// under that key, and otherwise answers `404` meaning "upload it". See
+/// [`cached_replay::replay_by_client_hash`]. This is what lets a 40 MB cache
+/// hit cost no upload.
 pub async fn parse_parquet_stream(
     State(state): State<AppState>,
     Query(query): Query<ParseQuery>,
-    mut multipart: Multipart,
+    multipart: Option<Multipart>,
 ) -> Result<axum::response::Response, ApiError> {
-    use crate::services::{serialize_to_parquet, StreamingParquetCacheWriter};
+    use crate::services::{serialize_batch_with_layout, StreamingParquetCacheWriter};
     use axum::response::IntoResponse;
     use base64::{engine::general_purpose::STANDARD, Engine};
     use futures::StreamExt;
     use std::sync::{Arc, Mutex};
+
+    let tessellation_quality = query.resolved_tessellation_quality()?;
+
+    // Hash-only probe: no body was sent, so there is nothing to extract and
+    // nothing to parse. It is checked before the gate below only because that
+    // gate reserves an upload that does not exist. The probe takes admission
+    // itself, on the hit path where it has real work to bound -- see
+    // `replay_by_client_hash`.
+    let Some(mut multipart) = multipart else {
+        let Some(sha256) = query.sha256.as_deref() else {
+            // No body and no hash: there is nothing to identify a file with.
+            // `MissingFile` (400) is what a body with no `file` field already
+            // answers, and it says the same thing here.
+            return Err(ApiError::MissingFile);
+        };
+        return super::cached_replay::replay_by_client_hash(
+            &state,
+            &query,
+            tessellation_quality,
+            sha256,
+        )
+        .await;
+    };
 
     // Extract file
     // Admission gate (bounded concurrency + byte budget): acquired BEFORE the
@@ -90,15 +93,22 @@ pub async fn parse_parquet_stream(
         .await?;
     let data = extract_file(&mut multipart, state.config.max_file_size_mb).await?;
 
-    // Generate cache key before processing (include opening filter + quality)
-    let tessellation_quality = query.resolved_tessellation_quality()?;
+    // Generate cache key before processing (include opening filter + quality).
+    // From the RECEIVED BYTES, always: a `sha256` parameter that arrived
+    // alongside a body has no say here, so a client whose claimed hash does not
+    // describe what it uploaded still reads and writes the entry its bytes name.
     let cache_key = request_cache_key(&data, &query, tessellation_quality);
     let cache_key_clone = cache_key.clone();
+    // This route SHARES nothing -- a per-batch writer cannot see across a batch
+    // boundary -- so the layout only decides whether the mesh table carries
+    // identity `rot0..rot8`, and which cache namespace the result lands in. A
+    // default request therefore still produces byte-identical v5 output.
+    let layout = query.parquet_layout;
 
     // OPTIMIZATION: Check cache first and fast-path return if available
     // This avoids re-processing files that are already cached (see
     // `cached_replay.rs`; a short/corrupt blob falls through as a miss).
-    if let Some(response) = super::cached_replay::try_cached_replay(&state, &cache_key).await? {
+    if let Some(response) = super::cached_replay::try_cached_replay(&state, &cache_key, layout).await? {
         // Cached replay: no parse work runs, so holding the admission
         // guard (and its CPU slot) while a slow client drains the SSE
         // would starve real parses for nothing. The replay blob is
@@ -125,7 +135,7 @@ pub async fn parse_parquet_stream(
     // the model's geometry until Complete. `None` after a writer error (the
     // cache fill is skipped; the client stream is unaffected).
     let cache_writer: Arc<Mutex<Option<StreamingParquetCacheWriter>>> =
-        Arc::new(Mutex::new(match StreamingParquetCacheWriter::new() {
+        Arc::new(Mutex::new(match StreamingParquetCacheWriter::new(layout) {
             Ok(w) => Some(w),
             Err(e) => {
                 tracing::error!(error = %e, "Failed to create streaming cache writer");
@@ -133,6 +143,10 @@ pub async fn parse_parquet_stream(
             }
         }));
     let cache_writer_for_stream = cache_writer.clone();
+    // Job-unit progress checkpoints for the cache-hit replay: `progress`
+    // events report the pipeline's `processed_jobs` / `total_jobs`, which the
+    // geometry blob does not record (issue #3897).
+    let mut progress_recorder = StreamProgressRecorder::default();
     let cache_for_geometry = cache.clone();
     let cache_key_for_geometry = cache_key.clone();
 
@@ -154,9 +168,11 @@ pub async fn parse_parquet_stream(
                 }
             }
             StreamEvent::Progress { processed, total, .. } => {
+                progress_recorder.on_progress(processed, total);
                 ParquetStreamEvent::Progress { processed, total }
             }
             StreamEvent::Batch { meshes, batch_number } => {
+                progress_recorder.on_batch();
                 // Per-batch CPU work (client-blob serialization + cache-writer
                 // append) runs inside this stream map, i.e. on an async worker.
                 // On the multi-thread runtime, step off the async pool for it
@@ -172,7 +188,7 @@ pub async fn parse_parquet_stream(
                             }
                         }
                     }
-                    serialize_to_parquet(&meshes)
+                    serialize_batch_with_layout(&meshes, layout)
                 };
                 let serialized = if tokio::runtime::Handle::current().runtime_flavor()
                     == tokio::runtime::RuntimeFlavor::MultiThread
@@ -220,6 +236,7 @@ pub async fn parse_parquet_stream(
                 let stats_clone = stats.clone();
                 let metadata_clone = metadata.clone();
                 let writer_for_cache = cache_writer.clone();
+                let recorded_progress = progress_recorder.take();
                 let coord_space = mesh_coordinate_space.clone();
                 let site_tf = site_transform.clone();
                 let building_tf = building_transform.clone();
@@ -259,7 +276,7 @@ pub async fn parse_parquet_stream(
 
                     if let Ok(Ok(combined_parquet)) = finish_result {
                         // Cache geometry (same format as non-streaming)
-                        let parquet_cache_key = format!("{}-parquet-v4", key);
+                        let parquet_cache_key = parquet_geometry_key(&key, layout);
                         if let Err(e) = cache.set_bytes(&parquet_cache_key, &combined_parquet).await {
                             tracing::error!(error = %e, "Failed to cache geometry from stream");
                         } else {
@@ -281,13 +298,16 @@ pub async fn parse_parquet_stream(
                             data_model_stats: None, // Data model cached separately via data model endpoint
                         };
                         if let Ok(metadata_json) = serde_json::to_vec(&metadata_header) {
-                            let metadata_cache_key = format!("{}-parquet-metadata-v4", key);
+                            let metadata_cache_key = parquet_metadata_key(&key);
                             if let Err(e) = cache.set_bytes(&metadata_cache_key, &metadata_json).await {
                                 tracing::error!(error = %e, "Failed to cache metadata from stream");
                             } else {
                                 tracing::debug!(cache_key = %metadata_cache_key, "Metadata cached from stream");
                             }
                         }
+
+                        // The job-unit progress a replay must reproduce.
+                        cache_stream_progress(&cache, &key, &recorded_progress).await;
                     } else {
                         tracing::error!("Failed to serialize accumulated meshes for caching");
                     }
@@ -340,7 +360,7 @@ pub async fn parse_parquet_stream(
                     .await;
 
             if let Ok(Ok(parquet_data)) = serialize_result {
-                let dm_key = format!("{}-datamodel-v5", cache_key_for_dm);
+                let dm_key = data_model_cache_key(&cache_key_for_dm);
                 if let Err(e) = cache_for_dm.set_bytes(&dm_key, &parquet_data).await {
                     tracing::error!(error = %e, "Failed to cache data model from stream");
                 } else {
@@ -357,3 +377,7 @@ pub async fn parse_parquet_stream(
         .keep_alive(KeepAlive::default())
         .into_response())
 }
+
+#[cfg(test)]
+#[path = "parquet_stream_tests.rs"]
+mod parquet_stream_tests;

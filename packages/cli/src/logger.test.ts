@@ -41,6 +41,29 @@ describe('parseVerbosity', () => {
     spy.mockRestore();
   });
 
+  it('does not swallow the NEXT FLAG as an invalid --log-level value', () => {
+    // Three states, not two: the value after `--log-level` is either valid, or
+    // an invalid word (consumed, so it cannot be mistaken for the file path),
+    // or another flag (must NOT be consumed). Only the first two were pinned,
+    // so `--log-level --json` silently ate `--json` and the command produced
+    // human output where a script expected JSON.
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const v = parseVerbosity(['query', 'm.ifc', '--log-level', '--json']);
+    expect(v.level).toBe('info');
+    expect(v.rest).toEqual(['query', 'm.ifc', '--json']);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('tolerates --log-level as the very last argument', () => {
+    const spy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const v = parseVerbosity(['info', 'm.ifc', '--log-level']);
+    expect(v.level).toBe('info');
+    expect(v.rest).toEqual(['info', 'm.ifc']);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
   it('leaves command-local flags untouched', () => {
     const v = parseVerbosity(['generate-spaces', 'm.ifc', '--json', '--out', 'x.json']);
     expect(v.rest).toEqual(['generate-spaces', 'm.ifc', '--json', '--out', 'x.json']);

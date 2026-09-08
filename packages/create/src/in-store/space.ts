@@ -20,6 +20,7 @@ import { generateIfcGuid } from '@ifc-lite/encoding';
 import type { StoreEditor } from '@ifc-lite/mutations';
 import { toNativeLength, type SpatialAnchor } from './anchor.js';
 import {
+  assertPositiveFinite,
   emitBodyRepresentation,
   emitExtrudedSolid,
   emitLocalPlacement,
@@ -80,7 +81,10 @@ export interface SpacePolygonParams {
   /** Bounding elements → one IfcRelSpaceBoundary each. */
   boundaries?: SpaceBoundaryInput[];
   /** Net (inner-face) floor area in m² for Qto_SpaceBaseQuantities; defaults
-   *  to the gross/centreline area when omitted. */
+   *  to the OuterCurve polygon's own area when omitted — pass this explicitly
+   *  whenever OuterCurve is not itself the inner (room-side) face, e.g. a
+   *  centreline or outer-face boundary, otherwise NetFloorArea can come out
+   *  larger than GrossFloorArea. */
   netFloorArea?: number;
   /** Gross (centreline) floor area in m² for GrossFloorArea + GrossVolume;
    *  defaults to the OuterCurve area when omitted. */
@@ -135,11 +139,12 @@ export function addSpaceToStore(
     ? params.Position ?? [0, 0, 0]
     : params.Position;
 
-  if (params.Height <= 0) {
-    throw new Error('addSpaceToStore: Height must be positive');
-  }
-  if (!polygon && (params.Width <= 0 || params.Depth <= 0)) {
-    throw new Error('addSpaceToStore: Width and Depth must be positive');
+  assertPositiveFinite([params.Height], 'addSpaceToStore: Height must be positive');
+  if (!polygon) {
+    assertPositiveFinite(
+      [params.Width, params.Depth],
+      'addSpaceToStore: Width and Depth must be positive',
+    );
   }
 
   // Geometry coordinates must land in the file's native length unit —
@@ -193,7 +198,11 @@ export function addSpaceToStore(
   // Qto_SpaceBaseQuantities — attached via the property view (createQuantitySet)
   // rather than as raw IfcElementQuantity entities, so they surface in the
   // properties panel (getQuantitiesForEntity) AND export, from one source.
-  // `area` is the OuterCurve (net when generated from walls) footprint;
+  // `area` is the OuterCurve polygon's own footprint — the fallback used only
+  // when a caller omits `netFloorArea` / `grossFloorArea`. A caller whose
+  // OuterCurve isn't the inner (room-side) face — e.g. a centreline or
+  // outer-face boundary — must pass `netFloorArea` explicitly, else
+  // NetFloorArea comes out equal to or larger than GrossFloorArea.
   // GrossFloorArea/GrossVolume take the supplied centreline measure.
   const area = polygon ? polygonArea(params.OuterCurve) : params.Width * params.Depth;
   const perimeter = polygon

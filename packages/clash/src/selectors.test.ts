@@ -41,4 +41,23 @@ describe('matchesSelector', () => {
     expect(matchesSelector('IfcSlab', 'Ifc*|!IfcWall')).toBe(true);
     expect(matchesSelector('IfcWall', '!IfcWall|Ifc*')).toBe(false);
   });
+
+  it('treats a pure negation list as an AND of exclusions', () => {
+    // !A alone: everything except A.
+    expect(matchesSelector('IfcWall', '!IfcWall')).toBe(false);
+    expect(matchesSelector('IfcSlab', '!IfcWall')).toBe(true);
+
+    // !A|!B: everything except A and except B (not the tautologous
+    // literal OR-of-negations reading, which would be true for any
+    // single input since nothing is both A and B).
+    expect(matchesSelector('IfcWall', '!IfcWall|!IfcSlab')).toBe(false);
+    expect(matchesSelector('IfcSlab', '!IfcWall|!IfcSlab')).toBe(false);
+    expect(matchesSelector('IfcBeam', '!IfcWall|!IfcSlab')).toBe(true);
+
+    // Mixed positive + negative must be unaffected by the pure-negation
+    // handling: exclusions still win regardless of order.
+    expect(matchesSelector('IfcWall', 'IfcWall|!IfcSlab')).toBe(true);
+    expect(matchesSelector('IfcSlab', 'IfcWall|!IfcSlab')).toBe(false);
+    expect(matchesSelector('IfcBeam', 'IfcWall|!IfcSlab')).toBe(false);
+  });
 });

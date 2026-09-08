@@ -6,16 +6,19 @@
 //!
 //! Handles `IfcCsgSolid` (the solid-model wrapper around a CSG tree) and the
 //! `IfcCsgPrimitive3D` subtypes that can sit at the leaves of that tree.
-//! `IfcBlock` and `IfcSphere` are supported as standalone leaves; the rest
+//! `IfcBlock` is here; `IfcSphere` lives in the `sphere` sibling. The rest
 //! (`IfcRectangularPyramid`, `IfcRightCircularCone`, `IfcRightCircularCylinder`)
 //! are not yet implemented.
 
+use super::boolean::OperandPath;
 use crate::extrusion::apply_transform;
-use crate::{scale_segments, Error, Mesh, Result, TessellationQuality, Vector3};
+use crate::{BoolFailure, Error, Mesh, Result, TessellationQuality, Vector3};
 use ifc_lite_core::{DecodedEntity, EntityDecoder, IfcSchema, IfcType};
 use nalgebra::Point3;
+use std::cell::RefCell;
 
 use super::boolean::BooleanClippingProcessor;
+use super::sphere::SphereProcessor;
 use super::helpers::parse_axis2_placement_3d;
 use crate::router::GeometryProcessor;
 
@@ -101,6 +104,12 @@ pub struct CsgSolidProcessor {
     /// [`BooleanClippingProcessor`] this wraps so a CSG tree shares one scoped
     /// value (see `BooleanClippingProcessor::skip_small_cuts`).
     skip_small_cuts: bool,
+    /// Failures from the TRANSIENT [`BooleanClippingProcessor`] built per
+    /// `TreeRootExpression` and dropped on return. Held here so they leave
+    /// through [`GeometryProcessor::take_bool_failures`] — i.e. through the
+    /// router that owns THIS processor — instead of a thread-local a
+    /// different router could drain (#3821).
+    failures: RefCell<Vec<BoolFailure>>,
 }
 
 impl CsgSolidProcessor {
@@ -111,7 +120,20 @@ impl CsgSolidProcessor {
     /// Construct with the per-build small-cut skip forwarded to the boolean
     /// processor at the root of the wrapped CSG tree.
     pub fn with_skip_small_cuts(skip_small_cuts: bool) -> Self {
-        Self { skip_small_cuts }
+        Self {
+            skip_small_cuts,
+            failures: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Drain what the transient boolean processors recorded. Public so the
+    /// TRANSIENT `CsgSolidProcessor` that `BooleanClippingProcessor` builds
+    /// for an `IfcCsgSolid` OPERAND — not registered on any router — can hand
+    /// its log back to the boolean processor that built it, the same way
+    /// `BooleanClippingProcessor::absorb_failures` does for a transient
+    /// `ClippingProcessor`.
+    pub fn take_failures(&self) -> Vec<BoolFailure> {
+        std::mem::take(&mut *self.failures.borrow_mut())
     }
 }
 
@@ -121,13 +143,53 @@ impl Default for CsgSolidProcessor {
     }
 }
 
-impl GeometryProcessor for CsgSolidProcessor {
-    fn process(
+impl CsgSolidProcessor {
+    /// Like [`GeometryProcessor::process`], but carrying the caller's boolean
+    /// recursion depth and path-scoped visited set across the hop.
+    ///
+    /// `IfcCsgSolid.TreeRootExpression` may be an `IfcBooleanResult` whose
+    /// operands may be `IfcCsgSolid`, so the two are mutually recursive over
+    /// file-supplied references. Entering through `process()` built a FRESH
+    /// `BooleanClippingProcessor`, resetting both, so three entities recursed
+    /// forever with depth never passing 1 — and a stack overflow ABORTS in
+    /// Rust, so nothing could turn it into a load error (#2866).
+    ///
+    /// The CSG id is inserted too, path-scoped like the boolean side, so
+    /// `visited.len()` is an honest frame count. An earlier revision omitted
+    /// it because deleting either insert left every test green — which meant
+    /// neither was PINNED, not that one was redundant
+    /// (`the_path_bound_counts_csg_frames_too_not_only_booleans` now pins it).
+    /// Omitting it also made the `IfcCsgSolid -> IfcCsgSolid` rejection below
+    /// load-bearing for stack safety instead of a spec check.
+    pub(crate) fn process_with_boolean_cycle_guard(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
         schema: &IfcSchema,
+        depth: u32,
         quality: TessellationQuality,
+        visited: &mut OperandPath,
+    ) -> Result<Mesh> {
+        if !visited.insert(entity.id) {
+            return Err(Error::geometry(format!(
+                "Cyclic boolean/CSG operand reference at #{}",
+                entity.id
+            )));
+        }
+        let out = self.resolve_tree_root(entity, decoder, schema, depth, quality, visited);
+        visited.remove(&entity.id);
+        out
+    }
+
+    /// Shared body of `process` and `process_with_boolean_cycle_guard`.
+    fn resolve_tree_root(
+        &self,
+        entity: &DecodedEntity,
+        decoder: &mut EntityDecoder,
+        schema: &IfcSchema,
+        depth: u32,
+        quality: TessellationQuality,
+        visited: &mut OperandPath,
     ) -> Result<Mesh> {
         let root_attr = entity.get(0).ok_or_else(|| {
             Error::geometry("IfcCsgSolid missing TreeRootExpression".to_string())
@@ -140,11 +202,24 @@ impl GeometryProcessor for CsgSolidProcessor {
         // an `IfcBooleanResult` or an `IfcCsgPrimitive3D`, NEVER another
         // `IfcCsgSolid`. Reject that case explicitly so a malformed (or
         // adversarial) file with a self-reference can't blow the stack on
-        // unbounded recursion.
+        // unbounded recursion. That guard is one hop wide; the visited set
+        // threaded through the boolean side closes the two-hop
+        // CSG -> Boolean -> CSG cycle it cannot see (#2866).
         match root.ifc_type {
             IfcType::IfcBooleanResult | IfcType::IfcBooleanClippingResult => {
-                BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts)
-                    .process(&root, decoder, schema, quality)
+                // This boolean processor is TRANSIENT — built per tree root and
+                // dropped on return — so `drain_processor_failures` cannot
+                // reach it directly. Hand its log to THIS processor, which the
+                // router does hold, so the records leave through the router
+                // that produced them (#3821); otherwise every diagnostic from
+                // a boolean under an `IfcCsgSolid` is lost on the way out,
+                // exactly as the router-registered one was.
+                let boolean =
+                    BooleanClippingProcessor::with_skip_small_cuts(self.skip_small_cuts);
+                let out =
+                    boolean.process_with_depth(&root, decoder, schema, depth, quality, visited);
+                self.failures.borrow_mut().extend(boolean.take_failures());
+                out
             }
             IfcType::IfcBlock => BlockProcessor::new().process(&root, decoder, schema, quality),
             IfcType::IfcSphere => SphereProcessor::new().process(&root, decoder, schema, quality),
@@ -159,120 +234,29 @@ impl GeometryProcessor for CsgSolidProcessor {
             ))),
         }
     }
-
-    fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcCsgSolid]
-    }
 }
 
-/// `IfcSphere` — CSG primitive: a sphere of given radius centred at the
-/// origin of its Position placement.
-///
-/// Attributes (inherits `IfcCsgPrimitive3D` → Position):
-///   0: Position (`IfcAxis2Placement3D`)
-///   1: Radius (`IfcPositiveLengthMeasure`)
-pub struct SphereProcessor;
-
-impl SphereProcessor {
-    pub fn new() -> Self {
-        Self
-    }
-}
-
-impl Default for SphereProcessor {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl GeometryProcessor for SphereProcessor {
+impl GeometryProcessor for CsgSolidProcessor {
     fn process(
         &self,
         entity: &DecodedEntity,
         decoder: &mut EntityDecoder,
-        _schema: &IfcSchema,
+        schema: &IfcSchema,
         quality: TessellationQuality,
     ) -> Result<Mesh> {
-        let radius = entity
-            .get_float(1)
-            .ok_or_else(|| Error::geometry("IfcSphere missing Radius".to_string()))?;
-
-        if !radius.is_finite() || radius <= 0.0 {
-            return Err(Error::geometry(format!(
-                "IfcSphere requires finite positive radius, got {radius}",
-            )));
-        }
-
-        // 24 slices × 16 stacks at Medium; scaled by quality.
-        let slices = scale_segments(24, 8, 96, quality);
-        let stacks = scale_segments(16, 4, 64, quality);
-        let mut mesh = build_uv_sphere(radius, slices, stacks);
-
-        if let Some(pos_attr) = entity.get(0) {
-            if !pos_attr.is_null() {
-                if let Some(pos_entity) = decoder.resolve_ref(pos_attr)? {
-                    if pos_entity.ifc_type == IfcType::IfcAxis2Placement3D {
-                        let transform = parse_axis2_placement_3d(&pos_entity, decoder)?;
-                        apply_transform(&mut mesh, &transform);
-                    }
-                }
-            }
-        }
-
-        Ok(mesh)
+        // Top-level entry (the router registers this processor directly, so
+        // this is the path a file whose Body item IS the IfcCsgSolid takes).
+        let mut visited = OperandPath::default();
+        self.resolve_tree_root(entity, decoder, schema, 0, quality, &mut visited)
     }
 
     fn supported_types(&self) -> Vec<IfcType> {
-        vec![IfcType::IfcSphere]
-    }
-}
-
-/// UV-sphere tessellation. `slices` segments around the equator, `stacks`
-/// rings from pole to pole. Pole vertices are duplicated per slice so UV
-/// seams don't share normals — sphere is closed and outward-facing.
-fn build_uv_sphere(radius: f64, slices: usize, stacks: usize) -> Mesh {
-    let slices = slices.max(3);
-    let stacks = stacks.max(2);
-    let vert_count = (stacks + 1) * (slices + 1);
-    let tri_count = stacks * slices * 2;
-    let mut mesh = Mesh::with_capacity(vert_count, tri_count * 3);
-
-    for j in 0..=stacks {
-        let v = j as f64 / stacks as f64;
-        let phi = std::f64::consts::PI * v;
-        let sin_phi = phi.sin();
-        let cos_phi = phi.cos();
-        for i in 0..=slices {
-            let u = i as f64 / slices as f64;
-            let theta = std::f64::consts::TAU * u;
-            let nx = sin_phi * theta.cos();
-            let ny = sin_phi * theta.sin();
-            let nz = cos_phi;
-            mesh.add_vertex(
-                Point3::new(radius * nx, radius * ny, radius * nz),
-                Vector3::new(nx, ny, nz),
-            );
-        }
+        vec![IfcType::IfcCsgSolid]
     }
 
-    let stride = slices + 1;
-    for j in 0..stacks {
-        for i in 0..slices {
-            let a = (j * stride + i) as u32;
-            let b = a + 1;
-            let c = ((j + 1) * stride + i) as u32;
-            let d = c + 1;
-            // Skip degenerate pole triangles
-            if j != 0 {
-                mesh.add_triangle(a, c, b);
-            }
-            if j + 1 != stacks {
-                mesh.add_triangle(b, c, d);
-            }
-        }
+    fn take_bool_failures(&self) -> Vec<BoolFailure> {
+        self.take_failures()
     }
-
-    mesh
 }
 
 /// Build an axis-aligned box from `(0,0,0)` to `(x, y, z)` with one flat
@@ -360,43 +344,5 @@ fn build_axis_aligned_box(x: f64, y: f64, z: f64) -> Mesh {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn axis_aligned_box_is_closed_and_has_outward_normals() {
-        let mesh = build_axis_aligned_box(2.0, 3.0, 4.0);
-        assert_eq!(mesh.positions.len() / 3, 24);
-        assert_eq!(mesh.indices.len() / 3, 12);
-
-        let mut min = [f32::INFINITY; 3];
-        let mut max = [f32::NEG_INFINITY; 3];
-        for chunk in mesh.positions.chunks_exact(3) {
-            for i in 0..3 {
-                min[i] = min[i].min(chunk[i]);
-                max[i] = max[i].max(chunk[i]);
-            }
-        }
-        assert_eq!(min, [0.0, 0.0, 0.0]);
-        assert_eq!(max, [2.0, 3.0, 4.0]);
-
-        // Each face's normal should match its outward axis.
-        let mut faces_seen = [false; 6];
-        for chunk in mesh.normals.chunks_exact(12) {
-            let nx = chunk[0];
-            let ny = chunk[1];
-            let nz = chunk[2];
-            let label = match (nx, ny, nz) {
-                (x, _, _) if x > 0.5 => 0,
-                (x, _, _) if x < -0.5 => 1,
-                (_, y, _) if y > 0.5 => 2,
-                (_, y, _) if y < -0.5 => 3,
-                (_, _, z) if z > 0.5 => 4,
-                (_, _, z) if z < -0.5 => 5,
-                _ => panic!("non-axial normal"),
-            };
-            faces_seen[label] = true;
-        }
-        assert!(faces_seen.iter().all(|&seen| seen), "missing a face");
-    }
-}
+#[path = "csg_primitive_tests.rs"]
+mod tests;

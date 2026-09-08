@@ -73,7 +73,21 @@ function randomNode(rand: () => number, path: string, tag: string, allowDeletes:
   return { path, attributes: { [FIRE]: `${tag}-fire` } };
 }
 
-function scenario(seed: number, allowDeletes: boolean) {
+/**
+ * `layersPerSide` (default 1, matching the original single-layer sides)
+ * lets a side extend the ancestor with MULTIPLE suffix layers instead of
+ * one. Each layer's node values are tagged with its own layer index
+ * (`${tag}-${l}`), so when two layers happen to touch the same path with
+ * the same attribute (the same 0.35-per-entity roll landing in the same
+ * branch on both layers), they write DIFFERENT values — exactly the
+ * shape that makes `projectSide`'s weakest-first fold
+ * (component-state.ts:321) observable instead of vacuously satisfied.
+ * With `layersPerSide` > 1 this scenario builder is the highest-value
+ * fold coverage in the suite: every generated case, not just one
+ * hand-written fixture, now exercises multi-layer shadowing whenever the
+ * dice land that way.
+ */
+function scenario(seed: number, allowDeletes: boolean, layersPerSide = 1) {
   const rand = lcg(seed);
   const entityCount = 40;
   const baseNodes: IfcxNode[] = [];
@@ -88,17 +102,21 @@ function scenario(seed: number, allowDeletes: boolean) {
   baseNodes.push({ path: 'e-1', attributes: { [FIRE]: 'REI90' } });
   const base = layer(baseNodes, 'base');
 
-  const side = (tag: string): IfcxNode[] => {
-    const nodes: IfcxNode[] = [];
-    for (let i = 0; i < entityCount; i++) {
-      if (rand() < 0.35) nodes.push(randomNode(rand, `e-${i}`, tag, allowDeletes));
+  const side = (tag: string): IfcxNode[][] => {
+    const layers: IfcxNode[][] = [];
+    for (let l = 0; l < layersPerSide; l++) {
+      const nodes: IfcxNode[] = [];
+      for (let i = 0; i < entityCount; i++) {
+        if (rand() < 0.35) nodes.push(randomNode(rand, `e-${i}`, `${tag}-${l}`, allowDeletes));
+      }
+      layers.push(nodes);
     }
-    return nodes;
+    return layers;
   };
 
   const ancestor = [base];
-  const ours = [base, layer(side('ours'), 'ours')];
-  const theirs = [base, layer(side('theirs'), 'theirs')];
+  const ours = [base, ...side('ours').map((nodes, i) => layer(nodes, `ours-${i}`))];
+  const theirs = [base, ...side('theirs').map((nodes, i) => layer(nodes, `theirs-${i}`))];
   return { ancestor, ours, theirs };
 }
 
@@ -115,6 +133,28 @@ describe('fast path ≡ reference (differential fuzz)', () => {
   it('tombstone/resurrect scenarios fall back and still match the reference exactly', () => {
     for (const seed of [4, 9, 16, 25, 36, 49, 64, 81]) {
       const { ancestor, ours, theirs } = scenario(seed, true);
+      const fast = planThreeWayMerge({ ancestor, ours, theirs });
+      const reference = referencePlan(ancestor, ours, theirs);
+      expect(normalize(fast), `seed ${seed}`).toEqual(normalize(reference));
+    }
+  });
+
+  it('multi-layer (3-layer) tombstone-free suffixes take the projection and match the reference exactly', () => {
+    // The whole point of raising layersPerSide: some (path, attribute)
+    // pairs now get written on more than one suffix layer, so the fold
+    // order inside projectSide (component-state.ts:321) is actually
+    // exercised, not vacuously satisfied by a length-1 suffix.
+    for (const seed of [1, 2, 3, 5, 8, 13, 21, 34, 55, 89]) {
+      const { ancestor, ours, theirs } = scenario(seed, false, 3);
+      const fast = planThreeWayMerge({ ancestor, ours, theirs });
+      const reference = referencePlan(ancestor, ours, theirs);
+      expect(normalize(fast), `seed ${seed}`).toEqual(normalize(reference));
+    }
+  });
+
+  it('multi-layer (3-layer) tombstone/resurrect suffixes fall back and still match the reference exactly', () => {
+    for (const seed of [4, 9, 16, 25, 36, 49, 64, 81]) {
+      const { ancestor, ours, theirs } = scenario(seed, true, 3);
       const fast = planThreeWayMerge({ ancestor, ours, theirs });
       const reference = referencePlan(ancestor, ours, theirs);
       expect(normalize(fast), `seed ${seed}`).toEqual(normalize(reference));

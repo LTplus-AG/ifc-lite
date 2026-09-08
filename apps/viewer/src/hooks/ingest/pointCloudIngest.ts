@@ -129,14 +129,12 @@ export interface PointCloudIngestOptions {
    * loaded model has no usable `IfcMapConversion` — the scan streams at
    * its raw native coordinates, exactly as before this feature existed.
    * When present:
-   *   - `decodeOriginOffset` is threaded into `streamPointCloud` so the
-   *     LAS/LAZ decoder subtracts it in f64 before narrowing to f32.
+   *   - `decodeOriginOffset` is threaded into `streamPointCloud` so every
+   *     format's decoder subtracts it in f64 before narrowing to f32 (all
+   *     seven point-cloud formats consume it, not just LAS/LAZ).
    *   - the asset defaults to the ALIGNED matrix (alignment ON) and is
    *     registered so the panel's toggle can flip every loaded scan
    *     between aligned/unaligned without re-streaming.
-   * IGNORED entirely for formats other than LAS/LAZ: only those decoders
-   * consume the decode-time offset, and the aligned matrix is only valid
-   * on decode-shifted positions (see the gate below).
    */
   alignment?: PointCloudAlignmentTransform;
   /** Alignment toggle's current value at ingest time. Defaults to `true`
@@ -345,13 +343,12 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // global toggle can flip this asset later, and push the initial matrix
   // now (default ON — matches the issue's "apply by default" ask).
   //
-  // LAS/LAZ ONLY: the aligned matrix assumes positions were decode-shifted
-  // by `decodeOriginOffset` (in f64, inside the decoder), and only the
-  // LAS/LAZ sources consume `streamPointCloud`'s `originOffset`. Applying
-  // the matrix to an un-shifted PLY/PCD/E57/PTS/XYZ stream would rotate
-  // and shift ABSOLUTE coordinates — strictly worse than the raw
-  // placement — so those formats ignore any provided alignment entirely.
-  const alignment = (opts.format === 'las' || opts.format === 'laz') ? opts.alignment : undefined;
+  // The aligned matrix assumes positions were decode-shifted by
+  // `decodeOriginOffset` (in f64, inside the decoder). Every format's
+  // streaming source now consumes `streamPointCloud`'s `originOffset`
+  // (originally LAS/LAZ-only; extended to E57/PLY/PCD/PTS/XYZ), so the
+  // matrix is valid for any format here — no gate needed.
+  const alignment = opts.alignment;
   if (alignment) {
     registerPointCloudAlignment(handle, alignment);
     const enabled = opts.alignmentEnabled ?? true;

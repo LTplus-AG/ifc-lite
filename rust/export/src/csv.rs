@@ -5,6 +5,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use crate::csv_cell::{escape_csv_cell, CsvCellOptions};
 use crate::model::{build_export_model, fmt_num, EntityRow, ExportModel};
 
 /// Which CSV view to emit.
@@ -35,18 +36,25 @@ impl Default for CsvOptions {
 }
 
 /// RFC-4180 escape + spreadsheet formula-injection guard.
+///
+/// A thin alias over [`crate::csv_cell::escape_csv_cell`], which is THE escaper
+/// for this crate. This function used to carry its own copy of the guard, and
+/// that copy tested the formula trigger anchored at offset 0 — so a BOM, ZWSP,
+/// LRM, NBSP or U+2028 in front of `=` sailed straight past it. Keep it a
+/// delegation: `scripts/check-csv-escaper-copies.mjs` fails the build if the
+/// guard is re-inlined anywhere.
 fn escape(value: &str, delimiter: &str) -> String {
-    let mut s = value.to_string();
-    if let Some(first) = s.chars().next() {
-        if matches!(first, '=' | '+' | '-' | '@' | '\t' | '\r') {
-            s.insert(0, '\'');
-        }
-    }
-    if s.contains(delimiter) || s.contains('"') || s.contains('\n') || s.contains('\r') {
-        format!("\"{}\"", s.replace('"', "\"\""))
-    } else {
-        s
-    }
+    // Fields spelled out rather than `..Default::default()`: a new option on a
+    // security-relevant guard should force this call site to make a decision,
+    // not silently inherit one.
+    escape_csv_cell(
+        value,
+        &CsvCellOptions {
+            delimiter,
+            exempt_numbers: true,
+            quote_whitespace_padded: false,
+        },
+    )
 }
 
 fn join(values: &[String], delimiter: &str) -> String {
@@ -73,9 +81,7 @@ fn spatial_csv(content: &[u8], model: &ExportModel, opts: &CsvOptions) -> String
     // The project node isn't an IfcProduct, so decode its GlobalId + Name directly.
     let (mut proj_gid, mut proj_name) = (String::new(), String::new());
     if let Some(pid) = project {
-        let index = ifc_lite_core::build_entity_index(content);
-        let mut dec = ifc_lite_core::EntityDecoder::with_index(content, index);
-        if let Ok(e) = dec.decode_by_id(pid) {
+        if let Some(e) = crate::ifc5::decode_one(content, pid) {
             proj_gid = e.get(0).and_then(|a| a.as_string()).unwrap_or("").to_string();
             proj_name = e.get(2).and_then(|a| a.as_string()).unwrap_or("").to_string();
         }
@@ -230,73 +236,5 @@ fn quantities_csv(model: &ExportModel, opts: &CsvOptions) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn fixture(rel: &str) -> Vec<u8> {
-        let path = format!("{}/../../tests/models/{}", env!("CARGO_MANIFEST_DIR"), rel);
-        std::fs::read(&path).unwrap_or_else(|e| panic!("read {path}: {e}"))
-    }
-
-    #[test]
-    fn entities_csv_has_header_and_rows() {
-        let csv = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
-        let mut lines = csv.lines();
-        assert_eq!(lines.next().unwrap(), "expressId,globalId,name,type,description,objectType,hasGeometry");
-        assert!(csv.lines().count() > 50, "expected many product rows");
-        // Each data row has exactly 7 native columns (no flatten).
-        for line in csv.lines().skip(1).take(20) {
-            // commas inside quotes are possible; do a light field-count via a simple split is unsafe,
-            // so just assert the row starts with a numeric expressId.
-            assert!(line.chars().next().unwrap().is_ascii_digit());
-        }
-    }
-
-    #[test]
-    fn flatten_adds_property_columns() {
-        let plain = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Entities, &CsvOptions::default());
-        let flat = export_csv(
-            &fixture("ara3d/duplex.ifc"),
-            CsvMode::Entities,
-            &CsvOptions { include_properties: true, ..CsvOptions::default() },
-        );
-        let plain_cols = plain.lines().next().unwrap().split(',').count();
-        let flat_cols = flat.lines().next().unwrap().split(',').count();
-        assert!(flat_cols > plain_cols, "flatten should add Pset_Prop columns");
-    }
-
-    #[test]
-    fn properties_csv_one_row_per_value() {
-        let csv = export_csv(&fixture("ara3d/duplex.ifc"), CsvMode::Properties, &CsvOptions::default());
-        assert_eq!(
-            csv.lines().next().unwrap(),
-            "entityId,globalId,entityName,entityType,psetName,propName,value,type"
-        );
-        assert!(csv.lines().count() > 1, "expected property rows");
-    }
-
-    #[test]
-    fn spatial_hierarchy_csv() {
-        let csv = export_csv(
-            &fixture("ara3d/duplex.ifc"),
-            CsvMode::SpatialHierarchy,
-            &CsvOptions::default(),
-        );
-        assert_eq!(csv.lines().next().unwrap(), "expressId,globalId,name,type,parentId,level");
-        assert!(csv.contains(",IfcProject,"), "project row present");
-        assert!(csv.lines().count() > 3, "expected spatial nodes");
-        // Exactly one root at level 0 (the project, with an empty parentId).
-        let level0 = csv.lines().skip(1).filter(|l| l.ends_with(",0")).count();
-        assert_eq!(level0, 1, "single root at level 0");
-        // Storeys/spaces appear deeper in the tree.
-        assert!(csv.contains("IfcBuildingStorey"), "storeys present in the hierarchy");
-    }
-
-    #[test]
-    fn formula_injection_is_guarded() {
-        assert_eq!(escape("=SUM(A1)", ","), "'=SUM(A1)");
-        assert_eq!(escape("a,b", ","), "\"a,b\"");
-        assert_eq!(escape("he\"llo", ","), "\"he\"\"llo\"");
-        assert_eq!(escape("plain", ","), "plain");
-    }
-}
+#[path = "csv_tests.rs"]
+mod tests;

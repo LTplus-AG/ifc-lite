@@ -33,7 +33,8 @@
 
 import type { MapConversion, ProjectedCRS } from '@ifc-lite/parser';
 import { hasStandardGeoreferencing, type EffectiveGeoreference } from './effective-georef';
-import { metersToMapUnits, viewerDeltaToProjectedDelta } from './cesium-placement';
+import { getMapUnitScale, metersToMapUnits, viewerDeltaToProjectedDelta } from './cesium-placement';
+import { effectiveMapConversionForGeometry } from './map-absolute';
 
 export interface Vec3 {
   x: number;
@@ -89,7 +90,17 @@ export function viewerPointToProjected(
   eff: MapGeoreference,
   originViewer: Vec3,
 ): ProjectedPoint {
-  const { mapConversion, projectedCRS, lengthUnitScale } = eff;
+  const { projectedCRS, lengthUnitScale } = eff;
+  // Map-absolute geometry (#2526): the delta below is taken from the IFC
+  // origin, so for a file whose geometry already sits at the absolute map
+  // coordinates it IS the absolute coordinate — the neutralised conversion
+  // (zero offsets, identity rotation) reads it through, while the authored
+  // one would add the anchor again and rotate the delta by the bogus axis.
+  const mapConversion = effectiveMapConversionForGeometry(
+    eff.mapConversion,
+    getMapUnitScale(projectedCRS, lengthUnitScale),
+    eff.coordinateInfo,
+  );
   const dx = point.x - originViewer.x;
   const dy = point.y - originViewer.y;
   const dz = point.z - originViewer.z;

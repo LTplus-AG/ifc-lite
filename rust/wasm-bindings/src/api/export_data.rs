@@ -85,4 +85,12 @@ impl IfcAPI {
         let opts = Ifc5Options { only_known_properties, pretty, ..Default::default() };
         ifc_lite_export::export_ifc5(content, &opts).into_bytes()
     }
+
+    /// Export **OpenUSD** (`.usda` ASCII): a real Z-up USD stage — spatial hierarchy of
+    /// `Xform` prims, `UsdGeomMesh` geometry, `UsdPreviewSurface` materials, IFC
+    /// metadata as custom attributes. Whole-model (geometry-backed).
+    #[wasm_bindgen(js_name = exportUsd)]
+    pub fn export_usd(&self, content: &[u8]) -> Vec<u8> {
+        ifc_lite_export::export_usd(content, &Default::default()).into_bytes()
+    }
 }

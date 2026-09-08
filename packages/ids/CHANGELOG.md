@@ -1,5 +1,450 @@
 # @ifc-lite/ids
 
+## 1.15.54
+
+### Patch Changes
+
+- [#3951](https://github.com/LTplus-AG/ifc-lite/pull/3951) [`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a server-parsed (source-empty) store reporting a genuinely classified entity as unclassified ([#3948](https://github.com/LTplus-AG/ifc-lite/issues/3948)). `extractClassificationsOnDemand` and `extractClassificationSystemsOnDemand` (`packages/parser/src/classification-resolver.ts`) resolved classification ids via the relationship graph on server-parsed stores, then unconditionally discarded the result with `if (!store.source?.length) return [];` — a classified entity was byte-identical to an unclassified one to every caller, including the IDS bridge.
+  
+  The classification's own attributes (system name, identification code, reference chain) genuinely cannot be read without raw STEP bytes, and no equivalent precomputed table exists for them on a server-parsed store (unlike type-inherited property sets, fixed for the same shape of bug in [#1795](https://github.com/LTplus-AG/ifc-lite/issues/1795)/[#1787](https://github.com/LTplus-AG/ifc-lite/issues/1787)). So both functions now signal "classified, but unresolved" distinctly from "genuinely unclassified": `extractClassificationsOnDemand` returns one `{ unresolved: true }` entry per resolved id instead of `[]`, and `extractClassificationSystemsOnDemand`'s return type changes from `string[]` to `{ names: string[]; unresolved: boolean }` (a breaking signature change with no known external callers today).
+  
+  The IDS classification facet checker (`packages/ids/src/facets/classification-facet.ts`) now treats presence-only facets correctly (a classified entity passes an "any classification" requirement instead of a false `CLASSIFICATION_MISSING`), and reports a new `CLASSIFICATION_UNRESOLVED` failure — distinct from `CLASSIFICATION_MISSING`/`CLASSIFICATION_VALUE_MISMATCH`/`CLASSIFICATION_SYSTEM_MISMATCH` — when a system/value-constrained facet cannot be verified because the matching classification's attributes are unreadable, instead of silently passing or failing on data it never read.
+  
+  Both message formatters (`packages/ids/src/translation/service.ts` and `packages/ids/src/validation/validator.ts`) now have a case for `CLASSIFICATION_UNRESOLVED` — previously both fell through to their `default` branch and showed the raw enum ("Validation failed: CLASSIFICATION_UNRESOLVED") in the viewer's IDS panel and exported reports, indistinguishable from a genuine violation. The message now states plainly that the entity is classified but the details could not be read from this data source. `ClassificationCard.tsx` (properties panel) gets the same "unavailable on this data source" treatment already added to `ModelMetadataPanel.tsx`, instead of rendering an empty "Classification / Unknown" card for an unresolved entry.
+- Updated dependencies [[`af067e5`](https://github.com/LTplus-AG/ifc-lite/commit/af067e598e64cbc8265fdcd462ac9cb9727711a2), [`e1d807c`](https://github.com/LTplus-AG/ifc-lite/commit/e1d807cf4bf4f3bf25122fed4d7e3fde8296bf6d), [`6094e2f`](https://github.com/LTplus-AG/ifc-lite/commit/6094e2f16f27c80bc227f73bbdf634a770f17abc)]:
+  - @ifc-lite/parser@5.1.0
+
+## 1.15.53
+
+### Patch Changes
+
+- [#3459](https://github.com/LTplus-AG/ifc-lite/pull/3459) [`5dbc51d`](https://github.com/LTplus-AG/ifc-lite/commit/5dbc51d053b3a5d7ffa833374215c336c60548cc) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix IDS `<property>` requirements against `IFCAREAMEASURE`/`IFCVOLUMEMEASURE` values (both `Pset_*` and `Qto_*`) comparing the raw author-unit value instead of the base-SI value the IDS literal is always expressed in.
+  
+  `applyUnitConversion` gated unit conversion on `IFCLENGTHMEASURE`/`IFCPOSITIVELENGTHMEASURE` alone, so an area or volume measure was compared raw — the same defect [#3458](https://github.com/LTplus-AG/ifc-lite/issues/3458) fixes for length, one measure over. Area now converts by the SQUARE of the project's length scale and volume by the CUBE (not the length scale itself), preferring the file's explicitly declared `AREAUNIT`/`VOLUMEUNIT` (via `@ifc-lite/parser`'s `ProjectUnits` resolver) and falling back to `lengthScale ** 2` / `lengthScale ** 3` only when no such unit is declared. `IFCCOUNTMEASURE`, `IFCMASSMEASURE` and `IFCTIMEMEASURE` remain unconverted.
+
+- [#3619](https://github.com/LTplus-AG/ifc-lite/pull/3619) [`abae27b`](https://github.com/LTplus-AG/ifc-lite/commit/abae27b5a08c3c5c8a706d144f3f5a08de096d93) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an IDS `<attribute><name>ObjectType</name></attribute>` requirement reading the wrong IFC attribute when the entity's `PredefinedType` is a concrete, non-`USERDEFINED`, non-`NOTDEFINED` enum token.
+  
+  `checkAttributeFacet`'s `ObjectType` lookup went through `accessor.getObjectType`, the helper `matchPredefinedType` uses to resolve the USERDEFINED-name fallback (its own doc: "entity object type (predefined type)"). For an entity like `IfcWall` with `PredefinedType = STANDARD` and its own, unrelated `ObjectType = 'Steel I-Beam 200x100'`, that helper short-circuits on the `PredefinedType` enum and never looks at the entity's actual `ObjectType` attribute — so a required-and-present `ObjectType` value requirement was checked against `'STANDARD'` instead, and failed. The bridge's generic `getAttribute('ObjectType', …)` had the same conflation.
+  
+  `ObjectType` now routes through the plain attribute path (the same one `Tag`, `LongName`, and every other named attribute uses), which reads the entity's real attribute value; `PredefinedType` requirement checks are unaffected. Same root cause as [#2316](https://github.com/LTplus-AG/ifc-lite/issues/2316) (`getAncestors` sourcing a partOf parent's predefined-type match from `getObjectType` instead of the raw enum), here on the plain attribute-facet path instead of `partOf`.
+
+- [#3555](https://github.com/LTplus-AG/ifc-lite/pull/3555) [`d733175`](https://github.com/LTplus-AG/ifc-lite/commit/d733175d4ac2e8a2e94fc0bf9804d7bc03627cc1) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix IDS `<property>`/`<quantity>` requirements evaluating a length/area/volume value against the wrong project's declared unit scale on a file with more than one `IFCPROJECT`.
+  
+  A multi-`IFCPROJECT` file is not malformed — `MergedExporter`'s documented `auto` unit-reconciliation mode (issue [#1332](https://github.com/LTplus-AG/ifc-lite/issues/1332)) legitimately produces one when federating models that declare different length units, keeping each source model's own `IFCPROJECT`/`IFCUNITASSIGNMENT` rather than rescaling raw values. `collectAllPropertySets` (`packages/ids/src/bridge/properties.ts`) read a single `store.lengthUnitScale` — resolved once, from the file's FIRST `IFCPROJECT` — for every entity regardless of which project it actually belonged to. An entity belonging to a LATER project with a DIFFERENT declared unit was scaled by the wrong factor: quietly wrong, not absent, and compliance-critical for IDS (a `Width >= 100mm` requirement evaluates against the wrongly-scaled value and can flip pass to fail, or the reverse, with no signal to the author).
+  
+  `collectAllPropertySets` now resolves scales per entity via the new `resolveEntityMeasureScales` (`@ifc-lite/ids/bridge/units.ts`), which walks the entity's real spatial containment (`IfcRelContainedInSpatialStructure`/`IfcRelAggregates`, with an `IfcRelDefinesByType` hop for a type-level entity) up to its own owning `IfcProject` via the new `@ifc-lite/parser` export `resolveOwningIfcProjectId`, falling back to the store-wide default when the walk can't place the entity. An ordinary single-`IFCPROJECT` file (the overwhelming common case) takes an unchanged fast path with zero behaviour change.
+
+- [#3578](https://github.com/LTplus-AG/ifc-lite/pull/3578) [`6bd2550`](https://github.com/LTplus-AG/ifc-lite/commit/6bd25508dadd14fee97ee1f7393212cdcc086fdc) Thanks [@louistrue](https://github.com/louistrue)! - Fix an IDS length comparison silently rescaling by 1000x when the entity's own `IFCPROJECT` declares no length unit in a multi-`IFCPROJECT` (federated-merge) file.
+  
+  `resolveEntityMeasureScales` resolved the owning project and then took `extractLengthUnitScale` for it unconditionally. That call answers `1.0` both for "this project declares metres" and "this project declares no `LENGTHUNIT` at all" - `UnitsInContext` is OPTIONAL on `IfcContext`, so a federated model can legitimately arrive with none, and absence read as success. A 300 mm value owned by such a project was reported as 300 m, and its area/volume were derived from that same wrong length scale squared/cubed. Only a *declared* length unit now overrides the store-wide scale; an undeclared one takes the file-wide length, area and volume answer together, the same safe-miss direction the walk-failed fallback already takes.
+
+- [#3670](https://github.com/LTplus-AG/ifc-lite/pull/3670) [`15d6d96`](https://github.com/LTplus-AG/ifc-lite/commit/15d6d96adbc4b36a3f787c2d111aaa199403193e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `auditIDSDocument` silently accepting `cardinality="optional"` on a `<partOf>` requirement. `ids.xsd` 1.0 types `<partOf>`'s `@cardinality` as `ids:simpleCardinality` (`{required, prohibited}`), unlike every other requirement facet's three-value `ids:conditionalCardinality`, so `optional` never tripped the coherence audit's generic "not a valid value" check — it is one of the three canonical tokens, just not one this facet accepts. A hand-authored IDS document using it now gets an `E_CARDINALITY_INVALID` finding from `auditIDSDocument`, matching what buildingSMART's own schema rejects.
+
+- [#3458](https://github.com/LTplus-AG/ifc-lite/pull/3458) [`32104cb`](https://github.com/LTplus-AG/ifc-lite/commit/32104cbb5c59ea7af0b7b69d27fce15d17627723) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix IDS `<property>` requirements against `IfcElementQuantity` (`Qto_*`) length quantities comparing the raw author-unit value instead of the base-SI value the IDS literal is always expressed in.
+  
+  `collectAllPropertySets` already converted `IfcPropertySet` (`Pset_*`) length-typed values through `projectProperty`/`applyUnitConversion` before handing them to the validator, but `appendQuantitySets` built its quantity values directly from the raw parser record and skipped that step. On a millimetre-authored model, an `IfcQuantityLength` stored as `2000` (2 metres) compared against an IDS literal of `2` — which per the spec is always base SI — and the requirement false-failed even though the model complies. `appendQuantitySets` now routes every quantity through `projectProperty` with the project's `lengthUnitScale`, matching the property path.
+
+- [#3601](https://github.com/LTplus-AG/ifc-lite/pull/3601) [`f7a17ca`](https://github.com/LTplus-AG/ifc-lite/commit/f7a17ca6bedff238ac22315278657801ac41ede0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an `xs:restriction` carrying only `totalDigits` and/or `fractionDigits` silently rejecting every value it was checked against.
+  
+  `xs:totalDigits` and `xs:fractionDigits` are legal XSD facets (the IDS XSD's `<xs:restriction>` element re-uses the real XMLSchema type, which is why `packages/ids/src/audit/structural` already lists them as accepted facets) but the parser never recognised them as bounds facets. A restriction with only one of these two facets — no `pattern`/`enumeration`/min-max/length sibling — fell through `parseRestrictionFamilies`'s "no recognised facet" branch to an empty `enumeration` constraint, which `matchEnumeration` fails unconditionally: a spec-conforming value (e.g. `0.25` against `fractionDigits="2"`) was reported non-compliant on 100% of inputs, not just the genuinely out-of-range ones.
+  
+  `IDSBoundsConstraint` now carries `totalDigits`/`fractionDigits`, the parser reads them, and `matchBounds` evaluates them per XSD §4.3.11/§4.3.12 (value = i × 10⁻ⁿ): `fractionDigits` is `n`, the count of digits after the decimal point — leading fraction zeros DO count here since they fix the magnitude (`0.0025` → 4). `totalDigits` is the digit count of `i` — leading zeros, in the integer part AND in the fraction before the first non-zero digit, are absorbed into the `10⁻ⁿ` scale factor and do NOT count (`0.0025` → 2, not 4); trailing fraction zeros are dropped from both. `getConstraintMismatchReason`/`formatConstraint` report which facet rejected the value.
+
+- [#3743](https://github.com/LTplus-AG/ifc-lite/pull/3743) [`233da61`](https://github.com/LTplus-AG/ifc-lite/commit/233da6172abd3f79cbcde6e827e503fe8eb3ac3e) Thanks [@louistrue](https://github.com/louistrue)! - `xs:date` / `xs:dateTime` / `xs:time` values are now checked against the calendar, not just the digit-run shape.
+  
+  Both places that decided whether an IDS literal is a valid date did it with a regex over digit runs — `^\d{4}-\d{2}-\d{2}(Z|[+-]\d{2}:\d{2})?$` and its dateTime/time siblings. A regex of that shape cannot express a calendar, so `2024-13-45` (month 13, day 45), `2023-02-29` (not a leap year), `2024-01-01+99:99` (timezone offset out of range) and `2024-01-01T99:99:99` all passed as valid. XML Schema Part 2 §3.2.7-3.2.9 puts a value space on top of the lexical shape and excludes every one of them, so an IDS restriction or attribute value carrying a non-conformant date passed a check whose whole job is to flag it.
+  
+  The calendar now lives in one place, `constraints/xsd-datetime.ts`, and both call sites go through it: the coherence audit's `xs:restriction @base` check (`E_RESTRICTION_VALUE_MISMATCH`) and the attribute/property facets' strict-cast gate (`literalCastsUnder`). Both dispatch on the shared `isXsdDateTimeBase` rather than listing bases themselves, which closes a second hole: the cast gate had arms for `xs:date` and `xs:dateTime` and none for `xs:time`, so a literal checked against a slot declaring `["xs:dateTime","xs:time"]` — `IfcTimeSeries.StartTime`, `IfcTimePeriod.EndTime`, `IfcWorkSchedule.StartTime` and their siblings — always found the permissive default through `xs:time` and passed whatever it was. An IDS attribute facet on those slots now gates its literal instead of waving it through. Month must be 1-12, the day must fall inside that month under the Gregorian leap rule, hour/minute/second must be in range with `24:00:00` accepted as XSD's end-of-day form and nothing else at hour 24, second 60 is rejected (XSD has no leap seconds), and a timezone offset must be within ±14:00 inclusive. Accepted lexical shapes are otherwise unchanged — a four-digit unsigned year, so the XSD spellings for years before 1 CE and after 9999 stay rejected exactly as they were.
+  
+  Parity with upstream `IDS-Audit-tool` remains the contract for the numeric arms, where upstream's generated pattern is the only statement of what it accepts. It is not a reason to accept a value XSD excludes: this is the same call already made for the digitless doubles the upstream pattern happens to match.
+  
+  `xs:duration` is untouched. Its regex has holes of its own (bare `P`), but they are a lexical question about designators rather than this calendar one, and the two copies of it disagree on fractional seconds; that needs its own decision.
+  
+  **One behaviour change worth stating plainly, because it can newly fail a document that used to pass.** Slots declaring `["xs:dateTime","xs:time"]` — `StartTime` / `EndTime` on the seven time-series and work-control entities — previously accepted *every* literal, because `literalCastsUnderAnyType` found `xs:time`'s permissive default and stopped. They are now gated, so an attribute facet carrying a non-XSD spelling (`2024-01-01T08:00`, `2024-01-01T08:00:00+01`, `2024-01-01 08:00:00`) reports `ATTRIBUTE_VALUE_MISMATCH` even when the IFC string matches byte for byte. All of those are genuinely outside the XSD lexical space and `xs:date`-only slots already behaved this way, so this is the gate starting to work rather than a new restriction. Measured exposure: 0 of the 389 corpus and fixture IDS files carry an attribute facet on such a slot.
+  
+  Verified by differential against libxml2 (the XSD 1.0 oracle) over 11,261 generated values: 6,314 values the old regexes accepted and this rejects, and libxml2 rejects every one of them; 0 values newly accepted. So the narrowing is entirely calendar, with no lexical narrowing riding along.
+
+- [#3670](https://github.com/LTplus-AG/ifc-lite/pull/3670) [`15d6d96`](https://github.com/LTplus-AG/ifc-lite/commit/15d6d96adbc4b36a3f787c2d111aaa199403193e) Thanks [@BIMvoice](https://github.com/BIMvoice)! - `auditIDSDocument` reported five categories of document as clean that buildingSMART's `ids.xsd` 1.0 actually rejects — a wrong "valid" verdict for each. It now flags: `<specifications>` with no `<specification>` children (`ids:specificationsType` requires `minOccurs="1"`), a `<classification>` requirement missing `<system>` (`ids:classificationType` requires it, `minOccurs="1"`), `dataType` in mixed or lower case (`ids:upperCaseName` restricts to `[A-Z]+`; the IFC-schema lookup that identifies the intended type still matches case-insensitively on purpose, this is the separate check of whether the literal attribute is well-formed), `info/author` that is not an e-mail address, and `info/date` that does not lex as `xs:date`.
+
+- [#3855](https://github.com/LTplus-AG/ifc-lite/pull/3855) [`182215a`](https://github.com/LTplus-AG/ifc-lite/commit/182215a835c4beac6a776bcb4eb1d019cab9063e) Thanks [@louistrue](https://github.com/louistrue)! - Corrected the code samples on each package's npm landing page: the README fences are now typechecked against the package's real exports, so the snippets import what they call, declare the values they read, and no longer show removed options or renamed methods. Patch-bumping every package whose README changed so the corrections actually reach npmjs.com.
+
+- [#3355](https://github.com/LTplus-AG/ifc-lite/pull/3355) [`2b87396`](https://github.com/LTplus-AG/ifc-lite/commit/2b87396553df0f3c11a930e3dae8b8600d70a23f) Thanks [@louistrue](https://github.com/louistrue)! - The coherence audit and the strict cast now decide `xs:double` identically.
+  
+  `isValidLexicalForXsType` vetoed any value containing no digit before its regex
+  ran, so it rejected `NaN`, `+INF` and `-INF` even though the regex one line above
+  accepts them. The same veto tested the WHOLE lexeme, so `e5` passed on the
+  strength of the exponent's digit while `literalCastsUnder` rejected it.
+  
+  Two classes, two directions, one package:
+  
+      value          audit before   cast   audit now
+      NaN/+INF/-INF  reject         accept accept
+      e5/+e5/.e5     accept         reject reject
+      ''/'+'/'.'/'-' reject         reject reject
+      1.5            accept         accept accept
+  
+  The digit is now required in the MANTISSA, and the three specials are exempt
+  rather than swept up by the same rule. The specials list is imported from
+  `constraints/xsd-cast.ts` rather than restated, so the two sites cannot drift
+  apart again by editing one of them.
+  
+  Practical effect: an IDS document whose `xs:double` enumeration carries `NaN`,
+  `+INF` or `-INF` no longer reports `E_RESTRICTION_VALUE_MISMATCH`. Those are in
+  the xs:double lexical space and upstream `IDS-Audit-tool` accepts them. One whose
+  enumeration carries `e5` now does report it, which upstream does not — a
+  deliberate deviation shared with the cast, on the grounds that an exponent with
+  no mantissa is not a number.
+  
+  Completes [#3336](https://github.com/LTplus-AG/ifc-lite/issues/3336); the cast half shipped in [#3339](https://github.com/LTplus-AG/ifc-lite/issues/3339).
+- Updated dependencies [[`b02da88`](https://github.com/LTplus-AG/ifc-lite/commit/b02da889d60f720f1b4a868b48be12a95027f6e6), [`142b84c`](https://github.com/LTplus-AG/ifc-lite/commit/142b84c41036b749e7b64418a882424b9c386edb), [`bcbe7b9`](https://github.com/LTplus-AG/ifc-lite/commit/bcbe7b9afa38e8dafb5900e73575c71a8fd96012), [`82343f7`](https://github.com/LTplus-AG/ifc-lite/commit/82343f75dd2e6029946cbcd0990d3f8fd38a26ad), [`2b594d2`](https://github.com/LTplus-AG/ifc-lite/commit/2b594d20616f957f7ef949aa8563274e5373a95b), [`2b594d2`](https://github.com/LTplus-AG/ifc-lite/commit/2b594d20616f957f7ef949aa8563274e5373a95b), [`d08e420`](https://github.com/LTplus-AG/ifc-lite/commit/d08e420c9f39e9c0427aba47966cc6acf12642cc), [`140a6d8`](https://github.com/LTplus-AG/ifc-lite/commit/140a6d8541224341835c98028dc75e6a5ccd605d), [`6aa2b76`](https://github.com/LTplus-AG/ifc-lite/commit/6aa2b76d4a988e7ee1fd6bcad7c46a41650704b3), [`1000dce`](https://github.com/LTplus-AG/ifc-lite/commit/1000dce72e9ec75c59848efefc1f709d01172e72), [`96d8f41`](https://github.com/LTplus-AG/ifc-lite/commit/96d8f4126073250e079d7cdc8f77b409e70400e7), [`89c4cf2`](https://github.com/LTplus-AG/ifc-lite/commit/89c4cf22e83d76115035f7dcbf6e34f9c06dd091), [`b7efeac`](https://github.com/LTplus-AG/ifc-lite/commit/b7efeac2195908729d1bf571839e2607f43c8ff7), [`4475e58`](https://github.com/LTplus-AG/ifc-lite/commit/4475e583ea35def444fb6d7ba92410629bd89096), [`4475e58`](https://github.com/LTplus-AG/ifc-lite/commit/4475e583ea35def444fb6d7ba92410629bd89096), [`afa717b`](https://github.com/LTplus-AG/ifc-lite/commit/afa717bcf6041ad34085626fcfac321207ce4b81), [`6bd2550`](https://github.com/LTplus-AG/ifc-lite/commit/6bd25508dadd14fee97ee1f7393212cdcc086fdc), [`cb56282`](https://github.com/LTplus-AG/ifc-lite/commit/cb56282133a3349299665859b5507b739808d32e), [`d733175`](https://github.com/LTplus-AG/ifc-lite/commit/d733175d4ac2e8a2e94fc0bf9804d7bc03627cc1), [`902768e`](https://github.com/LTplus-AG/ifc-lite/commit/902768e138b595b26a47389bcea536f3f9e25b6d), [`a1aebc8`](https://github.com/LTplus-AG/ifc-lite/commit/a1aebc822b819221258f4759edf4c82ff0d140f7), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`3cd1647`](https://github.com/LTplus-AG/ifc-lite/commit/3cd1647a2918ac27b903cb82bc797c2d2b288ac3), [`a1069f8`](https://github.com/LTplus-AG/ifc-lite/commit/a1069f8f096fcfc5771200a2748466096c3463d5), [`b331b49`](https://github.com/LTplus-AG/ifc-lite/commit/b331b4921ff0927ee18bb78f00d2bb6e496219d8), [`c3bdc8f`](https://github.com/LTplus-AG/ifc-lite/commit/c3bdc8fe55536a9b27adaa7ed92fb214c975fe2e), [`c3bdc8f`](https://github.com/LTplus-AG/ifc-lite/commit/c3bdc8fe55536a9b27adaa7ed92fb214c975fe2e), [`1060a30`](https://github.com/LTplus-AG/ifc-lite/commit/1060a30187c8f6bb327f9e356056f2364568e8ff), [`3460785`](https://github.com/LTplus-AG/ifc-lite/commit/3460785652f251f3161aa8dd6f1d247750df2715), [`80a0cd9`](https://github.com/LTplus-AG/ifc-lite/commit/80a0cd9b946a5ff1aa6ca214ddb427a5d1f5303c), [`a2488e8`](https://github.com/LTplus-AG/ifc-lite/commit/a2488e858bc7792cdcc818f7759c0a6e46e7d892), [`b135862`](https://github.com/LTplus-AG/ifc-lite/commit/b1358623210867daba42ff56e97ff05733bff646), [`8368339`](https://github.com/LTplus-AG/ifc-lite/commit/83683393654d8c1b903f03b5c6e9e5ff111fdaf0), [`f8e03d4`](https://github.com/LTplus-AG/ifc-lite/commit/f8e03d4d5bb620fc9e807d5233091d145a201165), [`ff292b6`](https://github.com/LTplus-AG/ifc-lite/commit/ff292b685a7c663ef3e79928a754667bb919066a)]:
+  - @ifc-lite/parser@5.0.0
+  - @ifc-lite/encoding@2.2.0
+  - @ifc-lite/data@4.0.0
+
+## 1.15.52
+
+### Patch Changes
+
+- [#3339](https://github.com/LTplus-AG/ifc-lite/pull/3339) [`b3921ac`](https://github.com/LTplus-AG/ifc-lite/commit/b3921ac56bb3b8d4522f980009fecb0994ae8acf) Thanks [@louistrue](https://github.com/louistrue)! - `xs:double` now accepts the special literals upstream IDS-Audit-tool accepts.
+  
+  `literalCastsUnder(value, 'xs:double')` rejected `NaN`, `+INF` and `-INF`, which
+  upstream accepts.
+  
+  The coherence audit was NOT the counterexample this change was first written
+  against. Its table carries upstream's pattern, but `isValidLexicalForXsType`
+  vetoes any value with no digit before that pattern runs, and none of the three
+  specials has a digit. So both sites reject the three specials and agree with each other there, while
+  both diverge from upstream.
+  
+  They do NOT agree everywhere, and the first draft of this changeset said they
+  did. Measured: upstream also accepts an exponent-only family (`e5`, `+e5`,
+  `.e5`), and the audit's digit veto is SATISFIED by the digit in the exponent, so
+  the audit accepts those while the cast rejects them. That split predates this
+  change. The audit follow-up has to reconcile both classes, not just the
+  specials.
+  
+  This fixes the cast.
+  
+  Upstream is the contract here, and it is neither .NET nor XSD. It generates the
+  validator as a regex, `^([-+]?[0-9]*\.?[0-9]*([eE][-+]?[0-9]+)?|NaN|\+INF|-INF)$`,
+  which takes `+INF` (an XSD 1.1 spelling) while rejecting bare `INF` (the 1.0
+  one), and rejects `Infinity` (the .NET one). The coherence table already carried
+  that pattern verbatim, behind a veto that suppresses it for these inputs.
+  
+  A family of deviations is kept and documented at the call site: every part of upstream's
+  pattern is optional, so it also matches `""`, `"+"`, `"."`, `"-"`, `"+."` and
+  the exponent-only forms. Those fall out of how the regex is written rather than
+  being a decision, and accepting an empty string as a double turns a malformed
+  IDS literal into a passing constraint. The cast keeps rejecting them. The test
+  pins representatives rather than the whole family, and says so.
+  
+  The docblock claiming these arms mirror `int.TryParse` / `double.TryParse` was
+  wrong and is corrected: upstream does not use `TryParse` for this.
+- Updated dependencies [[`111b733`](https://github.com/LTplus-AG/ifc-lite/commit/111b733b21915522cf9678fb05d4595ac4a8906e), [`758ed93`](https://github.com/LTplus-AG/ifc-lite/commit/758ed93f24d48dd0067568a1e4b62f9380e9d131)]:
+  - @ifc-lite/data@3.5.1
+
+## 1.15.51
+
+### Patch Changes
+
+- [#3269](https://github.com/LTplus-AG/ifc-lite/pull/3269) [`b342063`](https://github.com/LTplus-AG/ifc-lite/commit/b34206376700e5544a908a94d18cf89af9501772) Thanks [@BIMvoice](https://github.com/BIMvoice)! - An IDS property facet on an `IfcDescriptiveMeasure` property can pass again.
+  `ifcMeasureToXsdTypes` decides which XSD types an IDS literal must cast under
+  before the value comparison runs, and it reached that answer through a
+  `*MEASURE` / `*RATIO` suffix heuristic. `IfcDescriptiveMeasure` ends in
+  `MEASURE` but is `TYPE IfcDescriptiveMeasure = STRING;` in both IFC4 and
+  IFC4X3 — the descriptive-text member of `IfcMeasureValue` — so its literal was
+  run through a numeric cast that any descriptive text fails, and the facet
+  reported a mismatch even when the stored value equalled the requested one
+  character for character.
+  
+  Three more measures disagreed with their EXPRESS base in the other direction:
+  `IfcIntegerCountRateMeasure` is `INTEGER`, not `REAL`, so the gate accepted
+  `3.0`; `IfcParameterValue` (`REAL`) and `IfcPositiveInteger` (`INTEGER`) end in
+  neither suffix and so got no cast gate at all. All four are now named
+  explicitly, and a test re-derives the expectation for every measure the
+  `IfcValue` SELECT can reach directly from the EXPRESS schemas, so the table
+  cannot drift from them again.
+
+- [#3277](https://github.com/LTplus-AG/ifc-lite/pull/3277) [`78354d9`](https://github.com/LTplus-AG/ifc-lite/commit/78354d9607cee098d34df037299c344b0d1e6103) Thanks [@BIMvoice](https://github.com/BIMvoice)! - An `<xs:restriction>` that declares more than one facet now enforces all of
+  them. `parseRestriction` returned the first family it recognised — pattern,
+  then enumeration, then bounds/length — and discarded the rest, but XSD facets
+  in one restriction are conjunctive. Because the discarded facets are the
+  narrowing ones, this reported models as compliant that were not: a value of
+  `999` satisfied `minInclusive 10` + `maxInclusive 20` + `pattern \d+`, and
+  `"ABCDEFGHIJ"` satisfied `maxLength 3` + `pattern [A-Z]+`, in both cases because
+  only the pattern survived parsing.
+  
+  The parser now builds every family present. The first stays the constraint
+  itself, so the `pattern` / `enumeration` / `bounds` switches in the auditor, the
+  translation layer and the facet checkers see the shape they already handle; the
+  rest ride along in a new optional `and` list that `matchConstraint` requires as
+  well. A restriction declaring a single family is unchanged, `and` unset.
+  
+  Both report paths follow: `formatConstraint`'s expected-value display and
+  `describeConstraint`'s human-readable text now name every facet, joined by a new
+  `constraints.conjunction` string in each locale, and the mismatch reason points
+  at the facet that actually rejected the value. Describing only the primary would
+  state a weaker requirement than the one being enforced.
+  
+  Still unchanged: `xs:totalDigits`, `xs:fractionDigits` and `xs:whiteSpace` are
+  not read at all, and the IDS-document auditors under `audit/` inspect only the
+  primary family, so a malformed regex or an inverted bound in a sibling facet is
+  not linted.
+
+- [#3251](https://github.com/LTplus-AG/ifc-lite/pull/3251) [`846a2ba`](https://github.com/LTplus-AG/ifc-lite/commit/846a2baf2c0df700ab14480509b2ef2446d6d3cd) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an IDS property check on an `IfcTimeStamp` property never being able to pass.
+  
+  The strict XSD-cast gate mapped `IfcTimeStamp` to `xs:duration`, alongside
+  `IfcDuration`. `IfcTimeStamp` is declared `INTEGER` in every bundled schema — a
+  UNIX epoch second — so the literal an author has to write (`1609459200`) failed
+  the ISO-8601 duration pattern and the facet returned `PROPERTY_VALUE_MISMATCH`
+  whatever the model contained; an actual duration literal (`P1Y2M3D`) passed
+  where it should not.
+  
+  It now answers per schema version, matching what the generated attribute table
+  gives the attribute facet for `IfcOwnerHistory.CreationDate`: `xs:integer`
+  under IFC2X3, and `xs:integer` / `xs:dateTime` under IFC4 and IFC4X3. A single
+  union across versions would have replaced the original false-REJECT with a
+  false-ACCEPT on IFC2X3, where an ISO-8601 date-time literal would pass the
+  property facet and be rejected by the attribute facet on the same file — the
+  disagreement the mapping exists to prevent. Callers with no schema version in
+  hand still get the permissive union.
+
+- [#3266](https://github.com/LTplus-AG/ifc-lite/pull/3266) [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Recognise `IfcQuantityNumber` instead of relabelling it as a count
+  
+  IFC4X3 added `IfcQuantityNumber` to the `IfcPhysicalSimpleQuantity` family,
+  but `QuantityType` stopped at `Time`, so the parser's lookup fell through to
+  its `?? QuantityType.Count` default. The value survived; the type did not. A
+  `Number` quantity was exported to Parquet as `Count`, described to IDS as
+  `IFCCOUNTMEASURE`, and written back out by the STEP exporter as
+  `IFCQUANTITYCOUNT` — a silent entity rewrite on round-trip.
+  
+  `QuantityType.Number` now exists and the parser, the Parquet and STEP
+  exporters, the IDS data-type bridge and the viewer's unit table all carry it.
+  A schema-derived test in `@ifc-lite/data` asserts the enum against the
+  generated per-version entity tables in both directions, so the next subtype a
+  schema regeneration introduces reds rather than falling through.
+- Updated dependencies [[`b456e27`](https://github.com/LTplus-AG/ifc-lite/commit/b456e279831dbde5b2889b788aada9bd06ff32b8), [`8092522`](https://github.com/LTplus-AG/ifc-lite/commit/80925228ec72aca31d7e9fa3ab4466895c4b1f66), [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea), [`98828c4`](https://github.com/LTplus-AG/ifc-lite/commit/98828c4b004506b6d31546ce93b533fa26e808ea), [`36350e8`](https://github.com/LTplus-AG/ifc-lite/commit/36350e8439af3c52d62d8bb3f6e2daa7bb8d4fa2), [`329008d`](https://github.com/LTplus-AG/ifc-lite/commit/329008d2324204ff39d2ac4a0423add6a60e8907), [`c1490aa`](https://github.com/LTplus-AG/ifc-lite/commit/c1490aa48037c396d014f1dcb9647934fc16e43d), [`38460bd`](https://github.com/LTplus-AG/ifc-lite/commit/38460bd543d6c869db15f867b129db6f965695da), [`e2c67f0`](https://github.com/LTplus-AG/ifc-lite/commit/e2c67f084bfca20ff82460ae54aa80a383fcb39a), [`302121a`](https://github.com/LTplus-AG/ifc-lite/commit/302121ac7bc9312b1073738b3bbe0956ce452cf4), [`08cbf72`](https://github.com/LTplus-AG/ifc-lite/commit/08cbf72dbb3e375d20f703c8c813d4cd873657c1), [`c8049a0`](https://github.com/LTplus-AG/ifc-lite/commit/c8049a0bf464cd1fec7a4cd2aad2f08326e04737), [`c2885ef`](https://github.com/LTplus-AG/ifc-lite/commit/c2885ef575fe57d9bc8e1960bb0ea31cb02f0665), [`bb3fc2c`](https://github.com/LTplus-AG/ifc-lite/commit/bb3fc2c5af754a120b98b545e186303de0fb4951)]:
+  - @ifc-lite/parser@4.3.2
+  - @ifc-lite/data@3.5.0
+
+## 1.15.50
+
+### Patch Changes
+
+- Updated dependencies [[`224386a`](https://github.com/LTplus-AG/ifc-lite/commit/224386ac9cb1c2d94eca50808cdfdb7e8a3121e5)]:
+  - @ifc-lite/parser@4.3.1
+
+## 1.15.49
+
+### Patch Changes
+
+- [#3121](https://github.com/LTplus-AG/ifc-lite/pull/3121) [`ffcc9e6`](https://github.com/LTplus-AG/ifc-lite/commit/ffcc9e6f048cd263a5b70946417c9b6aceec1bec) Thanks [@BIMvoice](https://github.com/BIMvoice)! - IDS numeric comparison no longer takes seconds per entity on a crafted property
+  value.
+  
+  `packages/ids/src/constraints/comparators.ts` decided "is this a strict numeric
+  literal?" with `/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/`. On a string that
+  **fails** the match, `\d+\.?\d*` retries at every split of the digit run before
+  the engine gives up, so the cost is quadratic in the length. Measured here on
+  `'-' + '9'.repeat(n) + 'X'`: 26 ms at n=5,000, 413 ms at n=20,000, 3,701 ms at
+  n=60,000 — 4x the input for 16x the time.
+  
+  That input is reachable. `compareNumeric` runs the check on the model side, and
+  `matchSimpleValue` / `matchEnumeration` call it once per entity, so an IFC
+  property whose value is a long digit run followed by any non-numeric character
+  costs that much per entity for the whole model. A validation run against an
+  uploaded file could be stalled by the file. Note that a long digit run *without*
+  the trailing character matches immediately, which is why this never showed up in
+  ordinary use.
+  
+  Both call sites now use `isWhollyNumeric` from `@ifc-lite/encoding` — the
+  hand-written linear scan that already decides this exact language for the CSV
+  formula guard. Same three inputs: 0.008 ms, 0.031 ms, 0.090 ms. The scan is also
+  cheaper on ordinary values, which matters because this is a per-entity path
+  (1e6 calls on `'2022-01-01'`: 42 ms with the regex, 13 ms with the scan), and it
+  allocates nothing.
+  
+  The accepted language is unchanged. `.5`, `5.`, `+.5`, `-5.`, `5.e3` and `1e+5`
+  are still numeric literals; `1e`, a lone `+`/`-`/`.`, the empty string,
+  whitespace-padded digits, `Infinity`, `NaN`, `0x10`, `1_000` and `2022-01-01`
+  are still not. That is pinned by running the removed regex as the oracle over
+  every string up to four characters from the alphabet the language is built from
+  (69,905 of them), not by a hand-written table. `@ifc-lite/encoding` is a new
+  dependency of `@ifc-lite/ids`; it has no dependencies of its own.
+  
+  Two more copies of the same shape inside this package are bounded the same way,
+  on IDS-file literals rather than model values — lower reach, since they run once
+  per literal rather than once per entity, but the same cost curve on an uploaded
+  IDS file:
+  
+  - `constraints/xsd-cast.ts` used a byte-identical regex for the `xs:double`
+    strict cast; it now calls `isWhollyNumeric` too. 439 ms → under 1 ms at
+    n=20,000.
+  - `audit/coherence`'s lexical-space table spelled the `xs:double` / `xs:float` /
+    `xs:decimal` mantissa `[0-9]*\.?[0-9]*`, two adjacent digit runs with the same
+    problem. It is now `[0-9]*(?:\.[0-9]*)?` — the same accepted language,
+    including `NaN` / `+INF` / `-INF`, one parse per prefix. 415 ms → under 1 ms at
+    the same length.
+  
+  The IDS numeric tolerance rules and every other comparator are untouched, and
+  the buildingSMART IDS corpus stays at 334/334 parity.
+
+- [#3094](https://github.com/LTplus-AG/ifc-lite/pull/3094) [`a8587cc`](https://github.com/LTplus-AG/ifc-lite/commit/a8587cc21c309ebd6c87119cb0d1cd6d1005c281) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Compare a `partOf` parent's `predefinedType` case-sensitively, as the entity facet already does
+  
+  The IDS XSD gives the `partOf` facet's nested `<entity>` the same complex type an entity facet uses, but the two checkers each wrote out their own copy of the `<predefinedType>` matching rule and the copies had drifted: `entity-facet.ts` compared case-sensitively (enum tokens are uppercase by the IFC schema, and the buildingSMART corpus case `entity/fail-user_defined_types_are_checked_case_sensitively` requires an `IfcWall` carrying `ObjectType = 'waldo'` to fail a facet asking for `WALDO`), while `partof-facet.ts` passed a case-insensitive option on every branch. One and the same (raw enum token, user-defined name, IDS literal) triple therefore got opposite verdicts depending on which facet asked, and a `partOf` requirement whose literal differed from the model only in casing wrongly PASSED.
+  
+  The rule now lives once, in `facets/predefined-type-match.ts`, and both facets consume its verdict; each still owns only its own failure wording. The diagnostics-free applicability twin `entityFacetPasses`, which held a third copy, calls it too.
+  
+  No public API change.
+- Updated dependencies [[`93b450c`](https://github.com/LTplus-AG/ifc-lite/commit/93b450c1cc0c3cee811625989edb82cf522c70c4), [`8ba612f`](https://github.com/LTplus-AG/ifc-lite/commit/8ba612f90d3bb0ad41f756d6fdef6b3250e8d330), [`9359bc4`](https://github.com/LTplus-AG/ifc-lite/commit/9359bc488173585b2b90e124cc66dcf8292c4be9), [`f6febcc`](https://github.com/LTplus-AG/ifc-lite/commit/f6febcc2d4986e79b3c44d63853bb72a16475c65), [`f7e26e4`](https://github.com/LTplus-AG/ifc-lite/commit/f7e26e4200e1475728d4976142b49cb408400a8e), [`75867a7`](https://github.com/LTplus-AG/ifc-lite/commit/75867a7e6ebf51b2da47cab14242bcd71787ba3b), [`f449776`](https://github.com/LTplus-AG/ifc-lite/commit/f4497765cb4e17828ff6ca6b52fb8a96caa2f81f), [`00f6e79`](https://github.com/LTplus-AG/ifc-lite/commit/00f6e79c22641ff59bfb3327d910b04f9a164d8b), [`116a3e9`](https://github.com/LTplus-AG/ifc-lite/commit/116a3e94de753b95fa94b2d6c41a0171cd254729), [`147693a`](https://github.com/LTplus-AG/ifc-lite/commit/147693a7a8fd0778ddb71839199b75bf1d622327), [`043e06a`](https://github.com/LTplus-AG/ifc-lite/commit/043e06a05c6625fef91bb17d84e3a3447f1379e3)]:
+  - @ifc-lite/parser@4.3.0
+  - @ifc-lite/encoding@2.1.0
+  - @ifc-lite/data@3.4.1
+
+## 1.15.48
+
+### Patch Changes
+
+- [#2789](https://github.com/LTplus-AG/ifc-lite/pull/2789) [`b4740a1`](https://github.com/LTplus-AG/ifc-lite/commit/b4740a1fb18050c065e8fbd58714626bdf852f00) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Add regression tests pinning `PSET_MISSING` and `PARTOF_RELATION_MISSING`
+  in `checkRequirement`'s `optional` allowlist (`packages/ids/src/validation/validator.ts`).
+  
+  Per the IDS spec, `optional` means "if present, must satisfy" -- a
+  wholly-absent facet passes, a present-but-wrong facet fails. The allowlist
+  that implements this already covered eight failure-type codes, but two of
+  them -- `PSET_MISSING` (entity has no property sets at all) and
+  `PARTOF_RELATION_MISSING` (entity has no parent under the requested
+  relation at all) -- had no test forcing that exact shape, so either could
+  be silently dropped from the allowlist without failing `vitest run` or the
+  vendored buildingSMART corpus runner. Dropping either causes a
+  wrong-direction regression: entities that legitimately have nothing would
+  start failing an `optional` requirement instead of passing it.
+  
+  No production logic changed. This also re-verifies the other six codes in
+  the same allowlist (`ATTRIBUTE_MISSING`, `PROPERTY_MISSING`,
+  `CLASSIFICATION_MISSING`, `MATERIAL_MISSING`, `PREDEFINED_TYPE_MISSING`,
+  `PARTOF_PREDEFINED_TYPE_MISSING`) individually against both suites; all
+  six were already pinned by at least one of `vitest run` or
+  `npm run test:ids-corpus`.
+
+- [#2897](https://github.com/LTplus-AG/ifc-lite/pull/2897) [`969cff9`](https://github.com/LTplus-AG/ifc-lite/commit/969cff95a77ce4c17a949a93632c8a0378fd3ede) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix an IDS entity facet naming an IFC4-only class (`IfcAirTerminal`, `IfcFilter`, `IfcValve`, …) never matching anything in an IFC2X3 model.
+  
+  IFC2X3 predates those classes; the same concept there is a generic occurrence class (`IfcFlowTerminal`, `IfcFlowTreatmentDevice`, `IfcFlowController`, …) related to a specific type object (`IfcAirTerminalType`, `IfcFilterType`, `IfcValveType`, …) via `IfcRelDefinesByType`. buildingSMART's IDS spec defines an occurrence/type mapping table so a facet naming the IFC4-only class still matches the equivalent IFC2X3 pair ("the definition of an IDS applicability facet with entity `IfcFilter`, should result in the identification of all `IfcFlowTreatmentDevice` that are associated with a type `IfcFilterType`") — this package implemented no such mapping, so every entity facet using one of the table's 55 aliases against an IFC2X3 model reported zero applicable entities regardless of content. `packages/ids/src/facets/ifc2x3-type-mapping.ts` now carries the table (scoped to IFC2X3 only — IFC4+ already has a dedicated class for every alias), consulted by `checkEntityFacet`, `entityFacetPasses` and the applicability broadphase filter.
+  
+  Also fix a property facet applied directly to `IfcMaterial` always reporting the property set missing. `IfcMaterialProperties` (IFC4+) / `IfcExtendedMaterialProperties` (IFC2X3) attach property sets straight to the material, not through `IfcRelDefinesByProperties` like every other pset, and `collectAllPropertySets` never read them.
+  
+  Found via buildingSMART's official IDS conformance corpus (16 test cases added upstream since this repository's [#1685](https://github.com/LTplus-AG/ifc-lite/issues/1685) vendoring, re-synced here): all 6 `pass-` cases covering these two gaps previously failed.
+- Updated dependencies [[`79322b6`](https://github.com/LTplus-AG/ifc-lite/commit/79322b6e76049be0df3b07149c711414bd80863e), [`7869a90`](https://github.com/LTplus-AG/ifc-lite/commit/7869a90f35384ceba40b7ce4f3e9fadbe6990fa8), [`be6b43c`](https://github.com/LTplus-AG/ifc-lite/commit/be6b43c2b334811422c1cbfbea5d6e6d1b9a401d), [`ad50aa9`](https://github.com/LTplus-AG/ifc-lite/commit/ad50aa9751c31f6895944e26ce19fe8cbbf3018e), [`105eb31`](https://github.com/LTplus-AG/ifc-lite/commit/105eb31e7ccdd697f74db3bc9fac41396cdc6faa), [`5254699`](https://github.com/LTplus-AG/ifc-lite/commit/52546994268440a468de81ce6ac0b385e6ef73d7), [`6ce17fa`](https://github.com/LTplus-AG/ifc-lite/commit/6ce17fa903d38ab8ee3e6ebaf6da8453726d3ce2)]:
+  - @ifc-lite/parser@4.2.0
+  - @ifc-lite/data@3.4.0
+
+## 1.15.47
+
+### Patch Changes
+
+- Updated dependencies [[`85ae89d`](https://github.com/LTplus-AG/ifc-lite/commit/85ae89d915937be21dde174db6a123e883189be6), [`5086c57`](https://github.com/LTplus-AG/ifc-lite/commit/5086c5729b6ae8ad967aafa91d96dfdb37327599)]:
+  - @ifc-lite/parser@4.1.0
+
+## 1.15.46
+
+### Patch Changes
+
+- Updated dependencies [[`cd72412`](https://github.com/LTplus-AG/ifc-lite/commit/cd724127245fcb767894642cd0994baaba88ff7d)]:
+  - @ifc-lite/parser@4.0.3
+
+## 1.15.45
+
+### Patch Changes
+
+- Updated dependencies [[`02079a6`](https://github.com/LTplus-AG/ifc-lite/commit/02079a66042a6e446b9f83f656685f6056020718)]:
+  - @ifc-lite/data@3.3.0
+
+## 1.15.44
+
+### Patch Changes
+
+- Updated dependencies [[`7ee619f`](https://github.com/LTplus-AG/ifc-lite/commit/7ee619f8c6a7490982136d5677674f4f6355a568), [`1de1696`](https://github.com/LTplus-AG/ifc-lite/commit/1de16969db1c56f4901e4af49da74085bae3b3fe)]:
+  - @ifc-lite/parser@4.0.2
+  - @ifc-lite/data@3.2.4
+
+## 1.15.43
+
+### Patch Changes
+
+- Updated dependencies [[`7c686f9`](https://github.com/LTplus-AG/ifc-lite/commit/7c686f9ac39f78a707dc083c798b6ef3d255e171)]:
+  - @ifc-lite/data@3.2.3
+  - @ifc-lite/parser@4.0.1
+
+## 1.15.42
+
+### Patch Changes
+
+- [#2282](https://github.com/LTplus-AG/ifc-lite/pull/2282) [`79781f5`](https://github.com/LTplus-AG/ifc-lite/commit/79781f57c50bbc9641516a42d0de53e5b9d89932) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix `optional` requirements incorrectly failing when a nested `predefinedType` constraint is checked against an entity (or, for `partOf`, a related entity) that has no predefined type at all.
+
+  Per IDS semantics, `optional` means "if present, must satisfy" — a wholly absent attribute passes, same as `ATTRIBUTE_MISSING`/`PROPERTY_MISSING`/etc. already do. `PREDEFINED_TYPE_MISSING` and `PARTOF_PREDEFINED_TYPE_MISSING` were left out of that "wholly absent" allow-list, so an `optional` entity or `partOf` requirement with a `predefinedType` sub-constraint reported `fail` instead of `pass` whenever the target had no predefined type data — the opposite of what `optional` promises.
+
+- [#2316](https://github.com/LTplus-AG/ifc-lite/pull/2316) [`403f448`](https://github.com/LTplus-AG/ifc-lite/commit/403f4485c21b9928f16566fa482c170f230852b0) Thanks [@BIMvoice](https://github.com/BIMvoice)! - Fix a false FAIL on `partOf` requirements whose nested `entity.predefinedType` constraint asks for the literal `USERDEFINED` token against a parent that also carries a custom name.
+
+  `getAncestors` sourced `ParentInfo.predefinedType` from `getObjectType`, which collapses a `USERDEFINED` raw enum to the accompanying user-defined name (e.g. `ObjectType`/`ElementType`). A spec requiring predefinedType `USERDEFINED` on the parent then compared that literal against the custom name instead of the raw token, and failed — even though `entity-facet.ts`'s direct entity check accepts exactly this case via its raw-token-first, user-name-fallback match.
+
+  `ParentInfo` now carries the raw `PredefinedType` token separately from the user-defined name (`objectType`), and `partof-facet.ts`'s predefinedType match mirrors `entity-facet.ts`'s two-branch logic: raw token first, falling back to the user-defined name only when the raw token is `USERDEFINED`.
+
+- Updated dependencies [[`d75786f`](https://github.com/LTplus-AG/ifc-lite/commit/d75786f631047d234f204289426f708f0be8674b), [`58fbc63`](https://github.com/LTplus-AG/ifc-lite/commit/58fbc634994742c79375830c1983508752fd78e9), [`2e16736`](https://github.com/LTplus-AG/ifc-lite/commit/2e167367037fa3b5d1d2d5d26dd4fb7ac169e2f5), [`d9490e6`](https://github.com/LTplus-AG/ifc-lite/commit/d9490e6e2ecacb65aea42fcaef73fd292a4c3095), [`deb54d3`](https://github.com/LTplus-AG/ifc-lite/commit/deb54d3ff75f35c3c9206c8ea9a1e875426352c6), [`958aef1`](https://github.com/LTplus-AG/ifc-lite/commit/958aef125743682da75c3da7b41991abd9d36d32), [`de7bd04`](https://github.com/LTplus-AG/ifc-lite/commit/de7bd04619a43a32900b188e0507b95e7542d8c8), [`09d67c7`](https://github.com/LTplus-AG/ifc-lite/commit/09d67c780bf68f58dec3f77920927857c752f8da)]:
+  - @ifc-lite/data@3.2.2
+  - @ifc-lite/parser@4.0.0
+
+## 1.15.41
+
+### Patch Changes
+
+- Updated dependencies [[`befc108`](https://github.com/LTplus-AG/ifc-lite/commit/befc1083e377315231006352cb3fe95949e92b47), [`3c2ffa6`](https://github.com/LTplus-AG/ifc-lite/commit/3c2ffa6a1bd0a04d3d73e2ea7c0fb1a2233599a9)]:
+  - @ifc-lite/data@3.2.1
+  - @ifc-lite/parser@3.15.1
+
+## 1.15.40
+
+### Patch Changes
+
+- Updated dependencies [[`d008604`](https://github.com/LTplus-AG/ifc-lite/commit/d0086043fa88f488d19942ffe9241d80bab4be6a)]:
+  - @ifc-lite/parser@3.15.0
+
+## 1.15.39
+
+### Patch Changes
+
+- Updated dependencies [[`c65bdbe`](https://github.com/LTplus-AG/ifc-lite/commit/c65bdbe033494e71e35e0222895fa1d017f0fd76)]:
+  - @ifc-lite/parser@3.14.0
+
+## 1.15.38
+
+### Patch Changes
+
+- Updated dependencies [[`a2ca053`](https://github.com/LTplus-AG/ifc-lite/commit/a2ca0535c14cd1bf9d55713584766dff55430158), [`e4d2db5`](https://github.com/LTplus-AG/ifc-lite/commit/e4d2db5f11798e3ec78f45249139d69aa1e65275), [`a5cc568`](https://github.com/LTplus-AG/ifc-lite/commit/a5cc568a642d7dd8d17f1ed7858844f9289bc841)]:
+  - @ifc-lite/parser@3.13.0
+  - @ifc-lite/data@3.2.0
+
+## 1.15.37
+
+### Patch Changes
+
+- [#1968](https://github.com/LTplus-AG/ifc-lite/pull/1968) [`0571583`](https://github.com/LTplus-AG/ifc-lite/commit/05715834ce94a1f8e5dc20d6a60b7468190c2e88) Thanks [@louistrue](https://github.com/louistrue)! - Fix type-inherited properties disappearing when the occurrence carries a property set of the same name ([#1913](https://github.com/LTplus-AG/ifc-lite/issues/1913)).
+
+  IFC inherits type properties **per property**, not per property set. An occurrence and its `IfcTypeProduct` routinely both carry a set of the same name holding different properties — `Pset_CoveringCommon` with `IsExternal`/`Reference` on an `IfcCovering` and `SurfaceSpreadOfFlame`/`Combustible`/`ThermalTransmittance` on its `IfcCoveringType` is a plain Revit export. Both the IDS bridge and the viewer's Lens adapter treated a name collision as "occurrence replaces type" and dropped the entire inherited set, making every type-only property in it invisible.
+
+  For IDS that meant a property that is present, and that other tools resolve, was reported missing: `Property "SurfaceSpreadOfFlame" not found in "Pset_CoveringCommon". Available: Pset_CoveringCommon.IsExternal, Pset_CoveringCommon.Reference`. For Lens it silently removed those properties from grouping and filtering.
+
+  `@ifc-lite/parser` gains `mergeInheritedPropertySets(ownSets, inheritedSets)`, which unions the two per property with the occurrence winning on a property-name collision (the more specific definition), matching `IfcRelDefinesByType` semantics. Both consumers now use it, so the rule has one home rather than two divergent copies. Neither input is mutated — cached extractor results stay intact.
+
+  Only the collision case changes. A type set whose name the occurrence does not use was already appended and still is; a property defined on both sides still resolves to the occurrence's value; a property on neither side is still absent.
+
+- Updated dependencies [[`0571583`](https://github.com/LTplus-AG/ifc-lite/commit/05715834ce94a1f8e5dc20d6a60b7468190c2e88)]:
+  - @ifc-lite/parser@3.12.0
+
+## 1.15.36
+
+### Patch Changes
+
+- Updated dependencies [[`9a7b5a2`](https://github.com/LTplus-AG/ifc-lite/commit/9a7b5a2fc1bb85ce60e954ccf7819829e43431d6)]:
+  - @ifc-lite/data@3.1.0
+
 ## 1.15.35
 
 ### Patch Changes

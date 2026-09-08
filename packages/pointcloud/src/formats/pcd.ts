@@ -38,7 +38,19 @@ interface PcdHeader {
 
 const TEXT_DECODER = new TextDecoder();
 
-export function decodePcd(buffer: Uint8Array): DecodedPointChunk {
+export function decodePcd(
+  buffer: Uint8Array,
+  /**
+   * Native (X, Y, Z)-axis offset subtracted from each decoded coordinate
+   * in f64, BEFORE narrowing to the `Float32Array` (extends #1804's
+   * LAS/LAZ pattern — see `decodeLasPoints`'s `originOffset` doc). Some
+   * PCD exports carry absolute survey/map coordinates at ~1e6-1e7 m
+   * magnitude, which quantise to sub-metre noise once narrowed to f32
+   * without this. `undefined` (the default) subtracts nothing, preserving
+   * prior behaviour byte-for-byte.
+   */
+  originOffset?: readonly [number, number, number],
+): DecodedPointChunk {
   const header = parseHeader(buffer);
 
   // Guard against a header that declares a huge point count backed by a tiny
@@ -70,11 +82,11 @@ export function decodePcd(buffer: Uint8Array): DecodedPointChunk {
   let colors: Float32Array | undefined;
 
   if (header.data === 'ascii') {
-    ({ positions, colors } = decodeAscii(buffer, header));
+    ({ positions, colors } = decodeAscii(buffer, header, originOffset));
   } else if (header.data === 'binary') {
-    ({ positions, colors } = decodeBinary(buffer, header));
+    ({ positions, colors } = decodeBinary(buffer, header, originOffset));
   } else {
-    ({ positions, colors } = decodeBinaryCompressed(buffer, header));
+    ({ positions, colors } = decodeBinaryCompressed(buffer, header, originOffset));
   }
 
   return {
@@ -201,11 +213,18 @@ function planChannels(header: PcdHeader): ChannelPlan {
   return plan;
 }
 
-function decodeAscii(buffer: Uint8Array, header: PcdHeader): { positions: Float32Array; colors?: Float32Array } {
+function decodeAscii(
+  buffer: Uint8Array,
+  header: PcdHeader,
+  originOffset?: readonly [number, number, number],
+): { positions: Float32Array; colors?: Float32Array } {
   const plan = planChannels(header);
   const text = TEXT_DECODER.decode(buffer.subarray(header.bodyOffset));
   const positions = new Float32Array(header.pointCount * 3);
   const colors = plan.rgbField ? new Float32Array(header.pointCount * 3) : undefined;
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
 
   // Column index of x/y/z/rgb in the ascii row order (ascii rows preserve
   // FIELDS order; multi-count fields are flattened).
@@ -221,9 +240,9 @@ function decodeAscii(buffer: Uint8Array, header: PcdHeader): { positions: Float3
     lineStart = lineEnd + 1;
     if (!line) continue;
     const parts = line.split(/\s+/);
-    positions[writeIdx * 3] = Number(parts[colMap.xCol]);
-    positions[writeIdx * 3 + 1] = Number(parts[colMap.yCol]);
-    positions[writeIdx * 3 + 2] = Number(parts[colMap.zCol]);
+    positions[writeIdx * 3] = Number(parts[colMap.xCol]) - offX;
+    positions[writeIdx * 3 + 1] = Number(parts[colMap.yCol]) - offY;
+    positions[writeIdx * 3 + 2] = Number(parts[colMap.zCol]) - offZ;
     if (colors && colMap.rgbCol >= 0) {
       const packed = parsePackedRgb(parts[colMap.rgbCol], plan.rgbField!);
       colors[writeIdx * 3] = ((packed >> 16) & 0xff) / 255;
@@ -255,16 +274,23 @@ function buildAsciiColumnMap(header: PcdHeader, plan: ChannelPlan) {
   return { xCol, yCol, zCol, rgbCol };
 }
 
-function decodeBinary(buffer: Uint8Array, header: PcdHeader): { positions: Float32Array; colors?: Float32Array } {
+function decodeBinary(
+  buffer: Uint8Array,
+  header: PcdHeader,
+  originOffset?: readonly [number, number, number],
+): { positions: Float32Array; colors?: Float32Array } {
   const plan = planChannels(header);
   const view = new DataView(buffer.buffer, buffer.byteOffset + header.bodyOffset, header.pointCount * header.pointStride);
   const positions = new Float32Array(header.pointCount * 3);
   const colors = plan.rgbField ? new Float32Array(header.pointCount * 3) : undefined;
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
   for (let i = 0; i < header.pointCount; i++) {
     const base = i * header.pointStride;
-    positions[i * 3] = readScalar(view, base + plan.xField!.offset, plan.xField!);
-    positions[i * 3 + 1] = readScalar(view, base + plan.yField!.offset, plan.yField!);
-    positions[i * 3 + 2] = readScalar(view, base + plan.zField!.offset, plan.zField!);
+    positions[i * 3] = readScalar(view, base + plan.xField!.offset, plan.xField!) - offX;
+    positions[i * 3 + 1] = readScalar(view, base + plan.yField!.offset, plan.yField!) - offY;
+    positions[i * 3 + 2] = readScalar(view, base + plan.zField!.offset, plan.zField!) - offZ;
     if (colors && plan.rgbField) {
       const packed = view.getUint32(base + plan.rgbField.offset, true);
       colors[i * 3] = ((packed >> 16) & 0xff) / 255;
@@ -275,7 +301,11 @@ function decodeBinary(buffer: Uint8Array, header: PcdHeader): { positions: Float
   return { positions, colors };
 }
 
-function decodeBinaryCompressed(buffer: Uint8Array, header: PcdHeader): { positions: Float32Array; colors?: Float32Array } {
+function decodeBinaryCompressed(
+  buffer: Uint8Array,
+  header: PcdHeader,
+  originOffset?: readonly [number, number, number],
+): { positions: Float32Array; colors?: Float32Array } {
   if (buffer.length < header.bodyOffset + 8) {
     throw new Error('PCD binary_compressed: truncated size header');
   }
@@ -330,11 +360,14 @@ function decodeBinaryCompressed(buffer: Uint8Array, header: PcdHeader): { positi
   const yBase = fieldStart.get(plan.yField!)!;
   const zBase = fieldStart.get(plan.zField!)!;
   const rgbBase = plan.rgbField ? fieldStart.get(plan.rgbField)! : 0;
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
 
   for (let i = 0; i < header.pointCount; i++) {
-    positions[i * 3] = readScalar(view, xBase + i * plan.xField!.size, plan.xField!);
-    positions[i * 3 + 1] = readScalar(view, yBase + i * plan.yField!.size, plan.yField!);
-    positions[i * 3 + 2] = readScalar(view, zBase + i * plan.zField!.size, plan.zField!);
+    positions[i * 3] = readScalar(view, xBase + i * plan.xField!.size, plan.xField!) - offX;
+    positions[i * 3 + 1] = readScalar(view, yBase + i * plan.yField!.size, plan.yField!) - offY;
+    positions[i * 3 + 2] = readScalar(view, zBase + i * plan.zField!.size, plan.zField!) - offZ;
     if (colors && plan.rgbField) {
       const packed = view.getUint32(rgbBase + i * plan.rgbField.size, true);
       colors[i * 3] = ((packed >> 16) & 0xff) / 255;

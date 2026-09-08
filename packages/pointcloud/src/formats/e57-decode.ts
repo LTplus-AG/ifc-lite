@@ -5,11 +5,10 @@
 /**
  * E57 binary-section decoder for a single Data3D scan.
  *
- * Walks DataPackets at `entry.binaryFileOffset` (in the LOGICAL
- * post-CRC view) and decodes per-record bytestreams as Float32 /
- * Float64 / Integer / ScaledInteger columns. ScaledInteger is a
- * bit-packed integer with a per-field scale + offset (E57 spec
- * §6.3.4) — common in Faro / Trimble / Leica exports.
+ * Walks DataPackets at `entry.binaryFileOffset` (in the LOGICAL post-CRC
+ * view) and decodes per-record bytestreams as Float32 / Float64 / Integer /
+ * ScaledInteger columns. ScaledInteger is a bit-packed integer with a
+ * per-field scale + offset (E57 spec §6.3.4) — common in Faro / Trimble / Leica exports.
  */
 
 import type { DecodedPointChunk, PointCloudBBox } from '../types.js';
@@ -151,6 +150,25 @@ export function decodeE57Packet(
   fields: ScanFieldSet,
   prototype: PrototypeField[],
   maxRecords: number,
+  /**
+   * Native (X, Y, Z)-axis offset subtracted from each decoded cartesian
+   * coordinate in f64, BEFORE narrowing to the `Float32Array` (extends
+   * #1804's LAS/LAZ pattern — see `decodeLasPoints`'s `originOffset` doc).
+   *
+   * ONLY pass this for a scan with no pose. E57 cartesianX/Y/Z live in the
+   * scan's own (typically small, scanner-centred) local frame; a scan
+   * `<pose>` rotates+translates that local frame into the file's global
+   * frame afterward (`applyPoseInPlace`). Subtracting a global-frame offset
+   * from the LOCAL cartesian before that rotation would (a) get the offset
+   * rotated along with the points — wrong, since an origin shift must never
+   * rotate — and (b) push already-small local values further from zero,
+   * making precision worse, not better. For posed scans the offset belongs
+   * on the pose's translation instead (applied post-rotation, still in f64,
+   * still before the final narrowing) — see `applyPoseInPlace`'s
+   * `originOffset` param. Callers (`decodeE57Scan`, `E57StreamingSource`)
+   * make this choice based on whether the scan has a pose.
+   */
+  originOffset?: readonly [number, number, number],
 ): DecodedPacket {
   const packetType = view.getUint8(offset);
   const packetLength = view.getUint16(offset + 2, true) + 1;
@@ -229,9 +247,12 @@ export function decodeE57Packet(
   const intensities = fields.hasIntensity ? new Uint16Array(take) : undefined;
   const classifications = fields.hasClassification ? new Uint8Array(take) : undefined;
 
-  readCartesianStream(logical, view, xField, xPos.start, positions, 0, take, 0);
-  readCartesianStream(logical, view, yField, yPos.start, positions, 0, take, 1);
-  readCartesianStream(logical, view, zField, zPos.start, positions, 0, take, 2);
+  const offX = originOffset?.[0] ?? 0;
+  const offY = originOffset?.[1] ?? 0;
+  const offZ = originOffset?.[2] ?? 0;
+  readCartesianStream(logical, view, xField, xPos.start, positions, 0, take, 0, offX);
+  readCartesianStream(logical, view, yField, yPos.start, positions, 0, take, 1, offY);
+  readCartesianStream(logical, view, zField, zPos.start, positions, 0, take, 2, offZ);
 
   if (colors && fields.rField && fields.gField && fields.bField) {
     writeColorChannel(view, fieldOffsets.get('colorRed')!.start, fields.rField, colors, 0, take, 0, logical);
@@ -271,8 +292,20 @@ export function decodeE57Packet(
  * the binary section incrementally so multi-GB files don't allocate the
  * whole file at once.
  */
-export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedPointChunk {
+export function decodeE57Scan(
+  logical: Uint8Array,
+  entry: Data3DEntry,
+  /**
+   * See `decodeE57Packet`'s `originOffset` param. Applied to the decoded
+   * cartesian ONLY when `entry.pose` is absent — a posed scan gets the
+   * offset applied to the pose translation instead (by the caller, via
+   * `applyPoseInPlace`'s `originOffset`), so the un-rotated local cartesian
+   * here is intentionally left unshifted when a pose is present.
+   */
+  originOffset?: readonly [number, number, number],
+): DecodedPointChunk {
   const fields = resolveScanFields(entry.prototype);
+  const cartesianOffset = entry.pose ? undefined : originOffset;
 
   // Guard against a header (XML `recordCount`) that declares far more records
   // than the binary section can hold. The XML parser only rejects NaN/negative
@@ -306,7 +339,9 @@ export function decodeE57Scan(logical: Uint8Array, entry: Data3DEntry): DecodedP
     if (offset + 4 > logical.length) {
       throw new Error('E57: truncated DataPacket header');
     }
-    const packet = decodeE57Packet(logical, view, offset, fields, entry.prototype, entry.recordCount - written);
+    const packet = decodeE57Packet(
+      logical, view, offset, fields, entry.prototype, entry.recordCount - written, cartesianOffset,
+    );
     if (packet.packetType !== 1) {
       offset += packet.packetLength;
       continue;
@@ -356,8 +391,7 @@ function writeColorChannel(
     // Pick element width from the declared range. E57 producers use
     // either u8 (0..255 — most common) or u16 (0..65535). Both
     // appear in real files; assuming u8 distorts u16-encoded colors.
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 255;
+    const { min, max } = requireRange(field, 'colour');
     const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
     const widest = Math.max(Math.abs(min), Math.abs(max));
@@ -376,8 +410,7 @@ function writeColorChannel(
     // still apply per spec but for colour they always normalise to
     // the declared range, so we just remap [minimum, maximum] → [0, 1]
     // like Integer colour does.
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 1;
+    const { min, max } = requireRange(field, 'colour');
     const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
     const bitsPerRecord = scaledIntegerBitsPerRecord(field);
@@ -406,16 +439,20 @@ function readCartesianStream(
   written: number,
   take: number,
   axis: 0 | 1 | 2,
+  /** Subtracted in f64 immediately before the narrowing write to
+   *  `positions` (a Float32Array) — see `decodeE57Packet`'s originOffset
+   *  doc. Defaults to 0, preserving prior behaviour byte-for-byte. */
+  axisOffset: number = 0,
 ): void {
   if (field.kind === 'Float') {
     const stride = field.precision === 'single' ? 4 : 8;
     if (stride === 4) {
       for (let i = 0; i < take; i++) {
-        positions[(written + i) * 3 + axis] = view.getFloat32(start + i * stride, true);
+        positions[(written + i) * 3 + axis] = view.getFloat32(start + i * stride, true) - axisOffset;
       }
     } else {
       for (let i = 0; i < take; i++) {
-        positions[(written + i) * 3 + axis] = view.getFloat64(start + i * stride, true);
+        positions[(written + i) * 3 + axis] = view.getFloat64(start + i * stride, true) - axisOffset;
       }
     }
     return;
@@ -423,13 +460,13 @@ function readCartesianStream(
   // ScaledInteger: stream stores `raw_int = (value - minimum)` as
   // an unsigned bit-pack; decoded float = (raw_int + minimum) * scale + offset.
   const bitsPerRecord = scaledIntegerBitsPerRecord(field);
-  const minimum = field.minimum ?? 0;
+  const { min: minimum } = requireRange(field, 'cartesian');
   const scale = field.scale ?? 1;
   const offset = field.offset ?? 0;
   const startBit = start * 8;
   for (let i = 0; i < take; i++) {
     const raw = readBitsLE(bytes, startBit + i * bitsPerRecord, bitsPerRecord);
-    positions[(written + i) * 3 + axis] = (raw + minimum) * scale + offset;
+    positions[(written + i) * 3 + axis] = (raw + minimum) * scale + offset - axisOffset;
   }
 }
 
@@ -455,8 +492,7 @@ function readIntensityStream(
     return;
   }
   if (field.kind === 'Integer') {
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 65535;
+    const { min, max } = requireRange(field, 'intensity');
     const span = max - min;
     const inv = span > 0 ? 1 / span : 1;
     const widest = Math.max(Math.abs(min), Math.abs(max));
@@ -474,8 +510,7 @@ function readIntensityStream(
   }
   // ScaledInteger intensity: range-remap from the bit-pack walk.
   const bitsPerRecord = scaledIntegerBitsPerRecord(field);
-  const minimum = field.minimum ?? 0;
-  const maximum = field.maximum ?? minimum;
+  const { min: minimum, max: maximum } = requireRange(field, 'intensity');
   const span = maximum - minimum;
   const inv = span > 0 ? 1 / span : 1;
   const startBit = start * 8;
@@ -485,14 +520,21 @@ function readIntensityStream(
   }
 }
 
+/** minimum/maximum have no valid default (E57 spec §6.3.4) — refuse rather than guessing 0. */
+function requireRange(field: PrototypeField, context: string): { min: number; max: number } {
+  if (field.minimum === undefined || field.maximum === undefined) {
+    throw new Error(`E57: ${field.kind} field "${field.name}" (${context}) is missing minimum/maximum — required by the E57 spec (ASTM E2807 §6.3.4)`);
+  }
+  return { min: field.minimum, max: field.maximum };
+}
+
 /**
  * E57 §6.3.4: bitsPerRecord = ceil(log2(maximum - minimum + 1)).
  * Caps at 53 bits (Number-precision limit). Real exporters top out
  * around 32 bits.
  */
 function scaledIntegerBitsPerRecord(field: PrototypeField): number {
-  const min = field.minimum ?? 0;
-  const max = field.maximum ?? min;
+  const { min, max } = requireRange(field, 'ScaledInteger bit-width');
   const span = Math.max(0, max - min);
   if (span === 0) return 1;
   const bits = Math.ceil(Math.log2(span + 1));
@@ -515,8 +557,7 @@ function floatOrSiPointCapacity(field: PrototypeField, lengthBytes: number): num
     return Math.floor((lengthBytes * 8) / bits);
   }
   // Integer: same width selection as writeColorChannel.
-  const min = field.minimum ?? 0;
-  const max = field.maximum ?? 255;
+  const { min, max } = requireRange(field, 'Integer capacity');
   const widest = Math.max(Math.abs(min), Math.abs(max));
   const byteSize = widest > 255 ? 2 : 1;
   return Math.floor(lengthBytes / byteSize);
@@ -579,8 +620,7 @@ function readClassificationStream(
   take: number,
 ): void {
   if (field.kind === 'Integer') {
-    const min = field.minimum ?? 0;
-    const max = field.maximum ?? 255;
+    const { min, max } = requireRange(field, 'classification');
     const widest = Math.max(Math.abs(min), Math.abs(max));
     const stride = widest > 255 ? 2 : 1;
     const signed = min < 0;
@@ -601,7 +641,7 @@ function readClassificationStream(
   // some exporters declare a scale anyway. Reader the raw bits and
   // ignore scale/offset (no real meaning for class IDs).
   const bitsPerRecord = scaledIntegerBitsPerRecord(field);
-  const minimum = field.minimum ?? 0;
+  const { min: minimum } = requireRange(field, 'classification');
   const startBit = start * 8;
   for (let i = 0; i < take; i++) {
     const raw = readBitsLE(bytes, startBit + i * bitsPerRecord, bitsPerRecord);

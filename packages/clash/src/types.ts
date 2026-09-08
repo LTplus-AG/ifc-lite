@@ -64,6 +64,16 @@ export interface ClashRule {
   a: string;
   /** Selector for set B. Omitted ⇒ self-clash within A. */
   b?: string;
+  /**
+   * Explicit membership for set A — `clashMemberKey(model, ref)` strings. When
+   * present it REPLACES the `a` selector, so a caller that can resolve a richer
+   * filter than a type name (properties, attributes, storeys) against the model
+   * can express it. An empty array means "matched nothing", never "everything".
+   * See `members.ts`.
+   */
+  membersA?: readonly string[];
+  /** Explicit membership for set B, replacing the `b` selector. See `membersA`. */
+  membersB?: readonly string[];
   mode: ClashMode;
   /** Touching band (m). Defaults to the run-level tolerance. */
   tolerance?: number;
@@ -105,9 +115,59 @@ export interface ClashSettings {
    * when a deterministic cap matters. Defaults to unlimited.
    */
   maxCandidatePairs?: number;
+  /**
+   * Cancels the run: it rejects with an `AbortError` `DOMException` instead of
+   * finishing.
+   *
+   * The TS backend checks it every 256 candidate pairs, and yields to the event
+   * loop at the first such checkpoint past ~50 ms of held thread time (then
+   * every ~50 ms after), rechecking immediately on the way back. So an abort
+   * raised from a timer or a UI handler stops the work in progress rather than
+   * merely refusing to start it — with one bound worth knowing: those handlers
+   * can only run during a yield, so a run that finishes inside the first ~50 ms
+   * never returns to the event loop and cannot observe an abort raised after it
+   * began. Cancellation is for runs long enough to be worth cancelling.
+   *
+   * (The WASM backend runs a whole rule inside one uninterruptible Rust call,
+   * so there it takes effect between rules.)
+   */
   signal?: AbortSignal;
   onProgress?: (p: ClashProgress) => void;
 }
+
+/**
+ * How a clash's `distance` was obtained — the two are NOT interchangeable and
+ * were indistinguishable in the output before this field existed.
+ *
+ * - `'mesh'` — measured on the triangle meshes. For `clearance` it is the
+ *   exact triangle-to-triangle gap. For `touch` it is usually that same exact
+ *   gap, with one exception: a pair whose every candidate depth falls below
+ *   the pair's f32 precision floor also reports `touch`, with `distance: 0`
+ *   and `distanceKind: 'mesh'` — there the 0 is a CLASSIFICATION (the
+ *   surfaces are flush to within what the f32 source coordinates can
+ *   represent; nothing is measurably penetrating), not a measured gap.
+ *   For a hard clash it is the exact
+ *   box-box penetration depth (minimum translation distance along a
+ *   separating axis, Gottschalk), certified only when BOTH elements are —
+ *   within tolerance — rectangular boxes (`obb.ts`); this replaced an
+ *   earlier "deepest crossing-triangle vertex" probe that was a sampling
+ *   artifact, converging to 0 as a mesh was retessellated instead of to the
+ *   true depth (PR #2536).
+ * - `'estimate'` — read off the two element AABBs: the smallest overlapping box
+ *   dimension. Reported for a hard clash whenever the narrow phase could not
+ *   certify a box-box depth. That happens in four shapes, all common in real
+ *   models: either element is not (confirmed) a box; surfaces that only
+ *   coincide (stacked layers sharing a footprint); one solid modelled wholly
+ *   inside another; and a member piercing clean through the other — even
+ *   when BOTH are boxes, because the box-box minimum-translation-distance is
+ *   then dominated by the piercing member's own extent along the shared
+ *   axis, not by the material it actually crossed, and is withheld from
+ *   `'mesh'` for exactly that reason. The value is then a property of the two
+ *   BOXES, not of the solids — it can equal an element's own thickness rather
+ *   than how far the two actually interpenetrate. Treat it as an indication of
+ *   scale, not as a measurement.
+ */
+export type ClashDistanceKind = 'mesh' | 'estimate';
 
 export interface Clash {
   /** Stable id: derived from the two durable keys + rule id. */
@@ -118,6 +178,12 @@ export interface Clash {
   status: ClashStatus;
   /** Signed: `<0` penetration depth, `>0` gap. */
   distance: number;
+  /**
+   * Provenance of `distance`. The engine always sets it; it is optional only so
+   * that a clash rehydrated from a run recorded before this field existed stays
+   * assignable — absent means "unknown", never "measured".
+   */
+  distanceKind?: ClashDistanceKind;
   /** True contact point (hard) or closest-point midpoint (clearance/touch). */
   point: Vec3;
   /** Overlap region (hard) or closest-segment box (clearance/touch). */
@@ -158,12 +224,58 @@ export interface ClashSummary {
   byStorey?: Record<string, number>;
 }
 
+/**
+ * How many elements a rule's selectors actually matched in THIS model, before
+ * any geometry test ran. `matchedB` is `null` for a self-clash rule (no `b`
+ * selector). A rule with `matchedA === 0` or `matchedB === 0` never compared a
+ * single pair — its selector simply doesn't describe anything in this model
+ * (e.g. an MEP selector run against an infrastructure model).
+ */
+export interface ClashRuleCoverage {
+  rule: string;
+  matchedA: number;
+  matchedB: number | null;
+  /**
+   * Whether each side was resolved from explicit membership (`membersA` /
+   * `membersB`) rather than from its type selector. A caller explaining an
+   * empty side needs it and cannot recover it from `rulesRun`, which
+   * deliberately drops the resolved member lists. Absent on a result recorded
+   * before this existed — which is the same thing as "by selector".
+   */
+  fromMembersA?: boolean;
+  fromMembersB?: boolean;
+  /**
+   * The durable `key` (IfcGUID / USD prim path) of every element THIS rule
+   * matched on each side, deduplicated and sorted for determinism — not just
+   * a count. `compareClashRevisions` (revision.ts) needs this to ask "was
+   * this SPECIFIC element re-examined?", which `matchedA`/`matchedB` (counts
+   * only) cannot answer: a narrowed selector that drops one previously-
+   * matched element while keeping the total count non-zero is invisible to a
+   * count-only check. `matchedKeysB` mirrors `matchedB`'s `null` for a
+   * self-clash rule (no `b` side). Absent (not just empty) on a result
+   * recorded before this existed, or from a hand-built fixture — callers
+   * MUST treat an absent `matchedKeysA` as "cannot verify", never as "matched
+   * nothing".
+   */
+  matchedKeysA?: readonly string[];
+  matchedKeysB?: readonly string[] | null;
+}
+
 export interface ClashResult {
   clashes: Clash[];
   summary: ClashSummary;
   /** Present only when a cap dropped work — never silent. */
   truncated?: { reason: string; droppedPairs: number };
   rulesRun: ClashRule[];
+  /**
+   * Selector match coverage for every rule in `rulesRun`, in the same order.
+   * This is the raw signal for distinguishing "ran and found nothing" from
+   * "no rule matched anything in this model" — see
+   * {@link classifyRuleCoverage} for the presentation-facing classification.
+   * Populated by every engine-produced result (`runClash`, `findDuplicates`);
+   * optional only so hand-built `ClashResult` fixtures in tests don't need it.
+   */
+  ruleCoverage?: ClashRuleCoverage[];
   settings: { tolerance: number; excludeVoidsAndHosts: boolean };
 }
 

@@ -58,6 +58,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
     setSearchHighlightIndex,
     setSelectedEntity,
     setSelectedEntityId,
+    setSelectedEntityIds,
     addEntitiesToSelection,
     toggleEntitySelection,
     clearEntitySelection,
@@ -77,6 +78,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       setSearchHighlightIndex: s.setSearchHighlightIndex,
       setSelectedEntity: s.setSelectedEntity,
       setSelectedEntityId: s.setSelectedEntityId,
+      setSelectedEntityIds: s.setSelectedEntityIds,
       addEntitiesToSelection: s.addEntitiesToSelection,
       toggleEntitySelection: s.toggleEntitySelection,
       clearEntitySelection: s.clearEntitySelection,
@@ -127,6 +129,19 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       const ref = { modelId: r.modelId, expressId: r.expressId };
       const isLegacy = r.modelId === 'legacy' || r.modelId === '__legacy__' || models.size === 0;
       const globalId = isLegacy ? r.expressId : toGlobalIdFromModels(models, r.modelId, r.expressId);
+      // A geometry-less assembly (IfcElementAssembly, an IfcStair used as a
+      // container, …) owns no mesh — the renderer highlights `selectedEntityIds`
+      // directly, so selecting its bare id moved the camera there (frameSelection
+      // resolves it) but left nothing lit up. Mirror HierarchyPanel's own click
+      // handler (#1133): highlight the renderable parts too, with the assembly's
+      // id LAST so it stays the primary selection (tree row stays highlighted,
+      // Properties panel opens on the assembly, not an arbitrary part).
+      const renderableParts = cameraCallbacks.resolveHighlightIds?.([globalId]) ?? [];
+      setSelectedEntityIds([...renderableParts, globalId]);
+      // setSelectedEntityIds doesn't touch selectedModelId, so a prior
+      // model-header click (HierarchyPanel -> setSelectedModelId) leaves
+      // PropertiesPanel stuck on ModelMetadataPanel. setSelectedEntityId
+      // clears selectedModelId as its side effect (selectionSlice.ts).
       setSelectedEntityId(globalId);
       setSelectedEntity(ref);
       if (cameraCallbacks.frameSelection) {
@@ -144,6 +159,7 @@ export function SearchModalText({ results, availableModelIds, onClose }: SearchM
       searchQuery,
       setSelectedEntity,
       setSelectedEntityId,
+      setSelectedEntityIds,
     ],
   );
 

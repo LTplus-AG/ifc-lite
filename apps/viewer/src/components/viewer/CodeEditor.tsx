@@ -20,6 +20,8 @@ import { syntaxHighlighting, defaultHighlightStyle, bracketMatching, indentOnInp
 import { highlightSelectionMatches } from '@codemirror/search';
 import { NAMESPACE_SCHEMAS } from '@ifc-lite/sandbox/schema';
 import type { ScriptEditorSelection, ScriptEditorTextChange } from '@/lib/llm/types';
+import { planScriptEditorChanges } from '@/lib/llm/script-editor-changes';
+import { posthog } from '@/lib/analytics';
 
 /** Shared structural styles (mode-agnostic) */
 const baseTheme = EditorView.theme({
@@ -318,11 +320,34 @@ export function CodeEditor({
         if (!active) return;
         const safeFrom = Math.max(0, Math.min(selection.from, nextContent.length));
         const safeTo = Math.max(safeFrom, Math.min(selection.to, nextContent.length));
-        const changes = options?.changes && options.changes.length > 0
-          ? options.changes
-          : [{ from: 0, to: active.state.doc.length, insert: nextContent }];
+        // Incremental specs are SEQUENTIAL and measured against the store's
+        // copy of the script; `planScriptEditorChanges` replays them onto THIS
+        // live document and verifies they reproduce `nextContent`. Handing the
+        // raw array to one `dispatch` read them as original-document
+        // coordinates instead — the uncaught RangeError of #2357 / #2300.
+        const plan = options?.changes && options.changes.length > 0
+          ? planScriptEditorChanges(active.state.doc, options.changes, nextContent)
+          : null;
+        if (plan && !plan.ok) {
+          // Degrade to a whole-document set below: coarser undo granularity,
+          // but the editor still holds exactly the text the store records.
+          posthog.captureException(
+            new Error(`Script editor incremental apply rejected: ${plan.reason}`),
+            {
+              context: 'script_editor_apply',
+              rejection_reason: plan.reason,
+              doc_length: plan.docLength,
+              expected_length: plan.expectedLength,
+              range_from: plan.rangeFrom,
+              range_to: plan.rangeTo,
+              change_count: options?.changes?.length ?? 0,
+            },
+          );
+        }
         active.dispatch({
-          changes,
+          changes: plan?.ok
+            ? plan.changes
+            : { from: 0, to: active.state.doc.length, insert: nextContent },
           selection: { anchor: safeFrom, head: safeTo },
           annotations: options?.userEvent ? [Transaction.userEvent.of(options.userEvent)] : undefined,
         });

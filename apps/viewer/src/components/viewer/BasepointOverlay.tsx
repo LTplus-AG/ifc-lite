@@ -85,7 +85,7 @@ export function BasepointOverlay() {
         mapConversion: selection.eff.mapConversion,
         projectedCRS: selection.eff.projectedCRS,
         lengthUnitScale: selection.eff.lengthUnitScale,
-        preAlignmentCoordinateInfo: model?.preAlignmentCoordinateInfo,
+        preAlignmentCoordinateInfo: model?.preAlignment?.coordinateInfo,
       },
     };
   }, [models, anchorModelIdOverride, georefMutations]);
@@ -116,7 +116,7 @@ export function BasepointOverlay() {
           mapConversion: eff?.mapConversion,
           projectedCRS: eff?.projectedCRS,
           lengthUnitScale: eff?.lengthUnitScale,
-          preAlignmentCoordinateInfo: model.preAlignmentCoordinateInfo,
+          preAlignmentCoordinateInfo: model.preAlignment?.coordinateInfo,
         };
         const anchorIsThis = anchorInput.id === modelId;
         const placement = await computeIfcOriginViewerPosition(

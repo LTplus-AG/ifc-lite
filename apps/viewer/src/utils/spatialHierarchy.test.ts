@@ -12,6 +12,7 @@ import {
   StringTable,
 } from '@ifc-lite/data';
 import { rebuildSpatialHierarchy, rebuildOnDemandMaps, registerAuthoredElement, buildSpatialAncestryIndex, collectSpatialContainerNames } from './spatialHierarchy';
+import { MATERIAL_DEF_TYPES } from './materialDefinitionTypes';
 
 describe('registerAuthoredElement', () => {
   function baseHierarchy() {
@@ -552,33 +553,45 @@ describe('rebuildOnDemandMaps', () => {
     assert.deepEqual(onDemandMaterialMap.get(5), [40, 41], 'list[0] = RelatingMaterial of the lowest rel express id');
   });
 
-  it('recognises IFC4 material subtypes as RelatingMaterial (cache parity)', () => {
-    // IfcMaterialLayerWithOffsets / IfcMaterialProfileWithOffsets /
-    // IfcMaterialProfileSetUsageTapering are legal IfcMaterialSelect members;
-    // a fresh parse maps them, so the cache rebuild must too.
+  it('maps EVERY IfcMaterialSelect member as RelatingMaterial (cache parity)', () => {
+    // Driven off the shared table rather than a hand-picked trio: a fresh parse
+    // maps any of these as RelatingMaterial, so the cache rebuild must too, and
+    // a new member added to MATERIAL_DEF_TYPES is covered here automatically.
+    // (materialDefinitionTypes.test.ts is what holds that table to the schema.)
+    const members = [...MATERIAL_DEF_TYPES].sort();
+    // Anti-vacuity by name, not by count: one member per IfcMaterialSelect root
+    // plus the bare/offset subtypes a cache rebuild used to drop.
+    for (const required of ['IFCMATERIAL', 'IFCMATERIALLIST', 'IFCMATERIALLAYERSETUSAGE', 'IFCMATERIALCONSTITUENT', 'IFCMATERIALLAYERWITHOFFSETS']) {
+      assert.ok(members.includes(required), `${required} must be covered by this test`);
+    }
+
     const strings = new StringTable();
-    const entities = new EntityTableBuilder(6, strings);
-    entities.add(5, 'IFCWALL', 'w0', 'Wall', '', '', true);
-    entities.add(6, 'IFCCOLUMN', 'c0', 'Column', '', '', true);
-    entities.add(7, 'IFCBEAM', 'b0', 'Beam', '', '', true);
-    entities.add(60, 'IFCMATERIALLAYERWITHOFFSETS', 'lo0', 'Layer', '', '');
-    entities.add(61, 'IFCMATERIALPROFILEWITHOFFSETS', 'po0', 'Profile', '', '');
-    entities.add(62, 'IFCMATERIALPROFILESETUSAGETAPERING', 'pt0', 'Taper', '', '');
-
+    const entities = new EntityTableBuilder(members.length * 2, strings);
     const builder = new RelationshipGraphBuilder();
-    builder.addEdge(60, 5, RelationshipType.AssociatesMaterial, 100);
-    builder.addEdge(61, 6, RelationshipType.AssociatesMaterial, 101);
-    builder.addEdge(62, 7, RelationshipType.AssociatesMaterial, 102);
+    const byType = new Map<string, number[]>();
+    const expected = new Map<number, number[]>();
 
-    const entityIndex = makeEntityIndex(new Map<string, number[]>([
-      ['IFCMATERIALLAYERWITHOFFSETS', [60]],
-      ['IFCMATERIALPROFILEWITHOFFSETS', [61]],
-      ['IFCMATERIALPROFILESETUSAGETAPERING', [62]],
-    ]));
+    members.forEach((typeName, i) => {
+      const elementId = 1000 + i;
+      const materialId = 2000 + i;
+      entities.add(elementId, 'IFCWALL', `w${i}`, 'Wall', '', '', true);
+      entities.add(materialId, typeName, `m${i}`, 'Def', '', '');
+      builder.addEdge(materialId, elementId, RelationshipType.AssociatesMaterial, 3000 + i);
+      byType.set(typeName, [materialId]);
+      expected.set(elementId, [materialId]);
+    });
 
-    const { onDemandMaterialMap } = rebuildOnDemandMaps(entities.build(), builder.build(), entityIndex);
-    assert.deepEqual(onDemandMaterialMap.get(5), [60]);
-    assert.deepEqual(onDemandMaterialMap.get(6), [61]);
-    assert.deepEqual(onDemandMaterialMap.get(7), [62]);
+    const { onDemandMaterialMap } = rebuildOnDemandMaps(
+      entities.build(),
+      builder.build(),
+      makeEntityIndex(byType),
+    );
+    for (const [elementId, materialIds] of expected) {
+      assert.deepEqual(
+        onDemandMaterialMap.get(elementId),
+        materialIds,
+        `association from ${members[elementId - 1000]} was dropped by the cache rebuild`,
+      );
+    }
   });
 });

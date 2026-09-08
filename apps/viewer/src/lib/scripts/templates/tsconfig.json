@@ -3,10 +3,21 @@
     "target": "ES2022",
     "module": "ES2022",
     "moduleResolution": "bundler",
+    // ES2022 only, deliberately no "DOM": the sandbox global scope has exactly
+    // two members, `bim` and `console`, both declared by bim-globals.d.ts. The
+    // DOM lib would compile a template calling `document`, `fetch` or
+    // `console.table`, none of which exist in QuickJS.
     "lib": ["ES2022"],
     "strict": true,
     "noEmit": true,
-    "skipLibCheck": true
+    // MUST stay false. bim-globals.d.ts is the SUBJECT of this project, not a
+    // dependency of it, and `skipLibCheck: true` skips every .d.ts — so errors
+    // inside the generated file were not reported at all. With it on, a
+    // `tsReturn` naming a type the generator never emits (`BimClash.Nope`)
+    // compiled clean; with it off the same mutation fails with TS2694 (#2422).
+    // Nothing else here is a .d.ts and the templates import nothing, so this
+    // costs only the TS lib files.
+    "skipLibCheck": false
   },
   "include": ["bim-globals.d.ts", "*.ts"],
   "exclude": ["tsconfig.json"]

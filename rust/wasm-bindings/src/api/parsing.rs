@@ -77,6 +77,17 @@ impl IfcAPI {
             last_position = end;
         }
 
+        // The scanner drops records whose instance name does not fit `u32`
+        // (#3395), and may have stopped the whole scan early on a malformed
+        // record (#3695) — the Rust twin of the TS fix on
+        // `EntityScanResult.malformedRecordCount`. Either way `refs` can come
+        // back quietly short, so say it: the message and its destination are
+        // core's (the module's `init` bound the sink to the browser console).
+        ifc_lite_core::report_scan_diagnostics(
+            scanner.skipped_oversized_ids(),
+            scanner.malformed_record_start().is_some(),
+        );
+
         to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
     }
 
@@ -114,6 +125,14 @@ impl IfcAPI {
                 });
             }
         }
+
+        // Same refusals, same reports: this scan filters to geometry-bearing
+        // entities, but the records the scanner refused or never reached
+        // (past a #3695 malformed stop) are equally missing here (#3395).
+        ifc_lite_core::report_scan_diagnostics(
+            scanner.skipped_oversized_ids(),
+            scanner.malformed_record_start().is_some(),
+        );
 
         to_value(&refs).unwrap_or_else(|_| js_sys::Array::new().into())
     }

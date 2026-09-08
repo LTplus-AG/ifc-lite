@@ -28,6 +28,22 @@ export interface GlobalIdLookup {
 // WebGPU picking uses r32uint (max 4,294,967,295)
 const MAX_SAFE_OFFSET = 2_000_000_000;
 
+// Reserved headroom appended after every model's own maxExpressId, on top of
+// the +1 gap, before the next model's offset begins.
+//
+// StoreEditor.addEntity() (packages/mutations/src/store-editor.ts) allocates
+// new overlay entity ids from a per-model watermark that starts at that
+// model's OWN maxExpressId + 1 — it has no knowledge of this registry's
+// global offset packing. With only a bare +1 gap between models, adding even
+// a single new entity (AddElement tool, IDS auto-fix, a script) to a
+// non-last federated model produces a globalId that lands exactly inside the
+// NEXT model's already-assigned real-entity range: the new entity silently
+// resolves as a genuine, unrelated entity in that other model (annotations,
+// BCF markup, and storey inference all target the wrong element with no
+// error surfaced). This headroom makes that collision structurally
+// unreachable for any realistic number of overlay-added entities per model.
+const OVERLAY_ID_HEADROOM = 1_000_000;
+
 /**
  * Central registry for multi-model federation
  * Manages ID offsets and provides O(1) to-global / O(log N) from-global transformations
@@ -78,8 +94,10 @@ export class FederationRegistry {
     // Keep sorted by offset for binary search
     this.sortedRanges.sort((a, b) => a.offset - b.offset);
 
-    // Next model starts after this model's range (+1 gap for safety)
-    this.nextOffset = offset + maxExpressId + 1;
+    // Next model starts after this model's range (+1 gap for safety), plus
+    // reserved headroom for mutation-overlay ids allocated into this model's
+    // own space after load (see OVERLAY_ID_HEADROOM above).
+    this.nextOffset = offset + maxExpressId + 1 + OVERLAY_ID_HEADROOM;
 
     return offset;
   }

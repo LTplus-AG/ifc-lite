@@ -245,7 +245,7 @@ function buildDescription(
  */
 function headerFilesForGroup(
   group: ClashGroup,
-  date: string,
+  date: string | undefined,
   modelNameOf?: (model: string) => string,
 ): BCFHeaderFile[] {
   const ids = unique(

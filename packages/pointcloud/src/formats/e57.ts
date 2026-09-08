@@ -39,7 +39,13 @@ const TEXT_DECODER = new TextDecoder();
  * DecodedPointChunk (positions concatenated). Returns null when the
  * file has no scans.
  */
-export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
+export function decodeE57(
+  bytes: Uint8Array,
+  /** See `decodeE57Scan`'s `originOffset` param (extends #1804's LAS/LAZ
+   *  pattern). Applied per-scan to cartesian (no pose) or pose translation
+   *  (posed scan) — never both, see `applyPoseInPlace`. */
+  originOffset?: readonly [number, number, number],
+): DecodedPointChunk | null {
   const header = parseE57FileHeader(bytes);
   const logical = stripPageCrc(bytes, header.pageSize);
   const xmlBytes = logical.subarray(header.xmlLogicalOffset, header.xmlLogicalOffset + header.xmlLogicalLength);
@@ -60,9 +66,9 @@ export function decodeE57(bytes: Uint8Array): DecodedPointChunk | null {
       entry.binaryFileOffset,
       header.pageSize,
     );
-    const chunk = decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset });
+    const chunk = decodeE57Scan(logical, { ...entry, binaryFileOffset: dataLogicalOffset }, originOffset);
     if (entry.pose) {
-      applyPoseInPlace(chunk.positions, chunk.pointCount, entry.pose);
+      applyPoseInPlace(chunk.positions, chunk.pointCount, entry.pose, originOffset);
       chunk.bbox = computeBBox(chunk.positions);
     }
     return chunk;
@@ -111,11 +117,26 @@ export function applyPoseInPlace(
   positions: Float32Array,
   pointCount: number,
   pose: E57Pose,
+  /**
+   * Native (X, Y, Z)-axis offset subtracted from the pose's translation
+   * (in f64) before it's added to the rotated position and narrowed to
+   * f32 — extends #1804's LAS/LAZ `originOffset` pattern to E57's posed
+   * scans. `positions` is the scan's LOCAL frame (small values, already
+   * narrowed once by `decodeE57Packet` with NO offset applied — subtracting
+   * a global offset before rotation would incorrectly rotate it). The
+   * translation is what carries the scan into the file's (potentially
+   * survey-scale) global frame, so that's where the offset belongs:
+   * `global - offset = R * local + (T - offset)`, still computed in f64
+   * right up to the assignment below, so the residual written to the
+   * Float32Array stays small regardless of how large T is. `undefined`
+   * subtracts nothing, preserving prior behaviour byte-for-byte.
+   */
+  originOffset?: readonly [number, number, number],
 ): void {
   const { w, x, y, z } = pose.rotation;
-  const tx = pose.translation.x;
-  const ty = pose.translation.y;
-  const tz = pose.translation.z;
+  const tx = pose.translation.x - (originOffset?.[0] ?? 0);
+  const ty = pose.translation.y - (originOffset?.[1] ?? 0);
+  const tz = pose.translation.z - (originOffset?.[2] ?? 0);
   const r00 = 1 - 2 * (y * y + z * z);
   const r01 = 2 * (x * y - w * z);
   const r02 = 2 * (x * z + w * y);

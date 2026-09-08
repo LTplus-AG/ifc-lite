@@ -21,7 +21,7 @@ VITE_COLLAB_ENABLED=true VITE_COLLAB_SERVER_URL=ws://localhost:1234 pnpm --filte
 ```
 
 There's also a one-command demo that boots the server plus a tiny client:
-`pnpm collab:demo` (see [Testing collaboration](collab-testing.md)).
+`pnpm collab:demo` (see [Testing collaboration](../contributing/collaboration-testing.md)).
 
 ## Configuration
 
@@ -195,5 +195,5 @@ with the same env, behind TLS.
 ## See also
 
 - [Real-Time Collaboration](collaboration.md) — the user-facing feature.
-- [Testing collaboration](collab-testing.md) — unit/integration/live test recipes.
-- [Architecture: collaboration plan](../architecture/collab-plan.md) — the CRDT-on-IFCX design.
+- [Testing collaboration](../contributing/collaboration-testing.md) — unit/integration/live test recipes.
+- [Architecture: collaboration](../architecture/collaboration.md) — the CRDT-on-IFCX design.

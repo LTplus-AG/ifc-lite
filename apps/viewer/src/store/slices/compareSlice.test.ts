@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { createCompareSlice, type CompareSlice } from './compareSlice.js';
 
@@ -71,5 +71,78 @@ describe('CompareSlice - ignored-classes blacklist (#1470)', () => {
     state.setCompareExcludedTypes(['IfcSpace', 'IfcWall']);
     state.clearCompareExcludedTypes();
     assert.deepStrictEqual(state.compareExcludedTypes, []);
+  });
+});
+
+// The content-matching toggle persists through `window.localStorage`, and the
+// slice's persistence helpers early-return on `typeof window === 'undefined'`.
+// Without a window the default/load branches are never reached at all, so a
+// wrong default would sail through - these tests install a fake window so the
+// real branch is the one under test.
+describe('CompareSlice - content matching toggle (#1891)', () => {
+  const KEY = 'ifc-lite:compare-match-by-content-v1';
+  let storage: Map<string, string>;
+  let failReads = false;
+
+  function installWindow(): void {
+    storage = new Map<string, string>();
+    Reflect.set(globalThis, 'window', {
+      localStorage: {
+        getItem: (key: string) => {
+          if (failReads) throw new Error('denied');
+          return storage.get(key) ?? null;
+        },
+        setItem: (key: string, value: string) => {
+          storage.set(key, value);
+        },
+      },
+    });
+  }
+
+  function makeSlice(): CompareSlice {
+    let state: CompareSlice;
+    const setState = (partial: Partial<CompareSlice> | ((s: CompareSlice) => Partial<CompareSlice>)) => {
+      state = { ...state, ...(typeof partial === 'function' ? partial(state) : partial) };
+    };
+    state = createCompareSlice(setState, () => state, {} as never);
+    return new Proxy({} as CompareSlice, { get: (_t, prop) => state[prop as keyof CompareSlice] });
+  }
+
+  beforeEach(() => {
+    failReads = false;
+    installWindow();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(globalThis, 'window');
+  });
+
+  it('defaults ON - a re-export otherwise reads as "everything deleted, everything added"', () => {
+    assert.strictEqual(makeSlice().compareMatchByContent, true);
+  });
+
+  it('remembers an explicit opt-out', () => {
+    storage.set(KEY, 'false');
+    assert.strictEqual(makeSlice().compareMatchByContent, false);
+  });
+
+  it('remembers an explicit opt-in', () => {
+    storage.set(KEY, 'true');
+    assert.strictEqual(makeSlice().compareMatchByContent, true);
+  });
+
+  it('falls back to ON when the preference cannot be read', () => {
+    failReads = true;
+    assert.strictEqual(makeSlice().compareMatchByContent, true);
+  });
+
+  it('persists both directions through the setter', () => {
+    const state = makeSlice();
+    state.setCompareMatchByContent(false);
+    assert.strictEqual(state.compareMatchByContent, false);
+    assert.strictEqual(storage.get(KEY), 'false');
+    state.setCompareMatchByContent(true);
+    assert.strictEqual(state.compareMatchByContent, true);
+    assert.strictEqual(storage.get(KEY), 'true');
   });
 });

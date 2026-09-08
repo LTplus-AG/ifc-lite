@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import type { AABB, ClashElement, ClashRule, ClashStatus, Vec3 } from '../types.js';
+import type { AABB, ClashDistanceKind, ClashElement, ClashRule, ClashStatus, Vec3 } from '../types.js';
 
 /**
  * One detected clash, in kernel terms: a pair of GLOBAL element indices plus the
@@ -17,6 +17,8 @@ export interface NarrowRecord {
   b: number;
   status: ClashStatus;
   distance: number;
+  /** Whether `distance` was measured on the meshes or estimated from the AABBs. */
+  distanceKind: ClashDistanceKind;
   point: Vec3;
   bounds: AABB;
 }
@@ -51,6 +53,13 @@ export interface ClashKernel {
     rule: ClashRule,
     tolerance: number,
     maxPairs: number,
+    /**
+     * Cancels the run. The TS kernel checks it every 256 candidate pairs, and
+     * yields to the event loop at the first checkpoint past its yield interval
+     * (rechecking on the way back), so an abort raised from a timer or a UI
+     * handler is observed mid-run rather than after it. A run that ends inside
+     * that first interval never yields, so it cannot observe one.
+     */
     signal?: AbortSignal,
     /**
      * Reports narrow-phase progress as `(processedPairs, totalPairs)`. The TS

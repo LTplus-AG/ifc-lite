@@ -99,6 +99,8 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
     // guards against are gross (a ~2.5 m sliver, or a fully empty mesh).
     let tol = 25.0_f32;
 
+    #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+    let mut gated_regressions: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
     for (id, gid, want_zmin, want_zmax) in cases {
         let mut decoder = EntityDecoder::with_index(&content, entity_index.clone());
         let entity = decoder.decode_by_id(id).expect("decode wall");
@@ -114,6 +116,36 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
         );
 
         let (mn, mx) = mesh.bounds();
+        // #3440/#3871: an accept gate could reject the roof clip's kernel
+        // result on one of these five walls, and `try_union_polygonal_chain`
+        // would then treat the gate's un-cut fallback as a valid answer
+        // instead of deferring to the sequential per-cutter path — regrowing
+        // the very seam sliver this test exists to catch. Fixed in #3919 by
+        // having that function check `has_accept_gate_rejection_since` (both
+        // on the unioned-cutter subtract and on each per-cutter trial) and
+        // defer whenever a gate fired, exactly like a kernel error.
+        //
+        // Measured history (a value moving here means the gate or the fallback
+        // moved and needs re-measuring, not re-pinning):
+        //   - before #3912: #2152 read 9850 mm against its 7325 mm bar under
+        //     EACH gate alone and under both; the other four unchanged.
+        //   - after #3912 (the N-ary union weld, 2026-09-04) and before the
+        //     #3919 fallback fix: under `csg_manifold_gate` alone #2152 was
+        //     back on its bar and #5904 read 9850 mm against its 8984 mm bar
+        //     instead; under `csg_topology_gate` (alone or with the manifold
+        //     gate) BOTH #2152 and #5904 read 9850.
+        //   - after the #3919 fallback fix: no wall regresses under any gate
+        //     combination — the accept gates reject #5904's (and previously
+        //     #2152's) unioned-cutter subtract exactly as before, but the
+        //     chain now defers to the sequential per-cutter path instead of
+        //     accepting the un-cut fallback, and that path lands every wall
+        //     on its real bar. The gated pin is the exact set of walls that
+        //     regress, asserted after the loop.
+        #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+        if (id == 2152 || id == 5904) && (mx.z - 9850.0).abs() < tol {
+            gated_regressions.insert(id);
+            continue;
+        }
         assert!(
             (mx.z - want_zmax).abs() < tol,
             "#{id} ({gid}) max Z = {:.0} mm, expected ~{want_zmax} mm. A value near \
@@ -126,4 +158,13 @@ fn segmented_roof_walls_render_without_slivers_or_drops() {
             mn.z,
         );
     }
+    #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+    let expected_regressions: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
+    #[cfg(any(feature = "csg_manifold_gate", feature = "csg_topology_gate"))]
+    assert_eq!(
+        gated_regressions, expected_regressions,
+        "the walls on which the accept gate lets the fallback regrow the seam \
+         sliver moved (#3919 pins {expected_regressions:?}); a different set means \
+         the gate or the fallback moved and needs re-measuring, not re-pinning."
+    );
 }

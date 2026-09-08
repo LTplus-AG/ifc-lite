@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import type { PropertySet, PropertyValue } from '@ifc-lite/parser';
 import { PropertyTable } from '../src/property-table.js';
 
 describe('PropertyTable', () => {
@@ -9,8 +10,8 @@ describe('PropertyTable', () => {
     return new PropertyTable();
   }
 
-  function makePropSet(name: string, props: Map<string, { type: string; value: any }>) {
-    const properties = new Map<string, { type: string; value: any }>();
+  function makePropSet(name: string, props: Map<string, PropertyValue>): PropertySet {
+    const properties = new Map<string, PropertyValue>();
     for (const [k, v] of props) {
       properties.set(k, v);
     }
@@ -80,6 +81,25 @@ describe('PropertyTable', () => {
 
   // ── Multiple psets per entity ─────────────────────────────────
 
+  // getProperty stopped at the FIRST same-named pset and returned null even
+  // when the property lived in a later same-named pset (findEntities, right
+  // below, already scans every same-named pset for this exact shape). #2907
+  it('should find a property in a later same-named pset when an earlier one lacks it (#2907)', () => {
+    const table = makeTable();
+    table.addPropertySet(100, makePropSet('Pset_WallCommon', new Map([
+      ['IsExternal', { type: 'boolean', value: true }],
+    ])));
+    table.addPropertySet(101, makePropSet('Pset_WallCommon', new Map([
+      ['FireRating', { type: 'string', value: '2HR' }],
+    ])));
+    table.associatePropertySet(1, 100);
+    table.associatePropertySet(1, 101);
+
+    const result = table.getProperty(1, 'Pset_WallCommon', 'FireRating');
+    expect(result).not.toBeNull();
+    expect(result!.value).toBe('2HR');
+  });
+
   it('should support multiple property sets on a single entity', () => {
     const table = makeTable();
 
@@ -128,6 +148,35 @@ describe('PropertyTable', () => {
     expect(all.size).toBe(0);
   });
 
+  // getProperties keys its result Map by pset NAME. Two IfcRelDefinesByProperties
+  // pointing at distinct IfcPropertySets that happen to share a name (the same
+  // shape #2907 fixed for getProperty, immediately above) collide on that key:
+  // the second same-named set silently overwrites the first instead of both
+  // being visible, so a real property is dropped from the result with no
+  // signal that anything went missing.
+  it('should not drop a property set when the entity carries two same-named psets (#2907 shape)', () => {
+    const table = makeTable();
+    table.addPropertySet(100, makePropSet('Pset_WallCommon', new Map([
+      ['IsExternal', { type: 'boolean', value: true }],
+    ])));
+    table.addPropertySet(101, makePropSet('Pset_WallCommon', new Map([
+      ['FireRating', { type: 'string', value: '2HR' }],
+    ])));
+    table.associatePropertySet(1, 100);
+    table.associatePropertySet(1, 101);
+
+    const all = table.getProperties(1);
+    // Both property sets are associated with the entity; the properties from
+    // BOTH must be reachable from the result, not just whichever set the
+    // dedup happened to keep.
+    const allProps = new Set<string>();
+    for (const pset of all.values()) {
+      for (const key of pset.properties.keys()) allProps.add(key);
+    }
+    expect(allProps.has('IsExternal')).toBe(true);
+    expect(allProps.has('FireRating')).toBe(true);
+  });
+
   // ── findEntities ──────────────────────────────────────────────
 
   it('should find entities matching a property value', () => {
@@ -155,6 +204,74 @@ describe('PropertyTable', () => {
     const table = makeTable();
     const result = table.findEntities('Pset_WallCommon', 'IsExternal', true);
     expect(result).toEqual([]);
+  });
+
+  // The existing findEntities case only probes true/false against true/false,
+  // where `==` and `===` agree. These pin strict equality on the pairs where
+  // they diverge, so a loosened comparison cannot answer a query about `0`
+  // with entities carrying `false`, or a query about `1` with `'1'`.
+  it('should compare property values strictly, not coercively', () => {
+    const table = makeTable();
+    table.addPropertySet(100, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'number', value: 0 }],
+    ])));
+    table.addPropertySet(101, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'boolean', value: false }],
+    ])));
+    table.addPropertySet(102, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'string', value: '1' }],
+    ])));
+    table.addPropertySet(103, makePropSet('Pset_Custom', new Map([
+      ['Count', { type: 'number', value: 1 }],
+    ])));
+    table.associatePropertySet(1, 100);
+    table.associatePropertySet(2, 101);
+    table.associatePropertySet(3, 102);
+    table.associatePropertySet(4, 103);
+
+    // Positive controls: each value is findable under its own type, so a
+    // negative result below cannot be an artefact of findEntities being blind.
+    expect(table.findEntities('Pset_Custom', 'Count', 0)).toEqual([1]);
+    expect(table.findEntities('Pset_Custom', 'Count', false)).toEqual([2]);
+    expect(table.findEntities('Pset_Custom', 'Count', '1')).toEqual([3]);
+    expect(table.findEntities('Pset_Custom', 'Count', 1)).toEqual([4]);
+
+    // Cross-type queries must not bleed: 0 !== false, 1 !== '1'.
+    expect(table.findEntities('Pset_Custom', 'Count', 0)).not.toContain(2);
+    expect(table.findEntities('Pset_Custom', 'Count', 1)).not.toContain(3);
+    expect(table.findEntities('Pset_Custom', 'Count', '')).toEqual([]);
+  });
+
+  // An entity can carry two same-named property sets (two
+  // IfcRelDefinesByProperties pointing at distinct IfcPropertySets). Both may
+  // match; the entity is still one hit, not two.
+  it('should report an entity once when two same-named psets both match', () => {
+    const table = makeTable();
+    table.addPropertySet(200, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'string', value: 'New' }],
+    ])));
+    table.addPropertySet(201, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'string', value: 'New' }],
+    ])));
+    // A second entity that matches the SAME query, so the dedup is pinned in
+    // both directions: collapsing the two psets of entity 7 into one hit is
+    // required, and collapsing two distinct matching entities into one is a
+    // bug. A non-matching set keeps the negative branch exercised too.
+    table.addPropertySet(202, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'string', value: 'New' }],
+    ])));
+    table.addPropertySet(203, makePropSet('Pset_WallCommon', new Map([
+      ['Status', { type: 'string', value: 'Existing' }],
+    ])));
+    table.associatePropertySet(7, 200);
+    table.associatePropertySet(7, 201);
+    table.associatePropertySet(8, 202);
+    table.associatePropertySet(9, 203);
+
+    // Entity 7 carries two matching psets and must appear ONCE; entity 8
+    // matches the same query independently and must NOT be swallowed.
+    expect(table.findEntities('Pset_WallCommon', 'Status', 'New')).toEqual([7, 8]);
+    expect(table.findEntities('Pset_WallCommon', 'Status', 'Existing')).toEqual([9]);
   });
 
   // ── Shared property set across entities ───────────────────────

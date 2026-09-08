@@ -95,7 +95,7 @@ ifc-lite schema              # full schema with params and return types
 ifc-lite schema --compact    # names and descriptions only
 ```
 
-The schema covers the scriptable namespaces, `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, and `export`, and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
+`ifc-lite schema` documents the `bim` object `eval`/`run` actually hand your script — a root `bim` namespace of top-level methods, plus the scriptable namespaces `model`, `query`, `viewer`, `mutate`, `store`, `lens`, `create`, `files`, `schedule`, `clash`, and `export` — and includes each method's parameter names, return type, and LLM semantic hints (`useWhen`, task tags). There `query` is the chain reached via `bim.query()` (`.byType(...).toArray()`), not a namespace of standalone lookups. That differs from the sandbox's own bridge schema shown below, where `bim.query.byType(...)` runs and returns data in one call — the sandbox and `eval`/`run` hand scripts different `bim` shapes, so pick the one matching where the script will run. Running `ifc-lite schema` first is the recommended way to author correct `eval`/`run` code. See [Using with LLM Terminals](cli.md#using-with-llm-terminals) for the wider agent workflow.
 
 ## The sandbox
 
@@ -114,6 +114,28 @@ console.log(result.value, result.logs, result.durationMs);
 ```
 
 Or reach it through the SDK as `bim.sandbox.eval(script, config)`, which returns the same `ScriptResult` (`value`, captured `logs`, `durationMs`).
+
+**When `eval()` throws.** It rejects with a `ScriptError` (carrying `message`, `logs` and `durationMs`) for a throw in the script's main body, for a CPU timeout, and — since the fix in #2078 — for a script whose entry point is `async` and whose returned promise **rejects** after its first `await`. That last case previously *resolved*: the main body had succeeded, so the rejection came back as ordinary data in `result.value` (`{ type: 'rejected', error: … }`) and a failed script looked like a clean pass. If you upgrade across that change and were relying on `eval()` resolving, you will start seeing the error propagate.
+
+One case is still **not** reported: a rejection in a promise the script never hands back — `run(); 'started'` rather than `return run()`. There is no handle to inspect, and quickjs-emscripten exposes no host rejection tracker, so nothing observes it.
+
+**When `dispose()` throws.** The same unawaited shape has a second failure mode: if that detached job exhausts the memory limit, it leaves objects orphaned on QuickJS's GC list and upstream `JS_FreeRuntime` asserts, so teardown comes back as an emscripten abort — a `SandboxAbortError` from `dispose()` ([#1922](https://github.com/LTplus-AG/ifc-lite/issues/1922)). The `eval()` that caused it resolved normally, so **teardown is the only place that run's failure is observable**: settle a run's outcome *after* disposing it, not before, or you will report a clean result for a script that died.
+
+The abort poisons the whole WASM module, not just the one sandbox. The package retires it and builds the next sandbox on a fresh instance — a few milliseconds, no page reload, and nothing to do for the common case where a sandbox is created per run.
+
+A host that keeps **one sandbox alive across many runs** — an extension runtime, a REPL — does have something to do. Its sandbox may be sitting on a module that some *other* sandbox's abort retired. It still executes scripts, but emscripten's abort latch is per module and has already fired on it, so its own teardown can no longer report a failure and it will silently leak. `Sandbox.moduleRetired` is that signal; the contract is to discard, not to reuse:
+
+```ts
+import { createSandbox, type Sandbox, type SandboxConfig } from '@ifc-lite/sandbox';
+
+async function ensureLiveSandbox(sandbox: Sandbox, config: SandboxConfig): Promise<Sandbox> {
+  if (!sandbox.moduleRetired) return sandbox;
+  sandbox.dispose();
+  return createSandbox(bim, config); // fresh module, no page reload
+}
+```
+
+Check it while the sandbox is live: `dispose()` releases the module reference, after which `moduleRetired` reads `false`. The process-wide `isSandboxRuntimeAborted()` is a diagnostic — latched for the process lifetime — not a health check; a `true` does not mean scripting is dead.
 
 **Permissions** gate which namespaces the script can touch (`model`, `query`, `viewer`, `mutate`, `store`, `lens`, `export`, `files`). The defaults are read-only: `mutate` and `store` are off, everything else on. **Limits** cap resources, defaulting to 64 MB heap, a 30-second timeout, and a 512 KB stack. A namespace whose permission is disabled is simply not built on the sandboxed `bim` handle, so a script cannot call what it was not granted.
 

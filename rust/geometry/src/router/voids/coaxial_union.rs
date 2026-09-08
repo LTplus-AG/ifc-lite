@@ -45,6 +45,9 @@
 //! env, so the default holds on both targets. All math is f64 (FMA-free,
 //! `total_cmp` ordering) before the f32 store → deterministic native==wasm.
 
+#[path = "coaxial_union3d.rs"]
+mod union3d;
+
 use nalgebra::{Matrix4, Point2, Vector3};
 
 use super::geom::{mesh_is_closed_exact, mesh_signed_volume, opening_mesh_thinnest_axis_dir};
@@ -284,7 +287,7 @@ impl GeometryRouter {
         // cutter through the host, union them in ONE N-ary arrangement, then
         // subtract the single union mesh. On failure the cluster is left unconsumed
         // for the sequential exact path.
-        if self.subtract_union3d(result, cands, members, clipper) {
+        if union3d::subtract(result, cands, members, clipper) {
             for &m in members {
                 consumed[cands[m].idx] = true;
             }
@@ -332,7 +335,7 @@ impl GeometryRouter {
         if !span_lo.is_finite() || !span_hi.is_finite() || (span_hi - span_lo) <= NORMALIZE_EPSILON {
             return None;
         }
-        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of the span + 1 mm
+        let z_tol = (span_hi - span_lo) * 0.01 + 1.0e-3; // 1% of span + 1 mm; the >=1mm floor is what makes the later slab-depth check defensive
 
         // Depth breakpoints = every cutter's z_lo / z_hi, sorted and coalesced
         // within z_tol. The intervals between consecutive breakpoints are the slabs.
@@ -365,7 +368,7 @@ impl GeometryRouter {
         let mut contributed = vec![false; fps.len()];
         for w in coalesced.windows(2) {
             let (slab_lo, slab_hi) = (w[0], w[1]);
-            let slab_depth = slab_hi - slab_lo;
+            let slab_depth = slab_hi - slab_lo; // coalesced breakpoints already differ by > `z_tol`
             if slab_depth <= NORMALIZE_EPSILON {
                 continue;
             }
@@ -480,37 +483,7 @@ impl GeometryRouter {
         accept_cut(result, cut, tri_before, vol_before, max_removed)
     }
 
-    /// 3D overlap-safe fallback: extend every member cutter through the host,
-    /// union them with the exact N-ary `union_many`, and subtract the single
-    /// watertight union mesh. Returns `true` (and updates `result`) only on a real,
-    /// non-degenerate change.
-    fn subtract_union3d(
-        &self,
-        result: &mut Mesh,
-        cands: &[UnionCand],
-        members: &[usize],
-        clipper: &ClippingProcessor,
-    ) -> bool {
-        let extended: Vec<Mesh> = members
-            .iter()
-            .map(|&m| Self::extend_opening_mesh_through_host(&cands[m].mesh, result, cands[m].dir))
-            .collect();
-        let refs: Vec<&Mesh> = extended.iter().collect();
-        let union = ClippingProcessor::consolidate_coplanar(crate::kernel::mesh_bridge::union_many(
-            &refs,
-        ));
-        if union.is_empty() || !mesh_is_closed_exact(&union) {
-            return false;
-        }
-        let tri_before = result.triangle_count();
-        let vol_before = mesh_signed_volume(result);
-        let Ok(cut) = clipper.subtract_mesh(result, &union) else {
-            return false;
-        };
-        // The 3D union of the ACTUAL cutter solids is geometrically exact, so no
-        // over-cut bound applies here.
-        accept_cut(result, cut, tri_before, vol_before, f64::INFINITY)
-    }
+
 }
 
 /// f64 Y-span of two f32 bounds (kept out of the volume expression for clarity).
@@ -630,7 +603,7 @@ fn cutter_footprint(
         z_lo = z_lo.min(s);
         z_hi = z_hi.max(s);
     }
-    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON {
+    if !z_lo.is_finite() || !z_hi.is_finite() || (z_hi - z_lo) <= NORMALIZE_EPSILON { // no `z_tol` here; the caller applies it when coalescing breakpoints
         return None;
     }
     for t in mesh.indices.chunks_exact(3) {
@@ -677,7 +650,7 @@ fn cutter_footprint(
         .sum();
     let area = 0.5 * cap_area_sum;
     let depth = z_hi - z_lo;
-    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON {
+    if area <= NORMALIZE_EPSILON || depth <= NORMALIZE_EPSILON { // `z_tol` bounds depth only; area guard stays separate
         return None;
     }
     // PRISM RECONCILIATION: a true prism along `d` satisfies `area × depth ==

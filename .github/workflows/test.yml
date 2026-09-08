@@ -5,12 +5,71 @@
 name: Test
 
 on:
+  # `edited` IS THE RETARGET EVENT, and without it a PR moved onto `main` gets
+  # NO lanes at all (#3772). The default activity types are
+  # opened/synchronize/reopened; changing a PR's base fires `edited` and nothing
+  # else. Measured on #3695/#3699/#3701: each merged `main` into its branch
+  # while still based on a feature branch -- that `synchronize` was dropped by
+  # `branches: [main]` below -- and was then retargeted, which fired only
+  # `edited`. #3699 had ZERO `Test` runs in its life. All 16 required lanes sat
+  # absent, which reads identically to "passed" on the PR surface.
+  #
+  # NO `github.event.changes.base` GATE, and that omission is the considered
+  # half of this fix rather than the lazy one. Gating the jobs so a title/body
+  # edit skips them would make every such edit publish a full set of SKIPPED
+  # check runs -- and `skipped` counts as a pass BOTH in the `test` aggregate at
+  # the foot of this file (`case "$r" in success|skipped) ;;`) and in GitHub's
+  # required-status-check evaluation, which takes the LATEST run per check name.
+  # A red PR would go green on a typo fix in its description. That is the exact
+  # absence-reads-as-success class this trigger is being widened to close.
+  #
+  # THE PRICE, STATED: every title or body edit now costs a second full 16-lane
+  # run of a head that already has a verdict -- routine on the changesets
+  # release PR, which rewrites its body after every merge. What it does NOT
+  # cost is the run already in flight; see `cancel-in-progress` below, which
+  # declines to cancel for `edited` alone.
+  #
+  # NO `ready_for_review` EITHER, and for the plainer reason: nothing in this
+  # workflow gates on `draft`, so every job already runs on a draft PR. Adding
+  # the type would buy a second run of a head that has already been judged.
   pull_request:
+    types: [opened, synchronize, reopened, edited]
+    branches: [main]
+  # Post-merge guard. Two PRs can each be green against their own base and be
+  # broken as a pair on main: #2551 removed a helper from
+  # measure-parity.test.tsx at 01:41 on 2026-08-12, #2538 added a caller of it
+  # at 06:35, and main was red from then on. Nothing ran on main, so it
+  # surfaced hours later on an unrelated first-time contributor's PR, and every
+  # open PR's Node lane was red until it was fixed.
+  push:
     branches: [main]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # PR runs share a group per ref, so a new commit supersedes the old run — the
+  # newer commit is the only one whose verdict matters.
+  #
+  # Push runs get a group PER COMMIT. Not merely `cancel-in-progress: false`:
+  # GitHub keeps only one running plus one PENDING run per group, and a newer
+  # queued run EVICTS the pending one even when cancellation is off. With three
+  # merges in quick succession, a docs-only third merge would evict the queued
+  # run for a frontend-breaking second merge, and its path filters would then
+  # skip the Node lane — leaving exactly the broken state this guard exists to
+  # catch unchecked. A per-commit group means no merge can displace another.
+  #
+  # AN `edited` RUN NEVER CANCELS (#3772). With `edited` now a trigger and the
+  # PR group keyed on the ref, an unconditional `cancel-in-progress` would let a
+  # description edit kill a 16-lane run mid-flight and start it again from
+  # scratch -- and the changesets release PR rewrites its own body after every
+  # merge to main, so this is routine, not hypothetical. The group stays keyed
+  # on the REF rather than on `head.sha`, which is the other way to stop the
+  # cancellation: a per-SHA group would put a superseded run in its own group
+  # where nothing can reach it, so a stale-head run would survive the
+  # `synchronize` that obsoleted it and publish its verdict afterwards. Keeping
+  # the ref group means a real push still cancels; only the no-op event
+  # declines to. The `edited` run itself queues behind the in-flight one and is
+  # evicted if a push arrives first, which is the right outcome.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pull_request' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && github.event.action != 'edited' }}
 
 permissions:
   contents: read
@@ -32,25 +91,31 @@ jobs:
     # Free GitHub-hosted runner. ifc-lite is a PUBLIC repo, so standard
     # `ubuntu-latest` runners are free + unlimited (GitHub only bills public
     # repos for *larger* runners). Light jobs — path filter, lint, the gate —
-    # don't need Depot's paid cores; only the Rust/WASM-compile jobs do.
+    # don't need a larger runner; Rust/WASM compilation also stays on the
+    # standard runner so routine CI remains within the Depot Developer tier.
     # See scripts/README-vercel-cost.md for the full runner-cost rationale.
     runs-on: ubuntu-latest
     outputs:
       rust: ${{ steps.filter.outputs.rust }}
       frontend: ${{ steps.filter.outputs.frontend }}
       geometry: ${{ steps.filter.outputs.geometry }}
+      python: ${{ steps.filter.outputs.python }}
       plato: ${{ steps.filter.outputs.plato }}
       docs: ${{ steps.filter.outputs.docs }}
+      agents_md: ${{ steps.filter.outputs.agents_md }}
       # `true` when the WASM source is byte-identical to the published release
-      # tag, so `build` can fetch the prebuilt bundle and run on a FREE runner
-      # instead of compiling wasm32 on a paid Depot runner. See the `build`
-      # job and scripts/ci-wasm-prebuilt-eligible.sh.
+      # tag, so `build` can fetch the prebuilt bundle instead of compiling
+      # wasm32. See the `build` job and scripts/ci-wasm-prebuilt-eligible.sh.
       wasm_prebuilt: ${{ steps.wasm.outputs.eligible }}
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+          # A push event filters against the previous commit, which a depth-1
+          # clone does not contain. PRs filter against the base ref and are
+          # unaffected, so only the push path pays the extra object.
+          fetch-depth: ${{ github.event_name == 'push' && 2 || 1 }}
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         id: filter
         with:
           filters: |
@@ -63,29 +128,163 @@ jobs:
               - 'scripts/build-wasm.sh'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
+            # AGENTS.md is the instruction file every agent reads, and
+            # scripts/check-agents-md-size.mjs gates its size and line length.
+            # It gets its OWN output rather than joining `frontend`: the gate is
+            # two `node` steps needing no build artifact and no install, and
+            # `frontend` fans out to nine jobs including four viewer shards and
+            # the e2e lane. Without a filter of its own, a PR editing only the
+            # root AGENTS.md would either run the whole frontend lane or match
+            # nothing at all -- and matching nothing is the #3314 class where a
+            # gate cannot fire on its own input.
+            agents_md:
+              # test.yml DEFINES the agents-md job, so an edit that breaks, renames
+              # or deletes its steps must be able to run it. Without this line the
+              # filter is false, the job skips, the aggregate counts `skipped` as a
+              # pass, and the row is green -- the #3314 class one level up, in the
+              # one filter that had no workflow entry while the other five did.
+              - '.github/workflows/test.yml'
+              - 'AGENTS.md'
+              - '**/AGENTS.md'
+              - 'scripts/agents-md-budget.txt'
+              - 'scripts/check-agents-md-size.mjs'
+              - 'scripts/check-agents-md-size.test.mjs'
+              - 'scripts/lib/module-size-ratchet.mjs'
+              # The gate composes its budget path from a bare 'scripts' literal,
+              # so check-ci-path-coverage derives every file under scripts/ as an
+              # input. Rather than exempt 165 prefix fragments by hand, name the
+              # tree: over-triggering is the safe direction for a reachability
+              # check (that allowlist's own header says so), and the cost is one
+              # 5-minute free-runner job with no install and no build artifact.
+              - 'scripts/**'
             frontend:
+              # A changeset naming a package that does not exist fails the
+              # RELEASE workflow, which only runs on main - so the Lint job has
+              # to see changeset-only PRs, or the check it runs cannot fire on
+              # the PR that introduces the mistake.
+              - '.changeset/**'
+              # scripts/check-changeset-bump.mjs reads the API-surface snapshot as
+              # its baseline, so the snapshot must be able to trigger the job.
+              - 'scripts/api-surface.json'
+              # oxlint lints all of `apps/` except `apps/landing`, but this
+              # filter names the two apps individually rather than `apps/**` —
+              # broadening it would drag every landing-page edit through the
+              # full frontend lane. The cost of that choice: a NEW app under
+              # `apps/` gets linted without being able to trigger the Lint job,
+              # so the PR adding it skips the gate and drops its violations on
+              # whoever touches the frontend next. Add it here when you add it.
               - 'apps/viewer/**'
               - 'apps/viewer-embed/**'
+              # `examples/*` is a pnpm-workspace member and is now a lint target
+              # (scripts/check-lint-ran.mjs). Without it here, an examples-only
+              # PR leaves `frontend` false, the Lint job never runs, and the new
+              # target protects nothing on the PRs that change those files --
+              # the same trap the comment above describes for `apps/`.
+              - 'examples/**'
               - 'packages/**'
               - 'tests/e2e/**'
               - 'playwright.config.ts'
+              # The relay handlers and their tests. `pnpm test:api` runs in this
+              # job, so without these a PR touching ONLY the relay skips the one
+              # lane that exercises its allowlists - the guard would exist and
+              # never fire, which is the failure this filter block already warns
+              # about twice above.
+              - 'server/**'
+              - 'api/**'
+              - 'tests/api/**'
+              # `pnpm test:integration` runs THIS EXACT FILE in the Node tests
+              # job. Without it here the test cannot trigger its own execution:
+              # a PR editing only the integration harness skips the only lane
+              # that runs it.
+              - 'tests/integration.test.ts'
+              # The tsconfig BOTH `pnpm test:integration` and `pnpm test:api`
+              # compile against (`tsx --tsconfig tests/tsconfig.json`). Same
+              # trap as `.oxlintrc.json` above: a PR editing only the config a
+              # lane reads must not be able to skip that lane.
+              - 'tests/tsconfig.json'
+              # The lint CONFIG, so a PR that only edits it cannot skip the
+              # Lint job that reads it. Absent CI reads as green here, and a
+              # guard cannot fire in a job that never runs.
+              - '.oxlintrc.json'
+              # EVERY workflow, not just this one and server-binaries.yml.
+              # `scripts/check-swallowed-push.mjs` declares its SCOPE to be
+              # `.github/workflows/**` and runs in the Node tests job, so with
+              # only two workflows named here the gate was unreachable on 13 of
+              # the 15 files it guards -- PR #3118 edited release.yml and
+              # docker.yml and Node tests SKIPPED. `server-binaries.yml` (the
+              # server-bin platform-parity check's input, issue #2619) and
+              # `test.yml` are subsumed by this glob; test.yml stays named
+              # individually in the OTHER filters below, which this does not
+              # cover. COST: a workflow-only PR now runs the JS lane. Every job
+              # it adds is on a FREE ubuntu-latest runner. Workflow-only PRs
+              # are rare (dependabot bumps).
+              - '.github/workflows/**'
               - 'package.json'
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
               - 'turbo.json'
               - 'tsconfig*.json'
               - 'scripts/**'
+              # `check-ci-path-coverage` reads .gitignore to decide which paths
+              # are committed source and which are build output it must not
+              # walk. That makes .gitignore an INPUT to the gate: an edit to it
+              # can turn a covered path into an uncovered one. Without this
+              # line a gitignore-only PR skips Node tests and the gate never
+              # sees the change that moved its own verdict.
+              - '.gitignore'
+              # The offset file itself. `node-tests` carries the Rust
+              # major-offset gate, and `scripts/**` above already brings the
+              # gate's own sources into this lane -- but the ONE file whose
+              # contents that gate exists to check sat in no filter at all, so
+              # a PR editing only `rust-major-offset.json` skipped the job and
+              # the gate could not fire on the change that declares the offset.
+              # Same trap this block warns about for `apps/`, `examples/` and
+              # `.oxlintrc.json` above. It goes here rather than under `rust:`
+              # because the gate is a Node step and `rust:` would additionally
+              # spin the WASM compile lane for a one-line JSON edit
+              # (scripts/README-vercel-cost.md).
+              - 'rust-major-offset.json'
               - 'tests/models/manifest.json'
               - '.github/workflows/test.yml'
             geometry:
               - 'rust/geometry/**'
+              - 'rust/core/**'
               - 'rust/processing/**'
               - 'apps/server/Cargo.toml'
               - 'Cargo.lock'
+              # Workspace inputs the feature builds inherit: a root manifest or
+              # toolchain change can break the off-by-default gate builds that
+              # only the csg-accept-gates lane compiles.
+              - 'Cargo.toml'
+              - 'rust-toolchain.toml'
               - '.github/workflows/test.yml'
               # The watertightness census sweeps the fixture set named here, so a
               # corpus change moves its pinned counts even with no code change.
               - 'tests/models/manifest.json'
+            # `scripts/lib/revert-oracle-python.mjs` (#4079) routes any
+            # `test_*.py` / `*_test.py` ANYWHERE in the repo through `python3
+            # -m pytest` — `pythonTestOwner` walks up from the test file to
+            # the nearest project marker (requirements.lock/.txt,
+            # pyproject.toml, setup.py/.cfg, Pipfile) with no directory
+            # restriction, so the routing is repo-wide, not scoped to
+            # tools/ifcopenshell_reference. The `revert-oracle` job's runner
+            # ships no Python toolchain of its own — installing one
+            # unconditionally would pay that cost on every PR for a lane most
+            # never touch. This gates that install: true only when the diff
+            # could actually be asked to run a Python test. The two globs
+            # mirror `TEST_FILE_RE`'s python alternatives in
+            # scripts/lib/revert-oracle.mjs byte-for-byte (any `test_*.py` /
+            # `*_test.py`, any depth) rather than naming known marker
+            # directories by hand, so a NEW Python test tree can never fall
+            # outside this filter the way rust/python's and the since-removed
+            # scripts/perf/evidence tree's Python test fixtures did before this
+            # fix — both already existed unfiltered when this comment was
+            # written. That evidence tree was retired in #4112; the path no
+            # longer exists and nothing needs to be looked for there.
+            python:
+              - '**/test_*.py'
+              - '**/*_test.py'
+              - '.github/workflows/test.yml'
             plato:
               - 'tools/plato/**'
               - 'rust/clash/src/generated/**'
@@ -97,14 +296,27 @@ jobs:
               - 'mkdocs.yml'
               - 'README.md'
               - 'packages/*/README.md'
+              # The two SOURCES `scripts/docs/generate-docs-sections.mjs`
+              # regenerates its sections from. They belong in `docs` rather
+              # than `frontend` on purpose: `docs` reaches the freshness check
+              # through the Docs-checks job -- one free ubuntu-latest runner,
+              # three node scripts, no build artifact and no Depot -- which is
+              # the CHEAPEST job that runs this gate. `frontend` would drag a
+              # landing-copy edit through build + typecheck + lint + the viewer
+              # shards for no added signal. Coverage holds either way: when a
+              # PR also touches frontend/rust, Docs checks skips itself and
+              # Node tests runs the same `--check`. PR #1817 changed only
+              # apps/landing/bench-data.json, and BOTH lanes skipped.
+              - 'apps/landing/**'
+              - 'tests/benchmark/baseline.json'
               - 'scripts/docs/**'
               - '.github/workflows/test.yml'
 
       # Decide whether `build` can skip the from-source wasm32 compile. The
       # probe emits `true` only when the WASM source is byte-identical to the
       # `@ifc-lite/wasm@<version>` release tag that produced the published
-      # bundle; any doubt emits `false` → build from source on Depot (unchanged
-      # behaviour). It can never green-light a stale bundle.
+      # bundle; any doubt emits `false` → build from source. It can never
+      # green-light a stale bundle.
       - name: Resolve prebuilt-WASM eligibility
         id: wasm
         run: echo "eligible=$(bash scripts/ci-wasm-prebuilt-eligible.sh)" >> "$GITHUB_OUTPUT"
@@ -116,18 +328,13 @@ jobs:
     name: Build packages + WASM
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.frontend == 'true'
-    # Runner is chosen by whether we can skip the wasm32 compile. When the WASM
-    # source is byte-identical to the published release tag (the common case on
-    # frontend-only PRs), we fetch the prebuilt @ifc-lite/wasm bundle and run on
-    # a FREE ubuntu-latest runner — no Rust toolchain, no wasm-pack, no Swatinem
-    # rust-cache write to Depot. When Rust changed we compile from source on the
-    # paid Depot runner (needs the cores + the uncapped cargo cache), exactly as
-    # before. This is the CI twin of the scripts/vercel-install.sh fast path and
-    # attacks the single largest Depot line — the wasm32 compile on ~2/3 of PRs.
-    runs-on: ${{ needs.changes.outputs.wasm_prebuilt == 'true' && 'ubuntu-latest' || 'depot-ubuntu-24.04-4' }}
-    timeout-minutes: 20
+    # Keep all routine CI on GitHub's free standard runner. This public repo's
+    # previous 4-vCPU Depot path consumed the Developer plan's included minutes
+    # in a few days; the prebuilt bundle remains a speed optimization only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           # Fixtures live in a GitHub Release (see tests/models/manifest.json
           # and AGENTS.md §9). The repo no longer uses Git LFS — explicitly
@@ -140,7 +347,7 @@ jobs:
         # v6 reads the version from the `packageManager` field in
         # package.json (`pnpm@10.8.1`); specifying `with.version` here
         # would conflict and the action errors with ERR_PNPM_BAD_PM_VERSION.
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -151,9 +358,7 @@ jobs:
       # Rust + wasm-pack for the wasm32 build (pure-Rust CSG kernel — no
       # C++ toolchain needed since M9). Single-sourced in
       # .github/actions/setup-wasm-build so the four wasm-building
-      # workflows stay in lock-step. Skipped on the prebuilt fast path — that's
-      # where the Depot minutes AND the `ci-build` Swatinem rust-cache write to
-      # Depot both disappear.
+      # workflows stay in lock-step. Skipped on the prebuilt fast path.
       - name: Setup WASM build toolchain
         if: needs.changes.outputs.wasm_prebuilt != 'true'
         uses: ./.github/actions/setup-wasm-build
@@ -250,6 +455,61 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # #3661: text review missed 10/10 independently confirmed defect cases even
+  # after rubric retuning. This asks the executable question instead: do this
+  # branch's changed tests fail when its production change is removed?
+  revert-oracle:
+    name: Changed tests observe production
+    needs: [changes, build]
+    if: >-
+      github.event_name == 'pull_request' &&
+      (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') &&
+      !contains(github.event.pull_request.labels.*.name, 'revert-oracle-exempt')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      # #4079 taught scripts/lib/revert-oracle-python.mjs to route a changed
+      # `test_*.py` / `*_test.py` ANYWHERE in the repo (routing is
+      # marker-based — `pythonTestOwner` walks up to the nearest project
+      # marker, not scoped to any one directory) through `python3 -m
+      # pytest`, but this runner's base image ships python3 with
+      # NO pytest module — an oracle run over such a diff exits BASELINE-BROKEN
+      # (`No module named pytest`), not a real verdict. Installed only when
+      # the `changes` job's `python` filter says this diff could reach that
+      # lane, mirroring ifcopenshell-parity.yml's own `full` job: the full
+      # requirements.lock, not bare pytest, because test_validate_export.py's
+      # SchemaConformanceHasTeeth cases (#4043) import ifcopenshell and are
+      # `unittest.skipUnless(HAVE_IFCOPENSHELL, ...)` — bare pytest would run
+      # them as silent skips instead of the real assertions the oracle needs
+      # to revert against.
+      - if: needs.changes.outputs.python == 'true'
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+      - if: needs.changes.outputs.python == 'true'
+        name: Install the Python toolchain the oracle's pytest lane needs
+        run: pip install -r tools/ifcopenshell_reference/requirements.lock pytest
+      - name: Prove the changed tests observe the production change
+        env:
+          PR_AUTHOR_LOGIN: ${{ github.event.pull_request.user.login }}
+        run: node scripts/check-test-revert-oracle.mjs --base origin/main --ci --json
+
   typecheck:
     name: Typecheck
     needs: [changes, build]
@@ -258,11 +518,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -279,22 +539,186 @@ jobs:
     name: Lint
     needs: [changes, build]
     if: needs.changes.outputs.frontend == 'true'
-    # Free runner — eslint runs against source, no compile.
+    # Two gates, both free-runner: oxlint over the source (no compile), and the
+    # unused-locals ratchet (scripts/check-unused-locals.mjs), which needs the
+    # built dist below because it type-checks each package. Before #2603 this
+    # lane ran NOTHING: the root script was `pnpm -r lint` and no package
+    # defined one, so it passed in 20s having checked nothing, and dead imports
+    # shipped through it.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+          # scripts/check-changeset-bump.mjs needs the last `chore: version
+          # packages` commit as its baseline. That anchor sat 130 commits back
+          # when this was wired, and the gate REFUSES on a shallow clone rather
+          # than passing, so a depth guess would turn into a flaky red.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # lint runs against source; doesn't need built dist.
+      # The unused-locals ratchet runs `tsc` per package, and a package resolves
+      # its workspace siblings through their built `dist` types — without the
+      # artifact every dependent package fails to compile, reads as
+      # unmeasurable, and the ratchet fails closed. (It was written assuming
+      # "lint needs no dist", which is true of eslint and false of this.)
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
       - run: pnpm lint
+      # THE ARTIFACT CLASS NOBODY REVIEWED. PR #3175 corrected twelve changesets
+      # by hand that would have shipped breaking changes as `patch`, with the
+      # release one command from publishing; its own body names the cause --
+      # CodeRabbit was rate-limited across the 42-PR batch and the changesets
+      # were the one artifact class nobody looked at. `pnpm lint` above validates
+      # that a changeset NAMES a real package; this validates its BUMP LEVEL.
+      - name: Check changeset bump levels against the API surface
+        run: node scripts/check-changeset-bump.mjs
+      # Executable proof the gate fires, including that the under-bump remedy
+      # says RAISE THE BUMP rather than restore the deleted export.
+      - name: Check changeset-bump gate regressions
+        run: node --test scripts/check-changeset-bump.test.mjs
+
+  # The viewer's own suite, split out of `node-tests` AND sharded four ways.
+  #
+  # Measured, not guessed. Splitting it out of node-tests took that lane from
+  # a 25:00 timeout to 5:32 SUCCESS, so everything except the viewer costs five
+  # and a half minutes. The viewer alone then still timed out at 25:29 with a
+  # whole 4-vCPU runner to itself, which is what made sharding the answer
+  # rather than more concurrency inside one job.
+  #
+  # Healthy shard timings, recorded so the next person seeing this lane creep
+  # knows what good looks like rather than only what broken looked like:
+  # 2:29, 2:01, 1:50 against a 25 minute cap.
+  #
+  # Shard membership is a hash of the file PATH, not its index in the sorted
+  # list. With `NR % n` every file after an added or removed test moves to a
+  # different shard: measured, adding ONE file reassigned 534 of 534. Two
+  # things that breaks. A flaky file wanders between shards, and "shard 1
+  # passed on PR X" stops being evidence about shard 1 on PR Y, because they
+  # are not the same set of files. I used exactly that cross-PR comparison as
+  # proof while chasing a flake, and it did not hold. With the hash, adding a
+  # file reassigns 0 of 534.
+  #
+  # Parallelism comes from the SHARDS, not from concurrency inside a shard.
+  # `--test-concurrency=1` is deliberate: at 4 a timing-sensitive test races
+  # three neighbours, and `useSandbox.runSupersession.test.tsx` failed on three
+  # unrelated PRs in one hour that way (issue #3060) while passing locally 3/3.
+  # The bump to 4 came from an earlier attempt at this lane that was MEASURED
+  # not to help on CI, and it was carried forward as harmless once sharding
+  # worked. It is not harmless, and its speedup is redundant with sharding.
+  # Cost of going back to 1, measured: ~70s versus ~19s per shard locally,
+  # roughly 8 minutes versus 2 on CI, against a 25 minute cap.
+  #
+  # Correction: dropping to 1 MITIGATED #3060, it did not fix it. The defect
+  # was in that file's fixture, which slept a flat 50ms and then asserted that
+  # a run had reached its host gate. The #1922 tests at the bottom of that file
+  # abort a WASM module, the aborted module is retired, and the next run pays a
+  # fresh `newQuickJSWASMModule()` — measured at 46-72ms on a contended
+  # machine, straddling the sleep. Reproduced locally at 11/30 failures with
+  # the exact reported `0 !== 1, then 2 !== 1`, on Node 22.13.1 AND 22.23.2,
+  # by loading the machine rather than by raising concurrency; the fixture now
+  # waits for the gate instead of predicting it, and the same load gives 30/30.
+  # So concurrency was the exposure, not the cause: this setting is still worth
+  # keeping for the other timing-sensitive tests it protects, but it is no
+  # longer what stands between #3060 and a red shard.
+  #
+  # Two earlier explanations in this file were WRONG and are corrected here,
+  # because a confident wrong comment is worse than none:
+  #
+  #  - "each process pays its own transform, with no on-disk cache" — tsx DOES
+  #    cache transforms under `os.tmpdir()/tsx-{uid}`. Measured, it barely
+  #    matters either way: the full suite is 112.0s cold versus 110.8s warm.
+  #    The dominant per-file cost is not the transform, it is EVALUATING a
+  #    ~1,200-module import graph in every forked process (~0.4s of ~0.55s).
+  #    So a shared transform cache is NOT the fix; measured benefit ~1%.
+  #
+  #  - "not a hang, just a long task". Turbo buffering explains the silence
+  #    but never proved forward progress. `node:test` has no per-file timeout,
+  #    so ONE never-exiting child holds the runner until the job cap while the
+  #    other slots finish everything else — which is exactly what identical
+  #    25:15 caps across four differently-sized shards look like.
+  #
+  # Hence `--test-timeout` in apps/viewer's script: a hung test now fails by
+  # name in two minutes instead of consuming twenty-five and reading as
+  # slowness. That is the guard this incident was missing.
+  #
+  # A timed-out lane reports as `cancelled`, which is the SAME word a
+  # supersession gets. Separate them by duration against `timeout-minutes`,
+  # never by the word: 25m16s and 25m18s against a 25 minute cap are timeouts,
+  # and nothing else in the API says so.
+  viewer-tests:
+    name: Viewer tests (shard ${{ matrix.shard }})
+    needs: [changes, build]
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Download build artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: build-output
+          path: packages
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: pnpm fixtures
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
+      # Run the package script DIRECTLY, not through turbo. Two reasons, both
+      # measured rather than assumed:
+      #
+      # 1. Turbo strips undeclared environment variables. `globalPassThroughEnv`
+      #    in turbo.json is an explicit allowlist and does not include these,
+      #    and the `test` task declares no `env`/`passThroughEnv`. Routed
+      #    through turbo, TEST_SHARD never reached the script and all four
+      #    shards ran the full 521 files, taking an identical 25:15 each. That
+      #    identical timing is what exposed it: quartering the input cannot
+      #    leave the duration unchanged.
+      # 2. `test` dependsOn `build`, so turbo also ran the viewer's Vite app
+      #    build (53s of "✓ built in 53.43s") which its tests do not need. The
+      #    sibling dists the tests DO need come from the downloaded artifact.
+      #
+      # `TEST_SHARDS`/`TEST_SHARD` select every Nth file (see apps/viewer's
+      # test script). Unset, the script takes all 521, so a local `pnpm test`
+      # is unchanged. The split is exact: 130+131+130+130 = 521 files, 521
+      # distinct paths, so nothing is dropped or run twice.
+      - run: pnpm --filter @ifc-lite/viewer run test
+        env:
+          TEST_SHARDS: '4'
+          TEST_SHARD: ${{ matrix.shard }}
 
   node-tests:
     name: Node tests
@@ -304,14 +728,42 @@ jobs:
     # 25 min: the job also runs the previously dark ifcx/renderer suites and
     # the integration harness now; 18 min left no headroom (timed out at the
     # integration step on a cold-ish run).
+    #
+    # 25 stopped being enough on 2026-08-21 and the lane timed out on MAIN.
+    #
+    # DISAMBIGUATION RULE, because this cost hours: a timed-out lane reports as
+    # `cancelled`, the SAME word a supersession gets. Nothing in the API
+    # distinguishes them. Separate them by DURATION against `timeout-minutes` —
+    # 25m16s, 25m18s and 25m19s against a 25 minute cap are timeouts. Also note
+    # turbo BUFFERS a task's output until the task ends, so a task that never
+    # finishes prints nothing and reads as a hang rather than as slowness.
+    #
+    # The viewer suite now runs in its own concurrent job (`viewer-tests`)
+    # rather than at the tail of this one. Raising the cap was rejected: it
+    # went 18 -> 25 once already for this reason, and buys time rather than
+    # headroom.
+    #
+    # If this lane needs attention again, `@ifc-lite/provenance` is the next
+    # target: it alone spent 396s of the run that exposed this, with single
+    # tests at 87s and 38s.
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+          # scripts/check-changeset-bump.test.mjs asserts that the gate PASSES on
+          # the real repository and is not vacuous. The gate resolves its baseline
+          # from the last `chore: version packages` commit, so on the default
+          # depth-1 checkout it correctly REFUSES and that test fails. The gate
+          # itself runs in the `lint` job, which already carries this; its TEST
+          # runs here, via the scripts/ glob catch-all, and needs the same history.
+          #
+          # Not skipped on a shallow clone instead: a skipped test reads as green,
+          # which is the failure mode this repo's gates exist to prevent.
+          fetch-depth: 0
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -331,8 +783,343 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       - name: Check test wiring
         run: node scripts/check-test-wiring.mjs
+      # Executable proof the wiring gate cannot pass vacuously — the failure
+      # mode it exists to catch is exactly the one it could have itself. Its
+      # first fixture reconstructs #3062's pre-wiring state (a gate script and
+      # its test committed with no workflow step and no package.json entry),
+      # which the earlier checker could not see at all because `scripts/` was
+      # outside its `packages`/`apps` scan. The rest pin the two directions
+      # that matter: a package.json entry nobody invokes is NOT wiring, and
+      # the glob catch-all below reaching a gate's TEST does not excuse the
+      # gate SCRIPT never executing.
+      - name: Check test-wiring gate regressions
+        run: node --test scripts/check-test-wiring.test.mjs
+      # typecheck-tests.mjs writes the `extends` of every generated test
+      # program. A bare (non-`./`-prefixed) value is resolved by tsc as a NODE
+      # MODULE, so the base config is not found and the `noEmit` it carries
+      # silently stops applying -- a repo-root run then scattered 9,609
+      # untracked .js/.d.ts/.map files through the source tree (#2664 review).
+      # Nothing about that is visible in normal use, so it is pinned here.
+      - name: Check typecheck-tests extends resolution
+        run: node --test scripts/typecheck-tests.test.mjs
+      # A test that reads its subject's SOURCE and asserts on the text passes
+      # while the behaviour is broken -- SearchModal.filter's stayed 5/5 green
+      # with the row handler unwired (#2396 verbatim). The harness that made
+      # the behavioural version look impossible now exists in
+      # apps/viewer/src/test/, so this ratchets the remaining list down (#2434).
+      - name: Check for new source-text assertions
+        run: node scripts/check-source-text-assertions.mjs
+      # That gate shipped untested and then acquired a NARROWING: a predicate
+      # counts only when applied to a value a file read produced, which is what
+      # the docblock always claimed and what the flat version never checked.
+      # A narrowing can only ever flag less, so both halves are executable --
+      # every taint shape it must still catch, and the subprocess-output shape
+      # it must not.
+      - name: Check the source-text detector's own regressions
+        run: node --test scripts/check-source-text-assertions.test.mjs
+      # ALLOWLIST_CEILING is a count, so a commit that removes one row and adds
+      # a DIFFERENT one leaves the count untouched and the swap invisible
+      # (#3664). This pins the allowlist IDENTITY check that catches it,
+      # against real synthetic git history (same method as
+      # check-module-size.test.mjs's gitTree()).
+      - name: Check the source-text allowlist identity ratchet
+        run: node --test scripts/check-source-text-assertions-identity.test.mjs
+      # That gate's SCAN SCOPE is packages/ and apps/ only -- `grep -c rust` over
+      # it returns 0 -- so the same AGENTS.md rule was unenforced across the
+      # whole rust/ tree, demonstrated rather than inferred: a genuine
+      # `fs::read_to_string(".../foo.rs")` plus a `contains` planted in a real
+      # Rust test left CI green (#3129, then #3195). This is the sibling gate,
+      # with its own lexer, because the TypeScript one's precision comes from a
+      # real parse tree that a regex pass sharing the file would erode.
+      # Its own tests run FIRST, for the reason the refwalk pair states: this
+      # check's value is entirely in not passing vacuously, so a broken detector
+      # must fail here rather than report a clean tree.
+      - name: Check Rust source-text gate's own tests
+        run: node --test scripts/check-rust-source-text-assertions.test.mjs
+      - name: Check for source-text assertions in Rust tests
+        run: node scripts/check-rust-source-text-assertions.mjs
+      # A walk that follows a file-supplied entity reference with no visited set
+      # and no depth cap overflows the Rust stack on a self-referential
+      # reference, which is SIGABRT rather than a catchable panic -- in the wasm
+      # geometry worker it takes down the instance (#2866). Six sites were fixed
+      # one at a time (#2868-#2874) and #2873 wrote the guard-choice rule into
+      # AGENTS.md, but a convention does not fail CI when a seventh lands (#2944).
+      # Its own tests run first: this check's value is entirely in not passing
+      # vacuously, so a broken detector must fail here, not report a clean tree.
+      # Both files: check-refwalk-guards.test.mjs covers the harness (scan
+      # roots, candidate floor, allowlist ratchet), refwalk-classify.test.mjs
+      # covers the DETECTOR. Running only the first would leave the half that
+      # decides flagged/not-flagged untested in CI.
+      - name: Check refwalk gate's own tests
+        run: node --test scripts/check-refwalk-guards.test.mjs scripts/lib/refwalk-classify.test.mjs
+      - name: Check for unguarded entity-reference walks
+        run: node scripts/check-refwalk-guards.mjs
+      # AGENTS.md has asked for TypeScript modules under ~400 lines since long
+      # before this gate existed, and self-policing left 312 files over the
+      # line. A convention with no gate ratchets the wrong way: the allowlist
+      # is the frozen debt. The gate has exactly two teeth and this step fails
+      # on either: a NEW source file over 400 lines with no allowlist row, and
+      # an allowlisted file that GREW past its recorded budget. Raising a
+      # budget by hand is NOT one of them (#3745) -- it is sanctioned, and the
+      # allowlist row's own diff is the reviewable line, read by a human in
+      # the PR rather than failed here.
+      - name: Check TypeScript module size ratchet
+        run: node scripts/check-module-size.mjs
+      # Executable proof the ratchet cannot pass vacuously: a gate that
+      # measured nothing -- no files, a missing search root, an empty or
+      # unreadable allowlist -- would report the same clean line as a real
+      # pass. check-module-size.test.mjs covers the harness (tree walk,
+      # allowlist ratchet, --update); lib/module-size-ratchet.test.mjs covers
+      # the counting underneath it, plus the digest helpers that still back
+      # the Rust twin's pin and no longer gate anything on this side.
+      - name: Check module-size ratchet gate regressions
+        run: node --test scripts/check-module-size.test.mjs scripts/lib/module-size-ratchet.test.mjs
+      # An entity can legitimately carry two distinct property/quantity sets
+      # sharing the same name (type + occurrence). `sets.find(s => s.name ===
+      # x)` only ever sees the first one -- fixed one call site at a time
+      # across #2907, #3463, #3465, and this family's own PR, each rediscovered
+      # independently. This is the shape gate: it fails on a NEW two-step
+      # .find(set) -> .find(property/quantity) on what looks like an entity's
+      # (possibly-repeating) sets, so the next lookup can't reintroduce it.
+      - name: Check for the same-named-property-set .find() shape
+        run: node scripts/check-pset-name-find.mjs
+      # The version every Rust crate is published at is the npm version with
+      # `rust-major-offset.json`'s major offset applied (#3216). That offset is
+      # applied by `scripts/sync-versions.js`, which runs ONCE per release
+      # inside `pnpm run version` -- so between releases the file and the
+      # manifests can disagree with nothing to notice, and the first symptom
+      # would be a `cargo publish` at a version meaning something other than
+      # what the file claims. Running it here, on every PR, is what makes the
+      # `chore: version packages` PR (the one commit that actually moves these
+      # literals) reviewable before it publishes.
+      # Its own tests run FIRST, for the reason the pairs above state: this
+      # gate's value is entirely in not passing over a tree it never read, so a
+      # broken detector must fail here rather than report agreement.
+      - name: Check Rust major-offset gate's own tests
+        run: node --test scripts/check-rust-major-offset.test.mjs scripts/lib/rust-major-offset.test.mjs scripts/sync-versions.test.mjs
+      - name: Check Rust crate version matches the declared major offset
+        run: node scripts/check-rust-major-offset.mjs
+      # A hidden tab never delivers an animation frame, so an unbounded
+      # `await new Promise(r => requestAnimationFrame(r))` in the load pipeline
+      # parks finalize / WASM release / setLoading(false) until the user comes
+      # back (#2385). Absence over five files is a lint, not a unit test --
+      # it used to be the one non-executable case in frameWait.test.ts (#2434).
+      - name: Check for unbounded animation-frame waits
+        run: node scripts/check-unbounded-frame-wait.mjs
+      # Every `new GeometryProcessor(...)` must free its WASM handle on all
+      # paths. AGENTS.md required this already, but self-policing decayed one
+      # call site at a time until 12 sites leaked (#1959) -- including the
+      # viewer's canonical load path, which fires on every IFC load.
+      - name: Check WASM handle disposal
+        run: node scripts/check-wasm-disposal.mjs
+      # A collab recipient's meshes are hydrated from blobs baked at
+      # `meta.placementBaseline`, so placement has to be re-derived from the doc
+      # after every reconstruct -- otherwise a late joiner renders moved
+      # elements at the wrong place, and a peer's create/delete silently reverts
+      # every applied move. `placement-sweep.ts` is unit-tested; its CALL SITES
+      # are what this pins, because `startCollab`'s recipient branch needs
+      # jsdom, IndexedDB, `import.meta.env` and a websocket and cannot be driven
+      # under `tsx --test`.
+      - name: Check collab placement sweep
+        run: node scripts/check-collab-placement-sweep.mjs
+      # The collab recipient re-derives the shared model from the CRDT on every
+      # peer edit; writing that through `setIfcDataStore` / `setGeometryResult`
+      # targets `activeModelId`, so a recipient with their own file active lost
+      # that file's store and meshes (#2705). `applyRoomModelData` fixes it and
+      # is unit-tested -- but the CALL SITES are what was wrong, and reverting
+      # all three leaves `tsc --noEmit` clean and the viewer suite green: the
+      # path needs jsdom, IndexedDB, `import.meta.env` and a websocket, so it
+      # cannot be driven under `tsx --test`. The wiring is pinned here instead.
+      - name: Check collab room-model targeting
+        run: node scripts/check-collab-room-model-target.mjs
+      # Executable proof the guard above cannot be evaded: a template literal
+      # spelling the required call with the real call deleted (a hole a
+      # CodeRabbit CLI run found in `blankNoise`) and a banned member hidden
+      # inside a `${...}` interpolation both run against mutated copies of the
+      # real sources in a temp tree and must turn the gate red.
+      - name: Check collab room-model targeting gate regressions
+        run: node --test scripts/check-collab-room-model-target.test.mjs
+      # tsx's SYNCHRONOUS loader hook (`module.registerHooks`, Node >= 22.15.0)
+      # applies the tsconfig `paths` mapping itself and short-circuits, so an
+      # aliased specifier never reaches an async `register()` hook in any form.
+      # A hook whose only arm is `specifier === '@/lib/collab/geometry-sync'`
+      # therefore never matches, the gate the test parks on never fires, and
+      # the file hangs until the runner's timeout -- CI ONLY, because
+      # `node-version: 22` floats to the newest 22.x while local machines sit
+      # on an older one. That has happened twice
+      # (`collab-session-race-hook.mjs`, then `collab-hydrate-gate-hook.mjs`
+      # written after the first grew a twenty-line comment about it), which is
+      # why this is a gate rather than a third comment.
+      - name: Check loader hook specifier match
+        run: node scripts/check-loader-hook-specifier-match.mjs
+      # Executable proof the guard above still fires: both historical incidents
+      # rebuilt in a temp tree must turn it red, a bare arm on a NON-aliased
+      # specifier must stay green (`cesium` is one, and works), and neutering
+      # the alias table in either direction must change the verdict.
+      - name: Check loader hook specifier match gate regressions
+        run: node --test scripts/check-loader-hook-specifier-match.test.mjs
+      # #3338: `expandToGeometryBearingIds` (a geometry-less `IfcElementAssembly`
+      # -> its `IfcRelAggregates` parts) is reached through exactly one
+      # production entry point, `cameraCallbacks.resolveHighlightIds`. #2531 and
+      # #2532 landed nine hours apart with no CI run containing both sides, and
+      # a fifth channel (the SDK/MCP `isolate()` call) carried the same gap
+      # until #3382. This gate scans every `isolateEntities(` call site under
+      # apps/viewer and apps/viewer-embed and fails on a new/unlisted channel
+      # or a listed one that lost its resolver routing.
+      - name: Check isolate() assembly-expansion routing
+        run: node scripts/check-isolate-expansion-routing.mjs
+      # Executable proof the guard above catches both failure modes it exists
+      # for -- an unlisted new channel calling isolateEntities( with raw ids,
+      # and a listed channel whose resolver call was dropped -- and does not
+      # fire on the compliant shapes each real allowlisted channel uses.
+      - name: Check isolate() assembly-expansion routing gate regressions
+        run: node --test scripts/check-isolate-expansion-routing.test.mjs
+      # `degenerateReason` crosses the wasm boundary as an untyped string and is
+      # cast to `ClashSolidDegenerateReason` on arrival, so TypeScript cannot see
+      # a union that has drifted from the kernel -- `'malformed-operand'` was
+      # missing exactly that way (#2717). Cross-language declaration parity can
+      # only be claimed by reading both SOURCES, which is banned in test files
+      # by the source-text gate above, so it is a lint here instead.
+      - name: Check clash degenerate-reason parity
+        run: node scripts/check-clash-degenerate-reason-parity.mjs
+      # Executable proof the parity gate cannot pass vacuously: two empty sets
+      # are "equal", so a broken extractor would otherwise turn it green. Each
+      # drift direction and each vacuity mode runs against mutated copies of the
+      # real sources in a temp tree and must turn the gate red.
+      - name: Check clash degenerate-reason parity gate regressions
+        run: node --test scripts/check-clash-degenerate-reason-parity.test.mjs
+      # #3966: five defects in two days were the Rust server path and the
+      # TS/WASM path independently implementing the same extraction
+      # (relationships, spatial hierarchy, properties, quantities, materials)
+      # and drifting apart with nothing to notice, because each side stays
+      # internally self-consistent. This compares the two sides' TYPE-NAME
+      # SETS per concept, with a documented, reason-carrying allowlist for
+      # intentional or in-flight divergences. Same call as the clash-reason
+      # and legacy-entity-coverage gates above: reading two sources is banned
+      # in test files, so it is a lint here instead.
+      - name: Check server/browser type parity
+        run: node scripts/check-server-browser-type-parity.mjs
+      # Executable proof: a type removed from either side, in either
+      # direction, per concept, turns this red; the vacuity guard fires when
+      # an extractor is starved; the allowlist suppresses only the exact
+      # type/side it names, never a whole concept.
+      - name: Check server/browser type parity gate regressions
+        run: node --test scripts/check-server-browser-type-parity.test.mjs
+      # `legacy_entities.rs` is the table every classification pass is told to
+      # consult instead of a bare `IfcType::from_str`, and nothing checked it
+      # was complete. Six concrete IFC2X3 products were missing (#3172), and a
+      # name it misses resolves to `Unknown` -- a subtype of nothing -- so the
+      # entity is dropped from the attribute export AND from meshing at once.
+      # Nothing disagrees, so nothing looks wrong. Same call as the parity gate
+      # above: reading two sources is banned in test files, so it is a lint.
+      - name: Check legacy entity coverage
+        run: node scripts/check-legacy-entity-coverage.mjs
+      # Executable proof the gate cannot pass vacuously: "nothing is missing" is
+      # equally true of a complete table and of an extractor that found nothing.
+      # Each of the four extractors is broken in turn against mutated copies of
+      # the real sources, plus a deleted arm and the #3172 misspelling itself.
+      - name: Check legacy entity coverage gate regressions
+        run: node --test scripts/check-legacy-entity-coverage.test.mjs
+      # `|| true` on `git tag` is right (a re-run hits an existing tag);
+      # on the PUSH it made a failed push silent, and `gh release create` then
+      # creates the missing tag ITSELF at default-branch head -- so the run
+      # stayed green with the tag on a different commit than the packages
+      # published from it (#3202). Baseline is zero: this gate landed in the
+      # same change that removed the only two instances.
+      - name: Check for swallowed git push failures
+        run: node scripts/check-swallowed-push.mjs
+      # Executable proof it cannot pass vacuously: a missing or empty workflow
+      # directory must fail rather than report clean, and `|| true` on `git tag`
+      # must NOT be flagged -- a rule that caught both would be suppressed on
+      # its first run.
+      - name: Check swallowed-push gate regressions
+        run: node --test scripts/check-swallowed-push.test.mjs
+      # The class the swallowed-push gate above was itself an instance of: a
+      # gate is only as good as the job that runs it, and the job only runs
+      # when the path filter says so. This derives each gate's INPUTS from the
+      # gate's own source and fails when one of them cannot trigger the job
+      # that reads it -- an unreachable gate reports success, because a skipped
+      # job counts as success in the aggregate `test` gate below (#3312).
+      - name: Check CI path coverage
+        run: node scripts/check-ci-path-coverage.mjs
+      # Executable proof it cannot pass vacuously: reintroducing a real hole
+      # must name that hole, and an empty workflow dir / unparseable filter
+      # block / zero derived inputs must FAIL rather than report clean.
+      - name: Check CI path-coverage gate regressions
+        run: node --test scripts/check-ci-path-coverage.test.mjs
+      # Same class as the gate above (#3452), for a case it cannot see: its
+      # own scan only recognises gates invoked as a literal `node
+      # scripts/*.mjs` in a `run:` step, and sdk-canary.yml's job is `pnpm
+      # turbo build` + `node packages/cli/dist/index.js ext test` -- no gate
+      # script at all. This instead derives the FULL transitive
+      # workspace-dependency closure `turbo build` walks from the real
+      # package.json graph and fails when sdk-canary.yml's own `paths:`
+      # filter does not cover all of it.
+      - name: Check SDK canary path coverage
+        run: node scripts/check-sdk-canary-coverage.mjs
+      - name: Check SDK canary path-coverage gate regressions
+        run: node --test scripts/check-sdk-canary-coverage.test.mjs
+      # The CSV cell escaper reached NINE hand-rolled copies and no two were
+      # identical: some tested the formula trigger anchored at offset 0 (so a
+      # BOM/ZWSP/LRM/NBSP/U+2028 in front of `=` bypassed the CWE-1236 guard),
+      # some hardened it by DELETING the leading invisibles (throwing away
+      # leading spaces, against RFC 4180 2.4), one hard-coded a comma while its
+      # caller had a configurable delimiter. Correcting the copies only resets
+      # the clock; this is what stops a tenth.
+      - name: Check for hand-rolled CSV cell escapers
+        run: node scripts/check-csv-escaper-copies.mjs
+      # Executable proof the gate fires: each of the ten real copies is replanted
+      # in its original shape and must turn the gate red, and a scan that finds
+      # almost no files must fail rather than report clean.
+      - name: Check CSV escaper gate regressions
+        run: node --test scripts/check-csv-escaper-copies.test.mjs
+
+      # Same precedent, for the STEP (ISO 10303-21) string-literal escaper
+      # (#3300, second half): the TypeScript and Rust implementations cannot
+      # share code, so each is pinned against the other via a shared vector
+      # fixture instead of a hand-kept copy of the other side's behaviour.
+      - name: Check for hand-rolled STEP string escapers
+        run: node scripts/check-step-escaper-copies.mjs
+      - name: Check STEP escaper gate regressions
+        run: node --test scripts/check-step-escaper-copies.test.mjs
+
+      # `scripts/lib/vitest-timeout-audit.mjs` (#2948) replaced
+      # `audit-test-timeouts.mjs`, which was deleted in the same change rather
+      # than left beside it: two hand-written JS/TS lexers for one question is
+      # the defect the CSV-escaper gate above exists to prevent, and the older
+      # one was the less accurate of the two while being the one CI pinned.
+      # Both of the original script's failure modes are pinned by the suite
+      # below: an apostrophe in a comment scanning to EOF and dropping every
+      # later call, and an options bag inside a test BODY marking the test
+      # protected. The second was carried over deliberately -- every other
+      # `timeout:` fixture here sits in an ARGUMENT position, so deleting the
+      # old suite would have left the body position unpinned, and a classifier
+      # matching `timeout:` anywhere in a call passes every other case.
+      # It also resolves a timeout INHERITED from an enclosing
+      # `describe(name, { timeout }, fn)` and one set by a package's vitest
+      # config, both of which the grep-built at-risk table in #2948 itself
+      # scored as unprotected.
+      - name: Check vitest-timeout audit gate regressions
+        run: node --test scripts/lib/vitest-timeout-audit.test.mjs
+      # ...and run the audit itself over every vitest test file in the repo.
+      # It reports rather than gates on unprotected tests -- the right timeout
+      # for a slow test needs to know what the test does, which no scan can
+      # judge -- but it DOES exit non-zero on a call site its parser cannot
+      # read, and on a run that classified nothing. Those are the two ways this
+      # audit could go quietly blind against the real tree, so running it here
+      # is what keeps the numbers it prints meaningful. `--summary-only` drops
+      # the ~15k-line per-call listing; drop the flag locally to read it.
+      - name: Check vitest-timeout audit reads every test file
+        run: pnpm run check:vitest-timeout-audit
       # Guard the published API surface: the exported names of every
       # non-private packages/* package (read from the dist d.ts in the
       # build artifact downloaded above) must match the committed
@@ -340,6 +1127,189 @@ jobs:
       # can't ship silently.
       - name: Check API surface
         run: node scripts/check-api-surface.mjs
+      # A server-bin release must ship one archive per platform the package
+      # claims to support. Three lists encode that set (SUPPORTED_TARGETS in
+      # platform.ts, package.json os/cpu, the release matrix in
+      # server-binaries.yml) and agreed only by hand until v1.16.6 shipped
+      # without the win32-x64 zip and nothing noticed (issue #2619).
+      - name: Check server-bin platform parity
+        run: node scripts/check-server-bin-targets.mjs
+      # Executable proof that the parity gate itself cannot pass vacuously:
+      # an adversarial review of PR #2642 produced four false greens
+      # (commented-out matrix entries and targets still counted; a stale
+      # literal in a comment satisfied the upload check) that hand-testing
+      # had missed. Each hostile mutation now runs against the real inputs
+      # in a temp tree and must turn the gate red with an accurate message.
+      # The second file unit-tests stripYamlComments, the primitive the gate's
+      # comment-awareness rests on (a lone apostrophe once blinded it).
+      - name: Check server-bin parity gate regressions
+        run: node --test scripts/check-server-bin-targets.test.mjs scripts/lib/server-bin-targets-parse.test.mjs
+      # Unit tests for the branching check-unused-locals.mjs uses to decide
+      # "real violation" vs "does not compile" vs "cannot parse this output".
+      # A #2634 review found the fail-loud branch only engaged when the whole
+      # run was unparseable — a run with one recognised diagnostic and one
+      # unrecognised one silently dropped the unrecognised one instead of
+      # failing. Pinned here so that gap can't reopen unnoticed. The #2663
+      # review found the twin gap one level up: the exit status itself was
+      # never inspected, so an ENOBUFS-truncated or OOM-killed run handed the
+      # classifier a prefix that parsed cleanly into a confident undercount.
+      # untrustworthyExitReason is pinned in the same file.
+      - name: Check unused-locals output classification
+        run: node --test scripts/lib/unused-locals-classify.test.mjs
+      # check-lint-ran.mjs buffered oxlint's whole output, wrote it, then
+      # process.exit()'d. On a PIPE — every CI log — stdout is asynchronous, so
+      # the exit discarded most of the write: a 120k-line failing run reached
+      # the log as ~1k lines, cut mid-diagnostic, with no summary and no error
+      # line. A genuine eslint(no-control-regex) failure was diagnosed off such
+      # a log as "pre-existing warnings, not ours". A TTY or a file kept
+      # everything, so hand-testing never showed it — this drives the gate
+      # through a pipe and asserts the bytes that arrive.
+      - name: Check lint gate survives a piped stdout
+        run: node --test scripts/check-lint-ran.test.mjs
+      # check-tla-chunk-await.mjs runs inside the viewer build, so it is only
+      # ever exercised against whatever that build happens to emit — the one
+      # bundle shape that cannot demonstrate the gate still has teeth. These
+      # tests drive it over synthetic bundles instead: the #2246 minified
+      # single-line importer and its pretty-printed twin must still turn it
+      # red, a correct bundle (including one whose __tla chunk is only
+      # import()ed) must still pass, and each way of inspecting nothing —
+      # missing assets dir, no chunks, chunks but no __tla-wrapped chunk —
+      # must fail rather than tick.
+      - name: Check the TLA chunk-await gate cannot pass vacuously
+        run: node --test scripts/check-tla-chunk-await.test.mjs
+      # check-coderabbit-review.mjs exists to tell a real CodeRabbit review from
+      # a green tick with nothing behind it, and it got that wrong in BOTH
+      # directions at once: an empty comment list returned "no review" before
+      # the inline thread count was even read (CodeRabbit posts findings while
+      # its summary is absent, deleted, or rewritten in place), and no timestamp
+      # reached the classifier at all, so a review from two pushes ago certified
+      # the commits the bot never saw. The second is the dangerous one -- a
+      # false "not reviewed" is loud and self-correcting, a false "reviewed" is
+      # silent and terminal. Both directions, the freshness comparison, and the
+      # decision that a missing or unparseable timestamp resolves to unreviewed
+      # are pinned here.
+      - name: Check the CodeRabbit review classifier
+        run: node --test scripts/lib/coderabbit-review-state.test.mjs
+      # The same tick hides four MORE shapes, found by a sweep of all 36 open
+      # PRs: a fork's branch we cannot push to; a DIRTY base whose green checks
+      # ran on a merge commit that can no longer be formed (two PRs were in that
+      # state); ZERO workflow runs at the head commit, which leaves an EMPTY
+      # statusCheckRollup that counts up to the same fail=0/pending=0 as a fully
+      # passing one; and a newest run against a superseded commit. The sweep is
+      # a hand-run tool (check-pr-green.mjs, @unwired-by-design -- its verdicts
+      # are transient GitHub state), but the classification it rests on is not,
+      # including the three ways the sweep must refuse to pass vacuously: zero
+      # PRs, an unreachable API, a malformed response.
+      - name: Check the PR-green sweep classifier
+        run: node --test scripts/lib/pr-green-sweep.test.mjs
+      # fetch-prebuilt-wasm.mjs read `npm pack`'s trimmed stdout as the tarball
+      # path. npm 11 prints its "npm notice" block on STDOUT, so the trim
+      # returned twenty lines of prose and the tar two lines down exited 2,
+      # surfacing as a bare `status: 2` that reads like a corrupt download.
+      # That script is the only route to a WASM bundle on a machine without a
+      # Rust toolchain, so the failure blocked the whole viewer build.
+      - name: Check npm pack output is read machine-readably
+        run: node --test scripts/lib/npm-pack-output.test.mjs
+      # The Release workflow runs ONLY on main, and only on an actual publish,
+      # so nothing on a PR ever read release-crates.mjs's publish ORDER. #2574
+      # added a versioned dev-dependency (ifc-lite-clash) to rust/geometry and
+      # it sat latent until the next release, where cargo refused to publish
+      # geometry ahead of clash — AFTER npm had already gone out, leaving
+      # crates.io behind npm. This makes that order a PR-visible gate.
+      - name: Check the crates publish order matches the dependency graph
+        run: node --test scripts/release-crates-order.test.mjs
+      # #3180: `cargo publish` does not block until a crate is visible in the
+      # crates.io index (the comment that used to claim it did was false —
+      # v6.0.0 left 4 of 7 crates unpublished when the index lagged past
+      # cargo's own internal wait). release-crates.mjs now polls the index
+      # itself with a bounded timeout instead of trusting cargo's wait; these
+      # cover that poll (and the underlying crates.io query helper) against a
+      # stubbed registry and a fake clock, never a real network call.
+      - name: Check the crates.io publish poll fails closed on a stuck index
+        run: node --test scripts/lib/crates-io.test.mjs scripts/release-crates.test.mjs
+      # #3181: `verify-npm-publish.js` only ever checked npm, so the v6.0.0
+      # partial crates.io publish (#3180) went unreported — npm was complete,
+      # and nothing checked the other registry. Covers `verify-crates-publish.js`
+      # reproducing that exact 3-of-7 shape against a stubbed registry — and
+      # the EXIT CODE, not just the pure `verifyAll`: the step name claims the
+      # verifier "catches" a partial publish, which is a claim about what the
+      # process returns. `runMain` is driven directly so `if (failed.length >
+      # 0) → if (false)` (a partial publish exiting 0) and an empty crate list
+      # exiting 0 both fail here rather than at the next release.
+      - name: Check the crates.io publish verifier catches a partial publish
+        run: node --test scripts/verify-crates-publish.test.mjs
+      # The gate that decides whether either publish verifier runs at all. It
+      # is read from `release.yml` on main only, so nothing on a PR exercises
+      # it — and its first spelling (root `package.json` version vs `HEAD~1`)
+      # was wrong on this repo's own history: `sync-versions.js` pins the root
+      # version to the HIGHEST workspace version without lockstepping the
+      # rest, so the root version stands still on most release commits and the
+      # gate collapsed back to `published == 'true'`, skipping verification on
+      # exactly the re-run that recovers a partial publish (#3181). These
+      # drive real throwaway git repositories: a root bump, a bump that leaves
+      # the root alone, no bump at all, and a first commit with no parent.
+      #
+      # They also cover the YAML SEAM, by lifting the `VERSION_CHANGED=` lines
+      # straight out of `release.yml` and running them under the Actions
+      # default shell. The script fails open on its own, but a bare
+      # `VAR=$(node …)` under `bash -eo pipefail` takes the substitution's
+      # exit status: a non-zero exit killed the step, `version_changed` was
+      # never written, and both verifiers skipped DESPITE `always()`. Editing
+      # the workflow back to that spelling reddens these tests.
+      - name: Check the release version-bump gate sees non-root bumps and fails open
+        run: node --test scripts/release-version-changed.test.mjs
+      # verify-esm-entrypoints.mjs is the last gate before `pnpm release`
+      # publishes. If its package discovery ever returns nothing — packages/
+      # moved, or the publishable filter stops matching — the smoke loop has
+      # nothing to fail on, the summary reads "0 passed, 0 failed, 0 skipped"
+      # and the run exits 0: success reported for having imported nothing.
+      # Same absence-as-success shape as the unbuilt skip it already fails
+      # closed on. This also pins that a legitimate run still exits 0.
+      - name: Check the ESM smoke test fails on an empty discovery
+        run: node --test scripts/verify-esm-entrypoints.test.mjs
+      # Executable proof for the test-glob-coverage gate, which runs in `lint`:
+      # its fixtures drive the unmodified checker against synthetic packages via
+      # `--root` and assert it goes red for a non-recursive shell glob, for an
+      # unrecognised test-script shape, and for a vitest `include` that misses a
+      # file — the three ways it could otherwise wave a package through.
+      - name: Check test-glob-coverage gate regressions
+        run: node --test scripts/check-test-glob-coverage.test.mjs
+      # `fetch-fixtures.mjs --check` is the step every fixture-consuming job now
+      # runs unconditionally after its cache-gated fetch, so it is a gate about
+      # a gate: if IT can pass over nothing, it is worse than absent, because it
+      # also buys silence. These cases drive the unmodified script against
+      # synthetic corpora and assert it reds — naming the offending path — for a
+      # fixture that is absent, byte-flipped at the same size, or truncated, and
+      # for each way of verifying nothing: no manifest, an unparseable one, one
+      # listing zero files, and a scoped `--check a.ifc b.ifc` naming a path the
+      # manifest no longer lists. Positive controls keep it from being switched
+      # off for redding a healthy tree.
+      - name: Check the fixture-cache verification cannot pass vacuously
+        run: node --test scripts/fixtures/fetch-fixtures.test.mjs
+      # The steps above name each scripts/ test file one by one, which is
+      # itself the trap check-test-glob-coverage.mjs exists to catch: the file
+      # that shipped that gate was the one entry nobody added, so a gate for
+      # unrun test files was itself unrun. Its own audit cannot see the gap —
+      # it walks packages/ and apps/, and scripts/ is neither. This catch-all
+      # closes it by GLOB, so the next script's tests run on the commit that
+      # adds them. The named steps above stay for their comments and for
+      # per-gate attribution; re-running them here costs a few seconds.
+      # scripts/fixtures/ is in the glob because it was NOT: the first test file
+      # under it would have been added, run locally, and then never run again.
+      # scripts/docs/ joined it for the same reason in #3200 - the catch-all is
+      # per-DIRECTORY, so it goes blind on the next subdirectory anyone adds.
+      - name: Run every scripts/ test file (glob catch-all)
+        run: node --test scripts/*.test.mjs scripts/lib/*.test.mjs scripts/fixtures/*.test.mjs scripts/docs/*.test.mjs scripts/review/*.test.mjs scripts/review/lib/*.test.mjs
+      # Committed codegen output (packages/codegen/generated/**,
+      # packages/parser/src/generated/**, packages/data/src/ifc-schema/
+      # generated/**) had no CI freshness gate at all — a generator bug fixed
+      # by hand-patching the OUTPUT instead of the generator could live in the
+      # tree indefinitely (#3565). This regenerates every target from its
+      # committed .exp / upstream input and diffs against what's committed.
+      # Uses the codegen dist from the build artifact above when fresh, and
+      # rebuilds it (fast, single package) otherwise.
+      - name: Check codegen output freshness
+        run: pnpm run check:codegen-sync
       # The server-parse root-attribute table (attr_indices.rs) is generated
       # from @ifc-lite/parser's SCHEMA_REGISTRY — the SAME table the in-browser
       # parse resolves names against. Guard that the committed file is in sync
@@ -348,23 +1318,80 @@ jobs:
       # toolchain needed (issue #1780).
       - name: Check server attr-indices freshness
         run: node scripts/generate-server-attr-indices.mjs --check
+      # The sandbox `bim` ambient type surface (apps/viewer/.../bim-globals.d.ts)
+      # is generated from @ifc-lite/sandbox's NAMESPACE_SCHEMAS — the SAME schema
+      # the script editor's completions and the LLM system prompt read live.
+      # Nothing verified it, and the generator itself had stopped running, so the
+      # file was hand-edited instead: it never carried `bim.clash` at all, and
+      # lost two `create` parameters along the way (issue #2418). Uses the sandbox
+      # dist from the build artifact above; the `frontend` path filter covers both
+      # sides of the contract (packages/**, apps/viewer/**).
+      - name: Check sandbox bim-globals freshness
+        run: node scripts/generate-bim-globals.mjs --check
+      # Typecheck the built-in template scripts AGAINST that generated surface.
+      # This is the only thing that actually compiles bim-globals.d.ts, and it
+      # was run by no workflow: it sat at 193 errors (every one of them
+      # `Cannot find name 'console'`, because the sandbox `console` was never
+      # declared), which is why the drift in #2418 went unnoticed for months.
+      # Now that the declaration is generated, this also verifies every type the
+      # schema NAMES resolves — a `tsReturn` of `BimClash.Nope` fails here
+      # (#2422). No build needed: the .d.ts is self-contained and the templates
+      # import nothing.
+      # Scoped name + `--fail-if-no-match`: an unmatched pnpm filter prints
+      # "No projects matched the filters" and exits 0, so a filter that stops
+      # resolving would turn this gate green without running it. That is the
+      # same "cannot fail" shape as the `skipLibCheck` default this step was
+      # already fixed for, so it is closed here rather than left to luck.
+      - name: Check sandbox script templates typecheck
+        run: pnpm --filter=@ifc-lite/viewer --fail-if-no-match check:templates
       # Docs upkeep guards (cheap, no build/fixtures needed — the doc-sample
       # typecheck resolves @ifc-lite/* to each package's src via tsconfig
       # paths). Keep the docs in lockstep with the code they describe.
       - name: Check package READMEs
         run: node scripts/docs/check-package-readmes.mjs
+      # That gate printed `✅ All 0 published packages have a README.md.` over
+      # an empty packages/, and dropped an unreadable package directory out of
+      # the count in silence (#3200, finding 9). Its floors are executable, so
+      # they are run rather than trusted — and named here rather than left to
+      # the catch-all glob below, which is per-DIRECTORY and did not reach
+      # scripts/docs/ when this was written.
+      - name: Check the README gate cannot pass vacuously
+        run: node --test scripts/docs/check-package-readmes.test.mjs
       - name: Check doc code samples
         run: node scripts/docs/check-doc-samples.mjs
       - name: Check generated doc sections
         run: node scripts/docs/generate-docs-sections.mjs --check
-      - run: pnpm test
+      # The viewer suite runs in its OWN job (`viewer-tests`) rather than here.
+      # One job was running all 47 packages' tests in sequence, and the viewer
+      # alone needs more than the remainder of the budget: on the run that
+      # exposed this, everything up to and including @ifc-lite/provenance
+      # finished 7m55s in, and the viewer then had 17 minutes and did not
+      # finish. Splitting it out runs the two halves CONCURRENTLY, so each gets
+      # a whole budget instead of a leftover.
+      - run: pnpm exec turbo test --filter=!@ifc-lite/viewer
       - name: Integration tests (parse → quantities → export)
         # Step-scoped timeout: a hung harness must fail fast here, not
         # silently consume the whole job budget.
         timeout-minutes: 5
         run: pnpm test:integration
+      - name: API route tests (relay handlers)
+        # `tests/api/**` was reachable only by running `pnpm test:api` by hand,
+        # so the Dalux relay's path allowlist and node allowlist - the guards
+        # that stop an unauthenticated public endpoint becoming an open proxy -
+        # existed in the repo but never in the pipeline. A guard no lane invokes
+        # is not a gate.
+        timeout-minutes: 5
+        run: pnpm test:api
       - name: WASM contract tests (real processGeometryBatch boundary)
         run: pnpm test:wasm-contract
+      # The snap cache reconstructs model edges from the mesher's per-triangle
+      # segments, so its correctness depends on geometry the unit fixtures can
+      # only imitate. This drives the real wasm pipeline over the committed
+      # samples and asserts the invariants (one edge per straight run, the
+      # reported length is the whole run, the cache does not move when triangle
+      # emission order does -- the #2388 failure class). Issue #2199.
+      - name: Snap edge reconstruction (real wasm pipeline)
+        run: pnpm test:snap-edges
 
   # Functional smoke of the real viewer: real WASM pipeline + WebGPU
   # renderer (swiftshader) + pick pass + section plane, asserted through
@@ -374,16 +1401,18 @@ jobs:
   viewer-e2e:
     name: Viewer E2E smoke
     needs: [changes, build]
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true'
+    # PR-only: see the `push:` trigger comment. The post-merge run repeats the
+    # cheap unit lanes that catch cross-PR collisions, not the whole matrix.
+    if: (needs.changes.outputs.frontend == 'true' || needs.changes.outputs.rust == 'true') && github.event_name == 'pull_request'
     # Free runner — vite build + a ~2.4MB model; not compute-bound.
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -403,10 +1432,22 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: pnpm fixtures
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: pnpm fixtures:check
       # Package dists come from the build artifact; the wasm build
       # soft-skips (no wasm-pack on this runner) and reuses the artifact
       # runtime, so this is just the vite build of the app.
-      - name: Build viewer app
+      # The viewer's own `build` script runs scripts/check-tla-chunk-await.mjs
+      # over the emitted dist/assets, so this step enforces the __tla guard
+      # too. It lives in the build script rather than here because the #2243
+      # white screen reached users through Vercel, and a CI-only gate does not
+      # run there: vercel-build.sh -> turbo build --filter -> this same script.
+      - name: Build viewer app (also runs the __tla chunk-await guard)
         run: pnpm turbo build --filter=@ifc-lite/viewer
       # No browser download: the CI project uses channel:'chrome' (the
       # runner's preinstalled Chrome) because Playwright's headless
@@ -427,22 +1468,19 @@ jobs:
     name: Rust tests
     needs: changes
     if: needs.changes.outputs.rust == 'true'
-    # Stays on Depot for the uncapped, fast cargo cache (GitHub's free cache
-    # is 10 GB LRU and would thrash the Rust target dir). Right-sized 8→4
-    # cores: Depot bills minutes × (vCPU/2), so -8 is 4× and -4 is 2× the
-    # base rate — halving per-minute cost for ~1.5× wall-clock. Timeout
-    # bumped to absorb the slower wall-clock.
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 28
+    # Standard GitHub runners keep routine Rust validation out of Depot's
+    # metered pool. The longer cap accommodates a cold GitHub cache restore.
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust
       - name: Cache test fixtures
@@ -456,12 +1494,74 @@ jobs:
         # The fixtures script is pure Node (no npm deps) so we skip the
         # pnpm install dance Rust-only jobs don't need.
         run: node scripts/fixtures/fetch-fixtures.mjs
-      # Workspace exclusions:
-      #   - ifc-lite-wasm: dev-deps on wasm-bindgen-test; tests target wasm32.
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
+      # Cheap (resolve only, no compile) and it catches a failure mode that
+      # otherwise stays invisible for weeks: a release bumps the manifests but
+      # leaves Cargo.lock recording the old member versions, so every `--locked`
+      # command refuses to run and every local build silently dirties the lock.
+      # `scripts/sync-versions.js` keeps the two in step; this is the gate that
+      # notices if that ever stops being true.
+      - name: Cargo.lock is in sync with the manifests
+        run: cargo metadata --locked --format-version 1 > /dev/null
+      # ifc-lite-wasm is included: its only wasm32-only test file,
+      # tests/mesh_determinism.rs, self-gates with `#![cfg(target_arch =
+      # "wasm32")]` and compiles to an empty test binary on the native host
+      # (`running 0 tests ... ok`), so no workspace-wide exclusion is needed.
+      # That wasm32 leg runs on its own schedule in determinism.yml.
       - name: Clippy (lint gate)
-        run: cargo clippy --workspace --exclude ifc-lite-wasm --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Rust tests
-        run: cargo test --workspace --exclude ifc-lite-wasm
+        # Fixtures are fetched above (Fetch fixtures / Cache test fixtures),
+        # so a missing one here is fixture drift, not a legitimate local skip
+        # (rust/export/src/test_support.rs) — make that a hard failure.
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test --workspace
+
+      # `parquet-bos` is OFF by default because arrow/parquet/zip do not target
+      # wasm32 cleanly (rust/export/Cargo.toml:33). The consequence is that
+      # `cargo test --workspace` above never COMPILES the module, let alone
+      # runs it: an off-by-default feature with no CI leg is dead code that
+      # looks maintained, and the first person to learn it had broken would be
+      # whoever enabled it (#2802).
+      #
+      # Its own step rather than `--all-features`, which would also switch on
+      # anything added later and make an unrelated feature's breakage read as
+      # this one's.
+      - name: Rust tests (parquet-bos feature)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-export --features parquet-bos
+
+      - name: Clippy (parquet-bos feature)
+        run: cargo clippy -p ifc-lite-export --features parquet-bos --all-targets -- -D warnings
+
+      # Same rule, same reason (#3440). `csg_manifold_gate` is off by default
+      # because the fallback a rejection reaches is worse than the tear it
+      # replaces on this repo's own quality fixtures, so it stays opt-in until
+      # that path is fixed. But the feature build carries EXACTLY-pinned
+      # regression numbers - issue_098_reveal_wall, issue_098_v5c,
+      # issue_960_segmented_roof_clip - and `cargo test --workspace` above never
+      # compiles them. Without this leg those pins are dead code that looks
+      # maintained, and the first person to learn they had drifted would be
+      # whoever enabled the feature to fix the fallback: they would inherit a
+      # red suite naming their own change rather than the drift.
+      #
+      # Its own step rather than folding in `csg_topology_gate` (which has the
+      # same gap and predates this) so a breakage names one feature.
+      - name: Rust tests (csg_manifold_gate feature)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate
+
+      - name: Clippy (csg_manifold_gate feature)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
 
   # Geometry watertightness / triangulation-invariance census.
   #
@@ -474,23 +1574,41 @@ jobs:
   # so `cargo test --workspace` does not run it — without this job the suite
   # early-returns and its pinned baselines gate nothing.
   #
-  # `geometry`, not `rust`: only rust/geometry, rust/processing or the fixture
-  # manifest can move its numbers.
+  # `geometry`, not `rust`: the filter is scoped to what can actually move the
+  # numbers. That includes rust/core — `ifc-lite-core` is a direct, non-optional
+  # dependency of `ifc-lite-geometry`, and the census test itself imports
+  # `build_entity_index`, `EntityDecoder` and `EntityScanner` from it, so the
+  # whole IFC-bytes → entities → attributes path is in scope:
+  #   - `GeometryRouter::scan_unit_scale` (router/mod.rs) calls
+  #     `ifc_lite_core::extract_length_unit_scale` (core/src/units.rs) for the
+  #     global length scale; the census snaps positions to 1 mm, so any change
+  #     to unit-scale resolution shifts every coordinate and moves the baselines.
+  #   - `extract_coordinate_list_from_entity` / `parse_indices_direct`
+  #     (core/src/fast_parse.rs) are called from processors/tessellated/
+  #     {triangulated,polygonal}.rs — they *are* the triangle data for the
+  #     tessellation bucket.
+  #   - Float-parsing precision at the 1 mm snap boundary, and attribute
+  #     decoding deciding which hosts are found at all (MIN_MODELS /
+  #     MIN_VOID_HOSTS are the only floor).
+  # Still not `rust`: rust/clash, rust/export and the bindings crates are not on
+  # this test's path.
   geometry-census:
     name: Geometry watertightness census
     needs: changes
-    if: needs.changes.outputs.geometry == 'true'
-    runs-on: depot-ubuntu-24.04-4
-    timeout-minutes: 45
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    # This high-volume PR gate must not consume metered runner minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
       - name: Setup Rust (pinned by rust-toolchain.toml)
         run: rustup show
       - name: Cargo cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           prefix-key: ci-rust-census
       - name: Cache test fixtures
@@ -502,8 +1620,132 @@ jobs:
       - name: Fetch fixtures
         if: steps.fixtures-cache.outputs.cache-hit != 'true'
         run: node scripts/fixtures/fetch-fixtures.mjs
+
+      # Unconditional — this is the point of the step. The fetch above is
+      # gated on a cache miss, so on a cache hit nothing had ever confirmed the
+      # restored tree still matches the manifest. A partial or corrupted cache
+      # then made every fixture-gated test skip silently and report ok.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
       - name: Census
         run: cargo test -p ifc-lite-geometry --features triangulation-alt --test triangulation_invariance -- --nocapture
+      # The per-host rows this run measured, uploaded pass or fail. The census
+      # gates against a checked-in golden, and its log prints its per-element
+      # lists truncated, so without this a run that disagrees with the golden
+      # could only be diagnosed by reproducing a ~20-minute sweep over a 1.4 GB
+      # fixture corpus locally. Re-blessing is now: download, replace the golden.
+      - name: Upload the census rows
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: watertightness-census-rows
+          path: target/watertightness_census.run.tsv
+          if-no-files-found: warn
+  # The boolean accept gates' feature builds (#3871).
+  #
+  # `csg_manifold_gate` (#3440) and `csg_topology_gate` (#3717) are off by
+  # default and enabled by NOTHING downstream, so `cargo test --workspace` in
+  # `rust-tests` never COMPILES either gate, let alone runs it. That is the same
+  # dead-but-maintained shape the `parquet-bos` step in that job exists to
+  # reject, and it had already happened: `csg_topology_gate` was red on three
+  # targets from the day #3717 landed and no lane said so. This is the lane that
+  # says so.
+  #
+  # NOT on the aggregate `test` gate's `needs:` list, deliberately, and this is
+  # the one thing about this job that must not drift. What it asserts are pinned
+  # MEASUREMENTS of a fallback path known to be worse than the tear it replaces
+  # (issue_098_v5c, issue_960_segmented_roof_clip), for a configuration nothing
+  # ships. A number moving there is a thing to look at, not a thing to block a
+  # merge on. Adding this job to that `needs:` list, or to the `results` map
+  # beside it, turns a report into a gate.
+  #
+  # `geometry`, not `rust`: the same scope argument geometry-census above spells
+  # out. The gates live in rust/geometry, they sit downstream of rust/core's
+  # parse path, and the per-fixture numbers they pin move with the fixture
+  # corpus, so `tests/models/manifest.json` is in that filter too.
+  #
+  # PR-only, like geometry-census and viewer-e2e: three feature builds of the
+  # geometry crate and its test targets are not free, and a PR lane already
+  # catches the flip before it reaches main.
+  #
+  # ONE STEP PER FEATURE COMBINATION, not one `--all-features` run. The two
+  # gates read different defect classes and reject different hosts, so each
+  # combination lands on its own numbers -- issue_098_v5c measures 416 / 124 /
+  # 552 unpaired edges under manifold-only / topology-only / both. A single
+  # combined run would attribute every flip to whichever gate fired first, and
+  # would leave the other two combinations' pins asserted by nothing.
+  csg-accept-gates:
+    name: CSG accept gates (feature builds)
+    needs: changes
+    if: needs.changes.outputs.geometry == 'true' && github.event_name == 'pull_request'
+    # This lane must not consume metered runner minutes.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - name: Setup Rust (pinned by rust-toolchain.toml)
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-csg-gates
+      - name: Cache test fixtures
+        id: fixtures-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests/models
+          key: ci-fixtures-${{ runner.os }}-${{ hashFiles('tests/models/manifest.json') }}
+      - name: Fetch fixtures
+        if: steps.fixtures-cache.outputs.cache-hit != 'true'
+        run: node scripts/fixtures/fetch-fixtures.mjs
+
+      # Unconditional, for the reason spelled out in rust-tests: on a cache hit
+      # nothing else confirms the restored tree still matches the manifest, and
+      # every pin below is fixture-gated. A partial cache would make them all
+      # skip and report ok, which is precisely the absence this job exists to
+      # make visible.
+      - name: Verify fixtures
+        run: node scripts/fixtures/fetch-fixtures.mjs --check
+
+      # Clippy first: a lint failure is cheaper to find than a 20-minute test
+      # run, and `--all-targets` type-checks the test targets the steps below
+      # then run.
+      - name: Clippy (csg_manifold_gate)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate --all-targets -- -D warnings
+      - name: Clippy (csg_topology_gate)
+        run: cargo clippy -p ifc-lite-geometry --features csg_topology_gate --all-targets -- -D warnings
+      # The combined build selects code behind cfg(all(...)) that neither
+      # single-feature pass compiles, and `cargo test` does not make warnings
+      # fatal, so it needs its own -D warnings pass.
+      - name: Clippy (both gates)
+        run: cargo clippy -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --all-targets -- -D warnings
+
+      # `IFC_LITE_REQUIRE_FIXTURES` for the same reason rust-tests sets it:
+      # fixtures are fetched and verified above, so a missing one here is drift,
+      # not a legitimate local skip, and every pinned number in these targets is
+      # measured from a fixture.
+      - name: Rust tests (csg_manifold_gate)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate --no-fail-fast
+      - name: Rust tests (csg_topology_gate)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_topology_gate --no-fail-fast
+
+      # The combined build, because the third set of pins is asserted by nothing
+      # else: under both gates issue_098_v5c measures 552 unpaired edges and
+      # 24.103 m3, neither of which either single-feature leg above visits. It
+      # is also the configuration a census that has to attribute a rejection to
+      # one gate rather than the other runs in.
+      - name: Rust tests (both gates)
+        env:
+          IFC_LITE_REQUIRE_FIXTURES: "1"
+        run: cargo test -p ifc-lite-geometry --features csg_manifold_gate,csg_topology_gate --no-fail-fast
+
 
   # Plato clash-math single-source freshness gate. The clash narrow-phase math
   # is written once in Plato and transpiled to Rust + TypeScript; the committed
@@ -515,17 +1757,18 @@ jobs:
   plato-check:
     name: Plato clash-math freshness
     needs: changes
-    if: needs.changes.outputs.plato == 'true'
+    # PR-only — see viewer-e2e.
+    if: needs.changes.outputs.plato == 'true' && github.event_name == 'pull_request'
     # Free runner - the generator clones + builds Plato.CLI with dotnet; no
     # Depot cores needed.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -567,11 +1810,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           lfs: false
           persist-credentials: false
-      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
@@ -588,9 +1831,86 @@ jobs:
   # for the branch protection rule so we don't have to retouch settings.
   # Succeeds if every dependency succeeded or was skipped (path-filtered
   # out); fails the moment any dependency fails or is cancelled.
+  # The crate semver gate (issue #3216). It runs at release time as the
+  # crates.io half's precondition, but a release-only gate is exactly the shape
+  # `release-crates-order.test.mjs` argues against in its own header: the
+  # Release workflow runs only on main, and only on an actual publish, so a
+  # breaking API change sits latent until it fails after npm has already gone
+  # out. This runs it on every PR instead.
+  #
+  # It is cheap on an ordinary PR and expensive only where it has signal. Each
+  # crate whose version is already live on crates.io is skipped BEFORE
+  # cargo-semver-checks is invoked, which on an ordinary PR is all of them: the
+  # job is seven registry lookups and a message saying plainly that no API was
+  # compared. On the `chore: version packages` PR, where `sync-versions.js` has
+  # moved the workspace version, it does the real comparison — and that is the
+  # commit whose version the whole issue is about, reviewed before it merges
+  # and publishes.
+  rust-semver:
+    name: Rust crate semver
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+
+      # A stable toolchain, not the dated nightly in rust-toolchain.toml:
+      # cargo-semver-checks refuses a nightly outright ("rustc version is not
+      # high enough: >=1.93.0 needed, got 1.93.0-nightly"). The gate invokes it
+      # as `cargo +stable semver-checks`, so this only has to exist.
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # master 2026-05
+        with:
+          toolchain: stable
+
+      # Prebuilt binary. `cargo install cargo-semver-checks --locked` compiles
+      # it from source (~5 min).
+      - name: Install cargo-semver-checks
+        uses: taiki-e/install-action@4f5ee4a4759116abc6b10af05f20374e179d8ca3 # cargo-semver-checks (snapshot pinned 2026-08)
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          prefix-key: ci-rust-semver
+
+      # No `pnpm install`: the gate imports only node builtins and
+      # scripts/lib/crates-io.mjs, which does the same.
+      - name: Check crate semver against crates.io
+        run: node scripts/check-rust-semver.mjs
+
+  # AGENTS.md grew 10,123 -> 48,066 bytes in 55 days across 26 commits, strictly
+  # monotonically -- not one shrink. An instruction file nobody finishes does not
+  # instruct. Budgets ratchet DOWN only, and the second tooth caps line length:
+  # the authoritative CI-gate list used to sit inside a single 4,893-character
+  # line where a skimming reader missed the whole enforcement map.
+  #
+  # Its own job, not a step in node-tests: the gate reads tracked files via
+  # `git ls-files` and imports node builtins plus one repo lib, so it needs no
+  # build artifact, no pnpm install, and no Depot runner.
+  agents-md:
+    name: AGENTS.md ratchet
+    needs: changes
+    if: needs.changes.outputs.agents_md == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          lfs: false
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+      - name: Check AGENTS.md size and line length
+        run: node scripts/check-agents-md-size.mjs
+      - name: Check AGENTS.md ratchet regressions
+        run: node --test scripts/check-agents-md-size.test.mjs
+
   test:
     name: Build + WASM + Rust + Node
-    needs: [changes, build, typecheck, lint, node-tests, viewer-e2e, rust-tests, geometry-census, plato-check, docs-checks]
+    needs: [changes, build, revert-oracle, typecheck, lint, node-tests, viewer-tests, viewer-e2e, rust-tests, rust-semver, geometry-census, plato-check, docs-checks, agents-md]
     if: always()
     # Free runner — the gate just inspects upstream job results.
     runs-on: ubuntu-latest
@@ -599,14 +1919,18 @@ jobs:
         run: |
           declare -A results=(
             [build]="${{ needs.build.result }}"
+            [revert-oracle]="${{ needs.revert-oracle.result }}"
             [typecheck]="${{ needs.typecheck.result }}"
             [lint]="${{ needs.lint.result }}"
             [node-tests]="${{ needs.node-tests.result }}"
+            [viewer-tests]="${{ needs.viewer-tests.result }}"
             [viewer-e2e]="${{ needs.viewer-e2e.result }}"
             [rust-tests]="${{ needs.rust-tests.result }}"
+            [rust-semver]="${{ needs.rust-semver.result }}"
             [geometry-census]="${{ needs.geometry-census.result }}"
             [plato-check]="${{ needs.plato-check.result }}"
             [docs-checks]="${{ needs.docs-checks.result }}"
+            [agents-md]="${{ needs.agents-md.result }}"
           )
           fail=0
           for j in "${!results[@]}"; do

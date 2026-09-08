@@ -145,6 +145,21 @@ mod tests {
         assert_eq!(parse_cgroup_limit(""), CgroupLimit::Invalid);
     }
 
+    /// The v1 "unlimited" sentinel check (`v >= 1 << 60`) must trigger AT the
+    /// boundary itself, not just for values far above it — a value exactly at
+    /// `1 << 60` is exactly what a `>` (instead of `>=`) comparison would miss.
+    #[test]
+    fn parse_cgroup_limit_treats_exactly_one_shl_60_as_unlimited() {
+        let boundary = (1u64 << 60).to_string();
+        assert_eq!(parse_cgroup_limit(&boundary), CgroupLimit::Unlimited);
+        // One byte below the boundary must still be a normal, finite limit.
+        let just_below = ((1u64 << 60) - 1).to_string();
+        assert_eq!(
+            parse_cgroup_limit(&just_below),
+            CgroupLimit::Bytes((1u64 << 60) - 1)
+        );
+    }
+
     #[test]
     fn parse_meminfo_picks_memtotal_in_kb_only() {
         let meminfo = "MemTotal:       16305200 kB\n\

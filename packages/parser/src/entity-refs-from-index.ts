@@ -19,6 +19,15 @@
  */
 
 import type { EntityRef } from './types.js';
+import { EntityTypeByteInterner } from './entity-type-byte-interner.js';
+import type { CompactEntityIndexColumns } from './compact-entity-index-transport.js';
+import { asSourceBytes, type IfcSourceBytes } from './source-bytes.js';
+
+/** Scan-time type IDs retain every spelling before compact-index narrowing. */
+export type ScannedEntityColumns = Omit<CompactEntityIndexColumns, 'typeIndices'> & {
+  typeIndices: Uint16Array | Uint32Array;
+};
+
 
 const EQ = 0x3d;
 const LPAREN = 0x28;
@@ -26,24 +35,23 @@ const SPACE = 0x20;
 const TAB = 0x09;
 const LF = 0x0a;
 const CR = 0x0d;
+// Kept in sync with isSpaceByte in step-lexing.ts. Without these two, a form
+// feed or vertical tab right after '=' stays attached to the type token this
+// function extracts, so the pre-pass fast path would read a wall's type as
+// e.g. "\fIFCWALL" instead of "IFCWALL" while the full scanner path reads it
+// correctly -- same rule, two byte sets, one wrong answer.
+const FORM_FEED = 0x0c;
+const VTAB = 0x0b;
 
-function bytesToAsciiKey(bytes: Uint8Array, start: number, end: number): string {
-  // String.fromCharCode loop is the fastest portable way to build a short
-  // ASCII string from a byte range without allocating an intermediate
-  // typed-array slice. Type names are ≤ ~30 chars so the loop is tight.
-  let s = '';
-  for (let i = start; i < end; i++) {
-    s += String.fromCharCode(bytes[i]);
-  }
-  return s;
-}
-
-export function buildEntityRefsFromIndex(
-  source: Uint8Array,
+/** The shared record walk owns validation, stable ordering and type lexing. */
+function visitEntityIndex(
+  source: Uint8Array | IfcSourceBytes,
   ids: Uint32Array,
   starts: Uint32Array,
   lengths: Uint32Array,
-): EntityRef[] {
+  visit: (row: number, id: number, type: string, start: number, length: number) => void,
+): void {
+  const bytes = asSourceBytes(source);
   const n = ids.length;
   // Fail fast on malformed input from the transport layer rather than
   // silently emitting refs with `type: ''` and truncated byte ranges.
@@ -56,24 +64,24 @@ export function buildEntityRefsFromIndex(
       `buildEntityRefsFromIndex: column-length mismatch (ids=${n}, starts=${starts.length}, lengths=${lengths.length}); pre-pass entity-index is corrupted`,
     );
   }
-  const sourceLen = source.length;
-  const refs: EntityRef[] = new Array(n);
-  const intern = new Map<string, string>();
+  const sourceLen = bytes.byteLength;
+  const intern = new EntityTypeByteInterner();
+  const contiguous = source instanceof Uint8Array ? source : undefined;
 
-  // The wasm pre-pass now emits sorted columnar ids (#1682), but this helper
-  // still sorts defensively: a third-party / older producer may still send
-  // unsorted columns. Downstream `buildCompactEntityIndexAsync` checks whether
-  // expressIds are ascending and pays an O(N log N) object sort if not
-  // — on 14 M entries that's ~8 s. Pre-sort an index permutation (typed
-  // array sort with comparator is ~1 s) so refs come out ID-ordered and
-  // the downstream check passes cheaply. Same end state, cost paid here
-  // once instead of as a slower object sort later.
-  const order = new Uint32Array(n);
-  for (let i = 0; i < n; i++) order[i] = i;
-  order.sort((a, b) => ids[a] - ids[b]);
+  // Current pre-pass columns are already ID-ordered (#1682). Only allocate
+  // and sort a permutation for producers that actually send unsorted IDs.
+  // Keep equal IDs in their input order, matching the stable typed-array sort.
+  let order: Uint32Array | undefined;
+  for (let i = 1; i < n; i++) {
+    if (ids[i] < ids[i - 1]) {
+      order = Uint32Array.from({ length: n }, (_, index) => index);
+      order.sort((a, b) => ids[a] - ids[b]);
+      break;
+    }
+  }
 
   for (let oi = 0; oi < n; oi++) {
-    const i = order[oi];
+    const i = order ? order[oi] : oi;
     const start = starts[i];
     const len = lengths[i];
     // Reject spans that walk off the end of the source. Clamping
@@ -85,42 +93,86 @@ export function buildEntityRefsFromIndex(
         `buildEntityRefsFromIndex: out-of-bounds span at index ${i} (id=${ids[i]}, start=${start}, len=${len}, source=${sourceLen})`,
       );
     }
-    const limit = start + len;
+    // The parser already supplies a contiguous view. Keep offsets in that
+    // view to avoid constructing one temporary subarray per record. Blocked
+    // source accessors retain their existing one-record read pattern.
+    const record = contiguous ?? bytes.slice(start, start + len);
+    const limit = contiguous ? start + len : record.length;
 
     // Skip past `#<digits>=` to find the type token.
-    let p = start;
-    while (p < limit && source[p] !== EQ) p++;
+    let p = contiguous ? start : 0;
+    while (p < limit && record[p] !== EQ) p++;
     p++;
-    while (p < limit && (source[p] === SPACE || source[p] === TAB)) p++;
-    const typeStart = p;
     while (
       p < limit
-      && source[p] !== LPAREN
-      && source[p] !== SPACE
-      && source[p] !== TAB
-      && source[p] !== LF
-      && source[p] !== CR
+      && (record[p] === SPACE || record[p] === TAB || record[p] === LF || record[p] === CR
+        || record[p] === FORM_FEED || record[p] === VTAB)
     ) p++;
-    const typeEnd = p;
-
-    const key = bytesToAsciiKey(source, typeStart, typeEnd);
-    let interned = intern.get(key);
-    if (interned === undefined) {
-      intern.set(key, key);
-      interned = key;
+    const typeStart = p;
+    let typeHash = 0x811c9dc5;
+    while (
+      p < limit
+      && record[p] !== LPAREN
+      && record[p] !== SPACE
+      && record[p] !== TAB
+      && record[p] !== LF
+      && record[p] !== CR
+      && record[p] !== FORM_FEED
+      && record[p] !== VTAB
+    ) {
+      typeHash = Math.imul(typeHash ^ record[p], 0x01000193);
+      p++;
     }
+    const typeEnd = p;
+    const interned = intern.intern(record, typeStart, typeEnd, typeHash);
 
-    refs[oi] = {
-      expressId: ids[i],
-      type: interned,
-      byteOffset: start,
-      byteLength: len,
-      // Line numbers aren't computed here — the columnar parser only uses
-      // them in diagnostic output. Skipping the newline-counting pass saves
-      // ~500 ms on 14 M entities. Set to 0 as a sentinel "unknown".
-      lineNumber: 0,
-    };
+    visit(oi, ids[i], interned, start, len);
   }
+}
 
+export function buildEntityRefsFromIndex(
+  source: Uint8Array | IfcSourceBytes,
+  ids: Uint32Array,
+  starts: Uint32Array,
+  lengths: Uint32Array,
+): EntityRef[] {
+  const refs: EntityRef[] = new Array(ids.length);
+  visitEntityIndex(source, ids, starts, lengths, (row, expressId, type, byteOffset, byteLength) => {
+    refs[row] = { expressId, type, byteOffset, byteLength, lineNumber: 0 };
+  });
   return refs;
+}
+
+/** #3985: retain columns instead of allocating a helper object for every record.
+ * Own the output: callers may mutate/release their pre-pass columns after scan.
+ * The public EntityRef[] adapter above uses exactly the same lexical walk.
+ */
+export function buildEntityColumnsFromIndex(
+  source: Uint8Array | IfcSourceBytes,
+  ids: Uint32Array,
+  starts: Uint32Array,
+  lengths: Uint32Array,
+): ScannedEntityColumns {
+  const expressIds = new Uint32Array(ids.length);
+  const byteOffsets = new Uint32Array(ids.length);
+  const byteLengths = new Uint32Array(ids.length);
+  let typeIndices: Uint16Array | Uint32Array = new Uint16Array(ids.length);
+  const typeStrings: string[] = [];
+  const types = new Map<string, number>();
+  visitEntityIndex(source, ids, starts, lengths, (row, id, type, start, length) => {
+    let typeIndex = types.get(type);
+    if (typeIndex === undefined) {
+      typeIndex = typeStrings.length;
+      typeStrings.push(type);
+      types.set(type, typeIndex);
+      // Unrecognized type names are file-supplied too. Keep their original
+      // names for categorization even beyond the final compact u16 surface.
+      if (typeIndex === 0x10000) typeIndices = Uint32Array.from(typeIndices);
+    }
+    expressIds[row] = id;
+    byteOffsets[row] = start;
+    byteLengths[row] = length;
+    typeIndices[row] = typeIndex;
+  });
+  return { expressIds, byteOffsets, byteLengths, typeIndices, typeStrings };
 }

@@ -16,7 +16,11 @@ import { MutablePropertyView } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
 import { extractPropertiesOnDemand, extractQuantitiesOnDemand } from '@ifc-lite/parser';
 import { PropertyValueType, findAttribute, type IfcSchemaVersion } from '@ifc-lite/data';
-import { splitTopLevelStepArgs } from './step-args.js';
+import { ATTRIBUTE_INDEX, applyAttributeMutations } from './mutate-step-record.js';
+
+// Re-exported so `mutate.test.ts` keeps importing these straight from
+// `./mutate.js`; the implementation lives in the sibling module above.
+export { ATTRIBUTE_INDEX, applyAttributeMutations };
 
 /**
  * Parse a --where filter string.
@@ -266,17 +270,6 @@ export async function mutateCommand(args: string[]): Promise<void> {
 }
 
 /**
- * IFC entity attribute indices (0-based positions in STEP argument list).
- * Standard for all IfcRoot subtypes: GlobalId(0), OwnerHistory(1), Name(2), Description(3).
- * IfcObject subtypes add ObjectType(4). Tag varies by entity type.
- */
-const ATTRIBUTE_INDEX: Record<string, number> = {
-  name: 2,
-  description: 3,
-  objecttype: 4,
-};
-
-/**
  * IFC types that define an ObjectType attribute, read from the bundled
  * buildingSMART schema for the file's own version.
  *
@@ -300,101 +293,3 @@ export async function entitiesWithObjectType(schema: string): Promise<ReadonlySe
   return new Set([...(attr?.simpleValueEntities ?? []), ...(attr?.complexEntities ?? [])]);
 }
 
-/**
- * Apply attribute mutations to STEP content via text replacement.
- * For each target entity, finds its STEP line and replaces the attribute at the known index.
- *
- * THROWS rather than rewriting a record whose text this pass cannot read. The
- * write below is BY INDEX, so it is only correct if `args[2]` really is the
- * record's third attribute; when the scan lost its place `args` still has parts
- * and the write still lands somewhere, silently (#4125, #2470). What a mis-scan
- * looks like, and why `splitTopLevelStepArgs` refuses one, is in
- * `step-args.ts`'s header.
- *
- * Throwing, not skipping-and-reporting, because this command's whole output is
- * a FILE: a skip writes one that looks like what was asked for and is missing
- * the edit, under a `Mutated 1 entities` line. The throw reaches `main().catch`
- * in `index.ts`, which prints `Error [mutate]: ...` and exits 1 with no output
- * file, so exit code and filesystem agree. The `Warning: ... skipping` paths
- * below stay warnings, and they are not both about the request: one names an attribute
- * the SCHEMA does not give that entity, the other ALSO fires when the record has fewer
- * arguments than the attribute index. Both stay warnings because the record was read.
- */
-export function applyAttributeMutations(
-  content: string,
-  mutations: { entity: any; propName: string; value: string }[],
-  objectTypeEntities: ReadonlySet<string>,
-): string {
-  // Group mutations by expressId for efficient single-pass replacement
-  const mutationsByEntity = new Map<number, { propName: string; value: string }[]>();
-  for (const m of mutations) {
-    const id = m.entity.ref.expressId;
-    const list = mutationsByEntity.get(id) ?? [];
-    list.push({ propName: m.propName, value: m.value });
-    mutationsByEntity.set(id, list);
-  }
-
-  // Records this pass was asked to rewrite and could not read. Collected
-  // rather than thrown on first sight so one run names every one of them.
-  const unreadable: string[] = [];
-
-  const lines = content.split('\n');
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // Match entity lines: #123=IFCTYPE(...);
-    const match = line.match(/^#(\d+)\s*=\s*(\w+)\s*\(/);
-    if (!match) continue;
-
-    const expressId = parseInt(match[1], 10);
-    const entityType = match[2].toUpperCase();
-    const entityMuts = mutationsByEntity.get(expressId);
-    if (!entityMuts) continue;
-
-    // Parse the STEP argument list (handle nested parens and quoted strings)
-    const argsStart = line.indexOf('(');
-    const argsEnd = line.lastIndexOf(')');
-    // A record wrapped across lines is caught rather than truncated: `argsEnd`
-    // is the LAST ')' on the line and the slice EXCLUDES it, so the nested list
-    // that ')' closed is left open and the split refuses. The exporter re-emits
-    // source lines verbatim, so a wrapped record from the input reaches here
-    // intact, and used to be skipped in silence while the run reported the
-    // mutation as done.
-    const args =
-      argsEnd > argsStart ? splitTopLevelStepArgs(line.slice(argsStart + 1, argsEnd)) : null;
-    if (args === null) {
-      unreadable.push(`#${expressId}=${entityType}`);
-      continue;
-    }
-
-    for (const mut of entityMuts) {
-      const attrIdx = ATTRIBUTE_INDEX[mut.propName.toLowerCase()];
-      if (attrIdx !== undefined && attrIdx < args.length) {
-        // Validate ObjectType is only written to entities that define it
-        if (mut.propName.toLowerCase() === 'objecttype' && !objectTypeEntities.has(entityType)) {
-          process.stderr.write(`Warning: attribute "ObjectType" not applicable to ${entityType} #${expressId}, skipping\n`);
-          continue;
-        }
-        // Escape for STEP format and wrap in quotes
-        const escaped = mut.value.replace(/\\/g, '\\\\').replace(/'/g, "''");
-        args[attrIdx] = `'${escaped}'`;
-      } else {
-        process.stderr.write(`Warning: attribute "${mut.propName}" not recognized for entity #${expressId}\n`);
-      }
-    }
-
-    lines[i] = line.slice(0, argsStart + 1) + args.join(',') + line.slice(argsEnd);
-  }
-
-  if (unreadable.length > 0) {
-    throw new Error(
-      `refusing to rewrite ${unreadable.length} record(s) whose STEP text could not be read as a ` +
-        `complete argument list: ${unreadable.join(', ')}. Attributes are written by index, so a ` +
-        `mis-scanned list would put the value on the wrong attribute and drop the ones it swallowed ` +
-        `(LTplus-AG/ifc-lite#4125). Usual causes: an undoubled apostrophe inside a quoted string, an ` +
-        `unbalanced parenthesis, a comment inside the argument list, or a record spanning several ` +
-        `lines. No output file was written.`,
-    );
-  }
-
-  return lines.join('\n');
-}

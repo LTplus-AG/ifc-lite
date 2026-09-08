@@ -1187,9 +1187,15 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
 
         h.render({ transparencyOverrides: new Map([[1, 0.18], [3, 0.18]]) });
 
-        const at = (ids: number[]) => h.stats.draws.indexOf(subBatchFor(h, ids).vertexBuffer);
-        const lastSolid = Math.max(at([2]), at([4]));
-        const firstFaded = Math.min(at([1]), at([3]));
+        // "No solid draw lands after any ghost" = max(every solid index) <
+        // min(every faded index). The solid side therefore has to measure its
+        // LAST draw: with indexOf, a solid buffer recorded twice (early and
+        // late) would report the early index and the assertion would pass while
+        // a late opaque draw erased the ghost — failing open.
+        const first = (ids: number[]) => h.stats.draws.indexOf(subBatchFor(h, ids).vertexBuffer);
+        const last = (ids: number[]) => h.stats.draws.lastIndexOf(subBatchFor(h, ids).vertexBuffer);
+        const lastSolid = Math.max(last([2]), last([4]));
+        const firstFaded = Math.min(first([1]), first([3]));
         assert.ok(firstFaded >= 0 && lastSolid >= 0, 'every sub-batch drew');
         assert.ok(lastSolid < firstFaded, 'a solid sub-batch drew after a ghost and would erase it');
     });
@@ -1245,6 +1251,36 @@ describe('X-Ray fades the entity, not its colour batch (#4129)', () => {
         assert.ok(
             ![...scene['partialBatchCache'].values()].some((b) => b === faded || b === solid),
             'a retired clone must not stay reachable in the cache',
+        );
+    });
+
+    it('frees a batch\'s sub-batch clones when the batch itself is rebuilt', () => {
+        // Every other path that destroys a parent batch clears the partial cache
+        // (residency eviction drops that batch's slots; finalize/release/clear
+        // drop all of them). A bucket rebuild did not, and a rebuilt batch gets a
+        // NEW id — which is baked into its slot keys — so the old slots became
+        // unreachable with their GPU buffers still alive. Reachable whenever more
+        // geometry lands in a bucket while hide/isolate is on: a federated model
+        // add, or a late chunk of the same one.
+        const h = makeHarness();
+        const scene = sceneOf(h);
+        const device = h.renderer['device'].getDevice();
+        const pipeline = h.renderer['pipeline'] as never;
+        scene.appendToBatches([triangle(1, GREY), triangle(2, GREY)], device, pipeline, false);
+        for (const b of scene.getBatchedMeshes()) b.bounds = undefined;
+
+        h.render({ hiddenIds: new Set([2]) });
+        assert.strictEqual(scene['partialBatchCache'].size, 1, 'setup: a clone exists for the visible subset');
+        const clone = [...scene['partialBatchCache'].values()][0] as BatchedMesh;
+        const cloneVb = clone.vertexBuffer as unknown as FakeBuffer;
+
+        // More geometry into the SAME bucket → the parent batch is rebuilt.
+        scene.appendToBatches([triangle(3, GREY)], device, pipeline, false);
+
+        assert.strictEqual(cloneVb.destroyed, 1, 'the rebuilt parent left its sub-batch clone pinned');
+        assert.ok(
+            ![...scene['partialBatchCache'].values()].some((b) => b === clone),
+            'a freed clone must not stay reachable in the cache',
         );
     });
 

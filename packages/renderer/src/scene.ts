@@ -1197,6 +1197,11 @@ export class Scene {
 
       // Destroy old GPU batch if it exists
       if (bucket?.batchedMesh) {
+        // Slot keys embed the batch id and the replacement gets a fresh one, so
+        // drop this batch's cached sub-batch clones first or they are stranded
+        // with live GPU buffers. Every other batch-destroying path already
+        // clears the cache (eviction per batch; finalize/release/clear wholesale).
+        this.dropPartialCacheForBatch(bucket.batchedMesh);
         destroyGpuResources(bucket.batchedMesh);
         bucket.batchedMesh = null;
       }

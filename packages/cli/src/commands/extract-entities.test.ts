@@ -173,6 +173,26 @@ END-ISO-10303-21;
     expect(keep.has(71)).toBe(false);
     expect(keep.has(51)).toBe(false);
   });
+
+  // CLI-level counterpart of the unit test above: `forwardClosure` is an
+  // internal helper `--product` runs through (see `extractEntitiesCommand`),
+  // so a regression there could pass the helper-level test above while the
+  // command itself still emits the wrong bytes. Exercise the actual command
+  // and assert on its output file, not just the in-memory `keep` set.
+  it('extracting --product #70 does not emit the lookalike id pulled in only by string text', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'ifc-extract-lookalike-'));
+    const src = join(dir, 'in.ifc');
+    const out = join(dir, 'sub.ifc');
+    await writeFile(src, LOOKALIKE_MODEL, 'latin1');
+    await extractEntitiesCommand([src, '--product', '#70', '--out', out]);
+    const text = await readFile(out, 'latin1');
+    expect(text).toContain('#70=');
+    expect(text).toContain('#50=');
+    // #71 and its own placement #51 are only mentioned inside #70's Name
+    // TEXT, never referenced as an attribute — they must not be emitted.
+    expect(text).not.toContain('#71=');
+    expect(text).not.toContain('#51=');
+  });
 });
 
 describe('buildSubset + serializeSubset', () => {

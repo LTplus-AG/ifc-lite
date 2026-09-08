@@ -240,8 +240,8 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
         // If the writer stops emitting one of these, the per-entry validation
         // below would vacuously pass on the ones that remain.
         expect(names).toEqual([
-          `${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`,
           `${TOPIC_GUID}/markup.bcf`,
+          `${TOPIC_GUID}/viewpoint.bcfv`,
           'bcf.version',
           'project.bcfp',
         ]);
@@ -285,7 +285,7 @@ describe('BCF output validates against the official buildingSMART XSDs', () => {
         const { valid, messages } = await validate(
           version,
           'visinfo.xsd',
-          entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!
+          entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!
         );
         expect(messages).toEqual([]);
         expect(valid).toBe(true);
@@ -397,7 +397,7 @@ describe('BCF 3.0 AspectRatio', () => {
     const entries = await writeAndUnzip(maximalProject('2.1'));
     // The 2.1 fixture DOES set `aspectRatio` (see maximalTopic), so this
     // distinguishes "correctly suppressed for 2.1" from "never written".
-    expect(entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)).not.toContain(
+    expect(entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)).not.toContain(
       'AspectRatio'
     );
   });
@@ -432,7 +432,7 @@ describe('BCF 3.0 FieldOfView range', () => {
       topic.viewpoints[0].perspectiveCamera!.fieldOfView = good;
       const project: BCFProject = { version: '3.0', topics: new Map([[TOPIC_GUID, topic]]) };
       const entries = await writeAndUnzip(project);
-      const xml = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+      const xml = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
       const { valid, messages } = await validate('3.0', 'visinfo.xsd', xml);
       expect(messages.join('\n')).toBe('');
       expect(valid).toBe(true);
@@ -448,7 +448,7 @@ describe('BCF 3.0 FieldOfView range', () => {
     topic.viewpoints[0].perspectiveCamera!.fieldOfView = 90;
     const project: BCFProject = { version: '2.1', topics: new Map([[TOPIC_GUID, topic]]) };
     const entries = await writeAndUnzip(project);
-    expect(entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)).toContain(
+    expect(entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)).toContain(
       '<FieldOfView>90</FieldOfView>'
     );
   });
@@ -582,7 +582,7 @@ describe('non-finite numbers never reach the archive', () => {
    */
   it('would have failed XSD validation had Infinity been emitted (the reported defect)', async () => {
     const entries = await writeAndUnzip(maximalProject('3.0'));
-    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const good = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
     expect((await validate('3.0', 'visinfo.xsd', good)).valid).toBe(true);
 
     const broken = good.replace(
@@ -609,7 +609,7 @@ describe('non-finite numbers never reach the archive', () => {
    */
   it('accepts NaN as a schema-valid xs:double, which is exactly why the schema cannot be the guard', async () => {
     const entries = await writeAndUnzip(maximalProject('3.0'));
-    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const good = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
     const withNaN = good.replace('<X>1.5</X>', '<X>NaN</X>');
     expect(withNaN).not.toEqual(good);
 
@@ -653,7 +653,7 @@ describe('non-finite numbers never reach the archive', () => {
 describe('BCF 3.0 places ViewSetupHints inside <Visibility>', () => {
   it('keeps the hints, with their values, nested in Visibility rather than at Components level', async () => {
     const entries = await writeAndUnzip(maximalProject('3.0'));
-    const bcfv = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const bcfv = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
 
     // Present at all — the mutation that deleted it left the file schema-valid.
     expect(bcfv).toContain('<ViewSetupHints');
@@ -705,7 +705,7 @@ describe('the validator can fail (mutation proof)', () => {
 
   it('rejects a misspelled enum value', async () => {
     const entries = await writeAndUnzip(maximalProject('2.1'));
-    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const good = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
     // 2.1's BitmapFormat enum is {PNG, JPG} — uppercase. 3.0's is {png, jpg}.
     // Lowercasing it is exactly the cross-version mistake this catches.
     const broken = good.replace('>PNG<', '>png<');
@@ -718,7 +718,7 @@ describe('the validator can fail (mutation proof)', () => {
 
   it('rejects a wrong-typed attribute', async () => {
     const entries = await writeAndUnzip(maximalProject('2.1'));
-    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const good = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
     // `DefaultVisibility` is xs:boolean; "sometimes" is not a boolean.
     const broken = good.replace(
       /DefaultVisibility="[^"]*"/,
@@ -733,7 +733,7 @@ describe('the validator can fail (mutation proof)', () => {
 
   it('rejects a value outside a schema facet range', async () => {
     const entries = await writeAndUnzip(maximalProject('2.1'));
-    const good = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`)!;
+    const good = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`)!;
     // 2.1 restricts FieldOfView to [45, 60]; the fixture sits on 60.
     const broken = good.replace(
       /<FieldOfView>[^<]*<\/FieldOfView>/,
@@ -834,7 +834,7 @@ describe('BCF camera cardinality and order', () => {
     cameras: { perspective: boolean; orthogonal: boolean }
   ): Promise<string> {
     const entries = await writeAndUnzip(project(version, cameras));
-    const xml = entries.get(`${TOPIC_GUID}/Viewpoint_${VIEWPOINT_GUID}.bcfv`);
+    const xml = entries.get(`${TOPIC_GUID}/viewpoint.bcfv`);
     // Anti-vacuity: every assertion below reads this string, so a writer that
     // stopped emitting the viewpoint entry must fail here, not pass silently.
     expect(xml).toBeDefined();

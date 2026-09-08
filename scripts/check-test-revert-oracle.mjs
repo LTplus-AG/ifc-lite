@@ -87,6 +87,7 @@ import {
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
 import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
+import { isVersionOnlyManifestDiff } from './lib/revert-oracle-version-bump.mjs';
 import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
 import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
@@ -265,6 +266,25 @@ if (opts.ci && isDependabotDependencyOnly(process.env.PR_AUTHOR_LOGIN, entries))
 
 const { production, test: testEntries, ignored, inert, warnings } = classifyDiff(entries);
 for (const w of warnings) console.log(`  WARNING: ${w}`);
+
+// The changesets release PR ("chore: version packages") changes only
+// package.json `"version"` fields and the matching Cargo.toml version
+// literals — no test can observe a version bump. `isVersionOnlyManifestDiff`
+// checks the actual diff content of every `production` file (not just its
+// name), so a real dependency/scripts/exports edit in the same file still
+// requires a test as before. See revert-oracle-version-bump.mjs for the
+// full rationale and the false-negative it is written against.
+if (
+  opts.ci &&
+  production.length > 0 &&
+  production.every((e) => isVersionOnlyManifestDiff(e.path, gitOrDie(['diff', '-U0', mergeBase, headSha, '--', e.path])))
+) {
+  console.log(
+    '  NOT APPLICABLE: every production file is a package.json/Cargo.toml version-only bump ' +
+      '(release PR shape); nothing a test could observe.',
+  );
+  process.exit(0);
+}
 
 let prodPaths = production.map((e) => e.path);
 if (opts.only.length > 0) {

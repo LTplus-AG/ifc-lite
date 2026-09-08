@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-import { describe, it, beforeEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   loadDrawing2DEntry,
@@ -83,9 +83,19 @@ function sampleEntry(overrides?: Partial<Omit<PersistedDrawing2DEntry, 'savedAt'
 }
 
 describe('drawing2DSlice persistence', () => {
+  // Several cases below deliberately corrupt a localStorage entry to prove the
+  // production code degrades gracefully (readEntryRaw catches JSON.parse and
+  // logs via console.warn). Left unstubbed, that warning's real SyntaxError
+  // text lands in the runner's captured stdout, which the revert-oracle's
+  // load-failure heuristic matches on regardless of test outcome (#4159 CI).
+  const realWarn = console.warn;
   beforeEach(() => {
+    console.warn = () => { /* keep the intentional parse-failure warning out of test output */ };
     installStubStorage();
     clearAllDrawing2DEntries();
+  });
+  afterEach(() => {
+    console.warn = realWarn;
   });
 
   describe('round-trip', () => {

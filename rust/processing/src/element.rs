@@ -44,7 +44,9 @@ use ifc_lite_geometry::{
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::BTreeMap;
 
-use crate::processor::{convert_mesh_to_site_local, get_refs_from_list};
+use crate::processor::{
+    convert_mesh_to_site_local, get_refs_from_list, site_local_rotation_invalidates_captured_transforms,
+};
 
 /// Element-level metadata stamped on every produced [`MeshData`]. The native
 /// pipeline resolves these during its metadata phase; the browser passes
@@ -708,18 +710,16 @@ fn build_mesh_data(
         None => uvs,
     };
     let mesh_origin = mesh.origin;
-    // Instancing: capture before the fields are moved into MeshData. A site-local
-    // rotation (below) re-transforms positions/origin and would invalidate the
-    // captured transform, so drop instancing when one is active (rare; conservative).
-    let instance = if ctx.site_local_rotation.is_none() {
+    // #4118/#1474: drop instancing/local-bounds/local-to-world only when the site
+    // placement actually rotates something (see helper doc comment for why).
+    let site_local_rotates =
+        site_local_rotation_invalidates_captured_transforms(ctx.site_local_rotation);
+    let instance = if !site_local_rotates {
         mesh.instance_meta.take()
     } else {
         None
     };
-    // Local bounds/placement transform (issue #1474): same caveat as instancing
-    // above — a site-local rotation re-transforms positions and would invalidate
-    // the captured placement, so drop both when one is active.
-    let (local_bounds, local_to_world) = if ctx.site_local_rotation.is_none() {
+    let (local_bounds, local_to_world) = if !site_local_rotates {
         (mesh.local_bounds, mesh.local_to_world)
     } else {
         (None, None)

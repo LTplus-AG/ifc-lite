@@ -99,7 +99,17 @@ impl GeometryRouter {
                 _ => continue,
             };
 
-            let vertex_count = opening_mesh.positions.len() / 3;
+            // Triangle count, not raw position-buffer length: the buffer's
+            // element count also includes per-`IfcFace` vertex duplication the
+            // faceted-brep mesher emits, and welding (#4103) merges duplicate
+            // vertex slots without touching `indices`. Gating on the buffer
+            // length let two byte-identical cutters — one authored/welded with
+            // shared corners, one with duplicated ones — land on opposite sides
+            // of the threshold below for the same geometry (issue #4119: 7 of
+            // 618 fixture openings moved branch purely from welding, with no
+            // triangle changed). Triangle count is invariant to that.
+            let triangle_count = opening_mesh.triangle_count();
+            let vertex_count = opening_mesh.vertex_count();
 
             // Local helper: bump the aggregate counter and push a per-host
             // diagnostic line together. QUIET mode (`record_diag == false`) is a
@@ -109,7 +119,12 @@ impl GeometryRouter {
             let mut bump = |router: &Self, ck: ClassificationKind, kind: OpeningKindDiag| {
                 if record_diag {
                     router.bump_classification(ck);
-                    host_diag.push(OpeningDiagnostic { opening_id, kind, vertex_count });
+                    host_diag.push(OpeningDiagnostic {
+                        opening_id,
+                        kind,
+                        vertex_count,
+                        triangle_count,
+                    });
                 }
             };
 
@@ -136,11 +151,14 @@ impl GeometryRouter {
             let separable_bodies =
                 item_bounds_with_dir.len() > 1 && spatial_cluster_count(&item_bounds_with_dir) > 1;
 
-            if vertex_count > 100 && !separable_bodies {
-                // High-vertex-count single-body openings (circular / arched /
+            if triangle_count > 100 && !separable_bodies {
+                // High-triangle-count single-body openings (circular / arched /
                 // faceted sweeps) won't fit through the CSG safety thresholds,
                 // so always carry the per-item AABB + extrusion direction
-                // as a fallback (issue #635).
+                // as a fallback (issue #635). Gated on triangle count, not the
+                // position-buffer length, so authoring/weld-time vertex
+                // duplication can't move an opening across the threshold for
+                // unchanged geometry (issue #4119).
                 let (fallback_min, fallback_max, fallback_dir) =
                     self.fallback_aabb_for_opening(&opening_entity, &opening_mesh, decoder);
                 bump(

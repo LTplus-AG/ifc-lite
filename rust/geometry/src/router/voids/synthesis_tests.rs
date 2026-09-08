@@ -409,3 +409,230 @@ fn an_inward_wound_host_is_read_the_same_as_an_outward_one() {
         mx.x
     );
 }
+
+// --- issue #4119: opening classification gates on TRIANGLE count, not the
+// raw position-buffer length -----------------------------------------------
+//
+// `classify_openings_impl`'s high-complexity gate (this file, above) has TWO
+// exits that both label an opening `NonRectangular`, but they hand back
+// DIFFERENT mesh data:
+//
+//   - the `triangle_count > 100 && !separable_bodies` branch hands back
+//     `opening_mesh`, sourced from `self.process_element` — which runs
+//     through `apply_placement` and so arrives WELDED (#4103).
+//   - the per-item else-branch (reached when that gate is false but the
+//     item isn't a clean box) hands back `item_mesh`, sourced from
+//     `get_opening_item_meshes_world` (`probe.rs`) — which bakes with
+//     `transform_mesh_world_framed` directly and is NEVER welded (#4122).
+//
+// So a mesh whose WELDED vertex count already dips at/under 100 while its
+// (weld-invariant) triangle count stays over 100 is exactly the fixture that
+// tells the two gates apart: reverting the fix (back to `vertex_count > 100`)
+// silently swaps which of those two meshes — and hence which vertex count —
+// the returned `OpeningType::NonRectangular` carries, even though the
+// diagnostic `kind` label is `NonRectangular` either way.
+mod issue_4119_triangle_count_gate {
+    use super::*;
+    use ifc_lite_core::{build_entity_index, EntityScanner};
+    use std::fmt::Write as _;
+
+    /// An 8×8 grid of unit quads (64 cells, 2 triangles each = 128
+    /// triangles), each cell carrying its OWN four `IfcCartesianPoint`s (no
+    /// sharing across cells) — the faceted-brep duplication pattern also
+    /// exercised by `mesh_weld_tests.rs`'s `faceted_plate_welds_to_grid`.
+    /// Raw vertex count is 4×64 = 256; the welded (G+1)×(G+1) = 81 unique
+    /// grid points fall under the classifier's 100 threshold while the
+    /// triangle count (128) stays over it on both sides of the weld.
+    fn build_unshared_grid_faceted_brep(start_id: u32, g: usize) -> (String, u32, u32) {
+        let mut out = String::new();
+        let mut next_id = start_id;
+        let mut face_ids: Vec<u32> = Vec::with_capacity(g * g);
+
+        for i in 0..g {
+            for j in 0..g {
+                let (x, y) = (i as f64, j as f64);
+                let mut corner_ids = [0u32; 4];
+                for (k, (dx, dy)) in [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let pid = next_id;
+                    let _ = writeln!(
+                        out,
+                        "#{pid}=IFCCARTESIANPOINT(({:.4},{:.4},0.0));",
+                        x + dx,
+                        y + dy
+                    );
+                    next_id += 1;
+                    corner_ids[k] = pid;
+                }
+                let loop_id = next_id;
+                let _ = writeln!(
+                    out,
+                    "#{loop_id}=IFCPOLYLOOP((#{},#{},#{},#{}));",
+                    corner_ids[0], corner_ids[1], corner_ids[2], corner_ids[3]
+                );
+                next_id += 1;
+                let bound_id = next_id;
+                let _ = writeln!(out, "#{bound_id}=IFCFACEOUTERBOUND(#{loop_id},.T.);");
+                next_id += 1;
+                let face_id = next_id;
+                let _ = writeln!(out, "#{face_id}=IFCFACE((#{bound_id}));");
+                next_id += 1;
+                face_ids.push(face_id);
+            }
+        }
+
+        let shell_id = next_id;
+        next_id += 1;
+        let refs: Vec<String> = face_ids.iter().map(|id| format!("#{id}")).collect();
+        let _ = writeln!(out, "#{shell_id}=IFCCLOSEDSHELL(({}));", refs.join(","));
+
+        let brep_id = next_id;
+        next_id += 1;
+        let _ = writeln!(out, "#{brep_id}=IFCFACETEDBREP(#{shell_id});");
+
+        (out, next_id, brep_id)
+    }
+
+    /// A 40m×40m×2m plate hosting one opening whose Body is the
+    /// unshared-grid `IfcFacetedBrep` above.
+    fn plate_with_faceted_opening_ifc() -> String {
+        let header = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('test.ifc','2024-01-01T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('1234567890123456789012',#2,'Test',$,$,$,$,(#10),#7);
+#2=IFCOWNERHISTORY(#3,#4,$,.ADDED.,$,$,$,0);
+#3=IFCPERSONANDORGANIZATION(#5,#6,$);
+#4=IFCAPPLICATION(#6,'1.0','Test','Test');
+#5=IFCPERSON($,'Test',$,$,$,$,$,$);
+#6=IFCORGANIZATION($,'Test',$,$,$);
+#7=IFCUNITASSIGNMENT((#8,#9));
+#8=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#9=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#10=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.E-5,#11,$);
+#11=IFCAXIS2PLACEMENT3D(#12,$,$);
+#12=IFCCARTESIANPOINT((0.,0.,0.));
+#13=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#10,$,.MODEL_VIEW.,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,#23,#24);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+#23=IFCDIRECTION((0.,0.,1.));
+#24=IFCDIRECTION((1.,0.,0.));
+#30=IFCRECTANGLEPROFILEDEF(.AREA.,'Plate',#31,40.0,40.0);
+#31=IFCAXIS2PLACEMENT2D(#32,#33);
+#32=IFCCARTESIANPOINT((0.,0.));
+#33=IFCDIRECTION((1.,0.));
+#40=IFCEXTRUDEDAREASOLID(#30,#41,#42,2.0);
+#41=IFCAXIS2PLACEMENT3D(#43,$,$);
+#42=IFCDIRECTION((0.,0.,1.));
+#43=IFCCARTESIANPOINT((0.,0.,0.));
+#50=IFCSHAPEREPRESENTATION(#13,'Body','SweptSolid',(#40));
+#51=IFCPRODUCTDEFINITIONSHAPE($,$,(#50));
+#100=IFCPLATE('0001234567890123456789',#2,'TestPlate',$,$,#20,#51,'Tag',$);
+#60=IFCLOCALPLACEMENT(#20,#61);
+#61=IFCAXIS2PLACEMENT3D(#62,#63,#64);
+#62=IFCCARTESIANPOINT((0.,0.,-1.));
+#63=IFCDIRECTION((0.,0.,1.));
+#64=IFCDIRECTION((1.,0.,0.));
+"#;
+
+        // Start well past every hand-assigned id in `header` (highest is
+        // #100) so the generator's auto-incrementing ids can never collide.
+        let (brep_entities, next_id, brep_id) = build_unshared_grid_faceted_brep(1000, 8);
+
+        let mut out = String::new();
+        out.push_str(header);
+        out.push_str(&brep_entities);
+
+        let rep_id = next_id;
+        let pds_id = next_id + 1;
+        let opening_id = next_id + 2;
+        let rel_id = next_id + 3;
+
+        let _ = writeln!(
+            out,
+            "#{rep_id}=IFCSHAPEREPRESENTATION(#13,'Body','Brep',(#{brep_id}));"
+        );
+        let _ = writeln!(out, "#{pds_id}=IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep_id}));");
+        let _ = writeln!(
+            out,
+            "#{opening_id}=IFCOPENINGELEMENT('0001234567890123456790',#2,'Hole',$,$,#60,#{pds_id},$,.OPENING.);"
+        );
+        let _ = writeln!(
+            out,
+            "#{rel_id}=IFCRELVOIDSELEMENT('0001234567890123456791',#2,$,$,#100,#{opening_id});"
+        );
+        out.push_str("ENDSEC;\nEND-ISO-10303-21;\n");
+        out
+    }
+
+    fn find_opening_id(content: &str, host_id: u32) -> u32 {
+        let mut scanner = EntityScanner::new(content);
+        let mut decoder = EntityDecoder::new(content);
+        while let Some((id, type_name, start, end)) = scanner.next_entity() {
+            if type_name != "IFCRELVOIDSELEMENT" {
+                continue;
+            }
+            if let Ok(entity) = decoder.decode_at_with_id(id, start, end) {
+                if entity.get_ref(4) == Some(host_id) {
+                    if let Some(opening_id) = entity.get_ref(5) {
+                        return opening_id;
+                    }
+                }
+            }
+        }
+        panic!("no IFCRELVOIDSELEMENT found for host #{host_id}");
+    }
+
+    #[test]
+    fn nonrectangular_opening_keeps_the_welded_mesh_not_the_raw_one() {
+        let content = plate_with_faceted_opening_ifc();
+        let entity_index = build_entity_index(&content);
+        let mut decoder = EntityDecoder::with_index(&content, entity_index);
+        let router = GeometryRouter::with_units(&content, &mut decoder);
+        let opening_id = find_opening_id(&content, 100);
+
+        let plate = decoder.decode_by_id(100).expect("decode plate #100");
+        let openings = router.classify_openings(&plate, &[opening_id], &mut decoder);
+        assert_eq!(openings.len(), 1, "exactly one opening classified");
+
+        let mesh = match &openings[0] {
+            OpeningType::NonRectangular(mesh, ..) => mesh,
+            other => panic!(
+                "expected NonRectangular (128 triangles, no inferable box/frame), \
+                 got a different OpeningType variant: {}",
+                match other {
+                    OpeningType::Rectangular(..) => "Rectangular",
+                    OpeningType::DiagonalRectangular(..) => "DiagonalRectangular",
+                    OpeningType::NonRectangular(..) => unreachable!(),
+                }
+            ),
+        };
+
+        let triangle_count = mesh.indices.len() / 3;
+        let vertex_count = mesh.positions.len() / 3;
+        assert_eq!(triangle_count, 128, "8x8 grid = 64 cells x 2 triangles");
+
+        // The load-bearing assertion: with the FIXED gate (`triangle_count >
+        // 100`), the opening takes the `opening_mesh` exit — welded, 81
+        // vertices (9x9 grid points) — not the per-item `item_mesh` exit,
+        // which is never welded and would carry all 256 raw vertices.
+        // Reverting `synthesis.rs`'s gate to `vertex_count > 100` makes the
+        // (already-welded) `opening_mesh`'s vertex count read <= 100, so the
+        // gate is skipped and this opening falls through to the unwelded
+        // per-item branch instead — this assertion goes from 81 to 256 and
+        // fails.
+        assert_eq!(
+            vertex_count, 81,
+            "expected the WELDED opening_mesh (9x9 = 81 grid points) — a \
+             vertex_count of {vertex_count} means the classifier took the \
+             unwelded per-item branch instead, i.e. the >100 gate is not \
+             reading triangle count"
+        );
+    }
+}

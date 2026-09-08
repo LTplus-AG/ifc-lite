@@ -187,7 +187,7 @@ async function autoStageBcfDownload(): Promise<NonNullable<ToolDispatchResult['d
   const blob = await writeBCF(project);
   // Drop the previous staged copy so the panel only ever shows the latest.
   if (stagedBcfFileId) playgroundFiles.remove(stagedBcfFileId);
-  const filename = coerceFilename(undefined, 'bcfzip', 'issues');
+  const filename = coerceFilename(undefined, 'bcfzip', 'topics');
   const file = playgroundFiles.add({
     filename,
     mimeType: 'application/zip',
@@ -1120,7 +1120,7 @@ const IMPLS: Record<string, ToolImpl> = {
   },
   async bcf_export(_m, args) {
     const project = getBcfProject();
-    const filename = coerceFilename(args.file_path as string | undefined, 'bcfzip', 'issues');
+    const filename = coerceFilename(args.file_path as string | undefined, 'bcfzip', 'topics');
     const blob = await writeBCF(project);
     const file = playgroundFiles.add({
       filename, mimeType: 'application/zip', size: blob.size, blob,
@@ -1766,7 +1766,7 @@ function resolveIdsXml(args: Record<string, unknown>): string | null {
  *
  *   coerceFilename('wall_fire_rating.ids', 'ifc')   → 'wall_fire_rating.ifc'
  *   coerceFilename('/tmp/foo.bar/baz.csv', 'json')  → 'baz.json'
- *   coerceFilename(undefined, 'bcfzip', 'issues')   → 'issues.bcfzip'
+ *   coerceFilename(undefined, 'bcfzip', 'topics')   → 'topics.bcfzip'
  */
 function coerceFilename(
   raw: string | undefined,

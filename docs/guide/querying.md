@@ -441,5 +441,6 @@ const alsoExternalWalls = query
 
 ## Next Steps
 
+- [Selector Syntax](selector-syntax.md) - the IfcOpenShell one-line filter syntax, and what each construct maps to here
 - [Export Guide](exporting.md) - Export query results
 - [API Reference](../api/typescript.md) - Complete API docs

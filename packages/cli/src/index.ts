@@ -150,7 +150,7 @@ const HELP = `
     ifc-lite diagnose-geometry model.ifc --type IfcWall
     ifc-lite diagnose-geometry model.ifc --product 0YvCT2_$X3_xJG3rzD8L_8
     ifc-lite ids model.ifc requirements.ids --json
-    ifc-lite bcf create --title "Missing door" --out issue.bcf
+    ifc-lite bcf create --title "Missing door" --out topic.bcf
     ifc-lite clash model.ifc --matrix --json
     ifc-lite clash model.ifc --a "IfcDuct*|IfcPipe*" --b "IfcWall*" --mode clearance --clearance 0.05
     ifc-lite clash model.ifc --matrix --bcf clashes.bcfzip

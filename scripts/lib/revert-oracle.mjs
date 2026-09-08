@@ -185,10 +185,10 @@ export function rootScriptsRunner(files) {
   if (entries.length === 0 || !entries.every((f) => /^scripts\/.*\.test\.(mjs|js|cjs)$/.test(f))) return null;
   return { family: 'node-test', bin: 'node', args: ['--test', ...entries] };
 }
-/** Cargo test invocation for a crate. */
-export function cargoRunner(crate) {
+/** Cargo test invocation for a crate, optionally under a `--features` combo. */
+export function cargoRunner(crate, features = []) {
   if (!crate) return null;
-  return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate] };
+  return { family: 'cargo', bin: 'cargo', args: ['test', '--no-fail-fast', '-p', crate, ...(features.length ? ['--features', features.join(',')] : [])] };
 }
 
 // Runner output parsing — the core of the tool

@@ -37,7 +37,7 @@ export interface BCFCreateTopicFormProps {
   onSubmit: (topic: Partial<BCFTopic>, options?: { includeSnapshot: boolean }) => void;
   onCancel: () => void;
   author: string;
-  /** Pre-fill the title (e.g. when raising an issue from a detected change). */
+  /** Pre-fill the title (e.g. when raising a topic from a detected change). */
   initialTitle?: string;
   /** Pre-fill the description. */
   initialDescription?: string;
@@ -141,7 +141,7 @@ export function BCFCreateTopicForm({
           id="title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Brief description of the issue"
+          placeholder="Brief description of the topic"
           required
         />
       </div>

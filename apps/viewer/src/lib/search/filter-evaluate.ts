@@ -49,13 +49,15 @@ import { RelationshipType } from '@ifc-lite/data';
 
 import {
   combineRuleResults,
+  type Combinator,
+  type FilterRule,
+} from './filter-rules.js';
+import {
   setOpMatches,
   stringOpMatches,
   matchStringAnyNone,
   numericOpMatches,
-  type Combinator,
-  type FilterRule,
-} from './filter-rules.js';
+} from './filter-ops.js';
 import {
   isNumericArrayLike,
   materialiseNumericIterable,
@@ -563,7 +565,7 @@ function evaluateRule(
       return setOpMatches(rule.op, pt, rule.values);
     }
     case 'name': {
-      return stringOpMatches(rule.op, ctx.table.getName(expressId), rule.value);
+      return stringOpMatches(rule.op, ctx.table.getName(expressId), rule.value, rule.valueKind);
     }
     case 'property': {
       if (!psetsFor) return false;
@@ -575,7 +577,7 @@ function evaluateRule(
     }
     case 'material': {
       if (!matNamesFor) return false;
-      return matchStringAnyNone(rule.op, matNamesFor(), rule.value);
+      return matchStringAnyNone(rule.op, matNamesFor(), rule.value, rule.valueKind);
     }
     case 'classification': {
       if (!classFor) return false;

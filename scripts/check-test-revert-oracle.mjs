@@ -80,9 +80,6 @@ import { tmpdir } from 'node:os';
 import {
   parseNameStatus,
   classifyDiff,
-  detectRunner,
-  cargoRunner,
-  rootScriptsRunner,
   parseRunnerOutput,
   aggregate,
   verdict,
@@ -90,9 +87,9 @@ import {
   SURGICAL_ADVICE,
 } from './lib/revert-oracle.mjs';
 import { isDependabotDependencyOnly } from './lib/revert-oracle-dependabot.mjs';
-import { cargoTestOwner } from './lib/revert-oracle-cargo.mjs';
-import { pythonTestOwner, pythonRunner } from './lib/revert-oracle-python.mjs';
+import { requiredFeaturePlanOrDie, EXIT_UNHANDLED_CFG_SHAPE } from './lib/revert-oracle-rust-features.mjs';
 import { ciExitCode } from './lib/revert-oracle-ci.mjs';
+import { planRuns } from './lib/revert-oracle-plan-runs.mjs';
 
 const SELF_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const rootFlag = process.argv.indexOf('--root');
@@ -169,66 +166,13 @@ function parseArgs(argv) {
 // Package / runner resolution
 // ---------------------------------------------------------------------------
 
-function findUp(startDir, filename) {
-  let dir = startDir;
-  for (;;) {
-    const candidate = join(dir, filename);
-    if (existsSync(candidate)) return dir;
-    const parent = dirname(dir);
-    if (parent === dir || !parent.startsWith(ROOT)) return null;
-    dir = parent;
-  }
-}
-
-/** Group test files by the package that owns them and pick each one's runner. */
-function planRuns(testPaths) {
-  /** @type {Map<string, {dir: string, files: string[], script: string|undefined, crate: string|null}>} */
-  const groups = new Map();
-  const unassigned = [];
-
-  for (const rel of testPaths) {
-    const abs = join(ROOT, rel);
-    const c = cargoTestOwner(abs, ROOT);
-    if (c) {
-      const key = `cargo:${c.crate}`;
-      if (!groups.has(key)) groups.set(key, { dir: c.dir, files: [], script: undefined, crate: c.crate });
-      groups.get(key).files.push(rel);
-      continue;
-    }
-    if (rel.endsWith('.rs')) { unassigned.push(rel); continue; }
-    if (rel.endsWith('.py')) {
-      const p = pythonTestOwner(abs, ROOT);
-      if (!p) { unassigned.push(rel); continue; }
-      const key = `python:${p.dir}`;
-      if (!groups.has(key)) groups.set(key, { dir: p.dir, files: [], script: undefined, crate: null, python: true });
-      groups.get(key).files.push(rel); continue;
-    }
-    const pkgDir = findUp(dirname(abs), 'package.json');
-    if (!pkgDir) { unassigned.push(rel); continue; }
-    if (!groups.has(pkgDir)) {
-      let script;
-      try {
-        script = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8')).scripts?.test;
-      } catch {
-        script = undefined;
-      }
-      groups.set(pkgDir, { dir: pkgDir, files: [], script, crate: null });
-    }
-    groups.get(pkgDir).files.push(rel);
-  }
-
-  const plans = [];
-  for (const [key, g] of groups) {
-    const relFiles = g.files.map((f) => relative(g.dir, join(ROOT, f)) || f);
-    const runner = g.crate
-      ? cargoRunner(g.crate)
-      : g.python
-        ? pythonRunner(relFiles)
-        : (g.dir === ROOT ? rootScriptsRunner(g.files) : null) ?? detectRunner(g.script, relFiles);
-    plans.push({ key, dir: g.dir, files: g.files, relFiles, runner, script: g.script, crate: g.crate });
-  }
-  return { plans, unassigned };
-}
+// findUp() and planRuns() live in ./lib/revert-oracle-plan-runs.mjs (#4090):
+// this file sits at its exact module-size budget with zero headroom, so the
+// grouping/runner-selection logic moved to that already-uncapped sibling
+// instead of growing this one. planRuns() is invoked below through
+// requiredFeaturePlanOrDie(), which also converts an UnhandledCfgShapeError
+// raised from inside it (via requiredFeatureCombos()) into a structured
+// failure instead of an unhandled crash.
 
 /** Resolve a runner binary the way the package itself would. */
 function resolveBin(bin, pkgDir) {
@@ -351,7 +295,7 @@ if (testPaths.length === 0) {
   );
 }
 
-const { plans, unassigned } = planRuns(testPaths);
+const { plans, unassigned } = requiredFeaturePlanOrDie((tp) => planRuns(tp, ROOT), testPaths, opts.json, baseSha, headSha, prodPaths, die, EXIT_UNHANDLED_CFG_SHAPE);
 if (unassigned.length > 0) {
   die(EXIT_NOTHING_CHECKED, 'could not find an owning package for some test files', unassigned);
 }

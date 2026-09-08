@@ -134,6 +134,7 @@ nav:
     - Geometry Processing: guide/geometry.md
     - Rendering: guide/rendering.md
     - Querying Data: guide/querying.md
+    - Selector Syntax: guide/selector-syntax.md
     - Exporting Data: guide/exporting.md
     - Multi-Model Federation: guide/federation.md
     - BCF Collaboration: guide/bcf.md

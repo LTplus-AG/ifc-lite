@@ -38,20 +38,20 @@ const NO_OPTIONS: readonly string[] = [];
 // ── Op constants ──────────────────────────────────────────────────────
 
 const SET_OPS: SetOp[] = ['in', 'notIn'];
-const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith'];
+const STRING_OPS: StringOp[] = ['eq', 'ne', 'contains', 'notContains', 'startsWith', 'matches', 'notMatches'];
 const VALUE_OPS: ValueOp[] = [
-  'eq', 'ne', 'contains', 'notContains', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
+  'eq', 'ne', 'contains', 'notContains', 'matches', 'notMatches', 'gt', 'gte', 'lt', 'lte', 'isSet', 'isNotSet',
 ];
 const NUMERIC_OPS: NumericOp[] = ['eq', 'ne', 'gt', 'gte', 'lt', 'lte'];
 const CLASSIFICATION_OPS: ClassificationOp[] = [
-  'contains', 'eq', 'ne', 'notContains', 'isSet', 'isNotSet',
+  'contains', 'eq', 'ne', 'notContains', 'matches', 'notMatches', 'isSet', 'isNotSet',
 ];
 
 const OP_LABEL: Record<string, string> = {
   in: 'is one of',  notIn: 'is not one of',
   eq: '=', ne: '≠',
   contains: 'contains', notContains: 'does not contain',
-  startsWith: 'starts with',
+  startsWith: 'starts with', matches: 'matches /regex/', notMatches: 'does not match /regex/',
   gt: '>', gte: '≥', lt: '<', lte: '≤',
   isSet: 'is set', isNotSet: 'is not set',
 };
@@ -346,7 +346,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
         value={rule.setName}
         options={psetNames}
         className="h-7 w-52 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, setName: next, propertyName: '' })}
+        onChange={(next) => onChange({ ...rule, setName: next, setNameKind: undefined, propertyName: '', propertyNameKind: undefined })}
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
@@ -354,7 +354,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
         value={rule.propertyName}
         options={propNames}
         className="h-7 w-44 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, propertyName: next })}
+        onChange={(next) => onChange({ ...rule, propertyName: next, propertyNameKind: undefined })}
       />
       <OpDropdown ops={VALUE_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       {!valueless && (
@@ -363,7 +363,7 @@ function PropertyEditor({ rule, psetQto, valueSchema, onChange }: PropertyEditor
           value={rule.value}
           options={valueOptions}
           className="h-7 w-44 text-xs font-mono"
-          onChange={(value) => onChange({ ...rule, value })}
+          onChange={(value) => onChange({ ...rule, value, valueKind: undefined })}
         />
       )}
     </>
@@ -391,7 +391,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
         value={rule.setName}
         options={qsetNames}
         className="h-7 w-56 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, setName: next, quantityName: '' })}
+        onChange={(next) => onChange({ ...rule, setName: next, setNameKind: undefined, quantityName: '', quantityNameKind: undefined })}
       />
       <span className="text-muted-foreground">.</span>
       <ComboInput
@@ -399,7 +399,7 @@ function QuantityEditor({ rule, psetQto, onChange }: QuantityEditorProps) {
         value={rule.quantityName}
         options={qtyNames}
         className="h-7 w-44 text-xs font-mono"
-        onChange={(next) => onChange({ ...rule, quantityName: next })}
+        onChange={(next) => onChange({ ...rule, quantityName: next, quantityNameKind: undefined })}
       />
       <OpDropdown ops={NUMERIC_OPS} value={rule.op} onChange={(next) => onChange({ ...rule, op: next })} />
       <Input

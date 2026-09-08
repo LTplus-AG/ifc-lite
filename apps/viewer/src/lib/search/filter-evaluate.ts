@@ -514,7 +514,26 @@ function evaluateRule(
       if (elev === null) return false;
       return numericOpMatches(rule.op, elev, rule.value);
     }
+    case 'type': {
+      const typeName = relatingTypeNameOf(ctx, expressId);
+      if (typeName === null) return false;
+      return stringOpMatches(rule.op, typeName, rule.value, rule.valueKind);
+    }
   }
+}
+
+/**
+ * The Name of `expressId`'s RELATING TYPE via `IfcRelDefinesByType` — the
+ * `type=` selector dimension (#4094), distinct from `ctx.table.getTypeName`
+ * (the element's own IFC class). `null` when the element carries no such
+ * relation, which a `type=` rule must never match (an absent relation is
+ * not the same as a type with an empty Name).
+ */
+function relatingTypeNameOf(ctx: EvalContext, expressId: number): string | null {
+  if (!ctx.store.relationships) return null;
+  const typeIds = ctx.store.relationships.getRelated(expressId, RelationshipType.DefinesByType, 'inverse');
+  if (typeIds.length === 0) return null;
+  return ctx.table.getName(typeIds[0]);
 }
 
 function buildResult(modelId: string, ctx: EvalContext, expressId: number): FilteredElement {

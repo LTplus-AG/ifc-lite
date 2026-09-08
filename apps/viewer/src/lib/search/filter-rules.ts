@@ -229,6 +229,22 @@ export interface ElevationRule {
   value: number;
 }
 
+/**
+ * `type=WT01` (IfcOpenShell selector syntax) — match against the Name of
+ * the element's RELATING TYPE, reached via `IfcRelDefinesByType`. This is
+ * a different dimension from {@link IfcTypeRule}, which matches the
+ * element's own IFC *class* (`IfcWall`); `type=` instead matches the type
+ * OBJECT's `Name` attribute (e.g. `IfcWallType.Name`, "WT01"). An element
+ * with no `IfcRelDefinesByType` relation never matches. #4094.
+ */
+export interface TypeNameRule {
+  kind: 'type';
+  op: StringOp;
+  value: string;
+  /** How `value` reads. Only consulted by the `matches` / `notMatches` ops. */
+  valueKind?: TextKind;
+}
+
 export type FilterRule =
   | ModelRule
   | StoreyRule
@@ -241,7 +257,8 @@ export type FilterRule =
   | QuantityRule
   | MaterialRule
   | ClassificationRule
-  | ElevationRule;
+  | ElevationRule
+  | TypeNameRule;
 
 // ── Combinator helpers ────────────────────────────────────────────────────────
 
@@ -333,6 +350,8 @@ export const Rule = {
   ): ClassificationRule =>
     ({ kind: 'classification', system: system || undefined, op, value, ...(valueKind ? { valueKind } : {}) }),
   elevation: (op: NumericOp, value: number): ElevationRule => ({ kind: 'elevation', op, value }),
+  typeName: (op: StringOp, value: string, valueKind?: TextKind): TypeNameRule =>
+    ({ kind: 'type', op, value, ...(valueKind ? { valueKind } : {}) }),
 } as const;
 
 // ── JSON guards ──────────────────────────────────────────────────────────────
@@ -352,7 +371,8 @@ export function isFilterRule(value: unknown): value is FilterRule {
     kind === 'quantity' ||
     kind === 'material' ||
     kind === 'classification' ||
-    kind === 'elevation'
+    kind === 'elevation' ||
+    kind === 'type'
   );
 }
 

@@ -121,14 +121,18 @@ describe('Filter tab — promoting the search bar query', () => {
   });
 
   it('a selector the adapter can only partly carry applies the rest and says so', () => {
-    const container = mountWithQuery('IfcWall, type=WT01');
+    // `type=WT01` used to be this test's unsupported example; #4094 gave it
+    // a real rule kind (`Rule.typeName`, see filter-evaluate.ts's
+    // `relatingTypeNameOf`), so `parent=Foo` — still genuinely unsupported —
+    // takes over pinning "applies the rest, names what it dropped".
+    const container = mountWithQuery('IfcWall, parent=Foo');
     promote(container);
-    // The type rule is real and is applied; the `type=` term is named, not
-    // dropped and not turned into a Name-contains that matches nothing.
+    // The class rule is real and is applied; the `parent=` term is named,
+    // not dropped and not turned into a Name-contains that matches nothing.
     assert.deepEqual(rules(), [
       Rule.ifcType(['IfcWall', 'IfcWallElementedCase', 'IfcWallStandardCase'], 'in'),
     ]);
-    assert.match(latestToast(container), /type=WT01/);
+    assert.match(latestToast(container), /parent=Foo/);
   });
 
   it('a selector with no rule at all reports instead of adding a guaranteed miss', () => {

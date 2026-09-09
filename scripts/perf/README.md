@@ -1169,3 +1169,13 @@ or conversion throughput claim; the additional authored payload remains governed
 by the existing aggregate geometry budget.
 [Source-mesh payload probe](../../docs/architecture/evidence/evaluated-occurrences/source-mesh-load.json)
 records source heads, precision limits and the unchanged census.
+
+Candidate reuse for registered transfer was tested through whole-triangle leaf
+caches, exact observation memoization, lazy spatial cells, and conservative
+centroid-witness seed bounds. These preserve bounded controls but still exceed
+the complete captured-boulder work quota; none was merged. A calculation-only
+fresh-worker diagnostic separates actual traversal latency/memory from the work
+proxy, without authorizing a larger quota or producing an applicable plan.
+Do not repeat those cache mechanisms unchanged or infer broad capacity from a
+small target prefix. [Recorded experiments and worker evidence](../../docs/architecture/evidence/mesh-transfer-capacity/README.md)
+state the remaining gate and the limits of the measurement.

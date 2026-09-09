@@ -720,6 +720,91 @@ describe('BCF Writer', () => {
     }
   });
 
+  /**
+   * The test above ('keeps distinct GUIDs that sanitize identically...')
+   * never reaches `sanitizeZipComponent`'s collision counter: 'a?b' and
+   * 'a:b' sanitize to the same 'a_b', but `shortGuidHash` -- FNV-1a-32 over
+   * the *raw* string -- differs between them, so the hash suffix alone
+   * disambiguates the two folder names before the counter is ever
+   * consulted.
+   *
+   * `shortGuidHash` and dot-collapsing are two independent many-to-one
+   * mappings of the raw GUID, so a raw-string pair can collide under BOTH
+   * at once. This mirrors the writer's private FNV-1a-32 (Math.imul,
+   * 0x811c9dc5 seed, 0x01000193 prime) to search for -- and pin -- such a
+   * pair, so the test fails loudly (via the assertions below) rather than
+   * silently ceasing to exercise the counter if `shortGuidHash` ever
+   * changes.
+   */
+  function referenceShortGuidHash(guid: string): string {
+    let h = 0x811c9dc5;
+    for (let i = 0; i < guid.length; i++) {
+      h ^= guid.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return h.toString(16).padStart(8, '0');
+  }
+
+  function referenceSanitize(raw: string): string {
+    return raw.replace(/[^A-Za-z0-9._-]/g, '_').replace(/\.\.+/g, '_');
+  }
+
+  it('#3960 sibling: two raw GUIDs whose dot-collapsed name AND shortGuidHash both collide must not drop a topic', async () => {
+    // sanitizeZipComponent collapses any run of >=2 dots to a single '_',
+    // independent of shortGuidHash (FNV-1a-32 over the RAW string). These
+    // two raw strings were found by varying the two dot-run lengths
+    // independently: both collapse to the same cleaned name AND happen to
+    // hash to the same FNV-1a-32 value, so -- unlike the test above -- the
+    // hash suffix does NOT disambiguate them and only the collision counter
+    // (`for (let n = 2; usedNames.has(candidate); n++)`) stands between this
+    // input and a silently dropped topic.
+    const raw1 = `topicA${'.'.repeat(34)}X${'.'.repeat(2)}topicB`;
+    const raw2 = `topicA${'.'.repeat(595)}X${'.'.repeat(325)}topicB`;
+
+    // Pin the collision itself: if `shortGuidHash` or the dot-collapsing
+    // regex ever changes, this fails here first, loudly, instead of the
+    // test below silently stopping to exercise the counter.
+    expect(referenceSanitize(raw1)).toBe(referenceSanitize(raw2));
+    expect(referenceShortGuidHash(raw1)).toBe(referenceShortGuidHash(raw2));
+    expect(referenceShortGuidHash(raw1)).toBe('a8ee56f2');
+
+    const makeTopic = (guid: string, title: string): BCFTopic => ({
+      guid,
+      title,
+      creationDate: new Date().toISOString(),
+      creationAuthor: 'author@example.com',
+      viewpoints: [],
+      comments: [],
+    });
+    const project: BCFProject = {
+      version: '2.1',
+      topics: new Map([
+        [raw1, makeTopic(raw1, 'Topic one')],
+        [raw2, makeTopic(raw2, 'Topic two')],
+      ]),
+    };
+
+    const blob = await writeBCF(project);
+    const zip = await JSZip.loadAsync(await blobToArrayBuffer(blob));
+
+    const markupPaths: string[] = [];
+    zip.forEach((relativePath) => {
+      if (relativePath.endsWith('markup.bcf')) markupPaths.push(relativePath);
+    });
+    // Two distinct topics went in; two distinct markup.bcf entries must come
+    // out. Without the counter, both topics sanitize+hash to the identical
+    // folder name and the second `zip.file()` call for the same path
+    // silently overwrites the first -- topic one vanishes from the archive
+    // with no error and no warning.
+    expect(markupPaths).toHaveLength(2);
+
+    // Round-trip: both topics survive under their own raw GUIDs.
+    const readProject = await readBCF(await blob.arrayBuffer());
+    expect(readProject.topics.size).toBe(2);
+    expect(readProject.topics.get(raw1)?.title).toBe('Topic one');
+    expect(readProject.topics.get(raw2)?.title).toBe('Topic two');
+  });
+
   // --------------------------------------------------------------------------
   // Fields that a BCF consumer reads but that no fixture pinned. Each of these
   // survived a mutation of the writer: the file stayed readable, so nothing on

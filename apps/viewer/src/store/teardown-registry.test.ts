@@ -107,16 +107,28 @@ const PINNED_ALL_MODELS_CLEARED_KEYS: readonly string[] = [
  * describing the just-removed model under the survivor's new active id. The
  * fixture below removes the active model (`activeModelId: 'A'`), so this
  * scope now always emits these five via `markupTransitionPatch`.
+ *
+ * `cloudAnnotation2DPoints`, `measure2DCurrent`, `measure2DStart`,
+ * `polygonArea2DPoints`, `selectedAnnotation2D` and `textAnnotation2DEditing`
+ * are a second deliberate widening (#4196): `markupTransitionPatch` now also
+ * clears in-progress placement and any live selection on every real
+ * `activeModelId` transition, not just the five committed markup fields —
+ * see that function's doc for why (a half-drawn shape or a selected id are
+ * meaningless, or actively wrong, once carried into another model's
+ * coordinate frame). `annotation2DActiveTool` is deliberately NOT in this
+ * list: the chosen tool is a session preference, not frame-dependent data,
+ * so it is left untouched and does not appear here.
  */
 const PINNED_MODEL_REMOVED_KEYS: readonly string[] = [
   'activeModelId', 'activeStorey', 'addElementModelId', 'addElementStoreyId', 'classFilter',
-  'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
+  'cloudAnnotation2DPoints', 'cloudAnnotations2D', 'contextMenu', 'drawing2DDisplayOptions', 'geometryResult',
   'ghostExceptEntities', 'hiddenEntities', 'hiddenEntitiesByModel',
   'hierarchyBasketSelection', 'hoverState', 'ifcDataStore', 'isolatedEntities', 'isolatedEntitiesByModel',
-  'measure2DResults', 'meshColorBackup', 'models', 'pinboardEntities', 'polygonArea2DResults',
-  'selectedEntities', 'selectedEntitiesSet',
+  'measure2DCurrent', 'measure2DResults', 'measure2DStart', 'meshColorBackup', 'models', 'pinboardEntities',
+  'polygonArea2DPoints', 'polygonArea2DResults',
+  'selectedAnnotation2D', 'selectedEntities', 'selectedEntitiesSet',
   'selectedEntity', 'selectedEntityId', 'selectedEntityIds', 'selectedModelId', 'selectedStoreys',
-  'textAnnotations2D',
+  'textAnnotation2DEditing', 'textAnnotations2D',
 ];
 
 /**

@@ -88,4 +88,46 @@ describe('markupTransitionPatch', () => {
     const backToA = markupTransitionPatch(stateFor('model-c', []), 'model-a');
     assert.strictEqual(backToA.measure2DResults?.[0]?.id, 'mA', 'model A\'s cache must survive an unrelated B -> C transition');
   });
+
+  describe('in-progress and selection state (#4196)', () => {
+    it('clears in-progress polygon points and a live selection on a model switch — MUTATION TARGET', () => {
+      const patch = markupTransitionPatch(stateFor('model-a', []), 'model-b');
+      assert.deepStrictEqual(patch.polygonArea2DPoints, []);
+      assert.deepStrictEqual(patch.cloudAnnotation2DPoints, []);
+      assert.strictEqual(patch.measure2DStart, null);
+      assert.strictEqual(patch.measure2DCurrent, null);
+      assert.strictEqual(patch.selectedAnnotation2D, null);
+      assert.strictEqual(patch.textAnnotation2DEditing, null);
+    });
+
+    it('also clears in-progress state when the target is a previously-cached model (restore path)', () => {
+      markupTransitionPatch(stateFor('model-a', [sampleMeasure('mA')]), 'model-b');
+      const patch = markupTransitionPatch(stateFor('model-b', []), 'model-a');
+      // Committed data still restores...
+      assert.strictEqual(patch.measure2DResults?.[0]?.id, 'mA');
+      // ...but in-progress/selection state from model B must not leak in.
+      assert.deepStrictEqual(patch.polygonArea2DPoints, []);
+      assert.strictEqual(patch.selectedAnnotation2D, null);
+    });
+
+    it('also clears in-progress state transitioning to null', () => {
+      const patch = markupTransitionPatch(stateFor('model-a', []), null);
+      assert.deepStrictEqual(patch.polygonArea2DPoints, []);
+      assert.strictEqual(patch.selectedAnnotation2D, null);
+    });
+
+    it('does NOT touch annotation2DActiveTool — the active tool is a session preference, not tied to a model\'s coordinate frame', () => {
+      const patch = markupTransitionPatch(stateFor('model-a', []), 'model-b');
+      assert.strictEqual(
+        Object.prototype.hasOwnProperty.call(patch, 'annotation2DActiveTool'),
+        false,
+        'the tool field must be absent from the patch so set() leaves it untouched',
+      );
+    });
+
+    it('is a true no-op (still {}) when re-selecting the already-active model, even with in-progress state present', () => {
+      const patch = markupTransitionPatch(stateFor('model-a', []), 'model-a');
+      assert.deepStrictEqual(patch, {});
+    });
+  });
 });

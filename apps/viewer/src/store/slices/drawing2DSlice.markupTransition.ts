@@ -87,6 +87,19 @@
  * limitation for the pre-existing suppression mechanism this builds on. What
  * changed here is that the PRODUCTION call graph now has exactly one correct
  * implementation instead of an easy-to-forget copy at every call site.
+ *
+ * ## In-progress and selection state (#4196)
+ * This function's `Drawing2DMarkupPatch` return type originally covered only
+ * the five COMMITTED fields above — never the in-progress placement
+ * (`polygonArea2DPoints`, `cloudAnnotation2DPoints`, `measure2DStart`/
+ * `measure2DCurrent`) or the live `selectedAnnotation2D`/
+ * `textAnnotation2DEditing`. A half-drawn polygon spanning two coordinate
+ * frames computed a plausible but wrong area on `completePolygonArea2D`, and
+ * a `selectedAnnotation2D` could dangle at an id absent from the new model's
+ * arrays, making Delete a silent no-op. `inProgressClearPatch()` below closes
+ * this by clearing all six on every real transition this function handles —
+ * never cached, never restored, unlike the five committed fields.
+ * `annotation2DActiveTool` is deliberately excluded: see that function's doc.
  */
 
 import {
@@ -94,6 +107,53 @@ import {
   suppressNextSaveFor,
   type Drawing2DMarkupPatch,
 } from './drawing2DSlice.persistence.js';
+import type { Drawing2DState } from './drawing2DSlice.js';
+
+/**
+ * The in-progress and selection fields (#4196) — distinct from
+ * {@link Drawing2DMarkupPatch}'s five COMMITTED fields, which are cached per
+ * model and restored on revisit (see `liveMarkupCache` above). These are
+ * never cached and never restored: they are always reset to their cleared
+ * value on a real `activeModelId` transition, regardless of which model is
+ * next or whether it has a live cache entry.
+ *
+ * A half-placed polygon or an in-flight measurement is expressed in the
+ * OUTGOING model's coordinate frame; carrying it into the next model's `set()`
+ * would compute results (area, perimeter, distance) that silently mix two
+ * frames — see this file's module doc and the issue this closes. A dangling
+ * `selectedAnnotation2D` is worse than merely meaningless: it can reference an
+ * id absent from the new model's arrays, so Delete becomes a silent no-op
+ * while the selection UI still shows something selected.
+ *
+ * `annotation2DActiveTool` is deliberately NOT in this list. Unlike the
+ * fields above, the chosen tool (measure / polygon / cloud / text / none)
+ * carries no coordinate-frame data of its own — it is a UI preference for
+ * "what happens on the next click", not a value computed from points in a
+ * frame. A user switching models mid-session keeps the tool they had
+ * selected; only the half-drawn shape underneath it is discarded. Leaving it
+ * out of the returned patch means `set()` never touches it, which is exactly
+ * "persist" for a Zustand partial patch.
+ */
+type Drawing2DTransitionClearPatch = Pick<
+  Drawing2DState,
+  | 'polygonArea2DPoints'
+  | 'cloudAnnotation2DPoints'
+  | 'measure2DStart'
+  | 'measure2DCurrent'
+  | 'selectedAnnotation2D'
+  | 'textAnnotation2DEditing'
+>;
+
+function inProgressClearPatch(): Drawing2DTransitionClearPatch {
+  return {
+    polygonArea2DPoints: [],
+    cloudAnnotation2DPoints: [],
+    measure2DStart: null,
+    measure2DCurrent: null,
+    selectedAnnotation2D: null,
+    textAnnotation2DEditing: null,
+  };
+}
 
 /**
  * Session-scoped only — never written to or read from `localStorage`
@@ -132,7 +192,7 @@ export function wasLiveMarkupCached(modelId: string): boolean {
 export function markupTransitionPatch(
   state: MarkupTransitionState,
   nextModelId: string | null,
-): Partial<Drawing2DMarkupPatch> {
+): Partial<Drawing2DMarkupPatch> & Partial<Drawing2DTransitionClearPatch> {
   if (nextModelId === state.activeModelId) return {};
 
   if (state.activeModelId) {
@@ -145,17 +205,25 @@ export function markupTransitionPatch(
     });
   }
 
-  if (nextModelId === null) return defaultMarkupPatch();
+  // #4196: in-progress placement and any live selection belong to the
+  // OUTGOING model's coordinate frame (or reference ids from its arrays) and
+  // are never meaningful after `activeModelId` actually moves — on EVERY
+  // arm below, not just the cache-miss "genuinely new model" case. See
+  // `inProgressClearPatch`'s doc for why `annotation2DActiveTool` is
+  // excluded from this and therefore persists across the switch.
+  const clearInProgress = inProgressClearPatch();
+
+  if (nextModelId === null) return { ...defaultMarkupPatch(), ...clearInProgress };
 
   const cached = liveMarkupCache.get(nextModelId);
-  if (cached) return cached;
+  if (cached) return { ...cached, ...clearInProgress };
 
   // Genuinely new to this session: nothing to restore synchronously.
   // `useDrawing2DPersistence.ts`'s restore effect owns the async,
   // content-hash-keyed `localStorage` lookup for this case, and needs its
   // own upcoming defaults-clear not mistaken for a real edit.
   suppressNextSaveFor(nextModelId);
-  return defaultMarkupPatch();
+  return { ...defaultMarkupPatch(), ...clearInProgress };
 }
 
 /** Test-only: drop every cached snapshot so tests don't leak state between runs. */

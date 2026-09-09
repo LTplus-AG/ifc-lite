@@ -5,6 +5,7 @@ import '@/test/setup-dom.js';
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { IfcParser } from '@ifc-lite/parser';
 import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
 import { StepExporter } from '@ifc-lite/export';
@@ -21,6 +22,7 @@ import { createAppearancePlanner, type AppearanceWorker } from './planner-worker
 import type { CapturedMeshRequest } from './planner-types';
 import { appearanceAssets, modelAppearanceAssets } from './model-assets';
 import { prepareAppearanceSerialization } from './serialization';
+const wasmOptions = { skip: !existsSync(new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url)) && 'Build WASM with pnpm build:wasm' };
 const geometryMesh = (): CapturedMeshRequest['mesh'] => ({ positions: [[12,23,34],[13,23,34],[13,24,34],[12,24,35]],
   triangles: [[0,1,2],[0,2,3]], uvs: [[0,0],[1,0],[1,1],[0,1],[0.2,0.2]], uvTriangles: [[0,1,2],[4,2,3]] });
 afterEach(() => {
@@ -70,7 +72,7 @@ async function nativePlanner(afterNative: () => void = () => {}) {
   } });
   return { planner, request: () => request };
 }
-for (const federated of [false, true]) test(`captured wrapper owns placement, identity, Undo and exact portable image (${federated ? 'federated' : 'single'}) #4380`, async () => {
+for (const federated of [false, true]) test(`captured wrapper owns placement, identity, Undo and exact portable image (${federated ? 'federated' : 'single'}) #4380`, wasmOptions, async () => {
   const fixture = await setup(federated), native = await nativePlanner();
   const oldDecode = globalThis.createImageBitmap;
   globalThis.createImageBitmap = (async () => ({ width: 1, height: 1, close() {} })) as typeof createImageBitmap;
@@ -105,7 +107,7 @@ for (const federated of [false, true]) test(`captured wrapper owns placement, id
     if (federated) assert.equal(useViewerStore.getState().models.get('other'), fixture.other);
   } finally { native.planner.dispose(); globalThis.createImageBitmap = oldDecode; }
 });
-for (const failure of ['source', 'model', 'cancel'] as const) test(`capture ${failure} changing during native planning prevents publication #4380`, async () => {
+for (const failure of ['source', 'model', 'cancel'] as const) test(`capture ${failure} changing during native planning prevents publication #4380`, wasmOptions, async () => {
   const fixture = await setup(); let stale = false;
   const abort = new AbortController();
   const native = await nativePlanner(() => {

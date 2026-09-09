@@ -1,0 +1,15 @@
+{
+  "reader": "IfcOpenShell",
+  "version": "0.8.2",
+  "sourceSchemaErrors": 170,
+  "targetSchemaErrors": 170,
+  "newSchemaViolations": [],
+  "changedExistingEntities": [
+    35155
+  ],
+  "triangles": 12,
+  "maxOriginalCornerDistanceMetres": 1.1507905211949998e-07,
+  "GlobalId": "0oTQ6V1VbChulreA_hfmUa",
+  "representation": "Tessellation",
+  "imageTextures": 1
+}

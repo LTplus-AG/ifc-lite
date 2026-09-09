@@ -38,10 +38,12 @@ try {
  await page.screenshot({path:out+'/model-hidden.png'});
  await page.evaluate(()=>{const s=window.__store.getState();s.setSelectedEntityId(null);s.setSelectedEntity(null);s.setSelectedEntityIds([]);});
  await page.mouse.click(point.x,point.y);await page.waitForTimeout(100);
- assert.equal(await page.evaluate(()=>window.__store.getState().selectedEntityId),null,'hidden model cannot be selected through the viewport');
+ const hiddenClickSelection=await page.evaluate(()=>window.__store.getState().selectedEntityId);
+ assert.equal(hiddenClickSelection,null,'hidden model cannot be selected through the viewport');
  await page.evaluate(()=>window.__store.getState().setModelVisibility(window.__targetModel,true));await page.waitForTimeout(200);const shown=await read();
  if(process.env.EVALUATED_REQUIRE_RESTORE==='1'){await page.mouse.click(point.x,point.y);await page.waitForFunction(()=>window.__store.getState().selectedEntityId===window.__targetId,undefined,{timeout:10000});}
+ const shownClickSelection=process.env.EVALUATED_REQUIRE_RESTORE==='1'?await page.evaluate(()=>window.__store.getState().selectedEntityId):undefined;
  await page.screenshot({path:out+'/model-shown.png'});
- fs.writeFileSync(out+'/reopen-visibility.json',JSON.stringify({before,hidden,shown,actualViewportSelection:true},null,2));
+ fs.writeFileSync(out+'/reopen-visibility.json',JSON.stringify({before,hidden,shown,hiddenClickSelection,shownClickSelection,actualViewportSelection:true},null,2));
  console.log('REOPEN_SELECTED_VISIBILITY',JSON.stringify({before,hidden,shown}));
 } finally {fs.writeFileSync(out+'/reopen-state.json',JSON.stringify(await page.evaluate(()=>{const s=window.__store?.getState();return s?{isLoading:s.isLoading,models:[...s.models.values()].map(m=>({name:m.name,state:m.loadState,data:!!m.ifcDataStore,geometry:!!m.geometryResult}))}:null;}),null,2));await page.screenshot({path:out+'/reopen-last.png'}).catch(error=>console.error(error));await browser.close();}

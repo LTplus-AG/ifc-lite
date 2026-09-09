@@ -1,0 +1,58 @@
+{
+  "original": {
+    "selected": 35169,
+    "instanceVisible": true,
+    "modelParts": [],
+    "undo": 0,
+    "redo": 0,
+    "siblingUnchanged": true
+  },
+  "applied": {
+    "selected": 35169,
+    "flat": [
+      {
+        "item": 79109,
+        "triangles": 12,
+        "textured": true
+      }
+    ],
+    "instanceVisible": false,
+    "modelParts": [
+      {
+        "item": 79109,
+        "triangles": 12
+      }
+    ],
+    "undo": 1,
+    "redo": 0,
+    "siblingUnchanged": true
+  },
+  "undone": {
+    "selected": 35169,
+    "instanceVisible": true,
+    "modelParts": [],
+    "undo": 0,
+    "redo": 1,
+    "siblingUnchanged": true
+  },
+  "redone": {
+    "selected": 35169,
+    "flat": [
+      {
+        "item": 79109,
+        "triangles": 12,
+        "textured": true
+      }
+    ],
+    "instanceVisible": false,
+    "modelParts": [
+      {
+        "item": 79109,
+        "triangles": 12
+      }
+    ],
+    "undo": 1,
+    "redo": 0,
+    "siblingUnchanged": true
+  }
+}

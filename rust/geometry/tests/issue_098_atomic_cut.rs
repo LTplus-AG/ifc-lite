@@ -40,6 +40,7 @@ fn parse_mesh(json: &str) -> Mesh {
         instance_meta: None,
         local_bounds: None,
         local_to_world: None,
+        welded_in_object_frame: false,
     }
 }
 

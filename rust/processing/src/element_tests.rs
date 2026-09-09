@@ -17,6 +17,79 @@ fn refs(ids: &[u32]) -> FxHashSet<u32> {
     ids.iter().copied().collect()
 }
 
+/// #4122 — `build_mesh_data` trusts `mesh.instance_meta.is_some()` as a proxy
+/// for "already welded in the object frame" (see its doc). The debug_assert
+/// it now carries checks that trust instead of silently relying on it: a
+/// `Mesh` with `instance_meta` set but `welded_in_object_frame` still
+/// `false` — exactly the shape `router::voids::probe::get_opening_item_meshes_world`
+/// produces (it bakes with `transform_mesh_world_framed` directly, never
+/// through `weld_mesh`/`weld_sub_mesh`) — must trip it if it were ever handed
+/// to `build_mesh_data`.
+#[test]
+#[should_panic(expected = "welded_in_object_frame is false")]
+fn build_mesh_data_asserts_instance_meta_implies_welded_in_object_frame() {
+    const IFC: &str = r#"ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION((''),'2;1');
+FILE_NAME('m.ifc','2026-09-08T00:00:00',(''),(''),'','','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCWALL('1234567890123456789012',$,'Wall',$,$,#20,$,$,$);
+#20=IFCLOCALPLACEMENT($,#21);
+#21=IFCAXIS2PLACEMENT3D(#22,$,$);
+#22=IFCCARTESIANPOINT((0.,0.,0.));
+ENDSEC;
+END-ISO-10303-21;
+"#;
+    let mut decoder = EntityDecoder::new(IFC);
+    let entity = decoder.decode_by_id(1).expect("wall decodes");
+
+    let job = ElementMeshJob {
+        id: 1,
+        ifc_type: IfcType::IfcWall,
+        entity: &entity,
+        kind: ElementJobKind::Product,
+        element_color: None,
+        metadata: None,
+    };
+    let void_index = FxHashMap::default();
+    let geometry_style_index = FxHashMap::default();
+    let indexed_colour_full = FxHashMap::default();
+    let element_material_colors = FxHashMap::default();
+    let texture_index = FxHashMap::default();
+    let ctx = MeshProductionContext {
+        void_index: &void_index,
+        geometry_style_index: &geometry_style_index,
+        indexed_colour_full: &indexed_colour_full,
+        element_material_colors: &element_material_colors,
+        texture_index: &texture_index,
+        site_local_rotation: None,
+    };
+
+    let mut mesh = ifc_lite_geometry::Mesh::new();
+    mesh.positions = vec![0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    mesh.normals = vec![0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0];
+    mesh.indices = vec![0, 1, 2];
+    mesh.instance_meta = Some(ifc_lite_geometry::InstanceMeta {
+        transform: [
+            1.0, 0.0, 0.0, 0.0, //
+            0.0, 1.0, 0.0, 0.0, //
+            0.0, 0.0, 1.0, 0.0, //
+            0.0, 0.0, 0.0, 1.0,
+        ],
+        local_transform: None,
+        canonical_transform: None,
+        rep_identity: 0,
+        instanceable: true,
+    });
+    // Deliberately left `false`: this mesh never went through
+    // `apply_placement`/`apply_submesh_placement`, matching probe.rs's shape.
+    assert!(!mesh.welded_in_object_frame);
+
+    let _ = build_mesh_data(&job, mesh, [1.0, 1.0, 1.0, 1.0], None, None, false, 0, &ctx, None);
+}
+
 #[test]
 fn plan_type_geometry_orphan_type_emits_unreferenced_maps_as_class_1() {
     for mode in [TypeGeometryMode::SuppressInstanced, TypeGeometryMode::EmitTagged] {

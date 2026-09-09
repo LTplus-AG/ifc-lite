@@ -129,6 +129,7 @@ impl GeometryProcessor for SurfaceOfLinearExtrusionProcessor {
             normals: Vec::new(),
             indices,
             rtc_applied: false, 
+            welded_in_object_frame: false,
             origin: [0.0; 3],        instance_meta: None, local_bounds: None, local_to_world: None })
     }
 

@@ -209,26 +209,18 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
     grew = false;
     for (const inst of parsed.instances.values()) {
       if (keep.has(inst.id)) continue;
-      const refs = [...inst.body.matchAll(REF_RE)].map((m) => parseInt(m[1], 10));
-      if (inst.type === 'IFCRELVOIDSELEMENT') {
-        // refs: [OwnerHistory, RelatingBuildingElement, RelatedOpeningElement].
-        const host = refs[refs.length - 2];
-        const opening = refs[refs.length - 1];
-        if (host !== undefined && opening !== undefined && keep.has(host)) {
-          // Close over the relation itself, not just the opening: the rel's own
-          // OwnerHistory must be kept too or the subset emits a dangling ref.
-          forwardClosure([inst.id], parsed, keep);
-          grew = true;
-        }
-      } else if (inst.type === 'IFCRELFILLSELEMENT') {
-        // refs: [OwnerHistory, RelatingOpeningElement, RelatedBuildingElement(filler)].
-        const opening = refs[refs.length - 2];
-        const filler = refs[refs.length - 1];
-        if (opening !== undefined && filler !== undefined && keep.has(opening)) {
-          forwardClosure([inst.id], parsed, keep);
-          grew = true;
-        }
-      }
+      if (inst.type !== 'IFCRELVOIDSELEMENT' && inst.type !== 'IFCRELFILLSELEMENT') continue;
+      // Different meanings, one shape. `Relating` (attribute 5, the second-to-last
+      // reference) is the ANCHOR that must be kept already: the host wall for voids, the
+      // opening for fills. `Related` (attribute 6) is what the relation drags in, the
+      // opening or the filling window/door, and it is not read here because the closure
+      // below reaches it anyway.
+      const anchor = [...inst.body.matchAll(REF_RE)].map((m) => parseInt(m[1], 10)).at(-2);
+      if (anchor === undefined || !keep.has(anchor)) continue;
+      // Close over the relation itself, not just what it drags in: the rel's own
+      // OwnerHistory must be kept too or the subset emits a dangling ref.
+      forwardClosure([inst.id], parsed, keep);
+      grew = true;
     }
   }
 
@@ -238,14 +230,22 @@ export function buildSubset(seedProducts: Set<number>, parsed: ParsedStep): Subs
   // no-dangling-reference invariant it preserves.
   let spatial = planSpatialRelations(parsed.instances.values(), keep);
   // A relation-private IfcOwnerHistory is reachable from nothing else, so the
-  // plan drops the relation and reports what blocked it. Keep those and replan
-  // (#4126). ONE replan suffices for a SCHEMA-VALID record: an IfcOwnerHistory
-  // subtree names no product, container or relation. On invalid input a second
-  // round is discarded and the relation stays dropped (pre-#4126 behaviour,
-  // never a dangling id). A `while` does NOT terminate here: a phantom blocker
-  // closes over nothing and is reported every round.
-  if (spatial.blockedOn.length > 0) {
-    forwardClosure(spatial.blockedOn, parsed, keep);
+  // plan drops the relation and reports what blocked it. Close over a dropped
+  // relation's blocker group and replan (#4126), but only when EVERY id in the
+  // group is a defined IfcOwnerHistory: then the closure keeps all of them and
+  // that relation survives round two. A group holding anything else (a phantom
+  // id, or a product named in a Name or Description slot, both schema-invalid)
+  // leaves its relation dropped whatever is kept, so closing over it would only
+  // emit records nothing references and drag unselected products in (#4150).
+  // ONE replan, not a `while`: for a SCHEMA-VALID record an IfcOwnerHistory
+  // subtree names no product, container or relation, so it blocks nothing new;
+  // on invalid input a second round is discarded and the relation stays dropped
+  // (never a dangling id).
+  const owners = spatial.blockedOn
+    .filter((ids) => ids.every((id) => parsed.instances.get(id)?.type === 'IFCOWNERHISTORY'))
+    .flat();
+  if (owners.length > 0) {
+    forwardClosure(owners, parsed, keep);
     spatial = planSpatialRelations(parsed.instances.values(), keep);
   }
   for (const id of spatial.add) keep.add(id);

@@ -653,3 +653,32 @@ worker teardown and stale-result validation with image/page planning and catalog
 requests. Its `mesh` is canonical native Z-up geometry, while UVs already use
 bitmap top-down orientation. See [calibrated annotations](rust.md#calibrated-image-annotations)
 for the exact coordinate/containment contract and bounded refusal conditions.
+
+### Captured textured surface creation
+
+`IfcAPI.planCapturedMesh(source, requestJson)` plans one explicitly segmented
+textured surface as `IfcBuildingElementProxy`. It shares annotation creation's
+canonical placement, container validation, IFC entity planning and ordinary
+geometry producer. It does not decode a scan, reconstruct a surface, or infer a
+semantic class.
+
+The request contains `schema` (`IFC4` or `IFC4X3`), `sourceRevision`,
+`nextExpressId`, `containerId`, `GlobalId`, `containmentGlobalId`, `Name`,
+`imageUri`, and `mesh`. The mesh contains `positions` in IFC world Z-up metres,
+zero-based `triangles`, independent `uvs` in IFC V-up convention, and zero-based
+`uvTriangles`. Independent UV indices retain seams without conflating geometry
+and image vertices. The non-repeating image must cover UVs within `[0, 1]`.
+
+Each of the position, UV and triangle arrays is bounded to 200,000 rows. The
+request and serialized result each have a 64 MiB ceiling. Invalid indices,
+non-finite coordinates, degenerate triangles, stale allocation, duplicate IFC
+identities and unrepresentable canonical coordinates fail before publication.
+The planner retains original image URI ownership; callers must bundle the exact
+image bytes and publish the entity plan, canonical mesh, hierarchy and history
+atomically after checking the revision and allocator again.
+
+The UTF-8 JSON response contains `plan`, `objectId`, `geometryItemId`, `mesh`,
+`coordinateSpace: 'ifc-z-up'`, and `rtcOffset`. As with annotation creation,
+canonical mesh UVs are already top-down for GPU upload; do not flip them again.
+A fresh import can weld vertices differently, so round-trip correspondence is
+measured per triangle corner rather than by assuming an identical vertex layout.

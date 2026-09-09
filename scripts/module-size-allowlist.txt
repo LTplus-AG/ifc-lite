@@ -179,7 +179,7 @@
    457 apps/viewer/src/utils/serverDataModel.ts
    422 apps/viewer/src/utils/spatialHierarchy.ts
    573 apps/viewer/src/utils/viewportUtils.ts
-   413 apps/viewer/vite.config.ts
+   417 apps/viewer/vite.config.ts
    788 packages/bcf/src/ids-reporter.ts
    495 packages/bcf/src/overlay-renderer.ts
    801 packages/bcf/src/reader.ts
@@ -311,7 +311,7 @@
    514 packages/renderer/src/section-plane.ts
    639 packages/renderer/src/shaders/main.wgsl.ts
    454 packages/renderer/src/shadow-pass.ts
-   764 packages/renderer/src/snap-detector.ts
+   768 packages/renderer/src/snap-detector.ts
    765 packages/renderer/src/symbolic-overlay-pipelines.ts
    587 packages/sandbox/src/bridge-create.ts
    421 packages/sandbox/src/bridge-query.ts
@@ -330,7 +330,7 @@
   1486 packages/viewer/src/viewer-html.ts
    500 scripts/check-agents-md-size.mjs
    680 scripts/check-changeset-bump.mjs
-   523 scripts/check-ci-path-coverage.mjs
+   526 scripts/check-ci-path-coverage.mjs
    574 scripts/check-collab-room-model-target.mjs
    529 scripts/check-generated.mjs
    430 scripts/check-git-lfs.mjs

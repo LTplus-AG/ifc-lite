@@ -1066,3 +1066,16 @@ source/runtime identity and functional Undo/Redo evidence are recorded under
 ### Calibrated image annotation creation (#4308)
 
 The opt-in native annotation planner reuses canonical placement, schema validation and per-element geometry production. A source-matched ordinary worker-load A/B observed a small increase with overlapping samples and identical geometry/provenance; no speedup or zero-cost claim is made. Final JavaScript/assets were identical while the verified IFC WASM was swapped, so this checks runtime size/initialization effects without invoking annotation creation. See [the exact runtime hashes and paired samples](annotation-plane-load-evidence.json). Annotation creation and the downstream Save Into Model UI are outside this load measurement.
+
+### Captured mesh authoring (#4380)
+
+The opt-in captured-surface planner shares annotation authoring's canonical
+product path; it does not modify ordinary geometry loading. Interleaved native
+ordinary-load probes retained all mesh/vertex/triangle counts, but quantized and
+noisy samples were inconclusive. Exclusive machine idleness was not established,
+so these are smoke evidence only, not a speedup, regression or browser worker-pool
+latency claim. The lesson is to compare triangle-corner geometry and UVs across
+capture authoring and normal import: valid canonical welding may change vertex
+layout while preserving the surface and seams. [Raw source-matched samples and
+limitations](../../docs/architecture/evidence/captured-mesh/native-load.json)
+record the experiment; capture-creation and integrated UI timing remain separate.

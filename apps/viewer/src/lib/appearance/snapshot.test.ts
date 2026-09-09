@@ -35,6 +35,7 @@ function catalogBoundary(beforeReply?: () => Promise<void>): AppearancePlanner {
       return { sourceRevision: request.sourceRevision, products: [], types: [], missingProductIds: [] };
     },
     async plan() { throw new Error('This test must not create geometry'); },
+    async capturedMeshPlan() { throw new Error('This catalog test must not create captured objects'); },
     async annotationPlan() { throw new Error('This catalog test must not create annotations'); },
     async pagePlan() { throw new Error('This catalog test must not plan a page'); },
     cancel() {}, dispose() {},

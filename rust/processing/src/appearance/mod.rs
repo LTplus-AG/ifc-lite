@@ -5,6 +5,10 @@
 //! geometry changes. Plans are applied atomically by the host mutation editor.
 mod budget;
 mod annotation;
+mod captured;
+mod captured_types;
+pub use captured::plan_captured_mesh;
+pub use captured_types::{CapturedMesh, CapturedMeshRequest, CapturedMeshPlan};
 mod annotation_types;
 mod calibration;
 mod canonical;

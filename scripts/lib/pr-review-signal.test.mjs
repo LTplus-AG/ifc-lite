@@ -83,7 +83,11 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
   // `AGENTS.md ratchet`, added when check-agents-md-size.mjs got its own job
   // rather than riding in `Node tests` (it needs no build artifact and no
   // install, and routing it through `frontend` fanned one gate out to nine
-  // jobs). The count is a TRIPWIRE for a lane appearing or vanishing unnoticed,
+  // jobs), plus `MPL license headers` (#4087), which got its own job for the
+  // same two reasons and one more: it scans `docs/`, `tools/` and
+  // `apps/landing/`, which `frontend` deliberately does not carry, so a
+  // node-tests step could not have fired on three of the trees it reads.
+  // The count is a TRIPWIRE for a lane appearing or vanishing unnoticed,
   // so bumping it is a deliberate act: add the new name to the list below as
   // well, or the count alone would pass while asserting nothing about identity.
   const names = expandJobNames(readFileSync(join(REPO_ROOT, '.github/workflows/test.yml'), 'utf8'));
@@ -101,13 +105,14 @@ test('the REAL test.yml derives the lane names the REAL rollup publishes', () =>
     'Viewer tests (shard 3)',
     'Docs checks (docs-only PRs)',
     'AGENTS.md ratchet',
+    'MPL license headers',
     'Build + WASM + Rust + Node',
     // #3878: the two CSG accept gates are feature builds nothing else compiles.
     'CSG accept gates (feature builds)',
   ]) {
     assert.ok(names.includes(observed), `derived set is missing the observed lane "${observed}"`);
   }
-  assert.equal(names.length, 19);
+  assert.equal(names.length, 20);
 });
 
 test('FAIL CLOSED: an empty workflow file is NO_WORKFLOW_TEXT, not an empty lane set', () => {

@@ -10,6 +10,8 @@ export interface AppearancePanelViewProps {
   onIntentChange?(intent: 'apply' | 'reference'): void;
   /** Advertise PDF upload only once a controller provides document ingestion. */
   allowPdf?: boolean;
+  onEditReference?(id: string): void;
+  editingReference?: boolean;
   pdf?: AppearancePdfControls;
   pdfPassword?: AppearancePdfPasswordPrompt;
   calibration?: Omit<AppearanceCalibrationProps, 'disabled' | 'onInvalid'>;

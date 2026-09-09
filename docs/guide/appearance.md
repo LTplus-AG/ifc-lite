@@ -86,6 +86,23 @@ does not embed images. **Import drawing registration** restores the records;
 **Relink original image** verifies the exact image digest for any missing raster.
 Independent references are currently local to the workspace, not room content.
 
+### Editing a drawing registration
+
+Choose **Edit** beside an unlocked registered drawing. The same source and scale
+controls restore its exact raster and measured landmarks, even when the original
+PDF has been removed or moved to another page. The restored image is a reusable
+source; it does not reopen or change the PDF document.
+
+Adjust the measured span or placement and choose **Save registration**. This
+replaces the drawing in one Undo step, retaining its visibility and opacity.
+**Discard** leaves the committed drawing unchanged. Choosing another source while
+editing is an explicit image replacement; subsequent source edits never repaint
+saved drawings. Concurrent changes to the drawing prevent a stale Save.
+
+Relink a missing original image before editing. Imported registrations without a
+calibration recipe, or with a custom plane that the planar controls cannot
+represent, retain their existing placement and report why editing is unavailable.
+
 ### Saving a registered reference into IFC
 
 Expand **Save into model** on a registered drawing. Choose an editable model,

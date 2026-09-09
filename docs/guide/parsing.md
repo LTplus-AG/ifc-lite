@@ -391,6 +391,11 @@ const path = result.idToPath.get(wallId);
 const id = result.pathToId.get(path);
 ```
 
+`spatialHierarchy.getContainingSpace(elementId)` reads the live canonical
+containment index. It resolves a directly contained element or aggregated
+descendant to its nearest containing space, and reflects authored containment
+changes and Undo without rebuilding the hierarchy.
+
 ## Server-Side Parsing
 
 For production deployments, use the server for parallel processing and caching:

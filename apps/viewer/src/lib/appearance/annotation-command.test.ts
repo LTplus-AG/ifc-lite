@@ -34,7 +34,11 @@ DATA;
 #6=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
 #40=IFCBUILDINGSTOREY('0Storey0000000000000000',$,'Level',$,$,#41,$,$,.ELEMENT.,0.);
 #41=IFCLOCALPLACEMENT($,#5);
-#42=IFCRELAGGREGATES('0ccccccccccccccccccccc',$,$,$,#1,(#40));
+#42=IFCRELAGGREGATES('0ccccccccccccccccccccc',$,$,$,#50,(#40));
+#50=IFCBUILDING('0ddddddddddddddddddddd',$,'Building',$,$,#41,$,$,.ELEMENT.,$,$,$);
+#51=IFCSPACE('0eeeeeeeeeeeeeeeeeeeee',$,'Room',$,$,#41,$,$,.ELEMENT.,.INTERNAL.,$);
+#52=IFCRELAGGREGATES('0fffffffffffffffffffff',$,$,$,#1,(#50));
+#53=IFCRELAGGREGATES('0ggggggggggggggggggggg',$,$,$,#40,(#51));
 ENDSEC;
 END-ISO-10303-21;`);
 const png = new Uint8Array(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64'));
@@ -44,7 +48,7 @@ afterEach(() => {
   modelAppearanceAssets.clear(); appearanceAssets.clear(); federationRegistry.clear();
 });
 
-for (const federated of [false, true]) test(`native annotation commit survives undo, redo and portable export with ${federated ? 'federated' : 'single'} owner (#4308)`, async t => {
+for (const containerId of [40, 50, 51]) for (const federated of [false, true]) test(`container ${containerId}: native annotation commit survives undo, redo and portable export with ${federated ? 'federated' : 'single'} owner (#4308)`, async t => {
   const wasmUrl = new URL('../../../../../packages/wasm/pkg/ifc-lite_bg.wasm', import.meta.url);
   let wasm: Buffer;
   try { wasm = await readFile(wasmUrl); } catch (error) {
@@ -65,15 +69,15 @@ for (const federated of [false, true]) test(`native annotation commit survives u
     const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 0, y: 0, z: 0 } };
     const geometry: GeometryResult = { meshes: [], totalTriangles: 0, totalVertices: 0, coordinateInfo: { originShift: { x: 0, y: 0, z: 0 }, originalBounds: bounds, shiftedBounds: bounds, hasLargeCoordinates: false } };
     if (federated) federationRegistry.registerModel('other', 100);
-    const idOffset = federationRegistry.registerModel('annotation', 42);
-    const model = { ...fixtureModel('annotation'), idOffset, maxExpressId: 42, ifcDataStore: data, geometryResult: geometry };
+    const idOffset = federationRegistry.registerModel('annotation', 53);
+    const model = { ...fixtureModel('annotation'), idOffset, maxExpressId: 53, ifcDataStore: data, geometryResult: geometry };
     useViewerStore.setState({ models: new Map([...(federated ? [['other', fixtureModel('other')] as const] : []), ['annotation', model]]), activeModelId: 'annotation',
       geometryResult: geometry, mutationViews: new Map([['annotation', view]]), storeEditors: new Map([['annotation', editor]]),
       undoStacks: new Map(), redoStacks: new Map(), dirtyModels: new Set(), mutationVersion: 0, collabRoomId: null });
     const asset = await appearanceAssets.add(png, { owner: { kind: 'draft', id: 'test' } });
     const native = JSON.parse(new TextDecoder().decode(api.planAnnotationPlane(source, JSON.stringify({
       schema: 'IFC4', sourceRevision: appearanceRevision('annotation'), nextExpressId: view.peekNextExpressId(),
-      containerId: 40, GlobalId: '0aaaaaaaaaaaaaaaaaaaaa', containmentGlobalId: '0bbbbbbbbbbbbbbbbbbbbb',
+      containerId, GlobalId: '0aaaaaaaaaaaaaaaaaaaaa', containmentGlobalId: '0bbbbbbbbbbbbbbbbbbbbb',
       Name: 'Registered plan', imageUri: asset.exportName,
       frame: { origin: [2, 3, 4], axisU: [1, 0, 0], axisV: [0, 0, 1], sizeMetres: [2, 1] },
     })))) as AnnotationPlanePlan;
@@ -85,16 +89,24 @@ for (const federated of [false, true]) test(`native annotation commit survives u
     }, getScene: () => ({ getMeshDataPieces(id: number) { const mesh = meshes.get(id); return mesh ? [mesh] : undefined; }, removeMeshesForEntities(ids: Iterable<number>) { for (const id of ids) meshes.delete(id); } }), requestRender() {}, invalidateBVHCache() {} } as unknown as Renderer;
     const allocationBefore = view.peekNextExpressId();
     const failingRenderer = { ...renderer, prepareTexturedOwner() { throw new Error('injected GPU preparation failure'); } } as unknown as Renderer;
-    await assert.rejects(commitAnnotationPlane('annotation', asset.id, native, 40, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
+    await assert.rejects(commitAnnotationPlane('annotation', asset.id, native, containerId, failingRenderer, captureAppearanceSource(view)), /injected GPU/);
     assert.equal(view.getNewEntities().length, 0);
     assert.equal(view.peekNextExpressId(), allocationBefore);
     assert.equal(useViewerStore.getState().undoStacks.get('annotation')?.length ?? 0, 0);
     assert.equal(modelAppearanceAssets.exportResources('annotation').resources.size, 0);
-    const result = await commitAnnotationPlane('annotation', asset.id, native, 40, renderer, captureAppearanceSource(view));
+    const result = await commitAnnotationPlane('annotation', asset.id, native, containerId, renderer, captureAppearanceSource(view));
     assert.equal(result.expressId, native.annotationId);
     assert.equal(useViewerStore.getState().resolveGlobalIdFromModels(result.globalId)?.expressId, native.annotationId);
     assert.equal(meshes.size, 1);
-    assert.ok(data.spatialHierarchy.byStorey.get(40)?.includes(native.annotationId));
+    const hierarchy = data.spatialHierarchy;
+    const container = hierarchy.getPath(containerId).at(-1)!;
+    const containerMap = containerId === 40 ? hierarchy.byStorey : containerId === 50 ? hierarchy.byBuilding : hierarchy.bySpace;
+    assert.ok(container.elements.includes(native.annotationId));
+    assert.ok(containerMap.get(containerId)?.includes(native.annotationId));
+    assert.equal(hierarchy.elementToContainer?.get(native.annotationId), containerId);
+    assert.equal(hierarchy.elementToStorey.get(native.annotationId), containerId === 40 ? 40 : undefined);
+    assert.equal(hierarchy.getContainingSpace(native.annotationId), containerId === 51 ? 51 : null);
+    assert.equal(hierarchy.getPath(native.annotationId).at(-1)?.expressId, containerId);
     const mesh = meshes.get(result.globalId)!;
     for (let i = 0; i < mesh.positions.length / 3; i++) {
       const u = mesh.uvs![i * 2], v = 1 - mesh.uvs![i * 2 + 1];
@@ -105,15 +117,25 @@ for (const federated of [false, true]) test(`native annotation commit survives u
     const exportedBytes = typeof step.content === 'string' ? new TextEncoder().encode(step.content) : step.content;
     const reopened = await new IfcParser().parseColumnar(exportedBytes.slice().buffer);
     assert.equal(reopened.entities.getTypeName(native.annotationId), 'IfcAnnotation');
+    const reopenedHierarchy = rebuildSpatialHierarchy(reopened.entities, reopened.relationships)!;
+    assert.deepEqual(reopenedHierarchy.getPath(native.annotationId).map(node => node.expressId), hierarchy.getPath(native.annotationId).map(node => node.expressId));
+    assert.equal(reopenedHierarchy.getContainingSpace(native.annotationId), hierarchy.getContainingSpace(native.annotationId));
+    assert.equal(reopenedHierarchy.elementToStorey.get(native.annotationId), hierarchy.elementToStorey.get(native.annotationId));
     assert.match(new TextDecoder().decode(exportedBytes), /IFCINDEXEDTRIANGLETEXTUREMAP/);
     assert.deepEqual([...serialized.resources.exportResources().resources.values()][0], png);
     useViewerStore.getState().undo('annotation');
     assert.equal(meshes.size, 0);
-    assert.ok(!data.spatialHierarchy.byStorey.get(40)?.includes(native.annotationId));
-    assert.ok(!data.spatialHierarchy.project.children[0].elements.includes(native.annotationId), 'Undo removes the annotation from the visible spatial tree');
+    assert.ok(!containerMap.get(containerId)?.includes(native.annotationId));
+    assert.ok(!container.elements.includes(native.annotationId), 'Undo removes the annotation from the visible spatial tree');
+    assert.equal(hierarchy.getContainingSpace(native.annotationId), null);
+    assert.equal(hierarchy.elementToContainer?.get(native.annotationId), undefined);
+    assert.deepEqual(hierarchy.getPath(native.annotationId), []);
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 0);
     useViewerStore.getState().redo('annotation');
     assert.equal(meshes.size, 1);
+    assert.ok(container.elements.includes(native.annotationId));
+    assert.equal(hierarchy.getContainingSpace(native.annotationId), containerId === 51 ? 51 : null);
+    assert.equal(hierarchy.elementToContainer?.get(native.annotationId), containerId);
     assert.equal(useViewerStore.getState().models.get('annotation')!.geometryResult!.meshes.length, 1);
   } finally { api.free(); globalThis.createImageBitmap = oldDecode; }
 });

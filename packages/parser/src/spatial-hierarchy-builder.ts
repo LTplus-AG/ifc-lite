@@ -128,13 +128,6 @@ export class SpatialHierarchyBuilder {
 
     const { byStorey, byBuilding, bySite, bySpace, storeyElevations, elementToStorey, elementToContainer } = ctx;
 
-    // Pre-build the element -> space lookup for O(1) getContainingSpace.
-    const elementToSpace = new Map<number, number>();
-    for (const [spaceId, elementIds] of bySpace) {
-      for (const elementId of elementIds) {
-        elementToSpace.set(elementId, spaceId);
-      }
-    }
 
     return {
       project: projectNode,
@@ -161,7 +154,10 @@ export class SpatialHierarchyBuilder {
       },
 
       getContainingSpace(elementId: number): number | null {
-        return elementToSpace.get(elementId) ?? null;
+        // Consult the live canonical reverse index: authored containment and
+        // Undo update it after the initial parse (#4308).
+        const container = elementToContainer.get(elementId);
+        return container !== undefined && bySpace.has(container) ? container : null;
       },
 
       getPath(elementId: number): SpatialNode[] {

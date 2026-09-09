@@ -73,6 +73,8 @@ The viewer command `createAnnotationFromReference` creates a textured
 model and spatial container, preserves the original encoded image, and plans IFC
 rows and geometry through the native annotation planner. The new owner participates
 in the model's existing undo/redo history and portable IFC texture export.
+Storey, building and space targets retain their actual spatial containment through
+creation, Undo, Redo and export; a space or building is never treated as a storey.
 
 The registration remains a separate workspace reference. Its raster is captured
 by digest; later source edits cannot silently repaint the IFC annotation. Saving

@@ -6,7 +6,7 @@ import { StoreEditor } from '@ifc-lite/mutations';
 import { equivalentAppearanceGeometry, type Renderer } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
 import type { MeshData } from '@ifc-lite/geometry';
-import { registerAuthoredElement } from '@/utils/spatialHierarchy';
+import { setAnnotationMembership } from './annotation-hierarchy';
 import { appearanceRevision, captureAppearanceSource, type AppearanceCommitOptions } from './command';
 import { prepareAppearanceEntities } from './prepare-plan';
 import { replayAppearanceEntitiesInDraft } from './apply-plan';
@@ -48,18 +48,7 @@ export async function commitAnnotationPlane(modelId: string, assetId: string, na
   const globalId = state.toGlobalId(modelId, native.annotationId);
   const hierarchy = data.spatialHierarchy;
   const membership = (present: boolean) => {
-    if (!hierarchy) return;
-    if (present) registerAuthoredElement(hierarchy, containerId, native.annotationId, 'IfcAnnotation', native.mesh.name ?? 'Image reference');
-    else {
-      hierarchy.elementToStorey.delete(native.annotationId);
-      const list = hierarchy.byStorey.get(containerId);
-      // The builder shares this array with the container's visible tree node.
-      // Replace its contents, not the map entry, or Undo leaves a ghost row.
-      if (list) {
-        const index = list.indexOf(native.annotationId);
-        if (index !== -1) list.splice(index, 1);
-      }
-    }
+    if (hierarchy) setAnnotationMembership(hierarchy, containerId, native.annotationId, present);
   };
   try {
     const bitmap = await appearanceAssets.decode(assetId, owner, options.signal);

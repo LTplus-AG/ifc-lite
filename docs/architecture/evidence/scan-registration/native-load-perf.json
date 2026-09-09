@@ -1,0 +1,217 @@
+{
+  "base_commit": "946e60f0d",
+  "fixture_sha256": "ea6f04eaf92fac4d7ad0038bc3d2dfea4c094dd3f516ecc33c50bf1835ca108d",
+  "method": "Native profiling perf_probe, immutable separately built base/branch binaries, ABBA blocks with five iterations per block; after builds/tests stopped; no OS cache purge",
+  "summary": {
+    "base": {
+      "parseMs": 3.0,
+      "geometryMs": 4.5,
+      "totalMs": 7.5,
+      "wallMedianMs": 9.117895999999998,
+      "wallMinMs": 8.29025,
+      "wallMaxMs": 16.705333
+    },
+    "branch": {
+      "parseMs": 3.0,
+      "geometryMs": 4.5,
+      "totalMs": 7.5,
+      "wallMedianMs": 9.211292,
+      "wallMinMs": 8.184709,
+      "wallMaxMs": 16.941333
+    }
+  },
+  "delta_percent": {
+    "parseMs": 0.0,
+    "geometryMs": 0.0,
+    "totalMs": 0.0,
+    "wallMedianMs": 1.0243152586956628
+  },
+  "identity": {
+    "meshes": 285,
+    "vertices": 35940,
+    "triangles": 19456
+  },
+  "mesh_fingerprint": "25ac885b6ff4ad00",
+  "runs": [
+    {
+      "lane": "base",
+      "binary_sha256": "379bc6aeafb8ad7d1875491f4c7c3ebf334b5f4ea21f253bafacf9d78466dd9b",
+      "measurement": {
+        "path": "/Users/louistrue/.t3/worktrees/ifc-lite/t3code-6bd12f4f/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 2.04,
+        "parseMs": 3,
+        "entityScanMs": 2,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 5,
+        "facetedBrepMs": 0,
+        "totalMs": 8,
+        "allTotalsMs": [
+          16,
+          10,
+          9,
+          8,
+          8
+        ],
+        "allWallMs": [
+          16.705333,
+          10.953125,
+          9.985208,
+          9.266791999999999,
+          8.796083
+        ],
+        "pointCacheHits": 52660,
+        "pointCacheMisses": 9372,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00"
+        ]
+      }
+    },
+    {
+      "lane": "branch",
+      "binary_sha256": "4a517c6ede59339ec115bb1e158f81d07ce31e4ecd8b6d7c9ae05b8231d59365",
+      "measurement": {
+        "path": "/Users/louistrue/.t3/worktrees/ifc-lite/t3code-6bd12f4f/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 2.39,
+        "parseMs": 3,
+        "entityScanMs": 2,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 5,
+        "facetedBrepMs": 0,
+        "totalMs": 8,
+        "allTotalsMs": [
+          16,
+          11,
+          9,
+          9,
+          8
+        ],
+        "allWallMs": [
+          16.941333,
+          11.568916999999999,
+          10.448541,
+          9.770333,
+          8.776542
+        ],
+        "pointCacheHits": 52196,
+        "pointCacheMisses": 9212,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00"
+        ]
+      }
+    },
+    {
+      "lane": "branch",
+      "binary_sha256": "4a517c6ede59339ec115bb1e158f81d07ce31e4ecd8b6d7c9ae05b8231d59365",
+      "measurement": {
+        "path": "/Users/louistrue/.t3/worktrees/ifc-lite/t3code-6bd12f4f/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 1.13,
+        "parseMs": 3,
+        "entityScanMs": 1,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 4,
+        "facetedBrepMs": 0,
+        "totalMs": 7,
+        "allTotalsMs": [
+          9,
+          8,
+          8,
+          7,
+          7
+        ],
+        "allWallMs": [
+          9.646042000000001,
+          8.554375,
+          8.703624999999999,
+          8.184709,
+          8.348167
+        ],
+        "pointCacheHits": 52276,
+        "pointCacheMisses": 9276,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00"
+        ]
+      }
+    },
+    {
+      "lane": "base",
+      "binary_sha256": "379bc6aeafb8ad7d1875491f4c7c3ebf334b5f4ea21f253bafacf9d78466dd9b",
+      "measurement": {
+        "path": "/Users/louistrue/.t3/worktrees/ifc-lite/t3code-6bd12f4f/tests/models/ara3d/AC20-FZK-Haus.ifc",
+        "fileMb": 2.41,
+        "entities": 44249,
+        "meshes": 285,
+        "vertices": 35940,
+        "triangles": 19456,
+        "indexBuildMs": 1.08,
+        "parseMs": 3,
+        "entityScanMs": 1,
+        "lookupMs": 0,
+        "preprocessMs": 0,
+        "geometryMs": 4,
+        "facetedBrepMs": 0,
+        "totalMs": 7,
+        "allTotalsMs": [
+          9,
+          8,
+          8,
+          8,
+          7
+        ],
+        "allWallMs": [
+          9.879125,
+          8.6935,
+          8.46875,
+          8.969,
+          8.29025
+        ],
+        "pointCacheHits": 52140,
+        "pointCacheMisses": 9220,
+        "csgFailures": 0,
+        "degenerateDropped": 0,
+        "meshFingerprintsFnv1a64": [
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00",
+          "25ac885b6ff4ad00"
+        ]
+      }
+    }
+  ]
+}

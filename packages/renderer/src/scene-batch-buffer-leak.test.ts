@@ -59,6 +59,30 @@ const fakePipeline = {
 } as unknown as RenderPipeline;
 
 describe('Scene.createBatchedMesh: paired buffer leak on a mid-run createBuffer throw', () => {
+  for (const failure of ['unmap', 'bindGroup'] as const) {
+    it(`releases every staged buffer when ${failure} throws before publication (#4243)`, () => {
+      const scene = new Scene();
+      const created: Array<GPUBuffer & { destroyed: number }> = [];
+      const device = {
+        limits: { maxBufferSize: 1 << 30, maxStorageBufferBindingSize: 1 << 30 },
+        createBuffer: () => {
+          const buffer = fakeBuffer();
+          if (failure === 'unmap') buffer.unmap = () => { throw new Error('staged unmap failed'); };
+          created.push(buffer);
+          return buffer;
+        },
+        createBindGroup: () => { throw new Error('staged bindGroup failed'); },
+      } as unknown as GPUDevice;
+      assert.throws(
+        () => scene['createBatchedMesh']([meshData(1)], [1, 1, 1, 1], device, fakePipeline, 'key'),
+        new RegExp(`staged ${failure} failed`),
+      );
+      assert.strictEqual(created.length, failure === 'unmap' ? 1 : 3);
+      assert.ok(created.every(buffer => buffer.destroyed === 1));
+      assert.strictEqual(scene['nextBatchId'], 0, 'failed staging publishes no batch identity');
+    });
+  }
+
   it('destroys the vertex buffer it already created when the index buffer allocation throws', () => {
     const scene = new Scene();
     const created: Array<GPUBuffer & { destroyed: number }> = [];

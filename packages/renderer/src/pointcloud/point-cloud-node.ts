@@ -363,3 +363,16 @@ function growBounds(
 function clamp01(v: number): number {
   return v < 0 ? 0 : v > 1 ? 1 : v;
 }
+
+/** Destroy all nodes, or only assets belonging to one ingestion owner. */
+export function clearOwnedPointCloudNodes<Owner extends string>(
+  nodes: Map<number, PointCloudNode>, owners: Map<number, Owner>, owner?: Owner,
+): void {
+  for (const [id, node] of nodes) {
+    if (owner !== undefined && owners.get(id) !== owner) continue;
+    destroyNode(node);
+    nodes.delete(id);
+    owners.delete(id);
+  }
+  if (owner === undefined) owners.clear();
+}

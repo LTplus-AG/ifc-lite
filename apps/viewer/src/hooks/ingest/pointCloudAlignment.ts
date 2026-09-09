@@ -220,15 +220,14 @@ export interface PointCloudAlignmentTransform {
    * Z-up→Y-up-swapped local point positions into the viewer's render
    * frame. Applied when alignment is ON.
    */
-  alignedMatrix: Float32Array;
+  alignedMatrix: Float32Array | Float64Array;
   /**
    * Column-major 4x4 matrix reproducing the raw/unaligned placement:
    * undoes ONLY the decode-time offset (no rotation, no viewer shift).
-   * Applied when the toggle is OFF — reproduces the pre-#1804 behaviour
-   * (native absolute coordinates, narrowed to f32 at the same point they
-   * always were), so disabling alignment is never a regression.
+   * Applied when the toggle is OFF. Retain the offset in f64 until manual
+   * placement is composed; narrowing first would lose fine corrections.
    */
-  unalignedMatrix: Float32Array;
+  unalignedMatrix: Float64Array;
 }
 
 /**
@@ -332,7 +331,7 @@ export function computePointCloudAlignment(
   //   viewerY = k*py
   //   viewerZ = k*b*px + k*a*pz
   const k = sourceUnit === 'mapUnit' ? mapUnitScale / scale : 1 / scale;
-  const alignedMatrix = new Float32Array([
+  const alignedMatrix = new Float64Array([
     k * a, 0, k * b, 0,
     0, k, 0, 0,
     -k * b, 0, k * a, 0,
@@ -342,9 +341,9 @@ export function computePointCloudAlignment(
   // Unaligned matrix: undo ONLY the decode-time subtraction, in the same
   // swapped Y-up axes (swap(E,N,H) = (E,H,-N)) — no rotation, no unit
   // scaling, no viewer shift. Reproduces the raw native placement
-  // (pre-#1804 behaviour: native coordinates rendered 1:1 as viewer
-  // units, f32-quantised at map magnitude — bug-compatible by design).
-  const unalignedMatrix = new Float32Array([
+  // (native coordinates rendered 1:1 as viewer units). Compose manual
+  // correction in double precision before the renderer narrows to f32.
+  const unalignedMatrix = new Float64Array([
     1, 0, 0, 0,
     0, 1, 0, 0,
     0, 0, 1, 0,
@@ -361,98 +360,6 @@ export function computePointCloudAlignment(
 
 // ─── per-asset registry (drives the global alignment toggle) ──────────────
 
-interface RegisteredAlignment {
-  handle: { id: number };
-  transform: PointCloudAlignmentTransform;
-}
-
-/**
- * Every currently-streamed point-cloud asset that has an alignment
- * transform available, keyed by its renderer handle id. All entries share
- * the same `transform` values when they were ingested against the same
- * reference model (IfcMapConversion doesn't vary per scan) — kept
- * per-handle only so the toggle can push each node's matrix individually
- * and so a removed asset can be dropped without affecting the others.
- */
-const registry = new Map<number, RegisteredAlignment>();
-
-export function registerPointCloudAlignment(
-  handle: { id: number },
-  transform: PointCloudAlignmentTransform,
-): void {
-  registry.set(handle.id, { handle, transform });
-}
-
-export function unregisterPointCloudAlignment(handleId: number): void {
-  registry.delete(handleId);
-}
-
-export function hasRegisteredPointCloudAlignment(): boolean {
-  return registry.size > 0;
-}
-
-/**
- * The transform currently applied to `handleId` on the GPU, or undefined
- * when that asset has no alignment registered.
- *
- * `enabled` must be the live `pointCloudAlignmentEnabled` store flag — the
- * registry deliberately does not cache it, since
- * `applyPointCloudAlignmentToggle` is the single writer that pushes the
- * choice to the renderer.
- *
- * Exists so CPU-side consumers of raw cached scan points (the 2D section
- * scan layer, #1805) can place them where the GPU actually draws them.
- * Without it those consumers read pre-alignment coordinates while the 3D
- * view shows aligned ones.
- *
- * **`outputsRenderFrame` is the part callers get wrong.** The two matrices
- * do not land in the same space:
- *
- * - `alignedMatrix` consumes decode-shifted residuals and, because the
- *   whole viewer shift was folded into `decodeOriginOffset` (zero
- *   translation column), lands DIRECTLY in the viewer render frame. A
- *   caller that then also applies the render-frame shift subtracts it
- *   twice and displaces the result by the model's full RTC/origin offset.
- * - `unalignedMatrix` restores the raw native placement instead, so its
- *   output is absolute and still needs the usual world -> render-frame
- *   shift.
- */
-export interface AppliedPointCloudTransform {
-  matrix: Float32Array;
-  /** True when `matrix` already lands in the viewer render frame, so no
-   *  further render-frame shift may be applied. */
-  outputsRenderFrame: boolean;
-}
-
-export function getPointCloudAlignmentMatrix(
-  handleId: number,
-  enabled: boolean,
-): AppliedPointCloudTransform | undefined {
-  const entry = registry.get(handleId);
-  if (!entry) return undefined;
-  return enabled
-    ? { matrix: entry.transform.alignedMatrix, outputsRenderFrame: true }
-    : { matrix: entry.transform.unalignedMatrix, outputsRenderFrame: false };
-}
-
-/** Renderer surface this module needs — matches `@ifc-lite/renderer`'s
- *  `Renderer.setPointCloudTransform`. Typed narrowly here so this module
- *  doesn't need to import the whole `Renderer` class. */
-export interface PointCloudTransformTarget {
-  setPointCloudTransform(handle: { id: number }, matrix: Float32Array | null): void;
-}
-
-/**
- * Push either the aligned or unaligned matrix to every registered asset.
- * Called once at ingest time (default: aligned when a mapConversion is
- * available) and again whenever the UI toggle flips.
- */
-export function applyPointCloudAlignmentToggle(
-  renderer: PointCloudTransformTarget | null | undefined,
-  enabled: boolean,
-): void {
-  if (!renderer) return;
-  for (const { handle, transform } of registry.values()) {
-    renderer.setPointCloudTransform(handle, enabled ? transform.alignedMatrix : transform.unalignedMatrix);
-  }
-}
+export { registerPointCloudAlignment, unregisterPointCloudAlignment, hasRegisteredPointCloudAlignment,
+  applyPointCloudAlignmentToggle, retargetPointCloudDecodeOrigin,
+  type PointCloudTransformTarget } from './pointCloudAlignmentRegistry';

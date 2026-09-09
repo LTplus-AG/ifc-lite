@@ -86,3 +86,11 @@ See the [Parsing Guide](https://ifclite.dev/docs/guide/parsing/) and [API Refere
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+Textured IFCX mesh roundtrips use the declared `ifclite::appearance::v1` /
+`ifclite::image::v1` extension. Standard USD geometry and IFC owner paths remain
+readable without the extension. `parseIfcx` returns per-fragment UVs and shared
+RGBA pixels, plus optional original PNG/JPEG bytes retained without decoding.
+The shared wire exports are consumed by `@ifc-lite/export`; see
+[texture portability](../../docs/guide/exporting.md#ifcx-texture-portability)
+for interoperability, allocation limits, and the native structural-only boundary.

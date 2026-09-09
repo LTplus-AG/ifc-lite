@@ -14,12 +14,19 @@
 use ifc_lite_core::{EntityDecoder, IfcType};
 use ifc_lite_geometry::GeometryRouter;
 
+mod support;
+
 const FIXTURE: &str = "../../tests/models/issues/846_revolved_beam.ifc";
 
 fn read_fixture() -> Option<String> {
     match std::fs::read_to_string(FIXTURE) {
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture missing and IFC_LITE_REQUIRE_FIXTURES=1 -- \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!(
                 "skipping issue-846 regression: fixture missing at {FIXTURE} — \
                  run `pnpm fixtures` to fetch it"

@@ -317,3 +317,14 @@ export function splitMeshDataForBufferLimit(meshDataArray: MeshData[], maxBuffer
 
   return chunks;
 }
+
+/** Never cache an empty sentinel: a later streaming fragment may add vertices. */
+export function cachedWorldAabb(
+  id: number, pieces: readonly AabbPiece[] | undefined, cache: Map<number, BoundingBox>,
+): BoundingBox | null {
+  const cached = cache.get(id);
+  if (cached) return cached;
+  const box = worldAabbFromPieces(pieces);
+  if (box) cache.set(id, box);
+  return box;
+}

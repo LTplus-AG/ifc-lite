@@ -54,7 +54,7 @@ pub use swept::{
 };
 pub use tessellated::{PolygonalFaceSetProcessor, TriangulatedFaceSetProcessor};
 pub use texture::{
-    build_texture_index, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
+    build_texture_index, embedded_raster_dimensions, MAX_TEXTURE_DIMENSION, ImageTextureRef, MeshTexture, ResolvedTextureMap, TextureAttachment,
     TextureSource,
 };
 

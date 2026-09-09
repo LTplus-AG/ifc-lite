@@ -151,7 +151,10 @@ export const MAGIC = 0x4C434649; // "IFCL" in little-endian
  *   either. Not the destructive kind of bump: no existing cache entry is
  *   wrong to read, only silent about a rare case until it is re-parsed.
  */
-export const FORMAT_VERSION = 18;
+/** v19: optional canonical appearance provenance per mesh and a shared source-index
+ * pool in the geometry head. Earlier records remain unmarked; viewer cache keys
+ * include the version, so old entries reparse once rather than invent provenance. */
+export const FORMAT_VERSION = 19;
 
 /** Geometry chunking parameters (v13+). Grouping is a WRITE-side layout
  *  policy: readers only trust the directory, so these can change without a
@@ -172,6 +175,8 @@ export enum GeometryChunkFlags {
 
 /** One entry of the v13 geometry chunk directory. */
 export interface GeometryChunkInfo {
+  /** v19 decoded header pool shared across chunks; not a directory wire field. */
+  appearanceSources?: readonly Uint32Array[];
   /** World AABB of the chunk's meshes (f32, for future priority/culling). */
   aabbMin: [number, number, number];
   aabbMax: [number, number, number];

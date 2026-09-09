@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
+import { attachCanonicalMeshMetadata } from './canonical-mesh-metadata.js';
 import { ownedWasmBuffer } from './wasm-owned-buffer.js';
 import { publishPrepassFingerprint, runPrepassWithFingerprint } from './prepass-source-fingerprint.js';
 import { canReuseWorkerSource, type SourcePrepassApi, type FinalizeStyleArgs } from './worker-prepass-source.js';
@@ -1030,15 +1031,8 @@ function collectMeshes(
           session.pendingTransfers.push(ownedWasmBuffer(uvs));
           session.cumulativeMeshBytes += uvs.byteLength;
         }
-        // #924 / #1891: attach the per-entity geometry fingerprint — hash and,
-        // when the pass produced them, the absolute world box and the proved
-        // enclosed volume. All three are plain values, so they ride structured
-        // clone, NOT pendingTransfers.
-        if (fingerprint) {
-          meshData.geometryHash = fingerprint.hash;
-          if (fingerprint.aabb) meshData.geometryAabb = fingerprint.aabb;
-          if (fingerprint.volume !== undefined) meshData.geometryVolume = fingerprint.volume;
-        }
+        attachCanonicalMeshMetadata(meshData, fingerprint);
+
         flatMeshedIds.add(mesh.expressId);
         session.pendingMeshes.push(meshData);
       } finally {

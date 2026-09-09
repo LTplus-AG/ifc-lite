@@ -12,6 +12,12 @@ export { RenderPipeline } from './pipeline.js';
 export { Camera } from './camera.js';
 // The MEASURED surface `getScene()` publishes — see its docs.
 export type { SceneContents } from './scene-contents.js';
+export { expandAppearanceCorners, equivalentAppearanceGeometry } from './appearance-uvs.js';
+export type { AppearancePreview, AppearanceOwner, AppearanceToken, AppearanceChange } from './appearance-preview.js';
+import type { AppearancePreview } from './appearance-preview.js';
+import { createReferenceImageManager } from './reference-image-host.js';
+export type { ReferenceImages, ReferenceImageInput, ReferenceImageHit, ReferenceCorners } from './reference-image-types.js';
+import { resizeRendererViewport } from './renderer-viewport.js';
 export type { ProjectionMode } from './camera-state.js';
 export type { InteractionMode } from './camera-controls.js';
 export { pickFitPolicy } from './camera-fit-policy.js';
@@ -122,6 +128,7 @@ export type {
     PointCloudNodeMeta,
 } from './pointcloud/point-cloud-node.js';
 
+import { modelPlacementBounds, sceneMeshBounds } from './model-placement-bounds.js';
 import { WebGPUDevice, type AdapterInfoSnapshot } from './device.js';
 import { RenderPipeline } from './pipeline.js';
 import { Camera } from './camera.js';
@@ -272,6 +279,8 @@ export class Renderer {
         },
         requestRender: () => this.requestRender(),
     });
+    private readonly referenceImages = createReferenceImageManager(this);
+    getReferenceImages(): import('./reference-image-types.js').ReferenceImages { return this.referenceImages; }
     private postProcessor: PostProcessor | null = null;
     private readonly interactionEffects = new InteractionEffectsGovernor();
     private edlPass: EdlPass | null = null;
@@ -642,6 +651,7 @@ export class Renderer {
             this.device.getFormat(),
             this.pipeline.getSampleCount(),
         );
+        this.referenceImages.init(this.device.getDevice(), this.device.getFormat(), this.pipeline.getSampleCount());
         // PostProcessor is optional — if it fails (e.g. mobile GPU lacking
         // depth TEXTURE_BINDING), rendering still works without post-processing.
         try {
@@ -829,6 +839,7 @@ export class Renderer {
     private handleDeviceLost(info: { message: string; reason: string }): void {
         if (this.deviceLost) return;
         this.deviceLost = true;
+        this.referenceImages.destroy();
         this.deviceLostGeneration = this.initGeneration;
         this.deviceLostInfo = info;
         console.warn('[Renderer] GPU device lost — halting rendering until re-init:', info.message);
@@ -973,14 +984,9 @@ export class Renderer {
         if (!this.pointCloudRenderer) {
             throw new Error('Renderer not initialized. Call init() first.');
         }
+        for (const asset of assets) this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
         this.pointCloudRenderer.setAssets(assets);
-        // Replace, not append — bounds may have shrunk (e.g. an IFCx
-        // reload with a smaller scan). `expandForPointClouds`
-        // alone only grows; recompute from scratch to keep
-        // fit-to-view + section-plane sliders accurate.
-        this.modelBoundsTracker.recompute();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.refreshPlacementBounds();
     }
 
     /** Append additional point clouds without clearing existing ones. */
@@ -989,6 +995,7 @@ export class Renderer {
             throw new Error('Renderer not initialized. Call init() first.');
         }
         for (const asset of assets) {
+            this.pointCloudRenderer.setModelTranslation(asset.modelIndex ?? 0, this.scene.getModelTranslation(asset.modelIndex ?? 0));
             this.pointCloudRenderer.addAsset(asset);
         }
         this.modelBoundsTracker.expandForPointClouds();
@@ -1009,9 +1016,7 @@ export class Renderer {
     /** Drop all point cloud GPU resources. */
     clearPointClouds(): void {
         this.pointCloudRenderer?.clear();
-        this.modelBoundsTracker.recompute();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.refreshPlacementBounds();
     }
 
     /**
@@ -1046,9 +1051,7 @@ export class Renderer {
         this.pointCloudRenderer?.removeAsset(handle);
         // Bounds may have shrunk — recompute from scratch so fit-to-view
         // and section-plane sliders see fresh extents.
-        this.modelBoundsTracker.recompute();
-        this.camera.setSceneBounds(this.modelBounds);
-        this.requestRender();
+        this.refreshPlacementBounds();
     }
 
     /**
@@ -1066,24 +1069,9 @@ export class Renderer {
         this.requestRender();
     }
 
-    /** Aggregate bounds across all batched + individual meshes. Returns
-     *  null if the scene has no mesh geometry. */
-    private computeMeshBounds(): { min: { x: number; y: number; z: number }; max: { x: number; y: number; z: number } } | null {
-        let minX = Infinity, minY = Infinity, minZ = Infinity;
-        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-        let any = false;
-        for (const batch of this.scene.getBatchedMeshes()) {
-            if (!batch.bounds) continue;
-            any = true;
-            if (batch.bounds.min[0] < minX) minX = batch.bounds.min[0];
-            if (batch.bounds.min[1] < minY) minY = batch.bounds.min[1];
-            if (batch.bounds.min[2] < minZ) minZ = batch.bounds.min[2];
-            if (batch.bounds.max[0] > maxX) maxX = batch.bounds.max[0];
-            if (batch.bounds.max[1] > maxY) maxY = batch.bounds.max[1];
-            if (batch.bounds.max[2] > maxZ) maxZ = batch.bounds.max[2];
-        }
-        if (!any) return null;
-        return { min: { x: minX, y: minY, z: minZ }, max: { x: maxX, y: maxY, z: maxZ } };
+    /** Bounds across flat draw batches. */
+    private computeMeshBounds() {
+        return sceneMeshBounds(this.scene);
     }
 
     /** Apply rendering options (color mode, fixed override, point size). */
@@ -1092,25 +1080,47 @@ export class Renderer {
         this.requestRender();
     }
 
-    /**
-     * Set (or clear, with `null`) a streamed point-cloud asset's per-vertex
-     * GPU model matrix (column-major, 16 floats) — issue #1804's
-     * `IfcMapConversion` alignment toggle. Cheap: takes effect on the next
-     * frame's uniform write, no GPU buffer rewrite.
-     */
-    setPointCloudTransform(
-        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
-        matrix: Float32Array | null,
-    ): void {
-        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
-        // The asset's world-space extents just moved: re-fold the (now
-        // matrix-aware) point-cloud bounds into the scene bounds and push
-        // them to the camera (matching every other bounds-mutating
-        // point-cloud method) so framing / zoom-to-fit targets where the
-        // points actually render.
+    getModelPlacementBounds(modelIndex: number, pointCloudHandle?: { id: number }) {
+        return modelPlacementBounds(this.scene, this.pointCloudRenderer, modelIndex, pointCloudHandle);
+    }
+
+    /** Absolute workspace translation in renderer Y-up metres (#4226). */
+    setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+        this.pointCloudRenderer?.validateModelTranslation(modelIndex, translation);
+        this.scene.setModelTranslation(modelIndex, translation);
+        this.pointCloudRenderer?.setModelTranslation(modelIndex, translation);
+        this.clearCaches();
+        this.refreshPlacementBounds();
+    }
+
+    /** Streamed clouds are addressed by durable asset handle. */
+    setPointCloudTranslation(handle: { id: number }, translation: readonly [number, number, number]): void {
+        this.pointCloudRenderer?.setAssetTranslation(handle, translation);
+        this.clearCaches();
+        this.refreshPlacementBounds();
+    }
+
+    private refreshPlacementBounds(): void {
         this.modelBoundsTracker.recompute();
         this.camera.setSceneBounds(this.modelBounds);
         this.requestRender();
+    }
+
+    getPointCloudTransform(handle: { id: number }): Float32Array | undefined {
+        return this.pointCloudRenderer?.getAssetTransform(handle);
+    }
+
+    /**
+     * Set/clear a streamed cloud's column-major model matrix (16 floats) for
+     * IfcMapConversion alignment (#1804). Applied on the next frame's uniform
+     * write without rewriting vertex buffers.
+     */
+    setPointCloudTransform(
+        handle: import('./pointcloud/point-cloud-renderer.js').PointCloudAssetHandle,
+        matrix: Float32Array | Float64Array | null,
+    ): void {
+        this.pointCloudRenderer?.setAssetTransform(handle, matrix);
+        this.refreshPlacementBounds();
     }
 
     /**
@@ -1168,7 +1178,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, false);
 
         // Calculate and store model bounds for fitToView
-        this.modelBoundsTracker.updateFromMeshes(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
 
         console.log(`[Renderer] Loaded ${meshes.length} meshes`);
 
@@ -1193,7 +1203,7 @@ export class Renderer {
         this.scene.appendToBatches(meshes, device, this.pipeline, isStreaming);
 
         // Update model bounds incrementally
-        this.modelBoundsTracker.updateFromMeshes(meshes);
+        this.modelBoundsTracker.updateFromMeshes(meshes, (index) => this.scene.getModelTranslation(index));
 
         // Update camera scene bounds for tight orthographic near/far planes
         this.camera.setSceneBounds(this.modelBounds);
@@ -1410,7 +1420,7 @@ export class Renderer {
         // We compute the same `world` here. When there's no shared origin yet
         // (legacy / pre-batch), fall back to a plain f64 fold (local + origin).
         const o = meshData.origin;
-        const so = this.scene.getSharedFrameOrigin();
+        const so = this.scene.getSharedFrameOrigin(meshData.modelIndex);
         const ox = o ? o[0] : 0, oy = o ? o[1] : 0, oz = o ? o[2] : 0;
         const fr = Math.fround;
         const sox = so ? fr(so[0]) : null, soy = so ? fr(so[1]) : 0, soz = so ? fr(so[2]) : 0;
@@ -3074,6 +3084,7 @@ export class Renderer {
             // Section-plane gizmo, 2D section cap and every standalone 3D
             // overlay (annotation / alignment / grid / DXF / clash / symbolic
             // text). One draw call into the pass — see RendererOverlays.draw().
+            this.referenceImages.draw(pass, viewProj);
             this.overlays.draw(pass, {
                 options,
                 viewProj,
@@ -3342,19 +3353,20 @@ export class Renderer {
      * Resize canvas
      */
     resize(width: number, height: number): void {
-        // `canvas.width` is an IDL `unsigned long`, so it silently coerces a
-        // non-finite or negative argument to **0** — a zero drawing buffer
-        // that every pick guard in this package misses, because they all
-        // check the bounding rect rather than the buffer. `unprojectToRay`
-        // then divides by it. This is documented public API of a published
-        // package (`docs/api/typescript.md`), so an external caller wiring a
-        // ResizeObserver to it is the reachable route; both in-repo callers
-        // already floor their own values. Keep the last usable size, the same
-        // policy `setAspect` uses for the ratio it derives (#2473).
-        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) return;
-        this.canvas.width = width;
-        this.canvas.height = height;
-        this.camera.setAspect(width / height);
+        resizeRendererViewport(this.canvas, this.camera, width, height);
+    }
+
+    /** Owned, reversible appearance edits; model geometry remains unchanged. */
+    /** Stage a new textured IFC owner; dispose an uncommitted preparation on every failure. */
+    prepareTexturedOwner(mesh: import('@ifc-lite/geometry').MeshData) {
+        if (!this.device.isInitialized() || !this.pipeline) throw new Error('Renderer is not initialized.');
+        const prepared = this.scene.prepareTexturedOwner(mesh, this.device.getDevice(), this.pipeline);
+        return { commit: () => { prepared.commit(); this.refreshPlacementBounds(); this.invalidateBVHCache(); this.requestRender(); }, dispose: prepared.dispose };
+    }
+
+    getAppearancePreview(): AppearancePreview {
+        if (!this.pipeline) throw new Error('Renderer must be initialized before previewing appearance');
+        return this.scene.appearancePreview(this.device.getDevice(), this.pipeline);
     }
 
     getCamera(): Camera {
@@ -3678,6 +3690,7 @@ export class Renderer {
         // Section-plane gizmo, 2D section overlay and the symbolic annotation
         // pipelines — see RendererOverlays.destroy().
         this.overlays.destroy();
+        this.referenceImages.destroy();
 
         // Point cloud GPU resources
         this.pointCloudRenderer?.clear();

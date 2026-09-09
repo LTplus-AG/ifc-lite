@@ -338,6 +338,36 @@ describe('matchConstraint — bounds', () => {
     expect(matchConstraint(bounds({}), 999)).toBe(true);
     expect(matchConstraint(bounds({}), -999)).toBe(true);
   });
+
+  // `unparseableFacets` is what `parseRestriction` attaches when a facet
+  // element was present in the source XML but its `@value` failed to
+  // parse (see `parser/xml-parser.test.ts` for the full XML-to-matcher
+  // round trip). At the matcher level, its mere presence must flip an
+  // otherwise-unbounded constraint from an unconditional pass to an
+  // unconditional fail — regardless of which other facets are set.
+  it('a non-empty unparseableFacets fails closed even with no other facets set', () => {
+    const c = bounds({ unparseableFacets: [{ facet: 'minInclusive', rawValue: 'abc' }] });
+    expect(matchConstraint(c, 999)).toBe(false);
+    expect(matchConstraint(c, -999)).toBe(false);
+    expect(matchConstraint(c, 0)).toBe(false);
+  });
+
+  it('a non-empty unparseableFacets fails closed even when other facets on the SAME constraint are well-formed', () => {
+    // e.g. `<xs:minInclusive value="60"/>` parsed fine but a sibling
+    // `<xs:maxInclusive value="not-a-number"/>` did not — the whole
+    // restriction is unverifiable, not "just the min half".
+    const c = bounds({
+      minInclusive: 0,
+      unparseableFacets: [{ facet: 'maxInclusive', rawValue: 'not-a-number' }],
+    });
+    expect(matchConstraint(c, 50)).toBe(false);
+  });
+
+  it('an empty unparseableFacets array behaves exactly like it being absent', () => {
+    const c = bounds({ minInclusive: 0, maxInclusive: 100, unparseableFacets: [] });
+    expect(matchConstraint(c, 50)).toBe(true);
+    expect(matchConstraint(c, -1)).toBe(false);
+  });
 });
 
 // ============================================================================

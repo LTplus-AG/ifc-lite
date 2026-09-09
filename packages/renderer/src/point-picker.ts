@@ -23,6 +23,7 @@ import { POINT_QUAD_VERTS, POINT_VERTEX_BYTES } from './pointcloud/point-pipelin
 export interface PointPickNode {
   expressId: number;
   modelIndex?: number;
+  model?: Float32Array;
   chunks: ReadonlyArray<{ vertexBuffer: GPUBuffer; pointCount: number }>;
 }
 
@@ -70,15 +71,15 @@ export function decodePickSample(value: number): DecodedPickSample {
   return { meshIndexPlusOne: value, pointExpressId: 0, instanceExpressId: 0, kind: 'mesh' };
 }
 
-// mat4x4 (64) + vec4 viewport (16) + vec4 sizing (16) + vec4 entityIdOverride (16) + vec4 section (16)
-const UNIFORM_BYTES = 128;
+// View projection + viewport/sizing/id/section + per-asset model matrix.
+const UNIFORM_BYTES = 192;
+const IDENTITY = new Float32Array([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]);
 
 export class PointPicker {
   private device: GPUDevice;
   private pipeline: GPURenderPipeline;
   private bindGroupLayout: GPUBindGroupLayout;
-  private uniformBuffer: GPUBuffer;
-  private bindGroup: GPUBindGroup;
+  private uniforms: Array<{ buffer: GPUBuffer; bindGroup: GPUBindGroup }> = [];
   private uniformScratch = new Float32Array(UNIFORM_BYTES / 4);
   private uniformU32 = new Uint32Array(this.uniformScratch.buffer);
   private destroyed = false;
@@ -96,16 +97,6 @@ export class PointPicker {
       ],
     });
 
-    this.uniformBuffer = this.device.createBuffer({
-      size: UNIFORM_BYTES,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.bindGroupLayout,
-      entries: [{ binding: 0, resource: { buffer: this.uniformBuffer } }],
-    });
-
     const shader = this.device.createShaderModule({
       code: `
 struct U {
@@ -118,6 +109,7 @@ struct U {
   // y = sectionEnabled (0/1), z = sectionFlipped (0/1).
   entityIdOverride: vec4<u32>,
   section: vec4<f32>,         // xyz = plane normal, w = plane distance
+  model: mat4x4<f32>,
 }
 @binding(0) @group(0) var<uniform> u: U;
 
@@ -145,7 +137,8 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
   );
   let corner = corners[vId];
 
-  var clip = u.viewProj * vec4<f32>(input.position, 1.0);
+  let world = u.model * vec4<f32>(input.position, 1.0);
+  var clip = u.viewProj * world;
 
   let sizeMode = u32(u.sizing.x);
   let worldRadius = u.sizing.y;
@@ -158,7 +151,7 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
   if (sizeMode == 0u) {
     halfPx = max(0.5, pointSizePx * 0.5);
   } else {
-    let edgePos = u.viewProj * vec4<f32>(input.position + vec3<f32>(worldRadius, 0.0, 0.0), 1.0);
+    let edgePos = u.viewProj * vec4<f32>(world.xyz + vec3<f32>(worldRadius, 0.0, 0.0), 1.0);
     let centerNdcX = clip.x / max(abs(clip.w), 1e-6);
     let edgeNdcX = edgePos.x / max(abs(edgePos.w), 1e-6);
     let projectedPx = abs(edgeNdcX - centerNdcX) * 0.5 * viewport.x;
@@ -179,7 +172,7 @@ fn vs_main(input: VIn, @builtin(vertex_index) vId: u32) -> VOut {
   o.pos = clip;
   o.entityId = input.entityId;
   o.quadUv = corner;
-  o.worldPos = input.position;
+  o.worldPos = world.xyz;
   return o;
 }
 
@@ -256,14 +249,24 @@ fn fs_main(input: VOut) -> @location(0) u32 {
   ): void {
     if (this.destroyed || nodes.length === 0) return;
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
+
     // Per-node uniform write so federation-relabelled IDs surface in
     // the picker too. The per-vertex `entityId` attribute is baked at
     // upload time and goes stale once the FederationRegistry assigns
     // an idOffset to the model — the override forces the picker to
     // emit the asset's CURRENT expressId regardless.
-    for (const node of nodes) {
-      this.writeUniforms(viewProj, viewport, sizing, node.expressId >>> 0, section);
+    // Each draw needs a distinct buffer: queue writes execute before the pass,
+    // so reusing one buffer would give every asset the last asset's transform/id.
+    for (const [index, node] of nodes.entries()) {
+      let uniform = this.uniforms[index];
+      if (!uniform) {
+        const buffer = this.device.createBuffer({ size: UNIFORM_BYTES, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        uniform = { buffer, bindGroup: this.device.createBindGroup({ layout: this.bindGroupLayout,
+          entries: [{ binding: 0, resource: { buffer } }] }) };
+        this.uniforms.push(uniform);
+      }
+      this.writeUniforms(uniform.buffer, node.model, viewProj, viewport, sizing, node.expressId >>> 0, section);
+      pass.setBindGroup(0, uniform.bindGroup);
       for (const chunk of node.chunks) {
         if (chunk.pointCount === 0) continue;
         pass.setVertexBuffer(0, chunk.vertexBuffer);
@@ -273,6 +276,8 @@ fn fs_main(input: VOut) -> @location(0) u32 {
   }
 
   private writeUniforms(
+    buffer: GPUBuffer,
+    model: Float32Array | undefined,
     viewProj: Float32Array,
     viewport: { width: number; height: number },
     sizing: { sizeMode: number; worldRadius: number; pointSizePx: number; clickTolerancePx: number },
@@ -301,12 +306,14 @@ fn fs_main(input: VOut) -> @location(0) u32 {
     u[29] = section ? section.normal[1] : 0;
     u[30] = section ? section.normal[2] : 0;
     u[31] = section ? section.distance : 0;
-    this.device.queue.writeBuffer(this.uniformBuffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
+    u.set(model ?? IDENTITY, 32);
+    this.device.queue.writeBuffer(buffer, 0, u.buffer, u.byteOffset, UNIFORM_BYTES);
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
-    this.uniformBuffer.destroy();
+    for (const { buffer } of this.uniforms) buffer.destroy();
+    this.uniforms = [];
   }
 }

@@ -27,6 +27,43 @@ scripts/perf/flame.sh tests/models/ara3d/schependomlaan.ifc
 
 Fetch a fixture first if missing: `pnpm fixtures ara3d/schependomlaan.ifc`.
 
+## Canonical appearance provenance (#4243)
+
+Item-identified geometry now retains its canonical triangle-order identity at
+WASM extraction. A production-browser worker-load A/B against the same Rust
+runtime found a small median increase within the baseline run spread on the
+public AC20-FZK-Haus fixture; this is not an optimization or a speedup claim.
+All measured geometry/color/UV fingerprints and mesh/triangle counts matched.
+The additional metadata reuses existing index arrays, with no extra geometry
+buffer or transfer at extraction. Streaming fragments can retain an unsplit
+source index array; that memory lifetime still requires explicit downstream
+ownership and large-model qualification.
+
+The measurement boundary was completed metadata plus geometry worker output,
+with fresh Chromium processes and empty model caches. It did not measure
+renderer readiness: the stock combined viewer-readiness experiment encountered
+a baseline first-load viewport initialization race. Those failed samples were
+retained and excluded, not treated as successful loads. The lesson is to name
+and qualify the measured boundary before interpreting small load-time deltas.
+
+## Manual scan registration foundation (#4381)
+
+The correspondence solver is opt-in, bounded to 256 fitting and 256 held-out
+points, with fixed-size matrix decompositions and explicit iteration limits.
+It is reachable through the dedicated registration API only; parse, element mesh
+production, styling and worker-load paths do not invoke it. An interleaved native
+AC20-FZK-Haus base/branch probe found equal reported parse/geometry/total phase
+medians and a full-wall median difference within the observed run spread. Every
+ordered mesh fingerprint and mesh/vertex/triangle count matched. The verdict is
+no material regression observed on that fixture, not a load optimization or a
+browser worker-pool speed claim. See the [raw measurement](../../docs/architecture/evidence/scan-registration/native-load-perf.json).
+
+Independent numerical review also ruled out the specialized small-matrix SVD:
+its squared-matrix path lost thin but valid correspondence directions. The
+bounded direct decomposition and two retained counterexamples prevent repeating
+that failure. Small point-to-plane residuals remain no substitute for spatially
+distributed check correspondences, as the CRAS evidence demonstrates.
+
 ## The native probe (`perf_probe`)
 
 `rust/processing/examples/perf_probe.rs`, wrapped by `probe.sh`. It drains the
@@ -910,3 +947,165 @@ distributions directly to the TypeScript entrypoint and retain their provenance.
 `--skip-branch-build` labels its input as supplied distribution, not a verified
 current-commit build. The wrapper retains the temporary base through child exit
 and then removes it while preserving the child failure status.
+
+
+### Appearance preview ownership and batch restoration (#4243)
+
+A production-viewer API experiment on normally loaded FZK geometry found that
+isolating shared batches for reversible appearance previews left persistent
+partitions after cancellation. Exact geometry/bounds and GPU rectangle-picking
+results survived, but repeated broad edits would retain extra draw batches.
+Cohort-scoped restoration now stages a replacement only for descendants of the
+same original batch once all related drafts close. Committed textured owners
+remain separate; later Undo can rejoin their flat parts. The actual viewer
+returned to the original batch count and primary geometry GPU residency.
+
+This experiment measures synchronous Scene/Renderer preview phases, not IFC
+planning, image decoding, end-to-end Apply latency, or GPU completion. The fixture
+bounds the result to its eligible non-instanced owners; it does not qualify a
+large-model whole-scope workflow. Resource snapshots exclude pick/highlight
+caches and do not capture transient staging peaks. Restoration respects original
+allocation limits and keeps valid split batches with a reported warning if
+replacement allocation fails. The lesson is to check the post-cancel draw
+structure as well as geometry and picking: a correct image alone hid persistent
+batch fragmentation.
+
+### Appearance Apply composition and unchanged dependency rows (#4243)
+
+A real Convento whole-model Apply profile located synchronous dependency row
+serialization and nested atomic snapshots in the click handler. Keep unchanged
+non-binding source rows as bounded byte scans and compose appearance edits
+inside the command's existing detached transaction; standalone helpers remain
+atomic. Three interleaved fresh-browser A/B pairs show a combined reduction in
+Apply delay, with identical geometry/UV bytes for all authored parts and intact
+Undo/Redo and non-target-model isolation. The remaining frame stall still fails
+the intended interaction smoothness bar. This is a development-viewer action
+measurement, not cold-load throughput, GPU completion, or an isolated attribution
+to either change. Raw samples and artifact hashes are retained in
+`docs/architecture/evidence/appearance/appearance-apply-paired-summary.json` and
+`appearance-apply-paired-manifest.json`. Preserve transaction ownership and
+rollback checks while addressing the remaining work; do not remove them to
+make an incomplete commit appear faster.
+
+### Opt-in appearance planning (#4243)
+
+Appearance planning invokes canonical mesh production for the source and planned
+styles so preview topology agrees with reopening the exported IFC. It adds no
+call to the ordinary load pipeline. Interleaved base/branch native house probes
+found unchanged ordered mesh fingerprints and no observed ordinary-load timing
+regression. This is a regression verdict, not a browser speedup claim. Keep
+projection work in a cancellable worker and bound aggregate output as well as
+input: a shared coordinate list can otherwise multiply into many UV arrays.
+
+The planner must also resolve load-time RTC and material-layer context once per
+request. Comparing two equally misconfigured routers can falsely certify empty
+georeferenced triangles or an unsliced layer-bearing product; topology equality
+alone is not proof of agreement with reopening. This context work stays on the
+opt-in planner path and does not change ordinary load callers.
+
+Embedded-header preflight reads PNG dimensions directly and walks bounded JPEG
+markers through the STEP hex bytes. It neither copies the complete compressed
+image nor allocates pixels before the plan budget is checked; ordinary raster
+decoding remains unchanged.
+
+### Effective appearance scope catalog (#4243)
+
+The optional Rust catalog shares the planner's bounded effective-source decoder
+and returns canonical product classes and type identities; it does not add a
+call to ordinary model loading. Exact source-built base and branch WASM
+distributions were compared through the actual browser worker pool in fresh,
+interleaved processes. Every geometry fingerprint matched and no material
+ordinary-load regression was observed within sample variation. This is a
+regression check, not a speedup claim or a measurement of catalog latency.
+Retain the bounded decode and shared cancellation lifecycle instead of
+reimplementing IFC type relationships in the UI. Reproduction provenance and
+samples are in `appearance-catalog-load-evidence.json`; the observation ends at
+worker-model readiness, not renderer readiness.
+
+### Prepared-overlay comparison ownership (#4243)
+
+Compare a private borrowed overlay descriptor synchronously against the detached
+checkpoint. Cloning the live overlay solely to compare it adds allocation while
+providing no additional isolation; original/draft/prepared/publication snapshots
+remain deep copies. Cyclic escaped values, skip-history edits and rollback
+rejection remain covered. A fresh real Convento Apply profile with this change
+and the earlier command/dependency changes still locates substantial synchronous
+work in dependency scanning and authored-data/history construction plus retained
+snapshots. This single sampled run does not establish an isolated improvement
+for comparison-only clone removal. Keep ownership guards while investigating
+preparation outside the Apply interaction. The profile, timing, summary and
+exact source/runtime hashes are in
+`docs/architecture/evidence/appearance/appearance-apply-after-comparison-*`.
+
+### Appearance dependency validation: immutable source byte scan (#4243)
+
+The Apply CPU profile identified effective dependency capture and repeated overlay
+copies as the dominant main-thread work. Unchanged source rows already use
+immutable markers in history checkpoints; decoding, rewriting and re-encoding
+large coordinate rows only to extract references therefore adds no validation
+information. Read those non-binding rows with the canonical source-byte scanner.
+Keep edited, authored, retyped and inverse-binding rows on the effective STEP
+writer path, with unchanged byte/reference budgets and compressed-source support.
+
+Three interleaved fresh-browser Convento pairs showed a consistent end-to-end
+Apply improvement when combined with removing nested appearance transactions.
+This is a combined result, not an isolated speedup for the scanner. Geometry,
+UVs, owner identity, Undo/Redo and the untouched federated model were checked;
+the remaining main-thread stall still fails the intended smoothness requirement.
+Do not treat fewer copies or a faster helper microbenchmark as acceptance: retain
+the paired interaction measurement and continue profiling transaction preparation.
+
+### Finite page appearance composition (#4260)
+
+The opt-in page planner bakes topology-preserving PNG charts and retains source
+texture density outside the page. It adds a PNG encoder to WASM; ordinary loading
+does not invoke the new operation. Source-verified baseline and final runtimes
+were compared in fresh interleaved browser workers under identical JS/assets.
+All geometry, color, UV and provenance fingerprints matched. A small ordinary
+worker-readiness increase was observed with overlapping samples; this is neither
+a speedup nor a zero-cost claim. Retain the explicit atlas budgets and source
+fidelity floor rather than silently downsampling photos to page resolution.
+Exact runtime provenance, samples and deltas are in `pdf-page-load-evidence.json`;
+page compositing latency and renderer readiness were not measured by this check.
+
+### Cooperative appearance command preparation (#4336)
+
+The appearance command now consumes owned cooperative entity operations and keeps
+its final source, dependency, resource and history checks synchronous. A fresh
+real Convento browser interaction confirms that preparation yields, but the
+final synchronous phase still produces a visible long task and rendering gaps
+remain during preparation. This is an observational integration sample, not an
+isolated speedup or smoothness-complete verdict. Do not infer responsiveness from
+an async return type or successful cancellation tests. Retain the exact fences
+while addressing remaining synchronous dependency work separately. Raw timing,
+source/runtime identity and functional Undo/Redo evidence are recorded under
+`docs/architecture/evidence/appearance/appearance-cooperative-apply-*`.
+
+### Calibrated image annotation creation (#4308)
+
+The opt-in native annotation planner reuses canonical placement, schema validation and per-element geometry production. A source-matched ordinary worker-load A/B observed a small increase with overlapping samples and identical geometry/provenance; no speedup or zero-cost claim is made. Final JavaScript/assets were identical while the verified IFC WASM was swapped, so this checks runtime size/initialization effects without invoking annotation creation. See [the exact runtime hashes and paired samples](annotation-plane-load-evidence.json). Annotation creation and the downstream Save Into Model UI are outside this load measurement.
+
+### Captured mesh authoring (#4380)
+
+The opt-in captured-surface planner shares annotation authoring's canonical
+product path; it does not modify ordinary geometry loading. Interleaved native
+ordinary-load probes retained all mesh/vertex/triangle counts, but quantized and
+noisy samples were inconclusive. Exclusive machine idleness was not established,
+so these are smoke evidence only, not a speedup, regression or browser worker-pool
+latency claim. The lesson is to compare triangle-corner geometry and UVs across
+capture authoring and normal import: valid canonical welding may change vertex
+layout while preserving the surface and seams. [Raw source-matched samples and
+limitations](../../docs/architecture/evidence/captured-mesh/native-load.json)
+record the experiment; capture-creation and integrated UI timing remain separate.
+
+### Appearance preparation input scheduling (#4336)
+
+Fresh background tasks allow trusted viewport and Discard input to run during broad
+Apply preparation. In the paired real Convento viewer workflow, scheduler.yield
+continuations painted frames but delayed trusted input until completion. This is
+a different mechanism from timer-clamping or microbenchmark speedups: it trades
+slightly longer elapsed preparation for earlier user interaction. The exact final
+transaction fence is unchanged and still blocks. Identical runtime and canonical
+owner/mesh output were verified across paired runs; cancellation published no IFC
+or history changes. Raw evidence, memory caveats and methodology live in
+`docs/architecture/evidence/appearance/apply-responsiveness/README.md`.

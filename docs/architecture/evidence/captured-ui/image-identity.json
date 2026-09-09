@@ -1,0 +1,16 @@
+{
+  "source": "boulder-albedo.glb",
+  "sourceImageSha256": "c38f0e918f6dc16b8d386ba3cdd89805c78320c119a1ceec85856f82b09a65b8",
+  "imageBytes": 987467,
+  "exports": [
+    {
+      "kind": "final",
+      "exactOriginalJpeg": true
+    },
+    {
+      "kind": "whole",
+      "exactOriginalJpeg": true
+    }
+  ],
+  "runtimeSha256": "ab69958c22f0161a2b9efb21c03369029399a696eb775915b50bea7ea25e43a4"
+}

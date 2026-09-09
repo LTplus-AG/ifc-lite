@@ -481,6 +481,10 @@ into the final deduplication key. The native processing pipeline manages this li
 
 Other notable re-exports: `orient_mesh_outward`, `calculate_normals`, `ClippingProcessor`, `Plane`, `Triangle` (CSG), `hash_mesh_world` / `GeometryHasher` (geometry-diff hashing), instancing encode/decode helpers, and the nalgebra types `Point2`, `Point3`, `Vector2`, `Vector3`.
 
+`embedded_raster_dimensions(step_binary)` returns optional PNG/JPEG dimensions
+from an IFC binary literal without decoding pixels. It supports allocation
+preflight; a readable header does not certify a complete or valid image stream.
+
 ---
 
 ## ifc-lite-processing
@@ -509,6 +513,53 @@ pub use types::mesh::{InstanceRecord, MeshData, RawInstanceOccurrence};
 pub use types::response::{CoordinateInfo, ModelMetadata, ParseResponse, ProcessingStats};
 pub use parallel_scan::build_entity_index_parallel;
 ```
+
+### Appearance authoring
+
+`ifc_lite_processing::appearance::calibrate_appearance_plane` establishes one
+measured plane from two stable native-source landmarks and a known distance.
+`PlaneCalibrationRequest` supplies the raster-to-source affine, raster extent
+and an IFC Z-up world anchor/direction/normal. `CalibratedPlane` returns a
+world-space `Mapping::Planar`, raster corners and metres per source unit.
+Crop, page rotation and raster DPI only change the raster-to-source transform;
+they do not change the retained calibration landmarks or measured distance.
+This bounded calculation does not mutate IFC or composite pixels outside the
+page. Invalid, sheared or unrepresentable planes fail explicitly. Reconstructed
+world edges and anchor displacement must each preserve their intended vector
+within one part per million; large origins never enlarge that tolerance.
+
+`ifc_lite_processing::appearance::plan_appearance` prepares image and UV edits
+against an effective IFC STEP snapshot. It shares canonical geometry production
+with loading and returns both IFC edit operations and per-corner preview data.
+It does not mutate the input. `AppearanceRequest` supplies an IFC4/IFC4X3 schema,
+revision token, reserved allocator watermark, product IDs, relative image URI
+and an existing-UV, planar or box mapping. The initial scope is direct, unshared
+`IfcTriangulatedFaceSet` Body geometry with absent or complete `IfcLocalPlacement`
+chains. `IfcGridPlacement` and `IfcLinearPlacement`, including local placements
+parented to them, remain explicitly unsupported in every mapping mode; canonical
+load-time placement recovery is not sufficient validation for writing edits.
+Products with sliceable material-layer associations are also excluded, because
+reopening may replace their face set with layer slices. Canonical comparisons
+resolve the shared load-time RTC metadata before meshing georeferenced geometry.
+Plans report unsupported products;
+callers must explicitly accept a reduced scope, retain image resources and
+apply the complete IFC edit plan atomically after revalidating the revision and
+allocator. Preview consumers validate source topology and map triangle corners,
+rather than assuming vertex counts establish UV correspondence. `targetVertexCount`
+is the final canonical vertex-pool bound; removed triangles may leave unused
+vertices before or after the surviving indices. Do not substitute corner count
+or maximum-index-plus-one for this pool size.
+`targetCornerNormals` carries final shading normals in renderer Y-up triangle-corner
+order (`[nx, nz, -ny]` from IFC). Removing UV seams can merge near-coplanar weld
+representatives and change shading normals while every triangle position remains
+identical. Preview installs these canonical target normals so its shading matches
+reopening; it must not retain the previous normals or relax position checks.
+
+The exported `ifc_lite_geometry::MAX_TEXTURE_DIMENSION` is the shared raster edge
+limit; appearance preflight rejects invalid pixel dimensions. Embedded PNG/JPEG
+header inspection reads at most 1 MiB of encoded header bytes without copying the
+full STEP binary literal or decoding pixels.
+
 
 ---
 
@@ -745,3 +796,117 @@ This will generate detailed documentation including:
 - Source code links
 - Examples from doc comments
 - Cross-references between items
+
+
+`ifc_lite_processing::appearance::catalog_appearance(bytes, &AppearanceCatalogRequest)`
+resolves rendered owner class and type selectors from an already-effective IFC4
+or IFC4X3 snapshot. It returns sorted `AppearanceCatalog` products/types and an
+explicit missing/ineligible ID list. IFC class strings use canonical PascalCase;
+`AppearanceCatalogType.name` serializes as the exact EXPRESS attribute `Name`.
+The function reuses appearance source decoding and its budgets, performs no meshing
+or texture-image decoding, and rejects malformed relevant type assignments or oversized
+catalog metadata without partial results. Hosts retain federation and selection
+orchestration and must fence stale snapshot responses before use.
+
+### Finite page appearance
+
+`ifc_lite_processing::appearance::plan_page_appearance(source, &request, rgba)`
+adds a calibrated planar page while sampling each object's original albedo
+outside the page. `PageAppearanceRequest.appearance` is the existing request with
+`Planar` mapping and both repeat flags false. `page` and `source_images[].raster`
+are `{width, height, byte_offset, byte_length}` ranges in a separate top-down,
+straight-alpha RGBA8 payload. External images are keyed by their exact effective
+`IfcImageTexture.URLReference` in `image_uri`; embedded textures are decoded by
+the canonical Rust resolver. Missing external pixels are an explicit refusal.
+
+The returned `PageAppearancePlan` contains the ordinary atomic `plan`, per-item
+`item_images`, deduplicated `assets` with encoded PNG bytes, and the requested
+`texels_per_metre`. Each generated URI is `textures/<SHA256 of PNG bytes>.png`.
+The host must adopt all returned image resources and IFC edits as one command;
+normal planning, undo and model export must retain those resources together.
+
+The topology-preserving triangle atlas resamples the original appearance at the
+requested physical density, raised per triangle to preserve at least the source
+texture pixel frequency in every direction (including skewed or repeated UVs).
+Budget refusal never silently lowers that source-fidelity floor. Finite page bounds and straight-alpha compositing
+prevent repeated/clamped page borders outside the page. Sampling guard pixels
+reduce chart seams; bilinear filtering still has finite resolution at page
+edges. This is visual preservation at an explicit sampling density, not pixel
+identity or exact vector clipping. It projects through the selected objects
+without visibility/occlusion testing. It does not silently reduce quality.
+
+Output is bounded to 4096 pixels per axis and 16,777,216 total atlas pixels,
+500,000 UV corners, and 96 MiB of PNG output. Inputs reuse the ordinary planner
+limits, plus a 128 MiB RGBA payload and bounded raster ranges. The current path
+explicitly refuses split per-face palettes, presentation-layer style overrides,
+and translucent untextured surfaces whose rendering path cannot be preserved.
+
+The page compositor clones directly attached `IfcSurfaceStyleRendering` metadata
+using canonical style precedence. Specular strength, typed roughness/exponent,
+reflectance method, transmission/reflection fields, surface name/side and other
+supported lighting/refraction leaves survive export. Albedo factors and opacity
+already baked into the atlas are neutralized to prevent double multiplication.
+Inherited material/representation metadata currently refuses page composition
+rather than silently discarding rendering properties. Original shared styles
+remain untouched.
+
+### Calibrated image annotations
+
+`appearance::plan_annotation_plane(source, &AnnotationPlaneRequest)` creates one
+textured `IfcAnnotation` in an explicitly selected effective `IfcSpatialElement`
+(`containerId`). It accepts IFC4/IFC4X3, an allocator watermark/revision, distinct
+host-generated `GlobalId`/`containmentGlobalId`, `Name`, a registered relative
+`imageUri`, and a generic frame `{origin, axisU, axisV, sizeMetres}`. The origin is
+the image's bottom-left in IFC world Z-up metres; U/V must be orthonormal. It works
+for any registered raster source, without decoding or resampling that image.
+
+The plan appends an `Annotation`/`Tessellation` representation, textured two-triangle
+face set, relative 3D placement and a fresh containment relation. Source entities
+and existing containment sets stay untouched. The `IfcLite:RegisteredImage`
+ObjectType identifies this annotation separately from drawing-markup sweep tags.
+Container rotation/native units are resolved canonically; ambiguous project/3D
+contexts, invalid/cyclic placements, stale/overlapping IDs, duplicate GlobalIds,
+nonrigid frames and geometry precision loss refuse the operation.
+
+`AnnotationPlanePlan` carries the ordinary typed mutation `plan`, `annotationId`,
+`geometryItemId`, original `frame`, `rtcOffset` and canonical native `mesh`.
+`coordinateSpace` is `ifc-z-up`; the mesh retains native snake-case metadata fields.
+Positions/normals require the ordinary host Z-up→Y-up conversion exactly once.
+Mesh UVs are already top-down for bitmap upload: do **not** flip them again.
+World reconstruction before axis conversion is position + mesh origin + rtcOffset.
+The mesh is produced by `produce_element_meshes`, and normal IFC reparse is the
+round-trip oracle. The host atomically registers the source asset, applies the
+entities and publishes this new owner through its existing model/history path;
+calling the replacement-only appearance preview API cannot create a missing owner.
+
+Source/entity bounds match the appearance planner. Creation reserves 32 IDs,
+produces fewer than 32 entities and exactly four vertices/two triangles. Names are
+limited to 1024 bytes, revisions to 4096 bytes, and URI validation is shared with
+image appearance planning. The method returns no live mutations or partial result
+on failure. Its fresh containment relation targets `IfcSpatialElement`, not only
+`IfcSpatialStructureElement`, matching IFC4/IFC4X3 EXPRESS.
+
+IFC4X3 creation also emits `IfcAnnotation.PredefinedType=USERDEFINED` and the
+optional `IfcCartesianPointList3D.TagList` slot; IFC4 omits these schema additions.
+
+### Scan correspondence registration
+
+`ifc_lite_processing::appearance::register_scan_correspondences` takes a
+`ScanRegistrationRequest` and returns a `ScanRegistrationReport`. It is the single
+native/WASM domain implementation for bounded manual point-pair rigid registration.
+Fitting uses only `fit`; `held_out` is evaluated afterward, with every residual
+retained. The request pins source/destination frame identities and exact asset
+hashes; the report binds the frozen request with SHA-256. A report is neither an
+alignment mutation nor an accuracy approval.
+
+The solver uses a proper Kabsch rotation with no scale estimation. Non-collinear
+planar points are valid; coincident/near-collinear point scatter and degenerate
+correspondence covariance refuse the operation. It reports scatter singular values
+separately from residuals. Do not confuse point-correspondence rank with rank of
+plane normals in a point-to-plane experiment. The anchored transform avoids a
+large standalone translation when evaluating georeferenced points.
+
+The [WASM contract](wasm.md#scan-correspondence-registration) documents bounds,
+coordinate conventions, disjoint observations, request digest and reporting.
+This opt-in computation never runs during parsing or geometry generation and
+never mutates source points, IFC placement or renderer alignment state.

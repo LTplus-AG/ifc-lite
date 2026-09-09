@@ -180,3 +180,10 @@ See the [Exporting Guide](https://ifclite.dev/docs/guide/exporting/) and [API Re
 ## License
 
 [MPL-2.0](../../LICENSE)
+
+IFCX geometry exports retain texture fragments and owner identity through a
+versioned IFClite appearance extension, with bounded shared RGBA pixels and
+optional `textureSources` containing original PNG/JPEG bytes. Unresolved images
+fail explicitly. This preserves IFClite roundtrips; third-party readers must
+implement the extension to recover textures. See
+[IFCX texture portability](../../docs/guide/exporting.md#ifcx-texture-portability).

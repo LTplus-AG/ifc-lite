@@ -2,16 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * Lazy extraction of IfcAnnotation 2D curves for the section-plane overlay.
- *
- * The WASM `parseSymbolicRepresentations` already emits polylines and arcs in
- * the same 2D coordinate space the Section2DPanel feeds to
- * `Section2DOverlayRenderer`. We only ever need the data when the IFC
- * Annotation toggle is on AND a section plane is active, so the parse runs
- * lazily and is cached per model source.
- */
+/** Lazy source-cached IFC annotation/grid extraction. Workspace placement is
+ * composed for 3D overlays and 2D drawings without changing parsed source data. */
 
+import { placedSymbols } from '@/lib/model-placement/placed-symbols';
+import { displayedTranslation } from '@/lib/model-placement/state';
+import type { Translation } from '@/lib/model-placement/translation';
 import { useEffect, useMemo, useState } from 'react';
 import type { DrawingLine2D } from '@ifc-lite/renderer';
 import { useViewerStore } from '@/store';
@@ -90,6 +86,7 @@ const EMPTY_F32 = new Float32Array(0);
  *  primitive's LOCAL express id to the federated global id the visibility
  *  sets are keyed by. `idOffset` is 0 for the legacy single-model path. */
 interface ActiveStore {
+  translation: Translation;
   store: IfcDataStore;
   modelId: string;
   idOffset: number;
@@ -97,20 +94,20 @@ interface ActiveStore {
 
 /** Read the active store set from the viewer store. Federation-aware. */
 function useActiveStores(): ActiveStore[] {
-  const { models, ifcDataStore } = useViewerStore(
-    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore })),
+  const { models, ifcDataStore, placement } = useViewerStore(
+    useShallow((s) => ({ models: s.models, ifcDataStore: s.ifcDataStore, placement: s.modelPlacement })),
   );
   return useMemo(() => {
     const out: ActiveStore[] = [];
     if (models.size > 0) {
       for (const [modelId, m] of models) {
-        if (m.ifcDataStore) out.push({ store: m.ifcDataStore, modelId, idOffset: m.idOffset ?? 0 });
+        if (m.ifcDataStore) out.push({ store: m.ifcDataStore, modelId, idOffset: m.idOffset ?? 0, translation: displayedTranslation(placement, modelId) });
       }
     } else if (ifcDataStore) {
-      out.push({ store: ifcDataStore, modelId: 'legacy', idOffset: 0 });
+      out.push({ store: ifcDataStore, modelId: 'legacy', idOffset: 0, translation: [0, 0, 0] });
     }
     return out;
-  }, [models, ifcDataStore]);
+  }, [models, ifcDataStore, placement]);
 }
 
 /** Trigger parse for the active stores when `enabled`, tick on completion. */
@@ -252,7 +249,7 @@ export function useSymbolicAnnotations(params: {
     // Stores whose parse isn't cached yet drop out (logged below).
     const entries: SymbolicLineChannelsEntry[] = [];
     for (const entry of stores) {
-      const cached = getParseFor(entry.store);
+      const cached = placedSymbols(getParseFor(entry.store), entry.translation, fallbackY);
       if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets) });
       else if (debugEnabled()) console.log(`[annotations] store not yet ready: ${entry.modelId}`);
     }
@@ -408,7 +405,7 @@ export function useSymbolicAnnotationsForDrawing(params: {
       : (f: AnnotationFill2D) => fills.push(f);
 
     for (const entry of stores) {
-      const cached = getParseFor(entry.store);
+      const cached = placedSymbols(getParseFor(entry.store), entry.translation, fallbackY);
       if (!cached) continue;
 
       // Drawing-2D pulls BOTH annotation and grid buckets (issue #862
@@ -480,7 +477,7 @@ export function useSymbolicAnnotationsRichData(params: {
     // Stores whose parse isn't cached yet drop out.
     const entries: SymbolicRichChannelsEntry[] = [];
     for (const entry of stores) {
-      const cached = getParseFor(entry.store);
+      const cached = placedSymbols(getParseFor(entry.store), entry.translation, fallbackY);
       if (cached) entries.push({ cached, isHidden: makeHiddenOwnerPredicate(entry, hiddenSets) });
     }
 

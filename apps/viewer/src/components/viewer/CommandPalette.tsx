@@ -2,10 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-/**
- * CommandPalette — Ctrl+K / Cmd+K. Raycast-style command palette for the
- * entire viewer. Keyboard-first, scored search, recent usage tracking.
- */
+/** Ctrl/Cmd+K command search with scoring and recent usage. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -74,6 +71,7 @@ import {
   ChevronsRight,
   GraduationCap,
 } from 'lucide-react';
+import { openRepositionModels } from '@/lib/model-placement/commands';
 import { isCollabEnabled } from '@/lib/collab/config';
 import { cn } from '@/lib/utils';
 import { useViewerStore } from '@/store';
@@ -97,7 +95,7 @@ import { SCRIPT_TEMPLATES } from '@/lib/scripts/templates';
 import { TOUR_REGISTRY } from '@/lib/tours/registry';
 import { startTour } from '@/lib/tours/controller';
 import { EVENT_SHOW_SHORTCUTS } from '@/lib/tours/events';
-import { exportGlbFromGeometry } from '@/lib/export/glb';
+import { exportPlacedModelGlb } from '@/lib/model-placement/quick-glb';
 import { exportCsvFromBytes } from '@/lib/export/csv';
 import { downloadFile, buildExportFilename, stripExtension } from '@/lib/export/download';
 import { GeometryProcessor } from '@ifc-lite/geometry';
@@ -121,7 +119,7 @@ import {
  *  owns the single-tenant + re-dock + detach semantics; a second activation closes
  *  the panel back to the Information fallback. Closing any active analysis extension
  *  first preserves the prior "panels win the slot" behavior; kept as two thin helpers so every command action keeps its call site. */
-function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones' | 'loadReport') {
+function activateRightPanel(panel: 'bcf' | 'ids' | 'lens' | 'clash' | 'compare' | 'extensions' | 'layers' | 'collab' | 'sources' | 'zones' | 'loadReport' | 'appearance') {
   closeActiveAnalysisExtension();
   useViewerStore.getState().toggleWorkspacePanel(panel);
 }
@@ -268,6 +266,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { useViewerStore.getState().setActiveTool('select'); } },
       { id: 'tool:walk', label: 'Walk', keywords: 'first person navigate wasd', category: 'Tools', icon: PersonStanding, shortcut: 'C',
         action: () => { useViewerStore.getState().setActiveTool('walk'); } },
+      { id: 'model:reposition', label: 'Reposition models', keywords: 'move align pointcloud origin offset translate', category: 'Tools', icon: Crosshair, action: () => openRepositionModels() },
       { id: 'tool:measure', label: 'Measure', keywords: 'distance ruler dimension', category: 'Tools', icon: Ruler, shortcut: 'M',
         action: () => { useViewerStore.getState().setActiveTool('measure'); } },
       { id: 'tool:section', label: 'Section', keywords: 'clip cut plane', category: 'Tools', icon: Scissors, shortcut: 'X',
@@ -370,15 +369,15 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
         action: () => { activateRightPanel('lens'); } },
       { id: 'panel:layers', label: 'Layer Stack', keywords: 'ifcx layers federation draft publish merge review provenance registry version overlay', category: 'Panels', icon: Layers,
         action: () => { activateRightPanel('layers'); } },
-      // Cloud sources and Location zones reached the two toolbars but not this
-      // list. Same shape as the gap that left Cloud sources rail-only: a panel
-      // is only as reachable as the LAST surface that learned about it.
+      // Keep workspace entry points aligned with the rail and both toolbars.
       { id: 'panel:sources', label: 'Cloud Sources', keywords: 'cde common data environment connect provider bim360 acc trimble dalux integration remote', category: 'Panels', icon: Cloud,
         action: () => { activateRightPanel('sources'); } },
       { id: 'panel:zones', label: 'Location Zones', keywords: 'zone section takt area construction location apportionment storey', category: 'Panels', icon: Box,
         action: () => { activateRightPanel('zones'); } },
       { id: 'panel:loadReport', label: 'Load Report', keywords: 'geometry diagnostics warnings dropped items csg openings unsupported load report', category: 'Panels', icon: FileWarning,
         action: () => { activateRightPanel('loadReport'); } },
+      { id: 'panel:appearance', label: 'Appearance', keywords: 'image texture upload UV planar box projection surfaces', category: 'Panels', icon: Palette,
+        action: () => { activateRightPanel('appearance'); } },
       ...(isCollabEnabled()
         ? [{ id: 'panel:collab', label: 'Collaboration Room', keywords: 'share invite live multiplayer presence room realtime sync', category: 'Panels' as const, icon: Users,
             action: () => { activateRightPanel('collab'); } }]
@@ -460,7 +459,7 @@ export function CommandPalette({ open, onOpenChange }: CommandPaletteProps) {
       { id: 'export:glb', label: 'Export GLB', keywords: '3d model gltf download', category: 'Export', icon: Download,
         action: async () => {
           const gr = useViewerStore.getState().geometryResult; if (!gr) return;
-          try { downloadFile(await exportGlbFromGeometry(gr, { includeMetadata: true }), 'model.glb', 'model/gltf-binary'); }
+          try { downloadFile(await exportPlacedModelGlb(gr), 'model.glb', 'model/gltf-binary'); }
           catch (e) { console.error('GLB export failed:', e); }
         } },
       { id: 'export:usd', label: 'Export USD (OpenUSD)', keywords: '3d model usd usda openusd omniverse blender usdview download', category: 'Export', icon: Box,

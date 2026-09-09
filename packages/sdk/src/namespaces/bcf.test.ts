@@ -122,28 +122,46 @@ describe('BCFNamespace.createViewpoint — sectionPlane shape (#4251 defect 2)',
 });
 
 describe('BCFNamespace.extractViewpointState — read-path symmetry (#4251)', () => {
-  it('round-trips camera/sectionPlane back into bim.viewer.setCamera()/setSection() shapes', async () => {
-    const ns = new BCFNamespace();
-    const viewpoint = await ns.createViewpoint({
-      camera: CAMERA,
-      sectionPlane: { axis: 'z', position: 50, enabled: true, flipped: false },
-      bounds: BOUNDS,
-    });
+  it.each([
+    ['x', 'side'],
+    ['y', 'down'],
+    ['z', 'front'],
+  ] as const)(
+    'round-trips camera/sectionPlane (axis %s, BCF %s) back into bim.viewer.setCamera()/setSection() shapes',
+    async (sdkAxis, bcfAxis) => {
+      const ns = new BCFNamespace();
+      const viewpoint = await ns.createViewpoint({
+        camera: CAMERA,
+        sectionPlane: { axis: sdkAxis, position: 50, enabled: true, flipped: false },
+        bounds: BOUNDS,
+      });
 
-    const state = await ns.extractViewpointState(viewpoint, BOUNDS);
+      // Sanity check the write side actually used the expected BCF axis name,
+      // so a failure below is attributable to the read path
+      // (BCF_AXIS_TO_SDK_AXIS), not a write-side (SDK_AXIS_TO_BCF_AXIS) drift.
+      const created = viewpoint as { clippingPlanes?: unknown[] };
+      expect(created.clippingPlanes).toHaveLength(1);
 
-    expect(state.camera?.mode).toBe('perspective');
-    // camera position round-trips through cameraToPerspective -> perspectiveToCamera,
-    // which reconstructs position from direction * targetDistance rather than the
-    // original absolute position, so assert the SDK tuple shape + the target/up values,
-    // which are preserved exactly.
-    expect(Array.isArray(state.camera?.position)).toBe(true);
-    expect(state.camera?.up).toEqual([0, 1, 0]);
+      const state = await ns.extractViewpointState(viewpoint, BOUNDS);
 
-    expect(state.sectionPlane?.axis).toBe('z');
-    expect(state.sectionPlane?.enabled).toBe(true);
-    expect(state.sectionPlane?.flipped).toBe(false);
-  });
+      expect(state.camera?.mode).toBe('perspective');
+      // camera position round-trips through cameraToPerspective -> perspectiveToCamera,
+      // which reconstructs position from direction * targetDistance rather than the
+      // original absolute position, so assert the SDK tuple shape + the target/up values,
+      // which are preserved exactly.
+      expect(Array.isArray(state.camera?.position)).toBe(true);
+      expect(state.camera?.up).toEqual([0, 1, 0]);
+
+      // The load-bearing assertion: BCF_AXIS_TO_SDK_AXIS[bcfAxis] must recover
+      // the exact SDK axis that was sent in, not some other axis. A swap
+      // between any two entries (e.g. side<->x mapped to the wrong letter,
+      // or down mapped to 'x' instead of 'y') reddens this for the axis it
+      // corrupts.
+      expect(state.sectionPlane?.axis).toBe(sdkAxis);
+      expect(state.sectionPlane?.enabled).toBe(true);
+      expect(state.sectionPlane?.flipped).toBe(false);
+    }
+  );
 
   it('omits sectionPlane when no bounds is supplied to extractViewpointState', async () => {
     const ns = new BCFNamespace();

@@ -314,6 +314,18 @@ export class IfcAPI {
      */
     buildPrePassStreamingWithSourceFingerprint(data: Uint8Array, on_event: Function, chunk_size: number, disabled_type_names: string[] | null | undefined, skip_type_geometry: boolean): any;
     /**
+     * Calibrate one raster plane from native-source landmarks and a measured
+     * world span. Returns UTF-8 CalibratedPlane JSON. Constant bounded work;
+     * does not read IFC, decode image pixels or mutate a model.
+     */
+    calibrateAppearancePlane(request_json: string): Uint8Array;
+    /**
+     * Catalog effective IfcProduct classes and IfcRelDefinesByType membership.
+     * JSON input is AppearanceCatalogRequest; output is AppearanceCatalog JSON.
+     * Run in a worker and validate sourceRevision before using the selectors.
+     */
+    catalogAppearance(content: Uint8Array, request_json: string): Uint8Array;
+    /**
      * Clear the cached entity index (call between loads when reusing
      * the same `IfcAPI` instance — e.g. the parser worker keeps one
      * `IfcAPI` alive across multiple `parse` requests).
@@ -606,6 +618,32 @@ export class IfcAPI {
      */
     parseSymbolicRepresentations(content: string): SymbolicRepresentationCollection;
     /**
+     * Create a calibrated image annotation through canonical native geometry.
+     * Input is AnnotationPlaneRequest; output UTF-8 AnnotationPlanePlan JSON.
+     * Does not mutate the IFC snapshot or decode the host-owned image.
+     */
+    planAnnotationPlane(content: Uint8Array, request_json: string): Uint8Array;
+    /**
+     * Plan image/UV edits against an effective IFC snapshot without mutating it.
+     * JSON input uses AppearanceRequest; output is UTF-8 AppearancePlan JSON.
+     * Call from a worker, then validate sourceRevision and allocator before an
+     * atomic host commit. Preview UVs describe an unsplit canonical mesh item.
+     */
+    planAppearance(content: Uint8Array, request_json: string): Uint8Array;
+    /**
+     * Create a captured textured surface through canonical native geometry.
+     * Input is CapturedMeshRequest; output UTF-8 CapturedMeshPlan JSON.
+     * Does not mutate the IFC snapshot or decode the host-owned image.
+     */
+    planCapturedMesh(content: Uint8Array, request_json: string): Uint8Array;
+    /**
+     * Finite-page composition over original canonical albedo. RGBA is supplied
+     * separately from the bounded JSON request. Result: IFPA magic, little-endian
+     * u32 JSON byte length, metadata JSON, then PNG bytes addressed by metadata.
+     * Run in a cancellable worker; atomically adopt every item asset and IFC edit.
+     */
+    planPageAppearance(content: Uint8Array, request_json: string, rgba: Uint8Array): Uint8Array;
+    /**
      * Process geometry for a subset of pre-scanned entities → flat
      * MeshCollection. Takes raw bytes + pre-pass data from buildPrePassOnce.
      * Thin wrapper over [`IfcAPI::produce_batch`]; converts each produced mesh
@@ -655,6 +693,11 @@ export class IfcAPI {
      * Byte-for-byte identical output — it delegates to the legacy twin.
      */
     processGeometryBatchPartitionedFromSource(jobs_flat: Uint32Array, unit_scale: number, rtc_x: number, rtc_y: number, rtc_z: number, needs_shift: boolean, void_keys: Uint32Array, void_counts: Uint32Array, void_values: Uint32Array, style_ids: Uint32Array, style_colors: Uint8Array, plane_angle_to_radians?: number | null, material_element_ids?: Uint32Array | null, material_color_counts?: Uint32Array | null, material_colors_rgba?: Uint8Array | null): PartitionedBatch;
+    /**
+     * Fit bounded manual correspondences in source metres -> IFC world Z-up
+     * metres, reporting held-out errors separately. Does not load or move models.
+     */
+    registerScanCorrespondences(request_json: string): Uint8Array;
     /**
      * Sharded pre-pass: resolve ONE contiguous (file-ordered) slice of the
      * styled-item span list on this worker, against the entity index installed
@@ -1998,6 +2041,8 @@ export interface InitOutput {
     readonly ifcapi_buildPrePassStreamingSharded: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
     readonly ifcapi_buildPrePassStreamingShardedWithSourceFingerprint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number) => void;
     readonly ifcapi_buildPrePassStreamingWithSourceFingerprint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
+    readonly ifcapi_calibrateAppearancePlane: (a: number, b: number, c: number, d: number) => void;
+    readonly ifcapi_catalogAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_clearPrePassCache: (a: number) => void;
     readonly ifcapi_diagnoseGeometry: (a: number, b: number, c: number) => number;
     readonly ifcapi_exportCsv: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => void;
@@ -2026,11 +2071,16 @@ export interface InitOutput {
     readonly ifcapi_parseGridAxes: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseGridLines: (a: number, b: number, c: number) => number;
     readonly ifcapi_parseSymbolicRepresentations: (a: number, b: number, c: number) => number;
+    readonly ifcapi_planAnnotationPlane: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planAppearance: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planCapturedMesh: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
+    readonly ifcapi_planPageAppearance: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => void;
     readonly ifcapi_processGeometryBatch: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
     readonly ifcapi_processGeometryBatchInstanced: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number, c1: number) => void;
     readonly ifcapi_processGeometryBatchPartitioned: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number, a1: number, b1: number) => number;
     readonly ifcapi_processGeometryBatchPartitionedFromSource: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number, k: number, l: number, m: number, n: number, o: number, p: number, q: number, r: number, s: number, t: number, u: number, v: number, w: number, x: number, y: number, z: number) => number;
+    readonly ifcapi_registerScanCorrespondences: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_resolveStyledItemsShard: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
     readonly ifcapi_resolveStyledItemsShardFromSource: (a: number, b: number, c: number, d: number) => void;
     readonly ifcapi_scanEntitiesFast: (a: number, b: number, c: number) => number;

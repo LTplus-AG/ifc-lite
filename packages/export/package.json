@@ -27,10 +27,10 @@
     "@ifc-lite/mutations": "workspace:^",
     "parquet-wasm": "^0.7.2",
     "apache-arrow": "^21.2.0",
-    "jszip": "^3.10.0"
+    "jszip": "^3.10.0",
+    "@ifc-lite/ifcx": "workspace:^"
   },
   "devDependencies": {
-    "@ifc-lite/ifcx": "workspace:^",
     "typescript": "^6.0.3",
     "vitest": "^4.1.11"
   },

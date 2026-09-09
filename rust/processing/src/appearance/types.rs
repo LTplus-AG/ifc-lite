@@ -1,0 +1,105 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AppearanceRequest {
+    pub schema: String,
+    pub source_revision: String,
+    pub next_express_id: u32,
+    pub product_ids: Vec<u32>,
+    pub image_uri: String,
+    pub repeat_s: bool,
+    pub repeat_t: bool,
+    pub mapping: Mapping,
+}
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum Mapping {
+    #[serde(rename_all = "camelCase")]
+    ExistingUv {
+        scale: [f64; 2],
+        offset: [f64; 2],
+        rotation_radians: f64,
+    },
+    #[serde(rename_all = "camelCase")]
+    Planar {
+        frame: MappingFrame,
+        origin: [f64; 3],
+        axis_u: [f64; 3],
+        axis_v: [f64; 3],
+        metres_per_tile: [f64; 2],
+    },
+    #[serde(rename_all = "camelCase")]
+    Box {
+        frame: MappingFrame,
+        origin: [f64; 3],
+        metres_per_tile: [f64; 3],
+    },
+}
+#[derive(Debug, Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MappingFrame {
+    Item,
+    World,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedEntity {
+    pub express_id: u32,
+    pub r#type: String,
+    /// StoreEditor wire values: '#N' references, '.ENUM.' tokens, JSON lists/numbers/null.
+    pub attributes: Vec<Value>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PositionalEdit {
+    pub express_id: u32,
+    pub index: usize,
+    pub value: Value,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearanceItem {
+    pub product_id: u32,
+    pub geometry_item_id: u32,
+    /// Source IFC bottom-left texture coordinates, before mesher seam expansion.
+    pub tex_coords: Vec<[f64; 2]>,
+    /// 1-based, parallel to source CoordIndex (before winding correction).
+    pub tex_coord_index: Vec<[u32; 3]>,
+    /// Actual final source topology after canonical placement and welding.
+    pub source_indices: Vec<u32>,
+    /// Final canonical target topology; becomes provenance after Apply.
+    pub target_indices: Vec<u32>,
+    /// Canonical target vertex pool size; removed degenerate triangles can leave
+    /// unused vertices, so the maximum index is not bounded by corner count.
+    pub target_vertex_count: usize,
+    /// UV pairs in triangle-corner order, with GPU V flip. Fragment consumers
+    /// remap canonical corner slots and expand seams without moving geometry.
+    pub preview_corner_uvs: Vec<f32>,
+    /// Final canonical shading normals in triangle-corner order, converted from
+    /// IFC Z-up to renderer Y-up as [nx, nz, -ny], matching MeshDataJs.
+    /// UV-dependent welding may choose a different normal representative.
+    pub target_corner_normals: Vec<f32>,
+}
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Exclusion {
+    pub product_id: u32,
+    pub reason: String,
+}
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AppearancePlan {
+    pub source_revision: String,
+    pub next_express_id: u32,
+    pub next_available_express_id: u32,
+    pub created: Vec<CreatedEntity>,
+    pub edits: Vec<PositionalEdit>,
+    pub removed: Vec<u32>,
+    pub items: Vec<AppearanceItem>,
+    pub exclusions: Vec<Exclusion>,
+}

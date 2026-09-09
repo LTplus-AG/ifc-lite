@@ -40,8 +40,11 @@ rayon = "1.10"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 memchr = "2.8"
+png = "0.18"
 rustc-hash = "2.1"
 tracing = "0.1"
+sha2 = "0.10"
+nalgebra = { version = "0.35", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 # `test_support::recv_or_diagnose` only - the shared worker watchdog, so the

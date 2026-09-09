@@ -11,7 +11,7 @@
 
 import type { IfcxFile, ComposedNode } from './types.js';
 import { ATTR, SPATIAL_TYPES, isTypedPropertyValue, parseV5aKey } from './types.js';
-import { composeIfcx, findRoots } from './composition.js';
+import { composeIfcx } from './composition.js';
 import { extractEntities } from './entity-extractor.js';
 import { extractProperties, routesToQuantityTable } from './property-extractor.js';
 import { extractGeometry, type MeshData } from './geometry-extractor.js';
@@ -27,13 +27,11 @@ import {
 import type { SpatialHierarchy, EntityTable, PropertyTable, QuantityTable, RelationshipGraph } from '@ifc-lite/data';
 
 // Federated composition imports
-import { LayerStack, createLayerStack, type IfcxLayer, type LayerSource } from './layer-stack.js';
-import { PathIndex, createPathIndex, parsePath, type ParsedPath, type PathEntry } from './path-resolver.js';
+import { LayerStack, createLayerStack } from './layer-stack.js';
+import { PathIndex } from './path-resolver.js';
 import {
   composeFederated,
-  type ComposeOptions,
   type FederatedCompositionResult,
-  type ComposedNodeWithSources,
 } from './federated-composition.js';
 
 // Re-exported so the IFCX version constant can be imported from the package
@@ -41,8 +39,8 @@ import {
 // see the comment on IFCX_VERSION itself.
 export { IFCX_VERSION } from '@ifc-lite/data';
 
-// Re-export types
 export * from './types.js';
+export { encodeIfcxImage, IFCX_APPEARANCE, IFCX_IMAGE, IFCX_APPEARANCE_SCHEMAS, type IfcxPixels, type IfcxEncodedImage } from './appearance-wire.js';
 export { composeIfcx, findRoots, getDescendants } from './composition.js';
 export { applyTombstones, isTombstoned } from './tombstones.js';
 export { bakeLayers, type BakeOptions } from './bake.js';

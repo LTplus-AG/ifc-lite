@@ -125,25 +125,40 @@ function parseRestrictionFamilies(el: Element): IDSConstraint[] {
 
   if (Object.values(facetEls).some((e) => e !== null)) {
     const bounds: IDSBoundsConstraint = { type: 'bounds', base };
-    const readNumber = (e: Element | null): number | undefined => {
+    // Facets present in the XML whose `@value` failed to parse — kept
+    // separate from a facet that was simply never present, so
+    // `matchBounds` can fail closed instead of silently treating a
+    // botched restriction as unbounded (an unparseable minInclusive
+    // must NOT read the same as no minInclusive at all).
+    const unparseable: { facet: string; rawValue: string }[] = [];
+    const rawValueOf = (e: Element): string =>
+      e.getAttribute('value') || e.textContent || '';
+    const readNumber = (facet: string, e: Element | null): number | undefined => {
       if (!e) return undefined;
-      const v = parseFloat(e.getAttribute('value') || e.textContent || '');
-      return Number.isFinite(v) ? v : undefined;
+      const raw = rawValueOf(e);
+      const v = parseFloat(raw);
+      if (Number.isFinite(v)) return v;
+      unparseable.push({ facet, rawValue: raw });
+      return undefined;
     };
-    const readInt = (e: Element | null): number | undefined => {
+    const readInt = (facet: string, e: Element | null): number | undefined => {
       if (!e) return undefined;
-      const v = parseInt(e.getAttribute('value') || e.textContent || '', 10);
-      return Number.isFinite(v) && v >= 0 ? v : undefined;
+      const raw = rawValueOf(e);
+      const v = parseInt(raw, 10);
+      if (Number.isFinite(v) && v >= 0) return v;
+      unparseable.push({ facet, rawValue: raw });
+      return undefined;
     };
-    bounds.minInclusive = readNumber(facetEls.minInclusive);
-    bounds.maxInclusive = readNumber(facetEls.maxInclusive);
-    bounds.minExclusive = readNumber(facetEls.minExclusive);
-    bounds.maxExclusive = readNumber(facetEls.maxExclusive);
-    bounds.length = readInt(facetEls.length);
-    bounds.minLength = readInt(facetEls.minLength);
-    bounds.maxLength = readInt(facetEls.maxLength);
-    bounds.totalDigits = readInt(facetEls.totalDigits);
-    bounds.fractionDigits = readInt(facetEls.fractionDigits);
+    bounds.minInclusive = readNumber('minInclusive', facetEls.minInclusive);
+    bounds.maxInclusive = readNumber('maxInclusive', facetEls.maxInclusive);
+    bounds.minExclusive = readNumber('minExclusive', facetEls.minExclusive);
+    bounds.maxExclusive = readNumber('maxExclusive', facetEls.maxExclusive);
+    bounds.length = readInt('length', facetEls.length);
+    bounds.minLength = readInt('minLength', facetEls.minLength);
+    bounds.maxLength = readInt('maxLength', facetEls.maxLength);
+    bounds.totalDigits = readInt('totalDigits', facetEls.totalDigits);
+    bounds.fractionDigits = readInt('fractionDigits', facetEls.fractionDigits);
+    if (unparseable.length > 0) bounds.unparseableFacets = unparseable;
     out.push(bounds);
   }
 

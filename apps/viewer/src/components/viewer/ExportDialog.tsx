@@ -1,12 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { stepExportProgress } from '@/lib/export/step-progress.js';
+import { prepareAppearanceSerialization } from '@/lib/appearance/serialization.js';
+import { packagePortableIfcAsync, assertPortableMergeSupported } from '@/lib/export/portable-ifc';
+import { modelAppearanceAssets } from '@/lib/appearance/model-assets';
 
 /**
  * Export Dialog for IFC export with property mutations
  *
  * Schema drives the output format automatically:
- * - IFC2X3 / IFC4 / IFC4X3 → .ifc (STEP)
+ * - IFC2X3 / IFC4 / IFC4X3 → .ifc (STEP), or .ifczip with image resources
  * - IFC5 → .ifcx (JSON + USD geometry)
  *
  * "Changes Only" exports just mutations:
@@ -50,12 +54,13 @@ import {
 } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { useViewerStore, countGeneratedTasks } from '@/store';
+import { resolveExportVisibility } from '@/store/exportVisibility';
 import { posthog } from '@/lib/analytics';
 import { useOptionalExtensionHost } from '@/sdk/ExtensionHostProvider';
 import { configureMutationView } from '@/utils/configureMutationView';
 import { toast } from '@/components/ui/toast';
 import { ensureModelExportReady } from '@/services/desktop-export';
-import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress, type StepExportProgress } from '@ifc-lite/export';
+import { StepExporter, MergedExporter, Ifc5Exporter, IFC5_KNOWN_PROP_NAMES, type MergeModelInput, type ExportProgress } from '@ifc-lite/export';
 import { withInstancedMeshes } from '../../utils/instancedExport.js';
 import { MutablePropertyView } from '@ifc-lite/mutations';
 import type { IfcDataStore } from '@ifc-lite/parser';
@@ -89,6 +94,15 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   const isolatedEntities = useViewerStore((s) => s.isolatedEntities);
   const hiddenEntitiesByModel = useViewerStore((s) => s.hiddenEntitiesByModel);
   const isolatedEntitiesByModel = useViewerStore((s) => s.isolatedEntitiesByModel);
+  // Not read directly below — `resolveExportVisibility` reads the live store
+  // snapshot at export time — but subscribed so the dialog re-renders (and the
+  // memoized visibility getters below get fresh identities) when the Class
+  // tab filter, storey selection, or a type-visibility toggle changes while
+  // the dialog is open (#4328).
+  const classFilter = useViewerStore((s) => s.classFilter);
+  const selectedStoreys = useViewerStore((s) => s.selectedStoreys);
+  const typeVisibility = useViewerStore((s) => s.typeVisibility);
+  const lensHiddenIds = useViewerStore((s) => s.lensHiddenIds);
   // Also get legacy single-model state for backward compatibility
   const legacyIfcDataStore = useViewerStore((s) => s.ifcDataStore);
   const legacyGeometryResult = useViewerStore((s) => s.geometryResult);
@@ -257,66 +271,31 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
   }, [exportScope, selectedModelId, getModifiedEntityCount, getMutationView, mutationVersion, scheduleData, scheduleIsEdited, scheduleSourceModelId, georefMutations]);
 
   /**
-   * Convert global visibility state IDs to local expressIds for a given model.
-   * The store uses global IDs (localId + idOffset), but the exporter needs local IDs.
+   * Resolve local (per-model) hidden/isolated expressIds for `modelId` from
+   * EVERY active visibility channel — hidden/isolated entities, the Class
+   * tab filter, storey selection, and type-visibility toggles — through the
+   * single shared resolver (`resolveExportVisibility`) every export path
+   * routes through, not a per-dialog restatement of a subset of them
+   * (#4328: the class filter and storey isolation used to be invisible to
+   * every exporter). Reads `useViewerStore.getState()` directly so the
+   * export always sees the state at click time, not a stale render.
    */
-  const getLocalHiddenIds = useCallback((modelId: string): Set<number> => {
-    // Legacy single-model path: no federation offset, global IDs = local IDs
-    if (modelId === '__legacy__') {
-      return hiddenEntities;
-    }
+  const getExportVisibility = useCallback(
+    (modelId: string) => resolveExportVisibility(useViewerStore.getState(), modelId),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [models, hiddenEntities, isolatedEntities, hiddenEntitiesByModel, isolatedEntitiesByModel, classFilter, selectedStoreys, typeVisibility, lensHiddenIds],
+  );
 
-    const model = models.get(modelId);
-    if (!model) return new Set();
-    const offset = model.idOffset ?? 0;
+  const getLocalHiddenIds = useCallback(
+    (modelId: string): Set<number> => getExportVisibility(modelId).hiddenLocalIds,
+    [getExportVisibility],
+  );
 
-    // Prefer per-model visibility state, fall back to legacy global state
-    const modelHidden = hiddenEntitiesByModel.get(modelId);
-    if (modelHidden && modelHidden.size > 0) {
-      return modelHidden; // Already local expressIds
-    }
+  const getLocalIsolatedIds = useCallback(
+    (modelId: string): Set<number> | null => getExportVisibility(modelId).isolatedLocalIds,
+    [getExportVisibility],
+  );
 
-    // Federated model: convert global IDs to local
-    const localIds = new Set<number>();
-    for (const globalId of hiddenEntities) {
-      const localId = globalId - offset;
-      if (localId > 0 && localId <= model.maxExpressId) {
-        localIds.add(localId);
-      }
-    }
-    return localIds;
-  }, [models, hiddenEntities, hiddenEntitiesByModel]);
-
-  const getLocalIsolatedIds = useCallback((modelId: string): Set<number> | null => {
-    // Legacy single-model path: no federation offset, global IDs = local IDs
-    if (modelId === '__legacy__') {
-      return isolatedEntities;
-    }
-
-    const model = models.get(modelId);
-    if (!model) return null;
-    const offset = model.idOffset ?? 0;
-
-    // Prefer per-model isolation state
-    const modelIsolated = isolatedEntitiesByModel.get(modelId);
-    if (modelIsolated && modelIsolated.size > 0) {
-      return modelIsolated; // Already local expressIds
-    }
-
-    // Federated model: convert global IDs to local
-    if (!isolatedEntities) return null;
-    const localIds = new Set<number>();
-    for (const globalId of isolatedEntities) {
-      const localId = globalId - offset;
-      if (localId > 0 && localId <= model.maxExpressId) {
-        localIds.add(localId);
-      }
-    }
-    return localIds.size > 0 ? localIds : null;
-  }, [models, isolatedEntities, isolatedEntitiesByModel]);
-
-  // Detect if the model has properties that would be filtered by onlyKnownProperties.
-  // Only relevant for IFC5 exports — show the toggle only when there's something to filter.
   const hasFilterableProperties = useMemo(() => {
     if (!isIfc5 || !selectedModel?.ifcDataStore) return false;
     const mutationView = getMutationView(selectedModelId);
@@ -338,7 +317,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     return false;
   }, [isIfc5, selectedModel, selectedModelId, getMutationView]);
 
-  // Compute output format description for UI
+  const packagesImages = exportScope === 'single' && modelAppearanceAssets.hasResources(selectedModelId);
   const outputInfo = useMemo(() => {
     if (changesOnly) {
       return isIfc5
@@ -347,8 +326,9 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     }
     return isIfc5
       ? { ext: '.ifcx', label: 'IFCX (JSON + USD geometry)' }
+      : packagesImages ? { ext: '.ifczip', label: 'IFC + images' }
       : { ext: '.ifc', label: 'IFC (STEP)' };
-  }, [isIfc5, changesOnly]);
+  }, [isIfc5, changesOnly, packagesImages]);
 
   const handleExport = useCallback(async () => {
     if (!schema) return;
@@ -369,6 +349,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
     try {
       // Handle merged export of all models (STEP only, not IFC5)
       if (!isIfc5 && exportScope === 'merged' && !changesOnly) {
+        assertPortableMergeSupported(models.keys());
         const hydratedModels = await Promise.all(Array.from(models.values()).map(async (model) => ({
           model,
           dataStore: await ensureModelExportReady(model.id),
@@ -468,7 +449,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           ? withInstancedMeshes(
               selectedModel.geometryResult,
               federatedModel
-                ? { idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
+                ? { modelId: federatedModel.id, idOffset: federatedModel.idOffset ?? 0, maxExpressId: federatedModel.maxExpressId ?? 0 }
                 : null,
             )
           : selectedModel.geometryResult;
@@ -547,7 +528,8 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           throw new Error('Model data is unavailable for export');
         }
 
-        const exporter = new StepExporter(exportDataStore, mutationView || undefined);
+        const serialized = prepareAppearanceSerialization(selectedModelId, exportDataStore, applyMutations ? mutationView || undefined : undefined);
+        const exporter = new StepExporter(exportDataStore, serialized.view);
 
         const localHidden = visibleOnly ? getLocalHiddenIds(selectedModelId) : undefined;
         const localIsolated = visibleOnly ? getLocalIsolatedIds(selectedModelId) : undefined;
@@ -567,22 +549,12 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
           georefMutations,
           description: `Exported from ifc-lite with ${modifiedCount} modifications`,
           application: 'ifc-lite',
-          onProgress: (p: StepExportProgress) => setExportProgress({
-            phase: p.phase === 'preparing' ? 'Preparing export...'
-              : p.phase === 'entities' ? 'Processing entities...'
-              : 'Assembling file...',
-            percent: p.percent,
-            entitiesProcessed: p.entitiesProcessed,
-            entitiesTotal: p.entitiesTotal,
-          }),
+          onProgress: p => setExportProgress(stepExportProgress(p)),
         });
 
         setExportProgress(null);
 
-        // Splice pending schedule tasks into the STEP via the shared
-        // helper. Same contract every export surface uses so bugs
-        // can't differ between the dialog, the quick button, and the
-        // SDK adapter.
+        // Shared schedule splice and texture packaging keep all export surfaces consistent.
         const state = useViewerStore.getState();
         const spliced = spliceScheduleIntoExport(result, selectedModelId, selectedModel.ifcDataStore as IfcDataStore, {
           scheduleData: state.scheduleData ?? null,
@@ -591,12 +563,13 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
         });
 
         const suffix = visibleOnly ? '_visible' : '_export';
-        downloadFile(spliced.content, `${baseName}${suffix}.ifc`, 'text/plain');
+        const artifact = await packagePortableIfcAsync(selectedModelId, spliced.content, serialized.resources);
+        downloadFile(artifact.content, `${baseName}${suffix}.${artifact.ext}`, artifact.mime);
 
         const stepMsg = `Exported ${result.stats.entityCount} entities (${result.stats.modifiedEntityCount} modified)`;
         setExportResult({ success: true, message: stepMsg });
         toast.success(stepMsg);
-        exportedFormat = 'ifc';
+        exportedFormat = artifact.ext;
       }
     } catch (error) {
       console.error('Export failed:', error);
@@ -634,7 +607,7 @@ export function ExportDialog({ trigger }: ExportDialogProps) {
             Export IFC File
           </DialogTitle>
           <DialogDescription>
-            Export your model with property modifications applied
+            {isIfc5 && !changesOnly ? 'Export model data and geometry, including current workspace placement' : 'Export authored model coordinates and property modifications. Workspace repositioning is saved separately.'}
           </DialogDescription>
         </DialogHeader>
 

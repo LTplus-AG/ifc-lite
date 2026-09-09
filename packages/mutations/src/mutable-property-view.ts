@@ -12,6 +12,7 @@
  * for optimal performance with large models.
  */
 
+import { registerCooperativeOverlay } from './cooperative-overlay-access.js';
 import type { PropertyTable, PropertySet, Property, QuantitySet, Quantity } from '@ifc-lite/data';
 import { findQuantityInBaseSets } from './base-qset-lookup.js';
 import { computeSetClaims, mutatedMembersForInstance } from './same-name-set-claims.js';
@@ -21,6 +22,7 @@ import type { IfcAttributeValue, PropertyValue, PropertyMutation, QuantityMutati
 import { propertyKey, quantityKey, attributeKey, generateMutationId } from './types.js';
 import { collectEffectiveChanges, type AttributeExtractor } from './effective-changes.js';
 import { applyMutationsBatch } from './apply-mutations.js';
+import { MutableOverlayState, type ForgottenEntityOverlay } from './mutable-overlay-state.js';
 
 export type { AttributeExtractor } from './effective-changes.js';
 
@@ -39,109 +41,86 @@ export type PropertyExtractor = (entityId: number) => Array<{
  */
 export type QuantityExtractor = (entityId: number) => QuantitySet[];
 
-/**
- * Everything `deleteEntity` purges out of the live overlay maps for a
- * forgotten-created entity, captured so `restoreNewEntity` can put it all
- * back. See the field doc on `MutablePropertyView.forgottenEntityOverlay`.
- */
-interface ForgottenEntityOverlay {
-  propertyEntries: Array<[key: string, mutation: PropertyMutation]>;
-  quantityEntries: Array<[key: string, mutation: QuantityMutation]>;
-  attributeEntries: Array<[key: string, mutation: AttributeMutation]>;
-  positionalAttrs: Map<number, IfcAttributeValue> | null;
-  typeMutation: EntityTypeMutation | null;
-  newPsets: Map<string, PropertySet> | null;
-  newQsets: Map<string, QuantitySet> | null;
-  deletedPsetKeys: string[];
-  deletedQsetKeys: string[];
-  /** This entity's own records, removed from the append-only `mutationHistory`. */
-  historyEntries: Mutation[];
-}
-
-export class MutablePropertyView {
+export class MutablePropertyView extends MutableOverlayState {
   private baseTable: PropertyTable | null;
   private onDemandExtractor: PropertyExtractor | null = null;
   private quantityExtractor: QuantityExtractor | null = null;
   private attributeExtractor: AttributeExtractor | null = null;
-  private propertyMutations: Map<string, PropertyMutation> = new Map();
-  private quantityMutations: Map<string, QuantityMutation> = new Map();
-  /**
-   * Secondary indices: entityId → mutation keys for that entity.
-   *
-   * `getForEntity` previously iterated the entire `propertyMutations` /
-   * `quantityMutations` map per pset to find newly-added properties — O(M·P)
-   * per call. These indices keep that step O(M_entity) instead.
-   */
-  private propertyKeysByEntity: Map<number, Set<string>> = new Map();
-  private quantityKeysByEntity: Map<number, Set<string>> = new Map();
-  private attributeKeysByEntity: Map<number, Set<string>> = new Map();
-  private deletedPsets: Set<string> = new Set(); // `${entityId}:${psetName}`
-  private deletedQsets: Set<string> = new Set(); // `${entityId}:${qsetName}`
-  private newPsets: Map<number, Map<string, PropertySet>> = new Map(); // entityId -> psetName -> PropertySet
-  private newQsets: Map<number, Map<string, QuantitySet>> = new Map(); // entityId -> qsetName -> QuantitySet
-  private attributeMutations: Map<string, AttributeMutation> = new Map(); // `${entityId}:attr:${attrName}`
-  private positionalAttrMutations: Map<number, Map<number, IfcAttributeValue>> = new Map(); // entityId -> argIndex -> value
-  private typeMutations: Map<number, EntityTypeMutation> = new Map(); // entityId -> retype intent
-  private newEntities: Map<number, NewEntity> = new Map();
-  private tombstones: Set<number> = new Set();
-  /**
-   * Ids `createEntity` allocated and `deleteEntity` then forgot (removed from
-   * `newEntities`, per that method's "existing entities are tombstoned; new
-   * entities are simply forgotten" contract). Tracked separately so
-   * `getEffectiveChanges()` / `collectEffectiveChanges` can tell "overlay-created
-   * then forgotten" apart from "an ordinary source-buffer entity" — both are
-   * otherwise indistinguishable, being simply absent from `newEntities`.
-   * `restoreNewEntity` (the undo-of-delete counterpart) clears the id back out.
-   */
-  private forgottenCreatedEntities: Set<number> = new Set();
-  /**
-   * Snapshot of a forgotten-created entity's overlay rows, stashed by
-   * `deleteEntity` and restored by `restoreNewEntity`.
-   *
-   * `deleteEntity` on an overlay-created entity does more than drop it from
-   * `newEntities` — it also PURGES every other overlay entry the entity left
-   * behind (property/quantity/attribute/positional/type mutations, its
-   * `newPsets`/`newQsets` entries, and its own `mutationHistory` records).
-   * Without that purge, an entity that was created, edited, then deleted
-   * before export left a dangling reference: `StepExporter` derives its
-   * property/quantity work list from `getMutations()` (the append-only
-   * history) and reads `getForEntity()` / `getQuantitiesForEntity()` straight
-   * off `newPsets` / `newQsets` — neither of which the review-side
-   * `forgottenCreatedEntities` filter in `effective-changes.ts` touches. The
-   * review dialog looked clean while the exported file still contained an
-   * `IFCPROPERTYSET` + `IFCRELDEFINESBYPROPERTIES` pointing at an expressId
-   * that was never actually created (maintainer finding on #1967).
-   *
-   * The purged data is captured here, not discarded, because `restoreNewEntity`
-   * (undo of the delete) must bring it all back — rows AND count AND what the
-   * exporter would see — not just re-add the bare `NewEntity` record.
-   */
-  private forgottenEntityOverlay: Map<number, ForgottenEntityOverlay> = new Map();
-  /**
-   * Overlay-entity → source-entity aliases for property/quantity reads.
-   *
-   * When the viewer duplicates an existing entity, the new entity has
-   * no row in the parsed property table — `getBasePropertiesForEntity`
-   * would return `[]` and the property panel would show "No property
-   * sets". Aliasing redirects the BASE read to the source entity so
-   * the duplicate inherits its psets / qsets visually, while overlay
-   * mutations (overrides, creates, deletes) stay scoped to the
-   * overlay-entity's own id — so editing a property on the duplicate
-   * doesn't bleed into the source.
-   *
-   * Aliases follow at most one hop (no chains). They never affect
-   * STEP export — the export overlay emits the duplicate exactly as
-   * the StoreEditor recorded it, with whatever new IfcRel*ByProperties
-   * the caller chose to add.
-   */
-  private entityAliases: Map<number, number> = new Map();
-  private nextAllocatedId: number = 0;
-  private mutationHistory: Mutation[] = [];
   private modelId: string;
 
   constructor(baseTable: PropertyTable | null, modelId: string) {
+    super();
     this.baseTable = baseTable;
     this.modelId = modelId;
+    registerCooperativeOverlay(this, {
+      capture: () => this.overlayState(),
+      matches: snapshot => this.matchesOverlayState(snapshot),
+      publish: snapshot => this.restoreOverlayState(snapshot),
+      draft: snapshot => {
+        const draft = new MutablePropertyView(this.baseTable, this.modelId);
+        draft.onDemandExtractor = this.onDemandExtractor;
+        draft.quantityExtractor = this.quantityExtractor;
+        draft.attributeExtractor = this.attributeExtractor;
+        draft.restoreOverlayState(snapshot);
+        return draft;
+      },
+    });
+  }
+
+  /**
+   * Stage synchronous overlay edits and publish them together (#4243).
+   * Throws leave the original overlay, history and allocator untouched.
+   * Source tables/extractors are shared read-only; mutable state is detached
+   * both before editing and on commit, so an escaped draft cannot edit this view.
+   * External effects (files, renderer or network) belong outside this callback.
+   */
+  runAtomic<T>(edit: (draft: MutablePropertyView) => T): T {
+    const prepared = this.prepareAtomic(edit);
+    prepared.commit();
+    return prepared.result;
+  }
+
+  /**
+   * Prepare an overlay publication without changing live IFC state (#4243).
+   * Use for commands that must validate other synchronous resources first.
+   * `validate` and `commit` reject intervening edits, including skip-history
+   * edits. Commit is idempotent; the prepared draft is never published by reference.
+   */
+  prepareAtomic<T>(edit: (draft: MutablePropertyView) => T): { result: T; validate(): void; commit(): void; rollback(): void } {
+    const original = this.copyOverlayState();
+    const draft = new MutablePropertyView(this.baseTable, this.modelId);
+    draft.onDemandExtractor = this.onDemandExtractor;
+    draft.quantityExtractor = this.quantityExtractor;
+    draft.attributeExtractor = this.attributeExtractor;
+    draft.restoreOverlayState(structuredClone(original));
+    const result = edit(draft);
+    if (result !== null && (typeof result === 'object' || typeof result === 'function')
+      && 'then' in result && typeof result.then === 'function') {
+      void Promise.resolve(result).catch(error => console.error('Discarded asynchronous overlay transaction failed', error));
+      throw new TypeError('Overlay transactions must be synchronous; prepare asynchronous work before editing');
+    }
+    const prepared = draft.copyOverlayState();
+    // Keep the rollback checkpoint detached from maps published to live readers.
+    const publication = structuredClone(prepared);
+    let committed = false;
+    let rolledBack = false;
+    const validate = () => {
+      if (rolledBack) throw new Error('The prepared IFC transaction was rolled back.');
+      if (!committed && !this.matchesOverlayState(original)) throw new Error('The IFC overlay changed during a prepared transaction.');
+    };
+    validate(); // A callback that re-enters the original view cannot erase that edit.
+    return { result, validate, commit: () => {
+      if (rolledBack) throw new Error('The prepared IFC transaction was rolled back.');
+      if (committed) return;
+      validate();
+      this.restoreOverlayState(publication);
+      committed = true;
+    }, rollback: () => {
+      if (!committed || rolledBack) return;
+      if (!this.matchesOverlayState(prepared)) throw new Error('The IFC overlay changed after the prepared transaction committed.');
+      this.restoreOverlayState(original);
+      rolledBack = true;
+    } };
   }
 
   /**

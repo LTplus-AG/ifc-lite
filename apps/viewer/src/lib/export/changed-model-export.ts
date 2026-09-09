@@ -17,6 +17,8 @@
  */
 
 import { StepExporter, Ifc5Exporter } from '@ifc-lite/export';
+import { prepareAppearanceSerialization } from '../appearance/serialization.js';
+import { packagePortableIfcAsync } from './portable-ifc.js';
 import type { IfcDataStore } from '@ifc-lite/parser';
 import type { MutablePropertyView } from '@ifc-lite/mutations';
 import { spliceScheduleIntoExport } from '@/sdk/adapters/export-schedule-splice';
@@ -39,7 +41,8 @@ export async function exportChangedModelToStep(
   view: MutablePropertyView | undefined,
   invocation: StepExportInvocation,
 ): Promise<ChangesExportArtifact> {
-  const exporter = new StepExporter(dataStore, view);
+  const serialized = prepareAppearanceSerialization(modelId, dataStore, view);
+  const exporter = new StepExporter(dataStore, serialized.view);
   const result = await exporter.exportAsync({
     schema: invocation.schema,
     includeGeometry: true,
@@ -55,7 +58,7 @@ export async function exportChangedModelToStep(
     content = spliceScheduleIntoExport({ content }, modelId, dataStore, invocation.scheduleState).content;
   }
 
-  return { content, ext: 'ifc', mime: 'text/plain' };
+  return packagePortableIfcAsync(modelId, content, serialized.resources);
 }
 
 /**
@@ -66,7 +69,7 @@ export async function exportChangedModelToStep(
  * without loading the browser renderer.
  */
 export async function exportChangedModelToIfcx(
-  _modelId: string,
+  modelId: string,
   dataStore: IfcDataStore,
   view: MutablePropertyView | undefined,
   invocation: IfcxExportInvocation,
@@ -82,7 +85,7 @@ export async function exportChangedModelToIfcx(
     ? withInstancedMeshes(
         invocation.geometryResult,
         invocation.maxExpressId !== undefined
-          ? { idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId }
+          ? { modelId, idOffset: invocation.idOffset, maxExpressId: invocation.maxExpressId }
           : null,
       )
     : invocation.geometryResult;

@@ -37,22 +37,38 @@ use ifc_lite_geometry::{propagate_voids_to_parts, GeometryRouter};
 use rustc_hash::FxHashMap;
 use std::path::PathBuf;
 
+mod support;
+
 const FIXTURE: &str = "issues/960_house_segmented_roof_clip.ifc";
 
 /// Read a `tests/models/` fixture, returning `None` (skip the test) when it is
-/// absent or still an LFS pointer — never panic, so fresh clones without
-/// `pnpm fixtures` stay green.
+/// absent or still an LFS pointer — unless `IFC_LITE_REQUIRE_FIXTURES=1` (set
+/// by CI's `csg-accept-gates` job after it fetches and verifies the corpus),
+/// in which case a missing fixture is a hard `panic!` instead: this test's
+/// pinned Z-bound assertions below never ran without the fixture, and CI must
+/// not report that as a pass. Local `cargo test` without the flag stays green
+/// on a fresh clone as before.
 fn read_fixture() -> Option<String> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/models")
         .join(FIXTURE);
     match std::fs::read_to_string(&path) {
         Ok(s) if s.starts_with("version https://git-lfs.github.com/spec/") => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {FIXTURE} is an LFS pointer and IFC_LITE_REQUIRE_FIXTURES=1 — \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!("skipping: fixture {FIXTURE} is an LFS pointer — run `pnpm fixtures`");
             None
         }
         Ok(s) => Some(s),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            assert!(
+                !support::require_fixtures(),
+                "fixture {FIXTURE} not present and IFC_LITE_REQUIRE_FIXTURES=1 — \
+                 run `pnpm fixtures` to download (sha256 in tests/models/manifest.json)"
+            );
             eprintln!("skipping: fixture {FIXTURE} not present — run `pnpm fixtures`");
             None
         }

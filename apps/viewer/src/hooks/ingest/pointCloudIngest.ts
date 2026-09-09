@@ -26,7 +26,7 @@ import { createSyntheticDataStore, type IfcDataStore } from '@ifc-lite/parser';
 import type { SchemaVersion } from '../../store/types.js';
 import { createCoordinateInfo } from '../../utils/localParsingUtils.js';
 import {
-  registerPointCloudAlignment,
+  registerPointCloudAlignment, retargetPointCloudDecodeOrigin,
   unregisterPointCloudAlignment,
   type PointCloudAlignmentTransform,
 } from './pointCloudAlignment.js';
@@ -129,9 +129,9 @@ export interface PointCloudIngestOptions {
    * loaded model has no usable `IfcMapConversion` — the scan streams at
    * its raw native coordinates, exactly as before this feature existed.
    * When present:
-   *   - `decodeOriginOffset` is threaded into `streamPointCloud` so every
-   *     format's decoder subtracts it in f64 before narrowing to f32 (all
-   *     seven point-cloud formats consume it, not just LAS/LAZ).
+   *   - decoding subtracts a nearby scan origin in f64 before narrowing,
+   *     then retargets this alignment to that origin before the first chunk.
+   *     This preserves detail even when the scan is far from the IFC.
    *   - the asset defaults to the ALIGNED matrix (alignment ON) and is
    *     registered so the panel's toggle can flip every loaded scan
    *     between aligned/unaligned without re-streaming.
@@ -329,7 +329,7 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
   // matrix is valid for any format here — no gate needed.
   const alignment = opts.alignment;
   if (alignment) {
-    registerPointCloudAlignment(handle, alignment);
+    registerPointCloudAlignment(handle, alignment, opts.alignmentEnabled ?? true);
     const enabled = opts.alignmentEnabled ?? true;
     opts.renderer.setPointCloudTransform(
       handle,
@@ -377,8 +377,9 @@ export function ingestPointCloud(opts: PointCloudIngestOptions): PointCloudInges
       maxPointsInMemory: opts.maxPointsInMemory,
       maxFileSize: opts.maxFileSize,
       signal: opts.signal,
-      originOffset: alignment?.decodeOriginOffset,
+      autoOrigin: true,
       onOpen: (info) => {
+        if (info.originOffset) retargetPointCloudDecodeOrigin(opts.renderer, handle, info.originOffset);
         opts.onProgress?.({
           phase: info.stride > 1
             ? `Streaming (${info.stride}× downsampled, ${info.totalPointCount.toLocaleString()} pts)`

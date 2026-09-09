@@ -51,9 +51,11 @@ export interface StreamPointCloudOptions {
    * `computePointCloudAlignment().decodeOriginOffset`.
    */
   originOffset?: readonly [number, number, number];
+  /** Choose a local decode origin when no explicit alignment is supplied (#4226). */
+  autoOrigin?: boolean;
 
   /** Called once after the source's header parses. */
-  onOpen?: (info: PointSourceInfo & { stride: number }) => void;
+  onOpen?: (info: PointSourceInfo & { stride: number; originOffset?: readonly [number, number, number] }) => void;
   /** Called for each decoded chunk. */
   onChunk: (chunk: DecodedPointChunk) => void;
   /** Periodic progress signal in 0..1. */
@@ -89,6 +91,9 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
   const maxPoints = opts.maxPointsInMemory ?? DEFAULT_MAX_POINTS;
   const maxFile = opts.maxFileSize ?? DEFAULT_MAX_FILE;
   const chunkSize = opts.chunkSize ?? DEFAULT_CHUNK;
+  if (!Number.isFinite(maxPoints) || maxPoints <= 0) {
+    throw new Error('streamPointCloud: maxPointsInMemory must be a positive finite number');
+  }
   // chunkSize <= 0 would let the source.next() loop emit empty chunks
   // forever without advancing its cursor. Fail loudly so callers can't
   // accidentally lock up the worker.
@@ -129,20 +134,31 @@ export function streamPointCloud(opts: StreamPointCloudOptions): StreamHandle {
       });
       info = await source.open(composed);
 
-      if (info.totalPointCount > maxPoints) {
-        stride = Math.ceil(info.totalPointCount / maxPoints);
+      stride = Math.max(1, Math.ceil(info.totalPointCount / maxPoints));
+      let originOffset = opts.originOffset;
+      let consumedProbe = false;
+      if (opts.autoOrigin && !originOffset && info.totalPointCount > 0) {
+        const { min, max } = info.bbox;
+        if ([...min, ...max].every(Number.isFinite) && [...min, ...max].some((v) => v !== 0)) {
+          originOffset = [min[0] / 2 + max[0] / 2, min[1] / 2 + max[1] / 2, min[2] / 2 + max[2] / 2];
+        } else {
+          // Formats without header bounds (notably E57) can probe one sample.
+          // Its rounded position only CHOOSES a nearby frame. Reopen and decode
+          // from the original bytes so this first sample loses no precision.
+          const probe = await source.next(1, composed);
+          consumedProbe = true;
+          if (probe && probe.pointCount > 0 && probe.positions.subarray(0, 3).every(Number.isFinite)) {
+            originOffset = [probe.positions[0], probe.positions[1], probe.positions[2]];
+          }
+        }
+      }
+      if (stride > 1 || consumedProbe || originOffset !== opts.originOffset) {
         source.close();
-        source = probeFactory({
-          format: opts.format,
-          blob: opts.blob,
-          label: opts.label,
-          stride,
-          originOffset: opts.originOffset,
-        });
+        source = probeFactory({ format: opts.format, blob: opts.blob, label: opts.label, stride, originOffset });
         info = await source.open(composed);
       }
 
-      opts.onOpen?.({ ...info, stride });
+      opts.onOpen?.({ ...info, stride, originOffset });
 
       while (true) {
         if (composed.aborted) break;

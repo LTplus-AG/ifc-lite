@@ -1,0 +1,36 @@
+{
+  "reader": "IfcOpenShell",
+  "readerVersion": "0.8.2",
+  "schema": "IFC4",
+  "annotationName": "Boulder image annotation",
+  "GlobalId": "2fdgBMh2r6LgvHMkg7viLf",
+  "expressId": 65,
+  "schemaValidationErrors": 0,
+  "textureSHA256": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+  "maxCornerErrorMetres": 0.0,
+  "toleranceMetres": 1e-06,
+  "referenceCornersIfcWorld": [
+    [
+      -0.2357414448669202,
+      0,
+      -1.2328897338403042
+    ],
+    [
+      2.243346007604563,
+      0,
+      -1.2328897338403042
+    ],
+    [
+      2.243346007604563,
+      0,
+      1.246197718631179
+    ],
+    [
+      -0.2357414448669202,
+      0,
+      1.246197718631179
+    ]
+  ],
+  "shapeTriangles": 2,
+  "archiveSHA256": "dcb50d28fbc0e1cf21a7062d47e5897995d8a4b7238e209181f73891f8cf1b2e"
+}

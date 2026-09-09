@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@ifc-lite/data": "workspace:^",
+    "@ifc-lite/regex-guard": "workspace:^",
     "@noble/hashes": "^2.4.0"
   },
   "devDependencies": {

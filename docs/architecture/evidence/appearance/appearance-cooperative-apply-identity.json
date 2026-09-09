@@ -1,0 +1,78 @@
+{
+  "before": {
+    "selected": null,
+    "models": [
+      {
+        "id": "84a7340d-12e9-4f78-a76f-6a67fb267f93",
+        "name": "convento.ifczip",
+        "meshes": 115,
+        "hash": 733828585,
+        "textured": 113
+      },
+      {
+        "id": "b9c93611-4a3f-4411-a02e-3329e2410046",
+        "name": "untextured-wall.ifc",
+        "meshes": 1,
+        "hash": 788238039,
+        "textured": 0
+      }
+    ]
+  },
+  "applied": {
+    "selected": null,
+    "models": [
+      {
+        "id": "84a7340d-12e9-4f78-a76f-6a67fb267f93",
+        "name": "convento.ifczip",
+        "meshes": 115,
+        "hash": 1838124809,
+        "textured": 115
+      },
+      {
+        "id": "b9c93611-4a3f-4411-a02e-3329e2410046",
+        "name": "untextured-wall.ifc",
+        "meshes": 1,
+        "hash": 788238039,
+        "textured": 0
+      }
+    ]
+  },
+  "undone": {
+    "selected": null,
+    "models": [
+      {
+        "id": "84a7340d-12e9-4f78-a76f-6a67fb267f93",
+        "name": "convento.ifczip",
+        "meshes": 115,
+        "hash": 1307135029,
+        "textured": 113
+      },
+      {
+        "id": "b9c93611-4a3f-4411-a02e-3329e2410046",
+        "name": "untextured-wall.ifc",
+        "meshes": 1,
+        "hash": 788238039,
+        "textured": 0
+      }
+    ]
+  },
+  "redone": {
+    "selected": null,
+    "models": [
+      {
+        "id": "84a7340d-12e9-4f78-a76f-6a67fb267f93",
+        "name": "convento.ifczip",
+        "meshes": 115,
+        "hash": 1838124809,
+        "textured": 115
+      },
+      {
+        "id": "b9c93611-4a3f-4411-a02e-3329e2410046",
+        "name": "untextured-wall.ifc",
+        "meshes": 1,
+        "hash": 788238039,
+        "textured": 0
+      }
+    ]
+  }
+}

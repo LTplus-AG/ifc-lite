@@ -277,6 +277,7 @@ export interface SpatialHierarchy {
    * predate it fall back to `elementToStorey`.
    */
   elementToContainer?: Map<number, number>;
+  ambiguousStorey?: Set<number>;  // elementIds with >1 storey declared via direct ContainsElements in source (elementToStorey's answer was a tie-break, #4311); optional, older hierarchies omit it
 
   // Helper methods
   getStoreyElements(storeyId: number): number[];

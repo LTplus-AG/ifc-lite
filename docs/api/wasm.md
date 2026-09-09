@@ -71,6 +71,61 @@ class IfcAPI {
 
 The methods below reflect the real `IfcAPI` surface (see `packages/wasm/pkg/ifc-lite.d.ts`). There is no single `parse()` call: scanning, geometry, and export are separate entry points.
 
+#### Measured Plane Calibration
+
+`IfcAPI.calibrateAppearancePlane(requestJson)` returns UTF-8 JSON containing a
+world-space planar mapping, four raster corners (top-left clockwise), and metres
+per native source unit. The request is capped at 8 KiB. This fixed-size
+calculation does not load IFC geometry, decode an image or apply an edit.
+
+Supply `rasterToSource` (the six-element pixel-edge-to-native-source affine),
+`rasterSize`, two native `sourcePoints`, their measured `distanceMetres`, and a
+`worldAnchor`, `worldDirection` and `planeNormal` in IFC Z-up metres. For PDF
+pages, use the raster recipe's `pixelToPdf` affine; paper dimensions and DPI do
+not establish drawing scale. Keep the native landmarks when recropping or
+rotating the raster. The returned mapping uses IFC's bottom-left UV origin.
+
+Zero spans, invalid directions, sheared rasters, oversized images and
+unrepresentable coordinates return errors. Each reconstructed edge and anchor
+displacement must preserve its intended vector within one part per million,
+independently of the absolute world origin. Calibrating a plane does not provide
+bounded image compositing: preserving prior appearance outside a PDF page
+requires the separate projection/bake stage.
+
+#### Appearance Planning
+
+`IfcAPI.planAppearance(content, requestJson)` accepts an effective IFC STEP
+snapshot as `Uint8Array` and an `AppearanceRequest` JSON string. It returns
+UTF-8 `AppearancePlan` JSON bytes and never mutates the source. Run this
+synchronous operation in a dedicated worker; terminate that worker to cancel.
+Free the `IfcAPI` handle in `finally` when the job ends.
+
+The browser client rejects source snapshots above 128 MiB before copying them to
+the worker. The binding limits request JSON to 256 KiB and serialized results to
+64 MiB; the Rust planner separately bounds aggregate geometry and texture work.
+Budget errors require a smaller source or scope and do not return a partial edit.
+
+The request supplies `schema` (`IFC4` or `IFC4X3`), `sourceRevision`, the reserved
+`nextExpressId` allocator watermark, `productIds`, a safe relative `imageUri`,
+`repeatS`, `repeatT`, and `mapping`. Mapping accepts `existingUv` with scale,
+offset and rotation in radians; `planar` with an item/world frame, orthonormal
+axes, origin and tile dimensions in metres; or `box` with an item/world frame,
+origin and three tile dimensions in metres. Exact shapes are defined in
+`rust/processing/src/appearance/types.rs`.
+
+Only direct, unshared `IfcTriangulatedFaceSet` Body representations are initially
+eligible. The result reports exclusions per product; hosts must obtain explicit
+acceptance of a reduced scope. Plans contain created IFC entities, positional
+attribute edits and canonical source/target triangle indices with preview UVs
+in triangle-corner order. Consumers must validate geometry provenance; matching
+vertex counts alone cannot establish UV correspondence.
+
+Before committing, the host must revalidate the source revision and allocator,
+retain the referenced image bytes, and prepare all renderer and IFC changes.
+Apply the complete plan atomically with one undo entry. Package the image at its
+relative URI when exporting IFCZIP. Planning does not provide asset persistence,
+GPU preview, history or collaboration by itself.
+
 #### Entity Scanning
 
 SIMD-accelerated scanners that return entity references for the data-model layer to decode.
@@ -537,3 +592,152 @@ unparsed tail. Existing methods and their Rust signatures remain unchanged and d
 not compute this extra key. Feature-detect the new methods when supporting older
 WASM builds. The viewer uses these methods only when a matching parser has a fresh
 fingerprint cell; no additional file-sized buffer is created.
+
+
+### Effective appearance scope catalog
+
+`IfcAPI.catalogAppearance(content, requestJson)` accepts the same effective IFC
+STEP snapshot as planning, plus `{schema, sourceRevision, productIds}`. It returns
+UTF-8 JSON with `sourceRevision`, sorted `products` (`productId`, canonical
+PascalCase `ifcClass`, sorted `typeIds`), sorted `types` (`typeId`, `ifcClass`, exact
+IFC `Name` or null), and sorted `missingProductIds`. Missing/deleted IDs and
+non-`IfcProduct` owners are explicitly ineligible. Duplicate type names retain
+separate identities. Membership comes from effective `IfcRelDefinesByType` rows.
+
+Call from a worker. The host must serialize its current overlay first and validate
+its captured revision/checkpoint before accepting selectors; the source store's
+original relationship tables do not include SDK edits. The existing `planAppearance`
+API is unchanged. The viewer client shares cancellation, supersession, timeout and
+worker disposal across `catalog()` and `plan()` jobs, without retaining a WASM
+context or transferring caller-owned source storage.
+
+Catalog limits are 10,000 requested IDs, a 4,096-byte revision, the planner's shared
+128 MiB source/200,000 entities/eight-million-value parse bounds, 200,000 unique
+owner/type memberships and 4 MiB total type-name bytes. Request JSON is limited to
+256 KiB and output serialization uses the existing 64 MiB ceiling. A refusal throws
+instead of returning a truncated selector catalog.
+
+### Finite page appearance output
+
+`IfcAPI.planPageAppearance(content, requestJson, rgba)` is the worker-oriented
+binding for `plan_page_appearance`. The JSON request is
+`{appearance, page, sourceImages: [{imageUri, raster}], texelsPerMetre}`; raster
+ranges use `{width, height, byteOffset, byteLength}`. It preserves existing
+appearance outside the finite planar page by baking bounded PNG atlases. The
+original image-only `planAppearance` method remains unchanged.
+
+The returned bytes contain the ASCII magic `IFPA`, a little-endian `u32` JSON
+byte length, UTF-8 JSON metadata, then concatenated PNG payloads. Metadata is
+`{plan, itemImages, assets, texelsPerMetre}`. Each asset is
+`{imageUri, width, height, byteOffset, byteLength}` with its range relative to the
+PNG section. `itemImages` maps `geometryItemId` to `imageUri`. The metadata ceiling
+is 64 MiB and the complete envelope ceiling is 160 MiB. No PNG bytes are expanded
+into base64 or JSON number arrays. Hosts should run this synchronously expensive
+operation in a cancellable worker, validate the source/allocator checkpoint,
+and atomically register every digest-named PNG before applying its IFC plan.
+See [finite page appearance](rust.md#finite-page-appearance) for quality limits
+and explicit refusals.
+
+### Calibrated annotation creation
+
+`IfcAPI.planAnnotationPlane(content, requestJson)` returns UTF-8
+`AnnotationPlanePlan` JSON from the native creation planner. Requests use
+`{schema, sourceRevision, nextExpressId, containerId, GlobalId, containmentGlobalId,
+Name, imageUri, frame: {origin, axisU, axisV, sizeMetres}}`. No image bytes or new
+model-load call are needed: retain the already registered image URI and commit
+its asset lease together with the typed creation plan. Run in a cancellable worker
+and revalidate the captured source/allocator immediately before publication.
+
+The viewer's `annotationPlan()` shares cancellation, supersession, timeout,
+worker teardown and stale-result validation with image/page planning and catalog
+requests. Its `mesh` is canonical native Z-up geometry, while UVs already use
+bitmap top-down orientation. See [calibrated annotations](rust.md#calibrated-image-annotations)
+for the exact coordinate/containment contract and bounded refusal conditions.
+
+### Captured textured surface creation
+
+`IfcAPI.planCapturedMesh(source, requestJson)` plans one explicitly segmented
+textured surface as `IfcBuildingElementProxy`. It shares annotation creation's
+canonical placement, container validation, IFC entity planning and ordinary
+geometry producer. It does not decode a scan, reconstruct a surface, or infer a
+semantic class.
+
+The request contains `schema` (`IFC4` or `IFC4X3`), `sourceRevision`,
+`nextExpressId`, `containerId`, `GlobalId`, `containmentGlobalId`, `Name`,
+`imageUri`, and `mesh`. The mesh contains `positions` in IFC world Z-up metres,
+zero-based `triangles`, independent `uvs` in IFC V-up convention, and zero-based
+`uvTriangles`. Independent UV indices retain seams without conflating geometry
+and image vertices. The non-repeating image must cover UVs within `[0, 1]`.
+
+Each of the position, UV and triangle arrays is bounded to 200,000 rows. The
+request and serialized result each have a 64 MiB ceiling. Invalid indices,
+non-finite coordinates, degenerate triangles, stale allocation, duplicate IFC
+identities and unrepresentable canonical coordinates fail before publication.
+The planner retains original image URI ownership; callers must bundle the exact
+image bytes and publish the entity plan, canonical mesh, hierarchy and history
+atomically after checking the revision and allocator again.
+
+The UTF-8 JSON response contains `plan`, `objectId`, `geometryItemId`, `mesh`,
+`coordinateSpace: 'ifc-z-up'`, and `rtcOffset`. As with annotation creation,
+canonical mesh UVs are already top-down for GPU upload; do not flip them again.
+A fresh import can weld vertices differently, so round-trip correspondence is
+measured per triangle corner rather than by assuming an identical vertex layout.
+
+Captured mesh requests accept optional `repeatS` and `repeatT` booleans to retain
+an imported image sampler on the authored `IfcImageTexture` and canonical mesh.
+Both default to `false` when omitted. This does not extend the current supported
+UV range: capture coordinates must still lie within `[0, 1]`.
+
+### Scan correspondence registration
+
+`IfcAPI.registerScanCorrespondences(requestJson)` returns UTF-8 JSON from the
+canonical Rust `register_scan_correspondences` solver. It computes a proper rigid
+rotation and anchored translation from manually identified point pairs; it does
+not load, align or mark a scan as registered, estimate scale, run ICP, or transfer
+appearance. Use the existing model/point-cloud alignment path when applying an
+explicitly accepted result, preserving decode origins and federation transforms.
+
+The request is `{sourceFrame, targetFrame, fit, heldOut}`. Each frame contains a
+lowercase `assetSha256` for the exact source asset/effective IFC snapshot and a
+`frameKey` identifying its coordinate frame and placement revision. Source points
+are orthonormal native-source **metres**; target points are destination IFC world
+**Z-up metres**, before viewer axis conversion or offsets. Convert known units
+before creating the request; the solver never guesses them.
+
+Each point pair has `id`, `sourceObservation`, `targetFeature`, `source: [x,y,z]`
+and `target: [x,y,z]`. Hosts resolve target features through the normal model/entity
+resolver and retain model identity, `GlobalId` and the geometric feature definition.
+Source observations identify original points or reviewed neighborhoods. IDs,
+source observations, target features and exact coordinates must be distinct across
+both sets. Hosts must additionally ensure that differently named neighborhoods do
+not reuse the same underlying observation; the solver cannot infer that from IDs.
+
+The fit accepts 3–256 non-collinear points; held-out accepts 0–256. Planar
+non-collinear point sets are mathematically valid. Each ID/frame key is at most
+256 bytes; coordinates are finite and bounded to ±1e12 m; JSON is bounded to
+512 KiB. Nearly collinear source/target scatter or correspondence covariance is
+rejected at a second/first singular-value ratio below `1e-10`. Decompositions have
+a finite iteration budget. Bounds and ratios are numerical refusal criteria,
+not accepted scan accuracy tolerances.
+
+The report contains both frame identities, `algorithm`, `requestSha256`, a
+row-major `rotation`, `sourceAnchor`, `targetAnchor`, source/target scatter spectra,
+and separate `fit`/`heldOut` residual lists with RMS and maximum in metres.
+Apply the transform as `targetAnchor + rotation * (sourcePoint - sourceAnchor)`.
+Each residual vector is predicted target minus observed target. Empty checks
+produce null summary values, not zero error. No observations are automatically
+removed as outliers. Reflections and scale changes remain visible as mismatch;
+the emitted rotation is proper and has unit scale.
+
+`requestSha256` hashes the algorithm ID `ifclite-rigid-correspondence-v1`, one
+zero byte, and compact typed request JSON in Rust field order. It binds all frame
+identities, coordinates, observation identities and the ordered fit/check partition.
+Hosts retain the frozen request with the report and invalidate it after any source,
+frame, feature or partition change. This digest binds declared inputs; it does not
+verify the asset bytes or validate a user's correspondence claim.
+
+A successful solve is not an accuracy verdict. F4 acceptance still requires at
+least four fitting and four independently selected, spatially distributed held-out
+features at different heights, uncertainty review, frozen tolerance, and explicit
+assessment of unknown areas and thin-wall transfer. See the
+[real CRAS evidence](../architecture/evidence/scan-transfer/README.md).

@@ -75,8 +75,8 @@ export class PickingManager {
      */
     private prepareBatchedPick(options?: PickOptions): 'cpu' | 'gpu' {
         const batchedMeshes = this.scene.getBatchedMeshes();
-        // Nothing batched: every mesh is already individually hydrated.
-        if (batchedMeshes.length === 0) return 'gpu';
+        // Textured draws also keep separate GPU buffers and need pick-mesh hydration.
+        if (batchedMeshes.length === 0 && this.scene.getTexturedMeshes().length === 0) return 'gpu';
 
         if (this.scene.isGeometryDataReleased()) return 'cpu';
 

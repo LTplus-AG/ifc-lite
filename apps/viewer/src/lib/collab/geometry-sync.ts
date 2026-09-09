@@ -25,7 +25,8 @@
 
 import type { GeometryResult, MeshData } from '@ifc-lite/geometry';
 import type { BlobStore, CollabSession } from '@ifc-lite/collab';
-import { decodeMesh, encodeMesh } from './mesh-codec';
+import { encodeMesh } from './mesh-codec';
+import { texturedMeshDecoder, textureUploader } from './room-texture';
 import {
   DEFAULT_UPLOAD_MAX_FAILURES,
   DEFAULT_UPLOAD_RETRIES,
@@ -39,7 +40,7 @@ export interface CollabGeomApi {
   createGeometry(
     doc: CollabSession['doc'],
     geomId: string,
-    opts: { type: 'mesh'; source: string; blobHash?: string },
+    opts: { type: 'mesh'; source: string; blobHash?: string; params?: Record<string, unknown> },
   ): unknown;
   /** Whether an entity exists at `path` (addGeometryRef throws otherwise). */
   hasEntity(doc: CollabSession['doc'], path: string): boolean;
@@ -181,7 +182,8 @@ export async function seedGeometryToRoom(
   const retries = uploadCountOption(opts.retries, DEFAULT_UPLOAD_RETRIES);
   const retryDelaysMs = opts.retryDelaysMs ?? DEFAULT_UPLOAD_RETRY_DELAYS_MS;
   const maxFailures = Math.max(1, uploadCountOption(opts.maxFailures, DEFAULT_UPLOAD_MAX_FAILURES));
-  const refs: { path: string; hash: string }[] = [];
+  const refs: { path: string; hash: string; textureHash?: string }[] = [];
+  const uploadTexture = textureUploader(blobStore, retries, retryDelaysMs);
   let nextJob = 0;
   let uploaded = 0;
   let failed = 0;
@@ -195,8 +197,9 @@ export async function seedGeometryToRoom(
       }
       const job = jobs[nextJob++];
       try {
-        const meta = await putBlobWithRetry(blobStore, encodeMesh(job.mesh), retries, retryDelaysMs);
-        refs.push({ path: job.path, hash: meta.hash });
+        const texture = await uploadTexture(job.mesh);
+        const meta = await putBlobWithRetry(blobStore, encodeMesh(job.mesh, texture), retries, retryDelaysMs);
+        refs.push({ path: job.path, hash: meta.hash, textureHash: texture?.hash });
         uploaded++;
         if (opts.onProgress && uploaded % 50 === 0) opts.onProgress(uploaded, jobs.length);
       } catch (err) {
@@ -211,8 +214,11 @@ export async function seedGeometryToRoom(
   //    ops (fast), batched into a single transaction so peers receive one
   //    update instead of thousands.
   session.transact(() => {
-    for (const { path, hash } of refs) {
-      api.createGeometry(session.doc, hash, { type: 'mesh', source: 'mesh-blob', blobHash: hash });
+    for (const { hash, textureHash } of refs) {
+      api.createGeometry(session.doc, hash, {
+        type: 'mesh', source: 'mesh-blob', blobHash: hash,
+        ...(textureHash ? { params: { textureBlobHash: textureHash } } : {}),
+      });
     }
     if (opts.replace) {
       // Group hashes per path, then replace each entity's refs in one write.
@@ -275,6 +281,8 @@ export interface HydrateOptions {
   concurrency?: number;
   /** Decoded-mesh cache keyed by geomId, persisted across re-hydrates. */
   cache?: Map<string, MeshData>;
+  /** Called once if any geometry or image blob could not be hydrated. */
+  onFailure?: (message: string) => void;
   /** Called as meshes accumulate (throttled by batch), for incremental render. */
   onProgress?: (meshesSoFar: readonly MeshData[]) => void;
 }
@@ -307,9 +315,11 @@ export async function hydrateGeometryFromRoom(
 
   // 2. Fetch + decode with bounded concurrency; serve cache hits without refetch.
   const cache = opts.cache;
+  const decode = texturedMeshDecoder(blobStore);
   const out: MeshData[] = [];
   let nextJob = 0;
   let sinceProgress = 0;
+  let failures = 0;
   const concurrency = Math.max(1, Math.min(opts.concurrency ?? 12, jobs.length || 1));
 
   const worker = async (): Promise<void> => {
@@ -321,37 +331,18 @@ export async function hydrateGeometryFromRoom(
         // abort the whole hydrate (which would lose every other mesh).
         try {
           const bytes = await blobStore.get(job.blobHash);
-          if (!bytes) continue;
-          base = decodeMesh(bytes);
+          if (!bytes) throw new Error('geometry blob is unavailable');
+          base = await decode(bytes);
           cache?.set(job.geomId, base);
         } catch (err) {
+          failures++;
           // eslint-disable-next-line no-console
           console.warn(`[collab] skipping geometry blob ${job.blobHash} (fetch/decode failed):`, err);
           continue;
         }
       }
-      // Re-key into the recipient id space, with the vertex data COPIED.
-      //
-      // The previous version shallow-cloned and shared the typed arrays, under
-      // a comment asserting they were read-only. They are not. The renderer
-      // mutates them IN PLACE on a move or rotate:
-      // `translateFlatMeshesForEntity` / `rotateMeshesForEntity`
-      // (`packages/renderer/src/scene.ts`) write `pos[i] = ...` directly, and
-      // `scene` stores the caller's mesh object rather than a copy, so the
-      // array it mutates is the one handed to it here.
-      //
-      // Two consequences, both silent:
-      //  - blobs are CONTENT-ADDRESSED, so two entities with identical geometry
-      //    share one cache entry. Sharing the array meant moving one of them
-      //    moved the other. The renderer's own guard against this checks
-      //    `meshData.entityIds`, which a hydrated mesh does not have, so it
-      //    never applied.
-      //  - the cache itself was mutated, so a later re-hydrate (any peer edit
-      //    re-runs the reconstruct) served geometry already displaced by an
-      //    earlier move instead of the baked original.
-      //
-      // Indices are not copied: nothing mutates them, and they are the larger
-      // array for a typical mesh.
+      // Copy mutable positions/normals: renderer moves must not mutate another
+      // entity's shared content-addressed cache entry. Indices/UVs are immutable.
       const mesh: MeshData =
         job.expressId !== undefined
           ? { ...base, expressId: job.expressId, positions: base.positions.slice(), normals: base.normals?.slice() }
@@ -364,6 +355,7 @@ export async function hydrateGeometryFromRoom(
     }
   };
   await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  if (failures) opts.onFailure?.(`${failures} shared surface(s) could not load their geometry or textures. Reconnect to retry.`);
   if (opts.onProgress) opts.onProgress(out);
   return out;
 }

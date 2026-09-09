@@ -9,6 +9,7 @@ import { makeExclusionSet, qualifiedKey } from '../exclude.js';
 import { fromPositions } from '../math/aabb.js';
 import { classifyRuleCoverage, ruleHadNoMatch } from '../analysis.js';
 import { disciplineMatrixRules } from '../disciplines.js';
+import { NonFiniteToleranceError } from './orchestrator.js';
 import type { ClashElement, ClashRule, Vec3 } from '../types.js';
 
 /** Axis-aligned cube as a triangle mesh (12 triangles). */
@@ -292,6 +293,91 @@ describe('TsClashEngine', () => {
     await expect(engine.run(elements, [hard()], { signal: controller.signal })).rejects.toThrow();
   });
 
+});
+
+/**
+ * #4244: a non-finite `tolerance` used to sail through `settings.tolerance ??
+ * DEFAULT_CLASH_SETTINGS.tolerance` (`??` substitutes only on `null`/
+ * `undefined`, never `NaN`), poison `Math.max(tolerance, clearance ?? 0)`
+ * (`NaN` on any operand), poison the broad-phase AABB inflation, and make the
+ * BVH broad phase yield zero candidate pairs — silently, with
+ * `classifyRuleCoverage()` still reading `'clean'` because `matchedA`/
+ * `matchedB` are selector-match counts taken before any geometry ran. A
+ * caller reading "0 clashes" + `'clean'` off that result would see a false
+ * all-clear over a deep, unmissable hard clash it never actually examined.
+ */
+describe('TsClashEngine: non-finite tolerance (#4244)', () => {
+  // Small box wholly inside a large box — a deep, unmissable hard clash, so
+  // any run that reports 0 clashes for this fixture examined nothing.
+  const contained = () => [
+    boxElement('big', 'IfcWall', [0, 0, 0], 4),
+    boxElement('small', 'IfcDuct', [0, 0, 0], 1),
+  ];
+
+  it('the fixture is a real, detectable hard clash under the default tolerance (repro control)', async () => {
+    const result = await engine.run(contained(), [hard()]);
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('hard');
+  });
+
+  it('rejects a NaN run-level tolerance instead of reporting a false clean', async () => {
+    await expect(
+      engine.run(contained(), [hard()], { tolerance: Number('not-a-number') }),
+    ).rejects.toThrow(NonFiniteToleranceError);
+  });
+
+  it('rejects an Infinity run-level tolerance', async () => {
+    await expect(engine.run(contained(), [hard()], { tolerance: Infinity })).rejects.toThrow(
+      NonFiniteToleranceError,
+    );
+  });
+
+  it('rejects a NaN per-rule tolerance even when the run-level tolerance is fine', async () => {
+    await expect(
+      engine.run(contained(), [hard({ tolerance: Number('not-a-number') })]),
+    ).rejects.toThrow(NonFiniteToleranceError);
+  });
+
+  it('still clamps a very negative run-level tolerance to the clearance (unaffected by the finiteness check)', async () => {
+    // Pre-existing, correct behaviour: Math.max(tolerance, clearance ?? 0)
+    // clamps a negative tolerance up to at least the clearance (or 0) — same
+    // fixture and expectation as the plain "finds a clearance violation"
+    // test above, just with a deeply negative tolerance instead of the
+    // omitted default, to prove the clamp (not the default) is doing the
+    // work. This must keep working exactly as before — only non-finite
+    // values are newly rejected.
+    const elements = [
+      boxElement('A', 'IfcWall', [0, 0, 0]),
+      boxElement('B', 'IfcDuct', [2, 0, 0]), // 1.0 m face-to-face gap
+    ];
+    const result = await engine.run(elements, [hard({ mode: 'clearance', clearance: 1.5 })], {
+      tolerance: -100,
+    });
+    expect(result.summary.total).toBe(1);
+    expect(result.clashes[0].status).toBe('clearance');
+    expect(result.clashes[0].distance).toBeCloseTo(1.0, 3);
+  });
+
+  it('a genuine clean run (real geometry, real tolerance, no clashes) still classifies as clean', async () => {
+    const elements = [
+      boxElement('A', 'IfcWall', [0, 0, 0]),
+      boxElement('B', 'IfcDuct', [2, 0, 0]), // well outside the default tolerance
+    ];
+    const result = await engine.run(elements, [hard()]);
+    expect(result.summary.total).toBe(0);
+    expect(classifyRuleCoverage(result)).toBe('clean');
+    // The rule's selectors matched non-trivially on both sides, and the
+    // broad phase DID examine a candidate pair (the two AABBs are within the
+    // BVH's own bounds even though they don't clash) — a genuine clean run,
+    // not the zero-examined false clean this issue is about.
+    expect(result.ruleCoverage![0].matchedA).toBe(1);
+    expect(result.ruleCoverage![0].matchedB).toBe(1);
+  });
+
+  it('surfaces candidatesExamined on the coverage entry for a real run', async () => {
+    const result = await engine.run(contained(), [hard()]);
+    expect(result.ruleCoverage![0].candidatesExamined).toBe(1);
+  });
 });
 
 /**

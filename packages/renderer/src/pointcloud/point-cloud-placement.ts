@@ -41,7 +41,13 @@ export class PointCloudPlacements {
     this.placements.set(node, next);
   }
 
-  private apply(node: PointCloudNode, entry: Placement): void {
+  validateTranslation(node: PointCloudNode, translation: Translation): void {
+    this.matrix({ ...this.entry(node), translation });
+  }
+
+  private apply(node: PointCloudNode, entry: Placement): void { node.model = this.matrix(entry); }
+
+  private matrix(entry: Placement): Float32Array {
     const matrix = new Float32Array(entry.baseline);
     for (let axis = 0; axis < 3; axis++) {
       // Sum in f64 FIRST. Narrowing the baseline at map magnitude would lose
@@ -49,7 +55,7 @@ export class PointCloudPlacements {
       matrix[12 + axis] = entry.baseline[12 + axis] + entry.translation[axis];
     }
     if (!matrix.every(Number.isFinite)) throw new Error('Pointcloud placement exceeds the renderable coordinate range.');
-    node.model = matrix;
+    return matrix;
   }
 }
 

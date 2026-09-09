@@ -254,3 +254,40 @@ describe('whole-model renderer placement (#4226)', () => {
     assert.equal(view.getFloat32(48, true), 0.125);
   });
 });
+
+it('moves every released color-merged entity, not only its wrapper id (#4226)', () => {
+  const scene = new Scene(), { device, pipeline } = recordingGpu();
+  const merged = triangle(100, 7);
+  merged.entityIds = new Uint32Array([11, 12, 13]);
+  scene.appendToBatches([merged], device, pipeline);
+  const before = [11, 12, 13].map((id) => scene.getEntityBoundingBox(id));
+  assert.ok(before.every(Boolean));
+  scene.releaseGeometryData();
+  scene.setModelTranslation(7, [100, 200, 300]);
+  for (const [index, id] of [11, 12, 13].entries()) {
+    const box = scene.getEntityBoundingBox(id)!;
+    assert.equal(box.min.x, before[index]!.min.x + 100);
+    assert.equal(box.min.y, before[index]!.min.y + 200);
+    assert.equal(box.min.z, before[index]!.min.z + 300);
+  }
+  scene.setModelTranslation(7, [0, 0, 0]);
+  assert.deepEqual([11, 12, 13].map((id) => scene.getEntityBoundingBox(id)), before);
+});
+
+it('retains replaced, edited and removed authored bounds across model moves (#4226)', () => {
+  const placements = new ModelTranslations();
+  const mesh = { modelIndex: 7, transform: MathUtils.identity(), bounds: { min: [0, 0, 0], max: [1, 1, 1] } } as Mesh;
+  placements.placeAuthoredMesh(mesh);
+  mesh.bounds = { min: [2, 3, 4], max: [5, 6, 7] };
+  placements.set(7, [10, 0, 0]); placements.placeAuthoredMesh(mesh);
+  assert.deepEqual(mesh.bounds, { min: [12, 3, 4], max: [15, 6, 7] });
+  mesh.bounds!.min[1] = -2;
+  placements.set(7, [20, 0, 0]); placements.placeAuthoredMesh(mesh);
+  assert.deepEqual(mesh.bounds, { min: [22, -2, 4], max: [25, 6, 7] });
+  mesh.bounds = undefined;
+  placements.set(7, [30, 0, 0]); placements.placeAuthoredMesh(mesh);
+  assert.equal(mesh.bounds, undefined);
+  mesh.bounds = { min: [32, -2, 4], max: [35, 6, 7] };
+  placements.set(7, [0, 0, 0]); placements.placeAuthoredMesh(mesh);
+  assert.deepEqual(mesh.bounds, { min: [2, -2, 4], max: [5, 6, 7] });
+});

@@ -1076,6 +1076,7 @@ export class Renderer {
 
     /** Absolute workspace translation in renderer Y-up metres (#4226). */
     setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+        this.pointCloudRenderer?.validateModelTranslation(modelIndex, translation);
         this.scene.setModelTranslation(modelIndex, translation);
         this.pointCloudRenderer?.setModelTranslation(modelIndex, translation);
         this.clearCaches();

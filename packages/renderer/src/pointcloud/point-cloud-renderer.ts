@@ -263,13 +263,7 @@ export class PointCloudRenderer {
     node.meta.expressId = newExpressId >>> 0;
   }
 
-  /**
-   * Set (or clear) a streamed asset's per-vertex GPU model matrix
-   * (issue #1804: point-cloud ↔ `IfcMapConversion` alignment). Pass
-   * `null` to reset to identity. Takes effect on the next frame's
-   * uniform write — no GPU buffer rewrite needed, so toggling alignment
-   * on/off is cheap.
-   */
+  /** Import alignment composes with manual placement without reuploading points. */
   setAssetTransform(handle: PointCloudAssetHandle, matrix: Float32Array | Float64Array | null): void {
     const node = this.nodes.get(handle.id);
     if (!node) return;
@@ -281,8 +275,15 @@ export class PointCloudRenderer {
     if (node) this.placements.translate(node, translation);
   }
 
-  setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+  validateModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
     assertModelTranslation(modelIndex, translation);
+    for (const [id, node] of this.nodes) if (this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex) {
+      this.placements.validateTranslation(node, translation);
+    }
+  }
+
+  setModelTranslation(modelIndex: number, translation: readonly [number, number, number]): void {
+    this.validateModelTranslation(modelIndex, translation);
     this.modelTranslations.set(modelIndex, [...translation]);
     for (const [id, node] of this.nodes) {
       if (this.nodeOwners.get(id) === 'ifcx' && (node.meta.modelIndex ?? 0) === modelIndex) {
@@ -432,23 +433,20 @@ export class PointCloudRenderer {
     return null;
   }
 
-  /**
-   * Snapshot of nodes shaped for the picker — only the data the GPU
-   * picking pass actually needs (expressId, modelIndex, chunk vertex
-   * buffers + counts). Returns a fresh array; callers may iterate
-   * freely without worrying about mutation during a pick.
-   */
+  /** Picker snapshot includes the exact model matrix used by visible splats. */
   getPickNodes(): Array<{
     expressId: number;
     modelIndex?: number;
+    model?: Float32Array;
     chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }>;
   }> {
-    const out: Array<{ expressId: number; modelIndex?: number; chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }> }> = [];
+    const out: Array<{ expressId: number; modelIndex?: number; model?: Float32Array; chunks: Array<{ vertexBuffer: GPUBuffer; pointCount: number }> }> = [];
     for (const node of this.nodes.values()) {
       if (node.pointCount === 0) continue;
       out.push({
         expressId: node.meta.expressId,
         modelIndex: node.meta.modelIndex,
+        model: node.model,
         chunks: node.chunks.map((c) => ({ vertexBuffer: c.vertexBuffer, pointCount: c.pointCount })),
       });
     }

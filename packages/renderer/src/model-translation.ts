@@ -46,7 +46,7 @@ interface BatchPlacement {
  * and immutable: only double-precision local origins and batch draw origins move.
  * Every preview is evaluated against the baseline, never the previous preview. */
 export class ModelTranslations {
-  private authored = new WeakMap<Mesh, { base: number[]; written: number[]; offset: Offset; bounds?: Bounds }>();
+  private authored = new WeakMap<Mesh, { base: number[]; written: number[]; offset: Offset; bounds?: Bounds; writtenBounds?: Bounds }>();
   private offsets = new Map<number, Offset>();
   private meshes = new WeakMap<MeshData, MeshPlacement>();
   private batches = new WeakMap<Drawable, BatchPlacement>();
@@ -91,7 +91,7 @@ export class ModelTranslations {
     let entry = this.authored.get(mesh);
     if (!entry) {
       const base = [matrix[12], matrix[13], matrix[14]];
-      entry = { base, written: [...base], offset: ZERO, bounds: mesh.bounds };
+      entry = { base, written: [...base], offset: ZERO, bounds: mesh.bounds ? moveBounds(mesh.bounds, ZERO) : undefined, writtenBounds: mesh.bounds ? moveBounds(mesh.bounds, ZERO) : undefined };
       this.authored.set(mesh, entry);
     }
     if (entry.offset.every((value, index) => value === delta[index])) return;
@@ -100,7 +100,13 @@ export class ModelTranslations {
       matrix[12 + axis] = entry.base[axis] + delta[axis];
       entry.written[axis] = matrix[12 + axis];
     }
+    if (!mesh.bounds) entry.bounds = undefined;
+    else if (!entry.bounds || !entry.writtenBounds) entry.bounds = moveBounds(mesh.bounds, entry.offset.map((v) => -v) as [number, number, number]);
+    else for (const edge of ['min', 'max'] as const) for (let axis = 0; axis < 3; axis++) {
+      entry.bounds[edge][axis] += mesh.bounds[edge][axis] - entry.writtenBounds[edge][axis];
+    }
     if (entry.bounds) mesh.bounds = moveBounds(entry.bounds, delta);
+    entry.writtenBounds = mesh.bounds ? moveBounds(mesh.bounds, ZERO) : undefined;
     entry.offset = delta;
   }
 
@@ -117,6 +123,10 @@ export class ModelTranslations {
       for (const [index, group] of groups) { const box = worldAabbFromPieces(group); if (box) bounds.set(index, box); }
       this.releasedEntities.set(id, bounds);
     }
+  }
+
+  releasedEntityIds(modelIndex: number): number[] {
+    return [...this.releasedEntities].filter(([, groups]) => groups.has(modelIndex)).map(([id]) => id);
   }
 
   releasedEntityBounds(id: number): BoundingBox | undefined {

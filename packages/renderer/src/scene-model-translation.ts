@@ -33,7 +33,7 @@ interface TranslationScene {
 export function translateSceneModel(scene: TranslationScene, modelIndex: number, translation: readonly [number, number, number]): boolean {
   const previous = scene.translations.get(modelIndex);
   if (!scene.translations.set(modelIndex, translation)) return false;
-  const releasedIds = new Set<number>();
+  const releasedIds = new Set(scene.translations.releasedEntityIds(modelIndex));
   for (const batch of scene.batches) {
     if ((batch.modelIndices?.[0] ?? 0) === modelIndex) for (const id of batch.expressIds) releasedIds.add(id);
   }

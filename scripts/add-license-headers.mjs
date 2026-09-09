@@ -24,18 +24,17 @@
  * reporting.
  */
 
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { join, dirname, relative } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
 
 import {
     licenseHeaderFor,
     hasLicenseHeader,
     withLicenseHeader,
     LICENSE_HEADERS,
-    EXCLUDED_DIRS,
 } from './lib/license-header.mjs';
+import { REPO_ROOT, findFiles } from './lib/license-scan.mjs';
 import { isMainEntry } from './lib/is-main-entry.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,60 +92,6 @@ function addLicenseHeader(filePath) {
         console.error(`Error writing ${filePath}:`, error.message);
         return FAILED;
     }
-}
-
-// The scan-root entry that means "the repository root itself". `findFiles`
-// scans it non-recursively; see the comment on the `find` command below.
-const REPO_ROOT = '.';
-
-// Returns { files, missingRoots }. A missing scan root used to be a
-// console.warn that the caller could scroll past — the scan would silently
-// continue over whatever roots DID exist, "Found 0 files to process"
-// would print same as a real clean scan, and --check would exit 0 having
-// verified nothing. Callers now decide what to do with missingRoots; both
-// the --check and default paths below treat it as fatal (see the "loudly"
-// comment further down).
-function findFiles(scanRoots, extensions) {
-    const files = [];
-    const missingRoots = [];
-
-    for (const dir of scanRoots) {
-        const fullPath = join(rootDir, dir);
-        if (!existsSync(fullPath)) {
-            missingRoots.push(fullPath);
-            continue;
-        }
-
-        // Use find command to get all files with specified extensions.
-        // The directory exclusions are `EXCLUDED_DIRS`, not a second spelling
-        // of it: `licenseHeaderFor` re-checks them downstream, so a divergence
-        // here would not be a correctness bug — it would be a silent cost,
-        // `find` walking a tree whose every hit is then discarded.
-        //
-        // The repo root is the one root scanned NON-recursively. Every other
-        // root is a subtree of it, so a recursive walk here would re-walk all
-        // of them, double-count every file, and drag in `node_modules`,
-        // `target` and every other build directory besides. `-maxdepth 1` is
-        // placed before `-type f` because BSD `find` (macOS) rejects it as an
-        // option after a primary, while GNU `find` accepts either.
-        const depthLimit = dir === REPO_ROOT ? '-maxdepth 1 ' : '';
-        const extPattern = extensions.map(ext => `-name "*.${ext}"`).join(' -o ');
-        const prunePattern = EXCLUDED_DIRS.map(dir => `! -path "*/${dir}/*"`).join(' ');
-        const findCmd = `find "${fullPath}" ${depthLimit}-type f \\( ${extPattern} \\) ${prunePattern}`;
-
-        try {
-            const output = execSync(findCmd, { encoding: 'utf-8', cwd: rootDir });
-            const foundFiles = output.trim().split('\n').filter(f => f);
-            files.push(...foundFiles);
-        } catch (error) {
-            // find command may return non-zero if no files found, which is okay
-            if (error.status !== 1) {
-                console.error(`Error finding files in ${dir}:`, error.message);
-            }
-        }
-    }
-
-    return { files, missingRoots };
 }
 
 // Everything below runs only when this file is what node was asked to run.
@@ -245,7 +190,7 @@ function main() {
     const extensions = Object.keys(LICENSE_HEADERS);
 
     console.log('Finding source files...');
-    const { files, missingRoots } = findFiles(scanRoots, extensions);
+    const { files, missingRoots, scanErrors } = findFiles(rootDir, scanRoots, extensions);
 
     // A missing scan root means this script's assumptions about the repo
     // layout are stale (wrong cwd, a renamed/moved directory, a restructured
@@ -266,6 +211,25 @@ function main() {
             `\nThis script resolves its scan roots relative to its own location (${rootDir}).\n` +
             'Run it from within the repo, or update the `scanRoots` list above if the repo layout\n' +
             'changed. Refusing to run against a partial/wrong set of roots.'
+        );
+        process.exitCode = 2;
+        return;
+    }
+
+    // A root that EXISTS but could not be enumerated is the same false pass as
+    // one that is missing, and quieter: `find` failing (ENOBUFS on an oversized
+    // result, a permission error, a broken mount) used to be logged and skipped,
+    // so that root contributed zero files and the run still printed a clean
+    // result. Same exit code as a missing root, for the same reason.
+    if (scanErrors.length > 0) {
+        console.error(`\n❌ Could not enumerate scan root${scanErrors.length === 1 ? '' : 's'}:`);
+        for (const { root, message } of scanErrors) {
+            console.error(`  ${root}: ${message}`);
+        }
+        console.error(
+            '\nA root that could not be listed is a root nothing checked. Refusing to report a\n' +
+            'result for the roots that did enumerate, which would announce coverage this run\n' +
+            'does not have.'
         );
         process.exitCode = 2;
         return;

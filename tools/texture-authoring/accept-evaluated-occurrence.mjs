@@ -1,4 +1,4 @@
-/* This Source Code Form is subject to the Mozilla Public
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 // Manual real-model acceptance; run against an isolated local viewer session.
@@ -100,6 +100,7 @@ try {
   await page.getByRole('tab',{name:'File',exact:true}).click();
   await page.getByRole('button',{name:'Export IFC (with changes)',exact:true}).click();
   const dialog=page.getByRole('dialog',{name:'Export IFC File'});await dialog.waitFor();
+  if(federated){await dialog.getByRole('combobox').filter({hasText:'AC20-FZK-Haus.ifc'}).click();await page.getByRole('option',{name:/AC20-second.ifc/}).click();}
   fs.writeFileSync(path.join(out,'export-dialog.txt'),await dialog.innerText());
   const downloading=page.waitForEvent('download');
   await dialog.getByRole('button',{name:'Export',exact:true}).click();

@@ -8,8 +8,8 @@
     35155
   ],
   "triangles": 12,
-  "maxOriginalCornerDistanceMetres": 1.1507905211949998e-07,
   "GlobalId": "0oTQ6V1VbChulreA_hfmUa",
-  "representation": "Tessellation",
-  "imageTextures": 1
+  "materialPolicy": "original style retained by internal normalization; final requested image replaces albedo",
+  "normalSelectionIdentityPreserved": true,
+  "maxOriginalCornerDistanceMetres": 1.4240740167604914e-07
 }

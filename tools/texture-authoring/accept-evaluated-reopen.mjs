@@ -41,7 +41,7 @@ try {
  const hiddenClickSelection=await page.evaluate(()=>window.__store.getState().selectedEntityId);
  assert.equal(hiddenClickSelection,null,'hidden model cannot be selected through the viewport');
  await page.evaluate(()=>window.__store.getState().setModelVisibility(window.__targetModel,true));await page.waitForTimeout(200);const shown=await read();
- if(process.env.EVALUATED_REQUIRE_RESTORE==='1'){await page.mouse.click(point.x,point.y);await page.waitForFunction(()=>window.__store.getState().selectedEntityId===window.__targetId,undefined,{timeout:10000});}
+ if(process.env.EVALUATED_REQUIRE_RESTORE==='1'){const shownPoint=await page.evaluate(()=>{const r=window.__renderer,box=r.getScene().getEntityBoundingBox(window.__targetId),rect=r.getCanvas().getBoundingClientRect();const p=r.getCamera().projectToScreen({x:(box.min.x+box.max.x)/2,y:(box.min.y+box.max.y)/2,z:(box.min.z+box.max.z)/2},rect.width,rect.height);return{x:rect.left+p.x,y:rect.top+p.y};});await page.mouse.click(shownPoint.x,shownPoint.y);await page.waitForFunction(()=>window.__store.getState().selectedEntityId===window.__targetId,undefined,{timeout:10000});}
  const shownClickSelection=process.env.EVALUATED_REQUIRE_RESTORE==='1'?await page.evaluate(()=>window.__store.getState().selectedEntityId):undefined;
  await page.screenshot({path:out+'/model-shown.png'});
  fs.writeFileSync(out+'/reopen-visibility.json',JSON.stringify({before,hidden,shown,hiddenClickSelection,shownClickSelection,actualViewportSelection:true},null,2));

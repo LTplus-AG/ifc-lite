@@ -23,8 +23,7 @@ import type {
   TranslationService,
   PartOfRelation,
 } from '../types.js';
-import { checkFacet, facetPasses, filterByFacet, type FacetCheckResult } from '../facets/index.js';
-import { formatConstraint } from '../constraints/index.js';
+import { checkFacet, facetPasses, filterByFacet } from '../facets/index.js';
 import { ApplicabilityPropertyIndex } from './property-index.js';
 import { UnsafeRegexPatternError } from '@ifc-lite/regex-guard';
 import { formatFailureReason, formatRequirementDescription } from './format-failure-reason.js';

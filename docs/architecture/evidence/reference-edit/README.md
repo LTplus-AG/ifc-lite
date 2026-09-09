@@ -17,7 +17,9 @@ source restoration, original native frame handling, stale Save rejection,
 different-image replacement, discarded-input restoration and encoded-image
 ownership through Undo are additionally exercised by mounted tests using real
 PNG bytes and the native WASM calibration solver. Those tests stub only GPU
-transport. Custom imported planes and missing recipes refuse lossy restoration.
+transport. An additional mounted test verifies explicit foreign-frame registration,
+Discard preservation of the old frame, and restoration of that frame by Undo.
+Custom imported planes and missing recipes refuse lossy restoration.
 
 The optional Browser service was unavailable (`Browser use requires a trusted
 Node REPL browser service`); this run used the existing local Playwright harness.

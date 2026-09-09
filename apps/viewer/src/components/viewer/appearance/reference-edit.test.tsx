@@ -133,3 +133,22 @@ test('explicit source replacement retains both encoded images through Undo and n
   assert.deepEqual(useViewerStore.getState().appearanceReferences.get('drawing'), updated);
   assert.deepEqual(appearanceAssets.encoded(other.id), otherPng);
 });
+
+test('foreign-frame Edit previews explicit registration and Discard preserves the old frame until Save and Undo (#4308)', async t => {
+  if (!await nativeAvailable(t)) return;
+  const { ui, original } = await fixture();
+  act(() => useViewerStore.setState({ modelPlacement: { ...emptyPlacementState(), frameKey: 'other-engineering-frame' } }));
+  await settle();
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  assert.equal(useViewerStore.getState().appearanceReferences.get('drawing'), original);
+  click(button(ui, 'Discard')); await settle();
+  assert.equal(useViewerStore.getState().appearanceReferences.get('drawing')!.frameKey, original.frameKey);
+  click(button(ui, 'Edit Drawing 1')); await settle();
+  const save = button(ui, 'Save registration'); assert.equal(save.disabled, false);
+  click(save); await settle();
+  const updated = useViewerStore.getState().appearanceReferences.get('drawing')!;
+  assert.equal(updated.frameKey, 'other-engineering-frame');
+  assert.equal(updated.assetId, original.assetId);
+  act(() => useViewerStore.getState().replayAppearanceReference('undo'));
+  assert.deepEqual(useViewerStore.getState().appearanceReferences.get('drawing'), original);
+});

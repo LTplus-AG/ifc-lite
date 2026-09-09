@@ -56,7 +56,7 @@
    751 apps/viewer/src/components/viewer/CommandPalette.tsx
    410 apps/viewer/src/components/viewer/ComparePanel.tsx
   1059 apps/viewer/src/components/viewer/DataConnector.tsx
-  1842 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
+  1752 apps/viewer/src/components/viewer/Drawing2DCanvas.tsx
    536 apps/viewer/src/components/viewer/DrawingSettingsPanel.tsx
    426 apps/viewer/src/components/viewer/DxfUnderlayPanel.tsx
    583 apps/viewer/src/components/viewer/EntityContextMenu.tsx

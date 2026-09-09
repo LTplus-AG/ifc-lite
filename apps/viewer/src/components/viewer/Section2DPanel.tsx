@@ -34,6 +34,7 @@ import { Drawing2DCanvas } from './Drawing2DCanvas';
 import { useDrawingGeneration } from '@/hooks/useDrawingGeneration';
 import { useMeasure2D } from '@/hooks/useMeasure2D';
 import { useAnnotation2D } from '@/hooks/useAnnotation2D';
+import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
 import { useViewControls } from '@/hooks/useViewControls';
 import { useDrawingExport } from '@/hooks/useDrawingExport';
 import { useSymbolicAnnotationsForDrawing, symbolicAnnotationsOverlayEnabled } from '@/hooks/useSymbolicAnnotations';
@@ -67,7 +68,8 @@ export function Section2DPanel({
   const setDrawingPanelVisible = useViewerStore((s) => s.setDrawing2DPanelVisible);
   const suppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.suppressNextSection2DPanelAutoOpen);
   const setSuppressNextSection2DPanelAutoOpen = useViewerStore((s) => s.setSuppressNextSection2DPanelAutoOpen);
-  const drawing = useViewerStore((s) => s.drawing2D);
+  const sourceDrawing = useViewerStore((s) => s.drawing2D);
+  const { drawing, hasReferences } = useDrawingWithReferences(sourceDrawing);
   const setDrawing = useViewerStore((s) => s.setDrawing2D);
   const status = useViewerStore((s) => s.drawing2DStatus);
   const setDrawingStatus = useViewerStore((s) => s.setDrawing2DStatus);
@@ -211,7 +213,6 @@ export function Section2DPanel({
   }, [panelSize.width]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // MEMOIZED VALUES
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Create graphic override engine with active rules
@@ -234,7 +235,6 @@ export function Section2DPanel({
   }, [geometryResult]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // VISIBILITY STATE
   // ═══════════════════════════════════════════════════════════════════════════
 
   // Get visibility state from store for filtering
@@ -283,13 +283,12 @@ export function Section2DPanel({
   }, [isolatedEntities, isolatedEntitiesByModel, models]);
 
   // ═══════════════════════════════════════════════════════════════════════════
-  // EXTRACTED HOOKS
   // ═══════════════════════════════════════════════════════════════════════════
 
   const { generateDrawing, isRegenerating } = useDrawingGeneration({
     geometryResult, ifcDataStore, sectionPlane, displayOptions, typeVisibility,
     combinedHiddenIds, combinedIsolatedIds, computedIsolatedIds,
-    models, panelVisible, activeTool, drawing,
+    models, panelVisible, activeTool, drawing: sourceDrawing,
     setDrawing, setDrawingStatus, setDrawingProgress, setDrawingError,
   });
 
@@ -1131,7 +1130,7 @@ export function Section2DPanel({
           </div>
         )}
 
-        {status === 'ready' && drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || dxfUnderlayData.length > 0) && (
+        {status === 'ready' && drawing && (drawing.cutPolygons.length > 0 || drawing.lines?.length > 0 || dxfUnderlayData.length > 0 || hasReferences) && (
           <>
             <Drawing2DCanvas
               drawing={drawing}
@@ -1245,7 +1244,7 @@ export function Section2DPanel({
           </div>
         )}
 
-        {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && dxfUnderlayData.length === 0 && (
+        {status === 'ready' && drawing && drawing.cutPolygons.length === 0 && (!drawing.lines || drawing.lines.length === 0) && dxfUnderlayData.length === 0 && !hasReferences && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center text-muted-foreground">
               <p className="font-medium">No geometry at this level</p>

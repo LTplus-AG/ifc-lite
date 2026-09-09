@@ -14,7 +14,7 @@
  */
 
 import { useCallback, useMemo, useEffect, useRef, useState } from 'react';
-import { useViewerStore } from '@/store';
+import { useViewerStore, isIfcxDataStore } from '@/store';
 import type {
   IDSAuditReport,
   IDSDocument,
@@ -36,6 +36,7 @@ import type { IDSBCFExportSettings, IDSExportProgress } from '@/components/viewe
 import { runIdsBcfExport } from './ids/idsBcfExport';
 
 import { createDataAccessor } from './ids/idsDataAccessor';
+import { snapshotPropertyOverlay } from '@/lib/ids/property-overlay-snapshot';
 import { resolveValidationTarget } from './ids/resolveValidationTarget';
 import { runValidationInWorker, idsWorkerSupported } from './ids/idsWorkerClient';
 import {
@@ -463,24 +464,43 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
 
       // A model with in-memory property edits (e.g. an IDS correction
       // applied through MutablePropertyView, #3929) must validate against
-      // THOSE edits, not the original parsed bytes. The worker only ever
-      // sees the raw source buffer, so it can't reflect an overlay that
-      // hasn't been exported/baked yet — force main-thread validation
-      // (which threads the mutation view into the data accessor below)
-      // whenever the target model has pending property mutations.
+      // THOSE edits, not the original parsed bytes. The worker re-parses
+      // the raw source buffer, so it cannot see them on its own — it is
+      // handed them, as a snapshot of the same `PropertyOverride[]`
+      // projection the main-thread accessor applies (#3946).
+      //
+      // This used to be a fork instead: ANY pending edit made
+      // `canUseWorker` false and dropped the whole run onto the main
+      // thread. That cost O(entities x specifications) — measured at
+      // ~500ms for a 250k-entity model, and identical for one edit or a
+      // thousand — and it was re-charged on every subsequent run until the
+      // edits were exported or cleared. Snapshotting instead costs
+      // O(pending edits).
       const mutationView = getMutationView(modelId);
-      const hasPendingPropertyEdits = !!mutationView?.hasPendingChanges();
+      const propertyOverlay = mutationView?.hasPendingChanges()
+        ? snapshotPropertyOverlay(mutationView)
+        : undefined;
 
       // Preferred path: validate in a Web Worker so the whole run is off
       // the main thread — the UI stays at full frame rate and progress
       // actually paints. Every other heavy stage (parse, geometry)
       // already runs in a worker; this brings validation in line. Falls
-      // back to in-process validation if the worker is unavailable, the
-      // model has no source bytes, or (see above) it carries edits the
-      // worker can't see.
+      // back to in-process validation when the worker is unavailable, the
+      // model has no source bytes for it to re-parse, or those bytes are
+      // not STEP.
+      //
+      // The IFCX exclusion is load-bearing, not defensive. An IFCX store's
+      // `source` is the IFCX **JSON** file (`buildIfcxDataStore`,
+      // hooks/ingest/viewerModelIngest.ts) and its byte index is empty, so
+      // `byteLength > 0` is true and the worker's `parseColumnar` happily
+      // parses JSON as STEP and yields a store with no properties,
+      // attributes or relationships. Before #3946 an IFCX model with
+      // pending edits was saved from that by the edits themselves, which
+      // forced the main thread; removing that fork without this term would
+      // convert a working validation into a silently empty one.
       const canUseWorker =
-        !hasPendingPropertyEdits
-        && idsWorkerSupported()
+        idsWorkerSupported()
+        && !isIfcxDataStore(dataStore)
         && !!dataStore.source
         && dataStore.source.byteLength > 0;
       if (canUseWorker) {
@@ -493,6 +513,7 @@ export function useIDS(options: UseIDSOptions = {}): UseIDSResult {
             modelId,
             locale,
             includePassingEntities: true,
+            propertyOverlay,
             onProgress,
           });
         } catch (workerErr) {

@@ -19,6 +19,8 @@ import type {
 } from '@ifc-lite/ids';
 import type { IfcSourceTransfer } from '@ifc-lite/parser';
 
+import type { PropertyOverlaySnapshot } from '@/lib/ids/property-overlay-snapshot';
+
 import type {
   IdsWorkerRequest,
   IdsWorkerResponse,
@@ -51,6 +53,16 @@ export interface RunInWorkerArgs {
   modelId: string;
   locale: 'en' | 'de' | 'fr';
   includePassingEntities: boolean;
+  /**
+   * The model's pending property edits as plain, clonable data (#3946).
+   *
+   * The worker validates the RE-PARSED source bytes, which do not carry
+   * in-memory corrections, so without this a model with edits pending had
+   * to be validated on the main thread instead. Snapshotting is
+   * O(pending edits); a model with none passes `undefined` and takes the
+   * unchanged no-overlay path.
+   */
+  propertyOverlay?: PropertyOverlaySnapshot;
   onProgress?: (progress: ValidationProgress) => void;
 }
 
@@ -123,6 +135,7 @@ export function runValidationInWorker(
       modelId: args.modelId,
       locale: args.locale,
       includePassingEntities: args.includePassingEntities,
+      propertyOverlay: args.propertyOverlay,
     };
     try {
       worker.postMessage(request);

@@ -65,7 +65,7 @@ versioned appearance extension described in the [export guide](exporting.md).
 PDF projection changes surface appearance. Vector extraction, text recognition,
 and scan-derived building geometry remain separate operations in the implementation roadmap.
 
-## Drawing references in 3D
+## Drawing references in 2D and 3D
 
 Choose **Place as reference** in the same Appearance panel to place an image or
 PDF-page raster independently of IFC surfaces. Calibrate two image points and
@@ -79,6 +79,14 @@ lock, opacity, and removal controls. A changed source does not repaint an alread
 placed drawing. Coordinate-frame mismatches leave the registration unavailable
 until it is registered for that frame; renderer origin rebasing preserves its
 engineering position.
+
+The existing 2D drawing canvas also shows visible registered rasters beneath
+the cut geometry. Plan, elevation, mirrored, custom-plane and sheet views project
+the same four engineering corners as 3D; they do not resize the image to its
+screen-aligned bounding box. An edge-on reference has no visible projected area.
+Hide, opacity, frame checks and relinking the original image apply to both views.
+These workspace underlays do not become vector drawing entities; use
+**Save into model** for a portable textured IFC annotation.
 
 **Export drawing registration** saves positions, image digests, and calibration
 recipes as JSON. Keep the original raster images alongside it: registration JSON

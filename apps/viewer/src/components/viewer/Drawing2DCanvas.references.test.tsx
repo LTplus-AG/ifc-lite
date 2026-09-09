@@ -5,10 +5,13 @@ import '@/test/setup-dom.js';
 import { installLayout } from '@/test/dom-layout.js';
 import { test, afterEach, mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { act } from 'react';
+import { act, useRef } from 'react';
 import { GraphicOverrideEngine, PAPER_SIZE_REGISTRY, FRAME_PRESETS, TITLE_BLOCK_PRESETS,
   DEFAULT_TITLE_BLOCK_FIELDS, DEFAULT_SCALE_BAR, DEFAULT_NORTH_ARROW, type DrawingSheet, type Drawing2D } from '@ifc-lite/drawing-2d';
-import { render, cleanup } from '@/test/render';
+import { render, cleanup, click } from '@/test/render';
+import { useDrawingWithReferences } from '@/hooks/useReferenceImagesForDrawing';
+import { useViewControls } from '@/hooks/useViewControls';
+import type { CachedSheetTransform } from '@/lib/drawing/sheet-geometry-key';
 import { useViewerStore } from '@/store';
 import { appearanceAssets } from '@/lib/appearance/model-assets';
 import { emptyPlacementState } from '@/lib/model-placement/state';
@@ -132,4 +135,25 @@ test('relinking a missing original image repaints the existing reference without
   await act(async()=>{await useViewerStore.getState().relinkAppearanceReference(record.id,new File([png],'original.png',{type:'image/png'}));});await settle();
   assert.deepEqual(images.at(-1),cases[0].expected);
   assert.equal(useViewerStore.getState().appearanceReferences.get(record.id),record);
+});
+
+test('Fit includes a registered raster on an otherwise empty section without altering source bounds (#4308)',async()=>{
+  const images=recordCanvas();await fixture(cases[0].corners);
+  const source=drawing('y');source.bounds={min:{x:5000000,y:5000000},max:{x:5000001,y:5000001}};
+  function FitCanvas() {
+    const {drawing:data}=useDrawingWithReferences(source),containerRef=useRef<HTMLDivElement>(null);
+    const cachedSheetTransformRef=useRef<CachedSheetTransform|null>(null);
+    const controls=useViewControls({drawing:data,sectionPlane:{axis:'down',position:0,flipped:false},containerRef,
+      panelVisible:true,status:'ready',sheetEnabled:false,activeSheet:null,isPinned:true,cachedSheetTransformRef});
+    return <div ref={containerRef}><button onClick={controls.fitToView}>Fit</button><Drawing2DCanvas drawing={data!} sectionAxis="down"
+      transform={controls.viewTransform} showHiddenLines={false} overrideEngine={new GraphicOverrideEngine()}
+      overridesEnabled={false} entityColorMap={new Map()} useIfcMaterials={false}/></div>;
+  }
+  const ui=render(<FitCanvas/>);await settle();click(ui.querySelector('button')!);await settle();
+  const points=images.at(-1)!;assert.ok(points);
+  assert.ok(Math.abs((points[0][0]+points[2][0])/2-640)<1e-8);
+  assert.ok(Math.abs((points[0][1]+points[2][1])/2-400)<1e-8);
+  assert.ok(points.every(([x,y])=>x>=192 && x<=1088 && y>=119.999999 && y<=680.000001));
+  assert.ok(Math.abs(points[2][1]-points[0][1]-560)<1e-8,'reference fills available height with 15% margins');
+  assert.deepEqual(source.bounds,{min:{x:5000000,y:5000000},max:{x:5000001,y:5000001}});
 });

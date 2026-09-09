@@ -15,6 +15,10 @@ export function splitMeshForStreaming(meshData: MeshData, maxIndices: number, ma
 
   const maxIndexCount = Math.max(3, Math.floor(maxIndices / 3) * 3);
   const fragments: MeshData[] = [];
+  const candidate = meshData.appearanceSource;
+  const source = candidate?.indices === meshData.indices &&
+    (!candidate.cornerIndices || candidate.cornerIndices.length === meshData.indices.length)
+    ? candidate : undefined;
 
   for (let start = 0; start < meshData.indices.length; start += maxIndexCount) {
     const end = Math.min(start + maxIndexCount, meshData.indices.length);
@@ -57,6 +61,9 @@ export function splitMeshForStreaming(meshData: MeshData, maxIndices: number, ma
       positions: new Float32Array(positions),
       normals: new Float32Array(normals),
       indices,
+      ...(candidate ? { appearanceSource: source ? {
+        ...source, indices, cornerIndices: Uint32Array.from(sourceIndices, (_, index) => source.cornerIndices?.[start + index] ?? start + index),
+      } : undefined } : {}),
     });
   }
 

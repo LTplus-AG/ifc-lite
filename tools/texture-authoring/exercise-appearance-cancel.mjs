@@ -1,0 +1,44 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+// Manual real-browser acceptance; requires a running viewer and downloaded public fixtures.
+import {chromium} from '@playwright/test';
+import fs from 'node:fs';
+const out=process.env.APPLY_OUT ?? '/tmp/appearance-apply-cancel';fs.mkdirSync(out,{recursive:true});
+const browser=await chromium.launch({headless:true,args:['--enable-gpu','--enable-webgpu','--enable-unsafe-webgpu','--use-angle=default','--ignore-gpu-blocklist']});
+const page=await browser.newPage({viewport:{width:1600,height:1100},acceptDownloads:true});page.setDefaultTimeout(20000);
+page.on('console',m=>fs.appendFileSync(out+'/console.log',m.text()+'\n'));
+const state=()=>page.evaluate(async()=>{const {useViewerStore}=await import('/src/store/index.ts');const s=useViewerStore.getState();return {selected:s.selectedEntity,models:[...s.models.values()].map(m=>{let hash=2166136261;const meshes=m.geometryResult?.meshes??[];for(const mesh of meshes)for(const a of [mesh.positions,mesh.normals,mesh.indices,mesh.uvs])if(a)for(const n of new Uint8Array(a.buffer,a.byteOffset,a.byteLength))hash=Math.imul(hash^n,16777619);return {id:m.id,name:m.name,meshes:meshes.length,hash:hash>>>0,textured:meshes.filter(x=>x.texture||x.textureRef).length};})};});
+const ready=()=>page.waitForFunction(()=>{const p=document.querySelector('[aria-label="Appearance workspace"]');return p?.getAttribute('aria-busy')==='false'&&/Preview ready|failed|invalid|cannot/i.test(p.innerText)},{},{timeout:120000});
+try{
+await page.goto(process.env.APPLY_URL ?? 'http://127.0.0.1:5173/');
+await page.locator('#file-input-open').setInputFiles([process.env.APPLY_IFC ?? '/tmp/ifclite-public-captures/convento.ifczip',process.env.APPLY_OTHER_IFC ?? '/tmp/ifclite-public-captures/untextured-wall.ifc']);
+await page.evaluate(async()=>{window.__applyStore=(await import('/src/store/index.ts')).useViewerStore;});await page.waitForFunction(()=>{const s=window.__applyStore.getState();return s.models.size===2&&[...s.models.values()].every(m=>m.geometryResult?.meshes.length)&&!s.isLoading;},undefined,{timeout:120000});console.log('LOADED',JSON.stringify(await state()));
+await page.getByRole('tab',{name:'Author',exact:true}).click();await page.getByRole('button',{name:'Appearance',exact:true}).click();
+const panel=page.getByLabel('Appearance workspace');await panel.waitFor({state:'visible'});await page.getByLabel('Appearance model').waitFor({state:'visible'});
+const options=await page.getByLabel('Appearance model').locator('option').evaluateAll(xs=>xs.map(x=>({id:x.value,name:x.textContent})));console.log('MODELS',options);
+const target=options.find(x=>/convento/i.test(x.name));if(!target||options.length!==2)throw Error('Expected two selectable models');
+await page.getByLabel('Appearance model').selectOption(target.id);
+await page.getByLabel('Appearance scope').selectOption('model');
+await page.getByLabel('Upload appearance source').setInputFiles(process.env.APPLY_IMAGE ?? '/tmp/ifclite-public-captures/original/boulder_01_diff_1k.jpg');
+await page.getByLabel('Texture mapping').selectOption('planar');await page.getByLabel('Projection plane').selectOption('xz');await ready();
+const before=await state();console.log('PREVIEW',await panel.innerText(),JSON.stringify(before));await page.screenshot({path:out+'/federated-preview.png'});
+await page.waitForTimeout(1000);
+const cdp=await page.context().newCDPSession(page);await cdp.send('HeapProfiler.collectGarbage');const heapBefore=await cdp.send('Runtime.getHeapUsage');
+await page.evaluate(()=>{document.addEventListener('click',e=>{const text=e.target.closest('button')?.textContent.trim();if(text==='Apply')console.log('APPLY_MEASUREMENT_START');if(text==='Discard')window.__cancelClick={at:performance.now(),trusted:e.isTrusted,status:document.querySelector('[aria-label="Appearance workspace"]').textContent};},{capture:true});});
+const started=new Promise(resolve=>page.on('console',m=>{if(m.text()==='APPLY_MEASUREMENT_START')resolve();}));
+const applying=page.getByRole('button',{name:'Apply',exact:true}).click();await started;await new Promise(resolve=>setTimeout(resolve,100));
+const requested=Date.now();await page.getByRole('button',{name:'Discard',exact:true}).click();const cancelRoundtripMs=Date.now()-requested;await applying;
+await page.waitForFunction(()=>document.querySelector('[aria-label="Appearance workspace"]')?.textContent.includes('Preview discarded.'),undefined,{timeout:120000});
+await page.waitForTimeout(500);await cdp.send('HeapProfiler.collectGarbage');const heapAfter=await cdp.send('Runtime.getHeapUsage');
+const click=await page.evaluate(()=>window.__cancelClick);if(!click?.trusted||!click.status.includes('Preparing IFC changes'))throw Error('Did not exercise a trusted cancellation during preparation');
+fs.writeFileSync(out+'/interaction-memory.json',JSON.stringify({heapBefore,heapAfter,cancelRoundtripMs,click},null,2));
+const cancelled=await state();
+fs.writeFileSync(out+'/cancel-state.json',JSON.stringify({before,cancelled},null,2));
+if(JSON.stringify(before.models)!==JSON.stringify(cancelled.models))throw Error('Cancellation changed model buffers');
+const history=await page.evaluate(async()=>{const {useViewerStore}=await import('/src/store/index.ts');const s=useViewerStore.getState();return {undo:[...s.undoStacks.values()].map(x=>x.length),created:[...s.mutationViews.values()].map(x=>x.getNewEntities().length)};});
+if(history.undo.some(x=>x)||history.created.some(x=>x))throw Error('Cancellation published IFC/history');
+fs.writeFileSync(out+'/identity.json',JSON.stringify({before,cancelled,history},null,2));
+await page.screenshot({path:out+'/cancelled.png'});
+console.log('CANCELLED_WITHOUT_PUBLICATION');
+}finally{await page.screenshot({path:out+'/last.png'}).catch(e=>console.error(e));await browser.close();}

@@ -166,3 +166,13 @@ remote.viewer.colorize(refs, '#ff0000');
 ```
 
 In remote mode `bim.viewer.*` calls are forwarded to the connected viewer, which is exactly how `ifc-lite run script.js model.ifc --viewer <port>` works under the hood. For the full type surface, see the [`@ifc-lite/sdk` README](https://github.com/LTplus-AG/ifc-lite/tree/main/packages/sdk) and the [TypeScript API reference](../api/typescript.md).
+
+### Textured IFC exports in the web viewer
+
+The viewer's `bim.export.ifc(refs, options)` returns IFCZIP `Uint8Array` bytes
+when retained texture images accompany the exported model or subset. Its existing
+return type remains `string | Uint8Array`; do not decode archive bytes as STEP
+text. Supplying an `.ifc` download filename automatically changes it to
+`.ifczip` with ZIP MIME type. Untextured exports retain their ordinary STEP
+content. This packaging belongs to the web viewer adapter; other SDK backends
+provide their own resource packaging.

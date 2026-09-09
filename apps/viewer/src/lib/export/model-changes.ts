@@ -230,7 +230,7 @@ export function totalChangeCount(result: ChangedModelsResult): number {
 /** A produced export payload for one model, before final naming. */
 export interface ChangesExportArtifact {
   content: string | Uint8Array;
-  ext: 'ifc' | 'ifcx';
+  ext: 'ifc' | 'ifczip' | 'ifcx';
   mime: string;
 }
 
@@ -278,7 +278,7 @@ export interface BuildArtifactsDeps {
 /** A produced file (base name is deduped so `base.ext` is unique in the set). */
 export interface ArtifactFile {
   base: string;
-  ext: 'ifc' | 'ifcx';
+  ext: 'ifc' | 'ifczip' | 'ifcx';
   mime: string;
   content: string | Uint8Array;
   modelId: string;

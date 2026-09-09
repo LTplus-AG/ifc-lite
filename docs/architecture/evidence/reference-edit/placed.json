@@ -1,0 +1,91 @@
+{
+  "selected": null,
+  "references": [
+    {
+      "id": "9159d8d6-7f0f-40b9-a941-fd8f1afaeb11",
+      "sourceId": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+      "assetId": "f2be22cb22f33a21bd40eab8b3da5c2df4f537841687f58af746413a9c172203",
+      "frameKey": "local-engineering:m:z-up",
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "calibration": {
+        "rasterToSource": [
+          1,
+          0,
+          0,
+          1,
+          0,
+          0
+        ],
+        "rasterSize": [
+          512,
+          512
+        ],
+        "sourcePoints": [
+          [
+            48.68711656441718,
+            254.62576687116564
+          ],
+          [
+            461.74233128834356,
+            254.62576687116564
+          ]
+        ],
+        "distanceMetres": 2,
+        "worldAnchor": [
+          0,
+          0,
+          0
+        ],
+        "worldDirection": [
+          1,
+          0,
+          0
+        ],
+        "planeNormal": [
+          0,
+          -1,
+          0
+        ]
+      },
+      "cornersIfcWorld": [
+        [
+          -0.2357414448669202,
+          0,
+          -1.2328897338403042
+        ],
+        [
+          2.243346007604563,
+          0,
+          -1.2328897338403042
+        ],
+        [
+          2.243346007604563,
+          0,
+          1.246197718631179
+        ],
+        [
+          -0.2357414448669202,
+          0,
+          1.246197718631179
+        ]
+      ]
+    }
+  ],
+  "models": [
+    {
+      "id": "3f0e8357-eb79-4aa4-a50d-b36aad59047e",
+      "meshes": [
+        {
+          "expressId": 34,
+          "uvs": null
+        },
+        {
+          "expressId": 46,
+          "uvs": null
+        }
+      ]
+    }
+  ]
+}

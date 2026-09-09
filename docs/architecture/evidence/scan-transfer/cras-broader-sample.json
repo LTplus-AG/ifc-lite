@@ -1,0 +1,34 @@
+{
+  "compressed_range": [
+    0,
+    67108863
+  ],
+  "compressed_sha256": "09ff7a8f31689258b57a34f7a1684154517a52c44bb83d29b975aebbbd9dfff1",
+  "complete_source_rows_examined": 8429719,
+  "source_bounds_metres": [
+    [
+      0.1985,
+      -0.4335,
+      -2.0665
+    ],
+    [
+      7.9005,
+      19.6315,
+      1.6895
+    ]
+  ],
+  "source_order_stride": 64,
+  "output_points": 131715,
+  "labels": {
+    "0": 8429719
+  },
+  "output_sha256": "3a5d62a62b34315c4fc70a89d67ff09c67fff96c345feddc62291d43a5800e1d",
+  "coverage": "systematic sample of 64MiB compressed prefix, not complete archive spatial query",
+  "registration": null,
+  "ply": {
+    "bytes": 5369663,
+    "sha256": "8c9ebb9ef55b6e4ce1382da578fffcc577f582561b6c45e4e354d8044b207a9f",
+    "normals": false,
+    "coordinates": "source metres; no registration applied"
+  }
+}

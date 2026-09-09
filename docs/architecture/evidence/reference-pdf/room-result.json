@@ -1,0 +1,172 @@
+{
+  "completed": true,
+  "input": "/tmp/reference-pdf-acceptance/annotations.ifczip",
+  "proofs": [
+    [
+      {
+        "label": "fresh guest",
+        "triangles": 2,
+        "sourceGuid": "3cUkUcyjH3xvp4CtkJ0rsm",
+        "targetGuid": "/3cUkUcyjH3xvp4CtkJ0rsm",
+        "allOrientedTriangleCornersCompared": true,
+        "worldToleranceMetres": 0.00001,
+        "uvTolerance": 0.000001,
+        "maxWorldError": 0,
+        "maxUvError": 0,
+        "decodedImage": {
+          "width": 1326,
+          "height": 894,
+          "rgba": "bb30fa42"
+        },
+        "sampler": {
+          "repeatS": false,
+          "repeatT": false
+        }
+      },
+      {
+        "label": "fresh guest",
+        "triangles": 2,
+        "sourceGuid": "2Z85TEbbz8IQhv$aud8q43",
+        "targetGuid": "/2Z85TEbbz8IQhv$aud8q43",
+        "allOrientedTriangleCornersCompared": true,
+        "worldToleranceMetres": 0.00001,
+        "uvTolerance": 0.000001,
+        "maxWorldError": 0,
+        "maxUvError": 0,
+        "decodedImage": {
+          "width": 1326,
+          "height": 894,
+          "rgba": "bb30fa42"
+        },
+        "sampler": {
+          "repeatS": false,
+          "repeatT": false
+        }
+      }
+    ],
+    [
+      {
+        "label": "fresh rejoin after both previous contexts closed",
+        "triangles": 2,
+        "sourceGuid": "3cUkUcyjH3xvp4CtkJ0rsm",
+        "targetGuid": "/3cUkUcyjH3xvp4CtkJ0rsm",
+        "allOrientedTriangleCornersCompared": true,
+        "worldToleranceMetres": 0.00001,
+        "uvTolerance": 0.000001,
+        "maxWorldError": 0,
+        "maxUvError": 0,
+        "decodedImage": {
+          "width": 1326,
+          "height": 894,
+          "rgba": "bb30fa42"
+        },
+        "sampler": {
+          "repeatS": false,
+          "repeatT": false
+        }
+      },
+      {
+        "label": "fresh rejoin after both previous contexts closed",
+        "triangles": 2,
+        "sourceGuid": "2Z85TEbbz8IQhv$aud8q43",
+        "targetGuid": "/2Z85TEbbz8IQhv$aud8q43",
+        "allOrientedTriangleCornersCompared": true,
+        "worldToleranceMetres": 0.00001,
+        "uvTolerance": 0.000001,
+        "maxWorldError": 0,
+        "maxUvError": 0,
+        "decodedImage": {
+          "width": 1326,
+          "height": 894,
+          "rgba": "bb30fa42"
+        },
+        "sampler": {
+          "repeatS": false,
+          "repeatT": false
+        }
+      }
+    ],
+    [
+      {
+        "label": "room export reopened",
+        "triangles": 2,
+        "sourceGuid": "3cUkUcyjH3xvp4CtkJ0rsm",
+        "targetGuid": "/3cUkUcyjH3xvp4CtkJ0rsm",
+        "allOrientedTriangleCornersCompared": true,
+        "worldToleranceMetres": 0.00001,
+        "uvTolerance": 0.000001,
+        "maxWorldError": 0,
+        "maxUvError": 0,
+        "decodedImage": {
+          "width": 1326,
+          "height": 894,
+          "rgba": "bb30fa42"
+        },
+        "sampler": {
+          "repeatS": false,
+          "repeatT": false
+        }
+      },
+      {
+        "label": "room export reopened",
+        "triangles": 2,
+        "sourceGuid": "2Z85TEbbz8IQhv$aud8q43",
+        "targetGuid": "/2Z85TEbbz8IQhv$aud8q43",
+        "allOrientedTriangleCornersCompared": true,
+        "worldToleranceMetres": 0.00001,
+        "uvTolerance": 0.000001,
+        "maxWorldError": 0,
+        "maxUvError": 0,
+        "decodedImage": {
+          "width": 1326,
+          "height": 894,
+          "rgba": "bb30fa42"
+        },
+        "sampler": {
+          "repeatS": false,
+          "repeatT": false
+        }
+      }
+    ]
+  ],
+  "mousePicks": {
+    "ownerPick": {
+      "x": 693.5323744711826,
+      "y": 770.8796378147507,
+      "id": 65,
+      "selected": {
+        "modelId": "e3ea4eab-f44a-4086-984b-7ed7a63942ce",
+        "expressId": 65
+      }
+    },
+    "guestPick": {
+      "x": 693.5323744711826,
+      "y": 770.8796378147507,
+      "id": 4,
+      "selected": {
+        "modelId": "room:aa5b6f5cc031",
+        "expressId": 4
+      }
+    },
+    "rejoinPick": {
+      "x": 693.5323744711826,
+      "y": 770.8796378147507,
+      "id": 4,
+      "selected": {
+        "modelId": "room:aa5b6f5cc031",
+        "expressId": 4
+      }
+    },
+    "reopenedPick": {
+      "x": 693.5323744711826,
+      "y": 770.8796378147507,
+      "id": 3,
+      "selected": {
+        "modelId": "66900d81-c6e0-4317-b319-1d76a16601b3",
+        "expressId": 3
+      }
+    }
+  },
+  "imageTransport": "Room decoded RGBA pixel equality; not an assertion of original JPEG byte preservation",
+  "exportName": "Shared model_export.ifcx"
+}

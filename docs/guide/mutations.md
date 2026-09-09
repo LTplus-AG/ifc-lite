@@ -294,6 +294,100 @@ editor.removeEntity(unwantedExpressId);
 
 Edits accumulate in the same overlay used by `setProperty` / `setAttribute`. They land in the exported file the next time you call `exportToStep(store, { applyMutations: true })` from `@ifc-lite/export`.
 
+### Atomic overlay edits
+
+Use `StoreEditor.runAtomic` to create or modify a related set of IFC entities together. The callback receives a detached editor; a thrown error leaves the live overlay, mutation history and express-ID allocator unchanged. `MutablePropertyView.runAtomic` provides the same operation with a draft view for property and quantity edits.
+
+```typescript
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+
+const view = new MutablePropertyView(propertyTable, modelId);
+const editor = new StoreEditor(dataStore, view);
+const colour = editor.runAtomic(draft => {
+  const entity = draft.addEntity('IfcColourRgb', [null, 0.2, 0.4, 0.8]);
+  if (!draft.hasEntity(entity.expressId)) throw new Error('Missing created colour');
+  return entity;
+});
+console.log(editor.hasEntity(colour.expressId)); // true after publication
+```
+
+`hasEntity` recognizes live source, deferred-index and newly created entities, and rejects removed entities and invalid IDs. Atomic callbacks must be synchronous: prepare images, network requests and other asynchronous resources beforehand. Source tables and extractors remain shared read-only. Escaped draft editors and nested values cannot modify the published overlay. Reentering the original view is detected and preserves that independent edit rather than overwriting it.
+
+For commands coordinating IFC with another synchronous subsystem, `view.prepareAtomic(callback)` returns `{ result, validate, commit, rollback }`. Preparation runs the callback without publishing. Validate all external resources before calling `commit`; it rejects intervening overlay edits, including edits that skip history. Repeated successful commits are harmless and never replay an old snapshot over newer edits. After a successful commit, `rollback` restores the original overlay, history and allocator only if no subsequent edit occurred; otherwise it throws and preserves those newer edits. Repeated rollback is harmless, and a rolled-back transaction cannot be committed again. Rollback before commit is a no-op.
+
+These transactions publish IFC overlay state only. They do not group application undo stacks or roll back renderer, file or network effects. The caller must coordinate those effects and handle rollback refusal explicitly. Preparation copies the existing overlay and checks it for changes, so batch related edits in one transaction rather than opening a transaction for every entity.
+
+### Cooperative owned entity operations
+
+`StoreEditor.prepareEntityOperations` prepares a bounded list of `create`,
+`setPositionalAttribute` and `remove` operations cooperatively. It is intended for
+appearance authoring's staged IFC/history publication. It does not accept an async
+callback and never exposes its mutable working view. The existing `runAtomic` and
+`prepareAtomic` behavior is unchanged.
+
+```typescript
+import { MutablePropertyView, StoreEditor } from '@ifc-lite/mutations';
+
+const view = new MutablePropertyView(propertyTable, modelId);
+const editor = new StoreEditor(dataStore, view); // establishes allocator watermark
+const abort = new AbortController();
+const operations = [{
+  kind: 'create' as const,
+  expressId: view.peekNextExpressId(),
+  type: 'IfcTextureVertexList',
+  attributes: [[[0, 0], [1, 0], [0, 1]]],
+}];
+const prepared = await editor.prepareEntityOperations(operations, { signal: abort.signal });
+try {
+  prepared.validate(); // coordinate other already-prepared resources here
+  prepared.commit();
+  console.log(prepared.effects, prepared.mutations);
+} finally {
+  prepared.dispose(); // release private checkpoints; does not undo a commit
+}
+```
+
+Construction initializes the live allocator before preparation starts; cancellation
+never advances it. Creation IDs must match the next sequential allocation. The
+operation executor uses the same `StoreEditor` rules as ordinary edits. A missing
+removal or invalid target discards the whole unpublished operation list.
+
+Copies yield inside large nested attribute arrays. The default scheduler yields to
+a host task, targeting four milliseconds per slice; `yieldTask` permits a host
+scheduler override. A microtask-only scheduler does not let browser rendering run.
+The defaults cap cumulative traversal at 16 million entries and conservatively
+account 512 MiB across the owned copies; these are work/allocation estimates, not
+measured heap use. `maxWork`, `maxBytes`, and `maxSliceMs` customize finite positive
+budgets. Budget failures and unsupported values reject without publication.
+
+The supported overlay vocabulary is strings, numbers, booleans, null and undefined (preserving negative
+zero), plain objects, sparse arrays, maps with primitive keys, and sets
+with primitive members. Aliases and cycles are preserved. Host objects, accessors,
+functions and mutable map keys/set members are rejected on this opt-in path rather
+than silently converted. Synchronous transaction support remains unchanged.
+
+The handle's effects/history records are separate owned copies: caller edits
+cannot modify the live publication or rollback checkpoint. Keep the input operation
+list stable until commit. Exact synchronous comparisons reject changes to its owned
+checkpoint or the captured live overlay, including skip-history/escaped nested SDK
+edits. A changed source-index identity or size also rejects publication. Source
+index records must otherwise follow their existing immutable-source contract.
+
+Capture itself is cooperative, so it is not an instantaneous snapshot at method
+entry. The final fence accepts only a coherent captured input equal to the live
+input at publication. Callers whose operations depend on an earlier model revision
+(such as a worker's appearance plan) must also retain and validate that earlier
+source checkpoint. Neither a revision counter alone nor a yielded comparison can
+replace the exact final fence. Its worst-case synchronous cost is linear in the
+mutable input/overlay size; this API does not promise a universal frame budget.
+
+Abort rejects preparation, including a pending scheduler wait, and abort after
+preparation prevents commit. Commit is idempotent. Rollback restores the captured
+original only while the published state still matches its private checkpoint;
+newer SDK edits are preserved and cause rollback to throw. Dispose is idempotent;
+before commit it abandons work, after commit it relinquishes rollback. No GPU,
+image, network or application undo resources are implicitly published by this API.
+
 #### STEP value conventions
 
 `addEntity` and `setPositionalAttribute` accept the same value shape that `EntityExtractor.extractEntity().attributes` produces — keeping the read/write round-trip predictable:

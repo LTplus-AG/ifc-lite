@@ -20,7 +20,7 @@ import { pendingMutationsField, pendingOverlay } from '../overlay.js';
 import { buildSpatialTree } from '../spatial-tree.js';
 import { ToolErrorCode, ToolExecutionError } from '../errors.js';
 
-const COMPARISON_OPS: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'exists'];
+const COMPARISON_OPS: ComparisonOp[] = ['=', '!=', '>', '<', '>=', '<=', 'contains', 'exists', 'matches'];
 
 const queryEntities: Tool = {
   name: 'query_entities',

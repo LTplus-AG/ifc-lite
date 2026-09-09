@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
 import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
@@ -24,7 +28,7 @@ export default defineConfig({
   projects: [
     {
       name: 'viewer-e2e',
-      testMatch: /(viewer-smoke|usd-export|laz-wasm)\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         ...devices['Desktop Chrome'],
@@ -45,7 +49,7 @@ export default defineConfig({
     },
     {
       name: 'viewer-e2e-ci',
-      testMatch: /(viewer-smoke|usd-export|laz-wasm)\.e2e\.spec\.ts/,
+      testMatch: /(viewer-smoke|usd-export|laz-wasm|model-reposition)\.e2e\.spec\.ts/,
       timeout: 240000,
       use: {
         baseURL: 'http://localhost:3000',

@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import { appearanceReferenceTeardown } from './slices/appearanceReferenceSlice.js';
 
 /**
  * The store's assembled teardown: every slice's contribution, in one list.
@@ -70,8 +71,11 @@ import { playbackTeardown } from './slices/playbackSlice.js';
 import { searchTeardown } from './slices/searchSlice.teardown.js';
 import { annotationsTeardown } from './slices/annotationsSlice.teardown.js';
 import { addElementTeardown } from './slices/addElementSlice.teardown.js';
+import { splitToolTeardown } from './slices/splitToolSlice.js';
+import { modelPlacementTeardown } from './slices/modelPlacementSlice.js';
 import { pointCloudTeardown } from './slices/pointCloudSlice.js';
 import { zonesTeardown } from './slices/zonesSlice.js';
+import { layerStackTeardown } from './slices/layerStackSlice.teardown.js';
 
 /**
  * Every slice teardown the viewer store knows about.
@@ -107,8 +111,12 @@ export const viewerTeardownRegistry: readonly AnySliceTeardown[] = createTeardow
   searchTeardown,
   annotationsTeardown,
   addElementTeardown,
+  splitToolTeardown,
   pointCloudTeardown,
+  modelPlacementTeardown,
+  appearanceReferenceTeardown,
   zonesTeardown,
+  layerStackTeardown,
 ]);
 
 /**

@@ -89,6 +89,10 @@ The cache keys models by the xxHash64 of the source IFC, and `reader.validate(ca
 
 The binary layout is versioned via the exported `FORMAT_VERSION` constant. Readers accept entries written by the current or an older format version (with backward-compatible decoding, e.g. the per-mesh geometry-class byte added in v5) and reject entries written by a newer one, so mixed-version deployments fail safely toward a cold parse.
 
+Version 19 preserves explicitly supplied canonical `MeshData.appearanceSource` provenance. Fresh canonical meshes store an identity marker; fragmented or expanded meshes reference a geometry-header source-index pool, shared across spatial chunks, plus their corner mapping. Restored metadata points to the restored mesh indices, preserving the topology identity fence required by appearance preview. Invalid identities, source lengths, pool references and corner ranges fail cache reading/writing instead of enabling an unsafe preview. Unmarked meshes remain unmarked; old records never acquire inferred canonical identity.
+
+The viewer includes `FORMAT_VERSION` in its cache key, so older entries reparse once and receive real provenance from the canonical geometry pipeline. Direct readers can still decode v13–v18 records for viewing, with appearance provenance absent. When reading an older geometry header directly, pass its version as the second argument to `readGeometryHeadV13(reader, version)`; it defaults to the current format. Keep the returned chunk metadata when calling `decodeGeometryChunk`, since it carries the shared source-index pool. This does not add UV/image caching: texture-carrying viewer models retain their existing cache bypass.
+
 ## Source-hash contract (and `omitSourceHash`)
 
 By default the header stores the full-file `xxhash64` of the source in `sourceHash`, and `reader.validate()` / `read({ sourceBuffer })` compare against it. Hashing a large source can be a multi-second main-thread cost, so a caller that validates the source **another way** (e.g. an application-layer content hash plus a file modified-time guard, as the viewer's source-decoupled cache tier does) can pass `omitSourceHash: true`:
@@ -136,3 +140,22 @@ Serialization borrows valid sorted columns synchronously, preserving stable dupl
 `BinaryCacheWriter.write` accepts `compressGeometryChunksInWorker: true` to run geometry chunk compression in one lazily created browser module worker. The viewer enables it to keep codec work off the UI thread. The default is `false`, preserving workerless SDK and Node use. The existing compression size floor and four-chunk concurrency limit remain in effect; disabling `compressGeometryChunks` creates no worker. Cache format, chunk order, compressed-versus-raw selection and readers are unchanged.
 
 The browser application must bundle the package worker asset and permit module workers. Worker startup, codec and transport failures reject the cache write; there is no silent main-thread retry. Only newly serialized chunk buffers cross the worker boundary, and the worker terminates after geometry serialization succeeds or fails. Source/model data stay with the caller. This moves compression CPU rather than eliminating it; include cache completion when measuring cold loads.
+
+### Textured GLB capture import
+
+`parseGLBToMeshData` and `loadGLBToMeshData` preserve base-colour `TEXCOORD_0`
+coordinates (including normalized integer UVs and `KHR_texture_transform`),
+texture references, node TRS/matrices and mirrored winding. UV vertices remain
+separate across seams. Node translation stays in the double-precision `origin`.
+Use `parseGLBImageResources(parsed.json, parsed.bin)` to obtain original encoded
+PNG/JPEG images keyed by each mesh's `textureRef.url`. Decode these at the host
+boundary; this package never allocates browser image objects. Embedded PNG/JPEG
+magic bytes must match the declared MIME type before geometry or resources are
+returned; MIME labels cannot bypass the host opacity checks.
+
+This is opaque captured-albedo import. Embedded base-colour PNG/JPEG images and
+repeat/clamp samplers are supported. External images/buffers, other UV sets,
+mirrored repeat, sparse accessors, compression, skinning/morphs, vertex colours,
+additional material maps, and textured MASK/BLEND produce explicit errors.
+The viewer also refuses transparent image pixels, retains original bytes with
+the model, and releases images on removal. It does not claim full PBR fidelity.

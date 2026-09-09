@@ -1,0 +1,320 @@
+{
+  "selected": null,
+  "draft": {
+    "intent": "reference",
+    "modelId": "512f0c5f-e2cc-400a-b07e-17f64153497f",
+    "sourceId": "pdf:521c3d54-9da5-4aa5-a0c6-24654858c1ae",
+    "scope": {
+      "kind": "model"
+    },
+    "settings": {
+      "kind": "planar",
+      "plane": "xz",
+      "repeatU": 1,
+      "repeatV": 1,
+      "tileWidth": 1,
+      "tileHeight": 1,
+      "tileDepth": 1,
+      "rotationDegrees": 0,
+      "offsetU": 0,
+      "offsetV": 0,
+      "offsetW": 0,
+      "repeatS": false,
+      "repeatT": false
+    },
+    "previewEnabled": true
+  },
+  "references": [
+    {
+      "id": "71720a5f-1fc3-4bec-96f5-38aa6e6765ff",
+      "sourceId": "pdf:521c3d54-9da5-4aa5-a0c6-24654858c1ae",
+      "assetId": "2901242c28908542acd202f2f38f0626a3fff4d1453934f241cebb96db970529",
+      "frameKey": "local-engineering:m:z-up",
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "calibration": {
+        "rasterToSource": [
+          0,
+          0.49975131401518835,
+          0.5,
+          0,
+          59.599968350666124,
+          524.5148848079301
+        ],
+        "rasterSize": [
+          1326,
+          894
+        ],
+        "sourcePoints": [
+          [
+            270.6109167368456,
+            555.00584688082
+          ],
+          [
+            270.6109167368456,
+            868.0463908291559
+          ]
+        ],
+        "distanceMetres": 58.928,
+        "worldAnchor": [
+          0,
+          0,
+          0
+        ],
+        "worldDirection": [
+          1,
+          0,
+          0
+        ],
+        "planeNormal": [
+          0,
+          0,
+          1
+        ]
+      },
+      "cornersIfcWorld": [
+        [
+          -5.739740259740252,
+          39.721542167243854,
+          0
+        ],
+        [
+          119.00394805194802,
+          39.721542167243854,
+          0
+        ],
+        [
+          119.00394805194802,
+          -44.4235198996917,
+          0
+        ],
+        [
+          -5.739740259740252,
+          -44.4235198996917,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "80322229-abd0-4f3c-84ce-777a22045d6b",
+      "sourceId": "pdf:521c3d54-9da5-4aa5-a0c6-24654858c1ae",
+      "assetId": "2901242c28908542acd202f2f38f0626a3fff4d1453934f241cebb96db970529",
+      "frameKey": "local-engineering:m:z-up",
+      "visible": true,
+      "locked": false,
+      "opacity": 1,
+      "calibration": {
+        "rasterToSource": [
+          0,
+          0.49975131401518835,
+          0.5,
+          0,
+          59.599968350666124,
+          524.5148848079301
+        ],
+        "rasterSize": [
+          1326,
+          894
+        ],
+        "sourcePoints": [
+          [
+            270.6109167368456,
+            555.00584688082
+          ],
+          [
+            270.6109167368456,
+            868.0463908291559
+          ]
+        ],
+        "distanceMetres": 58.928,
+        "worldAnchor": [
+          0,
+          0,
+          0
+        ],
+        "worldDirection": [
+          1,
+          0,
+          0
+        ],
+        "planeNormal": [
+          0,
+          -1,
+          0
+        ]
+      },
+      "cornersIfcWorld": [
+        [
+          -5.739740259740252,
+          0,
+          39.721542167243854
+        ],
+        [
+          119.00394805194802,
+          0,
+          39.721542167243854
+        ],
+        [
+          119.00394805194802,
+          0,
+          -44.4235198996917
+        ],
+        [
+          -5.739740259740252,
+          0,
+          -44.4235198996917
+        ]
+      ]
+    }
+  ],
+  "sources": [
+    {
+      "id": "pdf:521c3d54-9da5-4aa5-a0c6-24654858c1ae",
+      "assetId": "2901242c28908542acd202f2f38f0626a3fff4d1453934f241cebb96db970529",
+      "name": "cyclorama-floor-plans-habs-pa-6709-sheet-4.pdf · page 1",
+      "width": 1326,
+      "height": 894,
+      "calibration": {
+        "sourcePoints": [
+          [
+            270.6109167368456,
+            555.00584688082
+          ],
+          [
+            270.6109167368456,
+            868.0463908291559
+          ]
+        ],
+        "distanceMetres": 58.928
+      },
+      "pdf": {
+        "documentKey": "pdf:521c3d54-9da5-4aa5-a0c6-24654858c1ae",
+        "recipe": {
+          "page": {
+            "pageNumber": 1,
+            "viewBox": [
+              0,
+              487.700012,
+              596,
+              1224
+            ],
+            "userUnit": 1,
+            "intrinsicRotation": 0,
+            "widthPoints": 736.299988,
+            "heightPoints": 596,
+            "pdfToPage": [
+              0,
+              1,
+              1,
+              0,
+              -487.700012,
+              0
+            ]
+          },
+          "rotation": 90,
+          "cropPoints": [
+            36.814872807930094,
+            59.599968350666124,
+            662.6702423841398,
+            447
+          ],
+          "requestedDpi": 144,
+          "effectiveDpi": 144,
+          "pixelWidth": 1326,
+          "pixelHeight": 894,
+          "paperSizeMetres": [
+            0.23377533550773816,
+            0.15769166666666665
+          ],
+          "pixelToPdf": [
+            0,
+            0.49975131401518835,
+            0.5,
+            0,
+            59.599968350666124,
+            524.5148848079301
+          ]
+        }
+      }
+    }
+  ],
+  "models": [
+    {
+      "id": "512f0c5f-e2cc-400a-b07e-17f64153497f",
+      "name": "two-coloured-building-scale-walls.ifc",
+      "meshes": [
+        {
+          "expressId": 34,
+          "color": [
+            0.05882352963089943,
+            0.18039216101169586,
+            0.6000000238418579,
+            1
+          ],
+          "uvs": null
+        },
+        {
+          "expressId": 46,
+          "color": [
+            0.05882352963089943,
+            0.48627451062202454,
+            0.13333334028720856,
+            1
+          ],
+          "uvs": null
+        },
+        {
+          "expressId": 65,
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "uvs": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          "textureRef": {
+            "textureId": 55,
+            "url": "textures/2901242c28908542acd202f2f38f0626a3fff4d1453934f241cebb96db970529.png",
+            "repeatS": false,
+            "repeatT": false
+          }
+        },
+        {
+          "expressId": 84,
+          "color": [
+            1,
+            1,
+            1,
+            1
+          ],
+          "uvs": [
+            0,
+            1,
+            1,
+            1,
+            1,
+            0,
+            0,
+            0
+          ],
+          "textureRef": {
+            "textureId": 74,
+            "url": "textures/2901242c28908542acd202f2f38f0626a3fff4d1453934f241cebb96db970529.png",
+            "repeatS": false,
+            "repeatT": false
+          }
+        }
+      ]
+    }
+  ]
+}

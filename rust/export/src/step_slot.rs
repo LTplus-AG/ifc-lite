@@ -48,6 +48,18 @@
 //! one language's grammar with nothing pinning the other, so it is out of scope
 //! for #4125 and tracked in LTplus-AG/ifc-lite#4200 with the rest of the
 //! splitter unification.
+//!
+//! A SECOND accept-side divergence is deliberate, and the reason is asymmetric
+//! rather than accidental: nesting depth. The export twin validates nested
+//! values by recursion, so it bounds nesting at 64 and returns `null` past it,
+//! because past roughly 3763 (measured cold; V8 shrinks the frames once warm,
+//! so the cold figure is the floor) it would throw `RangeError` instead of
+//! refusing, and a throw is an outcome no caller of that function handles. This
+//! module walks the same grammar iteratively with an explicit `depth`, so it has
+//! nothing to bound and accepts any depth. The deepest nesting inside a slot in
+//! the 122-file real corpus is 3, so neither side refuses anything real; the
+//! difference only shows on input no file contains. Not pinned in
+//! `step_refuse_vectors.json`, which records what BOTH must refuse.
 
 /// Split a STEP attribute list into its top-level arguments, or `None` when
 /// the text is not an argument list this can scan.

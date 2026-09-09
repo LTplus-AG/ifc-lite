@@ -295,7 +295,6 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
     models.set(modelId, { ...model, geometryResult });
     return { geometryResult, models, geometryUpdateTick: state.geometryUpdateTick + 1 };
   }),
-
   releaseGeometryMemory: () => set((state) => {
     if (!state.geometryResult || !state.boundedGeometryMode) {
       return {};
@@ -306,6 +305,7 @@ export const createDataSlice: StateCreator<DataSlice & DataCrossSliceState, [], 
       meshes[i].positions = EMPTY_POSITIONS;
       meshes[i].normals = EMPTY_NORMALS;
       meshes[i].indices = EMPTY_INDICES;
+      delete meshes[i].appearanceSource;
     }
 
     const geometryResult = {

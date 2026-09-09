@@ -157,3 +157,118 @@ describe('readViewPdfSource (#2042)', () => {
     assert.deepEqual(source.view.instancedMeshes, []);
   });
 });
+
+/**
+ * The per-model "Isolate in 3D" channel (`hiddenEntitiesByModel` /
+ * `isolatedEntitiesByModel`) — federation-only, keyed by `modelId`, values in
+ * that model's LOCAL express-id space. Neither `hiddenEntities` /
+ * `isolatedEntities` nor `computeIsolationFilterSet` cover it (confirmed by
+ * grep against `basketVisibleSet.ts`'s `getVisibleGlobalIds`, which applies
+ * it as a third, independent, per-candidate AND). Before the fix this file
+ * exists to pin, a model-scoped hide/isolate was invisible to the PDF export:
+ * `readViewPdfSource` printed geometry the viewport does not show.
+ *
+ * The fixture puts a SECOND model's meshes at a LOCAL express id (1) that
+ * COLLIDES with the first model's local id (1) — only the `idOffset` tells
+ * them apart. An off-by-one, or a fix that forgot the offset conversion, is
+ * invisible on a single-model fixture and would silently drop or keep the
+ * wrong entity here.
+ */
+describe('readViewPdfSource — per-model isolation channel (#4328 follow-up)', () => {
+  const SMALL_ID_OFFSET = 0;
+  const LARGE_ID_OFFSET = 1_000_000;
+
+  function idMesh(globalId: number): MeshData {
+    return {
+      expressId: globalId,
+      ifcType: 'IfcWall',
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
+      normals: new Float32Array(9),
+      indices: new Uint32Array([0, 1, 2]),
+      color: [1, 1, 1, 1],
+    };
+  }
+
+  function geometryOf(meshes: MeshData[]): GeometryResult {
+    const bounds = { min: { x: 0, y: 0, z: 0 }, max: { x: 10, y: 10, z: 10 } };
+    return {
+      meshes,
+      totalTriangles: meshes.length,
+      totalVertices: meshes.length * 3,
+      coordinateInfo: {
+        originShift: { x: 0, y: 0, z: 0 },
+        originalBounds: bounds,
+        shiftedBounds: bounds,
+        hasLargeCoordinates: false,
+      },
+    };
+  }
+
+  /**
+   * `small` (idOffset 0): one mesh at local/global id 1.
+   * `large` (idOffset 1_000_000): two meshes, local ids 1 and 2 — global ids
+   * 1_000_001 and 1_000_002. Local id 1 COLLIDES with `small`'s local id 1.
+   */
+  function seedTwoModels(overrides: {
+    hiddenEntitiesByModel?: Map<string, Set<number>>;
+    isolatedEntitiesByModel?: Map<string, Set<number>>;
+  } = {}): void {
+    const small = {
+      ...fixtureModel('small', { idOffset: SMALL_ID_OFFSET }),
+      geometryResult: geometryOf([idMesh(SMALL_ID_OFFSET + 1)]),
+    };
+    const large = {
+      ...fixtureModel('large', { idOffset: LARGE_ID_OFFSET }),
+      geometryResult: geometryOf([idMesh(LARGE_ID_OFFSET + 1), idMesh(LARGE_ID_OFFSET + 2)]),
+    };
+    useViewerStore.setState({
+      ...fixtureModels(small, large),
+      hiddenEntities: new Set<number>(),
+      isolatedEntities: null,
+      classFilter: null,
+      selectedStoreys: new Set<number>(),
+      hiddenEntitiesByModel: overrides.hiddenEntitiesByModel ?? new Map(),
+      isolatedEntitiesByModel: overrides.isolatedEntitiesByModel ?? new Map(),
+      projectionMode: 'orthographic',
+      sectionPlane: { ...useViewerStore.getState().sectionPlane, enabled: false },
+    });
+
+    const canvas = document.createElement('canvas');
+    Object.defineProperty(canvas, 'clientHeight', { value: 500, configurable: true });
+    setGlobalCanvasRef({ current: canvas });
+    setGlobalRendererRef({ current: fakeRenderer() });
+  }
+
+  afterEach(() => {
+    clearGlobalRefs();
+  });
+
+  const ids = (meshes: readonly MeshData[]): number[] =>
+    meshes.map((m) => m.expressId).sort((a, b) => a - b);
+
+  it('no per-model channel active: unchanged output (both models, all meshes)', () => {
+    seedTwoModels();
+    const source = readViewPdfSource(useViewerStore.getState());
+    assert.deepEqual(ids(source.view.meshes), [1, 1_000_001, 1_000_002]);
+  });
+
+  it('isolatedEntitiesByModel scoped to "large" drops that model\'s non-isolated mesh, leaves "small" untouched', () => {
+    // `large` local id 1 is isolated; local id 2 must drop. `small`'s local id
+    // 1 (which COLLIDES with `large`'s local id 1) carries no entry for
+    // 'small' in the map and must be untouched — proving the channel is
+    // scoped per model, not a flat id match.
+    seedTwoModels({ isolatedEntitiesByModel: new Map([['large', new Set([1])]]) });
+    const source = readViewPdfSource(useViewerStore.getState());
+    assert.deepEqual(
+      ids(source.view.meshes),
+      [1, 1_000_001],
+      'small model mesh (global 1) and large model\'s isolated local-id-1 mesh (global 1,000,001) survive; large\'s local-id-2 mesh (global 1,000,002) does not',
+    );
+  });
+
+  it('hiddenEntitiesByModel scoped to "large" drops only that model\'s named local id', () => {
+    seedTwoModels({ hiddenEntitiesByModel: new Map([['large', new Set([2])]]) });
+    const source = readViewPdfSource(useViewerStore.getState());
+    assert.deepEqual(ids(source.view.meshes), [1, 1_000_001]);
+  });
+});

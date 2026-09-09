@@ -36,6 +36,8 @@ describe('generateAll', () => {
     const produced = readdirSync(outDir);
     expect(produced).toContain('ifc4');
     expect(produced).toContain('ifc4x3');
+    expect(produced).toContain('ifc2x3');
     expect(existsSync(join(outDir, 'ifc4x3', 'entities.ts'))).toBe(true);
+    expect(existsSync(join(outDir, 'ifc2x3', 'entities.ts'))).toBe(true);
   });
 });

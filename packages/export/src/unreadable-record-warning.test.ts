@@ -14,10 +14,11 @@
  * line gets a case here asserting the warning reaches `result.stats.warnings` —
  * the collection an exporter's caller actually reads.
  *
- * The last case is the other direction, and the reason the report is not simply
- * pushed where it is produced: a record whose line the export WITHHOLDS must not
- * also be reported as "written exactly as the source file has it". Two warnings
- * for one outcome, one of them false.
+ * The last two cases are the other direction — what the report must NOT claim.
+ * A record whose line the export withholds must not also be reported as written,
+ * which is why the report is buffered rather than pushed where it is produced;
+ * and the report must not describe the written line at all, because a
+ * cross-schema export rewrites it after the buffer is flushed (#4213).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -75,13 +76,15 @@ function newSession(store: IfcDataStore) {
 }
 
 /**
- * The refusal report, matched on the sentence that makes the claim rather than
+ * The refusal report, matched on the clause that states the refusal rather than
  * on the whole string: a reworded warning should not fail this, but a warning
  * that stopped being pushed must.
  */
 function refusalReportsFor(warnings: string[], expressId: number): string[] {
   return warnings.filter(
-    (w) => w.includes(`#${expressId}`) && w.includes('was written exactly as the source file has it'),
+    (w) =>
+      w.includes(`#${expressId}`) &&
+      w.includes('could not be read as a list of attributes'),
   );
 }
 
@@ -152,5 +155,54 @@ describe('an unreadable record whose edits were dropped is reported to the calle
     expect(result.stats.warnings.some((w) => w.includes(`#${REL_ID}`))).toBe(true);
     // ...and NOT by a second warning claiming the entity was written.
     expect(refusalReportsFor(result.stats.warnings, REL_ID)).toHaveLength(0);
+  });
+});
+
+/**
+ * An IFC4 `IFCCHIMNEY` with the same undoubled-apostrophe shape. IFC2X3 has no
+ * chimney, so `schema-converter.ts` maps the type to `IFCBUILDINGELEMENTPROXY`
+ * on the way out — which is the point: the line this export writes for `#50` is
+ * not the line the source file holds.
+ */
+const CROSS_SCHEMA_IFC = `ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition[DesignTransferView]'),'2;1');
+FILE_NAME('base.ifc','2026-09-09T10:00:00+01:00',(''),(''),'ifc-lite','ifc-lite','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+#1=IFCPROJECT('0OSuGGYUFyIf0LtE29OSuG',$,'My Project',$,$,$,$,$,$);
+#50=IFCCHIMNEY('0OSuGGYUFyIf0LtE29OSuC',$,'Chimney 1',$,$,$,$,'a's','b's');
+ENDSEC;
+END-ISO-10303-21;`;
+
+const CHIMNEY_ID = 50;
+
+describe('the refusal report does not claim how the record was written', () => {
+  it('a cross-schema export rewrites the record the refusal is about', async () => {
+    // Before #4213 the warning opened "was written exactly as the source file
+    // has it", produced by `applySourceLineMutationsReported` — which runs
+    // BEFORE `writeSourceEntityLines` hands the line to `convertStepLine`. On
+    // this path the conversion renames the type, so the sentence was false in
+    // exactly the case a caller needs it: it is asking what became of an edit
+    // the export dropped.
+    const store = await parse(CROSS_SCHEMA_IFC);
+    const { view, editor } = newSession(store);
+    editor.setAttribute(CHIMNEY_ID, 'Description', 'NEWDESC');
+
+    const result = new StepExporter(store, view).export({ schema: 'IFC2X3' });
+    const text = new TextDecoder().decode(result.content);
+
+    // The edit really was dropped, and really was reported.
+    expect(text).not.toContain('NEWDESC');
+    expect(refusalReportsFor(result.stats.warnings, CHIMNEY_ID)).toHaveLength(1);
+
+    // The record went out under a different class than the source gave it, so
+    // no warning about it may say it went out as the source has it.
+    expect(text).toMatch(new RegExp(`^#${CHIMNEY_ID}\\s*=\\s*IFCBUILDINGELEMENTPROXY`, 'm'));
+    expect(text).not.toMatch(new RegExp(`^#${CHIMNEY_ID}\\s*=\\s*IFCCHIMNEY`, 'm'));
+    for (const warning of result.stats.warnings.filter((w) => w.includes(`#${CHIMNEY_ID}`))) {
+      expect(warning).not.toContain('exactly as the source');
+    }
   });
 });

@@ -296,9 +296,19 @@ const result = await parseAuto(zipBuffer);
 const ifcBuffer = await unwrapIfcZip(zipBuffer);
 ```
 
-Referenced resources inside the archive (textures, documents) are not
-extracted — only the model file's bytes. An archive with zero or more than
-one `.ifc`/`.ifcxml` entry throws rather than guessing which one to load.
+`unwrapIfcZip` returns only model bytes. For textured archives, call
+`unwrapIfcZipWithResources`: its `resources` map resolves PNG/JPEG images by
+lowercased basename (first entry wins), while `originalResources` preserves
+each archive path using the same byte arrays. `modelPath` identifies the IFC
+entry; keep that path and the original image paths when repackaging a model
+whose texture references are relative. Non-zip input returns empty resource
+maps and no `modelPath`. Image extraction applies per-entry and aggregate
+size/count limits. `resourcesIncomplete` is true when those budgets omit at
+least one image; a portable exporter must report this rather than claim all
+resources were preserved. Other resource formats are not extracted.
+
+An archive with zero or more than one `.ifc`/`.ifcxml` entry throws rather
+than guessing which one to load.
 
 ### Direct IFCX Parsing
 
@@ -380,6 +390,11 @@ const storeyId = hierarchy.elementToStorey.get(wallId);
 const path = result.idToPath.get(wallId);
 const id = result.pathToId.get(path);
 ```
+
+`spatialHierarchy.getContainingSpace(elementId)` reads the live canonical
+containment index. It resolves a directly contained element or aggregated
+descendant to its nearest containing space, and reflects authored containment
+changes and Undo without rebuilding the hierarchy.
 
 ## Server-Side Parsing
 
@@ -725,3 +740,7 @@ When working with multiple IFC files (e.g., architectural, structural, and MEP m
 `CompactEntityIndex.getColumns()` exposes the four numeric backing arrays (`expressIds`, `byteOffsets`, `byteLengths`, `typeIndices`) and a copy of the `typeStrings` list. This supports column-aware consumers such as binary cache serialization without creating a reference object for every entity.
 
 The numeric arrays are borrowed and must not be mutated. They remain valid until their owner detaches them. A transport may transfer the arrays when retiring the owning index; cache consumers must not detach them. Changing the returned string list does not change the index. Generic map-compatible indexes remain supported by the parser and cache interfaces.
+
+Parsed, worker-hydrated and server-loaded spatial hierarchies use the shared
+`spatialLookups` helper from `@ifc-lite/data`. `getPath` accepts both a spatial
+node and a contained object; containing-space queries follow live membership.

@@ -23,7 +23,8 @@
 use ifc_lite_core::{DecodedEntity, EntityDecoder, EntityScanner, IfcType};
 
 mod raster;
-pub use raster::decode_step_binary;
+mod raster_header;
+pub use raster::{decode_step_binary, embedded_raster_dimensions, MAX_TEX_DIM as MAX_TEXTURE_DIMENSION};
 use raster::{decode_raster_image, MAX_TEX_DIM};
 use rustc_hash::FxHashMap;
 use std::sync::Arc;

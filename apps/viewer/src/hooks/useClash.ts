@@ -11,6 +11,7 @@
  */
 
 import { useCallback, useRef } from 'react';
+import { rememberPlacementSnapshot, jobPlacementIsCurrent } from '@/lib/model-placement/placement-snapshot';
 import { useViewerStore } from '@/store';
 import type { ClashFocusMode, ClashPreset } from '@/store/slices/clashSlice';
 import {
@@ -171,7 +172,6 @@ export function useClash() {
   const tolerance = useViewerStore((s) => s.clashTolerance);
   const clearance = useViewerStore((s) => s.clashClearance);
   const groupBy = useViewerStore((s) => s.clashGroupBy);
-  const clusterEpsilon = useViewerStore((s) => s.clashClusterEpsilon);
   const reportTouch = useViewerStore((s) => s.clashReportTouch);
   const clashPresets = useViewerStore((s) => s.clashPresets);
   const selectedId = useViewerStore((s) => s.clashSelectedId);
@@ -339,7 +339,7 @@ export function useClash() {
       // instanced for this model), so this is a no-op for every case this bug
       // did not touch.
       const meshes = withInstancedMeshes(geometryResult, {
-        idOffset: model.idOffset ?? 0,
+        modelId: model.id, idOffset: model.idOffset ?? 0,
         maxExpressId: model.maxExpressId ?? 0,
       }).meshes;
       if (meshes.length === 0) continue;
@@ -379,6 +379,7 @@ export function useClash() {
       if (built.elements.length === 0) continue;
       recordGatheredModel(federationIdentity, modelId, model);
     }
+    rememberPlacementSnapshot(federationIdentity, state, federationIdentity.keys());
     return { elements, exclusions, federationIdentity };
   }, []);
 
@@ -415,7 +416,7 @@ export function useClash() {
     (federationIdentity: ClashFederationIdentity, res: ClashResult, epoch: number): boolean => {
       if (!stillWanted(epoch)) return false;
       const state = useViewerStore.getState();
-      if (!clashFederationIsCurrent(federationIdentity, state.models)) return false;
+      if (!clashFederationIsCurrent(federationIdentity, state.models) || !jobPlacementIsCurrent(federationIdentity, state)) return false;
       // The identity travels WITH the result object. Publish-time currency is
       // not the end of the question: the federation can be superseded while the
       // result is on screen, and only a result that remembers what it was

@@ -16,6 +16,11 @@
       "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
+    "./schema-hierarchy": {
+      "types": "./dist/schema-hierarchy.d.ts",
+      "import": "./dist/schema-hierarchy.js",
+      "default": "./dist/schema-hierarchy.js"
+    },
     "./ifc4": {
       "types": "./dist/generated/ifc4/index.d.ts",
       "import": "./dist/generated/ifc4/index.js",
@@ -25,6 +30,11 @@
       "types": "./dist/generated/ifc4x3/index.d.ts",
       "import": "./dist/generated/ifc4x3/index.js",
       "default": "./dist/generated/ifc4x3/index.js"
+    },
+    "./ifc2x3": {
+      "types": "./dist/generated/ifc2x3/index.d.ts",
+      "import": "./dist/generated/ifc2x3/index.js",
+      "default": "./dist/generated/ifc2x3/index.js"
     }
   },
   "scripts": {
@@ -34,7 +44,8 @@
     "test": "vitest run",
     "generate": "node dist/cli.js",
     "generate:ifc4": "node dist/cli.js schemas/IFC4_ADD2_TC1.exp -o generated/ifc4",
-    "generate:ifc4x3": "node dist/cli.js schemas/IFC4X3.exp -o generated/ifc4x3"
+    "generate:ifc4x3": "node dist/cli.js schemas/IFC4X3.exp -o generated/ifc4x3",
+    "generate:ifc2x3": "node dist/cli.js schemas/IFC2X3_TC1.exp -o generated/ifc2x3"
   },
   "keywords": [
     "ifc",

@@ -38,7 +38,7 @@ function computeBvhFingerprint(meshes: ReadonlyArray<MeshData>): string {
         const mi = m.modelIndex ?? -1;
         const posLen = m.positions?.length ?? 0;
         const idxLen = m.indices?.length ?? 0;
-        parts.push(`${id}:${mi}:${posLen}:${idxLen}`);
+        parts.push(`${id}:${mi}:${posLen}:${idxLen}:${m.origin?.join(',') ?? ''}:${m.positions[0]},${m.positions[1]},${m.positions[2]}`);
     }
     return parts.join('|');
 }

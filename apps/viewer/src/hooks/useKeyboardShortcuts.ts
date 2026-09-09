@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useCallback, useRef } from 'react';
+import { replayWorkspaceHistory } from '@/lib/model-placement/history';
 import { useViewerStore } from '@/store';
 import { resetVisibilityForHomeFromStore } from '@/store/homeView';
 import { workspacePanelForShortcutCode } from '@/lib/panels/registry';
@@ -84,16 +85,10 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
     const key = eventKey(e);
     if (key === null) return;
 
-    // Undo / Redo — Ctrl/Cmd+Z and Ctrl/Cmd+Shift+Z, scoped to the
-    // active model's mutation stack. Always available regardless
-    // of edit mode so the user can recover from any change.
+    // Workspace moves interleave with active-model authoring history.
     if (key === 'z' && ctrl) {
       e.preventDefault();
-      const state = useViewerStore.getState();
-      const activeModelId = state.activeModelId;
-      if (!activeModelId) return;
-      if (shift) state.redo(activeModelId);
-      else state.undo(activeModelId);
+      replayWorkspaceHistory(useViewerStore.getState(), shift ? 'redo' : 'undo');
       return;
     }
 
@@ -451,7 +446,7 @@ export function useKeyboardShortcuts(options: KeyboardShortcutsOptions = {}) {
 
 // Export shortcut definitions for UI display
 export const KEYBOARD_SHORTCUTS = [
-  { key: 'Ctrl+Z / Cmd+Z', description: 'Undo last authoring change for the active model', category: 'Editing' },
+  { key: 'Ctrl+Z / Cmd+Z', description: 'Undo last model move or active-model authoring change', category: 'Editing' },
   { key: 'Ctrl+Shift+Z / Cmd+Shift+Z', description: 'Redo last undone change', category: 'Editing' },
   { key: 'V', description: 'Select tool', category: 'Tools' },
   { key: 'C', description: 'Walk mode', category: 'Tools' },

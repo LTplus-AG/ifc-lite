@@ -1,0 +1,20 @@
+{
+  "kind": "single observational fresh-browser sample; not base-versus-branch speedup",
+  "sourceCommit": "76fa95ebe",
+  "hook": "minimal awaited Apply/AbortController patch from root",
+  "runtimeSha256": "84b2126dfc48a3c2789b1fdb9565d1a5470aa07bfea28ba3fddc67cde3341349",
+  "fixtureSha256": "b637e624ca9bcab2ad9c862f421ad81e5bbf065175830210437458025aad1b96",
+  "applyDurationMs": 4134.389999985695,
+  "longestApplyTaskMs": 874,
+  "maximumApplyFrameGapMs": 883.3100000000013,
+  "medianApplyFrameGapMs": 100.01499999999942,
+  "framesDuringApply": 45,
+  "longTasksDuringApply": [
+    {
+      "at": 30529.335000038147,
+      "duration": 874
+    }
+  ],
+  "excluded": "tasks after success include subsequent ribbon interaction; excluded from Apply metric",
+  "verdict": "Preparation yields and cancellation is test-covered, but final synchronous work still blocks and cooperative frame gaps remain visible. No smoothness-complete or speedup claim."
+}

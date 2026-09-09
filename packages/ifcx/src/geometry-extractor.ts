@@ -14,6 +14,7 @@
 
 import type { ComposedNode, UsdMesh, UsdTransform } from './types.js';
 import { ATTR } from './types.js';
+import { IFCX_APPEARANCE, IFCX_IMAGE, createIfcxImageDecoder, decodeIfcxAppearance, type IfcxPixels } from './appearance-wire.js';
 import { getNodeLineage, type TraversalFrame, walkComposedFrames } from './traversal.js';
 import { computeNormalMatrix, computeNormals } from './geometry-normals.js';
 
@@ -27,6 +28,8 @@ export interface MeshData {
   normals: Float32Array;
   indices: Uint32Array;
   color: [number, number, number, number];
+  uvs?: Float32Array;
+  texture?: IfcxPixels;
 }
 
 /**
@@ -46,6 +49,7 @@ export function extractGeometry(
   pathToId: Map<string, number>
 ): MeshData[] {
   const meshes: MeshData[] = [];
+  const decodeImage = createIfcxImageDecoder();
   const contextByFrame = new WeakMap<TraversalFrame, GeometryContext | null>();
   const transformByFrame = new WeakMap<TraversalFrame, Float32Array | null>();
   // A node reachable through multiple parents (e.g. storey→wall AND
@@ -86,6 +90,13 @@ export function extractGeometry(
       if (!emitted.has(emitKey)) {
         emitted.add(emitKey);
         const meshData = convertUsdMesh(mesh, context.expressId, context.ifcType, transform);
+        const wire = frame.node.attributes.get(IFCX_APPEARANCE);
+        if (wire !== undefined) {
+          const appearance = decodeIfcxAppearance(wire, mesh.points.length);
+          const pixels = decodeImage(appearance.image.ref, composed.get(appearance.image.ref)?.attributes.get(IFCX_IMAGE));
+          meshData.uvs = new Float32Array(appearance.uvs);
+          meshData.texture = { ...pixels, repeatS: appearance.repeatS, repeatT: appearance.repeatT };
+        }
         if (color) {
           meshData.color = color;
         }

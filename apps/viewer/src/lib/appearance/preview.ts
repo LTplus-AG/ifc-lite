@@ -1,0 +1,158 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+import type { MeshData } from '@ifc-lite/geometry';
+import { equivalentAppearanceGeometry } from '@ifc-lite/renderer';
+import type { AppearanceChange, AppearancePreview, AppearanceToken, Renderer } from '@ifc-lite/renderer';
+import type { ViewerState } from '@/store';
+import type { AppearancePlan } from './planner-types.js';
+
+// Renderer cache keys only. These never enter IFC entities or selection lanes.
+let nextTextureIdentity = -1;
+const bitmapIdentities = new WeakMap<ImageBitmap, number>();
+function textureIdentity(bitmap: ImageBitmap): number {
+  let id = bitmapIdentities.get(bitmap);
+  if (id === undefined) { id = nextTextureIdentity--; bitmapIdentities.set(bitmap, id); }
+  return id;
+}
+
+export interface AppearancePreviewImage {
+  bitmap: ImageBitmap;
+  imageUri: string;
+  repeatS: boolean;
+  repeatT: boolean;
+}
+export interface AppearancePreviewParts {
+  globalId: number;
+  modelIndex: number;
+  parts: readonly MeshData[];
+}
+
+/** Resolve source IFC item identity independently of model/federation offsets. */
+export function bindAppearancePreview(
+  state: ViewerState, renderer: Renderer, modelId: string, plan: AppearancePlan,
+  bitmap: ImageBitmap, imageUri: string, repeatS: boolean, repeatT: boolean,
+  expandCorners: (mesh: MeshData, sourceIndices: readonly number[], cornerUvs: readonly number[], targetIndices: Uint32Array,
+    targetCornerNormals: readonly number[], targetVertexCount: number) => MeshData,
+  itemImages?: ReadonlyMap<number, AppearancePreviewImage>,
+): AppearancePreviewParts[] {
+  const targetTopologies = new Map(plan.items.map(item => [item.geometryItemId, new Uint32Array(item.targetIndices)]));
+  const byProduct = new Map<number, Map<number, AppearancePlan['items'][number]>>();
+  for (const item of plan.items) {
+    let items = byProduct.get(item.productId);
+    if (!items) { items = new Map(); byProduct.set(item.productId, items); }
+    items.set(item.geometryItemId, item);
+  }
+  return [...byProduct].map(([productId, items]) => {
+    const globalId = state.toGlobalId(modelId, productId);
+    const originals = renderer.getScene().getMeshDataPieces(globalId);
+    if (!originals?.length) throw new Error(`Geometry for IFC object #${productId} is not available. Reload the model and try again.`);
+    const represented = new Set<number>();
+    const modelIndex = originals[0].modelIndex ?? 0;
+    const parts = originals.map(mesh => {
+      const ref = mesh.geometryItemId === undefined ? null : state.resolveGlobalIdFromModels(mesh.geometryItemId);
+      const item = ref?.modelId === modelId ? items.get(ref.expressId) : undefined;
+      if (!item || (mesh.modelIndex ?? 0) !== modelIndex) {
+        throw new Error(`The geometry of IFC object #${productId} changed. Reload it before applying appearance.`);
+      }
+      represented.add(item.geometryItemId);
+      const image = itemImages ? itemImages.get(item.geometryItemId) : { bitmap, imageUri, repeatS, repeatT };
+      if (!image) throw new Error(`The baked image for IFC geometry #${item.geometryItemId} is missing.`);
+      return { ...expandCorners(mesh, item.sourceIndices, item.previewCornerUvs, targetTopologies.get(item.geometryItemId)!, item.targetCornerNormals, item.targetVertexCount), color: [1, 1, 1, 1] as [number, number, number, number],
+        shadingColor: undefined, texture: undefined,
+        textureBitmap: image.bitmap,
+        textureRef: { textureId: textureIdentity(image.bitmap), url: image.imageUri, repeatS: image.repeatS, repeatT: image.repeatT } };
+    });
+    if (represented.size !== items.size) throw new Error(`Some geometry for IFC object #${productId} is still loading.`);
+    return { globalId, modelIndex, parts };
+  });
+}
+
+/** Keep every owner's original resources until the complete draft is accepted. */
+export class AppearancePreviewSession {
+  private tokens: AppearanceToken[] = [];
+  private stagedGroups: readonly AppearancePreviewParts[] = [];
+  private readonly preview: AppearancePreview;
+  constructor(private readonly renderer: Renderer) { this.preview = renderer.getAppearancePreview(); }
+
+  stage(groups: readonly AppearancePreviewParts[]): void {
+    if (this.tokens.length) throw new Error('Discard the previous appearance preview before staging another.');
+    try {
+      for (const group of groups) {
+        const token = this.preview.begin({ expressId: group.globalId, modelIndex: group.modelIndex });
+        this.tokens.push(token);
+        this.preview.update(token, group.parts);
+      }
+      this.stagedGroups = groups.map(group => ({ ...group, parts: [...group.parts] }));
+      this.renderer.requestRender();
+    } catch (error) { this.cancel(); throw error; }
+  }
+
+  cancel(): void {
+    const tokens = this.tokens.splice(0);
+    this.stagedGroups = [];
+    let failure: unknown;
+    for (const token of tokens.reverse()) {
+      try { this.preview.cancel(token); }
+      catch (error) { failure ??= error; console.error('Could not cancel an appearance preview owner', error); }
+    }
+    this.renderer.requestRender();
+    if (failure) throw failure;
+  }
+
+  commit(): AppearanceChange[] {
+    const changes = this.prepareCommit()();
+    this.renderer.requestRender();
+    return changes;
+  }
+
+  /** Validate the entire preview before publishing any IFC/history changes. */
+  prepareCommit(expected?: readonly AppearancePreviewParts[]): () => AppearanceChange[] {
+    if (!this.tokens.length) throw new Error('The appearance preview is no longer active. Refresh it before applying.');
+    if (expected && (expected.length !== this.stagedGroups.length || expected.some((group, i) => {
+      const staged = this.stagedGroups[i];
+      return group.globalId !== staged.globalId || group.modelIndex !== staged.modelIndex
+        || group.parts.length !== staged.parts.length || group.parts.some((part, j) => part !== staged.parts[j]);
+    }))) throw new Error('The appearance preview changed. Refresh it before applying.');
+    const commit = this.preview.prepareCommit(this.tokens);
+    let committed: AppearanceChange[] | undefined;
+    return () => {
+      if (committed) return committed;
+      const changes = commit();
+      this.tokens = [];
+      this.stagedGroups = [];
+      committed = changes;
+      return changes;
+    };
+  }
+}
+
+/** History reuses current geometry buffers; reject mismatched topology explicitly. */
+export function appearanceHistoryParts(renderer: Renderer, changes: readonly AppearanceChange[], direction: 'undo' | 'redo'): AppearancePreviewParts[] {
+  return changes.map(change => {
+    const target = direction === 'undo' ? change.before : change.after;
+    const expectedCurrent = direction === 'undo' ? change.after : change.before;
+    // Primary-model meshes can omit modelIndex. Preview capture treats that as
+    // model 0; history must use the same ownership rule when resolving them.
+    const current = renderer.getScene().getMeshDataPieces(change.owner.expressId)
+      ?.filter(mesh => (mesh.modelIndex ?? 0) === change.owner.modelIndex);
+    if (!current || current.length !== target.length || current.length !== expectedCurrent.length) {
+      throw new Error('Cannot restore appearance because the object geometry changed.');
+    }
+    const parts = current.map((mesh, index) => {
+      const appearance = target[index];
+      const expected = expectedCurrent[index];
+      if (mesh.geometryItemId !== expected.geometryItemId || !equivalentAppearanceGeometry(mesh, expected)) {
+        throw new Error('Cannot restore appearance because current geometry or shading changed.');
+      }
+      if (mesh.geometryItemId !== appearance.geometryItemId
+        || !equivalentAppearanceGeometry(mesh, appearance, { allowNormalChanges: true })) {
+        throw new Error('Cannot restore appearance because the object topology changed.');
+      }
+      return { ...mesh, positions: appearance.positions, normals: appearance.normals, indices: appearance.indices,
+        appearanceSource: appearance.appearanceSource, color: appearance.color, shadingColor: appearance.shadingColor,
+        uvs: appearance.uvs, texture: appearance.texture, textureRef: appearance.textureRef, textureBitmap: appearance.textureBitmap };
+    });
+    return { globalId: change.owner.expressId, modelIndex: change.owner.modelIndex, parts };
+  });
+}

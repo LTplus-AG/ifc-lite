@@ -1,3 +1,7 @@
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
 //! STEP string escape decoding/encoding (ISO 10303-21 / IFC).
 //!
 //! IFC string attribute values encode non-ASCII characters with backslash

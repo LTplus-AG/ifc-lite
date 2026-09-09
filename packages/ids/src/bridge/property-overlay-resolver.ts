@@ -110,50 +110,79 @@ export function resolveEffectivePropertySets(
   for (const override of overrides) {
     const psetLower = override.psetName.toLowerCase();
     const propLower = override.propName.toLowerCase();
-    const pset = result.find((p) => p.name.toLowerCase() === psetLower);
+    // EVERY set sharing this name, not just the first: an entity can
+    // legitimately carry more than one `IfcPropertySet`/`IfcElementQuantity`
+    // with the same name — one from the type, one from the occurrence, or
+    // several `IfcRelDefinesByProperties` on the occurrence itself (see
+    // `collectAllPropertySets`'s doc and pset-lookup.ts's module doc, the
+    // settled semantics `getPropertyValue`/`getPropertySets` below already
+    // scan). A plain `.find()` here would silently operate on whichever
+    // same-named set happens to come first, even when the targeted
+    // property lives on a LATER one — see ifc-lite issue for the executed
+    // repro (a correction landing on the wrong set, or a delete that
+    // silently no-ops).
+    const matchingSets = result.filter((p) => p.name.toLowerCase() === psetLower);
 
     if (override.deleted) {
-      if (pset) {
+      // Remove the property from EVERY same-named set that carries it, not
+      // only the first. `getPropertyValue` scans same-named sets in order
+      // and returns the first match: leaving a stale copy on a later
+      // same-named set would let it resurface on the very next read,
+      // making the deletion look like it silently never took effect.
+      for (const pset of matchingSets) {
         pset.properties = pset.properties.filter((p) => p.name.toLowerCase() !== propLower);
       }
       continue;
     }
 
-    if (pset) {
-      const idx = pset.properties.findIndex((p) => p.name.toLowerCase() === propLower);
-      if (idx >= 0) {
-        // Keep the property's OWN stored name/casing AND dataType — only
-        // its value changes. The existing entry's `dataType` (resolved by
-        // `projectProperty` from the IFC schema, not from this override)
-        // is what tells `toBaseSI` whether — and by which dimension — to
-        // scale: a non-measure property (IFCLABEL, boolean, identifier)
-        // has no scale and passes through untouched.
-        const existing = pset.properties[idx];
-        pset.properties[idx] = {
-          ...existing,
-          value: toBaseSI(override.value, existing.dataType, scales),
-        };
-      } else {
-        // No existing entry to read a dataType from — this is a
-        // PROPERTY_MISSING correction (#3943): the property is being
-        // CREATED, not updated, so there is no sibling entry whose
-        // `dataType` `toBaseSI` could key off. Fall back to the
-        // dataType the override itself carries (the write path's own
-        // dataType — see `PropertyOverride.dataType`'s doc) and run it
-        // through the SAME `toBaseSI` helper as the branch above, so a
-        // brand-new measure property lands in the same base-SI frame as
-        // every other property in the pset instead of the model's raw
-        // frame. A caller that never supplies `dataType` keeps today's
-        // behaviour — no scale applied.
-        pset.properties.push({
-          name: override.propName,
-          value: toBaseSI(override.value, override.dataType, scales),
-          dataType: override.dataType ?? '',
-        });
-      }
+    // The specific same-named set that actually carries this property, if
+    // any. An update must land on THAT set — not on the first same-named
+    // set, which may carry a different property entirely and would
+    // otherwise receive a wrongly-placed duplicate while the real property
+    // (on a later same-named set) stays stale.
+    const targetSet = matchingSets.find((p) =>
+      p.properties.some((prop) => prop.name.toLowerCase() === propLower)
+    );
+
+    if (targetSet) {
+      const idx = targetSet.properties.findIndex((p) => p.name.toLowerCase() === propLower);
+      // Keep the property's OWN stored name/casing AND dataType — only
+      // its value changes. The existing entry's `dataType` (resolved by
+      // `projectProperty` from the IFC schema, not from this override)
+      // is what tells `toBaseSI` whether — and by which dimension — to
+      // scale: a non-measure property (IFCLABEL, boolean, identifier)
+      // has no scale and passes through untouched.
+      const existing = targetSet.properties[idx];
+      targetSet.properties[idx] = {
+        ...existing,
+        value: toBaseSI(override.value, existing.dataType, scales),
+      };
+    } else if (matchingSets.length > 0) {
+      // No same-named set carries this property yet — a PROPERTY_MISSING
+      // correction (#3943): the property is being CREATED, not updated, so
+      // there is no existing entry whose `dataType` `toBaseSI` could key
+      // off. Fall back to the dataType the override itself carries (see
+      // `PropertyOverride.dataType`'s doc) and run it through the SAME
+      // `toBaseSI` helper as the branch above.
+      //
+      // Which same-named set a brand-new property should land on is
+      // genuinely ambiguous when more than one exists — IFC does not
+      // distinguish between them. We put it on the FIRST same-named set:
+      // that matches this function's own pre-existing single-pset
+      // behaviour exactly (there is only one candidate when a collision
+      // isn't present), and it guarantees the new property is the one
+      // `getPropertyValue`'s first-match-wins scan returns on the very
+      // next read, regardless of how many same-named sets exist.
+      const first = matchingSets[0];
+      first.properties.push({
+        name: override.propName,
+        value: toBaseSI(override.value, override.dataType, scales),
+        dataType: override.dataType ?? '',
+      });
     } else {
-      // Same "no existing entry" reasoning as directly above, for a
-      // correction whose pset doesn't exist on the entity at all yet.
+      // No same-named set at all yet — a correction whose pset doesn't
+      // exist on the entity. Same "no existing entry" dataType reasoning
+      // as directly above.
       result.push({
         name: override.psetName,
         properties: [{

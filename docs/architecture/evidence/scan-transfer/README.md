@@ -124,3 +124,47 @@ and representation-derived corner definition, chosen position and selection
 uncertainty for each. Reject a feature if clutter or an unmodeled offset prevents
 an unambiguous match. Held-out manual agreement measures consistency with those
 correspondences; it does not establish survey-grade absolute accuracy.
+
+## IFC4 schema derivative
+
+The source can be migrated with the existing IfcOpenShell schema migrator;
+this is a derivative of the published IFC, not a BIM invented from scan points:
+
+```python
+import ifcopenshell
+from ifcopenshell.util.schema import Migrator
+
+original = ifcopenshell.open("craslabbim.ifc")
+derived = ifcopenshell.file(schema="IFC4")
+migrator = Migrator()
+for entity in original:
+    migrator.migrate(entity, derived)
+derived.write("craslabbim-ifc4.ifc")
+```
+
+The inspected run used IfcOpenShell 0.8.5. Migration prints notices for target
+attributes that have no source equivalent; this is not a general guarantee of
+lossless property/schema migration. EXPRESS IDs are reassigned. A preserved
+GlobalId set and matched tessellation do not certify every IFC relationship or
+material property. Both the source and derivative must remain available.
+
+The inspected derivative is available at
+`/tmp/ifclite-public-captures/derived/craslabbim-ifc4.ifc` (66,261,284 bytes).
+[Migration evidence](cras-ifc4-migration.json) pins both hashes. All 2,414 source
+IfcRoot GlobalIds are preserved. Independent reopening and world-coordinate
+geometry generation checked every represented IfcBuildingElement: 136 objects,
+590,643 nonempty source vertices. Of these, 134 have exact vertex/index arrays;
+two walls reorder vertices/triangles. Canonicalizing only cyclic corner rotations
+and triangle order, preserving winding and applying no rounding, proves those
+two oriented triangle sets exactly equal as well. The raw 18 m array-index delta
+is a reordering artifact, not a geometric displacement. This establishes the
+checked building geometry, not a blanket migration-fidelity claim.
+
+IfcOpenShell schema/cardinality validation reports zero errors; EXPRESS rules
+were not run. The first geometry comparison attempt was rejected because temporary
+native shape handles yielded empty arrays. The accepted run retains both shape
+handles and asserts every original mesh is nonempty before comparison.
+
+This IFC4 derivative removes the source-schema obstacle for an appearance
+experiment. It does **not** supply the still-missing scan registration, normals,
+full spatial coverage or held-out feature correspondences.
